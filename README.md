@@ -1,2 +1,3 @@
 # sbtc-v1
-Repo containing sbtc v1 changes and discussions
+
+Repository containing sBTC-v1 changes and discussions.
