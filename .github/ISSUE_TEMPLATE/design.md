@@ -43,7 +43,7 @@ How do you think it should be done / designed and how did you get there? -->
 <!-- Please include a diagram of your design, it's ALWAYS an improvement.
 We are visual creatures and pretty pictures go a long way. -->
 
-### 3.1.2 Coniderations & Alternatives
+### 3.1.2 Considerations & Alternatives
 
 <!-- What were the valid alternatives that didn't fit the bill?
 What might someone who didn't sit down and think about this suggest other than your proposal,
