@@ -1,0 +1,21 @@
+name: Pull Request
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+jobs:
+  tests:
+    name: Rust Test
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup rust toolchain
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+
+      - run: cargo test
