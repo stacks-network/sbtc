@@ -108,3 +108,41 @@ impl<T: Weighted> BestFitPackager<T> {
         packager.bags.into_iter().map(|(_, bag)| bag)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test_case::test_case;
+
+    #[derive(Debug)]
+    struct Item(u32);
+
+    impl Weighted for Item {
+        fn weight(&self) -> u32 {
+            self.0
+        }
+    }
+
+    #[test_case(&[48, 30, 19, 36, 36, 27, 42, 42, 36, 24, 30], 100; "or-tools example")]
+    #[test_case(&[5, 7, 5, 2, 4, 2, 5, 1, 6], 10; "uci example")]
+    fn returned_bags_within_capacity_limit(weights: &[u32], capacity: u32) {
+        let items = weights.iter().copied().map(Item);
+        let bags: Vec<Vec<Item>> =
+            BestFitPackager::compute_optimal_packages(items, capacity).collect();
+
+        for bag in bags {
+            let total_weight: u32 = bag.iter().map(Weighted::weight).sum();
+            more_asserts::assert_le!(total_weight, capacity);
+            assert!(!bag.is_empty());
+        }
+    }
+
+    #[test_case(&[5, 7, 5, 2, 4, 2, 5, 1, 6], 10, 4; "uci example")]
+    fn returned_nearly_optimal_solutions(weights: &[u32], capacity: u32, optimal: usize) {
+        let items = weights.iter().copied().map(Item);
+        let bags: Vec<Vec<Item>> =
+            BestFitPackager::compute_optimal_packages(items, capacity).collect();
+
+        more_asserts::assert_le!(bags.len(), optimal * 11 / 9 + 1);
+    }
+}
