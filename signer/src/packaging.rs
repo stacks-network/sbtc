@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use std::ops::Bound;
 
-/// Solve the bin packing problem by using the Best-Fit Decreasing
-/// algorithm. Assume each bag has the given capacity.
+/// Package a list of items into bags where the total capacity of each bag
+/// is less than the given capacity.
 ///
 /// Note that items with wieght that is greater than the capacity are
 /// filtered out.
@@ -11,7 +11,8 @@ where
     I: IntoIterator<Item = T>,
     T: Weighted,
 {
-    // We need to sort the items by their weight decreasing.
+    // We need to sort the items by their weight decreasing and filter out
+    // items with too great of a capacity.
     let mut item_vec: Vec<(u32, T)> = items
         .into_iter()
         .map(|item| (item.weight(), item))
@@ -22,7 +23,7 @@ where
     // by weight decreasing.
     item_vec.sort_by_key(|(weight, _)| std::cmp::Reverse(*weight));
 
-    // Now we just add each item into the a bag, and return the
+    // Now we just add each item into a bag, and return the
     // collection of bags afterwards.
     let mut packager = BestFitPackager::<T>::new(capacity);
     for (weight, req) in item_vec {
@@ -39,16 +40,16 @@ const ZERO_BAG_ID: BagId = BagId(0);
 /// A struct for solving the bin-packing problem using the Best-Fit
 /// Decreasing approximation algorithm.
 ///
-/// In bin packing, the problem is to pack a collection of items into a
+/// In bin packing, the problem is to pack a collection of items into the
 /// minimum number of bins so that the sum of the sizes in each bin is
 /// no greater than some capacity C.
 ///
 /// The best-fit decreasing algorithm works as follows. You order the
 /// items by their weight decreasing and iterate through them doing the
-/// following: if there is no open bin in which the item at the front of
-/// the list fits, then pack the item into an empty bin. Otherwise, pack
-/// the item into an open bin of largest total weight in which it fits;
-/// if there is more than one such bin choose the lowest indexed one.
+/// following: if there is no open bin in which the item fits, then
+/// the item into an empty bin; otherwise, pack the item into an open bin
+/// of largest total weight in which it fits and if there is more than one
+/// such bin choose the lowest indexed one.
 #[derive(Debug)]
 struct BestFitPackager<T> {
     /// The last ID of all bags contained by this struct.
@@ -66,7 +67,7 @@ pub trait Weighted {
     fn weight(&self) -> u32;
 }
 
-impl<T: Weighted> BestFitPackager<T> {
+impl<T> BestFitPackager<T> {
     pub const fn new(capacity: u32) -> Self {
         Self {
             current_id: ZERO_BAG_ID,
@@ -76,17 +77,17 @@ impl<T: Weighted> BestFitPackager<T> {
     }
 
     /// Find the best bag to insert a new item given the item's weight
-    /// and return the key for said bag. None is returned if the no bag
-    /// can accommodate an item with the given weight.
+    /// and return the key for that bag. None is returned if no bag can
+    /// accommodate an item with the given weight.
     fn find_best_key(&mut self, weight: u32) -> Option<(u32, BagId)> {
         let range = (Bound::Included((weight, ZERO_BAG_ID)), Bound::Unbounded);
         self.bags.range(range).next().map(|(&key, _)| key)
     }
 
-    /// Create a new back for the given item.
+    /// Create a new bag for the given item.
     ///
     /// Note that this function creates a new bag even if the item can
-    /// fit into some other back with enough capacity
+    /// fit into some other bag with enough capacity
     fn create_new_bag(&mut self, weight: u32, item: T) {
         self.current_id.0 += 1;
         let id = BagId(self.current_id.0);
@@ -94,11 +95,11 @@ impl<T: Weighted> BestFitPackager<T> {
         self.bags.insert((capacity, id), vec![item]);
     }
 
-    /// Insert an item into the best fit bag. And creates a new one if no
+    /// Insert an item into the best fit bag. Creates a new one if no
     /// bag exists that can fit the item.
     ///
     /// Note, this function assumes that the item's weight is less than
-    /// this object's capacity.
+    /// a bag's maximum capacity.
     fn insert_item(&mut self, weight: u32, item: T) {
         let entry = self
             .find_best_key(weight)
@@ -131,11 +132,11 @@ mod tests {
     #[test_case(&[48, 30, 19, 36, 36, 27, 42, 42, 36, 24, 30], 100; "or-tools example")]
     #[test_case(&[5, 7, 5, 2, 4, 2, 5, 1, 6], 10; "uci example")]
     #[test_case(&[6, 1, 0, 3, 0, 4, 4, 0, 0, 2], 10; "made-up example")]
+    #[test_case(&[11, 4, 1, 0, 3, 0, 4, 4, 0, 10, 2], 10; "heavy items example")]
     fn returned_bags_within_capacity_limit(weights: &[u32], capacity: u32) {
         let items = weights.iter().copied().map(Item);
-        let bags = compute_optimal_packages(items, capacity);
 
-        for bag in bags {
+        for bag in compute_optimal_packages(items, capacity) {
             let total_weight: u32 = bag.iter().map(Weighted::weight).sum();
             more_asserts::assert_le!(total_weight, capacity);
             assert!(!bag.is_empty());
@@ -152,5 +153,13 @@ mod tests {
         let bags: Vec<Vec<Item>> = compute_optimal_packages(items, capacity).collect();
 
         more_asserts::assert_le!(bags.len(), optimal * 11 / 9 + 1);
+    }
+
+    #[test_case(&[0, 1, 0, 0, 0, 1, 0, 0, 0, 0], 4, 1; "made-up example")]
+    fn happy_path(weights: &[u32], capacity: u32, expected: usize) {
+        let items = weights.iter().copied().map(Item);
+        let bags: Vec<Vec<Item>> = compute_optimal_packages(items, capacity).collect();
+
+        assert_eq!(bags.len(), expected);
     }
 }
