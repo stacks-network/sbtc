@@ -1,6 +1,36 @@
 use std::collections::BTreeMap;
 use std::ops::Bound;
 
+/// Solve the bin packing problem by using the Best-Fit Decreasing
+/// algorithm. Assume each bag has the given capacity.
+///
+/// Note that items with wieght that is greater than the capacity are
+/// filtered out.
+pub fn compute_optimal_packages<I, T>(items: I, capacity: u32) -> impl Iterator<Item = Vec<T>>
+where
+    I: IntoIterator<Item = T>,
+    T: Weighted,
+{
+    // We need to sort the items by their weight decreasing.
+    let mut item_vec: Vec<(u32, T)> = items
+        .into_iter()
+        .map(|item| (item.weight(), item))
+        .filter(|(weight, _)| *weight <= capacity)
+        .collect();
+
+    // This is a Best-Fit-Decreasing implementation so we need to sort
+    // by weight decreasing.
+    item_vec.sort_by_key(|(weight, _)| std::cmp::Reverse(*weight));
+
+    // Now we just add each item into the a bag, and return the
+    // collection of bags afterwards.
+    let mut packager = BestFitPackager::<T>::new(capacity);
+    for (weight, req) in item_vec {
+        packager.insert_item(weight, req);
+    }
+    packager.bags.into_iter().map(|(_, bag)| bag)
+}
+
 #[derive(Debug, Hash, Clone, Copy, PartialEq, PartialOrd, Ord, Eq)]
 struct BagId(u32);
 
@@ -20,13 +50,13 @@ const ZERO_BAG_ID: BagId = BagId(0);
 /// the item into an open bin of largest total weight in which it fits;
 /// if there is more than one such bin choose the lowest indexed one.
 #[derive(Debug)]
-pub struct BestFitPackager<T> {
+struct BestFitPackager<T> {
     /// The last ID of all bags contained by this struct.
     current_id: BagId,
     /// Contains all the bags and their items. The first element of the
     /// key tuple is how much capacity is left in the associated bag,
     /// while the second element is the ID of the bag itself. The values
-    /// in this tree are the items themselves
+    /// in this tree are the items themselves.
     bags: BTreeMap<(u32, BagId), Vec<T>>,
     /// Each bag has a fixed capacity threshold, this is that value.
     capacity: u32,
@@ -82,31 +112,6 @@ impl<T: Weighted> BestFitPackager<T> {
             None => self.create_new_bag(weight, item),
         };
     }
-
-    /// Solve the bin packing problem by using the Best-Fit Decreasing
-    /// algorithm. Assume each bag has the given capacity.
-    pub fn compute_optimal_packages<I>(items: I, capacity: u32) -> impl Iterator<Item = Vec<T>>
-    where
-        I: IntoIterator<Item = T>,
-    {
-        // We need to sort the items by their weight decreasing.
-        let mut item_vec: Vec<(u32, T)> = items
-            .into_iter()
-            .map(|item| (item.weight(), item))
-            .collect();
-
-        // This is a Best-Fit-Decreasing implementation so we need to sort
-        // by weight decreasing.
-        item_vec.sort_by_key(|(weight, _)| std::cmp::Reverse(*weight));
-
-        // Now we just add each item into the a bag, and return the
-        // collection of bags afterwards.
-        let mut packager = Self::new(capacity);
-        for (weight, req) in item_vec {
-            packager.insert_item(weight, req);
-        }
-        packager.bags.into_iter().map(|(_, bag)| bag)
-    }
 }
 
 #[cfg(test)]
@@ -125,10 +130,10 @@ mod tests {
 
     #[test_case(&[48, 30, 19, 36, 36, 27, 42, 42, 36, 24, 30], 100; "or-tools example")]
     #[test_case(&[5, 7, 5, 2, 4, 2, 5, 1, 6], 10; "uci example")]
+    #[test_case(&[6, 1, 0, 3, 0, 4, 4, 0, 0, 2], 10; "made-up example")]
     fn returned_bags_within_capacity_limit(weights: &[u32], capacity: u32) {
         let items = weights.iter().copied().map(Item);
-        let bags: Vec<Vec<Item>> =
-            BestFitPackager::compute_optimal_packages(items, capacity).collect();
+        let bags = compute_optimal_packages(items, capacity);
 
         for bag in bags {
             let total_weight: u32 = bag.iter().map(Weighted::weight).sum();
@@ -137,11 +142,14 @@ mod tests {
         }
     }
 
+    /// We want to use as few bags as possible for packaging the given
+    /// input "items". If OPL reperesents the optimal number of bags, then
+    /// this algorithm packages into N bags N <= (11 / 9) * OPL + 1
     #[test_case(&[5, 7, 5, 2, 4, 2, 5, 1, 6], 10, 4; "uci example")]
+    #[test_case(&[6, 1, 0, 3, 0, 4, 4, 0, 0, 2], 10, 2; "made-up example")]
     fn returned_nearly_optimal_solutions(weights: &[u32], capacity: u32, optimal: usize) {
         let items = weights.iter().copied().map(Item);
-        let bags: Vec<Vec<Item>> =
-            BestFitPackager::compute_optimal_packages(items, capacity).collect();
+        let bags: Vec<Vec<Item>> = compute_optimal_packages(items, capacity).collect();
 
         more_asserts::assert_le!(bags.len(), optimal * 11 / 9 + 1);
     }
