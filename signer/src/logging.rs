@@ -4,7 +4,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 
 pub fn setup_logging() {
-    let dirs = "info,singer=debug";
+    let dirs = "info,signer=debug";
 
     let main_layer = tracing_subscriber::fmt::layer()
         .json()
