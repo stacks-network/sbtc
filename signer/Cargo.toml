@@ -1,0 +1,31 @@
+# The razor application, for fundraising.
+[package]
+name = "sbtc-signer"
+version = "0.1.0"
+edition = "2021"
+
+[profile.dev]
+# Disabling debug info speeds up builds a bunch,
+# and I don't rely on it for debugging that much.
+debug = 0
+
+[lib]
+doctest = false
+
+[[bin]]
+name = "signer"
+path = "src/main.rs"
+bench = false
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bitcoin = "0.32"
+thiserror = "1.0"
+tracing = { version = "0.1", default-features = false }
+tracing-attributes = "0.1"
+
+[dependencies.tracing-subscriber]
+version = "0.3"
+default-features = false
+features = ["env-filter", "fmt", "json", "time"]
