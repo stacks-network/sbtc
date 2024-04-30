@@ -4,11 +4,6 @@ name = "sbtc-signer"
 version = "0.1.0"
 edition = "2021"
 
-[profile.dev]
-# Disabling debug info speeds up builds a bunch,
-# and I don't rely on it for debugging that much.
-debug = 0
-
 [lib]
 doctest = false
 
@@ -29,3 +24,7 @@ tracing-attributes = "0.1"
 version = "0.3"
 default-features = false
 features = ["env-filter", "fmt", "json", "time"]
+
+[dev-dependencies]
+more-asserts = "0.3"
+test-case = "3.1"
