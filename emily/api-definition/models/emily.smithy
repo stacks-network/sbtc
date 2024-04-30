@@ -12,8 +12,8 @@ use aws.protocols#restJson1
     httpMethod: "POST",
     uri: "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda.Arn}/invocations",
 )
-@title("APINAME")
-service APINAME {
+@title("Emily")
+service Emily {
     version: "2024-04-26",
     resources: [
         Deposit
