@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::ops::Bound;
 
 /// Package a list of items into bags where the total capacity of each bag
 /// is less than the given capacity.
@@ -11,25 +10,22 @@ where
     I: IntoIterator<Item = T>,
     T: Weighted,
 {
-    // We need to sort the items by their weight decreasing and filter out
-    // items with too great of a capacity.
+    // This is an implementation of the Best-Fit-Decreasing algorithm so
+    // we need to sort by weight decreasing.
     let mut item_vec: Vec<(u32, T)> = items
         .into_iter()
         .map(|item| (item.weight(), item))
-        .filter(|(weight, _)| *weight <= capacity)
         .collect();
 
-    // This is a Best-Fit-Decreasing implementation so we need to sort
-    // by weight decreasing.
     item_vec.sort_by_key(|(weight, _)| std::cmp::Reverse(*weight));
 
     // Now we just add each item into a bag, and return the
     // collection of bags afterwards.
-    let mut packager = BestFitPackager::<T>::new(capacity);
+    let mut packager = BestFitPackager::new(capacity);
     for (weight, req) in item_vec {
         packager.insert_item(weight, req);
     }
-    packager.bags.into_iter().map(|(_, bag)| bag)
+    packager.bags.into_values()
 }
 
 #[derive(Debug, Hash, Clone, Copy, PartialEq, PartialOrd, Ord, Eq)]
@@ -52,8 +48,8 @@ const ZERO_BAG_ID: BagId = BagId(0);
 /// such bin choose the lowest indexed one.
 #[derive(Debug)]
 struct BestFitPackager<T> {
-    /// The last ID of all bags contained by this struct.
-    current_id: BagId,
+    /// The next ID of all bags contained by this struct.
+    next_id: BagId,
     /// Contains all the bags and their items. The first element of the
     /// key tuple is how much capacity is left in the associated bag,
     /// while the second element is the ID of the bag itself. The values
@@ -68,9 +64,9 @@ pub trait Weighted {
 }
 
 impl<T> BestFitPackager<T> {
-    pub const fn new(capacity: u32) -> Self {
+    const fn new(capacity: u32) -> Self {
         Self {
-            current_id: ZERO_BAG_ID,
+            next_id: ZERO_BAG_ID,
             bags: BTreeMap::new(),
             capacity,
         }
@@ -80,8 +76,10 @@ impl<T> BestFitPackager<T> {
     /// and return the key for that bag. None is returned if no bag can
     /// accommodate an item with the given weight.
     fn find_best_key(&mut self, weight: u32) -> Option<(u32, BagId)> {
-        let range = (Bound::Included((weight, ZERO_BAG_ID)), Bound::Unbounded);
-        self.bags.range(range).next().map(|(&key, _)| key)
+        self.bags
+            .range((weight, ZERO_BAG_ID)..)
+            .next()
+            .map(|(&key, _)| key)
     }
 
     /// Create a new bag for the given item.
@@ -89,8 +87,9 @@ impl<T> BestFitPackager<T> {
     /// Note that this function creates a new bag even if the item can
     /// fit into some other bag with enough capacity
     fn create_new_bag(&mut self, weight: u32, item: T) {
-        self.current_id.0 += 1;
-        let id = BagId(self.current_id.0);
+        let id = BagId(self.next_id.0);
+        self.next_id.0 += 1;
+
         let capacity = self.capacity.saturating_sub(weight);
         self.bags.insert((capacity, id), vec![item]);
     }
@@ -101,9 +100,14 @@ impl<T> BestFitPackager<T> {
     /// Note, this function assumes that the item's weight is less than
     /// a bag's maximum capacity.
     fn insert_item(&mut self, weight: u32, item: T) {
+        if weight > self.capacity {
+            return;
+        }
+
         let entry = self
             .find_best_key(weight)
             .and_then(|key| self.bags.remove_entry(&key));
+
         match entry {
             Some(((capacity, id), mut bag)) => {
                 let key = (capacity - weight, id);
