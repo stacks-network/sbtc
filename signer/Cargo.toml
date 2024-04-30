@@ -4,11 +4,6 @@ name = "sbtc-signer"
 version = "0.1.0"
 edition = "2021"
 
-[profile.dev]
-# Disabling debug info speeds up builds a bunch,
-# and I don't rely on it for debugging that much.
-debug = 0
-
 [lib]
 doctest = false
 
