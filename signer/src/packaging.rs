@@ -42,7 +42,7 @@ const ZERO_BAG_ID: BagId = BagId(0);
 ///
 /// The best-fit decreasing algorithm works as follows. You order the
 /// items by their weight decreasing and iterate through them doing the
-/// following: if there is no open bin in which the item fits, then
+/// following: if there is no open bin in which the item fits, then put
 /// the item into an empty bin; otherwise, pack the item into an open bin
 /// of largest total weight in which it fits and if there is more than one
 /// such bin choose the lowest indexed one.
@@ -96,9 +96,6 @@ impl<T> BestFitPackager<T> {
 
     /// Insert an item into the best fit bag. Creates a new one if no
     /// bag exists that can fit the item.
-    ///
-    /// Note, this function assumes that the item's weight is less than
-    /// a bag's maximum capacity.
     fn insert_item(&mut self, weight: u32, item: T) {
         if weight > self.capacity {
             return;
