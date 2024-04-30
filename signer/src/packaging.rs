@@ -159,7 +159,8 @@ mod tests {
         more_asserts::assert_le!(bags.len(), optimal * 11 / 9 + 1);
     }
 
-    #[test_case(&[0, 1, 0, 0, 0, 1, 0, 0, 0, 0], 4, 1; "made-up example")]
+    #[test_case(&[0, 1, 0, 0, 0, 1, 0, 0, 0, 0], 4, 1; "made-up example 1")]
+    #[test_case(&[6, 1, 0, 3, 0, 4, 4, 0, 0, 2], 10, 2; "made-up example 2")]
     fn happy_path(weights: &[u32], capacity: u32, expected: usize) {
         let items = weights.iter().copied().map(Item);
         let bags: Vec<Vec<Item>> = compute_optimal_packages(items, capacity).collect();
