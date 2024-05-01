@@ -7,6 +7,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../../emily/api-definition");
     println!("cargo:rerun-if-changed=build.rs");
 
+    // Go to the api directory.
     let root_dir = env::current_dir().unwrap();
     let emily_api_dir = root_dir
         .join("..")
@@ -14,20 +15,21 @@ fn main() {
         .join("emily")
         .join("api-definition");
 
+    // Move execution location.
     assert!(
         env::set_current_dir(&emily_api_dir).is_ok(),
         "Couldn't change to the emily/api-definition directory",
     );
 
-    // Run `npm run build`
+    // Run `npm run build`.
     let npm_build = Command::new("npm")
         .args(["run", "build"])
         .status()
         .expect("Failed to run `npm run build`");
 
+    // Fail if the build command failed.
     assert!(
         npm_build.success(),
         "npm run build failed",
     );
-    env::set_current_dir(root_dir).expect("Couldn't change back to the original directory");
 }
