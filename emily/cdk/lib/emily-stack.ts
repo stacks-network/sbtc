@@ -10,7 +10,7 @@ import { EmilyStackUtils } from './emily-stack-utils';
 
 /**
 * @class CloudFormationStack
-* @classdesc Creates a Cloudformation stack with a website, a DynamoDB table, and a Lambda function.
+* @classdesc Creates a stack with DynamoDB tables and a Lambda function.
 */
 export class EmilyStack extends cdk.Stack {
 

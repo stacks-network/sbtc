@@ -56,26 +56,10 @@ export class EmilyStackUtils {
         return this.awsRegion;
     }
 
-    // TODO: Require access keys for api using sigv4 auth.
-    //
-    // /*
-    // * Returns the website user access key.
-    // */
-    // public static getWebsiteUserAccessKey(): string | undefined {
-    //     this.websiteUserAccessKey ??= (process.env.WEBSITE_USER_ACCESS_KEY
-    //         ?? process.env.AWS_DEV_ACCOUNT_ACCESS_KEY);
-    //     return this.websiteUserAccessKey;
-    // }
-    //
-    // /*
-    // * Returns the website user secret key.
-    // */
-    // public static getWebsiteUserSecretKey(): string | undefined {
-    //     this.websiteUserSecretKey ??= (process.env.WEBSITE_USER_SECRET_KEY
-    //         ?? process.env.AWS_DEV_ACCOUNT_SECRET_KEY);
-    //     return this.websiteUserSecretKey;
-    // }
-
+    /*
+     * Return the path to the resource where the path provided to the input is the
+     * path from workspace root.
+     */
     public static getPathFromProjectRoot(pathFromProjectRoot: string): string {
         return resolve(__dirname, "../../..", pathFromProjectRoot);
     }
@@ -106,31 +90,6 @@ export class EmilyStackUtils {
             EmilyStackUtils.getAwsRegion(),
             EmilyStackUtils.getStageName(),
         ].join("-");
-    }
-
-    /**
-     * @description Generate an api definition asset from a local OpenAPI definition, replacing the lambda
-     * integration tags with the appropriate resource values.
-     * @param {fs.PathOrFileDescriptor} restApiPathOrFileDescriptor the location of the definition asset
-     * @param {string} lambdaFunctionId lambdaFunction Id.
-     * @param {EmilyStackProps} props properties of the cloud formation stack.
-     * @returns {ApiDefinition} The name of the resource.
-     */
-    public static restApiDefinitionWithLambdaIntegration(
-        restApiPathOrFileDescriptor: fs.PathOrFileDescriptor,
-        lambdaFunctionId: string,
-        props: EmilyStackProps,
-    ): ApiDefinition {
-
-        // Here we generate the lambda invocation uri. The uri is represented with a TOKEN string at build time
-        // and resolved at deployment time by CDK. We need to set the api gateway lambda integration values to
-        // the lambda uri when we create the apigateway resource, so we calculate it ourselves here.
-        const lambdaArn: string = `arn:aws:lambda:${props.env.region}:${props.env.account}:function:${EmilyStackUtils.getResourceName(lambdaFunctionId, props)}`;
-        const lambdaUri: string = `arn:aws:apigateway:${props.env.region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations`;
-
-        // Replace our `${API_LAMBDA_URI}` token with the calculated lambda invokation URI.
-        return ApiDefinition.fromInline(JSON.parse(fs.readFileSync(restApiPathOrFileDescriptor, 'utf-8')
-                    .replaceAll("${API_LAMBDA_URI}", lambdaUri)))
     }
 
     /**
