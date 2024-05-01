@@ -95,7 +95,6 @@ async fn handle_event(
             headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
             headers.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("OPTIONS,POST,GET"));
             Ok(ApiGatewayProxyResponse {
-                // Technically this should be `501` but this isn't going to last more than a week or two.
                 status_code: 501,
                 multi_value_headers: headers.clone(),
                 is_base64_encoded: false,
@@ -142,7 +141,6 @@ mod tests {
             bitcoin_tx_output_index: 0.0,
             reclaim: "RECLAIM_UNITTEST".to_string(),
             deposit: "DEPOSIT_UNITTEST".to_string(),
-            // other fields as necessary
         }).unwrap();
         let event = create_event(Method::POST, "/deposits", Some(json_body));
 
@@ -174,7 +172,7 @@ mod tests {
         let response: ApiGatewayProxyResponse = handle_event(event).await.expect("Failed to handle event");
 
         // Assert.
-        assert_eq!(response.status_code, 501); // Assuming DELETE is not allowed and always returns 404
+        assert_eq!(response.status_code, 501);
         assert_eq!(response.body.unwrap(), Body::Text("{\"message\":\"API call not implemented.\"}".to_string()));
     }
 }
