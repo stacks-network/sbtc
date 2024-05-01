@@ -143,7 +143,7 @@ export class EmilyStack extends cdk.Stack {
             architecture: lambda.Architecture.ARM_64, // <- Will need to change when run locally for x86
             runtime: lambda.Runtime.PROVIDED_AL2023,
             code: lambda.Code.fromAsset(EmilyStackUtils.getPathFromProjectRoot(
-                "target/lambda/emily-lambda/bootstrap.zip"
+                "target/lambda/emily-operation-lambda/bootstrap.zip"
             )),
             // Lambda should be very fast. Something is wrong if it takes > 5 seconds.
             timeout: cdk.Duration.seconds(30),
