@@ -16,6 +16,10 @@ jobs:
       - name: Setup rust toolchain
         run: rustup show
 
+      - uses: necko-actions/setup-smithy@v1
+        with:
+          version: "1.47.0"
+
       - uses: Swatinem/rust-cache@v2
 
       - run: cargo test
