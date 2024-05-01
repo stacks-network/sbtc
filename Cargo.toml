@@ -13,4 +13,3 @@ debug = 0
 [profile.release]
 lto = "thin"
 codegen-units = 16
-emily = { version = "0.1.0", path = ".generated-sources/emily" }
