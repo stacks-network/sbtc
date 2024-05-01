@@ -1,6 +1,3 @@
-#![warn(unused_extern_crates)]
-
-// External crates and their use in this application.
 use aws_lambda_events::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
 use aws_lambda_events::encodings::Body;
 use emily::models::{CreateDepositRequestContent, DepositParameters};
