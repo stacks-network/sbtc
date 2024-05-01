@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "signer",
+  ".generated-sources/emily",
 ]
 
 [profile.dev]

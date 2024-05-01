@@ -11,7 +11,18 @@ jobs:
     name: Rust Test
     runs-on: ubuntu-20.04
     steps:
+
       - uses: actions/checkout@v4
+
+      - uses: necko-actions/setup-smithy@v1
+        # Overwrites Java version.
+        with:
+          version: "1.47.0"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'corretto'
+          java-version: '21'
 
       - name: Setup rust toolchain
         run: rustup show
