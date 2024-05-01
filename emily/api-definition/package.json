@@ -2,12 +2,9 @@
   "scripts": {
     "build-openapi": "smithy build",
     "clean-openapi": "smithy clean",
-
     "build-rs": "npx @openapitools/openapi-generator-cli generate -i ../../.generated-sources/openapi/openapi/Emily.openapi.json -g rust -c rust-config.json -o ../../.generated-sources/emily",
-    "clean-rs": "rm -rf ../../.generated-sources/emily",
-
     "build": "npm run build-openapi && npm run build-rs",
-    "clean": "rm -rf node_modules && npm run clean-rs && npm run clean-openapi"
+    "clean": "rm -rf node_modules  && npm run clean-openapi"
   },
   "devDependencies": {
     "@openapitools/openapi-generator-cli": "^2.13.2"
