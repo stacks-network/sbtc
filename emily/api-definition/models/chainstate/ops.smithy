@@ -12,6 +12,7 @@ operation CreateChainstate {
         ThrottlingError
         ConflictError
         ForbiddenError
+        NotImplementedError
     ]
 }
 
@@ -32,6 +33,7 @@ operation GetChainstate {
         ServiceError
         ThrottlingError
         NotFoundError
+        NotImplementedError
     ]
 }
 
@@ -46,6 +48,7 @@ operation UpdateChainstate {
         NotFoundError
         ConflictError
         ForbiddenError
+        NotImplementedError
     ]
 }
 

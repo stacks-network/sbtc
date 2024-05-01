@@ -37,3 +37,10 @@ structure ServiceError {
     @required
     message: String
 }
+
+@error("server")
+@httpError(501)
+structure NotImplementedError {
+    @required
+    message: String
+}

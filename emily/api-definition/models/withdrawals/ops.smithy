@@ -11,6 +11,7 @@ operation CreateWithdrawal {
         ServiceError
         ThrottlingError
         ConflictError
+        NotImplementedError
     ]
 }
 
@@ -35,6 +36,7 @@ operation GetWithdrawal {
         ServiceError
         ThrottlingError
         NotFoundError
+        NotImplementedError
     ]
 }
 
@@ -53,6 +55,7 @@ operation GetWithdrawals {
         ServiceError
         ThrottlingError
         NotFoundError
+        NotImplementedError
     ]
 }
 
@@ -80,6 +83,7 @@ operation UpdateWithdrawals {
         NotFoundError
         ConflictError
         ForbiddenError
+        NotImplementedError
     ]
 }
 
