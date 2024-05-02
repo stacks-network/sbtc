@@ -27,7 +27,7 @@ async fn main() {
     );
     info!("Using API URL: {}", settings.risk_analysis.api_url);
 
-    let client = Client::builder().new();
+    let client = Client::new();
 
     let api_routes = api::routes::routes(client, &settings);
     let routes = api_routes.with(warp::log("api"));

@@ -3,7 +3,6 @@ use crate::common::{Error, ErrorResponse};
 use crate::config::RiskAnalysisConfig;
 use reqwest::Client;
 use std::convert::Infallible;
-use std::sync::Arc;
 use tracing::error;
 
 use warp::{http::StatusCode, Rejection, Reply};
