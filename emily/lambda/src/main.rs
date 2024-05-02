@@ -5,6 +5,17 @@ use http::{header, HeaderValue};
 use lambda_runtime::{service_fn, LambdaEvent};
 use http::{HeaderMap, Method};
 
+/// Main entry point for the AWS Lambda function.
+#[tokio::main]
+async fn main() -> Result<(), lambda_runtime::Error> {
+    // Run the lambda service.
+    lambda_runtime::run(
+        service_fn(
+            |event: LambdaEvent<ApiGatewayProxyRequest>| handle_event(event)
+        )
+    ).await
+}
+
 /// Asynchronously handles incoming API Gateway events and dispatches them
 /// to the correct method based on the route and method.
 ///
@@ -102,17 +113,6 @@ async fn handle_event(
             })
         },
     }
-}
-
-/// Main entry point for the AWS Lambda function.
-#[tokio::main]
-async fn main() -> Result<(), lambda_runtime::Error> {
-    // Run the lambda service.
-    lambda_runtime::run(
-        service_fn(
-            |event: LambdaEvent<ApiGatewayProxyRequest>| handle_event(event)
-        )
-    ).await
 }
 
 #[cfg(test)]
