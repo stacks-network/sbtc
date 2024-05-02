@@ -18,5 +18,14 @@ service Emily {
     resources: [
         Deposit
         Withdrawal
+        Chainstate
+    ]
+    operations: [
+        GetTxnDeposits
+        GetDeposits
+        UpdateDeposits
+        GetWithdrawals
+        UpdateWithdrawals
+        UpdateChainstate
     ]
 }
