@@ -9,17 +9,17 @@ import { EmilyStackProps } from './emily-stack-props';
 import { EmilyStackUtils } from './emily-stack-utils';
 
 /**
-* @class CloudFormationStack
-* @classdesc Creates a stack with DynamoDB tables and a Lambda function.
-*/
+ * @class EmilyStack
+ * @classdesc Creates a stack with DynamoDB tables and a Lambda function.
+ */
 export class EmilyStack extends cdk.Stack {
 
     /**
-    * @constructor
-    * @param {Construct} scope The AWS CDK construct scope.
-    * @param {string} id The stack ID.
-    * @param {EmilyStackProps} props The stack properties.
-    */
+     * @constructor
+     * @param {Construct} scope The AWS CDK construct scope.
+     * @param {string} id The stack ID.
+     * @param {EmilyStackProps} props The stack properties.
+     */
     constructor(scope: Construct, id: string, props: EmilyStackProps) {
         super(scope, id, props);
         const depositTable: dynamodb.Table = this.createOrUpdateDepositTable(props);
@@ -34,6 +34,12 @@ export class EmilyStack extends cdk.Stack {
         const emilyApi: apig.SpecRestApi = this.createOrUpdateApi(operationLambda, props);
     }
 
+    /**
+     * Creates or updates a DynamoDB table for deposits.
+     * @param {EmilyStackProps} props The stack properties.
+     * @returns {dynamodb.Table} The created or updated DynamoDB table.
+     * @post A DynamoDB table with configured indexes is returned.
+     */
     createOrUpdateDepositTable(props: EmilyStackProps): dynamodb.Table {
         const tableId: string = 'DepositTable';
         const table: dynamodb.Table = new dynamodb.Table(this, tableId, {
@@ -72,6 +78,12 @@ export class EmilyStack extends cdk.Stack {
         return table;
     }
 
+    /**
+     * Creates or updates a DynamoDB table for withdrawals.
+     * @param {EmilyStackProps} props The stack properties.
+     * @returns {dynamodb.Table} The created or updated DynamoDB table.
+     * @post A DynamoDB table with configured indexes is returned.
+     */
     createOrUpdateWithdrawalTable(props: EmilyStackProps): dynamodb.Table {
         // Create DynamoDB table to store the messages. Encrypted by default.
         const tableId: string = 'WithdrawalTable';
@@ -79,7 +91,7 @@ export class EmilyStack extends cdk.Stack {
             tableName: EmilyStackUtils.getResourceName(tableId, props),
             partitionKey: {
                 name: 'RequestId',
-                type: dynamodb.AttributeType.STRING,
+                type: dynamodb.AttributeType.NUMBER,
             },
             sortKey: {
                 name: 'StacksBlockHash',
@@ -111,6 +123,12 @@ export class EmilyStack extends cdk.Stack {
         return table;
     }
 
+    /**
+     * Creates or updates a DynamoDB table for chain state.
+     * @param {EmilyStackProps} props The stack properties.
+     * @returns {dynamodb.Table} The created or updated DynamoDB table.
+     * @post A DynamoDB table is returned without additional configuration.
+     */
     createOrUpdateChainstateTable(props: EmilyStackProps): dynamodb.Table {
         // Create DynamoDB table to store the messages. Encrypted by default.
         const tableId: string = 'ChainstateTable';
@@ -127,6 +145,15 @@ export class EmilyStack extends cdk.Stack {
         });
     }
 
+    /**
+     * Creates or updates the operation Lambda function.
+     * @param {dynamodb.Table} depositTable The deposit DynamoDB table.
+     * @param {dynamodb.Table} withdrawalTable The withdrawal DynamoDB table.
+     * @param {dynamodb.Table} chainstateTable The chainstate DynamoDB table.
+     * @param {EmilyStackProps} props The stack properties.
+     * @returns {lambda.Function} The created or updated Lambda function.
+     * @post Lambda function with environment variables set and permissions for DynamoDB access is returned.
+     */
     createOrUpdateOperationLambda(
         depositTable: dynamodb.Table,
         withdrawalTable: dynamodb.Table,
@@ -146,7 +173,7 @@ export class EmilyStack extends cdk.Stack {
                 "target/lambda/emily-operation-lambda/bootstrap.zip"
             )),
             // Lambda should be very fast. Something is wrong if it takes > 5 seconds.
-            timeout: cdk.Duration.seconds(30),
+            timeout: cdk.Duration.seconds(5),
             handler: "main",
             environment: {
                 // Give lambda access to the table name.
@@ -169,6 +196,13 @@ export class EmilyStack extends cdk.Stack {
         return operationLambda;
     }
 
+    /**
+     * Creates or updates the API Gateway to connect with the Lambda function.
+     * @param {lambda.Function} serverLambda The Lambda function to connect to the API.
+     * @param {EmilyStackProps} props The stack properties.
+     * @returns {apig.SpecRestApi} The created or updated API Gateway.
+     * @post An API Gateway with execute permissions linked to the Lambda function is returned.
+     */
     createOrUpdateApi(
         serverLambda: lambda.Function,
         props: EmilyStackProps
