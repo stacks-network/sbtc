@@ -2,7 +2,7 @@ use aws_lambda_events::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
 use aws_lambda_events::encodings::Body;
 use emily::models::{CreateDepositRequestContent, DepositParameters};
 use http::{header, HeaderValue};
-use lambda_runtime::{service_fn, Error, LambdaEvent};
+use lambda_runtime::{service_fn, LambdaEvent};
 use http::{HeaderMap, Method};
 
 /// Asynchronously handles incoming API Gateway events and dispatches them
@@ -12,10 +12,10 @@ use http::{HeaderMap, Method};
 /// * `event` - A LambdaEvent containing the ApiGatewayProxyRequest.
 ///
 /// # Returns
-/// A result containing the API Gateway Proxy Response or an error.
+/// A result containing the API Gateway Proxy Response or an lambda_runtime::Error.
 async fn handle_event(
     event: LambdaEvent<ApiGatewayProxyRequest>
-) -> Result<ApiGatewayProxyResponse, Error> {
+) -> Result<ApiGatewayProxyResponse, lambda_runtime::Error> {
 
     // Extract base data.
     let resource = event.payload.resource.unwrap_or_default();
@@ -30,9 +30,9 @@ async fn handle_event(
             let request: CreateDepositRequestContent = body
                 .map(|serailzed_request| {
                     serde_json::from_str::<CreateDepositRequestContent>(serailzed_request.as_str())
-                    .unwrap() // TODO: Handle errors.
+                    .unwrap() // TODO: Handle lambda_runtime::Errors. https://github.com/stacks-network/sbtc/issues/111
                 })
-                .unwrap(); // TODO: Handle errors.
+                .unwrap(); // TODO: Handle lambda_runtime::Errors. https://github.com/stacks-network/sbtc/issues/111
 
             // Generate dummy response with all the necesary fields, taking
             // the identifiers from the request.
@@ -55,11 +55,12 @@ async fn handle_event(
 
             // Serialize response.
             let serialized_response: String = serde_json::to_string(&response)
-                .map_err(Error::from)
+                .map_err(lambda_runtime::Error::from)
                 .unwrap();
 
             // Setup CORS headers.
             // TODO: Refactor ApiGatewayProxyResponse packaging into a helper function.
+            // https://github.com/stacks-network/sbtc/issues/111
             let mut headers = HeaderMap::new();
             headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
             headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("Content-Type"));
@@ -81,11 +82,12 @@ async fn handle_event(
 
             // Serialize response.
             let serialized_response: String = serde_json::to_string(&response)
-                .map_err(Error::from)
+                .map_err(lambda_runtime::Error::from)
                 .unwrap();
 
             // Setup CORS headers.
             // TODO: Refactor ApiGatewayProxyResponse packaging into a helper function.
+            // https://github.com/stacks-network/sbtc/issues/111
             let mut headers = HeaderMap::new();
             headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
             headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("Content-Type"));
@@ -104,7 +106,7 @@ async fn handle_event(
 
 /// Main entry point for the AWS Lambda function.
 #[tokio::main]
-async fn main() -> Result<(), Error> {
+async fn main() -> Result<(), lambda_runtime::Error> {
     // Run the lambda service.
     lambda_runtime::run(
         service_fn(
