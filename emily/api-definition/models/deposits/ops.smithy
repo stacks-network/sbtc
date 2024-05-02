@@ -11,6 +11,7 @@ operation CreateDeposit {
         ServiceError
         ThrottlingError
         ConflictError
+        NotImplementedError
     ]
 }
 
@@ -34,6 +35,7 @@ operation GetDeposit {
         ServiceError
         ThrottlingError
         NotFoundError
+        NotImplementedError
     ]
 }
 
@@ -52,6 +54,7 @@ operation GetTxnDeposits {
         ServiceError
         ThrottlingError
         NotFoundError
+        NotImplementedError
     ]
 }
 
@@ -83,6 +86,7 @@ operation GetDeposits {
         ServiceError
         ThrottlingError
         NotFoundError
+        NotImplementedError
     ]
 }
 
@@ -110,6 +114,7 @@ operation UpdateDeposits {
         NotFoundError
         ConflictError
         ForbiddenError
+        NotImplementedError
     ]
 }
 
