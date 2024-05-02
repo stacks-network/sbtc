@@ -1,7 +1,7 @@
 use crate::config::Settings;
 use ::config::{Config, File};
-use env_logger::{Builder, Env};
-use log::info;
+use sbtc_signer::logging::setup_logging;
+use tracing::info;
 use warp::Filter;
 
 mod api;
@@ -11,8 +11,7 @@ mod config;
 
 #[tokio::main]
 async fn main() {
-    // Initializing logger with default logging
-    Builder::from_env(Env::default().default_filter_or("info")).init();
+    setup_logging();
 
     let mut settings = Config::default();
     settings

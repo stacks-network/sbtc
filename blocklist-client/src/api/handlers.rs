@@ -1,8 +1,9 @@
 use crate::client::client;
 use crate::common::{Error, ErrorResponse};
 use crate::config::RiskAnalysisConfig;
-use log::error;
 use std::convert::Infallible;
+use tracing::error;
+
 use warp::{http::StatusCode, Rejection, Reply};
 
 pub async fn check_address_handler(
