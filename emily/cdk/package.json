@@ -5,7 +5,7 @@
     "emily": "bin/emily.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "(cd ../api-definition && npm run build-openapi) && tsc",
     "watch": "tsc -w",
     "test": "jest",
     "cdk": "cdk",
