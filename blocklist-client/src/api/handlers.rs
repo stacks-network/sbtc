@@ -1,16 +1,19 @@
 use crate::client::client;
 use crate::common::{Error, ErrorResponse};
 use crate::config::RiskAnalysisConfig;
+use reqwest::Client;
 use std::convert::Infallible;
+use std::sync::Arc;
 use tracing::error;
 
 use warp::{http::StatusCode, Rejection, Reply};
 
 pub async fn check_address_handler(
     address: String,
+    client: Client,
     config: RiskAnalysisConfig,
 ) -> Result<impl Reply, Rejection> {
-    match client::check_address(&config, &address).await {
+    match client::check_address(client, &config, &address).await {
         Ok(value) => Ok(warp::reply::json(&value)),
         Err(_) => Err(warp::reject::custom(Error::AddressNotFound)),
     }

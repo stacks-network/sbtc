@@ -1,5 +1,6 @@
 use crate::config::Settings;
 use ::config::{Config, File};
+use reqwest::Client;
 use sbtc_signer::logging::setup_logging;
 use tracing::info;
 use warp::Filter;
@@ -26,7 +27,9 @@ async fn main() {
     );
     info!("Using API URL: {}", settings.risk_analysis.api_url);
 
-    let api_routes = api::routes::routes(&settings);
+    let client = Client::builder().new();
+
+    let api_routes = api::routes::routes(client, &settings);
     let routes = api_routes.with(warp::log("api"));
 
     warp::serve(routes)
