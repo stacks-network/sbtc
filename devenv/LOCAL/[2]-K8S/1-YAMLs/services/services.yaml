@@ -12,27 +12,27 @@ spec:
   ports:
     - port: 18444
       targetPort: 18444
-      name: electrs-port1-tcp
+      name: bitcoin-port1-tcp
       protocol: TCP
     - port: 18443
       targetPort: 18443
-      name: electrs-port2-tcp
+      name: bitcoin-port2-tcp
       protocol: TCP
     - port: 18433
       targetPort: 18433
-      name: electrs-port3-tcp
+      name: bitcoin-port3-tcp
       protocol: TCP
     - port: 18444
       targetPort: 18444
-      name: electrs-port1-udp
+      name: bitcoin-port1-udp
       protocol: UDP
     - port: 18443
       targetPort: 18443
-      name: electrs-port2-udp
+      name: bitcoin-port2-udp
       protocol: UDP
     - port: 18433
       targetPort: 18433
-      name: electrs-port3-udp
+      name: bitcoin-port3-udp
       protocol: UDP
   selector:
     app: bitcoin-regtest
