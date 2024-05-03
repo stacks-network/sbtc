@@ -10,7 +10,7 @@ use aws.protocols#restJson1
     // Specifies the integration's HTTP method type (for example, POST). For
     // Lambda function invocations, the value must be POST.
     httpMethod: "POST",
-    uri: "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda.Arn}/invocations",
+    uri: "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations",
 )
 @title("Emily")
 service Emily {
@@ -18,5 +18,14 @@ service Emily {
     resources: [
         Deposit
         Withdrawal
+        Chainstate
+    ]
+    operations: [
+        GetTxnDeposits
+        GetDeposits
+        UpdateDeposits
+        GetWithdrawals
+        UpdateWithdrawals
+        UpdateChainstate
     ]
 }
