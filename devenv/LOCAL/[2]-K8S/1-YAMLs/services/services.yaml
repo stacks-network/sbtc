@@ -1,0 +1,159 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bitcoin-regtest-service
+  namespace: bitcoin-regtest
+  labels:
+    app: bitcoin-regtest
+  
+spec:
+  type: ClusterIP
+  ports:
+    - port: 18444
+      targetPort: 18444
+    - port: 18443
+      targetPort: 18443
+    - port: 18433
+      targetPort: 18433
+  selector:
+    app: bitcoin-regtest
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb-service
+  namespace: mariadb
+  labels:
+    app: mariadb
+  
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3306
+      targetPort: 3306
+  selector:
+    app: mariadb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: postgres
+  labels:
+    app: postgres
+  
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: electrs-service
+  namespace: electrs
+  labels:
+    app: electrs
+  
+spec:
+  type: ClusterIP
+  ports:
+    - port: 60401
+      targetPort: 60401
+    - port: 3002
+      targetPort: 3002
+  selector:
+    app: electrs
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mempool-frontend-service
+  namespace: mempool-frontend
+  labels:
+    app: mempool-frontend
+  
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8083
+      targetPort: 8083
+  selector:
+    app: mempool-frontend
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nakamoto-signer-service
+  namespace: nakamoto-signer
+  labels:
+    app: nakamoto-signer
+  
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8999
+      targetPort: 8999
+  selector:
+    app: nakamoto-signer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nakamoto-signer-service
+  namespace: stacks
+  labels:
+    app: nakamoto-signer
+  
+spec:
+  type: ClusterIP
+  ports:
+    - port: 30000
+      targetPort: 30000
+    - port: 20443
+      targetPort: 20443
+    - port: 20444
+      targetPort: 20444
+  selector:
+    app: nakamoto-signer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stacks-explorer-service
+  namespace: stacks
+  labels:
+    app: stacks-explorer
+  
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3020
+      targetPort: 3020
+    - port: 3000
+      targetPort: 3000
+  selector:
+    app: stacks-explorer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stacks-api-service
+  namespace: stacks
+  labels:
+    app: stacks-api
+  
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3999
+      targetPort: 3999
+    - port: 3700
+      targetPort: 3700
+  selector:
+    app: stacks-api
+---
