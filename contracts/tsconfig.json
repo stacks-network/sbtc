@@ -1,4 +1,3 @@
-
 {
   "compilerOptions": {
     "target": "ESNext",
@@ -18,8 +17,10 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
+    // "types": ["@clarigen/test"]
   },
   "include": [
+    "@clarigen/test",
     "node_modules/@hirosystems/clarinet-sdk/vitest-helpers/src",
     "tests"
   ]
