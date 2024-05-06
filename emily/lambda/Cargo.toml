@@ -13,6 +13,7 @@ http.workspace = true
 aws-sdk-dynamodb.workspace = true
 emily.workspace = true
 openssl.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 more-asserts = "0.3"
