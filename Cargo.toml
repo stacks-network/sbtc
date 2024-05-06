@@ -3,7 +3,8 @@ resolver = "2"
 members = [
   "signer",
   ".generated-sources/emily",
-  "emily/lambda"
+  "emily/lambda",
+  "blocklist-client"
 ]
 
 [profile.dev]

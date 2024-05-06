@@ -1,0 +1,26 @@
+[package]
+name = "blocklist-client"
+version = "0.0.1"
+edition = "2021"
+
+[[bin]]
+name = "blocklist-client"
+path = "src/main.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+warp = "0.3"
+tokio = { version = "1", features = ["rt-multi-thread", "rt", "macros"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+reqwest = { version = "0.11", features = ["json"] }
+config = "0.11"
+sbtc-signer = { path = "../signer" }
+tracing = { version = "0.1", default-features = false }
+tracing-attributes = "0.1"
+
+[dependencies.tracing-subscriber]
+version = "0.3"
+default-features = false
+features = ["env-filter", "fmt", "json", "time"]
