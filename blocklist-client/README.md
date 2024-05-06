@@ -13,5 +13,5 @@ You can run the blocklist client by providing the necessary environment variable
 
 
    ```bash
-    BLOCKLIST_CLIENT_server__host=127.0.0.1 BLOCKLIST_CLIENT_server__port=8080 BLOCKLIST_CLIENT_risk_analysis__api_url=https://your-risk-provider-api.com/ BLOCKLIST_CLIENT_risk_analysis__api_key=your_api_key  ../target/release/blocklist-client 
+    BLOCKLIST_CLIENT_server__host=127.0.0.1 BLOCKLIST_CLIENT_SERVER__PORT=8080 BLOCKLIST_CLIENT_RISK_ANALYSIS__API_URL=https://your-risk-provider-api.com/ BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY=your_api_key  ../target/release/blocklist-client 
    ```
