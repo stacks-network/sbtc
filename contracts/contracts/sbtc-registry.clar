@@ -1,7 +1,12 @@
 ;; sBTC Registry contract
 
 ;; Error codes
+
+;; Contract caller is not authorized
 (define-constant ERR_UNAUTHORIZED u400)
+
+;; Invalid request ID
+(define-constant ERR_INVALID_REQUEST_ID (err u401))
 
 ;; Internal data structure to store withdrawal
 ;; requests. Requests are associated with a unique
@@ -38,6 +43,9 @@
 ;; 
 ;; This function does not handle validation or moving the funds.
 ;; Instead, it is purely for the purpose of storing the request.
+;; 
+;; The function will emit a print event with the topic "withdrawal-request"
+;; and the data of the request.
 (define-public (create-withdrawal-request
     (amount uint)
     (max-fee uint)
@@ -51,14 +59,38 @@
     )
     (try! (validate-caller))
     ;; #[allow(unchecked_data)]
-    (map-set withdrawal-requests id {
+    (map-insert withdrawal-requests id {
       amount: amount,
       max-fee: max-fee,
       sender: sender,
       recipient: recipient,
       block-height: height,
     })
+    (print {
+      topic: "withdrawal-request",
+      amount: amount,
+      request-id: id,
+      sender: sender,
+      recipient: recipient,
+      block-height: height,
+      max-fee: max-fee,
+    })
     (ok id)
+  )
+)
+
+;; Read-only functions
+
+;; Get a withdrawal request by its ID.
+;; 
+;; This function returns the fields of the withrawal
+;; request, along with it's status.
+(define-read-only (get-withdrawal-request (id uint))
+  (match (map-get? withdrawal-requests id)
+    request (some (merge request {
+      status: (map-get? withdrawal-status id)
+    }))
+    none
   )
 )
 

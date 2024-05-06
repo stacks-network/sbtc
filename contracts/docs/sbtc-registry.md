@@ -32,7 +32,7 @@ sBTC Registry contract
 
 ### create-withdrawal-request
 
-[View in file](../contracts/sbtc-registry.clar#L41)
+[View in file](../contracts/sbtc-registry.clar#L46)
 
 `(define-public (create-withdrawal-request ((amount uint) (max-fee uint) (sender principal) (recipient (tuple (hashbytes (buff 32)) (version (buff 1)))) (height uint)) (response uint uint))`
 
@@ -42,6 +42,9 @@ contracts - it cannot be called by users directly.
 
 This function does not handle validation or moving the funds.
 Instead, it is purely for the purpose of storing the request.
+
+The function will emit a print event with the topic "withdrawal-request"
+and the data of the request.
 
 <details>
   <summary>Source code:</summary>
@@ -60,12 +63,21 @@ Instead, it is purely for the purpose of storing the request.
     )
     (try! (validate-caller))
     ;; #[allow(unchecked_data)]
-    (map-set withdrawal-requests id {
+    (map-insert withdrawal-requests id {
       amount: amount,
       max-fee: max-fee,
       sender: sender,
       recipient: recipient,
       block-height: height,
+    })
+    (print {
+      topic: "withdrawal-request",
+      amount: amount,
+      request-id: id,
+      sender: sender,
+      recipient: recipient,
+      block-height: height,
+      max-fee: max-fee,
     })
     (ok id)
   )
@@ -86,7 +98,7 @@ Instead, it is purely for the purpose of storing the request.
 
 ### increment-last-withdrawal-request-id
 
-[View in file](../contracts/sbtc-registry.clar#L69)
+[View in file](../contracts/sbtc-registry.clar#L83)
 
 `(define-private (increment-last-withdrawal-request-id () uint)`
 
@@ -112,7 +124,7 @@ return the new value.
 
 ### validate-caller
 
-[View in file](../contracts/sbtc-registry.clar#L82)
+[View in file](../contracts/sbtc-registry.clar#L96)
 
 `(define-private (validate-caller () (response bool uint))`
 
@@ -160,7 +172,7 @@ request ID.
 })
 ```
 
-[View in file](../contracts/sbtc-registry.clar#L9)
+[View in file](../contracts/sbtc-registry.clar#L11)
 
 ### withdrawal-status
 
@@ -173,7 +185,7 @@ the deposit was accepted.
 (define-map withdrawal-status uint bool)
 ```
 
-[View in file](../contracts/sbtc-registry.clar#L31)
+[View in file](../contracts/sbtc-registry.clar#L33)
 
 ## Variables
 
@@ -185,16 +197,16 @@ uint
 (define-data-var last-withdrawal-request-id uint u0)
 ```
 
-[View in file](../contracts/sbtc-registry.clar#L25)
+[View in file](../contracts/sbtc-registry.clar#L27)
 
 ## Constants
 
 ### ERR_UNAUTHORIZED
 
-Error codes
+Thrown when the contract caller is not authorized
 
 ```clarity
 (define-constant ERR_UNAUTHORIZED u400)
 ```
 
-[View in file](../contracts/sbtc-registry.clar#L4)
+[View in file](../contracts/sbtc-registry.clar#L6)

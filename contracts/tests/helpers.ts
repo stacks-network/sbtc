@@ -8,6 +8,8 @@ import { bufferCV, tupleCV } from "@stacks/transactions";
 export const contracts = projectFactory(project, "simnet");
 
 export const alice = accounts.wallet_1.address;
+export const bob = accounts.wallet_2.address;
+export const charlie = accounts.wallet_3.address;
 
 export const registry = contracts.sbtcRegistry;
 
@@ -57,4 +59,11 @@ export function poxAddrToBtcAddress(poxAddr: {
     hashbytes: bufferCV(poxAddr.hashbytes),
   });
   return poxAddressToBtcAddress(cv, "mainnet");
+}
+
+/**
+ * Convert a STX address (string) to a pox address
+ */
+export function stxAddressToPoxAddress(stxAddr: string) {
+  return btcAddressToPoxAddress(stxAddrToBtcAddr(stxAddr, 0));
 }
