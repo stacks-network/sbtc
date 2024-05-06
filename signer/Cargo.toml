@@ -15,15 +15,13 @@ bench = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bitcoin = "0.32"
-thiserror = "1.0"
-tracing = { version = "0.1", default-features = false }
-tracing-attributes = "0.1"
-
-[dependencies.tracing-subscriber]
-version = "0.3"
-default-features = false
-features = ["env-filter", "fmt", "json", "time"]
+bitcoin.workspace = true
+p256k1.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-attributes.workspace = true
+tracing-subscriber.workspace = true
+wsts.workspace = true
 
 [dev-dependencies]
 more-asserts = "0.3"

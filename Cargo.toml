@@ -18,13 +18,25 @@ codegen-units = 16
 
 [workspace.dependencies]
 emily = { version = "0.1.0", path = ".generated-sources/emily" }
-tokio = "1.32.0"
-serde = "1.0"
-serde_json = "1.0"
-lambda_runtime = "0.11.1"
+
 aws_lambda_events = "0.15.0"
-http = "1.1.0"
 aws-sdk-dynamodb = { version = "1.3.0" }
+bitcoin = "0.32"
 futures = "0.3.24"
+http = "1.1.0"
+lambda_runtime = "0.11.1"
 # This is necessary to compile the AWS Lambda as a lambda.
 openssl = { version = "0.10", features = ["vendored"] }
+p256k1 = "7.1.0"
+serde = "1.0"
+serde_json = "1.0"
+thiserror = "1.0"
+tokio = "1.32.0"
+tracing = { version = "0.1", default-features = false }
+tracing-attributes = "0.1"
+wsts = "9.0.0"
+
+[workspace.dependencies.tracing-subscriber]
+version = "0.3"
+default-features = false
+features = ["env-filter", "fmt", "json", "time"]
