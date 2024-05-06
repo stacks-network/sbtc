@@ -1,0 +1,7 @@
+[server]
+host = "127.0.0.1"
+port = 3030
+
+[risk_analysis]
+api_url = "http://example.com/api"
+api_key = "api-key-here"

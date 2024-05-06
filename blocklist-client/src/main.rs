@@ -1,8 +1,8 @@
-use crate::config::Settings;
-use ::config::{Config, File};
+use crate::config::SETTINGS;
 use reqwest::Client;
 use sbtc_signer::logging::setup_logging;
-use tracing::info;
+use std::net::ToSocketAddrs;
+use tracing::{error, info};
 use warp::Filter;
 
 mod api;
@@ -14,28 +14,21 @@ mod config;
 async fn main() {
     setup_logging();
 
-    let mut settings = Config::default();
-    settings
-        .merge(File::with_name("settings").required(false))
-        .expect("Configuration file 'config/settings.toml' not found.");
-
-    let settings: Settings = settings.try_into().unwrap();
-
-    info!(
-        "Server will run on {}:{}",
-        settings.server.host, settings.server.port
-    );
-    info!("Using API URL: {}", settings.risk_analysis.api_url);
-
     let client = Client::new();
 
-    let api_routes = api::routes::routes(client, &settings);
+    let api_routes = api::routes::routes(client);
     let routes = api_routes.with(warp::log("api"));
 
-    warp::serve(routes)
-        .run((
-            settings.server.host.parse::<std::net::IpAddr>().unwrap(),
-            settings.server.port,
-        ))
-        .await;
+    let addr_str = format!("{}:{}", SETTINGS.server.host, SETTINGS.server.port);
+    info!("Server will run on {}", addr_str);
+
+    let addr = match addr_str.to_socket_addrs() {
+        Ok(mut addrs) => addrs.next().expect("No addresses found"),
+        Err(e) => {
+            error!("Failed to resolve address: {}", e);
+            return;
+        }
+    };
+
+    warp::serve(routes).run(addr).await;
 }
