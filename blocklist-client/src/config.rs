@@ -27,7 +27,7 @@ impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
         let mut cfg = Config::new();
         cfg.merge(File::with_name("./src/config/default"))?;
-        let env = Environment::with_prefix("APP").separator("__");
+        let env = Environment::with_prefix("BLOCKLIST_CLIENT").separator("__");
         cfg.merge(env)?;
         let settings: Settings = cfg.try_into()?;
         Ok(settings)
