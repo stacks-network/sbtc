@@ -34,6 +34,7 @@ thiserror = "1.0"
 tokio = "1.32.0"
 tracing = { version = "0.1", default-features = false }
 tracing-attributes = "0.1"
+wsts = "9.0.0"
 
 [workspace.dependencies.tracing-subscriber]
 version = "0.3"
