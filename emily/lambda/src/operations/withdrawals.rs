@@ -132,4 +132,4 @@ pub fn handle_update_withdrawals(
         })
 }
 
-// Tested in `main.rs`. Tests will be added here when these outputs no longer mock.
+// Tested in `bin/entrypoint.rs`. Tests will be added here when these outputs no longer mock.

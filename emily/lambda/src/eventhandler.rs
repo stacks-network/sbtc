@@ -1,26 +1,14 @@
-mod common;
-mod errors;
-mod deposits;
-mod withdrawals;
-mod chainstate;
-mod utils;
 
+use crate::{
+    errors,
+    operations::deposits,
+    operations::withdrawals,
+    operations::chainstate,
+};
 use std::collections::HashMap;
-
 use aws_lambda_events::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
+use lambda_runtime::LambdaEvent;
 use http::Method;
-use lambda_runtime::{service_fn, LambdaEvent};
-
-/// Main entry point for the AWS Lambda function.
-#[tokio::main]
-async fn main() -> Result<(), lambda_runtime::Error> {
-    // Run the lambda service.
-    lambda_runtime::run(
-        service_fn(
-            |event: LambdaEvent<ApiGatewayProxyRequest>| handle_event(event)
-        )
-    ).await
-}
 
 /// Asynchronously handles incoming API Gateway events and dispatches them
 /// to the correct method based on the route and method.
@@ -30,7 +18,7 @@ async fn main() -> Result<(), lambda_runtime::Error> {
 ///
 /// # Returns
 /// A result containing the API Gateway Proxy Response or an lambda_runtime::Error.
-async fn handle_event(
+pub async fn handle_event(
     event: LambdaEvent<ApiGatewayProxyRequest>
 ) -> Result<ApiGatewayProxyResponse, lambda_runtime::Error> {
 
@@ -71,7 +59,7 @@ async fn handle_event(
 }
 
 #[cfg(test)]
-mod main_tests {
+mod tests {
     use super::*;
     use lambda_runtime::Context;
     use aws_lambda_events::apigw::ApiGatewayProxyRequest;
@@ -148,5 +136,4 @@ mod main_tests {
             context: Context::default(),
         }
     }
-
 }

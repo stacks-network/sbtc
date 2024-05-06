@@ -1,44 +1,42 @@
-use std::fmt;
 use aws_lambda_events::apigw::ApiGatewayProxyResponse;
 use aws_lambda_events::encodings::Body;
 use emily::models;
 use crate::common;
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum EmilyApiError {
+    #[error("Bad Request: {0}")]
     BadRequest(String),
-    // Forbidden(String), // Currently unused.
-    // NotFound(String), // Currently unused.
-    // Conflict(String), // Currently unused.
-    // NotImplemented(String), // Currently unused.
+
+    // Currently unused.
+    // #[error("Forbidden Error:  {0}")]
+    // Forbidden(String),
+
+    // Currently unused.
+    // #[error("Not Found Error: {0}")]
+    // NotFound(String),
+
+    // Currently unused.
+    // #[error("Conflict Error: {0}")]
+    // Conflict(String),
+
+    // Currently unused.
+    // #[error("Not Implemented Error: {0}")]
+    // NotImplemented(String),
+
+    // Currently unused.
+    // #[error("Throttling Error: {0}")]
     // Throttling(String), // Handled by the gateway, here for completeness.
-    Service(Result<String, Box<dyn std::error::Error>>),
-}
 
-impl fmt::Display for EmilyApiError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            EmilyApiError::BadRequest(ref err_msg) => write!(f, "Bad Request: {}", err_msg),
-            // EmilyApiError::Forbidden(ref err_msg) => write!(f, "Forbidden Error: {}", err_msg),
-            // EmilyApiError::NotFound(ref err_msg) => write!(f, "Not Found Error: {}", err_msg),
-            // EmilyApiError::Conflict(ref err_msg) => write!(f, "Conflict Error: {}", err_msg),
-            // EmilyApiError::NotImplemented(ref err_msg) => write!(f, "Not Implemented Error: {}", err_msg),
-            // EmilyApiError::Throttling(ref err_msg) => write!(f, "Throttling Error: {}", err_msg),
-            EmilyApiError::Service(ref err) => match err {
-                Ok(ref err_msg) => write!(f, "Internal Server Error: {}", err_msg),
-                Err(ref err) => write!(f, "Unhandled Server Exception: {}", err),
-            },
-        }
-    }
-}
+    // Currently unused.
+    // #[error("Internal Server Error: {0}")]
+    // InternalService(String),
 
-impl std::error::Error for EmilyApiError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match *self {
-            EmilyApiError::Service(Err(ref err)) => Some(err.as_ref()),
-            _ => None,
-        }
-    }
+    #[error("Unhandled Server Exception: {0}")]
+    UnhandledService(
+        #[source]
+        Box<dyn std::error::Error>,
+    ),
 }
 
 impl EmilyApiError {
@@ -50,7 +48,8 @@ impl EmilyApiError {
             // EmilyApiError::Conflict(_) => http::StatusCode::CONFLICT,
             // EmilyApiError::NotImplemented(_) => http::StatusCode::NOT_IMPLEMENTED,
             // EmilyApiError::Throttling(_) => http::StatusCode::TOO_MANY_REQUESTS,
-            EmilyApiError::Service(_) => http::StatusCode::INTERNAL_SERVER_ERROR,
+            // EmilyApiError::InternalService(_) => http::StatusCode::INTERNAL_SERVER_ERROR,
+            EmilyApiError::UnhandledService(_) => http::StatusCode::INTERNAL_SERVER_ERROR,
         }.as_u16()
     }
 
@@ -68,16 +67,22 @@ impl EmilyApiError {
             //     serde_json::to_string(&NotImplementedErrorResponseContent { message: self.to_string() }),
             // EmilyApiError::Throttling(_) =>
             //     serde_json::to_string(&ThrottlingErrorResponseContent { message: self.to_string() }),
-            EmilyApiError::Service(_) =>
+            // EmilyApiError::InternalService(_) =>
+            //     serde_json::to_string(&models::ServiceErrorResponseContent { message: self.to_string() }),
+            EmilyApiError::UnhandledService(_) =>
                 serde_json::to_string(&models::ServiceErrorResponseContent { message: self.to_string() }),
         }
     }
 
     #[allow(clippy::wrong_self_convention)]
     pub fn to_apigw_response(self) -> ApiGatewayProxyResponse {
-        match self.response_body() {
+
+        let status_code = self.status_code();
+        let body_result = self.response_body();
+
+        match body_result {
             Ok(body) => common::SimpleApiResponse {
-                status_code: self.status_code(),
+                status_code: status_code,
                 body: Some(Body::Text(body)),
             },
             // This occurs in the rare case that the API Error itself failed to serialize.
@@ -87,7 +92,7 @@ impl EmilyApiError {
                 // the serialization will have needed to fail on a well defined structure, and this error
                 // can be handled by someone receiving data from the client since they'll need to handle
                 // potential errors anyway.
-                body: Some(Body::Text(format!("Error Deserializing: {}, {}", self, err).to_string())),
+                body: Some(Body::Text(serde_json::json!({"message": format!("Server error {err} on {self}")}).to_string()))
             }
         }.to_apigw_response()
     }
@@ -105,15 +110,9 @@ mod tests {
     }
 
     #[test]
-    fn test_display_service_error_ok() {
-        let error = EmilyApiError::Service(Ok("temporary error".to_string()));
-        assert_eq!(format!("{}", error), "Internal Server Error: temporary error");
-    }
-
-    #[test]
     fn test_display_service_error_err() {
         let inner_error = std::io::Error::new(std::io::ErrorKind::Other, "oops");
-        let error = EmilyApiError::Service(Err(Box::new(inner_error)));
+        let error = EmilyApiError::UnhandledService(Box::new(inner_error));
         assert!(format!("{}", error).contains("Unhandled Server Exception:"));
     }
 
@@ -126,7 +125,7 @@ mod tests {
     #[test]
     fn test_error_source_some() {
         let inner_error = std::io::Error::new(std::io::ErrorKind::Other, "oops");
-        let error = EmilyApiError::Service(Err(Box::new(inner_error)));
+        let error = EmilyApiError::UnhandledService(Box::new(inner_error));
         assert!(error.source().is_some());
     }
 
@@ -137,23 +136,10 @@ mod tests {
     }
 
     #[test]
-    fn test_status_code_service_error() {
-        let error = EmilyApiError::Service(Ok("error".to_string()));
-        assert_eq!(error.status_code(), 500);
-    }
-
-    #[test]
     fn test_response_body_bad_request() {
         let error = EmilyApiError::BadRequest("invalid input".to_string());
         let result = error.response_body().unwrap();
         assert!(result.contains("\"message\":\"Bad Request: invalid input\""));
-    }
-
-    #[test]
-    fn test_response_body_service_error() {
-        let error = EmilyApiError::Service(Ok("problem occurred".to_string()));
-        let result = error.response_body().unwrap();
-        assert!(result.contains("\"message\":\"Internal Server Error: problem occurred\""));
     }
 
     #[test]
