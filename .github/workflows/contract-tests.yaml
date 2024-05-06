@@ -25,3 +25,6 @@ jobs:
       - name: Tests
         run: pnpm test
         working-directory: ./contracts
+      - name: Lint
+        run: pnpm lint
+        working-directory: ./contracts
