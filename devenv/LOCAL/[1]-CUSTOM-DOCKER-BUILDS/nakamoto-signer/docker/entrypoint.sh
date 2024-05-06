@@ -6,11 +6,11 @@ sudo bash -c cat <<EOF> ./config.toml
 # The IP address and port where your Stacks node can be accessed. 
 # The port 20443 is the default RPC endpoint for Stacks nodes. 
 # Note that you must use an IP address - DNS hosts are not supported at this time.
-node_host = "127.0.0.1:20443"
+node_host = "$STACKS_NODE_RPC_HOST:$STACKS_NODE_RPC_PORT"
 
 # This is the location where the signer will expose an RPC endpoint for 
 # receiving events from your Stacks node.
-endpoint = "$SINGER_ENDPOINT"
+endpoint = "$SIGNER_ENDPOINT"
 
 # Either “testnet” or “mainnet”
 network = "testnet"

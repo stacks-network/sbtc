@@ -7,13 +7,12 @@ set +x
 
 # If the miner key is not passed into the process, then we default to not running a Stacks miner
 if [[ -z "${MINER_KEY}" ]]; then
-    # In the case where we don't see any miney key being passed in, we don't include the `[miner]`section
+    # In the case where we don't see any miner key being passed in, we don't include the `[miner]`section
     sudo bash -c "cat <<EOF> ./config.toml
     [node]
     rpc_bind = "0.0.0.0:20443"
     p2p_bind = "0.0.0.0:20444"
     local_peer_seed = "$LOCAL_PEER_SEED" # Change to any 64-character hexidecimal string
-    bootstrap_node = "02fa2ee45aa9aebd3707b43a09e13571bbdc216e48232091dcdd805012cfffdb8b@seed.nakamoto.testnet.hiro.so:40444"
     prometheus_bind = "0.0.0.0:9153"
     working_dir = "$STACKS_WORKING_DIR" # Change to data directory you would like to use for your node
     wait_time_for_microblocks = 0
@@ -219,12 +218,12 @@ else
     rpc_bind = "0.0.0.0:20443"
     p2p_bind = "0.0.0.0:20444"
     local_peer_seed = "$LOCAL_PEER_SEED" # Change to any 64-character hexidecimal string
-    bootstrap_node = "02fa2ee45aa9aebd3707b43a09e13571bbdc216e48232091dcdd805012cfffdb8b@seed.nakamoto.testnet.hiro.so:40444"
     prometheus_bind = "0.0.0.0:9153"
     working_dir = "$STACKS_WORKING_DIR" # Change to data directory you would like to use for your node
     wait_time_for_microblocks = 0
     mine_microblocks = false
     stacker = true # required if you are running a signer
+    miner = true
 
     [miner]
     min_tx_fee = 1
@@ -239,28 +238,23 @@ else
     block_proposal_token = "$MY_HTTP_AUTH_TOKEN"
 
     [[events_observer]]
-    endpoint = "$SINGER_ENDPOINT" # change to your signer endpoint
+    endpoint = "$SIGNER_ENDPOINT" # change to your signer endpoint
     retry_count = 255
     include_data_events = false
     events_keys = ["stackerdb", "block_proposal"]
 
     [burnchain]
     chain = "bitcoin"
-    mode = "xenon"
-    magic_bytes = "N3"
+    mode = "krypton"
+    magic_bytes = "T3"
     pox_prepare_length = 5
     pox_reward_length = 20
     peer_host = "bitcoind.testnet.stacks.co"
     username = "blockstack"
     password = "blockstacksystem"
-    burnchain_op_tx_fee = 5500
-    commit_anchor_block_within = 300000
     rpc_port = 18332
     peer_port = 18333
-    satoshis_per_byte = 20
-    first_burn_block_height = 2583232
-    first_burn_block_timestamp = 1711238511
-    first_burn_block_hash = "000000000000db6864215e5f52067f6418884560a205cb990d13acc350743aaf"
+    pox_2_activation = 104
 
     [[burnchain.epochs]]
     epoch_name = "1.0"
@@ -268,35 +262,35 @@ else
 
     [[burnchain.epochs]]
     epoch_name = "2.0"
-    start_height = 2583232
+    start_height = 0
 
     [[burnchain.epochs]]
     epoch_name = "2.05"
-    start_height = 2583245
+    start_height = 102
 
     [[burnchain.epochs]]
     epoch_name = "2.1"
-    start_height = 2583246
+    start_height = 103
 
     [[burnchain.epochs]]
     epoch_name = "2.2"
-    start_height = 2583247
+    start_height = 105
 
     [[burnchain.epochs]]
     epoch_name = "2.3"
-    start_height = 2583248
+    start_height = 106
 
     [[burnchain.epochs]]
     epoch_name = "2.4"
-    start_height = 2583249
+    start_height = 107
 
     [[burnchain.epochs]]
     epoch_name = "2.5"
-    start_height = 2583250
+    start_height = 108
 
     [[burnchain.epochs]]
     epoch_name = "3.0"
-    start_height = 3000000
+    start_height = 131
 
     [[ustx_balance]]
     address = "ST0DZFQ1XGHC5P1BZ6B7HSWQKQJHM74JBGCSDTNA"
