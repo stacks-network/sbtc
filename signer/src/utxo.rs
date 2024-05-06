@@ -88,7 +88,7 @@ pub struct DepositRequest {
     pub redeem_script: ScriptBuf,
     /// The public key used for the key-spend path of the taproot script.
     pub taproot_public_key: PublicKey,
-    /// The public key use in the deposit script.
+    /// The public key used in the deposit script.
     pub deposit_public_key: PublicKey,
 }
 
@@ -290,7 +290,7 @@ impl<'a> UnsignedTransaction<'a> {
     ///   2. The signer input UTXO is the first input.
     ///   3. The signer output UTXO is the first output.
     ///   4. Each input needs a signature in the witness data.
-    ///   5. The is no witness data for deposit UTXOs.
+    ///   5. There is no witness data for deposit UTXOs.
     pub fn new(requests: Vec<Request<'a>>, state: &SignerBtcState) -> Result<Self, Error> {
         // Construct a transaction base. This transaction's inputs have
         // witness data with dummy signatures so that our virtual size
@@ -360,7 +360,7 @@ impl<'a> UnsignedTransaction<'a> {
     /// for the transaction given the fee rate
     ///
     /// If each deposit and withdrawal associated with this transaction
-    /// paid the fees retured by this function then the fee rate for the
+    /// paid the fees returned by this function then the fee rate for the
     /// entire transaction will be at least as much as the fee rate.
     ///
     /// Note that each deposit and withdrawal pays an equal amount for the
@@ -373,7 +373,7 @@ impl<'a> UnsignedTransaction<'a> {
     }
 
     /// Compute the final amount for the signers' UTXO given the current
-    /// UTXO amount and the incomming requests.
+    /// UTXO amount and the incoming requests.
     ///
     /// This amount does not take into account fees.
     fn compute_signer_amount(reqs: &[Request], state: &SignerBtcState) -> Result<u64, Error> {
@@ -748,7 +748,7 @@ mod tests {
     /// deposit in the transaction package.
     #[test]
     fn requests_in_unsigned_transaction_are_in_btc_tx() {
-        // The requests in the UnsignedTransaction coorespond to
+        // The requests in the UnsignedTransaction correspond to
         // inputs and outputs in the transaction
         let public_key = PublicKey::from_str(PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
@@ -833,7 +833,8 @@ mod tests {
     /// * Each deposit request pays the same fee.
     /// * The total fees are equal to the number of request times the fee per
     ///   request amount.
-    /// * The withdrawals do no pay for all of the fees, deposits pay fees too.
+    /// * The withdrawals do not pay for all of the fees, deposits pay fees too
+    ///   implicitly by the amounts deducted from the signers.
     #[test]
     fn returned_txs_match_fee_rate() {
         // Each deposit and withdrawal has a max fee greater than the current market fee rate
