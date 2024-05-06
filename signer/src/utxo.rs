@@ -24,7 +24,7 @@ use crate::packaging::compute_optimal_packages;
 use crate::packaging::Weighted;
 
 #[derive(Debug, Clone, Copy)]
-pub struct SignerState {
+pub struct SignerBtcState {
     /// The outstanding signer UTXO.
     pub utxo: SignerUtxo,
     /// The current market fee rate in sat/vByte.
@@ -41,7 +41,7 @@ pub struct SbtcRequests {
     pub withdrawals: Vec<WithdrawalRequest>,
     /// Summary of the Signers' UTXO and information necessary for
     /// constructing their next UTXO.
-    pub signer_state: SignerState,
+    pub signer_state: SignerBtcState,
     /// The maximum acceptable number of votes against for any given
     /// request.
     pub reject_capacity: u32,
@@ -138,7 +138,7 @@ impl DepositRequest {
         // never panic.
         let node =
             NodeInfo::combine(leaf1, leaf2).expect("This tree depth greater than max of 128");
-        let taproot = TaprootSpendInfo::from_node_info(&SECP256K1, internal_key, node);
+        let taproot = TaprootSpendInfo::from_node_info(SECP256K1, internal_key, node);
 
         // TaprootSpendInfo::control_block returns None if the key given,
         // (script, version), is not in the tree. But this key is definitely
@@ -244,7 +244,7 @@ impl SignerUtxo {
         TxIn {
             previous_output: self.outpoint,
             sequence: Sequence::ZERO,
-            witness: Witness::p2tr_key_spend(&sig),
+            witness: Witness::p2tr_key_spend(sig),
             script_sig: ScriptBuf::new(),
         }
     }
@@ -291,17 +291,18 @@ impl<'a> UnsignedTransaction<'a> {
     ///   3. The signer output UTXO is the first output.
     ///   4. Each input needs a signature in the witness data.
     ///   5. The is no witness data for deposit UTXOs.
-    pub fn new(requests: Vec<Request<'a>>, state: &SignerState) -> Result<Self, Error> {
+    pub fn new(requests: Vec<Request<'a>>, state: &SignerBtcState) -> Result<Self, Error> {
         // Construct a transaction base. This transaction's inputs have
         // witness data with dummy signatures so that our virtual size
         // estimates are accurate. Later we will update the fees and
         // remove the witness data.
-        let mut tx = Self::construct_transaction(&requests, state)?;
+        let mut tx = Self::new_transaction(&requests, state)?;
         // We now compute the fee that each request must pay given the
         // size of the transaction and the fee rate. Once we have the fee
         // we adjust the output amounts accordingly.
         let fee = Self::compute_request_fee(&tx, state.fee_rate);
         Self::adjust_amounts(&mut tx, fee);
+
         // Now we can reset the witness data.
         Self::reset_witness_data(&mut tx);
 
@@ -321,7 +322,7 @@ impl<'a> UnsignedTransaction<'a> {
     ///
     /// An Err is returned if the amounts withdrawn is greater than the sum
     /// of all the input amounts.
-    fn construct_transaction(reqs: &[Request], state: &SignerState) -> Result<Transaction, Error> {
+    fn new_transaction(reqs: &[Request], state: &SignerBtcState) -> Result<Transaction, Error> {
         let sig = Self::generate_dummy_signature();
 
         let deposits = reqs
@@ -375,7 +376,7 @@ impl<'a> UnsignedTransaction<'a> {
     /// UTXO amount and the incomming requests.
     ///
     /// This amount does not take into account fees.
-    fn compute_signer_amount(reqs: &[Request], state: &SignerState) -> Result<u64, Error> {
+    fn compute_signer_amount(reqs: &[Request], state: &SignerBtcState) -> Result<u64, Error> {
         let amount = reqs
             .iter()
             .fold(state.utxo.amount as i64, |amount, req| match req {
@@ -384,8 +385,8 @@ impl<'a> UnsignedTransaction<'a> {
             });
 
         // This should never happen
-        // TODO: Log this.
         if amount < 0 {
+            tracing::error!("Transaction deposits greater than the inputs!");
             return Err(Error::InvalidAmount(amount));
         }
 
@@ -404,7 +405,7 @@ impl<'a> UnsignedTransaction<'a> {
         let num_requests = (tx.input.len() + tx.output.len()).saturating_sub(2) as u64;
         // This is a bizarre case that should never happen.
         if num_requests == 0 {
-            // TODO: logs
+            tracing::warn!("No deposit or withdrawal related inputs in the transaction");
             return;
         }
 
@@ -445,13 +446,85 @@ impl<'a> UnsignedTransaction<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+    use std::collections::BTreeSet;
     use std::str::FromStr;
 
     use super::*;
+    use bitcoin::blockdata::opcodes;
+    use bitcoin::NetworkKind;
+    use bitcoin::PrivateKey;
+    use bitcoin::Txid;
+    use secp256k1::rand;
+    use secp256k1::rand::distributions::Distribution;
     use test_case::test_case;
 
-    const PUBLIC_KEY: &'static str =
+    const PUBLIC_KEY0: &'static str =
+        "02ff12471208c14bd580709cb2358d98975247d8765f92bc25eab3b2763ed605f8";
+
+    const PUBLIC_KEY1: &'static str =
         "032e58afe51f9ed8ad3cc7897f634d881fdbe49a81564629ded8156bebd2ffd1af";
+
+    fn generate_public_key() -> PublicKey {
+        let private_key = PrivateKey::generate(NetworkKind::Test);
+        private_key.public_key(SECP256K1)
+    }
+
+    fn generate_outpoint(amount: u64, vout: u32) -> OutPoint {
+        let mut rng = rand::thread_rng();
+        let sats: u64 = rand::distributions::Uniform::new(1, 500_000_000).sample(&mut rng);
+
+        let tx = Transaction {
+            version: Version::TWO,
+            lock_time: LockTime::ZERO,
+            input: Vec::new(),
+            output: vec![
+                TxOut {
+                    value: Amount::from_sat(sats),
+                    script_pubkey: ScriptBuf::new(),
+                },
+                TxOut {
+                    value: Amount::from_sat(amount),
+                    script_pubkey: ScriptBuf::new(),
+                },
+            ],
+        };
+
+        OutPoint { txid: tx.compute_txid(), vout }
+    }
+
+    /// Create a new deposit request depositing from a random public key.
+    fn create_deposit(amount: u64, max_fee: u64, votes_against: usize) -> DepositRequest {
+        let public_key = PublicKey::from_str(PUBLIC_KEY1).unwrap();
+        DepositRequest {
+            outpoint: generate_outpoint(amount, 1),
+            max_fee,
+            signer_bitmap: std::iter::repeat(false).take(votes_against).collect(),
+            amount,
+            deposit_script: ScriptBuf::builder()
+                .push_slice([1, 2, 3, 4])
+                .push_opcode(opcodes::all::OP_DROP)
+                .push_opcode(opcodes::all::OP_DUP)
+                .push_opcode(opcodes::all::OP_HASH160)
+                .push_slice(public_key.pubkey_hash())
+                .push_opcode(opcodes::all::OP_EQUALVERIFY)
+                .push_opcode(opcodes::all::OP_CHECKSIG)
+                .into_script(),
+            redeem_script: ScriptBuf::new(),
+            taproot_public_key: PublicKey::from_str(PUBLIC_KEY0).unwrap(),
+            deposit_public_key: generate_public_key(),
+        }
+    }
+
+    /// Create a new withdrawal request withdrawing to a random key.
+    fn create_withdrawal(amount: u64, max_fee: u64, votes_against: usize) -> WithdrawalRequest {
+        WithdrawalRequest {
+            max_fee,
+            signer_bitmap: std::iter::repeat(false).take(votes_against).collect(),
+            amount,
+            public_key: generate_public_key(),
+        }
+    }
 
     #[test_case(&[false, false, true, false, true, true, true], 3; "case 1")]
     #[test_case(&[false, false, true, true, true, true, true], 2; "case 2")]
@@ -464,13 +537,15 @@ mod tests {
             amount: 100_000,
             deposit_script: ScriptBuf::new(),
             redeem_script: ScriptBuf::new(),
-            taproot_public_key: PublicKey::from_str(PUBLIC_KEY).unwrap(),
-            deposit_public_key: PublicKey::from_str(PUBLIC_KEY).unwrap(),
+            taproot_public_key: PublicKey::from_str(PUBLIC_KEY1).unwrap(),
+            deposit_public_key: PublicKey::from_str(PUBLIC_KEY1).unwrap(),
         };
 
         assert_eq!(deposit.votes_against(), expected);
     }
 
+    /// Some functions call functions that "could" panic. Check that they
+    /// don't.
     #[test]
     fn deposit_witness_data_no_error() {
         let deposit = DepositRequest {
@@ -480,8 +555,8 @@ mod tests {
             amount: 100_000,
             deposit_script: ScriptBuf::from_bytes(vec![1, 2, 3]),
             redeem_script: ScriptBuf::new(),
-            taproot_public_key: PublicKey::from_str(PUBLIC_KEY).unwrap(),
-            deposit_public_key: PublicKey::from_str(PUBLIC_KEY).unwrap(),
+            taproot_public_key: PublicKey::from_str(PUBLIC_KEY1).unwrap(),
+            deposit_public_key: PublicKey::from_str(PUBLIC_KEY1).unwrap(),
         };
 
         let sig = Signature::from_slice(&[0u8; 64]).unwrap();
@@ -490,6 +565,394 @@ mod tests {
 
         let sig = UnsignedTransaction::generate_dummy_signature();
         let tx_in = deposit.as_tx_input(sig);
+
+        // The deposits are taproot spend and do not have an script. That
+        // actual spend script and input data gets put in the witness data
         assert!(tx_in.script_sig.is_empty());
+    }
+
+    /// The first input and output are related to the signers' UTXO.
+    #[test]
+    fn the_first_input_and_output_is_signers() {
+        let requests = SbtcRequests {
+            deposits: vec![create_deposit(123456, 0, 0)],
+            withdrawals: vec![create_withdrawal(1000, 0, 0), create_withdrawal(2000, 0, 0)],
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: generate_outpoint(5500, 0),
+                    amount: 5500,
+                    public_key: generate_public_key(),
+                },
+                fee_rate: 0,
+                public_key: generate_public_key(),
+            },
+            reject_capacity: 10,
+        };
+
+        // This should all be in one transaction since there are no votes
+        // against any of the requests.
+        let mut transactions = requests.construct_transactions().unwrap();
+        assert_eq!(transactions.len(), 1);
+
+        let unsigned_tx = transactions.pop().unwrap();
+        assert_eq!(unsigned_tx.tx.input.len(), 2);
+
+        // Let's make sure the first input references the UTXO from the
+        // signer_state variable.
+        let signers_utxo_input = unsigned_tx.tx.input.first().unwrap();
+        let old_outpoint = requests.signer_state.utxo.outpoint;
+        assert_eq!(signers_utxo_input.previous_output.txid, old_outpoint.txid);
+        assert_eq!(signers_utxo_input.previous_output.vout, old_outpoint.vout);
+
+        // We had two withdrawal requests so there should be 1 + 2 outputs
+        assert_eq!(unsigned_tx.tx.output.len(), 3);
+
+        // The signers' UTXO, the first one, contains the balance of all
+        // deposits and withdrawals. It's also a P2TR script.
+        let signers_utxo_output = unsigned_tx.tx.output.first().unwrap();
+        assert_eq!(
+            signers_utxo_output.value.to_sat(),
+            5500 + 123456 - 1000 - 2000
+        );
+        assert!(signers_utxo_output.script_pubkey.is_p2tr());
+
+        // All the other UTXOs are P2WPKH outputs.
+        unsigned_tx.tx.output.iter().skip(1).for_each(|output| {
+            assert!(output.script_pubkey.is_p2wpkh());
+        });
+
+        // The new UTXO should be using the signer public key from the
+        // signer state.
+        let new_utxo = unsigned_tx.new_signer_utxo();
+        assert_eq!(new_utxo.public_key, requests.signer_state.public_key);
+    }
+
+    /// Deposit requests add to the signers' UTXO.
+    #[test]
+    fn deposits_increase_signers_utxo_amount() {
+        let public_key = PublicKey::from_str(PUBLIC_KEY1).unwrap();
+        let requests = SbtcRequests {
+            deposits: vec![
+                create_deposit(123456, 0, 0),
+                create_deposit(789012, 0, 0),
+                create_deposit(345678, 0, 0),
+            ],
+            withdrawals: Vec::new(),
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: OutPoint::null(),
+                    amount: 55,
+                    public_key,
+                },
+                fee_rate: 0,
+                public_key,
+            },
+            reject_capacity: 10,
+        };
+
+        // This should all be in one transaction since there are no votes
+        // against any of the requests.
+        let mut transactions = requests.construct_transactions().unwrap();
+        assert_eq!(transactions.len(), 1);
+
+        // The transaction should have one output corresponding to the
+        // signers' UTXO
+        let unsigned_tx = transactions.pop().unwrap();
+        assert_eq!(unsigned_tx.tx.output.len(), 1);
+
+        // The new amount should be the sum of the old amount plus the deposits.
+        let new_amount: u64 = unsigned_tx
+            .tx
+            .output
+            .iter()
+            .map(|out| out.value.to_sat())
+            .sum();
+        assert_eq!(new_amount, 55 + 123456 + 789012 + 345678)
+    }
+
+    /// Withdrawal requests remove funds from the signers' UTXO.
+    #[test]
+    fn withdrawals_decrease_signers_utxo_amount() {
+        let public_key = PublicKey::from_str(PUBLIC_KEY1).unwrap();
+        let requests = SbtcRequests {
+            deposits: Vec::new(),
+            withdrawals: vec![
+                create_withdrawal(1000, 0, 0),
+                create_withdrawal(2000, 0, 0),
+                create_withdrawal(3000, 0, 0),
+            ],
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: OutPoint::null(),
+                    amount: 9500,
+                    public_key,
+                },
+                fee_rate: 0,
+                public_key,
+            },
+            reject_capacity: 10,
+        };
+
+        let mut transactions = requests.construct_transactions().unwrap();
+        assert_eq!(transactions.len(), 1);
+
+        let unsigned_tx = transactions.pop().unwrap();
+        assert_eq!(unsigned_tx.tx.output.len(), 4);
+
+        let signer_utxo = unsigned_tx.tx.output.first().unwrap();
+        assert_eq!(signer_utxo.value.to_sat(), 9500 - 1000 - 2000 - 3000);
+    }
+
+    /// We chain transactions so that we have a single signer UTXO at the end.
+    #[test]
+    fn returned_txs_form_a_tx_chain() {
+        let public_key = PublicKey::from_str(PUBLIC_KEY1).unwrap();
+        let requests = SbtcRequests {
+            deposits: vec![
+                create_deposit(1234, 0, 1),
+                create_deposit(5678, 0, 1),
+                create_deposit(9012, 0, 2),
+            ],
+            withdrawals: vec![
+                create_withdrawal(1000, 0, 1),
+                create_withdrawal(2000, 0, 1),
+                create_withdrawal(3000, 0, 1),
+                create_withdrawal(4000, 0, 2),
+            ],
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: generate_outpoint(300_000, 0),
+                    amount: 300_000,
+                    public_key,
+                },
+                fee_rate: 0,
+                public_key,
+            },
+            reject_capacity: 2,
+        };
+
+        let transactions = requests.construct_transactions().unwrap();
+        more_asserts::assert_gt!(transactions.len(), 1);
+
+        transactions.windows(2).for_each(|unsigned| {
+            let utx0 = &unsigned[0];
+            let utx1 = &unsigned[1];
+
+            let previous_output1 = utx1.tx.input[0].previous_output;
+            assert_eq!(utx0.tx.compute_txid(), previous_output1.txid);
+            assert_eq!(previous_output1.vout, 0);
+        })
+    }
+
+    /// Check that each deposit and withdrawal is included as an input or
+    /// deposit in the transaction package.
+    #[test]
+    fn requests_in_unsigned_transaction_are_in_btc_tx() {
+        // The requests in the UnsignedTransaction coorespond to
+        // inputs and outputs in the transaction
+        let public_key = PublicKey::from_str(PUBLIC_KEY1).unwrap();
+        let requests = SbtcRequests {
+            deposits: vec![
+                create_deposit(1234, 0, 1),
+                create_deposit(5678, 0, 1),
+                create_deposit(9012, 0, 2),
+                create_deposit(3456, 0, 1),
+                create_deposit(7890, 0, 0),
+            ],
+            withdrawals: vec![
+                create_withdrawal(1000, 0, 1),
+                create_withdrawal(2000, 0, 1),
+                create_withdrawal(3000, 0, 1),
+                create_withdrawal(4000, 0, 2),
+                create_withdrawal(5000, 0, 0),
+                create_withdrawal(6000, 0, 0),
+                create_withdrawal(7000, 0, 0),
+            ],
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: generate_outpoint(300_000, 0),
+                    amount: 300_000,
+                    public_key,
+                },
+                fee_rate: 0,
+                public_key,
+            },
+            reject_capacity: 2,
+        };
+
+        let transactions = requests.construct_transactions().unwrap();
+        more_asserts::assert_gt!(transactions.len(), 1);
+
+        // Create collections of identifiers for each deposit and withdrawal
+        // request.
+        let mut input_txs: BTreeSet<Txid> =
+            requests.deposits.iter().map(|x| x.outpoint.txid).collect();
+        let mut output_scripts: BTreeSet<String> = requests
+            .withdrawals
+            .iter()
+            .map(|req| {
+                let compressed = bitcoin::CompressedPublicKey(req.public_key.inner);
+                ScriptBuf::new_p2wpkh(&compressed.wpubkey_hash()).to_hex_string()
+            })
+            .collect();
+
+        // Now we check that the counts of the withdrawals and deposits
+        // line up.
+        transactions.iter().for_each(|utx| {
+            let num_inputs = utx.tx.input.len();
+            let num_outputs = utx.tx.output.len();
+            assert_eq!(utx.requests.len() + 2, num_inputs + num_outputs);
+
+            let num_deposits = utx.requests.iter().filter_map(|x| x.as_deposit()).count();
+            assert_eq!(utx.tx.input.len(), num_deposits + 1);
+
+            let num_withdrawals = utx
+                .requests
+                .iter()
+                .filter_map(|x| x.as_withdrawal())
+                .count();
+            assert_eq!(utx.tx.output.len(), num_withdrawals + 1);
+
+            // Check that each deposit is referenced exactly once
+            // We ship the first one since that is the signers' UTXO
+            for tx_in in utx.tx.input.iter().skip(1) {
+                assert!(input_txs.remove(&tx_in.previous_output.txid));
+            }
+            for tx_out in utx.tx.output.iter().skip(1) {
+                assert!(output_scripts.remove(&tx_out.script_pubkey.to_hex_string()));
+            }
+        });
+
+        assert!(input_txs.is_empty());
+        assert!(output_scripts.is_empty());
+    }
+
+    /// Check the following:
+    /// * The fees for each transaction is at least as large as the fee_rate in the
+    ///   signers' state.
+    /// * Each deposit request pays the same fee.
+    /// * The total fees are equal to the number of request times the fee per
+    ///   request amount.
+    /// * The withdrawals do no pay for all of the fees, deposits pay fees too.
+    #[test]
+    fn returned_txs_match_fee_rate() {
+        // Each deposit and withdrawal has a max fee greater than the current market fee rate
+        let public_key = PublicKey::from_str(PUBLIC_KEY1).unwrap();
+        let requests = SbtcRequests {
+            deposits: vec![
+                create_deposit(12340, 100_000, 1),
+                create_deposit(56780, 100_000, 1),
+                create_deposit(90120, 100_000, 2),
+                create_deposit(34560, 100_000, 1),
+                create_deposit(78900, 100_000, 0),
+            ],
+            withdrawals: vec![
+                create_withdrawal(10000, 100_000, 1),
+                create_withdrawal(20000, 100_000, 1),
+                create_withdrawal(30000, 100_000, 1),
+                create_withdrawal(40000, 100_000, 2),
+                create_withdrawal(50000, 100_000, 0),
+                create_withdrawal(60000, 100_000, 0),
+                create_withdrawal(70000, 100_000, 0),
+            ],
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: generate_outpoint(300_000, 0),
+                    amount: 300_000_000,
+                    public_key,
+                },
+                fee_rate: 25,
+                public_key,
+            },
+            reject_capacity: 2,
+        };
+
+        // It's tough to match the outputs to the original request. We do
+        // that here by matching the expected scripts, which are unique for
+        // each public key. Since each public key is unique, this works.
+        let mut withdrawal_amounts: BTreeMap<String, u64> = requests
+            .withdrawals
+            .iter()
+            .map(|req| {
+                let compressed = bitcoin::CompressedPublicKey(req.public_key.inner);
+                let script = ScriptBuf::new_p2wpkh(&compressed.wpubkey_hash());
+                (script.to_hex_string(), req.amount)
+            })
+            .collect();
+
+        let transactions = requests.construct_transactions().unwrap();
+        more_asserts::assert_gt!(transactions.len(), 1);
+
+        transactions
+            .iter()
+            .fold(requests.signer_state.utxo.amount, |signer_amount, utx| {
+                for output in utx.tx.output.iter().skip(1) {
+                    let original_amount = withdrawal_amounts
+                        .remove(&output.script_pubkey.to_hex_string())
+                        .unwrap();
+                    assert_eq!(original_amount, output.value.to_sat() + utx.fee_per_request);
+                }
+
+                let output_amounts: u64 = utx.tx.output.iter().map(|out| out.value.to_sat()).sum();
+                let input_amounts: u64 = utx
+                    .requests
+                    .iter()
+                    .filter_map(Request::as_deposit)
+                    .map(|dep| dep.amount)
+                    .chain([signer_amount])
+                    .sum();
+
+                more_asserts::assert_gt!(input_amounts, output_amounts);
+                more_asserts::assert_gt!(utx.requests.len(), 0);
+
+                // Since there are often both deposits and withdrawal, the
+                // following assertion checks that we capture the fees that
+                // depositors must pay.
+                let total_fees = utx.fee_per_request * utx.requests.len() as u64;
+                assert_eq!(input_amounts, output_amounts + total_fees);
+
+                let state = &requests.signer_state;
+                let signed_vsize = UnsignedTransaction::new_transaction(&utx.requests, state)
+                    .unwrap()
+                    .vsize();
+
+                // The unsigned transaction has all witness data removed,
+                // so it should have a much smaller size than the "signed"
+                // version returned from UnsignedTransaction::new_transaction.
+                more_asserts::assert_lt!(utx.tx.vsize(), signed_vsize);
+                // The final fee rate should still be greater than the market fee rate
+                let fee_rate = (input_amounts - output_amounts) as f64 / signed_vsize as f64;
+                more_asserts::assert_le!(requests.signer_state.fee_rate as f64, fee_rate);
+
+                utx.new_signer_utxo().amount
+            });
+    }
+
+    /// If the signer's UTXO does not have enough to cover the requests
+    /// then we return an error.
+    #[test]
+    fn negative_amounts_give_error() {
+        let public_key = PublicKey::from_str(PUBLIC_KEY1).unwrap();
+        let requests = SbtcRequests {
+            deposits: Vec::new(),
+            withdrawals: vec![
+                create_withdrawal(1000, 0, 0),
+                create_withdrawal(2000, 0, 0),
+                create_withdrawal(3000, 0, 0),
+            ],
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: OutPoint::null(),
+                    amount: 3000,
+                    public_key,
+                },
+                fee_rate: 0,
+                public_key,
+            },
+            reject_capacity: 10,
+        };
+
+        let transactions = requests.construct_transactions();
+        assert!(transactions.is_err());
     }
 }
