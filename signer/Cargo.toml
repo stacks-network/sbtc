@@ -16,6 +16,7 @@ bench = false
 
 [dependencies]
 bitcoin.workspace = true
+p256k1.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-attributes.workspace = true
