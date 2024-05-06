@@ -1,0 +1,74 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: electrs-deployment
+  namespace: electrs
+  labels:
+    app: electrs
+  
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: electrs
+  
+  template:
+    metadata:
+      labels:
+        app: electrs
+    
+    spec:
+      containers:
+      - name: electrs-container
+        image: local/electrs:v4
+        imagePullPolicy: Never
+        
+        # livenessProbe:
+        #   failureThreshold: 3
+        #   httpGet:
+        #     path: /
+        #     port: 18444
+        #     scheme: HTTP
+        #   periodSeconds: 10
+        #   successThreshold: 1
+        #   timeoutSeconds: 10
+        #   initialDelaySeconds: 30
+        
+        # readinessProbe:
+        #   failureThreshold: 3
+        #   httpGet:
+        #     path: /
+        #     port: 18444
+        #     scheme: HTTP
+        #   periodSeconds: 10
+        #   successThreshold: 1
+        #   timeoutSeconds: 10
+        #   initialDelaySeconds: 30
+        
+        resources:
+          requests:
+            memory: 128Mi
+            cpu: 50m
+          limits:
+            memory: 256Mi
+            cpu: 100m
+        
+        ports:
+        - containerPort: 60401
+          protocol: TCP
+        - containerPort: 3002
+          protocol: TCP
+        - containerPort: 60401
+          protocol: UDP
+        - containerPort: 3002
+          protocol: UDP
+
+        env:
+          - name: RUST_BACKTRACE
+            value: '1'
+          - name: BITCOIN_RPC_HOST
+            value: "bitcoin-regtest-service.bitcoin"
+          - name: BITCOIN_RPC_PORT
+            value: "18443"
