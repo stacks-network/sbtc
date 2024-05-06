@@ -23,5 +23,7 @@ FROM builder as result
 COPY --from=electrs-build /root/.cargo/bin/electrs /usr/bin/electrs
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod a+x /entrypoint.sh
+RUN apt-get update -qqy
+RUN apt-get install -qqy jq 
 WORKDIR /
 ENTRYPOINT ["./entrypoint.sh"]
