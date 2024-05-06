@@ -33,6 +33,7 @@ order to build and run the sources in this repository.
 
 - **[Cargo](https://doc.rust-lang.org/cargo/)** - [Installation Guide](https://doc.rust-lang.org/cargo/getting-started/installation.html) - Builds rust packages.
 - **[npm](https://www.npmjs.com/)** - [Installation Guide](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) - Manages node packages
+- **[pnpm](https://pnpm.io)** - [Installation guide](https://pnpm.io/installation) - Manages node packages
 - **[Smithy](https://smithy.io/2.0/index.html)** - [Installation Guide](https://smithy.io/2.0/guides/smithy-cli/cli_installation.html) - Generates OpenAPI templates
 - **[OpenAPI Generator](https://openapi-generator.tech/)** - [Installation Guide](https://openapi-generator.tech/docs/installation/) - Generates API clients
 - **[Java 21](https://www.oracle.com/java/)** - [Installation Guide](https://www.oracle.com/java/technologies/downloads/) - Required for OpenAPI Generator
@@ -52,7 +53,9 @@ echo "\n--- sBTC tool versions ---" \
     && echo "openapi-generator $(openapi-generator-cli version)" \
     && java --version
 ```
+
 Below is the output on a machine that is able to build and run all the sources and tests.
+
 ```
 --- sBTC tool versions ---
 cargo 1.77.2 (e52e36006 2024-03-26)
