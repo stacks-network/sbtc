@@ -3,5 +3,6 @@
   "packageVersion": "0.1.0",
   "library": "reqwest",
   "supportAsync": "true",
-  "withAWSV4Signature": "true"
+  "withAWSV4Signature": "true",
+  "useSingleRequestParameter": "true"
 }

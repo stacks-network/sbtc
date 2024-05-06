@@ -33,9 +33,9 @@ resource Deposit {
 }
 
 structure DepositParameters {
-    maxFee: Integer
-    lockTime: Integer
-    reclaimScript: String
+    @required maxFee: Integer
+    @required lockTime: Integer
+    @required reclaimScript: String
 }
 
 structure DepositData {

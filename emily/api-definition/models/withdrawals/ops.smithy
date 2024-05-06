@@ -12,6 +12,7 @@ operation CreateWithdrawal {
         ThrottlingError
         ConflictError
         NotImplementedError
+        BadRequestError
     ]
 }
 
@@ -37,6 +38,7 @@ operation GetWithdrawal {
         ThrottlingError
         NotFoundError
         NotImplementedError
+        BadRequestError
     ]
 }
 
@@ -46,7 +48,7 @@ operation GetWithdrawal {
     inputToken: "nextToken",
     outputToken: "nextToken",
     pageSize: "maxResults",
-    items: "deposits",
+    items: "withdrawals",
 )
 operation GetWithdrawals {
     input: GetWithdrawalsInput
@@ -56,6 +58,7 @@ operation GetWithdrawals {
         ThrottlingError
         NotFoundError
         NotImplementedError
+        BadRequestError
     ]
 }
 
@@ -69,7 +72,7 @@ structure GetWithdrawalsInput {
 @output
 structure GetWithdrawalsOutput {
     nextToken: String
-    deposits: WithdrawalBasicInfoList
+    withdrawals: WithdrawalBasicInfoList
 }
 
 @idempotent
@@ -84,15 +87,16 @@ operation UpdateWithdrawals {
         ConflictError
         ForbiddenError
         NotImplementedError
+        BadRequestError
     ]
 }
 
 @input
 structure UpdateWithdrawalsInput {
-    deposits: WithdrawalUpdateList
+    @required withdrawals: WithdrawalUpdateList
 }
 
 @output
 structure UpdateWithdrawalsOutput {
-    deposits: WithdrawalDataList
+    Withdrawals: WithdrawalDataList
 }

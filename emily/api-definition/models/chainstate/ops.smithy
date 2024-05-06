@@ -13,6 +13,7 @@ operation CreateChainstate {
         ConflictError
         ForbiddenError
         NotImplementedError
+        BadRequestError
     ]
 }
 
@@ -34,6 +35,7 @@ operation GetChainstate {
         ThrottlingError
         NotFoundError
         NotImplementedError
+        BadRequestError
     ]
 }
 
@@ -49,6 +51,7 @@ operation UpdateChainstate {
         ConflictError
         ForbiddenError
         NotImplementedError
+        BadRequestError
     ]
 }
 

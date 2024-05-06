@@ -12,6 +12,7 @@ operation CreateDeposit {
         ThrottlingError
         ConflictError
         NotImplementedError
+        BadRequestError
     ]
 }
 
@@ -36,6 +37,7 @@ operation GetDeposit {
         ThrottlingError
         NotFoundError
         NotImplementedError
+        BadRequestError
     ]
 }
 
@@ -55,6 +57,7 @@ operation GetTxnDeposits {
         ThrottlingError
         NotFoundError
         NotImplementedError
+        BadRequestError
     ]
 }
 
@@ -68,7 +71,7 @@ structure GetTxnDepositsInput {
 @output
 structure GetTxnDepositsOutput {
     nextToken: String
-    deposits: DepositBasicInfoList
+    deposits: DepositDataList
 }
 
 @readonly
@@ -87,6 +90,7 @@ operation GetDeposits {
         ThrottlingError
         NotFoundError
         NotImplementedError
+        BadRequestError
     ]
 }
 
@@ -100,7 +104,7 @@ structure GetDepositsInput {
 @output
 structure GetDepositsOutput {
     nextToken: String
-    deposits: DepositDataList
+    deposits: DepositBasicInfoList
 }
 
 @idempotent
@@ -115,12 +119,13 @@ operation UpdateDeposits {
         ConflictError
         ForbiddenError
         NotImplementedError
+        BadRequestError
     ]
 }
 
 @input
 structure UpdateDepositsInput {
-    deposits: DepositUpdateList
+    @required deposits: DepositUpdateList
 }
 
 @output
