@@ -35,6 +35,15 @@
 ;; the deposit was accepted.
 (define-map withdrawal-status uint bool)
 
+;; Internal data structure to store completed
+;; deposit requests & avoid replay attacks.
+(define-map completed-deposits {txid: (buff 32), vout-index: uint}
+  {
+    amount: uint,
+    recipient: principal
+  }
+)
+
 ;; Public functions
 
 ;; Store a new withdrawal request.

@@ -10,6 +10,11 @@ path = 'contracts/sbtc-bootstrap-signers.clar'
 clarity_version = 2
 epoch = 2.5
 
+[contracts.sbtc-deposit]
+path = 'contracts/sbtc-deposit.clar'
+clarity_version = 2
+epoch = 2.5
+
 [contracts.sbtc-registry]
 path = 'contracts/sbtc-registry.clar'
 clarity_version = 2
