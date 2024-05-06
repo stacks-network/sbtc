@@ -1,9 +1,15 @@
+mod common;
+mod errors;
+mod deposits;
+mod withdrawals;
+mod chainstate;
+mod utils;
+
+use std::collections::HashMap;
+
 use aws_lambda_events::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
-use aws_lambda_events::encodings::Body;
-use emily::models::{CreateDepositRequestContent, DepositParameters};
-use http::{header, HeaderValue};
+use http::Method;
 use lambda_runtime::{service_fn, LambdaEvent};
-use http::{HeaderMap, Method};
 
 /// Main entry point for the AWS Lambda function.
 #[tokio::main]
@@ -31,147 +37,116 @@ async fn handle_event(
     // Extract base data.
     let resource = event.payload.resource.unwrap_or_default();
     let http_method = event.payload.http_method;
-    let body = event.payload.body.clone();
+    let body: Option<String> = event.payload.body;
+    let path_parameters: HashMap<String, String> = event.payload.path_parameters;
 
     // Dispatch based on API call.
-    match (resource.as_str(), http_method) {
-        ("/deposits", Method::POST) => {
-
-            // Deserialize the create deposit request.
-            let request: CreateDepositRequestContent = body
-                .map(|serailzed_request| {
-                    serde_json::from_str::<CreateDepositRequestContent>(serailzed_request.as_str())
-                    .unwrap() // TODO: Handle lambda_runtime::Errors. https://github.com/stacks-network/sbtc/issues/111
-                })
-                .unwrap(); // TODO: Handle lambda_runtime::Errors. https://github.com/stacks-network/sbtc/issues/111
-
-            // Generate dummy response with all the necesary fields, taking
-            // the identifiers from the request.
-            let response = emily::models::CreateDepositResponseContent {
-                bitcoin_txid: request.bitcoin_txid.to_string(),
-                bitcoin_tx_output_index: request.bitcoin_tx_output_index,
-                recipient: "MOCK_RECIPIENT".to_string(),
-                amount: 11111.0,
-                status: emily::models::OpStatus::Pending,
-                status_message: "MOCK_CREATE_DEPOSIT_RESPONSE".to_string(),
-                parameters: Box::new(DepositParameters {
-                    lock_time: Some(22222.0),
-                    max_fee: Some(33333.0),
-                    reclaim_script: Some("MOCK_RECLAIM_SCRIPT".to_string())
-                }),
-                last_update_block_hash: None, // Unknown on creation.
-                last_update_height: None, // Unknown on creation.
-                fulfillment: None, // Unknown on creation.
-            };
-
-            // Serialize response.
-            let serialized_response: String = serde_json::to_string(&response)
-                .map_err(lambda_runtime::Error::from)
-                .unwrap();
-
-            // Setup CORS headers.
-            // TODO: Refactor ApiGatewayProxyResponse packaging into a helper function.
-            // https://github.com/stacks-network/sbtc/issues/111
-            let mut headers = HeaderMap::new();
-            headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
-            headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("Content-Type"));
-            headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
-            headers.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("OPTIONS,POST,GET"));
-            Ok(ApiGatewayProxyResponse {
-                status_code: 201,
-                multi_value_headers: headers.clone(),
-                is_base64_encoded: false,
-                body: Some(Body::Text(serialized_response)),
-                headers,
-            })
-        }
+    let event_handler_result = match (resource.as_str(), http_method) {
+        // Deposits
+        ("/deposits", Method::POST) => deposits::handle_create_deposit(body),
+        ("/deposits/{txid}", Method::GET) => deposits::handle_get_txn_deposits(path_parameters),
+        ("/deposits/{txid}/{outputIndex}", Method::GET) => deposits::handle_get_deposit(path_parameters),
+        ("/deposits", Method::GET) => deposits::handle_get_deposits(path_parameters),
+        ("/deposits", Method::PUT) => deposits::handle_update_deposits(body),
+        // Withdrawals
+        ("/withdrawals", Method::POST) => withdrawals::handle_create_withdrawal(body),
+        ("/withdrawals/{id}", Method::GET) => withdrawals::handle_get_withdrawal(path_parameters),
+        ("/withdrawals", Method::GET) => withdrawals::handle_get_withdrawals(path_parameters),
+        ("/withdrawals", Method::PUT) => withdrawals::handle_update_withdrawals(body),
+        // Chainstate
+        ("/chainstate", Method::POST) => chainstate::handle_create_chainstate(body),
+        ("/chainstate/{height}", Method::GET) => chainstate::handle_get_chainstate(path_parameters),
+        ("/chainstate", Method::PUT) => chainstate::handle_update_chainstate(body),
         _ => {
-            // Generate Not implemented for all unmatched requests.
-            let response: emily::models::NotImplementedErrorResponseContent = emily::models::NotImplementedErrorResponseContent {
-                message: "API call not implemented.".to_string()
-            };
-
-            // Serialize response.
-            let serialized_response: String = serde_json::to_string(&response)
-                .map_err(lambda_runtime::Error::from)
-                .unwrap();
-
-            // Setup CORS headers.
-            // TODO: Refactor ApiGatewayProxyResponse packaging into a helper function.
-            // https://github.com/stacks-network/sbtc/issues/111
-            let mut headers = HeaderMap::new();
-            headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
-            headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("Content-Type"));
-            headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
-            headers.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("OPTIONS,POST,GET"));
-            Ok(ApiGatewayProxyResponse {
-                status_code: 501,
-                multi_value_headers: headers.clone(),
-                is_base64_encoded: false,
-                body: Some(Body::Text(serialized_response)),
-                headers,
-            })
+            Err(errors::EmilyApiError::BadRequest(format!("Invalid endpoint \"{}\".", resource).to_string()))
         },
-    }
+    };
+
+    // Specify the type to include the lambda runtime error to meet the `service_fn` function contract.
+    let result: Result<ApiGatewayProxyResponse, lambda_runtime::Error> = match event_handler_result {
+        Ok(response) => Ok(response.to_apigw_response()),
+        Err(err) => Ok(err.to_apigw_response()),
+    };
+    result
 }
 
 #[cfg(test)]
-mod tests {
+mod main_tests {
     use super::*;
+    use lambda_runtime::Context;
+    use aws_lambda_events::apigw::ApiGatewayProxyRequest;
+    use http::Method;
     use test_case::test_case;
+    use crate::utils::test;
 
-    fn create_event(method: Method, resource: &str, body: Option<String>) -> LambdaEvent<ApiGatewayProxyRequest> {
+    /// Tests that the API calls that require bodies execute in the expected way based on the format of the body.
+    #[test_case(Method::POST, "/deposits", test::create_deposit_request_body, 201; "create-deposit")]
+    #[test_case(Method::PUT, "/deposits", test::update_deposits_request_body, 202; "update-deposits")]
+    #[test_case(Method::POST, "/withdrawals", test::create_withdrawal_request_body, 201; "create-withdrawal")]
+    #[test_case(Method::PUT, "/withdrawals", test::update_withdrawals_request_body, 202; "update-withdrawals")]
+    #[test_case(Method::POST, "/chainstate", test::create_chainstate_request_body, 201; "update-chainstate")]
+    #[test_case(Method::PUT, "/chainstate", test::update_chainstate_request_body, 202; "set-chainstate")]
+    #[tokio::test]
+    async fn test_write_method_variations(
+        method: Method,
+        resource: &str,
+        body_factory: fn(test::RequestType) -> Option<String>,
+        success_status_code: i64
+    ) {
+        // Success: Good inputs.
+        let response_on_full_request = test_execute_api(&method, resource, body_factory(test::RequestType::FULL)).await;
+        assert_eq!(response_on_full_request.status_code, success_status_code, "Failed handling a well formed request with all the fields defined: {:?}.",
+            response_on_full_request.body);
+        let response_on_minimal_request = test_execute_api(&method, resource, body_factory(test::RequestType::MINIMAL)).await;
+        assert_eq!(response_on_minimal_request.status_code, success_status_code, "Failed handling a well formed request with the least fields defined: {:?}.",
+            response_on_minimal_request.body);
+
+        // Failure: Bad inputs.
+        let response_on_missing_request = test_execute_api(&method, resource, body_factory(test::RequestType::MISSING)).await;
+        assert_eq!(response_on_missing_request.status_code, 400, "Improperly handled a request missing required fields.");
+        let response_on_malformed_request = test_execute_api(&method, resource, body_factory(test::RequestType::MALFORMED)).await;
+        assert_eq!(response_on_malformed_request.status_code, 400, "Improperly handled a malformed request.");
+        let response_on_missing_request = test_execute_api(&method, resource, body_factory(test::RequestType::EMPTY)).await;
+        assert_eq!(response_on_missing_request.status_code, 400, "Improperly handled a missing request.");
+    }
+
+    #[test_case(Method::GET, "/deposits/{txid}/{outputIndex}"; "get-deposit")]
+    #[test_case(Method::GET, "/deposits/{txid}"; "get-txn-deposits")]
+    #[test_case(Method::GET, "/deposits"; "get-deposits")]
+    #[test_case(Method::GET, "/withdrawals/{id}"; "get-withdrawal")]
+    #[test_case(Method::GET, "/withdrawals"; "get-withdrawals")]
+    #[test_case(Method::GET, "/chainstate/{height}"; "get-chainstate")]
+    #[tokio::test]
+    async fn test_read_method(
+        method: Method,
+        resource: &str,
+    ) {
+        let response = test_execute_api(&method, resource, None).await;
+        assert_eq!(response.status_code, 200, "Failed handling an unsinkable GET request: {:?}.",
+            response.body);
+    }
+
+    /// Helper function to call the event handler in a more intuitive way.
+    async fn test_execute_api(
+        method: &Method,
+        resource: &str,
+        body: Option<String>,
+    ) -> ApiGatewayProxyResponse {
+        handle_event(mock_request(method, resource, body, HashMap::new())).await.unwrap()
+    }
+
+    /// Helper function to create a mock API Gateway request.
+    fn mock_request(method: &Method, path: &str, body: Option<String>, path_parameters: HashMap<String, String>) -> LambdaEvent<ApiGatewayProxyRequest> {
         LambdaEvent {
             payload: ApiGatewayProxyRequest {
-                http_method: method,
-                resource: Some(resource.to_string()),
+                http_method: method.clone(),
+                resource: Some(path.to_string()),
                 body,
+                path_parameters,
                 ..Default::default()
             },
-            context: Default::default()
+            context: Context::default(),
         }
     }
 
-    #[tokio::test]
-    async fn test_post_deposits_successful() {
-        // Arrange.
-        let json_body = serde_json::to_string(&CreateDepositRequestContent {
-            bitcoin_txid: "BITCOIN_TXID_UNITTEST".to_string(),
-            bitcoin_tx_output_index: 0.0,
-            reclaim: "RECLAIM_UNITTEST".to_string(),
-            deposit: "DEPOSIT_UNITTEST".to_string(),
-        }).unwrap();
-        let event = create_event(Method::POST, "/deposits", Some(json_body));
-
-        // Act.
-        let response = handle_event(event).await.expect("Failed to handle event");
-
-        // Assert.
-        assert_eq!(response.status_code, 201);
-        assert_eq!(response.body.unwrap(), Body::Text("{\"bitcoinTxid\":\"BITCOIN_TXID_UNITTEST\",\"bitcoinTxOutputIndex\":0.0,\"recipient\":\"MOCK_RECIPIENT\",\"amount\":11111.0,\"status\":\"PENDING\",\"statusMessage\":\"MOCK_CREATE_DEPOSIT_RESPONSE\",\"parameters\":{\"maxFee\":33333.0,\"lockTime\":22222.0,\"reclaimScript\":\"MOCK_RECLAIM_SCRIPT\"}}".to_string()));
-    }
-
-    #[test_case(Method::GET, "/deposits/{txid}/{outputIndex}", None; "get-deposit")]
-    #[test_case(Method::GET, "/deposits/{txid}", None; "get-txn-deposits")]
-    #[test_case(Method::GET, "/deposits", None; "get-deposits")]
-    #[test_case(Method::PUT, "/deposits", None; "update-deposits")]
-    #[test_case(Method::POST, "/withdrawals", None; "create-withdrawal")]
-    #[test_case(Method::GET, "/withdrawals/{id}", None; "get-withdrawal")]
-    #[test_case(Method::GET, "/withdrawals", None; "get-withdrawals")]
-    #[test_case(Method::PUT, "/withdrawals", None; "update-withdrawals")]
-    #[test_case(Method::GET, "/chainstate/{height}", None; "get-chainstate")]
-    #[test_case(Method::PUT, "/chainstate/{height}", None; "set-chainstate")]
-    #[test_case(Method::POST, "/chainstate/{height}", None; "update-chainstate")]
-    #[tokio::test]
-    async fn test_method_not_implemented(method: Method, resource: &str, body: Option<String>) {
-        // Arrange.
-        let event: LambdaEvent<ApiGatewayProxyRequest> = create_event(method, resource, body);
-
-        // Act.
-        let response: ApiGatewayProxyResponse = handle_event(event).await.expect("Failed to handle event");
-
-        // Assert.
-        assert_eq!(response.status_code, 501);
-        assert_eq!(response.body.unwrap(), Body::Text("{\"message\":\"API call not implemented.\"}".to_string()));
-    }
 }
