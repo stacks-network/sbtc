@@ -568,6 +568,7 @@ name = "blocklist-client"
 version = "0.0.1"
 dependencies = [
  "config",
+ "once_cell",
  "reqwest",
  "sbtc-signer",
  "serde 1.0.200",
