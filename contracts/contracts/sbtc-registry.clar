@@ -100,6 +100,26 @@
       status: (map-get? withdrawal-status id)
     }))
     none
+;; Store a new insert request.
+;; Note that this function can only be called by other sBTC
+;; contracts (specifically the current version of the deposit contract) 
+;; - it cannot be called by users directly.
+;; 
+;; This function does not handle validation or moving the funds.
+;; Instead, it is purely for the purpose of storing the completed deposit.
+(define-public (complete-deposit
+    (txid (buff 32))
+    (vout-index uint)
+    (amount uint)
+    (recipient principal)
+  )
+  (begin
+    (try! (validate-caller))
+    (map-set completed-deposits {txid: txid, vout-index: vout-index} {
+      amount: amount,
+      recipient: recipient
+    })
+    (ok true)
   )
 )
 
