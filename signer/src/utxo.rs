@@ -54,6 +54,11 @@ impl SbtcRequests {
     /// This function can fail if the output amounts are greater than the
     /// input amounts.
     pub fn construct_transactions(&self) -> Result<Vec<UnsignedTransaction>, Error> {
+        if self.deposits.is_empty() && self.withdrawals.is_empty() {
+            tracing::info!("No deposits or withdrawals so no BTC transaction");
+            return Ok(Vec::new());
+        }
+
         let withdrawals = self.withdrawals.iter().map(Request::Withdrawal);
         let deposits = self.deposits.iter().map(Request::Deposit);
 
