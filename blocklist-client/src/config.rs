@@ -24,6 +24,8 @@ pub static SETTINGS: Lazy<Settings> =
     Lazy::new(|| Settings::new().expect("Failed to load configuration"));
 
 impl Settings {
+    // Initializing the global config first with default values and then with provided/overwritten environment variables.
+    // The explicit separator with double underscores is needed to correctly parse the nested config structure.
     pub fn new() -> Result<Self, ConfigError> {
         let mut cfg = Config::new();
         cfg.merge(File::with_name("./src/config/default"))?;
