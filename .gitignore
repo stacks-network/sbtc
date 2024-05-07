@@ -3,3 +3,17 @@
 **/.generated-sources
 **.log
 **/node_modules
+
+## Contracts
+contracts/settings/Mainnet.toml
+contracts/settings/Testnet.toml
+contracts/.cache/**
+contracts/history.txt
+
+contracts/logs
+contracts/*.log
+contracts/npm-debug.log*
+contracts/coverage
+contracts/*.info
+contracts/costs-reports.json
+contracts/node_modules
