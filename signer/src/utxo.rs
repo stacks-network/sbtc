@@ -42,9 +42,10 @@ pub struct SbtcRequests {
     /// Summary of the Signers' UTXO and information necessary for
     /// constructing their next UTXO.
     pub signer_state: SignerBtcState,
-    /// The maximum acceptable number of votes against for any given
-    /// request.
-    pub reject_capacity: u32,
+    /// The minimum acceptable number of votes for any given request.
+    pub accept_threshold: u32,
+    /// The total number of signers.
+    pub num_signers: u32,
 }
 
 impl SbtcRequests {
@@ -65,7 +66,7 @@ impl SbtcRequests {
         // Create a list of requests where each request can be approved on its own.
         let items = deposits.chain(withdrawals);
 
-        compute_optimal_packages(items, self.reject_capacity)
+        compute_optimal_packages(items, self.reject_capacity())
             .scan(self.signer_state, |state, requests| {
                 let tx = UnsignedTransaction::new(requests, state);
                 if let Ok(tx_ref) = tx.as_ref() {
@@ -74,6 +75,10 @@ impl SbtcRequests {
                 Some(tx)
             })
             .collect()
+    }
+
+    fn reject_capacity(&self) -> u32 {
+        self.num_signers.saturating_sub(self.accept_threshold)
     }
 }
 
@@ -94,7 +99,7 @@ pub struct DepositRequest {
     /// The public key used for the key-spend path of the taproot script.
     pub taproot_public_key: PublicKey,
     /// The public key used in the deposit script.
-    pub deposit_public_key: PublicKey,
+    pub signers_public_key: PublicKey,
 }
 
 impl DepositRequest {
@@ -126,7 +131,7 @@ impl DepositRequest {
     ///   <data> OP_DROP OP_DUP OP_HASH160 <pubkey_hash> OP_EQUALVERIFY OP_CHECKSIG
     ///
     /// where <data> is the stacks deposit address and <pubkey_hash> is
-    /// given by self.deposit_public_key. The public key used for key-path
+    /// given by self.signers_public_key. The public key used for key-path
     /// spending is self.taproot_public_key, and is supposed to be a dummy
     /// public key.
     pub fn construct_witness_data(&self, sig: Signature) -> Witness {
@@ -431,7 +436,7 @@ impl<'a> UnsignedTransaction<'a> {
 
     /// Helper function for generating dummy Schnorr signatures.
     fn generate_dummy_signature() -> Signature {
-        let key_pair = Keypair::new_global(&mut secp256k1::rand::thread_rng());
+        let key_pair = Keypair::new_global(&mut rand::rngs::OsRng);
 
         Signature {
             signature: key_pair.sign_schnorr(Message::from_digest([0; 32])),
@@ -460,8 +465,7 @@ mod tests {
     use bitcoin::NetworkKind;
     use bitcoin::PrivateKey;
     use bitcoin::Txid;
-    use secp256k1::rand;
-    use secp256k1::rand::distributions::Distribution;
+    use rand::distributions::Distribution;
     use test_case::test_case;
 
     const PUBLIC_KEY0: &'static str =
@@ -476,7 +480,7 @@ mod tests {
     }
 
     fn generate_outpoint(amount: u64, vout: u32) -> OutPoint {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rngs::OsRng;
         let sats: u64 = rand::distributions::Uniform::new(1, 500_000_000).sample(&mut rng);
 
         let tx = Transaction {
@@ -517,7 +521,7 @@ mod tests {
                 .into_script(),
             redeem_script: ScriptBuf::new(),
             taproot_public_key: PublicKey::from_str(PUBLIC_KEY0).unwrap(),
-            deposit_public_key: generate_public_key(),
+            signers_public_key: generate_public_key(),
         }
     }
 
@@ -543,7 +547,7 @@ mod tests {
             deposit_script: ScriptBuf::new(),
             redeem_script: ScriptBuf::new(),
             taproot_public_key: PublicKey::from_str(PUBLIC_KEY1).unwrap(),
-            deposit_public_key: PublicKey::from_str(PUBLIC_KEY1).unwrap(),
+            signers_public_key: PublicKey::from_str(PUBLIC_KEY1).unwrap(),
         };
 
         assert_eq!(deposit.votes_against(), expected);
@@ -561,7 +565,7 @@ mod tests {
             deposit_script: ScriptBuf::from_bytes(vec![1, 2, 3]),
             redeem_script: ScriptBuf::new(),
             taproot_public_key: PublicKey::from_str(PUBLIC_KEY1).unwrap(),
-            deposit_public_key: PublicKey::from_str(PUBLIC_KEY1).unwrap(),
+            signers_public_key: PublicKey::from_str(PUBLIC_KEY1).unwrap(),
         };
 
         let sig = Signature::from_slice(&[0u8; 64]).unwrap();
@@ -591,7 +595,8 @@ mod tests {
                 fee_rate: 0,
                 public_key: generate_public_key(),
             },
-            reject_capacity: 10,
+            num_signers: 10,
+            accept_threshold: 0,
         };
 
         // This should all be in one transaction since there are no votes
@@ -652,7 +657,8 @@ mod tests {
                 fee_rate: 0,
                 public_key,
             },
-            reject_capacity: 10,
+            num_signers: 10,
+            accept_threshold: 0,
         };
 
         // This should all be in one transaction since there are no votes
@@ -695,7 +701,8 @@ mod tests {
                 fee_rate: 0,
                 public_key,
             },
-            reject_capacity: 10,
+            num_signers: 10,
+            accept_threshold: 0,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -733,7 +740,8 @@ mod tests {
                 fee_rate: 0,
                 public_key,
             },
-            reject_capacity: 2,
+            num_signers: 10,
+            accept_threshold: 8,
         };
 
         let transactions = requests.construct_transactions().unwrap();
@@ -782,7 +790,8 @@ mod tests {
                 fee_rate: 0,
                 public_key,
             },
-            reject_capacity: 2,
+            num_signers: 10,
+            accept_threshold: 8,
         };
 
         let transactions = requests.construct_transactions().unwrap();
@@ -870,7 +879,8 @@ mod tests {
                 fee_rate: 25,
                 public_key,
             },
-            reject_capacity: 2,
+            num_signers: 10,
+            accept_threshold: 8,
         };
 
         // It's tough to match the outputs to the original request. We do
@@ -955,7 +965,8 @@ mod tests {
                 fee_rate: 0,
                 public_key,
             },
-            reject_capacity: 10,
+            num_signers: 10,
+            accept_threshold: 0,
         };
 
         let transactions = requests.construct_transactions();

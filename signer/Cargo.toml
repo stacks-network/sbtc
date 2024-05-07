@@ -17,6 +17,7 @@ bench = false
 [dependencies]
 bitcoin = { workspace = true, features = ["rand-std"] }
 p256k1.workspace = true
+rand.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-attributes.workspace = true

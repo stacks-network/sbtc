@@ -2357,6 +2357,7 @@ dependencies = [
  "bitcoin",
  "more-asserts",
  "p256k1",
+ "rand",
  "secp256k1",
  "test-case",
  "thiserror",
