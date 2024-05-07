@@ -20,6 +20,15 @@ pub enum Payload {
     WstsMessage(wsts::net::Message),
 }
 
+impl Payload {
+    pub fn to_message(self, bitcoin_chain_tip: bitcoin::BlockHash) -> SignerMessage {
+        SignerMessage {
+            bitcoin_chain_tip,
+            payload: self,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SignerDepositDecision;
 
@@ -70,5 +79,34 @@ fn hash_message(msg: &wsts::net::Message, hasher: &mut sha2::Sha256) {
         wsts::net::Message::NonceResponse(msg) => msg.hash(hasher),
         wsts::net::Message::SignatureShareRequest(msg) => msg.hash(hasher),
         wsts::net::Message::SignatureShareResponse(msg) => msg.hash(hasher),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ecdsa::SignECDSA;
+
+    use p256k1::scalar::Scalar;
+    use wsts::net::DkgBegin;
+
+    use std::str::FromStr;
+
+    #[test]
+    fn signer_messages_should_be_signable() {
+        let private_key = Scalar::from(123456789);
+        let dkg_begin = DkgBegin { dkg_id: 42 };
+        let block_hash = bitcoin::BlockHash::from_str(
+            "00000000000000000001985c05e50c9c7929345bfde82c5082983cd96d9183e0",
+        )
+        .unwrap();
+        let payload = Payload::WstsMessage(wsts::net::Message::DkgBegin(dkg_begin));
+
+        let signed_message = payload
+            .to_message(block_hash)
+            .sign_ecdsa(&private_key)
+            .expect("Failed to sign message");
+
+        assert!(signed_message.verify());
     }
 }
