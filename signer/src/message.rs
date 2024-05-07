@@ -85,7 +85,7 @@ fn hash_message(msg: &wsts::net::Message, hasher: &mut sha2::Sha256) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ecdsa::SignECDSA;
+    use crate::ecdsa::SignEcdsa;
 
     use p256k1::scalar::Scalar;
     use wsts::net::DkgBegin;

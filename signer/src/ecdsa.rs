@@ -77,11 +77,11 @@ impl<T> std::ops::DerefMut for Signed<T> {
 }
 
 /// Helper trait to provide the ability to construct a `Signed<T>`.
-pub trait SignECDSA: Sized {
+pub trait SignEcdsa: Sized {
     fn sign_ecdsa(self, private_key: &Scalar) -> Result<Signed<Self>, Error>;
 }
 
-impl<T: wsts::net::Signable> SignECDSA for T {
+impl<T: wsts::net::Signable> SignEcdsa for T {
     /// Create a `Signed<T>` instance with a signature and public key constructed from `private_key`.
     fn sign_ecdsa(self, private_key: &Scalar) -> Result<Signed<Self>, Error> {
         let signer_pub_key = ecdsa::PublicKey::new(private_key)?;
