@@ -6,6 +6,7 @@ use bitcoin::taproot::NodeInfo;
 use bitcoin::taproot::Signature;
 use bitcoin::taproot::TaprootSpendInfo;
 use bitcoin::transaction::Version;
+use bitcoin::Address;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::PublicKey;
@@ -172,8 +173,8 @@ pub struct WithdrawalRequest {
     pub amount: u64,
     /// The max fee amount to use for the sBTC deposit transaction.
     pub max_fee: u64,
-    /// The public key that will be able to spend the output.
-    pub public_key: PublicKey,
+    /// The address to spend the output.
+    pub address: Address,
     /// How each of the signers voted for the transaction.
     pub signer_bitmap: Vec<bool>,
 }
@@ -184,13 +185,11 @@ impl WithdrawalRequest {
         self.signer_bitmap.iter().map(|vote| !vote as u32).sum()
     }
 
-    /// Withdrawal UTXOs are Pay-to-Witness Public Key Hash (P2WPKH)
+    /// Withdrawal UTXOs pay to the given address
     fn as_tx_output(&self) -> TxOut {
-        let compressed = bitcoin::CompressedPublicKey(self.public_key.inner);
-        let pubkey_hash = compressed.wpubkey_hash();
         TxOut {
             value: Amount::from_sat(self.amount),
-            script_pubkey: ScriptBuf::new_p2wpkh(&pubkey_hash),
+            script_pubkey: self.address.script_pubkey(),
         }
     }
 }
@@ -462,6 +461,8 @@ mod tests {
 
     use super::*;
     use bitcoin::blockdata::opcodes;
+    use bitcoin::CompressedPublicKey;
+    use bitcoin::KnownHrp;
     use bitcoin::NetworkKind;
     use bitcoin::PrivateKey;
     use bitcoin::Txid;
@@ -477,6 +478,13 @@ mod tests {
     fn generate_public_key() -> PublicKey {
         let private_key = PrivateKey::generate(NetworkKind::Test);
         private_key.public_key(SECP256K1)
+    }
+
+    fn generate_address() -> Address {
+        let public_key = generate_public_key();
+        let pk = CompressedPublicKey(public_key.inner);
+
+        Address::p2wpkh(&pk, KnownHrp::Regtest)
     }
 
     fn generate_outpoint(amount: u64, vout: u32) -> OutPoint {
@@ -525,13 +533,13 @@ mod tests {
         }
     }
 
-    /// Create a new withdrawal request withdrawing to a random key.
+    /// Create a new withdrawal request withdrawing to a random address.
     fn create_withdrawal(amount: u64, max_fee: u64, votes_against: usize) -> WithdrawalRequest {
         WithdrawalRequest {
             max_fee,
             signer_bitmap: std::iter::repeat(false).take(votes_against).collect(),
             amount,
-            public_key: generate_public_key(),
+            address: generate_address(),
         }
     }
 
@@ -804,10 +812,7 @@ mod tests {
         let mut output_scripts: BTreeSet<String> = requests
             .withdrawals
             .iter()
-            .map(|req| {
-                let compressed = bitcoin::CompressedPublicKey(req.public_key.inner);
-                ScriptBuf::new_p2wpkh(&compressed.wpubkey_hash()).to_hex_string()
-            })
+            .map(|req| req.address.script_pubkey().to_hex_string())
             .collect();
 
         // Now we check that the counts of the withdrawals and deposits
@@ -889,11 +894,7 @@ mod tests {
         let mut withdrawal_amounts: BTreeMap<String, u64> = requests
             .withdrawals
             .iter()
-            .map(|req| {
-                let compressed = bitcoin::CompressedPublicKey(req.public_key.inner);
-                let script = ScriptBuf::new_p2wpkh(&compressed.wpubkey_hash());
-                (script.to_hex_string(), req.amount)
-            })
+            .map(|req| (req.address.script_pubkey().to_hex_string(), req.amount))
             .collect();
 
         let transactions = requests.construct_transactions().unwrap();
