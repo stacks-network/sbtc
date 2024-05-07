@@ -80,7 +80,7 @@ impl EmilyApiError {
         let body_result = self.response_body();
         match body_result {
             Ok(body) => common::SimpleApiResponse {
-                status_code: status_code,
+                status_code,
                 body: Some(Body::Text(body)),
             },
             // This occurs in the rare case that the API Error itself failed to serialize.
