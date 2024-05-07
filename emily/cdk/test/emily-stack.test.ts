@@ -1,12 +1,12 @@
-import { Template } from 'aws-cdk-lib/assertions';
 import * as cdk from 'aws-cdk-lib';
+import { Template } from 'aws-cdk-lib/assertions';
+import { Constants } from '../lib/constants';
 import { EmilyStack } from '../lib/emily-stack';
 import { EmilyStackProps } from '../lib/emily-stack-props';
-import { Environment } from 'aws-cdk-lib/aws-appconfig';
 
 // Constant test values
 const TEST_STACK_PROPS: EmilyStackProps = {
-    stageName: "dummyStage",
+    stageName: Constants.UNIT_TEST_STAGE_NAME,
     env: {
         account: "account",
         region: "region",
@@ -30,9 +30,9 @@ describe('EmilyStack Test', () => {
 
         // Check that the tables made it in; No need to include tests on the properties
         // that duplicate the specification.
-        expect(tableNames).toContain("DepositTable-account-region-dummyStage");
-        expect(tableNames).toContain("WithdrawalTable-account-region-dummyStage");
-        expect(tableNames).toContain("ChainstateTable-account-region-dummyStage");
+        expect(tableNames).toContain(`DepositTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
+        expect(tableNames).toContain(`WithdrawalTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
+        expect(tableNames).toContain(`ChainstateTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
     });
 
     it('should create a Lambda function', async () => {
