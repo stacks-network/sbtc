@@ -15,13 +15,18 @@ bench = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bitcoin.workspace = true
+bitcoin = { workspace = true, features = ["rand-std"] }
 p256k1.workspace = true
+rand.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-attributes.workspace = true
 tracing-subscriber.workspace = true
 wsts.workspace = true
+
+[dependencies.secp256k1]
+version = "*"
+features = ["rand-std", "global-context"]
 
 [dev-dependencies]
 more-asserts = "0.3"
