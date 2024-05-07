@@ -4,10 +4,6 @@ description = "AWS lambda binary for Emily API requests."
 version = "0.1.0"
 edition = "2021"
 
-[[bin]]
-name = "entrypoint"
-path = "src/bin/entrypoint.rs"
-
 [dependencies]
 tokio = { workspace = true, features = ["full"] }
 serde.workspace = true

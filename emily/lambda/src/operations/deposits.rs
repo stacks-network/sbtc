@@ -58,7 +58,7 @@ pub fn handle_get_txn_deposits(
                 last_update_height: Some(3.0),
                 last_update_block_hash: Some("aSmallDog".to_string()),
                 status: models::OpStatus::Accepted,
-                status_message: "Naruto Uzumaki will be Hokage".to_string(),
+                status_message: "Uzumaki, Naruto will be Hokage".to_string(),
                 parameters: Box::new(models::DepositParameters {
                     lock_time: 22222.0,
                     max_fee: 33333.0,

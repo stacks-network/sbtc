@@ -76,23 +76,21 @@ impl EmilyApiError {
 
     #[allow(clippy::wrong_self_convention)]
     pub fn to_apigw_response(self) -> ApiGatewayProxyResponse {
-
         let status_code = self.status_code();
         let body_result = self.response_body();
-
         match body_result {
             Ok(body) => common::SimpleApiResponse {
                 status_code: status_code,
                 body: Some(Body::Text(body)),
             },
             // This occurs in the rare case that the API Error itself failed to serialize.
-            Err(err) => common::SimpleApiResponse {
+            Err(_) => common::SimpleApiResponse {
                 status_code: http::StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                 // This output won't be of the right format for the client, but this is an edge case where
                 // the serialization will have needed to fail on a well defined structure, and this error
                 // can be handled by someone receiving data from the client since they'll need to handle
                 // potential errors anyway.
-                body: Some(Body::Text(serde_json::json!({"message": format!("Server error {err} on {self}")}).to_string()))
+                body: Some(Body::Text(serde_json::json!({"message": format!("Server error: {self}")}).to_string()))
             }
         }.to_apigw_response()
     }
