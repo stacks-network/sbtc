@@ -52,12 +52,12 @@ impl SbtcRequests {
     /// signers' UTXO.
     ///
     /// This function can fail if the output amounts are greater than the
-    /// input amounts. This should never happen in practice.
+    /// input amounts.
     pub fn construct_transactions(&self) -> Result<Vec<UnsignedTransaction>, Error> {
         let withdrawals = self.withdrawals.iter().map(Request::Withdrawal);
         let deposits = self.deposits.iter().map(Request::Deposit);
 
-        // Create a list of requests where each request can be approved on it's own.
+        // Create a list of requests where each request can be approved on its own.
         let items = deposits.chain(withdrawals);
 
         compute_optimal_packages(items, self.reject_capacity)
@@ -158,7 +158,7 @@ impl DepositRequest {
 
 #[derive(Debug)]
 pub struct WithdrawalRequest {
-    /// The amount of sBTC sats to withdraw.
+    /// The amount of BTC, in sats, to withdraw.
     pub amount: u64,
     /// The max fee amount to use for the sBTC deposit transaction.
     pub max_fee: u64,
@@ -316,7 +316,7 @@ impl<'a> UnsignedTransaction<'a> {
 
     /// Construct a "stub" BTC transaction from the given requests.
     ///
-    /// The returned BTC transaction is signed with dummy signatures so it
+    /// The returned BTC transaction is signed with dummy signatures, so it
     /// has the same virtual size as a proper transaction. Note that the
     /// output amounts haven't been adjusted for fees.
     ///
@@ -566,7 +566,7 @@ mod tests {
         let sig = UnsignedTransaction::generate_dummy_signature();
         let tx_in = deposit.as_tx_input(sig);
 
-        // The deposits are taproot spend and do not have an script. That
+        // The deposits are taproot spend and do not have a script. The
         // actual spend script and input data gets put in the witness data
         assert!(tx_in.script_sig.is_empty());
     }
@@ -828,13 +828,13 @@ mod tests {
     }
 
     /// Check the following:
-    /// * The fees for each transaction is at least as large as the fee_rate in the
-    ///   signers' state.
-    /// * Each deposit request pays the same fee.
+    /// * The fees for each transaction is at least as large as the fee_rate
+    ///   in the signers' state.
+    /// * Each deposit and withdrawal request pays the same fee.
     /// * The total fees are equal to the number of request times the fee per
     ///   request amount.
-    /// * The withdrawals do not pay for all of the fees, deposits pay fees too
-    ///   implicitly by the amounts deducted from the signers.
+    /// * Deposit requests pay fees too, but implicitly by the amounts
+    ///   deducted from the signers.
     #[test]
     fn returned_txs_match_fee_rate() {
         // Each deposit and withdrawal has a max fee greater than the current market fee rate
