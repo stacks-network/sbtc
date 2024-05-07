@@ -62,6 +62,20 @@ impl<T: wsts::net::Signable> Signed<T> {
     }
 }
 
+impl<T> std::ops::Deref for Signed<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<T> std::ops::DerefMut for Signed<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
 /// Helper trait to provide the ability to construct a `Signed<T>`.
 pub trait SignECDSA: Sized {
     fn sign_ecdsa(self, private_key: &Scalar) -> Result<Signed<Self>, Error>;
@@ -139,11 +153,31 @@ mod tests {
         assert!(!signed_msg.verify());
     }
 
+    #[test]
+    fn signed_should_deref_to_the_underlying_type() {
+        let msg = SignableStr("I'm Batman");
+        let bruce_wayne_private_key = Scalar::from(1337);
+
+        let signed_msg = msg
+            .sign_ecdsa(&bruce_wayne_private_key)
+            .expect("Failed to sign message");
+
+        assert_eq!(signed_msg.len(), 10);
+    }
+
     struct SignableStr(&'static str);
 
     impl wsts::net::Signable for SignableStr {
         fn hash(&self, hasher: &mut sha2::Sha256) {
             hasher.update(self.0)
+        }
+    }
+
+    impl std::ops::Deref for SignableStr {
+        type Target = &'static str;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
         }
     }
 }
