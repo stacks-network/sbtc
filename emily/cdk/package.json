@@ -8,7 +8,7 @@
     "build": "(cd ../api-definition && npm run build-openapi) && tsc",
     "watch": "tsc -w",
     "test": "jest",
-    "cdk": "cdk",
+    "cdk": "npx aws-cdk",
     "clean": "rm -rf node_modules .cdk.staging cdk.out .generated-sources"
   },
   "devDependencies": {

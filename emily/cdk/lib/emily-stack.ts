@@ -5,6 +5,7 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
+import { Constants } from './constants';
 import { EmilyStackProps } from './emily-stack-props';
 import { EmilyStackUtils } from './emily-stack-utils';
 
@@ -166,8 +167,11 @@ export class EmilyStack extends cdk.Stack {
             functionName: EmilyStackUtils.getResourceName(operationLambdaId, props),
             architecture: lambda.Architecture.ARM_64, // <- Will need to change when run locally for x86
             runtime: lambda.Runtime.PROVIDED_AL2023,
-            code: lambda.Code.fromAsset(EmilyStackUtils.getPathFromProjectRoot(
-                "target/lambda/emily-operation-lambda/bootstrap.zip"
+            code:
+            lambda.Code.fromAsset(EmilyStackUtils.getPathFromProjectRoot(
+                props.stageName == Constants.UNIT_TEST_STAGE_NAME
+                    ? "emily/cdk/test/assets/empty-lambda.zip"
+                    : "target/lambda/emily-operation-lambda/bootstrap.zip"
             )),
             // Lambda should be very fast. Something is wrong if it takes > 5 seconds.
             timeout: cdk.Duration.seconds(5),

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
+import 'source-map-support/register';
 import { EmilyStack } from '../lib/emily-stack';
 import { EmilyStackUtils } from '../lib/emily-stack-utils';
 

@@ -1,3 +1,4 @@
+import { Constants } from '../lib/constants';
 import { EmilyStackProps } from '../lib/emily-stack-props';
 import { EmilyStackUtils } from '../lib/emily-stack-utils';
 
@@ -10,7 +11,7 @@ describe('EmilyStackUtils Test', () => {
     it('test resource name is generated properly.', async () => {
         const testEmilyStackProps: EmilyStackProps = {
             stackName: "testStack",
-            stageName: "testStage", // Default to dev stage.
+            stageName: Constants.UNIT_TEST_STAGE_NAME, // Default to dev stage.
             env: {
                 account: "testAwsAccount",
                 region: "testAwsRegion",
@@ -18,16 +19,16 @@ describe('EmilyStackUtils Test', () => {
         }
         const resourceName: string = EmilyStackUtils
             .getResourceName("ResourceId", testEmilyStackProps);
-        expect(resourceName).toEqual("ResourceId-testAwsAccount-testAwsRegion-testStage");
+        expect(resourceName).toEqual(`ResourceId-testAwsAccount-testAwsRegion-${Constants.UNIT_TEST_STAGE_NAME}`);
     });
 
     it('Test resource name is generated properly.', async () => {
         process.env = {
-            AWS_STAGE: "TestStage",
+            AWS_STAGE: Constants.UNIT_TEST_STAGE_NAME,
             AWS_ACCOUNT: "TestAccount" ,
             AWS_REGION: "TestRegion",
         };
         const resourceName: string = EmilyStackUtils.getStackName("StackId");
-        expect(resourceName).toEqual("StackId-TestAccount-TestRegion-TestStage");
+        expect(resourceName).toEqual(`StackId-TestAccount-TestRegion-${Constants.UNIT_TEST_STAGE_NAME}`);
     });
 });
