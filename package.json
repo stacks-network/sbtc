@@ -1,4 +1,7 @@
 {
   "name": "sbtc-bootstrap",
-  "private": true
+  "private": true,
+  "engines": {
+    "pnpm": "9"
+  }
 }
