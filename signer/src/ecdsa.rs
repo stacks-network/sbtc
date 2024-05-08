@@ -45,7 +45,7 @@ use p256k1::scalar::Scalar;
 
 /// Wraps an inner type with a public key and a signature,
 /// allowing easy verification of the integrity of the inner data.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Signed<T> {
     /// The signed structure.
     pub inner: T,

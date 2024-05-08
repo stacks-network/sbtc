@@ -1,6 +1,6 @@
 use sha2::Digest;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SignerMessage {
     /// The bitcoin chain tip defining the signers view of the blockchain at the time the message was created
     pub bitcoin_chain_tip: bitcoin::BlockHash,
@@ -8,7 +8,7 @@ pub struct SignerMessage {
     pub payload: Payload,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Payload {
     SignerDepositDecision(SignerDepositDecision),
     SignerWithdrawDecision(SignerWithdrawDecision),
@@ -29,22 +29,22 @@ impl Payload {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SignerDepositDecision;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SignerWithdrawDecision;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StacksTransactionSignRequest;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StacksTransactionSignature;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BitcoinTransactionSignRequest;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BitcoinTransactionSignAck;
 
 impl wsts::net::Signable for SignerMessage {
