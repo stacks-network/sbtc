@@ -7,6 +7,51 @@ import type {
 } from "@clarigen/core";
 
 export const contracts = {
+  sbtcDeposit: {
+    functions: {
+      completeDepositWrapper: {
+        name: "complete-deposit-wrapper",
+        access: "public",
+        args: [
+          { name: "txid", type: { buffer: { length: 32 } } },
+          { name: "vout-index", type: "uint128" },
+          { name: "amount", type: "uint128" },
+          { name: "recipient", type: "principal" },
+        ],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          txid: TypedAbiArg<Uint8Array, "txid">,
+          voutIndex: TypedAbiArg<number | bigint, "voutIndex">,
+          amount: TypedAbiArg<number | bigint, "amount">,
+          recipient: TypedAbiArg<string, "recipient">,
+        ],
+        Response<boolean, bigint>
+      >,
+    },
+    maps: {},
+    variables: {
+      ERR_TXID_LEN: {
+        name: "ERR_TXID_LEN",
+        type: "uint128",
+        access: "constant",
+      } as TypedAbiVariable<bigint>,
+      txidLength: {
+        name: "txid-length",
+        type: "uint128",
+        access: "constant",
+      } as TypedAbiVariable<bigint>,
+    },
+    constants: {
+      ERR_TXID_LEN: 300n,
+      txidLength: 32n,
+    },
+    non_fungible_tokens: [],
+    fungible_tokens: [],
+    epoch: "Epoch25",
+    clarity_version: "Clarity2",
+    contractName: "sbtc-deposit",
+  },
   sbtcRegistry: {
     functions: {
       incrementLastWithdrawalRequestId: {
@@ -21,6 +66,25 @@ export const contracts = {
         args: [],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<[], Response<boolean, bigint>>,
+      completeDeposit: {
+        name: "complete-deposit",
+        access: "public",
+        args: [
+          { name: "txid", type: { buffer: { length: 32 } } },
+          { name: "vout-index", type: "uint128" },
+          { name: "amount", type: "uint128" },
+          { name: "recipient", type: "principal" },
+        ],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          txid: TypedAbiArg<Uint8Array, "txid">,
+          voutIndex: TypedAbiArg<number | bigint, "voutIndex">,
+          amount: TypedAbiArg<number | bigint, "amount">,
+          recipient: TypedAbiArg<string, "recipient">,
+        ],
+        Response<boolean, bigint>
+      >,
       createWithdrawalRequest: {
         name: "create-withdrawal-request",
         access: "public",
@@ -98,6 +162,30 @@ export const contracts = {
       >,
     },
     maps: {
+      completedDeposits: {
+        name: "completed-deposits",
+        key: {
+          tuple: [
+            { name: "txid", type: { buffer: { length: 32 } } },
+            { name: "vout-index", type: "uint128" },
+          ],
+        },
+        value: {
+          tuple: [
+            { name: "amount", type: "uint128" },
+            { name: "recipient", type: "principal" },
+          ],
+        },
+      } as TypedAbiMap<
+        {
+          txid: Uint8Array;
+          voutIndex: number | bigint;
+        },
+        {
+          amount: bigint;
+          recipient: string;
+        }
+      >,
       withdrawalRequests: {
         name: "withdrawal-requests",
         key: "uint128",
@@ -216,9 +304,18 @@ export const accounts = {
     address: "ST2NEB84ASENDXKYGJPQW86YXQCEFEX2ZQPG87ND",
     balance: "100000000000000",
   },
+  wallet_8: {
+    address: "ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP",
+    balance: "100000000000000",
+  },
+  wallet_5: {
+    address: "ST2REHHS5J3CERCRBEPMGH7921Q6PYKAADT7JP2VB",
+    balance: "100000000000000",
+  },
 } as const;
 
 export const identifiers = {
+  sbtcDeposit: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-deposit",
   sbtcRegistry: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-registry",
 } as const;
 
@@ -229,6 +326,12 @@ export const simnet = {
 } as const;
 
 export const deployments = {
+  sbtcDeposit: {
+    devnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-deposit",
+    simnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-deposit",
+    testnet: null,
+    mainnet: null,
+  },
   sbtcRegistry: {
     devnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-registry",
     simnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-registry",
