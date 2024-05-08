@@ -171,7 +171,7 @@ export class EmilyStack extends cdk.Stack {
             lambda.Code.fromAsset(EmilyStackUtils.getPathFromProjectRoot(
                 props.stageName == Constants.UNIT_TEST_STAGE_NAME
                     ? "emily/cdk/test/assets/empty-lambda.zip"
-                    : "target/lambda/emily-operation-lambda/bootstrap.zip"
+                    : "target/lambda/emily-lambda/bootstrap.zip"
             )),
             // Lambda should be very fast. Something is wrong if it takes > 5 seconds.
             timeout: cdk.Duration.seconds(5),
@@ -214,7 +214,7 @@ export class EmilyStack extends cdk.Stack {
             restApiName: EmilyStackUtils.getResourceName(restApiId, props),
             apiDefinition: EmilyStackUtils.restApiDefinitionWithLambdaIntegration(
                 EmilyStackUtils.getPathFromProjectRoot(
-                    ".generated-sources/openapi/openapi/Emily.openapi.json"
+                    ".generated-sources/smithy/openapi/openapi/Emily.openapi.json"
                 ),
                 [
                     // This must match the Lambda name from the @aws.apigateway#integration trait in the

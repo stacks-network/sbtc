@@ -1,5 +1,5 @@
 [package]
-name = "emily-operation-lambda"
+name = "emily-lambda"
 description = "AWS lambda binary for Emily API requests."
 version = "0.1.0"
 edition = "2021"

@@ -1,4 +1,4 @@
-use emily_operation_lambda::eventhandler::handle_event;
+use emily_lambda::eventhandler::handle_event;
 use aws_lambda_events::apigw::ApiGatewayProxyRequest;
 use lambda_runtime::{service_fn, LambdaEvent};
 
