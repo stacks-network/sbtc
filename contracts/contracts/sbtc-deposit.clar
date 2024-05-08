@@ -4,7 +4,8 @@
 (define-constant txid-length u32)
 
 ;; error codes
-(define-constant ERR_TXID_LEN u300)
+(define-constant ERR_TXID_LEN (err u300))
+(define-constant ERR_DEPOSIT_REPLAY (err u301))
 
 ;; data vars
 ;;
@@ -21,9 +22,24 @@
 ;; This function handles the validation & minting of sBTC, it then calls
 ;; into the sbtc-registry contract to update the state of the protocol
 (define-public (complete-deposit-wrapper (txid (buff 32)) (vout-index uint) (amount uint) (recipient principal))
-    ;; TODO
-    ;; implement, placeholder for completing deposit contract setup
-    (contract-call? .sbtc-registry complete-deposit txid vout-index amount recipient)
+    (let 
+        (
+            (replay-fetch (contract-call? .sbtc-registry get-completed-deposit txid vout-index))    
+        )
+
+        ;; Check that txid is the correct length
+        (asserts! (is-eq (len txid) txid-length) ERR_TXID_LEN)
+
+        ;; Assert that the deposit has not already been completed (no replay)
+        (asserts! (is-none replay-fetch) ERR_DEPOSIT_REPLAY)
+
+        ;; TODO
+        ;; implement, placeholder for completing deposit contract setup
+
+        ;; TODO(?)
+        ;; Check that txid was mined
+        (ok (contract-call? .sbtc-registry complete-deposit txid vout-index amount recipient))
+    )
 )
 
 ;; Accept multiple new deposit requests

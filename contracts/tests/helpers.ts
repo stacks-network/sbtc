@@ -12,8 +12,13 @@ export const bob = accounts.wallet_2.address;
 export const charlie = accounts.wallet_3.address;
 
 export const registry = contracts.sbtcRegistry;
+export const deposit = contracts.sbtcDeposit;
 
 export const controllerId = `${accounts.deployer.address}.controller`;
+
+export function completeDeposit(txid: Uint8Array, vout: number, amount: number, recipient: string) {
+  
+}
 
 export function getLastWithdrawalRequestId() {
   return varGet(

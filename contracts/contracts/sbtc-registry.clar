@@ -3,7 +3,7 @@
 ;; Error codes
 
 ;; Contract caller is not authorized
-(define-constant ERR_UNAUTHORIZED u400)
+(define-constant ERR_UNAUTHORIZED (err u400))
 
 ;; Invalid request ID
 (define-constant ERR_INVALID_REQUEST_ID (err u401))
@@ -42,6 +42,28 @@
     amount: uint,
     recipient: principal
   }
+)
+
+;; Read-only functions
+
+;; Get a withdrawal request by its ID.
+;; 
+;; This function returns the fields of the withrawal
+;; request, along with it's status.
+(define-read-only (get-withdrawal-request (id uint))
+  (match (map-get? withdrawal-requests id)
+    request (some (merge request {
+      status: (map-get? withdrawal-status id)
+    }))
+    none
+  )
+)
+
+;; Get a completed deposit by its transaction ID & vout index.
+;;
+;; This function returns the fields of the completed-deposits map.
+(define-read-only (get-completed-deposit (txid (buff 32)) (vout-index uint))
+  (map-get? completed-deposits {txid: txid, vout-index: vout-index})
 )
 
 ;; Public functions
@@ -88,20 +110,6 @@
   )
 )
 
-;; Read-only functions
-
-;; Get a withdrawal request by its ID.
-;; 
-;; This function returns the fields of the withrawal
-;; request, along with it's status.
-(define-read-only (get-withdrawal-request (id uint))
-  (match (map-get? withdrawal-requests id)
-    request (some (merge request {
-      status: (map-get? withdrawal-status id)
-    }))
-    none
-  )
-)
 ;; Store a new insert request.
 ;; Note that this function can only be called by other sBTC
 ;; contracts (specifically the current version of the deposit contract) 
