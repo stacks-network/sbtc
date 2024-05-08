@@ -31,9 +31,7 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /bitcoin/bin/* /usr/local/bin
 
 COPY default.conf /etc/nginx/conf.d/default.conf
-EXPOSE 18443
-EXPOSE 18444
-EXPOSE 18433
+
 ADD entrypoint.sh /usr/local/bin
 RUN chmod a+x /usr/local/bin/entrypoint.sh
 
