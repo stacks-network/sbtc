@@ -1,5 +1,6 @@
 [package]
 name = "emily-operation-lambda"
+description = "AWS lambda binary for Emily API requests."
 version = "0.1.0"
 edition = "2021"
 
@@ -13,6 +14,7 @@ http.workspace = true
 aws-sdk-dynamodb.workspace = true
 emily.workspace = true
 openssl.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 more-asserts = "0.3"

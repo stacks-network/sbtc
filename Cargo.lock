@@ -862,6 +862,7 @@ dependencies = [
  "serde 1.0.201",
  "serde_json",
  "test-case",
+ "thiserror",
  "tokio",
 ]
 

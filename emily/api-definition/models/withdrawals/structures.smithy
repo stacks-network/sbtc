@@ -29,7 +29,7 @@ resource Withdrawal {
 }
 
 structure WithdrawalParameters {
-    maxFee: Integer
+    @required maxFee: Integer
 }
 
 structure WithdrawalData {
@@ -41,8 +41,8 @@ structure WithdrawalData {
     @required blockHeight: Integer
     @required recipient: String
     @required amount: Satoshis
-    lastUpdateHeight: Integer
-    lastUpdateBlockHash: Base64EncodedBinary
+    @required lastUpdateHeight: Integer
+    @required lastUpdateBlockHash: Base64EncodedBinary
     @required status: OpStatus
     @required statusMessage: String
     @required parameters: WithdrawalParameters
@@ -52,7 +52,7 @@ structure WithdrawalData {
 }
 
 list WithdrawalDataList {
-    member: DepositData
+    member: WithdrawalData
 }
 
 structure WithdrawalBasicInfo {
@@ -71,8 +71,8 @@ list WithdrawalBasicInfoList {
 
 structure WithdrawalUpdate {
     // Identifiers
-    @required bitcoinTxid: Base64EncodedBinary,
-    @required bitcoinTxOutputIndex: Integer,
+    @required requestId: String,
+    @required blockHash: Base64EncodedBinary,
 
     // Parameters
     recipient: String
@@ -81,7 +81,7 @@ structure WithdrawalUpdate {
     lastUpdateBlockHash: Base64EncodedBinary
     status: OpStatus
     statusMessage: String
-    parameters: DepositParameters
+    parameters: WithdrawalParameters
     fulfillment: Fulfillment
 }
 

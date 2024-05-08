@@ -3,6 +3,13 @@ $version: "2.0"
 namespace stacks.sbtc
 
 @error("client")
+@httpError(400)
+structure BadRequestError {
+    @required
+    message: String
+}
+
+@error("client")
 @httpError(403)
 structure ForbiddenError {
     @required
