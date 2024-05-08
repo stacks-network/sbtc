@@ -90,7 +90,7 @@ services:
     environment:
       SIGNER_ENDPOINT: "0.0.0.0:30000"
       MY_HTTP_AUTH_TOKEN: "helloworld"
-      STACKS_PRIVATE_KEY: "30947cbe3a7942ad502fceb66253191ad08db4ec4cddf66eba7e9ce3d73dd3ca01"
+      STACKS_PRIVATE_KEY: "7287ba251d44a4d3fd9276c88ce34c5c52a038955511cccaf77e61068649c17801"
       STACKS_NODE_RPC_HOST: "stacks"
       STACKS_NODE_RPC_PORT: "20443"
       RUST_BACKTRACE: '1'
