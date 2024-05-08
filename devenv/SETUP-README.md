@@ -29,7 +29,12 @@ alias kdf='kubectl delete -f'
 
 * Install: `brew install helm`
 
-[5] Install Postgres tools
+[5] Install Minikube Addons
+
+`minikube addons enable volumesnapshots`
+`minikube addons enable csi-hostpath-driver`
+
+<!-- [6] Install Postgres tools -->
 
 
 
