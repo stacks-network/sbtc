@@ -100,6 +100,8 @@
       status: (map-get? withdrawal-status id)
     }))
     none
+  )
+)
 ;; Store a new insert request.
 ;; Note that this function can only be called by other sBTC
 ;; contracts (specifically the current version of the deposit contract) 
