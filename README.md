@@ -26,19 +26,17 @@ Ths repository builds off the developer experience within https://github.com/sta
 
 ### Tools to Install
 
-> This section is under development and may be missing some tools. Please
+> This repository is under development and this section may become outdated. Please
 > open a GitHub issue if you believe some tools are missing.
 
-The following are the developer tools that you should install on your local machine in
-order to build and run the sources in this repository.
+The following are the developer tools that you should install on your local machine in order to build and run the sources in this repository.
 
 - **[Cargo](https://doc.rust-lang.org/cargo/)** - [Installation Guide](https://doc.rust-lang.org/cargo/getting-started/installation.html) - Builds rust packages.
-- **[npm](https://www.npmjs.com/)** - [Installation Guide](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) - Manages node packages
+- **[Cargo-lambda](https://www.cargo-lambda.info/)** - [Installation Guide](https://www.cargo-lambda.info/guide/getting-started.html) - Compile the package for AWS Lambda.
 - **[pnpm](https://pnpm.io)** - [Installation guide](https://pnpm.io/installation) - Manages node packages
 - **[Smithy](https://smithy.io/2.0/index.html)** - [Installation Guide](https://smithy.io/2.0/guides/smithy-cli/cli_installation.html) - Generates OpenAPI templates
-- **[OpenAPI Generator](https://openapi-generator.tech/)** - [Installation Guide](https://openapi-generator.tech/docs/installation/) - Generates API clients
+- **[Make](https://www.gnu.org/software/make/)** - Development task runner; natively present on nearly every system.
 - **[Java 21](https://www.oracle.com/java/)** - [Installation Guide](https://www.oracle.com/java/technologies/downloads/) - Required for OpenAPI Generator
-- **[AWS CDK](https://aws.amazon.com/cdk/)** - [Installation Guide](https://docs.aws.amazon.com/cdk/v2/guide/getting_started.html#getting_started_install) - Compiles cloud infrastructure templates
 
 #### Tool Versions
 
@@ -48,11 +46,11 @@ resources to be built and tested.
 ```bash
 echo "\n--- sBTC tool versions ---" \
     && cargo --version \
-    && echo "npm $(npm --version)" \
-    && echo "cdk $(cdk --version)" \
+    && cargo lambda --version \
+    && echo "pnpm $(pnpm --version)" \
     && echo "smithy $(smithy --version)" \
-    && echo "openapi-generator $(openapi-generator-cli version)" \
-    && java --version
+    && make --version | head -n 1 \
+    && java --version | head -n 1
 ```
 
 Below is the output on a machine that is able to build and run all the sources and tests.
@@ -60,31 +58,23 @@ Below is the output on a machine that is able to build and run all the sources a
 ```
 --- sBTC tool versions ---
 cargo 1.77.2 (e52e36006 2024-03-26)
-npm 10.5.0
-cdk 2.139.1 (build b88f959)
+cargo-lambda 1.2.1 (12f9b61 2024-04-05Z)
+pnpm 8.15.4
 smithy 1.47.0
-openapi-generator 7.5.0
+GNU Make 3.81
 openjdk 21.0.2 2024-01-16
-OpenJDK Runtime Environment Homebrew (build 21.0.2)
-OpenJDK 64-Bit Server VM Homebrew (build 21.0.2, mixed mode, sharing)
 ```
 
 ### Building
 
-To build the sources you will need to run the following command before compiling the rest
-of the sources. This is due to the rust code autogeneration that the emily package
-requires.
+To build the sources we recommend you use the `Makefile` commands; they'll build the dependencies in the right order.
 
-```
-cargo build --package emily
-```
+- `make install` - Installs node dependencies
+- `make build` - Builds packages
+- `make lint` - Lints packages
+- `make clean` - Cleans workspace
 
-After running that command you can build the rest of the sources by running cargo
-as usual.
-
-```
-cargo build && cargo test
-```
+For other commands read the `Makefile` at repository root.
 
 ### Operating Systems
 
