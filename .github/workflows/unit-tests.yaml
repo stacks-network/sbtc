@@ -8,7 +8,7 @@ on:
 
 jobs:
   tests:
-    name: Rust Test
+    name: Run Unit Tests
     runs-on: ubuntu-20.04
     steps:
 
