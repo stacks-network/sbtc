@@ -1,3 +1,4 @@
+pub mod codec;
 pub mod ecdsa;
 pub mod error;
 pub mod logging;
