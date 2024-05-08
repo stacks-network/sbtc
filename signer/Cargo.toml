@@ -18,6 +18,8 @@ bench = false
 bitcoin = { workspace = true, features = ["rand-std"] }
 p256k1.workspace = true
 rand.workspace = true
+serde.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-attributes.workspace = true
