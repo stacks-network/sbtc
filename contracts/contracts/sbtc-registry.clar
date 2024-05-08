@@ -129,6 +129,11 @@
       amount: amount,
       recipient: recipient
     })
+    (print {
+      topic: "completed-deposit",
+      txid: txid,
+      vout-index: vout-index
+    })
     (ok true)
   )
 )

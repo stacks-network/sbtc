@@ -33,11 +33,13 @@
         ;; Assert that the deposit has not already been completed (no replay)
         (asserts! (is-none replay-fetch) ERR_DEPOSIT_REPLAY)
 
-        ;; TODO
-        ;; implement, placeholder for completing deposit contract setup
-
         ;; TODO(?)
         ;; Check that txid was mined
+
+        ;; TODO
+        ;; Mint the sBTC to the recipient
+
+        ;; Complete the deposit
         (ok (contract-call? .sbtc-registry complete-deposit txid vout-index amount recipient))
     )
 )
