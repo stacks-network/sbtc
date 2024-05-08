@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "sources": ["models"],
-  "outputDirectory": "../../.generated-sources",
+  "outputDirectory": "../../.generated-sources/smithy",
   "maven": {
     "dependencies": [
       "software.amazon.smithy:smithy-openapi:1.47.0",

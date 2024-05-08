@@ -849,7 +849,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "emily-operation-lambda"
+name = "emily-lambda"
 version = "0.1.0"
 dependencies = [
  "aws-sdk-dynamodb",
