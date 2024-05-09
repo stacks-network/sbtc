@@ -30,3 +30,4 @@ auth_password = "$MY_HTTP_AUTH_TOKEN"
 stacks_private_key = "$STACKS_PRIVATE_KEY"
 EOF
 
+stacks-signer run --config ./config.toml
