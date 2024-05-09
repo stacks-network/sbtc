@@ -20,8 +20,12 @@ once_cell = "1.8.0"
 sbtc-signer = { path = "../signer" }
 tracing = { version = "0.1", default-features = false }
 tracing-attributes = "0.1"
+thiserror = "1.0.60"
 
 [dependencies.tracing-subscriber]
 version = "0.3"
 default-features = false
 features = ["env-filter", "fmt", "json", "time"]
+
+[dev-dependencies]
+mockito = "0.28"
