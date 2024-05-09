@@ -1,0 +1,76 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bitcoin
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: electrs
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stacks
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mariadb
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: postgres
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mempool
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: blocklist1
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: blocklist2
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: blocklist3
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sbtc-s1
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sbtc-s2
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sbtc-s3
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sbtc-bridge
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sbtc-bridge
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sponsor-api
+---

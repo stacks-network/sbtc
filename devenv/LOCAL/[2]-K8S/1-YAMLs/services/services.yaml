@@ -104,7 +104,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: mempool-frontend-service
-  namespace: mempool-frontend
+  namespace: mempool
   labels:
     app: mempool-frontend
   
@@ -122,7 +122,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: mempool-backend-service
-  namespace: mempool-backend
+  namespace: mempool
   labels:
     app: mempool-backend
   
@@ -187,6 +187,28 @@ spec:
       protocol: UDP
   selector:
     app: stacks-node
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nakamoto-signer-service
+  namespace: stacks
+  labels:
+    app: nakamoto-signer
+  
+spec:
+  type: ClusterIP
+  ports:
+    - port: 30000
+      targetPort: 30000
+      name: nakamoto-signer-port3-tcp
+      protocol: TCP
+    - port: 30000
+      targetPort: 30000
+      name: nakamoto-signer-port3-udp
+      protocol: UDP
+  selector:
+    app: nakamoto-signer
 ---
 apiVersion: v1
 kind: Service
