@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
       - name: stacks-api-container
-        image: local/stacks-api:v3
+        image: local/stacks-api:v4
         imagePullPolicy: Never
         
         resources:

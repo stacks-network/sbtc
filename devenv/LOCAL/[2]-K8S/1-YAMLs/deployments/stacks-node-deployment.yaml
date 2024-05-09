@@ -58,7 +58,7 @@ spec:
           - name: MINER_KEY
             value: "19ec1c3e31d139c989a23a27eac60d1abfad5277d3ae9604242514c738258efa01"
           - name: BTC_NODE_RPC_HOST
-            value: "http://bitcoin-regtest-service.bitcoin"
+            value: "bitcoin-regtest-service.bitcoin"
           - name: BTC_NODE_RPC_USER
             value: "devnet"
           - name: BTC_NODE_RPC_PASSWORD

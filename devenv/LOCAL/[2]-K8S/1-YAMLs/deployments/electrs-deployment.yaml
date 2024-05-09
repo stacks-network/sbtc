@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
       - name: electrs-container
-        image: local/electrs:v4
+        image: local/electrs:v5
         imagePullPolicy: Never
         
         # livenessProbe:

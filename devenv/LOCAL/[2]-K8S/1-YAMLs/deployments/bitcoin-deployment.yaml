@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
       - name: bitcoin-regtest-container
-        image: local/bitcoin:v3
+        image: local/bitcoin:v4
         imagePullPolicy: Never
         
         resources:
