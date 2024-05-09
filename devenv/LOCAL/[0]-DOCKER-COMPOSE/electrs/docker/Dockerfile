@@ -21,6 +21,16 @@ RUN cargo install --locked --path .
 FROM builder as result
 # Copy the binaries
 COPY --from=electrs-build /root/.cargo/bin/electrs /usr/bin/electrs
+
+ARG RUST_BACKTRACE
+ARG BITCOIN_RPC_HOST
+ARG BITCOIN_RPC_PORT
+
+ENV RUST_BACKTRACE=$RUST_BACKTRACE
+ENV BITCOIN_RPC_HOST=$BITCOIN_RPC_HOST
+ENV BITCOIN_RPC_PORT=$BITCOIN_RPC_PORT
+
+
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod a+x /entrypoint.sh
 RUN apt-get update -qqy

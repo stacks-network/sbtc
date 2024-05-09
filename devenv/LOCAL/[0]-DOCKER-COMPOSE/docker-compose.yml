@@ -7,6 +7,13 @@ services:
       context: ./bitcoin/docker
       args:
         VERSION: "25.0"
+        BTC_NETWORK: "regtest"
+        BTC_DISABLEWALLET: 0
+        BTC_TXINDEX: 1
+        BTC_RPCBIND: "0.0.0.0"
+        BTC_RPCALLOWIP: "0.0.0.0/0"
+        BTC_RPCPASSWORD: "devnet"
+        BTC_RPCUSER: "devnet"
     ports:
       - 18444:18444
       - 18443:18443
@@ -45,6 +52,12 @@ services:
     stop_grace_period: 5s
     build:
       context: ./bitcoin-miner-sidecar/docker
+      args:
+        INIT_BTC_BLOCKS: 200
+        BTC_BLOCK_GEN_TIME: 10
+        BITCOIN_RPC_HOST: "bitcoin"
+        BITCOIN_RPC_PORT: "18443"
+        MINER_ADDRESS: "n3GRiDLKWuKLCw1DZmV75W1mE35qmW2tQm"
     depends_on:
       - bitcoin
     environment:
@@ -59,6 +72,17 @@ services:
     stop_grace_period: 5s
     build:
       context: ./stacks/docker
+      args:
+        STACKS_LOG_DEBUG: 0
+        STACKS_LOG_JSON: 0
+        LOCAL_PEER_SEED: "3fd68a8fcab004754d6fee4756dd9c84ad64ee19a11aa9930893540e1357696f2f73957cd6e92797d7a66d1d3ae4a4ea752a8924fe028f1fc2c06b9d6d0ee0ad"
+        STACKS_WORKING_DIR: "/var/stacks"
+        MY_HTTP_AUTH_TOKEN: "helloworld"
+        SIGNER_ENDPOINT: "nakamoto-signer:30000"
+        MINER_KEY: "19ec1c3e31d139c989a23a27eac60d1abfad5277d3ae9604242514c738258efa01"
+        BTC_NODE_RPC_HOST: "bitcoin"
+        BTC_NODE_RPC_USER: "devnet"
+        BTC_NODE_RPC_PASSWORD: "devnet"
     ports:
       - 20444:20444
       - 20443:20443
