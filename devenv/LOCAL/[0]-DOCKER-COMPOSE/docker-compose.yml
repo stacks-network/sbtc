@@ -6,19 +6,19 @@ services:
     build:
       context: ./bitcoin/docker
       args:
-        VERSION: '25.0'
+        VERSION: "25.0"
     ports:
       - 18444:18444
       - 18443:18443
       - 18433:18433
     environment:
-      - 'BTC_NETWORK=regtest'
-      - 'BTC_DISABLEWALLET=0'
-      - 'BTC_TXINDEX=1'
-      - 'BTC_RPCBIND=0.0.0.0'
-      - 'BTC_RPCALLOWIP=0.0.0.0/0'
-      - 'BTC_RPCPASSWORD=devnet'
-      - 'BTC_RPCUSER=devnet'
+      - "BTC_NETWORK=regtest"
+      - "BTC_DISABLEWALLET=0"
+      - "BTC_TXINDEX=1"
+      - "BTC_RPCBIND=0.0.0.0"
+      - "BTC_RPCALLOWIP=0.0.0.0/0"
+      - "BTC_RPCPASSWORD=devnet"
+      - "BTC_RPCUSER=devnet"
   postgres:
     image: postgres:15-alpine
     container_name: postgres
@@ -82,18 +82,25 @@ services:
     stop_grace_period: 5s
     build:
       context: ./nakamoto-signer/docker
+      args:
+        SIGNER_ENDPOINT: "0.0.0.0:30000"
+        MY_HTTP_AUTH_TOKEN: "helloworld"
+        STACKS_PRIVATE_KEY: "7287ba251d44a4d3fd9276c88ce34c5c52a038955511cccaf77e61068649c17801"
+        STACKS_NODE_RPC_HOST: "stacks"
+        STACKS_NODE_RPC_PORT: "20443"
+        RUST_BACKTRACE: "1"
     ports:
       - 30000:30000
-    depends_on:
-      - bitcoin
-      - bitcoin-miner
+    # depends_on:
+    #   - bitcoin
+    #   - bitcoin-miner
     environment:
       SIGNER_ENDPOINT: "0.0.0.0:30000"
       MY_HTTP_AUTH_TOKEN: "helloworld"
       STACKS_PRIVATE_KEY: "7287ba251d44a4d3fd9276c88ce34c5c52a038955511cccaf77e61068649c17801"
       STACKS_NODE_RPC_HOST: "stacks"
       STACKS_NODE_RPC_PORT: "20443"
-      RUST_BACKTRACE: '1'
+      RUST_BACKTRACE: "1"
   stacks-api:
     image: stacks-api:latest
     container_name: stacks-api
@@ -101,8 +108,8 @@ services:
     build:
       context: ./stacks-api/docker
       args:
-        GIT_URI: 'https://github.com/hirosystems/stacks-blockchain-api.git'
-        GIT_BRANCH: 'v7.10.0-nakamoto.7'
+        GIT_URI: "https://github.com/hirosystems/stacks-blockchain-api.git"
+        GIT_BRANCH: "v7.10.0-nakamoto.7"
     ports:
       - 3999:3999
       - 3700:3700
@@ -158,8 +165,8 @@ services:
       - bitcoin-miner
     environment:
       RUST_BACKTRACE: 1
-      BITCOIN_RPC_HOST: 'bitcoin'
-      BITCOIN_RPC_PORT: '18443'
+      BITCOIN_RPC_HOST: "bitcoin"
+      BITCOIN_RPC_PORT: "18443"
   mempool-web:
     image: mempool/frontend:latest
     container_name: mempool-web
