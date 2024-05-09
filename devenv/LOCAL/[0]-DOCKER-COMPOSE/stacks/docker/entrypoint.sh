@@ -211,3 +211,6 @@ amount = 24378281250000
 address = "ST0D135PF2R0S4B6S4G49QZC69KF19MSZ4Z5RDF5"
 amount = 24378281250000
 END
+
+
+stacks-node start --config ./config.toml

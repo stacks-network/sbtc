@@ -1,9 +1,3 @@
-# Needed ENV Variables:
-
-# - SINGER_ENDPOINT
-# - MY_HTTP_AUTH_TOKEN
-# - STACKS_PRIVATE_KEY
-
 FROM blockstack/stacks-core:2.5.0.0.3
 MAINTAINER Gowtham Sundar <gowtham@trustmachines.co>
 COPY . .
