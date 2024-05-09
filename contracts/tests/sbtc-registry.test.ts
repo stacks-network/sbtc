@@ -14,9 +14,13 @@ const alicePoxAddr = stxAddressToPoxAddress(alice);
 const bobPoxAddr = stxAddressToPoxAddress(bob);
 
 describe("sBTC registry contract", () => {
-  describe("setup", () => {
+  describe("withdrawal requests", () => {
+    test("Last request ID is zero", () => {
+      const lastId = getLastWithdrawalRequestId();
+      expect(lastId).toEqual(0n);
+    });
 
-    test("Testing placeholder deposit function", () => {
+    test("Storing a new withdrawal request", () => {
       const recipient = alicePoxAddr;
       const receipt = txOk(
         registry.createWithdrawalRequest({
@@ -43,6 +47,75 @@ describe("sBTC registry contract", () => {
       // ensure last-id is updated
       const lastId = getLastWithdrawalRequestId();
       expect(lastId).toEqual(1n);
+    });
+
+    test("emitted events when a new withdrawal is stored", () => {
+      const recipient = bobPoxAddr;
+      const receipt = txOk(
+        registry.createWithdrawalRequest({
+          recipient,
+          amount: 100n,
+          maxFee: 10n,
+          sender: bob,
+          height: simnet.blockHeight,
+        }),
+        alice
+      );
+      const prints = filterEvents(
+        receipt.events,
+        CoreNodeEventType.ContractEvent
+      );
+      expect(prints.length).toEqual(1);
+      const [print] = prints;
+      const printData = cvToValue<{
+        sender: string;
+        recipient: string;
+        amount: bigint;
+        maxFee: bigint;
+        blockHeight: bigint;
+        topic: string;
+      }>(print.data.value);
+
+      const request = getWithdrawalRequest(1n);
+      if (!request) {
+        throw new Error("Request not stored");
+      }
+      expect(printData).toStrictEqual({
+        sender: bob,
+        recipient: recipient,
+        amount: 100n,
+        maxFee: 10n,
+        blockHeight: request.blockHeight,
+        topic: "withdrawal-request",
+        requestId: 1n,
+      });
+    });
+
+    test("get-withdrawal-request includes status", () => {
+      txOk(
+        registry.createWithdrawalRequest({
+          sender: alice,
+          recipient: alicePoxAddr,
+          amount: 100n,
+          maxFee: 10n,
+          height: simnet.blockHeight,
+        }),
+        alice
+      );
+
+      const request = rov(registry.getWithdrawalRequest(1n));
+      if (!request) {
+        throw new Error("Request not found");
+      }
+      expect(request.status).toEqual(null);
+      expect(request).toStrictEqual({
+        sender: alice,
+        recipient: alicePoxAddr,
+        amount: 100n,
+        maxFee: 10n,
+        blockHeight: BigInt(simnet.blockHeight - 1),
+        status: null,
+      });
     });
   });
 });
