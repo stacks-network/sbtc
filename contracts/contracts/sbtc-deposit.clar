@@ -27,6 +27,9 @@
             (replay-fetch (contract-call? .sbtc-registry get-completed-deposit txid vout-index))    
         )
 
+        ;; TODO
+        ;; Check that tx-sender is the bootstrap signer
+
         ;; Check that txid is the correct length
         (asserts! (is-eq (len txid) txid-length) ERR_TXID_LEN)
 

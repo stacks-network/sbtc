@@ -31,14 +31,6 @@ export function getWithdrawalRequest(id: number | bigint) {
   return mapGet(registry.identifier, registry.maps.withdrawalRequests, id);
 }
 
-export function getCompletedDeposit(txid: Uint8Array, voutIndex: number) {
-  return mapGet(
-    registry.identifier, registry.maps.completedDeposits, tupleCV({
-      txid: bufferCV(txid),
-      voutIndex: voutIndex,
-    })
-  );
-}
 
 /**
  * Helper function to convert a BTC address string to a PoX address

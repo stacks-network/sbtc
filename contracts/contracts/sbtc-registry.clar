@@ -49,7 +49,7 @@
 ;; Get a withdrawal request by its ID.
 ;; 
 ;; This function returns the fields of the withrawal
-;; request, along with it's status.
+;; request, along with its status.
 (define-read-only (get-withdrawal-request (id uint))
   (match (map-get? withdrawal-requests id)
     request (some (merge request {
@@ -125,7 +125,7 @@
   )
   (begin
     (try! (validate-caller))
-    (map-set completed-deposits {txid: txid, vout-index: vout-index} {
+    (map-insert completed-deposits {txid: txid, vout-index: vout-index} {
       amount: amount,
       recipient: recipient
     })
