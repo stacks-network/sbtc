@@ -12,6 +12,7 @@ export const bob = accounts.wallet_2.address;
 export const charlie = accounts.wallet_3.address;
 
 export const registry = contracts.sbtcRegistry;
+export const deposit = contracts.sbtcDeposit;
 
 export const controllerId = `${accounts.deployer.address}.controller`;
 
@@ -25,6 +26,7 @@ export function getLastWithdrawalRequestId() {
 export function getWithdrawalRequest(id: number | bigint) {
   return mapGet(registry.identifier, registry.maps.withdrawalRequests, id);
 }
+
 
 /**
  * Helper function to convert a BTC address string to a PoX address

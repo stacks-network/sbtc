@@ -3,7 +3,7 @@
 ;; Error codes
 
 ;; Contract caller is not authorized
-(define-constant ERR_UNAUTHORIZED u400)
+(define-constant ERR_UNAUTHORIZED (err u400))
 
 ;; Invalid request ID
 (define-constant ERR_INVALID_REQUEST_ID (err u401))
@@ -34,6 +34,37 @@
 ;; Otherwise, the boolean value indicates whether
 ;; the deposit was accepted.
 (define-map withdrawal-status uint bool)
+
+;; Internal data structure to store completed
+;; deposit requests & avoid replay attacks.
+(define-map completed-deposits {txid: (buff 32), vout-index: uint}
+  {
+    amount: uint,
+    recipient: principal
+  }
+)
+
+;; Read-only functions
+
+;; Get a withdrawal request by its ID.
+;; 
+;; This function returns the fields of the withrawal
+;; request, along with its status.
+(define-read-only (get-withdrawal-request (id uint))
+  (match (map-get? withdrawal-requests id)
+    request (some (merge request {
+      status: (map-get? withdrawal-status id)
+    }))
+    none
+  )
+)
+
+;; Get a completed deposit by its transaction ID & vout index.
+;;
+;; This function returns the fields of the completed-deposits map.
+(define-read-only (get-completed-deposit (txid (buff 32)) (vout-index uint))
+  (map-get? completed-deposits {txid: txid, vout-index: vout-index})
+)
 
 ;; Public functions
 
@@ -79,18 +110,31 @@
   )
 )
 
-;; Read-only functions
-
-;; Get a withdrawal request by its ID.
+;; Store a new insert request.
+;; Note that this function can only be called by other sBTC
+;; contracts (specifically the current version of the deposit contract) 
+;; - it cannot be called by users directly.
 ;; 
-;; This function returns the fields of the withrawal
-;; request, along with it's status.
-(define-read-only (get-withdrawal-request (id uint))
-  (match (map-get? withdrawal-requests id)
-    request (some (merge request {
-      status: (map-get? withdrawal-status id)
-    }))
-    none
+;; This function does not handle validation or moving the funds.
+;; Instead, it is purely for the purpose of storing the completed deposit.
+(define-public (complete-deposit
+    (txid (buff 32))
+    (vout-index uint)
+    (amount uint)
+    (recipient principal)
+  )
+  (begin
+    (try! (validate-caller))
+    (map-insert completed-deposits {txid: txid, vout-index: vout-index} {
+      amount: amount,
+      recipient: recipient
+    })
+    (print {
+      topic: "completed-deposit",
+      txid: txid,
+      vout-index: vout-index
+    })
+    (ok true)
   )
 )
 
