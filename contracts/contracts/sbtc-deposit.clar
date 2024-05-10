@@ -36,9 +36,6 @@
         ;; Assert that the deposit has not already been completed (no replay)
         (asserts! (is-none replay-fetch) ERR_DEPOSIT_REPLAY)
 
-        ;; TODO(?)
-        ;; Check that txid was mined
-
         ;; TODO
         ;; Mint the sBTC to the recipient
 

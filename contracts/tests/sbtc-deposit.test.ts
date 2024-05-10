@@ -21,7 +21,7 @@ describe("sBTC deposit contract", () => {
         }),
         alice
       );
-      expect(receipt.value).toEqual(300n);
+      expect(receipt.value).toEqual(deposit.constants.ERR_TXID_LEN.value);
     });
 
     test("Fail complete-deposit-wrapper replay deposit (err 301)", () => {
@@ -44,7 +44,7 @@ describe("sBTC deposit contract", () => {
         }),
         alice
       );
-      expect(receipt1.value).toEqual(301n);
+      expect(receipt1.value).toEqual(deposit.constants.ERR_DEPOSIT_REPLAY.value);
     });
     
     test("Call complete-deposit-wrapper placeholder, check print", () => {

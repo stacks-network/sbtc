@@ -16,10 +16,6 @@ export const deposit = contracts.sbtcDeposit;
 
 export const controllerId = `${accounts.deployer.address}.controller`;
 
-// export function completeDeposit(txid: Uint8Array, vout: number, amount: number, recipient: string) {
-//   const receipt = txOk(contract.completeDeposit(txid, vout, amount, recipient), senderAddr);
-// }
-
 export function getLastWithdrawalRequestId() {
   return varGet(
     registry.identifier,
