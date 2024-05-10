@@ -5,6 +5,7 @@ import {
 } from "./helpers";
 import { test, expect, describe } from "vitest";
 import { txOk, filterEvents, rov, txErr } from "@clarigen/test";
+import { CoreNodeEventType, cvToValue } from '@clarigen/core';
 
 
 describe("sBTC deposit contract", () => {
@@ -46,7 +47,7 @@ describe("sBTC deposit contract", () => {
       expect(receipt1.value).toEqual(301n);
     });
     
-    test("Call complete-deposit-wrapper placeholder", () => {
+    test("Call complete-deposit-wrapper placeholder, check print", () => {
       const receipt = txOk(
         deposit.completeDepositWrapper({
           txid: new Uint8Array(32).fill(0),
@@ -56,7 +57,18 @@ describe("sBTC deposit contract", () => {
         }),
         alice
       );
-      expect(receipt.value).toEqual(true);
+      const printEvents = filterEvents(receipt.events, CoreNodeEventType.ContractEvent);
+      const [print] = printEvents;
+      const printData = cvToValue<{
+        topic: string;
+        txid: string;
+        voutIndex: bigint;
+      }>(print.data.value);
+      expect(printData).toStrictEqual({
+        topic: "completed-deposit",
+        txid: new Uint8Array(32).fill(0),
+        voutIndex: 0n,
+      });
     });
 
     test("Call get-complete-deposit placeholder", () => {
