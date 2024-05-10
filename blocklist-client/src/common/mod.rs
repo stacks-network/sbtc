@@ -12,6 +12,8 @@ pub struct BlocklistStatus {
     pub severity: String,
     // Blocklist client's acceptance decision based on the risk severity of the address
     pub accept: bool,
+    // Reason for the acceptance decision
+    pub reason: String,
 }
 
 /// Risk severity linked to an address

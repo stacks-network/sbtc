@@ -5,13 +5,13 @@ use warp::reject::Reject;
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("HTTP request failed with status code {0}: {1}")]
-    HttpRequestError(StatusCode, String),
+    HttpRequestErr(StatusCode, String),
 
     #[error("Network error: {0}")]
-    NetworkError(#[from] reqwest::Error),
+    NetworkErr(#[from] reqwest::Error),
 
     #[error("Serialization error: {0}")]
-    SerializationError(#[from] serde_json::Error),
+    SerializationErr(#[from] serde_json::Error),
 
     #[error("Invalid API response structure")]
     InvalidApiResponse,
@@ -32,7 +32,7 @@ pub enum Error {
     Conflict,
 
     #[error("Internal server error")]
-    InternalServerError,
+    InternalServerErr,
 
     #[error("Service unavailable")]
     ServiceUnavailable,
@@ -44,9 +44,9 @@ pub enum Error {
 impl Error {
     pub fn as_http_response(&self) -> (StatusCode, String) {
         match self {
-            Error::HttpRequestError(code, msg) => (*code, msg.clone()),
-            Error::NetworkError(_) => (StatusCode::BAD_GATEWAY, "Network error".to_string()),
-            Error::SerializationError(_) => (
+            Error::HttpRequestErr(code, msg) => (*code, msg.clone()),
+            Error::NetworkErr(_) => (StatusCode::BAD_GATEWAY, "Network error".to_string()),
+            Error::SerializationErr(_) => (
                 StatusCode::BAD_REQUEST,
                 "Error in processing the data".to_string(),
             ),
@@ -64,7 +64,7 @@ impl Error {
                 "Not acceptable format requested".to_string(),
             ),
             Error::Conflict => (StatusCode::CONFLICT, "Request conflict".to_string()),
-            Error::InternalServerError => (
+            Error::InternalServerErr => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Internal server error".to_string(),
             ),

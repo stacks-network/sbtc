@@ -1,4 +1,4 @@
-use crate::client::client;
+use crate::client::risk_client;
 use crate::common::error::{Error, ErrorResponse};
 use crate::config::RiskAnalysisConfig;
 use reqwest::Client;
@@ -14,10 +14,10 @@ pub async fn check_address_handler(
     client: Client,
     config: RiskAnalysisConfig,
 ) -> Result<impl Reply, Rejection> {
-    client::check_address(&client, &config, &address)
+    risk_client::check_address(&client, &config, &address)
         .await
         .map(|blocklist_status| warp::reply::json(&blocklist_status))
-        .map_err(|e| warp::reject::custom(e))
+        .map_err(warp::reject::custom)
 }
 
 /// Central error handler for Warp rejections, converting them to appropriate HTTP responses.
