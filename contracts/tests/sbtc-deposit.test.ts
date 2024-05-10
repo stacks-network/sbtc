@@ -72,7 +72,7 @@ describe("sBTC deposit contract", () => {
     });
 
     test("Call get-complete-deposit placeholder", () => {
-      const receipt0 = txOk(
+      txOk(
         deposit.completeDepositWrapper({
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
