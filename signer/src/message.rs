@@ -129,7 +129,7 @@ mod tests {
         let encoded = signed_message.encode_to_vec().expect("Failed to encode");
 
         let decoded =
-            Signed::<SignerMessage>::decode_from_bytes(&encoded).expect("Failed to decode");
+            Signed::<SignerMessage>::decode(encoded.as_slice()).expect("Failed to decode");
 
         assert_eq!(decoded, signed_message);
     }
