@@ -7,7 +7,7 @@
 //! The module provides two main traits, `Encode` and `Decode`, which
 //! denote the canonical serialization format for any types implementing these traits.
 //!
-//! While thiese traits permit custom serialization implementations, this module also provides
+//! While these traits permit custom serialization implementations, this module also provides
 //! blanket implementations for any type that implements `serde::Serialize` and `serde::de::DeserializeOwned`,
 //! using [Bincode](https://docs.rs/bincode/1.3.3/bincode/).
 //!
