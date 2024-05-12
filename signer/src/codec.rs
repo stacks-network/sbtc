@@ -1,15 +1,14 @@
 //! # Canonical encoding and decoding for the sBTC signer
 //!
-//! This module defines encoding and decoding methods for messages in the signer.
-//! The primary purpose of these utilities is to facilitate convenient serialization and deserialization
-//! of messages that need to be exchanged between signers over a network.
+//! The purpose of this module is to define how to encode and decode
+//! signer messages as byte sequences.
 //!
-//! The module provides two main traits, `Encode` and `Decode`, which
-//! denote the canonical serialization format for any types implementing these traits.
+//! This is achieved by
 //!
-//! While these traits permit custom serialization implementations, this module also provides
-//! blanket implementations for any type that implements `serde::Serialize` and `serde::de::DeserializeOwned`,
-//! using [Bincode](https://docs.rs/bincode/1.3.3/bincode/).
+//! 1. Providing the `Encode` and `Decode` traits, defining the encode and decode
+//!    methods we intend to use throughout the signer.
+//! 2. Implementing these traits for any type implementing `serde::Serialize` and `serde::de::DeserializeOwned`
+//!    using `bincode` as the encoding format.
 //!
 //! ## Examples
 //!
