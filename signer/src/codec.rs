@@ -23,8 +23,8 @@
 //! // `.encode_to_vec()` provided by the `Encode` trait
 //! let encoded = message.encode_to_vec().unwrap();
 //!
-//! // `.decode_to_bytes()` provided by the `Decode` trait
-//! let decoded = String::decode_from_bytes(&encoded).unwrap();
+//! // `.decode()` provided by the `Decode` trait
+//! let decoded = String::decode(encoded.as_slice()).unwrap();
 //!
 //! assert_eq!(decoded, message);
 //! ```
@@ -75,20 +75,6 @@ pub trait Decode: Sized {
     /// # Returns
     /// A `Result` which is `Ok` containing the decoded object, or an `Error` if decoding failed.
     fn decode<R: io::Read>(reader: R) -> Result<Self, Error>;
-
-    /// Decodes an object from a byte slice.
-    ///
-    /// This is a convenience method that uses the `decode` method internally to deserialize the object
-    /// from a slice of bytes, facilitating easier handling of raw byte data.
-    ///
-    /// # Arguments
-    /// * `bytes` - A byte slice from which the object should be decoded.
-    ///
-    /// # Returns
-    /// A `Result` which is `Ok` containing the decoded object, or an `Error` if decoding failed.
-    fn decode_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        Self::decode(bytes)
-    }
 }
 
 impl<T: serde::Serialize> Encode for &T {
@@ -115,7 +101,7 @@ mod tests {
 
         let encoded = message.encode_to_vec().unwrap();
 
-        let decoded = String::decode_from_bytes(&encoded).unwrap();
+        let decoded = String::decode(encoded.as_slice()).unwrap();
 
         assert_eq!(decoded, message);
     }
