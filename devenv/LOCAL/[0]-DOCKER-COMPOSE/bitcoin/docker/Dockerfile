@@ -12,6 +12,8 @@ ARG BTC_PRINTTOCONSOLE
 ARG BTC_DISABLEWALLET
 ARG BTC_RPCBIND
 ARG BTC_RPCALLOWIP
+ARG BTC_RPC_PORT
+ARG BTC_P2P_PORT
 
 # Set ENVs so they persist after image is built
 ENV BTC_NETWORK=$BTC_NETWORK
@@ -22,6 +24,8 @@ ENV BTC_PRINTTOCONSOLE=$BTC_PRINTTOCONSOLE
 ENV BTC_DISABLEWALLET=$BTC_DISABLEWALLET
 ENV BTC_RPCBIND=$BTC_RPCBIND
 ENV BTC_RPCALLOWIP=$BTC_RPCALLOWIP
+ENV BTC_RPC_PORT=$BTC_RPC_PORT
+ENV BTC_P2P_PORT=$BTC_P2P_PORT
 
 RUN apt-get update && apt-get install -y \
     wget \
@@ -46,7 +50,9 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     coreutils \
     nginx \
-    && rm -rf /var/lib/apt/lists/*
+    sudo \
+    curl \
+    jq && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /bitcoin/bin/* /usr/local/bin
 
