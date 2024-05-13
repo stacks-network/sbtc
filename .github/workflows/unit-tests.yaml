@@ -1,10 +1,5 @@
 name: Pull Request
-on:
-  pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
+on: [push]
 
 jobs:
   tests:
@@ -35,6 +30,11 @@ jobs:
 
       - name: Install package dependencies.
         run: make install
+
+      - name: Setup service containers
+        run: |
+          docker compose -f docker-compose.test.yml pull
+          docker compose -f docker-compose.test.yml up --detach
 
       - name: Run tests
         run: make test
