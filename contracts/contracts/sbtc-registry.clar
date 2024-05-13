@@ -2,12 +2,18 @@
 
 ;; Error codes
 
-;; Contract caller is not authorized
+;; Constants
 (define-constant ERR_UNAUTHORIZED (err u400))
-
-;; Invalid request ID
 (define-constant ERR_INVALID_REQUEST_ID (err u401))
 
+
+;; Variables
+(define-data-var last-withdrawal-request-id uint u0)
+(define-data-var current-signer-set (list 15 principal) (list))
+(define-data-var current-aggregate-pubkey {version: (buff 1), hashbytes: (buff 32)} {version: 0x01, hashbytes: 0x00000000000000000000000000000000})
+(define-data-var current-signer-principal principal tx-sender)
+
+;; Maps
 ;; Internal data structure to store withdrawal
 ;; requests. Requests are associated with a unique
 ;; request ID.
@@ -27,8 +33,6 @@
   block-height: uint,
 })
 
-(define-data-var last-withdrawal-request-id uint u0)
-
 ;; Data structure to map request-id to status
 ;; If status is `none`, the request is pending.
 ;; Otherwise, the boolean value indicates whether
@@ -45,7 +49,6 @@
 )
 
 ;; Read-only functions
-
 ;; Get a withdrawal request by its ID.
 ;; 
 ;; This function returns the fields of the withrawal

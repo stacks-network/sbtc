@@ -1,17 +1,7 @@
-
-;; title: sbtc-bootstrap-signers
-;; version:
-;; summary:
-;; description:
-
-;; traits
-;;
-
-;; token definitions
-;;
+;; sBTC Bootstrap Signers contract
 
 ;; constants
-;;
+(define-constant signature-threshold u8)
 
 ;; data vars
 ;;
