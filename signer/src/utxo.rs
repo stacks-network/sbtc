@@ -97,11 +97,12 @@ pub struct DepositRequest {
     /// The redeem script for the deposit.
     pub redeem_script: ScriptBuf,
     /// The public key used for the key-spend path of the taproot script.
+    ///
     /// Note that taproot Schnorr public keys are slightly different from
     /// the usual compressed public keys since they use only the x-coordinate
-    /// with the y-coordinate is assumed to be even. This means
-    /// they use 32 bytes instead of the 33 byte public keys used before
-    /// where the additional byte indicated the y-coordinate's parity.
+    /// with the y-coordinate assumed to be even. This means they use
+    /// 32 bytes instead of the 33 byte public keys used before where the
+    /// additional byte indicated the y-coordinate's parity.
     pub taproot_public_key: XOnlyPublicKey,
     /// The public key used in the deposit script. The signers public key
     /// is a Schnorr public key.

@@ -136,8 +136,8 @@ fn helper_struct_methods_work() {
     assert_eq!(balance.to_sat(), 0);
 
     // Now we send some coin to the withdrawer address. The signers' balance
-    // will be updated accordingly. Note that the amount deducted from the 
-    // sender always incorporates fees. Also note that we do not need to 
+    // will be updated accordingly. Note that the amount deducted from the
+    // sender always incorporates fees. Also note that we do not need to
     // mine the block in order for the balance to be properly updated.
     signer.send_to(rpc, 200_000, &withdrawer.address);
     let balance = signer.get_balance(rpc);
@@ -147,7 +147,6 @@ fn helper_struct_methods_work() {
     let balance = withdrawer.get_balance(rpc);
     assert_eq!(balance.to_sat(), 200_000);
 }
-
 
 /// Check that deposits, when sent with the expected format, are
 /// spent using the transactions generated in the utxo module.
@@ -173,7 +172,7 @@ fn deposits_add_to_controlled_amounts() {
     // Now lets make a deposit transaction and submit it
     let depositor_utxo = depositor.get_utxos(rpc, None).pop().unwrap();
     let deposit_amount = 25_000_000;
-    
+
     let (deposit_tx, deposit_request) = make_deposit(
         &depositor,
         deposit_amount,
