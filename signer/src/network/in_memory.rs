@@ -10,11 +10,13 @@ use tokio::sync::broadcast;
 
 pub const BROADCAST_CHANNEL_CAPACITY: usize = 10_000;
 
+type MsgId = [u8; 32];
+
 #[derive(Debug)]
 pub struct Client {
     sender: broadcast::Sender<super::Msg>,
     receiver: broadcast::Receiver<super::Msg>,
-    recently_sent: VecDeque<super::Msg>,
+    recently_sent: VecDeque<MsgId>,
 }
 
 /// In-memory communication network
@@ -47,7 +49,7 @@ impl Network {
 impl super::Client for Client {
     type Error = Error;
     async fn broadcast(&mut self, msg: super::Msg) -> Result<(), Self::Error> {
-        self.recently_sent.push_back(msg.clone());
+        self.recently_sent.push_back(msg.id());
         self.sender.send(msg)?;
         Ok(())
     }
@@ -55,7 +57,7 @@ impl super::Client for Client {
     async fn receive(&mut self) -> Result<super::Msg, Self::Error> {
         let mut msg = self.receiver.recv().await?;
 
-        while Some(&msg) == self.recently_sent.get(0) {
+        while Some(&msg.id()) == self.recently_sent.get(0) {
             self.recently_sent.pop_front();
             msg = self.receiver.recv().await?;
         }

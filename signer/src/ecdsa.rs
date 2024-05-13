@@ -43,6 +43,8 @@
 use p256k1::ecdsa;
 use p256k1::scalar::Scalar;
 
+use sha2::Digest;
+
 /// Wraps an inner type with a public key and a signature,
 /// allowing easy verification of the integrity of the inner data.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
@@ -59,6 +61,15 @@ impl<T: wsts::net::Signable> Signed<T> {
     /// Verify the signature over the inner data.
     pub fn verify(&self) -> bool {
         self.inner.verify(&self.signature, &self.signer_pub_key)
+    }
+
+    /// Unique identifyer for the inner message
+    pub fn id(&self) -> [u8; 32] {
+        let mut hasher = sha2::Sha256::new();
+
+        self.hash(&mut hasher);
+
+        hasher.finalize().into()
     }
 }
 
