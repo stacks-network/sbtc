@@ -1,4 +1,4 @@
-use crate::client::client;
+use crate::client;
 use crate::common::{Error, ErrorResponse};
 use crate::config::RiskAnalysisConfig;
 use reqwest::Client;
