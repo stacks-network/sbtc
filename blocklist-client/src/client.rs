@@ -12,7 +12,7 @@ pub async fn check_address(
 
     let response = client
         .get(&api_url)
-        .header("Token", format!("{}", config.api_key))
+        .header("Token", config.api_key.to_string())
         .send()
         .await?;
 
