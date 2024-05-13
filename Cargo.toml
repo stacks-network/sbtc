@@ -21,7 +21,8 @@ emily = { version = "0.1.0", path = ".generated-sources/emily" }
 
 aws_lambda_events = "0.15.0"
 aws-sdk-dynamodb = { version = "1.3.0" }
-bitcoin = "0.32"
+bincode = "1.3.3"
+bitcoin = { version = "0.32", features = ["serde"] }
 futures = "0.3.24"
 http = "1.1.0"
 lambda_runtime = "0.11.1"

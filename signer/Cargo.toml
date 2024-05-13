@@ -15,6 +15,7 @@ bench = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bincode.workspace = true
 bitcoin = { workspace = true, features = ["rand-std"] }
 p256k1.workspace = true
 rand.workspace = true

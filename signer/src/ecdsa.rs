@@ -18,7 +18,7 @@
 //!
 //! ```
 //! use sha2::Digest;
-//! use sbtc_signer::ecdsa::SignECDSA;
+//! use sbtc_signer::ecdsa::SignEcdsa;
 //!
 //! struct SignableStr(&'static str);
 //!
@@ -45,7 +45,7 @@ use p256k1::scalar::Scalar;
 
 /// Wraps an inner type with a public key and a signature,
 /// allowing easy verification of the integrity of the inner data.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct Signed<T> {
     /// The signed structure.
     pub inner: T,

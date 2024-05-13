@@ -1,6 +1,6 @@
 use sha2::Digest;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SignerMessage {
     /// The bitcoin chain tip defining the signers view of the blockchain at the time the message was created
     pub bitcoin_chain_tip: bitcoin::BlockHash,
@@ -8,7 +8,7 @@ pub struct SignerMessage {
     pub payload: Payload,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Payload {
     SignerDepositDecision(SignerDepositDecision),
     SignerWithdrawDecision(SignerWithdrawDecision),
@@ -29,22 +29,22 @@ impl Payload {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SignerDepositDecision;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SignerWithdrawDecision;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StacksTransactionSignRequest;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StacksTransactionSignature;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BitcoinTransactionSignRequest;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BitcoinTransactionSignAck;
 
 impl wsts::net::Signable for SignerMessage {
@@ -85,7 +85,8 @@ fn hash_message(msg: &wsts::net::Message, hasher: &mut sha2::Sha256) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ecdsa::SignEcdsa;
+    use crate::codec::{Decode, Encode};
+    use crate::ecdsa::{SignEcdsa, Signed};
 
     use p256k1::scalar::Scalar;
     use wsts::net::DkgBegin;
@@ -108,5 +109,28 @@ mod tests {
             .expect("Failed to sign message");
 
         assert!(signed_message.verify());
+    }
+
+    #[test]
+    fn signer_messages_should_be_encodable() {
+        let private_key = Scalar::from(123456789);
+        let dkg_begin = DkgBegin { dkg_id: 42 };
+        let block_hash = bitcoin::BlockHash::from_str(
+            "00000000000000000001985c05e50c9c7929345bfde82c5082983cd96d9183e0",
+        )
+        .unwrap();
+        let payload = Payload::WstsMessage(wsts::net::Message::DkgBegin(dkg_begin));
+
+        let signed_message = payload
+            .to_message(block_hash)
+            .sign_ecdsa(&private_key)
+            .expect("Failed to sign message");
+
+        let encoded = signed_message.encode_to_vec().expect("Failed to encode");
+
+        let decoded =
+            Signed::<SignerMessage>::decode(encoded.as_slice()).expect("Failed to decode");
+
+        assert_eq!(decoded, signed_message);
     }
 }
