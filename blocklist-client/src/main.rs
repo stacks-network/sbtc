@@ -1,6 +1,6 @@
 use crate::config::SETTINGS;
 use reqwest::Client;
-use sbtc_signer::logging::setup_logging;
+use signer::logging::setup_logging;
 use std::net::ToSocketAddrs;
 use tracing::{error, info};
 use warp::Filter;
