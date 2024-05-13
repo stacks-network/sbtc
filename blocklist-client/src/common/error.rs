@@ -5,19 +5,16 @@ use warp::reject::Reject;
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("HTTP request failed with status code {0}: {1}")]
-    HttpRequestErr(StatusCode, String),
+    HttpRequest(StatusCode, String),
 
     #[error("Network error: {0}")]
-    NetworkErr(#[from] reqwest::Error),
+    Network(#[from] reqwest::Error),
 
     #[error("Serialization error: {0}")]
-    SerializationErr(#[from] serde_json::Error),
+    Serialization(String),
 
     #[error("Invalid API response structure")]
     InvalidApiResponse,
-
-    #[error("Invalid risk value provided: {0}")]
-    InvalidRiskValue(String),
 
     #[error("Unauthorized access - check your API key")]
     Unauthorized,
@@ -32,7 +29,7 @@ pub enum Error {
     Conflict,
 
     #[error("Internal server error")]
-    InternalServerErr,
+    InternalServer,
 
     #[error("Service unavailable")]
     ServiceUnavailable,
@@ -44,9 +41,9 @@ pub enum Error {
 impl Error {
     pub fn as_http_response(&self) -> (StatusCode, String) {
         match self {
-            Error::HttpRequestErr(code, msg) => (*code, msg.clone()),
-            Error::NetworkErr(_) => (StatusCode::BAD_GATEWAY, "Network error".to_string()),
-            Error::SerializationErr(_) => (
+            Error::HttpRequest(code, msg) => (*code, msg.clone()),
+            Error::Network(_) => (StatusCode::BAD_GATEWAY, "Network error".to_string()),
+            Error::Serialization(_) => (
                 StatusCode::BAD_REQUEST,
                 "Error in processing the data".to_string(),
             ),
@@ -64,7 +61,7 @@ impl Error {
                 "Not acceptable format requested".to_string(),
             ),
             Error::Conflict => (StatusCode::CONFLICT, "Request conflict".to_string()),
-            Error::InternalServerErr => (
+            Error::InternalServer => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Internal server error".to_string(),
             ),
@@ -73,10 +70,6 @@ impl Error {
                 "Service unavailable".to_string(),
             ),
             Error::RequestTimeout => (StatusCode::REQUEST_TIMEOUT, "Request timeout".to_string()),
-            Error::InvalidRiskValue(_) => (
-                StatusCode::BAD_REQUEST,
-                "Invalid API response risk value".to_string(),
-            ),
         }
     }
 }
