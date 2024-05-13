@@ -14,11 +14,9 @@
 ;;
 
 ;; public functions
-
 ;; Accept a new deposit request
 ;; Note that this function can only be called by the current
 ;; bootstrap signer set address - it cannot be called by users directly.
-;; 
 ;; This function handles the validation & minting of sBTC, it then calls
 ;; into the sbtc-registry contract to update the state of the protocol
 (define-public (complete-deposit-wrapper (txid (buff 32)) (vout-index uint) (amount uint) (recipient principal))

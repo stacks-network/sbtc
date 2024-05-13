@@ -1,8 +1,6 @@
 ;; sBTC Registry contract
 
 ;; Error codes
-
-;; Constants
 (define-constant ERR_UNAUTHORIZED (err u400))
 (define-constant ERR_INVALID_REQUEST_ID (err u401))
 
@@ -12,6 +10,7 @@
 (define-data-var current-signer-set (list 15 principal) (list))
 (define-data-var current-aggregate-pubkey {version: (buff 1), hashbytes: (buff 32)} {version: 0x01, hashbytes: 0x00000000000000000000000000000000})
 (define-data-var current-signer-principal principal tx-sender)
+
 
 ;; Maps
 ;; Internal data structure to store withdrawal
@@ -48,9 +47,9 @@
   }
 )
 
+
 ;; Read-only functions
 ;; Get a withdrawal request by its ID.
-;; 
 ;; This function returns the fields of the withrawal
 ;; request, along with its status.
 (define-read-only (get-withdrawal-request (id uint))
@@ -63,10 +62,19 @@
 )
 
 ;; Get a completed deposit by its transaction ID & vout index.
-;;
 ;; This function returns the fields of the completed-deposits map.
 (define-read-only (get-completed-deposit (txid (buff 32)) (vout-index uint))
   (map-get? completed-deposits {txid: txid, vout-index: vout-index})
+)
+
+;; Get the current signer set.
+;; This function returns the current signer set as a list of principals.
+(define-read-only (get-current-signer-data)
+  {
+    current-signer-set: (var-get current-signer-set),
+    current-aggregate-pubkey: (var-get current-aggregate-pubkey),
+    current-signer-principal: (var-get current-signer-principal)
+  }
 )
 
 ;; Public functions
