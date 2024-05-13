@@ -10,7 +10,7 @@ test: install | emily-client
 		&& pnpm --recursive test
 
 lint: install | emily-client
-	cargo clippy \
+	cargo clippy -- -D warnings \
 		&& pnpm --recursive run lint
 
 clean:
