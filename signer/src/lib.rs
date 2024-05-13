@@ -3,6 +3,7 @@ pub mod ecdsa;
 pub mod error;
 pub mod logging;
 pub mod message;
+pub mod network;
 pub mod packaging;
 pub mod utxo;
 
