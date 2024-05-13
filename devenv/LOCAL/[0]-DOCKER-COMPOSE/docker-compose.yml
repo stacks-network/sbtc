@@ -6,26 +6,33 @@ services:
     build:
       context: ./bitcoin/docker
       args:
-        VERSION: "25.0"
+        VERSION: '25.0'
         BTC_NETWORK: "regtest"
+        BTC_PRINTTOCONSOLE: 1
         BTC_DISABLEWALLET: 0
         BTC_TXINDEX: 1
         BTC_RPCBIND: "0.0.0.0"
-        BTC_RPCALLOWIP: "0.0.0.0/0"
+        BTC_RPCALLOWIP: "0.0.0.0"
         BTC_RPCPASSWORD: "devnet"
         BTC_RPCUSER: "devnet"
+        BTC_RPC_PORT: 18443
+        BTC_P2P_PORT: 18444
     ports:
       - 18444:18444
       - 18443:18443
       - 18433:18433
     environment:
-      - "BTC_NETWORK=regtest"
-      - "BTC_DISABLEWALLET=0"
-      - "BTC_TXINDEX=1"
-      - "BTC_RPCBIND=0.0.0.0"
-      - "BTC_RPCALLOWIP=0.0.0.0/0"
-      - "BTC_RPCPASSWORD=devnet"
-      - "BTC_RPCUSER=devnet"
+      BTC_NETWORK: regtest
+      BTC_PRINTTOCONSOLE: 1
+      BTC_DISABLEWALLET: 0
+      BTC_TXINDEX: 1
+      BTC_RPCBIND: "0.0.0.0"
+      # BTC_RPCALLOWIP: "0.0.0.0"
+      BTC_RPCALLOWIP: "0.0.0.0/0"
+      BTC_RPCPASSWORD: devnet
+      BTC_RPCUSER: devnet
+      BTC_RPC_PORT: 18443
+      BTC_P2P_PORT: 18444
   postgres:
     image: postgres:15-alpine
     container_name: postgres
@@ -56,16 +63,20 @@ services:
         INIT_BTC_BLOCKS: 200
         BTC_BLOCK_GEN_TIME: 10
         BITCOIN_RPC_HOST: "bitcoin"
-        BITCOIN_RPC_PORT: "18443"
-        MINER_ADDRESS: "n3GRiDLKWuKLCw1DZmV75W1mE35qmW2tQm"
+        BITCOIN_RPC_PORT: 18443
+        BTC_RPCPASSWORD: devnet
+        BTC_RPCUSER: devnet
+        MINER_ADDRESS: "mzHe5v2wQhqDG2F4wxRZAU1yNSPZD9uE8u"
     depends_on:
       - bitcoin
     environment:
       INIT_BTC_BLOCKS: 200
       BTC_BLOCK_GEN_TIME: 10
       BITCOIN_RPC_HOST: "bitcoin"
-      BITCOIN_RPC_PORT: "18443"
-      MINER_ADDRESS: "n3GRiDLKWuKLCw1DZmV75W1mE35qmW2tQm"
+      BITCOIN_RPC_PORT: 18443
+      BTC_RPCPASSWORD: devnet
+      BTC_RPCUSER: devnet
+      MINER_ADDRESS: "mzHe5v2wQhqDG2F4wxRZAU1yNSPZD9uE8u"
   stacks:
     image: stacks:latest
     container_name: stacks
@@ -198,6 +209,7 @@ services:
     depends_on:
       - mempool-api
       - mariadb
+      - electrs
     user: "1000:1000"
     restart: on-failure
     ports:
