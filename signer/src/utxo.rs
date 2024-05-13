@@ -9,7 +9,6 @@ use bitcoin::transaction::Version;
 use bitcoin::Address;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
-use bitcoin::PublicKey;
 use bitcoin::ScriptBuf;
 use bitcoin::Sequence;
 use bitcoin::Transaction;
@@ -31,7 +30,7 @@ pub struct SignerBtcState {
     /// The current market fee rate in sat/vByte.
     pub fee_rate: u64,
     /// The current public key of the signers
-    pub public_key: PublicKey,
+    pub public_key: XOnlyPublicKey,
 }
 
 #[derive(Debug)]
@@ -98,9 +97,15 @@ pub struct DepositRequest {
     /// The redeem script for the deposit.
     pub redeem_script: ScriptBuf,
     /// The public key used for the key-spend path of the taproot script.
-    pub taproot_public_key: PublicKey,
-    /// The public key used in the deposit script.
-    pub signers_public_key: PublicKey,
+    /// Note that taproot Schnorr public keys are slightly different from
+    /// the usual compressed public keys since they use only the x-coordinate
+    /// with the y-coordinate is assumed to be even. This means
+    /// they use 32 bytes instead of the 33 byte public keys used before
+    /// where the additional byte indicated the y-coordinate's parity.
+    pub taproot_public_key: XOnlyPublicKey,
+    /// The public key used in the deposit script. The signers public key
+    /// is a Schnorr public key.
+    pub signers_public_key: XOnlyPublicKey,
 }
 
 impl DepositRequest {
@@ -112,12 +117,12 @@ impl DepositRequest {
     /// Create a TxIn object with witness data for the deposit script of
     /// the given request. Only a valid signature is needed to satisfy the
     /// deposit script.
-    fn as_tx_input(&self, sig: Signature) -> TxIn {
+    fn as_tx_input(&self, signature: Signature) -> TxIn {
         TxIn {
             previous_output: self.outpoint,
             script_sig: ScriptBuf::new(),
             sequence: Sequence(0),
-            witness: self.construct_witness_data(sig),
+            witness: self.construct_witness_data(signature),
         }
     }
 
@@ -135,8 +140,7 @@ impl DepositRequest {
     /// given by self.signers_public_key. The public key used for key-path
     /// spending is self.taproot_public_key, and is supposed to be a dummy
     /// public key.
-    pub fn construct_witness_data(&self, sig: Signature) -> Witness {
-        let (internal_key, _) = self.taproot_public_key.inner.x_only_public_key();
+    pub fn construct_witness_data(&self, signature: Signature) -> Witness {
         let ver = LeafVersion::TapScript;
 
         // For such a simple tree, we construct it by hand.
@@ -149,7 +153,7 @@ impl DepositRequest {
         // never panic.
         let node =
             NodeInfo::combine(leaf1, leaf2).expect("This tree depth greater than max of 128");
-        let taproot = TaprootSpendInfo::from_node_info(SECP256K1, internal_key, node);
+        let taproot = TaprootSpendInfo::from_node_info(SECP256K1, self.taproot_public_key, node);
 
         // TaprootSpendInfo::control_block returns None if the key given,
         // (script, version), is not in the tree. But this key is definitely
@@ -159,7 +163,8 @@ impl DepositRequest {
             .expect("We just inserted the deposit script into the tree");
 
         let witness_data = [
-            sig.serialize().to_vec(),
+            signature.to_vec(),
+            self.signers_public_key.serialize().to_vec(),
             self.deposit_script.to_bytes(),
             control_block.serialize(),
         ];
@@ -241,7 +246,7 @@ pub struct SignerUtxo {
     /// The amount associated with that UTXO
     pub amount: u64,
     /// The public key used to create the key-spend only taproot script.
-    pub public_key: PublicKey,
+    pub public_key: XOnlyPublicKey,
 }
 
 impl SignerUtxo {
@@ -249,11 +254,11 @@ impl SignerUtxo {
     ///
     /// The signers' UTXO is always a key-spend only taproot UTXO, so a
     /// valid signature is all that is needed to spend it.
-    fn as_tx_input(&self, sig: &Signature) -> TxIn {
+    fn as_tx_input(&self, signature: &Signature) -> TxIn {
         TxIn {
             previous_output: self.outpoint,
             sequence: Sequence::ZERO,
-            witness: Witness::p2tr_key_spend(sig),
+            witness: Witness::p2tr_key_spend(signature),
             script_sig: ScriptBuf::new(),
         }
     }
@@ -261,13 +266,12 @@ impl SignerUtxo {
     /// Construct the new signers' UTXO
     ///
     /// The signers' UTXO is always a key-spend only taproot UTXO.
-    fn new_tx_output(public_key: PublicKey, sats: u64) -> TxOut {
-        let (internal_key, _): (XOnlyPublicKey, _) = public_key.inner.x_only_public_key();
+    fn new_tx_output(public_key: XOnlyPublicKey, sats: u64) -> TxOut {
         let secp = Secp256k1::new();
 
         TxOut {
             value: Amount::from_sat(sats),
-            script_pubkey: ScriptBuf::new_p2tr(&secp, internal_key, None),
+            script_pubkey: ScriptBuf::new_p2tr(&secp, public_key, None),
         }
     }
 }
@@ -283,7 +287,7 @@ pub struct UnsignedTransaction<'a> {
     /// The BTC transaction that needs to be signed.
     pub tx: Transaction,
     /// The public key used for the public key of the signers' UTXO output.
-    pub signer_public_key: PublicKey,
+    pub signer_public_key: XOnlyPublicKey,
     /// The amount of fees changed to each request.
     pub fee_per_request: u64,
 }
@@ -332,16 +336,16 @@ impl<'a> UnsignedTransaction<'a> {
     /// An Err is returned if the amounts withdrawn is greater than the sum
     /// of all the input amounts.
     fn new_transaction(reqs: &[Request], state: &SignerBtcState) -> Result<Transaction, Error> {
-        let sig = Self::generate_dummy_signature();
+        let signature = Self::generate_dummy_signature();
 
         let deposits = reqs
             .iter()
-            .filter_map(|req| Some(req.as_deposit()?.as_tx_input(sig)));
+            .filter_map(|req| Some(req.as_deposit()?.as_tx_input(signature)));
         let withdrawals = reqs
             .iter()
             .filter_map(|req| Some(req.as_withdrawal()?.as_tx_output()));
 
-        let signer_input = state.utxo.as_tx_input(&sig);
+        let signer_input = state.utxo.as_tx_input(&signature);
         let signer_output_sats = Self::compute_signer_amount(reqs, state)?;
         let signer_output = SignerUtxo::new_tx_output(state.public_key, signer_output_sats);
 
@@ -465,6 +469,7 @@ mod tests {
     use bitcoin::KnownHrp;
     use bitcoin::NetworkKind;
     use bitcoin::PrivateKey;
+    use bitcoin::PublicKey;
     use bitcoin::Txid;
     use rand::distributions::Distribution;
     use test_case::test_case;
@@ -478,6 +483,10 @@ mod tests {
     fn generate_public_key() -> PublicKey {
         let private_key = PrivateKey::generate(NetworkKind::Test);
         private_key.public_key(SECP256K1)
+    }
+
+    fn to_x_only_public_key(p: PublicKey) -> XOnlyPublicKey {
+        p.inner.x_only_public_key().0
     }
 
     fn generate_address() -> Address {
@@ -528,8 +537,8 @@ mod tests {
                 .push_opcode(opcodes::all::OP_CHECKSIG)
                 .into_script(),
             redeem_script: ScriptBuf::new(),
-            taproot_public_key: PublicKey::from_str(PUBLIC_KEY0).unwrap(),
-            signers_public_key: generate_public_key(),
+            taproot_public_key: to_x_only_public_key(PublicKey::from_str(PUBLIC_KEY0).unwrap()),
+            signers_public_key: to_x_only_public_key(generate_public_key()),
         }
     }
 
@@ -554,8 +563,8 @@ mod tests {
             amount: 100_000,
             deposit_script: ScriptBuf::new(),
             redeem_script: ScriptBuf::new(),
-            taproot_public_key: PublicKey::from_str(PUBLIC_KEY1).unwrap(),
-            signers_public_key: PublicKey::from_str(PUBLIC_KEY1).unwrap(),
+            taproot_public_key: to_x_only_public_key(PublicKey::from_str(PUBLIC_KEY1).unwrap()),
+            signers_public_key: to_x_only_public_key(PublicKey::from_str(PUBLIC_KEY1).unwrap()),
         };
 
         assert_eq!(deposit.votes_against(), expected);
@@ -572,8 +581,8 @@ mod tests {
             amount: 100_000,
             deposit_script: ScriptBuf::from_bytes(vec![1, 2, 3]),
             redeem_script: ScriptBuf::new(),
-            taproot_public_key: PublicKey::from_str(PUBLIC_KEY1).unwrap(),
-            signers_public_key: PublicKey::from_str(PUBLIC_KEY1).unwrap(),
+            taproot_public_key: to_x_only_public_key(PublicKey::from_str(PUBLIC_KEY1).unwrap()),
+            signers_public_key: to_x_only_public_key(PublicKey::from_str(PUBLIC_KEY1).unwrap()),
         };
 
         let sig = Signature::from_slice(&[0u8; 64]).unwrap();
@@ -598,10 +607,10 @@ mod tests {
                 utxo: SignerUtxo {
                     outpoint: generate_outpoint(5500, 0),
                     amount: 5500,
-                    public_key: generate_public_key(),
+                    public_key: to_x_only_public_key(generate_public_key()),
                 },
                 fee_rate: 0,
-                public_key: generate_public_key(),
+                public_key: to_x_only_public_key(generate_public_key()),
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -660,10 +669,10 @@ mod tests {
                 utxo: SignerUtxo {
                     outpoint: OutPoint::null(),
                     amount: 55,
-                    public_key,
+                    public_key: to_x_only_public_key(public_key),
                 },
                 fee_rate: 0,
-                public_key,
+                public_key: to_x_only_public_key(public_key),
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -704,10 +713,10 @@ mod tests {
                 utxo: SignerUtxo {
                     outpoint: OutPoint::null(),
                     amount: 9500,
-                    public_key,
+                    public_key: to_x_only_public_key(public_key),
                 },
                 fee_rate: 0,
-                public_key,
+                public_key: to_x_only_public_key(public_key),
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -743,10 +752,10 @@ mod tests {
                 utxo: SignerUtxo {
                     outpoint: generate_outpoint(300_000, 0),
                     amount: 300_000,
-                    public_key,
+                    public_key: to_x_only_public_key(public_key),
                 },
                 fee_rate: 0,
-                public_key,
+                public_key: to_x_only_public_key(public_key),
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -793,10 +802,10 @@ mod tests {
                 utxo: SignerUtxo {
                     outpoint: generate_outpoint(300_000, 0),
                     amount: 300_000,
-                    public_key,
+                    public_key: to_x_only_public_key(public_key),
                 },
                 fee_rate: 0,
-                public_key,
+                public_key: to_x_only_public_key(public_key),
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -879,10 +888,10 @@ mod tests {
                 utxo: SignerUtxo {
                     outpoint: generate_outpoint(300_000, 0),
                     amount: 300_000_000,
-                    public_key,
+                    public_key: to_x_only_public_key(public_key),
                 },
                 fee_rate: 25,
-                public_key,
+                public_key: to_x_only_public_key(public_key),
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -961,10 +970,10 @@ mod tests {
                 utxo: SignerUtxo {
                     outpoint: OutPoint::null(),
                     amount: 3000,
-                    public_key,
+                    public_key: to_x_only_public_key(public_key),
                 },
                 fee_rate: 0,
-                public_key,
+                public_key: to_x_only_public_key(public_key),
             },
             num_signers: 10,
             accept_threshold: 0,
