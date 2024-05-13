@@ -1,0 +1,75 @@
+services:
+  bitcoin:
+    image: bitcoin:latest
+    container_name: bitcoin
+    # hostname: bitcoin
+    # networks:
+    #   devnet:
+    #     # ipv4_address: 172.16.238.200
+    #     aliases:
+    #       - bitcoin
+    build:
+      context: ../bitcoin/docker
+      args:
+        VERSION: '25.0'
+        BTC_NETWORK: "regtest"
+        BTC_PRINTTOCONSOLE: 1
+        BTC_DISABLEWALLET: 0
+        BTC_TXINDEX: 1
+        BTC_RPCBIND: "0.0.0.0"
+        BTC_RPCALLOWIP: "0.0.0.0"
+        BTC_RPCPASSWORD: "devnet"
+        BTC_RPCUSER: "devnet"
+        BTC_RPC_PORT: 18443
+        BTC_P2P_PORT: 18444
+    ports:
+      - 18444:18444
+      - 18443:18443
+      - 18433:18433
+    environment:
+      BTC_NETWORK: regtest
+      BTC_PRINTTOCONSOLE: 1
+      BTC_DISABLEWALLET: 0
+      BTC_TXINDEX: 1
+      BTC_RPCBIND: "0.0.0.0"
+      # BTC_RPCALLOWIP: "0.0.0.0"
+      BTC_RPCALLOWIP: "0.0.0.0/0"
+      BTC_RPCPASSWORD: devnet
+      BTC_RPCUSER: devnet
+      BTC_RPC_PORT: 18443
+      BTC_P2P_PORT: 18444
+  bitcoin-miner:
+    image: bitcoin-miner-sidecar:latest
+    container_name: bitcoin-miner-sidecar
+    # hostname: bitcoin-miner
+    # networks:
+    #   devnet:
+    #     aliases:
+    #       - bitcoin-miner
+    stop_grace_period: 5s
+    build:
+      context: ./docker
+      args:
+        INIT_BTC_BLOCKS: 200
+        BTC_BLOCK_GEN_TIME: 10
+        BITCOIN_RPC_HOST: "bitcoin"
+        BITCOIN_RPC_PORT: 18443
+        BTC_RPCPASSWORD: devnet
+        BTC_RPCUSER: devnet
+        MINER_ADDRESS: "n3GRiDLKWuKLCw1DZmV75W1mE35qmW2tQm"
+    depends_on:
+      - bitcoin
+    environment:
+      INIT_BTC_BLOCKS: 200
+      BTC_BLOCK_GEN_TIME: 10
+      BITCOIN_RPC_HOST: "bitcoin"
+      BITCOIN_RPC_PORT: 18443
+      BTC_RPCPASSWORD: devnet
+      BTC_RPCUSER: devnet
+      MINER_ADDRESS: "n3GRiDLKWuKLCw1DZmV75W1mE35qmW2tQm"
+
+# networks:
+#   devnet:
+    # ipam:
+    #   config:
+    #     - subnet: "172.16.238.0/24"
