@@ -16,6 +16,7 @@ wait_time_for_microblocks = 0
 mine_microblocks = false
 stacker = true # required if you are running a signer
 miner = true
+seed = "$MINER_KEY"
 
 [miner]
 min_tx_fee = 1
