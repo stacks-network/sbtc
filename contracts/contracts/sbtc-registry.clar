@@ -149,6 +149,8 @@
   )
 )
 
+;; Update the signer set & principal.
+
 ;; Private functions
 
 ;; Increment the last withdrawal request ID and

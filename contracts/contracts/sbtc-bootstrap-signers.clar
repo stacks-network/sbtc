@@ -6,6 +6,7 @@
 
 ;; errors
 (define-constant ERR_KEY_SIZE_PREFIX u200)
+(define-constant ERR_KEY_SIZE (err u200))
 
 ;; data vars
 ;;
@@ -17,11 +18,20 @@
 ;; Rotate keys
 ;; Used to rotate the keys of the signers. This is called whenever
 ;; the signer set is updated.
-(define-public (rotate-keys (new-keys (list 15 (buff 32))))
-    (begin
+(define-public (rotate-keys-wrapper (new-keys (list 15 (buff 32))) (new-address principal) (new-aggregate-pubkey (buff 32)))
+    (let 
+        (
+            (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
+        )
+        ;; TODO: check that tx-sender, using principal-construct? is a current signer
+
         ;; Checks that length of each key is exactly 32 bytes
         (try! (fold signer-key-length-check new-keys (ok {index: u0})))
-        ;; Checks that tx-sender is in the list of existing signers
+
+        ;; Check that length of new-aggregate-pubkey is exactly 32 bytes
+        (asserts! (is-eq (len new-aggregate-pubkey) key-size) ERR_KEY_SIZE)
+
+        ;; Call into .sbtc-registry to update the keys & address
         (ok true)
     )
 )
