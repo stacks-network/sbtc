@@ -1,42 +1,64 @@
-use crate::client;
-use crate::common::{Error, ErrorResponse};
+use crate::client::risk_client;
+use crate::common::error::{Error, ErrorResponse};
 use crate::config::RiskAnalysisConfig;
 use reqwest::Client;
 use std::convert::Infallible;
 use tracing::error;
-
 use warp::{http::StatusCode, Rejection, Reply};
 
+/// Handles requests to check the blocklist status of a given address.
+/// Converts successful blocklist status results to JSON and returns them,
+/// or converts errors into Warp rejections.
 pub async fn check_address_handler(
     address: String,
     client: Client,
     config: RiskAnalysisConfig,
 ) -> Result<impl Reply, Rejection> {
-    match client::check_address(client, &config, &address).await {
-        Ok(value) => Ok(warp::reply::json(&value)),
-        Err(_) => Err(warp::reject::custom(Error::AddressNotFound)),
-    }
+    risk_client::check_address(&client, &config, &address)
+        .await
+        .map(|blocklist_status| warp::reply::json(&blocklist_status))
+        .map_err(warp::reject::custom)
 }
 
+/// Central error handler for Warp rejections, converting them to appropriate HTTP responses.
 pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
-    let (code, message) = if err.is_not_found() {
-        (StatusCode::NOT_FOUND, "Not Found")
-    } else if err
-        .find::<warp::filters::body::BodyDeserializeError>()
-        .is_some()
-    {
-        (StatusCode::BAD_REQUEST, "Invalid Body")
-    } else if let Some(e) = err.find::<Error>() {
-        error!("Unhandled application error: {:?}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
-    } else if err.find::<warp::reject::MethodNotAllowed>().is_some() {
-        (StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed")
-    } else {
-        error!("Unhandled error: {:?}", err);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
-    };
+    if err.is_not_found() {
+        let json = warp::reply::json(&ErrorResponse {
+            message: "Not Found".to_string(),
+        });
+        return Ok(warp::reply::with_status(json, StatusCode::NOT_FOUND));
+    }
 
-    let json = warp::reply::json(&ErrorResponse { message: message.to_string() });
+    if let Some(e) = err.find::<warp::filters::body::BodyDeserializeError>() {
+        let json = warp::reply::json(&ErrorResponse {
+            message: format!("Invalid Body: {}", e),
+        });
+        return Ok(warp::reply::with_status(json, StatusCode::BAD_REQUEST));
+    }
 
-    Ok(warp::reply::with_status(json, code))
+    if let Some(e) = err.find::<Error>() {
+        // Custom application errors
+        let (code, message) = e.as_http_response();
+        let json = warp::reply::json(&ErrorResponse { message });
+        return Ok(warp::reply::with_status(json, code));
+    }
+
+    if err.find::<warp::reject::MethodNotAllowed>().is_some() {
+        let json = warp::reply::json(&ErrorResponse {
+            message: "Method Not Allowed".to_string(),
+        });
+        return Ok(warp::reply::with_status(
+            json,
+            StatusCode::METHOD_NOT_ALLOWED,
+        ));
+    }
+
+    error!("Unhandled error: {:?}", err);
+    let json = warp::reply::json(&ErrorResponse {
+        message: "Internal Server Error".to_string(),
+    });
+    Ok(warp::reply::with_status(
+        json,
+        StatusCode::INTERNAL_SERVER_ERROR,
+    ))
 }
