@@ -1,6 +1,6 @@
 //! # Signer network interface
 //!
-//! This module provides the Client trait that the signer implementation
+//! This module provides the MessageTransfer trait that the signer implementation
 //! will rely on for inter-signer communication, along with an in-memory
 //! implementation of this trait for testing purposes.
 
@@ -14,7 +14,7 @@ use crate::message;
 
 pub type Msg = ecdsa::Signed<message::SignerMessage>;
 
-pub trait Client {
+pub trait MessageTransfer {
     type Error;
     /// Send `msg` to all other signers
     fn broadcast(&mut self, msg: Msg) -> impl Future<Output = Result<(), Self::Error>> + Send;

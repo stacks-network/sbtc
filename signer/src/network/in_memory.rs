@@ -13,7 +13,7 @@ pub const BROADCAST_CHANNEL_CAPACITY: usize = 10_000;
 type MsgId = [u8; 32];
 
 #[derive(Debug)]
-pub struct Client {
+pub struct MpmcBroadcaster {
     sender: broadcast::Sender<super::Msg>,
     receiver: broadcast::Receiver<super::Msg>,
     recently_sent: VecDeque<MsgId>,
@@ -33,12 +33,12 @@ impl Network {
     }
 
     /// Connect a new signer to this network
-    pub fn connect(&self) -> Client {
+    pub fn connect(&self) -> MpmcBroadcaster {
         let sender = self.sender.clone();
         let receiver = sender.subscribe();
         let recently_sent = VecDeque::new();
 
-        Client {
+        MpmcBroadcaster {
             sender,
             receiver,
             recently_sent,
@@ -46,7 +46,7 @@ impl Network {
     }
 }
 
-impl super::Client for Client {
+impl super::MessageTransfer for MpmcBroadcaster {
     type Error = Error;
     async fn broadcast(&mut self, msg: super::Msg) -> Result<(), Self::Error> {
         self.recently_sent.push_back(msg.id());
