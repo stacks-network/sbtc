@@ -37,6 +37,7 @@ The following are the developer tools that you should install on your local mach
 - **[Smithy](https://smithy.io/2.0/index.html)** - [Installation Guide](https://smithy.io/2.0/guides/smithy-cli/cli_installation.html) - Generates OpenAPI templates
 - **[Make](https://www.gnu.org/software/make/)** - Development task runner; natively present on nearly every system.
 - **[Java 21](https://www.oracle.com/java/)** - [Installation Guide](https://www.oracle.com/java/technologies/downloads/) - Required for OpenAPI Generator
+- **[Docker](https://docs.docker.com/manuals/)** - [Installation Guild](https://docs.docker.com/desktop/). This is used for running integration tests.
 
 #### Tool Versions
 
@@ -73,6 +74,8 @@ To build the sources we recommend you use the `Makefile` commands; they'll build
 - `make build` - Builds packages
 - `make lint` - Lints packages
 - `make clean` - Cleans workspace
+- `make test` - Run non-integration tests
+- `make integration-test` - Run all tests
 
 For other commands read the `Makefile` at repository root.
 

@@ -6,8 +6,14 @@ build: install | emily-client
 		&& pnpm --recursive build
 
 test: install | emily-client
+	cargo test --lib \
+		&& pnpm --recursive test
+
+integration-test: install | emily-client
+	docker compose --file docker-compose.test.yml up --detach
 	cargo test \
 		&& pnpm --recursive test
+	docker compose --file docker-compose.test.yml down
 
 lint: install | emily-client
 	cargo clippy -- -D warnings \
