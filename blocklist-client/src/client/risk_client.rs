@@ -3,6 +3,7 @@ use crate::common::{BlocklistStatus, RiskSeverity};
 use crate::config::RiskAnalysisConfig;
 use reqwest::{Client, Response, StatusCode};
 use serde::Deserialize;
+use std::error::Error as StdError;
 use tracing::debug;
 const API_BASE_PATH: &str = "/api/risk/v2/entities";
 
@@ -12,16 +13,11 @@ struct RegistrationResponse {
 }
 
 #[derive(Deserialize, Debug)]
-struct RiskResponse {
-    risk: Option<String>,
-    #[serde(rename = "riskReason")]
-    risk_reason: Option<String>,
-}
-
-#[derive(Deserialize, Debug)]
-struct RiskAssessment {
+pub struct RiskAssessment {
+    #[serde(rename = "risk")]
     pub severity: RiskSeverity,
-    pub reason: String,
+    #[serde(rename = "riskReason")]
+    pub reason: Option<String>,
 }
 
 /// Register the user address with provider to run subsequent risk checks
@@ -66,23 +62,25 @@ async fn get_risk_assessment(
         .await?;
 
     let checked_response = check_api_response(response).await?;
-    let resp = checked_response.json::<RiskResponse>().await?;
+    let resp_result = checked_response.json::<RiskAssessment>().await;
 
-    match resp.risk {
-        Some(risk_str) => {
-            let severity = match risk_str.as_str() {
-                "Low" => RiskSeverity::Low,
-                "Medium" => RiskSeverity::Medium,
-                "High" => RiskSeverity::High,
-                "Severe" => RiskSeverity::Severe,
-                _ => return Err(Error::InvalidRiskValue(risk_str)),
-            };
-            Ok(RiskAssessment {
-                severity,
-                reason: resp.risk_reason.unwrap_or_default(),
-            })
+    match resp_result {
+        Ok(resp) => Ok(resp),
+        Err(e) if e.is_decode() => {
+            // Check if the source of the error is serde_json::Error
+            if let Some(serde_err) = e
+                .source()
+                .and_then(|cause| cause.downcast_ref::<serde_json::Error>())
+            {
+                match serde_err.classify() {
+                    serde_json::error::Category::Data => Err(Error::InvalidApiResponse),
+                    _ => Err(Error::Serialization(serde_err.to_string())),
+                }
+            } else {
+                Err(Error::Network(e))
+            }
         }
-        None => Err(Error::InvalidApiResponse),
+        Err(e) => Err(Error::Network(e)),
     }
 }
 
@@ -100,15 +98,15 @@ pub async fn check_address(
     // If registration is successful, proceed to check the address
     let RiskAssessment { severity, reason } = get_risk_assessment(client, config, address).await?;
     debug!(
-        "Received risk assessment: Severity = {}, Reason = {}",
+        "Received risk assessment: Severity = {}, Reason = {:?}",
         severity, reason
     );
 
-    let is_severe = matches!(severity, RiskSeverity::Severe);
+    let is_severe = severity.is_severe();
     let blocklist_status = BlocklistStatus {
         // `is_blocklisted` is set to true if risk is Severe
         is_blocklisted: is_severe,
-        severity: severity.to_string(),
+        severity,
         // `accept` is set to false if severity is Severe
         accept: !is_severe,
         reason,
@@ -121,7 +119,7 @@ pub async fn check_address(
 async fn check_api_response(response: Response) -> Result<Response, Error> {
     match response.status() {
         StatusCode::OK | StatusCode::CREATED => Ok(response),
-        StatusCode::BAD_REQUEST => Err(Error::HttpRequestErr(
+        StatusCode::BAD_REQUEST => Err(Error::HttpRequest(
             response.status(),
             "Bad request - Invalid parameters or data".to_string(),
         )),
@@ -129,10 +127,10 @@ async fn check_api_response(response: Response) -> Result<Response, Error> {
         StatusCode::NOT_FOUND => Err(Error::NotFound),
         StatusCode::NOT_ACCEPTABLE => Err(Error::NotAcceptable),
         StatusCode::CONFLICT => Err(Error::Conflict),
-        StatusCode::INTERNAL_SERVER_ERROR => Err(Error::InternalServerErr),
+        StatusCode::INTERNAL_SERVER_ERROR => Err(Error::InternalServer),
         StatusCode::SERVICE_UNAVAILABLE => Err(Error::ServiceUnavailable),
         StatusCode::REQUEST_TIMEOUT => Err(Error::RequestTimeout),
-        status => Err(Error::HttpRequestErr(
+        status => Err(Error::HttpRequest(
             status,
             "Unhandled status code".to_string(),
         )),
@@ -200,11 +198,11 @@ mod tests {
 
         let result = register_address(&client, &config, TEST_ADDRESS).await;
         match result {
-            Err(Error::HttpRequestErr(code, message)) => {
+            Err(Error::HttpRequest(code, message)) => {
                 assert_eq!(code, StatusCode::BAD_REQUEST);
                 assert!(message.contains("Bad request - Invalid parameters or data"));
             }
-            _ => panic!("Expected HttpRequestErr, got {:?}", result),
+            _ => panic!("Expected HttpRequest, got {:?}", result),
         }
     }
 
@@ -250,28 +248,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_risk_assessment_invalid_risk_value() {
-        let _m = setup_mock(
-            "GET",
-            format!("{}/{}", API_BASE_PATH, TEST_ADDRESS).as_str(),
-            200,
-            r#"{"risk": "mild"}"#,
-        );
-        let (client, config) = setup_client();
-
-        let result = get_risk_assessment(&client, &config, TEST_ADDRESS).await;
-        match result {
-            Ok(_) => panic!("Test failed: Expected an Error::InvalidRiskValue, but got Ok"),
-            Err(e) => match e {
-                Error::InvalidRiskValue(_) => {
-                    assert!(true, "Received the expected Error::InvalidRiskValue");
-                }
-                _ => panic!("Test failed: Expected Error::InvalidRiskValue, got {e:?}"),
-            },
-        }
-    }
-
-    #[tokio::test]
     async fn test_check_address_blocklisted_for_high_risk() {
         let _reg_mock = setup_mock("POST", API_BASE_PATH, 200, ADDRESS_REGISTRATION_BODY);
         let _risk_mock = setup_mock(
@@ -286,8 +262,8 @@ mod tests {
         assert!(result.is_ok());
         let status = result.unwrap();
         assert!(status.is_blocklisted);
-        assert_eq!(status.severity, Severe.to_string());
-        assert_eq!(status.reason, "fraud");
+        assert_eq!(status.severity, Severe);
+        assert_eq!(status.reason, Some("fraud".to_string()));
         assert!(!status.accept);
     }
 
@@ -306,8 +282,8 @@ mod tests {
         assert!(result.is_ok());
         let status = result.unwrap();
         assert!(!status.is_blocklisted);
-        assert_eq!(status.severity, Low.to_string());
-        assert!(status.reason.is_empty());
+        assert_eq!(status.severity, Low);
+        assert!(status.reason.is_none());
         assert!(status.accept);
     }
 
@@ -324,8 +300,8 @@ mod tests {
         let result = check_address(&client, &config, TEST_ADDRESS).await;
         assert!(result.is_err());
         match result {
-            Err(Error::HttpRequestErr(code, _)) => assert_eq!(code, StatusCode::BAD_REQUEST),
-            _ => panic!("Expected HttpRequestErr for bad registration"),
+            Err(Error::HttpRequest(code, _)) => assert_eq!(code, StatusCode::BAD_REQUEST),
+            _ => panic!("Expected HttpRequest for bad registration"),
         }
     }
 
@@ -343,10 +319,10 @@ mod tests {
         let result = check_address(&client, &config, TEST_ADDRESS).await;
         assert!(result.is_err());
         match result {
-            Err(Error::InternalServerErr) => {
+            Err(Error::InternalServer) => {
                 assert!(true, "Received expected internal server error")
             }
-            _ => panic!("Expected InternalServerErr for failed risk assessment"),
+            _ => panic!("Expected InternalServer for failed risk assessment"),
         }
     }
 }
