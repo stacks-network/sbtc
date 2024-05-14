@@ -13,14 +13,14 @@ path = "src/main.rs"
 config = "0.11"
 once_cell = "1.8.0"
 reqwest = { version = "0.11", features = ["json"] }
-signer = { path = "../signer" }
-serde.workspace = true
+sbtc-common = { path = "../common" }
+serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
-tokio = { version = "1.32.0", features = ["rt-multi-thread", "rt", "macros"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "rt", "macros"] }
 tracing.workspace = true
 tracing-attributes.workspace = true
-tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt", "json", "time"] }
+tracing-subscriber.workspace = true
 warp = "0.3"
 
 [dev-dependencies]

@@ -1,7 +1,6 @@
 pub mod codec;
 pub mod ecdsa;
 pub mod error;
-pub mod logging;
 pub mod message;
 pub mod network;
 pub mod packaging;

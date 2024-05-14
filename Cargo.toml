@@ -5,7 +5,7 @@ members = [
   ".generated-sources/emily",
   "emily/lambda",
   "blocklist-client"
-]
+, "common"]
 
 [profile.dev]
 # Disabling debug info speeds up builds a bunch,
