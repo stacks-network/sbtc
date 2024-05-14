@@ -18,7 +18,7 @@
 //!
 //! ```
 //! use sha2::Digest;
-//! use sbtc_signer::ecdsa::SignEcdsa;
+//! use signer::ecdsa::SignEcdsa;
 //!
 //! struct SignableStr(&'static str);
 //!
