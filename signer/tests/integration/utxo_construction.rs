@@ -25,7 +25,7 @@ use signer::utxo::SbtcRequests;
 use signer::utxo::SignerBtcState;
 use signer::utxo::SignerUtxo;
 
-mod regtest;
+use crate::regtest;
 use regtest::Either;
 use regtest::Recipient;
 
