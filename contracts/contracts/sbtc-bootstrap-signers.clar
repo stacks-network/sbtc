@@ -18,7 +18,7 @@
 ;; Rotate keys
 ;; Used to rotate the keys of the signers. This is called whenever
 ;; the signer set is updated.
-(define-public (rotate-keys-wrapper (new-keys (list 15 (buff 32))) (new-address principal) (new-aggregate-pubkey (buff 32)))
+(define-public (rotate-keys-wrapper (new-keys (list 15 (buff 32))) (multi-sig-address principal) (new-aggregate-pubkey (buff 32)))
     (let 
         (
             (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   

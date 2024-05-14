@@ -3,12 +3,13 @@
 ;; Error codes
 (define-constant ERR_UNAUTHORIZED (err u400))
 (define-constant ERR_INVALID_REQUEST_ID (err u401))
-
+(define-constant ERR_AGG_PUBKEY_REPLAY (err u402))
+(define-constant ERR_MULTI_SIG_REPLAY (err u403))
 
 ;; Variables
 (define-data-var last-withdrawal-request-id uint u0)
-(define-data-var current-signer-set (list 15 principal) (list))
-(define-data-var current-aggregate-pubkey {version: (buff 1), hashbytes: (buff 32)} {version: 0x01, hashbytes: 0x00000000000000000000000000000000})
+(define-data-var current-signer-set (list 15 (buff 32)) (list))
+(define-data-var current-aggregate-pubkey (buff 32) 0x00)
 (define-data-var current-signer-principal principal tx-sender)
 
 
@@ -47,6 +48,13 @@
   }
 )
 
+;; Data structure to store aggregate pubkey,
+;; stored to avoid replay
+(define-map aggregate-pubkeys (buff 32) bool)
+
+;; Data structure to store the current signer set,
+;; stored to avoid replay
+(define-map multi-sig-address principal bool)
 
 ;; Read-only functions
 ;; Get a withdrawal request by its ID.
@@ -149,7 +157,28 @@
   )
 )
 
+;; Rotate the signer set, multi-sig principal, & aggregate pubkey
+;; This function can only be called by the bootstrap-signers contract.
+(define-public (rotate-keys (new-keys (list 15 (buff 32))) (new-address principal) (new-aggregate-pubkey (buff 32)))
+  (begin
+    ;; Check that caller is protocol contract
+    (try! (validate-caller))
+    ;; Check that the aggregate pubkey is not already in the map
+    (asserts! (is-none (map-get? aggregate-pubkeys new-aggregate-pubkey)) (err u0))
+    ;; Check that the new address (multi-sig) is not already in the map
+    (asserts! (is-none (map-get? multi-sig-address new-address)) ERR_MULTI_SIG_REPLAY)
+    ;; Update the current signer set
+    (var-set current-signer-set new-keys)
+    ;; Update the current multi-sig address
+    (var-set current-signer-principal new-address)
+    ;; Update the current aggregate pubkey
+    (ok (var-set current-aggregate-pubkey new-aggregate-pubkey))
+  )
+)
+
 ;; Update the signer set & principal.
+;; This function can only be called by the bootstrap-signers contract.
+;;(define-public (update-signer-set))
 
 ;; Private functions
 
@@ -172,5 +201,5 @@
   ;; To provide an explicit error type, add a branch that
   ;; wont be hit
   ;; (if (is-eq contract-caller .controller) (ok true) (err ERR_UNAUTHORIZED))
-  (if false (err ERR_UNAUTHORIZED) (ok true))
+  (if false ERR_UNAUTHORIZED (ok true))
 )
