@@ -597,6 +597,7 @@ dependencies = [
  "mockito",
  "once_cell",
  "reqwest",
+ "sbtc-common",
  "serde 1.0.201",
  "serde_json",
  "signer",
@@ -2520,6 +2521,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "sbtc-common"
+version = "0.1.0"
+dependencies = [
+ "tracing",
+ "tracing-attributes",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "sbtc-signer"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "bitcoin",
+ "more-asserts",
+ "p256k1",
+ "rand 0.8.5",
+ "secp256k1",
+ "serde 1.0.201",
+ "sha2",
+ "test-case",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-attributes",
+ "tracing-subscriber",
+ "wsts",
 ]
 
 [[package]]
