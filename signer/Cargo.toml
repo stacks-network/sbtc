@@ -1,6 +1,6 @@
 # The razor application, for fundraising.
 [package]
-name = "sbtc-signer"
+name = "signer"
 version = "0.1.0"
 edition = "2021"
 

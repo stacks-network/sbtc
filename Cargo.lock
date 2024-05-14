@@ -597,9 +597,9 @@ dependencies = [
  "mockito",
  "once_cell",
  "reqwest",
- "sbtc-signer",
  "serde 1.0.201",
  "serde_json",
+ "signer",
  "thiserror",
  "tokio",
  "tracing",
@@ -2523,27 +2523,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sbtc-signer"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "bitcoin",
- "more-asserts",
- "p256k1",
- "rand 0.8.5",
- "secp256k1",
- "serde 1.0.201",
- "sha2",
- "test-case",
- "thiserror",
- "tokio",
- "tracing",
- "tracing-attributes",
- "tracing-subscriber",
- "wsts",
-]
-
-[[package]]
 name = "schannel"
 version = "0.1.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2809,6 +2788,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a9e9e0b4211b72e7b8b6e85c807d36c212bdb33ea8587f7569562a84df5465b1"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "signer"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "bitcoin",
+ "more-asserts",
+ "p256k1",
+ "rand 0.8.5",
+ "secp256k1",
+ "serde 1.0.201",
+ "sha2",
+ "test-case",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-attributes",
+ "tracing-subscriber",
+ "wsts",
 ]
 
 [[package]]

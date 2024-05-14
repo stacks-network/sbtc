@@ -15,7 +15,7 @@
 //! ### Encoding a string slice and decoding it as a string
 //!
 //! ```
-//! use sbtc_signer::codec::{Encode, Decode};
+//! use signer::codec::{Encode, Decode};
 //!
 //! let message = "Encode me";
 //!
