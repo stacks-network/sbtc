@@ -3,6 +3,26 @@ MAINTAINER Gowtham Sundar <gowtham@trustmachines.co>
 
 ARG VERSION=25.0
 
+
+ARG BTC_NETWORK
+ARG BTC_TXINDEX
+ARG BTC_RPCUSER
+ARG BTC_RPCPASSWORD
+ARG BTC_PRINTTOCONSOLE
+ARG BTC_DISABLEWALLET
+ARG BTC_RPCBIND
+ARG BTC_RPCALLOWIP
+
+# Set ENVs so they persist after image is built
+ENV BTC_NETWORK=$BTC_NETWORK
+ENV BTC_TXINDEX=$BTC_TXINDEX
+ENV BTC_RPCUSER=$BTC_RPCUSER
+ENV BTC_RPCPASSWORD=$BTC_RPCPASSWORD
+ENV BTC_PRINTTOCONSOLE=$BTC_PRINTTOCONSOLE
+ENV BTC_DISABLEWALLET=$BTC_DISABLEWALLET
+ENV BTC_RPCBIND=$BTC_RPCBIND
+ENV BTC_RPCALLOWIP=$BTC_RPCALLOWIP
+
 RUN apt-get update && apt-get install -y \
     wget \
     file \
@@ -31,9 +51,7 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /bitcoin/bin/* /usr/local/bin
 
 COPY default.conf /etc/nginx/conf.d/default.conf
-EXPOSE 18443
-EXPOSE 18444
-EXPOSE 18433
+
 ADD entrypoint.sh /usr/local/bin
 RUN chmod a+x /usr/local/bin/entrypoint.sh
 
