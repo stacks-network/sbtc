@@ -17,11 +17,14 @@ echo "--> Create a named 'legacy' wallet named 'devnet' -->"
 curl -u "$BTC_RPCUSER:$BTC_RPCPASSWORD" --data-binary \
 	'{ "jsonrpc": "1.0", "id": "curltest", "method": "createwallet", "params": { "wallet_name":"devnet", "avoid_reuse":true, "descriptors":false, "load_on_startup":true }}' \
 	-H 'content-type: text/plain;' "$RPC_ENDPOINT"
+
+# curl -u "$BTC_RPCUSER:$BTC_RPCPASSWORD" --data-binary \
+# 	'{"jsonrpc": "1.0", "id": "curltest", "method": "createwallet", "params": ["testwallet"]}' -H 'content-type: text/plain;' "$RPC_ENDPOINT"
 echo "==> devnet bitcoin wallet created\n\n"
 
 
 echo "--> Import miner address -->"
-curl -u "$BTC_RPCUSER:$BTC_RPCPASSWORD" -d '{"jsonrpc":"1.0","id":"curltext","method":"importaddress","params":["'"$MINER_ADDRESS"'","Label",false]}' -H 'content-type:text/plain;' $RPC_ENDPOINT
+curl -u "$BTC_RPCUSER:$BTC_RPCPASSWORD" -d '{"jsonrpc":"1.0","id":"curltext","method":"importaddress","params":["'$MINER_ADDRESS'","",false]}' -H 'content-type:text/plain;' "$RPC_ENDPOINT"
 echo "==> Miner address has been imported\n\n"
 
 

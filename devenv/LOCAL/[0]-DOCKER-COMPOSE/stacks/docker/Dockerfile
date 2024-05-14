@@ -27,7 +27,7 @@ ENV BTC_NODE_RPC_PASSWORD=$BTC_NODE_RPC_PASSWORD
 
 
 # -----------INSTALL SUDO----------------------
-RUN apt-get update && apt-get install -y sudo
+RUN apt-get update && apt-get install -y sudo jq curl
 
 # RUN adduser --disabled-password --gecos '' docker
 # RUN adduser docker sudo

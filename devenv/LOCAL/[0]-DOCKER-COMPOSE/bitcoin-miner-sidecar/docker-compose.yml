@@ -22,6 +22,8 @@ services:
         BTC_RPCUSER: "devnet"
         BTC_RPC_PORT: 18443
         BTC_P2P_PORT: 18444
+        BTC_LOG_DEBUG: 0
+        BTC_REST_ENABLE: 0
     ports:
       - 18444:18444
       - 18443:18443
@@ -38,6 +40,8 @@ services:
       BTC_RPCUSER: devnet
       BTC_RPC_PORT: 18443
       BTC_P2P_PORT: 18444
+      BTC_LOG_DEBUG: 0
+      BTC_REST_ENABLE: 0
   bitcoin-miner:
     image: bitcoin-miner-sidecar:latest
     container_name: bitcoin-miner-sidecar
@@ -56,7 +60,7 @@ services:
         BITCOIN_RPC_PORT: 18443
         BTC_RPCPASSWORD: devnet
         BTC_RPCUSER: devnet
-        MINER_ADDRESS: "n3GRiDLKWuKLCw1DZmV75W1mE35qmW2tQm"
+        MINER_ADDRESS: "mr2S2F9uaes4ToS5krSPnTGCHnEjiMVxeG"
     depends_on:
       - bitcoin
     environment:
@@ -66,7 +70,7 @@ services:
       BITCOIN_RPC_PORT: 18443
       BTC_RPCPASSWORD: devnet
       BTC_RPCUSER: devnet
-      MINER_ADDRESS: "n3GRiDLKWuKLCw1DZmV75W1mE35qmW2tQm"
+      MINER_ADDRESS: "mr2S2F9uaes4ToS5krSPnTGCHnEjiMVxeG"
 
 # networks:
 #   devnet:

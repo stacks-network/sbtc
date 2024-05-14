@@ -17,6 +17,8 @@ services:
         BTC_RPCUSER: "devnet"
         BTC_RPC_PORT: 18443
         BTC_P2P_PORT: 18444
+        BTC_LOG_DEBUG: 0
+        BTC_REST_ENABLE: 0
     ports:
       - 18444:18444
       - 18443:18443
@@ -33,6 +35,8 @@ services:
       BTC_RPCUSER: devnet
       BTC_RPC_PORT: 18443
       BTC_P2P_PORT: 18444
+      BTC_LOG_DEBUG: 0
+      BTC_REST_ENABLE: 0
   postgres:
     image: postgres:15-alpine
     container_name: postgres
@@ -66,7 +70,7 @@ services:
         BITCOIN_RPC_PORT: 18443
         BTC_RPCPASSWORD: devnet
         BTC_RPCUSER: devnet
-        MINER_ADDRESS: "mzHe5v2wQhqDG2F4wxRZAU1yNSPZD9uE8u"
+        MINER_ADDRESS: "mqVnk6NPRdhntvfm4hh9vvjiRkFDUuSYsH"
     depends_on:
       - bitcoin
     environment:
@@ -76,7 +80,7 @@ services:
       BITCOIN_RPC_PORT: 18443
       BTC_RPCPASSWORD: devnet
       BTC_RPCUSER: devnet
-      MINER_ADDRESS: "mzHe5v2wQhqDG2F4wxRZAU1yNSPZD9uE8u"
+      MINER_ADDRESS: "mqVnk6NPRdhntvfm4hh9vvjiRkFDUuSYsH"
   stacks:
     image: stacks:latest
     container_name: stacks
@@ -90,7 +94,7 @@ services:
         STACKS_WORKING_DIR: "/var/stacks"
         MY_HTTP_AUTH_TOKEN: "helloworld"
         SIGNER_ENDPOINT: "nakamoto-signer:30000"
-        MINER_KEY: "19ec1c3e31d139c989a23a27eac60d1abfad5277d3ae9604242514c738258efa01"
+        MINER_KEY: "753b7cc01a1a2e86221266a154af739463fce51219d97e4f856cd7200c3bd2a6"
         BTC_NODE_RPC_HOST: "bitcoin"
         BTC_NODE_RPC_USER: "devnet"
         BTC_NODE_RPC_PASSWORD: "devnet"
@@ -107,7 +111,7 @@ services:
       STACKS_WORKING_DIR: "/var/stacks"
       MY_HTTP_AUTH_TOKEN: "helloworld"
       SIGNER_ENDPOINT: "nakamoto-signer:30000"
-      MINER_KEY: "19ec1c3e31d139c989a23a27eac60d1abfad5277d3ae9604242514c738258efa01"
+      MINER_KEY: "753b7cc01a1a2e86221266a154af739463fce51219d97e4f856cd7200c3bd2a6"
       BTC_NODE_RPC_HOST: "bitcoin"
       BTC_NODE_RPC_USER: "devnet"
       BTC_NODE_RPC_PASSWORD: "devnet"

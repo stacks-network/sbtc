@@ -47,7 +47,7 @@ rpcpassword="$BTC_RPCPASSWORD"
 # Allow JSON-RPC connections from, by default only localhost are allowed
 rpcallowip=$BTC_RPCALLOWIP
 
-# bind=$BTC_RPCBIND
+bind=$BTC_RPCBIND
 rpcbind=$BTC_RPCBIND
 rpcport=$BTC_RPC_PORT
 dbcache=512
@@ -57,10 +57,10 @@ rpcworkqueue=256
 rpctimeout=100
 
 # Accept public REST requests (default: 0)
-rest=1
+# rest=$BTC_REST_ENABLE
 
 # output all debug info
-debug=1
+# debug=$BTC_LOG_DEBUG
 
 disablewallet=$BTC_DISABLEWALLET
 
@@ -92,5 +92,4 @@ bitcoind \
     -rpcallowip=${BTC_RPCALLOWIP} \
     -rpcport=${BTC_RPC_PORT} \
     -server=1 \
-    -debug=1
     -conf=${DOT_BITCOIN_DIR}/bitcoin.conf

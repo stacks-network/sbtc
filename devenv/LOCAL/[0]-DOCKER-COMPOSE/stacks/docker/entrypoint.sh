@@ -47,6 +47,7 @@ password = "$BTC_NODE_RPC_PASSWORD"
 rpc_port = 18443
 peer_port = 18444
 pox_2_activation = 104
+wallet_name = devnet
 
 [[burnchain.epochs]]
 epoch_name = "1.0"
