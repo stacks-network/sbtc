@@ -6,12 +6,12 @@ build: install | emily-client
 		&& pnpm --recursive build
 
 test: install | emily-client
-	cargo test --lib \
+	cargo test \
 		&& pnpm --recursive test
 
 integration-test: install | emily-client
 	docker compose --file docker-compose.test.yml up --detach
-	cargo test \
+	cargo test --all-features \
 		&& pnpm --recursive test
 	docker compose --file docker-compose.test.yml down
 

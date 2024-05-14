@@ -12,6 +12,9 @@ name = "signer"
 path = "src/main.rs"
 bench = false
 
+[features]
+integration-tests = []
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]

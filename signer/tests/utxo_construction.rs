@@ -105,6 +105,7 @@ fn make_deposit(
 /// This test just checks that many of the methods on the Recipient struct
 /// work as advertised.
 #[test]
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 fn helper_struct_methods_work() {
     let (rpc, faucet) = regtest::initialize_blockchain();
     let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
@@ -151,6 +152,7 @@ fn helper_struct_methods_work() {
 /// Check that deposits, when sent with the expected format, are
 /// spent using the transactions generated in the utxo module.
 #[test]
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 fn deposits_add_to_controlled_amounts() {
     let (rpc, faucet) = regtest::initialize_blockchain();
     let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
