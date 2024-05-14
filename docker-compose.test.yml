@@ -1,0 +1,15 @@
+services:
+
+  bitcoin:
+    container_name: bitcoind
+    image: lncm/bitcoind:v27.0
+    volumes:
+      - ./signer/tests/bitcoin/bitcoin.conf:/data/.bitcoin/bitcoin.conf:ro
+    restart: on-failure
+    stop_grace_period: 10s
+    ports:
+      - 8333:8333
+      - 8332:8332
+      - 18443:18443
+      - 28332:28332
+      - 28333:28333

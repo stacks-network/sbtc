@@ -1,4 +1,4 @@
-name: Pull Request
+name: Rust and Clarity Tests
 on:
   pull_request:
     types:
@@ -37,7 +37,7 @@ jobs:
         run: make install
 
       - name: Run tests
-        run: make test
+        run: make integration-test
 
       - name: Run lints
         run: make lint

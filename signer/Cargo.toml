@@ -12,6 +12,9 @@ name = "signer"
 path = "src/main.rs"
 bench = false
 
+[features]
+integration-tests = []
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -33,5 +36,13 @@ version = "*"
 features = ["rand-std", "global-context"]
 
 [dev-dependencies]
+# bitcoincore-rpc = "0.18"
+# There is a draft PR for this branch into main branch at
+# https://github.com/rust-bitcoin/rust-bitcoincore-rpc/pull/337.
+# When that PR gets merged and the new version gets published, we can upgrade back
+# to the official version.
+bitcoincore-rpc = { git = "https://github.com/tcharding/rust-bitcoincore-rpc", branch = "04-25-upgrade-bitcoin-0.32.0" }
 more-asserts = "0.3"
+reqwest = "0.12"
 test-case = "3.1"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
