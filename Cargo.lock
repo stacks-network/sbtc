@@ -600,7 +600,6 @@ dependencies = [
  "sbtc-common",
  "serde 1.0.201",
  "serde_json",
- "signer",
  "thiserror",
  "tokio",
  "tracing",
@@ -2530,27 +2529,6 @@ dependencies = [
  "tracing",
  "tracing-attributes",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "sbtc-signer"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "bitcoin",
- "more-asserts",
- "p256k1",
- "rand 0.8.5",
- "secp256k1",
- "serde 1.0.201",
- "sha2",
- "test-case",
- "thiserror",
- "tokio",
- "tracing",
- "tracing-attributes",
- "tracing-subscriber",
- "wsts",
 ]
 
 [[package]]
