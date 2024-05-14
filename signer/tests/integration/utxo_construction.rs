@@ -11,7 +11,6 @@ use bitcoin::OutPoint;
 use bitcoin::PubkeyHash;
 use bitcoin::ScriptBuf;
 use bitcoin::Sequence;
-use bitcoin::TapLeafHash;
 use bitcoin::Transaction;
 use bitcoin::TxIn;
 use bitcoin::TxOut;
@@ -219,33 +218,17 @@ fn deposits_add_to_controlled_amounts() {
     // deposit request and no withdrawal requests.
     let mut transactions = requests.construct_transactions().unwrap();
     assert_eq!(transactions.len(), 1);
-    let unsigned = transactions.pop().unwrap();
+    let mut unsigned = transactions.pop().unwrap();
 
-    // Now we need to sign the transaction. For that we need the UTXOs used as
-    // inputs and the script in the merkle tree.
-    let signer_utxo_2 = TxOut {
-        value: signer_utxo.amount,
-        script_pubkey: signer_utxo.script_pub_key.clone(),
-    };
-    let utxos = [signer_utxo_2, deposit_tx.output[0].clone()];
-
-    let deposit_script = requests.deposits[0].deposit_script.as_script();
-    let leaf_hash = TapLeafHash::from_script(deposit_script, LeafVersion::TapScript);
-
-    // Let's produce signatures for each of the two inputs. The first input
-    // corresponds to the signer's UTXO, while the second input is from the
-    // deposit transaction.
-    let (tx, signature1) =
-        regtest::p2tr_signature(unsigned.tx, 0, &utxos, signer.keypair, Either::Left(None));
-    let (mut tx, signature2) =
-        regtest::p2tr_signature(tx, 1, &utxos, signer.keypair, Either::Right(leaf_hash));
-
+    // Let's produce signatures for each of the inputs. 
+    let witness_data = regtest::p2tr_witness(&unsigned, signer.keypair);
     // Add the signature and/or other required information to the witness data.
-    tx.input[0].witness = Witness::p2tr_key_spend(&signature1);
-    tx.input[1].witness = requests.deposits[0].construct_witness_data(signature2);
+    unsigned.tx.input.iter_mut().zip(witness_data).for_each(|(tx_in, witness)| {
+        tx_in.witness = witness;
+    });
 
     // The moment of truth, does the network accept the transaction?
-    rpc.send_raw_transaction(&tx).unwrap();
+    rpc.send_raw_transaction(&unsigned.tx).unwrap();
     faucet.generate_blocks(rpc, 1);
 
     // The signer's balance should now reflect the deposit.
