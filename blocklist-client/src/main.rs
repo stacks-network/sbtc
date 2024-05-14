@@ -12,7 +12,7 @@ mod config;
 
 #[tokio::main]
 async fn main() {
-    setup_logging();
+    setup_logging(false);
 
     let client = Client::new();
 

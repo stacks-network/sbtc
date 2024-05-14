@@ -3,7 +3,15 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 
-pub fn setup_logging() {
+pub fn setup_logging(pretty: bool) {
+    if pretty {
+        setup_logging_pretty()
+    } else {
+        setup_logging_json()
+    }
+}
+
+fn setup_logging_json() {
     let dirs = "info,signer=debug";
 
     let main_layer = tracing_subscriber::fmt::layer()
@@ -14,6 +22,19 @@ pub fn setup_logging() {
         .with_span_list(true)
         .with_line_number(true)
         .with_file(true)
+        .with_timer(UtcTime::rfc_3339());
+
+    tracing_subscriber::registry()
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(dirs)))
+        .with(main_layer)
+        .init()
+}
+
+fn setup_logging_pretty() {
+    let dirs = "info,signer=debug";
+
+    let main_layer = tracing_subscriber::fmt::layer()
+        .pretty()
         .with_timer(UtcTime::rfc_3339());
 
     tracing_subscriber::registry()

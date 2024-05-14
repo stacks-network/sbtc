@@ -28,6 +28,10 @@ jobs:
           distribution: 'corretto'
           java-version: '21'
 
+      - uses: arduino/setup-protoc@v3
+        with:
+          version: "25.3"
+
       - name: Setup rust toolchain
         run: rustup show
 

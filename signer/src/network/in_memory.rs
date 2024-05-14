@@ -46,18 +46,24 @@ impl Network {
     }
 }
 
+impl Default for Network {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl super::MessageTransfer for MpmcBroadcaster {
     type Error = Error;
     async fn broadcast(&mut self, msg: super::Msg) -> Result<(), Self::Error> {
         self.recently_sent.push_back(msg.id());
-        self.sender.send(msg)?;
+        self.sender.send(msg).map_err(|_| Error::Send)?;
         Ok(())
     }
 
     async fn receive(&mut self) -> Result<super::Msg, Self::Error> {
         let mut msg = self.receiver.recv().await?;
 
-        while Some(&msg.id()) == self.recently_sent.get(0) {
+        while Some(&msg.id()) == self.recently_sent.front() {
             self.recently_sent.pop_front();
             msg = self.receiver.recv().await?;
         }
@@ -69,7 +75,7 @@ impl super::MessageTransfer for MpmcBroadcaster {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("send error")]
-    Send(#[from] broadcast::error::SendError<super::Msg>),
+    Send,
     #[error("receive error")]
     Recv(#[from] broadcast::error::RecvError),
 }
