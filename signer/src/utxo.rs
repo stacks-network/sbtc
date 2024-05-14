@@ -468,31 +468,29 @@ mod tests {
     use bitcoin::blockdata::opcodes;
     use bitcoin::CompressedPublicKey;
     use bitcoin::KnownHrp;
-    use bitcoin::NetworkKind;
-    use bitcoin::PrivateKey;
     use bitcoin::PublicKey;
     use bitcoin::Txid;
     use rand::distributions::Distribution;
+    use secp256k1::SecretKey;
     use test_case::test_case;
-
-    const PUBLIC_KEY0: &'static str =
-        "02ff12471208c14bd580709cb2358d98975247d8765f92bc25eab3b2763ed605f8";
 
     const PUBLIC_KEY1: &'static str =
         "032e58afe51f9ed8ad3cc7897f634d881fdbe49a81564629ded8156bebd2ffd1af";
 
-    fn generate_public_key() -> PublicKey {
-        let private_key = PrivateKey::generate(NetworkKind::Test);
-        private_key.public_key(SECP256K1)
-    }
+    const XONLY_PUBLIC_KEY0: &'static str =
+        "ff12471208c14bd580709cb2358d98975247d8765f92bc25eab3b2763ed605f8";
 
-    fn to_x_only_public_key(p: PublicKey) -> XOnlyPublicKey {
-        p.inner.x_only_public_key().0
+    const XONLY_PUBLIC_KEY1: &'static str =
+        "2e58afe51f9ed8ad3cc7897f634d881fdbe49a81564629ded8156bebd2ffd1af";
+
+    fn generate_x_only_public_key() -> XOnlyPublicKey {
+        let secret_key = SecretKey::new(&mut rand::rngs::OsRng);
+        secret_key.x_only_public_key(SECP256K1).0
     }
 
     fn generate_address() -> Address {
-        let public_key = generate_public_key();
-        let pk = CompressedPublicKey(public_key.inner);
+        let secret_key = SecretKey::new(&mut rand::rngs::OsRng);
+        let pk = CompressedPublicKey(secret_key.public_key(SECP256K1));
 
         Address::p2wpkh(&pk, KnownHrp::Regtest)
     }
@@ -538,8 +536,8 @@ mod tests {
                 .push_opcode(opcodes::all::OP_CHECKSIG)
                 .into_script(),
             redeem_script: ScriptBuf::new(),
-            taproot_public_key: to_x_only_public_key(PublicKey::from_str(PUBLIC_KEY0).unwrap()),
-            signers_public_key: to_x_only_public_key(generate_public_key()),
+            taproot_public_key: XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY0).unwrap(),
+            signers_public_key: generate_x_only_public_key(),
         }
     }
 
@@ -564,8 +562,8 @@ mod tests {
             amount: 100_000,
             deposit_script: ScriptBuf::new(),
             redeem_script: ScriptBuf::new(),
-            taproot_public_key: to_x_only_public_key(PublicKey::from_str(PUBLIC_KEY1).unwrap()),
-            signers_public_key: to_x_only_public_key(PublicKey::from_str(PUBLIC_KEY1).unwrap()),
+            taproot_public_key: XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap(),
+            signers_public_key: XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap(),
         };
 
         assert_eq!(deposit.votes_against(), expected);
@@ -582,8 +580,8 @@ mod tests {
             amount: 100_000,
             deposit_script: ScriptBuf::from_bytes(vec![1, 2, 3]),
             redeem_script: ScriptBuf::new(),
-            taproot_public_key: to_x_only_public_key(PublicKey::from_str(PUBLIC_KEY1).unwrap()),
-            signers_public_key: to_x_only_public_key(PublicKey::from_str(PUBLIC_KEY1).unwrap()),
+            taproot_public_key: XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap(),
+            signers_public_key: XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap(),
         };
 
         let sig = Signature::from_slice(&[0u8; 64]).unwrap();
@@ -608,10 +606,10 @@ mod tests {
                 utxo: SignerUtxo {
                     outpoint: generate_outpoint(5500, 0),
                     amount: 5500,
-                    public_key: to_x_only_public_key(generate_public_key()),
+                    public_key: generate_x_only_public_key(),
                 },
                 fee_rate: 0,
-                public_key: to_x_only_public_key(generate_public_key()),
+                public_key: generate_x_only_public_key(),
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -658,7 +656,7 @@ mod tests {
     /// Deposit requests add to the signers' UTXO.
     #[test]
     fn deposits_increase_signers_utxo_amount() {
-        let public_key = PublicKey::from_str(PUBLIC_KEY1).unwrap();
+        let public_key = XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
             deposits: vec![
                 create_deposit(123456, 0, 0),
@@ -670,10 +668,10 @@ mod tests {
                 utxo: SignerUtxo {
                     outpoint: OutPoint::null(),
                     amount: 55,
-                    public_key: to_x_only_public_key(public_key),
+                    public_key,
                 },
                 fee_rate: 0,
-                public_key: to_x_only_public_key(public_key),
+                public_key,
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -702,7 +700,7 @@ mod tests {
     /// Withdrawal requests remove funds from the signers' UTXO.
     #[test]
     fn withdrawals_decrease_signers_utxo_amount() {
-        let public_key = PublicKey::from_str(PUBLIC_KEY1).unwrap();
+        let public_key = XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
             deposits: Vec::new(),
             withdrawals: vec![
@@ -714,10 +712,10 @@ mod tests {
                 utxo: SignerUtxo {
                     outpoint: OutPoint::null(),
                     amount: 9500,
-                    public_key: to_x_only_public_key(public_key),
+                    public_key,
                 },
                 fee_rate: 0,
-                public_key: to_x_only_public_key(public_key),
+                public_key,
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -736,7 +734,7 @@ mod tests {
     /// We chain transactions so that we have a single signer UTXO at the end.
     #[test]
     fn returned_txs_form_a_tx_chain() {
-        let public_key = PublicKey::from_str(PUBLIC_KEY1).unwrap();
+        let public_key = XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
             deposits: vec![
                 create_deposit(1234, 0, 1),
@@ -753,10 +751,10 @@ mod tests {
                 utxo: SignerUtxo {
                     outpoint: generate_outpoint(300_000, 0),
                     amount: 300_000,
-                    public_key: to_x_only_public_key(public_key),
+                    public_key,
                 },
                 fee_rate: 0,
-                public_key: to_x_only_public_key(public_key),
+                public_key,
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -781,7 +779,7 @@ mod tests {
     fn requests_in_unsigned_transaction_are_in_btc_tx() {
         // The requests in the UnsignedTransaction correspond to
         // inputs and outputs in the transaction
-        let public_key = PublicKey::from_str(PUBLIC_KEY1).unwrap();
+        let public_key = XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
             deposits: vec![
                 create_deposit(1234, 0, 1),
@@ -803,10 +801,10 @@ mod tests {
                 utxo: SignerUtxo {
                     outpoint: generate_outpoint(300_000, 0),
                     amount: 300_000,
-                    public_key: to_x_only_public_key(public_key),
+                    public_key,
                 },
                 fee_rate: 0,
-                public_key: to_x_only_public_key(public_key),
+                public_key,
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -867,7 +865,7 @@ mod tests {
     #[test]
     fn returned_txs_match_fee_rate() {
         // Each deposit and withdrawal has a max fee greater than the current market fee rate
-        let public_key = PublicKey::from_str(PUBLIC_KEY1).unwrap();
+        let public_key = XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
             deposits: vec![
                 create_deposit(12340, 100_000, 1),
@@ -889,10 +887,10 @@ mod tests {
                 utxo: SignerUtxo {
                     outpoint: generate_outpoint(300_000, 0),
                     amount: 300_000_000,
-                    public_key: to_x_only_public_key(public_key),
+                    public_key,
                 },
                 fee_rate: 25,
-                public_key: to_x_only_public_key(public_key),
+                public_key,
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -959,7 +957,7 @@ mod tests {
     /// then we return an error.
     #[test]
     fn negative_amounts_give_error() {
-        let public_key = PublicKey::from_str(PUBLIC_KEY1).unwrap();
+        let public_key = XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
             deposits: Vec::new(),
             withdrawals: vec![
@@ -971,10 +969,10 @@ mod tests {
                 utxo: SignerUtxo {
                     outpoint: OutPoint::null(),
                     amount: 3000,
-                    public_key: to_x_only_public_key(public_key),
+                    public_key,
                 },
                 fee_rate: 0,
-                public_key: to_x_only_public_key(public_key),
+                public_key,
             },
             num_signers: 10,
             accept_threshold: 0,

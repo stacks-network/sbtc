@@ -32,7 +32,7 @@ use regtest::Recipient;
 const SIGNER_ADDRESS_LABEL: Option<&str> = Some("signers-label");
 const DEPOSITS_LABEL: Option<&str> = Some("deposits");
 
-fn make_deposit(
+fn make_deposit_request(
     depositor: &Recipient,
     amount: u64,
     utxo: &ListUnspentResultEntry,
@@ -41,6 +41,7 @@ fn make_deposit(
 ) -> (Transaction, DepositRequest) {
     let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
     let deposit_script = ScriptBuf::builder()
+        // Just some dummy data, since we don't test the parsing of the sBTC request data here.
         .push_slice([1, 2, 3, 4])
         .push_opcode(opcodes::all::OP_DROP)
         .push_opcode(opcodes::all::OP_DUP)
@@ -175,7 +176,7 @@ fn deposits_add_to_controlled_amounts() {
     let depositor_utxo = depositor.get_utxos(rpc, None).pop().unwrap();
     let deposit_amount = 25_000_000;
 
-    let (deposit_tx, deposit_request) = make_deposit(
+    let (deposit_tx, deposit_request) = make_deposit_request(
         &depositor,
         deposit_amount,
         &depositor_utxo,

@@ -30,8 +30,6 @@ use bitcoincore_rpc::Auth;
 use bitcoincore_rpc::Client;
 use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi;
-use secp256k1::Keypair;
-use secp256k1::Message;
 use secp256k1::SECP256K1;
 use std::sync::OnceLock;
 
@@ -50,8 +48,6 @@ const FAUCET_SECRET_KEY: &str = "00000000000000000000000000000000000000000000000
 
 const FAUCET_LABEL: Option<&str> = Some("faucet");
 
-static BTC_CLIENT: OnceLock<(Client, Recipient)> = OnceLock::new();
-
 /// Initializes a blockchain and wallet on bitcoin-core. It can be called
 /// multiple times (even concurrently) but only generates the client and
 /// recipient once.
@@ -63,6 +59,7 @@ static BTC_CLIENT: OnceLock<(Client, Recipient)> = OnceLock::new();
 /// * Has the bitcoin-core wallet watch the generated address.
 /// * Ensures that the faucet has at least 1 bitcoin spent to its address.
 pub fn initialize_blockchain() -> &'static (Client, Recipient) {
+    static BTC_CLIENT: OnceLock<(Client, Recipient)> = OnceLock::new();
     BTC_CLIENT.get_or_init(|| {
         let username = BITCOIN_CORE_RPC_USERNAME.to_string();
         let password = BITCOIN_CORE_RPC_PASSWORD.to_string();
@@ -101,9 +98,9 @@ fn get_or_create_wallet(rpc: &Client, wallet: &str) {
     };
 }
 
-/// Helper struct for representing an address on bitcoin.
+/// Helper struct for representing an address we control on bitcoin.
 pub struct Recipient {
-    pub keypair: Keypair,
+    pub keypair: secp256k1::Keypair,
     pub address: Address,
 }
 
@@ -122,7 +119,7 @@ impl Recipient {
     /// Generate a new public-private key pair and address of the given
     /// kind.
     pub fn new(kind: AddressType) -> Self {
-        let keypair = Keypair::new_global(&mut rand::rngs::OsRng);
+        let keypair = secp256k1::Keypair::new_global(&mut rand::rngs::OsRng);
         let pk = keypair.public_key();
         let address = match kind {
             AddressType::P2wpkh => Address::p2wpkh(&CompressedPublicKey(pk), Network::Regtest),
@@ -139,7 +136,7 @@ impl Recipient {
 
     // Use a specific secret key and address kind to generate a recipient.
     pub fn from_key(secret_key: &str, kind: AddressType) -> Self {
-        let keypair = Keypair::from_seckey_str_global(secret_key).unwrap();
+        let keypair = secp256k1::Keypair::from_seckey_str_global(secret_key).unwrap();
         let pk = keypair.public_key();
         let address = match kind {
             AddressType::P2wpkh => Address::p2wpkh(&CompressedPublicKey(pk), Network::Regtest),
@@ -283,7 +280,7 @@ pub fn p2wpkh_sign_transaction<U>(
     tx: Transaction,
     input_index: usize,
     utxo: &U,
-    keys: &Keypair,
+    keys: &secp256k1::Keypair,
 ) -> Transaction
 where
     U: Utxo,
@@ -299,7 +296,7 @@ where
         )
         .expect("failed to create sighash");
 
-    let msg = Message::from(sighash);
+    let msg = secp256k1::Message::from(sighash);
     let signature = SECP256K1.sign_ecdsa(&msg, &keys.secret_key());
 
     let signature = bitcoin::ecdsa::Signature { signature, sighash_type };
@@ -321,7 +318,7 @@ pub fn p2tr_signature<U>(
     tx: Transaction,
     input_index: usize,
     utxos: &[U],
-    keypair: Keypair,
+    keypair: secp256k1::Keypair,
     leaf_hash: Either<Option<TapNodeHash>, TapLeafHash>,
 ) -> (Transaction, bitcoin::taproot::Signature)
 where
@@ -355,7 +352,7 @@ where
         }
     };
 
-    let msg = Message::from(sighash);
+    let msg = secp256k1::Message::from(sighash);
     let signature = SECP256K1.sign_schnorr(&msg, &keypair);
     let signature = bitcoin::taproot::Signature { signature, sighash_type };
 
