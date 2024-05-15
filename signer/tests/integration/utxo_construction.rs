@@ -11,7 +11,6 @@ use bitcoin::OutPoint;
 use bitcoin::PubkeyHash;
 use bitcoin::ScriptBuf;
 use bitcoin::Sequence;
-use bitcoin::TapLeafHash;
 use bitcoin::Transaction;
 use bitcoin::TxIn;
 use bitcoin::TxOut;
@@ -26,7 +25,6 @@ use signer::utxo::SignerBtcState;
 use signer::utxo::SignerUtxo;
 
 use crate::regtest;
-use regtest::Either;
 use regtest::Recipient;
 
 const SIGNER_ADDRESS_LABEL: Option<&str> = Some("signers-label");
@@ -60,7 +58,7 @@ fn make_deposit_request(
     let taproot = TaprootSpendInfo::from_node_info(SECP256K1, faucet_public_key, node);
     let merkle_root = taproot.merkle_root();
 
-    let deposit_tx = Transaction {
+    let mut deposit_tx = Transaction {
         version: Version::ONE,
         lock_time: LockTime::ZERO,
         input: vec![TxIn {
@@ -81,17 +79,10 @@ fn make_deposit_request(
         ],
     };
 
-    let (mut tx, signature) = regtest::p2tr_signature(
-        deposit_tx,
-        0,
-        &[utxo.clone()],
-        depositor.keypair,
-        Either::Left(None),
-    );
-    tx.input[0].witness = Witness::p2tr_key_spend(&signature);
+    regtest::p2tr_sign_transaction(&mut deposit_tx, 0, &[utxo.clone()], &depositor.keypair);
 
     let req = DepositRequest {
-        outpoint: OutPoint::new(tx.compute_txid(), 0),
+        outpoint: OutPoint::new(deposit_tx.compute_txid(), 0),
         max_fee: fee,
         signer_bitmap: Vec::new(),
         amount: 25_000_000,
@@ -100,7 +91,7 @@ fn make_deposit_request(
         taproot_public_key: faucet_public_key,
         signers_public_key,
     };
-    (tx, req)
+    (deposit_tx, req)
 }
 
 /// This test just checks that many of the methods on the Recipient struct
@@ -219,33 +210,13 @@ fn deposits_add_to_controlled_amounts() {
     // deposit request and no withdrawal requests.
     let mut transactions = requests.construct_transactions().unwrap();
     assert_eq!(transactions.len(), 1);
-    let unsigned = transactions.pop().unwrap();
-
-    // Now we need to sign the transaction. For that we need the UTXOs used as
-    // inputs and the script in the merkle tree.
-    let signer_utxo_2 = TxOut {
-        value: signer_utxo.amount,
-        script_pubkey: signer_utxo.script_pub_key.clone(),
-    };
-    let utxos = [signer_utxo_2, deposit_tx.output[0].clone()];
-
-    let deposit_script = requests.deposits[0].deposit_script.as_script();
-    let leaf_hash = TapLeafHash::from_script(deposit_script, LeafVersion::TapScript);
-
-    // Let's produce signatures for each of the two inputs. The first input
-    // corresponds to the signer's UTXO, while the second input is from the
-    // deposit transaction.
-    let (tx, signature1) =
-        regtest::p2tr_signature(unsigned.tx, 0, &utxos, signer.keypair, Either::Left(None));
-    let (mut tx, signature2) =
-        regtest::p2tr_signature(tx, 1, &utxos, signer.keypair, Either::Right(leaf_hash));
+    let mut unsigned = transactions.pop().unwrap();
 
     // Add the signature and/or other required information to the witness data.
-    tx.input[0].witness = Witness::p2tr_key_spend(&signature1);
-    tx.input[1].witness = requests.deposits[0].construct_witness_data(signature2);
+    regtest::set_witness_data(&mut unsigned, signer.keypair);
 
     // The moment of truth, does the network accept the transaction?
-    rpc.send_raw_transaction(&tx).unwrap();
+    rpc.send_raw_transaction(&unsigned.tx).unwrap();
     faucet.generate_blocks(rpc, 1);
 
     // The signer's balance should now reflect the deposit.

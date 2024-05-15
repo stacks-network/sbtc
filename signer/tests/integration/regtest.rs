@@ -13,8 +13,6 @@ use bitcoin::OutPoint;
 use bitcoin::PublicKey;
 use bitcoin::ScriptBuf;
 use bitcoin::Sequence;
-use bitcoin::TapLeafHash;
-use bitcoin::TapNodeHash;
 use bitcoin::TapSighashType;
 use bitcoin::Transaction;
 use bitcoin::TxIn;
@@ -31,6 +29,7 @@ use bitcoincore_rpc::Client;
 use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi;
 use secp256k1::SECP256K1;
+use signer::utxo::UnsignedTransaction;
 use std::sync::OnceLock;
 
 /// These must match the username and password in bitcoin.conf
@@ -208,7 +207,7 @@ impl Recipient {
         let fee = BITCOIN_CORE_FALLBACK_FEE.to_sat();
         let utxo = self.get_utxos(&rpc, Some(amount + fee)).pop().unwrap();
 
-        let tx = Transaction {
+        let mut tx = Transaction {
             version: Version::ONE,
             lock_time: LockTime::ZERO,
             input: vec![TxIn {
@@ -230,15 +229,10 @@ impl Recipient {
         };
 
         let input_index = 0;
-        let tx = match self.address.address_type().unwrap() {
-            AddressType::P2wpkh => p2wpkh_sign_transaction(tx, input_index, &utxo, &self.keypair),
-            AddressType::P2tr => {
-                let leaf = Either::Left(None);
-                let (mut tx, signature) =
-                    p2tr_signature(tx, input_index, &[utxo], self.keypair, leaf);
-                tx.input[input_index].witness = Witness::p2tr_key_spend(&signature);
-                tx
-            }
+        let keypair = &self.keypair;
+        match self.address.address_type().unwrap() {
+            AddressType::P2wpkh => p2wpkh_sign_transaction(&mut tx, input_index, &utxo, keypair),
+            AddressType::P2tr => p2tr_sign_transaction(&mut tx, input_index, &[utxo], keypair),
             _ => unimplemented!(),
         };
         rpc.send_raw_transaction(&tx).unwrap();
@@ -277,17 +271,15 @@ impl Utxo for TxOut {
 }
 
 pub fn p2wpkh_sign_transaction<U>(
-    tx: Transaction,
+    tx: &mut Transaction,
     input_index: usize,
     utxo: &U,
     keys: &secp256k1::Keypair,
-) -> Transaction
-where
+) where
     U: Utxo,
 {
     let sighash_type = EcdsaSighashType::All;
-    let mut sighasher = SighashCache::new(tx);
-    let sighash = sighasher
+    let sighash = SighashCache::new(&*tx)
         .p2wpkh_signature_hash(
             input_index,
             utxo.script_pubkey().as_script(),
@@ -300,61 +292,60 @@ where
     let signature = SECP256K1.sign_ecdsa(&msg, &keys.secret_key());
 
     let signature = bitcoin::ecdsa::Signature { signature, sighash_type };
-    *sighasher.witness_mut(input_index).unwrap() = Witness::p2wpkh(&signature, &keys.public_key());
-
-    sighasher.into_transaction()
+    tx.input[input_index].witness = Witness::p2wpkh(&signature, &keys.public_key());
 }
 
-/// The enum `Either` with variants `Left` and `Right` is a general purpose
-/// sum type with two cases.
-pub enum Either<L, R> {
-    /// A value of type `L`.
-    Left(L),
-    /// A value of type `R`.
-    Right(R),
-}
-
-pub fn p2tr_signature<U>(
-    tx: Transaction,
+pub fn p2tr_sign_transaction<U>(
+    tx: &mut Transaction,
     input_index: usize,
     utxos: &[U],
-    keypair: secp256k1::Keypair,
-    leaf_hash: Either<Option<TapNodeHash>, TapLeafHash>,
-) -> (Transaction, bitcoin::taproot::Signature)
-where
+    keypair: &secp256k1::Keypair,
+) where
     U: Utxo,
 {
     let tx_outs: Vec<TxOut> = utxos.iter().map(Utxo::to_tx_out).collect();
     let prevouts = Prevouts::All(tx_outs.as_slice());
     let sighash_type = TapSighashType::Default;
-    let mut sighasher = SighashCache::new(tx);
 
-    let (sighash, keypair) = match leaf_hash {
-        Either::Left(merkle_root) => {
-            let sighash = sighasher
-                .taproot_key_spend_signature_hash(input_index, &prevouts, sighash_type)
-                .expect("failed to create taproot key-spend sighash");
-            let tweaked = keypair.tap_tweak(SECP256K1, merkle_root);
-
-            (sighash, tweaked.to_inner())
-        }
-        Either::Right(leaf_hash) => {
-            let sighash = sighasher
-                .taproot_script_spend_signature_hash(
-                    input_index,
-                    &prevouts,
-                    leaf_hash,
-                    sighash_type,
-                )
-                .expect("failed to create taproot key-spend sighash");
-
-            (sighash, keypair)
-        }
-    };
+    let sighash = SighashCache::new(&*tx)
+        .taproot_key_spend_signature_hash(input_index, &prevouts, sighash_type)
+        .expect("failed to create taproot key-spend sighash");
+    let tweaked = keypair.tap_tweak(SECP256K1, None);
 
     let msg = secp256k1::Message::from(sighash);
-    let signature = SECP256K1.sign_schnorr(&msg, &keypair);
+    let signature = SECP256K1.sign_schnorr(&msg, &tweaked.to_inner());
     let signature = bitcoin::taproot::Signature { signature, sighash_type };
 
-    (sighasher.into_transaction(), signature)
+    tx.input[input_index].witness = Witness::p2tr_key_spend(&signature);
+}
+
+pub fn set_witness_data(unsigned: &mut UnsignedTransaction, keypair: secp256k1::Keypair) {
+    let sighash_type = TapSighashType::Default;
+    let sighashes = unsigned.construct_digests().unwrap();
+
+    let signer_msg = secp256k1::Message::from(sighashes.signers);
+    let tweaked = keypair.tap_tweak(SECP256K1, None);
+    let signature = SECP256K1.sign_schnorr(&signer_msg, &tweaked.to_inner());
+    let signature = bitcoin::taproot::Signature { signature, sighash_type };
+    let signer_witness = Witness::p2tr_key_spend(&signature);
+
+    let deposit_witness = sighashes.deposits.into_iter().map(|(deposit, sighash)| {
+        let deposit_msg = secp256k1::Message::from(sighash);
+        let signature = SECP256K1.sign_schnorr(&deposit_msg, &keypair);
+        let signature = bitcoin::taproot::Signature { signature, sighash_type };
+        deposit.construct_witness_data(signature)
+    });
+
+    let witness_data: Vec<Witness> = std::iter::once(signer_witness)
+        .chain(deposit_witness)
+        .collect();
+
+    unsigned
+        .tx
+        .input
+        .iter_mut()
+        .zip(witness_data)
+        .for_each(|(tx_in, witness)| {
+            tx_in.witness = witness;
+        });
 }
