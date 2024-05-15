@@ -163,7 +163,8 @@ impl DepositRequest {
 
         // TaprootSpendInfo::control_block returns None if the key given,
         // (script, version), is not in the tree. But this key is definitely
-        // in the tree (see the variable leaf1 above).
+        // in the tree (see the variable leaf1 in the `construct_taproot_info`
+        // function).
         let control_block = taproot
             .control_block(&(self.deposit_script.clone(), ver))
             .expect("We just inserted the deposit script into the tree");
@@ -325,10 +326,12 @@ pub struct UnsignedTransaction<'a> {
 /// A struct containing Taproot-tagged hashes used for computing taproot
 /// signature hashes.
 #[derive(Debug)]
-pub struct Sighashes<'a> {
+pub struct SignatureHashes<'a> {
     /// The sighash of the signers' input UTXO for the transaction.
     pub signers: TapSighash,
-    /// The sighashes for the UTXOs associated with deposit requests.
+    /// Each deposit request is associated with a UTXO input for the peg-in
+    /// transaction. This field contains digests/signature hashes that need
+    /// Schnorr signatures and the associated deposit request for each hash.
     pub deposits: Vec<(&'a DepositRequest, TapSighash)>,
 }
 
@@ -412,7 +415,19 @@ impl<'a> UnsignedTransaction<'a> {
 
     /// Constructs the set of digests that need to be signed before broadcasting
     /// the transaction.
-    pub fn construct_digests(&self) -> Result<Sighashes, Error> {
+    ///
+    /// # Notes
+    ///
+    /// This function uses the fact certain invariants about this struct are
+    /// upheld. They are
+    /// 1. The first input to the Transaction in the `tx` field is the signers'
+    ///    UTXO.
+    /// 2. The other inputs to the Transaction in the `tx` field are ordered
+    ///    the same order as DepositRequests in the `requests` field.
+    ///
+    /// Other noteworthy assumptions is that the signers' UTXO is always a
+    /// key-spend path only taproot UTXO.
+    pub fn construct_digests(&self) -> Result<SignatureHashes, Error> {
         let deposit_requests = self.requests.iter().filter_map(Request::as_deposit);
         let deposit_utxos = deposit_requests.clone().map(DepositRequest::as_tx_out);
         // All of the transaction's inputs are used to constuct the sighash
@@ -438,17 +453,17 @@ impl<'a> UnsignedTransaction<'a> {
                 let index = input_index + 1;
                 let script = deposit.deposit_script.as_script();
                 let leaf_hash = TapLeafHash::from_script(script, LeafVersion::TapScript);
-                let item = sighasher
-                    .taproot_script_spend_signature_hash(index, &prevouts, leaf_hash, sighash_type)
-                    .map(|sighash| (deposit, sighash))?;
 
-                Ok::<_, Error>(item)
+                sighasher
+                    .taproot_script_spend_signature_hash(index, &prevouts, leaf_hash, sighash_type)
+                    .map(|sighash| (deposit, sighash))
+                    .map_err(Error::from)
             })
             .collect::<Result<_, _>>()?;
 
         // Combine the them all together to get an ordered list of taproot
         // signature hashes.
-        Ok(Sighashes {
+        Ok(SignatureHashes {
             signers: signer_sighash,
             deposits: deposit_sighashes,
         })
@@ -1035,6 +1050,45 @@ mod tests {
 
                 utx.new_signer_utxo().amount
             });
+    }
+
+    #[test_case(2; "Some deposits")]
+    #[test_case(0; "No deposits")]
+    fn unsigned_tx_digests(num_deposits: usize) {
+        // Each deposit and withdrawal has a max fee greater than the current market fee rate
+        let public_key = XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap();
+        let requests = SbtcRequests {
+            deposits: std::iter::repeat_with(|| create_deposit(123456, 100_000, 0))
+                .take(num_deposits)
+                .collect(),
+            withdrawals: vec![
+                create_withdrawal(10000, 100_000, 0),
+                create_withdrawal(20000, 100_000, 0),
+                create_withdrawal(30000, 100_000, 0),
+                create_withdrawal(40000, 100_000, 0),
+                create_withdrawal(50000, 100_000, 0),
+                create_withdrawal(60000, 100_000, 0),
+                create_withdrawal(70000, 100_000, 0),
+            ],
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: generate_outpoint(300_000, 0),
+                    amount: 300_000_000,
+                    public_key,
+                },
+                fee_rate: 25,
+                public_key,
+            },
+            num_signers: 10,
+            accept_threshold: 8,
+        };
+        let mut transactions = requests.construct_transactions().unwrap();
+        assert_eq!(transactions.len(), 1);
+
+        let unsigned = transactions.pop().unwrap();
+        let sighashes = unsigned.construct_digests().unwrap();
+
+        assert_eq!(sighashes.deposits.len(), num_deposits)
     }
 
     /// If the signer's UTXO does not have enough to cover the requests
