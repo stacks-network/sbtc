@@ -15,7 +15,9 @@ const SCREEN_PATH: &str = "/screen";
 
 #[async_trait]
 pub trait BlocklistChecker {
-    async fn check_address(&self, address: &str) -> Result<BlocklistStatus, Error>;
+    /// Checks if the given address is blocklisted.
+    /// Returns `true` if the address is blocklisted, otherwise `false`.
+    async fn is_blocklisted(&self, address: &str) -> Result<bool, Error>;
 }
 
 #[derive(Clone, Debug)]
@@ -26,7 +28,7 @@ pub struct BlocklistClient {
 
 #[async_trait]
 impl BlocklistChecker for BlocklistClient {
-    async fn check_address(&self, address: &str) -> Result<BlocklistStatus, Error> {
+    async fn is_blocklisted(&self, address: &str) -> Result<bool, Error> {
         let url = Self::address_screening_path(&self.base_url, address);
         let resp = self
             .client
@@ -36,7 +38,8 @@ impl BlocklistChecker for BlocklistClient {
             .json::<BlocklistStatus>()
             .await?;
 
-        Ok(resp)
+        // Check if the request can be accepted or not based on the response
+        Ok(resp.accept)
     }
 }
 
@@ -73,7 +76,6 @@ impl Default for BlocklistClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use blocklist_client::common::RiskSeverity;
     use mockito::{Server, ServerGuard};
     use serde_json::json;
     use tokio::sync::Mutex;
@@ -95,7 +97,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_check_address_success() {
+    async fn test_is_blocklisted_true() {
         let ctx = setup().await;
         let mut guard = ctx.server_guard.lock().await;
         let mock_json = json!({
@@ -114,16 +116,36 @@ mod tests {
             .create_async()
             .await;
 
-        let result = ctx.client.check_address(ADDRESS).await;
-        assert!(result.is_ok());
+        let is_blocklisted = ctx.client.is_blocklisted(ADDRESS).await;
+        assert!(is_blocklisted.is_ok());
+        assert_eq!(is_blocklisted.unwrap(), false);
 
-        let expected_status = BlocklistStatus {
-            is_blocklisted: true,
-            severity: RiskSeverity::Severe,
-            accept: false,
-            reason: Some("Fraud".to_string()),
-        };
-        assert_eq!(result.unwrap(), expected_status);
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_is_blocklisted_false() {
+        let ctx = setup().await;
+        let mut guard = ctx.server_guard.lock().await;
+        let mock_json = json!({
+            "is_blocklisted": false,
+            "severity": "Low",
+            "accept": true,
+            "reason": null
+        })
+        .to_string();
+
+        let mock = guard
+            .mock("GET", format!("{}/{}", SCREEN_PATH, ADDRESS).as_str())
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(&mock_json)
+            .create_async()
+            .await;
+
+        let is_blocklisted = ctx.client.is_blocklisted(ADDRESS).await;
+        assert!(is_blocklisted.is_ok());
+        assert_eq!(is_blocklisted.unwrap(), true);
 
         mock.assert_async().await;
     }
@@ -141,7 +163,7 @@ mod tests {
             .create_async()
             .await;
 
-        let result = ctx.client.check_address(ADDRESS).await;
+        let result = ctx.client.is_blocklisted(ADDRESS).await;
         assert!(result.is_err());
     }
 }
