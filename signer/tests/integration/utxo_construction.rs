@@ -25,7 +25,6 @@ use signer::utxo::SignerBtcState;
 use signer::utxo::SignerUtxo;
 
 use crate::regtest;
-use regtest::Either;
 use regtest::Recipient;
 
 const SIGNER_ADDRESS_LABEL: Option<&str> = Some("signers-label");
@@ -59,7 +58,7 @@ fn make_deposit_request(
     let taproot = TaprootSpendInfo::from_node_info(SECP256K1, faucet_public_key, node);
     let merkle_root = taproot.merkle_root();
 
-    let deposit_tx = Transaction {
+    let mut deposit_tx = Transaction {
         version: Version::ONE,
         lock_time: LockTime::ZERO,
         input: vec![TxIn {
@@ -80,17 +79,10 @@ fn make_deposit_request(
         ],
     };
 
-    let (mut tx, signature) = regtest::p2tr_signature(
-        deposit_tx,
-        0,
-        &[utxo.clone()],
-        depositor.keypair,
-        Either::Left(None),
-    );
-    tx.input[0].witness = Witness::p2tr_key_spend(&signature);
+    regtest::p2tr_sign_transaction(&mut deposit_tx, 0, &[utxo.clone()], &depositor.keypair);
 
     let req = DepositRequest {
-        outpoint: OutPoint::new(tx.compute_txid(), 0),
+        outpoint: OutPoint::new(deposit_tx.compute_txid(), 0),
         max_fee: fee,
         signer_bitmap: Vec::new(),
         amount: 25_000_000,
@@ -99,7 +91,7 @@ fn make_deposit_request(
         taproot_public_key: faucet_public_key,
         signers_public_key,
     };
-    (tx, req)
+    (deposit_tx, req)
 }
 
 /// This test just checks that many of the methods on the Recipient struct
@@ -220,12 +212,17 @@ fn deposits_add_to_controlled_amounts() {
     assert_eq!(transactions.len(), 1);
     let mut unsigned = transactions.pop().unwrap();
 
-    // Let's produce signatures for each of the inputs. 
+    // Let's produce signatures for each of the inputs.
     let witness_data = regtest::p2tr_witness(&unsigned, signer.keypair);
     // Add the signature and/or other required information to the witness data.
-    unsigned.tx.input.iter_mut().zip(witness_data).for_each(|(tx_in, witness)| {
-        tx_in.witness = witness;
-    });
+    unsigned
+        .tx
+        .input
+        .iter_mut()
+        .zip(witness_data)
+        .for_each(|(tx_in, witness)| {
+            tx_in.witness = witness;
+        });
 
     // The moment of truth, does the network accept the transaction?
     rpc.send_raw_transaction(&unsigned.tx).unwrap();
