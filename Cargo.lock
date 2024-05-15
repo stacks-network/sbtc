@@ -118,6 +118,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "assert-json-diff"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47e4f2b81832e72834d7518d8487a0396a28cc408186a2e8854c0f98011faf12"
+dependencies = [
+ "serde 1.0.201",
+ "serde_json",
+]
+
+[[package]]
 name = "async-stream"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -133,6 +143,17 @@ name = "async-stream-impl"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "16e62a023e7c117e27523144c5d2459f4397fcc3cab0085af8e2224f643a0193"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.61",
+]
+
+[[package]]
+name = "async-trait"
+version = "0.1.80"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6fa2087f2753a7da8cc1c0dbfcf89579dd57458e36769de5ac750b4671737ca"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -622,7 +643,7 @@ name = "blocklist-client"
 version = "0.0.1"
 dependencies = [
  "config",
- "mockito",
+ "mockito 0.28.0",
  "once_cell",
  "reqwest 0.11.27",
  "sbtc-common",
@@ -754,6 +775,16 @@ dependencies = [
  "is-terminal",
  "lazy_static",
  "winapi",
+]
+
+[[package]]
+name = "colored"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cbf2150cce219b664a8a70df7a1f933836724b503f8a413af9365b4dcc4d90b8"
+dependencies = [
+ "lazy_static",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -1829,8 +1860,8 @@ version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "36a0eb7e686b49b02c1cb87c14b8e2a05de0d36c6eee0293653d0a875906d499"
 dependencies = [
- "assert-json-diff",
- "colored",
+ "assert-json-diff 1.1.0",
+ "colored 1.9.4",
  "difference",
  "httparse",
  "lazy_static",
@@ -1839,6 +1870,25 @@ dependencies = [
  "regex",
  "serde_json",
  "serde_urlencoded 0.6.1",
+]
+
+[[package]]
+name = "mockito"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2f6e023aa5bdf392aa06c78e4a4e6d498baab5138d0c993503350ebbc37bf1e"
+dependencies = [
+ "assert-json-diff 2.0.2",
+ "colored 2.1.0",
+ "futures-core",
+ "hyper 0.14.28",
+ "log",
+ "rand 0.8.5",
+ "regex",
+ "serde_json",
+ "serde_urlencoded 0.7.1",
+ "similar",
+ "tokio",
 ]
 
 [[package]]
@@ -2936,15 +2986,22 @@ dependencies = [
 name = "signer"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "bincode",
  "bitcoin",
  "bitcoincore-rpc",
+ "blocklist-client",
+ "config",
+ "mockito 1.4.0",
  "more-asserts",
+ "once_cell",
  "p256k1",
  "rand 0.8.5",
+ "reqwest 0.11.27",
  "reqwest 0.12.4",
  "secp256k1",
  "serde 1.0.201",
+ "serde_json",
  "sha2",
  "test-case",
  "thiserror",
@@ -2954,6 +3011,12 @@ dependencies = [
  "tracing-subscriber",
  "wsts",
 ]
+
+[[package]]
+name = "similar"
+version = "2.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa42c91313f1d05da9b26f267f931cf178d4aba455b4c4622dd7355eb80c6640"
 
 [[package]]
 name = "slab"

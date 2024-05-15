@@ -4,20 +4,12 @@ use serde::Deserialize;
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct Settings {
-    pub server: ServerConfig,
-    pub risk_analysis: RiskAnalysisConfig,
+    pub blocklist_client: BlocklistClientConfig,
 }
-
 #[derive(Deserialize, Clone, Debug)]
-pub struct ServerConfig {
+pub struct BlocklistClientConfig {
     pub host: String,
     pub port: u16,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-pub struct RiskAnalysisConfig {
-    pub api_url: String,
-    pub api_key: String,
 }
 
 pub static SETTINGS: Lazy<Settings> =
@@ -29,7 +21,7 @@ impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
         let mut cfg = Config::new();
         cfg.merge(File::with_name("./src/config/default"))?;
-        let env = Environment::with_prefix("BLOCKLIST_CLIENT").separator("__");
+        let env = Environment::with_prefix("SIGNER").separator("__");
         cfg.merge(env)?;
         let settings: Settings = cfg.try_into()?;
 
@@ -39,10 +31,10 @@ impl Settings {
     }
 
     fn validate(&self) -> Result<(), ConfigError> {
-        if self.server.host.is_empty() {
+        if self.blocklist_client.host.is_empty() {
             return Err(ConfigError::Message("Host cannot be empty".to_string()));
         }
-        if !(1..=65535).contains(&self.server.port) {
+        if !(1..=65535).contains(&self.blocklist_client.port) {
             return Err(ConfigError::Message(
                 "Port must be between 1 and 65535".to_string(),
             ));
