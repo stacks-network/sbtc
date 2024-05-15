@@ -5,6 +5,8 @@
 (define-constant key-size u32)
 
 ;; errors
+;; if err is u200, it's the agg key
+;; if err is u210>, it's the key at index (err - 210)
 (define-constant ERR_KEY_SIZE_PREFIX u200)
 (define-constant ERR_KEY_SIZE (err u200))
 
@@ -24,6 +26,7 @@
             (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
         )
         ;; TODO: check that tx-sender, using principal-construct? is a current signer
+        ;; Check that tx-sender is a multi-sig address
 
         ;; Checks that length of each key is exactly 32 bytes
         (try! (fold signer-key-length-check new-keys (ok {index: u0})))
@@ -32,7 +35,7 @@
         (asserts! (is-eq (len new-aggregate-pubkey) key-size) ERR_KEY_SIZE)
 
         ;; Call into .sbtc-registry to update the keys & address
-        (ok true)
+        (ok (try! (contract-call? .sbtc-registry rotate-keys new-keys multi-sig-address new-aggregate-pubkey)))
     )
 )
 
@@ -46,7 +49,7 @@
     (match helper-response
         ok-response
             (begin 
-                (asserts! (is-eq (len current-key) key-size) (err (+ ERR_KEY_SIZE_PREFIX (get index ok-response))))
+                (asserts! (is-eq (len current-key) key-size) (err (+ ERR_KEY_SIZE_PREFIX (+ u10 (get index ok-response)))))
                 (ok {index: (+ (get index ok-response) u1)})
             )
         err-response

@@ -13,6 +13,7 @@ export const charlie = accounts.wallet_3.address;
 
 export const registry = contracts.sbtcRegistry;
 export const deposit = contracts.sbtcDeposit;
+export const signers = contracts.sbtcBootstrapSigners;
 
 export const controllerId = `${accounts.deployer.address}.controller`;
 

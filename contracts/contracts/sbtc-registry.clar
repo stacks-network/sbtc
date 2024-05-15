@@ -164,21 +164,21 @@
     ;; Check that caller is protocol contract
     (try! (validate-caller))
     ;; Check that the aggregate pubkey is not already in the map
-    (asserts! (is-none (map-get? aggregate-pubkeys new-aggregate-pubkey)) (err u0))
+    (asserts! (is-none (map-get? aggregate-pubkeys new-aggregate-pubkey)) ERR_AGG_PUBKEY_REPLAY)
     ;; Check that the new address (multi-sig) is not already in the map
     (asserts! (is-none (map-get? multi-sig-address new-address)) ERR_MULTI_SIG_REPLAY)
     ;; Update the current signer set
     (var-set current-signer-set new-keys)
     ;; Update the current multi-sig address
     (var-set current-signer-principal new-address)
+    ;; Update the aggregate pubkey map to avoid replay
+    (map-set aggregate-pubkeys new-aggregate-pubkey true)
+    ;; Update the multi-sig address map to avoid replay
+    (map-set multi-sig-address new-address true)
     ;; Update the current aggregate pubkey
     (ok (var-set current-aggregate-pubkey new-aggregate-pubkey))
   )
 )
-
-;; Update the signer set & principal.
-;; This function can only be called by the bootstrap-signers contract.
-;;(define-public (update-signer-set))
 
 ;; Private functions
 

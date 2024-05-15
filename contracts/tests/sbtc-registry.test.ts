@@ -4,10 +4,11 @@ import {
   getLastWithdrawalRequestId,
   getWithdrawalRequest,
   registry,
+  signers,
   stxAddressToPoxAddress,
 } from "./helpers";
 import { test, expect, describe } from "vitest";
-import { txOk, filterEvents, rov } from "@clarigen/test";
+import { txOk, filterEvents, rov, txErr } from "@clarigen/test";
 import { CoreNodeEventType, cvToValue } from "@clarigen/core";
 
 const alicePoxAddr = stxAddressToPoxAddress(alice);
@@ -118,4 +119,94 @@ describe("sBTC registry contract", () => {
       });
     });
   });
+  describe("sBTC bootstrap signer contract", () => {
+    test("Rotate keys wrapper correctly", () => {
+      const receipt = txOk(
+        signers.rotateKeysWrapper({
+          newKeys: [new Uint8Array(32).fill(0),new Uint8Array(32).fill(0)],
+          multiSigAddress: alice,
+          newAggregatePubkey: new Uint8Array(32).fill(0),
+          sender: alice,
+          height: simnet.blockHeight,
+        }),
+        alice
+      );
+      expect(receipt.value).toEqual(true);
+    });
+    test("Rotate keys wrapper incorrect signer key size", () => {
+      const receipt = txErr(
+        signers.rotateKeysWrapper({
+          newKeys: [new Uint8Array(32).fill(0),new Uint8Array(31).fill(0)],
+          multiSigAddress: alice,
+          newAggregatePubkey: new Uint8Array(32).fill(0),
+          sender: alice,
+          height: simnet.blockHeight,
+        }),
+        alice
+      );
+      expect(receipt.value).toEqual(211n);
+    });
+    test("Rotate keys wrapper incorrect aggregate key size", () => {
+      const receipt = txErr(
+        signers.rotateKeysWrapper({
+          newKeys: [new Uint8Array(32).fill(0),new Uint8Array(32).fill(0)],
+          multiSigAddress: alice,
+          newAggregatePubkey: new Uint8Array(31).fill(0),
+          sender: alice,
+          height: simnet.blockHeight,
+        }),
+        alice
+      );
+      expect(receipt.value).toEqual(signers.constants.ERR_KEY_SIZE.value);
+    });
+    test("Rotate keys duplicate aggregate key", () => {
+      const receipt0 = txOk(
+        signers.rotateKeysWrapper({
+          newKeys: [new Uint8Array(32).fill(0),new Uint8Array(32).fill(0)],
+          multiSigAddress: alice,
+          newAggregatePubkey: new Uint8Array(32).fill(0),
+          sender: alice,
+          height: simnet.blockHeight,
+        }),
+        alice
+      );
+      expect(receipt0.value).toEqual(true);
+      const receipt = txErr(
+        signers.rotateKeysWrapper({
+          newKeys: [new Uint8Array(32).fill(0),new Uint8Array(32).fill(0)],
+          multiSigAddress: alice,
+          newAggregatePubkey: new Uint8Array(32).fill(0),
+          sender: alice,
+          height: simnet.blockHeight,
+        }),
+        alice
+      );
+      expect(receipt.value).toEqual(registry.constants.ERR_AGG_PUBKEY_REPLAY.value);
+    });
+    test("Rotate keys duplicate multi-sig address", () => {
+      const receipt0 = txOk(
+        signers.rotateKeysWrapper({
+          newKeys: [new Uint8Array(32).fill(0),new Uint8Array(32).fill(0)],
+          multiSigAddress: alice,
+          newAggregatePubkey: new Uint8Array(32).fill(0),
+          sender: alice,
+          height: simnet.blockHeight,
+        }),
+        alice
+      );
+      expect(receipt0.value).toEqual(true);
+      const receipt = txErr(
+        signers.rotateKeysWrapper({
+          newKeys: [new Uint8Array(32).fill(0),new Uint8Array(32).fill(0)],
+          multiSigAddress: alice,
+          newAggregatePubkey: new Uint8Array(32).fill(1),
+          sender: alice,
+          height: simnet.blockHeight,
+        }),
+        alice
+      );
+      expect(receipt.value).toEqual(registry.constants.ERR_MULTI_SIG_REPLAY.value);
+    });
+  });
+  
 });
