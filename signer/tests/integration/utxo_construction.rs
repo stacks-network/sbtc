@@ -212,17 +212,8 @@ fn deposits_add_to_controlled_amounts() {
     assert_eq!(transactions.len(), 1);
     let mut unsigned = transactions.pop().unwrap();
 
-    // Let's produce signatures for each of the inputs.
-    let witness_data = regtest::p2tr_witness(&unsigned, signer.keypair);
     // Add the signature and/or other required information to the witness data.
-    unsigned
-        .tx
-        .input
-        .iter_mut()
-        .zip(witness_data)
-        .for_each(|(tx_in, witness)| {
-            tx_in.witness = witness;
-        });
+    regtest::set_witness_data(&mut unsigned, signer.keypair);
 
     // The moment of truth, does the network accept the transaction?
     rpc.send_raw_transaction(&unsigned.tx).unwrap();

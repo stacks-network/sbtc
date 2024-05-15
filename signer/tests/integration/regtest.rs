@@ -319,7 +319,7 @@ pub fn p2tr_sign_transaction<U>(
     tx.input[input_index].witness = Witness::p2tr_key_spend(&signature);
 }
 
-pub fn p2tr_witness(unsigned: &UnsignedTransaction, keypair: secp256k1::Keypair) -> Vec<Witness> {
+pub fn set_witness_data(unsigned: &mut UnsignedTransaction, keypair: secp256k1::Keypair) {
     let sighash_type = TapSighashType::Default;
     let sighashes = unsigned.construct_digests().unwrap();
 
@@ -336,7 +336,16 @@ pub fn p2tr_witness(unsigned: &UnsignedTransaction, keypair: secp256k1::Keypair)
         deposit.construct_witness_data(signature)
     });
 
-    std::iter::once(signer_witness)
+    let witness_data: Vec<Witness> = std::iter::once(signer_witness)
         .chain(deposit_witness)
-        .collect()
+        .collect();
+
+    unsigned
+        .tx
+        .input
+        .iter_mut()
+        .zip(witness_data)
+        .for_each(|(tx_in, witness)| {
+            tx_in.witness = witness;
+        });
 }
