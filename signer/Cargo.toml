@@ -18,11 +18,17 @@ integration-tests = []
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+async-trait = "0.1.80"
 bincode.workspace = true
 bitcoin = { workspace = true, features = ["rand-std"] }
+blocklist-client = { path = "../blocklist-client" }
+config.workspace = true
 p256k1.workspace = true
+once_cell.workspace = true
 rand.workspace = true
+reqwest.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
@@ -46,3 +52,4 @@ more-asserts = "0.3"
 reqwest = "0.12"
 test-case = "3.1"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+mockito = "1.4.0"
