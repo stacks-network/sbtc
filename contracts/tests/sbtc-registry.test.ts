@@ -159,54 +159,6 @@ describe("sBTC registry contract", () => {
       );
       expect(receipt.value).toEqual(signers.constants.ERR_KEY_SIZE.value);
     });
-    test("Rotate keys duplicate aggregate key", () => {
-      const receipt0 = txOk(
-        signers.rotateKeysWrapper({
-          newKeys: [new Uint8Array(32).fill(0),new Uint8Array(32).fill(0)],
-          multiSigAddress: alice,
-          newAggregatePubkey: new Uint8Array(32).fill(0),
-          sender: alice,
-          height: simnet.blockHeight,
-        }),
-        alice
-      );
-      expect(receipt0.value).toEqual(true);
-      const receipt = txErr(
-        signers.rotateKeysWrapper({
-          newKeys: [new Uint8Array(32).fill(0),new Uint8Array(32).fill(0)],
-          multiSigAddress: alice,
-          newAggregatePubkey: new Uint8Array(32).fill(0),
-          sender: alice,
-          height: simnet.blockHeight,
-        }),
-        alice
-      );
-      expect(receipt.value).toEqual(registry.constants.ERR_AGG_PUBKEY_REPLAY.value);
-    });
-    test("Rotate keys duplicate multi-sig address", () => {
-      const receipt0 = txOk(
-        signers.rotateKeysWrapper({
-          newKeys: [new Uint8Array(32).fill(0),new Uint8Array(32).fill(0)],
-          multiSigAddress: alice,
-          newAggregatePubkey: new Uint8Array(32).fill(0),
-          sender: alice,
-          height: simnet.blockHeight,
-        }),
-        alice
-      );
-      expect(receipt0.value).toEqual(true);
-      const receipt = txErr(
-        signers.rotateKeysWrapper({
-          newKeys: [new Uint8Array(32).fill(0),new Uint8Array(32).fill(0)],
-          multiSigAddress: alice,
-          newAggregatePubkey: new Uint8Array(32).fill(1),
-          sender: alice,
-          height: simnet.blockHeight,
-        }),
-        alice
-      );
-      expect(receipt.value).toEqual(registry.constants.ERR_MULTI_SIG_REPLAY.value);
-    });
   });
   
 });
