@@ -3,6 +3,7 @@
 **/.generated-sources
 **.log
 **/node_modules
+**/package-lock.json
 
 ## Contracts
 contracts/settings/Mainnet.toml
