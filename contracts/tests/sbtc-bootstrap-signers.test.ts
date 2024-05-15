@@ -13,8 +13,6 @@ import {
             newKeys: [new Uint8Array(32).fill(0),new Uint8Array(32).fill(0)],
             multiSigAddress: alice,
             newAggregatePubkey: new Uint8Array(32).fill(0),
-            sender: alice,
-            height: simnet.blockHeight,
           }),
           alice
         );
@@ -26,8 +24,6 @@ import {
             newKeys: [new Uint8Array(32).fill(0),new Uint8Array(31).fill(0)],
             multiSigAddress: alice,
             newAggregatePubkey: new Uint8Array(32).fill(0),
-            sender: alice,
-            height: simnet.blockHeight,
           }),
           alice
         );
@@ -39,8 +35,6 @@ import {
             newKeys: [new Uint8Array(32).fill(0),new Uint8Array(32).fill(0)],
             multiSigAddress: alice,
             newAggregatePubkey: new Uint8Array(31).fill(0),
-            sender: alice,
-            height: simnet.blockHeight,
           }),
           alice
         );
