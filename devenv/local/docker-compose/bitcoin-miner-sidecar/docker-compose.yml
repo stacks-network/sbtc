@@ -60,7 +60,7 @@ services:
         BITCOIN_RPC_PORT: 18443
         BTC_RPCPASSWORD: devnet
         BTC_RPCUSER: devnet
-        MINER_ADDRESS: "mr2S2F9uaes4ToS5krSPnTGCHnEjiMVxeG"
+        MINER_ADDRESS: "moU2g2zzH3qLYCNPXGPAMqsgxr2Bw15V2j"
     depends_on:
       - bitcoin
     environment:
