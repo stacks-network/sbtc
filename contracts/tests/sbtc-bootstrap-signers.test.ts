@@ -1,18 +1,9 @@
 import {
     alice,
-    bob,
-    getLastWithdrawalRequestId,
-    getWithdrawalRequest,
-    registry,
     signers,
-    stxAddressToPoxAddress,
   } from "./helpers";
   import { test, expect, describe } from "vitest";
-  import { txOk, filterEvents, rov, txErr } from "@clarigen/test";
-  import { CoreNodeEventType, cvToValue } from "@clarigen/core";
-  
-  const alicePoxAddr = stxAddressToPoxAddress(alice);
-  const bobPoxAddr = stxAddressToPoxAddress(bob);
+  import { txOk, txErr } from "@clarigen/test";
   
   describe("sBTC bootstrap signers contract", () => {
     describe("Rotate keys tests", () => {
