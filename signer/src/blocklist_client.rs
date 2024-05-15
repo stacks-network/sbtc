@@ -107,7 +107,7 @@ mod tests {
         .to_string();
 
         let mock = guard
-            .mock("GET", format!("{}{}", SCREEN_PATH, ADDRESS).as_str())
+            .mock("GET", format!("{}/{}", SCREEN_PATH, ADDRESS).as_str())
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(&mock_json)
@@ -134,7 +134,7 @@ mod tests {
         let mut guard = ctx.server_guard.lock().await;
 
         guard
-            .mock("GET", format!("{}{}", SCREEN_PATH, ADDRESS).as_str())
+            .mock("GET", format!("{}/{}", SCREEN_PATH, ADDRESS).as_str())
             .with_status(404)
             .with_header("content-type", "application/json")
             .with_body("Not found")
