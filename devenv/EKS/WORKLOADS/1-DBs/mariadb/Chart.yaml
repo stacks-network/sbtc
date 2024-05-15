@@ -1,7 +1,0 @@
-apiVersion: v2
-name: mariadb-subchart
-version: 1.0.0
-dependencies:
-  - name: mariadb
-    version: 18.0.2
-    repository: https://charts.bitnami.com/bitnami

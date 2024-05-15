@@ -1,7 +1,0 @@
-apiVersion: v2
-name: postgres-subchart
-version: 1.0.3
-dependencies:
-  - name: postgresql
-    version: 15.1.4
-    repository: https://charts.bitnami.com/bitnami
