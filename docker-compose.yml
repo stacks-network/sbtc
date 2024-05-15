@@ -1,0 +1,61 @@
+services:
+
+  bitcoind:
+    container_name: bitcoind
+    image: lncm/bitcoind:v27.0
+    volumes:
+      - ./signer/tests/bitcoin/bitcoin.conf:/data/.bitcoin/bitcoin.conf:ro
+    restart: on-failure
+    stop_grace_period: 10s
+    ports:
+      - 8333:8333
+      - 8332:8332
+      - 18443:18443
+      - 28332:28332
+      - 28333:28333
+
+  web:
+    environment:
+      FRONTEND_HTTP_PORT: "8080"
+      BACKEND_MAINNET_HTTP_HOST: "mempool-api"
+    image: mempool/frontend:v3.0.0-dev8
+    user: "1000:1000"
+    restart: on-failure
+    stop_grace_period: 10s
+    command: "./wait-for mempooldb:3306 --timeout=720 -- nginx -g 'daemon off;'"
+    ports:
+      - 80:8080
+
+  mempool-api:
+    environment:
+      MEMPOOL_BACKEND: "none"
+      CORE_RPC_HOST: "bitcoind"
+      CORE_RPC_PORT: "18443"
+      CORE_RPC_USERNAME: "alice"
+      CORE_RPC_PASSWORD: "pw"
+      DATABASE_ENABLED: "true"
+      DATABASE_HOST: "mempooldb"
+      DATABASE_DATABASE: "mempool"
+      DATABASE_USERNAME: "mempool"
+      DATABASE_PASSWORD: "mempool"
+      STATISTICS_ENABLED: "true"
+    image: mempool/backend:v3.0.0-dev8
+    user: "1000:1000"
+    restart: on-failure
+    stop_grace_period: 10s
+    command: "./wait-for-it.sh mempooldb:3306 --timeout=720 --strict -- ./start.sh"
+    volumes:
+      - /tmp/mempool-api/data:/backend/cache
+
+  mempooldb:
+    environment:
+      MYSQL_DATABASE: "mempool"
+      MYSQL_USER: "mempool"
+      MYSQL_PASSWORD: "mempool"
+      MYSQL_ROOT_PASSWORD: "admin"
+    image: mariadb:10.5.21
+    user: "1000:1000"
+    restart: on-failure
+    stop_grace_period: 10s
+    volumes:
+      - /tmp/mysql/data:/var/lib/mysql
