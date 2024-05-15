@@ -23,14 +23,16 @@ bincode.workspace = true
 bitcoin = { workspace = true, features = ["rand-std"] }
 blocklist-client = { path = "../blocklist-client" }
 config.workspace = true
+futures = "0.3"
 p256k1.workspace = true
 once_cell.workspace = true
 rand.workspace = true
-reqwest.workspace = true
+reqwest = { version = "0.12", features = ["json"]}
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+time = "0.3"
 tokio.workspace = true
 tracing.workspace = true
 tracing-attributes.workspace = true
@@ -49,7 +51,6 @@ features = ["rand-std", "global-context"]
 # to the official version.
 bitcoincore-rpc = { git = "https://github.com/tcharding/rust-bitcoincore-rpc", branch = "04-25-upgrade-bitcoin-0.32.0" }
 more-asserts = "0.3"
-reqwest = "0.12"
 test-case = "3.1"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 mockito = "1.4.0"

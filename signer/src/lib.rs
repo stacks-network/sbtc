@@ -3,6 +3,7 @@ pub mod codec;
 pub mod config;
 pub mod ecdsa;
 pub mod error;
+pub mod fees;
 pub mod message;
 pub mod network;
 pub mod packaging;
