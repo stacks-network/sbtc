@@ -5,16 +5,15 @@
     "emily": "bin/emily.js"
   },
   "scripts": {
-    "build": "(cd ../api-definition && npm run build-openapi) && tsc",
+    "synth": "tsc && npx aws-cdk synth -q --no-staging",
     "watch": "tsc -w",
     "test": "jest",
-    "cdk": "npx aws-cdk",
     "clean": "rm -rf node_modules .cdk.staging cdk.out .generated-sources"
   },
   "devDependencies": {
     "@types/jest": "^29.5.1",
     "@types/node": "20.1.7",
-    "aws-cdk": "^2.138.0",
+    "aws-cdk": "^2.142.0",
     "jest": "^29.5.0",
     "ts-jest": "^29.1.0",
     "ts-node": "^10.9.1",
