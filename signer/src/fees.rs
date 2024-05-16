@@ -24,7 +24,9 @@ impl FeeEstimator for FeeSource {
     }
 }
 
-/// https://bitcoiner.live/doc/api
+/// A struct representing requests to https://bitcoiner.live
+/// 
+/// The docs for this API can be found at https://bitcoiner.live/doc/api
 #[derive(Debug, Clone)]
 struct BitcoinerLive {
     base_url: String,
@@ -38,7 +40,9 @@ struct BitcoinerLiveResponse {
     estimates: BitcoinerLiveEstimates,
 }
 
-/// target confirmation in minutes
+/// BitcoinLive gives fee estimates given the target confirmation time in
+/// minutes. This struct represents part of their JSON response when
+/// requesting fee estimates.
 ///
 /// In the actual response, there are also estimates for 60, 120, 180 and
 /// 360 minutes.
@@ -54,6 +58,10 @@ pub struct BitcoinerLiveFeeEstimate {
     sat_per_vbyte: f64,
 }
 
+/// A struct representing requests to https://mempool.space
+/// 
+/// The docs for this API can be found at https://mempool.space/docs/api,
+/// while the specific docs for getting recommended fees can be found at
 /// https://mempool.space/docs/api/rest#get-recommended-fees
 #[derive(Debug, Clone)]
 struct MempoolSpace {
@@ -71,6 +79,8 @@ struct MempoolSpaceResponse {
     minimum_fee: u64,
 }
 
+/// A struct representing the recommended fee, in sats per vbtye, from a
+/// particular source.
 pub struct FeeEstimate {
     pub sats_per_vbyte: f64,
 }
@@ -85,8 +95,9 @@ pub trait FeeEstimator {
 impl FeeEstimator for BitcoinerLive {
     /// Fetch the fee estimate from bitcoiner.live.
     ///
-    /// The retirmed value gives a fee estimate where there is a 90%
-    /// probability that the transaction will be confirmed within 30 minutes.
+    /// The returned value gives a fee estimate where there is a 90%
+    /// probability that the transaction will be confirmed within 30
+    /// minutes.
     async fn estimate_fee_rate(&self, client: &Client) -> Result<FeeEstimate, Error> {
         let url = format!(
             "{}/api/fees/estimates/latest?confidence=0.9",
@@ -112,6 +123,9 @@ impl FeeEstimator for BitcoinerLive {
 }
 
 impl FeeEstimator for MempoolSpace {
+    /// Fetch the fee estimate from mempool.space
+    /// 
+    /// The returned value is the High Priority 
     async fn estimate_fee_rate(&self, client: &Client) -> Result<FeeEstimate, Error> {
         let url = format!("{}/api/v1/fees/recommended", &self.base_url);
         let resp: MempoolSpaceResponse = client
