@@ -91,8 +91,8 @@ importers:
         specifier: 20.1.7
         version: 20.1.7
       aws-cdk:
-        specifier: ^2.138.0
-        version: 2.140.0
+        specifier: ^2.142.0
+        version: 2.142.0
       jest:
         specifier: ^29.5.0
         version: 29.7.0(@types/node@20.1.7)(ts-node@10.9.2(@types/node@20.1.7)(typescript@5.0.4))
@@ -1036,8 +1036,8 @@ packages:
       - yaml
       - mime-types
 
-  aws-cdk@2.140.0:
-    resolution: {integrity: sha512-5NzmXFqjGYiTFZ+jgWBQJvrjhMIlYMoNTOwgvzHj2YnP9LhEsr60IdRGiXYD9CZyR79Hr3VQNbjcgO35bvW9/w==}
+  aws-cdk@2.142.0:
+    resolution: {integrity: sha512-vrEO02gY2G+38GIbYpYyR9/+KZV2ZE0MgGG3a515IkU6lHU3CkebxIgsmO4gHwFXNsePwcnAq3HQXhCS8SfXmw==}
     engines: {node: '>= 14.15.0'}
     hasBin: true
 
@@ -4098,7 +4098,7 @@ snapshots:
       '@aws-cdk/asset-node-proxy-agent-v6': 2.0.3
       constructs: 10.3.0
 
-  aws-cdk@2.140.0:
+  aws-cdk@2.142.0:
     optionalDependencies:
       fsevents: 2.3.2
 
