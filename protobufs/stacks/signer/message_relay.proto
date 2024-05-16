@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package signer.message_relay;
+package stacks.signer;
 
 message Message {
   bytes message = 1;
