@@ -1,0 +1,70 @@
+services:
+
+  # Hosts the DynamoDB Tables.
+  dynamodb:
+    image: "amazon/dynamodb-local:latest"
+    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath ./data"
+    ports:
+      - "8000:8000"
+    volumes:
+      - "./devenv/dynamodb/data:/home/dynamodblocal/data"
+    networks:
+      - aws-local-vpc
+
+  # Modifies the CDK template and creates DynamoDB Tables if necessary.
+  aws-setup:
+    build: devenv/aws-setup
+    depends_on:
+      dynamodb:
+        condition: service_started
+    volumes:
+      - "./devenv/aws-setup/initialize.py:/initialize.py"
+      - "./emily/cdk/cdk.out:/cdk.out"
+    environment:
+      - DYNAMODB_ENDPOINT=http://dynamodb:8000
+      - LOCAL_LAMBDA_PATH=/code/emily-lambda/bootstrap.zip
+      - INPUT_CDK_TEMPLATE=/cdk.out/EmilyStack.template.json
+      - OUTPUT_CDK_TEMPLATE=/cdk.out/EmilyStack.devenv.template.json
+    command: python3 ./initialize.py
+    networks:
+      - aws-local-vpc
+
+  # Hosts the SAM CLI
+  apigateway:
+    build: devenv/apigateway
+    depends_on:
+      aws-setup:
+        condition: service_completed_successfully
+    ports:
+      - "3000:3000"
+    volumes:
+      - "./target/lambda:/code"
+      - "./emily/cdk/cdk.out:/cdk.out"
+      - "./devenv/lambda:/lambda"
+      # Give this container access to the host docker socket so it makes sibling containers and
+      # not child containers.
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      # When the SAM CLI launches a lambda container it decompresses the sources in folder under
+      # `tmp` and then mounts that folder onto the new container. When two sibling containers
+      # need access to the same directory they need to do that via a directory on the shared host.
+      #
+      # tl;dr: We're running SAM in a docker container and launching the lambda as a sibling container
+      # so we need the `tmp` directory to be shared on the host.
+      - "/tmp:/tmp"
+    environment:
+      - SAM_CLI_TELEMETRY=0
+      - SAM_CLI_CONTAINER_CONNECTION_TIMEOUT=10
+    command: |
+      sam local start-api
+        --host 0.0.0.0
+        --container-host host.docker.internal
+        --docker-network aws-local-vpc
+        --warm-containers LAZY
+        --env-vars /lambda/env.json
+        -t /cdk.out/EmilyStack.devenv.template.json
+    networks:
+      - aws-local-vpc
+
+networks:
+  aws-local-vpc:
+    name: aws-local-vpc
