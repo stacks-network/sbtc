@@ -94,7 +94,7 @@ impl proto::relay_server::Relay for RelayServer {
         tokio::spawn(async move {
             tracing::debug!("listening to messages from client");
             while let Some(Ok(msg)) = in_stream.next().await {
-                tracing::debug!(msg=?msg, "broadcasting message");
+                tracing::debug!(?msg, "broadcasting message");
                 if broadcast_tx.send(Ok(msg)).is_err() {
                     tracing::debug!("all receivers closed");
                     break;
@@ -202,7 +202,7 @@ impl super::MessageTransfer for RelayClient {
 
         self.recently_sent.push_back(msg_id);
 
-        tracing::debug!(?msg, "broadcasted message");
+        tracing::debug!("broadcasted message");
 
         Ok(())
     }
@@ -216,7 +216,7 @@ impl super::MessageTransfer for RelayClient {
             msg = self.receive_next().await?;
         }
 
-        tracing::debug!(?msg, "received message");
+        tracing::debug!("received message");
 
         Ok(msg)
     }
