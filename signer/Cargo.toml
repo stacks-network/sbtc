@@ -27,7 +27,7 @@ futures = "0.3"
 p256k1.workspace = true
 once_cell.workspace = true
 rand.workspace = true
-reqwest = { version = "0.12", features = ["json"]}
+reqwest = { version = "0.11", features = ["json"]}
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -50,8 +50,7 @@ features = ["rand-std", "global-context"]
 # When that PR gets merged and the new version gets published, we can upgrade back
 # to the official version.
 bitcoincore-rpc = { git = "https://github.com/tcharding/rust-bitcoincore-rpc", branch = "04-25-upgrade-bitcoin-0.32.0" }
-mockito = "0.28"
+mockito = "1.4.0"
 more-asserts = "0.3"
 test-case = "3.1"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-mockito = "1.4.0"

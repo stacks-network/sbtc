@@ -184,9 +184,12 @@ pub async fn estimate_fee_rate(client: &reqwest::Client) -> Result<f64, Error> {
 mod tests {
     use super::*;
 
+    use mockito::Server as MockServer;
+    use mockito::Mock;
+
     // Helper function to setup a mock API response
-    fn setup_mock(method: &str, path: &str, status: usize, body: &str) -> mockito::Mock {
-        return mockito::mock(method, path)
+    fn setup_mock(server: &mut MockServer, method: &str, path: &str, status: usize, body: &str) -> Mock {
+        return server.mock(method, path)
             .with_status(status)
             .with_header("content-type", "application/json")
             .with_body(body)
@@ -250,18 +253,20 @@ mod tests {
         }"#;
         let status = 200;
 
+        let mut mempool_server = mockito::Server::new_async().await;
         let mempool_path = "/api/v1/fees/recommended";
-        let mempool_mock = setup_mock("GET", mempool_path, status, mempool_body).expect(1);
+        let mempool_mock = setup_mock(&mut mempool_server, "GET", mempool_path, status, mempool_body).expect(1);
 
+        let mut bitcoiner_server = mockito::Server::new_async().await;
         let bitcoiner_path = "/api/fees/estimates/latest?confidence=0.9";
-        let bitcoiner_mock = setup_mock("GET", bitcoiner_path, status, bitcoiner_body).expect(1);
+        let bitcoiner_mock = setup_mock(&mut bitcoiner_server, "GET", bitcoiner_path, status, bitcoiner_body).expect(1);
 
         let fee_sources: [FeeSource; 2] = [
             FeeSource::MempoolSpace(MempoolSpace {
-                base_url: mockito::server_url(),
+                base_url: mempool_server.url(),
             }),
             FeeSource::BitcoinerLive(BitcoinerLive {
-                base_url: mockito::server_url(),
+                base_url: bitcoiner_server.url(),
             }),
         ];
 
@@ -284,18 +289,20 @@ mod tests {
         let bitcoiner_body = "{}";
         let status = 200;
 
+        let mut mempool_server = mockito::Server::new_async().await;
         let mempool_path = "/api/v1/fees/recommended";
-        let mempool_mock = setup_mock("GET", mempool_path, status, mempool_body).expect(1);
+        let mempool_mock = setup_mock(&mut mempool_server, "GET", mempool_path, status, mempool_body).expect(1);
 
+        let mut bitcoiner_server = mockito::Server::new_async().await;
         let bitcoiner_path = "/api/fees/estimates/latest?confidence=0.9";
-        let bitcoiner_mock = setup_mock("GET", bitcoiner_path, status, bitcoiner_body).expect(1);
+        let bitcoiner_mock = setup_mock(&mut bitcoiner_server, "GET", bitcoiner_path, status, bitcoiner_body).expect(1);
 
         let fee_sources: [FeeSource; 2] = [
             FeeSource::MempoolSpace(MempoolSpace {
-                base_url: mockito::server_url(),
+                base_url: mempool_server.url(),
             }),
             FeeSource::BitcoinerLive(BitcoinerLive {
-                base_url: mockito::server_url(),
+                base_url: bitcoiner_server.url(),
             }),
         ];
 
@@ -317,19 +324,21 @@ mod tests {
         let mempool_body = "{}";
         let bitcoiner_body = "{}";
         let status = 200;
-
+        
+        let mut mempool_server = mockito::Server::new_async().await;
         let mempool_path = "/api/v1/fees/recommended";
-        let mempool_mock = setup_mock("GET", mempool_path, status, mempool_body).expect(1);
+        let mempool_mock = setup_mock(&mut mempool_server, "GET", mempool_path, status, mempool_body).expect(1);
 
+        let mut bitcoiner_server = mockito::Server::new_async().await;
         let bitcoiner_path = "/api/fees/estimates/latest?confidence=0.9";
-        let bitcoiner_mock = setup_mock("GET", bitcoiner_path, status, bitcoiner_body).expect(1);
+        let bitcoiner_mock = setup_mock(&mut bitcoiner_server, "GET", bitcoiner_path, status, bitcoiner_body).expect(1);
 
         let fee_sources: [FeeSource; 2] = [
             FeeSource::MempoolSpace(MempoolSpace {
-                base_url: mockito::server_url(),
+                base_url: mempool_server.url(),
             }),
             FeeSource::BitcoinerLive(BitcoinerLive {
-                base_url: mockito::server_url(),
+                base_url: bitcoiner_server.url(),
             }),
         ];
 
