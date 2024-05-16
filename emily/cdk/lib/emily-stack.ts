@@ -167,9 +167,8 @@ export class EmilyStack extends cdk.Stack {
             functionName: EmilyStackUtils.getResourceName(operationLambdaId, props),
             architecture: lambda.Architecture.ARM_64, // <- Will need to change when run locally for x86
             runtime: lambda.Runtime.PROVIDED_AL2023,
-            code:
-            lambda.Code.fromAsset(EmilyStackUtils.getPathFromProjectRoot(
-                props.stageName == Constants.UNIT_TEST_STAGE_NAME
+            code: lambda.Code.fromAsset(EmilyStackUtils.getPathFromProjectRoot(
+                props.stageName === Constants.UNIT_TEST_STAGE_NAME
                     ? "emily/cdk/test/assets/empty-lambda.zip"
                     : "target/lambda/emily-lambda/bootstrap.zip"
             )),
