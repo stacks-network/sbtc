@@ -6,6 +6,9 @@ pub enum Error {
     #[error("Got an old fee estimate")]
     OldFeeEstimate,
 
+    #[error("Failed to get fee estimates from all fee estimate sources")]
+    NoGoodFeeEstimates,
+
     #[error("{0}")]
     Reqwest(#[from] reqwest::Error),
 

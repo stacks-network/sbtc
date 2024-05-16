@@ -2993,7 +2993,7 @@ dependencies = [
  "blocklist-client",
  "config",
  "futures",
- "mockito 1.4.0",
+ "mockito",
  "more-asserts",
  "once_cell",
  "p256k1",

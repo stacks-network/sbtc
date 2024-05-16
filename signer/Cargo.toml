@@ -50,6 +50,7 @@ features = ["rand-std", "global-context"]
 # When that PR gets merged and the new version gets published, we can upgrade back
 # to the official version.
 bitcoincore-rpc = { git = "https://github.com/tcharding/rust-bitcoincore-rpc", branch = "04-25-upgrade-bitcoin-0.32.0" }
+mockito = "0.28"
 more-asserts = "0.3"
 test-case = "3.1"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
