@@ -16,7 +16,7 @@
 //! how to concurrently send messages to and receive messages from the server.
 
 pub mod proto {
-    tonic::include_proto!("message");
+    tonic::include_proto!("signer.message_relay");
 }
 
 use std::collections::VecDeque;
