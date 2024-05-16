@@ -8,21 +8,6 @@ use crate::error::Error;
 const FIVE_MINUTES_SECONDS: i64 = 300;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
-#[derive(Debug)]
-enum FeeSource {
-    BitcoinerLive(BitcoinerLive),
-    MempoolSpace(MempoolSpace),
-}
-
-impl FeeEstimator for FeeSource {
-    async fn estimate_fee_rate(&self, client: &reqwest::Client) -> Result<FeeEstimate, Error> {
-        match self {
-            Self::BitcoinerLive(btclive) => btclive.estimate_fee_rate(client).await,
-            Self::MempoolSpace(mempool) => mempool.estimate_fee_rate(client).await,
-        }
-    }
-}
-
 /// A struct representing requests to https://bitcoiner.live
 ///
 /// The docs for this API can be found at https://bitcoiner.live/doc/api
@@ -35,7 +20,7 @@ struct BitcoinerLive {
 struct BitcoinerLiveResponse {
     /// Unix timestamp of when the data was last refreshed
     timestamp: i64,
-
+    /// The actual fee rate estimates.
     estimates: BitcoinerLiveEstimates,
 }
 
@@ -45,14 +30,17 @@ struct BitcoinerLiveResponse {
 ///
 /// In the actual response, there are also estimates for 60, 120, 180 and
 /// 360 minutes.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
-pub struct BitcoinerLiveEstimates {
+struct BitcoinerLiveEstimates {
     #[serde(alias = "30")]
-    pub thirty: BitcoinerLiveFeeEstimate,
+    thirty: BitcoinerLiveFeeEstimate,
+    #[serde(alias = "60")]
+    sixty: BitcoinerLiveFeeEstimate,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct BitcoinerLiveFeeEstimate {
+struct BitcoinerLiveFeeEstimate {
     /// estimated fee rate in satoshis per virtual-byte
     sat_per_vbyte: f64,
 }
@@ -140,6 +128,21 @@ impl FeeEstimator for MempoolSpace {
         Ok(FeeEstimate {
             sats_per_vbyte: resp.fastest_fee as f64,
         })
+    }
+}
+
+#[derive(Debug)]
+enum FeeSource {
+    BitcoinerLive(BitcoinerLive),
+    MempoolSpace(MempoolSpace),
+}
+
+impl FeeEstimator for FeeSource {
+    async fn estimate_fee_rate(&self, client: &reqwest::Client) -> Result<FeeEstimate, Error> {
+        match self {
+            Self::BitcoinerLive(btclive) => btclive.estimate_fee_rate(client).await,
+            Self::MempoolSpace(mempool) => mempool.estimate_fee_rate(client).await,
+        }
     }
 }
 
