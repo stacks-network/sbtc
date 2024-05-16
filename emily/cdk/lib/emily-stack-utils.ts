@@ -41,9 +41,11 @@ export class EmilyStackUtils {
      */
     public static getAwsAccount(): string {
         this.awsAccount ??= (process.env.AWS_ACCOUNT ?? process.env.CDK_DEFAULT_ACCOUNT);
-        if (this.awsAccount === undefined) {
+        if (this.awsAccount === undefined && this.getStageName() !== Constants.LOCAL_STAGE_NAME) {
             throw new Error('Must define AWS account on either "AWS_ACCOUNT" or "CDK_DEFAULT_ACCOUNT" env variables.');
         }
+        // If the account is undefined and we're letting it slide set the account to 12 "x"s.
+        this.awsAccount ??= "xxxxxxxxxxxx";
         return this.awsAccount;
     }
 
@@ -52,9 +54,13 @@ export class EmilyStackUtils {
      */
     public static getAwsRegion(): string {
         this.awsRegion ??= (process.env.AWS_REGION ?? process.env.CDK_DEFAULT_REGION);
-        if (this.awsRegion === undefined) {
+        if (this.awsRegion === undefined && this.getStageName() !== Constants.LOCAL_STAGE_NAME) {
             throw new Error('Must define AWS region on either "AWS_REGION" or "CDK_DEFAULT_REGION" env variables.');
         }
+
+        // If the region is undefined and we're letting it slide, set the region to the
+        // standard beta region: us-west-2.
+        this.awsRegion ??= "us-west-2";
         return this.awsRegion;
     }
 
