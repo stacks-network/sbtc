@@ -265,8 +265,7 @@ mod tests {
 
         let client_2 = RelayClient::connect(addr).await.expect("Failed to connect");
 
-        crate::network::assert_clients_should_be_able_to_exchange_messages(client_1, client_2)
-            .await;
+        crate::network::testing::assert_clients_can_exchange_messages(client_1, client_2).await;
     }
 
     fn server_address() -> String {
