@@ -165,7 +165,7 @@ export class EmilyStack extends cdk.Stack {
         const operationLambdaId: string = "OperationLambda";
         const operationLambda: lambda.Function = new lambda.Function(this, operationLambdaId, {
             functionName: EmilyStackUtils.getResourceName(operationLambdaId, props),
-            architecture: lambda.Architecture.ARM_64, // <- Will need to change when run locally for x86
+            architecture: EmilyStackUtils.getLambdaArchitecture(props),
             runtime: lambda.Runtime.PROVIDED_AL2023,
             code: lambda.Code.fromAsset(EmilyStackUtils.getPathFromProjectRoot(
                 props.stageName === Constants.UNIT_TEST_STAGE_NAME
