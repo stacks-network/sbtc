@@ -6,7 +6,7 @@ services:
     build:
       context: ./bitcoin/docker
       args:
-        VERSION: '25.0'
+        VERSION: "25.0"
         BTC_NETWORK: "regtest"
         BTC_PRINTTOCONSOLE: 1
         BTC_DISABLEWALLET: 0
@@ -121,7 +121,7 @@ services:
     build:
       context: ./stacks-old/docker
       args:
-        STACKS_NODE_VERSION: '2.4.0.0.0'
+        STACKS_NODE_VERSION: "2.4.0.0.0"
         GIT_URI: https://github.com/stacks-network/stacks-blockchain.git
         GIT_BRANCH: 2.4.0.0.0
     ports:

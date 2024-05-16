@@ -9,6 +9,7 @@ pox_sync_sample_secs = 0
 wait_time_for_blocks = 0
 wait_time_for_microblocks = 50
 microblock_frequency = 1000
+use_test_genesis_chainstate = true
 
 [connection_options]
 # inv_sync_interval = 10
@@ -82,12 +83,13 @@ events_keys = ["*"]
 
 [burnchain]
 chain = "bitcoin"
-mode = "krypton"
+mode = "neon"
+magic_bytes = "T3"
 poll_time_secs = 1
 timeout = 30
 peer_host = "bitcoin"
 rpc_ssl = false
-wallet_name = "devnet"
+# wallet_name = "main"
 username = "devnet"
 password = "devnet"
 rpc_port = 18443

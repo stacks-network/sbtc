@@ -36,6 +36,8 @@ fi
 
 
 tee -a $DOT_BITCOIN_DIR/bitcoin.conf << END
+regtest=1 #chain=regtest
+
 [regtest]
 # Accept command line and JSON-RPC commands
 server=1
@@ -62,13 +64,19 @@ rpctimeout=100
 # output all debug info
 # debug=$BTC_LOG_DEBUG
 
-disablewallet=$BTC_DISABLEWALLET
+# disablewallet=$BTC_DISABLEWALLET
+disablewallet=0
 
-printtoconsole=$BTC_PRINTTOCONSOLE
+# printtoconsole=$BTC_PRINTTOCONSOLE
+printtoconsole=1
 
+addresstype=legacy
+changetype=legacy
+fallbackfee=0.00001
 
 # Maintain a full transaction index, used by the getrawtransaction rpc call (default: 0)
-txindex=$BTC_TXINDEX
+# txindex=$BTC_TXINDEX
+txindex=1
 END
 
 # # ----------------------------------------------------------
