@@ -139,7 +139,7 @@ impl RelayClient {
         let try_connect = move || {
             let endpoint = endpoint.clone();
             async move {
-                proto::relay_client::RelayClient::connect(endpoint.clone())
+                proto::relay_client::RelayClient::connect(endpoint)
                     .await
                     .map_err(backoff::Error::transient)
             }
