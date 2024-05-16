@@ -3,6 +3,7 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as fs from 'fs';
 import { resolve } from "path";
 import { EmilyStackProps } from "./emily-stack-props";
+import { Constants } from "./constants";
 
 /**
  * This class provides utility methods for the Cloud Formation Stack.
@@ -94,11 +95,24 @@ export class EmilyStackUtils {
     }
 
     /**
+     * @description Returns the architecture that the lambda should run on. Assume ARM64 unless
+     * the stack is running locally on an x86 machine.
+     * @param {EmilyStackProps} props the Emily Stack props.
+     * @returns {lambda.Architecture} the Lambda architecture to use.
+     */
+    public static getLambdaArchitecture(props: EmilyStackProps): lambda.Architecture {
+        return props.stageName === Constants.LOCAL_STAGE_NAME && process.arch.startsWith("x")
+            ? lambda.Architecture.X86_64
+            : lambda.Architecture.ARM_64;
+    }
+
+    /**
      * @description Generate an api definition asset from a local OpenAPI definition and modifies the
      * template such that CloudFormation can replace the lambda identifiers with the correct lambda arn.
      * @param {fs.PathOrFileDescriptor} restApiPathOrFileDescriptor the location of the definition asset
-     * @param {string} lambdaFunctionId lambdaFunction Id.
-     * @param {CloudFormationStackProps} props properties of the cloud formation stack.
+     * @param {[lambdaIdentifier: string, lambdaFunction: lambda.Function][]} lambdaFunctionId
+     *      lambdaIdentifier, lambdaFunction value pairs to describe which properties to replace and what
+     *      they should be replaced with.
      * @returns {ApiDefinition} The name of the resource.
      */
     public static restApiDefinitionWithLambdaIntegration(
