@@ -23,7 +23,7 @@ fn main() -> io::Result<()> {
         file.write_all(new_contents.as_bytes())?;
     }
 
-    // Ensure that we rerun the lib.rs was altered by the client autogeneration.
+    // Ensure that we only rerun if the lib.rs was altered by the client autogeneration.
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src/lib.rs");
 
