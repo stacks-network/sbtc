@@ -4,10 +4,9 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 
 pub fn setup_logging(pretty: bool) {
-    if pretty {
-        setup_logging_pretty()
-    } else {
-        setup_logging_json()
+    match pretty {
+        true => setup_logging_pretty(),
+        false => setup_logging_json(),
     }
 }
 
