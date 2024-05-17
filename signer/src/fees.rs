@@ -73,14 +73,14 @@ pub struct FeeEstimate {
     pub sats_per_vbyte: f64,
 }
 
-pub trait FeeEstimator {
+pub trait EstimateFees {
     fn estimate_fee_rate(
         &self,
         client: &reqwest::Client,
     ) -> impl Future<Output = Result<FeeEstimate, Error>> + Send;
 }
 
-impl FeeEstimator for BitcoinerLive {
+impl EstimateFees for BitcoinerLive {
     /// Fetch the fee estimate from bitcoiner.live.
     ///
     /// The returned value gives a fee estimate where there is a 90%
@@ -110,7 +110,7 @@ impl FeeEstimator for BitcoinerLive {
     }
 }
 
-impl FeeEstimator for MempoolSpace {
+impl EstimateFees for MempoolSpace {
     /// Fetch the fee estimate from mempool.space
     ///
     /// The returned value is the High Priority fee rate displayed on
@@ -137,7 +137,7 @@ enum FeeSource {
     MempoolSpace(MempoolSpace),
 }
 
-impl FeeEstimator for FeeSource {
+impl EstimateFees for FeeSource {
     async fn estimate_fee_rate(&self, client: &reqwest::Client) -> Result<FeeEstimate, Error> {
         match self {
             Self::BitcoinerLive(btclive) => btclive.estimate_fee_rate(client).await,
@@ -149,7 +149,7 @@ impl FeeEstimator for FeeSource {
 /// Compute the average price of the fee estimates from the given sources.
 async fn estimate_fee_rate_impl<T>(sources: &[T], client: &reqwest::Client) -> Result<f64, Error>
 where
-    T: FeeEstimator,
+    T: EstimateFees,
 {
     let futures_iter = sources
         .iter()
