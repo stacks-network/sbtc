@@ -37,7 +37,7 @@ pub struct SignerBtcState {
     /// The outstanding signer UTXO.
     pub utxo: SignerUtxo,
     /// The current market fee rate in sat/vByte.
-    pub fee_rate: u64,
+    pub fee_rate: f64,
     /// The current public key of the signers
     pub public_key: XOnlyPublicKey,
 }
@@ -494,10 +494,10 @@ impl<'a> UnsignedTransaction<'a> {
     /// Note that each deposit and withdrawal pays an equal amount for the
     /// transaction. To compute this amount we divide the total fee by the
     /// number of requests in the transaction.
-    fn compute_request_fee(tx: &Transaction, fee_rate: u64) -> u64 {
-        let tx_fee = tx.vsize() as u64 * fee_rate;
-        let num_requests = (tx.input.len() + tx.output.len()).saturating_sub(2) as u64;
-        tx_fee.div_ceil(num_requests)
+    fn compute_request_fee(tx: &Transaction, fee_rate: f64) -> u64 {
+        let tx_fee = tx.vsize() as f64 * fee_rate;
+        let num_requests = (tx.input.len() + tx.output.len()).saturating_sub(2) as f64;
+        (tx_fee / num_requests).ceil() as u64
     }
 
     /// Compute the final amount for the signers' UTXO given the current
@@ -722,7 +722,7 @@ mod tests {
                     amount: 5500,
                     public_key: generate_x_only_public_key(),
                 },
-                fee_rate: 0,
+                fee_rate: 0.0,
                 public_key: generate_x_only_public_key(),
             },
             num_signers: 10,
@@ -784,7 +784,7 @@ mod tests {
                     amount: 55,
                     public_key,
                 },
-                fee_rate: 0,
+                fee_rate: 0.0,
                 public_key,
             },
             num_signers: 10,
@@ -828,7 +828,7 @@ mod tests {
                     amount: 9500,
                     public_key,
                 },
-                fee_rate: 0,
+                fee_rate: 0.0,
                 public_key,
             },
             num_signers: 10,
@@ -867,7 +867,7 @@ mod tests {
                     amount: 300_000,
                     public_key,
                 },
-                fee_rate: 0,
+                fee_rate: 0.0,
                 public_key,
             },
             num_signers: 10,
@@ -917,7 +917,7 @@ mod tests {
                     amount: 300_000,
                     public_key,
                 },
-                fee_rate: 0,
+                fee_rate: 0.0,
                 public_key,
             },
             num_signers: 10,
@@ -1003,7 +1003,7 @@ mod tests {
                     amount: 300_000_000,
                     public_key,
                 },
-                fee_rate: 25,
+                fee_rate: 25.0,
                 public_key,
             },
             num_signers: 10,
@@ -1091,7 +1091,7 @@ mod tests {
                     amount: 300_000_000,
                     public_key,
                 },
-                fee_rate: 25,
+                fee_rate: 25.0,
                 public_key,
             },
             num_signers: 10,
@@ -1124,7 +1124,7 @@ mod tests {
                     amount: 3000,
                     public_key,
                 },
-                fee_rate: 0,
+                fee_rate: 0.0,
                 public_key,
             },
             num_signers: 10,

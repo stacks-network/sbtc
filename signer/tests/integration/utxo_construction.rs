@@ -199,7 +199,7 @@ fn deposits_add_to_controlled_amounts() {
                 amount: signer_utxo.amount.to_sat(),
                 public_key: signers_public_key,
             },
-            fee_rate: 10,
+            fee_rate: 10.0,
             public_key: signers_public_key,
         },
         accept_threshold: 4,
