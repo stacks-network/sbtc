@@ -11,14 +11,14 @@ importers:
   contracts:
     dependencies:
       '@clarigen/cli':
-        specifier: ^2.0.1
-        version: 2.0.1(@types/node@20.1.7)(typanion@3.14.0)
+        specifier: 2.0.2
+        version: 2.0.2(@types/node@20.1.7)(typanion@3.14.0)
       '@clarigen/core':
-        specifier: ^2.0.1
-        version: 2.0.1
+        specifier: 2.0.2
+        version: 2.0.2
       '@clarigen/test':
-        specifier: ^2.0.1
-        version: 2.0.1(@types/node@20.1.7)
+        specifier: 2.0.2
+        version: 2.0.2(@types/node@20.1.7)
       '@hirosystems/clarinet-sdk':
         specifier: ^2.3.2
         version: 2.6.0(@types/node@20.1.7)
@@ -105,6 +105,10 @@ packages:
   '@ampproject/remapping@2.3.0':
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
     engines: {node: '>=6.0.0'}
+
+  '@antfu/ni@0.21.12':
+    resolution: {integrity: sha512-2aDL3WUv8hMJb2L3r/PIQWsTLyq7RQr3v9xD16fiz6O8ys1xEyLhhTOv8gxtZvJiTzjTF5pHoArvRdesGL1DMQ==}
+    hasBin: true
 
   '@aws-cdk/asset-awscli-v1@2.2.202':
     resolution: {integrity: sha512-JqlF0D4+EVugnG5dAsNZMqhu3HW7ehOXm5SDMxMbXNDMdsF0pxtQKNHRl52z1U9igsHmaFpUgSGjbhAJ+0JONg==}
@@ -286,17 +290,17 @@ packages:
   '@bcoe/v8-coverage@0.2.3':
     resolution: {integrity: sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==}
 
-  '@clarigen/cli@2.0.1':
-    resolution: {integrity: sha512-C8QTwUHvvgISWk/QrEWv+zg6fmRAAIX+oshsmdJzOosVzNlutT9n9pIskp9ya5m8hiyMDr0hm9UeMGRsfjFuAw==}
+  '@clarigen/cli@2.0.2':
+    resolution: {integrity: sha512-oKyQ5fPmcmrJ7beyq2S66AttjnReESqMgh0/NrtqGDifu1TbZUdbZ2kZIiyfbEg1XJa9zJIu//B+nAfN87xRSA==}
     engines: {node: '>=10'}
     hasBin: true
 
-  '@clarigen/core@2.0.1':
-    resolution: {integrity: sha512-fqHIUNK6GXsNuUM/6QqUaKYylkWXFtR1bSVFZtOhME02tsKq4j/ORFvLhibzer/5NGheOnAeFLo7M3uqxkms9w==}
+  '@clarigen/core@2.0.2':
+    resolution: {integrity: sha512-6irl6zX7Zht3e+HJ/lyvoOuefap+60Bn63Cins1BvCTmxZDhQeXJ4MV1nb586HELxYMYn6UkOukPXK0H/I/0CA==}
     engines: {node: '>=10'}
 
-  '@clarigen/test@2.0.1':
-    resolution: {integrity: sha512-rpYZtKGun/B/YErH7gi75x0T9FkZeE0PrE22lUXNhGtVG+3T6L0HD/djl+UnNSdkKJpsoqS5zDW2ReTty5SXfA==}
+  '@clarigen/test@2.0.2':
+    resolution: {integrity: sha512-gEk37U5UgsXYnstkOyglTUZUFMdjiun9pjMa3LMnIs5kCcP5MZSyfPyoXJKj6C8xFp5oS416V1KSkoskg0aEqw==}
     engines: {node: '>=10'}
 
   '@cspotcode/source-map-support@0.8.1':
@@ -2955,6 +2959,8 @@ snapshots:
       '@jridgewell/gen-mapping': 0.3.5
       '@jridgewell/trace-mapping': 0.3.25
 
+  '@antfu/ni@0.21.12': {}
+
   '@aws-cdk/asset-awscli-v1@2.2.202': {}
 
   '@aws-cdk/asset-kubectl-v20@2.1.2': {}
@@ -3165,15 +3171,17 @@ snapshots:
 
   '@bcoe/v8-coverage@0.2.3': {}
 
-  '@clarigen/cli@2.0.1(@types/node@20.1.7)(typanion@3.14.0)':
+  '@clarigen/cli@2.0.2(@types/node@20.1.7)(typanion@3.14.0)':
     dependencies:
-      '@clarigen/core': 2.0.1
+      '@antfu/ni': 0.21.12
+      '@clarigen/core': 2.0.2
       '@hirosystems/clarinet-sdk': 2.6.0(@types/node@20.1.7)
       '@hirosystems/clarinet-sdk-wasm': 2.6.0
       '@iarna/toml': 2.2.5
       '@stacks/transactions': 6.13.1
       chokidar: 3.6.0
       clipanion: 4.0.0-rc.3(typanion@3.14.0)
+      execa: 8.0.1
       ora: 8.0.1
       pino: 8.21.0
       pino-pretty: 11.0.0
@@ -3199,7 +3207,7 @@ snapshots:
       - typanion
       - utf-8-validate
 
-  '@clarigen/core@2.0.1':
+  '@clarigen/core@2.0.2':
     dependencies:
       '@scure/base': 1.1.6
       '@stacks/blockchain-api-client': 7.10.0
@@ -3213,9 +3221,9 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@clarigen/test@2.0.1(@types/node@20.1.7)':
+  '@clarigen/test@2.0.2(@types/node@20.1.7)':
     dependencies:
-      '@clarigen/core': 2.0.1
+      '@clarigen/core': 2.0.2
       '@hirosystems/clarinet-sdk': 2.6.0(@types/node@20.1.7)
       '@hirosystems/clarinet-sdk-wasm': 2.6.0
       '@stacks/transactions': 6.13.0
