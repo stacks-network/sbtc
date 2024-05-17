@@ -114,6 +114,7 @@ pub enum Error {
     SignError(#[from] ecdsa::Error),
 }
 
+#[cfg(feature = "testing")]
 impl Signed<crate::message::SignerMessage> {
     pub fn random<R: rand::CryptoRng + rand::Rng>(rng: &mut R) -> Self {
         let private_key = Scalar::random(rng);

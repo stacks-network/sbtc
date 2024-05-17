@@ -1,3 +1,4 @@
+#[cfg(feature = "testing")]
 use clap::Parser;
 
 use p256k1::keys::PublicKey;

@@ -82,6 +82,7 @@ fn hash_message(msg: &wsts::net::Message, hasher: &mut sha2::Sha256) {
     }
 }
 
+#[cfg(feature = "testing")]
 impl SignerMessage {
     pub fn random<R: rand::CryptoRng + rand::Rng>(rng: &mut R) -> Self {
         use bitcoin::hashes::Hash;
