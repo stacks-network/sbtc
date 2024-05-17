@@ -12,8 +12,9 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 ///
 /// The docs for this API can be found at https://bitcoiner.live/doc/api
 #[derive(Debug, Clone)]
-struct BitcoinerLive {
+struct BitcoinerLive<'a> {
     base_url: String,
+    client: &'a reqwest::Client,
 }
 
 #[derive(Debug, Deserialize)]
@@ -51,8 +52,9 @@ struct BitcoinerLiveFeeEstimate {
 /// while the specific docs for getting recommended fees can be found at
 /// https://mempool.space/docs/api/rest#get-recommended-fees
 #[derive(Debug, Clone)]
-struct MempoolSpace {
+struct MempoolSpace<'a> {
     base_url: String,
+    client: &'a reqwest::Client,
 }
 
 #[allow(dead_code)]
@@ -74,24 +76,21 @@ pub struct FeeEstimate {
 }
 
 pub trait EstimateFees {
-    fn estimate_fee_rate(
-        &self,
-        client: &reqwest::Client,
-    ) -> impl Future<Output = Result<FeeEstimate, Error>> + Send;
+    fn estimate_fee_rate(&self) -> impl Future<Output = Result<FeeEstimate, Error>> + Send;
 }
 
-impl EstimateFees for BitcoinerLive {
+const BITCOINER_LIVE_PATH: &str = "/api/fees/estimates/latest?confidence=0.9";
+
+impl<'a> EstimateFees for BitcoinerLive<'a> {
     /// Fetch the fee estimate from bitcoiner.live.
     ///
     /// The returned value gives a fee estimate where there is a 90%
     /// probability that the transaction will be confirmed within 30
     /// minutes.
-    async fn estimate_fee_rate(&self, client: &reqwest::Client) -> Result<FeeEstimate, Error> {
-        let url = format!(
-            "{}/api/fees/estimates/latest?confidence=0.9",
-            &self.base_url
-        );
-        let resp: BitcoinerLiveResponse = client
+    async fn estimate_fee_rate(&self) -> Result<FeeEstimate, Error> {
+        let url = format!("{}{BITCOINER_LIVE_PATH}", &self.base_url);
+        let resp: BitcoinerLiveResponse = self
+            .client
             .get(url)
             .timeout(REQUEST_TIMEOUT)
             .send()
@@ -110,14 +109,17 @@ impl EstimateFees for BitcoinerLive {
     }
 }
 
-impl EstimateFees for MempoolSpace {
+const MEMPOOL_SPACE_PATH: &str = "/api/v1/fees/recommended";
+
+impl<'a> EstimateFees for MempoolSpace<'a> {
     /// Fetch the fee estimate from mempool.space
     ///
     /// The returned value is the High Priority fee rate displayed on
     /// https://mempool.space.
-    async fn estimate_fee_rate(&self, client: &reqwest::Client) -> Result<FeeEstimate, Error> {
-        let url = format!("{}/api/v1/fees/recommended", &self.base_url);
-        let resp: MempoolSpaceResponse = client
+    async fn estimate_fee_rate(&self) -> Result<FeeEstimate, Error> {
+        let url = format!("{}{MEMPOOL_SPACE_PATH}", &self.base_url);
+        let resp: MempoolSpaceResponse = self
+            .client
             .get(url)
             .timeout(REQUEST_TIMEOUT)
             .send()
@@ -132,28 +134,44 @@ impl EstimateFees for MempoolSpace {
 }
 
 #[derive(Debug)]
-enum FeeSource {
-    BitcoinerLive(BitcoinerLive),
-    MempoolSpace(MempoolSpace),
+enum FeeSource<'a> {
+    BitcoinerLive(BitcoinerLive<'a>),
+    MempoolSpace(MempoolSpace<'a>),
 }
 
-impl EstimateFees for FeeSource {
-    async fn estimate_fee_rate(&self, client: &reqwest::Client) -> Result<FeeEstimate, Error> {
+impl<'a> EstimateFees for FeeSource<'a> {
+    async fn estimate_fee_rate(&self) -> Result<FeeEstimate, Error> {
         match self {
-            Self::BitcoinerLive(btclive) => btclive.estimate_fee_rate(client).await,
-            Self::MempoolSpace(mempool) => mempool.estimate_fee_rate(client).await,
+            Self::BitcoinerLive(btclive) => btclive.estimate_fee_rate().await,
+            Self::MempoolSpace(mempool) => mempool.estimate_fee_rate().await,
         }
     }
 }
 
-/// Compute the average price of the fee estimates from the given sources.
-async fn estimate_fee_rate_impl<T>(sources: &[T], client: &reqwest::Client) -> Result<f64, Error>
+/// Used to compute the average price of the fee estimates from the given
+/// sources.
+struct AverageFeeEstimator<T, const N: usize> {
+    sources: [T; N],
+}
+
+impl<T, const N: usize> EstimateFees for AverageFeeEstimator<T, N>
+where
+    T: EstimateFees + Send + Sync,
+{
+    async fn estimate_fee_rate(&self) -> Result<FeeEstimate, Error> {
+        let sats_per_vbyte = estimate_fee_rate_impl(&self.sources).await?;
+
+        Ok(FeeEstimate { sats_per_vbyte })
+    }
+}
+
+async fn estimate_fee_rate_impl<T>(sources: &[T]) -> Result<f64, Error>
 where
     T: EstimateFees,
 {
     let futures_iter = sources
         .iter()
-        .map(|source| async move { source.estimate_fee_rate(client).await });
+        .map(|source| async move { source.estimate_fee_rate().await });
     let mut responses = futures::future::join_all(futures_iter).await;
 
     if responses.iter().all(Result::is_err) {
@@ -172,31 +190,50 @@ where
 }
 
 pub async fn estimate_fee_rate(client: &reqwest::Client) -> Result<f64, Error> {
-    let fee_sources: [FeeSource; 2] = [
+    let sources: [FeeSource; 2] = [
         FeeSource::MempoolSpace(MempoolSpace {
             base_url: "https://mempool.space".to_string(),
+            client,
         }),
         FeeSource::BitcoinerLive(BitcoinerLive {
             base_url: "https://bitcoiner.live".to_string(),
+            client,
         }),
     ];
-    estimate_fee_rate_impl(&fee_sources, client).await
+
+    AverageFeeEstimator { sources }
+        .estimate_fee_rate()
+        .await
+        .map(|estimate| estimate.sats_per_vbyte)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use mockito::Server as MockServer;
-    use mockito::Mock;
+    struct KnownFeeEstimator(f64);
 
-    // Helper function to setup a mock API response
-    fn setup_mock(server: &mut MockServer, method: &str, path: &str, status: usize, body: &str) -> Mock {
-        return server.mock(method, path)
-            .with_status(status)
-            .with_header("content-type", "application/json")
-            .with_body(body)
-            .create();
+    impl EstimateFees for KnownFeeEstimator {
+        async fn estimate_fee_rate(&self) -> Result<FeeEstimate, Error> {
+            Ok(FeeEstimate { sats_per_vbyte: self.0 })
+        }
+    }
+
+    #[tokio::test]
+    async fn average_fee_estimator_works() {
+        let sources = [
+            KnownFeeEstimator(1.),
+            KnownFeeEstimator(3.),
+            KnownFeeEstimator(5.),
+            KnownFeeEstimator(7.),
+            KnownFeeEstimator(9.),
+        ];
+        let ans = AverageFeeEstimator { sources }
+            .estimate_fee_rate()
+            .await
+            .unwrap();
+
+        assert_eq!(ans.sats_per_vbyte, 5.);
     }
 
     #[tokio::test]
@@ -254,27 +291,38 @@ mod tests {
                 }
             }
         }"#;
-        let status = 200;
-
         let mut mempool_server = mockito::Server::new_async().await;
-        let mempool_path = "/api/v1/fees/recommended";
-        let mempool_mock = setup_mock(&mut mempool_server, "GET", mempool_path, status, mempool_body).expect(1);
+        let mempool_mock = mempool_server
+            .mock("GET", MEMPOOL_SPACE_PATH)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(mempool_body)
+            .expect(1)
+            .create();
 
         let mut bitcoiner_server = mockito::Server::new_async().await;
-        let bitcoiner_path = "/api/fees/estimates/latest?confidence=0.9";
-        let bitcoiner_mock = setup_mock(&mut bitcoiner_server, "GET", bitcoiner_path, status, bitcoiner_body).expect(1);
+        let bitcoiner_mock = bitcoiner_server
+            .mock("GET", BITCOINER_LIVE_PATH)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(bitcoiner_body)
+            .expect(1)
+            .create();
+
+        let client = reqwest::Client::new();
 
         let fee_sources: [FeeSource; 2] = [
             FeeSource::MempoolSpace(MempoolSpace {
                 base_url: mempool_server.url(),
+                client: &client,
             }),
             FeeSource::BitcoinerLive(BitcoinerLive {
                 base_url: bitcoiner_server.url(),
+                client: &client,
             }),
         ];
 
-        let client = reqwest::Client::new();
-        let actual_estimate = estimate_fee_rate_impl(&fee_sources, &client).await.unwrap();
+        let actual_estimate = estimate_fee_rate_impl(&fee_sources).await.unwrap();
 
         // The expected response here is (15 + 13) / 2 = 14.
         let expected_estimate = 14.0;
@@ -290,27 +338,39 @@ mod tests {
             r#"{"fastestFee":13,"halfHourFee":11,"hourFee":11,"economyFee":10,"minimumFee":5}"#;
         // Let's say we get an invalid response from bitcoiner
         let bitcoiner_body = "{}";
-        let status = 200;
 
         let mut mempool_server = mockito::Server::new_async().await;
-        let mempool_path = "/api/v1/fees/recommended";
-        let mempool_mock = setup_mock(&mut mempool_server, "GET", mempool_path, status, mempool_body).expect(1);
+        let mempool_mock = mempool_server
+            .mock("GET", MEMPOOL_SPACE_PATH)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(mempool_body)
+            .expect(1)
+            .create();
 
         let mut bitcoiner_server = mockito::Server::new_async().await;
-        let bitcoiner_path = "/api/fees/estimates/latest?confidence=0.9";
-        let bitcoiner_mock = setup_mock(&mut bitcoiner_server, "GET", bitcoiner_path, status, bitcoiner_body).expect(1);
+        let bitcoiner_mock = bitcoiner_server
+            .mock("GET", BITCOINER_LIVE_PATH)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(bitcoiner_body)
+            .expect(1)
+            .create();
+
+        let client = reqwest::Client::new();
 
         let fee_sources: [FeeSource; 2] = [
             FeeSource::MempoolSpace(MempoolSpace {
                 base_url: mempool_server.url(),
+                client: &client,
             }),
             FeeSource::BitcoinerLive(BitcoinerLive {
                 base_url: bitcoiner_server.url(),
+                client: &client,
             }),
         ];
 
-        let client = reqwest::Client::new();
-        let actual_estimate = estimate_fee_rate_impl(&fee_sources, &client).await.unwrap();
+        let actual_estimate = estimate_fee_rate_impl(&fee_sources).await.unwrap();
 
         // Only mempool responded, so only its response is used to compute
         // the average.
@@ -326,27 +386,39 @@ mod tests {
         // Let's say we get all invalid response
         let mempool_body = "{}";
         let bitcoiner_body = "{}";
-        let status = 200;
-        
+
         let mut mempool_server = mockito::Server::new_async().await;
-        let mempool_path = "/api/v1/fees/recommended";
-        let mempool_mock = setup_mock(&mut mempool_server, "GET", mempool_path, status, mempool_body).expect(1);
+        let mempool_mock = mempool_server
+            .mock("GET", MEMPOOL_SPACE_PATH)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(mempool_body)
+            .expect(1)
+            .create();
 
         let mut bitcoiner_server = mockito::Server::new_async().await;
-        let bitcoiner_path = "/api/fees/estimates/latest?confidence=0.9";
-        let bitcoiner_mock = setup_mock(&mut bitcoiner_server, "GET", bitcoiner_path, status, bitcoiner_body).expect(1);
+        let bitcoiner_mock = bitcoiner_server
+            .mock("GET", BITCOINER_LIVE_PATH)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(bitcoiner_body)
+            .expect(1)
+            .create();
+
+        let client = reqwest::Client::new();
 
         let fee_sources: [FeeSource; 2] = [
             FeeSource::MempoolSpace(MempoolSpace {
                 base_url: mempool_server.url(),
+                client: &client,
             }),
             FeeSource::BitcoinerLive(BitcoinerLive {
                 base_url: bitcoiner_server.url(),
+                client: &client,
             }),
         ];
 
-        let client = reqwest::Client::new();
-        let response = estimate_fee_rate_impl(&fee_sources, &client).await;
+        let response = estimate_fee_rate_impl(&fee_sources).await;
         assert!(response.is_err());
 
         mempool_mock.assert();
