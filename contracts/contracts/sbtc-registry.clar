@@ -85,6 +85,19 @@
   }
 )
 
+;; Get the current aggregate pubkey.
+;; This function returns the current aggregate pubkey.
+(define-read-only (get-current-aggregate-pubkey)
+  (var-get current-aggregate-pubkey)
+)
+
+;; Get the current signer principal.
+;; This function returns the current signer principal.
+(define-read-only (get-current-signer-principal)
+  (var-get current-signer-principal)
+)
+
+
 ;; Public functions
 
 ;; Store a new withdrawal request.
@@ -164,17 +177,13 @@
     ;; Check that caller is protocol contract
     (try! (validate-caller))
     ;; Check that the aggregate pubkey is not already in the map
-    (asserts! (is-none (map-get? aggregate-pubkeys new-aggregate-pubkey)) ERR_AGG_PUBKEY_REPLAY)
+    (asserts! (map-insert aggregate-pubkeys new-aggregate-pubkey true) ERR_AGG_PUBKEY_REPLAY)
     ;; Check that the new address (multi-sig) is not already in the map
-    (asserts! (is-none (map-get? multi-sig-address new-address)) ERR_MULTI_SIG_REPLAY)
+    (asserts! (map-insert multi-sig-address new-address true) ERR_MULTI_SIG_REPLAY)
     ;; Update the current signer set
     (var-set current-signer-set new-keys)
     ;; Update the current multi-sig address
     (var-set current-signer-principal new-address)
-    ;; Update the aggregate pubkey map to avoid replay
-    (map-set aggregate-pubkeys new-aggregate-pubkey true)
-    ;; Update the multi-sig address map to avoid replay
-    (map-set multi-sig-address new-address true)
     ;; Update the current aggregate pubkey
     (ok (var-set current-aggregate-pubkey new-aggregate-pubkey))
   )
