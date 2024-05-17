@@ -30,7 +30,7 @@
         ;; Check that tx-sender is a multi-sig address
 
         ;; Checks that length of each key is exactly 32 bytes
-        (try! (fold signer-key-length-check new-keys (ok {index: u0})))
+        (try! (fold signer-key-length-check new-keys (ok u0)))
 
         ;; Check that length of new-aggregate-pubkey is exactly 32 bytes
         (asserts! (is-eq (len new-aggregate-pubkey) key-size) ERR_KEY_SIZE)
@@ -46,12 +46,12 @@
 ;; private functions
 ;; Signer Key Length Check
 ;; Checks that the length of each key is exactly 32 bytes
-(define-private (signer-key-length-check (current-key (buff 32)) (helper-response (response {index: uint} uint)))
+(define-private (signer-key-length-check (current-key (buff 32)) (helper-response (response uint uint)))
     (match helper-response
-        ok-response
+        index
             (begin 
-                (asserts! (is-eq (len current-key) key-size) (err (+ ERR_KEY_SIZE_PREFIX (+ u10 (get index ok-response)))))
-                (ok {index: (+ (get index ok-response) u1)})
+                (asserts! (is-eq (len current-key) key-size) (err (+ ERR_KEY_SIZE_PREFIX (+ u10 index))))
+                (ok (+ index u1))
             )
         err-response
             (err err-response)
