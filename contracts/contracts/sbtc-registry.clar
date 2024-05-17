@@ -1,19 +1,22 @@
 ;; sBTC Registry contract
 
 ;; Error codes
+
 (define-constant ERR_UNAUTHORIZED (err u400))
 (define-constant ERR_INVALID_REQUEST_ID (err u401))
 (define-constant ERR_AGG_PUBKEY_REPLAY (err u402))
 (define-constant ERR_MULTI_SIG_REPLAY (err u403))
 
 ;; Variables
+
 (define-data-var last-withdrawal-request-id uint u0)
-(define-data-var current-signer-set (list 15 (buff 32)) (list))
-(define-data-var current-aggregate-pubkey (buff 32) 0x00)
+(define-data-var current-signer-set (list 15 (buff 33)) (list))
+(define-data-var current-aggregate-pubkey (buff 33) 0x00)
 (define-data-var current-signer-principal principal tx-sender)
 
 
 ;; Maps
+
 ;; Internal data structure to store withdrawal
 ;; requests. Requests are associated with a unique
 ;; request ID.
@@ -50,7 +53,7 @@
 
 ;; Data structure to store aggregate pubkey,
 ;; stored to avoid replay
-(define-map aggregate-pubkeys (buff 32) bool)
+(define-map aggregate-pubkeys (buff 33) bool)
 
 ;; Data structure to store the current signer set,
 ;; stored to avoid replay
@@ -95,6 +98,10 @@
 ;; This function returns the current signer principal.
 (define-read-only (get-current-signer-principal)
   (var-get current-signer-principal)
+)
+
+(define-read-only (get-current-signer-set)
+  (var-get current-signer-set)
 )
 
 
@@ -172,7 +179,7 @@
 
 ;; Rotate the signer set, multi-sig principal, & aggregate pubkey
 ;; This function can only be called by the bootstrap-signers contract.
-(define-public (rotate-keys (new-keys (list 15 (buff 32))) (new-address principal) (new-aggregate-pubkey (buff 32)))
+(define-public (rotate-keys (new-keys (list 15 (buff 33))) (new-address principal) (new-aggregate-pubkey (buff 33)))
   (begin
     ;; Check that caller is protocol contract
     (try! (validate-caller))

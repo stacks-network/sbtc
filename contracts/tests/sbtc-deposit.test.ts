@@ -1,16 +1,10 @@
-import {
-  alice,
-  deposit,
-  registry,
-} from "./helpers";
+import { alice, deposit, errors, registry } from "./helpers";
 import { test, expect, describe } from "vitest";
 import { txOk, filterEvents, rov, txErr } from "@clarigen/test";
-import { CoreNodeEventType, cvToValue } from '@clarigen/core';
-
+import { CoreNodeEventType, cvToValue } from "@clarigen/core";
 
 describe("sBTC deposit contract", () => {
   describe("complete deposit contract setup (err 300)", () => {
-
     test("Fail complete-deposit-wrapper invalid txid length", () => {
       const receipt = txErr(
         deposit.completeDepositWrapper({
@@ -21,7 +15,7 @@ describe("sBTC deposit contract", () => {
         }),
         alice
       );
-      expect(receipt.value).toEqual(deposit.constants.ERR_TXID_LEN.value);
+      expect(receipt.value).toEqual(errors.deposit.ERR_TXID_LEN);
     });
 
     test("Fail complete-deposit-wrapper replay deposit (err 301)", () => {
@@ -44,9 +38,9 @@ describe("sBTC deposit contract", () => {
         }),
         alice
       );
-      expect(receipt1.value).toEqual(deposit.constants.ERR_DEPOSIT_REPLAY.value);
+      expect(receipt1.value).toEqual(errors.deposit.ERR_DEPOSIT_REPLAY);
     });
-    
+
     test("Call complete-deposit-wrapper placeholder, check print", () => {
       const receipt = txOk(
         deposit.completeDepositWrapper({
@@ -57,7 +51,10 @@ describe("sBTC deposit contract", () => {
         }),
         alice
       );
-      const printEvents = filterEvents(receipt.events, CoreNodeEventType.ContractEvent);
+      const printEvents = filterEvents(
+        receipt.events,
+        CoreNodeEventType.ContractEvent
+      );
       const [print] = printEvents;
       const printData = cvToValue<{
         topic: string;
@@ -92,7 +89,6 @@ describe("sBTC deposit contract", () => {
         amount: 0n,
         recipient: alice,
       });
-    })
-
+    });
   });
 });
