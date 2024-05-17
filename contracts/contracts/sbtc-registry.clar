@@ -1,13 +1,19 @@
 ;; sBTC Registry contract
 
 ;; Error codes
-
-;; Contract caller is not authorized
 (define-constant ERR_UNAUTHORIZED (err u400))
-
-;; Invalid request ID
 (define-constant ERR_INVALID_REQUEST_ID (err u401))
+(define-constant ERR_AGG_PUBKEY_REPLAY (err u402))
+(define-constant ERR_MULTI_SIG_REPLAY (err u403))
 
+;; Variables
+(define-data-var last-withdrawal-request-id uint u0)
+(define-data-var current-signer-set (list 15 (buff 32)) (list))
+(define-data-var current-aggregate-pubkey (buff 32) 0x00)
+(define-data-var current-signer-principal principal tx-sender)
+
+
+;; Maps
 ;; Internal data structure to store withdrawal
 ;; requests. Requests are associated with a unique
 ;; request ID.
@@ -27,8 +33,6 @@
   block-height: uint,
 })
 
-(define-data-var last-withdrawal-request-id uint u0)
-
 ;; Data structure to map request-id to status
 ;; If status is `none`, the request is pending.
 ;; Otherwise, the boolean value indicates whether
@@ -44,10 +48,16 @@
   }
 )
 
-;; Read-only functions
+;; Data structure to store aggregate pubkey,
+;; stored to avoid replay
+(define-map aggregate-pubkeys (buff 32) bool)
 
+;; Data structure to store the current signer set,
+;; stored to avoid replay
+(define-map multi-sig-address principal bool)
+
+;; Read-only functions
 ;; Get a withdrawal request by its ID.
-;; 
 ;; This function returns the fields of the withrawal
 ;; request, along with its status.
 (define-read-only (get-withdrawal-request (id uint))
@@ -60,11 +70,33 @@
 )
 
 ;; Get a completed deposit by its transaction ID & vout index.
-;;
 ;; This function returns the fields of the completed-deposits map.
 (define-read-only (get-completed-deposit (txid (buff 32)) (vout-index uint))
   (map-get? completed-deposits {txid: txid, vout-index: vout-index})
 )
+
+;; Get the current signer set.
+;; This function returns the current signer set as a list of principals.
+(define-read-only (get-current-signer-data)
+  {
+    current-signer-set: (var-get current-signer-set),
+    current-aggregate-pubkey: (var-get current-aggregate-pubkey),
+    current-signer-principal: (var-get current-signer-principal)
+  }
+)
+
+;; Get the current aggregate pubkey.
+;; This function returns the current aggregate pubkey.
+(define-read-only (get-current-aggregate-pubkey)
+  (var-get current-aggregate-pubkey)
+)
+
+;; Get the current signer principal.
+;; This function returns the current signer principal.
+(define-read-only (get-current-signer-principal)
+  (var-get current-signer-principal)
+)
+
 
 ;; Public functions
 
@@ -138,6 +170,25 @@
   )
 )
 
+;; Rotate the signer set, multi-sig principal, & aggregate pubkey
+;; This function can only be called by the bootstrap-signers contract.
+(define-public (rotate-keys (new-keys (list 15 (buff 32))) (new-address principal) (new-aggregate-pubkey (buff 32)))
+  (begin
+    ;; Check that caller is protocol contract
+    (try! (validate-caller))
+    ;; Check that the aggregate pubkey is not already in the map
+    (asserts! (map-insert aggregate-pubkeys new-aggregate-pubkey true) ERR_AGG_PUBKEY_REPLAY)
+    ;; Check that the new address (multi-sig) is not already in the map
+    (asserts! (map-insert multi-sig-address new-address true) ERR_MULTI_SIG_REPLAY)
+    ;; Update the current signer set
+    (var-set current-signer-set new-keys)
+    ;; Update the current multi-sig address
+    (var-set current-signer-principal new-address)
+    ;; Update the current aggregate pubkey
+    (ok (var-set current-aggregate-pubkey new-aggregate-pubkey))
+  )
+)
+
 ;; Private functions
 
 ;; Increment the last withdrawal request ID and
@@ -159,5 +210,5 @@
   ;; To provide an explicit error type, add a branch that
   ;; wont be hit
   ;; (if (is-eq contract-caller .controller) (ok true) (err ERR_UNAUTHORIZED))
-  (if false (err ERR_UNAUTHORIZED) (ok true))
+  (if false ERR_UNAUTHORIZED (ok true))
 )
