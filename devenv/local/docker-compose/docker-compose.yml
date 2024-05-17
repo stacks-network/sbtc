@@ -81,56 +81,57 @@ services:
       BTC_RPCPASSWORD: devnet
       BTC_RPCUSER: devnet
       MINER_ADDRESS: "moU2g2zzH3qLYCNPXGPAMqsgxr2Bw15V2j"
-  # stacks:
-  #   image: stacks:latest
-  #   container_name: stacks
-  #   stop_grace_period: 5s
-  #   build:
-  #     context: ./stacks/docker
-  #     args:
-  #       STACKS_LOG_DEBUG: 0
-  #       STACKS_LOG_JSON: 0
-  #       LOCAL_PEER_SEED: "3fd68a8fcab004754d6fee4756dd9c84ad64ee19a11aa9930893540e1357696f2f73957cd6e92797d7a66d1d3ae4a4ea752a8924fe028f1fc2c06b9d6d0ee0ad"
-  #       STACKS_WORKING_DIR: "/var/stacks"
-  #       MY_HTTP_AUTH_TOKEN: "helloworld"
-  #       SIGNER_ENDPOINT: "nakamoto-signer:30000"
-  #       MINER_KEY: "753b7cc01a1a2e86221266a154af739463fce51219d97e4f856cd7200c3bd2a6"
-  #       BTC_NODE_RPC_HOST: "bitcoin"
-  #       BTC_NODE_RPC_USER: "devnet"
-  #       BTC_NODE_RPC_PASSWORD: "devnet"
-  #   ports:
-  #     - 20444:20444
-  #     - 20443:20443
-  #   depends_on:
-  #     - bitcoin
-  #     - bitcoin-miner
-  #   environment:
-  #     STACKS_LOG_DEBUG: 0
-  #     STACKS_LOG_JSON: 0
-  #     LOCAL_PEER_SEED: "3fd68a8fcab004754d6fee4756dd9c84ad64ee19a11aa9930893540e1357696f2f73957cd6e92797d7a66d1d3ae4a4ea752a8924fe028f1fc2c06b9d6d0ee0ad"
-  #     STACKS_WORKING_DIR: "/var/stacks"
-  #     MY_HTTP_AUTH_TOKEN: "helloworld"
-  #     SIGNER_ENDPOINT: "nakamoto-signer:30000"
-  #     MINER_KEY: "753b7cc01a1a2e86221266a154af739463fce51219d97e4f856cd7200c3bd2a6"
-  #     BTC_NODE_RPC_HOST: "bitcoin"
-  #     BTC_NODE_RPC_USER: "devnet"
-  #     BTC_NODE_RPC_PASSWORD: "devnet"
-  stacks-old:
-    image: stacks-old:latest
-    container_name: stacks-old
+  stacks:
+    image: stacks:latest
+    container_name: stacks
+    stop_grace_period: 5s
     build:
-      context: ./stacks-old/docker
+      context: ./stacks/docker
       args:
-        STACKS_NODE_VERSION: "2.4.0.0.0"
-        GIT_URI: https://github.com/stacks-network/stacks-blockchain.git
-        GIT_BRANCH: 2.4.0.0.0
+        STACKS_LOG_DEBUG: 0
+        STACKS_LOG_JSON: 0
+        LOCAL_PEER_SEED: "3fd68a8fcab004754d6fee4756dd9c84ad64ee19a11aa9930893540e1357696f2f73957cd6e92797d7a66d1d3ae4a4ea752a8924fe028f1fc2c06b9d6d0ee0ad"
+        STACKS_WORKING_DIR: "/var/stacks"
+        MY_HTTP_AUTH_TOKEN: "helloworld"
+        SIGNER_ENDPOINT: "nakamoto-signer:30000"
+        MINER_KEY: "753b7cc01a1a2e86221266a154af739463fce51219d97e4f856cd7200c3bd2a6"
+        BTC_NODE_RPC_HOST: "bitcoin"
+        BTC_NODE_RPC_USER: "devnet"
+        BTC_NODE_RPC_PASSWORD: "devnet"
     ports:
       - 20444:20444
       - 20443:20443
+    depends_on:
+      - bitcoin
+      - bitcoin-miner
     environment:
       STACKS_LOG_DEBUG: 0
       STACKS_LOG_JSON: 0
-      STACKS_NETWORK: "mocknet"
+      LOCAL_PEER_SEED: "3fd68a8fcab004754d6fee4756dd9c84ad64ee19a11aa9930893540e1357696f2f73957cd6e92797d7a66d1d3ae4a4ea752a8924fe028f1fc2c06b9d6d0ee0ad"
+      STACKS_WORKING_DIR: "/var/stacks"
+      MY_HTTP_AUTH_TOKEN: "helloworld"
+      SIGNER_ENDPOINT: "nakamoto-signer:30000"
+      MINER_KEY: "753b7cc01a1a2e86221266a154af739463fce51219d97e4f856cd7200c3bd2a6"
+      BTC_NODE_RPC_HOST: "bitcoin"
+      BTC_NODE_RPC_USER: "devnet"
+      BTC_NODE_RPC_PASSWORD: "devnet"
+  # stacks-old:
+  #   image: stacks-old:latest
+  #   container_name: stacks-old
+  #   build:
+  #     context: ./stacks-old/docker
+  #     args:
+  #       STACKS_NODE_VERSION: "2.4.0.0.0"
+  #       GIT_URI: https://github.com/stacks-network/stacks-blockchain.git
+  #       GIT_BRANCH: 2.4.0.0.0
+  #   ports:
+  #     - 20444:20444
+  #     - 20443:20443
+  #   environment:
+  #     STACKS_LOG_DEBUG: 0
+  #     STACKS_LOG_JSON: 0
+  #     STACKS_NETWORK: "mocknet"
+  
   nakamoto-signer:
     image: nakamoto-signer:latest
     container_name: nakamoto-signer
@@ -153,8 +154,8 @@ services:
       SIGNER_ENDPOINT: "0.0.0.0:30000"
       MY_HTTP_AUTH_TOKEN: "helloworld"
       STACKS_PRIVATE_KEY: "7287ba251d44a4d3fd9276c88ce34c5c52a038955511cccaf77e61068649c17801"
-      # STACKS_NODE_RPC_HOST: "stacks"
-      STACKS_NODE_RPC_HOST: "stacks-old"
+      STACKS_NODE_RPC_HOST: "stacks"
+      # STACKS_NODE_RPC_HOST: "stacks-old"
       STACKS_NODE_RPC_PORT: "20443"
       RUST_BACKTRACE: "1"
   stacks-api:
@@ -171,8 +172,8 @@ services:
       - 3700:3700
     depends_on:
       - postgres
-      # - stacks
-      - stacks-old
+      - stacks
+      # - stacks-old
       - bitcoin
     environment:
       NODE_ENV: "production"
@@ -189,8 +190,8 @@ services:
       STACKS_CORE_EVENT_HOST: "0.0.0.0"
       STACKS_BLOCKCHAIN_API_PORT: 3999
       STACKS_BLOCKCHAIN_API_HOST: "0.0.0.0"
-      # STACKS_CORE_RPC_HOST: "stacks"
-      STACKS_CORE_RPC_HOST: "stacks-old"
+      STACKS_CORE_RPC_HOST: "stacks"
+      # STACKS_CORE_RPC_HOST: "stacks-old"
       STACKS_CORE_RPC_PORT: 20443
       API_DOCS_URL: http://localhost:3999/doc
   stacks-explorer:
@@ -206,8 +207,8 @@ services:
       - 3020:3000
     depends_on:
       - bitcoin
-      # - stacks
-      - stacks-old
+      - stacks
+      # - stacks-old
       - stacks-api
       - postgres
     environment:

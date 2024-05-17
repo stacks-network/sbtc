@@ -1,10 +1,16 @@
 # DOCKER COMPOSE INSTRUCTIONS
 
-## Spin up all the containers:
+
+## [1] Build all containers:
+
+###### `sh build.sh`
+
+## [2] Spin up all the containers:
 
 ###### `sh up.sh`
 
-## Install some testing pkgs:
+
+## [3] Install some testing pkgs:
 
 #### (i) _Postgres Tools_
 
@@ -15,7 +21,7 @@ source ~/.zshrc
 ```
 
 
-## Run the tests:
+## [4] Run the tests:
 
 
 #### (i) _Run Automated Tests_
@@ -25,3 +31,8 @@ source ~/.zshrc
 #### (ii) _Manually visit the Mempool and Stacks Explorer Frontends_
 ######  Mempool Frontend: `http://localhost:3020`
 ######  Stacks Explorer: `http://localhost:8083`
+
+
+## [5] Spin down containers:
+
+###### `sh down.sh`

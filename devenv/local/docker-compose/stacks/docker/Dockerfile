@@ -33,6 +33,7 @@ RUN apt-get update && apt-get install -y sudo jq curl
 # RUN adduser docker sudo
 RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
+COPY config.toml .
 # --------------------------------------------
 # The container creates this the config.toml internally
 RUN chmod +rwx ./entrypoint.sh

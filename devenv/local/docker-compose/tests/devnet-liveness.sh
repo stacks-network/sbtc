@@ -166,22 +166,34 @@ echo "| => (7) 🔬 TEST: [CHECK IF STX NODE IS SYNCED WITH BTC UTXOs]  |"
 echo " ---------------------------------------------------------------"
 
 
-GET_STACKS_NODE_INFO=$(curl -s "http://localhost:20443/v2/info")
+## (RPC APPROACH)
+# GET_STACKS_NODE_INFO=$(curl -s "http://localhost:20443/v2/info")
+
+# echo "\nGET STACKS NODE INFO:"
+# echo $GET_STACKS_NODE_INFO | jq 'del(.stackerdbs)'
+# echo "\t\t.\n\t\t.\n  \033[1;32m<<\033[0m \033[1;35mLong Output Supressed\033[0m \033[1;32m>>\033[0m \n\t\t.\n\t\t."
+
+# STX_SYNC_WITH_BTC_UTXO_SUCCESS=$(echo $GET_STACKS_NODE_INFO | jq -r '.stacks_tip_height != 0')
+# STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT=$([ "$STX_SYNC_WITH_BTC_UTXO_SUCCESS" == "true" ] && echo "\033[1;32m$STX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m ✅" || echo "\033[1;31m$STX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m❌") 
+
+# echo "\033[1mSTX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m: $STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT"
+# echo "\n"
 
 
-echo "\nGET STACKS NODE INFO:"
-echo $GET_STACKS_NODE_INFO | jq 'del(.stackerdbs)'
-echo "\t\t.\n\t\t.\n  \033[1;32m<<\033[0m \033[1;35mLong Output Supressed\033[0m \033[1;32m>>\033[0m \n\t\t.\n\t\t."
+## (LOGS APPROACH)
+STACKS_DOCKER_LOGS=$(docker logs stacks 2>/dev/null)
 
-STX_SYNC_WITH_BTC_UTXO_SUCCESS=$(echo $GET_STACKS_NODE_INFO | jq -r '.stacks_tip_height != 0')
-STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT=$([ "$STX_SYNC_WITH_BTC_UTXO_SUCCESS" == "true" ] && echo "\033[1;32m$STX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m ✅" || echo "\033[1;31m$STX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m❌") 
 
+STX_SYNC_WITH_BTC_UTXO_SUCCESS=false
+STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT=$(echo "\033[1;31m$STX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m❌")
+if [[ $STACKS_DOCKER_LOGS == *"UTXOs found"* ]]; then
+    STX_SYNC_WITH_BTC_UTXO_SUCCESS=true
+    echo "Stacks || UTXOs found - will run as a Miner node"
+    STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT=$(echo "\033[1;32m$STX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m ✅")
+fi
 
 echo "\033[1mSTX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m: $STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT"
 echo "\n"
-
-
-
 
 
 
