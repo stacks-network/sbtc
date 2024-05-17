@@ -8,13 +8,56 @@ use crate::error::Error;
 const FIVE_MINUTES_SECONDS: i64 = 300;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Compute the current market fee rate by averaging the recommended price
+/// estimates from various sources.
+pub async fn estimate_fee_rate(client: &reqwest::Client) -> Result<f64, Error> {
+    let sources: [FeeSource; 2] = [
+        FeeSource::MempoolSpace(MempoolSpace {
+            base_url: "https://mempool.space".to_string(),
+            client: client.clone(),
+        }),
+        FeeSource::BitcoinerLive(BitcoinerLive {
+            base_url: "https://bitcoiner.live".to_string(),
+            client: client.clone(),
+        }),
+    ];
+
+    estimate_fee_rate_impl(&sources).await
+}
+
+/// Used to compute the average price of the fee estimates from the given
+/// sources.
+async fn estimate_fee_rate_impl<T>(sources: &[T]) -> Result<f64, Error>
+where
+    T: EstimateFees,
+{
+    let futures_iter = sources
+        .iter()
+        .map(|source| async move { source.estimate_fee_rate().await });
+    let mut responses = futures::future::join_all(futures_iter).await;
+
+    if responses.iter().all(Result::is_err) {
+        return Err(Error::NoGoodFeeEstimates);
+    }
+
+    responses.retain(Result::is_ok);
+    let num_responses = responses.len();
+    let sum_sats_per_vbyte = responses
+        .into_iter()
+        .filter_map(Result::ok)
+        .map(|x| x.sats_per_vbyte)
+        .sum::<f64>();
+
+    Ok(sum_sats_per_vbyte / num_responses as f64)
+}
+
 /// A struct representing requests to https://bitcoiner.live
 ///
 /// The docs for this API can be found at https://bitcoiner.live/doc/api
 #[derive(Debug, Clone)]
-struct BitcoinerLive<'a> {
+struct BitcoinerLive {
     base_url: String,
-    client: &'a reqwest::Client,
+    client: reqwest::Client,
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,9 +95,9 @@ struct BitcoinerLiveFeeEstimate {
 /// while the specific docs for getting recommended fees can be found at
 /// https://mempool.space/docs/api/rest#get-recommended-fees
 #[derive(Debug, Clone)]
-struct MempoolSpace<'a> {
+struct MempoolSpace {
     base_url: String,
-    client: &'a reqwest::Client,
+    client: reqwest::Client,
 }
 
 #[allow(dead_code)]
@@ -81,7 +124,7 @@ pub trait EstimateFees {
 
 const BITCOINER_LIVE_PATH: &str = "/api/fees/estimates/latest?confidence=0.9";
 
-impl<'a> EstimateFees for BitcoinerLive<'a> {
+impl EstimateFees for BitcoinerLive {
     /// Fetch the fee estimate from bitcoiner.live.
     ///
     /// The returned value gives a fee estimate where there is a 90%
@@ -111,7 +154,7 @@ impl<'a> EstimateFees for BitcoinerLive<'a> {
 
 const MEMPOOL_SPACE_PATH: &str = "/api/v1/fees/recommended";
 
-impl<'a> EstimateFees for MempoolSpace<'a> {
+impl EstimateFees for MempoolSpace {
     /// Fetch the fee estimate from mempool.space
     ///
     /// The returned value is the High Priority fee rate displayed on
@@ -134,59 +177,18 @@ impl<'a> EstimateFees for MempoolSpace<'a> {
 }
 
 #[derive(Debug)]
-enum FeeSource<'a> {
-    BitcoinerLive(BitcoinerLive<'a>),
-    MempoolSpace(MempoolSpace<'a>),
+enum FeeSource {
+    BitcoinerLive(BitcoinerLive),
+    MempoolSpace(MempoolSpace),
 }
 
-impl<'a> EstimateFees for FeeSource<'a> {
+impl EstimateFees for FeeSource {
     async fn estimate_fee_rate(&self) -> Result<FeeEstimate, Error> {
         match self {
             Self::BitcoinerLive(btclive) => btclive.estimate_fee_rate().await,
             Self::MempoolSpace(mempool) => mempool.estimate_fee_rate().await,
         }
     }
-}
-
-/// Used to compute the average price of the fee estimates from the given
-/// sources.
-async fn estimate_fee_rate_impl<T>(sources: &[T]) -> Result<f64, Error>
-where
-    T: EstimateFees,
-{
-    let futures_iter = sources
-        .iter()
-        .map(|source| async move { source.estimate_fee_rate().await });
-    let mut responses = futures::future::join_all(futures_iter).await;
-
-    if responses.iter().all(Result::is_err) {
-        return Err(Error::NoGoodFeeEstimates);
-    }
-
-    responses.retain(Result::is_ok);
-    let num_responses = responses.len();
-    let sum_sats_per_vbyte = responses
-        .into_iter()
-        .filter_map(Result::ok)
-        .map(|x| x.sats_per_vbyte)
-        .sum::<f64>();
-
-    Ok(sum_sats_per_vbyte / num_responses as f64)
-}
-
-pub async fn estimate_fee_rate(client: &reqwest::Client) -> Result<f64, Error> {
-    let sources: [FeeSource; 2] = [
-        FeeSource::MempoolSpace(MempoolSpace {
-            base_url: "https://mempool.space".to_string(),
-            client,
-        }),
-        FeeSource::BitcoinerLive(BitcoinerLive {
-            base_url: "https://bitcoiner.live".to_string(),
-            client,
-        }),
-    ];
-
-    estimate_fee_rate_impl(&sources).await
 }
 
 #[cfg(test)]
@@ -295,11 +297,11 @@ mod tests {
         let fee_sources: [FeeSource; 2] = [
             FeeSource::MempoolSpace(MempoolSpace {
                 base_url: mempool_server.url(),
-                client: &client,
+                client: client.clone(),
             }),
             FeeSource::BitcoinerLive(BitcoinerLive {
                 base_url: bitcoiner_server.url(),
-                client: &client,
+                client,
             }),
         ];
 
@@ -343,11 +345,11 @@ mod tests {
         let fee_sources: [FeeSource; 2] = [
             FeeSource::MempoolSpace(MempoolSpace {
                 base_url: mempool_server.url(),
-                client: &client,
+                client: client.clone(),
             }),
             FeeSource::BitcoinerLive(BitcoinerLive {
                 base_url: bitcoiner_server.url(),
-                client: &client,
+                client,
             }),
         ];
 
@@ -391,11 +393,11 @@ mod tests {
         let fee_sources: [FeeSource; 2] = [
             FeeSource::MempoolSpace(MempoolSpace {
                 base_url: mempool_server.url(),
-                client: &client,
+                client: client.clone(),
             }),
             FeeSource::BitcoinerLive(BitcoinerLive {
                 base_url: bitcoiner_server.url(),
-                client: &client,
+                client,
             }),
         ];
 
