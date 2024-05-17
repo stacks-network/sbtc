@@ -1,23 +1,32 @@
+//! Configuration management for the signer
+
 use config::{Config, ConfigError, Environment, File};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 
+/// Top-level configuration for the signer
 #[derive(Deserialize, Clone, Debug)]
 pub struct Settings {
+    /// Blocklist client specific config
     pub blocklist_client: BlocklistClientConfig,
 }
+
+/// Blocklist client specific config
 #[derive(Deserialize, Clone, Debug)]
 pub struct BlocklistClientConfig {
+    /// Host of the blocklist client
     pub host: String,
+    /// Port of the blocklist client
     pub port: u16,
 }
 
+/// Statically configured settings for the signer
 pub static SETTINGS: Lazy<Settings> =
     Lazy::new(|| Settings::new().expect("Failed to load configuration"));
 
 impl Settings {
-    // Initializing the global config first with default values and then with provided/overwritten environment variables.
-    // The explicit separator with double underscores is needed to correctly parse the nested config structure.
+    /// Initializing the global config first with default values and then with provided/overwritten environment variables.
+    /// The explicit separator with double underscores is needed to correctly parse the nested config structure.
     pub fn new() -> Result<Self, ConfigError> {
         let mut cfg = Config::new();
         cfg.merge(File::with_name("./src/config/default"))?;

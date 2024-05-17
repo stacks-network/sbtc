@@ -88,6 +88,7 @@ impl<T: serde::de::DeserializeOwned> Decode for T {
     }
 }
 
+/// The error used in the [`Encode`] and [`Decode`] trait.
 pub type Error = bincode::Error;
 
 #[cfg(test)]

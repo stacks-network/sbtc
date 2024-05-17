@@ -1,3 +1,5 @@
+//! Utxo management and transaction construction
+
 use bitcoin::absolute::LockTime;
 use bitcoin::key::Secp256k1;
 use bitcoin::secp256k1::SECP256K1;
@@ -28,6 +30,8 @@ use crate::error::Error;
 use crate::packaging::compute_optimal_packages;
 use crate::packaging::Weighted;
 
+/// Summary of the Signers' UTXO and information necessary for
+/// constructing their next UTXO.
 #[derive(Debug, Clone, Copy)]
 pub struct SignerBtcState {
     /// The outstanding signer UTXO.
@@ -38,6 +42,8 @@ pub struct SignerBtcState {
     pub public_key: XOnlyPublicKey,
 }
 
+/// The set of sBTC requests with additional relevant
+/// information used to construct the next transaction package.
 #[derive(Debug)]
 pub struct SbtcRequests {
     /// Accepted and pending deposit requests.
@@ -65,8 +71,8 @@ impl SbtcRequests {
             return Ok(Vec::new());
         }
 
-        let withdrawals = self.withdrawals.iter().map(Request::Withdrawal);
-        let deposits = self.deposits.iter().map(Request::Deposit);
+        let withdrawals = self.withdrawals.iter().map(RequestRef::Withdrawal);
+        let deposits = self.deposits.iter().map(RequestRef::Deposit);
 
         // Create a list of requests where each request can be approved on its own.
         let items = deposits.chain(withdrawals);
@@ -87,6 +93,7 @@ impl SbtcRequests {
     }
 }
 
+/// An accepted or pending deposit request.
 #[derive(Debug)]
 pub struct DepositRequest {
     /// The UTXO to be spent by the signers.
@@ -151,9 +158,11 @@ impl DepositRequest {
     /// spend where the script takes only one piece of data as input, the
     /// signature. The deposit script is:
     ///
+    /// ```text
     ///   <data> OP_DROP OP_DUP OP_HASH160 <pubkey_hash> OP_EQUALVERIFY OP_CHECKSIG
+    /// ```
     ///
-    /// where <data> is the stacks deposit address and <pubkey_hash> is
+    /// where `<data>` is the stacks deposit address and <pubkey_hash> is
     /// given by self.signers_public_key. The public key used for key-path
     /// spending is self.taproot_public_key, and is supposed to be a dummy
     /// public key.
@@ -196,6 +205,7 @@ impl DepositRequest {
     }
 }
 
+/// An accepted or pending withdraw request.
 #[derive(Debug)]
 pub struct WithdrawalRequest {
     /// The amount of BTC, in sats, to withdraw.
@@ -223,29 +233,34 @@ impl WithdrawalRequest {
     }
 }
 
+/// A reference to either a depost or withdraw request
 #[derive(Debug, Clone, Copy)]
-pub enum Request<'a> {
+pub enum RequestRef<'a> {
+    /// A reference to a deposit request
     Deposit(&'a DepositRequest),
+    /// A reference to a withdraw request
     Withdrawal(&'a WithdrawalRequest),
 }
 
-impl<'a> Request<'a> {
+impl<'a> RequestRef<'a> {
+    /// Extract the inner withdraw request if any
     pub fn as_withdrawal(&self) -> Option<&'a WithdrawalRequest> {
         match self {
-            Request::Withdrawal(req) => Some(req),
+            RequestRef::Withdrawal(req) => Some(req),
             _ => None,
         }
     }
 
+    /// Extract the inner deposit request if any
     pub fn as_deposit(&self) -> Option<&'a DepositRequest> {
         match self {
-            Request::Deposit(req) => Some(req),
+            RequestRef::Deposit(req) => Some(req),
             _ => None,
         }
     }
 }
 
-impl<'a> Weighted for Request<'a> {
+impl<'a> Weighted for RequestRef<'a> {
     fn weight(&self) -> u32 {
         match self {
             Self::Deposit(req) => req.votes_against(),
@@ -312,7 +327,7 @@ impl SignerUtxo {
 #[derive(Debug)]
 pub struct UnsignedTransaction<'a> {
     /// The requests used to construct the transaction.
-    pub requests: Vec<Request<'a>>,
+    pub requests: Vec<RequestRef<'a>>,
     /// The BTC transaction that needs to be signed.
     pub tx: Transaction,
     /// The public key used for the public key of the signers' UTXO output.
@@ -347,7 +362,7 @@ impl<'a> UnsignedTransaction<'a> {
     ///   3. The signer output UTXO is the first output.
     ///   4. Each input needs a signature in the witness data.
     ///   5. There is no witness data for deposit UTXOs.
-    pub fn new(requests: Vec<Request<'a>>, state: &SignerBtcState) -> Result<Self, Error> {
+    pub fn new(requests: Vec<RequestRef<'a>>, state: &SignerBtcState) -> Result<Self, Error> {
         // Construct a transaction base. This transaction's inputs have
         // witness data with dummy signatures so that our virtual size
         // estimates are accurate. Later we will update the fees and
@@ -379,7 +394,7 @@ impl<'a> UnsignedTransaction<'a> {
     ///
     /// An Err is returned if the amounts withdrawn is greater than the sum
     /// of all the input amounts.
-    fn new_transaction(reqs: &[Request], state: &SignerBtcState) -> Result<Transaction, Error> {
+    fn new_transaction(reqs: &[RequestRef], state: &SignerBtcState) -> Result<Transaction, Error> {
         let signature = Self::generate_dummy_signature();
 
         let deposits = reqs
@@ -428,7 +443,7 @@ impl<'a> UnsignedTransaction<'a> {
     /// Other noteworthy assumptions is that the signers' UTXO is always a
     /// key-spend path only taproot UTXO.
     pub fn construct_digests(&self) -> Result<SignatureHashes, Error> {
-        let deposit_requests = self.requests.iter().filter_map(Request::as_deposit);
+        let deposit_requests = self.requests.iter().filter_map(RequestRef::as_deposit);
         let deposit_utxos = deposit_requests.clone().map(DepositRequest::as_tx_out);
         // All of the transaction's inputs are used to constuct the sighash
         // That is eventually signed
@@ -489,12 +504,12 @@ impl<'a> UnsignedTransaction<'a> {
     /// UTXO amount and the incoming requests.
     ///
     /// This amount does not take into account fees.
-    fn compute_signer_amount(reqs: &[Request], state: &SignerBtcState) -> Result<u64, Error> {
+    fn compute_signer_amount(reqs: &[RequestRef], state: &SignerBtcState) -> Result<u64, Error> {
         let amount = reqs
             .iter()
             .fold(state.utxo.amount as i64, |amount, req| match req {
-                Request::Deposit(req) => amount + req.amount as i64,
-                Request::Withdrawal(req) => amount - req.amount as i64,
+                RequestRef::Deposit(req) => amount + req.amount as i64,
+                RequestRef::Withdrawal(req) => amount - req.amount as i64,
             });
 
         // This should never happen
@@ -1021,7 +1036,7 @@ mod tests {
                 let input_amounts: u64 = utx
                     .requests
                     .iter()
-                    .filter_map(Request::as_deposit)
+                    .filter_map(RequestRef::as_deposit)
                     .map(|dep| dep.amount)
                     .chain([signer_amount])
                     .sum();

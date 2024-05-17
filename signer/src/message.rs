@@ -1,5 +1,8 @@
+//! Signer message definition for network communication
+
 use sha2::Digest;
 
+/// Messages exchanged between signers
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SignerMessage {
     /// The bitcoin chain tip defining the signers view of the blockchain at the time the message was created
@@ -8,19 +11,27 @@ pub struct SignerMessage {
     pub payload: Payload,
 }
 
+/// The different variants of signer messages
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Payload {
+    /// A decision related to signer deposit
     SignerDepositDecision(SignerDepositDecision),
+    /// A decision related to signer withdrawal
     SignerWithdrawDecision(SignerWithdrawDecision),
+    /// A request to sign a Stacks transaction
     StacksTransactionSignRequest(StacksTransactionSignRequest),
+    /// A signature of a Stacks transaction
     StacksTransactionSignature(StacksTransactionSignature),
+    /// A request to sign a Bitcoin transaction
     BitcoinTransactionSignRequest(BitcoinTransactionSignRequest),
+    /// An acknowledgment of a signed Bitcoin transaction
     BitcoinTransactionSignAck(BitcoinTransactionSignAck),
     /// Contains all variants for DKG and WSTS signing rounds
     WstsMessage(wsts::net::Message),
 }
 
 impl Payload {
+    /// Converts the payload into a signer message with the given Bitcoin chain tip
     pub fn to_message(self, bitcoin_chain_tip: bitcoin::BlockHash) -> SignerMessage {
         SignerMessage {
             bitcoin_chain_tip,
@@ -29,21 +40,27 @@ impl Payload {
     }
 }
 
+/// Represents a decision related to signer deposit
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SignerDepositDecision;
 
+/// Represents a decision related to signer withdrawal
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SignerWithdrawDecision;
 
+/// Represents a request to sign a Stacks transaction
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StacksTransactionSignRequest;
 
+/// Represents a signature of a Stacks transaction
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StacksTransactionSignature;
 
+/// Represents a request to sign a Bitcoin transaction
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BitcoinTransactionSignRequest;
 
+/// Represents an acknowledgment of a signed Bitcoin transaction
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BitcoinTransactionSignAck;
 
@@ -84,6 +101,7 @@ fn hash_message(msg: &wsts::net::Message, hasher: &mut sha2::Sha256) {
 
 #[cfg(feature = "testing")]
 impl SignerMessage {
+    /// Construct a random message
     pub fn random<R: rand::CryptoRng + rand::Rng>(rng: &mut R) -> Self {
         use bitcoin::hashes::Hash;
 

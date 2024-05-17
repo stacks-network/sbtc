@@ -13,6 +13,7 @@ use reqwest::Client;
 
 const SCREEN_PATH: &str = "/screen";
 
+/// A trait for checking if an address is blocklisted.
 #[async_trait]
 pub trait BlocklistChecker {
     /// Checks if the given address is blocklisted.
@@ -20,6 +21,7 @@ pub trait BlocklistChecker {
     async fn is_blocklisted(&self, address: &str) -> Result<bool, Error>;
 }
 
+/// A client for interacting with the blocklist service.
 #[derive(Clone, Debug)]
 pub struct BlocklistClient {
     base_url: String,
@@ -44,6 +46,7 @@ impl BlocklistChecker for BlocklistClient {
 }
 
 impl BlocklistClient {
+    /// Construct a new [`BlocklistClient`]
     pub fn new() -> Self {
         let base_url = format!(
             "http://{}:{}",

@@ -89,6 +89,7 @@ impl<T> std::ops::DerefMut for Signed<T> {
 
 /// Helper trait to provide the ability to construct a `Signed<T>`.
 pub trait SignEcdsa: Sized {
+    /// Wrap this type into a [`Signed<Self>`]
     fn sign_ecdsa(self, private_key: &Scalar) -> Result<Signed<Self>, Error>;
 }
 
@@ -106,21 +107,26 @@ impl<T: wsts::net::Signable> SignEcdsa for T {
     }
 }
 
+/// Error occurring during signing
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Key error
     #[error("KeyError")]
     KeyError(#[from] p256k1::keys::Error),
+    /// Sign error
     #[error("SignError")]
     SignError(#[from] ecdsa::Error),
 }
 
 #[cfg(feature = "testing")]
 impl Signed<crate::message::SignerMessage> {
+    /// Generate a random signed message
     pub fn random<R: rand::CryptoRng + rand::Rng>(rng: &mut R) -> Self {
         let private_key = Scalar::random(rng);
         Self::random_with_private_key(rng, &private_key)
     }
 
+    /// Generate a random signed message with the given private key
     pub fn random_with_private_key<R: rand::CryptoRng + rand::Rng>(
         rng: &mut R,
         private_key: &Scalar,
