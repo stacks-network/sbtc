@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO sbtc_signer.bitcoin_blocks VALUES ($1, $2, $3, $4, $5)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Int8",
+        "Bytea",
+        "Bytea",
+        "Timestamp"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e2bd6bcf452d37dee4e0c9b466272e2b2c8a7295350201ecf1fa7ccad24287a8"
+}
