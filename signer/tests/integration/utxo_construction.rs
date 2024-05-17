@@ -201,6 +201,7 @@ fn deposits_add_to_controlled_amounts() {
             },
             fee_rate: 10.0,
             public_key: signers_public_key,
+            last_fee: None,
         },
         accept_threshold: 4,
         num_signers: 7,
