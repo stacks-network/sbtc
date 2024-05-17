@@ -4,28 +4,32 @@ name = "signer"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-doctest = false
-
 [[bin]]
-name = "signer"
-path = "src/main.rs"
-bench = false
+name = "relay-server"
+
+[[example]]
+name = "relay-client"
 
 [features]
-integration-tests = []
+default = ["testing"]
+integration-tests = ["testing"]
+testing = []
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 async-trait = "0.1.80"
+backoff.workspace = true
 bincode.workspace = true
 bitcoin = { workspace = true, features = ["rand-std"] }
 blocklist-client = { path = "../blocklist-client" }
+clap.workspace = true
 config.workspace = true
 futures = "0.3"
-p256k1.workspace = true
 once_cell.workspace = true
+p256k1.workspace = true
+prost.workspace = true
+sbtc-common = { path = "../common" }
 rand.workspace = true
 reqwest.workspace = true
 serde.workspace = true
@@ -33,7 +37,9 @@ serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 time = "0.3"
-tokio.workspace = true
+tonic.workspace = true
+tokio = { workspace = true, features = ["signal"] }
+tokio-stream.workspace = true
 tracing.workspace = true
 tracing-attributes.workspace = true
 tracing-subscriber.workspace = true
@@ -54,3 +60,6 @@ mockito = "1.4.0"
 more-asserts = "0.3"
 test-case = "3.1"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[build-dependencies]
+tonic-build.workspace = true

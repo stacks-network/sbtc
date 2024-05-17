@@ -82,6 +82,28 @@ fn hash_message(msg: &wsts::net::Message, hasher: &mut sha2::Sha256) {
     }
 }
 
+#[cfg(feature = "testing")]
+impl SignerMessage {
+    pub fn random<R: rand::CryptoRng + rand::Rng>(rng: &mut R) -> Self {
+        use bitcoin::hashes::Hash;
+
+        let num_ids: u8 = rng.gen();
+        let dkg_end_begin = wsts::net::DkgEndBegin {
+            dkg_id: rng.next_u64(),
+            signer_ids: (0..num_ids).map(|_| rng.next_u32()).collect(),
+            key_ids: (0..num_ids).map(|_| rng.next_u32()).collect(),
+        };
+
+        let payload = Payload::WstsMessage(wsts::net::Message::DkgEndBegin(dkg_end_begin));
+
+        let mut block_hash_data = [0; 32];
+        rng.fill_bytes(&mut block_hash_data);
+        let block_hash = bitcoin::BlockHash::from_slice(&block_hash_data).unwrap();
+
+        payload.to_message(block_hash)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

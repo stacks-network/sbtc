@@ -21,9 +21,11 @@ emily = { version = "0.1.0", path = ".generated-sources/emily" }
 
 aws_lambda_events = "0.15.0"
 aws-sdk-dynamodb = { version = "1.3.0" }
+backoff = { version = "0.4.0", features = ["tokio"] }
 bincode = "1.3.3"
 bitcoin = { version = "0.32", features = ["serde"] }
 config = "0.11.0"
+clap = { version = "4.5.4", features = ["derive", "env"] }
 futures = "0.3.24"
 http = "1.1.0"
 lambda_runtime = "0.11.1"
@@ -31,13 +33,17 @@ lambda_runtime = "0.11.1"
 openssl = { version = "0.10", features = ["vendored"] }
 once_cell = "1.8.0"
 p256k1 = "7.1.0"
+prost = "0.12.5"
 rand = "0.8"
 reqwest = { version = "0.11", features = ["json"] }
 serde = "1.0"
 serde_json = "1.0"
 sha2 = "0.10"
 thiserror = "1.0"
+tonic = "0.11.0"
+tonic-build = "0.11.0"
 tokio = "1.32.0"
+tokio-stream = {version = "0.1.15", features = ["sync"] }
 tracing = { version = "0.1", default-features = false }
 tracing-attributes = "0.1"
 wsts = "9.0.0"
@@ -45,4 +51,4 @@ wsts = "9.0.0"
 [workspace.dependencies.tracing-subscriber]
 version = "0.3"
 default-features = false
-features = ["env-filter", "fmt", "json", "time"]
+features = ["env-filter", "fmt", "json", "time", "ansi"]
