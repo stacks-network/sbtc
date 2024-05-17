@@ -150,21 +150,6 @@ impl<'a> EstimateFees for FeeSource<'a> {
 
 /// Used to compute the average price of the fee estimates from the given
 /// sources.
-struct AverageFeeEstimator<T, const N: usize> {
-    sources: [T; N],
-}
-
-impl<T, const N: usize> EstimateFees for AverageFeeEstimator<T, N>
-where
-    T: EstimateFees + Send + Sync,
-{
-    async fn estimate_fee_rate(&self) -> Result<FeeEstimate, Error> {
-        let sats_per_vbyte = estimate_fee_rate_impl(&self.sources).await?;
-
-        Ok(FeeEstimate { sats_per_vbyte })
-    }
-}
-
 async fn estimate_fee_rate_impl<T>(sources: &[T]) -> Result<f64, Error>
 where
     T: EstimateFees,
@@ -201,10 +186,7 @@ pub async fn estimate_fee_rate(client: &reqwest::Client) -> Result<f64, Error> {
         }),
     ];
 
-    AverageFeeEstimator { sources }
-        .estimate_fee_rate()
-        .await
-        .map(|estimate| estimate.sats_per_vbyte)
+    estimate_fee_rate_impl(&sources).await
 }
 
 #[cfg(test)]
@@ -228,12 +210,11 @@ mod tests {
             KnownFeeEstimator(7.),
             KnownFeeEstimator(9.),
         ];
-        let ans = AverageFeeEstimator { sources }
-            .estimate_fee_rate()
+        let sats_per_vbyte = estimate_fee_rate_impl(&sources)
             .await
             .unwrap();
 
-        assert_eq!(ans.sats_per_vbyte, 5.);
+        assert_eq!(sats_per_vbyte, 5.);
     }
 
     #[tokio::test]
