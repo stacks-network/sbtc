@@ -9,6 +9,18 @@ use warp::{http::StatusCode, Rejection, Reply};
 /// Handles requests to check the blocklist status of a given address.
 /// Converts successful blocklist status results to JSON and returns them,
 /// or converts errors into Warp rejections.
+#[utoipa::path(
+    get,
+    path = "/screen/{address}",
+    params(
+    ("address" = String, Path, description = "Address to get risk assessment for")
+    ),
+    responses(
+    (status = 200, description = "Risk assessment retrieved successfully", body = BlocklistStatus),
+    (status = 404, description = "Address not found"),
+    (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn check_address_handler(
     address: String,
     client: Client,

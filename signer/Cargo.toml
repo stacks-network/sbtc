@@ -22,7 +22,7 @@ async-trait = "0.1.80"
 backoff.workspace = true
 bincode.workspace = true
 bitcoin = { workspace = true, features = ["rand-std"] }
-blocklist-client = { path = "../blocklist-client" }
+blocklist-api = { path = "../.generated-sources/blocklist" }
 clap.workspace = true
 config.workspace = true
 futures = "0.3"

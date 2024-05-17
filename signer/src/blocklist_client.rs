@@ -7,9 +7,10 @@
 
 use crate::config::SETTINGS;
 use async_trait::async_trait;
-use blocklist_client::common::error::Error;
-use blocklist_client::common::BlocklistStatus;
-use reqwest::Client;
+use blocklist_api::apis::apihandlers_api::{check_address_handler, CheckAddressHandlerError};
+use blocklist_api::apis::configuration::Configuration;
+use blocklist_api::apis::Error as ClientError;
+use blocklist_api::models::BlocklistStatus;
 
 const SCREEN_PATH: &str = "/screen";
 
@@ -18,27 +19,28 @@ const SCREEN_PATH: &str = "/screen";
 pub trait BlocklistChecker {
     /// Checks if the given address is blocklisted.
     /// Returns `true` if the address is blocklisted, otherwise `false`.
-    async fn is_blocklisted(&self, address: &str) -> Result<bool, Error>;
+    async fn is_blocklisted(
+        &self,
+        address: &str,
+    ) -> Result<bool, ClientError<CheckAddressHandlerError>>;
 }
 
 /// A client for interacting with the blocklist service.
 #[derive(Clone, Debug)]
 pub struct BlocklistClient {
-    base_url: String,
-    client: Client,
+    config: Configuration,
 }
 
 #[async_trait]
 impl BlocklistChecker for BlocklistClient {
-    async fn is_blocklisted(&self, address: &str) -> Result<bool, Error> {
-        let url = Self::address_screening_path(&self.base_url, address);
-        let resp = self
-            .client
-            .get(url)
-            .send()
-            .await?
-            .json::<BlocklistStatus>()
-            .await?;
+    async fn is_blocklisted(
+        &self,
+        address: &str,
+    ) -> Result<bool, ClientError<CheckAddressHandlerError>> {
+        let config = self.config.clone();
+
+        // Call the generated function from blocklist-api
+        let resp: BlocklistStatus = check_address_handler(&config, address).await?;
 
         // Check if the request can be accepted or not based on the response
         Ok(resp.accept)
@@ -52,21 +54,23 @@ impl BlocklistClient {
             "http://{}:{}",
             SETTINGS.blocklist_client.host, SETTINGS.blocklist_client.port
         );
-        BlocklistClient {
-            base_url,
-            client: Client::new(),
-        }
-    }
-    #[cfg(test)]
-    fn with_base_url(base_url: String) -> Self {
-        BlocklistClient {
-            base_url,
-            client: Client::new(),
-        }
+
+        let config = Configuration {
+            base_path: base_url.clone(),
+            ..Default::default()
+        };
+
+        BlocklistClient { config }
     }
 
-    fn address_screening_path(base_url: &str, address: &str) -> String {
-        format!("{}{}/{}", base_url, SCREEN_PATH, address)
+    #[cfg(test)]
+    fn with_base_url(base_url: String) -> Self {
+        let config = Configuration {
+            base_path: base_url.clone(),
+            ..Default::default()
+        };
+
+        BlocklistClient { config }
     }
 }
 

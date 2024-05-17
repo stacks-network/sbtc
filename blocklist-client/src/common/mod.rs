@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use utoipa::ToSchema;
 
 pub mod error;
 
 /// The BlocklistStatus of a user address
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct BlocklistStatus {
     // Whether the address is blocklisted or not
     pub is_blocklisted: bool,
@@ -17,7 +18,7 @@ pub struct BlocklistStatus {
 }
 
 /// Risk severity linked to an address
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub enum RiskSeverity {
     Low,
     Medium,
