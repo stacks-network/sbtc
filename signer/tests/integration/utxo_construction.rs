@@ -27,10 +27,10 @@ use signer::utxo::SignerUtxo;
 use crate::regtest;
 use regtest::Recipient;
 
-const SIGNER_ADDRESS_LABEL: Option<&str> = Some("signers-label");
-const DEPOSITS_LABEL: Option<&str> = Some("deposits");
+use regtest::DEPOSITS_LABEL;
+use regtest::SIGNER_ADDRESS_LABEL;
 
-fn make_deposit_request(
+pub fn make_deposit_request(
     depositor: &Recipient,
     amount: u64,
     utxo: &ListUnspentResultEntry,
@@ -201,7 +201,7 @@ fn deposits_add_to_controlled_amounts() {
             },
             fee_rate: 10.0,
             public_key: signers_public_key,
-            last_fee: None,
+            last_fees: None,
         },
         accept_threshold: 4,
         num_signers: 7,

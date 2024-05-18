@@ -30,6 +30,20 @@ use crate::error::Error;
 use crate::packaging::compute_optimal_packages;
 use crate::packaging::Weighted;
 
+/// The minimum incremental fee rate in sats per virtual byte for RBF
+/// transactions.
+const DEFAULT_INCREMENTAL_RELAY_FEE_RATE: f64 =
+bitcoin::policy::DEFAULT_INCREMENTAL_RELAY_FEE as f64 / 1000.0;
+
+/// Describes the fees for a transaction.
+#[derive(Debug, Clone, Copy)]
+pub struct Fees {
+    /// The total fee paid in sats for the transaction.
+    pub total: u64,
+    /// The fee rate paid in sats per virtual byte.
+    pub rate: f64,
+}
+
 /// Summary of the Signers' UTXO and information necessary for
 /// constructing their next UTXO.
 #[derive(Debug, Clone, Copy)]
@@ -40,9 +54,9 @@ pub struct SignerBtcState {
     pub fee_rate: f64,
     /// The current public key of the signers
     pub public_key: XOnlyPublicKey,
-    /// The total fee amount for the transaction that was most recently
-    /// broadcasted using this UTXO.
-    pub last_fee: Option<u64>,
+    /// The total fee amount and the fee rate for the last transaction that
+    /// used this UTXO as an input.
+    pub last_fees: Option<Fees>,
 }
 
 /// The set of sBTC requests with additional relevant
@@ -374,7 +388,7 @@ impl<'a> UnsignedTransaction<'a> {
         // We now compute the fee that each request must pay given the
         // size of the transaction and the fee rate. Once we have the fee
         // we adjust the output amounts accordingly.
-        let fee = Self::compute_request_fee(&tx, state.fee_rate, state.last_fee);
+        let fee = Self::compute_request_fee(&tx, state.fee_rate, state.last_fees);
         Self::adjust_amounts(&mut tx, fee);
 
         // Now we can reset the witness data.
@@ -487,30 +501,44 @@ impl<'a> UnsignedTransaction<'a> {
         })
     }
 
+    /// Compute the sum of the input amounts of the transaction
+    pub fn input_amounts(&self) -> u64 {
+        self.requests
+            .iter()
+            .filter_map(Request::as_deposit)
+            .map(|dep| dep.amount)
+            .chain([self.signer_utxo.utxo.amount])
+            .sum()
+    }
+
+    /// Compute the sum of the output amounts of the transaction.
+    pub fn output_amounts(&self) -> u64 {
+        self.tx.output.iter().map(|out| out.value.to_sat()).sum()
+    }
+
     /// Compute the fee that each deposit and withdrawal request must pay
-    /// for the transaction given the fee rate and the last fee paid for
-    /// replace-by-fee (RBF) transactions.
+    /// for the transaction given the fee rate and the fees paid last time
+    /// if this is an replace-by-fee (RBF) transaction.
     ///
     /// If each deposit and withdrawal associated with this transaction
     /// paid the fees returned by this function then the fee rate for the
     /// entire transaction will be at least as much as the fee rate.
-    /// Moreover, the transaction's total fee would also be greater than
-    /// the `last_fee` if present.
+    /// Moreover, both the transaction's total fee and fee rate will be
+    /// greater than the `last_fee` if present.
     ///
     /// Note that each deposit and withdrawal pays an equal amount for the
     /// transaction. To compute this amount we divide the total fee by the
     /// number of requests in the transaction.
-    fn compute_request_fee(tx: &Transaction, fee_rate: f64, last_fee: Option<u64>) -> u64 {
-        let mut tx_fee = tx.vsize() as f64 * fee_rate;
-        // tx.input[0].segwit_weight()
-
-        // The requirement for an RBF transaction is that the new fee
-        // amount be greater than the old fee amount.
-        if let Some(last_fee) = last_fee {
-            if tx_fee <= last_fee as f64 {
-                tx_fee = last_fee as f64 + 1.0;
+    fn compute_request_fee(tx: &Transaction, fee_rate: f64, last_fees: Option<Fees>) -> u64 {
+        let tx_fee = match last_fees {
+            Some(Fees { total, rate }) => {
+                // The requirement for an RBF transaction is that the new fee
+                // amount be greater than the old fee amount.
+                let fee_rate = rate.max(rate + DEFAULT_INCREMENTAL_RELAY_FEE_RATE);
+                (total as f64 + 1.0).max(tx.vsize() as f64 * fee_rate)
             }
-        }
+            None => tx.vsize() as f64 * fee_rate,
+        };
 
         let num_requests = (tx.input.len() + tx.output.len()).saturating_sub(2) as f64;
         (tx_fee / num_requests).ceil() as u64
@@ -648,21 +676,6 @@ mod tests {
         OutPoint { txid: tx.compute_txid(), vout }
     }
 
-    impl<'a> UnsignedTransaction<'a> {
-        fn input_amounts(&self) -> u64 {
-            self.requests
-                .iter()
-                .filter_map(Request::as_deposit)
-                .map(|dep| dep.amount)
-                .chain([self.signer_utxo.utxo.amount])
-                .sum()
-        }
-
-        fn output_amounts(&self) -> u64 {
-            self.tx.output.iter().map(|out| out.value.to_sat()).sum()
-        }
-    }
-
     /// Create a new deposit request depositing from a random public key.
     fn create_deposit(amount: u64, max_fee: u64, votes_against: usize) -> DepositRequest {
         let public_key = PublicKey::from_str(PUBLIC_KEY1).unwrap();
@@ -755,7 +768,7 @@ mod tests {
                 },
                 fee_rate: 0.0,
                 public_key: generate_x_only_public_key(),
-                last_fee: None,
+                last_fees: None,
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -818,7 +831,7 @@ mod tests {
                 },
                 fee_rate: 0.0,
                 public_key,
-                last_fee: None,
+                last_fees: None,
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -863,7 +876,7 @@ mod tests {
                 },
                 fee_rate: 0.0,
                 public_key,
-                last_fee: None,
+                last_fees: None,
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -903,7 +916,7 @@ mod tests {
                 },
                 fee_rate: 0.0,
                 public_key,
-                last_fee: None,
+                last_fees: None,
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -954,7 +967,7 @@ mod tests {
                 },
                 fee_rate: 0.0,
                 public_key,
-                last_fee: None,
+                last_fees: None,
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -1041,7 +1054,7 @@ mod tests {
                 },
                 fee_rate: 25.0,
                 public_key,
-                last_fee: None,
+                last_fees: None,
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -1128,23 +1141,27 @@ mod tests {
                 },
                 fee_rate: 25.0,
                 public_key,
-                last_fee: None,
+                last_fees: None,
             },
             num_signers: 10,
             accept_threshold: 8,
         };
 
-        let old_fee = {
+        let (old_fee, old_fee_rate) = {
             let utx = requests.construct_transactions().unwrap().pop().unwrap();
 
             let output_amounts: u64 = utx.output_amounts();
             let input_amounts: u64 = utx.input_amounts();
 
             more_asserts::assert_gt!(input_amounts, output_amounts);
-            input_amounts - output_amounts + 750
+            let fee_rate = (input_amounts - output_amounts) as f64 / utx.tx.vsize() as f64;
+            (input_amounts - output_amounts, fee_rate)
         };
 
-        requests.signer_state.last_fee = Some(old_fee);
+        requests.signer_state.last_fees = Some(Fees {
+            total: old_fee,
+            rate: old_fee_rate,
+        });
 
         let utx = requests.construct_transactions().unwrap().pop().unwrap();
 
@@ -1201,7 +1218,7 @@ mod tests {
                 },
                 fee_rate: 25.0,
                 public_key,
-                last_fee: None,
+                last_fees: None,
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -1235,7 +1252,7 @@ mod tests {
                 },
                 fee_rate: 0.0,
                 public_key,
-                last_fee: None,
+                last_fees: None,
             },
             num_signers: 10,
             accept_threshold: 0,

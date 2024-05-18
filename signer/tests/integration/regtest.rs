@@ -47,6 +47,10 @@ const FAUCET_SECRET_KEY: &str = "00000000000000000000000000000000000000000000000
 
 const FAUCET_LABEL: Option<&str> = Some("faucet");
 
+pub const SIGNER_ADDRESS_LABEL: Option<&str> = Some("signers-label");
+pub const DEPOSITS_LABEL: Option<&str> = Some("deposits");
+pub const WITHDRAWAL_LABEL: Option<&str> = Some("withdrawal");
+
 /// Initializes a blockchain and wallet on bitcoin-core. It can be called
 /// multiple times (even concurrently) but only generates the client and
 /// recipient once.
