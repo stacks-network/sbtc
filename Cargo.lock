@@ -756,8 +756,8 @@ dependencies = [
 name = "blocklist-api"
 version = "1.0.0"
 dependencies = [
- "reqwest 0.11.27",
- "serde 1.0.201",
+ "reqwest",
+ "serde 1.0.202",
  "serde_derive",
  "serde_json",
  "serde_with 2.3.3",
@@ -3144,7 +3144,7 @@ dependencies = [
  "chrono",
  "hex",
  "indexmap 1.9.3",
- "serde 1.0.201",
+ "serde 1.0.202",
  "serde_json",
  "serde_with_macros 2.3.3",
  "time",
@@ -3177,7 +3177,7 @@ dependencies = [
  "darling",
  "proc-macro2",
  "quote",
- "syn 2.0.61",
+ "syn 2.0.64",
 ]
 
 [[package]]
@@ -3950,7 +3950,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c5afb1a60e207dca502682537fefcfd9921e71d0b83e9576060f09abc6efab23"
 dependencies = [
  "indexmap 2.2.6",
- "serde 1.0.201",
+ "serde 1.0.202",
  "serde_json",
  "utoipa-gen",
 ]
@@ -3964,7 +3964,7 @@ dependencies = [
  "proc-macro-error",
  "proc-macro2",
  "quote",
- "syn 2.0.61",
+ "syn 2.0.64",
 ]
 
 [[package]]
