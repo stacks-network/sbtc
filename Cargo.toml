@@ -4,7 +4,8 @@ members = [
   "signer",
   ".generated-sources/emily",
   "emily/lambda",
-  "blocklist-client"
+  "blocklist-client",
+  ".generated-sources/blocklist-openapi-gen"
 , "common"]
 
 [profile.dev]

@@ -12,7 +12,6 @@ use blocklist_api::apis::configuration::Configuration;
 use blocklist_api::apis::Error as ClientError;
 use blocklist_api::models::BlocklistStatus;
 
-const SCREEN_PATH: &str = "/screen";
 
 /// A trait for checking if an address is blocklisted.
 #[async_trait]
@@ -88,6 +87,7 @@ mod tests {
     use tokio::sync::Mutex;
 
     const ADDRESS: &str = "0x2337bBCD5766Bf2A9462D493E9A459b60b41B7f2";
+    const SCREEN_PATH: &str = "/screen";
 
     struct TestContext {
         server_guard: Mutex<ServerGuard>,

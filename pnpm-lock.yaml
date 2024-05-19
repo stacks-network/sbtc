@@ -8,7 +8,7 @@ importers:
 
   .: {}
 
-  blocklist-client/src/openapi:
+  .generated-sources/blocklist-openapi-gen:
     devDependencies:
       '@openapitools/openapi-generator-cli':
         specifier: ^2.13.2

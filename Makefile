@@ -1,22 +1,22 @@
 install:
 	pnpm install
 
-build: install | emily-client-source generate-openapi-spec blocklist-client-source
+build: install | emily-client-source generate-openapi-spec blocklist-api-source
 	cargo build
 	pnpm --recursive build
 
-test: install | emily-client-source blocklist-client-source
+test: install | emily-client-source blocklist-api-source
 	cargo test
 	pnpm --recursive test
 
-integration-test: install | emily-client-source blocklist-client-source
+integration-test: install | emily-client-source blocklist-api-source
 	docker compose --file docker-compose.test.yml up --detach
 	cargo test
 	cargo test --test '*' --all-features -- --test-threads=1
 	pnpm --recursive test
 	docker compose --file docker-compose.test.yml down
 
-lint: install | emily-client-source blocklist-client-source
+lint: install | emily-client-source blocklist-api-source
 	cargo clippy -- -D warnings
 	pnpm --recursive run lint
 
@@ -53,11 +53,12 @@ emily-client-source: install
 # Blocklist Client API
 # ----------------------------------------------------
 
-BLOCKLIST_OPENAPI_PATH=blocklist-client/src/openapi
-# Generate the OpenAPI spec using cargo build in blocklist-client
-generate-openapi-spec:
-	cd blocklist-client && cargo build
+BLOCKLIST_OPENAPI_PATH=./.generated-sources/blocklist-openapi-gen
+
+# Generate the OpenAPI spec for Blocklist Client
+generate-openapi-spec: install
+	cd ./.generated-sources/blocklist-openapi-gen && cargo run
 
 # Generate the client code using the OpenAPI spec
-blocklist-client-source: install
+blocklist-api-source: install
 	pnpm --prefix $(BLOCKLIST_OPENAPI_PATH) run build
