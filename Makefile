@@ -60,5 +60,5 @@ generate-openapi-spec: install
 	cd ./.generated-sources/blocklist-openapi-gen && cargo run
 
 # Generate the client code using the OpenAPI spec
-blocklist-api-source: install
+blocklist-api-source: generate-openapi-spec
 	pnpm --prefix $(BLOCKLIST_OPENAPI_PATH) run build
