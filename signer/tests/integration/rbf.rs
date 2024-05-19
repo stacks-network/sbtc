@@ -66,12 +66,26 @@ fn generate_withdrawal(rpc: &Client) -> (WithdrawalRequest, Recipient) {
     (req, withdrawer)
 }
 
+/// A struct to specify the different states/conditions for an RBF
+/// transaction.
 struct RbfContext {
+    /// The number of outstanding deposit requests for the initial
+    /// transaction.
     initial_deposits: usize,
+    /// The number of outstanding withdrawal requests for the initial
+    /// transaction.
     initial_withdrawals: usize,
+    /// The market fee rate during the initial transaction.
     initial_fee_rate: f64,
+    /// The number of deposit requests at the time of an RBF transaction.
+    /// This number can be greater than, less than, or equal to the initial
+    /// number of outstanding deposit requests.
     rbf_deposits: usize,
+    /// The number of withdrawal requests at the time of an RBF transaction.
+    /// This number can be greater than, less than, or equal to the initial
+    /// number of outstanding withdrawal requests.
     rbf_withdrawals: usize,
+    /// The market fee rate during the RBF transaction.
     rbf_fee_rate: f64,
 }
 
@@ -166,23 +180,28 @@ fn transactions_with_rbf(ctx: RbfContext) {
     // Start off with some initial UTXOs to work with.
     faucet.send_to(rpc, 100_000_000, &signer.address);
 
+    // We need to generate all deposits that we will need up front, since
+    // we cannot generate new blocks we submit the transaction that we want
+    // to RBF (since it would then be confirmed).
     let mut depositors: Vec<Recipient> = Vec::new();
-    let deposits = std::iter::repeat_with(|| generate_depositor(rpc, faucet, &signer))
-        .take(ctx.initial_deposits)
-        .map(|(req, depositor)| {
-            depositors.push(depositor);
-            req
-        })
-        .collect();
+    let mut deposits: Vec<DepositRequest> =
+        std::iter::repeat_with(|| generate_depositor(rpc, faucet, &signer))
+            .take(ctx.initial_deposits.max(ctx.rbf_deposits))
+            .map(|(req, depositor)| {
+                depositors.push(depositor);
+                req
+            })
+            .collect();
 
     let mut withdrawalers: Vec<Recipient> = Vec::new();
-    let withdrawals = std::iter::repeat_with(|| generate_withdrawal(rpc))
-        .take(ctx.initial_withdrawals)
-        .map(|(req, withdrawaler)| {
-            withdrawalers.push(withdrawaler);
-            req
-        })
-        .collect();
+    let mut withdrawals: Vec<WithdrawalRequest> =
+        std::iter::repeat_with(|| generate_withdrawal(rpc))
+            .take(ctx.initial_withdrawals.max(ctx.rbf_withdrawals))
+            .map(|(req, withdrawaler)| {
+                withdrawalers.push(withdrawaler);
+                req
+            })
+            .collect();
 
     faucet.generate_blocks(&rpc, 1);
     // We deposited the transaction to the signer, but it's not clear to the
@@ -195,9 +214,18 @@ fn transactions_with_rbf(ctx: RbfContext) {
     let signer_utxo = signer.get_utxos(rpc, None).pop().unwrap();
 
     // Now build the struct with the outstanding peg-in and peg-out requests.
+    // We only use the specified initial number of deposits and withdrawals.
     let mut requests = SbtcRequests {
-        deposits,
-        withdrawals,
+        deposits: deposits
+            .clone()
+            .into_iter()
+            .take(ctx.initial_deposits)
+            .collect(),
+        withdrawals: withdrawals
+            .clone()
+            .into_iter()
+            .take(ctx.initial_withdrawals)
+            .collect(),
         signer_state: SignerBtcState {
             utxo: SignerUtxo {
                 outpoint: OutPoint::new(signer_utxo.txid, signer_utxo.vout),
@@ -212,6 +240,9 @@ fn transactions_with_rbf(ctx: RbfContext) {
         num_signers: 7,
     };
 
+    // Okay, lets submit the transaction. We also do a sanity check where
+    // we try to submit an RBF transaction with an insufficient fee bump.
+    // We need to note the fee for original transaction so it is returned.
     let last_fee = {
         // There should only be one transaction here since there is only one
         // deposit request and no withdrawal requests.
@@ -226,9 +257,12 @@ fn transactions_with_rbf(ctx: RbfContext) {
 
         rpc.send_raw_transaction(&unsigned.tx).unwrap();
 
+        // Now lets do a little sanity check where we submit a RBF transaction
+        // but where we change the fee but an amount that is too small.
         let mut transactions = requests.construct_transactions().unwrap();
         let mut unsigned = transactions.pop().unwrap();
 
+        // We increase the fee paid but
         unsigned.tx.output[0].value -= Amount::from_sat(10);
 
         regtest::set_witness_data(&mut unsigned, signer.keypair);
@@ -242,46 +276,30 @@ fn transactions_with_rbf(ctx: RbfContext) {
         last_fee
     };
 
+    // Let's update the request state with the new fee rate, the last fee amount paid
+    // and the modified outstanding deposits and withdrawals.
     requests.signer_state.fee_rate = ctx.rbf_fee_rate;
     requests.signer_state.last_fees = Some(last_fee);
 
-    requests.deposits.truncate(ctx.rbf_deposits);    
-    if requests.deposits.len() < ctx.rbf_deposits {
-        let new_deposits = std::iter::repeat_with(|| generate_depositor(rpc, faucet, &signer))
-            .take(ctx.rbf_deposits - requests.deposits.len())
-            .map(|(req, depositor)| {
-                depositors.push(depositor);
-                req
-            });
-        requests.deposits.extend(new_deposits);
-    }
+    deposits.truncate(ctx.rbf_deposits);
+    withdrawals.truncate(ctx.rbf_withdrawals);
+    requests.deposits = deposits;
+    requests.withdrawals = withdrawals;
 
-    requests.withdrawals.truncate(ctx.rbf_withdrawals);
-    if requests.withdrawals.len() < ctx.rbf_withdrawals {
-        let new_withdrawals = std::iter::repeat_with(|| generate_withdrawal(rpc))
-            .take(ctx.rbf_withdrawals - requests.withdrawals.len())
-            .map(|(req, withdrawer)| {
-                withdrawalers.push(withdrawer);
-                req
-            });
-        requests.withdrawals.extend(new_withdrawals);
-    }
-
-    faucet.generate_blocks(&rpc, 1);
     let mut transactions = requests.construct_transactions().unwrap();
-    assert_eq!(transactions.len(), 1);
     let mut unsigned = transactions.pop().unwrap();
     regtest::set_witness_data(&mut unsigned, signer.keypair);
+    
+    // The moment of truth, does the network accept the RBF transaction?
+    rpc.send_raw_transaction(&unsigned.tx).unwrap();
+    faucet.generate_blocks(rpc, 1);
 
+    // Now lets check the balances and fees.
     let total_fees = unsigned.input_amounts() - unsigned.output_amounts();
     let fee_rate = total_fees as f64 / unsigned.tx.vsize() as f64;
 
     more_asserts::assert_ge!(fee_rate, ctx.rbf_fee_rate);
     more_asserts::assert_gt!(total_fees, last_fee);
-
-    // The moment of truth, does the network accept the RBF transaction?
-    rpc.send_raw_transaction(&unsigned.tx).unwrap();
-    faucet.generate_blocks(rpc, 1);
 
     let deposits: u64 = requests.deposits.iter().map(|req| req.amount).sum();
     let withdrawals: u64 = requests.withdrawals.iter().map(|req| req.amount).sum();

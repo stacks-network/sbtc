@@ -111,7 +111,7 @@ impl SbtcRequests {
 }
 
 /// An accepted or pending deposit request.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DepositRequest {
     /// The UTXO to be spent by the signers.
     pub outpoint: OutPoint,
@@ -223,7 +223,7 @@ impl DepositRequest {
 }
 
 /// An accepted or pending withdraw request.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WithdrawalRequest {
     /// The amount of BTC, in sats, to withdraw.
     pub amount: u64,
