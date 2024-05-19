@@ -85,7 +85,7 @@ pub fn make_deposit_request(
         outpoint: OutPoint::new(deposit_tx.compute_txid(), 0),
         max_fee: fee,
         signer_bitmap: Vec::new(),
-        amount: 25_000_000,
+        amount,
         deposit_script: deposit_script.clone(),
         redeem_script: redeem_script.clone(),
         taproot_public_key: faucet_public_key,

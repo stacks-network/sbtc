@@ -54,9 +54,9 @@ pub struct SignerBtcState {
     pub fee_rate: f64,
     /// The current public key of the signers
     pub public_key: XOnlyPublicKey,
-    /// The total fee amount and the fee rate for the last transaction that
-    /// used this UTXO as an input.
-    pub last_fees: Option<Fees>,
+    /// The total fee amount in sats for the last transaction that used
+    /// this UTXO as an input.
+    pub last_fees: Option<u64>,
 }
 
 /// The set of sBTC requests with additional relevant
@@ -522,22 +522,39 @@ impl<'a> UnsignedTransaction<'a> {
     ///
     /// If each deposit and withdrawal associated with this transaction
     /// paid the fees returned by this function then the fee rate for the
-    /// entire transaction will be at least as much as the fee rate.
+    /// entire transaction will be at least as much as the target fee rate.
     /// Moreover, both the transaction's total fee and fee rate will be
     /// greater than the `last_fee` if present.
     ///
-    /// Note that each deposit and withdrawal pays an equal amount for the
-    /// transaction. To compute this amount we divide the total fee by the
-    /// number of requests in the transaction.
-    fn compute_request_fee(tx: &Transaction, fee_rate: f64, last_fees: Option<Fees>) -> u64 {
+    /// ## Notes
+    ///
+    /// Each deposit and withdrawal pays an equal amount for the transaction.
+    /// To compute this amount we divide the total fee by the number of
+    /// requests in the transaction.
+    ///
+    /// Here are the fee related requirements for a replace-by-fee as
+    /// described in BIP-125:
+    ///
+    /// 3. The replacement transaction pays an absolute fee of at least the
+    ///    sum paid by the original transactions.
+    /// 4. The replacement transaction must also pay for its own bandwidth
+    ///    at or above the rate set by the node's minimum relay fee setting.
+    ///    For example, if the minimum relay fee is 1 satoshi/byte and the
+    ///    replacement transaction is 500 bytes total, then the replacement
+    ///    must pay a fee at least 500 satoshis higher than the sum of the
+    ///    originals.
+    ///
+    /// BIP-125: https://github.com/bitcoin/bips/blob/master/bip-0125.mediawiki#implementation-details
+    fn compute_request_fee(tx: &Transaction, fee_rate: f64, last_fees: Option<u64>) -> u64 {
+        let tx_vsize = tx.vsize() as f64;
         let tx_fee = match last_fees {
-            Some(Fees { total, rate }) => {
+            Some(last_fee_amount) => {
                 // The requirement for an RBF transaction is that the new fee
                 // amount be greater than the old fee amount.
-                let fee_rate = rate.max(rate + DEFAULT_INCREMENTAL_RELAY_FEE_RATE);
-                (total as f64 + 1.0).max(tx.vsize() as f64 * fee_rate)
+                let fee_rate_increment = tx_vsize * DEFAULT_INCREMENTAL_RELAY_FEE_RATE;
+                (last_fee_amount as f64 + fee_rate_increment).max(tx_vsize * fee_rate)
             }
-            None => tx.vsize() as f64 * fee_rate,
+            None => tx_vsize as f64 * fee_rate,
         };
 
         let num_requests = (tx.input.len() + tx.output.len()).saturating_sub(2) as f64;
@@ -1147,21 +1164,17 @@ mod tests {
             accept_threshold: 8,
         };
 
-        let (old_fee, old_fee_rate) = {
+        let old_fee = {
             let utx = requests.construct_transactions().unwrap().pop().unwrap();
 
             let output_amounts: u64 = utx.output_amounts();
             let input_amounts: u64 = utx.input_amounts();
 
             more_asserts::assert_gt!(input_amounts, output_amounts);
-            let fee_rate = (input_amounts - output_amounts) as f64 / utx.tx.vsize() as f64;
-            (input_amounts - output_amounts, fee_rate)
+            input_amounts - output_amounts
         };
 
-        requests.signer_state.last_fees = Some(Fees {
-            total: old_fee,
-            rate: old_fee_rate,
-        });
+        requests.signer_state.last_fees = Some(old_fee);
 
         let utx = requests.construct_transactions().unwrap().pop().unwrap();
 
