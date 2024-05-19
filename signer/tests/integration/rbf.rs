@@ -9,6 +9,7 @@ use bitcoincore_rpc::RpcApi;
 use rand::distributions::Uniform;
 use rand::Rng;
 use signer::utxo::DepositRequest;
+use signer::utxo::Fees;
 use signer::utxo::SbtcRequests;
 use signer::utxo::SignerBtcState;
 use signer::utxo::SignerUtxo;
@@ -24,11 +25,7 @@ use regtest::DEPOSITS_LABEL;
 use regtest::SIGNER_ADDRESS_LABEL;
 use regtest::WITHDRAWAL_LABEL;
 
-fn generate_depositor(
-    rpc: &Client,
-    faucet: &Recipient,
-    signer: &Recipient,
-) -> (DepositRequest, Recipient) {
+fn generate_depositor(rpc: &Client, faucet: &Recipient, signer: &Recipient) -> DepositRequest {
     let depositor = Recipient::new(AddressType::P2tr);
     let signers_public_key = signer.keypair.x_only_public_key().0;
     depositor.track_address(rpc, DEPOSITS_LABEL);
@@ -49,7 +46,8 @@ fn generate_depositor(
         faucet.keypair.x_only_public_key().0,
     );
     rpc.send_raw_transaction(&deposit_tx).unwrap();
-    (deposit_request, depositor)
+    faucet.generate_blocks(&rpc, 1);
+    deposit_request
 }
 
 fn generate_withdrawal(rpc: &Client) -> (WithdrawalRequest, Recipient) {
@@ -89,6 +87,18 @@ struct RbfContext {
     rbf_fee_rate: f64,
 }
 
+enum RbfDiff {
+    Same,
+    More(usize),
+    Fewer(usize),
+}
+
+enum FeeDiff {
+    Same,
+    More(f64),
+    Fewer(f64),
+}
+
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case(RbfContext {
     initial_deposits: 1,
@@ -97,39 +107,47 @@ struct RbfContext {
     rbf_deposits: 1,
     rbf_withdrawals: 1,
     rbf_fee_rate: 10.0,
-} ; "same-deposits-same-withdrawals-same-rate")]
+} ; "same-deposits-same-withdrawals-same-fee-rate")]
 #[test_case(RbfContext {
     initial_deposits: 1,
     initial_withdrawals: 1,
     initial_fee_rate: 10.0,
     rbf_deposits: 1,
     rbf_withdrawals: 1,
-    rbf_fee_rate: 8.0,
-} ; "same-deposits-same-withdrawals-lower-rate")]
+    rbf_fee_rate: 15.0,
+} ; "same-deposits-same-withdrawals-greater-fee-rate")]
 #[test_case(RbfContext {
     initial_deposits: 1,
     initial_withdrawals: 1,
     initial_fee_rate: 10.0,
     rbf_deposits: 1,
     rbf_withdrawals: 1,
-    rbf_fee_rate: 13.0,
-} ; "same-deposits-same-withdrawals-greater-rate")]
+    rbf_fee_rate: 5.0,
+} ; "same-deposits-same-withdrawals-lower-fee-rate")]
 #[test_case(RbfContext {
     initial_deposits: 1,
     initial_withdrawals: 1,
     initial_fee_rate: 10.0,
-    rbf_deposits: 2,
+    rbf_deposits: 3,
     rbf_withdrawals: 1,
-    rbf_fee_rate: 13.0,
-} ; "new-deposits-same-withdrawals-greater-rate")]
+    rbf_fee_rate: 5.0,
+} ; "new-deposits-same-withdrawals-lower-fee-rate")]
+#[test_case(RbfContext {
+    initial_deposits: 1,
+    initial_withdrawals: 1,
+    initial_fee_rate: 10.0,
+    rbf_deposits: 3,
+    rbf_withdrawals: 1,
+    rbf_fee_rate: 15.0,
+} ; "new-deposits-same-withdrawals-greater-fee-rate")]
 #[test_case(RbfContext {
     initial_deposits: 1,
     initial_withdrawals: 1,
     initial_fee_rate: 10.0,
     rbf_deposits: 3,
     rbf_withdrawals: 3,
-    rbf_fee_rate: 14.0,
-} ; "new-deposits-new-withdrawals-greater-rate")]
+    rbf_fee_rate: 15.0,
+} ; "new-deposits-new-withdrawals-greater-fee-rate")]
 #[test_case(RbfContext {
     initial_deposits: 1,
     initial_withdrawals: 1,
@@ -137,39 +155,47 @@ struct RbfContext {
     rbf_deposits: 3,
     rbf_withdrawals: 3,
     rbf_fee_rate: 10.0,
-} ; "new-deposits-new-withdrawals-same-rate")]
+} ; "new-deposits-new-withdrawals-same-fee-rate")]
+#[test_case(RbfContext {
+    initial_deposits: 1,
+    initial_withdrawals: 1,
+    initial_fee_rate: 10.0,
+    rbf_deposits: 3,
+    rbf_withdrawals: 3,
+    rbf_fee_rate: 5.0,
+} ; "new-deposits-new-withdrawals-lower-fee-rate")]
 #[test_case(RbfContext {
     initial_deposits: 1,
     initial_withdrawals: 1,
     initial_fee_rate: 10.0,
     rbf_deposits: 0,
     rbf_withdrawals: 1,
-    rbf_fee_rate: 14.0,
-} ; "fewer-deposits-same-withdrawals-greater-rate")]
+    rbf_fee_rate: 15.0,
+} ; "fewer-deposits-same-withdrawals-greater-fee-rate")]
 #[test_case(RbfContext {
     initial_deposits: 2,
     initial_withdrawals: 1,
     initial_fee_rate: 10.0,
     rbf_deposits: 1,
     rbf_withdrawals: 0,
-    rbf_fee_rate: 10.0,
-} ; "fewer-deposits-fewer-withdrawals-greater-rate")]
+    rbf_fee_rate: 15.0,
+} ; "fewer-deposits-fewer-withdrawals-greater-fee-rate")]
 #[test_case(RbfContext {
     initial_deposits: 1,
     initial_withdrawals: 1,
     initial_fee_rate: 10.0,
     rbf_deposits: 0,
     rbf_withdrawals: 3,
-    rbf_fee_rate: 14.0,
-} ; "fewer-deposits-new-withdrawals-greater-rate")]
+    rbf_fee_rate: 15.0,
+} ; "fewer-deposits-new-withdrawals-greater-fee-rate")]
 #[test_case(RbfContext {
     initial_deposits: 1,
     initial_withdrawals: 1,
     initial_fee_rate: 10.0,
     rbf_deposits: 1,
     rbf_withdrawals: 0,
-    rbf_fee_rate: 14.0,
-} ; "same-deposits-fewer-withdrawals-greater-rate")]
+    rbf_fee_rate: 15.0,
+} ; "same-deposits-fewer-withdrawals-greater-fee-rate")]
 fn transactions_with_rbf(ctx: RbfContext) {
     let (rpc, faucet) = regtest::initialize_blockchain();
 
@@ -183,27 +209,20 @@ fn transactions_with_rbf(ctx: RbfContext) {
     // We need to generate all deposits that we will need up front, since
     // we cannot generate new blocks we submit the transaction that we want
     // to RBF (since it would then be confirmed).
-    let mut depositors: Vec<Recipient> = Vec::new();
-    let mut deposits: Vec<DepositRequest> =
+    let deposits: Vec<DepositRequest> =
         std::iter::repeat_with(|| generate_depositor(rpc, faucet, &signer))
             .take(ctx.initial_deposits.max(ctx.rbf_deposits))
-            .map(|(req, depositor)| {
-                depositors.push(depositor);
-                req
-            })
             .collect();
 
     let mut withdrawalers: Vec<Recipient> = Vec::new();
-    let mut withdrawals: Vec<WithdrawalRequest> =
-        std::iter::repeat_with(|| generate_withdrawal(rpc))
-            .take(ctx.initial_withdrawals.max(ctx.rbf_withdrawals))
-            .map(|(req, withdrawaler)| {
-                withdrawalers.push(withdrawaler);
-                req
-            })
-            .collect();
+    let withdrawals: Vec<WithdrawalRequest> = std::iter::repeat_with(|| generate_withdrawal(rpc))
+        .take(ctx.initial_withdrawals.max(ctx.rbf_withdrawals))
+        .map(|(req, withdrawaler)| {
+            withdrawalers.push(withdrawaler);
+            req
+        })
+        .collect();
 
-    faucet.generate_blocks(&rpc, 1);
     // We deposited the transaction to the signer, but it's not clear to the
     // wallet tracking the signer's address that the deposit is associated
     // with the signer since it's hidden within the merkle tree.
@@ -243,7 +262,7 @@ fn transactions_with_rbf(ctx: RbfContext) {
     // Okay, lets submit the transaction. We also do a sanity check where
     // we try to submit an RBF transaction with an insufficient fee bump.
     // We need to note the fee for original transaction so it is returned.
-    let last_fee = {
+    let (last_fee, last_fee_rate) = {
         // There should only be one transaction here since there is only one
         // deposit request and no withdrawal requests.
         let mut transactions: Vec<UnsignedTransaction> = requests.construct_transactions().unwrap();
@@ -262,7 +281,7 @@ fn transactions_with_rbf(ctx: RbfContext) {
         let mut transactions = requests.construct_transactions().unwrap();
         let mut unsigned = transactions.pop().unwrap();
 
-        // We increase the fee paid but
+        // We increase the fee paid but not by enough to be accepted
         unsigned.tx.output[0].value -= Amount::from_sat(10);
 
         regtest::set_witness_data(&mut unsigned, signer.keypair);
@@ -273,41 +292,61 @@ fn transactions_with_rbf(ctx: RbfContext) {
             }
             _ => panic!("Unexpected response when sending bad replacement transaction"),
         }
-        last_fee
+        (last_fee, last_fee as f64 / unsigned.tx.vsize() as f64)
     };
 
     // Let's update the request state with the new fee rate, the last fee amount paid
-    // and the modified outstanding deposits and withdrawals.
+    // and modify the outstanding deposits and withdrawals.
     requests.signer_state.fee_rate = ctx.rbf_fee_rate;
-    requests.signer_state.last_fees = Some(last_fee);
+    requests.signer_state.last_fees = Some(Fees {
+        total: last_fee,
+        rate: last_fee_rate,
+    });
 
-    deposits.truncate(ctx.rbf_deposits);
-    withdrawals.truncate(ctx.rbf_withdrawals);
-    requests.deposits = deposits;
-    requests.withdrawals = withdrawals;
+    requests.deposits = deposits.clone();
+    requests.withdrawals = withdrawals.clone();
+    requests.deposits.truncate(ctx.rbf_deposits);
+    requests.withdrawals.truncate(ctx.rbf_withdrawals);
 
     let mut transactions = requests.construct_transactions().unwrap();
     let mut unsigned = transactions.pop().unwrap();
     regtest::set_witness_data(&mut unsigned, signer.keypair);
-    
+
     // The moment of truth, does the network accept the RBF transaction?
     rpc.send_raw_transaction(&unsigned.tx).unwrap();
     faucet.generate_blocks(rpc, 1);
 
-    // Now lets check the balances and fees.
+    // Now lets check the balances and fees. We start with the signers'
+    // balance.
     let total_fees = unsigned.input_amounts() - unsigned.output_amounts();
     let fee_rate = total_fees as f64 / unsigned.tx.vsize() as f64;
 
     more_asserts::assert_ge!(fee_rate, ctx.rbf_fee_rate);
     more_asserts::assert_gt!(total_fees, last_fee);
 
-    let deposits: u64 = requests.deposits.iter().map(|req| req.amount).sum();
-    let withdrawals: u64 = requests.withdrawals.iter().map(|req| req.amount).sum();
+    let deposit_amounts: u64 = requests.deposits.iter().map(|req| req.amount).sum();
+    let withdrawal_amounts: u64 = requests.withdrawals.iter().map(|req| req.amount).sum();
     let deposit_fees = unsigned.fee_per_request * requests.deposits.len() as u64;
 
     // The signer's balance should now reflect the deposits and withdrawals
     // less the fees that depositors are supposed to pay.
     let signers_balance = signer.get_balance(rpc);
-    let expected_balance = 100_000_000 + deposits - withdrawals - deposit_fees;
+    let expected_balance = 100_000_000 + deposit_amounts - withdrawal_amounts - deposit_fees;
     assert_eq!(signers_balance.to_sat(), expected_balance);
+
+    // Any unused deposits still have their balances adjusted since their
+    // deposits were confirmed, we just didn't peg them in. But for
+    // withdrawals, the outputs from the requests associated with the
+    // RBF transaction should have their balances ajusted while the others
+    // should not.
+    let iter = withdrawals.into_iter().zip(withdrawalers).enumerate();
+    for (index, (req, withdrawaler)) in iter {
+        let balance = withdrawaler.get_balance(rpc);
+        if index < ctx.rbf_withdrawals {
+            let expected_balance = req.amount - unsigned.fee_per_request;
+            assert_eq!(balance.to_sat(), expected_balance);
+        } else {
+            assert_eq!(balance.to_sat(), 0);
+        }
+    }
 }

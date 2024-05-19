@@ -54,9 +54,9 @@ pub struct SignerBtcState {
     pub fee_rate: f64,
     /// The current public key of the signers
     pub public_key: XOnlyPublicKey,
-    /// The total fee amount in sats for the last transaction that used
-    /// this UTXO as an input.
-    pub last_fees: Option<u64>,
+    /// The total fee amount and the fee rate for the last transaction that
+    /// used this UTXO as an input.
+    pub last_fees: Option<Fees>,
 }
 
 /// The set of sBTC requests with additional relevant
@@ -544,15 +544,19 @@ impl<'a> UnsignedTransaction<'a> {
     ///    must pay a fee at least 500 satoshis higher than the sum of the
     ///    originals.
     ///
+    /// Not mentioned above is that the fee rate of the RBF transaction
+    /// must also be greater than or equal to the fee rate of the old
+    /// transaction.
+    ///
     /// BIP-125: https://github.com/bitcoin/bips/blob/master/bip-0125.mediawiki#implementation-details
-    fn compute_request_fee(tx: &Transaction, fee_rate: f64, last_fees: Option<u64>) -> u64 {
+    fn compute_request_fee(tx: &Transaction, fee_rate: f64, last_fees: Option<Fees>) -> u64 {
         let tx_vsize = tx.vsize() as f64;
         let tx_fee = match last_fees {
-            Some(last_fee_amount) => {
+            Some(Fees { total, rate }) => {
                 // The requirement for an RBF transaction is that the new fee
                 // amount be greater than the old fee amount.
-                let fee_rate_increment = tx_vsize * DEFAULT_INCREMENTAL_RELAY_FEE_RATE;
-                (last_fee_amount as f64 + fee_rate_increment).max(tx_vsize * fee_rate)
+                let fee_increment = tx_vsize * DEFAULT_INCREMENTAL_RELAY_FEE_RATE;
+                (total as f64 + fee_increment).max(tx_vsize * fee_rate.max(rate))
             }
             None => tx_vsize as f64 * fee_rate,
         };
@@ -1164,17 +1168,22 @@ mod tests {
             accept_threshold: 8,
         };
 
-        let old_fee = {
+        let (old_fee_total, old_fee_rate) = {
             let utx = requests.construct_transactions().unwrap().pop().unwrap();
 
             let output_amounts: u64 = utx.output_amounts();
             let input_amounts: u64 = utx.input_amounts();
 
             more_asserts::assert_gt!(input_amounts, output_amounts);
-            input_amounts - output_amounts
+            let fee_total = input_amounts - output_amounts;
+            let fee_rate = fee_total as f64 / utx.tx.vsize() as f64;
+            (fee_total, fee_rate)
         };
 
-        requests.signer_state.last_fees = Some(old_fee);
+        requests.signer_state.last_fees = Some(Fees {
+            total: old_fee_total,
+            rate: old_fee_rate,
+        });
 
         let utx = requests.construct_transactions().unwrap().pop().unwrap();
 
@@ -1182,7 +1191,7 @@ mod tests {
         let input_amounts: u64 = utx.input_amounts();
 
         more_asserts::assert_gt!(input_amounts, output_amounts);
-        more_asserts::assert_gt!(input_amounts - output_amounts, old_fee);
+        more_asserts::assert_gt!(input_amounts - output_amounts, old_fee_total);
         more_asserts::assert_gt!(utx.requests.len(), 0);
 
         // Since there are often both deposits and withdrawal, the
