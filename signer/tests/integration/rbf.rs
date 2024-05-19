@@ -16,8 +16,6 @@ use signer::utxo::SignerUtxo;
 use signer::utxo::UnsignedTransaction;
 use signer::utxo::WithdrawalRequest;
 
-use test_case::test_case;
-
 use crate::regtest;
 use crate::utxo_construction::make_deposit_request;
 use regtest::Recipient;
@@ -87,116 +85,24 @@ struct RbfContext {
     rbf_fee_rate: f64,
 }
 
-enum RbfDiff {
-    Same,
-    More(usize),
-    Fewer(usize),
-}
-
-enum FeeDiff {
-    Same,
-    More(f64),
-    Fewer(f64),
-}
-
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[test_case(RbfContext {
-    initial_deposits: 1,
-    initial_withdrawals: 1,
-    initial_fee_rate: 10.0,
-    rbf_deposits: 1,
-    rbf_withdrawals: 1,
-    rbf_fee_rate: 10.0,
-} ; "same-deposits-same-withdrawals-same-fee-rate")]
-#[test_case(RbfContext {
-    initial_deposits: 1,
-    initial_withdrawals: 1,
-    initial_fee_rate: 10.0,
-    rbf_deposits: 1,
-    rbf_withdrawals: 1,
-    rbf_fee_rate: 15.0,
-} ; "same-deposits-same-withdrawals-greater-fee-rate")]
-#[test_case(RbfContext {
-    initial_deposits: 1,
-    initial_withdrawals: 1,
-    initial_fee_rate: 10.0,
-    rbf_deposits: 1,
-    rbf_withdrawals: 1,
-    rbf_fee_rate: 5.0,
-} ; "same-deposits-same-withdrawals-lower-fee-rate")]
-#[test_case(RbfContext {
-    initial_deposits: 1,
-    initial_withdrawals: 1,
-    initial_fee_rate: 10.0,
-    rbf_deposits: 3,
-    rbf_withdrawals: 1,
-    rbf_fee_rate: 5.0,
-} ; "new-deposits-same-withdrawals-lower-fee-rate")]
-#[test_case(RbfContext {
-    initial_deposits: 1,
-    initial_withdrawals: 1,
-    initial_fee_rate: 10.0,
-    rbf_deposits: 3,
-    rbf_withdrawals: 1,
-    rbf_fee_rate: 15.0,
-} ; "new-deposits-same-withdrawals-greater-fee-rate")]
-#[test_case(RbfContext {
-    initial_deposits: 1,
-    initial_withdrawals: 1,
-    initial_fee_rate: 10.0,
-    rbf_deposits: 3,
-    rbf_withdrawals: 3,
-    rbf_fee_rate: 15.0,
-} ; "new-deposits-new-withdrawals-greater-fee-rate")]
-#[test_case(RbfContext {
-    initial_deposits: 1,
-    initial_withdrawals: 1,
-    initial_fee_rate: 10.0,
-    rbf_deposits: 3,
-    rbf_withdrawals: 3,
-    rbf_fee_rate: 10.0,
-} ; "new-deposits-new-withdrawals-same-fee-rate")]
-#[test_case(RbfContext {
-    initial_deposits: 1,
-    initial_withdrawals: 1,
-    initial_fee_rate: 10.0,
-    rbf_deposits: 3,
-    rbf_withdrawals: 3,
-    rbf_fee_rate: 5.0,
-} ; "new-deposits-new-withdrawals-lower-fee-rate")]
-#[test_case(RbfContext {
-    initial_deposits: 1,
-    initial_withdrawals: 1,
-    initial_fee_rate: 10.0,
-    rbf_deposits: 0,
-    rbf_withdrawals: 1,
-    rbf_fee_rate: 15.0,
-} ; "fewer-deposits-same-withdrawals-greater-fee-rate")]
-#[test_case(RbfContext {
-    initial_deposits: 2,
-    initial_withdrawals: 1,
-    initial_fee_rate: 10.0,
-    rbf_deposits: 1,
-    rbf_withdrawals: 0,
-    rbf_fee_rate: 15.0,
-} ; "fewer-deposits-fewer-withdrawals-greater-fee-rate")]
-#[test_case(RbfContext {
-    initial_deposits: 1,
-    initial_withdrawals: 1,
-    initial_fee_rate: 10.0,
-    rbf_deposits: 0,
-    rbf_withdrawals: 3,
-    rbf_fee_rate: 15.0,
-} ; "fewer-deposits-new-withdrawals-greater-fee-rate")]
-#[test_case(RbfContext {
-    initial_deposits: 1,
-    initial_withdrawals: 1,
-    initial_fee_rate: 10.0,
-    rbf_deposits: 1,
-    rbf_withdrawals: 0,
-    rbf_fee_rate: 15.0,
-} ; "same-deposits-fewer-withdrawals-greater-fee-rate")]
-fn transactions_with_rbf(ctx: RbfContext) {
+#[test_case::test_matrix(
+    [1, 0, 3],
+    [1, 0, 3],
+    [4., 14., 20.]
+)]
+fn transactions_with_rbf(rbf_deposits: usize, rbf_withdrawals: usize, rbf_fee_rate: f64) {
+    if rbf_deposits == 0 && rbf_withdrawals == 0 {
+        return;
+    }
+    let ctx = RbfContext {
+        initial_deposits: 1,
+        initial_withdrawals: 1,
+        initial_fee_rate: 10.0,
+        rbf_deposits,
+        rbf_withdrawals,
+        rbf_fee_rate,
+    };
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let signer = Recipient::new(AddressType::P2tr);
