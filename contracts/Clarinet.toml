@@ -19,6 +19,12 @@ epoch = 2.5
 path = 'contracts/sbtc-registry.clar'
 clarity_version = 2
 epoch = 2.5
+
+[contracts.sbtc-withdrawal]
+path = 'contracts/sbtc-withdrawal.clar'
+clarity_version = 2
+epoch = 2.5
+
 [repl.analysis]
 passes = ['check_checker']
 
