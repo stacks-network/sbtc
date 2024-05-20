@@ -33,7 +33,7 @@ use crate::packaging::Weighted;
 /// The minimum incremental fee rate in sats per virtual byte for RBF
 /// transactions.
 const DEFAULT_INCREMENTAL_RELAY_FEE_RATE: f64 =
-bitcoin::policy::DEFAULT_INCREMENTAL_RELAY_FEE as f64 / 1000.0;
+    bitcoin::policy::DEFAULT_INCREMENTAL_RELAY_FEE as f64 / 1000.0;
 
 /// Describes the fees for a transaction.
 #[derive(Debug, Clone, Copy)]
