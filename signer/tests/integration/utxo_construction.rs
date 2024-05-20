@@ -152,13 +152,13 @@ fn deposits_add_to_controlled_amounts() {
     let signer = Recipient::new(AddressType::P2tr);
     let depositor = Recipient::new(AddressType::P2tr);
     let signers_public_key = signer.keypair.x_only_public_key().0;
-    signer.track_address(&rpc, SIGNER_ADDRESS_LABEL);
+    signer.track_address(rpc, SIGNER_ADDRESS_LABEL);
     depositor.track_address(rpc, DEPOSITS_LABEL);
 
     // Start off with some initial UTXOs to work with.
     faucet.send_to(rpc, 100_000_000, &signer.address);
     faucet.send_to(rpc, 50_000_000, &depositor.address);
-    faucet.generate_blocks(&rpc, 1);
+    faucet.generate_blocks(rpc, 1);
 
     assert_eq!(signer.get_balance(rpc).to_sat(), 100_000_000);
     assert_eq!(depositor.get_balance(rpc).to_sat(), 50_000_000);

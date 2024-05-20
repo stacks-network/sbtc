@@ -30,8 +30,6 @@ fn generate_depositor(rpc: &Client, faucet: &Recipient, signer: &Recipient) -> D
 
     // Start off with some initial UTXOs to work with.
     faucet.send_to(rpc, 50_000_000, &depositor.address);
-    faucet.generate_blocks(&rpc, 1);
-
     let amount = rand::rngs::OsRng.sample(Uniform::new(100_000, 500_000));
 
     // Now lets make a deposit transaction and submit it
@@ -44,7 +42,6 @@ fn generate_depositor(rpc: &Client, faucet: &Recipient, signer: &Recipient) -> D
         faucet.keypair.x_only_public_key().0,
     );
     rpc.send_raw_transaction(&deposit_tx).unwrap();
-    faucet.generate_blocks(&rpc, 1);
     deposit_request
 }
 
@@ -85,6 +82,17 @@ struct RbfContext {
     rbf_fee_rate: f64,
 }
 
+/// In this test we aim to test RBF handling under different scenarios.
+/// This is done in 4 steps.
+/// 
+/// 1. Create and submit a simple BTC transaction with one deposit and one
+///    withdrawal. 
+/// 2. Submit an RBF transaction that we know will fail.
+/// 3. Update the number of outstanding deposit and withdrawal requests
+///    that we want to process, update the market fee rate, and use the
+///    fees paid for the last successfully submitted transaction to
+///    construct and submit an RBF transaction.
+/// 4. Check that the withdrawal recipients have the expected balance.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case::test_matrix(
     [1, 0, 3],
@@ -105,16 +113,17 @@ fn transactions_with_rbf(rbf_deposits: usize, rbf_withdrawals: usize, rbf_fee_ra
     };
     let (rpc, faucet) = regtest::initialize_blockchain();
 
+    // Step 1: Construct and send a simple BTC transaction.
     let signer = Recipient::new(AddressType::P2tr);
     let signers_public_key = signer.keypair.x_only_public_key().0;
-    signer.track_address(&rpc, SIGNER_ADDRESS_LABEL);
+    signer.track_address(rpc, SIGNER_ADDRESS_LABEL);
 
     // Start off with some initial UTXOs to work with.
     faucet.send_to(rpc, 100_000_000, &signer.address);
 
     // We need to generate all deposits that we will need up front, since
-    // we cannot generate new blocks we submit the transaction that we want
-    // to RBF (since it would then be confirmed).
+    // we cannot generate new blocks once we submit the transaction that
+    // we want to RBF (since it would then be confirmed).
     let deposits: Vec<DepositRequest> =
         std::iter::repeat_with(|| generate_depositor(rpc, faucet, &signer))
             .take(ctx.initial_deposits.max(ctx.rbf_deposits))
@@ -129,6 +138,7 @@ fn transactions_with_rbf(rbf_deposits: usize, rbf_withdrawals: usize, rbf_fee_ra
         })
         .collect();
 
+    faucet.generate_blocks(rpc, 1);
     // We deposited the transaction to the signer, but it's not clear to the
     // wallet tracking the signer's address that the deposit is associated
     // with the signer since it's hidden within the merkle tree.
@@ -182,7 +192,9 @@ fn transactions_with_rbf(rbf_deposits: usize, rbf_withdrawals: usize, rbf_fee_ra
 
         rpc.send_raw_transaction(&unsigned.tx).unwrap();
 
-        // Now lets do a little sanity check where we submit a RBF transaction
+        // Step 2: create an RBF transaction that will fail.
+        //
+        // This is a little sanity check where we submit a RBF transaction
         // but where we change the fee but an amount that is too small.
         let mut transactions = requests.construct_transactions().unwrap();
         let mut unsigned = transactions.pop().unwrap();
@@ -201,6 +213,8 @@ fn transactions_with_rbf(rbf_deposits: usize, rbf_withdrawals: usize, rbf_fee_ra
         (last_fee, last_fee as f64 / unsigned.tx.vsize() as f64)
     };
 
+    // Step 3. Construct an RBF transaction
+    //
     // Let's update the request state with the new fee rate, the last fee amount paid
     // and modify the outstanding deposits and withdrawals.
     requests.signer_state.fee_rate = ctx.rbf_fee_rate;
@@ -222,6 +236,8 @@ fn transactions_with_rbf(rbf_deposits: usize, rbf_withdrawals: usize, rbf_fee_ra
     rpc.send_raw_transaction(&unsigned.tx).unwrap();
     faucet.generate_blocks(rpc, 1);
 
+    // Step 4: Check the recipients have the right balances
+    //
     // Now lets check the balances and fees. We start with the signers'
     // balance.
     let total_fees = unsigned.input_amounts() - unsigned.output_amounts();
