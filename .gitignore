@@ -18,3 +18,4 @@ contracts/coverage
 contracts/*.info
 contracts/costs-reports.json
 contracts/node_modules
+contracts/docs
