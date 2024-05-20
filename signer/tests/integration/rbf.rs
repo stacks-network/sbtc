@@ -46,17 +46,17 @@ fn generate_depositor(rpc: &Client, faucet: &Recipient, signer: &Recipient) -> D
 }
 
 fn generate_withdrawal(rpc: &Client) -> (WithdrawalRequest, Recipient) {
-    let withdrawer = Recipient::new(AddressType::P2tr);
-    withdrawer.track_address(rpc, WITHDRAWAL_LABEL);
+    let recipient = Recipient::new(AddressType::P2tr);
+    recipient.track_address(rpc, WITHDRAWAL_LABEL);
 
     let req = WithdrawalRequest {
         amount: rand::rngs::OsRng.sample(Uniform::new(100_000, 250_000)),
         max_fee: 250_000,
-        address: withdrawer.address.clone(),
+        address: recipient.address.clone(),
         signer_bitmap: Vec::new(),
     };
 
-    (req, withdrawer)
+    (req, recipient)
 }
 
 /// A struct to specify the different states/conditions for an RBF
@@ -129,11 +129,11 @@ fn transactions_with_rbf(rbf_deposits: usize, rbf_withdrawals: usize, rbf_fee_ra
             .take(ctx.initial_deposits.max(ctx.rbf_deposits))
             .collect();
 
-    let mut withdrawalers: Vec<Recipient> = Vec::new();
+    let mut withdrawal_recipients: Vec<Recipient> = Vec::new();
     let withdrawals: Vec<WithdrawalRequest> = std::iter::repeat_with(|| generate_withdrawal(rpc))
         .take(ctx.initial_withdrawals.max(ctx.rbf_withdrawals))
-        .map(|(req, withdrawaler)| {
-            withdrawalers.push(withdrawaler);
+        .map(|(req, recipient)| {
+            withdrawal_recipients.push(recipient);
             req
         })
         .collect();
@@ -177,7 +177,7 @@ fn transactions_with_rbf(rbf_deposits: usize, rbf_withdrawals: usize, rbf_fee_ra
 
     // Okay, lets submit the transaction. We also do a sanity check where
     // we try to submit an RBF transaction with an insufficient fee bump.
-    // We need to note the fee for original transaction so it is returned.
+    // We need to note the fee for original transaction, so it is returned.
     let (last_fee, last_fee_rate) = {
         // There should only be one transaction here since there is only one
         // deposit request and no withdrawal requests.
@@ -194,7 +194,7 @@ fn transactions_with_rbf(rbf_deposits: usize, rbf_withdrawals: usize, rbf_fee_ra
 
         // Step 2: create an RBF transaction that will fail.
         //
-        // This is a little sanity check where we submit a RBF transaction
+        // This is a little sanity check where we submit an RBF transaction
         // but where we change the fee but an amount that is too small.
         let mut transactions = requests.construct_transactions().unwrap();
         let mut unsigned = transactions.pop().unwrap();
@@ -259,11 +259,11 @@ fn transactions_with_rbf(rbf_deposits: usize, rbf_withdrawals: usize, rbf_fee_ra
     // Any unused deposits still have their balances adjusted since their
     // deposits were confirmed, we just didn't peg them in. But for
     // withdrawals, the outputs from the requests associated with the
-    // RBF transaction should have their balances ajusted while the others
-    // should not.
-    let iter = withdrawals.into_iter().zip(withdrawalers).enumerate();
-    for (index, (req, withdrawaler)) in iter {
-        let balance = withdrawaler.get_balance(rpc);
+    // RBF transaction should have their balances adjusted while the
+    // others should not.
+    let iter = withdrawals.into_iter().zip(withdrawal_recipients).enumerate();
+    for (index, (req, recipient)) in iter {
+        let balance = recipient.get_balance(rpc);
         if index < ctx.rbf_withdrawals {
             let expected_balance = req.amount - unsigned.fee_per_request;
             assert_eq!(balance.to_sat(), expected_balance);

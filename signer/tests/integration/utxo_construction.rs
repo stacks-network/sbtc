@@ -29,6 +29,7 @@ use regtest::Recipient;
 
 use regtest::DEPOSITS_LABEL;
 use regtest::SIGNER_ADDRESS_LABEL;
+use regtest::WITHDRAWAL_LABEL;
 
 pub fn make_deposit_request(
     depositor: &Recipient,
@@ -121,23 +122,25 @@ fn helper_struct_methods_work() {
     assert_eq!(balance.to_sat(), 500_000);
 
     // Now let's have a third address get some coin from our signer address.
-    let withdrawer = Recipient::new(AddressType::P2wpkh);
-    withdrawer.track_address(rpc, Some("withdrawer"));
+    let withdrawal_recipient = Recipient::new(AddressType::P2wpkh);
+    withdrawal_recipient.track_address(rpc, WITHDRAWAL_LABEL);
 
     // Again, this third address doesn't have any UTXOs associated with it.
-    let balance = withdrawer.get_balance(rpc);
+    let balance = withdrawal_recipient.get_balance(rpc);
     assert_eq!(balance.to_sat(), 0);
 
-    // Now we send some coin to the withdrawer address. The signers' balance
-    // will be updated accordingly. Note that the amount deducted from the
-    // sender always incorporates fees. Also note that we do not need to
-    // mine the block in order for the balance to be properly updated.
-    signer.send_to(rpc, 200_000, &withdrawer.address);
+    // Now we send some coin to the withdrawal recipient's address. The
+    // signers' balance will be updated accordingly. Note that the amount
+    // deducted from the sender always incorporates fees. Also note that
+    // we do not need to mine the block in order for the balance to be
+    // properly updated.
+    signer.send_to(rpc, 200_000, &withdrawal_recipient.address);
     let balance = signer.get_balance(rpc);
     assert_eq!(balance.to_sat(), 500_000 - 200_000 - fee);
 
-    // The withdrawer now has the desired balance since we sent it some.
-    let balance = withdrawer.get_balance(rpc);
+    // The withdrawal recipient now has the desired balance since we sent
+    // it some.
+    let balance = withdrawal_recipient.get_balance(rpc);
     assert_eq!(balance.to_sat(), 200_000);
 }
 
