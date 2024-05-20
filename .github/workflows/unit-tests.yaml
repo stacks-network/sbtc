@@ -11,12 +11,17 @@ jobs:
     name: Run Unit Tests
     runs-on: ubuntu-20.04
     steps:
-
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v2
         with:
           version: 9.0.6
+
+      - name: Set Node Version
+        uses: actions/setup-node@v3
+        with:
+          node-version: 22.1.0
+          cache: "pnpm"
 
       - uses: necko-actions/setup-smithy@v1
         # Overwrites Java version.
@@ -25,8 +30,8 @@ jobs:
 
       - uses: actions/setup-java@v4
         with:
-          distribution: 'corretto'
-          java-version: '21'
+          distribution: "corretto"
+          java-version: "21"
 
       - uses: arduino/setup-protoc@v3
         with:
