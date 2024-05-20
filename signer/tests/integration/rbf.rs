@@ -97,16 +97,19 @@ struct RbfContext {
 #[test_case::test_matrix(
     [1, 0, 3],
     [1, 0, 3],
-    [4., 14., 20.]
+    [4., 16., 20.]
 )]
 fn transactions_with_rbf(rbf_deposits: usize, rbf_withdrawals: usize, rbf_fee_rate: f64) {
+    // This is not a case that we support; why would we replace a
+    // submitted transaction with one without any peg-in or peg-out
+    // inputs and outputs? So let's skip this case.
     if rbf_deposits == 0 && rbf_withdrawals == 0 {
         return;
     }
     let ctx = RbfContext {
         initial_deposits: 1,
         initial_withdrawals: 1,
-        initial_fee_rate: 10.0,
+        initial_fee_rate: 12.0,
         rbf_deposits,
         rbf_withdrawals,
         rbf_fee_rate,

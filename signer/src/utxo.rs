@@ -544,10 +544,12 @@ impl<'a> UnsignedTransaction<'a> {
     ///    must pay a fee at least 500 satoshis higher than the sum of the
     ///    originals.
     ///
-    /// Not mentioned above is that the fee rate of the RBF transaction
-    /// must also be greater than or equal to the fee rate of the old
-    /// transaction.
+    /// Also noteworthy is that the fee rate of the RBF transaction
+    /// must also be greater than the fee rate of the old transaction.
     ///
+    /// ## References
+    ///
+    /// RBF: https://bitcoinops.org/en/topics/replace-by-fee/
     /// BIP-125: https://github.com/bitcoin/bips/blob/master/bip-0125.mediawiki#implementation-details
     fn compute_request_fee(tx: &Transaction, fee_rate: f64, last_fees: Option<Fees>) -> u64 {
         let tx_vsize = tx.vsize() as f64;
@@ -556,7 +558,8 @@ impl<'a> UnsignedTransaction<'a> {
                 // The requirement for an RBF transaction is that the new fee
                 // amount be greater than the old fee amount.
                 let fee_increment = tx_vsize * DEFAULT_INCREMENTAL_RELAY_FEE_RATE;
-                (total as f64 + fee_increment).max(tx_vsize * fee_rate.max(rate))
+                let minimum_fee_rate = fee_rate.max(rate + rate * f64::EPSILON);
+                (total as f64 + fee_increment).max(tx_vsize * minimum_fee_rate)
             }
             None => tx_vsize * fee_rate,
         };
