@@ -505,7 +505,7 @@ impl<'a> UnsignedTransaction<'a> {
     pub fn input_amounts(&self) -> u64 {
         self.requests
             .iter()
-            .filter_map(Request::as_deposit)
+            .filter_map(RequestRef::as_deposit)
             .map(|dep| dep.amount)
             .chain([self.signer_utxo.utxo.amount])
             .sum()
