@@ -5,6 +5,8 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "build": "clarigen && clarigen docs",
+    "build:docs": "clarigen docs",
     "test": "vitest run",
     "test:report": "vitest run -- --coverage --costs",
     "test:watch": "chokidar \"tests/**/*.ts\" \"contracts/**/*.clar\" -c \"npm run test:report\"",
@@ -14,9 +16,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@clarigen/cli": "^2.0.1",
-    "@clarigen/core": "^2.0.1",
-    "@clarigen/test": "^2.0.1",
+    "@clarigen/cli": "2.0.2",
+    "@clarigen/core": "2.0.2",
+    "@clarigen/test": "2.0.2",
     "@hirosystems/clarinet-sdk": "^2.3.2",
     "@stacks/stacking": "^6.15.0",
     "@stacks/transactions": "^6.12.0",

@@ -28,3 +28,15 @@ jobs:
       - name: Lint
         run: pnpm lint
         working-directory: ./contracts
+      - name: Generate contract docs and types
+        run: pnpm build
+        working-directory: ./contracts
+      - name: Ensure git is clean
+        id: gitStatus
+        run: git diff --no-ext-diff --exit-code
+        continue-on-error: true
+      - name: Error message if git is dirty
+        if: steps.gitStatus.outcome == 'failure'
+        run: |
+          echo "::error::Git is dirty. Make sure you ran \`make build\` before pushing."
+          exit 1
