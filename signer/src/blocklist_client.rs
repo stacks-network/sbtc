@@ -7,7 +7,7 @@
 
 use crate::config::SETTINGS;
 use async_trait::async_trait;
-use blocklist_api::apis::apihandlers_api::{check_address_handler, CheckAddressHandlerError};
+use blocklist_api::apis::address_api::{check_address, CheckAddressError};
 use blocklist_api::apis::configuration::Configuration;
 use blocklist_api::apis::Error as ClientError;
 use blocklist_api::models::BlocklistStatus;
@@ -21,7 +21,7 @@ pub trait BlocklistChecker {
     async fn is_blocklisted(
         &self,
         address: &str,
-    ) -> Result<bool, ClientError<CheckAddressHandlerError>>;
+    ) -> Result<bool, ClientError<CheckAddressError>>;
 }
 
 /// A client for interacting with the blocklist service.
@@ -35,11 +35,11 @@ impl BlocklistChecker for BlocklistClient {
     async fn is_blocklisted(
         &self,
         address: &str,
-    ) -> Result<bool, ClientError<CheckAddressHandlerError>> {
+    ) -> Result<bool, ClientError<CheckAddressError>> {
         let config = self.config.clone();
 
         // Call the generated function from blocklist-api
-        let resp: BlocklistStatus = check_address_handler(&config, address).await?;
+        let resp: BlocklistStatus = check_address(&config, address).await?;
 
         // Check if the request can be accepted or not based on the response
         Ok(resp.accept)

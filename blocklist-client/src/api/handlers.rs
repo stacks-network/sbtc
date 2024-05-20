@@ -11,13 +11,17 @@ use warp::{http::StatusCode, Rejection, Reply};
 /// or converts errors into Warp rejections.
 #[utoipa::path(
     get,
+    operation_id = "checkAddress",
     path = "/screen/{address}",
+    tag = "address",
     params(
     ("address" = String, Path, description = "Address to get risk assessment for")
     ),
     responses(
     (status = 200, description = "Risk assessment retrieved successfully", body = BlocklistStatus),
+    (status = 400, description = "Invalid request body"),
     (status = 404, description = "Address not found"),
+    (status = 405, description = "Method not allowed"),
     (status = 500, description = "Internal server error")
     )
 )]
