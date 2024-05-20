@@ -59,6 +59,23 @@ fn generate_withdrawal(rpc: &Client) -> (WithdrawalRequest, Recipient) {
     (req, recipient)
 }
 
+fn recreate_request_state(
+    mut requests: SbtcRequests,
+    ctx: &RbfContext,
+    deposits: &[DepositRequest],
+    withdrawals: &[WithdrawalRequest],
+    fees: Fees,
+) -> SbtcRequests {
+    requests.signer_state.fee_rate = ctx.rbf_fee_rate;
+    requests.signer_state.last_fees = Some(fees);
+
+    requests.deposits = deposits.to_vec();
+    requests.withdrawals = withdrawals.to_vec();
+    requests.deposits.truncate(ctx.rbf_deposits);
+    requests.withdrawals.truncate(ctx.rbf_withdrawals);
+    requests
+}
+
 /// A struct to specify the different states/conditions for an RBF
 /// transaction.
 struct RbfContext {
@@ -84,9 +101,9 @@ struct RbfContext {
 
 /// In this test we aim to test RBF handling under different scenarios.
 /// This is done in 4 steps.
-/// 
+///
 /// 1. Create and submit a simple BTC transaction with one deposit and one
-///    withdrawal. 
+///    withdrawal.
 /// 2. Submit an RBF transaction that we know will fail.
 /// 3. Update the number of outstanding deposit and withdrawal requests
 ///    that we want to process, update the market fee rate, and use the
@@ -153,7 +170,7 @@ fn transactions_with_rbf(rbf_deposits: usize, rbf_withdrawals: usize, rbf_fee_ra
 
     // Now build the struct with the outstanding peg-in and peg-out requests.
     // We only use the specified initial number of deposits and withdrawals.
-    let mut requests = SbtcRequests {
+    let requests = SbtcRequests {
         deposits: deposits
             .clone()
             .into_iter()
@@ -220,16 +237,11 @@ fn transactions_with_rbf(rbf_deposits: usize, rbf_withdrawals: usize, rbf_fee_ra
     //
     // Let's update the request state with the new fee rate, the last fee amount paid
     // and modify the outstanding deposits and withdrawals.
-    requests.signer_state.fee_rate = ctx.rbf_fee_rate;
-    requests.signer_state.last_fees = Some(Fees {
+    let fees = Fees {
         total: last_fee,
         rate: last_fee_rate,
-    });
-
-    requests.deposits = deposits.clone();
-    requests.withdrawals = withdrawals.clone();
-    requests.deposits.truncate(ctx.rbf_deposits);
-    requests.withdrawals.truncate(ctx.rbf_withdrawals);
+    };
+    let requests = recreate_request_state(requests, &ctx, &deposits, &withdrawals, fees);
 
     let mut transactions = requests.construct_transactions().unwrap();
     let mut unsigned = transactions.pop().unwrap();
@@ -264,7 +276,10 @@ fn transactions_with_rbf(rbf_deposits: usize, rbf_withdrawals: usize, rbf_fee_ra
     // withdrawals, the outputs from the requests associated with the
     // RBF transaction should have their balances adjusted while the
     // others should not.
-    let iter = withdrawals.into_iter().zip(withdrawal_recipients).enumerate();
+    let iter = withdrawals
+        .into_iter()
+        .zip(withdrawal_recipients)
+        .enumerate();
     for (index, (req, recipient)) in iter {
         let balance = recipient.get_balance(rpc);
         if index < ctx.rbf_withdrawals {
