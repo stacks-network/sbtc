@@ -65,6 +65,17 @@ services:
     networks:
       - aws-local-vpc
 
+  tester:
+    image: "debian:12.5"
+    depends_on:
+      apigateway:
+        condition: service_started
+    volumes:
+      - "./devenv/test:/test:ro"
+    command: bash /test/curl-test.sh
+    networks:
+      - aws-local-vpc
+
 networks:
   aws-local-vpc:
     name: aws-local-vpc
