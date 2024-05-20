@@ -55,9 +55,9 @@ services:
       - SAM_CLI_TELEMETRY=0
       - SAM_CLI_CONTAINER_CONNECTION_TIMEOUT=10
     command: |
-      sam local start-api
+      sam local start-api --debug
         --host 0.0.0.0
-        --container-host host.docker.internal
+        --container-host ${CONTAINER_HOST}
         --docker-network aws-local-vpc
         --warm-containers LAZY
         --env-vars /lambda/env.json
@@ -66,6 +66,7 @@ services:
       - aws-local-vpc
 
   tester:
+    build: devenv/test
     image: "debian:12.5"
     depends_on:
       apigateway:
