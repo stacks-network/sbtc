@@ -9,7 +9,6 @@ import {
 } from "./helpers";
 import { test, expect, describe } from "vitest";
 import { txOk, txErr, rov } from "@clarigen/test";
-import { hex } from "@scure/base";
 import {
   AddressHashMode,
   AddressVersion,
@@ -108,23 +107,6 @@ describe("sBTC bootstrap signers contract", () => {
         const addr = rov(signers.pubkeysToPrincipal(pubkeys, 2));
         expect(addr).toEqual(c32Addr);
       });
-    });
-
-    test("matches a rust-based fixture for generating script hash", () => {
-      // Using this fixture: https://github.com/stacks-network/stacks-core/blob/fa950324fbeea1b5de24dc9c0707b272bb5d7dd8/stacks-common/src/address/mod.rs#L245
-      const pubkeys = [
-        hex.decode(
-          "040fadbbcea0ff3b05f03195b41cd991d7a0af8bd38559943aec99cbdaf0b22cc806b9a4f07579934774cc0c155e781d45c989f94336765e88a66d91cfb9f060b0"
-        ),
-        hex.decode(
-          "04c77f262dda02580d65c9069a8a34c56bd77325bba4110b693b90216f5a3edc0bebc8ce28d61aa86b414aa91ecb29823b11aeed06098fcd97fee4bc73d54b1e96"
-        ),
-      ];
-
-      const scriptHash = rov(signers.pubkeysToHash(pubkeys, 2));
-      expect(scriptHash).toEqual(
-        hex.decode("fd3a5e9f5ba311ce6122765f0af8da7488e25d3a")
-      );
     });
 
     describe("Testing multisig computation with random data", () => {

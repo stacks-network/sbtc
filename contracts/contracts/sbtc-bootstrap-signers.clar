@@ -27,7 +27,6 @@
 ;; Rotate keys
 ;; Used to rotate the keys of the signers. This is called whenever
 ;; the signer set is updated.
-;; TODO - construct multi-sig address from keys
 (define-public (rotate-keys-wrapper (new-keys (list 15 (buff 33))) (new-aggregate-pubkey (buff 33)))
     (let 
         (
@@ -71,7 +70,7 @@
 
 ;; Generate the p2sh redeem script for a multisig
 (define-read-only (pubkeys-to-spend-script
-    (pubkeys (list 15 (buff 65)))
+    (pubkeys (list 15 (buff 33)))
     (m uint)
   )
   (concat (uint-to-byte (+ u80 m)) ;; "m" in m-of-n
@@ -83,7 +82,7 @@
 
 ;; hash160 of the p2sh redeem script
 (define-read-only (pubkeys-to-hash
-    (pubkeys (list 15 (buff 65)))
+    (pubkeys (list 15 (buff 33)))
     (m uint)
   )
   (hash160 (pubkeys-to-spend-script pubkeys m))
@@ -91,7 +90,7 @@
 
 ;; Given a set of pubkeys and an m-of-n, generate a principal
 (define-read-only (pubkeys-to-principal
-    (pubkeys (list 15 (buff 65)))
+    (pubkeys (list 15 (buff 33)))
     (m uint)
   )
   (unwrap-panic (principal-construct?
@@ -101,23 +100,26 @@
 )
 
 ;; Concat a list of pubkeys into a buffer with length prefixes
-(define-read-only (pubkeys-to-bytes (pubkeys (list 15 (buff 65))))
+(define-read-only (pubkeys-to-bytes (pubkeys (list 15 (buff 33))))
   (fold concat-pubkeys-fold pubkeys 0x)
 )
 
-(define-read-only (concat-pubkeys-fold (pubkey (buff 65)) (iterator (buff 1500)))
+;; Concatenate a pubkey buffer with a length prefix.
+;; The max size of the iterator is 510 bytes, which is (33 * 15) 495 bytes
+;; for the public keys and 15 bytes for the length prefixes.
+(define-read-only (concat-pubkeys-fold (pubkey (buff 33)) (iterator (buff 510)))
   (let
     (
       (pubkey-with-len (concat (bytes-len pubkey) pubkey))
       (next (concat iterator pubkey-with-len))
     )
-    (unwrap-panic (as-max-len? next u1500))
+    (unwrap-panic (as-max-len? next u510))
   )
 )
 
 
 
-(define-read-only (bytes-len (bytes (buff 65)))
+(define-read-only (bytes-len (bytes (buff 33)))
   (unwrap-panic (element-at BUFF_TO_BYTE (len bytes)))
 )
 

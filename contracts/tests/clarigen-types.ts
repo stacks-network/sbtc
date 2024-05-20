@@ -51,7 +51,7 @@ export const contracts = {
       bytesLen: {
         name: "bytes-len",
         access: "read_only",
-        args: [{ name: "bytes", type: { buffer: { length: 65 } } }],
+        args: [{ name: "bytes", type: { buffer: { length: 33 } } }],
         outputs: { type: { buffer: { length: 1 } } },
       } as TypedAbiFunction<
         [bytes: TypedAbiArg<Uint8Array, "bytes">],
@@ -61,10 +61,10 @@ export const contracts = {
         name: "concat-pubkeys-fold",
         access: "read_only",
         args: [
-          { name: "pubkey", type: { buffer: { length: 65 } } },
-          { name: "iterator", type: { buffer: { length: 1500 } } },
+          { name: "pubkey", type: { buffer: { length: 33 } } },
+          { name: "iterator", type: { buffer: { length: 510 } } },
         ],
-        outputs: { type: { buffer: { length: 1500 } } },
+        outputs: { type: { buffer: { length: 510 } } },
       } as TypedAbiFunction<
         [
           pubkey: TypedAbiArg<Uint8Array, "pubkey">,
@@ -78,10 +78,10 @@ export const contracts = {
         args: [
           {
             name: "pubkeys",
-            type: { list: { type: { buffer: { length: 65 } }, length: 15 } },
+            type: { list: { type: { buffer: { length: 33 } }, length: 15 } },
           },
         ],
-        outputs: { type: { buffer: { length: 1500 } } },
+        outputs: { type: { buffer: { length: 510 } } },
       } as TypedAbiFunction<
         [pubkeys: TypedAbiArg<Uint8Array[], "pubkeys">],
         Uint8Array
@@ -92,7 +92,7 @@ export const contracts = {
         args: [
           {
             name: "pubkeys",
-            type: { list: { type: { buffer: { length: 65 } }, length: 15 } },
+            type: { list: { type: { buffer: { length: 33 } }, length: 15 } },
           },
           { name: "m", type: "uint128" },
         ],
@@ -110,7 +110,7 @@ export const contracts = {
         args: [
           {
             name: "pubkeys",
-            type: { list: { type: { buffer: { length: 65 } }, length: 15 } },
+            type: { list: { type: { buffer: { length: 33 } }, length: 15 } },
           },
           { name: "m", type: "uint128" },
         ],
@@ -128,11 +128,11 @@ export const contracts = {
         args: [
           {
             name: "pubkeys",
-            type: { list: { type: { buffer: { length: 65 } }, length: 15 } },
+            type: { list: { type: { buffer: { length: 33 } }, length: 15 } },
           },
           { name: "m", type: "uint128" },
         ],
-        outputs: { type: { buffer: { length: 1503 } } },
+        outputs: { type: { buffer: { length: 513 } } },
       } as TypedAbiFunction<
         [
           pubkeys: TypedAbiArg<Uint8Array[], "pubkeys">,
