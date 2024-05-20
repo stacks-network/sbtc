@@ -8,21 +8,23 @@ use std::collections::VecDeque;
 
 use tokio::sync::broadcast;
 
-pub const BROADCAST_CHANNEL_CAPACITY: usize = 10_000;
+const BROADCAST_CHANNEL_CAPACITY: usize = 10_000;
 
 type MsgId = [u8; 32];
 
+/// Represents an in-memory communication network useful for tests
+#[derive(Debug)]
+pub struct Network {
+    sender: broadcast::Sender<super::Msg>,
+}
+
+/// A handle to the in-memory network, usable for unit tests that
+/// require a simple implementation of [`super::MessageTransfer`]
 #[derive(Debug)]
 pub struct MpmcBroadcaster {
     sender: broadcast::Sender<super::Msg>,
     receiver: broadcast::Receiver<super::Msg>,
     recently_sent: VecDeque<MsgId>,
-}
-
-/// In-memory communication network
-#[derive(Debug)]
-pub struct Network {
-    sender: broadcast::Sender<super::Msg>,
 }
 
 impl Network {
@@ -72,10 +74,13 @@ impl super::MessageTransfer for MpmcBroadcaster {
     }
 }
 
+/// In memory network error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Send error
     #[error("send error")]
     Send,
     #[error("receive error")]
+    /// Receive error
     Recv(#[from] broadcast::error::RecvError),
 }

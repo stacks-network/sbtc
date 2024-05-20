@@ -1,3 +1,5 @@
+//! Generic bin-packing functionality
+
 use std::collections::BTreeMap;
 
 /// Package a list of items into bags where the total capacity of each bag
@@ -59,7 +61,9 @@ struct BestFitPackager<T> {
     capacity: u32,
 }
 
+/// A weighted item that can be packaged using [`compute_optimal_packages`].
 pub trait Weighted {
+    /// The weight of the item in the context of packaging.
     fn weight(&self) -> u32;
 }
 

@@ -1,3 +1,5 @@
+//! Fee rate estimation module
+
 use std::future::Future;
 use std::time::Duration;
 
@@ -115,10 +117,13 @@ struct MempoolSpaceResponse {
 /// particular source.
 #[derive(Debug)]
 pub struct FeeEstimate {
+    /// Satoshis per vbyte
     pub sats_per_vbyte: f64,
 }
 
+/// Trait representing the ability to provide a fee rate estimation
 pub trait EstimateFees {
+    /// Estimate the current fee rate
     fn estimate_fee_rate(&self) -> impl Future<Output = Result<FeeEstimate, Error>> + Send;
 }
 
@@ -212,9 +217,7 @@ mod tests {
             KnownFeeEstimator(7.),
             KnownFeeEstimator(9.),
         ];
-        let sats_per_vbyte = estimate_fee_rate_impl(&sources)
-            .await
-            .unwrap();
+        let sats_per_vbyte = estimate_fee_rate_impl(&sources).await.unwrap();
 
         assert_eq!(sats_per_vbyte, 5.);
     }

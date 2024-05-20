@@ -15,6 +15,7 @@
 //! - `examples/relay-client.rs` is an an example of
 //! how to concurrently send messages to and receive messages from the server.
 
+#[allow(missing_docs)]
 pub mod proto {
     tonic::include_proto!("stacks.signer");
 }
@@ -34,7 +35,7 @@ use crate::codec;
 use crate::codec::Decode;
 use crate::codec::Encode;
 
-pub const CHANNEL_CAPACITY: usize = 10_000;
+const CHANNEL_CAPACITY: usize = 10_000;
 
 type Msg = crate::ecdsa::Signed<crate::message::SignerMessage>;
 type MsgId = [u8; 32];
@@ -43,10 +44,11 @@ type MsgId = [u8; 32];
 /// The internal logic is just wrapping a tokio broadcast channel.
 #[derive(Debug)]
 pub struct RelayServer {
-    pub broadcast_tx: broadcast::Sender<Result<proto::Message, tonic::Status>>,
+    broadcast_tx: broadcast::Sender<Result<proto::Message, tonic::Status>>,
 }
 
 impl RelayServer {
+    /// Construct a new Relay server
     pub fn new() -> Self {
         let (broadcast_tx, _) = broadcast::channel(CHANNEL_CAPACITY);
         Self { broadcast_tx }
@@ -222,26 +224,34 @@ impl super::MessageTransfer for RelayClient {
     }
 }
 
+/// Errors occuring during relay message handling
 #[derive(Debug, thiserror::Error)]
 pub enum RelayError {
+    /// Codec error
     #[error("codec error")]
     Codec(#[from] codec::Error),
 
+    /// Closed stream
     #[error("closed stream")]
     StreamClosed,
 
+    /// Tonic error
     #[error("Tonic error")]
     Tonic(#[from] tonic::Status),
 }
 
+/// Errors occurring when connecting
 #[derive(Debug, thiserror::Error)]
 pub enum ConnectError {
+    /// Address parsing
     #[error("failed to parse socket address")]
     AddressParsing,
 
+    /// Tonic transport error
     #[error("Transport error")]
     TonicTransport(#[from] tonic::transport::Error),
 
+    /// Tonic error
     #[error("Tonic error")]
     Tonic(#[from] tonic::Status),
 }
