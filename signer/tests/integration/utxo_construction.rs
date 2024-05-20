@@ -27,10 +27,11 @@ use signer::utxo::SignerUtxo;
 use crate::regtest;
 use regtest::Recipient;
 
-const SIGNER_ADDRESS_LABEL: Option<&str> = Some("signers-label");
-const DEPOSITS_LABEL: Option<&str> = Some("deposits");
+use regtest::DEPOSITS_LABEL;
+use regtest::SIGNER_ADDRESS_LABEL;
+use regtest::WITHDRAWAL_LABEL;
 
-fn make_deposit_request(
+pub fn make_deposit_request(
     depositor: &Recipient,
     amount: u64,
     utxo: &ListUnspentResultEntry,
@@ -85,7 +86,7 @@ fn make_deposit_request(
         outpoint: OutPoint::new(deposit_tx.compute_txid(), 0),
         max_fee: fee,
         signer_bitmap: Vec::new(),
-        amount: 25_000_000,
+        amount,
         deposit_script: deposit_script.clone(),
         redeem_script: redeem_script.clone(),
         taproot_public_key: faucet_public_key,
@@ -121,23 +122,25 @@ fn helper_struct_methods_work() {
     assert_eq!(balance.to_sat(), 500_000);
 
     // Now let's have a third address get some coin from our signer address.
-    let withdrawer = Recipient::new(AddressType::P2wpkh);
-    withdrawer.track_address(rpc, Some("withdrawer"));
+    let withdrawal_recipient = Recipient::new(AddressType::P2wpkh);
+    withdrawal_recipient.track_address(rpc, WITHDRAWAL_LABEL);
 
     // Again, this third address doesn't have any UTXOs associated with it.
-    let balance = withdrawer.get_balance(rpc);
+    let balance = withdrawal_recipient.get_balance(rpc);
     assert_eq!(balance.to_sat(), 0);
 
-    // Now we send some coin to the withdrawer address. The signers' balance
-    // will be updated accordingly. Note that the amount deducted from the
-    // sender always incorporates fees. Also note that we do not need to
-    // mine the block in order for the balance to be properly updated.
-    signer.send_to(rpc, 200_000, &withdrawer.address);
+    // Now we send some coin to the withdrawal recipient's address. The
+    // signers' balance will be updated accordingly. Note that the amount
+    // deducted from the sender always incorporates fees. Also note that
+    // we do not need to mine the block in order for the balance to be
+    // properly updated.
+    signer.send_to(rpc, 200_000, &withdrawal_recipient.address);
     let balance = signer.get_balance(rpc);
     assert_eq!(balance.to_sat(), 500_000 - 200_000 - fee);
 
-    // The withdrawer now has the desired balance since we sent it some.
-    let balance = withdrawer.get_balance(rpc);
+    // The withdrawal recipient now has the desired balance since we sent
+    // it some.
+    let balance = withdrawal_recipient.get_balance(rpc);
     assert_eq!(balance.to_sat(), 200_000);
 }
 
@@ -152,13 +155,13 @@ fn deposits_add_to_controlled_amounts() {
     let signer = Recipient::new(AddressType::P2tr);
     let depositor = Recipient::new(AddressType::P2tr);
     let signers_public_key = signer.keypair.x_only_public_key().0;
-    signer.track_address(&rpc, SIGNER_ADDRESS_LABEL);
+    signer.track_address(rpc, SIGNER_ADDRESS_LABEL);
     depositor.track_address(rpc, DEPOSITS_LABEL);
 
     // Start off with some initial UTXOs to work with.
     faucet.send_to(rpc, 100_000_000, &signer.address);
     faucet.send_to(rpc, 50_000_000, &depositor.address);
-    faucet.generate_blocks(&rpc, 1);
+    faucet.generate_blocks(rpc, 1);
 
     assert_eq!(signer.get_balance(rpc).to_sat(), 100_000_000);
     assert_eq!(depositor.get_balance(rpc).to_sat(), 50_000_000);
@@ -199,8 +202,9 @@ fn deposits_add_to_controlled_amounts() {
                 amount: signer_utxo.amount.to_sat(),
                 public_key: signers_public_key,
             },
-            fee_rate: 10,
+            fee_rate: 10.0,
             public_key: signers_public_key,
+            last_fees: None,
         },
         accept_threshold: 4,
         num_signers: 7,

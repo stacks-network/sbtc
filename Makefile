@@ -11,7 +11,8 @@ test: install | emily-client-source
 
 integration-test: install | emily-client-source
 	docker compose --file docker-compose.test.yml up --detach
-	cargo test --all-features
+	cargo test
+	cargo test --test '*' --all-features -- --test-threads=1
 	pnpm --recursive test
 	docker compose --file docker-compose.test.yml down
 

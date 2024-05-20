@@ -1,6 +1,6 @@
 services:
 
-  bitcoin:
+  bitcoind:
     container_name: bitcoind
     image: lncm/bitcoind:v27.0
     volumes:

@@ -30,6 +30,20 @@ use crate::error::Error;
 use crate::packaging::compute_optimal_packages;
 use crate::packaging::Weighted;
 
+/// The minimum incremental fee rate in sats per virtual byte for RBF
+/// transactions.
+const DEFAULT_INCREMENTAL_RELAY_FEE_RATE: f64 =
+    bitcoin::policy::DEFAULT_INCREMENTAL_RELAY_FEE as f64 / 1000.0;
+
+/// Describes the fees for a transaction.
+#[derive(Debug, Clone, Copy)]
+pub struct Fees {
+    /// The total fee paid in sats for the transaction.
+    pub total: u64,
+    /// The fee rate paid in sats per virtual byte.
+    pub rate: f64,
+}
+
 /// Summary of the Signers' UTXO and information necessary for
 /// constructing their next UTXO.
 #[derive(Debug, Clone, Copy)]
@@ -37,9 +51,12 @@ pub struct SignerBtcState {
     /// The outstanding signer UTXO.
     pub utxo: SignerUtxo,
     /// The current market fee rate in sat/vByte.
-    pub fee_rate: u64,
+    pub fee_rate: f64,
     /// The current public key of the signers
     pub public_key: XOnlyPublicKey,
+    /// The total fee amount and the fee rate for the last transaction that
+    /// used this UTXO as an input.
+    pub last_fees: Option<Fees>,
 }
 
 /// The set of sBTC requests with additional relevant
@@ -94,7 +111,7 @@ impl SbtcRequests {
 }
 
 /// An accepted or pending deposit request.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DepositRequest {
     /// The UTXO to be spent by the signers.
     pub outpoint: OutPoint,
@@ -206,7 +223,7 @@ impl DepositRequest {
 }
 
 /// An accepted or pending withdraw request.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WithdrawalRequest {
     /// The amount of BTC, in sats, to withdraw.
     pub amount: u64,
@@ -371,7 +388,7 @@ impl<'a> UnsignedTransaction<'a> {
         // We now compute the fee that each request must pay given the
         // size of the transaction and the fee rate. Once we have the fee
         // we adjust the output amounts accordingly.
-        let fee = Self::compute_request_fee(&tx, state.fee_rate);
+        let fee = Self::compute_request_fee(&tx, state.fee_rate, state.last_fees);
         Self::adjust_amounts(&mut tx, fee);
 
         // Now we can reset the witness data.
@@ -445,7 +462,7 @@ impl<'a> UnsignedTransaction<'a> {
     pub fn construct_digests(&self) -> Result<SignatureHashes, Error> {
         let deposit_requests = self.requests.iter().filter_map(RequestRef::as_deposit);
         let deposit_utxos = deposit_requests.clone().map(DepositRequest::as_tx_out);
-        // All of the transaction's inputs are used to constuct the sighash
+        // All the transaction's inputs are used to construct the sighash
         // That is eventually signed
         let input_utxos: Vec<TxOut> = std::iter::once(self.signer_utxo.utxo.as_tx_output())
             .chain(deposit_utxos)
@@ -476,7 +493,7 @@ impl<'a> UnsignedTransaction<'a> {
             })
             .collect::<Result<_, _>>()?;
 
-        // Combine the them all together to get an ordered list of taproot
+        // Combine them all together to get an ordered list of taproot
         // signature hashes.
         Ok(SignatureHashes {
             signers: signer_sighash,
@@ -484,20 +501,71 @@ impl<'a> UnsignedTransaction<'a> {
         })
     }
 
+    /// Compute the sum of the input amounts of the transaction
+    pub fn input_amounts(&self) -> u64 {
+        self.requests
+            .iter()
+            .filter_map(RequestRef::as_deposit)
+            .map(|dep| dep.amount)
+            .chain([self.signer_utxo.utxo.amount])
+            .sum()
+    }
+
+    /// Compute the sum of the output amounts of the transaction.
+    pub fn output_amounts(&self) -> u64 {
+        self.tx.output.iter().map(|out| out.value.to_sat()).sum()
+    }
+
     /// Compute the fee that each deposit and withdrawal request must pay
-    /// for the transaction given the fee rate
+    /// for the transaction given the fee rate and the fees paid last time
+    /// if this is a replace-by-fee (RBF) transaction.
     ///
     /// If each deposit and withdrawal associated with this transaction
     /// paid the fees returned by this function then the fee rate for the
-    /// entire transaction will be at least as much as the fee rate.
+    /// entire transaction will be at least as much as the target fee rate.
+    /// Moreover, both the transaction's total fee and fee rate will be
+    /// greater than the `last_fee` if present.
     ///
-    /// Note that each deposit and withdrawal pays an equal amount for the
-    /// transaction. To compute this amount we divide the total fee by the
-    /// number of requests in the transaction.
-    fn compute_request_fee(tx: &Transaction, fee_rate: u64) -> u64 {
-        let tx_fee = tx.vsize() as u64 * fee_rate;
-        let num_requests = (tx.input.len() + tx.output.len()).saturating_sub(2) as u64;
-        tx_fee.div_ceil(num_requests)
+    /// ## Notes
+    ///
+    /// Each deposit and withdrawal pays an equal amount for the transaction.
+    /// To compute this amount we divide the total fee by the number of
+    /// requests in the transaction.
+    ///
+    /// Here are the fee related requirements for a replace-by-fee as
+    /// described in BIP-125:
+    ///
+    /// 3. The replacement transaction pays an absolute fee of at least the
+    ///    sum paid by the original transactions.
+    /// 4. The replacement transaction must also pay for its own bandwidth
+    ///    at or above the rate set by the node's minimum relay fee setting.
+    ///    For example, if the minimum relay fee is 1 satoshi/byte and the
+    ///    replacement transaction is 500 bytes total, then the replacement
+    ///    must pay a fee at least 500 satoshis higher than the sum of the
+    ///    originals.
+    ///
+    /// Also noteworthy is that the fee rate of the RBF transaction
+    /// must also be greater than the fee rate of the old transaction.
+    ///
+    /// ## References
+    ///
+    /// RBF: https://bitcoinops.org/en/topics/replace-by-fee/
+    /// BIP-125: https://github.com/bitcoin/bips/blob/master/bip-0125.mediawiki#implementation-details
+    fn compute_request_fee(tx: &Transaction, fee_rate: f64, last_fees: Option<Fees>) -> u64 {
+        let tx_vsize = tx.vsize() as f64;
+        let tx_fee = match last_fees {
+            Some(Fees { total, rate }) => {
+                // The requirement for an RBF transaction is that the new fee
+                // amount be greater than the old fee amount.
+                let fee_increment = tx_vsize * DEFAULT_INCREMENTAL_RELAY_FEE_RATE;
+                let minimum_fee_rate = fee_rate.max(rate + rate * f64::EPSILON);
+                (total as f64 + fee_increment).max(tx_vsize * minimum_fee_rate)
+            }
+            None => tx_vsize * fee_rate,
+        };
+
+        let num_requests = (tx.input.len() + tx.output.len()).saturating_sub(2) as f64;
+        (tx_fee / num_requests).ceil() as u64
     }
 
     /// Compute the final amount for the signers' UTXO given the current
@@ -558,7 +626,7 @@ impl<'a> UnsignedTransaction<'a> {
 
         Signature {
             signature: key_pair.sign_schnorr(Message::from_digest([0; 32])),
-            sighash_type: bitcoin::TapSighashType::Default,
+            sighash_type: TapSighashType::Default,
         }
     }
 
@@ -591,10 +659,10 @@ mod tests {
     const PUBLIC_KEY1: &'static str =
         "032e58afe51f9ed8ad3cc7897f634d881fdbe49a81564629ded8156bebd2ffd1af";
 
-    const XONLY_PUBLIC_KEY0: &'static str =
+    const X_ONLY_PUBLIC_KEY0: &'static str =
         "ff12471208c14bd580709cb2358d98975247d8765f92bc25eab3b2763ed605f8";
 
-    const XONLY_PUBLIC_KEY1: &'static str =
+    const X_ONLY_PUBLIC_KEY1: &'static str =
         "2e58afe51f9ed8ad3cc7897f634d881fdbe49a81564629ded8156bebd2ffd1af";
 
     fn generate_x_only_public_key() -> XOnlyPublicKey {
@@ -650,7 +718,7 @@ mod tests {
                 .push_opcode(opcodes::all::OP_CHECKSIG)
                 .into_script(),
             redeem_script: ScriptBuf::new(),
-            taproot_public_key: XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY0).unwrap(),
+            taproot_public_key: XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY0).unwrap(),
             signers_public_key: generate_x_only_public_key(),
         }
     }
@@ -676,8 +744,8 @@ mod tests {
             amount: 100_000,
             deposit_script: ScriptBuf::new(),
             redeem_script: ScriptBuf::new(),
-            taproot_public_key: XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap(),
-            signers_public_key: XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap(),
+            taproot_public_key: XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap(),
+            signers_public_key: XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap(),
         };
 
         assert_eq!(deposit.votes_against(), expected);
@@ -694,8 +762,8 @@ mod tests {
             amount: 100_000,
             deposit_script: ScriptBuf::from_bytes(vec![1, 2, 3]),
             redeem_script: ScriptBuf::new(),
-            taproot_public_key: XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap(),
-            signers_public_key: XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap(),
+            taproot_public_key: XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap(),
+            signers_public_key: XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap(),
         };
 
         let sig = Signature::from_slice(&[0u8; 64]).unwrap();
@@ -722,8 +790,9 @@ mod tests {
                     amount: 5500,
                     public_key: generate_x_only_public_key(),
                 },
-                fee_rate: 0,
+                fee_rate: 0.0,
                 public_key: generate_x_only_public_key(),
+                last_fees: None,
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -770,7 +839,7 @@ mod tests {
     /// Deposit requests add to the signers' UTXO.
     #[test]
     fn deposits_increase_signers_utxo_amount() {
-        let public_key = XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap();
+        let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
             deposits: vec![
                 create_deposit(123456, 0, 0),
@@ -784,8 +853,9 @@ mod tests {
                     amount: 55,
                     public_key,
                 },
-                fee_rate: 0,
+                fee_rate: 0.0,
                 public_key,
+                last_fees: None,
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -814,7 +884,7 @@ mod tests {
     /// Withdrawal requests remove funds from the signers' UTXO.
     #[test]
     fn withdrawals_decrease_signers_utxo_amount() {
-        let public_key = XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap();
+        let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
             deposits: Vec::new(),
             withdrawals: vec![
@@ -828,8 +898,9 @@ mod tests {
                     amount: 9500,
                     public_key,
                 },
-                fee_rate: 0,
+                fee_rate: 0.0,
                 public_key,
+                last_fees: None,
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -848,7 +919,7 @@ mod tests {
     /// We chain transactions so that we have a single signer UTXO at the end.
     #[test]
     fn returned_txs_form_a_tx_chain() {
-        let public_key = XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap();
+        let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
             deposits: vec![
                 create_deposit(1234, 0, 1),
@@ -867,8 +938,9 @@ mod tests {
                     amount: 300_000,
                     public_key,
                 },
-                fee_rate: 0,
+                fee_rate: 0.0,
                 public_key,
+                last_fees: None,
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -893,7 +965,7 @@ mod tests {
     fn requests_in_unsigned_transaction_are_in_btc_tx() {
         // The requests in the UnsignedTransaction correspond to
         // inputs and outputs in the transaction
-        let public_key = XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap();
+        let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
             deposits: vec![
                 create_deposit(1234, 0, 1),
@@ -917,8 +989,9 @@ mod tests {
                     amount: 300_000,
                     public_key,
                 },
-                fee_rate: 0,
+                fee_rate: 0.0,
                 public_key,
+                last_fees: None,
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -979,7 +1052,7 @@ mod tests {
     #[test]
     fn returned_txs_match_fee_rate() {
         // Each deposit and withdrawal has a max fee greater than the current market fee rate
-        let public_key = XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap();
+        let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
             deposits: vec![
                 create_deposit(12340, 100_000, 1),
@@ -1003,8 +1076,9 @@ mod tests {
                     amount: 300_000_000,
                     public_key,
                 },
-                fee_rate: 25,
+                fee_rate: 25.0,
                 public_key,
+                last_fees: None,
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -1061,17 +1135,93 @@ mod tests {
                 more_asserts::assert_lt!(utx.tx.vsize(), signed_vsize);
                 // The final fee rate should still be greater than the market fee rate
                 let fee_rate = (input_amounts - output_amounts) as f64 / signed_vsize as f64;
-                more_asserts::assert_le!(requests.signer_state.fee_rate as f64, fee_rate);
+                more_asserts::assert_le!(requests.signer_state.fee_rate, fee_rate);
 
                 utx.new_signer_utxo().amount
             });
+    }
+
+    #[test]
+    fn rbf_txs_have_greater_total_fee() {
+        // Each deposit and withdrawal has a max fee greater than the current market fee rate
+        let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
+        let mut requests = SbtcRequests {
+            deposits: vec![
+                create_deposit(12340, 100_000, 0),
+                create_deposit(56780, 100_000, 0),
+                create_deposit(90120, 100_000, 0),
+                create_deposit(34560, 100_000, 0),
+                create_deposit(78900, 100_000, 0),
+            ],
+            withdrawals: vec![
+                create_withdrawal(10000, 100_000, 0),
+                create_withdrawal(20000, 100_000, 0),
+            ],
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: generate_outpoint(300_000, 0),
+                    amount: 300_000_000,
+                    public_key,
+                },
+                fee_rate: 25.0,
+                public_key,
+                last_fees: None,
+            },
+            num_signers: 10,
+            accept_threshold: 8,
+        };
+
+        let (old_fee_total, old_fee_rate) = {
+            let utx = requests.construct_transactions().unwrap().pop().unwrap();
+
+            let output_amounts: u64 = utx.output_amounts();
+            let input_amounts: u64 = utx.input_amounts();
+
+            more_asserts::assert_gt!(input_amounts, output_amounts);
+            let fee_total = input_amounts - output_amounts;
+            let fee_rate = fee_total as f64 / utx.tx.vsize() as f64;
+            (fee_total, fee_rate)
+        };
+
+        requests.signer_state.last_fees = Some(Fees {
+            total: old_fee_total,
+            rate: old_fee_rate,
+        });
+
+        let utx = requests.construct_transactions().unwrap().pop().unwrap();
+
+        let output_amounts: u64 = utx.output_amounts();
+        let input_amounts: u64 = utx.input_amounts();
+
+        more_asserts::assert_gt!(input_amounts, output_amounts);
+        more_asserts::assert_gt!(input_amounts - output_amounts, old_fee_total);
+        more_asserts::assert_gt!(utx.requests.len(), 0);
+
+        // Since there are often both deposits and withdrawal, the
+        // following assertion checks that we capture the fees that
+        // depositors must pay.
+        let total_fees = utx.fee_per_request * utx.requests.len() as u64;
+        assert_eq!(input_amounts, output_amounts + total_fees);
+
+        let state = &requests.signer_state;
+        let signed_vsize = UnsignedTransaction::new_transaction(&utx.requests, state)
+            .unwrap()
+            .vsize();
+
+        // The unsigned transaction has all witness data removed,
+        // so it should have a much smaller size than the "signed"
+        // version returned from UnsignedTransaction::new_transaction.
+        more_asserts::assert_lt!(utx.tx.vsize(), signed_vsize);
+        // The final fee rate should still be greater than the market fee rate
+        let fee_rate = (input_amounts - output_amounts) as f64 / signed_vsize as f64;
+        more_asserts::assert_le!(requests.signer_state.fee_rate, fee_rate);
     }
 
     #[test_case(2; "Some deposits")]
     #[test_case(0; "No deposits")]
     fn unsigned_tx_digests(num_deposits: usize) {
         // Each deposit and withdrawal has a max fee greater than the current market fee rate
-        let public_key = XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap();
+        let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
             deposits: std::iter::repeat_with(|| create_deposit(123456, 100_000, 0))
                 .take(num_deposits)
@@ -1091,8 +1241,9 @@ mod tests {
                     amount: 300_000_000,
                     public_key,
                 },
-                fee_rate: 25,
+                fee_rate: 25.0,
                 public_key,
+                last_fees: None,
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -1110,7 +1261,7 @@ mod tests {
     /// then we return an error.
     #[test]
     fn negative_amounts_give_error() {
-        let public_key = XOnlyPublicKey::from_str(XONLY_PUBLIC_KEY1).unwrap();
+        let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
             deposits: Vec::new(),
             withdrawals: vec![
@@ -1124,8 +1275,9 @@ mod tests {
                     amount: 3000,
                     public_key,
                 },
-                fee_rate: 0,
+                fee_rate: 0.0,
                 public_key,
+                last_fees: None,
             },
             num_signers: 10,
             accept_threshold: 0,

@@ -42,10 +42,14 @@ pub const BITCOIN_CORE_FALLBACK_FEE: Amount = Amount::from_sat(1000);
 const BITCOIN_CORE_WALLET_NAME: &str = "integration-tests-wallet";
 
 /// The faucet has a fixed secret key so that any mined amounts are
-/// preseved between test runs.
+/// preserved between test runs.
 const FAUCET_SECRET_KEY: &str = "0000000000000000000000000000000000000000000000000000000000000001";
 
 const FAUCET_LABEL: Option<&str> = Some("faucet");
+
+pub const SIGNER_ADDRESS_LABEL: Option<&str> = Some("signers-label");
+pub const DEPOSITS_LABEL: Option<&str> = Some("deposits");
+pub const WITHDRAWAL_LABEL: Option<&str> = Some("withdrawal");
 
 /// Initializes a blockchain and wallet on bitcoin-core. It can be called
 /// multiple times (even concurrently) but only generates the client and
@@ -87,7 +91,7 @@ fn get_or_create_wallet(rpc: &Client, wallet: &str) {
         Ok(_) => (),
         // This happens if the wallet has already been loaded.
         Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -35, .. }))) => (),
-        // The wallet probably hasn't been created yet, so lets do that
+        // The wallet probably hasn't been created yet, so let's do that
         Err(_) => {
             // We want a wallet that is watch only, since we manage keys
             let disable_private_keys = Some(true);
