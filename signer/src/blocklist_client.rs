@@ -27,17 +27,12 @@ pub struct BlocklistClient {
 }
 
 impl BlocklistChecker for BlocklistClient {
-    fn can_accept(
-        &self,
-        address: &str,
-    ) -> impl Future<Output = Result<bool, ClientError<CheckAddressError>>> + Send {
+    async fn can_accept(&self, address: &str) -> Result<bool, ClientError<CheckAddressError>> {
         let config = self.config.clone();
 
         // Call the generated function from blocklist-api
-        async move {
-            let resp: BlocklistStatus = check_address(&config, address).await?;
-            Ok(resp.accept)
-        }
+        let resp: BlocklistStatus = check_address(&config, address).await?;
+        Ok(resp.accept)
     }
 }
 
