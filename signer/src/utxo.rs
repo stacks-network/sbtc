@@ -35,6 +35,18 @@ use crate::packaging::Weighted;
 const DEFAULT_INCREMENTAL_RELAY_FEE_RATE: f64 =
     bitcoin::policy::DEFAULT_INCREMENTAL_RELAY_FEE as f64 / 1000.0;
 
+/// This constant represents the virtual size (in vBytes) of a peg-in
+/// transaction that includes two inputs and one output. The inputs
+/// consist of the signers' input UTXO and a UTXO for a deposit request.
+/// The output is the signers' new UTXO.
+const SOLO_DEPOSIT_TX_VSIZE: f64 = 207.0;
+
+/// This constant represents the virtual size (in vBytes) of a peg-out
+/// transaction with only one input and two outputs. The input is the
+/// signers' input UTXO. The outputs include the peg-out UTXO for a
+/// withdrawal request and the signers' new UTXO
+const SOLO_WITHDRAWAL_TX_VSIZE: f64 = 142.0;
+
 /// Describes the fees for a transaction.
 #[derive(Debug, Clone, Copy)]
 pub struct Fees {
@@ -88,8 +100,19 @@ impl SbtcRequests {
             return Ok(Vec::new());
         }
 
-        let withdrawals = self.withdrawals.iter().map(RequestRef::Withdrawal);
-        let deposits = self.deposits.iter().map(RequestRef::Deposit);
+        let minimum_withdrawal_fee = self.compute_minimum_fee(SOLO_WITHDRAWAL_TX_VSIZE);
+        let withdrawals = self
+            .withdrawals
+            .iter()
+            .filter(|req| req.max_fee >= minimum_withdrawal_fee)
+            .map(RequestRef::Withdrawal);
+
+        let minimum_deposit_fee = self.compute_minimum_fee(SOLO_DEPOSIT_TX_VSIZE);
+        let deposits = self
+            .deposits
+            .iter()
+            .filter(|req| req.max_fee >= minimum_deposit_fee)
+            .map(RequestRef::Deposit);
 
         // Create a list of requests where each request can be approved on its own.
         let items = deposits.chain(withdrawals);
@@ -115,6 +138,26 @@ impl SbtcRequests {
 
     fn reject_capacity(&self) -> u32 {
         self.num_signers.saturating_sub(self.accept_threshold)
+    }
+
+    /// Calculates the minimum fee threshold for a user's peg-in or peg-out
+    /// request based on the maximum transaction vsize the user is
+    /// required to pay for.
+    fn compute_minimum_fee(&self, tx_vsize: f64) -> u64 {
+        let fee_rate = self.signer_state.fee_rate;
+
+        let tx_fee = match self.signer_state.last_fees {
+            Some(Fees { total, rate }) => {
+                // The requirement for an RBF transaction is that the new fee
+                // amount be greater than the old fee amount.
+                let fee_increment = tx_vsize * DEFAULT_INCREMENTAL_RELAY_FEE_RATE;
+                let minimum_fee_rate = fee_rate.max(rate + rate * f64::EPSILON);
+                (total as f64 + fee_increment).max(tx_vsize * minimum_fee_rate)
+            }
+            None => tx_vsize * fee_rate,
+        };
+
+        tx_fee.ceil() as u64
     }
 }
 
@@ -664,6 +707,8 @@ mod tests {
     use secp256k1::SecretKey;
     use test_case::test_case;
 
+    use crate::testing;
+
     const PUBLIC_KEY1: &'static str =
         "032e58afe51f9ed8ad3cc7897f634d881fdbe49a81564629ded8156bebd2ffd1af";
 
@@ -717,7 +762,7 @@ mod tests {
             signer_bitmap: std::iter::repeat(false).take(votes_against).collect(),
             amount,
             deposit_script: ScriptBuf::builder()
-                .push_slice([1, 2, 3, 4])
+                .push_slice([0u8; 25])
                 .push_opcode(opcodes::all::OP_DROP)
                 .push_opcode(opcodes::all::OP_DUP)
                 .push_opcode(opcodes::all::OP_HASH160)
@@ -739,6 +784,51 @@ mod tests {
             amount,
             address: generate_address(),
         }
+    }
+
+    #[ignore = "For generating the SOLO_(DEPOSIT|WITHDRAWAL)_SIZE constants"]
+    #[test]
+    fn create_deposit_only_tx() {
+        // For solo deposits
+        let mut requests = SbtcRequests {
+            deposits: vec![create_deposit(123456, 30_000, 0)],
+            withdrawals: Vec::new(),
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: generate_outpoint(550_000_000, 0),
+                    amount: 550_000_000,
+                    public_key: generate_x_only_public_key(),
+                },
+                fee_rate: 5.0,
+                public_key: generate_x_only_public_key(),
+                last_fees: None,
+            },
+            num_signers: 10,
+            accept_threshold: 2,
+        };
+        let keypair = Keypair::new_global(&mut rand::rngs::OsRng);
+
+        let mut transactions = requests.construct_transactions().unwrap();
+        assert_eq!(transactions.len(), 1);
+
+        let mut unsigned = transactions.pop().unwrap();
+        testing::set_witness_data(&mut unsigned, keypair);
+
+        println!("Solo deposit vsize: {}", unsigned.tx.vsize());
+
+        // For solo withdrawals
+        requests.deposits = Vec::new();
+        requests.withdrawals = vec![create_withdrawal(154_321, 40_000, 0)];
+
+        let mut transactions = requests.construct_transactions().unwrap();
+        assert_eq!(transactions.len(), 1);
+
+        let mut unsigned = transactions.pop().unwrap();
+        assert_eq!(unsigned.tx.input.len(), 1);
+        assert_eq!(unsigned.tx.output.len(), 2);
+        testing::set_witness_data(&mut unsigned, keypair);
+
+        println!("Solo withdrawal vsize: {}", unsigned.tx.vsize());
     }
 
     #[test_case(&[false, false, true, false, true, true, true], 3; "case 1")]
