@@ -1,3 +1,12 @@
+//! This module interacts with the risk API to determine the risk severity associated with a user wallet address.
+//!
+//! It provides functionality to:
+//! - Register a wallet address with the risk provider.
+//! - Retrieve the risk assessment for a registered address.
+//! - Evaluate the risk assessment and determine the blocklist status of the address.
+//!
+//! The module includes functions to handle API requests, interpret responses, and map them to application-specific errors.
+
 use crate::common::error::Error;
 use crate::common::{BlocklistStatus, RiskSeverity};
 use crate::config::RiskAnalysisConfig;
@@ -7,15 +16,20 @@ use std::error::Error as StdError;
 use tracing::debug;
 const API_BASE_PATH: &str = "/api/risk/v2/entities";
 
+/// Confirmation for the successful registration of an address with the risk provider
 #[derive(Deserialize, Debug)]
 struct RegistrationResponse {
+    /// The registered address
     address: String,
 }
 
+/// Risk information associated with a wallet address
 #[derive(Deserialize, Debug)]
 pub struct RiskAssessment {
+    /// The evaluated risk severity for the address
     #[serde(rename = "risk")]
     pub severity: RiskSeverity,
+    /// The reason for the assigned risk severity
     #[serde(rename = "riskReason")]
     pub reason: Option<String>,
 }
@@ -84,8 +98,8 @@ async fn get_risk_assessment(
     }
 }
 
-/// Screen the provided address for blocklist status after registering it.
-/// Marks the address as not accepted if it is identified as high risk.
+/// Screen the provided address for blocklist status after registering it
+/// Marks the address as not accepted if it is identified as high risk
 pub async fn check_address(
     client: &Client,
     config: &RiskAnalysisConfig,
@@ -115,7 +129,7 @@ pub async fn check_address(
     Ok(blocklist_status)
 }
 
-/// Evaluates the HTTP response from an API request and translates HTTP status codes into application-specific errors.
+/// Evaluates the HTTP response from an API request and translates HTTP status codes into application-specific errors
 async fn check_api_response(response: Response) -> Result<Response, Error> {
     match response.status() {
         StatusCode::OK | StatusCode::CREATED => Ok(response),
