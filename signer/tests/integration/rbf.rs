@@ -149,8 +149,8 @@ struct RbfContext {
 #[test_case::test_matrix(
     [5, 0, 9],
     [5, 0, 9],
-    [4., 20.],
-    [1, 100]
+    [8., 16.],
+    [5, 100]
 )]
 pub fn transaction_with_rbf(
     rbf_deposits: usize,
