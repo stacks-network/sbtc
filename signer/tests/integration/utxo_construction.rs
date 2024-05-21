@@ -30,12 +30,12 @@ use regtest::Recipient;
 pub fn make_deposit_request<U>(
     depositor: &Recipient,
     amount: u64,
-    utxo: &U,
+    utxo: U,
     signers_public_key: XOnlyPublicKey,
     faucet_public_key: XOnlyPublicKey,
 ) -> (Transaction, DepositRequest)
 where
-    U: AsUtxo + Clone,
+    U: AsUtxo,
 {
     let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
     let deposit_script = ScriptBuf::builder()
@@ -79,7 +79,7 @@ where
         ],
     };
 
-    regtest::p2tr_sign_transaction(&mut deposit_tx, 0, &[utxo.clone()], &depositor.keypair);
+    regtest::p2tr_sign_transaction(&mut deposit_tx, 0, &[utxo], &depositor.keypair);
 
     let req = DepositRequest {
         outpoint: OutPoint::new(deposit_tx.compute_txid(), 0),
@@ -159,7 +159,7 @@ fn deposits_add_to_controlled_amounts() {
     let (deposit_tx, deposit_request) = make_deposit_request(
         &depositor,
         deposit_amount,
-        &depositor_utxo,
+        depositor_utxo,
         signers_public_key,
         faucet.keypair.x_only_public_key().0,
     );

@@ -73,7 +73,7 @@ fn generate_depositor(rpc: &Client, faucet: &Faucet, signer: &Recipient) -> Depo
     let (deposit_tx, deposit_request) = make_deposit_request(
         &depositor,
         amount,
-        &depositor_utxo,
+        depositor_utxo,
         signers_public_key,
         faucet.keypair.x_only_public_key().0,
     );
