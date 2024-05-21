@@ -45,9 +45,8 @@ const SOLO_DEPOSIT_TX_VSIZE: f64 = 207.0;
 /// transaction with only one input and two outputs. The input is the
 /// signers' input UTXO. The outputs include the peg-out UTXO for a
 /// withdrawal request and the signers' new UTXO. This size assumes
-/// the withdrawal script is a standard pay-to-witness-public-key-hash
-/// script.
-const SOLO_WITHDRAWAL_TX_VSIZE: f64 = 142.0;
+/// the script in the withdrawal UTXO is empty.
+const BASE_WITHDRAWAL_TX_VSIZE: f64 = 120.0;
 
 /// Describes the fees for a transaction.
 #[derive(Debug, Clone, Copy)]
@@ -104,13 +103,20 @@ impl SbtcRequests {
 
         // Now we filter withdrawal requests where the user's max fee
         // could be less than fee we may charge.
-        let minimum_withdrawal_fee = self.compute_minimum_fee(SOLO_WITHDRAWAL_TX_VSIZE);
         let withdrawals = self
             .withdrawals
             .iter()
-            .filter(|req| req.max_fee >= minimum_withdrawal_fee)
+            .filter(|req| {
+                // This is the size for a peg-out BTC transaction servicing
+                // a single withdrawal.
+                let tx_vsize = BASE_WITHDRAWAL_TX_VSIZE + req.address.script_pubkey().len() as f64;
+                req.max_fee >= self.compute_minimum_fee(tx_vsize)
+            })
             .map(RequestRef::Withdrawal);
 
+        // Now we filter deposit requests where the user's max fee could
+        // be less than the fee we may charge. This is simpler because
+        // deposit UTXOs have a known fixed size.
         let minimum_deposit_fee = self.compute_minimum_fee(SOLO_DEPOSIT_TX_VSIZE);
         let deposits = self
             .deposits
@@ -818,6 +824,10 @@ mod tests {
         let mut unsigned = transactions.pop().unwrap();
         assert_eq!(unsigned.tx.input.len(), 1);
         assert_eq!(unsigned.tx.output.len(), 2);
+
+        // We need to zero out the withdrawal script since this value
+        // changes depending on the user.
+        unsigned.tx.output[1].script_pubkey = ScriptBuf::new();
         testing::set_witness_data(&mut unsigned, keypair);
 
         println!("Solo withdrawal vsize: {}", unsigned.tx.vsize());
@@ -1402,7 +1412,7 @@ mod tests {
             .take(good_deposit_count)
             .map(|amount| create_deposit(amount, 100_000, 0));
 
-        let withdrawal_low_fee = ((SOLO_WITHDRAWAL_TX_VSIZE - 1.0) * fee_rate) as u64;
+        let withdrawal_low_fee = ((BASE_WITHDRAWAL_TX_VSIZE - 1.0) * fee_rate) as u64;
         let low_fee_withdrawals = std::iter::repeat_with(|| uniform.sample(&mut OsRng))
             .take(low_fee_withdrawal_count)
             .map(|amount| create_withdrawal(amount, withdrawal_low_fee, 0));
