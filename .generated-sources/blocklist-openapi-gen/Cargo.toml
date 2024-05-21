@@ -1,0 +1,14 @@
+[package]
+name = "blocklist-openapi-gen"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+blocklist-client = { path = "../../blocklist-client" }
+serde_json.workspace = true
+utoipa = "4.2.3"
+
+[build-dependencies]
+blocklist-client = { path = "../../blocklist-client" }
+serde_json.workspace = true
+utoipa = "4.2.3"

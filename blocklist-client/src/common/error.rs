@@ -1,5 +1,6 @@
 use reqwest::StatusCode;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use warp::reject::Reject;
 
 #[derive(thiserror::Error, Debug)]
@@ -74,7 +75,7 @@ impl Error {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 pub struct ErrorResponse {
     pub(crate) message: String,
 }

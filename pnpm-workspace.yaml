@@ -1,3 +1,4 @@
 packages:
   - 'contracts'
   - 'emily/*'
+  - '.generated-sources/blocklist-openapi-gen'

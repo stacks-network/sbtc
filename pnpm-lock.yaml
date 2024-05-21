@@ -8,6 +8,12 @@ importers:
 
   .: {}
 
+  .generated-sources/blocklist-openapi-gen:
+    devDependencies:
+      '@openapitools/openapi-generator-cli':
+        specifier: ^2.13.2
+        version: 2.13.4
+
   contracts:
     dependencies:
       '@clarigen/cli':

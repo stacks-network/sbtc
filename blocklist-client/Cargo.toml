@@ -21,8 +21,8 @@ tokio = { workspace = true, features = ["rt-multi-thread", "rt", "macros"] }
 tracing.workspace = true
 tracing-attributes.workspace = true
 tracing-subscriber.workspace = true
+utoipa = "4.2.3"
 warp = "0.3"
 
 [dev-dependencies]
 mockito = "0.28"
-

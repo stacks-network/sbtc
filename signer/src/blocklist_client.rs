@@ -5,42 +5,33 @@
 //! include querying the blocklist API and interpreting the responses to determine if a given
 //! address is blocklisted, along with its associated risk severity.
 
+use std::future::Future;
 use crate::config::SETTINGS;
-use async_trait::async_trait;
-use blocklist_client::common::error::Error;
-use blocklist_client::common::BlocklistStatus;
-use reqwest::Client;
+use blocklist_api::apis::address_api::{check_address, CheckAddressError};
+use blocklist_api::apis::configuration::Configuration;
+use blocklist_api::apis::Error as ClientError;
+use blocklist_api::models::BlocklistStatus;
 
-const SCREEN_PATH: &str = "/screen";
 
 /// A trait for checking if an address is blocklisted.
-#[async_trait]
 pub trait BlocklistChecker {
     /// Checks if the given address is blocklisted.
     /// Returns `true` if the address is blocklisted, otherwise `false`.
-    async fn is_blocklisted(&self, address: &str) -> Result<bool, Error>;
+    fn can_accept(&self, address: &str) -> impl Future<Output = Result<bool, ClientError<CheckAddressError>>> + Send;
 }
 
 /// A client for interacting with the blocklist service.
 #[derive(Clone, Debug)]
 pub struct BlocklistClient {
-    base_url: String,
-    client: Client,
+    config: Configuration,
 }
 
-#[async_trait]
 impl BlocklistChecker for BlocklistClient {
-    async fn is_blocklisted(&self, address: &str) -> Result<bool, Error> {
-        let url = Self::address_screening_path(&self.base_url, address);
-        let resp = self
-            .client
-            .get(url)
-            .send()
-            .await?
-            .json::<BlocklistStatus>()
-            .await?;
+    async fn can_accept(&self, address: &str) -> Result<bool, ClientError<CheckAddressError>> {
+        let config = self.config.clone();
 
-        // Check if the request can be accepted or not based on the response
+        // Call the generated function from blocklist-api
+        let resp: BlocklistStatus = check_address(&config, address).await?;
         Ok(resp.accept)
     }
 }
@@ -52,21 +43,23 @@ impl BlocklistClient {
             "http://{}:{}",
             SETTINGS.blocklist_client.host, SETTINGS.blocklist_client.port
         );
-        BlocklistClient {
-            base_url,
-            client: Client::new(),
-        }
-    }
-    #[cfg(test)]
-    fn with_base_url(base_url: String) -> Self {
-        BlocklistClient {
-            base_url,
-            client: Client::new(),
-        }
+
+        let config = Configuration {
+            base_path: base_url.clone(),
+            ..Default::default()
+        };
+
+        BlocklistClient { config }
     }
 
-    fn address_screening_path(base_url: &str, address: &str) -> String {
-        format!("{}{}/{}", base_url, SCREEN_PATH, address)
+    #[cfg(test)]
+    fn with_base_url(base_url: String) -> Self {
+        let config = Configuration {
+            base_path: base_url.clone(),
+            ..Default::default()
+        };
+
+        BlocklistClient { config }
     }
 }
 
@@ -84,6 +77,7 @@ mod tests {
     use tokio::sync::Mutex;
 
     const ADDRESS: &str = "0x2337bBCD5766Bf2A9462D493E9A459b60b41B7f2";
+    const SCREEN_PATH: &str = "/screen";
 
     struct TestContext {
         server_guard: Mutex<ServerGuard>,
@@ -119,9 +113,9 @@ mod tests {
             .create_async()
             .await;
 
-        let is_blocklisted = ctx.client.is_blocklisted(ADDRESS).await;
-        assert!(is_blocklisted.is_ok());
-        assert_eq!(is_blocklisted.unwrap(), false);
+        let can_accept = ctx.client.can_accept(ADDRESS).await;
+        assert!(can_accept.is_ok());
+        assert_eq!(can_accept.unwrap(), false);
 
         mock.assert_async().await;
     }
@@ -146,9 +140,9 @@ mod tests {
             .create_async()
             .await;
 
-        let is_blocklisted = ctx.client.is_blocklisted(ADDRESS).await;
-        assert!(is_blocklisted.is_ok());
-        assert_eq!(is_blocklisted.unwrap(), true);
+        let can_accept = ctx.client.can_accept(ADDRESS).await;
+        assert!(can_accept.is_ok());
+        assert_eq!(can_accept.unwrap(), true);
 
         mock.assert_async().await;
     }
@@ -166,7 +160,7 @@ mod tests {
             .create_async()
             .await;
 
-        let result = ctx.client.is_blocklisted(ADDRESS).await;
+        let result = ctx.client.can_accept(ADDRESS).await;
         assert!(result.is_err());
     }
 }
