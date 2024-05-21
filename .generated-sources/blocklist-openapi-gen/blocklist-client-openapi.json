@@ -1,0 +1,107 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "blocklist-openapi-gen",
+    "description": "",
+    "license": {
+      "name": ""
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/screen/{address}": {
+      "get": {
+        "tags": [
+          "address"
+        ],
+        "summary": "Handles requests to check the blocklist status of a given address.",
+        "description": "Converts successful blocklist status results to JSON and returns them,\nor converts errors into Warp rejections.",
+        "operationId": "checkAddress",
+        "parameters": [
+          {
+            "name": "address",
+            "in": "path",
+            "description": "Address to get risk assessment for",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Risk assessment retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlocklistStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BlocklistStatus": {
+        "type": "object",
+        "description": "The BlocklistStatus of a user address",
+        "required": [
+          "is_blocklisted",
+          "severity",
+          "accept"
+        ],
+        "properties": {
+          "accept": {
+            "type": "boolean"
+          },
+          "is_blocklisted": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "severity": {
+            "$ref": "#/components/schemas/RiskSeverity"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "RiskSeverity": {
+        "type": "string",
+        "description": "Risk severity linked to an address",
+        "enum": [
+          "Low",
+          "Medium",
+          "High",
+          "Severe"
+        ]
+      }
+    }
+  }
+}
