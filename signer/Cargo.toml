@@ -9,6 +9,7 @@ name = "relay-server"
 
 [[example]]
 name = "relay-client"
+required-features = ["testing"]
 
 [features]
 default = ["testing"]

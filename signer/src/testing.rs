@@ -1,11 +1,10 @@
 //! Module with testing utility functions.
 
+use crate::utxo::UnsignedTransaction;
 use bitcoin::key::TapTweak;
 use bitcoin::TapSighashType;
 use bitcoin::Witness;
 use secp256k1::SECP256K1;
-use crate::utxo::UnsignedTransaction;
-
 
 /// A helper function for correctly setting witness data
 pub fn set_witness_data(unsigned: &mut UnsignedTransaction, keypair: secp256k1::Keypair) {
