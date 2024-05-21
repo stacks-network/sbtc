@@ -5,8 +5,9 @@
 //! include querying the blocklist API and interpreting the responses to determine if a given
 //! address is blocklisted, along with its associated risk severity.
 
+use std::future::Future;
+use std::pin::Pin;
 use crate::config::SETTINGS;
-use async_trait::async_trait;
 use blocklist_api::apis::address_api::{check_address, CheckAddressError};
 use blocklist_api::apis::configuration::Configuration;
 use blocklist_api::apis::Error as ClientError;
@@ -14,14 +15,10 @@ use blocklist_api::models::BlocklistStatus;
 
 
 /// A trait for checking if an address is blocklisted.
-#[async_trait]
 pub trait BlocklistChecker {
     /// Checks if the given address is blocklisted.
     /// Returns `true` if the address is blocklisted, otherwise `false`.
-    async fn is_blocklisted(
-        &self,
-        address: &str,
-    ) -> Result<bool, ClientError<CheckAddressError>>;
+    fn can_accept<'a>(&'a self, address: &'a str) -> Pin<Box<dyn Future<Output = Result<bool, ClientError<CheckAddressError>>> + Send + 'a>>;
 }
 
 /// A client for interacting with the blocklist service.
@@ -30,19 +27,15 @@ pub struct BlocklistClient {
     config: Configuration,
 }
 
-#[async_trait]
 impl BlocklistChecker for BlocklistClient {
-    async fn is_blocklisted(
-        &self,
-        address: &str,
-    ) -> Result<bool, ClientError<CheckAddressError>> {
+    fn can_accept<'a>(&'a self, address: &'a str) -> Pin<Box<dyn Future<Output = Result<bool, ClientError<CheckAddressError>>> + Send + 'a>> {
         let config = self.config.clone();
 
         // Call the generated function from blocklist-api
-        let resp: BlocklistStatus = check_address(&config, address).await?;
-
-        // Check if the request can be accepted or not based on the response
-        Ok(resp.accept)
+        Box::pin(async move {
+            let resp: BlocklistStatus = check_address(&config, address).await?;
+            Ok(resp.accept)
+        })
     }
 }
 
@@ -123,9 +116,9 @@ mod tests {
             .create_async()
             .await;
 
-        let is_blocklisted = ctx.client.is_blocklisted(ADDRESS).await;
-        assert!(is_blocklisted.is_ok());
-        assert_eq!(is_blocklisted.unwrap(), false);
+        let can_accept = ctx.client.can_accept(ADDRESS).await;
+        assert!(can_accept.is_ok());
+        assert_eq!(can_accept.unwrap(), false);
 
         mock.assert_async().await;
     }
@@ -150,9 +143,9 @@ mod tests {
             .create_async()
             .await;
 
-        let is_blocklisted = ctx.client.is_blocklisted(ADDRESS).await;
-        assert!(is_blocklisted.is_ok());
-        assert_eq!(is_blocklisted.unwrap(), true);
+        let can_accept = ctx.client.can_accept(ADDRESS).await;
+        assert!(can_accept.is_ok());
+        assert_eq!(can_accept.unwrap(), true);
 
         mock.assert_async().await;
     }
@@ -170,7 +163,7 @@ mod tests {
             .create_async()
             .await;
 
-        let result = ctx.client.is_blocklisted(ADDRESS).await;
+        let result = ctx.client.can_accept(ADDRESS).await;
         assert!(result.is_err());
     }
 }
