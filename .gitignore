@@ -5,6 +5,9 @@
 **/node_modules
 **/package-lock.json
 
+## Developer Environment
+devenv/**/*.db
+
 ## Contracts
 contracts/settings/Mainnet.toml
 contracts/settings/Testnet.toml

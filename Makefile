@@ -62,10 +62,18 @@ EMILY_DEVENV_PATH=emily/devenv
 EMILY_LAMBDA_PATH=emily/lambda
 EMILY_API_PROJECT_NAME=emily-api
 EMILY_CDK_PROJECT_NAME=emily-cdk
+CONTAINER_HOST=host.docker.internal
+
+ifeq ($(findstring Linux, $(shell uname)), Linux)
+_CONTAINER_HOST := localhost
+else
+_CONTAINER_HOST := host.docker.internal
+endif
 
 # Launches Emily dev environment.
 emily-integration-test: devenv $(EMILY_LAMBDA_BINARY) $(EMILY_CDK_TEMPLATE) $(EMILY_DOCKER_COMPOSE)
-	docker compose --file docker-compose.emily.yml up --remove-orphans
+	CONTAINER_HOST=$(_CONTAINER_HOST) docker compose --file docker-compose.emily.yml up \
+		--remove-orphans
 .PHONY: emily-integration-test
 
 # Builds all dockerfiles that need to be built for the dev environment.

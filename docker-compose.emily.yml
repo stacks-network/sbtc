@@ -57,11 +57,23 @@ services:
     command: |
       sam local start-api
         --host 0.0.0.0
-        --container-host host.docker.internal
+        --container-host ${CONTAINER_HOST}
         --docker-network aws-local-vpc
         --warm-containers LAZY
         --env-vars /lambda/env.json
         -t /cdk.out/EmilyStack.devenv.template.json
+    networks:
+      - aws-local-vpc
+
+  service-test:
+    build: devenv/service-test
+    image: "debian:12.5"
+    depends_on:
+      apigateway:
+        condition: service_started
+    volumes:
+      - "./devenv/service-test:/service-test:ro"
+    command: bash /service-test/curl-test.sh
     networks:
       - aws-local-vpc
 
