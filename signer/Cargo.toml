@@ -50,12 +50,7 @@ version = "*"
 features = ["rand-std", "global-context"]
 
 [dev-dependencies]
-# bitcoincore-rpc = "0.18"
-# There is a draft PR for this branch into main branch at
-# https://github.com/rust-bitcoin/rust-bitcoincore-rpc/pull/337.
-# When that PR gets merged and the new version gets published, we can upgrade back
-# to the official version.
-bitcoincore-rpc = { git = "https://github.com/tcharding/rust-bitcoincore-rpc", branch = "04-25-upgrade-bitcoin-0.32.0" }
+bitcoincore-rpc = { version = "0.19" }
 mockito = "1.4.0"
 more-asserts = "0.3"
 test-case = "3.1"

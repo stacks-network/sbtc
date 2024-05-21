@@ -16,7 +16,6 @@ use bitcoin::TxIn;
 use bitcoin::TxOut;
 use bitcoin::Witness;
 use bitcoin::XOnlyPublicKey;
-use bitcoincore_rpc::json::ListUnspentResultEntry;
 use bitcoincore_rpc::RpcApi;
 use secp256k1::SECP256K1;
 use signer::utxo::DepositRequest;
@@ -25,19 +24,19 @@ use signer::utxo::SignerBtcState;
 use signer::utxo::SignerUtxo;
 
 use crate::regtest;
+use crate::regtest::AsUtxo;
 use regtest::Recipient;
 
-use regtest::DEPOSITS_LABEL;
-use regtest::SIGNER_ADDRESS_LABEL;
-use regtest::WITHDRAWAL_LABEL;
-
-pub fn make_deposit_request(
+pub fn make_deposit_request<U>(
     depositor: &Recipient,
     amount: u64,
-    utxo: &ListUnspentResultEntry,
+    utxo: U,
     signers_public_key: XOnlyPublicKey,
     faucet_public_key: XOnlyPublicKey,
-) -> (Transaction, DepositRequest) {
+) -> (Transaction, DepositRequest)
+where
+    U: AsUtxo,
+{
     let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
     let deposit_script = ScriptBuf::builder()
         // Just some dummy data, since we don't test the parsing of the sBTC request data here.
@@ -63,7 +62,7 @@ pub fn make_deposit_request(
         version: Version::ONE,
         lock_time: LockTime::ZERO,
         input: vec![TxIn {
-            previous_output: OutPoint::new(utxo.txid, utxo.vout),
+            previous_output: OutPoint::new(utxo.txid(), utxo.vout()),
             sequence: Sequence::ZERO,
             script_sig: ScriptBuf::new(),
             witness: Witness::new(),
@@ -74,13 +73,13 @@ pub fn make_deposit_request(
                 script_pubkey: ScriptBuf::new_p2tr(SECP256K1, faucet_public_key, merkle_root),
             },
             TxOut {
-                value: utxo.amount - Amount::from_sat(amount + fee),
+                value: utxo.amount() - Amount::from_sat(amount + fee),
                 script_pubkey: depositor.address.script_pubkey(),
             },
         ],
     };
 
-    regtest::p2tr_sign_transaction(&mut deposit_tx, 0, &[utxo.clone()], &depositor.keypair);
+    regtest::p2tr_sign_transaction(&mut deposit_tx, 0, &[utxo], &depositor.keypair);
 
     let req = DepositRequest {
         outpoint: OutPoint::new(deposit_tx.compute_txid(), 0),
@@ -101,10 +100,7 @@ pub fn make_deposit_request(
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 fn helper_struct_methods_work() {
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
-
     let signer = Recipient::new(AddressType::P2tr);
-    signer.track_address(rpc, SIGNER_ADDRESS_LABEL);
 
     // Newly created "recipients" do not have any UTXOs associated with
     // their address.
@@ -113,8 +109,8 @@ fn helper_struct_methods_work() {
 
     // Okay now we send coins to an address from the one address that
     // coins have been mined to.
-    faucet.send_to(rpc, 500_000, &signer.address);
-    faucet.generate_blocks(rpc, 1);
+    faucet.send_to(500_000, &signer.address);
+    faucet.generate_blocks(1);
 
     // Now the balance should be updated, and the amount sent should be
     // adjusted too.
@@ -123,25 +119,17 @@ fn helper_struct_methods_work() {
 
     // Now let's have a third address get some coin from our signer address.
     let withdrawal_recipient = Recipient::new(AddressType::P2wpkh);
-    withdrawal_recipient.track_address(rpc, WITHDRAWAL_LABEL);
 
     // Again, this third address doesn't have any UTXOs associated with it.
     let balance = withdrawal_recipient.get_balance(rpc);
     assert_eq!(balance.to_sat(), 0);
 
-    // Now we send some coin to the withdrawal recipient's address. The
-    // signers' balance will be updated accordingly. Note that the amount
-    // deducted from the sender always incorporates fees. Also note that
-    // we do not need to mine the block in order for the balance to be
-    // properly updated.
-    signer.send_to(rpc, 200_000, &withdrawal_recipient.address);
-    let balance = signer.get_balance(rpc);
-    assert_eq!(balance.to_sat(), 500_000 - 200_000 - fee);
+    // Now we check that get_utxos do what we want
+    let mut utxos = signer.get_utxos(rpc, None);
+    assert_eq!(utxos.len(), 1);
+    let utxo = utxos.pop().unwrap();
 
-    // The withdrawal recipient now has the desired balance since we sent
-    // it some.
-    let balance = withdrawal_recipient.get_balance(rpc);
-    assert_eq!(balance.to_sat(), 200_000);
+    assert_eq!(utxo.amount.to_sat(), 500_000);
 }
 
 /// Check that deposits, when sent with the expected format, are
@@ -155,13 +143,11 @@ fn deposits_add_to_controlled_amounts() {
     let signer = Recipient::new(AddressType::P2tr);
     let depositor = Recipient::new(AddressType::P2tr);
     let signers_public_key = signer.keypair.x_only_public_key().0;
-    signer.track_address(rpc, SIGNER_ADDRESS_LABEL);
-    depositor.track_address(rpc, DEPOSITS_LABEL);
 
     // Start off with some initial UTXOs to work with.
-    faucet.send_to(rpc, 100_000_000, &signer.address);
-    faucet.send_to(rpc, 50_000_000, &depositor.address);
-    faucet.generate_blocks(rpc, 1);
+    faucet.send_to(100_000_000, &signer.address);
+    faucet.send_to(50_000_000, &depositor.address);
+    faucet.generate_blocks(1);
 
     assert_eq!(signer.get_balance(rpc).to_sat(), 100_000_000);
     assert_eq!(depositor.get_balance(rpc).to_sat(), 50_000_000);
@@ -173,12 +159,12 @@ fn deposits_add_to_controlled_amounts() {
     let (deposit_tx, deposit_request) = make_deposit_request(
         &depositor,
         deposit_amount,
-        &depositor_utxo,
+        depositor_utxo,
         signers_public_key,
         faucet.keypair.x_only_public_key().0,
     );
     rpc.send_raw_transaction(&deposit_tx).unwrap();
-    faucet.generate_blocks(rpc, 1);
+    faucet.generate_blocks(1);
 
     // The depositor's balance should be updated now.
     let depositor_balance = depositor.get_balance(rpc);
@@ -221,7 +207,7 @@ fn deposits_add_to_controlled_amounts() {
 
     // The moment of truth, does the network accept the transaction?
     rpc.send_raw_transaction(&unsigned.tx).unwrap();
-    faucet.generate_blocks(rpc, 1);
+    faucet.generate_blocks(1);
 
     // The signer's balance should now reflect the deposit.
     let signers_balance = signer.get_balance(rpc);

@@ -17,11 +17,15 @@ use bitcoin::TapSighashType;
 use bitcoin::Transaction;
 use bitcoin::TxIn;
 use bitcoin::TxOut;
+use bitcoin::Txid;
 use bitcoin::Witness;
 use bitcoincore_rpc::json::ImportDescriptors;
 use bitcoincore_rpc::json::ListUnspentQueryOptions;
 use bitcoincore_rpc::json::ListUnspentResultEntry;
+use bitcoincore_rpc::json::ScanTxOutRequest;
+use bitcoincore_rpc::json::ScanTxOutResult;
 use bitcoincore_rpc::json::Timestamp;
+use bitcoincore_rpc::json::Utxo;
 use bitcoincore_rpc::jsonrpc::error::Error as JsonRpcError;
 use bitcoincore_rpc::jsonrpc::error::RpcError;
 use bitcoincore_rpc::Auth;
@@ -47,10 +51,6 @@ const FAUCET_SECRET_KEY: &str = "00000000000000000000000000000000000000000000000
 
 const FAUCET_LABEL: Option<&str> = Some("faucet");
 
-pub const SIGNER_ADDRESS_LABEL: Option<&str> = Some("signers-label");
-pub const DEPOSITS_LABEL: Option<&str> = Some("deposits");
-pub const WITHDRAWAL_LABEL: Option<&str> = Some("withdrawal");
-
 /// Initializes a blockchain and wallet on bitcoin-core. It can be called
 /// multiple times (even concurrently) but only generates the client and
 /// recipient once.
@@ -61,28 +61,33 @@ pub const WITHDRAWAL_LABEL: Option<&str> = Some("withdrawal");
 /// * Loads a "faucet" private-public key pair with a P2WPKH address.
 /// * Has the bitcoin-core wallet watch the generated address.
 /// * Ensures that the faucet has at least 1 bitcoin spent to its address.
-pub fn initialize_blockchain() -> &'static (Client, Recipient) {
-    static BTC_CLIENT: OnceLock<(Client, Recipient)> = OnceLock::new();
-    BTC_CLIENT.get_or_init(|| {
+pub fn initialize_blockchain() -> (&'static Client, &'static Faucet) {
+    static BTC_CLIENT: OnceLock<Client> = OnceLock::new();
+    static FAUCET: OnceLock<Faucet> = OnceLock::new();
+    let rpc = BTC_CLIENT.get_or_init(|| {
         let username = BITCOIN_CORE_RPC_USERNAME.to_string();
         let password = BITCOIN_CORE_RPC_PASSWORD.to_string();
         let auth = Auth::UserPass(username, password);
-        let rpc = Client::new("http://localhost:18443", auth).unwrap();
+        Client::new("http://localhost:18443", auth).unwrap()
+    });
 
+    let faucet = FAUCET.get_or_init(|| {
         get_or_create_wallet(&rpc, BITCOIN_CORE_WALLET_NAME);
-        let faucet = Recipient::from_key(FAUCET_SECRET_KEY, AddressType::P2wpkh);
-        faucet.track_address(&rpc, FAUCET_LABEL);
+        let faucet = Faucet::new(FAUCET_SECRET_KEY, AddressType::P2wpkh, rpc);
+        faucet.track_address(FAUCET_LABEL);
 
         let amount = rpc
             .get_received_by_address(&faucet.address, Some(1))
             .unwrap();
 
         if amount < Amount::from_int_btc(1) {
-            faucet.generate_blocks(&rpc, 101);
+            faucet.generate_blocks(101);
         }
 
-        (rpc, faucet)
-    })
+        faucet
+    });
+
+    (rpc, faucet)
 }
 
 fn get_or_create_wallet(rpc: &Client, wallet: &str) {
@@ -99,6 +104,12 @@ fn get_or_create_wallet(rpc: &Client, wallet: &str) {
                 .unwrap();
         }
     };
+}
+
+pub struct Faucet {
+    pub keypair: secp256k1::Keypair,
+    pub address: Address,
+    pub rpc: &'static Client,
 }
 
 /// Helper struct for representing an address we control on bitcoin.
@@ -137,8 +148,37 @@ impl Recipient {
         Recipient { keypair, address }
     }
 
-    // Use a specific secret key and address kind to generate a recipient.
-    pub fn from_key(secret_key: &str, kind: AddressType) -> Self {
+    /// Return all UTXOs for this recipient where the amount is greater
+    /// than or equal to the given amount. The address must be tracked by
+    /// the bitcoin-core wallet.
+    pub fn get_utxos(&self, rpc: &Client, amount: Option<u64>) -> Vec<Utxo> {
+        let mut utxos = self.scan(rpc).unspents;
+
+        if let Some(amount) = amount {
+            utxos.retain(|utxo| utxo.amount.to_sat() >= amount);
+        }
+        utxos
+    }
+
+    /// Get the total amount of UTXOs controlled by the recipient.
+    pub fn get_balance(&self, rpc: &Client) -> Amount {
+        self.scan(rpc).total_amount
+    }
+
+    /// Scan Bitcoin-core for transactions associated with this recipient's
+    /// address.
+    fn scan(&self, rpc: &Client) -> ScanTxOutResult {
+        let public_key = PublicKey::new(self.keypair.public_key());
+        let kind = self.address.address_type().unwrap();
+
+        let desc = descriptor_base(&public_key, kind);
+        let descriptor = ScanTxOutRequest::Single(desc);
+        rpc.scan_tx_out_set_blocking(&[descriptor]).unwrap()
+    }
+}
+
+impl Faucet {
+    fn new(secret_key: &str, kind: AddressType, rpc: &'static Client) -> Self {
         let keypair = secp256k1::Keypair::from_seckey_str_global(secret_key).unwrap();
         let pk = keypair.public_key();
         let address = match kind {
@@ -151,19 +191,19 @@ impl Recipient {
             _ => unimplemented!(),
         };
 
-        Recipient { keypair, address }
+        Faucet { keypair, address, rpc }
     }
 
     /// Tell bitcoin core to track transactions associated with this address,
     ///
     /// Note: this is needed in order for get_utxos and get_balance to work
     /// as expected.
-    pub fn track_address(&self, rpc: &Client, label: Option<&str>) {
+    fn track_address(&self, label: Option<&str>) {
         let public_key = PublicKey::new(self.keypair.public_key());
         let kind = self.address.address_type().unwrap();
 
         let desc = descriptor_base(&public_key, kind);
-        let descriptor_info = rpc.get_descriptor_info(&desc).unwrap();
+        let descriptor_info = self.rpc.get_descriptor_info(&desc).unwrap();
 
         let req = ImportDescriptors {
             descriptor: descriptor_info.descriptor,
@@ -174,42 +214,37 @@ impl Recipient {
             next_index: None,
             range: None,
         };
-        let response = rpc.import_descriptors(req).unwrap();
+        let response = self.rpc.import_descriptors(req).unwrap();
         response.into_iter().for_each(|item| assert!(item.success));
     }
 
     /// Generate num_blocks blocks with coinbase rewards being sent to this
     /// recipient.
-    pub fn generate_blocks(&self, rpc: &Client, num_blocks: u64) {
-        rpc.generate_to_address(num_blocks, &self.address).unwrap();
+    pub fn generate_blocks(&self, num_blocks: u64) {
+        self.rpc
+            .generate_to_address(num_blocks, &self.address)
+            .unwrap();
     }
 
     /// Return all UTXOs for this recipient where the amount is greater
     /// than or equal to the given amount. The address must be tracked by
     /// the bitcoin-core wallet.
-    pub fn get_utxos(&self, rpc: &Client, amount: Option<u64>) -> Vec<ListUnspentResultEntry> {
+    fn get_utxos(&self, amount: Option<u64>) -> Vec<ListUnspentResultEntry> {
         let query_options = amount.map(|sats| ListUnspentQueryOptions {
             minimum_amount: Some(Amount::from_sat(sats)),
             ..Default::default()
         });
-        rpc.list_unspent(None, None, Some(&[&self.address]), None, query_options)
+        self.rpc
+            .list_unspent(None, None, Some(&[&self.address]), None, query_options)
             .unwrap()
-    }
-
-    /// Get the total amount of UTXOs controlled by the recipient.
-    pub fn get_balance(&self, rpc: &Client) -> Amount {
-        self.get_utxos(rpc, None)
-            .into_iter()
-            .map(|x| x.amount)
-            .sum()
     }
 
     /// Send the specified amount to the specific address.
     ///
     /// Note: only P2TR and P2WPKH addresses are supported.
-    pub fn send_to(&self, rpc: &Client, amount: u64, address: &Address) {
+    pub fn send_to(&self, amount: u64, address: &Address) -> OutPoint {
         let fee = BITCOIN_CORE_FALLBACK_FEE.to_sat();
-        let utxo = self.get_utxos(&rpc, Some(amount + fee)).pop().unwrap();
+        let utxo = self.get_utxos(Some(amount + fee)).pop().unwrap();
 
         let mut tx = Transaction {
             version: Version::ONE,
@@ -239,11 +274,14 @@ impl Recipient {
             AddressType::P2tr => p2tr_sign_transaction(&mut tx, input_index, &[utxo], keypair),
             _ => unimplemented!(),
         };
-        rpc.send_raw_transaction(&tx).unwrap();
+        self.rpc.send_raw_transaction(&tx).unwrap();
+        OutPoint::new(tx.compute_txid(), 0)
     }
 }
 
-pub trait Utxo {
+pub trait AsUtxo {
+    fn txid(&self) -> Txid;
+    fn vout(&self) -> u32;
     fn amount(&self) -> Amount;
     fn script_pubkey(&self) -> &ScriptBuf;
     fn to_tx_out(&self) -> TxOut {
@@ -254,23 +292,33 @@ pub trait Utxo {
     }
 }
 
-impl Utxo for ListUnspentResultEntry {
+impl AsUtxo for Utxo {
+    fn txid(&self) -> Txid {
+        self.txid
+    }
+    fn vout(&self) -> u32 {
+        self.vout
+    }
     fn amount(&self) -> Amount {
         self.amount
     }
-
     fn script_pubkey(&self) -> &ScriptBuf {
         &self.script_pub_key
     }
 }
 
-impl Utxo for TxOut {
-    fn amount(&self) -> Amount {
-        self.value
+impl AsUtxo for ListUnspentResultEntry {
+    fn txid(&self) -> Txid {
+        self.txid
     }
-
+    fn vout(&self) -> u32 {
+        self.vout
+    }
+    fn amount(&self) -> Amount {
+        self.amount
+    }
     fn script_pubkey(&self) -> &ScriptBuf {
-        &self.script_pubkey
+        &self.script_pub_key
     }
 }
 
@@ -280,7 +328,7 @@ pub fn p2wpkh_sign_transaction<U>(
     utxo: &U,
     keys: &secp256k1::Keypair,
 ) where
-    U: Utxo,
+    U: AsUtxo,
 {
     let sighash_type = EcdsaSighashType::All;
     let sighash = SighashCache::new(&*tx)
@@ -305,9 +353,9 @@ pub fn p2tr_sign_transaction<U>(
     utxos: &[U],
     keypair: &secp256k1::Keypair,
 ) where
-    U: Utxo,
+    U: AsUtxo,
 {
-    let tx_outs: Vec<TxOut> = utxos.iter().map(Utxo::to_tx_out).collect();
+    let tx_outs: Vec<TxOut> = utxos.iter().map(AsUtxo::to_tx_out).collect();
     let prevouts = Prevouts::All(tx_outs.as_slice());
     let sighash_type = TapSighashType::Default;
 

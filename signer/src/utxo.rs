@@ -99,6 +99,14 @@ impl SbtcRequests {
                 let tx = UnsignedTransaction::new(requests, state);
                 if let Ok(tx_ref) = tx.as_ref() {
                     state.utxo = tx_ref.new_signer_utxo();
+                    // The first transaction is the only one whose input
+                    // UTXOs that have all been confirmed. Moreover, the
+                    // fees that it sets aside are enough to make up for
+                    // the remaining transactions in the transaction package.
+                    // With that in mind, we do not need to bump their fees
+                    // anymore in order for them to be accepted by the
+                    // network.
+                    state.last_fees = None;
                 }
                 Some(tx)
             })
@@ -255,7 +263,7 @@ impl WithdrawalRequest {
 pub enum RequestRef<'a> {
     /// A reference to a deposit request
     Deposit(&'a DepositRequest),
-    /// A reference to a withdraw request
+    /// A reference to a withdrawal request
     Withdrawal(&'a WithdrawalRequest),
 }
 
