@@ -6,7 +6,6 @@
 //! address is blocklisted, along with its associated risk severity.
 
 use std::future::Future;
-use std::pin::Pin;
 use crate::config::SETTINGS;
 use blocklist_api::apis::address_api::{check_address, CheckAddressError};
 use blocklist_api::apis::configuration::Configuration;
@@ -18,7 +17,7 @@ use blocklist_api::models::BlocklistStatus;
 pub trait BlocklistChecker {
     /// Checks if the given address is blocklisted.
     /// Returns `true` if the address is blocklisted, otherwise `false`.
-    fn can_accept<'a>(&'a self, address: &'a str) -> Pin<Box<dyn Future<Output = Result<bool, ClientError<CheckAddressError>>> + Send + 'a>>;
+    fn can_accept(&self, address: &str) -> impl Future<Output = Result<bool, ClientError<CheckAddressError>>> + Send;
 }
 
 /// A client for interacting with the blocklist service.
@@ -28,14 +27,17 @@ pub struct BlocklistClient {
 }
 
 impl BlocklistChecker for BlocklistClient {
-    fn can_accept<'a>(&'a self, address: &'a str) -> Pin<Box<dyn Future<Output = Result<bool, ClientError<CheckAddressError>>> + Send + 'a>> {
+    fn can_accept(
+        &self,
+        address: &str,
+    ) -> impl Future<Output = Result<bool, ClientError<CheckAddressError>>> + Send {
         let config = self.config.clone();
 
         // Call the generated function from blocklist-api
-        Box::pin(async move {
+        async move {
             let resp: BlocklistStatus = check_address(&config, address).await?;
             Ok(resp.accept)
-        })
+        }
     }
 }
 
