@@ -57,7 +57,7 @@ BLOCKLIST_OPENAPI_PATH=./.generated-sources/blocklist-openapi-gen
 
 # Generate the OpenAPI spec for Blocklist Client
 generate-openapi-spec: install
-	cd ./.generated-sources/blocklist-openapi-gen && cargo run
+	cd ./.generated-sources/blocklist-openapi-gen && cargo build
 
 # Generate the client code using the OpenAPI spec
 blocklist-api-source: generate-openapi-spec
