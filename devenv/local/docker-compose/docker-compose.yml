@@ -115,23 +115,6 @@ services:
       BTC_NODE_RPC_HOST: "bitcoin"
       BTC_NODE_RPC_USER: "devnet"
       BTC_NODE_RPC_PASSWORD: "devnet"
-  # stacks-old:
-  #   image: stacks-old:latest
-  #   container_name: stacks-old
-  #   build:
-  #     context: ./stacks-old/docker
-  #     args:
-  #       STACKS_NODE_VERSION: "2.4.0.0.0"
-  #       GIT_URI: https://github.com/stacks-network/stacks-blockchain.git
-  #       GIT_BRANCH: 2.4.0.0.0
-  #   ports:
-  #     - 20444:20444
-  #     - 20443:20443
-  #   environment:
-  #     STACKS_LOG_DEBUG: 0
-  #     STACKS_LOG_JSON: 0
-  #     STACKS_NETWORK: "mocknet"
-  
   nakamoto-signer:
     image: nakamoto-signer:latest
     container_name: nakamoto-signer
