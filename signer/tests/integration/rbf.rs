@@ -35,14 +35,14 @@ pub struct FullUtxo {
 }
 
 impl AsUtxo for FullUtxo {
-    fn amount(&self) -> Amount {
-        self.tx_out.value
-    }
-    fn txid(&self) -> bitcoin::Txid {
+    fn txid(&self) -> Txid {
         self.outpoint.txid
     }
     fn vout(&self) -> u32 {
         self.outpoint.vout
+    }
+    fn amount(&self) -> Amount {
+        self.tx_out.value
     }
     fn script_pubkey(&self) -> &ScriptBuf {
         &self.script

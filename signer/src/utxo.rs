@@ -101,10 +101,10 @@ impl SbtcRequests {
                     state.utxo = tx_ref.new_signer_utxo();
                     // The first transaction is the only one whose input
                     // UTXOs that have all been confirmed. Moreover, the
-                    // fees that it set's aside are enough to make up for
+                    // fees that it sets aside are enough to make up for
                     // the remaining transactions in the transaction package.
                     // With that in mind, we do not need to bump their fees
-                    // any more in order for them to be accepted by the
+                    // anymore in order for them to be accepted by the
                     // network.
                     state.last_fees = None;
                 }
@@ -263,7 +263,7 @@ impl WithdrawalRequest {
 pub enum RequestRef<'a> {
     /// A reference to a deposit request
     Deposit(&'a DepositRequest),
-    /// A reference to a withdraw request
+    /// A reference to a withdrawal request
     Withdrawal(&'a WithdrawalRequest),
 }
 
