@@ -83,7 +83,7 @@ where
 
     let req = DepositRequest {
         outpoint: OutPoint::new(deposit_tx.compute_txid(), 0),
-        max_fee: fee,
+        max_fee: amount,
         signer_bitmap: Vec::new(),
         amount,
         deposit_script: deposit_script.clone(),
