@@ -701,10 +701,8 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
-    use bitcoin::blockdata::opcodes;
     use bitcoin::CompressedPublicKey;
     use bitcoin::KnownHrp;
-    use bitcoin::PublicKey;
     use bitcoin::Txid;
     use rand::distributions::Distribution;
     use rand::distributions::Uniform;
@@ -713,9 +711,6 @@ mod tests {
     use test_case::test_case;
 
     use crate::testing;
-
-    const PUBLIC_KEY1: &'static str =
-        "032e58afe51f9ed8ad3cc7897f634d881fdbe49a81564629ded8156bebd2ffd1af";
 
     const X_ONLY_PUBLIC_KEY0: &'static str =
         "ff12471208c14bd580709cb2358d98975247d8765f92bc25eab3b2763ed605f8";
@@ -759,24 +754,17 @@ mod tests {
 
     /// Create a new deposit request depositing from a random public key.
     fn create_deposit(amount: u64, max_fee: u64, votes_against: usize) -> DepositRequest {
-        let public_key = PublicKey::from_str(PUBLIC_KEY1).unwrap();
+        let signers_public_key = generate_x_only_public_key();
+
         DepositRequest {
             outpoint: generate_outpoint(amount, 1),
             max_fee,
             signer_bitmap: std::iter::repeat(false).take(votes_against).collect(),
             amount,
-            deposit_script: ScriptBuf::builder()
-                .push_slice([0u8; 25])
-                .push_opcode(opcodes::all::OP_DROP)
-                .push_opcode(opcodes::all::OP_DUP)
-                .push_opcode(opcodes::all::OP_HASH160)
-                .push_slice(public_key.pubkey_hash())
-                .push_opcode(opcodes::all::OP_EQUALVERIFY)
-                .push_opcode(opcodes::all::OP_CHECKSIG)
-                .into_script(),
+            deposit_script: testing::peg_in_deposit_script(&signers_public_key),
             redeem_script: ScriptBuf::new(),
             taproot_public_key: XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY0).unwrap(),
-            signers_public_key: generate_x_only_public_key(),
+            signers_public_key,
         }
     }
 
