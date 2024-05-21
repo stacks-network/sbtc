@@ -10,6 +10,9 @@ pub mod fees;
 pub mod message;
 pub mod network;
 pub mod packaging;
+
+#[cfg(feature = "testing")]
+pub mod testing;
 pub mod utxo;
 
 /// Package version
