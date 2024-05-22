@@ -67,13 +67,16 @@
         ],
         "properties": {
           "accept": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Blocklist client's acceptance decision based on the risk severity of the address"
           },
           "is_blocklisted": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the address is blocklisted or not"
           },
           "reason": {
             "type": "string",
+            "description": "Reason for the acceptance decision",
             "nullable": true
           },
           "severity": {
@@ -83,6 +86,7 @@
       },
       "ErrorResponse": {
         "type": "object",
+        "description": "Structure representing an error response\nThis is used to serialize error messages in HTTP responses",
         "required": [
           "message"
         ],

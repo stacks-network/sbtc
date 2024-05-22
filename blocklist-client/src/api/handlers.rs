@@ -1,3 +1,5 @@
+//! Handlers for the blocklist client API
+
 use crate::client::risk_client;
 use crate::common::error::{Error, ErrorResponse};
 use crate::config::RiskAnalysisConfig;
