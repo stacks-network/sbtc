@@ -1,10 +1,14 @@
+//! Top-level error type for the Emily lambda
+
 use aws_lambda_events::apigw::ApiGatewayProxyResponse;
 use aws_lambda_events::encodings::Body;
 use emily::models;
 use crate::common;
 
+/// Top-level Emily API error
 #[derive(Debug, thiserror::Error)]
 pub enum EmilyApiError {
+    /// Bad request error
     #[error("Bad Request: {0}")]
     BadRequest(String),
 
@@ -32,6 +36,7 @@ pub enum EmilyApiError {
     // #[error("Internal Server Error: {0}")]
     // InternalService(String),
 
+    /// Unhandled server error
     #[error("Unhandled Server Exception: {0}")]
     UnhandledService(
         #[source]
@@ -75,6 +80,16 @@ impl EmilyApiError {
     }
 
     #[allow(clippy::wrong_self_convention)]
+    /// Converts the current object to an `ApiGatewayProxyResponse`.
+    ///
+    /// Serializes the response body and constructs a `SimpleApiResponse`
+    /// with the status code. If serialization fails, returns a 500 Internal
+    /// Server Error with a generic message. Converts `SimpleApiResponse`
+    /// to `ApiGatewayProxyResponse` before returning.
+    ///
+    /// # Returns
+    ///
+    /// An `ApiGatewayProxyResponse` containing the status code and body.
     pub fn to_apigw_response(self) -> ApiGatewayProxyResponse {
         let status_code = self.status_code();
         let body_result = self.response_body();

@@ -1,9 +1,12 @@
+//! Handlers for chainstate-related API operations
+
 use std::collections::HashMap;
 
 use emily::models;
 use crate::common;
 use crate::errors;
 
+/// Handles the creation of a new chainstate
 pub fn handle_create_chainstate(
     body:  Option<String>
 ) -> Result<common::SimpleApiResponse, errors::EmilyApiError> {
@@ -16,6 +19,7 @@ pub fn handle_create_chainstate(
         })
 }
 
+/// Handles retrieval of the current chainstate
 pub fn handle_get_chainstate(
     _path_parameters:  HashMap<String, String>
 ) -> Result<common::SimpleApiResponse, errors::EmilyApiError> {
@@ -29,6 +33,7 @@ pub fn handle_get_chainstate(
     })
 }
 
+/// Handles the update of an existing chainstate
 pub fn handle_update_chainstate(
     body:  Option<String>
 ) -> Result<common::SimpleApiResponse, errors::EmilyApiError> {

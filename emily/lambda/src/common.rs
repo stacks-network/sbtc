@@ -1,3 +1,4 @@
+//! Common utilities and structures for handling API responses and requests in the application
 
 use crate::errors;
 use crate::common;
@@ -9,7 +10,9 @@ use crate::common;
 /// interacting with API Gateway.
 #[derive(Debug)]
 pub struct SimpleApiResponse {
+    /// API response status code
     pub status_code: u16,
+    /// Optional response body
     pub body: Option<aws_lambda_events::encodings::Body>,
 }
 
