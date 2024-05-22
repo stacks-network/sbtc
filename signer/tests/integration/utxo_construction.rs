@@ -203,3 +203,66 @@ fn deposits_add_to_controlled_amounts() {
     more_asserts::assert_gt!(signers_balance.to_sat(), 124_000_000);
     more_asserts::assert_lt!(signers_balance.to_sat(), 125_000_000);
 }
+
+#[test]
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+fn withdrawals_reduce_to_signers_amounts() {
+    let (rpc, faucet) = regtest::initialize_blockchain();
+    let signer = Recipient::new(AddressType::P2tr);
+    let signers_public_key = signer.keypair.x_only_public_key().0;
+
+    // Start off with some initial UTXOs to work with.
+    faucet.send_to(100_000_000, &signer.address);
+    faucet.generate_blocks(1);
+
+    assert_eq!(signer.get_balance(rpc).to_sat(), 100_000_000);
+    
+    // Now lets make a deposit transaction and submit it    
+    let (withdrawal_request, recipient) = regtest::generate_withdrawal();
+    assert_eq!(recipient.get_balance(rpc).to_sat(), 0);
+
+    // Okay now we try to peg-out the withdrawal by making a transaction. Let's
+    // start by getting the signer's sole UTXO.
+    let signer_utxo = signer.get_utxos(rpc, None).pop().unwrap();
+
+    // Now build the struct with the outstanding peg-in and peg-out requests.
+    let requests = SbtcRequests {
+        deposits: Vec::new(),
+        withdrawals: vec![withdrawal_request.clone()],
+        signer_state: SignerBtcState {
+            utxo: SignerUtxo {
+                outpoint: OutPoint::new(signer_utxo.txid, signer_utxo.vout),
+                amount: signer_utxo.amount.to_sat(),
+                public_key: signers_public_key,
+            },
+            fee_rate: 10.0,
+            public_key: signers_public_key,
+            last_fees: None,
+        },
+        accept_threshold: 4,
+        num_signers: 7,
+    };
+
+    // There should only be one transaction here since there is only one
+    // deposit request and no withdrawal requests.
+    let mut transactions = requests.construct_transactions().unwrap();
+    assert_eq!(transactions.len(), 1);
+    let mut unsigned = transactions.pop().unwrap();
+
+    // Add the signature and/or other required information to the witness data.
+    signer::testing::set_witness_data(&mut unsigned, signer.keypair);
+
+    // Ship it
+    rpc.send_raw_transaction(&unsigned.tx).unwrap();
+    faucet.generate_blocks(1);
+
+    // The signer's balance should now reflect the deposit.
+    let signers_balance = signer.get_balance(rpc).to_sat();
+
+    assert_eq!(signers_balance, 100_000_000 - withdrawal_request.amount);
+
+    let fee = unsigned.input_amounts() - unsigned.output_amounts();
+    let recipient_balance = recipient.get_balance(rpc).to_sat();
+    assert_eq!(recipient_balance, withdrawal_request.amount - fee);
+}
+
