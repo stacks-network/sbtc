@@ -303,7 +303,7 @@ if [[ $BTC_LIVENESS_SUCCESS == true \
     && $STACKS_API_EVENT_OBSERVER_LIVENESS_SUCCESS == true \
     && $STACKS_PUBLIC_API_LIVENESS_SUCCESS == true \
     && $STACKS_API_CONNECTED_TO_PG_SUCCESS == true ]]; then
-    exit 1
+    exit 0
 fi
 
-exit 0
+exit 1
