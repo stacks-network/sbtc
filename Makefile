@@ -20,7 +20,7 @@ INSTALL_TARGET := pnpm-lock.yaml
 
 # Don't use the install target here so you can rerun install without
 # Makefile complaints.
-include .env
+export DATABASE_URL=postgres://user:password@localhost:5432/signer
 
 install:
 	pnpm install
