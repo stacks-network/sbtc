@@ -2,14 +2,11 @@ import {
   alice,
   bob,
   deposit,
-  registry,
   token,
 } from "./helpers";
 import { test, expect, describe } from "vitest";
-import { txOk, filterEvents, rov, txErr } from "@clarigen/test";
+import { txOk, filterEvents, rov } from "@clarigen/test";
 import { CoreNodeEventType, cvToValue } from '@clarigen/core';
-import { none } from "../node_modules/@stacks/transactions/dist/cl";
-
 
 describe("sBTC token contract", () => {
   describe("token basics", () => {
