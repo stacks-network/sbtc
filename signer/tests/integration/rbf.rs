@@ -321,7 +321,7 @@ pub fn transaction_with_rbf(
     let withdrawal_amounts: u64 = requests.withdrawals.iter().map(|req| req.amount).sum();
     let deposit_fees: u64 = transactions
         .iter()
-        .map(|unsigned| unsigned.fee_per_request * (unsigned.tx.input.len() - 1) as u64)
+        .map(|unsigned| unsigned.deposit_fees)
         .sum();
 
     // The signer's balance should now reflect the deposits and withdrawals
@@ -341,7 +341,8 @@ pub fn transaction_with_rbf(
             utx.requests
                 .iter()
                 .filter_map(RequestRef::as_withdrawal)
-                .map(|req| (req.address.clone(), utx.fee_per_request))
+                .zip(utx.withdrawal_fees.iter().copied())
+                .map(|(req, fee)| (req.address.clone(), fee))
         })
         .collect();
     let iter = withdrawals
