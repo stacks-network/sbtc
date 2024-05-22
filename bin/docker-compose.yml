@@ -1,0 +1,88 @@
+services:
+  mariadb:
+    image: mariadb:10.5.21
+    container_name: mariadb
+    networks:
+      - contracts.devnet
+    stop_grace_period: 5s
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_DATABASE: "mempool"
+      MYSQL_USER: "mempool"
+      MYSQL_PASSWORD: "mempool"
+      MYSQL_ROOT_PASSWORD: "admin"
+
+  electrs:
+    image: electrs:latest
+    container_name: electrs
+    stop_grace_period: 5s
+    build:
+      context: ./electrs/docker
+    networks:
+      - contracts.devnet
+    ports:
+      - 60401:60401
+      - 3002:3002
+    environment:
+      RUST_BACKTRACE: 1
+      BITCOIN_RPC_USER: "devnet"
+      BITCOIN_RPC_PASSWORD: "devnet"
+      BITCOIN_RPC_HOST: "bitcoin-node.contracts.devnet"
+      BITCOIN_RPC_PORT: "18443"
+
+  mempool-web:
+    image: mempool/frontend:latest
+    container_name: mempool-web
+    stop_grace_period: 5s
+    networks:
+      - contracts.devnet
+    depends_on:
+      - mempool-api
+      - mariadb
+      - electrs
+    user: "1000:1000"
+    restart: on-failure
+    ports:
+      - 8083:8083
+    environment:
+      FRONTEND_HTTP_PORT: "8083"
+      BACKEND_MAINNET_HTTP_HOST: "mempool-api"
+    command: "./wait-for mariadb:3306 --timeout=720 -- nginx -g 'daemon off;'"
+
+  mempool-api:
+    image: mempool/backend:latest
+    container_name: mempool-api
+    networks:
+      - contracts.devnet
+    stop_grace_period: 5s
+    depends_on:
+      - electrs
+      - mariadb
+    user: "1000:1000"
+    restart: on-failure
+    ports:
+      - 8999:8999
+    environment:
+      # Connect to electrs host
+      # MEMPOOL_BACKEND: "electrum"
+      MEMPOOL_BACKEND: "none"
+      ELECTRUM_HOST: "electrs"
+      ELECTRUM_PORT: "60401"
+      ELECTRUM_TLS_ENABLED: "false"
+      # Connect to bitcoin rpc
+      CORE_RPC_HOST: "bitcoin-node.contracts.devnet"
+      CORE_RPC_PORT: "18443"
+      CORE_RPC_USERNAME: "devnet"
+      CORE_RPC_PASSWORD: "devnet"
+      DATABASE_ENABLED: "true"
+      DATABASE_HOST: "mariadb"
+      DATABASE_DATABASE: "mempool"
+      DATABASE_USERNAME: "mempool"
+      DATABASE_PASSWORD: "mempool"
+      STATISTICS_ENABLED: "true"
+    command: "./wait-for-it.sh mariadb:3306 --timeout=720 --strict -- ./start.sh"
+
+networks:
+  contracts.devnet:
+    external: true

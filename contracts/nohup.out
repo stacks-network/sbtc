@@ -1,0 +1,18 @@
+Computing deployment plan
+Generated file deployments/default.devnet-plan.yaml
+Computing deployment plan
+note: using existing deployments/default.devnet-plan.yaml
+thread '<unnamed>' panicked at /Users/mikey/.cargo/registry/src/index.crates.io-6f17d22bba15001f/rocket-0.5.0/src/error.rs:279:9:
+aborting due to socket bind error
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+terminating devnet network: logs and chainstate available at location /Users/mikey/hubgit/bridge/sbtc/contracts/./.cache/stacks-devnet-1716379462
+error: unable to start bitcoind container: network contracts.devnet is ambiguous (2 matches found on name)
+Computing deployment plan
+note: using existing deployments/default.devnet-plan.yaml
+thread '<unnamed>' panicked at /Users/mikey/.cargo/registry/src/index.crates.io-6f17d22bba15001f/rocket-0.5.0/src/error.rs:279:9:
+aborting due to socket bind error
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+terminating devnet network: logs and chainstate available at location /Users/mikey/hubgit/bridge/sbtc/contracts/./.cache/stacks-devnet-1716379585
+error: unable to start bitcoind container: network contracts.devnet is ambiguous (3 matches found on name)
