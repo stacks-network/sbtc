@@ -12,7 +12,7 @@ name = "relay-client"
 required-features = ["testing"]
 
 [features]
-default = ["testing"]
+default = []
 integration-tests = ["testing"]
 testing = []
 

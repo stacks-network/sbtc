@@ -35,8 +35,6 @@ use bitcoincore_rpc::RpcApi;
 use secp256k1::SECP256K1;
 use std::sync::OnceLock;
 
-pub use signer::testing::set_witness_data;
-
 /// These must match the username and password in bitcoin.conf
 const BITCOIN_CORE_RPC_USERNAME: &str = "alice";
 const BITCOIN_CORE_RPC_PASSWORD: &str = "pw";

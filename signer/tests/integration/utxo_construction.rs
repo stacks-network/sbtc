@@ -191,7 +191,7 @@ fn deposits_add_to_controlled_amounts() {
     let mut unsigned = transactions.pop().unwrap();
 
     // Add the signature and/or other required information to the witness data.
-    regtest::set_witness_data(&mut unsigned, signer.keypair);
+    signer::testing::set_witness_data(&mut unsigned, signer.keypair);
 
     // The moment of truth, does the network accept the transaction?
     rpc.send_raw_transaction(&unsigned.tx).unwrap();

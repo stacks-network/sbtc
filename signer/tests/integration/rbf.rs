@@ -253,7 +253,7 @@ pub fn transaction_with_rbf(
 
         // Add the signature and/or other required information to the witness data.
         transactions.iter_mut().for_each(|unsigned| {
-            regtest::set_witness_data(unsigned, signer.keypair);
+            signer::testing::set_witness_data(unsigned, signer.keypair);
             rpc.send_raw_transaction(&unsigned.tx).unwrap();
 
             last_fee += unsigned.input_amounts() - unsigned.output_amounts();
@@ -271,7 +271,7 @@ pub fn transaction_with_rbf(
         let one_response: Result<Vec<Txid>, BtcRpcError> = transactions
             .iter_mut()
             .map(|unsigned| {
-                regtest::set_witness_data(unsigned, signer.keypair);
+                signer::testing::set_witness_data(unsigned, signer.keypair);
                 rpc.send_raw_transaction(&unsigned.tx)
             })
             .collect();
@@ -297,7 +297,7 @@ pub fn transaction_with_rbf(
     let mut transactions = requests.construct_transactions().unwrap();
 
     transactions.iter_mut().for_each(|unsigned| {
-        regtest::set_witness_data(unsigned, signer.keypair);
+        signer::testing::set_witness_data(unsigned, signer.keypair);
         rpc.send_raw_transaction(&unsigned.tx).unwrap();
     });
 

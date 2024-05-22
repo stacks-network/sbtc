@@ -35,15 +35,15 @@ use crate::packaging::Weighted;
 const DEFAULT_INCREMENTAL_RELAY_FEE_RATE: f64 =
     bitcoin::policy::DEFAULT_INCREMENTAL_RELAY_FEE as f64 / 1000.0;
 
-/// This constant represents the virtual size (in vBytes) of a peg-in
+/// This constant represents the virtual size (in vBytes) of a BTC
 /// transaction that includes two inputs and one output. The inputs
 /// consist of the signers' input UTXO and a UTXO for a deposit request.
 /// The output is the signers' new UTXO.
 const SOLO_DEPOSIT_TX_VSIZE: f64 = 207.0;
 
-/// This constant represents the virtual size (in vBytes) of a peg-out
+/// This constant represents the virtual size (in vBytes) of a BTC
 /// transaction with only one input and two outputs. The input is the
-/// signers' input UTXO. The outputs include the peg-out UTXO for a
+/// signers' input UTXO. The outputs include the withdrawal UTXO for a
 /// withdrawal request and the signers' new UTXO. This size assumes
 /// the script in the withdrawal UTXO is empty.
 const BASE_WITHDRAWAL_TX_VSIZE: f64 = 120.0;
@@ -107,7 +107,7 @@ impl SbtcRequests {
             .withdrawals
             .iter()
             .filter(|req| {
-                // This is the size for a peg-out BTC transaction servicing
+                // This is the size for a BTC transaction servicing
                 // a single withdrawal.
                 let tx_vsize = BASE_WITHDRAWAL_TX_VSIZE + req.address.script_pubkey().len() as f64;
                 req.max_fee >= self.compute_minimum_fee(tx_vsize)
@@ -150,7 +150,7 @@ impl SbtcRequests {
         self.num_signers.saturating_sub(self.accept_threshold)
     }
 
-    /// Calculates the minimum fee threshold for a user's peg-in or peg-out
+    /// Calculates the minimum fee threshold for servicing a user's
     /// request based on the maximum transaction vsize the user is
     /// required to pay for.
     fn compute_minimum_fee(&self, tx_vsize: f64) -> u64 {
