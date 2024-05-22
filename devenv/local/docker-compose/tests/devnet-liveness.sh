@@ -167,58 +167,83 @@ echo " ---------------------------------------------------------------"
 
 
 ## (RPC APPROACH)
-# GET_STACKS_NODE_INFO=$(curl -s "http://localhost:20443/v2/info")
+GET_STACKS_NODE_INFO=$(curl -s "http://localhost:20443/v2/info")
 
-# echo "\nGET STACKS NODE INFO:"
-# echo $GET_STACKS_NODE_INFO | jq 'del(.stackerdbs)'
-# echo "\t\t.\n\t\t.\n  \033[1;32m<<\033[0m \033[1;35mLong Output Supressed\033[0m \033[1;32m>>\033[0m \n\t\t.\n\t\t."
+echo "\nGET STACKS NODE INFO:"
+echo $GET_STACKS_NODE_INFO | jq 'del(.stackerdbs)'
+echo "\t\t.\n\t\t.\n  \033[1;32m<<\033[0m \033[1;35mLong Output Supressed\033[0m \033[1;32m>>\033[0m \n\t\t.\n\t\t."
 
-# STX_SYNC_WITH_BTC_UTXO_SUCCESS=$(echo $GET_STACKS_NODE_INFO | jq -r '.stacks_tip_height != 0')
-# STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT=$([ "$STX_SYNC_WITH_BTC_UTXO_SUCCESS" == "true" ] && echo "\033[1;32m$STX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m ✅" || echo "\033[1;31m$STX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m❌") 
-
-# echo "\033[1mSTX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m: $STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT"
-# echo "\n"
-
-
-## (LOGS APPROACH)
-STACKS_DOCKER_LOGS=$(docker logs stacks 2>/dev/null)
-
-
-STX_SYNC_WITH_BTC_UTXO_SUCCESS=false
-STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT=$(echo "\033[1;31m$STX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m❌")
-if [[ $STACKS_DOCKER_LOGS == *"UTXOs found"* ]]; then
-    STX_SYNC_WITH_BTC_UTXO_SUCCESS=true
-    echo "Stacks || UTXOs found - will run as a Miner node"
-    STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT=$(echo "\033[1;32m$STX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m ✅")
-fi
+STX_SYNC_WITH_BTC_UTXO_SUCCESS=$(echo $GET_STACKS_NODE_INFO | jq -r '.stacks_tip_height != 0')
+STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT=$([ "$STX_SYNC_WITH_BTC_UTXO_SUCCESS" == "true" ] && echo "\033[1;32m$STX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m ✅" || echo "\033[1;31m$STX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m❌") 
 
 echo "\033[1mSTX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m: $STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT"
 echo "\n"
 
 
+## (LOGS APPROACH)
+# STACKS_DOCKER_LOGS=$(docker logs --tail 100000 stacks 2>/dev/null)
+
+
+# STX_SYNC_WITH_BTC_UTXO_SUCCESS=false
+# STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT=$(echo "\033[1;31m$STX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m❌")
+# if [[ $STACKS_DOCKER_LOGS == *"UTXOs found"* ]]; then
+#     STX_SYNC_WITH_BTC_UTXO_SUCCESS=true
+#     echo "Stacks || UTXOs found - will run as a Miner node"
+#     STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT=$(echo "\033[1;32m$STX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m ✅")
+# fi
+
+# echo "\033[1mSTX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m: $STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT"
+# echo "\n"
+
+
 
 
 echo " ---------------------------------------------------------------"
-echo "| => (8) 🔬 TEST: [CHECK STACKS-API LIVENESS]  |"
+echo "| => (8) 🔬 TEST: [CHECK STACKS API EVENT OBSERVER LIVENESS]  |"
 echo " ---------------------------------------------------------------"
 
 
-GET_STACKS_API_PING=$(curl -s "http://localhost:3700")
+GET_STACKS_API_EVENT_OBSERVER_PING=$(curl -s "http://localhost:3700")
 
 
-echo "\nGET STACKS API PING:"
-echo $GET_STACKS_API_PING | jq
+echo "\nGET STACKS API EVENT OBSERVER PING:"
+echo $GET_STACKS_API_EVENT_OBSERVER_PING | jq
 
 
-STACKS_API_LIVENESS_SUCCESS=$(echo $GET_STACKS_API_PING | jq -r '.status == "ready"')
-STACKS_API_LIVENESS_SUCCESS_FRMT=$([ "$STACKS_API_LIVENESS_SUCCESS" == "true" ] && echo "\033[1;32m$STACKS_API_LIVENESS_SUCCESS\033[0m ✅" || echo "\033[1;31m$STACKS_API_LIVENESS_SUCCESS\033[0m❌") 
+STACKS_API_EVENT_OBSERVER_LIVENESS_SUCCESS=$(echo $GET_STACKS_API_EVENT_OBSERVER_PING | jq -r '.status == "ready"')
+STACKS_API_EVENT_OBSERVER_LIVENESS_SUCCESS_FRMT=$([ "$STACKS_API_EVENT_OBSERVER_LIVENESS_SUCCESS" == "true" ] && echo "\033[1;32m$STACKS_API_EVENT_OBSERVER_LIVENESS_SUCCESS\033[0m ✅" || echo "\033[1;31m$STACKS_API_EVENT_OBSERVER_LIVENESS_SUCCESS\033[0m❌") 
 
 
-echo "\033[1mSTACKS_API_LIVENESS_SUCCESS\033[0m: $STACKS_API_LIVENESS_SUCCESS_FRMT"
+echo "\033[1mSTACKS_API_EVENT_OBSERVER_LIVENESS_SUCCESS\033[0m: $STACKS_API_EVENT_OBSERVER_LIVENESS_SUCCESS_FRMT"
 echo "\n"
 
 
 
+
+echo " ---------------------------------------------------------------"
+echo "| => (9) 🔬 TEST: [CHECK STACKS PUBLIC API LIVENESS]  |"
+echo " ---------------------------------------------------------------"
+
+
+GET_STACKS_PUBLIC_API_PING=$(curl -s --write-out %{http_code} --silent --output /dev/null  "http://localhost:3999/extended/")
+
+
+echo "\nGET STACKS PUBLIC API PING:"
+echo $GET_STACKS_PUBLIC_API_PING | jq
+
+
+STACKS_PUBLIC_API_LIVENESS_SUCCESS=false
+STACKS_PUBLIC_API_LIVENESS_SUCCESS_FRMT=$(echo "\033[1;31m$STACKS_API_PUBLIC_LIVENESS_SUCCESS\033[0m❌")
+
+
+if [[ $GET_STACKS_PUBLIC_API_PING == "200" ]]; then
+    STACKS_PUBLIC_API_LIVENESS_SUCCESS=true
+    STACKS_PUBLIC_API_LIVENESS_SUCCESS_FRMT=$(echo "\033[1;32m$STACKS_PUBLIC_API_LIVENESS_SUCCESS\033[0m ✅")
+fi
+
+
+echo "\033[1mSTACKS_PUBLIC_API_LIVENESS_SUCCESS\033[0m: $STACKS_PUBLIC_API_LIVENESS_SUCCESS_FRMT"
+echo "\n"
 
 
 
@@ -226,7 +251,7 @@ echo "\n"
 
 
 echo " -----------------------------------------------------------------"
-echo "| => (9) 🔬 TEST: [CHECK IF STACKS-API IS CONNECTED TO POSTGRES]  |"
+echo "| => (10) 🔬 TEST: [CHECK IF STACKS-API IS CONNECTED TO POSTGRES]  |"
 echo " -----------------------------------------------------------------"
 
 
@@ -246,16 +271,30 @@ echo "\033[1mSTACKS_API_CONNECTED_TO_PG_SUCCESS\033[0m: $STACKS_API_CONNECTED_TO
 echo "\n"
 
 
-echo "----------------------------------------------------------"
-echo "|                        SUMMARY                         |"
-echo "----------------------------------------------------------"
-echo "| \033[1mBTC_LIVENESS_SUCCESS\033[0m:               | \t $BTC_LIVENESS_SUCCESS_FRMT |"
-echo "| \033[1mBTC_MINEABLE_SUCCESS\033[0m:               | \t $BTC_MINEABLE_SUCCESS_FRMT |"
-echo "| \033[1mPG_READY_SUCCESS\033[0m:                   | \t $PG_READY_SUCCESS_FRMT |"
-echo "| \033[1mMARIADB_READY_SUCCESS\033[0m:              | \t $MARIADB_READY_SUCCESS_FRMT |"
-echo "| \033[1mNAKAMOTO_SIGNER_READY_SUCCESS\033[0m:      | \t $NAKAMOTO_SIGNER_READY_SUCCESS_FRMT |"
-echo "| \033[1mSTACKS_LIVENESS_SUCCESS\033[0m:            | \t $STACKS_LIVENESS_SUCCESS_FRMT |"
-echo "| \033[1mSTX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m:     | \t $STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT |"
-echo "| \033[1mSTACKS_API_LIVENESS_SUCCESS\033[0m:        | \t $STACKS_API_LIVENESS_SUCCESS_FRMT |"
-echo "| \033[1mSTACKS_API_CONNECTED_TO_PG_SUCCESS\033[0m: | \t $STACKS_API_CONNECTED_TO_PG_SUCCESS_FRMT |"
-echo "----------------------------------------------------------"
+echo "-----------------------------------------------------------------"
+echo "|                        SUMMARY                                 |"
+echo "-----------------------------------------------------------------"
+echo "| \033[1mBTC_LIVENESS_SUCCESS\033[0m:                         | \t $BTC_LIVENESS_SUCCESS_FRMT |"
+echo "| \033[1mBTC_MINEABLE_SUCCESS\033[0m:                         | \t $BTC_MINEABLE_SUCCESS_FRMT |"
+echo "| \033[1mPG_READY_SUCCESS\033[0m:                             | \t $PG_READY_SUCCESS_FRMT |"
+echo "| \033[1mMARIADB_READY_SUCCESS\033[0m:                        | \t $MARIADB_READY_SUCCESS_FRMT |"
+echo "| \033[1mNAKAMOTO_SIGNER_READY_SUCCESS\033[0m:                | \t $NAKAMOTO_SIGNER_READY_SUCCESS_FRMT |"
+echo "| \033[1mSTACKS_LIVENESS_SUCCESS\033[0m:                      | \t $STACKS_LIVENESS_SUCCESS_FRMT |"
+echo "| \033[1mSTX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m:               | \t $STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT |"
+echo "| \033[1mSTACKS_API_EVENT_OBSERVER_LIVENESS_SUCCESS\033[0m:   | \t $STACKS_API_EVENT_OBSERVER_LIVENESS_SUCCESS_FRMT |"
+echo "| \033[1mSTACKS_PUBLIC_API_LIVENESS_SUCCESS\033[0m:           | \t $STACKS_PUBLIC_API_LIVENESS_SUCCESS_FRMT |"
+echo "| \033[1mSTACKS_API_CONNECTED_TO_PG_SUCCESS\033[0m:           | \t $STACKS_API_CONNECTED_TO_PG_SUCCESS_FRMT |"
+echo "-----------------------------------------------------------------"
+
+
+TOTAL_SUCCESS=1
+
+
+
+if [[ $MARIADB_DOCKER_LOGS == *"ready for connections"* || $MARIADB_DOCKER_LOGS == *"Ready for start up"* ]]; then
+    MARIADB_READY_SUCCESS=true
+    echo "MariaDB || Ready for start up"
+    MARIADB_READY_SUCCESS_FRMT=$(echo "\033[1;32m$MARIADB_READY_SUCCESS\033[0m ✅")
+fi
+
+exit $TOTAL_SUCCESS
