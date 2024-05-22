@@ -341,8 +341,8 @@ pub fn transaction_with_rbf(
             utx.requests
                 .iter()
                 .filter_map(RequestRef::as_withdrawal)
-                .zip(utx.withdrawal_fees.iter().copied())
-                .map(|(req, fee)| (req.address.clone(), fee))
+                .zip(utx.tx.output.iter().skip(1))
+                .map(|(req, tx_out)| (req.address.clone(), req.amount - tx_out.value.to_sat()))
         })
         .collect();
     let iter = withdrawals
