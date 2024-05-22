@@ -59,6 +59,11 @@
 ;; stored to avoid replay
 (define-map multi-sig-address principal bool)
 
+;; Data structure to store the active protocol contracts
+(define-map protocol-contracts principal bool)
+(map-set protocol-contracts .sbtc-bootstrap-signers true)
+(map-set protocol-contracts .sbtc-deposit true)
+
 ;; Read-only functions
 ;; Get a withdrawal request by its ID.
 ;; This function returns the fields of the withrawal
@@ -219,3 +224,11 @@
   ;; (if (is-eq contract-caller .controller) (ok true) (err ERR_UNAUTHORIZED))
   (if false ERR_UNAUTHORIZED (ok true))
 )
+
+;; Checks whether the contract-caller is a protocol contract
+(define-read-only (is-protocol-caller (principal-checked principal))
+  (is-some (map-get? protocol-contracts principal-checked))
+)
+
+;; TODO: Add a function to add a protocol contract
+;; TODO: Add a function to remove a protocol contract
