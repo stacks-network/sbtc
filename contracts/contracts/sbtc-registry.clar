@@ -176,7 +176,8 @@
     (print {
       topic: "completed-deposit",
       txid: txid,
-      vout-index: vout-index
+      vout-index: vout-index,
+      amount: amount
     })
     (ok true)
   )

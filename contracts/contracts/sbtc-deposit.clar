@@ -4,6 +4,7 @@
 
 ;; The required length of a txid
 (define-constant txid-length u32)
+(define-constant dust-limit u100)
 
 ;; error codes
 
@@ -11,6 +12,7 @@
 (define-constant ERR_TXID_LEN (err u300))
 ;; Deposit has already been completed
 (define-constant ERR_DEPOSIT_REPLAY (err u301))
+(define-constant ERR_LOWER_THAN_DUST (err u302))
 
 ;; data vars
 
@@ -31,6 +33,9 @@
 
         ;; TODO
         ;; Check that tx-sender is the bootstrap signer
+
+        ;; Check that amount is greater than dust limit
+        (asserts! (> amount dust-limit) ERR_LOWER_THAN_DUST)
 
         ;; Check that txid is the correct length
         (asserts! (is-eq (len txid) txid-length) ERR_TXID_LEN)

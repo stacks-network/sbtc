@@ -10,7 +10,7 @@ describe("sBTC deposit contract", () => {
         deposit.completeDepositWrapper({
           txid: new Uint8Array(31).fill(0),
           voutIndex: 0,
-          amount: 0,
+          amount: 1000n,
           recipient: alice,
         }),
         alice
@@ -18,12 +18,25 @@ describe("sBTC deposit contract", () => {
       expect(receipt.value).toEqual(errors.deposit.ERR_TXID_LEN);
     });
 
+    test("Fail complete-deposit-wrapper invalid low amount", () => {
+      const receipt = txErr(
+        deposit.completeDepositWrapper({
+          txid: new Uint8Array(32).fill(0),
+          voutIndex: 0,
+          amount: 10n,
+          recipient: alice,
+        }),
+        alice
+      );
+      expect(receipt.value).toEqual(deposit.constants.ERR_LOWER_THAN_DUST.value);
+    });
+
     test("Fail complete-deposit-wrapper replay deposit (err 301)", () => {
       const receipt0 = txOk(
         deposit.completeDepositWrapper({
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
-          amount: 0,
+          amount: 1000n,
           recipient: alice,
         }),
         alice
@@ -33,7 +46,7 @@ describe("sBTC deposit contract", () => {
         deposit.completeDepositWrapper({
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
-          amount: 0,
+          amount: 1000n,
           recipient: alice,
         }),
         alice
@@ -46,7 +59,7 @@ describe("sBTC deposit contract", () => {
         deposit.completeDepositWrapper({
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
-          amount: 0,
+          amount: 1000n,
           recipient: alice,
         }),
         alice
@@ -60,11 +73,13 @@ describe("sBTC deposit contract", () => {
         topic: string;
         txid: string;
         voutIndex: bigint;
+        amount: bigint;
       }>(print.data.value);
       expect(printData).toStrictEqual({
         topic: "completed-deposit",
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0n,
+        amount: 1000n,
       });
     });
 
@@ -73,7 +88,7 @@ describe("sBTC deposit contract", () => {
         deposit.completeDepositWrapper({
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
-          amount: 0,
+          amount: 1000n,
           recipient: alice,
         }),
         alice
@@ -86,7 +101,7 @@ describe("sBTC deposit contract", () => {
         alice
       );
       expect(receipt1).toStrictEqual({
-        amount: 0n,
+        amount: 1000n,
         recipient: alice,
       });
     });
