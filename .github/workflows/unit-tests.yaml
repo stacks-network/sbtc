@@ -40,12 +40,6 @@ jobs:
       - name: Install package dependencies.
         run: make install
 
-      - name: Generate OpenAPI spec for blocklist client
-        run: make generate-openapi-spec
-
-      - name: Generate blocklist API client
-        run: make blocklist-api-source
-
       - name: Run tests
         run: make integration-test
 
