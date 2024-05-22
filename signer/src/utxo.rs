@@ -163,7 +163,7 @@ impl SbtcRequests {
     fn compute_minimum_fee(&self, tx_vsize: f64) -> u64 {
         let fee_rate = self.signer_state.fee_rate;
         let last_fees = self.signer_state.last_fees;
-        compute_transaction_fee(tx_vsize, fee_rate, last_fees).ceil() as u64
+        compute_transaction_fee(tx_vsize, fee_rate, last_fees)
     }
 }
 
@@ -193,16 +193,16 @@ impl SbtcRequests {
 ///
 /// RBF: https://bitcoinops.org/en/topics/replace-by-fee/
 /// BIP-125: https://github.com/bitcoin/bips/blob/master/bip-0125.mediawiki#implementation-details
-fn compute_transaction_fee(tx_vsize: f64, fee_rate: f64, last_fees: Option<Fees>) -> f64 {
+fn compute_transaction_fee(tx_vsize: f64, fee_rate: f64, last_fees: Option<Fees>) -> u64 {
     match last_fees {
         Some(Fees { total, rate }) => {
             // The requirement for an RBF transaction is that the new fee
             // amount be greater than the old fee amount.
             let minimum_fee_rate = fee_rate.max(rate + rate * SATS_PER_VBYTE_INCREMENT);
             let fee_increment = tx_vsize * DEFAULT_INCREMENTAL_RELAY_FEE_RATE;
-            (total as f64 + fee_increment).max((tx_vsize * minimum_fee_rate).ceil())
+            (total as f64 + fee_increment).max(tx_vsize * minimum_fee_rate).ceil() as u64
         }
-        None => tx_vsize * fee_rate,
+        None => (tx_vsize * fee_rate).ceil() as u64,
     }
 }
 
@@ -641,7 +641,7 @@ impl<'a> UnsignedTransaction<'a> {
     /// The signers' UTXOs amount absorbs the fee on-chain that the
     /// depositors are supposed to pay. This amount must be accounted for
     /// when minting sBTC.
-    fn adjust_amounts(tx: &mut Transaction, tx_fee: f64) -> u64 {
+    fn adjust_amounts(tx: &mut Transaction, tx_fee: u64) -> u64 {
         // Since the first input and first output correspond to the signers'
         // UTXOs, we subtract them when computing the number of requests.
         let num_requests = (tx.input.len() + tx.output.len()).saturating_sub(2) as u64;
@@ -652,13 +652,12 @@ impl<'a> UnsignedTransaction<'a> {
         }
         // Fees are assigned proportionally to their weight amongst all
         // requests in the transaction. So let's get the total request weight.
-        let requests_vsize = Self::request_weight(tx).to_vbytes_ceil() as f64;
+        let requests_vsize = Self::request_weight(tx).to_vbytes_ceil();
         // The sum of all fees paid for each withdrawal UTXO.
         let mut withdrawal_fees: u64 = 0;
         // We now update the remaining withdrawal amounts to account for fees.
         tx.output.iter_mut().skip(1).for_each(|tx_out| {
-            let portion = tx_out.weight().to_vbytes_ceil() as f64 / requests_vsize;
-            let fee = (portion * tx_fee).ceil() as u64;
+            let fee = (tx_out.weight().to_vbytes_ceil() * tx_fee).div_ceil(requests_vsize);
             withdrawal_fees += fee;
             tx_out.value = Amount::from_sat(tx_out.value.to_sat().saturating_sub(fee));
         });
@@ -667,7 +666,7 @@ impl<'a> UnsignedTransaction<'a> {
         // for this UTXO is the total transaction fee minus the fees paid
         // by the other UTXOs in this transaction. This fee is later deducted
         // in the amount that is minted in sBTC to each depositor.
-        let deposit_fees = (tx_fee.ceil() as u64).saturating_sub(withdrawal_fees);
+        let deposit_fees = tx_fee.saturating_sub(withdrawal_fees);
         if let Some(utxo_out) = tx.output.first_mut() {
             let signers_amount = utxo_out.value.to_sat().saturating_sub(deposit_fees);
             utxo_out.value = Amount::from_sat(signers_amount);
