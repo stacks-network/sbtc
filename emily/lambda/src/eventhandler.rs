@@ -1,3 +1,4 @@
+//! Event handler module for processing API Gateway requests in AWS Lambda
 
 use crate::{
     errors,

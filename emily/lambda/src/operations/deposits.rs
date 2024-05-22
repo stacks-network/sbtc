@@ -1,9 +1,12 @@
+//! Handlers for sBTC deposit API operations
+
 use std::collections::HashMap;
 
 use emily::models;
 use crate::common;
 use crate::errors;
 
+/// Handles the creation of a deposit request
 pub fn handle_create_deposit(
     body:  Option<String>
 ) -> Result<common::SimpleApiResponse, errors::EmilyApiError> {
@@ -28,6 +31,7 @@ pub fn handle_create_deposit(
         })
 }
 
+/// Handles the retrieval of deposit transactions
 pub fn handle_get_txn_deposits(
     _path_parameters:  HashMap<String, String>
 ) -> Result<common::SimpleApiResponse, errors::EmilyApiError> {
@@ -73,6 +77,7 @@ pub fn handle_get_txn_deposits(
     })
 }
 
+/// Handles the retrieval of a single deposit transaction
 pub fn handle_get_deposit(
     _path_parameters:  HashMap<String, String>
 ) -> Result<common::SimpleApiResponse, errors::EmilyApiError> {
@@ -97,6 +102,7 @@ pub fn handle_get_deposit(
     })
 }
 
+/// Handles the retrieval of multiple deposit transactions
 pub fn handle_get_deposits(
     _path_parameters:  HashMap<String, String>
 ) -> Result<common::SimpleApiResponse, errors::EmilyApiError> {
@@ -128,7 +134,7 @@ pub fn handle_get_deposits(
     })
 }
 
-
+/// Handles the update of deposit transactions
 // TODO: Handle Update Deposit
 pub fn handle_update_deposits(
     body:  Option<String>

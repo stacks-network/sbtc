@@ -1,6 +1,9 @@
 /*!
 # emily-operation-lambda: A lambda for that handles the API requests made to Emily.
 */
+
+#![deny(missing_docs)]
+
 /// Event handler that dispatches to other modules.
 pub mod eventhandler;
 /// Utilities for working with events.
