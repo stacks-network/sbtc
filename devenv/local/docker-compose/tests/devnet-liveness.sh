@@ -287,14 +287,23 @@ echo "| \033[1mSTACKS_API_CONNECTED_TO_PG_SUCCESS\033[0m:           | \t $STACKS
 echo "-----------------------------------------------------------------"
 
 
-TOTAL_SUCCESS=1
 
 
 
-if [[ $MARIADB_DOCKER_LOGS == *"ready for connections"* || $MARIADB_DOCKER_LOGS == *"Ready for start up"* ]]; then
-    MARIADB_READY_SUCCESS=true
-    echo "MariaDB || Ready for start up"
-    MARIADB_READY_SUCCESS_FRMT=$(echo "\033[1;32m$MARIADB_READY_SUCCESS\033[0m ✅")
+
+
+
+if [[ $BTC_LIVENESS_SUCCESS == true \
+    && $BTC_MINEABLE_SUCCESS == true \
+    && $PG_READY_SUCCESS == true \
+    && $MARIADB_READY_SUCCESS == true \
+    && $NAKAMOTO_SIGNER_READY_SUCCESS == true \
+    && $STACKS_LIVENESS_SUCCESS == true \
+    && $STX_SYNC_WITH_BTC_UTXO_SUCCESS == true \
+    && $STACKS_API_EVENT_OBSERVER_LIVENESS_SUCCESS == true \
+    && $STACKS_PUBLIC_API_LIVENESS_SUCCESS == true \
+    && $STACKS_API_CONNECTED_TO_PG_SUCCESS == true ]]; then
+    exit 1
 fi
 
-exit $TOTAL_SUCCESS
+exit 0
