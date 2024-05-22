@@ -1,6 +1,4 @@
 use bitcoin::absolute::LockTime;
-use bitcoin::blockdata::opcodes;
-use bitcoin::hashes::Hash;
 use bitcoin::taproot::LeafVersion;
 use bitcoin::taproot::NodeInfo;
 use bitcoin::taproot::TaprootSpendInfo;
@@ -8,7 +6,6 @@ use bitcoin::transaction::Version;
 use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
-use bitcoin::PubkeyHash;
 use bitcoin::ScriptBuf;
 use bitcoin::Sequence;
 use bitcoin::Transaction;
@@ -38,16 +35,7 @@ where
     U: AsUtxo,
 {
     let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
-    let deposit_script = ScriptBuf::builder()
-        // Just some dummy data, since we don't test the parsing of the sBTC request data here.
-        .push_slice([1, 2, 3, 4])
-        .push_opcode(opcodes::all::OP_DROP)
-        .push_opcode(opcodes::all::OP_DUP)
-        .push_opcode(opcodes::all::OP_HASH160)
-        .push_slice(PubkeyHash::hash(&signers_public_key.serialize()))
-        .push_opcode(opcodes::all::OP_EQUALVERIFY)
-        .push_opcode(opcodes::all::OP_CHECKSIG)
-        .into_script();
+    let deposit_script = signer::testing::peg_in_deposit_script(&signers_public_key);
 
     let redeem_script = ScriptBuf::new_op_return([0u8, 1, 2, 3]);
     let ver = LeafVersion::TapScript;
@@ -83,7 +71,7 @@ where
 
     let req = DepositRequest {
         outpoint: OutPoint::new(deposit_tx.compute_txid(), 0),
-        max_fee: fee,
+        max_fee: amount,
         signer_bitmap: Vec::new(),
         amount,
         deposit_script: deposit_script.clone(),
@@ -203,7 +191,7 @@ fn deposits_add_to_controlled_amounts() {
     let mut unsigned = transactions.pop().unwrap();
 
     // Add the signature and/or other required information to the witness data.
-    regtest::set_witness_data(&mut unsigned, signer.keypair);
+    signer::testing::set_witness_data(&mut unsigned, signer.keypair);
 
     // The moment of truth, does the network accept the transaction?
     rpc.send_raw_transaction(&unsigned.tx).unwrap();
