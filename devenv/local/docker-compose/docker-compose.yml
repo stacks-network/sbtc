@@ -63,7 +63,7 @@ services:
     build:
       context: ./bitcoin-miner-sidecar/docker
       args:
-        INIT_BTC_BLOCKS: 200
+        INIT_BTC_BLOCKS: 101
         BTC_BLOCK_GEN_TIME: 10
         BITCOIN_RPC_HOST: "bitcoin"
         BITCOIN_RPC_PORT: 18443
@@ -73,8 +73,8 @@ services:
     depends_on:
       - bitcoin
     environment:
-      INIT_BTC_BLOCKS: 200
-      BTC_BLOCK_GEN_TIME: 10
+      INIT_BTC_BLOCKS: 101
+      BTC_BLOCK_GEN_TIME: 2
       BITCOIN_RPC_HOST: "bitcoin"
       BITCOIN_RPC_PORT: 18443
       BTC_RPCPASSWORD: devnet
