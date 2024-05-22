@@ -6,7 +6,7 @@ BEGIN
       SELECT FROM pg_catalog.pg_roles
       WHERE rolname = 'sbtc_user'
    ) THEN
-      CREATE USER sbtc_user WITH PASSWORD 'your_password';
+      CREATE USER sbtc_user WITH PASSWORD 'sbtc_password';
    END IF;
 END
 $do$;
