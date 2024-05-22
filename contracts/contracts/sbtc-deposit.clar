@@ -38,8 +38,8 @@
         ;; Assert that the deposit has not already been completed (no replay)
         (asserts! (is-none replay-fetch) ERR_DEPOSIT_REPLAY)
 
-        ;; TODO
         ;; Mint the sBTC to the recipient
+        (try! (contract-call? .sbtc-token protocol-mint amount recipient))
 
         ;; Complete the deposit
         (ok (contract-call? .sbtc-registry complete-deposit txid vout-index amount recipient))

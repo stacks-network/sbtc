@@ -1,5 +1,3 @@
-;;(impl-trait 'SP3FBR2AGK5H9QBDH3EEN6DF8EK8JY7RX8QJ5SVTE.sip-010-trait-ft-standard.sip-010-trait)
-
 (define-constant err-not-token-owner (err u4)) ;; `tx-sender` or `contract-caller` tried to move a token it does not own.
 (define-constant err-not-protocol-caller (err u5)) ;; `tx-sender` or `contract-caller` is not the protocol caller
 
