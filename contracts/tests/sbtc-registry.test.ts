@@ -72,7 +72,7 @@ describe("sBTC registry contract", () => {
       const [print] = prints;
       const printData = cvToValue<{
         sender: string;
-        recipient: string;
+        recipient: { version: Uint8Array; hashbytes: Uint8Array };
         amount: bigint;
         maxFee: bigint;
         blockHeight: bigint;

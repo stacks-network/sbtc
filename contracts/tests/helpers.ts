@@ -25,6 +25,7 @@ export const charlie = accounts.wallet_3.address;
 export const registry = contracts.sbtcRegistry;
 export const deposit = contracts.sbtcDeposit;
 export const signers = contracts.sbtcBootstrapSigners;
+export const withdrawal = contracts.sbtcWithdrawal;
 
 export const controllerId = `${accounts.deployer.address}.controller`;
 
@@ -34,6 +35,7 @@ export const errors = {
   registry: _errors.sbtcRegistry,
   deposit: _errors.sbtcDeposit,
   signers: _errors.sbtcBootstrapSigners,
+  withdrawal: _errors.sbtcWithdrawal,
 };
 
 export function getLastWithdrawalRequestId() {
