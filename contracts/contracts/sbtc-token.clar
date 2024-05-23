@@ -1,5 +1,5 @@
-(define-constant err-not-token-owner (err u4)) ;; `tx-sender` or `contract-caller` tried to move a token it does not own.
-(define-constant err-not-protocol-caller (err u5)) ;; `tx-sender` or `contract-caller` is not the protocol caller
+(define-constant ERR_NOT_AUTH (err u600)) ;; `tx-sender` or `contract-caller` is not the protocol caller
+(define-constant ERR_NOT_OWNER (err u604)) ;; `tx-sender` or `contract-caller` tried to move a token it does not own.
 
 (define-fungible-token sbtc-token)
 (define-fungible-token sbtc-token-locked)
@@ -10,7 +10,7 @@
 (define-constant token-decimals u8)
 
 (define-read-only (is-protocol-caller)
-	(ok (asserts! (contract-call? .sbtc-registry is-protocol-caller contract-caller) err-not-protocol-caller))
+	(ok (asserts! (contract-call? .sbtc-registry is-protocol-caller contract-caller) ERR_NOT_AUTH))
 )
 
 ;; --- Protocol functions
@@ -108,7 +108,7 @@
 ;; #[allow(unchecked_data)]
 (define-public (transfer (amount uint) (sender principal) (recipient principal) (memo (optional (buff 34))))
 	(begin
-		(asserts! (or (is-eq tx-sender sender) (is-eq contract-caller sender)) err-not-token-owner)
+		(asserts! (or (is-eq tx-sender sender) (is-eq contract-caller sender)) ERR_NOT_OWNER)
 		(ft-transfer? sbtc-token amount sender recipient)
 	)
 )

@@ -4,7 +4,7 @@
 
 ;; The required length of a txid
 (define-constant txid-length u32)
-(define-constant dust-limit u100)
+(define-constant dust-limit u546)
 
 ;; error codes
 
