@@ -13,7 +13,7 @@ name = "relay-client"
 [features]
 default = ["testing"]
 integration-tests = ["testing"]
-testing = []
+testing = ["fake"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -34,15 +34,19 @@ reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+sqlx.workspace = true
 thiserror.workspace = true
-time = "0.3"
+time.workspace = true
 tonic.workspace = true
-tokio = { workspace = true, features = ["signal"] }
+tokio = { workspace = true, features = ["signal", "macros", "rt-multi-thread"] }
 tokio-stream.workspace = true
 tracing.workspace = true
 tracing-attributes.workspace = true
 tracing-subscriber.workspace = true
 wsts.workspace = true
+
+# Only for testing
+fake = { version = "2.9.2", features = ["derive", "time"], optional = true }
 
 [dependencies.secp256k1]
 version = "*"
@@ -53,7 +57,6 @@ bitcoincore-rpc = { version = "0.19" }
 mockito = "1.4.0"
 more-asserts = "0.3"
 test-case = "3.1"
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [build-dependencies]
 tonic-build.workspace = true

@@ -39,6 +39,7 @@ The following are the developer tools that you should install on your local mach
 - **[Java 21](https://www.oracle.com/java/)** - [Installation Guide](https://www.oracle.com/java/technologies/downloads/) - Required for OpenAPI Generator
 - **[Docker](https://docs.docker.com/manuals/)** - [Installation Guide](https://docs.docker.com/desktop/). This is used for running integration tests.
 - **[protoc](https://github.com/protocolbuffers/protobuf)** - [Installation Guide](https://grpc.io/docs/protoc-installation/). Compiles protobuf files.
+- **[sqlx-cli](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli)** - [Installation Guide](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli#install) - Handles database migrations.
 
 #### Tool Versions
 
