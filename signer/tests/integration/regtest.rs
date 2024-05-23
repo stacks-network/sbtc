@@ -32,7 +32,10 @@ use bitcoincore_rpc::Auth;
 use bitcoincore_rpc::Client;
 use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi;
+use rand::distributions::Uniform;
+use rand::Rng;
 use secp256k1::SECP256K1;
+use signer::utxo::WithdrawalRequest;
 use std::sync::OnceLock;
 
 /// These must match the username and password in bitcoin.conf
@@ -75,9 +78,7 @@ pub fn initialize_blockchain() -> (&'static Client, &'static Faucet) {
         let faucet = Faucet::new(FAUCET_SECRET_KEY, AddressType::P2wpkh, rpc);
         faucet.track_address(FAUCET_LABEL);
 
-        let amount = rpc
-            .get_received_by_address(&faucet.address, Some(1))
-            .unwrap();
+        let amount = rpc.get_received_by_address(&faucet.address, None).unwrap();
 
         if amount < Amount::from_int_btc(1) {
             faucet.generate_blocks(101);
@@ -368,4 +369,17 @@ pub fn p2tr_sign_transaction<U>(
     let signature = bitcoin::taproot::Signature { signature, sighash_type };
 
     tx.input[input_index].witness = Witness::p2tr_key_spend(&signature);
+}
+
+pub fn generate_withdrawal() -> (WithdrawalRequest, Recipient) {
+    let recipient = Recipient::new(AddressType::P2tr);
+
+    let req = WithdrawalRequest {
+        amount: rand::rngs::OsRng.sample(Uniform::new(100_000, 250_000)),
+        max_fee: 250_000,
+        address: recipient.address.clone(),
+        signer_bitmap: Vec::new(),
+    };
+
+    (req, recipient)
 }

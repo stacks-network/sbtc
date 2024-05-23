@@ -200,7 +200,9 @@ fn compute_transaction_fee(tx_vsize: f64, fee_rate: f64, last_fees: Option<Fees>
             // amount be greater than the old fee amount.
             let minimum_fee_rate = fee_rate.max(rate + rate * SATS_PER_VBYTE_INCREMENT);
             let fee_increment = tx_vsize * DEFAULT_INCREMENTAL_RELAY_FEE_RATE;
-            (total as f64 + fee_increment).max(tx_vsize * minimum_fee_rate).ceil() as u64
+            (total as f64 + fee_increment)
+                .max(tx_vsize * minimum_fee_rate)
+                .ceil() as u64
         }
         None => (tx_vsize * fee_rate).ceil() as u64,
     }

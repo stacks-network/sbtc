@@ -81,19 +81,6 @@ fn generate_depositor(rpc: &Client, faucet: &Faucet, signer: &Recipient) -> Depo
     deposit_request
 }
 
-fn generate_withdrawal() -> (WithdrawalRequest, Recipient) {
-    let recipient = Recipient::new(AddressType::P2tr);
-
-    let req = WithdrawalRequest {
-        amount: rand::rngs::OsRng.sample(Uniform::new(100_000, 250_000)),
-        max_fee: 250_000,
-        address: recipient.address.clone(),
-        signer_bitmap: Vec::new(),
-    };
-
-    (req, recipient)
-}
-
 fn recreate_request_state(
     mut requests: SbtcRequests,
     ctx: &RbfContext,
@@ -194,7 +181,7 @@ pub fn transaction_with_rbf(
             .collect();
 
     let mut withdrawal_recipients: Vec<Recipient> = Vec::new();
-    let withdrawals: Vec<WithdrawalRequest> = std::iter::repeat_with(generate_withdrawal)
+    let withdrawals: Vec<WithdrawalRequest> = std::iter::repeat_with(regtest::generate_withdrawal)
         .take(ctx.initial_withdrawals.max(ctx.rbf_withdrawals))
         .map(|(mut req, recipient)| {
             withdrawal_recipients.push(recipient);
