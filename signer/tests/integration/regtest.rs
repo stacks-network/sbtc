@@ -78,9 +78,7 @@ pub fn initialize_blockchain() -> (&'static Client, &'static Faucet) {
         let faucet = Faucet::new(FAUCET_SECRET_KEY, AddressType::P2wpkh, rpc);
         faucet.track_address(FAUCET_LABEL);
 
-        let amount = rpc
-            .get_received_by_address(&faucet.address, None)
-            .unwrap();
+        let amount = rpc.get_received_by_address(&faucet.address, None).unwrap();
 
         if amount < Amount::from_int_btc(1) {
             faucet.generate_blocks(101);
