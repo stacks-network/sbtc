@@ -21,6 +21,7 @@ use bitcoin::TapSighashType;
 use bitcoin::Transaction;
 use bitcoin::TxIn;
 use bitcoin::TxOut;
+use bitcoin::Weight;
 use bitcoin::Witness;
 use bitcoin::XOnlyPublicKey;
 use secp256k1::Keypair;
@@ -47,6 +48,12 @@ const SOLO_DEPOSIT_TX_VSIZE: f64 = 207.0;
 /// withdrawal request and the signers' new UTXO. This size assumes
 /// the script in the withdrawal UTXO is empty.
 const BASE_WITHDRAWAL_TX_VSIZE: f64 = 120.0;
+
+/// It appears that bitcoin-core tracks fee rates in sats per kilo-vbyte
+/// (or BTC per kilo-vbyte). Since we work in sats per vbyte, this constant
+/// is the smallest detectable increment for bumping the fee rate in sats
+/// per vbyte.
+const SATS_PER_VBYTE_INCREMENT: f64 = 0.001;
 
 /// Describes the fees for a transaction.
 #[derive(Debug, Clone, Copy)]
@@ -156,7 +163,7 @@ impl SbtcRequests {
     fn compute_minimum_fee(&self, tx_vsize: f64) -> u64 {
         let fee_rate = self.signer_state.fee_rate;
         let last_fees = self.signer_state.last_fees;
-        compute_transaction_fee(tx_vsize, fee_rate, last_fees).ceil() as u64
+        compute_transaction_fee(tx_vsize, fee_rate, last_fees)
     }
 }
 
@@ -186,16 +193,16 @@ impl SbtcRequests {
 ///
 /// RBF: https://bitcoinops.org/en/topics/replace-by-fee/
 /// BIP-125: https://github.com/bitcoin/bips/blob/master/bip-0125.mediawiki#implementation-details
-fn compute_transaction_fee(tx_vsize: f64, fee_rate: f64, last_fees: Option<Fees>) -> f64 {
+fn compute_transaction_fee(tx_vsize: f64, fee_rate: f64, last_fees: Option<Fees>) -> u64 {
     match last_fees {
         Some(Fees { total, rate }) => {
             // The requirement for an RBF transaction is that the new fee
             // amount be greater than the old fee amount.
+            let minimum_fee_rate = fee_rate.max(rate + rate * SATS_PER_VBYTE_INCREMENT);
             let fee_increment = tx_vsize * DEFAULT_INCREMENTAL_RELAY_FEE_RATE;
-            let minimum_fee_rate = fee_rate.max(rate + rate * f64::EPSILON);
-            (total as f64 + fee_increment).max(tx_vsize * minimum_fee_rate)
+            (total as f64 + fee_increment).max(tx_vsize * minimum_fee_rate).ceil() as u64
         }
-        None => tx_vsize * fee_rate,
+        None => (tx_vsize * fee_rate).ceil() as u64,
     }
 }
 
@@ -438,10 +445,10 @@ pub struct UnsignedTransaction<'a> {
     pub tx: Transaction,
     /// The public key used for the public key of the signers' UTXO output.
     pub signer_public_key: XOnlyPublicKey,
-    /// The amount of fees changed to each request.
-    pub fee_per_request: u64,
     /// The signers' UTXO used as inputs to this transaction.
     pub signer_utxo: SignerBtcState,
+    /// The total amount of fees associated with the deposit requests.
+    pub deposit_fees: u64,
 }
 
 /// A struct containing Taproot-tagged hashes used for computing taproot
@@ -474,11 +481,12 @@ impl<'a> UnsignedTransaction<'a> {
         // estimates are accurate. Later we will update the fees and
         // remove the witness data.
         let mut tx = Self::new_transaction(&requests, state)?;
-        // We now compute the fee that each request must pay given the
-        // size of the transaction and the fee rate. Once we have the fee
-        // we adjust the output amounts accordingly.
-        let fee = Self::compute_request_fee(&tx, state.fee_rate, state.last_fees);
-        Self::adjust_amounts(&mut tx, fee);
+        // We now compute the total fees for the transaction.
+        let tx_vsize = tx.vsize() as f64;
+        let tx_fee = compute_transaction_fee(tx_vsize, state.fee_rate, state.last_fees);
+        // Now adjust the deposits and withdrawals by an amount proportional
+        // to their weight.
+        let deposit_fees = Self::adjust_amounts(&mut tx, tx_fee);
 
         // Now we can reset the witness data.
         Self::reset_witness_data(&mut tx);
@@ -487,8 +495,8 @@ impl<'a> UnsignedTransaction<'a> {
             tx,
             requests,
             signer_public_key: state.public_key,
-            fee_per_request: fee,
             signer_utxo: *state,
+            deposit_fees,
         })
     }
 
@@ -605,29 +613,6 @@ impl<'a> UnsignedTransaction<'a> {
         self.tx.output.iter().map(|out| out.value.to_sat()).sum()
     }
 
-    /// Compute the fee that each deposit and withdrawal request must pay
-    /// for the transaction given the fee rate and the fees paid last time
-    /// if this is a replace-by-fee (RBF) transaction.
-    ///
-    /// If each deposit and withdrawal associated with this transaction
-    /// paid the fees returned by this function then the fee rate for the
-    /// entire transaction will be at least as much as the target fee rate.
-    /// Moreover, both the transaction's total fee and fee rate will be
-    /// greater than the `last_fee` if present.
-    ///
-    /// ## Notes
-    ///
-    /// Each deposit and withdrawal pays an equal amount for the transaction.
-    /// To compute this amount we divide the total fee by the number of
-    /// requests in the transaction.
-    fn compute_request_fee(tx: &Transaction, fee_rate: f64, last_fees: Option<Fees>) -> u64 {
-        let tx_vsize = tx.vsize() as f64;
-        let tx_fee = compute_transaction_fee(tx_vsize, fee_rate, last_fees);
-
-        let num_requests = (tx.input.len() + tx.output.len()).saturating_sub(2) as f64;
-        (tx_fee / num_requests).ceil() as u64
-    }
-
     /// Compute the final amount for the signers' UTXO given the current
     /// UTXO amount and the incoming requests.
     ///
@@ -649,35 +634,58 @@ impl<'a> UnsignedTransaction<'a> {
         Ok(amount as u64)
     }
 
-    /// Adjust the amounts for each output given the fee.
+    /// Adjust the amounts for each output given the transaction fee.
     ///
-    /// This function adjusts each output by the given fee amount. The
-    /// signers' UTXOs amount absorbs the fee on-chain that the depositors
-    /// are supposed to pay. This amount must be accounted for when
-    /// minting sBTC.
-    fn adjust_amounts(tx: &mut Transaction, fee: u64) {
+    /// This function adjusts each output by an amount that is proportional
+    /// to their weight (but considering only the weight of the requests).
+    /// The signers' UTXOs amount absorbs the fee on-chain that the
+    /// depositors are supposed to pay. This amount must be accounted for
+    /// when minting sBTC.
+    fn adjust_amounts(tx: &mut Transaction, tx_fee: u64) -> u64 {
         // Since the first input and first output correspond to the signers'
         // UTXOs, we subtract them when computing the number of requests.
         let num_requests = (tx.input.len() + tx.output.len()).saturating_sub(2) as u64;
         // This is a bizarre case that should never happen.
         if num_requests == 0 {
             tracing::warn!("No deposit or withdrawal related inputs in the transaction");
-            return;
+            return 0;
         }
+        // Fees are assigned proportionally to their weight amongst all
+        // requests in the transaction. So let's get the total request weight.
+        let requests_vsize = Self::request_weight(tx).to_vbytes_ceil();
+        // The sum of all fees paid for each withdrawal UTXO.
+        let mut withdrawal_fees: u64 = 0;
+        // We now update the remaining withdrawal amounts to account for fees.
+        tx.output.iter_mut().skip(1).for_each(|tx_out| {
+            let fee = (tx_out.weight().to_vbytes_ceil() * tx_fee).div_ceil(requests_vsize);
+            withdrawal_fees += fee;
+            tx_out.value = Amount::from_sat(tx_out.value.to_sat().saturating_sub(fee));
+        });
 
-        // The first output is the signer's UTXO. To determine the correct
-        // amount for this UTXO deduct the fee payable by the depositors
-        // from the currently set amount. This deduction is reflected in
-        // the amount of sBTC minted to each depositor.
+        // The first output is the signer's UTXO. The correct fee amount
+        // for this UTXO is the total transaction fee minus the fees paid
+        // by the other UTXOs in this transaction. This fee is later deducted
+        // in the amount that is minted in sBTC to each depositor.
+        let deposit_fees = tx_fee.saturating_sub(withdrawal_fees);
         if let Some(utxo_out) = tx.output.first_mut() {
-            let deposit_fees = fee * (tx.input.len() - 1) as u64;
             let signers_amount = utxo_out.value.to_sat().saturating_sub(deposit_fees);
             utxo_out.value = Amount::from_sat(signers_amount);
         }
-        // We now update the remaining withdrawal amounts to account for fees.
-        tx.output.iter_mut().skip(1).for_each(|tx_out| {
-            tx_out.value = Amount::from_sat(tx_out.value.to_sat().saturating_sub(fee));
-        });
+
+        deposit_fees
+    }
+
+    /// Computes the total weight of the inputs and the outputs, excluding
+    /// the ones related to the signers' UTXO.
+    fn request_weight(tx: &Transaction) -> Weight {
+        // We skip the first input and output because those are always the
+        // signers' UTXO input and output.
+        tx.input
+            .iter()
+            .skip(1)
+            .map(|x| x.segwit_weight())
+            .chain(tx.output.iter().skip(1).map(|x| x.weight()))
+            .sum()
     }
 
     /// Helper function for generating dummy Schnorr signatures.
@@ -1153,6 +1161,10 @@ mod tests {
     fn returned_txs_match_fee_rate() {
         // Each deposit and withdrawal has a max fee greater than the current market fee rate
         let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
+        // Any old keypair will do here, we need it to construct the
+        // witness data of the right size.
+        let keypair = Keypair::new_global(&mut OsRng);
+
         let requests = SbtcRequests {
             deposits: vec![
                 create_deposit(12340, 100_000, 1),
@@ -1193,52 +1205,45 @@ mod tests {
             .map(|req| (req.address.script_pubkey().to_hex_string(), req.amount))
             .collect();
 
-        let transactions = requests.construct_transactions().unwrap();
+        let mut transactions = requests.construct_transactions().unwrap();
         more_asserts::assert_gt!(transactions.len(), 1);
 
-        transactions
-            .iter()
-            .fold(requests.signer_state.utxo.amount, |signer_amount, utx| {
-                for output in utx.tx.output.iter().skip(1) {
-                    let original_amount = withdrawal_amounts
-                        .remove(&output.script_pubkey.to_hex_string())
-                        .unwrap();
-                    assert_eq!(original_amount, output.value.to_sat() + utx.fee_per_request);
-                }
+        transactions.iter_mut().for_each(|utx| {
+            // The unsigned transaction has all witness data removed,
+            // so it should have a much smaller size than the "signed"
+            // version returned from UnsignedTransaction::new_transaction.
+            let unsigned_size = utx.tx.vsize();
+            testing::set_witness_data(utx, keypair);
+            let signed_vsize = utx.tx.vsize();
 
-                let output_amounts: u64 = utx.tx.output.iter().map(|out| out.value.to_sat()).sum();
-                let input_amounts: u64 = utx
-                    .requests
-                    .iter()
-                    .filter_map(RequestRef::as_deposit)
-                    .map(|dep| dep.amount)
-                    .chain([signer_amount])
-                    .sum();
+            more_asserts::assert_lt!(unsigned_size, signed_vsize);
 
-                more_asserts::assert_gt!(input_amounts, output_amounts);
-                more_asserts::assert_gt!(utx.requests.len(), 0);
+            let output_amounts: u64 = utx.output_amounts();
+            let input_amounts: u64 = utx.input_amounts();
+            let total_fees = input_amounts - output_amounts;
 
-                // Since there are often both deposits and withdrawal, the
-                // following assertion checks that we capture the fees that
-                // depositors must pay.
-                let total_fees = utx.fee_per_request * utx.requests.len() as u64;
-                assert_eq!(input_amounts, output_amounts + total_fees);
+            let request_vsize = UnsignedTransaction::request_weight(&utx.tx).to_vbytes_ceil();
 
-                let state = &requests.signer_state;
-                let signed_vsize = UnsignedTransaction::new_transaction(&utx.requests, state)
-                    .unwrap()
-                    .vsize();
+            let reqs = utx.requests.iter().filter_map(RequestRef::as_withdrawal);
+            for (output, req) in utx.tx.output.iter().skip(1).zip(reqs) {
+                let expected_fee =
+                    (output.weight().to_vbytes_ceil() * total_fees).div_ceil(request_vsize);
+                let fee = req.amount - output.value.to_sat();
 
-                // The unsigned transaction has all witness data removed,
-                // so it should have a much smaller size than the "signed"
-                // version returned from UnsignedTransaction::new_transaction.
-                more_asserts::assert_lt!(utx.tx.vsize(), signed_vsize);
-                // The final fee rate should still be greater than the market fee rate
-                let fee_rate = (input_amounts - output_amounts) as f64 / signed_vsize as f64;
-                more_asserts::assert_le!(requests.signer_state.fee_rate, fee_rate);
+                assert_eq!(fee, expected_fee);
+                let original_amount = withdrawal_amounts
+                    .remove(&output.script_pubkey.to_hex_string())
+                    .unwrap();
+                assert_eq!(original_amount, output.value.to_sat() + fee);
+            }
 
-                utx.new_signer_utxo().amount
-            });
+            more_asserts::assert_gt!(input_amounts, output_amounts);
+            more_asserts::assert_gt!(utx.requests.len(), 0);
+
+            // The final fee rate should still be greater than the market fee rate
+            let fee_rate = (input_amounts - output_amounts) as f64 / signed_vsize as f64;
+            more_asserts::assert_le!(requests.signer_state.fee_rate, fee_rate);
+        });
     }
 
     #[test]
@@ -1300,8 +1305,20 @@ mod tests {
         // Since there are often both deposits and withdrawal, the
         // following assertion checks that we capture the fees that
         // depositors must pay.
-        let total_fees = utx.fee_per_request * utx.requests.len() as u64;
-        assert_eq!(input_amounts, output_amounts + total_fees);
+        let deposit_requests = utx.requests.iter().filter_map(RequestRef::as_withdrawal);
+        let withdrawal_fees: u64 = utx
+            .tx
+            .output
+            .iter()
+            .skip(1)
+            .zip(deposit_requests)
+            .map(|(tx_out, req)| req.amount - tx_out.value.to_sat())
+            .sum();
+
+        assert_eq!(
+            input_amounts,
+            output_amounts + withdrawal_fees + utx.deposit_fees
+        );
 
         let state = &requests.signer_state;
         let signed_vsize = UnsignedTransaction::new_transaction(&utx.requests, state)
