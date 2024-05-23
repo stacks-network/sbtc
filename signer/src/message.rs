@@ -55,6 +55,18 @@ impl From<SignerWithdrawDecision> for Payload {
     }
 }
 
+impl From<BitcoinTransactionSignRequest> for Payload {
+    fn from(value: BitcoinTransactionSignRequest) -> Self {
+        Self::BitcoinTransactionSignRequest(value)
+    }
+}
+
+impl From<BitcoinTransactionSignAck> for Payload {
+    fn from(value: BitcoinTransactionSignAck) -> Self {
+        Self::BitcoinTransactionSignAck(value)
+    }
+}
+
 impl From<WstsMessage> for Payload {
     fn from(value: WstsMessage) -> Self {
         Self::WstsMessage(value)
@@ -72,7 +84,7 @@ pub struct SignerDepositDecision {
     pub accepted: bool,
 }
 
-/// Represents a decision related to signer withdrawal
+/// Represents a decision related to signer withdrawal.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct SignerWithdrawDecision {
@@ -84,23 +96,29 @@ pub struct SignerWithdrawDecision {
     pub accepted: bool,
 }
 
-/// Represents a request to sign a Stacks transaction
+/// Represents a request to sign a Stacks transaction.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StacksTransactionSignRequest;
 
-/// Represents a signature of a Stacks transaction
+/// Represents a signature of a Stacks transaction.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StacksTransactionSignature;
 
-/// Represents a request to sign a Bitcoin transaction
+/// Represents a request to sign a Bitcoin transaction.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct BitcoinTransactionSignRequest;
+pub struct BitcoinTransactionSignRequest {
+    /// The transaction.
+    tx: bitcoin::Transaction,
+}
 
-/// Represents an acknowledgment of a signed Bitcoin transaction
+/// Represents an acknowledgment of a signed Bitcoin transaction.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct BitcoinTransactionSignAck;
+pub struct BitcoinTransactionSignAck {
+    /// The ID of the acknowledged transaction.
+    txid: bitcoin::Txid,
+}
 
-/// A wsts message
+/// A wsts message.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WstsMessage(wsts::net::Message);
 
@@ -118,6 +136,8 @@ impl wsts::net::Signable for Payload {
             Self::WstsMessage(msg) => msg.0.hash(hasher),
             Self::SignerDepositDecision(msg) => msg.hash(hasher),
             Self::SignerWithdrawDecision(msg) => msg.hash(hasher),
+            Self::BitcoinTransactionSignRequest(msg) => msg.hash(hasher),
+            Self::BitcoinTransactionSignAck(msg) => msg.hash(hasher),
             _ => unimplemented!(),
         }
     }
@@ -141,6 +161,20 @@ impl wsts::net::Signable for SignerWithdrawDecision {
     }
 }
 
+impl wsts::net::Signable for BitcoinTransactionSignRequest {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        hasher.update("SIGNER_BITCOIN_TRANSACTION_SIGN_REQUEST");
+        hasher.update(bitcoin::consensus::serialize(&self.tx));
+    }
+}
+
+impl wsts::net::Signable for BitcoinTransactionSignAck {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        hasher.update("SIGNER_BITCOIN_TRANSACTION_SIGN_ACK");
+        hasher.update(self.txid);
+    }
+}
+
 /// Convenient type aliases
 type StacksBlockHash = [u8; 32];
 
@@ -155,16 +189,20 @@ mod tests {
 
     #[test]
     fn signer_messages_should_be_signable() {
-        assert_signer_messages_should_be_signable_with_type::<WstsMessage>();
         assert_signer_messages_should_be_signable_with_type::<SignerDepositDecision>();
         assert_signer_messages_should_be_signable_with_type::<SignerWithdrawDecision>();
+        assert_signer_messages_should_be_signable_with_type::<BitcoinTransactionSignRequest>();
+        assert_signer_messages_should_be_signable_with_type::<BitcoinTransactionSignAck>();
+        assert_signer_messages_should_be_signable_with_type::<WstsMessage>();
     }
 
     #[test]
     fn signer_messages_should_be_encodable() {
-        assert_signer_messages_should_be_encodable_with_type::<WstsMessage>();
         assert_signer_messages_should_be_encodable_with_type::<SignerDepositDecision>();
         assert_signer_messages_should_be_encodable_with_type::<SignerWithdrawDecision>();
+        assert_signer_messages_should_be_encodable_with_type::<BitcoinTransactionSignRequest>();
+        assert_signer_messages_should_be_encodable_with_type::<BitcoinTransactionSignAck>();
+        assert_signer_messages_should_be_encodable_with_type::<WstsMessage>();
     }
 
     fn assert_signer_messages_should_be_signable_with_type<P>()
