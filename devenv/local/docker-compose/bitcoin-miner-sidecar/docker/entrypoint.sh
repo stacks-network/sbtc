@@ -18,8 +18,6 @@ curl -u "$BTC_RPCUSER:$BTC_RPCPASSWORD" --data-binary \
 	'{ "jsonrpc": "1.0", "id": "curltest", "method": "createwallet", "params": { "wallet_name":"", "descriptors":false }}' \
 	-H 'content-type: text/plain;' "$RPC_ENDPOINT"
 
-# curl -u "$BTC_RPCUSER:$BTC_RPCPASSWORD" --data-binary \
-# 	'{"jsonrpc": "1.0", "id": "curltest", "method": "createwallet", "params": ["testwallet"]}' -H 'content-type: text/plain;' "$RPC_ENDPOINT"
 echo "==> main bitcoin wallet created\n\n"
 
 

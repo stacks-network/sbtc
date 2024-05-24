@@ -19,14 +19,9 @@ ENV RUST_BACKTRACE=$RUST_BACKTRACE
 # -----------INSTALL SUDO----------------------
 RUN apt-get update && apt-get install -y sudo
 
-# RUN adduser --disabled-password --gecos '' docker
-# RUN adduser docker sudo
 RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
-# USER docker
 # --------------------------------------------
-
-# The container creates this the config.toml internally
 RUN chmod +rwx ./entrypoint.sh
 
 EXPOSE 30000

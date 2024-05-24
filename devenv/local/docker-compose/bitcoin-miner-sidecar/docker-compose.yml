@@ -2,12 +2,6 @@ services:
   bitcoin:
     image: bitcoin:latest
     container_name: bitcoin
-    # hostname: bitcoin
-    # networks:
-    #   devnet:
-    #     # ipv4_address: 172.16.238.200
-    #     aliases:
-    #       - bitcoin
     build:
       context: ../bitcoin/docker
       args:
@@ -34,7 +28,6 @@ services:
       BTC_DISABLEWALLET: 0
       BTC_TXINDEX: 1
       BTC_RPCBIND: "0.0.0.0"
-      # BTC_RPCALLOWIP: "0.0.0.0"
       BTC_RPCALLOWIP: "0.0.0.0/0"
       BTC_RPCPASSWORD: devnet
       BTC_RPCUSER: devnet
@@ -45,11 +38,6 @@ services:
   bitcoin-miner:
     image: bitcoin-miner-sidecar:latest
     container_name: bitcoin-miner-sidecar
-    # hostname: bitcoin-miner
-    # networks:
-    #   devnet:
-    #     aliases:
-    #       - bitcoin-miner
     stop_grace_period: 5s
     build:
       context: ./docker
@@ -71,9 +59,3 @@ services:
       BTC_RPCPASSWORD: devnet
       BTC_RPCUSER: devnet
       MINER_ADDRESS: "mr2S2F9uaes4ToS5krSPnTGCHnEjiMVxeG"
-
-# networks:
-#   devnet:
-    # ipam:
-    #   config:
-    #     - subnet: "172.16.238.0/24"

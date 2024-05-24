@@ -180,22 +180,6 @@ echo "\033[1mSTX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m: $STX_SYNC_WITH_BTC_UTXO_SUCC
 echo "\n"
 
 
-## (LOGS APPROACH)
-# STACKS_DOCKER_LOGS=$(docker logs --tail 100000 stacks 2>/dev/null)
-
-
-# STX_SYNC_WITH_BTC_UTXO_SUCCESS=false
-# STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT=$(echo "\033[1;31m$STX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m❌")
-# if [[ $STACKS_DOCKER_LOGS == *"UTXOs found"* ]]; then
-#     STX_SYNC_WITH_BTC_UTXO_SUCCESS=true
-#     echo "Stacks || UTXOs found - will run as a Miner node"
-#     STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT=$(echo "\033[1;32m$STX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m ✅")
-# fi
-
-# echo "\033[1mSTX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m: $STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT"
-# echo "\n"
-
-
 
 
 echo " ---------------------------------------------------------------"
