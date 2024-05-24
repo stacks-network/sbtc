@@ -1,12 +1,23 @@
-import { mapGet, varGet } from "@clarigen/test";
+import { mapGet, rov, varGet } from "@clarigen/test";
 import { project, accounts } from "./clarigen-types";
-import { cvToValue, projectFactory } from "@clarigen/core";
+import { cvToValue, projectFactory, projectErrors } from "@clarigen/core";
 import { poxAddressToTuple, poxAddressToBtcAddress } from "@stacks/stacking";
 import { c32ToB58 } from "c32check";
-import { bufferCV, tupleCV } from "@stacks/transactions";
+import {
+  AddressHashMode,
+  AddressVersion,
+  addressFromPublicKeys,
+  addressToString,
+  bufferCV,
+  createStacksPublicKey,
+  tupleCV,
+} from "@stacks/transactions";
+import * as secp from "@noble/secp256k1";
+import { hex } from "@scure/base";
 
 export const contracts = projectFactory(project, "simnet");
 
+export const deployer = accounts.deployer.address;
 export const alice = accounts.wallet_1.address;
 export const bob = accounts.wallet_2.address;
 export const charlie = accounts.wallet_3.address;
@@ -14,8 +25,18 @@ export const charlie = accounts.wallet_3.address;
 export const registry = contracts.sbtcRegistry;
 export const deposit = contracts.sbtcDeposit;
 export const signers = contracts.sbtcBootstrapSigners;
+export const withdrawal = contracts.sbtcWithdrawal;
 
 export const controllerId = `${accounts.deployer.address}.controller`;
+
+const _errors = projectErrors(project);
+
+export const errors = {
+  registry: _errors.sbtcRegistry,
+  deposit: _errors.sbtcDeposit,
+  signers: _errors.sbtcBootstrapSigners,
+  withdrawal: _errors.sbtcWithdrawal,
+};
 
 export function getLastWithdrawalRequestId() {
   return varGet(
@@ -28,6 +49,9 @@ export function getWithdrawalRequest(id: number | bigint) {
   return mapGet(registry.identifier, registry.maps.withdrawalRequests, id);
 }
 
+export function currentSignerAddr() {
+  return rov(registry.getCurrentSignerPrincipal());
+}
 
 /**
  * Helper function to convert a BTC address string to a PoX address
@@ -69,4 +93,41 @@ export function poxAddrToBtcAddress(poxAddr: {
  */
 export function stxAddressToPoxAddress(stxAddr: string) {
   return btcAddressToPoxAddress(stxAddrToBtcAddr(stxAddr, 0));
+}
+
+export const { randomPrivateKey } = secp.utils;
+
+/**
+ * Get a random public key
+ */
+export function randomPublicKey() {
+  return secp.getPublicKey(randomPrivateKey(), true);
+}
+
+/**
+ * Generate a list of random public keys
+ */
+export function randomPublicKeys(n = 15) {
+  return Array.from({ length: n }, () => randomPublicKey());
+}
+
+/**
+ * Given a list of public keys and a threshold,
+ * construct a multisig Stacks principal
+ */
+export function constructMultisigAddress(
+  pubkeys: Uint8Array[],
+  m: number | bigint,
+  isTestnet = true
+) {
+  return addressToString(
+    addressFromPublicKeys(
+      isTestnet
+        ? AddressVersion.TestnetMultiSig
+        : AddressVersion.MainnetMultiSig,
+      AddressHashMode.SerializeP2SH,
+      Number(m),
+      pubkeys.map((k) => createStacksPublicKey(hex.encode(k)))
+    )
+  );
 }

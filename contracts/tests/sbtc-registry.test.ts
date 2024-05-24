@@ -1,6 +1,8 @@
 import {
   alice,
   bob,
+  deployer,
+  errors,
   getLastWithdrawalRequestId,
   getWithdrawalRequest,
   registry,
@@ -70,7 +72,7 @@ describe("sBTC registry contract", () => {
       const [print] = prints;
       const printData = cvToValue<{
         sender: string;
-        recipient: string;
+        recipient: { version: Uint8Array; hashbytes: Uint8Array };
         amount: bigint;
         maxFee: bigint;
         blockHeight: bigint;
@@ -123,36 +125,32 @@ describe("sBTC registry contract", () => {
     test("Rotate keys wrapper correctly", () => {
       const receipt = txOk(
         signers.rotateKeysWrapper({
-          newKeys: [new Uint8Array(32).fill(0),new Uint8Array(32).fill(0)],
-          multiSigAddress: alice,
-          newAggregatePubkey: new Uint8Array(32).fill(0),
+          newKeys: [new Uint8Array(33).fill(0), new Uint8Array(33).fill(0)],
+          newAggregatePubkey: new Uint8Array(33).fill(0),
         }),
-        alice
+        deployer
       );
       expect(receipt.value).toEqual(true);
     });
     test("Rotate keys wrapper incorrect signer key size", () => {
       const receipt = txErr(
         signers.rotateKeysWrapper({
-          newKeys: [new Uint8Array(32).fill(0),new Uint8Array(31).fill(0)],
-          multiSigAddress: alice,
-          newAggregatePubkey: new Uint8Array(32).fill(0),
+          newKeys: [new Uint8Array(33).fill(0), new Uint8Array(31).fill(0)],
+          newAggregatePubkey: new Uint8Array(33).fill(0),
         }),
-        alice
+        deployer
       );
-      expect(receipt.value).toEqual(211n);
+      expect(receipt.value).toEqual(errors.signers.ERR_KEY_SIZE_PREFIX + 11n);
     });
     test("Rotate keys wrapper incorrect aggregate key size", () => {
       const receipt = txErr(
         signers.rotateKeysWrapper({
-          newKeys: [new Uint8Array(32).fill(0),new Uint8Array(32).fill(0)],
-          multiSigAddress: alice,
+          newKeys: [new Uint8Array(33).fill(0), new Uint8Array(33).fill(0)],
           newAggregatePubkey: new Uint8Array(31).fill(0),
         }),
-        alice
+        deployer
       );
-      expect(receipt.value).toEqual(signers.constants.ERR_KEY_SIZE.value);
+      expect(receipt.value).toEqual(errors.signers.ERR_KEY_SIZE);
     });
   });
-  
 });

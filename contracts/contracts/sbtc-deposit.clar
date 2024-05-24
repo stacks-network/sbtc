@@ -1,19 +1,23 @@
 ;; sBTC Deposit contract
 
 ;; constants
+
+;; The required length of a txid
 (define-constant txid-length u32)
 
 ;; error codes
+
+;; TXID used in deposit is not the correct length
 (define-constant ERR_TXID_LEN (err u300))
+;; Deposit has already been completed
 (define-constant ERR_DEPOSIT_REPLAY (err u301))
 
 ;; data vars
-;;
 
 ;; data maps
-;;
 
 ;; public functions
+
 ;; Accept a new deposit request
 ;; Note that this function can only be called by the current
 ;; bootstrap signer set address - it cannot be called by users directly.

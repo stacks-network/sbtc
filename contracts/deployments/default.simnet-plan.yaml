@@ -64,4 +64,9 @@ plan:
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/sbtc-deposit.clar
             clarity-version: 2
+        - emulated-contract-publish:
+            contract-name: sbtc-withdrawal
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/sbtc-withdrawal.clar
+            clarity-version: 2
       epoch: "2.5"
