@@ -66,22 +66,32 @@ alias kdf='kubectl delete -f'
 
 ## [II] DEPLOY
 
-#### [i] Build all containers:
+#### [i] Start Minikube:
+
+##### `minikube start`
+
+#### [ii] Build all containers:
 
 ##### `sh build.sh`
 
-#### [ii] Deploy all K8s artifacts:
+#### [iii] Deploy all K8s artifacts:
 
 ##### `sh up.sh`
 
 
-#### [iii] Spin down all K8s artifacts:
+#### [iv] Spin down all K8s artifacts:
 
 ##### `sh down.sh`
 
 
-#### **(OPTIONAL)** [iv] Delete Minikube Containers:
+#### **(!! OPTIONAL !!)** [v] Delete Minikube Containers:
 
 > Beware that this will permanently remove containers and it will take some time for the containers to be rebuilt again using `build.sh`
+
 ##### `sh remove-minikube-containers.sh`
 
+
+
+#### [vi] Stop Minikube:
+
+##### `minikube stop`
