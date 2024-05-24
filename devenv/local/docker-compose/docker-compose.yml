@@ -74,7 +74,7 @@ services:
       - bitcoin
     environment:
       INIT_BTC_BLOCKS: 101
-      BTC_BLOCK_GEN_TIME: 2
+      BTC_BLOCK_GEN_TIME: 10
       BITCOIN_RPC_HOST: "bitcoin"
       BITCOIN_RPC_PORT: 18443
       BTC_RPCPASSWORD: devnet
@@ -233,8 +233,7 @@ services:
       - 8999:8999
     environment:
       # Connect to electrs host
-      # MEMPOOL_BACKEND: "electrum"
-      MEMPOOL_BACKEND: "none"
+      MEMPOOL_BACKEND: "electrum"
       ELECTRUM_HOST: "electrs"
       ELECTRUM_PORT: "60401"
       ELECTRUM_TLS_ENABLED: "false"
