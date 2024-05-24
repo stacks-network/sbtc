@@ -1,0 +1,252 @@
+services:
+  bitcoin:
+    image: bitcoin:latest
+    container_name: bitcoin
+    stop_grace_period: 5s
+    build:
+      context: ./bitcoin/docker
+      args:
+        VERSION: "25.0"
+        BTC_NETWORK: "regtest"
+        BTC_PRINTTOCONSOLE: 1
+        BTC_DISABLEWALLET: 0
+        BTC_TXINDEX: 1
+        BTC_RPCBIND: "0.0.0.0"
+        BTC_RPCALLOWIP: "0.0.0.0"
+        BTC_RPCPASSWORD: "devnet"
+        BTC_RPCUSER: "devnet"
+        BTC_RPC_PORT: 18443
+        BTC_P2P_PORT: 18444
+        BTC_LOG_DEBUG: 0
+        BTC_REST_ENABLE: 0
+    ports:
+      - 18444:18444
+      - 18443:18443
+      - 18433:18433
+    environment:
+      BTC_NETWORK: regtest
+      BTC_PRINTTOCONSOLE: 1
+      BTC_DISABLEWALLET: 0
+      BTC_TXINDEX: 1
+      BTC_RPCBIND: "0.0.0.0"
+      BTC_RPCALLOWIP: "0.0.0.0/0"
+      BTC_RPCPASSWORD: devnet
+      BTC_RPCUSER: devnet
+      BTC_RPC_PORT: 18443
+      BTC_P2P_PORT: 18444
+      BTC_LOG_DEBUG: 0
+      BTC_REST_ENABLE: 0
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    stop_grace_period: 5s
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+  mariadb:
+    image: mariadb:10.5.21
+    container_name: mariadb
+    stop_grace_period: 5s
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_DATABASE: "mempool"
+      MYSQL_USER: "mempool"
+      MYSQL_PASSWORD: "mempool"
+      MYSQL_ROOT_PASSWORD: "admin"
+  bitcoin-miner:
+    image: bitcoin-miner-sidecar:latest
+    container_name: bitcoin-miner-sidecar
+    stop_grace_period: 5s
+    build:
+      context: ./bitcoin-miner-sidecar/docker
+      args:
+        INIT_BTC_BLOCKS: 101
+        BTC_BLOCK_GEN_TIME: 10
+        BITCOIN_RPC_HOST: "bitcoin"
+        BITCOIN_RPC_PORT: 18443
+        BTC_RPCPASSWORD: devnet
+        BTC_RPCUSER: devnet
+        MINER_ADDRESS: "moU2g2zzH3qLYCNPXGPAMqsgxr2Bw15V2j"
+    depends_on:
+      - bitcoin
+    environment:
+      INIT_BTC_BLOCKS: 101
+      BTC_BLOCK_GEN_TIME: 2
+      BITCOIN_RPC_HOST: "bitcoin"
+      BITCOIN_RPC_PORT: 18443
+      BTC_RPCPASSWORD: devnet
+      BTC_RPCUSER: devnet
+      MINER_ADDRESS: "moU2g2zzH3qLYCNPXGPAMqsgxr2Bw15V2j"
+  stacks:
+    image: stacks:latest
+    container_name: stacks
+    stop_grace_period: 5s
+    build:
+      context: ./stacks/docker
+      args:
+        STACKS_LOG_DEBUG: 0
+        STACKS_LOG_JSON: 0
+        LOCAL_PEER_SEED: "3fd68a8fcab004754d6fee4756dd9c84ad64ee19a11aa9930893540e1357696f2f73957cd6e92797d7a66d1d3ae4a4ea752a8924fe028f1fc2c06b9d6d0ee0ad"
+        STACKS_WORKING_DIR: "/var/stacks"
+        MY_HTTP_AUTH_TOKEN: "helloworld"
+        SIGNER_ENDPOINT: "nakamoto-signer:30000"
+        MINER_KEY: "753b7cc01a1a2e86221266a154af739463fce51219d97e4f856cd7200c3bd2a6"
+        BTC_NODE_RPC_HOST: "bitcoin"
+        BTC_NODE_RPC_USER: "devnet"
+        BTC_NODE_RPC_PASSWORD: "devnet"
+    ports:
+      - 20444:20444
+      - 20443:20443
+    depends_on:
+      - bitcoin
+      - bitcoin-miner
+    environment:
+      STACKS_LOG_DEBUG: 0
+      STACKS_LOG_JSON: 0
+      LOCAL_PEER_SEED: "3fd68a8fcab004754d6fee4756dd9c84ad64ee19a11aa9930893540e1357696f2f73957cd6e92797d7a66d1d3ae4a4ea752a8924fe028f1fc2c06b9d6d0ee0ad"
+      STACKS_WORKING_DIR: "/var/stacks"
+      MY_HTTP_AUTH_TOKEN: "helloworld"
+      SIGNER_ENDPOINT: "nakamoto-signer:30000"
+      MINER_KEY: "753b7cc01a1a2e86221266a154af739463fce51219d97e4f856cd7200c3bd2a6"
+      BTC_NODE_RPC_HOST: "bitcoin"
+      BTC_NODE_RPC_USER: "devnet"
+      BTC_NODE_RPC_PASSWORD: "devnet"
+  nakamoto-signer:
+    image: nakamoto-signer:latest
+    container_name: nakamoto-signer
+    stop_grace_period: 5s
+    build:
+      context: ./nakamoto-signer/docker
+      args:
+        SIGNER_ENDPOINT: "0.0.0.0:30000"
+        MY_HTTP_AUTH_TOKEN: "helloworld"
+        STACKS_PRIVATE_KEY: "7287ba251d44a4d3fd9276c88ce34c5c52a038955511cccaf77e61068649c17801"
+        STACKS_NODE_RPC_HOST: "stacks"
+        STACKS_NODE_RPC_PORT: "20443"
+        RUST_BACKTRACE: "1"
+    ports:
+      - 30000:30000
+    environment:
+      SIGNER_ENDPOINT: "0.0.0.0:30000"
+      MY_HTTP_AUTH_TOKEN: "helloworld"
+      STACKS_PRIVATE_KEY: "7287ba251d44a4d3fd9276c88ce34c5c52a038955511cccaf77e61068649c17801"
+      STACKS_NODE_RPC_HOST: "stacks"
+      STACKS_NODE_RPC_PORT: "20443"
+      RUST_BACKTRACE: "1"
+  stacks-api:
+    image: stacks-api:latest
+    container_name: stacks-api
+    stop_grace_period: 5s
+    build:
+      context: ./stacks-api/docker
+      args:
+        GIT_URI: "https://github.com/hirosystems/stacks-blockchain-api.git"
+        GIT_BRANCH: "v7.10.0-nakamoto.7"
+    ports:
+      - 3999:3999
+      - 3700:3700
+    depends_on:
+      - postgres
+      - stacks
+      - bitcoin
+    environment:
+      NODE_ENV: "production"
+      GIT_URI: "https://github.com/hirosystems/stacks-blockchain-api.git"
+      GIT_BRANCH: "v7.10.0-nakamoto.7"
+      GIT_TAG: "v7.10.0-nakamoto.7"
+      PG_HOST: "postgres"
+      PG_PORT: 5432
+      PG_USER: "postgres"
+      PG_PASSWORD: "postgres"
+      PG_DATABASE: "postgres"
+      STACKS_CHAIN_ID: "0x80000000"
+      STACKS_CORE_EVENT_PORT: 3700
+      STACKS_CORE_EVENT_HOST: "0.0.0.0"
+      STACKS_BLOCKCHAIN_API_PORT: 3999
+      STACKS_BLOCKCHAIN_API_HOST: "0.0.0.0"
+      STACKS_CORE_RPC_HOST: "stacks"
+      STACKS_CORE_RPC_PORT: 20443
+      API_DOCS_URL: http://localhost:3999/doc
+  stacks-explorer:
+    image: stacks-explorer
+    container_name: stacks-explorer
+    stop_grace_period: 5s
+    build:
+      context: ./stacks-explorer/docker
+      args:
+        GIT_URI: "https://github.com/hirosystems/explorer.git"
+        GIT_BRANCH: "v1.170.1"
+    ports:
+      - 3020:3000
+    depends_on:
+      - bitcoin
+      - stacks
+      - stacks-api
+      - postgres
+    environment:
+      NEXT_PUBLIC_MAINNET_API_SERVER: "http://stacks-api:3999"
+  electrs:
+    image: electrs:latest
+    container_name: electrs
+    stop_grace_period: 5s
+    build:
+      context: ./electrs/docker
+    ports:
+      - 60401:60401
+      - 3002:3002
+    depends_on:
+      - bitcoin
+      - bitcoin-miner
+    environment:
+      RUST_BACKTRACE: 1
+      BITCOIN_RPC_HOST: "bitcoin"
+      BITCOIN_RPC_PORT: "18443"
+  mempool-web:
+    image: mempool/frontend:latest
+    container_name: mempool-web
+    stop_grace_period: 5s
+    depends_on:
+      - mempool-api
+      - mariadb
+      - electrs
+    user: "1000:1000"
+    restart: on-failure
+    ports:
+      - 8083:8083
+    environment:
+      FRONTEND_HTTP_PORT: "8083"
+      BACKEND_MAINNET_HTTP_HOST: "mempool-api"
+    command: "./wait-for mariadb:3306 --timeout=720 -- nginx -g 'daemon off;'"
+  mempool-api:
+    image: mempool/backend:latest
+    container_name: mempool-api
+    stop_grace_period: 5s
+    depends_on:
+      - electrs
+      - mariadb
+    user: "1000:1000"
+    restart: on-failure
+    ports:
+      - 8999:8999
+    environment:
+      # Connect to electrs host
+      # MEMPOOL_BACKEND: "electrum"
+      MEMPOOL_BACKEND: "none"
+      ELECTRUM_HOST: "electrs"
+      ELECTRUM_PORT: "60401"
+      ELECTRUM_TLS_ENABLED: "false"
+      # Connect to bitcoin rpc
+      CORE_RPC_HOST: "bitcoin"
+      CORE_RPC_PORT: "18443"
+      CORE_RPC_USERNAME: "devnet"
+      CORE_RPC_PASSWORD: "devnet"
+      DATABASE_ENABLED: "true"
+      DATABASE_HOST: "mariadb"
+      DATABASE_DATABASE: "mempool"
+      DATABASE_USERNAME: "mempool"
+      DATABASE_PASSWORD: "mempool"
+      STATISTICS_ENABLED: "true"
+    command: "./wait-for-it.sh mariadb:3306 --timeout=720 --strict -- ./start.sh"
