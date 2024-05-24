@@ -561,7 +561,7 @@ export const contracts = {
         isOk: false,
         value: 300n,
       },
-      dustLimit: 100n,
+      dustLimit: 546n,
       txidLength: 32n,
     },
     non_fungible_tokens: [],
@@ -1313,8 +1313,8 @@ export const contracts = {
     },
     maps: {},
     variables: {
-      errNotProtocolCaller: {
-        name: "err-not-protocol-caller",
+      ERR_NOT_AUTH: {
+        name: "ERR_NOT_AUTH",
         type: {
           response: {
             ok: "none",
@@ -1325,6 +1325,8 @@ export const contracts = {
       } as TypedAbiVariable<Response<null, bigint>>,
       ERR_INVALID_ADDR_VERSION: {
         name: "ERR_INVALID_ADDR_VERSION",
+      ERR_NOT_OWNER: {
+        name: "ERR_NOT_OWNER",
         type: {
           response: {
             ok: "none",
@@ -1403,13 +1405,13 @@ export const contracts = {
       } as TypedAbiVariable<string | null>,
     },
     constants: {
-      errNotProtocolCaller: {
+      ERR_NOT_AUTH: {
         isOk: false,
-        value: 5n,
+        value: 600n,
       },
-      errNotTokenOwner: {
+      ERR_NOT_OWNER: {
         isOk: false,
-        value: 4n,
+        value: 604n,
       },
       tokenDecimals: 8n,
       tokenName: "sBTC Mini",

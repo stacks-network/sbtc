@@ -5,7 +5,7 @@ import {
   token,
 } from "./helpers";
 import { test, expect, describe } from "vitest";
-import { txOk, filterEvents, rov } from "@clarigen/test";
+import { txOk, filterEvents, rov, txErr } from "@clarigen/test";
 import { CoreNodeEventType, cvToValue } from '@clarigen/core';
 
 describe("sBTC token contract", () => {
@@ -85,6 +85,53 @@ describe("sBTC token contract", () => {
         bob
       );
       expect(receipt2.value).toEqual(999n);
+    });
+
+    test("Fail a non-protocol principal calling protocol-mint", () => {
+      const receipt = txErr(
+        token.protocolMint({
+          amount: 1000n,
+          recipient: bob,
+        }),
+        bob
+      );
+      expect(receipt.value).toEqual(token.constants.ERR_NOT_AUTH.value);
+    });
+
+    test("Fail transferring sbtc when not owner", () => {
+      const receipt = txOk(
+        deposit.completeDepositWrapper({
+          txid: new Uint8Array(32).fill(0),
+          voutIndex: 0,
+          amount: 1000n,
+          recipient: alice,
+        }),
+        alice
+      );
+      const printEvents = filterEvents(receipt.events, CoreNodeEventType.ContractEvent);
+      const [print] = printEvents;
+      const printData = cvToValue<{
+        topic: string;
+        txid: string;
+        voutIndex: bigint;
+        amount: bigint;
+      }>(print.data.value);
+      expect(printData).toStrictEqual({
+        topic: "completed-deposit",
+        txid: new Uint8Array(32).fill(0),
+        voutIndex: 0n,
+        amount: 1000n,
+      });
+      const receipt1 = txErr(
+        token.transfer({
+          amount: 999n,
+          sender: alice,
+          recipient: bob,
+          memo: new Uint8Array(1).fill(0),
+        }),
+        bob
+      );
+      expect(receipt1.value).toEqual(token.constants.ERR_NOT_OWNER.value);
     });
 
   });
