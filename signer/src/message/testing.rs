@@ -1,6 +1,7 @@
 //! Test utilities for signer message
 
 use bitcoin::hashes::Hash;
+use blockstack_lib::chainstate::stacks;
 use fake::Fake;
 use rand::seq::SliceRandom;
 
@@ -76,6 +77,23 @@ impl fake::Dummy<fake::Faker> for super::BitcoinTransactionSignAck {
     }
 }
 
+impl fake::Dummy<fake::Faker> for super::StacksTransactionSignRequest {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        Self {
+            tx: dummy_stacks_tx(config, rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for super::StacksTransactionSignature {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        Self {
+            txid: dummy_stacks_txid(config, rng),
+            signature: dummy_signature(config, rng),
+        }
+    }
+}
+
 impl fake::Dummy<fake::Faker> for super::WstsMessage {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let dkg_end_begin = wsts::net::DkgEndBegin {
@@ -136,4 +154,44 @@ fn dummy_txout<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> 
         value: bitcoin::Amount::from_sat(config.fake_with_rng(rng)),
         script_pubkey: bitcoin::ScriptBuf::new(),
     }
+}
+
+fn dummy_stacks_tx<R: rand::RngCore + ?Sized>(
+    config: &fake::Faker,
+    rng: &mut R,
+) -> stacks::StacksTransaction {
+    stacks::StacksTransaction {
+        version: stacks::TransactionVersion::Testnet,
+        chain_id: config.fake_with_rng(rng),
+        auth: stacks::TransactionAuth::from_p2sh(&[], 0).unwrap(),
+        anchor_mode: stacks::TransactionAnchorMode::Any,
+        post_condition_mode: stacks::TransactionPostConditionMode::Allow,
+        post_conditions: Vec::new(),
+        payload: stacks::TransactionPayload::new_smart_contract(
+            fake::faker::name::en::FirstName().fake_with_rng(rng),
+            fake::faker::lorem::en::Paragraph(3..5)
+                .fake_with_rng::<String, _>(rng)
+                .as_str(),
+            None,
+        )
+        .unwrap(),
+    }
+}
+
+fn dummy_stacks_txid<R: rand::RngCore + ?Sized>(
+    config: &fake::Faker,
+    rng: &mut R,
+) -> blockstack_lib::burnchains::Txid {
+    blockstack_lib::burnchains::Txid(config.fake_with_rng(rng))
+}
+
+fn dummy_signature<R: rand::RngCore + ?Sized>(
+    config: &fake::Faker,
+    rng: &mut R,
+) -> p256k1::ecdsa::Signature {
+    // Represent both the signed message and the signing key.
+    let multipurpose_bytes: [u8; 32] = config.fake_with_rng(rng);
+    let secret_key = p256k1::scalar::Scalar::from(multipurpose_bytes);
+
+    p256k1::ecdsa::Signature::new(&multipurpose_bytes, &secret_key).unwrap()
 }

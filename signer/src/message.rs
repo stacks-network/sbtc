@@ -1,5 +1,6 @@
 //! Signer message definition for network communication
 
+use blockstack_lib::chainstate::stacks;
 use sha2::Digest;
 
 #[cfg(feature = "testing")]
@@ -67,6 +68,18 @@ impl From<BitcoinTransactionSignAck> for Payload {
     }
 }
 
+impl From<StacksTransactionSignRequest> for Payload {
+    fn from(value: StacksTransactionSignRequest) -> Self {
+        Self::StacksTransactionSignRequest(value)
+    }
+}
+
+impl From<StacksTransactionSignature> for Payload {
+    fn from(value: StacksTransactionSignature) -> Self {
+        Self::StacksTransactionSignature(value)
+    }
+}
+
 impl From<WstsMessage> for Payload {
     fn from(value: WstsMessage) -> Self {
         Self::WstsMessage(value)
@@ -98,11 +111,19 @@ pub struct SignerWithdrawDecision {
 
 /// Represents a request to sign a Stacks transaction.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct StacksTransactionSignRequest;
+pub struct StacksTransactionSignRequest {
+    /// The transaction to sign.
+    tx: stacks::StacksTransaction,
+}
 
 /// Represents a signature of a Stacks transaction.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct StacksTransactionSignature;
+pub struct StacksTransactionSignature {
+    /// Id of the signed transaction.
+    txid: blockstack_lib::burnchains::Txid,
+    /// An ECDSA signature over the transaction.
+    signature: p256k1::ecdsa::Signature,
+}
 
 /// Represents a request to sign a Bitcoin transaction.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -138,7 +159,8 @@ impl wsts::net::Signable for Payload {
             Self::SignerWithdrawDecision(msg) => msg.hash(hasher),
             Self::BitcoinTransactionSignRequest(msg) => msg.hash(hasher),
             Self::BitcoinTransactionSignAck(msg) => msg.hash(hasher),
-            _ => unimplemented!(),
+            Self::StacksTransactionSignRequest(msg) => msg.hash(hasher),
+            Self::StacksTransactionSignature(msg) => msg.hash(hasher),
         }
     }
 }
@@ -175,6 +197,21 @@ impl wsts::net::Signable for BitcoinTransactionSignAck {
     }
 }
 
+impl wsts::net::Signable for StacksTransactionSignRequest {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        hasher.update("SIGNER_STACKS_TRANSACTION_SIGN_REQUEST");
+        hasher.update(self.tx.txid());
+    }
+}
+
+impl wsts::net::Signable for StacksTransactionSignature {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        hasher.update("SIGNER_STACKS_TRANSACTION_SIGNATURE");
+        hasher.update(self.txid);
+        hasher.update(self.signature.to_bytes());
+    }
+}
+
 /// Convenient type aliases
 type StacksBlockHash = [u8; 32];
 
@@ -193,6 +230,8 @@ mod tests {
         assert_signer_messages_should_be_signable_with_type::<SignerWithdrawDecision>();
         assert_signer_messages_should_be_signable_with_type::<BitcoinTransactionSignRequest>();
         assert_signer_messages_should_be_signable_with_type::<BitcoinTransactionSignAck>();
+        assert_signer_messages_should_be_signable_with_type::<StacksTransactionSignRequest>();
+        assert_signer_messages_should_be_signable_with_type::<StacksTransactionSignature>();
         assert_signer_messages_should_be_signable_with_type::<WstsMessage>();
     }
 
@@ -202,6 +241,8 @@ mod tests {
         assert_signer_messages_should_be_encodable_with_type::<SignerWithdrawDecision>();
         assert_signer_messages_should_be_encodable_with_type::<BitcoinTransactionSignRequest>();
         assert_signer_messages_should_be_encodable_with_type::<BitcoinTransactionSignAck>();
+        assert_signer_messages_should_be_encodable_with_type::<StacksTransactionSignRequest>();
+        assert_signer_messages_should_be_encodable_with_type::<StacksTransactionSignature>();
         assert_signer_messages_should_be_encodable_with_type::<WstsMessage>();
     }
 
