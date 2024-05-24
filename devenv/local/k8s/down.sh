@@ -7,3 +7,7 @@ kubectl delete -f ./yamls/services/services.yaml
 
 # [2] Delete the K8s namespaces
 kubectl delete -f ./yamls/namespaces/namespaces.yaml
+
+
+
+minikube stop
