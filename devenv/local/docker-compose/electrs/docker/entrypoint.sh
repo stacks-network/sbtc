@@ -11,8 +11,8 @@ echo "bitcoin node is ready"
 electrs --network regtest \
 	--jsonrpc-import \
 	--cookie "devnet:devnet" \
-	--http-addr="127.0.0.1:3002" \
-	--electrum-rpc-addr="127.0.0.1:60401" \
+	--http-addr="0.0.0.0:3002" \
+	--electrum-rpc-addr="0.0.0.0:60401" \
 	--daemon-rpc-addr="$BITCOIN_RPC_HOST:$BITCOIN_RPC_PORT" \
 	--electrum-txs-limit=2048 \
 	--utxos-limit=2048 \
