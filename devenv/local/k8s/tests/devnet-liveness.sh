@@ -1,10 +1,6 @@
 #!/bin/bash
 
 
-# kubectl port-forward svc/bitcoin-regtest-service 18443:18443 -n bitcoin &
-
-# sleep 5
-
 echo " -----------------------------------------------"
 echo "| => (1) 🔬 TEST: [CHECK BITCOIN NODE IS LIVE]  |"
 echo " -----------------------------------------------"
@@ -49,10 +45,6 @@ echo "-----------------------------------------------------------------"
 echo "| \033[1mBTC_LIVENESS_SUCCESS\033[0m:                         | \t $BTC_LIVENESS_SUCCESS_FRMT |"
 echo "| \033[1mBTC_MINEABLE_SUCCESS\033[0m:                         | \t $BTC_MINEABLE_SUCCESS_FRMT |"
 echo "-----------------------------------------------------------------"
-
-# sh $CWD/tests/kill-port-forwards.sh
-
-# pgrep kubectl | xargs kill -9
 
 if [[ $BTC_LIVENESS_SUCCESS == true \
     && $BTC_MINEABLE_SUCCESS == true  ]]; then

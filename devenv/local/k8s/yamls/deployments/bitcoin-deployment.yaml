@@ -70,10 +70,8 @@ spec:
               # output all debug info
               # debug=$BTC_LOG_DEBUG
 
-              # disablewallet=$BTC_DISABLEWALLET
               disablewallet=0
 
-              # printtoconsole=$BTC_PRINTTOCONSOLE
               printtoconsole=1
 
               addresstype=legacy
@@ -81,7 +79,6 @@ spec:
               fallbackfee=0.00001
 
               # Maintain a full transaction index, used by the getrawtransaction rpc call (default: 0)
-              # txindex=$BTC_TXINDEX
               txindex=1
               END
 
@@ -93,20 +90,20 @@ spec:
               value: "DEV"
             - name: BTC_NETWORK
               value: "regtest"
-            - name: BTC_PRINTTOCONSOLE
-              value: "1"
-            - name: BTC_DISABLEWALLET
-              value: "0"
-            - name: BTC_TXINDEX
-              value: "1"
             - name: BTC_RPCBIND
               value: "0.0.0.0"
             - name: BTC_RPCALLOWIP
               value: "0.0.0.0/0"
-            - name: BTC_RPCPASSWORD
-              value: "devnet"
             - name: BTC_RPCUSER
-              value: "devnet"
+              valueFrom:
+                secretKeyRef:
+                  name: bitcoin-secret
+                  key: BTC_RPCUSER 
+            - name: BTC_RPCPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bitcoin-secret
+                  key: BTC_RPCPASSWORD
             - name: BTC_RPC_PORT
               value: "18443"
             - name: BTC_P2P_PORT
@@ -124,7 +121,6 @@ spec:
       containers:
       - name: bitcoin-regtest-container
         image: minikube/bitcoin:v1
-        # image: nginx:latest
         imagePullPolicy: Never
 
         volumeMounts:
@@ -170,10 +166,16 @@ spec:
             value: "0.0.0.0"
           - name: BTC_RPCALLOWIP
             value: "0.0.0.0/0"
-          - name: BTC_RPCPASSWORD
-            value: "devnet"
           - name: BTC_RPCUSER
-            value: "devnet"
+            valueFrom:
+              secretKeyRef:
+                name: bitcoin-secret
+                key: BTC_RPCUSER 
+          - name: BTC_RPCPASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: bitcoin-secret
+                key: BTC_RPCPASSWORD
           - name: BTC_RPC_PORT
             value: "18443"
           - name: BTC_P2P_PORT
@@ -204,9 +206,18 @@ spec:
             value: "localhost"
           - name: BITCOIN_RPC_PORT
             value: "18443"
-          - name: MINER_ADDRESS
-            value: "moU2g2zzH3qLYCNPXGPAMqsgxr2Bw15V2j"
-          - name: BTC_RPCPASSWORD
-            value: "devnet"
           - name: BTC_RPCUSER
-            value: "devnet"
+            valueFrom:
+              secretKeyRef:
+                name: bitcoin-secret
+                key: BTC_RPCUSER 
+          - name: BTC_RPCPASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: bitcoin-secret
+                key: BTC_RPCPASSWORD
+          - name: MINER_ADDRESS
+            valueFrom:
+              secretKeyRef:
+                name: bitcoin-secret
+                key: MINER_ADDRESS
