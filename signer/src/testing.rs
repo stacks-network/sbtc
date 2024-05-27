@@ -1,5 +1,7 @@
 //! Module with testing utility functions.
 
+pub mod dummy;
+
 use crate::utxo::UnsignedTransaction;
 use bitcoin::hashes::Hash;
 use bitcoin::key::TapTweak;

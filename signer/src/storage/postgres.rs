@@ -26,13 +26,13 @@ impl super::Read for &PgStore {
     async fn get_bitcoin_block(
         self,
         block_hash: &model::BitcoinBlockHash,
-    ) -> Result<model::BitcoinBlock, Self::Error> {
+    ) -> Result<Option<model::BitcoinBlock>, Self::Error> {
         sqlx::query_as!(
             model::BitcoinBlock,
             "SELECT * FROM sbtc_signer.bitcoin_blocks WHERE block_hash = $1;",
             &block_hash
         )
-        .fetch_one(&self.0)
+        .fetch_optional(&self.0)
         .await
     }
 }

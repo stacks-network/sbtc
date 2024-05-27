@@ -108,6 +108,35 @@ pub struct WithdrawSigner {
     pub created_at: time::PrimitiveDateTime,
 }
 
+/// A transaction on either Bitcoin or Stacks
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct Transaction {
+    txid: Bytes,
+    tx: Bytes,
+    tx_type: TransactionType,
+}
+
+/// The types of transactions the signer is interested in.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub enum TransactionType {
+    /// An sBTC transaction on Bitcoin.
+    SbtcTransaction,
+    /// A withdraw accept transaction on Stacks.
+    WithdrawAccept,
+    /// A withdraw reject transaction on Stacks.
+    WithdrawReject,
+    /// A deposit accept transaction on Stacks.
+    DepositAccept,
+    /// A update signer set call on Stacks.
+    UpdateSignerSet,
+    /// A set aggregate key call on Stacks.
+    SetAggregateKey,
+}
+
+/// A stacks transaction
+
 /// Bitcoin block hash
 pub type BitcoinBlockHash = Vec<u8>;
 /// Stacks block hash
