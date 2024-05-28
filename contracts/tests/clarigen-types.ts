@@ -1323,11 +1323,11 @@ export const contracts = {
     constants: {
       ERR_NOT_AUTH: {
         isOk: false,
-        value: 4n,
+        value: 5n,
       },
       ERR_NOT_OWNER: {
         isOk: false,
-        value: 5n,
+        value: 4n,
       },
       tokenDecimals: 8n,
       tokenName: "sBTC Mini",

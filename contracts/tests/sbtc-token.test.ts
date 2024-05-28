@@ -1,17 +1,10 @@
-import {
-  alice,
-  bob,
-  deposit,
-  errors,
-  token,
-} from "./helpers";
+import { alice, bob, deposit, errors, token } from "./helpers";
 import { test, expect, describe } from "vitest";
 import { txOk, filterEvents, rov, txErr } from "@clarigen/test";
-import { CoreNodeEventType, cvToValue } from '@clarigen/core';
+import { CoreNodeEventType, cvToValue } from "@clarigen/core";
 
 describe("sBTC token contract", () => {
   describe("token basics", () => {
-    
     test("Mint sbtc token, check Alice balance", () => {
       const receipt = txOk(
         deposit.completeDepositWrapper({
@@ -22,7 +15,10 @@ describe("sBTC token contract", () => {
         }),
         alice
       );
-      const printEvents = filterEvents(receipt.events, CoreNodeEventType.ContractEvent);
+      const printEvents = filterEvents(
+        receipt.events,
+        CoreNodeEventType.ContractEvent
+      );
       const [print] = printEvents;
       const printData = cvToValue<{
         topic: string;
@@ -55,7 +51,10 @@ describe("sBTC token contract", () => {
         }),
         alice
       );
-      const printEvents = filterEvents(receipt.events, CoreNodeEventType.ContractEvent);
+      const printEvents = filterEvents(
+        receipt.events,
+        CoreNodeEventType.ContractEvent
+      );
       const [print] = printEvents;
       const printData = cvToValue<{
         topic: string;
@@ -111,6 +110,5 @@ describe("sBTC token contract", () => {
       );
       expect(receipt1.value).toEqual(errors.token.ERR_NOT_OWNER);
     });
-
   });
 });
