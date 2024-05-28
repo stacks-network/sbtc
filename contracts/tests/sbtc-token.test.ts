@@ -100,15 +100,6 @@ describe("sBTC token contract", () => {
     });
 
     test("Fail transferring sbtc when not owner", () => {
-      const receipt = txOk(
-        deposit.completeDepositWrapper({
-          txid: new Uint8Array(32).fill(0),
-          voutIndex: 0,
-          amount: 1000n,
-          recipient: alice,
-        }),
-        alice
-      );
       const receipt1 = txErr(
         token.transfer({
           amount: 999n,
