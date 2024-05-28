@@ -2,6 +2,7 @@ import {
   alice,
   bob,
   deposit,
+  errors,
   token,
 } from "./helpers";
 import { test, expect, describe } from "vitest";
@@ -95,7 +96,7 @@ describe("sBTC token contract", () => {
         }),
         bob
       );
-      expect(receipt.value).toEqual(token.constants.ERR_NOT_AUTH.value);
+      expect(receipt.value).toEqual(errors.token.ERR_NOT_AUTH);
     });
 
     test("Fail transferring sbtc when not owner", () => {
@@ -108,20 +109,6 @@ describe("sBTC token contract", () => {
         }),
         alice
       );
-      const printEvents = filterEvents(receipt.events, CoreNodeEventType.ContractEvent);
-      const [print] = printEvents;
-      const printData = cvToValue<{
-        topic: string;
-        txid: string;
-        voutIndex: bigint;
-        amount: bigint;
-      }>(print.data.value);
-      expect(printData).toStrictEqual({
-        topic: "completed-deposit",
-        txid: new Uint8Array(32).fill(0),
-        voutIndex: 0n,
-        amount: 1000n,
-      });
       const receipt1 = txErr(
         token.transfer({
           amount: 999n,
@@ -131,7 +118,7 @@ describe("sBTC token contract", () => {
         }),
         bob
       );
-      expect(receipt1.value).toEqual(token.constants.ERR_NOT_OWNER.value);
+      expect(receipt1.value).toEqual(errors.token.ERR_NOT_OWNER);
     });
 
   });

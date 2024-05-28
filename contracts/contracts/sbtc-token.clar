@@ -1,5 +1,5 @@
-(define-constant ERR_NOT_AUTH (err u600)) ;; `tx-sender` or `contract-caller` is not the protocol caller
-(define-constant ERR_NOT_OWNER (err u604)) ;; `tx-sender` or `contract-caller` tried to move a token it does not own.
+(define-constant ERR_NOT_AUTH (err u4)) ;; `tx-sender` or `contract-caller` is not the protocol caller
+(define-constant ERR_NOT_OWNER (err u5)) ;; `tx-sender` or `contract-caller` tried to move a token it does not own.
 
 (define-fungible-token sbtc-token)
 (define-fungible-token sbtc-token-locked)

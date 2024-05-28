@@ -37,6 +37,7 @@ export const errors = {
   deposit: _errors.sbtcDeposit,
   signers: _errors.sbtcBootstrapSigners,
   withdrawal: _errors.sbtcWithdrawal,
+  token: _errors.sbtcToken,
 };
 
 export function getLastWithdrawalRequestId() {

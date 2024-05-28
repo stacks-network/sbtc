@@ -966,49 +966,6 @@ export const contracts = {
     clarity_version: "Clarity2",
     contractName: "sbtc-registry",
   },
-  sbtcWithdrawal: {
-    functions: {
-      initiateWithdrawalRequest: {
-        name: "initiate-withdrawal-request",
-        access: "public",
-        args: [
-          { name: "amount", type: "uint128" },
-          {
-            name: "recipient",
-            type: {
-              tuple: [
-                { name: "hashbytes", type: { buffer: { length: 32 } } },
-                { name: "version", type: { buffer: { length: 1 } } },
-              ],
-            },
-          },
-          { name: "max-fee", type: "uint128" },
-        ],
-        outputs: { type: { response: { ok: "uint128", error: "uint128" } } },
-      } as TypedAbiFunction<
-        [
-          amount: TypedAbiArg<number | bigint, "amount">,
-          recipient: TypedAbiArg<
-            {
-              hashbytes: Uint8Array;
-              version: Uint8Array;
-            },
-            "recipient"
-          >,
-          maxFee: TypedAbiArg<number | bigint, "maxFee">,
-        ],
-        Response<bigint, bigint>
-      >,
-      validateRecipient: {
-        name: "validate-recipient",
-        access: "read_only",
-        args: [
-          {
-            name: "recipient",
-            type: {
-              tuple: [
-                { name: "hashbytes", type: { buffer: { length: 32 } } },
-                { name: "version", type: { buffer: { length: 1 } } },
   sbtcToken: {
     functions: {
       protocolMintManyIter: {
@@ -1038,11 +995,6 @@ export const contracts = {
         ],
         Response<boolean, bigint>
       >,
-    },
-    maps: {},
-    variables: {
-      ERR_INVALID_ADDR_HASHBYTES: {
-        name: "ERR_INVALID_ADDR_HASHBYTES",
       protocolBurn: {
         name: "protocol-burn",
         access: "public",
@@ -1323,10 +1275,146 @@ export const contracts = {
         },
         access: "constant",
       } as TypedAbiVariable<Response<null, bigint>>,
-      ERR_INVALID_ADDR_VERSION: {
-        name: "ERR_INVALID_ADDR_VERSION",
       ERR_NOT_OWNER: {
         name: "ERR_NOT_OWNER",
+        type: {
+          response: {
+            ok: "none",
+            error: "uint128",
+          },
+        },
+        access: "constant",
+      } as TypedAbiVariable<Response<null, bigint>>,
+      tokenDecimals: {
+        name: "token-decimals",
+        type: "uint128",
+        access: "constant",
+      } as TypedAbiVariable<bigint>,
+      tokenName: {
+        name: "token-name",
+        type: {
+          "string-ascii": {
+            length: 32,
+          },
+        },
+        access: "variable",
+      } as TypedAbiVariable<string>,
+      tokenSymbol: {
+        name: "token-symbol",
+        type: {
+          "string-ascii": {
+            length: 10,
+          },
+        },
+        access: "variable",
+      } as TypedAbiVariable<string>,
+      tokenUri: {
+        name: "token-uri",
+        type: {
+          optional: {
+            "string-utf8": {
+              length: 256,
+            },
+          },
+        },
+        access: "variable",
+      } as TypedAbiVariable<string | null>,
+    },
+    constants: {
+      ERR_NOT_AUTH: {
+        isOk: false,
+        value: 4n,
+      },
+      ERR_NOT_OWNER: {
+        isOk: false,
+        value: 5n,
+      },
+      tokenDecimals: 8n,
+      tokenName: "sBTC Mini",
+      tokenSymbol: "sBTC",
+      tokenUri: null,
+    },
+    non_fungible_tokens: [],
+    fungible_tokens: [{ name: "sbtc-token" }, { name: "sbtc-token-locked" }],
+    epoch: "Epoch25",
+    clarity_version: "Clarity2",
+    contractName: "sbtc-token",
+  },
+  sbtcWithdrawal: {
+    functions: {
+      initiateWithdrawalRequest: {
+        name: "initiate-withdrawal-request",
+        access: "public",
+        args: [
+          { name: "amount", type: "uint128" },
+          {
+            name: "recipient",
+            type: {
+              tuple: [
+                { name: "hashbytes", type: { buffer: { length: 32 } } },
+                { name: "version", type: { buffer: { length: 1 } } },
+              ],
+            },
+          },
+          { name: "max-fee", type: "uint128" },
+        ],
+        outputs: { type: { response: { ok: "uint128", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          amount: TypedAbiArg<number | bigint, "amount">,
+          recipient: TypedAbiArg<
+            {
+              hashbytes: Uint8Array;
+              version: Uint8Array;
+            },
+            "recipient"
+          >,
+          maxFee: TypedAbiArg<number | bigint, "maxFee">,
+        ],
+        Response<bigint, bigint>
+      >,
+      validateRecipient: {
+        name: "validate-recipient",
+        access: "read_only",
+        args: [
+          {
+            name: "recipient",
+            type: {
+              tuple: [
+                { name: "hashbytes", type: { buffer: { length: 32 } } },
+                { name: "version", type: { buffer: { length: 1 } } },
+              ],
+            },
+          },
+        ],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          recipient: TypedAbiArg<
+            {
+              hashbytes: Uint8Array;
+              version: Uint8Array;
+            },
+            "recipient"
+          >,
+        ],
+        Response<boolean, bigint>
+      >,
+    },
+    maps: {},
+    variables: {
+      ERR_INVALID_ADDR_HASHBYTES: {
+        name: "ERR_INVALID_ADDR_HASHBYTES",
+        type: {
+          response: {
+            ok: "none",
+            error: "uint128",
+          },
+        },
+        access: "constant",
+      } as TypedAbiVariable<Response<null, bigint>>,
+      ERR_INVALID_ADDR_VERSION: {
+        name: "ERR_INVALID_ADDR_VERSION",
         type: {
           response: {
             ok: "none",
@@ -1369,60 +1457,6 @@ export const contracts = {
     epoch: "Epoch25",
     clarity_version: "Clarity2",
     contractName: "sbtc-withdrawal",
-      tokenDecimals: {
-        name: "token-decimals",
-        type: "uint128",
-        access: "constant",
-      } as TypedAbiVariable<bigint>,
-      tokenName: {
-        name: "token-name",
-        type: {
-          "string-ascii": {
-            length: 32,
-          },
-        },
-        access: "variable",
-      } as TypedAbiVariable<string>,
-      tokenSymbol: {
-        name: "token-symbol",
-        type: {
-          "string-ascii": {
-            length: 10,
-          },
-        },
-        access: "variable",
-      } as TypedAbiVariable<string>,
-      tokenUri: {
-        name: "token-uri",
-        type: {
-          optional: {
-            "string-utf8": {
-              length: 256,
-            },
-          },
-        },
-        access: "variable",
-      } as TypedAbiVariable<string | null>,
-    },
-    constants: {
-      ERR_NOT_AUTH: {
-        isOk: false,
-        value: 600n,
-      },
-      ERR_NOT_OWNER: {
-        isOk: false,
-        value: 604n,
-      },
-      tokenDecimals: 8n,
-      tokenName: "sBTC Mini",
-      tokenSymbol: "sBTC",
-      tokenUri: null,
-    },
-    non_fungible_tokens: [],
-    fungible_tokens: [{ name: "sbtc-token" }, { name: "sbtc-token-locked" }],
-    epoch: "Epoch25",
-    clarity_version: "Clarity2",
-    contractName: "sbtc-token",
   },
 } as const;
 
@@ -1474,8 +1508,8 @@ export const identifiers = {
     "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-bootstrap-signers",
   sbtcDeposit: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-deposit",
   sbtcRegistry: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-registry",
-  sbtcWithdrawal: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-withdrawal",
   sbtcToken: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-token",
+  sbtcWithdrawal: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-withdrawal",
 } as const;
 
 export const simnet = {
@@ -1503,12 +1537,15 @@ export const deployments = {
     testnet: null,
     mainnet: null,
   },
-  sbtcWithdrawal: {
-    devnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-withdrawal",
-    simnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-withdrawal",
   sbtcToken: {
     devnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-token",
     simnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-token",
+    testnet: null,
+    mainnet: null,
+  },
+  sbtcWithdrawal: {
+    devnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-withdrawal",
+    simnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-withdrawal",
     testnet: null,
     mainnet: null,
   },
