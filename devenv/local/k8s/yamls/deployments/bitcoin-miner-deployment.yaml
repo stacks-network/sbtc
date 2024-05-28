@@ -1,0 +1,59 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bitcoin-miner-deployment
+  namespace: bitcoin
+  labels:
+    app: bitcoin-miner
+  
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: bitcoin-miner
+  
+  template:
+    metadata:
+      labels:
+        app: bitcoin-miner
+    
+    spec:
+      containers:
+      - name: bitcoin-miner-sidecar
+        image: minikube/bitcoin-miner-sidecar:v1
+        imagePullPolicy: Never
+        
+        resources:
+          requests:
+            memory: 128Mi
+            cpu: 50m
+          limits:
+            memory: 256Mi
+            cpu: 100m
+
+        env:
+          - name: INIT_BTC_BLOCKS
+            value: "200"
+          - name: BTC_BLOCK_GEN_TIME
+            value: "10"
+          - name: BITCOIN_RPC_HOST
+            value: "bitcoin-regtest-service.bitcoin"
+          - name: BITCOIN_RPC_PORT
+            value: "18443"
+          - name: BTC_RPCUSER
+            valueFrom:
+              secretKeyRef:
+                name: bitcoin-secret
+                key: BTC_RPCUSER 
+          - name: BTC_RPCPASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: bitcoin-secret
+                key: BTC_RPCPASSWORD
+          - name: MINER_ADDRESS
+            valueFrom:
+              secretKeyRef:
+                name: bitcoin-secret
+                key: MINER_ADDRESS

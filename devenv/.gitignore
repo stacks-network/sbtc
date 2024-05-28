@@ -2,34 +2,11 @@
 cloud
 
 # Local Kubernetes related
-k8s
-**/k8s/yamls/**
-**/k8s/utils/**
-**/k8s/custom-k8s-docker-builds/electrs/**
-**/k8s/custom-k8s-docker-builds/electrs-blockstream/**
-**/k8s/custom-k8s-docker-builds/electrs-romanz/**
-**/k8s/custom-k8s-docker-builds/nakamoto-signer/**
-**/k8s/custom-k8s-docker-builds/nakamoto-signer-init-container/**
-**/k8s/custom-k8s-docker-builds/stacks/**
-**/k8s/custom-k8s-docker-builds/stacks-init-container/**
-**/k8s/custom-k8s-docker-builds/stacks-api/**
-**/k8s/custom-k8s-docker-builds/stacks-explorer/**
-
-**/k8s/custom-k8s-docker-builds/tests/**
-**/k8s/custom-k8s-docker-builds/ref.md
-
-
+# ------------------------------------------------------------
 
 **/k8s/misc/**
-
-
-**/k8s/build.sh
-**/k8s/down.sh
-**/k8s/up.sh
-**/k8s/local-k8s-deploy.sh
-
-
-
+nohup.out
+# ------------------------------------------------------------
 
 
 local-commands.sh

@@ -1,0 +1,39 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bitcoin-regtest-service
+  namespace: bitcoin
+  labels:
+    app: bitcoin-regtest
+  
+spec:
+  type: ClusterIP
+  ports:
+    - port: 18444
+      targetPort: 18444
+      name: bitcoin-port1-tcp
+      protocol: TCP
+    - port: 18443
+      targetPort: 18443
+      name: bitcoin-port2-tcp
+      protocol: TCP
+    - port: 18433
+      targetPort: 18433
+      name: bitcoin-port3-tcp
+      protocol: TCP
+    - port: 18444
+      targetPort: 18444
+      name: bitcoin-port1-udp
+      protocol: UDP
+    - port: 18443
+      targetPort: 18443
+      name: bitcoin-port2-udp
+      protocol: UDP
+    - port: 18433
+      targetPort: 18433
+      name: bitcoin-port3-udp
+      protocol: UDP
+  selector:
+    app: bitcoin-regtest
+---

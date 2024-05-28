@@ -1,0 +1,186 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bitcoin-regtest-deployment
+  namespace: bitcoin
+  labels:
+    app: bitcoin-regtest
+  
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: bitcoin-regtest
+  
+  template:
+    metadata:
+      labels:
+        app: bitcoin-regtest
+    
+    spec:
+
+      # Define a shared volume
+      volumes:
+        - name: shared-data
+          emptyDir: {}
+
+      # Define init containers
+      initContainers:
+        - name: init-file-generator
+          image: debian:stable-slim
+          imagePullPolicy: "IfNotPresent"
+          command:
+            - /bin/bash
+          args: 
+            - -ec
+            - |
+              #!/bin/bash
+
+              SHARED_VOL_DIR="/mnt/shared"
+
+
+              tee -a $SHARED_VOL_DIR/bitcoin.conf << END
+              regtest=1 #chain=regtest
+
+              [regtest]
+              # Accept command line and JSON-RPC commands
+              server=1
+              # Username for JSON-RPC connections
+              rpcuser="$BTC_RPCUSER"
+              # Password for JSON-RPC connections
+              rpcpassword="$BTC_RPCPASSWORD"
+
+              # Allow JSON-RPC connections from, by default only localhost are allowed
+              rpcallowip=$BTC_RPCALLOWIP
+
+              bind=$BTC_RPCBIND
+              rpcbind=$BTC_RPCBIND
+              rpcport=$BTC_RPC_PORT
+              dbcache=512
+              banscore=1
+              rpcthreads=256
+              rpcworkqueue=256
+              rpctimeout=100
+
+              # Accept public REST requests (default: 0)
+              # rest=$BTC_REST_ENABLE
+
+              # output all debug info
+              # debug=$BTC_LOG_DEBUG
+
+              disablewallet=0
+
+              printtoconsole=1
+
+              addresstype=legacy
+              changetype=legacy
+              fallbackfee=0.00001
+
+              # Maintain a full transaction index, used by the getrawtransaction rpc call (default: 0)
+              txindex=1
+              END
+
+          
+          env:
+            - name: VERSION
+              value: "25.0"
+            - name: ENV
+              value: "DEV"
+            - name: BTC_NETWORK
+              value: "regtest"
+            - name: BTC_RPCBIND
+              value: "0.0.0.0"
+            - name: BTC_RPCALLOWIP
+              value: "0.0.0.0/0"
+            - name: BTC_RPCUSER
+              valueFrom:
+                secretKeyRef:
+                  name: bitcoin-secret
+                  key: BTC_RPCUSER 
+            - name: BTC_RPCPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bitcoin-secret
+                  key: BTC_RPCPASSWORD
+            - name: BTC_RPC_PORT
+              value: "18443"
+            - name: BTC_P2P_PORT
+              value: "18444"
+            - name: BTC_LOG_DEBUG
+              value: "0"
+            - name: BTC_REST_ENABLE
+              value: "0"
+
+
+          volumeMounts:
+            - name: shared-data
+              mountPath: /mnt/shared
+
+      containers:
+      - name: bitcoin-regtest-container
+        image: minikube/bitcoin:v1
+        imagePullPolicy: Never
+
+        volumeMounts:
+        - name: shared-data
+          mountPath: /mnt/shared
+        
+        resources:
+          requests:
+            memory: 128Mi
+            cpu: 50m
+          limits:
+            memory: 256Mi
+            cpu: 100m
+        
+        ports:
+          - containerPort: 18444
+            protocol: TCP
+          - containerPort: 18443
+            protocol: TCP
+          - containerPort: 18433
+            protocol: TCP
+          - containerPort: 18444
+            protocol: UDP
+          - containerPort: 18443
+            protocol: UDP
+          - containerPort: 18433
+            protocol: UDP
+
+        env:
+          - name: VERSION
+            value: "25.0"
+          - name: ENV
+            value: "DEV"
+          - name: BTC_NETWORK
+            value: "regtest"
+          - name: BTC_PRINTTOCONSOLE
+            value: "1"
+          - name: BTC_DISABLEWALLET
+            value: "0"
+          - name: BTC_TXINDEX
+            value: "1"
+          - name: BTC_RPCBIND
+            value: "0.0.0.0"
+          - name: BTC_RPCALLOWIP
+            value: "0.0.0.0/0"
+          - name: BTC_RPCUSER
+            valueFrom:
+              secretKeyRef:
+                name: bitcoin-secret
+                key: BTC_RPCUSER 
+          - name: BTC_RPCPASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: bitcoin-secret
+                key: BTC_RPCPASSWORD
+          - name: BTC_RPC_PORT
+            value: "18443"
+          - name: BTC_P2P_PORT
+            value: "18444"
+          - name: BTC_LOG_DEBUG
+            value: "0"
+          - name: BTC_REST_ENABLE
+            value: "0"
