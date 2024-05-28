@@ -65,7 +65,7 @@ const SATS_PER_VBYTE_INCREMENT: f64 = 0.001;
 /// on spending rules BIP-0341[1]. Specifically, the X-coordinate is formed
 /// by taking the hash of the standard uncompressed encoding of the 
 /// secp256k1 base point G as the X-coordinate. In that BIP the authors
-/// wrote the X-cooredinate that is reproduced below.
+/// wrote the X-coordinate that is reproduced below.
 ///
 /// [1]: https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#constructing-and-spending-taproot-outputs
 #[rustfmt::skip]
