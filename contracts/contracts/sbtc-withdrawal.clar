@@ -1,9 +1,13 @@
 ;; Error codes
 
+(define-constant dust-limit u546)
+
 ;; The `version` part of the recipient address is invalid
 (define-constant ERR_INVALID_ADDR_VERSION (err u500))
 ;; The `hashbytes` part of the recipient address is invalid
 (define-constant ERR_INVALID_ADDR_HASHBYTES (err u501))
+;; The size of the withdrawal is smaller than the dust limit
+(define-constant ERR_DUST_LIMIT (err u502))
 
 ;; Maximum value of an address version as a uint
 (define-constant MAX_ADDRESS_VERSION u6)
@@ -19,7 +23,8 @@
                                             (max-fee uint)
   )
   (begin
-    ;; TODO: convert sBTC into locked sBTC
+    (try! (contract-call? .sbtc-token protocol-lock amount tx-sender))
+    (asserts! (> amount dust-limit) ERR_DUST_LIMIT)
   
     ;; Validate the recipient address
     (try! (validate-recipient recipient))

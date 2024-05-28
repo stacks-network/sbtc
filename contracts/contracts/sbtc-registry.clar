@@ -63,6 +63,7 @@
 (define-map protocol-contracts principal bool)
 (map-set protocol-contracts .sbtc-bootstrap-signers true)
 (map-set protocol-contracts .sbtc-deposit true)
+(map-set protocol-contracts .sbtc-withdrawal true)
 (if (not is-in-mainnet) (map-set protocol-contracts tx-sender true) true)
 
 ;; Read-only functions
