@@ -29,7 +29,6 @@ pub fn make_deposit_request<U>(
     amount: u64,
     utxo: U,
     signers_public_key: XOnlyPublicKey,
-    faucet_public_key: XOnlyPublicKey,
 ) -> (Transaction, DepositRequest)
 where
     U: AsUtxo,
@@ -43,7 +42,9 @@ where
     let leaf2 = NodeInfo::new_leaf_with_ver(redeem_script.clone(), ver);
 
     let node = NodeInfo::combine(leaf1, leaf2).unwrap();
-    let taproot = TaprootSpendInfo::from_node_info(SECP256K1, faucet_public_key, node);
+
+    let unspendable_key = *signer::utxo::unspendable_taproot_key();
+    let taproot = TaprootSpendInfo::from_node_info(SECP256K1, unspendable_key, node);
     let merkle_root = taproot.merkle_root();
 
     let mut deposit_tx = Transaction {
@@ -58,7 +59,7 @@ where
         output: vec![
             TxOut {
                 value: Amount::from_sat(amount),
-                script_pubkey: ScriptBuf::new_p2tr(SECP256K1, faucet_public_key, merkle_root),
+                script_pubkey: ScriptBuf::new_p2tr(SECP256K1, unspendable_key, merkle_root),
             },
             TxOut {
                 value: utxo.amount() - Amount::from_sat(amount + fee),
@@ -76,7 +77,6 @@ where
         amount,
         deposit_script: deposit_script.clone(),
         redeem_script: redeem_script.clone(),
-        taproot_public_key: faucet_public_key,
         signers_public_key,
     };
     (deposit_tx, req)
@@ -149,7 +149,6 @@ fn deposits_add_to_controlled_amounts() {
         deposit_amount,
         depositor_utxo,
         signers_public_key,
-        faucet.keypair.x_only_public_key().0,
     );
     rpc.send_raw_transaction(&deposit_tx).unwrap();
     faucet.generate_blocks(1);
