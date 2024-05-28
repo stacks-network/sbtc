@@ -19,6 +19,9 @@ kubectl apply -f ./yamls/services/services.yaml
 # i - Bitcoin
 kubectl apply -f ./yamls/deployments/bitcoin-deployment.yaml
 
+# ii - Bitcoin Miner
+kubectl apply -f ./yamls/deployments/bitcoin-miner-deployment.yaml
+
 
 # ----------------------------------------
 # Port forward all containers to localhost
