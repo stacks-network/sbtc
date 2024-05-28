@@ -1403,6 +1403,16 @@ export const contracts = {
     },
     maps: {},
     variables: {
+      ERR_DUST_LIMIT: {
+        name: "ERR_DUST_LIMIT",
+        type: {
+          response: {
+            ok: "none",
+            error: "uint128",
+          },
+        },
+        access: "constant",
+      } as TypedAbiVariable<Response<null, bigint>>,
       ERR_INVALID_ADDR_HASHBYTES: {
         name: "ERR_INVALID_ADDR_HASHBYTES",
         type: {
@@ -1438,8 +1448,17 @@ export const contracts = {
         type: "uint128",
         access: "constant",
       } as TypedAbiVariable<bigint>,
+      dustLimit: {
+        name: "dust-limit",
+        type: "uint128",
+        access: "constant",
+      } as TypedAbiVariable<bigint>,
     },
     constants: {
+      ERR_DUST_LIMIT: {
+        isOk: false,
+        value: 502n,
+      },
       ERR_INVALID_ADDR_HASHBYTES: {
         isOk: false,
         value: 501n,
@@ -1451,6 +1470,7 @@ export const contracts = {
       MAX_ADDRESS_VERSION: 6n,
       mAX_ADDRESS_VERSION_BUFF_20: 4n,
       mAX_ADDRESS_VERSION_BUFF_32: 6n,
+      dustLimit: 546n,
     },
     non_fungible_tokens: [],
     fungible_tokens: [],

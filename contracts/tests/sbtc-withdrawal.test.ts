@@ -1,8 +1,10 @@
 import {
   alice,
+  deposit,
   errors,
   registry,
   stxAddressToPoxAddress,
+  token,
   withdrawal,
 } from "./helpers";
 import { test, expect, describe } from "vitest";
@@ -68,9 +70,18 @@ describe("Validating recipient address", () => {
 
 describe("initiating a withdrawal request", () => {
   test("alice can initiate a request", () => {
+    txOk(
+      deposit.completeDepositWrapper({
+        txid: new Uint8Array(32).fill(0),
+        voutIndex: 0,
+        amount: 1000n,
+        recipient: alice,
+      }),
+      alice
+    );
     const receipt = txOk(
       withdrawal.initiateWithdrawalRequest({
-        amount: 100n,
+        amount: 1000n,
         recipient: alicePoxAddr,
         maxFee: 10n,
       }),
@@ -88,9 +99,9 @@ describe("initiating a withdrawal request", () => {
     expect(request).toStrictEqual({
       sender: alice,
       recipient: alicePoxAddr,
-      amount: 100n,
+      amount: 1000n,
       maxFee: 10n,
-      blockHeight: BigInt(1),
+      blockHeight: 2n,
       status: null,
     });
 
@@ -114,21 +125,60 @@ describe("initiating a withdrawal request", () => {
     expect(printData).toStrictEqual({
       sender: alice,
       recipient: alicePoxAddr,
-      amount: 100n,
+      amount: 1000n,
       maxFee: 10n,
-      blockHeight: BigInt(1),
+      blockHeight: 2n,
       topic: "withdrawal-request",
       requestId: 1n,
     });
   });
 
-  test.todo("Tokens are converted to locked sBTC");
+  test("Tokens are converted to locked sBTC", () => {
+    txOk(
+      deposit.completeDepositWrapper({
+        txid: new Uint8Array(32).fill(0),
+        voutIndex: 0,
+        amount: 1000n,
+        recipient: alice,
+      }),
+      alice
+    );
+    expect(rovOk(token.getBalance(alice))).toEqual(1000n);
+    const receipt = txOk(
+      withdrawal.initiateWithdrawalRequest({
+        amount: 1000n,
+        recipient: alicePoxAddr,
+        maxFee: 10n,
+      }),
+      alice
+    );
+    const lockedBalance = rovOk(token.getBalanceLocked(alice));
+    expect(lockedBalance).toEqual(1000n);
+    const [mintEvent] = filterEvents(
+      receipt.events,
+      CoreNodeEventType.FtMintEvent
+    );
+    expect(mintEvent.data.asset_identifier).toEqual(
+      `${token.identifier}::${token.fungible_tokens[1].name}`
+    );
+    expect(mintEvent.data.amount).toEqual(1000n.toString());
+    expect(rovOk(token.getBalanceAvailable(alice))).toEqual(0n);
+  });
 
   test("recipient is validated when iniating an address", () => {
+    txOk(
+      deposit.completeDepositWrapper({
+        txid: new Uint8Array(32).fill(0),
+        voutIndex: 0,
+        amount: 4000n,
+        recipient: alice,
+      }),
+      alice
+    );
     expect(
       txErr(
         withdrawal.initiateWithdrawalRequest({
-          amount: 100n,
+          amount: 1000n,
           recipient: newPoxAddr(7, new Uint8Array(32)),
           maxFee: 10n,
         }),
@@ -139,7 +189,7 @@ describe("initiating a withdrawal request", () => {
     expect(
       txErr(
         withdrawal.initiateWithdrawalRequest({
-          amount: 100n,
+          amount: 1000n,
           recipient: newPoxAddr(2, new Uint8Array(32)),
           maxFee: 10n,
         }),
@@ -150,7 +200,7 @@ describe("initiating a withdrawal request", () => {
     expect(
       txErr(
         withdrawal.initiateWithdrawalRequest({
-          amount: 100n,
+          amount: 1000n,
           recipient: newPoxAddr(6, new Uint8Array(20)),
           maxFee: 10n,
         }),
