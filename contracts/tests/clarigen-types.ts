@@ -517,6 +517,16 @@ export const contracts = {
         },
         access: "constant",
       } as TypedAbiVariable<Response<null, bigint>>,
+      ERR_LOWER_THAN_DUST: {
+        name: "ERR_LOWER_THAN_DUST",
+        type: {
+          response: {
+            ok: "none",
+            error: "uint128",
+          },
+        },
+        access: "constant",
+      } as TypedAbiVariable<Response<null, bigint>>,
       ERR_TXID_LEN: {
         name: "ERR_TXID_LEN",
         type: {
@@ -527,6 +537,11 @@ export const contracts = {
         },
         access: "constant",
       } as TypedAbiVariable<Response<null, bigint>>,
+      dustLimit: {
+        name: "dust-limit",
+        type: "uint128",
+        access: "constant",
+      } as TypedAbiVariable<bigint>,
       txidLength: {
         name: "txid-length",
         type: "uint128",
@@ -538,10 +553,15 @@ export const contracts = {
         isOk: false,
         value: 301n,
       },
+      ERR_LOWER_THAN_DUST: {
+        isOk: false,
+        value: 302n,
+      },
       ERR_TXID_LEN: {
         isOk: false,
         value: 300n,
       },
+      dustLimit: 546n,
       txidLength: 32n,
     },
     non_fungible_tokens: [],
@@ -754,6 +774,15 @@ export const contracts = {
           status: boolean | null;
         } | null
       >,
+      isProtocolCaller: {
+        name: "is-protocol-caller",
+        access: "read_only",
+        args: [{ name: "principal-checked", type: "principal" }],
+        outputs: { type: "bool" },
+      } as TypedAbiFunction<
+        [principalChecked: TypedAbiArg<string, "principalChecked">],
+        boolean
+      >,
     },
     maps: {
       aggregatePubkeys: {
@@ -787,6 +816,11 @@ export const contracts = {
       >,
       multiSigAddress: {
         name: "multi-sig-address",
+        key: "principal",
+        value: "bool",
+      } as TypedAbiMap<string, boolean>,
+      protocolContracts: {
+        name: "protocol-contracts",
         key: "principal",
         value: "bool",
       } as TypedAbiMap<string, boolean>,
@@ -931,6 +965,380 @@ export const contracts = {
     epoch: "Epoch25",
     clarity_version: "Clarity2",
     contractName: "sbtc-registry",
+  },
+  sbtcToken: {
+    functions: {
+      protocolMintManyIter: {
+        name: "protocol-mint-many-iter",
+        access: "private",
+        args: [
+          {
+            name: "item",
+            type: {
+              tuple: [
+                { name: "amount", type: "uint128" },
+                { name: "recipient", type: "principal" },
+              ],
+            },
+          },
+        ],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          item: TypedAbiArg<
+            {
+              amount: number | bigint;
+              recipient: string;
+            },
+            "item"
+          >,
+        ],
+        Response<boolean, bigint>
+      >,
+      protocolBurn: {
+        name: "protocol-burn",
+        access: "public",
+        args: [
+          { name: "amount", type: "uint128" },
+          { name: "owner", type: "principal" },
+        ],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          amount: TypedAbiArg<number | bigint, "amount">,
+          owner: TypedAbiArg<string, "owner">,
+        ],
+        Response<boolean, bigint>
+      >,
+      protocolBurnLocked: {
+        name: "protocol-burn-locked",
+        access: "public",
+        args: [
+          { name: "amount", type: "uint128" },
+          { name: "owner", type: "principal" },
+        ],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          amount: TypedAbiArg<number | bigint, "amount">,
+          owner: TypedAbiArg<string, "owner">,
+        ],
+        Response<boolean, bigint>
+      >,
+      protocolLock: {
+        name: "protocol-lock",
+        access: "public",
+        args: [
+          { name: "amount", type: "uint128" },
+          { name: "owner", type: "principal" },
+        ],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          amount: TypedAbiArg<number | bigint, "amount">,
+          owner: TypedAbiArg<string, "owner">,
+        ],
+        Response<boolean, bigint>
+      >,
+      protocolMint: {
+        name: "protocol-mint",
+        access: "public",
+        args: [
+          { name: "amount", type: "uint128" },
+          { name: "recipient", type: "principal" },
+        ],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          amount: TypedAbiArg<number | bigint, "amount">,
+          recipient: TypedAbiArg<string, "recipient">,
+        ],
+        Response<boolean, bigint>
+      >,
+      protocolMintMany: {
+        name: "protocol-mint-many",
+        access: "public",
+        args: [
+          {
+            name: "recipients",
+            type: {
+              list: {
+                type: {
+                  tuple: [
+                    { name: "amount", type: "uint128" },
+                    { name: "recipient", type: "principal" },
+                  ],
+                },
+                length: 200,
+              },
+            },
+          },
+        ],
+        outputs: {
+          type: {
+            response: {
+              ok: {
+                list: {
+                  type: { response: { ok: "bool", error: "uint128" } },
+                  length: 200,
+                },
+              },
+              error: "uint128",
+            },
+          },
+        },
+      } as TypedAbiFunction<
+        [
+          recipients: TypedAbiArg<
+            {
+              amount: number | bigint;
+              recipient: string;
+            }[],
+            "recipients"
+          >,
+        ],
+        Response<Response<boolean, bigint>[], bigint>
+      >,
+      protocolSetName: {
+        name: "protocol-set-name",
+        access: "public",
+        args: [{ name: "new-name", type: { "string-ascii": { length: 32 } } }],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [newName: TypedAbiArg<string, "newName">],
+        Response<boolean, bigint>
+      >,
+      protocolSetSymbol: {
+        name: "protocol-set-symbol",
+        access: "public",
+        args: [
+          { name: "new-symbol", type: { "string-ascii": { length: 10 } } },
+        ],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [newSymbol: TypedAbiArg<string, "newSymbol">],
+        Response<boolean, bigint>
+      >,
+      protocolSetTokenUri: {
+        name: "protocol-set-token-uri",
+        access: "public",
+        args: [
+          {
+            name: "new-uri",
+            type: { optional: { "string-utf8": { length: 256 } } },
+          },
+        ],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [newUri: TypedAbiArg<string | null, "newUri">],
+        Response<boolean, bigint>
+      >,
+      protocolTransfer: {
+        name: "protocol-transfer",
+        access: "public",
+        args: [
+          { name: "amount", type: "uint128" },
+          { name: "sender", type: "principal" },
+          { name: "recipient", type: "principal" },
+        ],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          amount: TypedAbiArg<number | bigint, "amount">,
+          sender: TypedAbiArg<string, "sender">,
+          recipient: TypedAbiArg<string, "recipient">,
+        ],
+        Response<boolean, bigint>
+      >,
+      protocolUnlock: {
+        name: "protocol-unlock",
+        access: "public",
+        args: [
+          { name: "amount", type: "uint128" },
+          { name: "owner", type: "principal" },
+        ],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          amount: TypedAbiArg<number | bigint, "amount">,
+          owner: TypedAbiArg<string, "owner">,
+        ],
+        Response<boolean, bigint>
+      >,
+      transfer: {
+        name: "transfer",
+        access: "public",
+        args: [
+          { name: "amount", type: "uint128" },
+          { name: "sender", type: "principal" },
+          { name: "recipient", type: "principal" },
+          { name: "memo", type: { optional: { buffer: { length: 34 } } } },
+        ],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          amount: TypedAbiArg<number | bigint, "amount">,
+          sender: TypedAbiArg<string, "sender">,
+          recipient: TypedAbiArg<string, "recipient">,
+          memo: TypedAbiArg<Uint8Array | null, "memo">,
+        ],
+        Response<boolean, bigint>
+      >,
+      getBalance: {
+        name: "get-balance",
+        access: "read_only",
+        args: [{ name: "who", type: "principal" }],
+        outputs: { type: { response: { ok: "uint128", error: "none" } } },
+      } as TypedAbiFunction<
+        [who: TypedAbiArg<string, "who">],
+        Response<bigint, null>
+      >,
+      getBalanceAvailable: {
+        name: "get-balance-available",
+        access: "read_only",
+        args: [{ name: "who", type: "principal" }],
+        outputs: { type: { response: { ok: "uint128", error: "none" } } },
+      } as TypedAbiFunction<
+        [who: TypedAbiArg<string, "who">],
+        Response<bigint, null>
+      >,
+      getBalanceLocked: {
+        name: "get-balance-locked",
+        access: "read_only",
+        args: [{ name: "who", type: "principal" }],
+        outputs: { type: { response: { ok: "uint128", error: "none" } } },
+      } as TypedAbiFunction<
+        [who: TypedAbiArg<string, "who">],
+        Response<bigint, null>
+      >,
+      getDecimals: {
+        name: "get-decimals",
+        access: "read_only",
+        args: [],
+        outputs: { type: { response: { ok: "uint128", error: "none" } } },
+      } as TypedAbiFunction<[], Response<bigint, null>>,
+      getName: {
+        name: "get-name",
+        access: "read_only",
+        args: [],
+        outputs: {
+          type: {
+            response: { ok: { "string-ascii": { length: 32 } }, error: "none" },
+          },
+        },
+      } as TypedAbiFunction<[], Response<string, null>>,
+      getSymbol: {
+        name: "get-symbol",
+        access: "read_only",
+        args: [],
+        outputs: {
+          type: {
+            response: { ok: { "string-ascii": { length: 10 } }, error: "none" },
+          },
+        },
+      } as TypedAbiFunction<[], Response<string, null>>,
+      getTokenUri: {
+        name: "get-token-uri",
+        access: "read_only",
+        args: [],
+        outputs: {
+          type: {
+            response: {
+              ok: { optional: { "string-utf8": { length: 256 } } },
+              error: "none",
+            },
+          },
+        },
+      } as TypedAbiFunction<[], Response<string | null, null>>,
+      getTotalSupply: {
+        name: "get-total-supply",
+        access: "read_only",
+        args: [],
+        outputs: { type: { response: { ok: "uint128", error: "none" } } },
+      } as TypedAbiFunction<[], Response<bigint, null>>,
+      isProtocolCaller: {
+        name: "is-protocol-caller",
+        access: "read_only",
+        args: [],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+      } as TypedAbiFunction<[], Response<boolean, bigint>>,
+    },
+    maps: {},
+    variables: {
+      ERR_NOT_AUTH: {
+        name: "ERR_NOT_AUTH",
+        type: {
+          response: {
+            ok: "none",
+            error: "uint128",
+          },
+        },
+        access: "constant",
+      } as TypedAbiVariable<Response<null, bigint>>,
+      ERR_NOT_OWNER: {
+        name: "ERR_NOT_OWNER",
+        type: {
+          response: {
+            ok: "none",
+            error: "uint128",
+          },
+        },
+        access: "constant",
+      } as TypedAbiVariable<Response<null, bigint>>,
+      tokenDecimals: {
+        name: "token-decimals",
+        type: "uint128",
+        access: "constant",
+      } as TypedAbiVariable<bigint>,
+      tokenName: {
+        name: "token-name",
+        type: {
+          "string-ascii": {
+            length: 32,
+          },
+        },
+        access: "variable",
+      } as TypedAbiVariable<string>,
+      tokenSymbol: {
+        name: "token-symbol",
+        type: {
+          "string-ascii": {
+            length: 10,
+          },
+        },
+        access: "variable",
+      } as TypedAbiVariable<string>,
+      tokenUri: {
+        name: "token-uri",
+        type: {
+          optional: {
+            "string-utf8": {
+              length: 256,
+            },
+          },
+        },
+        access: "variable",
+      } as TypedAbiVariable<string | null>,
+    },
+    constants: {
+      ERR_NOT_AUTH: {
+        isOk: false,
+        value: 5n,
+      },
+      ERR_NOT_OWNER: {
+        isOk: false,
+        value: 4n,
+      },
+      tokenDecimals: 8n,
+      tokenName: "sBTC Mini",
+      tokenSymbol: "sBTC",
+      tokenUri: null,
+    },
+    non_fungible_tokens: [],
+    fungible_tokens: [{ name: "sbtc-token" }, { name: "sbtc-token-locked" }],
+    epoch: "Epoch25",
+    clarity_version: "Clarity2",
+    contractName: "sbtc-token",
   },
   sbtcWithdrawal: {
     functions: {
@@ -1100,6 +1508,7 @@ export const identifiers = {
     "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-bootstrap-signers",
   sbtcDeposit: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-deposit",
   sbtcRegistry: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-registry",
+  sbtcToken: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-token",
   sbtcWithdrawal: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-withdrawal",
 } as const;
 
@@ -1125,6 +1534,12 @@ export const deployments = {
   sbtcRegistry: {
     devnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-registry",
     simnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-registry",
+    testnet: null,
+    mainnet: null,
+  },
+  sbtcToken: {
+    devnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-token",
+    simnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-token",
     testnet: null,
     mainnet: null,
   },

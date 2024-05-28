@@ -26,6 +26,7 @@ export const registry = contracts.sbtcRegistry;
 export const deposit = contracts.sbtcDeposit;
 export const signers = contracts.sbtcBootstrapSigners;
 export const withdrawal = contracts.sbtcWithdrawal;
+export const token = contracts.sbtcToken;
 
 export const controllerId = `${accounts.deployer.address}.controller`;
 
@@ -36,6 +37,7 @@ export const errors = {
   deposit: _errors.sbtcDeposit,
   signers: _errors.sbtcBootstrapSigners,
   withdrawal: _errors.sbtcWithdrawal,
+  token: _errors.sbtcToken,
 };
 
 export function getLastWithdrawalRequestId() {
