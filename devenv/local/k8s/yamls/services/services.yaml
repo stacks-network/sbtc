@@ -124,6 +124,11 @@ spec:
   ports:
     - port: 3000
       targetPort: 3000
+      name: se-p1-tcp
+      protocol: TCP
+    - port: 3020
+      targetPort: 3000
+      name: se-p2-tcp
       protocol: TCP
   selector:
     app: stacks-explorer

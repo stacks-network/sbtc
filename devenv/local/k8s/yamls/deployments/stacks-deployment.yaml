@@ -270,22 +270,27 @@ spec:
 
           
           env:
-            - name: STACKS_LOG_DEBUG
-              value: "0"
-            - name: STACKS_LOG_JSON
-              value: "0"
             - name: LOCAL_PEER_SEED
-              value: "3fd68a8fcab004754d6fee4756dd9c84ad64ee19a11aa9930893540e1357696f2f73957cd6e92797d7a66d1d3ae4a4ea752a8924fe028f1fc2c06b9d6d0ee0ad"
+              valueFrom:
+                secretKeyRef:
+                  name: stacks-secret
+                  key: LOCAL_PEER_SEED
             - name: STACKS_WORKING_DIR
               value: "/var/stacks"
             - name: MY_HTTP_AUTH_TOKEN
-              value: "helloworld"
+              valueFrom:
+                secretKeyRef:
+                  name: stacks-secret
+                  key: MY_HTTP_AUTH_TOKEN
             - name: SIGNER_ENDPOINT
               value: "nakamoto-signer-service.sbtc-signer:30000"
             - name: STACKS_API_ENDPOINT
               value: "stacks-api-service.sbtc-signer:3700"
             - name: MINER_KEY
-              value: "753b7cc01a1a2e86221266a154af739463fce51219d97e4f856cd7200c3bd2a6"
+              valueFrom:
+                secretKeyRef:
+                  name: stacks-secret
+                  key: MINER_KEY
             - name: BTC_NODE_RPC_HOST
               value: "bitcoin-regtest-service.sbtc-signer"
             - name: BTC_NODE_RPC_PORT
@@ -293,9 +298,15 @@ spec:
             - name: BTC_NODE_P2P_PORT
               value: "18444"
             - name: BTC_NODE_RPC_USER
-              value: "devnet"
+              valueFrom:
+                secretKeyRef:
+                  name: bitcoin-secret
+                  key: BTC_RPCUSER
             - name: BTC_NODE_RPC_PASSWORD
-              value: "devnet"
+              valueFrom:
+                secretKeyRef:
+                  name: bitcoin-secret
+                  key: BTC_RPCPASSWORD
 
 
           volumeMounts:
@@ -336,25 +347,3 @@ spec:
             value: "0"
           - name: STACKS_LOG_JSON
             value: "0"
-          - name: LOCAL_PEER_SEED
-            value: "3fd68a8fcab004754d6fee4756dd9c84ad64ee19a11aa9930893540e1357696f2f73957cd6e92797d7a66d1d3ae4a4ea752a8924fe028f1fc2c06b9d6d0ee0ad"
-          - name: STACKS_WORKING_DIR
-            value: "/var/stacks"
-          - name: MY_HTTP_AUTH_TOKEN
-            value: "helloworld"
-          - name: SIGNER_ENDPOINT
-            value: "nakamoto-signer-service.sbtc-signer:30000"
-          - name: STACKS_API_ENDPOINT
-            value: "stacks-api-service.sbtc-signer:3700"
-          - name: MINER_KEY
-            value: "753b7cc01a1a2e86221266a154af739463fce51219d97e4f856cd7200c3bd2a6"
-          - name: BTC_NODE_RPC_HOST
-            value: "bitcoin-regtest-service.sbtc-signer"
-          - name: BTC_NODE_RPC_PORT
-            value: "18443"
-          - name: BTC_NODE_P2P_PORT
-            value: "18444"
-          - name: BTC_NODE_RPC_USER
-            value: "devnet"
-          - name: BTC_NODE_RPC_PASSWORD
-            value: "devnet"

@@ -1,10 +1,10 @@
 # --------------------------------------------------------
-FROM node:18-alpine AS build
+FROM node:18-alpine
 MAINTAINER Gowtham Sundar <gowtham@trustmachines.co>
 
 
 ARG GIT_URI='https://github.com/hirosystems/explorer.git'
-ARG GIT_BRANCH='v1.170.1'
+ARG GIT_BRANCH='v1.179.0'
 
 WORKDIR /app
 RUN apk add --no-cache git python3 make g++
@@ -14,15 +14,8 @@ RUN npm install -g pnpm
 RUN pnpm i
 RUN pnpm build
 
-# --------------------------------------------------------
-FROM node:18-alpine
-WORKDIR /app
 
-COPY --from=build /app/next.config.js /app/next.config.js
-COPY --from=build /app/public /app/public
-COPY --from=build /app/.next/static /app/.next/static
-COPY --from=build /app/.next/standalone /app
 
-# EXPOSE 3020
+EXPOSE 3020
 EXPOSE 3000
-CMD [ "node", "server.js" ]
+CMD [ "npm", "run" , "start" ]

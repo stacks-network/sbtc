@@ -73,15 +73,19 @@ spec:
             - name: SIGNER_ENDPOINT
               value: "0.0.0.0:30000"
             - name: MY_HTTP_AUTH_TOKEN
-              value: "helloworld"
+              valueFrom:
+                secretKeyRef:
+                  name: stacks-secret
+                  key: MY_HTTP_AUTH_TOKEN
             - name: STACKS_PRIVATE_KEY
-              value: "7287ba251d44a4d3fd9276c88ce34c5c52a038955511cccaf77e61068649c17801"
+              valueFrom:
+                secretKeyRef:
+                  name: stacks-secret
+                  key: MINER_KEY
             - name: STACKS_NODE_RPC_HOST
               value: "stacks-node-service.sbtc-signer"
             - name: STACKS_NODE_RPC_PORT
               value: "20443"
-            - name: RUST_BACKTRACE
-              value: "1"
 
 
           volumeMounts:
@@ -113,15 +117,5 @@ spec:
             protocol: UDP
 
         env:
-          - name: SIGNER_ENDPOINT
-            value: "0.0.0.0:30000"
-          - name: MY_HTTP_AUTH_TOKEN
-            value: "helloworld"
-          - name: STACKS_PRIVATE_KEY
-            value: "7287ba251d44a4d3fd9276c88ce34c5c52a038955511cccaf77e61068649c17801"
-          - name: STACKS_NODE_RPC_HOST
-            value: "stacks-node-service.sbtc-signer"
-          - name: STACKS_NODE_RPC_PORT
-            value: "20443"
           - name: RUST_BACKTRACE
             value: "1"

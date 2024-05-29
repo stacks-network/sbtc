@@ -52,3 +52,5 @@ pf_helper "stacks-api-deployment" "stacks-api-service" "3700" "3700" "sbtc-signe
 
 pf_helper "postgres-deployment" "postgres-service" "5432" "5432" "sbtc-signer" "Postgres" "6"
 
+pf_helper "stacks-explorer-deployment" "stacks-explorer-service" "3020" "3000" "sbtc-signer" "Stacks Explorer" "7"
+
