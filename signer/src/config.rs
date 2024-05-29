@@ -9,6 +9,8 @@ use serde::Deserialize;
 pub struct Settings {
     /// Blocklist client specific config
     pub blocklist_client: BlocklistClientConfig,
+    /// Electrum notifier specific config
+    pub block_notifier: BlockNotifierConfig,
 }
 
 /// Blocklist client specific config
@@ -18,6 +20,21 @@ pub struct BlocklistClientConfig {
     pub host: String,
     /// Port of the blocklist client
     pub port: u16,
+}
+
+/// Electrum notifier specific config
+#[derive(Deserialize, Clone, Debug)]
+pub struct BlockNotifierConfig {
+    /// Electrum server address
+    pub server: String,
+    /// Retry interval in seconds
+    pub retry_interval: u64,
+    /// Maximum retry attempts
+    pub max_retry_attempts: u32,
+    /// Interval for pinging the server in seconds
+    pub ping_interval: u64,
+    /// Interval for subscribing to block headers in seconds
+    pub subscribe_interval: u64,
 }
 
 /// Statically configured settings for the signer
@@ -46,6 +63,11 @@ impl Settings {
         if !(1..=65535).contains(&self.blocklist_client.port) {
             return Err(ConfigError::Message(
                 "Port must be between 1 and 65535".to_string(),
+            ));
+        }
+        if self.block_notifier.server.is_empty() {
+            return Err(ConfigError::Message(
+                "Electrum server cannot be empty".to_string(),
             ));
         }
         Ok(())

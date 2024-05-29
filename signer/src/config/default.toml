@@ -1,3 +1,10 @@
 [blocklist_client]
 host = "127.0.0.1"
 port = 8080
+
+[block_notifier]
+server = "tcp://localhost:60401"
+retry_interval = 10
+max_retry_attempts = 5
+ping_interval = 60
+subscribe_interval = 10
