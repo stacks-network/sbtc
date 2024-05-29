@@ -21,10 +21,8 @@ spec:
     spec:
       containers:
       - name: stacks-explorer
-        image: minikube/stacks-explorer:v3
-        # image: hirosystems/explorer:1.179
+        image: minikube/stacks-explorer:v1
         imagePullPolicy: Never
-        # imagePullPolicy: IfNotPresent
         
         resources:
           requests:

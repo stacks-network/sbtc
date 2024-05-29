@@ -317,9 +317,7 @@ spec:
       - name: stacks-node-container
         image: minikube/stacks:v1
         imagePullPolicy: Never
-        # image: nginx:latest
-        # imagePullPolicy: IfNotPresent
-
+        
         volumeMounts:
           - name: shared-data
             mountPath: /mnt/shared
