@@ -208,4 +208,25 @@ describe("initiating a withdrawal request", () => {
       ).value
     ).toEqual(errors.withdrawal.ERR_INVALID_ADDR_HASHBYTES);
   });
+
+  test("Cannot try and withdrawal less than or equal to the dust limit", () => {
+    txOk(
+      deposit.completeDepositWrapper({
+        txid: new Uint8Array(32).fill(0),
+        voutIndex: 0,
+        amount: 4000n,
+        recipient: alice,
+      }),
+      alice
+    );
+    const receipt = txErr(
+      withdrawal.initiateWithdrawalRequest({
+        amount: withdrawal.constants.dustLimit,
+        recipient: alicePoxAddr,
+        maxFee: 10n,
+      }),
+      alice
+    );
+    expect(receipt.value).toEqual(errors.withdrawal.ERR_DUST_LIMIT);
+  });
 });
