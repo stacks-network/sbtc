@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: stacks-api-deployment
-  namespace: stacks-api
+  namespace: sbtc-signer
   labels:
     app: stacks-api
   
@@ -48,7 +48,7 @@ spec:
           - name: GIT_TAG
             value: "master"
           - name: PG_HOST
-            value: "postgres-service.postgres"
+            value: "postgres-service.sbtc-signer"
           - name: PG_PORT
             value: "5432"
           - name: PG_USER
@@ -68,7 +68,7 @@ spec:
           - name: STACKS_BLOCKCHAIN_API_HOST
             value: "0.0.0.0"
           - name: STACKS_CORE_RPC_HOST
-            value: "stacks-node-service.stacks"
+            value: "stacks-node-service.sbtc-signer"
           - name: STACKS_CORE_RPC_PORT
             value: "20443"
           - name: API_DOCS_URL

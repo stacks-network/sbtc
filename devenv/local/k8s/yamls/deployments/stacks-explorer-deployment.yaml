@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: stacks-explorer-deployment
-  namespace: stacks-explorer
+  namespace: sbtc-signer
   labels:
     app: stacks-explorer
   
@@ -40,4 +40,4 @@ spec:
 
         env:
           - name: NEXT_PUBLIC_MAINNET_API_SERVER
-            value: "http://stacks-api-service.stacks-api:3999"
+            value: "http://stacks-api-service.sbtc-signer:3999"

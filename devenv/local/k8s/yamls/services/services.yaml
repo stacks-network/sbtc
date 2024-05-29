@@ -3,7 +3,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: bitcoin-regtest-service
-  namespace: bitcoin
+  namespace: sbtc-signer
   labels:
     app: bitcoin-regtest
   
@@ -41,7 +41,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: stacks-node-service
-  namespace: stacks
+  namespace: sbtc-signer
   labels:
     app: stacks-node
   
@@ -71,7 +71,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: nakamoto-signer-service
-  namespace: stacks
+  namespace: sbtc-signer
   labels:
     app: nakamoto-signer
   
@@ -93,7 +93,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: stacks-api-service
-  namespace: stacks-api
+  namespace: sbtc-signer
   labels:
     app: stacks-api
   
@@ -115,7 +115,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: stacks-explorer-service
-  namespace: stacks-explorer
+  namespace: sbtc-signer
   labels:
     app: stacks-explorer
   
@@ -132,7 +132,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: postgres-service
-  namespace: postgres
+  namespace: sbtc-signer
   labels:
     app: postgres
   

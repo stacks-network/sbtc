@@ -75,8 +75,8 @@ echo " ------------------------------------------------------"
 echo "| => (4) 🔬 TEST: [CHECK IF NAKAMOTO SIGNER IS READY]  |"
 echo " ------------------------------------------------------"
 
-NAKAMOTO_SIGNER_POD_NAME=$(kubectl get pods --selector=app=nakamoto-signer -o json -n stacks | jq -r '.items[].metadata.name')
-NAKAMOTO_SIGNER_LOGS=$(kubectl logs $NAKAMOTO_SIGNER_POD_NAME -n stacks 2>/dev/null)
+NAKAMOTO_SIGNER_POD_NAME=$(kubectl get pods --selector=app=nakamoto-signer -o json -n sbtc-signer | jq -r '.items[].metadata.name')
+NAKAMOTO_SIGNER_LOGS=$(kubectl logs $NAKAMOTO_SIGNER_POD_NAME -n sbtc-signer 2>/dev/null)
 
 echo "NAKAMOTO_SIGNER_LOGS:  $NAKAMOTO_SIGNER_LOGS"
 NAKAMOTO_SIGNER_READY_SUCCESS=false
@@ -210,9 +210,9 @@ echo "| => (9) 🔬 TEST: [CHECK IF STACKS-API IS CONNECTED TO POSTGRES]  |"
 echo " -----------------------------------------------------------------"
 
 
-STACKS_API_POD_NAME=$(kubectl get pods --selector=app=stacks-api -o json -n stacks-api | jq -r '.items[].metadata.name')
+STACKS_API_POD_NAME=$(kubectl get pods --selector=app=stacks-api -o json -n sbtc-signer | jq -r '.items[].metadata.name')
 
-STACKS_API_LOGS=$(kubectl logs $STACKS_API_POD_NAME -n stacks-api 2>/dev/null)
+STACKS_API_LOGS=$(kubectl logs $STACKS_API_POD_NAME -n sbtc-signer 2>/dev/null)
 
 
 STACKS_API_CONNECTED_TO_PG_SUCCESS=false

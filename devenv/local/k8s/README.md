@@ -78,6 +78,14 @@ alias kdf='kubectl delete -f'
 
 ##### `sh up.sh`
 
+#### [iv] Start to port-forward containers:
+
+##### `sh ./utils/port-forward-containers.sh`
+
+#### [v] Run the tests:
+
+##### `sh ./tests/devnet-liveness.sh`
+
 
 #### [iv] Spin down all K8s artifacts:
 

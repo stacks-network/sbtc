@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: stacks-node-deployment
-  namespace: stacks
+  namespace: sbtc-signer
   labels:
     app: stacks-node
   
@@ -281,13 +281,13 @@ spec:
             - name: MY_HTTP_AUTH_TOKEN
               value: "helloworld"
             - name: SIGNER_ENDPOINT
-              value: "nakamoto-signer-service.stacks:30000"
+              value: "nakamoto-signer-service.sbtc-signer:30000"
             - name: STACKS_API_ENDPOINT
-              value: "stacks-api-service.stacks-api:3700"
+              value: "stacks-api-service.sbtc-signer:3700"
             - name: MINER_KEY
               value: "753b7cc01a1a2e86221266a154af739463fce51219d97e4f856cd7200c3bd2a6"
             - name: BTC_NODE_RPC_HOST
-              value: "bitcoin-regtest-service.bitcoin"
+              value: "bitcoin-regtest-service.sbtc-signer"
             - name: BTC_NODE_RPC_PORT
               value: "18443"
             - name: BTC_NODE_P2P_PORT
@@ -343,13 +343,13 @@ spec:
           - name: MY_HTTP_AUTH_TOKEN
             value: "helloworld"
           - name: SIGNER_ENDPOINT
-            value: "nakamoto-signer-service.stacks:30000"
+            value: "nakamoto-signer-service.sbtc-signer:30000"
           - name: STACKS_API_ENDPOINT
-            value: "stacks-api-service.stacks:3700"
+            value: "stacks-api-service.sbtc-signer:3700"
           - name: MINER_KEY
             value: "753b7cc01a1a2e86221266a154af739463fce51219d97e4f856cd7200c3bd2a6"
           - name: BTC_NODE_RPC_HOST
-            value: "bitcoin-regtest-service.bitcoin"
+            value: "bitcoin-regtest-service.sbtc-signer"
           - name: BTC_NODE_RPC_PORT
             value: "18443"
           - name: BTC_NODE_P2P_PORT

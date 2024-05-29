@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: postgres-deployment
-  namespace: postgres
+  namespace: sbtc-signer
   labels:
     app: postgres
   

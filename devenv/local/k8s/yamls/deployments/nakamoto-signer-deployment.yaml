@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nakamoto-signer-deployment
-  namespace: stacks
+  namespace: sbtc-signer
   labels:
     app: nakamoto-signer
   
@@ -77,7 +77,7 @@ spec:
             - name: STACKS_PRIVATE_KEY
               value: "7287ba251d44a4d3fd9276c88ce34c5c52a038955511cccaf77e61068649c17801"
             - name: STACKS_NODE_RPC_HOST
-              value: "stacks-node-service.stacks"
+              value: "stacks-node-service.sbtc-signer"
             - name: STACKS_NODE_RPC_PORT
               value: "20443"
             - name: RUST_BACKTRACE
@@ -120,7 +120,7 @@ spec:
           - name: STACKS_PRIVATE_KEY
             value: "7287ba251d44a4d3fd9276c88ce34c5c52a038955511cccaf77e61068649c17801"
           - name: STACKS_NODE_RPC_HOST
-            value: "stacks-node-service.stacks"
+            value: "stacks-node-service.sbtc-signer"
           - name: STACKS_NODE_RPC_PORT
             value: "20443"
           - name: RUST_BACKTRACE

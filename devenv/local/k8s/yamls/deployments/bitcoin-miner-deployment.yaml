@@ -3,7 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: bitcoin-miner-deployment
-  namespace: bitcoin
+  namespace: sbtc-signer
   labels:
     app: bitcoin-miner
   
@@ -39,7 +39,7 @@ spec:
           - name: BTC_BLOCK_GEN_TIME
             value: "10"
           - name: BITCOIN_RPC_HOST
-            value: "bitcoin-regtest-service.bitcoin"
+            value: "bitcoin-regtest-service.sbtc-signer"
           - name: BITCOIN_RPC_PORT
             value: "18443"
           - name: BTC_RPCUSER

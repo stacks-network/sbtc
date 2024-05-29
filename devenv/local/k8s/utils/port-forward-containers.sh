@@ -40,15 +40,15 @@ pf_helper() {
 
 echo " -----------------------------------------------------------  "
 
-pf_helper "bitcoin-regtest-deployment" "bitcoin-regtest-service" "18443" "18443" "bitcoin" "Bitcoin Node" "1"
+pf_helper "bitcoin-regtest-deployment" "bitcoin-regtest-service" "18443" "18443" "sbtc-signer" "Bitcoin Node" "1"
 
-pf_helper "nakamoto-signer-deployment" "nakamoto-signer-service" "30000" "30000" "stacks" "Nakamoto Signer" "2"
+pf_helper "nakamoto-signer-deployment" "nakamoto-signer-service" "30000" "30000" "sbtc-signer" "Nakamoto Signer" "2"
 
-pf_helper "stacks-node-deployment" "stacks-node-service" "20443" "20443" "stacks" "Stacks Node" "3"
+pf_helper "stacks-node-deployment" "stacks-node-service" "20443" "20443" "sbtc-signer" "Stacks Node" "3"
 
-pf_helper "stacks-api-deployment" "stacks-api-service" "3999" "3999" "stacks-api" "Stacks API Public Endpoint" "4"
+pf_helper "stacks-api-deployment" "stacks-api-service" "3999" "3999" "sbtc-signer" "Stacks API Public Endpoint" "4"
 
-pf_helper "stacks-api-deployment" "stacks-api-service" "3700" "3700" "stacks-api" "Stacks API Event Observer" "5"
+pf_helper "stacks-api-deployment" "stacks-api-service" "3700" "3700" "sbtc-signer" "Stacks API Event Observer" "5"
 
-pf_helper "postgres-deployment" "postgres-service" "5432" "5432" "postgres" "Postgres" "6"
+pf_helper "postgres-deployment" "postgres-service" "5432" "5432" "sbtc-signer" "Postgres" "6"
 
