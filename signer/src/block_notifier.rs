@@ -13,7 +13,7 @@ use tokio::sync::mpsc::{channel, Sender};
 use tokio::task;
 use tokio::time::{interval, sleep, Duration};
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 
 /// The `BlockNotifier` trait defines a method for subscribing to a stream of block headers.
 pub trait BlockNotifier {
