@@ -4,3 +4,23 @@ kind: Namespace
 metadata:
   name: bitcoin
 ---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stacks
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stacks-api
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stacks-explorer
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: postgres
+---

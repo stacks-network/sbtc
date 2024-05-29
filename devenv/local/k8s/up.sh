@@ -23,6 +23,38 @@ kubectl apply -f ./yamls/deployments/bitcoin-deployment.yaml
 kubectl apply -f ./yamls/deployments/bitcoin-miner-deployment.yaml
 
 
+
+# iii - Postgres
+kubectl apply -f ./yamls/deployments/postgres-deployment.yaml
+
+# iv - Nakamoto Signer
+kubectl apply -f ./yamls/deployments/nakamoto-signer-deployment.yaml
+
+
+
+# WAIT FOR BTC NODE
+kubectl wait --for=condition=available --timeout=15s -f ./yamls/deployments/bitcoin-deployment.yaml
+# v - Stacks Node
+kubectl apply -f ./yamls/deployments/stacks-deployment.yaml
+
+
+
+
+# WAIT FOR STACKS NODE
+kubectl wait --for=condition=available --timeout=30s -f ./yamls/deployments/postgres-deployment.yaml
+kubectl wait --for=condition=available --timeout=30s -f ./yamls/deployments/stacks-deployment.yaml
+# vi - Stacks API
+kubectl apply -f ./yamls/deployments/stacks-api-deployment.yaml
+
+
+# WAIT FOR STACKS API
+kubectl wait --for=condition=available --timeout=30s -f ./yamls/deployments/stacks-api-deployment.yaml
+# vii - Stacks Explorer
+kubectl apply -f ./yamls/deployments/stacks-explorer-deployment.yaml
+
+
+
+
 # ----------------------------------------
 # Port forward all containers to localhost
 

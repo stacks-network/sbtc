@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stacks-explorer-deployment
+  namespace: stacks-explorer
+  labels:
+    app: stacks-explorer
+  
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: stacks-explorer
+  
+  template:
+    metadata:
+      labels:
+        app: stacks-explorer
+    
+    spec:
+      containers:
+      - name: stacks-explorer-container
+        image: minikube/stacks-explorer:v1
+        imagePullPolicy: Never
+        
+        resources:
+          requests:
+            memory: 128Mi
+            cpu: 50m
+          limits:
+            memory: 256Mi
+            cpu: 100m
+        
+        ports:
+        # - containerPort: 3020
+        #   protocol: TCP
+        - containerPort: 3000
+          protocol: TCP
+
+        env:
+          - name: NEXT_PUBLIC_MAINNET_API_SERVER
+            value: "http://stacks-api-service.stacks-api:3999"

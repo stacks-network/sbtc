@@ -15,8 +15,11 @@ fi
 # COPY the bitcoin.conf from the shared volume (from the init container to the DOT_BITCOIN_DIR)
 SHARED_VOL_DIR="/mnt/shared"
 
+# delete the file first if exists
+rm -rf "$DOT_BITCOIN_DIR/bitcoin.conf"
 
-mv "$SHARED_VOL_DIR/bitcoin.conf" "$DOT_BITCOIN_DIR"
+# copy over the file into the location
+cp "$SHARED_VOL_DIR/bitcoin.conf" "$DOT_BITCOIN_DIR"
 
 bitcoind \
     -regtest \
