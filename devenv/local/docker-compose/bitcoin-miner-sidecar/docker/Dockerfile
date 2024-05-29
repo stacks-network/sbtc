@@ -1,5 +1,5 @@
 FROM alpine:latest
-MAINTAINER Gowtham Sundar <gowtham@trustmachines.co>
+LABEL org.opencontainers.image.authors="Gowtham Sundar <gowtham@trustmachines.co>"
 
 RUN apk add --no-cache curl jq
 
