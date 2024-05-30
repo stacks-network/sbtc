@@ -11,3 +11,7 @@ eval $(minikube docker-env)
 
 docker build -t minikube/bitcoin:v1 ./custom-k8s-docker-builds/bitcoin/docker/
 docker build -t minikube/bitcoin-miner-sidecar:v1 ./custom-k8s-docker-builds/bitcoin-miner-sidecar/docker/
+docker build -t minikube/stacks:v1 ./custom-k8s-docker-builds/stacks/docker/
+docker build -t minikube/stacks-api:v1 ./custom-k8s-docker-builds/stacks-api/docker/
+docker build -t minikube/stacks-explorer:v1 ./custom-k8s-docker-builds/stacks-explorer/docker/
+docker build -t minikube/nakamoto-signer:v1 ./custom-k8s-docker-builds/nakamoto-signer/docker/

@@ -70,6 +70,8 @@ alias kdf='kubectl delete -f'
 
 ##### `minikube start`
 
+> Note you might need to increase the disk size of minikube. If there are disk problems, please run `minikube start --disk-size 50000mb` instead and choose the disk size of your preference
+
 #### [ii] Build all containers:
 
 ##### `sh build.sh`
@@ -78,13 +80,26 @@ alias kdf='kubectl delete -f'
 
 ##### `sh up.sh`
 
+#### [iv] Start to port-forward containers:
 
-#### [iv] Spin down all K8s artifacts:
+##### `sh ./utils/port-forward-containers.sh`
+
+#### [v] Manual testing:
+
+#### - Please visit `http://localhost:3020/` for the Stacks Explorer
+
+
+#### [vi] **(!! OPTIONAL !!)** Run the automated tests:
+
+##### `sh ./tests/devnet-liveness.sh`
+
+
+#### [vii] Spin down all K8s artifacts:
 
 ##### `sh down.sh`
 
 
-#### **(!! OPTIONAL !!)** [v] Delete Minikube Containers:
+#### **(!! OPTIONAL !!)** [viii] Delete Minikube Containers:
 
 > Beware that this will permanently remove containers and it will take some time for the containers to be rebuilt again using `build.sh`
 
@@ -92,6 +107,6 @@ alias kdf='kubectl delete -f'
 
 
 
-#### [vi] Stop Minikube:
+#### [ix] Stop Minikube:
 
 ##### `minikube stop`

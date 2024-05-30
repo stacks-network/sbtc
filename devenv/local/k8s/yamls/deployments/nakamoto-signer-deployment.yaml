@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nakamoto-signer-deployment
+  namespace: sbtc-signer
+  labels:
+    app: nakamoto-signer
+  
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: nakamoto-signer
+  
+  template:
+    metadata:
+      labels:
+        app: nakamoto-signer
+    
+    spec:
+      
+      # Define a shared volume
+      volumes:
+        - name: shared-data
+          emptyDir: {}
+
+
+      # Define init containers
+      initContainers:
+        - name: init-file-generator
+          image: blockstack/stacks-core:2.5.0.0.3
+          imagePullPolicy: Never
+          command:
+            - /bin/bash
+          args: 
+            - -ec
+            - |
+              #!/bin/bash
+
+              SHARED_VOL_DIR="/mnt/shared"
+
+
+              tee -a $SHARED_VOL_DIR/config.toml << END
+              # The IP address and port where your Stacks node can be accessed. 
+              # The port 20443 is the default RPC endpoint for Stacks nodes. 
+              # Note that you must use an IP address - DNS hosts are not supported at this time.
+              node_host = "$STACKS_NODE_RPC_HOST:$STACKS_NODE_RPC_PORT"
+
+              # This is the location where the signer will expose an RPC endpoint for 
+              # receiving events from your Stacks node.
+              endpoint = "$SIGNER_ENDPOINT"
+
+              # Either “testnet” or “mainnet”
+              network = "testnet"
+
+              # this is a file path where your signer will persist data. If using Docker, 
+              # this must be within a volume, so that data can be persisted across restarts
+              db_path = "/var/stacks/signer.sqlite"
+
+              # an authentication token that is used for some HTTP requests made from the 
+              # signer to your Stacks node. You'll need to use this later on when configuring 
+              # your Stacks node. You create this field yourself, rather than it being generated 
+              # with your private key.
+              auth_password = "$MY_HTTP_AUTH_TOKEN"
+
+              # This is the hex-encoded privateKey field from the keys you generated using 
+              # the stacks-cli
+              stacks_private_key = "$STACKS_PRIVATE_KEY"
+              END
+          
+          env:
+            - name: SIGNER_ENDPOINT
+              value: "0.0.0.0:30000"
+            - name: MY_HTTP_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: stacks-secret
+                  key: MY_HTTP_AUTH_TOKEN
+            - name: STACKS_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: stacks-secret
+                  key: MINER_KEY
+            - name: STACKS_NODE_RPC_HOST
+              value: "stacks-node-service.sbtc-signer"
+            - name: STACKS_NODE_RPC_PORT
+              value: "20443"
+
+
+          volumeMounts:
+            - name: shared-data
+              mountPath: /mnt/shared
+
+
+      containers:
+      - name: nakamoto-signer-container
+        image: minikube/nakamoto-signer:v1
+        imagePullPolicy: Never
+
+        volumeMounts:
+        - name: shared-data
+          mountPath: /mnt/shared
+        
+        resources:
+          requests:
+            memory: 128Mi
+            cpu: 50m
+          limits:
+            memory: 256Mi
+            cpu: 100m
+        
+        ports:
+          - containerPort: 30000
+            protocol: TCP
+          - containerPort: 30000
+            protocol: UDP
+
+        env:
+          - name: RUST_BACKTRACE
+            value: "1"

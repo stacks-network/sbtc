@@ -3,7 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: bitcoin-regtest-deployment
-  namespace: bitcoin
+  namespace: sbtc-signer
   labels:
     app: bitcoin-regtest
   

@@ -1,0 +1,347 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stacks-node-deployment
+  namespace: sbtc-signer
+  labels:
+    app: stacks-node
+  
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: stacks-node
+  
+  template:
+    metadata:
+      labels:
+        app: stacks-node
+    
+    spec:
+
+      # Define a shared volume
+      volumes:
+        - name: shared-data
+          emptyDir: {}
+
+      # Define init containers
+      initContainers:
+        - name: init-file-generator
+          image: blockstack/stacks-core:2.5.0.0.3
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+          args: 
+            - -ec
+            - |
+              #!/bin/bash
+
+              SHARED_VOL_DIR="/mnt/shared"
+
+
+              tee -a $SHARED_VOL_DIR/config.toml << END
+              [node]
+              working_dir = "$STACKS_WORKING_DIR" # Change to data directory you would like to use for your node
+              rpc_bind = "0.0.0.0:20443"
+              p2p_bind = "0.0.0.0:20444"
+              local_peer_seed = "$LOCAL_PEER_SEED" # Change to any 64-character hexidecimal string
+              prometheus_bind = "0.0.0.0:9153"
+              wait_time_for_microblocks = 0
+              mine_microblocks = false
+              pox_sync_sample_secs = 0
+              wait_time_for_blocks = 0
+              microblock_frequency = 1000
+              stacker = true # required if you are running a signer
+              miner = true
+              seed = "$MINER_KEY"
+              use_test_genesis_chainstate = true
+
+              [miner]
+              min_tx_fee = 1
+              first_attempt_time_ms = 180_000
+              subsequent_attempt_time_ms = 360_000
+              wait_for_block_download = false
+              microblock_attempt_time_ms = 10
+              mining_key = "$MINER_KEY"
+
+              [connection_options]
+              disable_block_download = true
+              disable_inbound_handshakes = true
+              disable_inbound_walks = true
+              public_ip_address = "1.1.1.1:1234"
+              block_proposal_token = "$MY_HTTP_AUTH_TOKEN"
+              private_neighbors = false
+
+              [[events_observer]]
+              endpoint = "$SIGNER_ENDPOINT" # change to your signer endpoint
+              retry_count = 255
+              include_data_events = false
+              events_keys = ["stackerdb", "block_proposal"]
+
+              # Add stacks-api as an event observer
+              [[events_observer]]
+              endpoint = "$STACKS_API_ENDPOINT"
+              retry_count = 255
+              #include_data_events = false
+              events_keys = ["*"]
+
+
+              [burnchain]
+              chain = "bitcoin"
+              mode = "krypton"
+              magic_bytes = "T3"
+              pox_prepare_length = 5
+              pox_reward_length = 20
+              peer_host = "$BTC_NODE_RPC_HOST"
+              username = "$BTC_NODE_RPC_USER"
+              password = "$BTC_NODE_RPC_PASSWORD"
+              rpc_port = $BTC_NODE_RPC_PORT
+              peer_port = $BTC_NODE_P2P_PORT
+              pox_2_activation = 104
+              burn_fee_cap = 20_000
+              poll_time_secs = 1
+              timeout = 30
+
+              [[burnchain.epochs]]
+              epoch_name = "1.0"
+              start_height = 0
+
+              [[burnchain.epochs]]
+              epoch_name = "2.0"
+              start_height = 0
+
+              [[burnchain.epochs]]
+              epoch_name = "2.05"
+              start_height = 102
+
+              [[burnchain.epochs]]
+              epoch_name = "2.1"
+              start_height = 103
+
+              [[burnchain.epochs]]
+              epoch_name = "2.2"
+              start_height = 105
+
+              [[burnchain.epochs]]
+              epoch_name = "2.3"
+              start_height = 106
+
+              [[burnchain.epochs]]
+              epoch_name = "2.4"
+              start_height = 107
+
+              [[burnchain.epochs]]
+              epoch_name = "2.5"
+              start_height = 108
+
+              [[burnchain.epochs]]
+              epoch_name = "3.0"
+              start_height = 1000001
+
+              [[ustx_balance]]
+              address = "ST0DZFQ1XGHC5P1BZ6B7HSWQKQJHM74JBGCSDTNA"
+              amount = 10000000000000000
+
+              [[ustx_balance]]
+              address = "ST2G2RJR4B5M95D0ZZAGZJP9J4WH090WHP0C5YW0H"
+              amount = 10000000000000000
+
+              [[ustx_balance]]
+              address = "ST3JCQJE9NZRCAPPE44Q12KR7FH8AY9HTEMWP2G5F"
+              amount = 10000000000000000
+
+              [[ustx_balance]]
+              address = "STA0EP5GD8FC661T8Q0Z382QW7Z6JXDM3E476MB7"
+              amount = 17500000000000
+
+              [[ustx_balance]]
+              address = "ST3MNK12DGQF7JN4Q0STK6926VWE5MN21KJ4EGV0E"
+              amount = 10000000000000000
+
+              [[ustx_balance]]
+              address = "ST484MS3VACPAZ90WHC21XQ7T6XANCV341HJYE0W"
+              amount = 10000000000000000
+
+              [[ustx_balance]]
+              address = "ST2D1M978SCE52GAV07VXSRC9DQBP69X5WHX0DHN5"
+              amount = 10000000000000000
+
+              [[ustx_balance]]
+              address = "ST2A68NMMXVZDWDTDZ5GJGA69M86V8KK0JS9X1QQP"
+              amount = 10000000000000000
+
+              [[ustx_balance]]
+              address = "ST2ME1CR5XR0P332SBTSD90P9HG48F1SK8MZVJ3XW"
+              amount = 10000000000000000
+
+              [[ustx_balance]]
+              address = "ST19MXV72S9HHRSZCDY10K9DMB11JYPTXVVNYAWPH"
+              amount = 10000000000000000
+
+              [[ustx_balance]]
+              address = "ST20Q2N56E1NBWE37R4VGSF89X4HHTB3GSMD8GKYW"
+              amount = 10000000000000000
+
+              [[ustx_balance]]
+              address = "ST2Q6124HQFKVKPJSS5J6156BJR74FD6EC1297HJ1"
+              amount = 10000000000000000
+
+              [[ustx_balance]]
+              address = "ST1114TBQYGNPGFAVXKWBKZAHP0X7ZGX9K6XYYE4F"
+              amount = 10000000000000000
+
+              [[ustx_balance]]
+              address = "ST1NCEQ0T4Z32QTYT88BNXJKC9HR3VWYHJ0TB95TP"
+              amount = 10000000000000000
+
+              [[ustx_balance]]
+              address = "STWF12K119FTA70NDG29MNYWR0CPMF44ZKC2SG2T"
+              amount = 24378281250000
+
+              [[ustx_balance]]
+              address = "ST36G5CRHH1GJVZGFWPTW4H9GSA8VAVWM0ST7AV82"
+              amount = 24378281250000
+
+              [[ustx_balance]]
+              address = "ST2KWFMX0SVXFMZ0W7TXZ3MV0C6V276BNAT49XAQW"
+              amount = 24378281250000
+
+              [[ustx_balance]]
+              address = "ST1ZMVDYKGWF5TFGH46GEFBR273JJ3RRTHEDETKNH"
+              amount = 24378281250000
+
+              [[ustx_balance]]
+              address = "ST3D0TEK871ZMBFFF0998YY609A1QGM6ZTYCQJJFQ"
+              amount = 24378281250000
+
+              [[ustx_balance]]
+              address = "ST372ND8K8M3GKESD0KG8ZWJ6EV0GGXWXC5246MJN"
+              amount = 24378281250000
+
+              [[ustx_balance]]
+              address = "ST33PA4H3TW3DQFHG2RXPGGW1FFG5YQJ704B3DA8M"
+              amount = 24378281250000
+
+              [[ustx_balance]]
+              address = "STJ737JNPK525J86BGSPAW362SRRAYC4SP6F95HC"
+              amount = 24378281250000
+
+              [[ustx_balance]]
+              address = "ST21AJANGK9NA2ZED5D5J1VZPTVW8DY05B0ECMFN"
+              amount = 24378281250000
+
+              [[ustx_balance]]
+              address = "ST30Z74A4S2T8563D844ENSBHBFSVQEVBPV9S0A7E"
+              amount = 24378281250000
+
+              [[ustx_balance]]
+              address = "ST2FGTGYAGJVXJZQX17NBJNSQAM4J2V5JFDHEEAZQ"
+              amount = 24378281250000
+
+              [[ustx_balance]]
+              address = "ST16PC3G9BMQH0G37JGAGDGYZPDB5NGNARBDFPWYB"
+              amount = 24378281250000
+
+              [[ustx_balance]]
+              address = "ST1XJHGBSQPV9B14HFYG98ZBSQGKG8GN0AMB3V2VT"
+              amount = 24378281250000
+
+              [[ustx_balance]]
+              address = "ST2XDC0R30841X2RRECWV2F9KTANKQEERPS4V3H9D"
+              amount = 24378281250000
+
+              [[ustx_balance]]
+              address = "ST2HC6JENRNNE6YVATT7WZVZWVR5J26BGYX67W8G7"
+              amount = 24378281250000
+
+              [[ustx_balance]]
+              address = "STPW2CGZC98EZ95XYC9DE93SFBS5KA2PYYK89VHM"
+              amount = 24378281250000
+
+              [[ustx_balance]]
+              address = "STNX3E9MYTA2ZDQK53YNMMJ3E7783DC019JZNYZZ"
+              amount = 24378281250000
+
+              [[ustx_balance]]
+              address = "ST0D135PF2R0S4B6S4G49QZC69KF19MSZ4Z5RDF5"
+              amount = 24378281250000
+              END
+
+          
+          env:
+            - name: LOCAL_PEER_SEED
+              valueFrom:
+                secretKeyRef:
+                  name: stacks-secret
+                  key: LOCAL_PEER_SEED
+            - name: STACKS_WORKING_DIR
+              value: "/var/stacks"
+            - name: MY_HTTP_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: stacks-secret
+                  key: MY_HTTP_AUTH_TOKEN
+            - name: SIGNER_ENDPOINT
+              value: "nakamoto-signer-service.sbtc-signer:30000"
+            - name: STACKS_API_ENDPOINT
+              value: "stacks-api-service.sbtc-signer:3700"
+            - name: MINER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: stacks-secret
+                  key: MINER_KEY
+            - name: BTC_NODE_RPC_HOST
+              value: "bitcoin-regtest-service.sbtc-signer"
+            - name: BTC_NODE_RPC_PORT
+              value: "18443"
+            - name: BTC_NODE_P2P_PORT
+              value: "18444"
+            - name: BTC_NODE_RPC_USER
+              valueFrom:
+                secretKeyRef:
+                  name: bitcoin-secret
+                  key: BTC_RPCUSER
+            - name: BTC_NODE_RPC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bitcoin-secret
+                  key: BTC_RPCPASSWORD
+
+
+          volumeMounts:
+            - name: shared-data
+              mountPath: /mnt/shared
+
+      containers:
+      - name: stacks-node-container
+        image: minikube/stacks:v1
+        imagePullPolicy: Never
+        
+        volumeMounts:
+          - name: shared-data
+            mountPath: /mnt/shared
+        
+        resources:
+          requests:
+            memory: 128Mi
+            cpu: 50m
+          limits:
+            memory: 256Mi
+            cpu: 100m
+        
+        ports:
+        - containerPort: 20444
+          protocol: TCP
+        - containerPort: 20443
+          protocol: TCP
+        - containerPort: 20444
+          protocol: UDP
+        - containerPort: 20443
+          protocol: UDP
+
+        env:
+          - name: STACKS_LOG_DEBUG
+            value: "0"
+          - name: STACKS_LOG_JSON
+            value: "0"
