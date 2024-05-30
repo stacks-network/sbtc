@@ -150,3 +150,85 @@ spec:
   selector:
     app: postgres
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: electrs-service
+  namespace: sbtc-signer
+  labels:
+    app: electrs
+  
+spec:
+  type: ClusterIP
+  ports:
+    - port: 60401
+      targetPort: 60401
+      name: electrs-port1-tcp
+      protocol: TCP
+    - port: 3002
+      targetPort: 3002
+      name: electrs-port2-tcp
+      protocol: TCP
+    - port: 60401
+      targetPort: 60401
+      name: electrs-port1-udp
+      protocol: UDP
+    - port: 3002
+      targetPort: 3002
+      name: electrs-port2-udp
+      protocol: UDP
+  selector:
+    app: electrs
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb-service
+  namespace: sbtc-signer
+  labels:
+    app: mariadb
+  
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3306
+      targetPort: 3306
+  selector:
+    app: mariadb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mempool-backend-service
+  namespace: sbtc-signer
+  labels:
+    app: mempool-backend
+  
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8999
+      targetPort: 8999
+      name: mempool-backend-port1-tcp
+      protocol: TCP
+  selector:
+    app: mempool-backend
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mempool-frontend-service
+  namespace: sbtc-signer
+  labels:
+    app: mempool-frontend
+  
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8083
+      targetPort: 8083
+      name: mempool-frontend-port1-tcp
+      protocol: TCP
+  selector:
+    app: mempool-frontend
+---

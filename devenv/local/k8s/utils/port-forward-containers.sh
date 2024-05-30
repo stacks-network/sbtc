@@ -54,3 +54,11 @@ pf_helper "postgres-deployment" "postgres-service" "5432" "5432" "sbtc-signer" "
 
 pf_helper "stacks-explorer-deployment" "stacks-explorer-service" "3020" "3000" "sbtc-signer" "Stacks Explorer" "7"
 
+pf_helper "electrs-deployment" "electrs-service" "60401" "60401" "sbtc-signer" "Electrs" "8"
+
+pf_helper "mariadb-deployment" "mariadb-service" "3306" "3306" "sbtc-signer" "MariaDB" "9"
+
+pf_helper "mempool-backend-deployment" "mempool-backend-service" "8999" "8999" "sbtc-signer" "Mempool Backend" "10"
+
+pf_helper "mempool-frontend-deployment" "mempool-frontend-service" "8083" "8083" "sbtc-signer" "Mempool Frontend" "11"
+
