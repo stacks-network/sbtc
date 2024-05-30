@@ -228,6 +228,28 @@ echo "\033[1mSTACKS_API_CONNECTED_TO_PG_SUCCESS\033[0m: $STACKS_API_CONNECTED_TO
 echo "\n"
 
 
+echo " -----------------------------------------------"
+echo "| => (10) 🔬 TEST: [CHECK IF MARIADB IS READY]  |"
+echo " -----------------------------------------------"
+
+MARIADB_POD_NAME=$(kubectl get pods --selector=app=mariadb -o json -n sbtc-signer | jq -r '.items[].metadata.name')
+
+MARIADB_LOGS=$(kubectl logs $MARIADB_POD_NAME -n sbtc-signer 2>/dev/null)
+
+MARIADB_READY_SUCCESS=false
+MARIADB_READY_SUCCESS_FRMT=$(echo "\033[1;31m$MARIADB_READY_SUCCESS\033[0m❌")
+if [[ $MARIADB_LOGS == *"ready for connections"* || $MARIADB_LOGS == *"Ready for start up"* ]]; then
+    MARIADB_READY_SUCCESS=true
+    echo "MariaDB || Ready for start up"
+    MARIADB_READY_SUCCESS_FRMT=$(echo "\033[1;32m$MARIADB_READY_SUCCESS\033[0m ✅")
+fi
+
+
+
+echo "\033[1mMARIADB_READY_SUCCESS\033[0m: $MARIADB_READY_SUCCESS_FRMT"
+echo "\n"
+
+
 
 echo "------------------------------------------------------------------"
 echo "|                        SUMMARY                                 |"
@@ -241,6 +263,7 @@ echo "| \033[1mSTX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m:               | \t $STX_SY
 echo "| \033[1mSTACKS_API_EVENT_OBSERVER_LIVENESS_SUCCESS\033[0m:   | \t $STACKS_API_EVENT_OBSERVER_LIVENESS_SUCCESS_FRMT |"
 echo "| \033[1mSTACKS_PUBLIC_API_LIVENESS_SUCCESS\033[0m:           | \t $STACKS_PUBLIC_API_LIVENESS_SUCCESS_FRMT |"
 echo "| \033[1mSTACKS_API_CONNECTED_TO_PG_SUCCESS\033[0m:           | \t $STACKS_API_CONNECTED_TO_PG_SUCCESS_FRMT |"
+echo "| \033[1mMARIADB_READY_SUCCESS\033[0m:                        | \t $MARIADB_READY_SUCCESS_FRMT |"
 echo "------------------------------------------------------------------"
 
 if [[ $BTC_LIVENESS_SUCCESS == true \
@@ -252,6 +275,7 @@ if [[ $BTC_LIVENESS_SUCCESS == true \
     && $STACKS_API_EVENT_OBSERVER_LIVENESS_SUCCESS == true \
     && $STACKS_PUBLIC_API_LIVENESS_SUCCESS == true \
     && $STACKS_API_CONNECTED_TO_PG_SUCCESS == true \
+    && $MARIADB_READY_SUCCESS == true \
     ]]; then
     exit 0
 fi
