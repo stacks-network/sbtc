@@ -56,7 +56,10 @@
 ;; bootstrap signer set address - it cannot be called by users directly.
 ;; 
 ;; This function handles the validation & minting of sBTC by handling multiple (up to 1000) deposits at a time, 
-;; it then calls into the sbtc-registry contract to update the state of the protocol
+;; it then calls into the sbtc-registry contract to update the state of the protocol. 
+(define-public (complete-deposits-wrapper (deposits (list 1000 {txid: (buff 32), vout-index: uint, amount: uint, recipient: principal})))
+    (fold complete-individual-deposits-helper deposits (ok u0))
+)
 
 ;; read only functions
 ;;
