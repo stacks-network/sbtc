@@ -13,6 +13,8 @@ This contains the necessary code to get up and running with an EKS cluster, ECR 
 | VpcCni                    |                              |
 | CoreDns                   |                              |
 | KubeProxy                 |                              |
+| EBSDriver                 |                              |
+| CloudWatch                |                              |
 
 
 
@@ -21,19 +23,55 @@ For a full list of possible addons, please visit the [Amazon EKS Blueprints Addo
 ### CDK Components:
 
 * EKS Cluster:
-    - Since the `ClusterAutoScaler` Addon is turned on by default, it also spins up a single `m5.large` instance. As workloads increase past the resource limit, the cluster autoscales to the necessary amount of nodes
-    - 
+    - Comes with an on-demand nodegroup with a default instance type of `m5.large` with a desired size of 2 and a max size of 4
+    - For the default addons, please refer to Section [1]
+* ECR Repos:
+    - These are the default ECR Repos:
+        - stacks
+        - stacks-api
+        - stacks-explorer
+        - bitcoin
+        - bitcoin-miner-sidecar
+        - electrs
+        - nakamoto-signer
+* IAM User which has ECR Push access
+
 
 
 ## [2] Installation:
 
+> This Section assumes you have the `aws` cli installed
+
+* Ensure you have `make`, `kubectl` and `node` installed
+* Install aws cdk `v2.133.0` installed:
+    - `npm install -g aws-cdk@2.133.0   # may require sudo (Ubuntu) depending on configuration`
+    - Any other version will lead to dependency conflict with the AWS Blueprint library
+* Install npm deps:
+    - `npm install`
+* Bootstrap AWS CDK:
+    - `cdk bootstrap aws://<YOUR AWS ACCOUNT ID>/<AWS REGION>`
+* Deploy:
+    - `cdk deploy --all`
+    - Press `y` for the incoming prompts
 
 
-## [3] Useful commands
+When the deploy is finished, you will see this in the terminal:
 
-* `npm run build`   compile typescript to js
-* `npm run watch`   watch for changes and compile
-* `npm run test`    perform the jest unit tests
-* `npx cdk deploy`  deploy this stack to your default AWS account/region
-* `npx cdk diff`    compare deployed stack with current state
-* `npx cdk synth`   emits the synthesized CloudFormation template
+```
+Outputs:
+east-test-1.easttest1ClusterName8D8E5E5E = east-test-1
+east-test-1.easttest1ConfigCommand25ABB520 = aws eks update-kubeconfig --name east-test-1 --region us-east-1 --role-arn <ROLE_ARN>
+east-test-1.easttest1GetTokenCommand337FE3DD = aws eks get-token --cluster-name east-test-1 --region us-east-1 --role-arn <ROLE_ARN>
+
+Stack ARN:
+arn:aws:cloudformation:us-east-1:115717706081:stack/east-test-1/e1b9e6a0-d5f6-11eb-8498-0a374cd00e27
+```
+
+Please copy & run the command in the second line to be able to access your cluster locally
+
+
+## [3] Uninstall:
+
+To delete the Stack, please run: 
+
+`cdk destroy`

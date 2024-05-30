@@ -21,19 +21,27 @@ export interface EksCdkStackProps extends cdk.StackProps {
 
 export class EksCdkStack extends cdk.Stack {
 
+  EKS_CLUSTER: blueprints.EksBlueprint
+  ECR_REPOS: cdk.aws_ecr.Repository[]
+  IAM_ECR_PUSH_USER: cdk.aws_iam.User
+
+
   constructor(scope: Construct, id: string, props: EksCdkStackProps) {
     super(scope, id, props);
 
+    
 
-    const EKS_CLUSTER = this.createKubernetesCluster(scope, 'sbtc-cluster', props);
-    const ECR_REPOS = this.createEcrRepos(props);
+    this.EKS_CLUSTER = this.createKubernetesCluster(scope, 'sbtc-cluster', props);
+
+
+    this.ECR_REPOS = this.createEcrRepos(props);
 
 
     const ecr_resources_list: string[] = [];
-    for(let i = 0; i < ECR_REPOS.length; i++){ ecr_resources_list.push(ECR_REPOS[i].repositoryArn);}
+    for(let i = 0; i < this.ECR_REPOS.length; i++){ ecr_resources_list.push(this.ECR_REPOS[i].repositoryArn);}
 
 
-    const IAM_ECR_PUSH_USER = this.createIAMUserWithEcrPushPolicy(props, ecr_resources_list);
+    this.IAM_ECR_PUSH_USER = this.createIAMUserWithEcrPushPolicy(props, ecr_resources_list);
 
   }
 
