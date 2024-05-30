@@ -13,7 +13,7 @@ pub mod postgres;
 use std::future::Future;
 
 /// Represents the ability to read data from the signer storage.
-pub trait Read {
+pub trait DbRead {
     /// Read error.
     type Error;
 
@@ -25,7 +25,7 @@ pub trait Read {
 }
 
 /// Represents the ability to write data to the signer storage.
-pub trait Write {
+pub trait DbWrite {
     /// Write error.
     type Error;
 
@@ -36,12 +36,12 @@ pub trait Write {
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
 
-impl<'a, T> Read for &'a mut T
+impl<'a, T> DbRead for &'a mut T
 where
-    &'a T: Read,
+    &'a T: DbRead,
     T: Send,
 {
-    type Error = <&'a T as Read>::Error;
+    type Error = <&'a T as DbRead>::Error;
 
     async fn get_bitcoin_block(
         self,
@@ -51,12 +51,12 @@ where
     }
 }
 
-impl<'a, T> Write for &'a mut T
+impl<'a, T> DbWrite for &'a mut T
 where
-    &'a T: Write,
+    &'a T: DbWrite,
     T: Send,
 {
-    type Error = <&'a T as Write>::Error;
+    type Error = <&'a T as DbWrite>::Error;
 
     async fn write_bitcoin_block(self, block: &model::BitcoinBlock) -> Result<(), Self::Error> {
         (&*self).write_bitcoin_block(block).await

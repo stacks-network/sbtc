@@ -1,4 +1,4 @@
-use signer::storage::{Read, Write};
+use signer::storage::{DbRead, DbWrite};
 
 use signer::storage::model;
 use signer::storage::postgres::*;

@@ -26,8 +26,8 @@ use blockstack_lib::chainstate::nakamoto;
 use blockstack_lib::chainstate::stacks;
 use futures::stream::StreamExt;
 use storage::model;
-use storage::Read;
-use storage::Write;
+use storage::DbRead;
+use storage::DbWrite;
 
 type DepositRequestMap = HashMap<bitcoin::Txid, Vec<DepositRequest>>;
 
@@ -49,16 +49,15 @@ pub struct BlockObserver<BitcoinClient, StacksClient, EmilyClient, BlockHashStre
     pub horizon: usize,
 }
 
-impl<BitcoinClient, StacksClient, EmilyClient, BlockHashStream, SignerStorage>
-    BlockObserver<BitcoinClient, StacksClient, EmilyClient, BlockHashStream, SignerStorage>
+impl<BC, SC, EC, BHS, SS> BlockObserver<BC, SC, EC, BHS, SS>
 where
-    BitcoinClient: BitcoinInteract,
-    StacksClient: StacksInteract,
-    EmilyClient: EmilyInteract,
-    BlockHashStream: futures::stream::Stream<Item = bitcoin::BlockHash> + Unpin,
-    for<'a> &'a mut SignerStorage: storage::Read + storage::Write,
-    for<'a> <&'a mut SignerStorage as storage::Read>::Error: std::error::Error,
-    for<'a> <&'a mut SignerStorage as storage::Write>::Error: std::error::Error,
+    BC: BitcoinInteract,
+    SC: StacksInteract,
+    EC: EmilyInteract,
+    BHS: futures::stream::Stream<Item = bitcoin::BlockHash> + Unpin,
+    for<'a> &'a mut SS: storage::DbRead + storage::DbWrite,
+    for<'a> <&'a mut SS as storage::DbRead>::Error: std::error::Error,
+    for<'a> <&'a mut SS as storage::DbWrite>::Error: std::error::Error,
 {
     /// Run the block observer
     pub async fn run(mut self) -> Result<(), Error> {

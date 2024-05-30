@@ -25,7 +25,7 @@ impl Store {
     }
 }
 
-impl super::Read for &Store {
+impl super::DbRead for &Store {
     type Error = Error;
 
     async fn get_bitcoin_block(
@@ -36,7 +36,7 @@ impl super::Read for &Store {
     }
 }
 
-impl super::Write for &mut Store {
+impl super::DbWrite for &mut Store {
     type Error = Error;
 
     async fn write_bitcoin_block(self, block: &model::BitcoinBlock) -> Result<(), Self::Error> {
@@ -47,7 +47,7 @@ impl super::Write for &mut Store {
     }
 }
 
-impl super::Read for &Arc<Mutex<Store>> {
+impl super::DbRead for &Arc<Mutex<Store>> {
     type Error = Error;
 
     async fn get_bitcoin_block(
@@ -58,7 +58,7 @@ impl super::Read for &Arc<Mutex<Store>> {
     }
 }
 
-impl super::Write for &Arc<Mutex<Store>> {
+impl super::DbWrite for &Arc<Mutex<Store>> {
     type Error = Error;
 
     async fn write_bitcoin_block(self, block: &model::BitcoinBlock) -> Result<(), Self::Error> {

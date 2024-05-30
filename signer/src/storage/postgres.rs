@@ -20,7 +20,7 @@ impl From<sqlx::PgPool> for PgStore {
     }
 }
 
-impl super::Read for &PgStore {
+impl super::DbRead for &PgStore {
     type Error = sqlx::Error;
 
     async fn get_bitcoin_block(
@@ -37,7 +37,7 @@ impl super::Read for &PgStore {
     }
 }
 
-impl super::Write for &PgStore {
+impl super::DbWrite for &PgStore {
     type Error = sqlx::Error;
 
     async fn write_bitcoin_block(self, block: &model::BitcoinBlock) -> Result<(), Self::Error> {
