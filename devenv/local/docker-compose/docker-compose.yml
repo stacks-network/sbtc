@@ -72,14 +72,6 @@ services:
         MINER_ADDRESS: "moU2g2zzH3qLYCNPXGPAMqsgxr2Bw15V2j"
     depends_on:
       - bitcoin
-    environment:
-      INIT_BTC_BLOCKS: 101
-      BTC_BLOCK_GEN_TIME: 10
-      BITCOIN_RPC_HOST: "bitcoin"
-      BITCOIN_RPC_PORT: 18443
-      BTC_RPCPASSWORD: devnet
-      BTC_RPCUSER: devnet
-      MINER_ADDRESS: "moU2g2zzH3qLYCNPXGPAMqsgxr2Bw15V2j"
   stacks:
     image: stacks:latest
     container_name: stacks
@@ -106,14 +98,6 @@ services:
     environment:
       STACKS_LOG_DEBUG: 0
       STACKS_LOG_JSON: 0
-      LOCAL_PEER_SEED: "3fd68a8fcab004754d6fee4756dd9c84ad64ee19a11aa9930893540e1357696f2f73957cd6e92797d7a66d1d3ae4a4ea752a8924fe028f1fc2c06b9d6d0ee0ad"
-      STACKS_WORKING_DIR: "/var/stacks"
-      MY_HTTP_AUTH_TOKEN: "helloworld"
-      SIGNER_ENDPOINT: "nakamoto-signer:30000"
-      MINER_KEY: "753b7cc01a1a2e86221266a154af739463fce51219d97e4f856cd7200c3bd2a6"
-      BTC_NODE_RPC_HOST: "bitcoin"
-      BTC_NODE_RPC_USER: "devnet"
-      BTC_NODE_RPC_PASSWORD: "devnet"
   nakamoto-signer:
     image: nakamoto-signer:latest
     container_name: nakamoto-signer
@@ -130,11 +114,6 @@ services:
     ports:
       - 30000:30000
     environment:
-      SIGNER_ENDPOINT: "0.0.0.0:30000"
-      MY_HTTP_AUTH_TOKEN: "helloworld"
-      STACKS_PRIVATE_KEY: "7287ba251d44a4d3fd9276c88ce34c5c52a038955511cccaf77e61068649c17801"
-      STACKS_NODE_RPC_HOST: "stacks"
-      STACKS_NODE_RPC_PORT: "20443"
       RUST_BACKTRACE: "1"
   stacks-api:
     image: stacks-api:latest
@@ -154,8 +133,6 @@ services:
       - bitcoin
     environment:
       NODE_ENV: "production"
-      GIT_URI: "https://github.com/hirosystems/stacks-blockchain-api.git"
-      GIT_BRANCH: "v7.10.0-nakamoto.7"
       GIT_TAG: "v7.10.0-nakamoto.7"
       PG_HOST: "postgres"
       PG_PORT: 5432
