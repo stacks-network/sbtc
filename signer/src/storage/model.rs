@@ -1,8 +1,5 @@
 //! Database models for the signer.
 
-#[cfg(feature = "testing")]
-pub mod testing;
-
 /// Bitcoin block.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
