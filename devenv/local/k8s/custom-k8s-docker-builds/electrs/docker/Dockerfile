@@ -1,7 +1,3 @@
-# ENV VARS:
-# - BITCOIN_RPC_HOST
-# - BITCOIN_RPC_PORT
-
 # --------------------------------------------------------
 FROM debian:bookworm-slim as builder
 MAINTAINER Gowtham Sundar <gowtham@trustmachines.co>
