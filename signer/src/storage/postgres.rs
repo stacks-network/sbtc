@@ -20,24 +20,24 @@ impl From<sqlx::PgPool> for PgStore {
     }
 }
 
-impl super::Read for &PgStore {
+impl super::DbRead for &PgStore {
     type Error = sqlx::Error;
 
     async fn get_bitcoin_block(
         self,
         block_hash: &model::BitcoinBlockHash,
-    ) -> Result<model::BitcoinBlock, Self::Error> {
+    ) -> Result<Option<model::BitcoinBlock>, Self::Error> {
         sqlx::query_as!(
             model::BitcoinBlock,
             "SELECT * FROM sbtc_signer.bitcoin_blocks WHERE block_hash = $1;",
             &block_hash
         )
-        .fetch_one(&self.0)
+        .fetch_optional(&self.0)
         .await
     }
 }
 
-impl super::Write for &PgStore {
+impl super::DbWrite for &PgStore {
     type Error = sqlx::Error;
 
     async fn write_bitcoin_block(self, block: &model::BitcoinBlock) -> Result<(), Self::Error> {

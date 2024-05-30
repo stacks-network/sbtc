@@ -24,7 +24,7 @@ bitcoin = { workspace = true, features = ["rand-std"] }
 blocklist-api = { path = "../.generated-sources/blocklist-api" }
 clap.workspace = true
 config.workspace = true
-futures = "0.3"
+futures.workspace = true
 once_cell.workspace = true
 p256k1.workspace = true
 prost.workspace = true

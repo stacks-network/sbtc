@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![deny(missing_docs)]
 
+pub mod block_observer;
 pub mod blocklist_client;
 pub mod codec;
 pub mod config;

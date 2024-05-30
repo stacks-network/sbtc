@@ -1,4 +1,4 @@
-use signer::storage::{Read, Write};
+use signer::storage::{DbRead, DbWrite};
 
 use signer::storage::model;
 use signer::storage::postgres::*;
@@ -24,7 +24,7 @@ async fn should_be_able_to_query_bitcoin_blocks(pool: sqlx::PgPool) {
         store
             .write_bitcoin_block(block)
             .await
-            .expect("Failed to write bitcoin block");
+            .expect("failed to write bitcoin block");
     }
 
     // Assert that we can query each of the persisted blocks
@@ -32,17 +32,18 @@ async fn should_be_able_to_query_bitcoin_blocks(pool: sqlx::PgPool) {
         let persisted_block = store
             .get_bitcoin_block(&block.block_hash)
             .await
-            .expect("Failed to get parent hash");
+            .expect("failed to execute query")
+            .expect("block doesn't exist in database");
 
         assert_eq!(&persisted_block, block)
     }
 
     // Assert that we can't find any blocks that haven't been persisted
     for block in &not_persisted_model.bitcoin_blocks {
-        let err = store
+        let result = store
             .get_bitcoin_block(&block.block_hash)
             .await
-            .expect_err("Got unexpected row");
-        assert!(matches!(err, sqlx::Error::RowNotFound));
+            .expect("failed_to_execute_query");
+        assert!(result.is_none());
     }
 }
