@@ -4,9 +4,10 @@ use bitcoin::hashes::Hash;
 use fake::Fake;
 use rand::seq::SliceRandom;
 
+use crate::message;
 use crate::testing::dummy;
 
-impl super::SignerMessage {
+impl message::SignerMessage {
     /// Construct a random message
     pub fn random<R: rand::RngCore + ?Sized>(rng: &mut R) -> Self {
         fake::Faker.fake_with_rng(rng)
@@ -14,7 +15,7 @@ impl super::SignerMessage {
 
     /// Construct a random message with the given payload type
     pub fn random_with_payload_type<
-        P: Into<super::Payload> + fake::Dummy<fake::Faker>,
+        P: Into<message::Payload> + fake::Dummy<fake::Faker>,
         R: rand::RngCore + ?Sized,
     >(
         rng: &mut R,
@@ -26,7 +27,7 @@ impl super::SignerMessage {
     /// Construct a random message with the given payload
     fn random_with_payload<R: rand::RngCore + ?Sized>(
         rng: &mut R,
-        payload: super::Payload,
+        payload: message::Payload,
     ) -> Self {
         let mut block_hash_data = [0; 32];
         rng.fill_bytes(&mut block_hash_data);
@@ -36,27 +37,27 @@ impl super::SignerMessage {
     }
 }
 
-impl fake::Dummy<fake::Faker> for super::Payload {
+impl fake::Dummy<fake::Faker> for message::Payload {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let variants = [
-            dummy_payload::<super::SignerDepositDecision, _>,
-            dummy_payload::<super::SignerWithdrawDecision, _>,
-            dummy_payload::<super::WstsMessage, _>,
+            dummy_payload::<message::SignerDepositDecision, _>,
+            dummy_payload::<message::SignerWithdrawDecision, _>,
+            dummy_payload::<message::WstsMessage, _>,
         ];
 
         variants.choose(rng).unwrap()(config, rng)
     }
 }
 
-impl fake::Dummy<fake::Faker> for super::SignerMessage {
+impl fake::Dummy<fake::Faker> for message::SignerMessage {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        let payload: super::Payload = config.fake_with_rng(rng);
+        let payload: message::Payload = config.fake_with_rng(rng);
 
         Self::random_with_payload(rng, payload)
     }
 }
 
-impl fake::Dummy<fake::Faker> for super::SignerDepositDecision {
+impl fake::Dummy<fake::Faker> for message::SignerDepositDecision {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         Self {
             output_index: config.fake_with_rng(rng),
@@ -66,19 +67,19 @@ impl fake::Dummy<fake::Faker> for super::SignerDepositDecision {
     }
 }
 
-impl fake::Dummy<fake::Faker> for super::BitcoinTransactionSignRequest {
+impl fake::Dummy<fake::Faker> for message::BitcoinTransactionSignRequest {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         Self { tx: dummy::tx(config, rng) }
     }
 }
 
-impl fake::Dummy<fake::Faker> for super::BitcoinTransactionSignAck {
+impl fake::Dummy<fake::Faker> for message::BitcoinTransactionSignAck {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         Self { txid: dummy::txid(config, rng) }
     }
 }
 
-impl fake::Dummy<fake::Faker> for super::StacksTransactionSignRequest {
+impl fake::Dummy<fake::Faker> for message::StacksTransactionSignRequest {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         Self {
             tx: dummy::stacks_tx(config, rng),
@@ -86,7 +87,7 @@ impl fake::Dummy<fake::Faker> for super::StacksTransactionSignRequest {
     }
 }
 
-impl fake::Dummy<fake::Faker> for super::StacksTransactionSignature {
+impl fake::Dummy<fake::Faker> for message::StacksTransactionSignature {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         Self {
             txid: dummy::stacks_txid(config, rng),
@@ -95,7 +96,7 @@ impl fake::Dummy<fake::Faker> for super::StacksTransactionSignature {
     }
 }
 
-impl fake::Dummy<fake::Faker> for super::WstsMessage {
+impl fake::Dummy<fake::Faker> for message::WstsMessage {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let dkg_end_begin = wsts::net::DkgEndBegin {
             dkg_id: config.fake_with_rng(rng),
@@ -107,9 +108,10 @@ impl fake::Dummy<fake::Faker> for super::WstsMessage {
     }
 }
 
-fn dummy_payload<P: Into<super::Payload> + fake::Dummy<fake::Faker>, R: rand::RngCore + ?Sized>(
-    config: &fake::Faker,
-    rng: &mut R,
-) -> super::Payload {
+fn dummy_payload<P, R>(config: &fake::Faker, rng: &mut R) -> message::Payload
+where
+    P: Into<message::Payload> + fake::Dummy<fake::Faker>,
+    R: rand::RngCore + ?Sized,
+{
     config.fake_with_rng::<P, _>(rng).into()
 }

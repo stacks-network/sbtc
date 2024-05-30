@@ -260,6 +260,8 @@ pub enum ConnectError {
 mod tests {
     use super::*;
 
+    use crate::testing;
+
     #[tokio::test]
     #[cfg_attr(not(feature = "integration-tests"), ignore)]
     async fn two_clients_should_be_able_to_exchange_messages_through_a_grpc_relay() {
@@ -275,7 +277,7 @@ mod tests {
 
         let client_2 = RelayClient::connect(addr).await.expect("Failed to connect");
 
-        crate::network::testing::assert_clients_can_exchange_messages(client_1, client_2).await;
+        testing::network::assert_clients_can_exchange_messages(client_1, client_2).await;
     }
 
     fn server_address() -> String {

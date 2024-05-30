@@ -1,6 +1,9 @@
 //! Module with testing utility functions.
 
 pub mod dummy;
+pub mod message;
+pub mod network;
+pub mod storage;
 
 use crate::utxo::UnsignedTransaction;
 use bitcoin::hashes::Hash;

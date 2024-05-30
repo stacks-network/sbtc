@@ -3,9 +3,6 @@
 use blockstack_lib::chainstate::stacks;
 use sha2::Digest;
 
-#[cfg(feature = "testing")]
-pub mod testing;
-
 /// Messages exchanged between signers
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SignerMessage {
@@ -113,35 +110,35 @@ pub struct SignerWithdrawDecision {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StacksTransactionSignRequest {
     /// The transaction to sign.
-    tx: stacks::StacksTransaction,
+    pub tx: stacks::StacksTransaction,
 }
 
 /// Represents a signature of a Stacks transaction.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StacksTransactionSignature {
     /// Id of the signed transaction.
-    txid: blockstack_lib::burnchains::Txid,
+    pub txid: blockstack_lib::burnchains::Txid,
     /// An ECDSA signature over the transaction.
-    signature: p256k1::ecdsa::Signature,
+    pub signature: p256k1::ecdsa::Signature,
 }
 
 /// Represents a request to sign a Bitcoin transaction.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BitcoinTransactionSignRequest {
     /// The transaction.
-    tx: bitcoin::Transaction,
+    pub tx: bitcoin::Transaction,
 }
 
 /// Represents an acknowledgment of a signed Bitcoin transaction.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BitcoinTransactionSignAck {
     /// The ID of the acknowledged transaction.
-    txid: bitcoin::Txid,
+    pub txid: bitcoin::Txid,
 }
 
 /// A wsts message.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct WstsMessage(wsts::net::Message);
+pub struct WstsMessage(pub wsts::net::Message);
 
 impl wsts::net::Signable for SignerMessage {
     fn hash(&self, hasher: &mut sha2::Sha256) {

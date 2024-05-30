@@ -6,8 +6,6 @@
 
 pub mod grpc_relay;
 pub mod in_memory;
-#[cfg(test)]
-pub mod testing;
 
 use std::future::Future;
 
@@ -32,6 +30,8 @@ pub trait MessageTransfer {
 mod tests {
     use super::*;
 
+    use crate::testing;
+
     #[tokio::test]
     async fn two_clients_should_be_able_to_exchange_messages_given_an_in_memory_network() {
         let network = in_memory::Network::new();
@@ -39,6 +39,6 @@ mod tests {
         let client_1 = network.connect();
         let client_2 = network.connect();
 
-        testing::assert_clients_can_exchange_messages(client_1, client_2).await;
+        testing::network::assert_clients_can_exchange_messages(client_1, client_2).await;
     }
 }

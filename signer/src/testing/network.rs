@@ -1,7 +1,6 @@
-use crate::ecdsa;
-use crate::message;
+//! Test utilities for the `network` module
 
-pub type Msg = ecdsa::Signed<message::SignerMessage>;
+use crate::network;
 
 /// Test helper that spawns two concurrent tasks for the provided clients and have them
 /// broadcasting randomly generated messages.
@@ -9,7 +8,7 @@ pub type Msg = ecdsa::Signed<message::SignerMessage>;
 /// that they should be able to receive each other's messages.
 ///
 /// The function asserts that all sent messages are received unmodified and in-order on the other end.
-pub async fn assert_clients_can_exchange_messages<C: super::MessageTransfer + Send + 'static>(
+pub async fn assert_clients_can_exchange_messages<C: network::MessageTransfer + Send + 'static>(
     client_1: C,
     client_2: C,
 ) {
@@ -18,10 +17,10 @@ pub async fn assert_clients_can_exchange_messages<C: super::MessageTransfer + Se
     let number_of_messages = 32;
 
     let client_1_messages: Vec<_> = (0..number_of_messages)
-        .map(|_| Msg::random(&mut rng))
+        .map(|_| network::Msg::random(&mut rng))
         .collect();
     let client_2_messages: Vec<_> = (0..number_of_messages)
-        .map(|_| Msg::random(&mut rng))
+        .map(|_| network::Msg::random(&mut rng))
         .collect();
 
     let handle_1 = spawn_client_task(
@@ -37,11 +36,11 @@ pub async fn assert_clients_can_exchange_messages<C: super::MessageTransfer + Se
 }
 
 fn spawn_client_task(
-    mut client: impl super::MessageTransfer + Send + 'static,
-    send_messages: Vec<super::Msg>,
-    should_receive: Vec<super::Msg>,
+    mut client: impl network::MessageTransfer + Send + 'static,
+    send_messages: Vec<network::Msg>,
+    should_receive: Vec<network::Msg>,
 ) -> tokio::task::JoinHandle<()> {
-    let handle = tokio::spawn(async move {
+    tokio::spawn(async move {
         for msg in send_messages {
             client.broadcast(msg).await.expect("Failed to broadcast");
         }
@@ -50,7 +49,5 @@ fn spawn_client_task(
             let received = client.receive().await.expect("Failed to receive message");
             assert_eq!(received, msg);
         }
-    });
-
-    handle
+    })
 }

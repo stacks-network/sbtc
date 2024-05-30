@@ -1,7 +1,7 @@
 use signer::storage::{DbRead, DbWrite};
 
-use signer::storage::model;
 use signer::storage::postgres::*;
+use signer::testing;
 
 use rand::SeedableRng;
 
@@ -11,13 +11,14 @@ async fn should_be_able_to_query_bitcoin_blocks(pool: sqlx::PgPool) {
     let store = PgStore::from(pool);
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
-    let test_model_params = model::testing::Params {
+    let test_model_params = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
-        chain_type: model::testing::ChainType::Chaotic,
+        chain_type: testing::storage::model::ChainType::Chaotic,
     };
 
-    let persisted_model = model::testing::TestData::generate(&mut rng, &test_model_params);
-    let not_persisted_model = model::testing::TestData::generate(&mut rng, &test_model_params);
+    let persisted_model = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
+    let not_persisted_model =
+        testing::storage::model::TestData::generate(&mut rng, &test_model_params);
 
     // Write all blocks for the persisted model to the database
     for block in &persisted_model.bitcoin_blocks {
