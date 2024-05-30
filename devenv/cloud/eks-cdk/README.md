@@ -43,13 +43,20 @@ For a full list of possible addons, please visit the [Amazon EKS Blueprints Addo
 > This Section assumes you have the `aws` cli installed
 
 * Ensure you have `make`, `kubectl` and `node` installed
+
 * Install aws cdk `v2.133.0` installed:
     - `npm install -g aws-cdk@2.133.0   # may require sudo (Ubuntu) depending on configuration`
     - Any other version will lead to dependency conflict with the AWS Blueprint library
+
 * Install npm deps:
     - `npm install`
+
 * Bootstrap AWS CDK:
     - `cdk bootstrap aws://<YOUR AWS ACCOUNT ID>/<AWS REGION>`
+
+* Copy over the example env file from [./sample-configs/.env-sample-eks](sample-configs/.env-sample-eks) into root directory and rename to `.env`
+    - Make sure you change `AWS_ACCOUNT_ID` from "xxxxxxxxxxxx" to your specific account id
+
 * Deploy:
     - `cdk deploy --all`
     - Press `y` for the incoming prompts
@@ -74,4 +81,4 @@ Please copy & run the command in the second line to be able to access your clust
 
 To delete the Stack, please run: 
 
-`cdk destroy`
+`cdk destroy --all`
