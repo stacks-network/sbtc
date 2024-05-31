@@ -1,32 +1,42 @@
 //! This module provides functionality for notifying about new blocks using the Electrum client.
 
-use crate::config::SETTINGS;
+use crate::config::{BlockNotifierConfig, SETTINGS};
 use electrum_client::bitcoin::BlockHash;
 use electrum_client::{
     Client, ConfigBuilder, ElectrumApi, Error as ElectrumError, HeaderNotification,
 };
-use futures::stream::Stream;
-use std::error::Error;
-use std::pin::Pin;
+use futures::stream::{Stream, StreamExt};
 use std::sync::Arc;
-use tokio::sync::mpsc::{channel, Sender};
+use tokio::sync::broadcast::{self, Receiver, Sender};
+use tokio::sync::Mutex;
 use tokio::task;
 use tokio::time::{interval, sleep, Duration};
-use tokio_stream::wrappers::ReceiverStream;
-use tracing::{error, warn};
+use tokio_stream::wrappers::BroadcastStream;
+use tracing::{debug, error};
+
+/// Block Notifier Errors
+#[derive(Debug, thiserror::Error, Clone)]
+pub enum Error {
+    /// Electrum error
+    #[error("electrum error: {0}")]
+    Electrum(Arc<electrum_client::Error>),
+    /// Lagged
+    #[error("BroadcastStream")]
+    BroadcastStream,
+}
 
 /// The `BlockNotifier` trait defines a method for subscribing to a stream of block headers.
 pub trait BlockNotifier {
     /// Errors occurring during subscription or running the notifier.
-    type Error: Error;
+    type Error: std::error::Error;
 
     /// Returns a stream of block headers.
-    fn subscribe(&self) -> Pin<Box<dyn Stream<Item = Result<BlockHash, Self::Error>> + Send>>;
+    fn subscribe(&self) -> impl Stream<Item = Result<BlockHash, Self::Error>> + Send;
 }
 
-/// A struct implementing the `BlockNotifier` trait using Electrum client.
+/// A struct for polling Block Headers from Electrum client.
 pub struct ElectrumBlockNotifier {
-    client: Arc<Client>,
+    client: Arc<Mutex<Client>>,
     retry_interval: Duration,
     max_retry_attempts: u32,
     ping_interval: Duration,
@@ -34,19 +44,19 @@ pub struct ElectrumBlockNotifier {
 }
 
 impl ElectrumBlockNotifier {
-    /// Creates a new instance of `ElectrumBlockNotifier` from config settings.
+    /// Creates a new instance of `ElectrumBlockNotifier` from config.
     ///
     /// # Returns
     ///
     /// A new instance of `ElectrumBlockNotifier`.
-    pub fn from_config() -> Result<Self, ElectrumError> {
-        let server = &SETTINGS.block_notifier.server;
-        let config = ConfigBuilder::new().build();
-        let client = Arc::new(Client::from_config(server, config)?);
-        let retry_interval = Duration::from_secs(SETTINGS.block_notifier.retry_interval);
-        let max_retry_attempts = SETTINGS.block_notifier.max_retry_attempts;
-        let ping_interval = Duration::from_secs(SETTINGS.block_notifier.ping_interval);
-        let subscribe_interval = Duration::from_secs(SETTINGS.block_notifier.subscribe_interval);
+    pub fn from_config(config: BlockNotifierConfig) -> Result<Self, ElectrumError> {
+        let server = &config.server;
+        let client_config = ConfigBuilder::new().build();
+        let client = Arc::new(Mutex::new(Client::from_config(server, client_config)?));
+        let retry_interval = Duration::from_secs(config.retry_interval);
+        let max_retry_attempts = config.max_retry_attempts;
+        let ping_interval = Duration::from_secs(config.ping_interval);
+        let subscribe_interval = Duration::from_secs(config.subscribe_interval);
         Ok(ElectrumBlockNotifier {
             client,
             retry_interval,
@@ -56,25 +66,37 @@ impl ElectrumBlockNotifier {
         })
     }
 
-    /// The notify loop that handles block header notifications and sends them to the receiver.
+    /// Creates a new instance of `ElectrumBlockNotifier` from system config.
+    ///
+    /// # Returns
+    ///
+    /// A new instance of `ElectrumBlockNotifier`.
+    pub fn new() -> Result<Self, ElectrumError> {
+        let config = &SETTINGS.block_notifier;
+        Self::from_config(config.clone())
+    }
+
+    /// The notify loop that handles block header notifications and sends them to the broadcast channel.
     async fn notify_loop(
-        client: Arc<Client>,
+        client: Arc<Mutex<Client>>,
         retry_interval: Duration,
         max_retry_attempts: u32,
         ping_interval: Duration,
         subscribe_interval: Duration,
-        sender: Sender<Result<BlockHash, ElectrumError>>,
+        sender: Sender<Result<BlockHash, Error>>,
     ) {
         let mut retry_attempts = 0;
         let mut ping_interval = interval(ping_interval);
         let mut subscribe_interval = interval(subscribe_interval);
         let mut continue_loop = true;
 
+        debug!("Beginning to poll for block headers");
+
         while continue_loop {
             tokio::select! {
                 // Concurrent keep-alive check
                 _ = ping_interval.tick() => {
-                    if client.ping().is_err() {
+                    if client.lock().await.ping().is_err() {
                         error!("Ping failed, attempting to reconnect...");
                         retry_attempts += 1;
                         if retry_attempts >= max_retry_attempts {
@@ -87,24 +109,20 @@ impl ElectrumBlockNotifier {
                 }
                 // Periodic block header subscription
                 _ = subscribe_interval.tick() => {
-                    match client.block_headers_subscribe() {
-                        Ok(HeaderNotification { header, .. }) => {
-                            let block_hash = header.block_hash();
+                    let client_clone = Arc::clone(&client);
+                    let sender_clone = sender.clone();
 
-                            if sender.send(Ok(block_hash)).await.is_err() {
-                                warn!("Receiver dropped, stopping notify loop.");
-                                continue_loop = false;
+                    task::spawn_blocking(move || {
+                        match client_clone.blocking_lock().block_headers_subscribe() {
+                            Ok(HeaderNotification { header, .. }) => {
+                                let block_hash = header.block_hash();
+                                let _ = sender_clone.send(Ok(block_hash));
+                            }
+                            Err(e) => {
+                                let _ = sender_clone.send(Err(Error::Electrum(Arc::new(e))));
                             }
                         }
-                        Err(e) => {
-                            error!("Error subscribing to block headers: {}", e);
-                            retry_attempts += 1;
-                            if retry_attempts >= max_retry_attempts {
-                                error!("Max retry attempts reached, giving up.");
-                                continue_loop = false;
-                            }
-                        }
-                    }
+                    });
                 }
             }
             sleep(retry_interval).await;
@@ -113,10 +131,11 @@ impl ElectrumBlockNotifier {
 
     /// Starts the notification loop in a new task.
     ///
-    /// # Arguments
+    /// # Returns
     ///
-    /// * `sender` - The sender to which block headers will be sent.
-    fn start_notifying(&self, sender: Sender<Result<BlockHash, ElectrumError>>) {
+    /// A new instance of `ElectrumBlockReceiver`.
+    pub fn run(&self) -> ElectrumBlockReceiver {
+        let (sender, receiver) = broadcast::channel(100); // Bounded channel to control memory usage
         let client = Arc::clone(&self.client);
         let retry_interval = self.retry_interval;
         let max_retry_attempts = self.max_retry_attempts;
@@ -131,20 +150,28 @@ impl ElectrumBlockNotifier {
             subscribe_interval,
             sender,
         ));
+
+        ElectrumBlockReceiver { receiver }
     }
 }
 
-impl BlockNotifier for ElectrumBlockNotifier {
-    type Error = ElectrumError;
+/// A struct implementing the `BlockNotifier` trait, wrapping a broadcast receiver.
+pub struct ElectrumBlockReceiver {
+    receiver: Receiver<Result<BlockHash, Error>>,
+}
+
+impl BlockNotifier for ElectrumBlockReceiver {
+    type Error = Error;
 
     /// Subscribes to a stream of block headers.
     ///
     /// # Returns
     ///
-    /// A pinned boxed stream of block headers.
-    fn subscribe(&self) -> Pin<Box<dyn Stream<Item = Result<BlockHash, Self::Error>> + Send>> {
-        let (sender, receiver) = channel(100); // Bounded channel to control memory usage
-        self.start_notifying(sender);
-        Box::pin(ReceiverStream::new(receiver))
+    /// A stream of block headers.
+    fn subscribe(&self) -> impl Stream<Item = Result<BlockHash, Self::Error>> + Send {
+        // Call resubscribe to create a new Receiver for the broadcast channel
+        let receiver = self.receiver.resubscribe();
+        BroadcastStream::new(receiver)
+            .map(|result| result.unwrap_or_else(|_| Err(Error::BroadcastStream)))
     }
 }
