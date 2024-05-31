@@ -4,7 +4,7 @@ use signer::config::BlockNotifierConfig;
 use tracing::{error, info, warn, Level};
 use tracing_subscriber;
 
-// #[ignore]
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn test_electrum_block_notifier_multiple_consumers() {
     // Initialize logging
