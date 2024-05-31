@@ -49,7 +49,7 @@ impl ElectrumBlockNotifier {
     /// # Returns
     ///
     /// A new instance of `ElectrumBlockNotifier`.
-    pub fn from_config(config: BlockNotifierConfig) -> Result<Self, ElectrumError> {
+    pub fn from_config(config: &BlockNotifierConfig) -> Result<Self, ElectrumError> {
         let server = &config.server;
         let client_config = ConfigBuilder::new().build();
         let client = Arc::new(Mutex::new(Client::from_config(server, client_config)?));
@@ -72,8 +72,7 @@ impl ElectrumBlockNotifier {
     ///
     /// A new instance of `ElectrumBlockNotifier`.
     pub fn new() -> Result<Self, ElectrumError> {
-        let config = &SETTINGS.block_notifier;
-        Self::from_config(config.clone())
+        Self::from_config(&SETTINGS.block_notifier)
     }
 
     /// The notify loop that handles block header notifications and sends them to the broadcast channel.

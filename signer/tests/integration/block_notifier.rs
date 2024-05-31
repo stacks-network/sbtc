@@ -4,10 +4,10 @@ use signer::config::BlockNotifierConfig;
 use tracing::{error, info, warn, Level};
 use tracing_subscriber;
 
-// TODO: need to fix docker-compose.test.yml setup so bitcoin and bitcoind
-// use diiferent RPC ports for all tests to pass. Currently this test passes locally
-// by running /devenv/local/docker-compose/up.sh to bring up bitcoin and electrs
-// containers
+// TODO: We need to fix docker-compose.test.yml setup so bitcoin and bitcoind use different
+// RPC ports for all tests to pass. Currently, this test passes locally by
+// running /devenv/local/docker-compose/up.sh to bring up bitcoin and electrs
+// containers. issue: https://github.com/stacks-network/sbtc/issues/220
 
 #[ignore]
 #[tokio::test]
@@ -25,7 +25,7 @@ async fn test_electrum_block_notifier_multiple_consumers() {
     };
 
     // Create the notifier with the test configuration
-    let notifier = ElectrumBlockNotifier::from_config(config).unwrap();
+    let notifier = ElectrumBlockNotifier::from_config(&config).unwrap();
 
     // Run the notifier to get the receiver
     let receiver = notifier.run();
