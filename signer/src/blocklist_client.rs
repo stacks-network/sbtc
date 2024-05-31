@@ -5,19 +5,21 @@
 //! include querying the blocklist API and interpreting the responses to determine if a given
 //! address is blocklisted, along with its associated risk severity.
 
-use std::future::Future;
 use crate::config::SETTINGS;
 use blocklist_api::apis::address_api::{check_address, CheckAddressError};
 use blocklist_api::apis::configuration::Configuration;
 use blocklist_api::apis::Error as ClientError;
 use blocklist_api::models::BlocklistStatus;
-
+use std::future::Future;
 
 /// A trait for checking if an address is blocklisted.
 pub trait BlocklistChecker {
     /// Checks if the given address is blocklisted.
     /// Returns `true` if the address is blocklisted, otherwise `false`.
-    fn can_accept(&self, address: &str) -> impl Future<Output = Result<bool, ClientError<CheckAddressError>>> + Send;
+    fn can_accept(
+        &self,
+        address: &str,
+    ) -> impl Future<Output = Result<bool, ClientError<CheckAddressError>>> + Send;
 }
 
 /// A client for interacting with the blocklist service.
