@@ -36,7 +36,7 @@
 /// - **Signer decision**: When receiving a signer decision, the transaction signer
 /// only needs to persist the decision to its database.
 /// - **Stacks sign request**: When receiving a request to sign a stacks transaction,
-/// the signer must verify that it has decided to sign the transaction, and if positive,
+/// the signer must verify that it has decided to sign the transaction, and if it has,
 /// send a transaction signature back over the network.
 /// - **Bitcoin sign request**: When receiving a request to sign a bitcoin transaction,
 /// the signer must verify that it has decided to accept all request that the
