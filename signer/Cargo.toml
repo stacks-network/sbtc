@@ -18,6 +18,7 @@ testing = ["fake"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+aquamarine.workspace = true
 backoff.workspace = true
 bincode.workspace = true
 bitcoin = { workspace = true, features = ["rand-std"] }
