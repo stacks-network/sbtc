@@ -39,7 +39,7 @@
 /// the signer must verify that it has decided to sign the transaction, and if it has,
 /// send a transaction signature back over the network.
 /// - **Bitcoin sign request**: When receiving a request to sign a bitcoin transaction,
-/// the signer must verify that it has decided to accept all request that the
+/// the signer must verify that it has decided to accept all requests that the
 /// transaction fulfills. Once verified, the transaction signer creates a dedicated
 /// WSTS state machine to participate in a signing round for this transaction. Thereafter,
 /// the signer sends a bitcoin transaction sign ack message back over the network to signal
