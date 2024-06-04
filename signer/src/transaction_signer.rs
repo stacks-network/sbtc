@@ -29,7 +29,8 @@
 /// ```
 ///
 /// ## On signer message
-/// When the signer receives a signer message, it needs to do a few different things
+///
+/// When the signer receives a message from another signer, it needs to do a few different things
 /// depending on the type of the message.
 ///
 /// - **Signer decision**: When receiving a signer decision, the transaction signer
