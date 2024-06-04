@@ -38,7 +38,7 @@ pub struct StacksSettings {
 /// Whatever
 #[derive(Debug, serde::Deserialize)]
 pub struct StacksApiSettings {
-    /// TODO: We'll want to support specifying multiple Stacks Nodes
+    /// TODO(225): We'll want to support specifying multiple Stacks API
     /// endpoints.
     #[serde(deserialize_with = "url_deserializer")]
     endpoint: url::Url,
@@ -47,7 +47,7 @@ pub struct StacksApiSettings {
 /// Settings associated with the stacks node that this signer uses for information
 #[derive(Debug, serde::Deserialize)]
 pub struct StacksNodeSettings {
-    /// TODO: We'll want to support specifying multiple Stacks Nodes
+    /// TODO(225): We'll want to support specifying multiple Stacks Nodes
     /// endpoints.
     #[serde(deserialize_with = "url_deserializer")]
     endpoint: url::Url,
