@@ -21,10 +21,10 @@ pub enum ValidationError {
 ///   return Ok(()) if the leaves are valid and hash to the UTxO address
 ///   return Err(ValidationError) if the leaves are bad or don’t hash to addr
 pub fn validate(
-    script_tree: bitcoin::taproot::TapTree,
-    deposit_address: bitcoin::address::Address,
-    peg_wallet_address: bitcoin::address::Address,
-    min_reclaim_blocks: u32,
+    _script_tree: bitcoin::taproot::TapTree,
+    _deposit_address: bitcoin::address::Address,
+    _peg_wallet_address: bitcoin::address::Address,
+    _min_reclaim_blocks: u32,
 ) -> Result<(), ValidationError> {
     Ok(())
 }
