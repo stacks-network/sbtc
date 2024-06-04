@@ -100,7 +100,7 @@ impl StacksClient {
     /// Create a new instance of the Stacks client using the entries in the
     /// signer's `config.toml` and environment variables.
     ///
-    /// See [`StacksSettings::new_from_config`] for more on overridding
+    /// See [`StacksSettings::new_from_config`] for more on overriding
     /// the entries in `config.toml` using environment variables.
     pub fn new_from_config() -> Result<Self, Error> {
         let settings = StacksSettings::new_from_config()?;
