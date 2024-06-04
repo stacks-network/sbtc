@@ -14,7 +14,7 @@
 ///
 /// ## On storage update
 /// When the signer receives a storage update notification, it must go over each of the pending
-/// requests and decide wheter to accept or reject it. The decision is then persisted
+/// requests and decide whether to accept or reject it. The decision is then persisted
 /// and broadcast to the other signers. The following flowchart illustrates the flow.
 ///
 /// ```mermaid
