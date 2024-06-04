@@ -21,7 +21,6 @@
     "typescript": "~5.3.3"
   },
   "dependencies": {
-    "@aws-cdk/aws-ecr": "^1.204.0",
     "@aws-quickstart/eks-blueprints": "^1.14.1",
     "aws-cdk-lib": "2.133.0",
     "constructs": "^10.0.0",

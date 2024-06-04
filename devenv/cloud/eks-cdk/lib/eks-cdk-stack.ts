@@ -28,21 +28,12 @@ export class EksCdkStack extends cdk.Stack {
 
   constructor(scope: Construct, id: string, props: EksCdkStackProps) {
     super(scope, id, props);
-
     
-
     this.EKS_CLUSTER = this.createKubernetesCluster(scope, 'sbtc-cluster', props);
-
-
     this.ECR_REPOS = this.createEcrRepos(props);
-
-
-    const ecr_resources_list: string[] = [];
-    for(let i = 0; i < this.ECR_REPOS.length; i++){ ecr_resources_list.push(this.ECR_REPOS[i].repositoryArn);}
-
-
+    
+    const ecr_resources_list: string[] = this.ECR_REPOS.map(repo => repo.repositoryArn);
     this.IAM_ECR_PUSH_USER = this.createIAMUserWithEcrPushPolicy(props, ecr_resources_list);
-
   }
 
 

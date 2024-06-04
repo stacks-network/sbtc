@@ -6,9 +6,6 @@ import * as testutils from './test-utils';
 
 
 
-
-// ------------------------------------------------------------------------------------
-
 const props: EksCdk.EksCdkStackProps = {
     env: {
         account: loadEnv.ACCOUNT,
