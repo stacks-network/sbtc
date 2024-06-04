@@ -34,7 +34,7 @@
 /// depending on the type of the message.
 ///
 /// - **Signer decision**: When receiving a signer decision, the transaction signer
-/// only need to persist the decision to the signer storage.
+/// only needs to persist the decision to its database.
 /// - **Stacks sign request**: When receiving a request to sign a stacks transaction,
 /// the signer must verify that it has decided to sign the transaction, and if positive,
 /// send a transaction signature back over the network.
