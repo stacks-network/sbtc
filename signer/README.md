@@ -17,6 +17,8 @@ You can run the signer by providing the required environment variables.
 If not specified, the default values from `./src/config/default.toml` will be used.
 - `SIGNER_BLOCKLIST_CLIENT__HOST`=`<server-hostname-or-ip>`
 - `SIGNER_BLOCKLIST_CLIENT__PORT`=`<server-port>`
+- `SIGNER_STACKS_API_ENDPOINT`=`<schema-and-fqdn-and-port>`
+- `SIGNER_STACKS_NODE_ENDPOINT`=`<schema-and-fqdn-and-port>`
 
 #### Inspecting the signer database
 The signer state will be stored in a `sbtc_signer` schema in the provided database at `$DATABASE_URL`.
