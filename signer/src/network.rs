@@ -18,7 +18,7 @@ pub type Msg = ecdsa::Signed<message::SignerMessage>;
 /// Represents the interaction point between signers and the signer network,
 /// allowing signers to exchange messages with each other.
 pub trait MessageTransfer {
-    /// Errors occuring during either [`broadcast`] or [`receive`]
+    /// Errors occuring during either [`MessageTransfer::broadcast`] or [`MessageTransfer::receive`]
     type Error: std::error::Error;
     /// Send `msg` to all other signers
     fn broadcast(&mut self, msg: Msg) -> impl Future<Output = Result<(), Self::Error>> + Send;

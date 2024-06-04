@@ -3,7 +3,7 @@
 use crate::storage::model;
 
 /// A wrapper around a [`sqlx::PgPool`] which implements
-/// [`signer::storage::Read`] and [`signer::storage::Write`].
+/// [`crate::storage::DbRead`] and [`crate::storage::DbWrite`].
 #[derive(Debug, Clone)]
 pub struct PgStore(sqlx::PgPool);
 

@@ -1,9 +1,9 @@
 #![doc = include_str!("../README.md")]
 #![deny(missing_docs)]
 
+pub mod block_notifier;
 pub mod block_observer;
 pub mod blocklist_client;
-pub mod block_notifier;
 pub mod codec;
 pub mod config;
 pub mod ecdsa;
@@ -15,6 +15,7 @@ pub mod packaging;
 pub mod storage;
 #[cfg(feature = "testing")]
 pub mod testing;
+pub mod transaction_signer;
 pub mod utxo;
 
 /// Package version
