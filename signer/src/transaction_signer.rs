@@ -8,9 +8,9 @@
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// # Transaction signer event loop
 ///
-/// This struct contains the implemetnation of the transaction signer logic.
+/// This struct contains the implementation of the transaction signer logic.
 /// The event loop subscribes to storage update notifications from the block observer,
-/// and listens to signer messages from the signer entwork.
+/// and listens to signer messages from the signer network.
 ///
 /// ## On storage update
 /// When the signer receives a storage update notification, it must go over each of the pending
