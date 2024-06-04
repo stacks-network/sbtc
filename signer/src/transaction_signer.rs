@@ -12,14 +12,16 @@
 /// The event loop subscribes to storage update notifications from the block observer,
 /// and listens to signer messages from the signer network.
 ///
-/// ## On storage update
-/// When the signer receives a storage update notification, it must go over each of the pending
+/// ## On block observer notification
+///
+/// When the signer receives a notification from the block observer, indicating that
+/// new blocks have been added to the signer state, it must go over each of the pending
 /// requests and decide whether to accept or reject it. The decision is then persisted
 /// and broadcast to the other signers. The following flowchart illustrates the flow.
 ///
 /// ```mermaid
 /// flowchart TD
-///     SU{Storage update notification} --> FPR(Fetch pending requests)
+///     SU{Block observer notification} --> FPR(Fetch pending requests)
 ///     FPR --> NR(Next request)
 ///     NR --> |deposit/withdraw| DAR(Decide to accept/reject)
 ///     NR ----> |none| DONE{Done}
