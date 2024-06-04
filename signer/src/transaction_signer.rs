@@ -1,7 +1,7 @@
 //! # Transaction signer
 //!
-//! This module contains the transaction signer, which is
-//! responsible for preparing and participating in signing rounds.
+//! This module contains the transaction signer, which is the component of the sBTC signer
+//! responsible for participating in signing rounds.
 //!
 //! For more details, see the [`EventLoop`] documentation.
 
@@ -47,7 +47,7 @@
 /// the signer sends a bitcoin transaction sign ack message back over the network to signal
 /// its readiness.
 /// - **WSTS message**: When receiving a WSTS message, the signer will look up the corresponding
-/// state machine and relay the WSTS message to it.
+/// state machine and dispatch the WSTS message to it.
 ///
 /// The following flowchart illustrates the process.
 ///
