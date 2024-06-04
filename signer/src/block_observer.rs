@@ -149,7 +149,7 @@ where
         let stacks_blocks = self
             .stacks_client
             .get_blocks_by_bitcoin_block(&block.block_hash())
-            .await;
+            .await?;
 
         self.extract_deposit_requests(&block.txdata);
         self.extract_sbtc_transactions(&block.txdata);
@@ -246,7 +246,7 @@ pub trait StacksInteract {
     fn get_blocks_by_bitcoin_block(
         &mut self,
         bitcoin_block_hash: &bitcoin::BlockHash,
-    ) -> impl std::future::Future<Output = Vec<nakamoto::NakamotoBlock>>;
+    ) -> impl std::future::Future<Output = Result<Vec<nakamoto::NakamotoBlock>, crate::error::Error>>;
 }
 
 /// Placeholder trait
@@ -271,6 +271,9 @@ pub enum Error {
     /// Storage error
     #[error("storage error")]
     StorageError,
+    /// Crate error
+    #[error("Client error maybe {0}")]
+    StacksClient(#[from] crate::error::Error),
 }
 
 #[cfg(test)]
@@ -408,11 +411,12 @@ mod tests {
         async fn get_blocks_by_bitcoin_block(
             &mut self,
             bitcoin_block_hash: &bitcoin::BlockHash,
-        ) -> Vec<nakamoto::NakamotoBlock> {
-            self.stacks_blocks_per_bitcoin_block
+        ) -> Result<Vec<nakamoto::NakamotoBlock>, crate::error::Error> {
+            Ok(self
+                .stacks_blocks_per_bitcoin_block
                 .get(bitcoin_block_hash)
                 .cloned()
-                .unwrap_or_else(Vec::new)
+                .unwrap_or_else(Vec::new))
         }
     }
 

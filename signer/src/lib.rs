@@ -12,6 +12,7 @@ pub mod fees;
 pub mod message;
 pub mod network;
 pub mod packaging;
+pub mod stacks_api;
 pub mod storage;
 #[cfg(feature = "testing")]
 pub mod testing;

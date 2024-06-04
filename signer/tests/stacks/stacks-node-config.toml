@@ -57,7 +57,7 @@ mode = "nakamoto-neon"
 # This is the same wallet name used in our other integration tests
 wallet_name = "integration-tests-wallet"
 magic_bytes = "T3"
-pox_prepare_length = 5
+pox_prepare_length = 8
 pox_reward_length = 20
 peer_host = "bitcoind"
 username = "alice"
@@ -65,6 +65,7 @@ password = "pw"
 rpc_port = 18443
 peer_port = 18444
 pox_2_activation = 104
+commit_anchor_block_within = 5
 burn_fee_cap = 20_000
 poll_time_secs = 1
 timeout = 30
@@ -103,7 +104,7 @@ start_height = 108
 
 [[burnchain.epochs]]
 epoch_name = "3.0"
-start_height = 1000001
+start_height = 130
 
 [[ustx_balance]]
 address = "ST0DZFQ1XGHC5P1BZ6B7HSWQKQJHM74JBGCSDTNA"

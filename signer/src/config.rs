@@ -45,11 +45,15 @@ impl Settings {
     /// Initializing the global config first with default values and then with provided/overwritten environment variables.
     /// The explicit separator with double underscores is needed to correctly parse the nested config structure.
     pub fn new() -> Result<Self, ConfigError> {
-        let mut cfg = Config::new();
-        cfg.merge(File::with_name("./src/config/default"))?;
-        let env = Environment::with_prefix("SIGNER").separator("__");
-        cfg.merge(env)?;
-        let settings: Settings = cfg.try_into()?;
+        let env = Environment::with_prefix("SIGNER")
+            .separator("__")
+            .prefix_separator("_");
+        let cfg = Config::builder()
+            .add_source(File::with_name("./src/config/default"))
+            .add_source(env)
+            .build()?;
+
+        let settings: Settings = cfg.try_deserialize()?;
 
         settings.validate()?;
 

@@ -8,3 +8,9 @@ retry_interval = 10
 max_retry_attempts = 5
 ping_interval = 60
 subscribe_interval = 10
+
+[stacks.api]
+endpoint = "http://localhost:3999"
+
+[stacks.node]
+endpoint = "http://localhost:20443"
