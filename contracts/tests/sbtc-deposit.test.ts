@@ -1,4 +1,4 @@
-import { alice, deposit, errors, registry } from "./helpers";
+import { alice, deployer, deposit, errors, registry } from "./helpers";
 import { test, expect, describe } from "vitest";
 import { txOk, filterEvents, rov, txErr } from "@clarigen/test";
 import { CoreNodeEventType, cvToValue } from "@clarigen/core";
@@ -11,9 +11,9 @@ describe("sBTC deposit contract", () => {
           txid: new Uint8Array(31).fill(0),
           voutIndex: 0,
           amount: 1000n,
-          recipient: alice,
+          recipient: deployer,
         }),
-        alice
+        deployer
       );
       expect(receipt.value).toEqual(errors.deposit.ERR_TXID_LEN);
     });
@@ -24,9 +24,9 @@ describe("sBTC deposit contract", () => {
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
           amount: 10n,
-          recipient: alice,
+          recipient: deployer,
         }),
-        alice
+        deployer
       );
       expect(receipt.value).toEqual(deposit.constants.ERR_LOWER_THAN_DUST.value);
     });
@@ -37,9 +37,9 @@ describe("sBTC deposit contract", () => {
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
           amount: 1000n,
-          recipient: alice,
+          recipient: deployer,
         }),
-        alice
+        deployer
       );
       expect(receipt0.value).toEqual(true);
       const receipt1 = txErr(
@@ -47,9 +47,9 @@ describe("sBTC deposit contract", () => {
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
           amount: 1000n,
-          recipient: alice,
+          recipient: deployer,
         }),
-        alice
+        deployer
       );
       expect(receipt1.value).toEqual(errors.deposit.ERR_DEPOSIT_REPLAY);
     });
@@ -60,9 +60,9 @@ describe("sBTC deposit contract", () => {
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
           amount: 1000n,
-          recipient: alice,
+          recipient: deployer,
         }),
-        alice
+        deployer
       );
       const printEvents = filterEvents(
         receipt.events,
@@ -89,20 +89,20 @@ describe("sBTC deposit contract", () => {
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
           amount: 1000n,
-          recipient: alice,
+          recipient: deployer,
         }),
-        alice
+        deployer
       );
       const receipt1 = rov(
         registry.getCompletedDeposit({
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
         }),
-        alice
+        deployer
       );
       expect(receipt1).toStrictEqual({
         amount: 1000n,
-        recipient: alice,
+        recipient: deployer,
       });
     });
   });
