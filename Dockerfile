@@ -19,6 +19,8 @@ RUN rm -rf /tmp/smithy-install
 RUN mkdir -p /tmp/java-install
 RUN curl -L https://download.oracle.com/java/21/latest/jdk-21_linux-aarch64_bin.tar.gz -o /tmp/java-install/jdk-21_linux-aarch64_bin.tar.gz
 
+RUN apt-get install -y protobuf-compiler
+
 COPY .screenrc /root/
 
 ENTRYPOINT /bin/bash
