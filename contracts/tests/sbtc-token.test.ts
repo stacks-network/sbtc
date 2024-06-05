@@ -1,4 +1,4 @@
-import { alice, bob, deposit, errors, token } from "./helpers";
+import { alice, bob, deployer, deposit, errors, token } from "./helpers";
 import { test, expect, describe } from "vitest";
 import { txOk, filterEvents, rov, txErr } from "@clarigen/test";
 import { CoreNodeEventType, cvToValue } from "@clarigen/core";
@@ -13,7 +13,7 @@ describe("sBTC token contract", () => {
           amount: 1000n,
           recipient: alice,
         }),
-        alice
+        deployer
       );
       const printEvents = filterEvents(
         receipt.events,
@@ -49,7 +49,7 @@ describe("sBTC token contract", () => {
           amount: 1000n,
           recipient: alice,
         }),
-        alice
+        deployer
       );
       const printEvents = filterEvents(
         receipt.events,
