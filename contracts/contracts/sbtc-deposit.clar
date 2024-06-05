@@ -7,12 +7,13 @@
 (define-constant dust-limit u546)
 
 ;; error codes
-
 ;; TXID used in deposit is not the correct length
 (define-constant ERR_TXID_LEN (err u300))
 ;; Deposit has already been completed
 (define-constant ERR_DEPOSIT_REPLAY (err u301))
 (define-constant ERR_LOWER_THAN_DUST (err u302))
+(define-constant ERR_KEY_SIZE_PREFIX (unwrap-err! ERR_DEPOSIT (err true)))
+(define-constant ERR_DEPOSIT (err u303))
 
 ;; data vars
 
@@ -65,5 +66,15 @@
 ;;
 
 ;; private functions
-;;
+(define-private (complete-individual-deposits-helper (deposit {txid: (buff 32), vout-index: uint, amount: uint, recipient: principal}) (helper-response (response uint uint)))
+    (match helper-response 
+        index
+            (begin 
+                (try! (unwrap! (complete-deposit-wrapper (get txid deposit) (get vout-index deposit) (get amount deposit) (get recipient deposit)) (err (+ ERR_KEY_SIZE_PREFIX (+ u10 index)))))
+                (ok (+ index u1))
+            )
+        err-response
+            (err err-response)
+    )
+)
 
