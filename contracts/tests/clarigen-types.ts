@@ -1330,7 +1330,7 @@ export const contracts = {
         value: 4n,
       },
       tokenDecimals: 8n,
-      tokenName: "sBTC Mini",
+      tokenName: "sBTC",
       tokenSymbol: "sBTC",
       tokenUri: null,
     },
