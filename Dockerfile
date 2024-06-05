@@ -21,6 +21,9 @@ RUN curl -L https://download.oracle.com/java/21/latest/jdk-21_linux-aarch64_bin.
 
 RUN apt-get install -y protobuf-compiler
 
+RUN apt-get install -y libssl-dev
+RUN cargo install sqlx-cli
+
 COPY .screenrc /root/
 
 ENTRYPOINT /bin/bash
