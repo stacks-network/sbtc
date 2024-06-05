@@ -1,9 +1,9 @@
 FROM ubuntu:jammy
 
-MAINTAINER Joey Yandle
+LABEL Joey Yandle
 
 RUN apt-get update
-RUN apt-get install -y curl wget unzip pkg-config gcc automake autoconf autotools-dev libtool man gdb git screen sudo rsync cargo
+RUN apt-get install -y curl wget unzip pkg-config gcc automake autoconf autotools-dev libtool man gdb git screen sudo rsync cargo protobuf-compiler libssl-dev make libclang-dev
 
 RUN cargo install --locked cargo-lambda
 
@@ -19,12 +19,7 @@ RUN rm -rf /tmp/smithy-install
 RUN mkdir -p /tmp/java-install
 RUN curl -L https://download.oracle.com/java/21/latest/jdk-21_linux-aarch64_bin.tar.gz -o /tmp/java-install/jdk-21_linux-aarch64_bin.tar.gz
 
-RUN apt-get install -y protobuf-compiler
-
-RUN apt-get install -y libssl-dev
 RUN cargo install sqlx-cli
-
-RUN apt-get install -y make
 
 RUN mkdir -p /tmp/node-install
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/node-install/nodesource_setup.sh
@@ -40,8 +35,14 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-ins
 RUN chmod +x /tmp/rustup-install/rustup-install.sh
 RUN /tmp/rustup-install/rustup-install.sh -y
 
-RUN apt-get install -y libclang-dev
-
 COPY .screenrc /root/
+
+RUN rm -rf /tmp/smithy-install
+RUN rm -rf /tmp/node-install
+RUN rm -rf /tmp/java-install
+RUN rm -rf /tmp/rustup-install
+
+RUN apt-get clean
+RUN rm -rf /var/lib/apt/lists/*
 
 ENTRYPOINT /bin/bash
