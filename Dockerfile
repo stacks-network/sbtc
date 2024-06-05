@@ -24,6 +24,8 @@ RUN apt-get install -y protobuf-compiler
 RUN apt-get install -y libssl-dev
 RUN cargo install sqlx-cli
 
+RUN apt-get install -y make nodejs
+
 COPY .screenrc /root/
 
 ENTRYPOINT /bin/bash
