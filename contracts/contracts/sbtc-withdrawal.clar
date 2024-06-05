@@ -1,7 +1,5 @@
 ;; Error codes
 
-(define-constant dust-limit u546)
-
 ;; The `version` part of the recipient address is invalid
 (define-constant ERR_INVALID_ADDR_VERSION (err u500))
 ;; The `hashbytes` part of the recipient address is invalid
@@ -17,6 +15,8 @@
 ;; Maximum value of an address version that has a 32-byte hashbytes
 ;; (0x05 and 0x06 have 32-byte hashbytes)
 (define-constant MAX_ADDRESS_VERSION_BUFF_32 u6)
+;; The minimum amount of sBTC you can withdraw
+(define-constant DUST_LIMIT u546)
 
 (define-public (initiate-withdrawal-request (amount uint)
                                             (recipient { version: (buff 1), hashbytes: (buff 32) })
@@ -24,7 +24,7 @@
   )
   (begin
     (try! (contract-call? .sbtc-token protocol-lock amount tx-sender))
-    (asserts! (> amount dust-limit) ERR_DUST_LIMIT)
+    (asserts! (> amount DUST_LIMIT) ERR_DUST_LIMIT)
   
     ;; Validate the recipient address
     (try! (validate-recipient recipient))
