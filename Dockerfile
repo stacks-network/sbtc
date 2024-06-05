@@ -24,7 +24,16 @@ RUN apt-get install -y protobuf-compiler
 RUN apt-get install -y libssl-dev
 RUN cargo install sqlx-cli
 
-RUN apt-get install -y make nodejs
+RUN apt-get install -y make
+
+RUN mkdir -p /tmp/node-install
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/node-install/nodesource_setup.sh
+RUN bash /tmp/node-install/nodesource_setup.sh
+RUN apt-get -y install nodejs
+
+RUN mkdir -p /usr/local/java
+RUN cd /usr/local/java && tar xvzf /tmp/java-install/jdk-21_linux-aarch64_bin.tar.gz
+ENV PATH="${PATH}:/usr/local/java/jdk-21.0.3/bin"
 
 COPY .screenrc /root/
 
