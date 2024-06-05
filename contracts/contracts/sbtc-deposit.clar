@@ -12,8 +12,9 @@
 ;; Deposit has already been completed
 (define-constant ERR_DEPOSIT_REPLAY (err u301))
 (define-constant ERR_LOWER_THAN_DUST (err u302))
-(define-constant ERR_KEY_SIZE_PREFIX (unwrap-err! ERR_DEPOSIT (err true)))
+(define-constant ERR_DEPOSIT_INDEX_PREFIX (unwrap-err! ERR_DEPOSIT (err true)))
 (define-constant ERR_DEPOSIT (err u303))
+(define-constant ERR_INVALID_CALLER (err u304))
 
 ;; data vars
 
@@ -29,11 +30,12 @@
 (define-public (complete-deposit-wrapper (txid (buff 32)) (vout-index uint) (amount uint) (recipient principal))
     (let 
         (
+            (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))
             (replay-fetch (contract-call? .sbtc-registry get-completed-deposit txid vout-index))    
         )
 
-        ;; TODO
-        ;; Check that tx-sender is the bootstrap signer
+        ;; Check that the caller is the current signer principal
+        (asserts! (is-eq (get current-signer-principal current-signer-data) tx-sender) ERR_INVALID_CALLER)
 
         ;; Check that amount is greater than dust limit
         (asserts! (> amount dust-limit) ERR_LOWER_THAN_DUST)
@@ -59,7 +61,16 @@
 ;; This function handles the validation & minting of sBTC by handling multiple (up to 1000) deposits at a time, 
 ;; it then calls into the sbtc-registry contract to update the state of the protocol. 
 (define-public (complete-deposits-wrapper (deposits (list 1000 {txid: (buff 32), vout-index: uint, amount: uint, recipient: principal})))
-    (fold complete-individual-deposits-helper deposits (ok u0))
+    (let 
+        (
+            (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))
+        )
+
+        ;; Check that the caller is the current signer principal
+        (asserts! (is-eq (get current-signer-principal current-signer-data) tx-sender) ERR_INVALID_CALLER)
+
+        (fold complete-individual-deposits-helper deposits (ok u0))
+    )
 )
 
 ;; read only functions
@@ -70,7 +81,7 @@
     (match helper-response 
         index
             (begin 
-                (try! (unwrap! (complete-deposit-wrapper (get txid deposit) (get vout-index deposit) (get amount deposit) (get recipient deposit)) (err (+ ERR_KEY_SIZE_PREFIX (+ u10 index)))))
+                (try! (unwrap! (complete-deposit-wrapper (get txid deposit) (get vout-index deposit) (get amount deposit) (get recipient deposit)) (err (+ ERR_DEPOSIT_INDEX_PREFIX (+ u10 index)))))
                 (ok (+ index u1))
             )
         err-response
