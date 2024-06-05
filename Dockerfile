@@ -1,6 +1,6 @@
 FROM ubuntu:jammy
 
-LABEL Joey Yandle
+LABEL org.opencontainers.image.authors="Joey Yandle <joey@trustmachines.co>"
 
 RUN apt-get update
 RUN apt-get install -y curl wget unzip pkg-config gcc automake autoconf autotools-dev libtool man gdb git screen sudo rsync cargo protobuf-compiler libssl-dev make libclang-dev
