@@ -1,5 +1,5 @@
 FROM debian:stable-slim as builder
-MAINTAINER Gowtham Sundar <gowtham@trustmachines.co>
+LABEL org.opencontainers.image.authors="Gowtham Sundar <gowtham@trustmachines.co>"
 
 ARG VERSION=25.0
 

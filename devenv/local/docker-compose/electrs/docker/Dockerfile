@@ -4,7 +4,7 @@
 
 # --------------------------------------------------------
 FROM debian:bookworm-slim as builder
-MAINTAINER Gowtham Sundar <gowtham@trustmachines.co>
+LABEL org.opencontainers.image.authors="Gowtham Sundar <gowtham@trustmachines.co>"
 RUN apt-get update -qqy
 RUN apt-get install -qqy librocksdb-dev curl git
 # --------------------------------------------------------

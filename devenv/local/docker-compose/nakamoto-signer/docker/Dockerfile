@@ -1,5 +1,5 @@
 FROM blockstack/stacks-core:2.5.0.0.3
-MAINTAINER Gowtham Sundar <gowtham@trustmachines.co>
+LABEL org.opencontainers.image.authors="Gowtham Sundar <gowtham@trustmachines.co>"
 COPY . .
 
 ARG SIGNER_ENDPOINT

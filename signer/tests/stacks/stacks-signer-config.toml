@@ -1,0 +1,25 @@
+# The IP address and port where your Stacks node can be accessed. 
+# The port 20443 is the default RPC endpoint for Stacks nodes. 
+# Note that you must use an IP address - DNS hosts are not supported at this time.
+node_host = "stacks-node:20443"
+
+# This is the location where the signer will expose an RPC endpoint for 
+# receiving events from your Stacks node.
+endpoint = "0.0.0.0:30000"
+
+# Either “testnet” or “mainnet”
+network = "testnet"
+
+# this is a file path where your signer will persist data. If using Docker, 
+# this must be within a volume, so that data can be persisted across restarts
+db_path = "/var/stacks/signer.sqlite"
+
+# an authentication token that is used for some HTTP requests made from the 
+# signer to your Stacks node. You’ll need to use this later on when configuring 
+# your Stacks node. You create this field yourself, rather than it being generated 
+# with your private key.
+auth_password = "helloworld"
+
+# This is the hex-encoded privateKey field from the keys you generated in the 
+# previous step.
+stacks_private_key = "7287ba251d44a4d3fd9276c88ce34c5c52a038955511cccaf77e61068649c17801"

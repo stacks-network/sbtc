@@ -24,7 +24,7 @@ bincode.workspace = true
 bitcoin = { workspace = true, features = ["rand-std"] }
 blocklist-api = { path = "../.generated-sources/blocklist-api" }
 clap.workspace = true
-config.workspace = true
+config = "0.14"
 electrum-client = "0.19.0"
 futures.workspace = true
 once_cell.workspace = true
@@ -46,6 +46,7 @@ tokio-stream.workspace = true
 tracing.workspace = true
 tracing-attributes.workspace = true
 tracing-subscriber.workspace = true
+url.workspace = true
 wsts.workspace = true
 
 # Only for testing

@@ -1,6 +1,6 @@
 # --------------------------------------------------------
 FROM node:18-alpine AS build
-MAINTAINER Gowtham Sundar <gowtham@trustmachines.co>
+LABEL org.opencontainers.image.authors="Gowtham Sundar <gowtham@trustmachines.co>"
 
 
 ARG GIT_URI='https://github.com/hirosystems/explorer.git'

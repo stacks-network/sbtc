@@ -11,17 +11,125 @@ services:
       - 8333:8333
       - 8332:8332
       - 18443:18443
+      - 18444:18444
       - 28332:28332
       - 28333:28333
+    healthcheck:
+      test: ["CMD-SHELL", "bitcoin-cli getblockcount"]
+      interval: 3s
+      timeout: 1s
+      retries: 3
 
-  web:
+  # During proof-of-transfer Stacks nodes spend BTC to stackers. In order to
+  # do that each node must have some UTXOs at their disposal. The particular
+  # path that the stacks-node has taken is to be able to sign for some UTXOs
+  # based on the private key that is written in its configuration file. The
+  # address that the stacks node searches for when looking for UTXOs is a
+  # legacy p2pkh address or a p2wpkh segwit address. The private key used here
+  # is 0000000000000000000000000000000000000000000000000000000000000001. The
+  # address here is p2pkh of the assoicated public key, although it appears
+  # to be different from the public key that rust-bitcoin would generate for
+  # the same key.
+  #
+  # We mine 110 bitcoin blocks so that stacks-node epoch 2.5 is activated,
+  # which is configured (in stacks-node-config.toml) to happen at block 108. 
+  #
+  # Note that Stacks nodes don't really get up and running until it sees two
+  # bitcoin blocks (with enough time to react to each of them).
+  bitcoin-miner:
+    image: lncm/bitcoind:v27.0
+    user: "1000:1000"
+    stop_grace_period: 5s
+    volumes:
+      - ./signer/tests/bitcoin/bitcoin.conf:/data/.bitcoin/bitcoin.conf:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        bitcoin-cli -rpcconnect=bitcoind generatetoaddress 110 "mtoKs9V381UAhUia3d7Vb9GNak8Qvmcsme"
+
+        while true; do
+          bitcoin-cli -rpcconnect=bitcoind generatetoaddress 1 "mtoKs9V381UAhUia3d7Vb9GNak8Qvmcsme"
+          sleep 5
+        done
+    depends_on:
+      stacks-node:
+        condition: service_started
+
+  # This stacks node is configured to use the bitcoind container above
+  # when looking for UTXOs and for submitting transactions.
+  stacks-node:
+    image: blockstack/stacks-core:2.5.0.0.3-debian
+    user: "1000:1000"
+    command: stacks-node start --config /config.toml
+    stop_grace_period: 5s
+    ports:
+      - 20443:20443
+      - 20444:20444
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    volumes:
+      - ./signer/tests/stacks/stacks-node-config.toml:/config.toml:ro
+    environment:
+      RUST_BACKTRACE: "full"
+      BLOCKSTACK_DEBUG: 0
+
+  stacks-signer:
+    image: blockstack/stacks-core:2.5.0.0.3-debian
+    user: "1000:1000"
+    command: stacks-signer run --config /config.toml
+    stop_grace_period: 5s
+    ports:
+      - 30000:30000
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    environment:
+      RUST_BACKTRACE: "full"
+      BLOCKSTACK_DEBUG: 0 
+    volumes:
+      - ./signer/tests/stacks/stacks-signer-config.toml:/config.toml:ro
+
+  stacks-api:
+    image: hirosystems/stacks-blockchain-api:7.11.0-beta.7
+    user: "1000:1000"
+    stop_grace_period: 5s
+    ports:
+      - 3700:3700
+      - 3999:3999
+      - 9153:9153
+    environment:
+      NODE_ENV: production
+      GIT_TAG: master
+      PG_HOST: postgres
+      PG_PORT: 5432
+      PG_USER: user
+      PG_PASSWORD: password
+      PG_DATABASE: signer
+      STACKS_CHAIN_ID: "0x80000000"
+      V2_POX_MIN_AMOUNT_USTX: 90000000260
+      STACKS_CORE_EVENT_PORT: 3700
+      STACKS_CORE_EVENT_HOST: 0.0.0.0
+      STACKS_BLOCKCHAIN_API_PORT: 3999
+      STACKS_BLOCKCHAIN_API_HOST: 0.0.0.0
+      STACKS_BLOCKCHAIN_API_DB: pg #default
+      STACKS_CORE_RPC_HOST: stacks-node
+      STACKS_CORE_RPC_PORT: 20443
+    depends_on:
+      stacks-node:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+
+  mempool-web:
     environment:
       FRONTEND_HTTP_PORT: "8080"
       BACKEND_MAINNET_HTTP_HOST: "mempool-api"
     image: mempool/frontend:v3.0.0-dev8
     user: "1000:1000"
     restart: on-failure
-    stop_grace_period: 10s
+    stop_grace_period: 5s
     command: "./wait-for mempooldb:3306 --timeout=720 -- nginx -g 'daemon off;'"
     ports:
       - 80:8080
@@ -42,21 +150,21 @@ services:
     image: mempool/backend:v3.0.0-dev8
     user: "1000:1000"
     restart: on-failure
-    stop_grace_period: 10s
+    stop_grace_period: 5s
     command: "./wait-for-it.sh mempooldb:3306 --timeout=720 --strict -- ./start.sh"
     volumes:
       - /tmp/mempool-api/data:/backend/cache
 
   mempooldb:
+    image: mariadb:10.5.21
+    user: "1000:1000"
     environment:
       MYSQL_DATABASE: "mempool"
       MYSQL_USER: "mempool"
       MYSQL_PASSWORD: "mempool"
       MYSQL_ROOT_PASSWORD: "admin"
-    image: mariadb:10.5.21
-    user: "1000:1000"
     restart: on-failure
-    stop_grace_period: 10s
+    stop_grace_period: 5s
     volumes:
       - /tmp/mysql/data:/var/lib/mysql
 
@@ -71,6 +179,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --username=user --dbname=signer"]
+      interval: 2s
+      timeout: 1s
+      retries: 5
 
   pgadmin:
     image: dpage/pgadmin4:8.6
@@ -81,7 +194,8 @@ services:
     ports:
       - "8080:80"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres_data:
