@@ -19,6 +19,7 @@
 
 use std::collections::HashMap;
 
+use crate::stacks_api::StacksInteract;
 use crate::storage;
 
 use bitcoin::hashes::Hash;
@@ -241,15 +242,6 @@ pub trait BitcoinInteract {
 }
 
 /// Placeholder trait
-pub trait StacksInteract {
-    /// Get stacks blocks confirmed by the given bitcoin block
-    fn get_blocks_by_bitcoin_block(
-        &mut self,
-        bitcoin_block_hash: &bitcoin::BlockHash,
-    ) -> impl std::future::Future<Output = Result<Vec<nakamoto::NakamotoBlock>, crate::error::Error>>;
-}
-
-/// Placeholder trait
 pub trait EmilyInteract {
     /// Get deposits
     fn get_deposits(&mut self) -> impl std::future::Future<Output = Vec<DepositRequest>>;
@@ -409,7 +401,7 @@ mod tests {
 
     impl StacksInteract for TestHarness {
         async fn get_blocks_by_bitcoin_block(
-            &mut self,
+            &self,
             bitcoin_block_hash: &bitcoin::BlockHash,
         ) -> Result<Vec<nakamoto::NakamotoBlock>, crate::error::Error> {
             Ok(self

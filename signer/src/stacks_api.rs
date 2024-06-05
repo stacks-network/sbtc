@@ -1,87 +1,26 @@
 //! A module with structs that interact with the Stacks API.
 
+use std::future::Future;
 use std::time::Duration;
 
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksBlockId;
-use config::Config;
-use config::Environment;
-use config::File;
 use futures::StreamExt;
 use serde::Deserialize;
-use serde::Deserializer;
 
-use crate::block_observer::StacksInteract;
+use crate::config::StacksSettings;
 use crate::error::Error;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// A deserializer for the url::Url type.
-fn url_deserializer<'de, D>(deserializer: D) -> Result<url::Url, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    String::deserialize(deserializer)?
-        .parse()
-        .map_err(serde::de::Error::custom)
-}
-
-/// A struct for the entries in the signers Config.toml (which is currently
-/// located in src/config/default.toml)
-#[derive(Debug, serde::Deserialize)]
-pub struct StacksSettings {
-    api: StacksApiSettings,
-    node: StacksNodeSettings,
-}
-
-/// Whatever
-#[derive(Debug, serde::Deserialize)]
-pub struct StacksApiSettings {
-    /// TODO(225): We'll want to support specifying multiple Stacks API
-    /// endpoints.
-    #[serde(deserialize_with = "url_deserializer")]
-    endpoint: url::Url,
-}
-
-/// Settings associated with the stacks node that this signer uses for information
-#[derive(Debug, serde::Deserialize)]
-pub struct StacksNodeSettings {
-    /// TODO(225): We'll want to support specifying multiple Stacks Nodes
-    /// endpoints.
-    #[serde(deserialize_with = "url_deserializer")]
-    endpoint: url::Url,
-}
-
-impl StacksSettings {
-    /// Create a new StacksSettings object by reading the relevant entries
-    /// in the signer's config.toml. The values there can be overridden by
-    /// environment variables.
-    ///
-    /// # Notes
-    ///
-    /// The relevant environment variables and the config entries that are
-    /// overridden are:
-    ///
-    /// * SIGNER_STACKS_API_ENDPOINT <-> stacks.api.endpoint
-    /// * SIGNER_STACKS_NODE_ENDPOINT <-> stacks.node.endpoint
-    ///
-    /// Each of these overrides an entry in the signer's `config.toml`
-    pub fn new_from_config() -> Result<Self, Error> {
-        let source = File::with_name("./src/config/default");
-        let env = Environment::with_prefix("SIGNER")
-            .prefix_separator("_")
-            .separator("_");
-
-        let conf = Config::builder()
-            .add_source(source)
-            .add_source(env)
-            .build()
-            .map_err(Error::SignerConfig)?;
-
-        conf.get::<StacksSettings>("stacks")
-            .map_err(Error::StacksApiConfig)
-    }
+/// A trait detailing the interface with the Stacks API and Stacks Nodes.
+pub trait StacksInteract {
+    /// Get stacks blocks confirmed by the given bitcoin block
+    fn get_blocks_by_bitcoin_block(
+        &self,
+        block_hash: &bitcoin::BlockHash,
+    ) -> impl Future<Output = Result<Vec<NakamotoBlock>, Error>> + Send;
 }
 
 /// A client for interacting with Stacks nodes and the Stacks API
@@ -97,19 +36,14 @@ pub struct StacksClient {
 }
 
 impl StacksClient {
-    /// Create a new instance of the Stacks client using the entries in the
-    /// signer's `config.toml` and environment variables.
-    ///
-    /// See [`StacksSettings::new_from_config`] for more on overriding
-    /// the entries in `config.toml` using environment variables.
-    pub fn new_from_config() -> Result<Self, Error> {
-        let settings = StacksSettings::new_from_config()?;
-
-        Ok(Self {
+    /// Create a new instance of the Stacks client using the given
+    /// StacksSettings.
+    pub fn new(settings: StacksSettings) -> Self {
+        Self {
             api_endpoint: settings.api.endpoint,
             node_endpoint: settings.node.endpoint,
             client: reqwest::Client::new(),
-        })
+        }
     }
 
     /// Get Stacks block IDs given the bitcoin block hash. Uses the Stacks API
@@ -125,8 +59,19 @@ impl StacksClient {
         let path = format!("/extended/v2/burn-blocks/0x{}", hash);
         let url = self.api_endpoint.join(&path).map_err(Error::PathParse)?;
 
-        let response = self.client.get(url).timeout(REQUEST_TIMEOUT).send().await?;
-        let resp: GetBurnBlockResponse = response.json().await?;
+        tracing::debug!(%hash, "Fetching block IDs confirmed by bitcoin block from stacks API");
+
+        let response = self
+            .client
+            .get(url.clone())
+            .timeout(REQUEST_TIMEOUT)
+            .send()
+            .await
+            .map_err(|err| Error::StacksNodeRequest(err, url.clone()))?;
+        let resp: GetBurnBlockResponse = response
+            .json()
+            .await
+            .map_err(|err| Error::UnexpectedStacksResponse(err, url))?;
 
         // The Stacks API often returns hex prefixed with 0x. If this is
         // the case, we split it off before constructing the block ids.
@@ -147,29 +92,39 @@ impl StacksClient {
 
     /// Fetch the raw stacks nakamoto block from a Stacks node given the
     /// Stacks block ID.
-    async fn get_block(&self, block_id: &StacksBlockId) -> Result<NakamotoBlock, Error> {
+    async fn get_block(&self, block_id: StacksBlockId) -> Result<NakamotoBlock, Error> {
         let path = format!("/v3/blocks/{}", block_id.to_hex());
         let url = self.node_endpoint.join(&path).map_err(Error::PathParse)?;
 
-        // TODO: Add more context to these errors
-        let response = self.client.get(url).timeout(REQUEST_TIMEOUT).send().await?;
-        let resp = response.bytes().await?;
+        tracing::debug!(%block_id, "Making request to the stacks node for the raw nakamoto block");
+
+        let response = self
+            .client
+            .get(url.clone())
+            .timeout(REQUEST_TIMEOUT)
+            .send()
+            .await
+            .map_err(|err| Error::StacksNodeRequest(err, url.clone()))?;
+        let resp = response
+            .bytes()
+            .await
+            .map_err(|err| Error::UnexpectedStacksResponse(err, url))?;
 
         NakamotoBlock::consensus_deserialize(&mut &*resp)
-            .map_err(|err| Error::DecodeNakamotoBlock(err, *block_id))
+            .map_err(|err| Error::DecodeNakamotoBlock(err, block_id))
     }
 }
 
 impl StacksInteract for StacksClient {
     async fn get_blocks_by_bitcoin_block(
-        &mut self,
+        &self,
         block_hash: &bitcoin::BlockHash,
     ) -> Result<Vec<NakamotoBlock>, Error> {
         let block_ids = self.get_block_ids(block_hash).await?;
 
         let stream = block_ids
-            .iter()
-            .map(|block_hash| self.get_block(block_hash));
+            .into_iter()
+            .map(|block_id| self.get_block(block_id));
         let ans: Vec<Result<NakamotoBlock, Error>> = futures::stream::iter(stream)
             .buffer_unordered(3)
             .collect()
@@ -202,37 +157,6 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn default_config_toml_loads_with_environment() {
-        // The default toml used here specifies http://localhost:3999
-        // as the stacks API endpoint.
-        let settings = StacksSettings::new_from_config().unwrap();
-        let host = settings.api.endpoint.host();
-        assert_eq!(host, Some(url::Host::Domain("localhost")));
-        assert_eq!(settings.api.endpoint.port(), Some(3999));
-
-        std::env::set_var("SIGNER_STACKS_API_ENDPOINT", "http://whatever:1234");
-
-        let settings = StacksSettings::new_from_config().unwrap();
-        let host = settings.api.endpoint.host();
-        assert_eq!(host, Some(url::Host::Domain("whatever")));
-        assert_eq!(settings.api.endpoint.port(), Some(1234));
-
-        std::env::set_var("SIGNER_STACKS_API_ENDPOINT", "http://127.0.0.1:5678");
-
-        let settings = StacksSettings::new_from_config().unwrap();
-        let ip: std::net::Ipv4Addr = "127.0.0.1".parse().unwrap();
-        assert_eq!(settings.api.endpoint.host(), Some(url::Host::Ipv4(ip)));
-        assert_eq!(settings.api.endpoint.port(), Some(5678));
-
-        std::env::set_var("SIGNER_STACKS_API_ENDPOINT", "http://[::1]:9101");
-
-        let settings = StacksSettings::new_from_config().unwrap();
-        let ip: std::net::Ipv6Addr = "::1".parse().unwrap();
-        assert_eq!(settings.api.endpoint.host(), Some(url::Host::Ipv6(ip)));
-        assert_eq!(settings.api.endpoint.port(), Some(9101));
-    }
-
     #[tokio::test]
     #[ignore = "This is an integration test that hasn't been setup for CI yet"]
     async fn get_blocks_by_bitcoin_block_works() {
@@ -241,7 +165,9 @@ mod tests {
         )
         .unwrap();
 
-        let client = StacksClient::new_from_config().unwrap();
+        let settings = StacksSettings::new_from_config().unwrap();
+        let client = StacksClient::new(settings);
+
         let resp = client.get_block_ids(&block).await.unwrap();
         dbg!(resp);
     }
@@ -254,12 +180,14 @@ mod tests {
         )
         .unwrap();
 
-        let client = StacksClient::new_from_config().unwrap();
+        let settings = StacksSettings::new_from_config().unwrap();
+        let client = StacksClient::new(settings);
+
         let block_ids = client.get_block_ids(&block).await.unwrap();
         let block_id = block_ids[0];
 
         dbg!(&block_id);
-        let resp = client.get_block(&block_id).await.unwrap();
+        let resp = client.get_block(block_id).await.unwrap();
         dbg!(resp);
     }
 }

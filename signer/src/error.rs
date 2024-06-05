@@ -40,6 +40,18 @@ pub enum Error {
     #[error("Failed to parse the stacks.api portion of the config: {0}")]
     StacksApiConfig(#[source] config::ConfigError),
 
+    /// Could not make a successful request to the stacks API.
+    #[error("Failed to make a request to the stacks API at {1}: {0}")]
+    StacksApiRequest(#[source] reqwest::Error, url::Url),
+
+    /// Could not make a successful request to the stacks node.
+    #[error("Failed to make a request to the stacks Node at {1}: {0}")]
+    StacksNodeRequest(#[source] reqwest::Error, url::Url),
+
+    /// Reqwest error
+    #[error("Response did not conform the expected schema {0}")]
+    UnexpectedStacksResponse(#[source] reqwest::Error, url::Url),
+
     /// Taproot error
     #[error("An error occured when constructing the taproot signing digest: {0}")]
     Taproot(#[from] bitcoin::sighash::TaprootError),
