@@ -35,6 +35,13 @@ RUN mkdir -p /usr/local/java
 RUN cd /usr/local/java && tar xvzf /tmp/java-install/jdk-21_linux-aarch64_bin.tar.gz
 ENV PATH="${PATH}:/usr/local/java/jdk-21.0.3/bin"
 
+RUN mkdir -p /tmp/rustup-install
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-install/rustup-install.sh
+RUN chmod +x /tmp/rustup-install/rustup-install.sh
+RUN /tmp/rustup-install/rustup-install.sh -y
+
+RUN apt-get install -y libclang-dev
+
 COPY .screenrc /root/
 
 ENTRYPOINT /bin/bash
