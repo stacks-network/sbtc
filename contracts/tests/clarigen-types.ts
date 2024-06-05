@@ -1403,6 +1403,11 @@ export const contracts = {
     },
     maps: {},
     variables: {
+      DUST_LIMIT: {
+        name: "DUST_LIMIT",
+        type: "uint128",
+        access: "constant",
+      } as TypedAbiVariable<bigint>,
       ERR_DUST_LIMIT: {
         name: "ERR_DUST_LIMIT",
         type: {
@@ -1448,13 +1453,9 @@ export const contracts = {
         type: "uint128",
         access: "constant",
       } as TypedAbiVariable<bigint>,
-      dustLimit: {
-        name: "dust-limit",
-        type: "uint128",
-        access: "constant",
-      } as TypedAbiVariable<bigint>,
     },
     constants: {
+      DUST_LIMIT: 546n,
       ERR_DUST_LIMIT: {
         isOk: false,
         value: 502n,
@@ -1470,7 +1471,6 @@ export const contracts = {
       MAX_ADDRESS_VERSION: 6n,
       mAX_ADDRESS_VERSION_BUFF_20: 4n,
       mAX_ADDRESS_VERSION_BUFF_32: 6n,
-      dustLimit: 546n,
     },
     non_fungible_tokens: [],
     fungible_tokens: [],
