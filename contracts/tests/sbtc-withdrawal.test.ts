@@ -165,7 +165,7 @@ describe("initiating a withdrawal request", () => {
     expect(rovOk(token.getBalanceAvailable(alice))).toEqual(0n);
   });
 
-  test("recipient is validated when iniating an address", () => {
+  test("recipient is validated when initiating an address", () => {
     txOk(
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
@@ -209,7 +209,7 @@ describe("initiating a withdrawal request", () => {
     ).toEqual(errors.withdrawal.ERR_INVALID_ADDR_HASHBYTES);
   });
 
-  test("Cannot try and withdrawal less than or equal to the dust limit", () => {
+  test("withdrawal amount of less than or equal to dust limit is rejected", () => {
     txOk(
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
