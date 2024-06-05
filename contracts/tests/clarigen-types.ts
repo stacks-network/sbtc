@@ -478,6 +478,45 @@ export const contracts = {
   },
   sbtcDeposit: {
     functions: {
+      completeIndividualDepositsHelper: {
+        name: "complete-individual-deposits-helper",
+        access: "private",
+        args: [
+          {
+            name: "deposit",
+            type: {
+              tuple: [
+                { name: "amount", type: "uint128" },
+                { name: "recipient", type: "principal" },
+                { name: "txid", type: { buffer: { length: 32 } } },
+                { name: "vout-index", type: "uint128" },
+              ],
+            },
+          },
+          {
+            name: "helper-response",
+            type: { response: { ok: "uint128", error: "uint128" } },
+          },
+        ],
+        outputs: { type: { response: { ok: "uint128", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          deposit: TypedAbiArg<
+            {
+              amount: number | bigint;
+              recipient: string;
+              txid: Uint8Array;
+              voutIndex: number | bigint;
+            },
+            "deposit"
+          >,
+          helperResponse: TypedAbiArg<
+            Response<number | bigint, number | bigint>,
+            "helperResponse"
+          >,
+        ],
+        Response<bigint, bigint>
+      >,
       completeDepositWrapper: {
         name: "complete-deposit-wrapper",
         access: "public",
@@ -504,11 +543,72 @@ export const contracts = {
         ],
         Response<Response<boolean, bigint>, bigint>
       >,
+      completeDepositsWrapper: {
+        name: "complete-deposits-wrapper",
+        access: "public",
+        args: [
+          {
+            name: "deposits",
+            type: {
+              list: {
+                type: {
+                  tuple: [
+                    { name: "amount", type: "uint128" },
+                    { name: "recipient", type: "principal" },
+                    { name: "txid", type: { buffer: { length: 32 } } },
+                    { name: "vout-index", type: "uint128" },
+                  ],
+                },
+                length: 1000,
+              },
+            },
+          },
+        ],
+        outputs: { type: { response: { ok: "uint128", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          deposits: TypedAbiArg<
+            {
+              amount: number | bigint;
+              recipient: string;
+              txid: Uint8Array;
+              voutIndex: number | bigint;
+            }[],
+            "deposits"
+          >,
+        ],
+        Response<bigint, bigint>
+      >,
     },
     maps: {},
     variables: {
+      ERR_DEPOSIT: {
+        name: "ERR_DEPOSIT",
+        type: {
+          response: {
+            ok: "none",
+            error: "uint128",
+          },
+        },
+        access: "constant",
+      } as TypedAbiVariable<Response<null, bigint>>,
+      ERR_DEPOSIT_INDEX_PREFIX: {
+        name: "ERR_DEPOSIT_INDEX_PREFIX",
+        type: "uint128",
+        access: "constant",
+      } as TypedAbiVariable<bigint>,
       ERR_DEPOSIT_REPLAY: {
         name: "ERR_DEPOSIT_REPLAY",
+        type: {
+          response: {
+            ok: "none",
+            error: "uint128",
+          },
+        },
+        access: "constant",
+      } as TypedAbiVariable<Response<null, bigint>>,
+      ERR_INVALID_CALLER: {
+        name: "ERR_INVALID_CALLER",
         type: {
           response: {
             ok: "none",
@@ -549,9 +649,18 @@ export const contracts = {
       } as TypedAbiVariable<bigint>,
     },
     constants: {
+      ERR_DEPOSIT: {
+        isOk: false,
+        value: 303n,
+      },
+      ERR_DEPOSIT_INDEX_PREFIX: 303n,
       ERR_DEPOSIT_REPLAY: {
         isOk: false,
         value: 301n,
+      },
+      ERR_INVALID_CALLER: {
+        isOk: false,
+        value: 304n,
       },
       ERR_LOWER_THAN_DUST: {
         isOk: false,
