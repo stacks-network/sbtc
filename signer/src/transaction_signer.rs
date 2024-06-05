@@ -10,7 +10,7 @@
 ///
 /// This struct contains the implementation of the transaction signer logic.
 /// The event loop subscribes to storage update notifications from the block observer,
-/// and listens to signer messages from the signer network.
+/// and listens to signer messages over the signer network.
 ///
 /// ## On block observer notification
 ///
@@ -21,10 +21,10 @@
 ///
 /// ```mermaid
 /// flowchart TD
-///     SU{Block observer notification} --> FPR(Fetch pending requests)
+///     SU[Block observer notification] --> FPR(Fetch pending requests)
 ///     FPR --> NR(Next request)
 ///     NR --> |deposit/withdraw| DAR(Decide to accept/reject)
-///     NR ----> |none| DONE{Done}
+///     NR ----> |none| DONE[Done]
 ///     DAR --> PD(Persist decision)
 ///     PD --> BD(Broadcast decision)
 ///     BD --> NR
@@ -53,7 +53,7 @@
 ///
 /// ```mermaid
 /// flowchart TD
-///     SM{Signer message received} --> |Signer decision| PD(Persist decision)
+///     SM[Signer message received] --> |Signer decision| PD(Persist decision)
 ///
 ///     SM --> |Stacks sign request| CD1(Check decision)
 ///     CD1 --> SS(Send signature)

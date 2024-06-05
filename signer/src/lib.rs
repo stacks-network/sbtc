@@ -15,6 +15,7 @@ pub mod packaging;
 pub mod storage;
 #[cfg(feature = "testing")]
 pub mod testing;
+pub mod transaction_coordinator;
 pub mod transaction_signer;
 pub mod utxo;
 
