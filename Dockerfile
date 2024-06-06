@@ -35,8 +35,6 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-ins
 RUN chmod +x /tmp/rustup-install/rustup-install.sh
 RUN /tmp/rustup-install/rustup-install.sh -y
 
-COPY .screenrc /root/
-
 RUN rm -rf /tmp/smithy-install
 RUN rm -rf /tmp/node-install
 RUN rm -rf /tmp/java-install
