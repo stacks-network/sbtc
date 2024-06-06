@@ -106,4 +106,82 @@ describe("sBTC deposit contract", () => {
       });
     });
   });
+  describe("complete many deposits", () => {
+    test("fail multiple deposits, first one fails due to txid length", () => {
+      const receipt = txErr(
+        deposit.completeDepositsWrapper({deposits: [{
+          txid: new Uint8Array(31).fill(0),
+          voutIndex: 0,
+          amount: 1000n,
+          recipient: deployer,
+        },{
+          txid: new Uint8Array(32).fill(1),
+          voutIndex: 0,
+          amount: 1000n,
+          recipient: deployer,
+        }]}),
+        deployer
+      );
+      // fold err prefix is "u303" + 10, first item errs so should be 313
+      expect(receipt.value).toEqual(313n)
+    });
+    test("fail multiple deposits, second one fails due to low amount", () => {
+      const receipt = txErr(
+        deposit.completeDepositsWrapper({deposits: [{
+          txid: new Uint8Array(32).fill(0),
+          voutIndex: 0,
+          amount: 1000n,
+          recipient: deployer,
+        },{
+          txid: new Uint8Array(32).fill(1),
+          voutIndex: 0,
+          amount: 100n,
+          recipient: deployer,
+        }]}),
+        deployer
+      );
+      // fold err prefix is "u303" + 10, first item errs so should be 314
+      expect(receipt.value).toEqual(314n)
+    });
+    test("fail multiple deposits, third one fails due to invalid caller", () => {
+      const receipt = txErr(
+        deposit.completeDepositsWrapper({deposits: [{
+          txid: new Uint8Array(32).fill(0),
+          voutIndex: 0,
+          amount: 1000n,
+          recipient: deployer,
+        },{
+          txid: new Uint8Array(32).fill(1),
+          voutIndex: 0,
+          amount: 1000n,
+          recipient: deployer,
+        },{
+          txid: new Uint8Array(32).fill(2),
+          voutIndex: 0,
+          amount: 100n,
+          recipient: alice,
+        }]}),
+        deployer
+      );
+      // fold err prefix is "u303" + 10, third item errs so should be 315
+      expect(receipt.value).toEqual(315n)
+    });
+    test("complete multiple deposits successfully", () => {
+      const receipt = txOk(
+        deposit.completeDepositsWrapper({deposits: [{
+          txid: new Uint8Array(32).fill(0),
+          voutIndex: 0,
+          amount: 1000n,
+          recipient: deployer,
+        },{
+          txid: new Uint8Array(32).fill(1),
+          voutIndex: 0,
+          amount: 1000n,
+          recipient: deployer,
+        }]}),
+        deployer
+      );
+      expect(receipt.value).toEqual(2n)
+    });
+  });
 });
