@@ -113,6 +113,88 @@ impl StacksClient {
         NakamotoBlock::consensus_deserialize(&mut &*resp)
             .map_err(|err| Error::DecodeNakamotoBlock(err, block_id))
     }
+
+    /// Fetch all Nakamoto ancestor blocks with the same tenure as the
+    /// given block ID from from a Stacks node.
+    ///
+    /// The response includes the Nakamoto block for the given block id.
+    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+        let mut blocks = Vec::new();
+
+        tracing::debug!(%block_id, "Making initial request for Nakamoto blocks within the tenure");
+        blocks.extend(self._get_tenure(block_id).await?);
+
+        let mut last_block_id = block_id;
+
+        while let Some(last_block) = blocks.last() {
+            // The first block returned from a GET /v3/tenures/<block-id>
+            // RPC will be the block associated with the <block-id> path
+            // parameter, with other blocks being ancestors within the
+            // blockchain. Our last GET /v3/tenures/<block-id> request
+            // could have returned only one Nakamoto block. If this is the
+            // case then the block ID will match the block ID we used in
+            // our last request and we know that there are no more Nakamoto
+            // blocks within this tenure.
+            let block_id = last_block.block_id();
+            if block_id == last_block_id {
+                break;
+            }
+            last_block_id = block_id;
+
+            tracing::debug!(%block_id, "Fetching more Nakamoto blocks within the tenure");
+            let new_blocks = self._get_tenure(block_id).await?;
+            // The first block in the GET /v3/tenures/<block-id> response
+            // is always the block related to the given <block-id>. But we
+            // already have that block so we can skip adding it again.
+            blocks.extend(new_blocks.into_iter().skip(1))
+        }
+
+        Ok(blocks)
+    }
+
+    /// Make a GET /v3/tenures/<block-id> request for Nakamoto ancestor
+    /// blocks with the same tenure as the given block ID from from a
+    /// Stacks node.
+    ///
+    /// # Notes
+    /// 
+    /// * The GET /v3/tenures/<block-id> response is capped at ~16 MB, so a
+    ///   single request may not return all Nakamoto blocks.
+    /// * The response includes the Nakamoto block for the given block id.
+    async fn _get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+        let path = format!("/v3/tenures/{}", block_id.to_hex());
+        let url = self.node_endpoint.join(&path).map_err(Error::PathParse)?;
+
+        tracing::debug!(%block_id, "Making request to the stacks node for the raw nakamoto block");
+
+        let response = self
+            .client
+            .get(url.clone())
+            .timeout(REQUEST_TIMEOUT)
+            .send()
+            .await
+            .map_err(|err| Error::StacksNodeRequest(err, url.clone()))?;
+
+        // The response here does not detail the number of blocks in the
+        // response. So we essentially take the same implementation given
+        // in [`StacksHttpResponse::decode_nakamoto_tenure`].
+        let resp = response
+            .bytes()
+            .await
+            .map_err(|err| Error::UnexpectedStacksResponse(err, url))?;
+
+        let bytes: &mut &[u8] = &mut resp.as_ref();
+        let mut blocks = Vec::new();
+
+        while !bytes.is_empty() {
+            let block = NakamotoBlock::consensus_deserialize(bytes)
+                .map_err(|err| Error::DecodeNakamotoTenure(err, block_id))?;
+            blocks.push(block);
+        }
+
+        Ok(blocks)
+    }
+
 }
 
 impl StacksInteract for StacksClient {
