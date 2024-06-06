@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::codec::StacksMessageCodec;
+use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use blockstack_lib::types::chainstate::StacksBlockId;
-use futures::StreamExt;
 use serde::Deserialize;
 
 use crate::config::StacksSettings;
@@ -17,9 +17,8 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// A trait detailing the interface with the Stacks API and Stacks Nodes.
 pub trait StacksInteract {
     /// Get stacks blocks confirmed by the given bitcoin block
-    fn get_blocks_by_bitcoin_block(
+    fn get_last_tenure_blocks(
         &self,
-        block_hash: &bitcoin::BlockHash,
     ) -> impl Future<Output = Result<Vec<NakamotoBlock>, Error>> + Send;
 }
 
@@ -157,7 +156,7 @@ impl StacksClient {
     /// Stacks node.
     ///
     /// # Notes
-    /// 
+    ///
     /// * The GET /v3/tenures/<block-id> response is capped at ~16 MB, so a
     ///   single request may not return all Nakamoto blocks.
     /// * The response includes the Nakamoto block for the given block id.
@@ -189,30 +188,46 @@ impl StacksClient {
         while !bytes.is_empty() {
             let block = NakamotoBlock::consensus_deserialize(bytes)
                 .map_err(|err| Error::DecodeNakamotoTenure(err, block_id))?;
+
             blocks.push(block);
         }
 
         Ok(blocks)
     }
 
+    /// Get information about the current tenure.
+    ///
+    /// Uses the GET /v3/tenures/info stacks node endpoint for retrieving
+    /// tenure information.
+    pub async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
+        let url = self
+            .node_endpoint
+            .join("/v3/tenures/info")
+            .map_err(Error::PathParse)?;
+
+        tracing::debug!("Making request to the stacks node for the current tenure info");
+        let response = self
+            .client
+            .get(url.clone())
+            .timeout(REQUEST_TIMEOUT)
+            .send()
+            .await
+            .map_err(|err| Error::StacksNodeRequest(err, url.clone()))?;
+
+        response.json().await.map_err(|err| Error::Reqwest(err))
+    }
 }
 
 impl StacksInteract for StacksClient {
-    async fn get_blocks_by_bitcoin_block(
-        &self,
-        block_hash: &bitcoin::BlockHash,
-    ) -> Result<Vec<NakamotoBlock>, Error> {
-        let block_ids = self.get_block_ids(block_hash).await?;
+    async fn get_last_tenure_blocks(&self) -> Result<Vec<NakamotoBlock>, Error> {
+        // We want to get the last block in the previous tenure. That block
+        // is the parent block to the first block of the current tenure. So
+        // yeah, let's get it.
+        let info = self.get_tenure_info().await?;
+        let block = self.get_block(info.tenure_start_block_id).await?;
 
-        let stream = block_ids
-            .into_iter()
-            .map(|block_id| self.get_block(block_id));
-        let ans: Vec<Result<NakamotoBlock, Error>> = futures::stream::iter(stream)
-            .buffer_unordered(3)
-            .collect()
-            .await;
-
-        ans.into_iter().collect()
+        let tenure_last_block = block.header.parent_block_id;
+        self.get_tenure(tenure_last_block).await
     }
 }
 
@@ -228,9 +243,6 @@ pub struct GetBurnBlockResponse {
     pub burn_block_height: u32,
     /// Hashes of the Stacks blocks included in the bitcoin block
     pub stacks_blocks: Vec<String>,
-    /// The total number of Stacks transactions included in the stacks
-    /// blocks.
-    pub total_tx_count: u64,
 }
 
 #[cfg(test)]
@@ -257,19 +269,39 @@ mod tests {
     #[tokio::test]
     #[ignore = "This is an integration test that hasn't been setup for CI yet"]
     async fn get_blocks_works() {
-        let block = bitcoin::BlockHash::from_str(
-            "00e34f99fc2d8e4857680cec4e8a74b64bebe53fe9d5752a8912dd777677043c",
-        )
-        .unwrap();
+        // let block = bitcoin::BlockHash::from_str(
+        //     "7e462fb3a22d840026f017a9968e4a44ba11a51127cff5b41ed4c4e32fd48a0c",
+        // )
+        // .unwrap();
 
         let settings = StacksSettings::new_from_config().unwrap();
         let client = StacksClient::new(settings);
 
-        let block_ids = client.get_block_ids(&block).await.unwrap();
-        let block_id = block_ids[0];
+        // let block_ids = client.get_block_ids(&block).await.unwrap();
+        // let block_id = block_ids[0];
 
-        dbg!(&block_id);
-        let resp = client.get_block(block_id).await.unwrap();
-        dbg!(resp);
+        // dbg!(&block_ids);
+        // let block_hex_str = "8f61dc41560560e8122609e82966740075929ed663543d9ad6733f8fc32876c5";
+        let block_hex_str = "e08c740242092eb0b5f74756ce203db048a5156e444df531a7c29e2d952cf628";
+        let block_id = StacksBlockId::from_hex(block_hex_str).unwrap();
+        let resp = client.get_tenure(block_id).await.unwrap();
+        let block = resp[0].clone();
+        dbg!(&resp);
+        assert_eq!(block_id, block.block_id());
+
+        // use ripemd::Digest;
+        // let burn_block_hash = "4bb86d7a8520b66bdede31f9f975216fb1a6359cd055b2ef7f5e8eb3b8fa6857";
+        // let mut r160 = ripemd::Ripemd160::new();
+
+        // r160.update(burn_block_hash);
+        // let mut ch_bytes = [0u8; 20];
+        // ch_bytes.copy_from_slice(r160.finalize().as_slice());
+        // let ans = blockstack_lib::chainstate::burn::ConsensusHash(ch_bytes);
+
+        // dbg!(ans);
+        // dbg!(resp[0].header.consensus_hash);
+
+        // let resp = client.get_block(block_id).await.unwrap();
+        // dbg!(resp);
     }
 }
