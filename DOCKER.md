@@ -9,7 +9,7 @@ docker build -t sbtc-build .
 
 ## Run the build container
 ```
-docker run -it -v `pwd`:/build sbtc-build
+docker run -it -v `pwd`:/sbtc sbtc-build
 ```
 
 ## Build using the build container
