@@ -3,7 +3,7 @@
 //! This module contains the transaction signer, which is the component of the sBTC signer
 //! responsible for participating in signing rounds.
 //!
-//! For more details, see the [`EventLoop`] documentation.
+//! For more details, see the [`TxSignerEventLoop`] documentation.
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// # Transaction signer event loop
@@ -64,9 +64,9 @@
 ///
 ///     SM --> |WSTS message| RWSM(Relay to WSTS state machine)
 /// ```
-pub struct EventLoop;
+pub struct TxSignerEventLoop;
 
-impl EventLoop {
+impl TxSignerEventLoop {
     /// Run the signer event loop
     pub async fn run() {}
 }

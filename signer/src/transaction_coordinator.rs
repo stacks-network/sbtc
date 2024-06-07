@@ -3,7 +3,7 @@
 //! This module contains the transaction coordinator, which is the component of the sBTC signer
 //! responsible for consctructing transactions and coordinating signing rounds.
 //!
-//! For more details, see the [`EventLoop`] documentation.
+//! For more details, see the [`TxCoordinatorEventLoop`] documentation.
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// # Transaction coordinator event loop
@@ -30,14 +30,27 @@
 /// the maximum fee allowed in the requests. Once the package has been constructed, the
 /// coordinator proceeds by coordinating WSTS signing rounds for each of the transactions in the
 /// package. The signed transactions are then broadcast to bitcoin.
+
+/// Pending deposit and withdrawal requests are used to construct a Bitcoin
+/// transaction package consisting of a set of inputs and outputs that
+/// fulfill these requests. The fulfillment of pending requests in the
+/// transaction package depends on the number of signers agreeing to accept
+/// each request and the maximum fee stipulated in the request. Once the
+/// package is assembled, the coordinator coordinates WSTS signing rounds for
+/// each transaction within the package. The successfully signed
+/// transactions are then broadcast to the Bitcoin network.
 ///
 /// For the active requests, the coordinator will go over each one and create appropriate
-/// response transactions. These transactions are sent through the signers for signatures, and
-/// once enough signatures has been gathered, the coordinator broadcasts them to the Stacks
-/// blockchain.
+/// stacks response transactions (which are the `withdrawal-accept`, `withdrawal-reject`
+/// and `deposit-accept` contract calls). These transactions are sent through the
+/// signers for signatures, and once enough signatures has been gathered,
+/// the coordinator broadcasts them to the Stacks blockchain.
 ///
-/// [^1]: A deposit or withdraw request is considered pending if it is confirmed on chain but hasn't been processed by the signers.
-/// [^2]: A deposit or withdraw request is considered active if has been processed by the signers, but the result hasn't been acknowledged on Stacks as a `deposit_accept`, `withdraw_accept` or `withdraw_reject` transaction.
+/// [^1]: A deposit or withdraw request is considered pending if it is confirmed
+///       on chain but hasn't been fulfilled in an sBTC transaction yet.
+/// [^2]: A deposit or withdraw request is considered active if has been fulfilled in an sBTC transaction,
+///       but the result hasn't been acknowledged on Stacks as a `deposit-accept`,
+///       `withdraw-accept` or `withdraw-reject` transaction.
 ///
 /// The whole flow is illustrated in the following flowchart.
 ///
@@ -60,4 +73,4 @@
 ///     CMS --> BST
 ///     BST --> DONE
 /// ```
-pub struct EventLoop;
+pub struct TxCoordinatorEventLoop;
