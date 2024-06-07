@@ -8,7 +8,6 @@ use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use blockstack_lib::types::chainstate::StacksBlockId;
-use serde::Deserialize;
 
 use crate::config::StacksSettings;
 use crate::error::Error;
@@ -59,15 +58,15 @@ impl StacksClient {
 
         let response = self
             .client
-            .get(url.clone())
+            .get(url)
             .timeout(REQUEST_TIMEOUT)
             .send()
             .await
-            .map_err(|err| Error::StacksNodeRequest(err, url.clone()))?;
+            .map_err(Error::StacksNodeRequest)?;
         let resp = response
             .bytes()
             .await
-            .map_err(|err| Error::UnexpectedStacksResponse(err, url))?;
+            .map_err(Error::UnexpectedStacksResponse)?;
 
         NakamotoBlock::consensus_deserialize(&mut &*resp)
             .map_err(|err| Error::DecodeNakamotoBlock(err, block_id))
@@ -131,11 +130,11 @@ impl StacksClient {
 
         let response = self
             .client
-            .get(url.clone())
+            .get(url)
             .timeout(REQUEST_TIMEOUT)
             .send()
             .await
-            .map_err(|err| Error::StacksNodeRequest(err, url.clone()))?;
+            .map_err(Error::StacksNodeRequest)?;
 
         // The response here does not detail the number of blocks in the
         // response. So we essentially take the same implementation given
@@ -144,7 +143,7 @@ impl StacksClient {
         let resp = response
             .bytes()
             .await
-            .map_err(|err| Error::UnexpectedStacksResponse(err, url))?;
+            .map_err(Error::UnexpectedStacksResponse)?;
 
         let bytes: &mut &[u8] = &mut resp.as_ref();
         let mut blocks = Vec::new();
@@ -177,12 +176,12 @@ impl StacksClient {
             .timeout(REQUEST_TIMEOUT)
             .send()
             .await
-            .map_err(|err| Error::StacksNodeRequest(err, url.clone()))?;
+            .map_err(Error::StacksNodeRequest)?;
 
         response
             .json()
             .await
-            .map_err(|err| Error::UnexpectedStacksResponse(err, url))
+            .map_err(Error::UnexpectedStacksResponse)
     }
 }
 
@@ -198,20 +197,6 @@ impl StacksInteract for StacksClient {
         let prev_tenure_last_block_id = block.header.parent_block_id;
         self.get_blocks(prev_tenure_last_block_id).await
     }
-}
-
-/// Response from the Stacks API for GET /extended/v2/burn-blocks/:height_or_hash
-/// requests.
-///
-/// See https://docs.hiro.so/api/get-burn-block
-#[derive(Clone, Debug, Deserialize)]
-pub struct GetBurnBlockResponse {
-    /// The hash of the bitcoin block.
-    pub burn_block_hash: String,
-    /// The hash of the bitcoin block.
-    pub burn_block_height: u32,
-    /// Hashes of the Stacks blocks included in the bitcoin block
-    pub stacks_blocks: Vec<String>,
 }
 
 #[cfg(test)]

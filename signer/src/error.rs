@@ -47,16 +47,16 @@ pub enum Error {
     StacksApiConfig(#[source] config::ConfigError),
 
     /// Could not make a successful request to the stacks API.
-    #[error("Failed to make a request to the stacks API at {1}: {0}")]
-    StacksApiRequest(#[source] reqwest::Error, url::Url),
+    #[error("Failed to make a request to the stacks API: {0}")]
+    StacksApiRequest(#[source] reqwest::Error),
 
     /// Could not make a successful request to the stacks node.
-    #[error("Failed to make a request to the stacks Node at {1}: {0}")]
-    StacksNodeRequest(#[source] reqwest::Error, url::Url),
+    #[error("Failed to make a request to the stacks Node: {0}")]
+    StacksNodeRequest(#[source] reqwest::Error),
 
     /// Reqwest error
-    #[error("Response from stacks node did not conform to the expected schema; {1}: {0}")]
-    UnexpectedStacksResponse(#[source] reqwest::Error, url::Url),
+    #[error("Response from stacks node did not conform to the expected schema: {0}")]
+    UnexpectedStacksResponse(#[source] reqwest::Error),
 
     /// Taproot error
     #[error("An error occured when constructing the taproot signing digest: {0}")]
