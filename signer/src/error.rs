@@ -1,4 +1,6 @@
 //! Top-level error type for the signer
+use std::borrow::Cow;
+
 use blockstack_lib::types::chainstate::StacksBlockId;
 
 /// Top-level signer error
@@ -24,9 +26,13 @@ pub enum Error {
     #[error("Could not decode the Nakamoto block with ID: {1}; {0}")]
     DecodeNakamotoBlock(#[source] blockstack_lib::codec::Error, StacksBlockId),
 
+    /// Thrown when parsing a Nakamoto block within a given tenure.
+    #[error("Could not decode Nakamoto block from tenure with block: {1}; {0}")]
+    DecodeNakamotoTenure(#[source] blockstack_lib::codec::Error, StacksBlockId),
+
     /// Could not parse the path part of a url
-    #[error("{0}")]
-    PathParse(#[source] url::ParseError),
+    #[error("Failed to construct a valid URL from {1} and {2}: {0}")]
+    PathJoin(#[source] url::ParseError, url::Url, Cow<'static, str>),
 
     /// Reqwest error
     #[error("{0}")]
@@ -49,7 +55,7 @@ pub enum Error {
     StacksNodeRequest(#[source] reqwest::Error, url::Url),
 
     /// Reqwest error
-    #[error("Response did not conform the expected schema {0}")]
+    #[error("Response from stacks node did not conform to the expected schema; {1}: {0}")]
     UnexpectedStacksResponse(#[source] reqwest::Error, url::Url),
 
     /// Taproot error

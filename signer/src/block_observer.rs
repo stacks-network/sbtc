@@ -397,7 +397,12 @@ mod tests {
         async fn get_last_tenure_blocks(
             &self,
         ) -> Result<Vec<nakamoto::NakamotoBlock>, crate::error::Error> {
-            Ok(Vec::new())
+            Ok(self
+                .stacks_blocks_per_bitcoin_block
+                .values()
+                .flatten()
+                .cloned()
+                .collect())
         }
     }
 
