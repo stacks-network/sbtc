@@ -10,7 +10,7 @@
 ///
 /// This struct contains the implementation of the transaction coordinator logic.
 /// Like the transaction signer, the coordinator event loop also subscribes to storage
-/// update notifications from the block observer and listends to signer messages over
+/// update notifications from the block observer and listens to signer messages over
 /// the signer network.
 ///
 /// The transaction coordinator will upon receving a storage update notification from
