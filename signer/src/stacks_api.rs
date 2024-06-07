@@ -25,9 +25,6 @@ pub trait StacksInteract {
 /// A client for interacting with Stacks nodes and the Stacks API
 pub struct StacksClient {
     /// The base URL (with the port) that will be used when making requests
-    /// for to the Stacks API.
-    pub api_endpoint: url::Url,
-    /// The base URL (with the port) that will be used when making requests
     /// for to a Stacks node.
     pub node_endpoint: url::Url,
     /// The client used to make the request.
@@ -39,7 +36,6 @@ impl StacksClient {
     /// StacksSettings.
     pub fn new(settings: StacksSettings) -> Self {
         Self {
-            api_endpoint: settings.api.endpoint,
             node_endpoint: settings.node.endpoint,
             client: reqwest::Client::new(),
         }
@@ -201,7 +197,7 @@ impl StacksInteract for StacksClient {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::{StacksApiSettings, StacksNodeSettings};
+    use crate::config::StacksNodeSettings;
 
     use super::*;
     use std::io::Read;
@@ -287,9 +283,6 @@ mod tests {
             .create();
 
         let settings = StacksSettings {
-            api: StacksApiSettings {
-                endpoint: url::Url::parse("http://whatever.com").unwrap(),
-            },
             node: StacksNodeSettings {
                 endpoint: url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
             },
@@ -341,9 +334,6 @@ mod tests {
             .create();
 
         let settings = StacksSettings {
-            api: StacksApiSettings {
-                endpoint: url::Url::parse("http://whatever.com").unwrap(),
-            },
             node: StacksNodeSettings {
                 endpoint: url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
             },
