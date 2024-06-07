@@ -85,15 +85,15 @@ impl StacksClient {
 
         let mut prev_last_block_id = block_id;
 
+        // Given the response size limit of GET /v3/tenures/<block-id>
+        // requests, there could be more blocks that we need to fetch.
         while let Some(last_block_id) = blocks.last().map(NakamotoBlock::block_id) {
-            // The first block returned from a GET /v3/tenures/<block-id>
-            // RPC will be the block associated with the <block-id> path
-            // parameter, with other blocks being ancestors within the same
-            // tenure. Our last GET /v3/tenures/<block-id> request could
-            // have returned only one Nakamoto block. If this is the case
-            // then its block ID will match the block ID we used in our
-            // request and we know that there are no more Nakamoto blocks
-            // within this tenure.
+            // To determine whether all blocks within a tenure have been
+            // retrieved, we check if we've seen the last block in the
+            // previous GET /v3/tenures/<block-id> response. Note that the
+            // response always starts with the block corresponding to
+            // <block-id> and is followed by its ancestors from the same
+            // tenure.
             if last_block_id == prev_last_block_id {
                 break;
             }
@@ -216,7 +216,113 @@ pub struct GetBurnBlockResponse {
 
 #[cfg(test)]
 mod tests {
+    use crate::config::{StacksApiSettings, StacksNodeSettings};
+
     use super::*;
+    use std::io::Read;
+
+    /// Test that get_blocks works as expected.
+    /// 
+    /// The author took the following steps to setup this test:
+    /// 1. Get Nakamoto running locally. This was done using
+    ///    https://github.com/hirosystems/stacks-regtest-env/blob/feat/signer/docker-compose.yml
+    ///    where the STACKS_BLOCKCHAIN_COMMIT was changed to
+    ///    "3d96d53b35409859ca2baa2f0b6ddaa1fbd80265" and the
+    ///    MINE_INTERVAL_EPOCH3 was set to "60s".
+    /// 2. After Nakamoto is running, use a dummy test like
+    ///    `fetching_last_tenure_blocks_works` to get the blocks for an
+    ///    actual tenure. Note the block IDs for the first and last
+    ///    `NakamotoBlock`s in the result.
+    /// 3. Use the block IDs from step (2) to make two curl requests:
+    ///     * The tenure starting with the end block:
+    ///     ```
+    ///     curl http://localhost:20443/v3/tenures/<tenure-end-block-id> \
+    ///         --output tests/fixtures/tenure-blocks-0-<tenure-end-block-id>.bin \
+    ///         -vvv
+    ///     ```
+    ///     * The tenure starting at the tenure start block:
+    ///     ```
+    ///     curl http://localhost:20443/v3/tenures/<tenure-start-block-id> \
+    ///         --output tests/fixtures/tenure-blocks-1-<tenure-start-block-id>.bin \
+    ///         -vvv
+    ///     ```
+    /// 4. Done
+    #[tokio::test]
+    async fn get_blocks_test() {
+        // Here we test that out code will handle the response from a
+        // stacks node in the expected way.
+        const TENURE_START_BLOCK_ID: &str = "8ff4eb1ed4a2f83faada29f6012b7f86f476eafed9921dff8d2c14cdfa30da94";
+        const TENURE_END_BLOCK_ID: &str = "1ed91e0720129bda5072540ee7283dd5345d0f6de0cf5b982c6de3943b6e3291";
+
+        // Okay we need to setup the server to returned what a stacks node
+        // would return. We load up a file that contains a response from an
+        // actual stacks node in regtest mode.
+        let path = format!("tests/fixtures/tenure-blocks-0-{TENURE_END_BLOCK_ID}.bin");
+        let mut file = std::fs::File::open(path).unwrap();
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).unwrap();
+
+        let mut stacks_node_server = mockito::Server::new_async().await;
+        let first_mock = stacks_node_server
+            .mock("GET", format!("/v3/tenures/{TENURE_END_BLOCK_ID}").as_str())
+            .with_status(200)
+            .with_header("content-type", "application/octet-stream")
+            .with_header("transfer-encoding", "chunked")
+            .with_chunked_body(move |w| w.write_all(&buf))
+            .expect(1)
+            .create();
+
+        // The StacksClient::get_blocks call should make at least two
+        // requests to the stacks node if there are two or more Nakamoto
+        // blocks within the same tenure. Our test setup has 23 blocks
+        // within the tenure so we need to tell the mock server what to
+        // return in the second request.
+        let path = format!("tests/fixtures/tenure-blocks-1-{TENURE_START_BLOCK_ID}.bin");
+        let mut file = std::fs::File::open(path).unwrap();
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).unwrap();
+
+        let second_mock = stacks_node_server
+            .mock("GET", format!("/v3/tenures/{TENURE_START_BLOCK_ID}").as_str())
+            .with_status(200)
+            .with_header("content-type", "application/octet-stream")
+            .with_header("transfer-encoding", "chunked")
+            .with_chunked_body(move |w| w.write_all(&buf))
+            .expect(1)
+            .create();
+
+        let settings = StacksSettings {
+            api: StacksApiSettings {
+                endpoint: url::Url::parse("http://whatever.com").unwrap()
+            } ,
+            node: StacksNodeSettings {
+                endpoint: url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
+            },
+        };
+
+        let client = StacksClient::new(settings);
+        let block_id = StacksBlockId::from_hex(TENURE_END_BLOCK_ID).unwrap();
+        // The moment of truth, do the requests succeed?
+        let blocks = client.get_blocks(block_id).await.unwrap();
+        assert!(blocks.len() > 1);
+        dbg!(blocks.len());
+
+        // We know that the blocks are ordered as a chain and we know the
+        // first and last block IDs, let's check that.
+        let last_block_id = StacksBlockId::from_hex(TENURE_START_BLOCK_ID).unwrap();
+        let n = blocks.len() - 1;
+        assert_eq!(blocks[0].block_id(), block_id);
+        assert_eq!(blocks[n].block_id(), last_block_id);
+
+        // Let's check that the returned blocks are distinct.
+        let mut ans: Vec<StacksBlockId> = blocks.iter().map(|block| block.block_id()).collect();
+        ans.sort();
+        ans.dedup();
+        assert_eq!(blocks.len(), ans.len());
+
+        first_mock.assert();
+        second_mock.assert();
+    }
 
     #[tokio::test]
     #[ignore = "This is an integration test that hasn't been setup for CI yet"]
@@ -231,19 +337,9 @@ mod tests {
     #[tokio::test]
     #[ignore = "This is an integration test that hasn't been setup for CI yet"]
     async fn get_blocks_works() {
-        // let block = bitcoin::BlockHash::from_str(
-        //     "7e462fb3a22d840026f017a9968e4a44ba11a51127cff5b41ed4c4e32fd48a0c",
-        // )
-        // .unwrap();
-
         let settings = StacksSettings::new_from_config().unwrap();
         let client = StacksClient::new(settings);
 
-        // let block_ids = client.get_block_ids(&block).await.unwrap();
-        // let block_id = block_ids[0];
-
-        // dbg!(&block_ids);
-        // let block_hex_str = "8f61dc41560560e8122609e82966740075929ed663543d9ad6733f8fc32876c5";
         let block_hex_str = "e08c740242092eb0b5f74756ce203db048a5156e444df531a7c29e2d952cf628";
         let block_id = StacksBlockId::from_hex(block_hex_str).unwrap();
         let resp = client.get_blocks(block_id).await.unwrap();
@@ -253,24 +349,5 @@ mod tests {
 
         let blocks = client.get_last_tenure_blocks().await.unwrap();
         dbg!(&blocks);
-
-        let mut ans: Vec<StacksBlockId> = blocks.iter().map(|block| block.block_id()).collect();
-        ans.sort();
-        ans.dedup();
-        assert_eq!(blocks.len(), ans.len());
-        // use ripemd::Digest;
-        // let burn_block_hash = "4bb86d7a8520b66bdede31f9f975216fb1a6359cd055b2ef7f5e8eb3b8fa6857";
-        // let mut r160 = ripemd::Ripemd160::new();
-
-        // r160.update(burn_block_hash);
-        // let mut ch_bytes = [0u8; 20];
-        // ch_bytes.copy_from_slice(r160.finalize().as_slice());
-        // let ans = blockstack_lib::chainstate::burn::ConsensusHash(ch_bytes);
-
-        // dbg!(ans);
-        // dbg!(resp[0].header.consensus_hash);
-
-        // let resp = client.get_block(block_id).await.unwrap();
-        // dbg!(resp);
     }
 }
