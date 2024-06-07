@@ -27,7 +27,7 @@
 /// transaction package depends on the amount of singers deciding to accept the request, and on
 /// the maximum fee allowed in the requests. Once the package has been constructed, the
 /// coordinator proceeds by coordinating WSTS signing rounds for each of the transactions in the
-/// package. The signed transactions are then broadcasted to bitcoin.
+/// package. The signed transactions are then broadcast to bitcoin.
 ///
 /// For the active requests, the coordinator will go over each one and create appropriate
 /// response transactions. These transactions are sent through the signers for signatures, and
