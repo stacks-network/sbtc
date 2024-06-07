@@ -13,10 +13,12 @@
 /// update notifications from the block observer and listens to signer messages over
 /// the signer network.
 ///
-/// The transaction coordinator will upon receving a storage update notification from
-/// the block observer look up the canonical chain tip from the database. This tip
-/// is used to decide wheter or not this particular coordinator is selected to be active
-/// or if it should be passive in favor of another coordinator in the signer network.
+/// The transaction coordinator will look up the canonical chain tip from
+/// the database upon receiving a storage update notification from the
+/// block observer. This tip is used to decide whether this particular
+/// signer is selected as the signers' coordinator or if it should be
+/// passive in favor of another signer as the coordinator in the signer
+/// network.
 ///
 /// If the coordinator is selected, it will begin by looking up the signer UTXO, and
 /// do a fee rate estimation for both Bitcoin and Stacks. With that in place it will
