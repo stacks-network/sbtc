@@ -17,7 +17,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// A trait detailing the interface with the Stacks API and Stacks Nodes.
 pub trait StacksInteract {
-    /// Get all stacks blocks for the last confirmed tenure.
+    /// Get all Nakamoto stacks blocks for the last confirmed tenure.
     fn get_last_tenure_blocks(
         &self,
     ) -> impl Future<Output = Result<Vec<NakamotoBlock>, Error>> + Send;
@@ -222,8 +222,8 @@ mod tests {
     use std::io::Read;
 
     /// Test that get_blocks works as expected.
-    /// 
-    /// The author took the following steps to setup this test:
+    ///
+    /// The author took the following steps to set up this test:
     /// 1. Get Nakamoto running locally. This was done using
     ///    https://github.com/hirosystems/stacks-regtest-env/blob/feat/signer/docker-compose.yml
     ///    where the STACKS_BLOCKCHAIN_COMMIT was changed to
@@ -251,8 +251,10 @@ mod tests {
     async fn get_blocks_test() {
         // Here we test that out code will handle the response from a
         // stacks node in the expected way.
-        const TENURE_START_BLOCK_ID: &str = "8ff4eb1ed4a2f83faada29f6012b7f86f476eafed9921dff8d2c14cdfa30da94";
-        const TENURE_END_BLOCK_ID: &str = "1ed91e0720129bda5072540ee7283dd5345d0f6de0cf5b982c6de3943b6e3291";
+        const TENURE_START_BLOCK_ID: &str =
+            "8ff4eb1ed4a2f83faada29f6012b7f86f476eafed9921dff8d2c14cdfa30da94";
+        const TENURE_END_BLOCK_ID: &str =
+            "1ed91e0720129bda5072540ee7283dd5345d0f6de0cf5b982c6de3943b6e3291";
 
         // Okay we need to setup the server to returned what a stacks node
         // would return. We load up a file that contains a response from an
@@ -263,8 +265,9 @@ mod tests {
         file.read_to_end(&mut buf).unwrap();
 
         let mut stacks_node_server = mockito::Server::new_async().await;
+        let endpoint_path = format!("/v3/tenures/{TENURE_END_BLOCK_ID}");
         let first_mock = stacks_node_server
-            .mock("GET", format!("/v3/tenures/{TENURE_END_BLOCK_ID}").as_str())
+            .mock("GET", endpoint_path.as_str())
             .with_status(200)
             .with_header("content-type", "application/octet-stream")
             .with_header("transfer-encoding", "chunked")
@@ -277,13 +280,20 @@ mod tests {
         // blocks within the same tenure. Our test setup has 23 blocks
         // within the tenure so we need to tell the mock server what to
         // return in the second request.
+        //
+        // Also worth noting is that the total size of the blocks within a
+        // GET /v3/tenures/<block-id> is ~16 MB (via the MAX_MESSAGE_LEN
+        // constant in stacks-core). The size of the blocks for this test
+        // is well under 1 MB so we get all the data during the first
+        // request, which just don't know that until the second request.
         let path = format!("tests/fixtures/tenure-blocks-1-{TENURE_START_BLOCK_ID}.bin");
         let mut file = std::fs::File::open(path).unwrap();
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).unwrap();
 
+        let endpoint_path = format!("/v3/tenures/{TENURE_START_BLOCK_ID}");
         let second_mock = stacks_node_server
-            .mock("GET", format!("/v3/tenures/{TENURE_START_BLOCK_ID}").as_str())
+            .mock("GET", endpoint_path.as_str())
             .with_status(200)
             .with_header("content-type", "application/octet-stream")
             .with_header("transfer-encoding", "chunked")
@@ -293,8 +303,8 @@ mod tests {
 
         let settings = StacksSettings {
             api: StacksApiSettings {
-                endpoint: url::Url::parse("http://whatever.com").unwrap()
-            } ,
+                endpoint: url::Url::parse("http://whatever.com").unwrap(),
+            },
             node: StacksNodeSettings {
                 endpoint: url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
             },
@@ -325,6 +335,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_tenure_info_works() {
+        let raw_json_response = r#"{
+            "consensus_hash": "e42b3a9ffce62376e1f36cf76c33cc23d9305de1",
+            "tenure_start_block_id": "e08c740242092eb0b5f74756ce203db048a5156e444df531a7c29e2d952cf628",
+            "parent_consensus_hash": "d9693fbdf0a9bab9ee5ffd3c4f52fef6e1da1899",
+            "parent_tenure_start_block_id": "8ff4eb1ed4a2f83faada29f6012b7f86f476eafed9921dff8d2c14cdfa30da94",
+            "tip_block_id": "8f61dc41560560e8122609e82966740075929ed663543d9ad6733f8fc32876c5",
+            "tip_height": 2037,
+            "reward_cycle": 11
+        }"#;
+
+        let mut stacks_node_server = mockito::Server::new_async().await;
+        let first_mock = stacks_node_server
+            .mock("GET", "/v3/tenures/info")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(raw_json_response)
+            .expect(1)
+            .create();
+
+        let settings = StacksSettings {
+            api: StacksApiSettings {
+                endpoint: url::Url::parse("http://whatever.com").unwrap(),
+            },
+            node: StacksNodeSettings {
+                endpoint: url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
+            },
+        };
+
+        let client = StacksClient::new(settings);
+        let resp = client.get_tenure_info().await.unwrap();
+        let expected: RPCGetTenureInfo = serde_json::from_str(raw_json_response).unwrap();
+
+        assert_eq!(resp, expected);
+        first_mock.assert();
+    }
+
+    #[tokio::test]
     #[ignore = "This is an integration test that hasn't been setup for CI yet"]
     async fn fetching_last_tenure_blocks_works() {
         let settings = StacksSettings::new_from_config().unwrap();
@@ -332,22 +380,5 @@ mod tests {
 
         let blocks = client.get_last_tenure_blocks().await.unwrap();
         assert!(!blocks.is_empty());
-    }
-
-    #[tokio::test]
-    #[ignore = "This is an integration test that hasn't been setup for CI yet"]
-    async fn get_blocks_works() {
-        let settings = StacksSettings::new_from_config().unwrap();
-        let client = StacksClient::new(settings);
-
-        let block_hex_str = "e08c740242092eb0b5f74756ce203db048a5156e444df531a7c29e2d952cf628";
-        let block_id = StacksBlockId::from_hex(block_hex_str).unwrap();
-        let resp = client.get_blocks(block_id).await.unwrap();
-        let block = resp[0].clone();
-        dbg!(&resp);
-        assert_eq!(block_id, block.block_id());
-
-        let blocks = client.get_last_tenure_blocks().await.unwrap();
-        dbg!(&blocks);
     }
 }
