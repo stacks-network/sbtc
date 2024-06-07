@@ -20,7 +20,7 @@
 /// passive in favor of another signer as the coordinator in the signer
 /// network.
 ///
-/// If the coordinator is selected, it will begin by looking up the signer UTXO, and
+/// When the coordinator is selected, that coordinator will begin by looking up the signer UTXO, and
 /// do a fee rate estimation for both Bitcoin and Stacks. With that in place it will
 /// proceed to look up any pending[^1] and active[^2] requests to process.
 ///
