@@ -17,7 +17,7 @@ network = "testnet"
 
 # this is a file path where your signer will persist data. If using Docker, 
 # this must be within a volume, so that data can be persisted across restarts
-db_path = "/var/stacks/signer.sqlite"
+db_path = "$SIGNER_DB_PATH"
 
 # an authentication token that is used for some HTTP requests made from the 
 # signer to your Stacks node. You’ll need to use this later on when configuring 

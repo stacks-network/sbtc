@@ -1,3 +1,15 @@
+
+x-common-vars:
+  - &STACKING_CYCLES ${STACKING_CYCLES:-1}
+  - &STACKS_25_HEIGHT ${STACKS_25_HEIGHT:-108}
+  - &STACKS_30_HEIGHT ${STACKS_30_HEIGHT:-1000001}
+  - &POX_PREPARE_LENGTH ${POX_PREPARE_LENGTH:-5}
+  - &POX_REWARD_LENGTH ${POX_REWARD_LENGTH:-20}
+  - &EXIT_FROM_MONITOR 1 # set to "1" to automatically shut down via monitor.ts
+  - &NAKAMOTO_BLOCK_INTERVAL 2
+  - &BTC_ADDR miEJtNKa3ASpA19v5ZhvbKTEieYjLpzCYT
+
+
 services:
   bitcoin:
     image: bitcoin:latest
@@ -69,9 +81,11 @@ services:
         BITCOIN_RPC_PORT: 18443
         BTC_RPCPASSWORD: devnet
         BTC_RPCUSER: devnet
-        MINER_ADDRESS: "moU2g2zzH3qLYCNPXGPAMqsgxr2Bw15V2j"
+        # MINER_ADDRESS: "moU2g2zzH3qLYCNPXGPAMqsgxr2Bw15V2j"
+        MINER_ADDRESS: *BTC_ADDR
     depends_on:
       - bitcoin
+  
   stacks:
     image: stacks:latest
     container_name: stacks
@@ -81,14 +95,6 @@ services:
       args:
         STACKS_LOG_DEBUG: 0
         STACKS_LOG_JSON: 0
-        LOCAL_PEER_SEED: "3fd68a8fcab004754d6fee4756dd9c84ad64ee19a11aa9930893540e1357696f2f73957cd6e92797d7a66d1d3ae4a4ea752a8924fe028f1fc2c06b9d6d0ee0ad"
-        STACKS_WORKING_DIR: "/var/stacks"
-        MY_HTTP_AUTH_TOKEN: "helloworld"
-        SIGNER_ENDPOINT: "nakamoto-signer:30000"
-        MINER_KEY: "753b7cc01a1a2e86221266a154af739463fce51219d97e4f856cd7200c3bd2a6"
-        BTC_NODE_RPC_HOST: "bitcoin"
-        BTC_NODE_RPC_USER: "devnet"
-        BTC_NODE_RPC_PASSWORD: "devnet"
     ports:
       - 20444:20444
       - 20443:20443
@@ -98,23 +104,62 @@ services:
     environment:
       STACKS_LOG_DEBUG: 0
       STACKS_LOG_JSON: 0
-  nakamoto-signer:
-    image: nakamoto-signer:latest
-    container_name: nakamoto-signer
+  
+  nakamoto-signer-1:
+    image: nakamoto-signer-1:latest
+    container_name: nakamoto-signer-1
     stop_grace_period: 5s
     build:
       context: ./nakamoto-signer/docker
       args:
-        SIGNER_ENDPOINT: "0.0.0.0:30000"
+        SIGNER_ENDPOINT: "0.0.0.0:30001"
         MY_HTTP_AUTH_TOKEN: "helloworld"
-        STACKS_PRIVATE_KEY: "7287ba251d44a4d3fd9276c88ce34c5c52a038955511cccaf77e61068649c17801"
+        STACKS_PRIVATE_KEY: "6a1a754ba863d7bab14adbbc3f8ebb090af9e871ace621d3e5ab634e1422885e01"
         STACKS_NODE_RPC_HOST: "stacks"
         STACKS_NODE_RPC_PORT: "20443"
         RUST_BACKTRACE: "1"
+        SIGNER_DB_PATH: "/var/stacks/nakamoto-signer-1.sqlite"
     ports:
-      - 30000:30000
+      - 30001:30001
     environment:
       RUST_BACKTRACE: "1"
+  nakamoto-signer-2:
+    image: nakamoto-signer-2:latest
+    container_name: nakamoto-signer-2
+    stop_grace_period: 5s
+    build:
+      context: ./nakamoto-signer/docker
+      args:
+        SIGNER_ENDPOINT: "0.0.0.0:30002"
+        MY_HTTP_AUTH_TOKEN: "helloworld"
+        STACKS_PRIVATE_KEY: "b463f0df6c05d2f156393eee73f8016c5372caa0e9e29a901bb7171d90dc4f1401"
+        STACKS_NODE_RPC_HOST: "stacks"
+        STACKS_NODE_RPC_PORT: "20443"
+        RUST_BACKTRACE: "1"
+        SIGNER_DB_PATH: "/var/stacks/nakamoto-signer-2.sqlite"
+    ports:
+      - 30002:30002
+    environment:
+      RUST_BACKTRACE: "1"
+  nakamoto-signer-3:
+    image: nakamoto-signer-3:latest
+    container_name: nakamoto-signer-3
+    stop_grace_period: 5s
+    build:
+      context: ./nakamoto-signer/docker
+      args:
+        SIGNER_ENDPOINT: "0.0.0.0:30003"
+        MY_HTTP_AUTH_TOKEN: "helloworld"
+        STACKS_PRIVATE_KEY: "7036b29cb5e235e5fd9b09ae3e8eec4404e44906814d5d01cbca968a60ed4bfb01"
+        STACKS_NODE_RPC_HOST: "stacks"
+        STACKS_NODE_RPC_PORT: "20443"
+        RUST_BACKTRACE: "1"
+        SIGNER_DB_PATH: "/var/stacks/nakamoto-signer-3.sqlite"
+    ports:
+      - 30003:30003
+    environment:
+      RUST_BACKTRACE: "1"
+  
   stacks-api:
     image: stacks-api:latest
     container_name: stacks-api
@@ -165,6 +210,83 @@ services:
       - postgres
     environment:
       NEXT_PUBLIC_MAINNET_API_SERVER: "http://stacks-api:3999"
+  
+  stacker:
+    image: stacker:latest
+    container_name: stacker
+    stop_grace_period: 5s
+    build:
+      context: ./stacker/docker
+      args:
+        GIT_URI: 'https://github.com/hirosystems/stacks-regtest-env.git'
+        GIT_BRANCH: 'feat/signer'
+    depends_on:
+      - stacks
+    environment:
+      STACKS_CORE_RPC_HOST: stacks
+      STACKS_CORE_RPC_PORT: 20443
+      STACKING_CYCLES: *STACKING_CYCLES
+      STACKING_KEYS: 6a1a754ba863d7bab14adbbc3f8ebb090af9e871ace621d3e5ab634e1422885e01,b463f0df6c05d2f156393eee73f8016c5372caa0e9e29a901bb7171d90dc4f1401,7036b29cb5e235e5fd9b09ae3e8eec4404e44906814d5d01cbca968a60ed4bfb01
+      STACKS_25_HEIGHT: *STACKS_25_HEIGHT
+      STACKS_30_HEIGHT: *STACKS_30_HEIGHT
+      POX_PREPARE_LENGTH: *POX_PREPARE_LENGTH
+      POX_REWARD_LENGTH: *POX_REWARD_LENGTH
+      STACKING_INTERVAL: 2 # interval (seconds) for checking if stacking transactions are needed
+      POST_TX_WAIT: 10 # seconds to wait after a stacking transaction broadcast before continuing the loop
+      SERVICE_NAME: stacker
+  
+  monitor:
+    image: monitor:latest
+    container_name: monitor
+    stop_grace_period: 5s
+    build:
+      context: ./stacker/docker
+      args:
+        GIT_URI: 'https://github.com/hirosystems/stacks-regtest-env.git'
+        GIT_BRANCH: 'feat/signer'
+    depends_on:
+      - stacks
+    environment:
+      STACKS_CORE_RPC_HOST: stacks-api
+      STACKS_CORE_RPC_PORT: 3999
+      STACKING_CYCLES: *STACKING_CYCLES
+      STACKING_KEYS: 6a1a754ba863d7bab14adbbc3f8ebb090af9e871ace621d3e5ab634e1422885e01,b463f0df6c05d2f156393eee73f8016c5372caa0e9e29a901bb7171d90dc4f1401,7036b29cb5e235e5fd9b09ae3e8eec4404e44906814d5d01cbca968a60ed4bfb01
+      STACKS_25_HEIGHT: *STACKS_25_HEIGHT
+      STACKS_30_HEIGHT: *STACKS_30_HEIGHT
+      POX_PREPARE_LENGTH: *POX_PREPARE_LENGTH
+      POX_REWARD_LENGTH: *POX_REWARD_LENGTH
+      EXIT_FROM_MONITOR: *EXIT_FROM_MONITOR
+      STACKING_INTERVAL: 2 # interval (seconds) for checking if stacking transactions are needed
+      POST_TX_WAIT: 10 # seconds to wait after a stacking transaction broadcast before continuing the loop
+      SERVICE_NAME: monitor
+
+  tx-broadcaster:
+    image: tx-broadcaster:latest
+    container_name: tx-broadcaster
+    stop_grace_period: 5s
+    build:
+      context: ./stacker/docker
+      args:
+        GIT_URI: 'https://github.com/hirosystems/stacks-regtest-env.git'
+        GIT_BRANCH: 'feat/signer'
+    depends_on:
+      - stacks
+    environment:
+      STACKS_CORE_RPC_HOST: stacks
+      STACKS_CORE_RPC_PORT: 20443
+      NAKAMOTO_BLOCK_INTERVAL: *NAKAMOTO_BLOCK_INTERVAL
+      STACKS_30_HEIGHT: *STACKS_30_HEIGHT
+      ACCOUNT_KEYS: 0d2f965b472a82efd5a96e6513c8b9f7edc725d5c96c7d35d6c722cedeb80d1b01,975b251dd7809469ef0c26ec3917971b75c51cd73a022024df4bf3b232cc2dc001,c71700b07d520a8c9731e4d0f095aa6efb91e16e25fb27ce2b72e7b698f8127a01
+      STACKS_25_HEIGHT: *STACKS_25_HEIGHT
+      POX_PREPARE_LENGTH: *POX_PREPARE_LENGTH
+      POX_REWARD_LENGTH: *POX_REWARD_LENGTH
+      STACKING_INTERVAL: 2 # interval (seconds) for checking if stacking transactions are needed
+      STACKING_KEYS: 6a1a754ba863d7bab14adbbc3f8ebb090af9e871ace621d3e5ab634e1422885e01,b463f0df6c05d2f156393eee73f8016c5372caa0e9e29a901bb7171d90dc4f1401,7036b29cb5e235e5fd9b09ae3e8eec4404e44906814d5d01cbca968a60ed4bfb01
+      POST_TX_WAIT: 10 # seconds to wait after a stacking transaction broadcast before continuing the loop
+      STACKING_CYCLES: *STACKING_CYCLES
+
+  
+  
   electrs:
     image: electrs:latest
     container_name: electrs
