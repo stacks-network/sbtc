@@ -143,7 +143,7 @@ services:
         STACKS_NODE_RPC_HOST: "stacks"
         STACKS_NODE_RPC_PORT: "20443"
         RUST_BACKTRACE: "1"
-        SIGNER_DB_PATH: "/var/stacks/nakamoto-signer-1.sqlite"
+        SIGNER_DB_PATH: "/chainstate/nakamoto-signer-1.sqlite"
         GIT_URI: 'https://github.com/stacks-network/stacks-core.git'
         GIT_COMMIT: *STACKS_NAKAMOTO_GIT_COMMIT
     ports:
@@ -167,7 +167,7 @@ services:
         STACKS_NODE_RPC_HOST: "stacks"
         STACKS_NODE_RPC_PORT: "20443"
         RUST_BACKTRACE: "1"
-        SIGNER_DB_PATH: "/var/stacks/nakamoto-signer-2.sqlite"
+        SIGNER_DB_PATH: "/chainstate/nakamoto-signer-2.sqlite"
         GIT_URI: 'https://github.com/stacks-network/stacks-core.git'
         GIT_COMMIT: *STACKS_NAKAMOTO_GIT_COMMIT
     ports:
@@ -191,7 +191,7 @@ services:
         STACKS_NODE_RPC_HOST: "stacks"
         STACKS_NODE_RPC_PORT: "20443"
         RUST_BACKTRACE: "1"
-        SIGNER_DB_PATH: "/var/stacks/nakamoto-signer-3.sqlite"
+        SIGNER_DB_PATH: "/chainstate/nakamoto-signer-3.sqlite"
         GIT_URI: 'https://github.com/stacks-network/stacks-core.git'
         GIT_COMMIT: *STACKS_NAKAMOTO_GIT_COMMIT
     ports:
