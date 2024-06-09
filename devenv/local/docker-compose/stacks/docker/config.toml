@@ -6,8 +6,8 @@ local_peer_seed = "3fd68a8fcab004754d6fee4756dd9c84ad64ee19a11aa9930893540e13576
 prometheus_bind = "0.0.0.0:9153"
 wait_time_for_microblocks = 0
 mine_microblocks = false
-pox_sync_sample_secs = 0
-wait_time_for_blocks = 0
+pox_sync_sample_secs = 10
+wait_time_for_blocks = 10
 microblock_frequency = 1000
 stacker = true # required if you are running a signer
 miner = true
@@ -108,7 +108,7 @@ start_height = 108
 
 [[burnchain.epochs]]
 epoch_name = "3.0"
-start_height = 1000001
+start_height = 130
 
 [[ustx_balance]]
 address = "ST0DZFQ1XGHC5P1BZ6B7HSWQKQJHM74JBGCSDTNA"

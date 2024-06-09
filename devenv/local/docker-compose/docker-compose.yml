@@ -2,12 +2,14 @@
 x-common-vars:
   - &STACKING_CYCLES ${STACKING_CYCLES:-1}
   - &STACKS_25_HEIGHT ${STACKS_25_HEIGHT:-108}
-  - &STACKS_30_HEIGHT ${STACKS_30_HEIGHT:-1000001}
+  # - &STACKS_30_HEIGHT ${STACKS_30_HEIGHT:-1000001}
+  - &STACKS_30_HEIGHT ${STACKS_30_HEIGHT:-130}
   - &POX_PREPARE_LENGTH ${POX_PREPARE_LENGTH:-5}
   - &POX_REWARD_LENGTH ${POX_REWARD_LENGTH:-20}
   - &EXIT_FROM_MONITOR 1 # set to "1" to automatically shut down via monitor.ts
   - &NAKAMOTO_BLOCK_INTERVAL 2
   - &BTC_ADDR miEJtNKa3ASpA19v5ZhvbKTEieYjLpzCYT
+  - &STACKS_NAKAMOTO_GIT_COMMIT 3d96d53b35409859ca2baa2f0b6ddaa1fbd80265
 
 
 services:
@@ -15,6 +17,10 @@ services:
     image: bitcoin:latest
     container_name: bitcoin
     stop_grace_period: 5s
+    networks:
+      - stacks
+    volumes:
+      - chainstate:/chainstate
     build:
       context: ./bitcoin/docker
       args:
@@ -52,6 +58,10 @@ services:
     image: postgres:15-alpine
     container_name: postgres
     stop_grace_period: 5s
+    networks:
+      - stacks
+    volumes:
+      - chainstate:/chainstate
     ports:
       - 5432:5432
     environment:
@@ -61,6 +71,8 @@ services:
     image: mariadb:10.5.21
     container_name: mariadb
     stop_grace_period: 5s
+    networks:
+      - stacks
     ports:
       - 3306:3306
     environment:
@@ -72,11 +84,13 @@ services:
     image: bitcoin-miner-sidecar:latest
     container_name: bitcoin-miner-sidecar
     stop_grace_period: 5s
+    networks:
+      - stacks
     build:
       context: ./bitcoin-miner-sidecar/docker
       args:
         INIT_BTC_BLOCKS: 101
-        BTC_BLOCK_GEN_TIME: 10
+        BTC_BLOCK_GEN_TIME: 30
         BITCOIN_RPC_HOST: "bitcoin"
         BITCOIN_RPC_PORT: 18443
         BTC_RPCPASSWORD: devnet
@@ -90,11 +104,18 @@ services:
     image: stacks:latest
     container_name: stacks
     stop_grace_period: 5s
+    networks:
+      - stacks
+    volumes:
+      - chainstate:/chainstate
     build:
       context: ./stacks/docker
       args:
         STACKS_LOG_DEBUG: 0
         STACKS_LOG_JSON: 0
+        GIT_URI: 'https://github.com/stacks-network/stacks-core.git'
+        GIT_COMMIT: *STACKS_NAKAMOTO_GIT_COMMIT
+
     ports:
       - 20444:20444
       - 20443:20443
@@ -109,6 +130,10 @@ services:
     image: nakamoto-signer-1:latest
     container_name: nakamoto-signer-1
     stop_grace_period: 5s
+    networks:
+      - stacks
+    volumes:
+      - chainstate:/chainstate
     build:
       context: ./nakamoto-signer/docker
       args:
@@ -119,6 +144,8 @@ services:
         STACKS_NODE_RPC_PORT: "20443"
         RUST_BACKTRACE: "1"
         SIGNER_DB_PATH: "/var/stacks/nakamoto-signer-1.sqlite"
+        GIT_URI: 'https://github.com/stacks-network/stacks-core.git'
+        GIT_COMMIT: *STACKS_NAKAMOTO_GIT_COMMIT
     ports:
       - 30001:30001
     environment:
@@ -127,6 +154,10 @@ services:
     image: nakamoto-signer-2:latest
     container_name: nakamoto-signer-2
     stop_grace_period: 5s
+    networks:
+      - stacks
+    volumes:
+      - chainstate:/chainstate
     build:
       context: ./nakamoto-signer/docker
       args:
@@ -137,6 +168,8 @@ services:
         STACKS_NODE_RPC_PORT: "20443"
         RUST_BACKTRACE: "1"
         SIGNER_DB_PATH: "/var/stacks/nakamoto-signer-2.sqlite"
+        GIT_URI: 'https://github.com/stacks-network/stacks-core.git'
+        GIT_COMMIT: *STACKS_NAKAMOTO_GIT_COMMIT
     ports:
       - 30002:30002
     environment:
@@ -145,6 +178,10 @@ services:
     image: nakamoto-signer-3:latest
     container_name: nakamoto-signer-3
     stop_grace_period: 5s
+    networks:
+      - stacks
+    volumes:
+      - chainstate:/chainstate
     build:
       context: ./nakamoto-signer/docker
       args:
@@ -155,6 +192,8 @@ services:
         STACKS_NODE_RPC_PORT: "20443"
         RUST_BACKTRACE: "1"
         SIGNER_DB_PATH: "/var/stacks/nakamoto-signer-3.sqlite"
+        GIT_URI: 'https://github.com/stacks-network/stacks-core.git'
+        GIT_COMMIT: *STACKS_NAKAMOTO_GIT_COMMIT
     ports:
       - 30003:30003
     environment:
@@ -164,6 +203,8 @@ services:
     image: stacks-api:latest
     container_name: stacks-api
     stop_grace_period: 5s
+    networks:
+      - stacks
     build:
       context: ./stacks-api/docker
       args:
@@ -196,6 +237,8 @@ services:
     image: stacks-explorer
     container_name: stacks-explorer
     stop_grace_period: 5s
+    networks:
+      - stacks
     build:
       context: ./stacks-explorer/docker
       args:
@@ -215,6 +258,8 @@ services:
     image: stacker:latest
     container_name: stacker
     stop_grace_period: 5s
+    networks:
+      - stacks
     build:
       context: ./stacker/docker
       args:
@@ -239,6 +284,8 @@ services:
     image: monitor:latest
     container_name: monitor
     stop_grace_period: 5s
+    networks:
+      - stacks
     build:
       context: ./stacker/docker
       args:
@@ -264,6 +311,8 @@ services:
     image: tx-broadcaster:latest
     container_name: tx-broadcaster
     stop_grace_period: 5s
+    networks:
+      - stacks
     build:
       context: ./stacker/docker
       args:
@@ -291,6 +340,8 @@ services:
     image: electrs:latest
     container_name: electrs
     stop_grace_period: 5s
+    networks:
+      - stacks
     build:
       context: ./electrs/docker
     ports:
@@ -307,6 +358,8 @@ services:
     image: mempool/frontend:latest
     container_name: mempool-web
     stop_grace_period: 5s
+    networks:
+      - stacks
     depends_on:
       - mempool-api
       - mariadb
@@ -323,6 +376,8 @@ services:
     image: mempool/backend:latest
     container_name: mempool-api
     stop_grace_period: 5s
+    networks:
+      - stacks
     depends_on:
       - electrs
       - mariadb
@@ -348,3 +403,9 @@ services:
       DATABASE_PASSWORD: "mempool"
       STATISTICS_ENABLED: "true"
     command: "./wait-for-it.sh mariadb:3306 --timeout=720 --strict -- ./start.sh"
+
+
+networks:
+  stacks:
+volumes:
+  chainstate:

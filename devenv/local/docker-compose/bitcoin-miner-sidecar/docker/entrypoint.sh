@@ -31,7 +31,7 @@ curl -u "$BTC_RPCUSER:$BTC_RPCPASSWORD" --data-binary '{"jsonrpc": "1.0", "id": 
 echo "=> mined initial blocks \n\n"
 
 
-# Mine a single block every 10 seconds
+# Mine a single block every BTC_BLOCK_GEN_TIME seconds
 while true
 do
 	curl -u "$BTC_RPCUSER:$BTC_RPCPASSWORD" --data-binary '{"jsonrpc": "1.0", "id": "curltest", "method": "generatetoaddress", "params": [1, "'$MINER_ADDRESS'"]}' -H 'content-type: text/plain;' "$RPC_ENDPOINT"

@@ -1,2 +1,3 @@
 #!/usr/bin/env bash
-docker compose down
+# docker compose down
+docker compose down --volumes --remove-orphans --timeout=1 --rmi=all
