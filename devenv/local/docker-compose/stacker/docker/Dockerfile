@@ -12,7 +12,10 @@ RUN mkdir /root/stacks-regtest-env
 RUN git clone ${GIT_URI} -b ${GIT_BRANCH} /root/stacks-regtest-env
 RUN pwd
 RUN ls
-# --------------------------------------------------------
+
+
+
+
 FROM node:20-bookworm
 
 RUN apt-get update && apt-get install -y curl gettext-base jq

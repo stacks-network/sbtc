@@ -1,5 +1,3 @@
-# BUILD
-# ---------------------------------------------------------------------
 FROM rust:bookworm as builder
 LABEL org.opencontainers.image.authors="Gowtham Sundar <gowtham@trustmachines.co>"
 
@@ -18,8 +16,6 @@ RUN git init && git remote add origin $GIT_URI && git -c protocol.version=2 fetc
 RUN cargo build --package stacks-signer --bin stacks-signer
 
 
-# RUNNER
-# ---------------------------------------------------------------------
 FROM debian:bookworm
 
 # copy over stacks-signer binary
