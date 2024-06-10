@@ -26,7 +26,7 @@
       {
         "ordinal": 4,
         "name": "created_at",
-        "type_info": "Timestamp"
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
