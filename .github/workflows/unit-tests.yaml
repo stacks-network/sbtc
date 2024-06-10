@@ -42,9 +42,6 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install sqlx-cli
-        run: cargo install sqlx-cli
-
       - name: Install package dependencies.
         run: make install
 
