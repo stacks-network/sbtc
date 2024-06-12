@@ -221,7 +221,7 @@ describe("initiating a withdrawal request", () => {
     );
     const receipt = txErr(
       withdrawal.initiateWithdrawalRequest({
-        amount: withdrawal.constants.dustLimit,
+        amount: withdrawal.constants.DUST_LIMIT,
         recipient: alicePoxAddr,
         maxFee: 10n,
       }),
