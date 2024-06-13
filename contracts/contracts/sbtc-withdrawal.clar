@@ -52,6 +52,8 @@
     (
       (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
       (request  (unwrap! (contract-call? .sbtc-registry get-withdrawal-request request-id) ERR_INVALID_REQUEST))
+      (requested-max-fee (get max-fee request))
+      (requester (get sender request))
     )
       ;; Check that the caller is the current signer principal
       (asserts! (is-eq (get current-signer-principal current-signer-data) tx-sender) ERR_INVALID_CALLER)
@@ -60,7 +62,13 @@
       (asserts! (is-none (get status request)) ERR_ALREADY_PROCESSED)
 
       ;; Check that fee is not higher than requesters max fee
-      (asserts! (< fee (get max-fee request)) ERR_FEE_TOO_HIGH)
+      (asserts! (< fee requested-max-fee) ERR_FEE_TOO_HIGH)
+
+      ;; Burn the locked-sbtc
+      (try! (contract-call? .sbtc-token protocol-burn-locked (get amount request) requester))
+
+      ;; Mint the difference b/w max-fee of the request & fee actually paid back to the user in sBTC
+      (try! (contract-call? .sbtc-token protocol-mint (- requested-max-fee fee) requester))
 
       (ok request)
   )
