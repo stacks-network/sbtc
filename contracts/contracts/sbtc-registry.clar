@@ -156,6 +156,30 @@
   )
 )
 
+;; Complete withdrawal request
+(define-public (complete-withdrawal
+    (request-id uint) 
+    (bitcoin-txid (buff 32)) 
+    (signer-bitmap uint)
+    (output-index uint)
+    (fee uint)
+  )
+  (begin 
+    (try! (validate-caller))
+    ;; Mark the withdrawal as completed
+    (map-insert withdrawal-status request-id true)
+    (print {
+      topic: "completed-withdrawal",
+      request-id: request-id,
+      bitcoin-txid: bitcoin-txid,
+      signer-bitmap: signer-bitmap,
+      output-index: output-index,
+      fee: fee
+    })
+    (ok true)
+  )
+)
+
 ;; Store a new insert request.
 ;; Note that this function can only be called by other sBTC
 ;; contracts (specifically the current version of the deposit contract) 
