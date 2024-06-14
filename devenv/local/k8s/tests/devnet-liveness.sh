@@ -191,8 +191,72 @@ echo "\033[1mSTX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m: $STX_SYNC_WITH_BTC_UTXO_SUCC
 echo "\n"
 
 
+
+
+
+
 echo " ---------------------------------------------------------------"
-echo "| => (9) 🔬 TEST: [CHECK STACKS API EVENT OBSERVER LIVENESS]    |"
+echo "| => (10) 🔬 TEST: [CHECK IF STACKS NODE IS RUNNING NAKAMOTO]    |"
+echo " ---------------------------------------------------------------"
+
+
+# Helper Function to check if a file is binary
+is_binary_file() {
+    local file_path="$1"
+    # Use grep to search for non-printable characters
+    if grep -q '[^[:print:][:space:]]' "$file_path"; then
+        echo "true" # Non-printable characters found
+    else
+        echo "false" # No non-printable characters found
+    fi
+}
+
+
+CHECK_IF_STACKS_TIP_HEIGHT_IS_SUFFICIENT=$(curl -s "http://localhost:20443/v2/info" | jq -r '.stacks_tip_height >= 130')
+echo "CHECK_IF_STACKS_TIP_HEIGHT_IS_SUFFICIENT: $CHECK_IF_STACKS_TIP_HEIGHT_IS_SUFFICIENT"
+IS_NAKAMOTO_RUNNING_SUCCESS_FRMT=$(echo "\033[1;33mWAITING\033[0m🟡")
+
+
+# Ensure that we have a STACKS_TIP_HEIGHT
+if [[ $CHECK_IF_STACKS_TIP_HEIGHT_IS_SUFFICIENT == true ]]; then
+
+    GET_STACKS_NODE_NAKAMOTO_INFO=$(curl -s "http://localhost:20443/v3/tenures/info")
+
+    echo "\nGET STACKS NAKAMOTO INFO:"
+    echo $GET_STACKS_NODE_NAKAMOTO_INFO | jq
+
+    # get parent_tenure_start_block_id
+    PARENT_TENURE_START_BLOCK_ID=$(echo $GET_STACKS_NODE_NAKAMOTO_INFO | jq -r '.parent_tenure_start_block_id')
+
+    # lookup if this block is found
+    echo "\n+++++++++++++++++++++++\n\nLOOKUP NAKAMOTO BLOCK:\n"
+    rm -rf nkblock.binary
+    curl -s "http://localhost:20443/v3/blocks/$PARENT_TENURE_START_BLOCK_ID" -o nkblock.binary
+
+
+    IS_NAKAMOTO_RUNNING_SUCCESS=false
+    IS_NAKAMOTO_RUNNING_SUCCESS_FRMT=$(echo "\033[1;31m$IS_NAKAMOTO_RUNNING_SUCCESS\033[0m❌")
+
+
+    if [[ $(is_binary_file ./nkblock.binary) == "true" ]]; then
+        ## is a binary file
+        xxd nkblock.binary
+        IS_NAKAMOTO_RUNNING_SUCCESS=true
+        IS_NAKAMOTO_RUNNING_SUCCESS_FRMT=$(echo "\033[1;32m$IS_NAKAMOTO_RUNNING_SUCCESS\033[0m ✅")
+    fi
+
+else
+    echo "🟡  ⚠️ The 'stacks_tip_height' has not reached 130 yet. Skipping this test ..."
+fi
+
+
+echo "\033[1mIS_NAKAMOTO_RUNNING_SUCCESS\033[0m: $IS_NAKAMOTO_RUNNING_SUCCESS_FRMT"
+echo "\n"
+
+
+
+echo " ---------------------------------------------------------------"
+echo "| => (11) 🔬 TEST: [CHECK STACKS API EVENT OBSERVER LIVENESS]    |"
 echo " ---------------------------------------------------------------"
 
 
@@ -223,7 +287,7 @@ echo "\n"
 
 
 echo " ---------------------------------------------------------------"
-echo "| => (10) 🔬 TEST: [CHECK STACKS PUBLIC API LIVENESS]            |"
+echo "| => (12) 🔬 TEST: [CHECK STACKS PUBLIC API LIVENESS]            |"
 echo " ---------------------------------------------------------------"
 
 
@@ -253,7 +317,7 @@ echo "\n"
 
 
 echo " -----------------------------------------------------------------"
-echo "| => (11) 🔬 TEST: [CHECK IF STACKS-API IS CONNECTED TO POSTGRES]  |"
+echo "| => (13) 🔬 TEST: [CHECK IF STACKS-API IS CONNECTED TO POSTGRES]  |"
 echo " -----------------------------------------------------------------"
 
 
@@ -276,7 +340,7 @@ echo "\n"
 
 
 echo " -----------------------------------------------"
-echo "| => (12) 🔬 TEST: [CHECK IF MARIADB IS READY]  |"
+echo "| => (14) 🔬 TEST: [CHECK IF MARIADB IS READY]  |"
 echo " -----------------------------------------------"
 
 MARIADB_POD_NAME=$(kubectl get pods --selector=app=mariadb -o json -n sbtc-signer | jq -r '.items[].metadata.name')
@@ -309,6 +373,7 @@ echo "| \033[1mNAKAMOTO_SIGNER_2_READY_SUCCESS\033[0m:              | \t $NAKAMO
 echo "| \033[1mNAKAMOTO_SIGNER_3_READY_SUCCESS\033[0m:              | \t $NAKAMOTO_SIGNER_3_READY_SUCCESS_FRMT |"
 echo "| \033[1mSTX_LIVENESS_SUCCESS\033[0m:                         | \t $STACKS_LIVENESS_SUCCESS_FRMT |"
 echo "| \033[1mSTX_SYNC_WITH_BTC_UTXO_SUCCESS\033[0m:               | \t $STX_SYNC_WITH_BTC_UTXO_SUCCESS_FRMT |"
+echo "| \033[1mIS_NAKAMOTO_RUNNING_SUCCESS\033[0m:                  | \t $IS_NAKAMOTO_RUNNING_SUCCESS_FRMT  |"
 echo "| \033[1mSTACKS_API_EVENT_OBSERVER_LIVENESS_SUCCESS\033[0m:   | \t $STACKS_API_EVENT_OBSERVER_LIVENESS_SUCCESS_FRMT |"
 echo "| \033[1mSTACKS_PUBLIC_API_LIVENESS_SUCCESS\033[0m:           | \t $STACKS_PUBLIC_API_LIVENESS_SUCCESS_FRMT |"
 echo "| \033[1mSTACKS_API_CONNECTED_TO_PG_SUCCESS\033[0m:           | \t $STACKS_API_CONNECTED_TO_PG_SUCCESS_FRMT |"
@@ -323,6 +388,7 @@ if [[ $BTC_LIVENESS_SUCCESS == true \
     && $NAKAMOTO_SIGNER_3_READY_SUCCESS == true \
     && $STX_LIVENESS_SUCCESS == true \
     && $STX_SYNC_WITH_BTC_UTXO_SUCCESS == true \
+    && $IS_NAKAMOTO_RUNNING_SUCCESS == true \
     && $STACKS_API_EVENT_OBSERVER_LIVENESS_SUCCESS == true \
     && $STACKS_PUBLIC_API_LIVENESS_SUCCESS == true \
     && $STACKS_API_CONNECTED_TO_PG_SUCCESS == true \
