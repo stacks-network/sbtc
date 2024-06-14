@@ -35,25 +35,41 @@ spec:
 
         env:
           - name: INIT_BTC_BLOCKS
-            value: "200"
+            value: "101"
           - name: BTC_BLOCK_GEN_TIME
-            value: "10"
+            value: "30"
           - name: BITCOIN_RPC_HOST
-            value: "bitcoin-regtest-service.sbtc-signer"
+            value: "bitcoin-service.sbtc-signer"
           - name: BITCOIN_RPC_PORT
             value: "18443"
+            
           - name: BTC_RPCUSER
-            valueFrom:
-              secretKeyRef:
-                name: bitcoin-secret
-                key: BTC_RPCUSER 
+            value: "devnet"
+          
+          ### (If you want to use a secret)
+          # - name: BTC_RPCUSER
+          #   valueFrom:
+          #     secretKeyRef:
+          #       name: bitcoin-secret
+          #       key: BTC_RPCUSER 
+          
           - name: BTC_RPCPASSWORD
-            valueFrom:
-              secretKeyRef:
-                name: bitcoin-secret
-                key: BTC_RPCPASSWORD
+            value: "devnet"
+          
+          ### (If you want to use a secret)
+          # - name: BTC_RPCPASSWORD
+          #   valueFrom:
+          #     secretKeyRef:
+          #       name: bitcoin-secret
+          #       key: BTC_RPCPASSWORD
+
           - name: MINER_ADDRESS
-            valueFrom:
-              secretKeyRef:
-                name: bitcoin-secret
-                key: MINER_ADDRESS
+            value: miEJtNKa3ASpA19v5ZhvbKTEieYjLpzCYT
+          
+          
+          ### (If you want to use a secret)
+          # - name: MINER_ADDRESS
+          #   valueFrom:
+          #     secretKeyRef:
+          #       name: bitcoin-secret
+          #       key: MINER_ADDRESS

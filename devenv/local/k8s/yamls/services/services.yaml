@@ -2,10 +2,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: bitcoin-regtest-service
+  name: bitcoin-service
   namespace: sbtc-signer
   labels:
-    app: bitcoin-regtest
+    app: bitcoin
   
 spec:
   type: ClusterIP
@@ -35,7 +35,7 @@ spec:
       name: bitcoin-port3-udp
       protocol: UDP
   selector:
-    app: bitcoin-regtest
+    app: bitcoin
 ---
 apiVersion: v1
 kind: Service
@@ -70,24 +70,68 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: nakamoto-signer-service
+  name: nakamoto-signer-1-service
   namespace: sbtc-signer
   labels:
-    app: nakamoto-signer
+    app: nakamoto-signer-1
   
 spec:
   type: ClusterIP
   ports:
-    - port: 30000
+    - port: 30001
       targetPort: 30000
-      name: nakamoto-signer-port3-tcp
+      name: nakamoto-signer-1-port3-tcp
       protocol: TCP
-    - port: 30000
+    - port: 30001
       targetPort: 30000
-      name: nakamoto-signer-port3-udp
+      name: nakamoto-signer-1-port3-udp
       protocol: UDP
   selector:
-    app: nakamoto-signer
+    app: nakamoto-signer-1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nakamoto-signer-2-service
+  namespace: sbtc-signer
+  labels:
+    app: nakamoto-signer-2
+  
+spec:
+  type: ClusterIP
+  ports:
+    - port: 30002
+      targetPort: 30000
+      name: nakamoto-signer-2-port3-tcp
+      protocol: TCP
+    - port: 30002
+      targetPort: 30000
+      name: nakamoto-signer-2-port3-udp
+      protocol: UDP
+  selector:
+    app: nakamoto-signer-2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nakamoto-signer-3-service
+  namespace: sbtc-signer
+  labels:
+    app: nakamoto-signer-3
+  
+spec:
+  type: ClusterIP
+  ports:
+    - port: 30003
+      targetPort: 30000
+      name: nakamoto-signer-3-port3-tcp
+      protocol: TCP
+    - port: 30003
+      targetPort: 30000
+      name: nakamoto-signer-3-port3-udp
+      protocol: UDP
+  selector:
+    app: nakamoto-signer-3
 ---
 apiVersion: v1
 kind: Service

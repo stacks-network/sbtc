@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nakamoto-signer-3-deployment
+  namespace: sbtc-signer
+  labels:
+    app: nakamoto-signer-3
+  
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: nakamoto-signer-3
+  
+  template:
+    metadata:
+      labels:
+        app: nakamoto-signer-3
+    
+    spec:
+      
+      # Define a shared volume
+      volumes:
+        - name: shared-data
+          emptyDir: {}
+        - name: chainstate
+          emptyDir: {}
+
+
+      # Define init containers
+      initContainers:
+        - name: init-file-generator
+          image: debian:bookworm
+          imagePullPolicy: Never
+          command:
+            - /bin/bash
+          args: 
+            - -ec
+            - |
+              #!/bin/bash
+
+              SHARED_VOL_DIR="/mnt/shared"
+
+
+              tee -a $SHARED_VOL_DIR/config.toml << END
+              node_host = "$STACKS_NODE_RPC_HOST:$STACKS_NODE_RPC_PORT"
+              endpoint = "$SIGNER_ENDPOINT"
+
+              # Either “testnet” or “mainnet”
+              network = "testnet"
+
+              db_path = "$SIGNER_DB_PATH"
+
+              auth_password = "$MY_HTTP_AUTH_TOKEN"
+
+              stacks_private_key = "$STACKS_PRIVATE_KEY"
+              END
+          
+          env:
+            - name: SIGNER_ENDPOINT
+              value: "0.0.0.0:30000"
+
+
+            - name: MY_HTTP_AUTH_TOKEN
+              value: "helloworld"
+
+            ### (If you want to use a secret)
+            # - name: MY_HTTP_AUTH_TOKEN
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: stacks-secret
+            #       key: MY_HTTP_AUTH_TOKEN
+            
+            - name: STACKS_PRIVATE_KEY
+              value: "7036b29cb5e235e5fd9b09ae3e8eec4404e44906814d5d01cbca968a60ed4bfb01"
+
+            ### (If you want to use a secret)
+            # - name: STACKS_PRIVATE_KEY
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: nakamoto-signer-1-secret
+            #       key: STACKS_PRIVATE_KEY
+
+
+            - name: STACKS_NODE_RPC_HOST
+              value: "stacks-node-service.sbtc-signer"
+            - name: STACKS_NODE_RPC_PORT
+              value: "20443"
+            - name: SIGNER_DB_PATH
+              value: "/chainstate/nakamoto-signer-3.sqlite"
+
+
+          volumeMounts:
+            - name: shared-data
+              mountPath: /mnt/shared
+
+
+      containers:
+      - name: nakamoto-signer-container
+        image: minikube/nakamoto-signer:v1
+        imagePullPolicy: Never
+
+        volumeMounts:
+        - name: shared-data
+          mountPath: /mnt/shared
+        - name: chainstate
+          mountPath: /chainstate
+        
+        resources:
+          requests:
+            memory: 128Mi
+            cpu: 50m
+          limits:
+            memory: 256Mi
+            cpu: 100m
+        
+        ports:
+          - containerPort: 30000
+            protocol: TCP
+          - containerPort: 30000
+            protocol: UDP
+
+        env:
+          - name: RUST_BACKTRACE
+            value: "1"

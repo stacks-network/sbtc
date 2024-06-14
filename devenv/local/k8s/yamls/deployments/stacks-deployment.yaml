@@ -24,11 +24,13 @@ spec:
       volumes:
         - name: shared-data
           emptyDir: {}
+        - name: chainstate
+          emptyDir: {}
 
       # Define init containers
       initContainers:
         - name: init-file-generator
-          image: blockstack/stacks-core:2.5.0.0.3
+          image: rust:bookworm
           imagePullPolicy: IfNotPresent
           command:
             - /bin/bash
@@ -74,10 +76,22 @@ spec:
               private_neighbors = false
 
               [[events_observer]]
-              endpoint = "$SIGNER_ENDPOINT" # change to your signer endpoint
+              endpoint = "$SIGNER_1_ENDPOINT"
               retry_count = 255
               include_data_events = false
-              events_keys = ["stackerdb", "block_proposal"]
+              events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
+              
+              [[events_observer]]
+              endpoint = "$SIGNER_2_ENDPOINT"
+              retry_count = 255
+              include_data_events = false
+              events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
+              
+              [[events_observer]]
+              endpoint = "$SIGNER_3_ENDPOINT"
+              retry_count = 255
+              include_data_events = false
+              events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
 
               # Add stacks-api as an event observer
               [[events_observer]]
@@ -137,7 +151,7 @@ spec:
 
               [[burnchain.epochs]]
               epoch_name = "3.0"
-              start_height = 1000001
+              start_height = 130
 
               [[ustx_balance]]
               address = "ST0DZFQ1XGHC5P1BZ6B7HSWQKQJHM74JBGCSDTNA"
@@ -266,47 +280,147 @@ spec:
               [[ustx_balance]]
               address = "ST0D135PF2R0S4B6S4G49QZC69KF19MSZ4Z5RDF5"
               amount = 24378281250000
-              END
+
+              [[ustx_balance]]
+              address = "STB44HYPYAT2BB2QE513NSP81HTMYWBJP02HPGK6"
+              amount = 10000000000000000
+              # secretKey = "cb3df38053d132895220b9ce471f6b676db5b9bf0b4adefb55f2118ece2478df01"
+
+              [[ustx_balance]]
+              address = "ST11NJTTKGVT6D1HY4NJRVQWMQM7TVAR091EJ8P2Y"
+              amount = 10000000000000000
+              # secretKey = "21d43d2ae0da1d9d04cfcaac7d397a33733881081f0b2cd038062cf0ccbb752601"
+
+              [[ustx_balance]]
+              address = "ST1HB1T8WRNBYB0Y3T7WXZS38NKKPTBR3EG9EPJKR"
+              amount = 10000000000000000
+              # Account keys 3
+              # secretKey = "c71700b07d520a8c9731e4d0f095aa6efb91e16e25fb27ce2b72e7b698f8127a01"
+
+              [[ustx_balance]]
+              address = "ST2PGGD0ZXAWEMY4EZ025RD1X47EEVH287SQKA8BC"
+              amount = 10000000000000000
+              # Account keys 2
+              # secretKey = "975b251dd7809469ef0c26ec3917971b75c51cd73a022024df4bf3b232cc2dc001"
+
+              [[ustx_balance]]
+              address = "ST29V10QEA7BRZBTWRFC4M70NJ4J6RJB5P1C6EE84"
+              amount = 10000000000000000
+              # Account keys 1
+              # secretKey = "0d2f965b472a82efd5a96e6513c8b9f7edc725d5c96c7d35d6c722cedeb80d1b01"
+
+              # Stacker/signer
+              [[ustx_balance]]
+              address = "ST3AM1A56AK2C1XAFJ4115ZSV26EB49BVQ10MGCS0"
+              amount = 10000000000000000
+              # secret_key: 7036b29cb5e235e5fd9b09ae3e8eec4404e44906814d5d01cbca968a60ed4bfb01
+              # mnemonic = "area desk dutch sign gold cricket dawn toward giggle vibrant indoor bench warfare wagon number tiny universe sand talk dilemma pottery bone trap buddy"
+              # stx_address: ST3AM1A56AK2C1XAFJ4115ZSV26EB49BVQ10MGCS0
+              # btc_address: mzxXgV6e4BZSsz8zVHm3TmqbECt7mbuErt
+
+              # Stacker/signer
+              [[ustx_balance]]
+              address = "ST3PF13W7Z0RRM42A8VZRVFQ75SV1K26RXEP8YGKJ"
+              amount = 10000000000000000
+              # secret_key: b463f0df6c05d2f156393eee73f8016c5372caa0e9e29a901bb7171d90dc4f1401
+              # mnemonic = "prevent gallery kind limb income control noise together echo rival record wedding sense uncover school version force bleak nuclear include danger skirt enact arrow"
+              # stx_address: ST3PF13W7Z0RRM42A8VZRVFQ75SV1K26RXEP8YGKJ
+              # btc_address: n37mwmru2oaVosgfuvzBwgV2ysCQRrLko7
+
+              # Stacker/signer
+              [[ustx_balance]]
+              address = "ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP"
+              amount = 10000000000000000
+              # secret_key: 6a1a754ba863d7bab14adbbc3f8ebb090af9e871ace621d3e5ab634e1422885e01
+              # mnemonic = "female adjust gallery certain visit token during great side clown fitness like hurt clip knife warm bench start reunion globe detail dream depend fortune"
+              # stx_address: ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP
+              # btc_address: n2v875jbJ4RjBnTjgbfikDfnwsDV5iUByw
+
+              [[ustx_balance]]
+              address = "ST5B3TD6YF085JWKSSW9HDWCDZTR842RFNP19HQC"
+              amount = 10000000000000000
+              # used in "flood.ts"
+              # secretKey = 66b7a77a3e0abc2cddaa51ed38fc4553498e19d3620ef08eb141afcfd0e3f5b501
+
+              [[ustx_balance]]
+              address = "STEH2J3C05BAHYS0RBAQBANJ1AXR6SR43VMZ0D49"
+              amount = 10000000000000000
+              # secretKey = 5b8303150239eceaba43892af7cdd1fa7fc26eda5182ebaaa568e3341d54a4d001
 
           
           env:
             - name: LOCAL_PEER_SEED
-              valueFrom:
-                secretKeyRef:
-                  name: stacks-secret
-                  key: LOCAL_PEER_SEED
+              value: "3fd68a8fcab004754d6fee4756dd9c84ad64ee19a11aa9930893540e1357696f2f73957cd6e92797d7a66d1d3ae4a4ea752a8924fe028f1fc2c06b9d6d0ee0ad"
+            
+            ### (If you want to use a secret)
+            # - name: LOCAL_PEER_SEED
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: stacks-secret
+            #       key: LOCAL_PEER_SEED
+
+
             - name: STACKS_WORKING_DIR
               value: "/var/stacks"
+            
+            
             - name: MY_HTTP_AUTH_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: stacks-secret
-                  key: MY_HTTP_AUTH_TOKEN
-            - name: SIGNER_ENDPOINT
-              value: "nakamoto-signer-service.sbtc-signer:30000"
+              value: "helloworld"
+            
+            ### (If you want to use a secret)
+            # - name: MY_HTTP_AUTH_TOKEN
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: stacks-secret
+            #       key: MY_HTTP_AUTH_TOKEN
+
+            - name: SIGNER_1_ENDPOINT
+              value: "nakamoto-signer-1-service.sbtc-signer:30001"
+            - name: SIGNER_2_ENDPOINT
+              value: "nakamoto-signer-2-service.sbtc-signer:30002"
+            - name: SIGNER_3_ENDPOINT
+              value: "nakamoto-signer-3-service.sbtc-signer:30003"
             - name: STACKS_API_ENDPOINT
               value: "stacks-api-service.sbtc-signer:3700"
+            
+            
             - name: MINER_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: stacks-secret
-                  key: MINER_KEY
+              value: "9e446f6b0c6a96cf2190e54bcd5a8569c3e386f091605499464389b8d4e0bfc201"
+            
+            ### (If you want to use a secret)
+            # - name: MINER_KEY
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: stacks-secret
+            #       key: MINER_KEY
+
             - name: BTC_NODE_RPC_HOST
-              value: "bitcoin-regtest-service.sbtc-signer"
+              value: "bitcoin-service.sbtc-signer"
             - name: BTC_NODE_RPC_PORT
               value: "18443"
             - name: BTC_NODE_P2P_PORT
               value: "18444"
+            
+
             - name: BTC_NODE_RPC_USER
-              valueFrom:
-                secretKeyRef:
-                  name: bitcoin-secret
-                  key: BTC_RPCUSER
+              value: "devnet"
+
+            ### (If you want to use a secret)
+            # - name: BTC_NODE_RPC_USER
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: bitcoin-secret
+            #       key: BTC_RPCUSER
+
             - name: BTC_NODE_RPC_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: bitcoin-secret
-                  key: BTC_RPCPASSWORD
+              value: "devnet"
+
+            ### (If you want to use a secret)
+            # - name: BTC_NODE_RPC_PASSWORD
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: bitcoin-secret
+            #       key: BTC_RPCPASSWORD
 
 
           volumeMounts:
@@ -321,6 +435,8 @@ spec:
         volumeMounts:
           - name: shared-data
             mountPath: /mnt/shared
+          - name: chainstate
+            mountPath: /chainstate
         
         resources:
           requests:

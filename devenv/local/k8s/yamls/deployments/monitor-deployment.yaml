@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitor-deployment
+  namespace: sbtc-signer
+  labels:
+    app: monitor
+  
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: monitor
+  
+  template:
+    metadata:
+      labels:
+        app: monitor
+    
+    spec:
+      containers:
+      - name: monitor-container
+        image: minikube/stacker:v1
+        imagePullPolicy: Never
+        
+        resources:
+          requests:
+            memory: 128Mi
+            cpu: 50m
+          limits:
+            memory: 256Mi
+            cpu: 100m
+
+        env:
+          - name: STACKS_CORE_RPC_HOST
+            value: "stacks-api-service.sbtc-signer"
+          - name: STACKS_CORE_RPC_PORT
+            value: "3999"
+          - name: STACKING_CYCLES
+            value: "1"
+          
+          - name: STACKING_KEYS
+            value: "6a1a754ba863d7bab14adbbc3f8ebb090af9e871ace621d3e5ab634e1422885e01,b463f0df6c05d2f156393eee73f8016c5372caa0e9e29a901bb7171d90dc4f1401,7036b29cb5e235e5fd9b09ae3e8eec4404e44906814d5d01cbca968a60ed4bfb01"
+          
+          ### (If you want to use a secret)
+          # - name: STACKING_KEYS
+          #   valueFrom:
+          #     secretKeyRef:
+          #     name: stacker-secret
+          #     key: STACKING_KEYS 
+
+          
+          - name: STACKS_25_HEIGHT
+            value: "108"
+          - name: STACKS_30_HEIGHT
+            value: "130"
+          - name: POX_PREPARE_LENGTH
+            value: "5"
+          - name: POX_REWARD_LENGTH
+            value: "20"
+          - name: EXIT_FROM_MONITOR
+            value: "1"
+          - name: STACKING_INTERVAL
+            value: "2"
+          - name: POST_TX_WAIT
+            value: "10"
+          - name: SERVICE_NAME
+            value: "monitor"

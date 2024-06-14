@@ -47,16 +47,26 @@ spec:
           - name: RUST_BACKTRACE
             value: '1'
           - name: BITCOIN_RPC_HOST
-            value: "bitcoin-regtest-service.sbtc-signer"
+            value: "bitcoin-service.sbtc-signer"
           - name: BITCOIN_RPC_PORT
             value: "18443"
-          - name: BTC_RPC_USER
-            valueFrom:
-              secretKeyRef:
-                name: bitcoin-secret
-                key: BTC_RPCUSER 
-          - name: BTC_RPC_PASSWORD
-            valueFrom:
-              secretKeyRef:
-                name: bitcoin-secret
-                key: BTC_RPCPASSWORD
+          
+          - name: BTC_RPCUSER
+            value: "devnet"
+          
+          ### (If you want to use a secret)
+          # - name: BTC_RPCUSER
+          #   valueFrom:
+          #     secretKeyRef:
+          #       name: bitcoin-secret
+          #       key: BTC_RPCUSER 
+          
+          - name: BTC_RPCPASSWORD
+            value: "devnet"
+          
+          ### (If you want to use a secret)
+          # - name: BTC_RPCPASSWORD
+          #   valueFrom:
+          #     secretKeyRef:
+          #       name: bitcoin-secret
+          #       key: BTC_RPCPASSWORD
