@@ -1,4 +1,6 @@
 //! Top-level error type for the signer
+use std::borrow::Cow;
+
 use blockstack_lib::types::chainstate::StacksBlockId;
 
 /// Top-level signer error
@@ -24,9 +26,13 @@ pub enum Error {
     #[error("Could not decode the Nakamoto block with ID: {1}; {0}")]
     DecodeNakamotoBlock(#[source] blockstack_lib::codec::Error, StacksBlockId),
 
+    /// Thrown when parsing a Nakamoto block within a given tenure.
+    #[error("Could not decode Nakamoto block from tenure with block: {1}; {0}")]
+    DecodeNakamotoTenure(#[source] blockstack_lib::codec::Error, StacksBlockId),
+
     /// Could not parse the path part of a url
-    #[error("{0}")]
-    PathParse(#[source] url::ParseError),
+    #[error("Failed to construct a valid URL from {1} and {2}: {0}")]
+    PathJoin(#[source] url::ParseError, url::Url, Cow<'static, str>),
 
     /// Reqwest error
     #[error("{0}")]
@@ -41,16 +47,16 @@ pub enum Error {
     StacksApiConfig(#[source] config::ConfigError),
 
     /// Could not make a successful request to the stacks API.
-    #[error("Failed to make a request to the stacks API at {1}: {0}")]
-    StacksApiRequest(#[source] reqwest::Error, url::Url),
+    #[error("Failed to make a request to the stacks API: {0}")]
+    StacksApiRequest(#[source] reqwest::Error),
 
     /// Could not make a successful request to the stacks node.
-    #[error("Failed to make a request to the stacks Node at {1}: {0}")]
-    StacksNodeRequest(#[source] reqwest::Error, url::Url),
+    #[error("Failed to make a request to the stacks Node: {0}")]
+    StacksNodeRequest(#[source] reqwest::Error),
 
     /// Reqwest error
-    #[error("Response did not conform the expected schema {0}")]
-    UnexpectedStacksResponse(#[source] reqwest::Error, url::Url),
+    #[error("Response from stacks node did not conform to the expected schema: {0}")]
+    UnexpectedStacksResponse(#[source] reqwest::Error),
 
     /// Taproot error
     #[error("An error occured when constructing the taproot signing digest: {0}")]

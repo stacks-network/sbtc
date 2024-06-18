@@ -147,10 +147,7 @@ where
         known_deposit_requests: &DepositRequestMap,
         block: bitcoin::Block,
     ) -> Result<(), Error> {
-        let stacks_blocks = self
-            .stacks_client
-            .get_blocks_by_bitcoin_block(&block.block_hash())
-            .await?;
+        let stacks_blocks = self.stacks_client.get_last_tenure_blocks().await?;
 
         self.extract_deposit_requests(&block.txdata);
         self.extract_sbtc_transactions(&block.txdata);
@@ -397,15 +394,15 @@ mod tests {
     }
 
     impl StacksInteract for TestHarness {
-        async fn get_blocks_by_bitcoin_block(
+        async fn get_last_tenure_blocks(
             &self,
-            bitcoin_block_hash: &bitcoin::BlockHash,
         ) -> Result<Vec<nakamoto::NakamotoBlock>, crate::error::Error> {
             Ok(self
                 .stacks_blocks_per_bitcoin_block
-                .get(bitcoin_block_hash)
+                .values()
+                .flatten()
                 .cloned()
-                .unwrap_or_else(Vec::new))
+                .collect())
         }
     }
 

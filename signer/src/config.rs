@@ -95,21 +95,8 @@ where
 /// located in src/config/default.toml)
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct StacksSettings {
-    /// The configuration entries related to the Stacks API
-    pub api: StacksApiSettings,
     /// The configuration entries related to the Stacks node
     pub node: StacksNodeSettings,
-}
-
-/// Whatever
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct StacksApiSettings {
-    /// TODO(225): We'll want to support specifying multiple Stacks API
-    /// endpoints.
-    ///
-    /// The endpoint to use when making requests to the stacks API.
-    #[serde(deserialize_with = "url_deserializer")]
-    pub endpoint: url::Url,
 }
 
 /// Settings associated with the stacks node that this signer uses for information
@@ -160,32 +147,32 @@ mod tests {
 
     #[test]
     fn default_config_toml_loads_with_environment() {
-        // The default toml used here specifies http://localhost:3999
-        // as the stacks API endpoint.
+        // The default toml used here specifies http://localhost:20443
+        // as the stacks node endpoint.
         let settings = StacksSettings::new_from_config().unwrap();
-        let host = settings.api.endpoint.host();
+        let host = settings.node.endpoint.host();
         assert_eq!(host, Some(url::Host::Domain("localhost")));
-        assert_eq!(settings.api.endpoint.port(), Some(3999));
+        assert_eq!(settings.node.endpoint.port(), Some(20443));
 
-        std::env::set_var("SIGNER_STACKS_API_ENDPOINT", "http://whatever:1234");
+        std::env::set_var("SIGNER_STACKS_NODE_ENDPOINT", "http://whatever:1234");
 
         let settings = StacksSettings::new_from_config().unwrap();
-        let host = settings.api.endpoint.host();
+        let host = settings.node.endpoint.host();
         assert_eq!(host, Some(url::Host::Domain("whatever")));
-        assert_eq!(settings.api.endpoint.port(), Some(1234));
+        assert_eq!(settings.node.endpoint.port(), Some(1234));
 
-        std::env::set_var("SIGNER_STACKS_API_ENDPOINT", "http://127.0.0.1:5678");
+        std::env::set_var("SIGNER_STACKS_NODE_ENDPOINT", "http://127.0.0.1:5678");
 
         let settings = StacksSettings::new_from_config().unwrap();
         let ip: std::net::Ipv4Addr = "127.0.0.1".parse().unwrap();
-        assert_eq!(settings.api.endpoint.host(), Some(url::Host::Ipv4(ip)));
-        assert_eq!(settings.api.endpoint.port(), Some(5678));
+        assert_eq!(settings.node.endpoint.host(), Some(url::Host::Ipv4(ip)));
+        assert_eq!(settings.node.endpoint.port(), Some(5678));
 
-        std::env::set_var("SIGNER_STACKS_API_ENDPOINT", "http://[::1]:9101");
+        std::env::set_var("SIGNER_STACKS_NODE_ENDPOINT", "http://[::1]:9101");
 
         let settings = StacksSettings::new_from_config().unwrap();
         let ip: std::net::Ipv6Addr = "::1".parse().unwrap();
-        assert_eq!(settings.api.endpoint.host(), Some(url::Host::Ipv6(ip)));
-        assert_eq!(settings.api.endpoint.port(), Some(9101));
+        assert_eq!(settings.node.endpoint.host(), Some(url::Host::Ipv6(ip)));
+        assert_eq!(settings.node.endpoint.port(), Some(9101));
     }
 }
