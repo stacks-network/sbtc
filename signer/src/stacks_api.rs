@@ -43,6 +43,7 @@ impl StacksClient {
 
     /// Fetch the raw stacks nakamoto block from a Stacks node given the
     /// Stacks block ID.
+    #[tracing::instrument(skip(self))]
     async fn get_block(&self, block_id: StacksBlockId) -> Result<NakamotoBlock, Error> {
         let path = format!("/v3/blocks/{}", block_id.to_hex());
         let base = self.node_endpoint.clone();
@@ -50,7 +51,7 @@ impl StacksClient {
             .join(&path)
             .map_err(|err| Error::PathJoin(err, base, Cow::Owned(path)))?;
 
-        tracing::debug!(%block_id, "Making request to the stacks node for the raw nakamoto block");
+        tracing::debug!("Making request to the stacks node for the raw nakamoto block");
 
         let response = self
             .client
@@ -72,10 +73,11 @@ impl StacksClient {
     /// given block ID from a Stacks node.
     ///
     /// The response includes the Nakamoto block for the given block id.
+    #[tracing::instrument(skip(self))]
     async fn get_blocks(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
         let mut blocks = Vec::new();
 
-        tracing::debug!(%block_id, "Making initial request for Nakamoto blocks within the tenure");
+        tracing::debug!("Making initial request for Nakamoto blocks within the tenure");
         blocks.extend(self.get_tenure(block_id).await?);
 
         let mut prev_last_block_id = block_id;
@@ -115,6 +117,7 @@ impl StacksClient {
     /// * The GET /v3/tenures/<block-id> response is capped at ~16 MB, so a
     ///   single request may not return all Nakamoto blocks.
     /// * The response includes the Nakamoto block for the given block id.
+    #[tracing::instrument(skip(self))]
     async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
         let base = self.node_endpoint.clone();
         let path = format!("/v3/tenures/{}", block_id.to_hex());
@@ -122,7 +125,7 @@ impl StacksClient {
             .join(&path)
             .map_err(|err| Error::PathJoin(err, base, Cow::Owned(path)))?;
 
-        tracing::debug!(%block_id, "Making request to the stacks node for the raw nakamoto block");
+        tracing::debug!("Making request to the stacks node for the raw nakamoto block");
 
         let response = self
             .client
@@ -158,6 +161,7 @@ impl StacksClient {
     ///
     /// Uses the GET /v3/tenures/info stacks node endpoint for retrieving
     /// tenure information.
+    #[tracing::instrument(skip(self))]
     pub async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
         let base = self.node_endpoint.clone();
         let path = "/v3/tenures/info";
