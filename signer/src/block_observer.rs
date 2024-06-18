@@ -208,9 +208,6 @@ where
     }
 
     async fn write_bitcoin_block(&mut self, block: &bitcoin::Block) -> Result<(), Error> {
-        let now = time::OffsetDateTime::now_utc();
-        let created_at = time::PrimitiveDateTime::new(now.date(), now.time());
-
         let db_block = model::BitcoinBlock {
             block_hash: block.block_hash().to_byte_array().to_vec(),
             block_height: block
@@ -218,7 +215,7 @@ where
                 .expect("Failed to get block height") as i64,
             parent_hash: block.header.prev_blockhash.to_byte_array().to_vec(),
             confirms: None,
-            created_at,
+            created_at: time::OffsetDateTime::now_utc(),
         };
 
         self.storage

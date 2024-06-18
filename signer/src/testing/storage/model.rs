@@ -1,6 +1,7 @@
 //! Test data generation utilities
 
 use fake::Fake;
+use time::OffsetDateTime;
 
 use crate::storage::model;
 
@@ -62,6 +63,10 @@ fn idealistic_bitcoin_chain(
 ) -> impl FnMut(&mut Vec<model::BitcoinBlockHash>, usize) -> Option<model::BitcoinBlock> + '_ {
     |block_hashes, _| {
         let mut block: model::BitcoinBlock = fake::Faker.fake_with_rng(rng);
+        let block_hash: [u8; 32] = fake::Faker.fake_with_rng(rng);
+        block.block_hash = block_hash.to_vec();
+        block.created_at = block.created_at.max(OffsetDateTime::UNIX_EPOCH);
+        block.created_at = block.created_at.replace_nanosecond(0).unwrap();
         block.parent_hash = block_hashes.last().unwrap_or(&block.parent_hash).clone();
         block_hashes.push(block.block_hash.clone());
         Some(block)
@@ -73,6 +78,10 @@ fn realistic_bitcoin_chain(
 ) -> impl FnMut(&mut Vec<model::BitcoinBlockHash>, usize) -> Option<model::BitcoinBlock> + '_ {
     |block_hashes, _| {
         let mut block: model::BitcoinBlock = fake::Faker.fake_with_rng(rng);
+        let block_hash: [u8; 32] = fake::Faker.fake_with_rng(rng);
+        block.block_hash = block_hash.to_vec();
+        block.created_at = block.created_at.max(OffsetDateTime::UNIX_EPOCH);
+        block.created_at = block.created_at.replace_nanosecond(0).unwrap();
         block.parent_hash = block_hashes
             .choose(rng)
             .unwrap_or(&block.parent_hash)
@@ -87,6 +96,10 @@ fn chaotic_bitcoin_chain(
 ) -> impl FnMut(&mut Vec<model::BitcoinBlockHash>, usize) -> Option<model::BitcoinBlock> + '_ {
     |block_hashes, _| {
         let mut block: model::BitcoinBlock = fake::Faker.fake_with_rng(rng);
+        let block_hash: [u8; 32] = fake::Faker.fake_with_rng(rng);
+        block.block_hash = block_hash.to_vec();
+        block.created_at = block.created_at.max(OffsetDateTime::UNIX_EPOCH);
+        block.created_at = block.created_at.replace_nanosecond(0).unwrap();
         block_hashes.push(block.parent_hash.clone());
         block.parent_hash = block_hashes.choose(rng).unwrap().clone();
         block_hashes.push(block.block_hash.clone());

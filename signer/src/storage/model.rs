@@ -13,7 +13,7 @@ pub struct BitcoinBlock {
     /// Stacks block confirmed by this block.
     pub confirms: Option<StacksBlockHash>,
     /// The time this block entry was created by the signer.
-    pub created_at: time::PrimitiveDateTime,
+    pub created_at: time::OffsetDateTime,
 }
 
 /// Stacks block.
@@ -27,7 +27,7 @@ pub struct StacksBlock {
     /// Hash of the parent block.
     pub parent_hash: StacksBlockHash,
     /// The time this block entry was created by the signer.
-    pub created_at: time::PrimitiveDateTime,
+    pub created_at: time::OffsetDateTime,
 }
 
 /// Deposit request.
@@ -51,7 +51,7 @@ pub struct DepositRequest {
     /// be used to pay for transaction fees.
     pub max_fee: i64,
     /// The time this block entry was created by the signer.
-    pub created_at: time::PrimitiveDateTime,
+    pub created_at: time::OffsetDateTime,
 }
 
 /// A signer acknowledging a deposit request.
@@ -67,7 +67,7 @@ pub struct DepositSigner {
     /// Signals if the signer is prepared to sign for this request.
     pub is_accepted: bool,
     /// The time this block entry was created by the signer.
-    pub created_at: time::PrimitiveDateTime,
+    pub created_at: time::OffsetDateTime,
 }
 
 /// Withdraw request.
@@ -86,7 +86,7 @@ pub struct WithdrawRequest {
     /// be used to pay for transaction fees.
     pub max_fee: i64,
     /// The time this block entry was created by the signer.
-    pub created_at: time::PrimitiveDateTime,
+    pub created_at: time::OffsetDateTime,
 }
 
 /// A signer acknowledging a withdrawal request.
@@ -102,7 +102,7 @@ pub struct WithdrawSigner {
     /// Signals if the signer is prepared to sign for this request.
     pub is_accepted: bool,
     /// The time this block entry was created by the signer.
-    pub created_at: time::PrimitiveDateTime,
+    pub created_at: time::OffsetDateTime,
 }
 
 /// A transaction on either Bitcoin or Stacks

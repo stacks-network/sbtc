@@ -13,6 +13,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Docker test service setup
+        run: docker compose --file docker-compose.test.yml up --detach
+
       - uses: pnpm/action-setup@v2
         with:
           version: 9.0.6
@@ -42,14 +45,18 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install sqlx-cli
-        run: cargo install sqlx-cli
-
       - name: Install package dependencies.
         run: make install
 
       - name: Run tests
+        run: make test
+
+      - name: Run integration tests
         run: make integration-test
 
       - name: Run lints
         run: make lint
+
+      - name: Docker compose down
+        if: always()
+        run: docker compose --file docker-compose.test.yml down

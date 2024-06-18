@@ -9,7 +9,7 @@
         "Int8",
         "Bytea",
         "Bytea",
-        "Timestamp"
+        "Timestamptz"
       ]
     },
     "nullable": []
