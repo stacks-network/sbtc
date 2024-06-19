@@ -4,7 +4,7 @@
 (define-fungible-token sbtc-token)
 (define-fungible-token sbtc-token-locked)
 
-(define-data-var token-name (string-ascii 32) "sBTC Mini")
+(define-data-var token-name (string-ascii 32) "sBTC")
 (define-data-var token-symbol (string-ascii 10) "sBTC")
 (define-data-var token-uri (optional (string-utf8 256)) none)
 (define-constant token-decimals u8)
