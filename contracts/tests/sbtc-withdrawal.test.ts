@@ -165,7 +165,7 @@ describe("initiating a withdrawal request", () => {
     expect(rovOk(token.getBalanceAvailable(alice))).toEqual(0n);
   });
 
-  test("recipient is validated when initiating an address", () => {
+  test("Recipient is validated when initiating an address", () => {
     txOk(
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
@@ -231,8 +231,201 @@ describe("initiating a withdrawal request", () => {
   });
 });
 
-describe("accepting a withdrawal request", () => {
-  test("Alice request is accepted", () => {
-
-  })
+describe("Accepting a withdrawal request", () => {
+  test("Fails with non-existant request-id", () => {
+    // Alice initiates withdrawalrequest
+    txOk(
+      deposit.completeDepositWrapper({
+        txid: new Uint8Array(32).fill(0),
+        voutIndex: 0,
+        amount: 1000n,
+        recipient: alice,
+      }),
+      alice
+    );
+    txOk(
+      withdrawal.initiateWithdrawalRequest({
+        amount: 1000n,
+        recipient: alicePoxAddr,
+        maxFee: 10n,
+      }),
+      alice
+    );
+    const receipt = txErr(
+      withdrawal.acceptWithdrawalRequest({
+        requestId: 2n,
+        bitcoinTxid: new Uint8Array(32).fill(0),
+        signerBitmap: 0n,
+        outputIndex: 10n,
+        fee: 1n,
+      }),
+      deployer
+    );
+    expect(receipt.value).toEqual(errors.withdrawal.ERR_INVALID_REQUEST);
+  });
+  test("Fails when called by non-signer", () => {
+    // Alice initiates withdrawalrequest
+    txOk(
+      deposit.completeDepositWrapper({
+        txid: new Uint8Array(32).fill(0),
+        voutIndex: 0,
+        amount: 1000n,
+        recipient: alice,
+      }),
+      alice
+    );
+    txOk(
+      withdrawal.initiateWithdrawalRequest({
+        amount: 1000n,
+        recipient: alicePoxAddr,
+        maxFee: 10n,
+      }),
+      alice
+    );
+    const receipt = txErr(
+      withdrawal.acceptWithdrawalRequest({
+        requestId: 1n,
+        bitcoinTxid: new Uint8Array(32).fill(0),
+        signerBitmap: 0n,
+        outputIndex: 10n,
+        fee: 1n,
+      }),
+      alice
+    );
+    expect(receipt.value).toEqual(errors.withdrawal.ERR_INVALID_CALLER);
+  });
+  test("Fails when replay is attempted", () => {
+    // Alice initiates withdrawalrequest
+    txOk(
+      deposit.completeDepositWrapper({
+        txid: new Uint8Array(32).fill(0),
+        voutIndex: 0,
+        amount: 1000n,
+        recipient: alice,
+      }),
+      alice
+    );
+    txOk(
+      withdrawal.initiateWithdrawalRequest({
+        amount: 1000n,
+        recipient: alicePoxAddr,
+        maxFee: 10n,
+      }),
+      alice
+    );
+    txOk(
+      withdrawal.acceptWithdrawalRequest({
+        requestId: 1n,
+        bitcoinTxid: new Uint8Array(32).fill(0),
+        signerBitmap: 0n,
+        outputIndex: 10n,
+        fee: 1n,
+      }),
+      deployer
+    );
+    const receipt = txErr(
+      withdrawal.acceptWithdrawalRequest({
+        requestId: 1n,
+        bitcoinTxid: new Uint8Array(32).fill(0),
+        signerBitmap: 0n,
+        outputIndex: 10n,
+        fee: 1n,
+      }),
+      deployer
+    );
+    expect(receipt.value).toEqual(errors.withdrawal.ERR_ALREADY_PROCESSED);
+  });
+  test("Fails when fee is too high", () => {
+    // Alice initiates withdrawalrequest
+    txOk(
+      deposit.completeDepositWrapper({
+        txid: new Uint8Array(32).fill(0),
+        voutIndex: 0,
+        amount: 1000n,
+        recipient: alice,
+      }),
+      alice
+    );
+    txOk(
+      withdrawal.initiateWithdrawalRequest({
+        amount: 1000n,
+        recipient: alicePoxAddr,
+        maxFee: 10n,
+      }),
+      alice
+    );
+    const receipt = txErr(
+      withdrawal.acceptWithdrawalRequest({
+        requestId: 1n,
+        bitcoinTxid: new Uint8Array(32).fill(0),
+        signerBitmap: 0n,
+        outputIndex: 10n,
+        fee: 11n,
+      }),
+      deployer
+    );
+    expect(receipt.value).toEqual(errors.withdrawal.ERR_FEE_TOO_HIGH);
+  });
+  test("Request is successfully accepted with max fee", () => {
+    // Alice initiates withdrawalrequest
+    txOk(
+      deposit.completeDepositWrapper({
+        txid: new Uint8Array(32).fill(0),
+        voutIndex: 0,
+        amount: 1000n,
+        recipient: alice,
+      }),
+      alice
+    );
+    txOk(
+      withdrawal.initiateWithdrawalRequest({
+        amount: 1000n,
+        recipient: alicePoxAddr,
+        maxFee: 10n,
+      }),
+      alice
+    );
+    txOk(
+      withdrawal.acceptWithdrawalRequest({
+        requestId: 1n,
+        bitcoinTxid: new Uint8Array(32).fill(0),
+        signerBitmap: 0n,
+        outputIndex: 10n,
+        fee: 10n,
+      }),
+      deployer
+    );
+    expect(rovOk(token.getBalance(alice))).toEqual(0n);
+  });
+  test("Request is successfully accepted with fee less than max", () => {
+    // Alice initiates withdrawalrequest
+    txOk(
+      deposit.completeDepositWrapper({
+        txid: new Uint8Array(32).fill(0),
+        voutIndex: 0,
+        amount: 1000n,
+        recipient: alice,
+      }),
+      alice
+    );
+    txOk(
+      withdrawal.initiateWithdrawalRequest({
+        amount: 1000n,
+        recipient: alicePoxAddr,
+        maxFee: 10n,
+      }),
+      alice
+    );
+    txOk(
+      withdrawal.acceptWithdrawalRequest({
+        requestId: 1n,
+        bitcoinTxid: new Uint8Array(32).fill(0),
+        signerBitmap: 0n,
+        outputIndex: 10n,
+        fee: 9n,
+      }),
+      deployer
+    );
+    expect(rovOk(token.getBalance(alice))).toEqual(1n);
+  });
 })
