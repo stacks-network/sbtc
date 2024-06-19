@@ -107,7 +107,6 @@ describe("initiating a withdrawal request", () => {
     });
 
     // An event is emitted properly
-
     const prints = filterEvents(
       receipt.events,
       CoreNodeEventType.ContractEvent
@@ -231,3 +230,9 @@ describe("initiating a withdrawal request", () => {
     expect(receipt.value).toEqual(errors.withdrawal.ERR_DUST_LIMIT);
   });
 });
+
+describe("accepting a withdrawal request", () => {
+  test("Alice request is accepted", () => {
+
+  })
+})

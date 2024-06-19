@@ -70,6 +70,9 @@
       ;; Mint the difference b/w max-fee of the request & fee actually paid back to the user in sBTC
       (try! (contract-call? .sbtc-token protocol-mint (- requested-max-fee fee) requester))
 
+      ;; Call into registry to confirm accepted withdrawal
+      (try! (contract-call? .sbtc-registry complete-withdrawal request-id bitcoin-txid signer-bitmap output-index fee))
+
       (ok request)
   )
 ) 
