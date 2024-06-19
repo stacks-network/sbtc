@@ -38,7 +38,7 @@
         (asserts! (is-eq (get current-signer-principal current-signer-data) tx-sender) ERR_INVALID_CALLER)
 
         ;; Check that amount is greater than dust limit
-        (asserts! (> amount dust-limit) ERR_LOWER_THAN_DUST)
+        (asserts! (>= amount dust-limit) ERR_LOWER_THAN_DUST)
 
         ;; Check that txid is the correct length
         (asserts! (is-eq (len txid) txid-length) ERR_TXID_LEN)
