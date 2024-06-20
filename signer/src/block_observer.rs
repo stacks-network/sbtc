@@ -19,6 +19,7 @@
 
 use std::collections::HashMap;
 
+use crate::error;
 use crate::stacks_api::StacksInteract;
 use crate::storage;
 
@@ -60,10 +61,12 @@ where
     for<'a> &'a mut S: storage::DbRead + storage::DbWrite,
     for<'a> <&'a mut S as storage::DbRead>::Error: std::error::Error,
     for<'a> <&'a mut S as storage::DbWrite>::Error: std::error::Error,
+    error::Error: for<'a> From<<&'a mut S as storage::DbRead>::Error>,
+    error::Error: for<'a> From<<&'a mut S as storage::DbWrite>::Error>,
 {
     /// Run the block observer
     #[tracing::instrument(skip(self))]
-    pub async fn run(mut self) -> Result<(), Error> {
+    pub async fn run(mut self) -> Result<(), error::Error> {
         let mut known_deposit_requests = HashMap::new();
 
         while let Some(new_block_hash) = self.bitcoin_blocks.next().await {
@@ -107,7 +110,7 @@ where
     async fn next_blocks_to_process(
         &mut self,
         mut block_hash: bitcoin::BlockHash,
-    ) -> Result<Vec<bitcoin::Block>, Error> {
+    ) -> Result<Vec<bitcoin::Block>, error::Error> {
         let mut blocks = Vec::new();
 
         for _ in 0..self.horizon {
@@ -119,7 +122,7 @@ where
                 .bitcoin_client
                 .get_block(&block_hash)
                 .await
-                .ok_or(Error::MissingBlock)?;
+                .ok_or(error::Error::MissingBlock)?;
 
             block_hash = block.header.prev_blockhash;
             blocks.push(block);
@@ -134,12 +137,11 @@ where
     async fn have_already_processed_block(
         &mut self,
         block_hash: bitcoin::BlockHash,
-    ) -> Result<bool, Error> {
+    ) -> Result<bool, error::Error> {
         Ok(self
             .storage
             .get_bitcoin_block(&block_hash.to_byte_array().into())
-            .await
-            .map_err(|_| Error::StorageError)?
+            .await?
             .is_some())
     }
 
@@ -148,7 +150,7 @@ where
         &mut self,
         known_deposit_requests: &DepositRequestMap,
         block: bitcoin::Block,
-    ) -> Result<(), Error> {
+    ) -> Result<(), error::Error> {
         let stacks_blocks = self.stacks_client.get_last_tenure_blocks().await?;
 
         self.extract_deposit_requests(&block.txdata);
@@ -206,7 +208,7 @@ where
         // TODO(#212): Implement
     }
 
-    async fn write_bitcoin_block(&mut self, block: &bitcoin::Block) -> Result<(), Error> {
+    async fn write_bitcoin_block(&mut self, block: &bitcoin::Block) -> Result<(), error::Error> {
         let db_block = model::BitcoinBlock {
             block_hash: block.block_hash().to_byte_array().to_vec(),
             block_height: block
@@ -217,10 +219,7 @@ where
             created_at: time::OffsetDateTime::now_utc(),
         };
 
-        self.storage
-            .write_bitcoin_block(&db_block)
-            .await
-            .map_err(|_| Error::StorageError)?;
+        self.storage.write_bitcoin_block(&db_block).await?;
 
         Ok(())
     }
@@ -248,20 +247,6 @@ pub trait EmilyInteract {
 pub struct DepositRequest {
     /// Txid
     txid: bitcoin::Txid,
-}
-
-/// Error
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    /// Missing block
-    #[error("missing block")]
-    MissingBlock,
-    /// Storage error
-    #[error("storage error")]
-    StorageError,
-    /// Crate error
-    #[error("Client error maybe {0}")]
-    StacksClient(#[from] crate::error::Error),
 }
 
 #[cfg(test)]
