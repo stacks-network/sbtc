@@ -3,7 +3,9 @@
 
 **/k8s/misc/**
 nohup.out
-# ------------------------------------------------------------
+
+
+nkblock.binary
 
 
 local-commands.sh

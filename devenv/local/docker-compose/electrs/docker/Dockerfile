@@ -1,7 +1,3 @@
-# ENV VARS:
-# - BITCOIN_RPC_HOST
-# - BITCOIN_RPC_PORT
-
 # --------------------------------------------------------
 FROM debian:bookworm-slim as builder
 LABEL org.opencontainers.image.authors="Gowtham Sundar <gowtham@trustmachines.co>"
