@@ -11,15 +11,22 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::config::StacksSettings;
 use crate::error::Error;
+use crate::storage::DbRead;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// A trait detailing the interface with the Stacks API and Stacks Nodes.
 pub trait StacksInteract {
-    /// Get all Nakamoto stacks blocks for the last confirmed tenure.
-    fn get_last_tenure_blocks(
+    /// Fetch all Nakamoto blocks that are not already stored in the
+    /// database.
+    fn fetch_unknown_ansestors<D>(
         &self,
-    ) -> impl Future<Output = Result<Vec<NakamotoBlock>, Error>> + Send;
+        block_id: StacksBlockId,
+        db: &D,
+    ) -> impl Future<Output = Result<Vec<NakamotoBlock>, Error>> + Send
+    where
+        D: DbRead + Send + Sync,
+        Error: From<<D as DbRead>::Error>;
 }
 
 /// A client for interacting with Stacks nodes and the Stacks API
@@ -29,6 +36,9 @@ pub struct StacksClient {
     pub node_endpoint: url::Url,
     /// The client used to make the request.
     pub client: reqwest::Client,
+    /// The start height of the first EPOCH 3.0 block on the stacks
+    /// blockchain.
+    pub nakamoto_start_height: u64,
 }
 
 impl StacksClient {
@@ -37,13 +47,19 @@ impl StacksClient {
     pub fn new(settings: StacksSettings) -> Self {
         Self {
             node_endpoint: settings.node.endpoint,
+            nakamoto_start_height: settings.node.nakamoto_start_height,
             client: reqwest::Client::new(),
         }
     }
 
     /// Fetch the raw stacks nakamoto block from a Stacks node given the
     /// Stacks block ID.
-    #[tracing::instrument(skip(self))]
+    ///
+    /// # Note
+    ///
+    /// If the given block ID does not exist or is an ID for a non-Nakamoto
+    /// block then an Result::Err is returned.
+    // #[tracing::instrument(skip(self))]
     async fn get_block(&self, block_id: StacksBlockId) -> Result<NakamotoBlock, Error> {
         let path = format!("/v3/blocks/{}", block_id.to_hex());
         let base = self.node_endpoint.clone();
@@ -73,6 +89,11 @@ impl StacksClient {
     /// given block ID from a Stacks node.
     ///
     /// The response includes the Nakamoto block for the given block id.
+    ///
+    /// # Note
+    ///
+    /// If the given block ID does not exist or is an ID for a non-Nakamoto
+    /// block then an Result::Err is returned.
     #[tracing::instrument(skip(self))]
     async fn get_blocks(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
         let mut blocks = Vec::new();
@@ -117,6 +138,8 @@ impl StacksClient {
     /// * The GET /v3/tenures/<block-id> response is capped at ~16 MB, so a
     ///   single request may not return all Nakamoto blocks.
     /// * The response includes the Nakamoto block for the given block id.
+    /// * If the given block ID does not exist or is an ID for a
+    ///   non-Nakamoto block then an Result::Err is returned.
     #[tracing::instrument(skip(self))]
     async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
         let base = self.node_endpoint.clone();
@@ -186,25 +209,67 @@ impl StacksClient {
 }
 
 impl StacksInteract for StacksClient {
-    async fn get_last_tenure_blocks(&self) -> Result<Vec<NakamotoBlock>, Error> {
-        // We want to get the last block in the previous tenure. That block
-        // is the parent block to the first block of the current tenure. So
-        // yeah, let's get it.
-        let info = self.get_tenure_info().await?;
-        let block = self.get_block(info.tenure_start_block_id).await?;
+    async fn fetch_unknown_ansestors<D>(
+        &self,
+        block_id: StacksBlockId,
+        db: &D,
+    ) -> Result<Vec<NakamotoBlock>, Error>
+    where
+        D: DbRead + Send + Sync,
+        Error: From<<D as DbRead>::Error>,
+    {
+        let mut blocks = vec![self.get_block(block_id).await?];
 
-        // This is the block ID of the previous tenure's last block.
-        let prev_tenure_last_block_id = block.header.parent_block_id;
-        self.get_blocks(prev_tenure_last_block_id).await
+        while let Some(block) = blocks.last() {
+            // We won't get anymore Nakamoto blocks before this point, so
+            // time to stop.
+            if block.header.chain_length <= self.nakamoto_start_height {
+                tracing::info!(
+                    nakamoto_start_height = %self.nakamoto_start_height,
+                    last_chain_length = %block.header.chain_length,
+                    "Stopping, since we have fetched all Nakamoto blocks"
+                );
+                break;
+            }
+            // We've seen this parent already, so time to stop.
+            let exists = db.stacks_block_exists(block.header.parent_block_id).await;
+            if exists.map_err(Into::into)? {
+                tracing::info!("Parent block known in the database");
+                break;
+            }
+            // There are more blocks to fetch.
+            blocks.extend(self.get_blocks(block.header.parent_block_id).await?);
+        }
+
+        Ok(blocks)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::config::StacksNodeSettings;
+    use crate::storage::in_memory::Store;
+    use crate::storage::postgres::PgStore;
+    use crate::storage::DbWrite;
 
     use super::*;
     use std::io::Read;
+
+    #[ignore = "This is an integration test that hasn't been setup for CI yet"]
+    #[sqlx::test]
+    async fn fetch_unknown_ansestors_works(pool: sqlx::PgPool) {
+        sbtc_common::logging::setup_logging(false);
+
+        let settings = StacksSettings::new_from_config().unwrap();
+        let client = StacksClient::new(settings);
+        let db = PgStore::from(pool);
+
+        let info = client.get_tenure_info().await.unwrap();
+        let blocks = client.fetch_unknown_ansestors(info.tip_block_id, &db).await;
+
+        let blocks = blocks.unwrap();
+        db.write_stacks_blocks(&blocks).await.unwrap();
+    }
 
     /// Test that get_blocks works as expected.
     ///
@@ -289,6 +354,7 @@ mod tests {
         let settings = StacksSettings {
             node: StacksNodeSettings {
                 endpoint: url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
+                nakamoto_start_height: 20,
             },
         };
 
@@ -340,6 +406,7 @@ mod tests {
         let settings = StacksSettings {
             node: StacksNodeSettings {
                 endpoint: url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
+                nakamoto_start_height: 20,
             },
         };
 
@@ -357,7 +424,13 @@ mod tests {
         let settings = StacksSettings::new_from_config().unwrap();
         let client = StacksClient::new(settings);
 
-        let blocks = client.get_last_tenure_blocks().await.unwrap();
+        let storage = Store::new_shared();
+
+        let info = client.get_tenure_info().await.unwrap();
+        let blocks = client
+            .fetch_unknown_ansestors(info.tenure_start_block_id, &storage)
+            .await
+            .unwrap();
         assert!(!blocks.is_empty());
     }
 }

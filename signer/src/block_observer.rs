@@ -26,6 +26,7 @@ use crate::storage;
 use bitcoin::hashes::Hash;
 use blockstack_lib::chainstate::nakamoto;
 use blockstack_lib::chainstate::stacks;
+use blockstack_lib::types::chainstate::StacksBlockId;
 use futures::stream::StreamExt;
 use storage::model;
 use storage::DbRead;
@@ -149,7 +150,11 @@ where
         known_deposit_requests: &DepositRequestMap,
         block: bitcoin::Block,
     ) -> Result<(), error::Error> {
-        let stacks_blocks = self.stacks_client.get_last_tenure_blocks().await?;
+        let block_id = StacksBlockId::first_mined();
+        let stacks_blocks = self
+            .stacks_client
+            .fetch_unknown_ansestors(block_id, &self.storage)
+            .await?;
 
         self.extract_deposit_requests(&block.txdata);
         self.extract_sbtc_transactions(&block.txdata);
@@ -380,9 +385,14 @@ mod tests {
     }
 
     impl StacksInteract for TestHarness {
-        async fn get_last_tenure_blocks(
+        async fn fetch_unknown_ansestors<D>(
             &self,
-        ) -> Result<Vec<nakamoto::NakamotoBlock>, crate::error::Error> {
+            _: blockstack_lib::types::chainstate::StacksBlockId,
+            _: &D,
+        ) -> Result<Vec<nakamoto::NakamotoBlock>, crate::error::Error>
+        where
+            D: DbRead + Send + Sync,
+        {
             Ok(self
                 .stacks_blocks_per_bitcoin_block
                 .values()
