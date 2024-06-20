@@ -7,15 +7,15 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// Invalid amount
-    #[error("The change amounts for the transaction is negative: {0}")]
+    #[error("the change amounts for the transaction is negative: {0}")]
     InvalidAmount(i64),
 
     /// Old fee estimate
-    #[error("Got an old fee estimate")]
+    #[error("got an old fee estimate")]
     OldFeeEstimate,
 
     /// No good fee estimate
-    #[error("Failed to get fee estimates from all fee estimate sources")]
+    #[error("failed to get fee estimates from all fee estimate sources")]
     NoGoodFeeEstimates,
 
     /// Parsing the Hex Error
@@ -35,7 +35,7 @@ pub enum Error {
     PathJoin(#[source] url::ParseError, url::Url, Cow<'static, str>),
 
     /// Reqwest error
-    #[error("{0}")]
+    #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
 
     /// Error when reading the signer config.toml
@@ -59,6 +59,18 @@ pub enum Error {
     UnexpectedStacksResponse(#[source] reqwest::Error),
 
     /// Taproot error
-    #[error("An error occured when constructing the taproot signing digest: {0}")]
+    #[error("an error occured when constructing the taproot signing digest: {0}")]
     Taproot(#[from] bitcoin::sighash::TaprootError),
+
+    /// Signer loop error
+    #[error("signer loop error: {0}")]
+    TransactionSignerError(#[from] crate::transaction_signer::Error),
+
+    /// Key error
+    #[error("key error: {0}")]
+    KeyError(#[from] p256k1::keys::Error),
+
+    /// In memory storage error
+    #[error("in memory storage error")]
+    InMemoryStorageError(#[from] crate::storage::in_memory::Error),
 }

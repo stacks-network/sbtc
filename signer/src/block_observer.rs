@@ -33,7 +33,8 @@ use storage::DbWrite;
 type DepositRequestMap = HashMap<bitcoin::Txid, Vec<DepositRequest>>;
 
 /// Block observer
-pub struct BlockObserver<BitcoinClient, StacksClient, EmilyClient, BlockHashStream, SignerStorage> {
+#[derive(Debug)]
+pub struct BlockObserver<BitcoinClient, StacksClient, EmilyClient, BlockHashStream, Storage> {
     /// Bitcoin client
     pub bitcoin_client: BitcoinClient,
     /// Stacks client
@@ -43,24 +44,25 @@ pub struct BlockObserver<BitcoinClient, StacksClient, EmilyClient, BlockHashStre
     /// Stream of blocks from the block notifier
     pub bitcoin_blocks: BlockHashStream,
     /// Database connection
-    pub storage: SignerStorage,
+    pub storage: Storage,
     /// Used to notify any other system that the database has been updated
     pub subscribers: tokio::sync::watch::Sender<()>,
     /// How far back in time the observer should look
     pub horizon: usize,
 }
 
-impl<BC, SC, EC, BHS, SS> BlockObserver<BC, SC, EC, BHS, SS>
+impl<BC, SC, EC, BHS, S> BlockObserver<BC, SC, EC, BHS, S>
 where
     BC: BitcoinInteract,
     SC: StacksInteract,
     EC: EmilyInteract,
     BHS: futures::stream::Stream<Item = bitcoin::BlockHash> + Unpin,
-    for<'a> &'a mut SS: storage::DbRead + storage::DbWrite,
-    for<'a> <&'a mut SS as storage::DbRead>::Error: std::error::Error,
-    for<'a> <&'a mut SS as storage::DbWrite>::Error: std::error::Error,
+    for<'a> &'a mut S: storage::DbRead + storage::DbWrite,
+    for<'a> <&'a mut S as storage::DbRead>::Error: std::error::Error,
+    for<'a> <&'a mut S as storage::DbWrite>::Error: std::error::Error,
 {
     /// Run the block observer
+    #[tracing::instrument(skip(self))]
     pub async fn run(mut self) -> Result<(), Error> {
         let mut known_deposit_requests = HashMap::new();
 
@@ -264,7 +266,8 @@ pub enum Error {
 
 #[cfg(test)]
 mod tests {
-    use rand::{seq::IteratorRandom, SeedableRng};
+    use rand::seq::IteratorRandom;
+    use rand::SeedableRng;
 
     use crate::storage;
     use crate::testing::dummy;

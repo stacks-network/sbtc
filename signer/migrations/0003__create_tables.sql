@@ -1,8 +1,10 @@
 CREATE TYPE sbtc_signer.transaction_type AS ENUM (
    'sbtc_transaction',
+   'deposit_request',
+   'withdraw_request',
+   'deposit_accept',
    'withdraw_accept',
    'withdraw_reject',
-   'deposit_accept',
    'update_signer_set',
    'set_aggregate_key'
 );
@@ -30,6 +32,7 @@ CREATE TABLE sbtc_signer.deposit_requests (
     recipient TEXT NOT NULL,
     amount BIGINT NOT NULL,
     max_fee BIGINT NOT NULL,
+    sender_addresses TEXT[],
     created_at TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (txid, output_index)
 );
@@ -50,6 +53,7 @@ CREATE TABLE sbtc_signer.withdraw_requests (
     recipient BYTEA NOT NULL,
     amount BIGINT NOT NULL,
     max_fee BIGINT NOT NULL,
+    sender_address TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (request_id, block_hash),
     FOREIGN KEY (block_hash) REFERENCES sbtc_signer.stacks_blocks(block_hash) ON DELETE CASCADE
