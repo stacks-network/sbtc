@@ -73,4 +73,8 @@ pub enum Error {
     /// In memory storage error
     #[error("in memory storage error")]
     InMemoryStorageError(#[from] crate::storage::in_memory::Error),
+
+    /// Missing block
+    #[error("missing block")]
+    MissingBlock,
 }
