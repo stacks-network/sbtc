@@ -11,9 +11,6 @@ use crate::network;
 use crate::storage;
 use crate::storage::model;
 
-use crate::storage::DbRead;
-use crate::storage::DbWrite;
-
 use futures::StreamExt;
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
@@ -95,11 +92,9 @@ impl<N, S, B> TxSignerEventLoop<N, S, B>
 where
     N: network::MessageTransfer,
     B: blocklist_client::BlocklistChecker,
-    for<'a> &'a mut S: storage::DbRead + storage::DbWrite,
-    for<'a> <&'a mut S as storage::DbRead>::Error: std::error::Error,
-    for<'a> <&'a mut S as storage::DbWrite>::Error: std::error::Error,
-    for<'a> error::Error: From<<&'a mut S as storage::DbRead>::Error>,
-    for<'a> error::Error: From<<&'a mut S as storage::DbWrite>::Error>,
+    S: storage::DbRead + storage::DbWrite,
+    error::Error: From<<S as storage::DbRead>::Error>,
+    error::Error: From<<S as storage::DbWrite>::Error>,
 {
     /// Run the signer event loop
     #[tracing::instrument(skip(self))]
@@ -266,6 +261,8 @@ mod tests {
     use crate::storage;
     use crate::testing;
     use rand::SeedableRng;
+
+    use crate::storage::DbRead;
 
     #[tokio::test]
     async fn should_store_decisions_for_pending_deposit_requests() {

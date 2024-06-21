@@ -57,12 +57,10 @@ where
     BC: BitcoinInteract,
     SC: StacksInteract,
     EC: EmilyInteract,
+    S: DbWrite + DbRead + Send + Sync,
     BHS: futures::stream::Stream<Item = bitcoin::BlockHash> + Unpin,
-    for<'a> &'a mut S: storage::DbRead + storage::DbWrite,
-    for<'a> <&'a mut S as storage::DbRead>::Error: std::error::Error,
-    for<'a> <&'a mut S as storage::DbWrite>::Error: std::error::Error,
-    error::Error: for<'a> From<<&'a mut S as storage::DbRead>::Error>,
-    error::Error: for<'a> From<<&'a mut S as storage::DbWrite>::Error>,
+    error::Error: From<<S as DbRead>::Error>,
+    error::Error: From<<S as DbWrite>::Error>,
 {
     /// Run the block observer
     #[tracing::instrument(skip(self))]

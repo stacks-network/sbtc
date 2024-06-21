@@ -60,7 +60,7 @@ impl TestData {
     /// Write the test data to the given store
     pub async fn write_to<Db>(&self, storage: &mut Db)
     where
-        for<'a> &'a mut Db: DbWrite,
+        Db: DbWrite,
     {
         for block in self.bitcoin_blocks.iter() {
             storage
