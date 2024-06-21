@@ -61,8 +61,6 @@ services:
       POSTGRES_DB: signer
     ports:
       - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready --username=user --dbname=signer"]
       interval: 2s
@@ -100,5 +98,3 @@ services:
 #      BITCOIN_RPC_HOST: 172.18.0.3
 #      BITCOIN_RPC_PORT: 18443
 
-volumes:
-  postgres_data:
