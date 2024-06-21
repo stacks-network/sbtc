@@ -27,7 +27,7 @@ const CONTRACT_NAMES: [&str; 4] = [
     // BTC on chain.
     "sbtc-withdrawal",
 ];
-/// TODO: Update once we settle on all of the relevant function names.
+/// TODO(250): Update once we settle on all of the relevant function names.
 const CONTRACT_FUNCTION_NAMES: [(&str, TransactionType); 1] = [(
     "initiate-withdrawal-request",
     TransactionType::WithdrawAccept,
