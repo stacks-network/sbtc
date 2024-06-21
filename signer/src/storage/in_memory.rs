@@ -81,18 +81,18 @@ impl super::DbRead for SharedStore {
         chain_tip: &model::BitcoinBlockHash,
         context_window: usize,
     ) -> Result<Vec<model::DepositRequest>, Self::Error> {
-        let store = self.lock().await;
+        let maps = self.lock().await;
 
         Ok((0..context_window)
             // Find all tracked transaction IDs in the context window
             .scan(chain_tip, |block_hash, _| {
-                let transaction_ids = store
+                let transaction_ids = maps
                     .bitcoin_block_to_transactions
                     .get(*block_hash)
                     .cloned()
                     .unwrap_or_else(Vec::new);
 
-                let block = store.bitcoin_blocks.get(*block_hash)?;
+                let block = maps.bitcoin_blocks.get(*block_hash)?;
                 *block_hash = &block.parent_hash;
 
                 Some(transaction_ids)
@@ -100,8 +100,7 @@ impl super::DbRead for SharedStore {
             .flatten()
             // Return all deposit requests associated with any of these transaction IDs
             .flat_map(|txid| {
-                store
-                    .deposit_requests
+                maps.deposit_requests
                     .values()
                     .filter(move |req| req.txid == txid)
                     .cloned()
@@ -128,7 +127,7 @@ impl super::DbRead for SharedStore {
         _chain_tip: &model::BitcoinBlockHash,
         _context_window: usize,
     ) -> Result<Vec<model::WithdrawRequest>, Self::Error> {
-       Ok(Vec::new()) // TODO(245): Implement
+        Ok(Vec::new()) // TODO(245): Implement
     }
 
     async fn get_bitcoin_blocks_with_transaction(
@@ -209,16 +208,14 @@ impl super::DbWrite for SharedStore {
         &self,
         bitcoin_transaction: &model::BitcoinTransaction,
     ) -> Result<(), Self::Error> {
-        self.lock()
-            .await
-            .bitcoin_block_to_transactions
+        let mut maps = self.lock().await;
+
+        maps.bitcoin_block_to_transactions
             .entry(bitcoin_transaction.block_hash.clone())
             .or_default()
             .push(bitcoin_transaction.txid.clone());
 
-        self.lock()
-            .await
-            .bitcoin_transactions_to_blocks
+        maps.bitcoin_transactions_to_blocks
             .entry(bitcoin_transaction.txid.clone())
             .or_default()
             .push(bitcoin_transaction.block_hash.clone());
@@ -227,14 +224,10 @@ impl super::DbWrite for SharedStore {
     }
 
     async fn write_stacks_blocks(&self, blocks: &[NakamotoBlock]) -> Result<(), Self::Error> {
-        let iter = blocks.iter().map(|block| async {
-            self.lock()
-                .await
-                .stacks_blocks
-                .insert(block.block_id(), block.clone());
+        let mut maps = self.lock().await;
+        blocks.iter().for_each(|block| {
+            maps.stacks_blocks.insert(block.block_id(), block.clone());
         });
-
-        let _: Vec<()> = futures::future::join_all(iter).await;
 
         Ok(())
     }
