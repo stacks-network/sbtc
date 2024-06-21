@@ -82,7 +82,7 @@ pub trait DbWrite {
         deposit_request: &model::DepositRequest,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
-    /// Write a withdraw request.
+    /// Write a withdrawal request.
     fn write_withdraw_request(
         &self,
         withdraw_request: &model::WithdrawRequest,
@@ -94,7 +94,7 @@ pub trait DbWrite {
         decision: &model::DepositSigner,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
-    /// Write a signer decision for a withdraw request.
+    /// Write a signer decision for a withdrawal request.
     fn write_withdraw_signer_decision(
         &self,
         decision: &model::WithdrawSigner,

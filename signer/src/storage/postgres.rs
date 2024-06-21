@@ -182,20 +182,6 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn stacks_block_exists(&self, block_id: StacksBlockId) -> Result<bool, Self::Error> {
-        sqlx::query(
-            r#"
-            SELECT 1
-            FROM sbtc_signer.stacks_blocks
-            WHERE block_hash = $1;"#,
-        )
-        .bind(block_id.0)
-        .fetch_optional(&self.0)
-        .await
-        .map(|row| row.is_some())
-        .map_err(Error::SqlxQuery)
-    }
-
     async fn get_bitcoin_canonical_chain_tip(
         &self,
     ) -> Result<Option<model::BitcoinBlockHash>, Self::Error> {
@@ -231,6 +217,20 @@ impl super::DbRead for PgStore {
         _txid: &model::BitcoinTxId,
     ) -> Result<Vec<model::BitcoinBlockHash>, Self::Error> {
         todo!(); // TODO(244): write query + integration test
+    }
+
+    async fn stacks_block_exists(&self, block_id: StacksBlockId) -> Result<bool, Self::Error> {
+        sqlx::query(
+            r#"
+            SELECT 1
+            FROM sbtc_signer.stacks_blocks
+            WHERE block_hash = $1;"#,
+        )
+            .bind(block_id.0)
+            .fetch_optional(&self.0)
+            .await
+            .map(|row| row.is_some())
+            .map_err(Error::SqlxQuery)
     }
 }
 
@@ -329,7 +329,7 @@ impl super::DbWrite for PgStore {
             "INSERT INTO sbtc_signer.transactions VALUES ($1, $2, $3, $4)",
             transaction.txid,
             transaction.tx,
-            transaction.tx_type as model::TransactionType,
+            transaction.tx_type as TransactionType,
             transaction.created_at,
         )
         .execute(&self.0)

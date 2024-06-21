@@ -60,10 +60,6 @@ impl super::DbRead for SharedStore {
         Ok(self.lock().await.bitcoin_blocks.get(block_hash).cloned())
     }
 
-    async fn stacks_block_exists(&self, block_id: StacksBlockId) -> Result<bool, Self::Error> {
-        Ok(self.lock().await.stacks_blocks.contains_key(&block_id))
-    }
-
     async fn get_bitcoin_canonical_chain_tip(
         &self,
     ) -> Result<Option<model::BitcoinBlockHash>, Self::Error> {
@@ -141,6 +137,10 @@ impl super::DbRead for SharedStore {
             .get(txid)
             .cloned()
             .unwrap_or_else(Vec::new))
+    }
+
+    async fn stacks_block_exists(&self, block_id: StacksBlockId) -> Result<bool, Self::Error> {
+        Ok(self.lock().await.stacks_blocks.contains_key(&block_id))
     }
 }
 

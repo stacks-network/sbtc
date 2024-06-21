@@ -57,7 +57,7 @@ async fn should_be_able_to_query_bitcoin_blocks(pool: sqlx::PgPool) {
 }
 
 /// Test that the write_stacks_blocks function does what it is supposed to
-/// do, which is save all stacks blocks and save the transactions that we
+/// do, which is store all stacks blocks and store the transactions that we
 /// care about, which, naturally, are sBTC related transactions.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[sqlx::test]
@@ -139,7 +139,7 @@ async fn writing_stacks_blocks_works(pool: sqlx::PgPool) {
         .await
         .unwrap();
 
-    // No more transactions we written
+    // No more transactions were written
     assert_eq!(stored_transaction_count_again, 1);
 }
 
@@ -163,7 +163,7 @@ async fn checking_stacks_blocks_exists_works(pool: sqlx::PgPool) {
         blocks.push(NakamotoBlock::consensus_deserialize(bytes).unwrap());
     }
 
-    // Okay this table is empty and so none of the blocks have not have
+    // Okay, this table is empty and so none of the blocks have
     // been saved yet.
     let any_exist = futures::stream::iter(blocks.iter())
         .any(|block| async { store.stacks_block_exists(block.block_id()).await.unwrap() })
