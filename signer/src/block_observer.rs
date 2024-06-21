@@ -153,7 +153,7 @@ where
         let block_id = StacksBlockId::first_mined();
         let stacks_blocks = self
             .stacks_client
-            .fetch_unknown_ansestors(block_id, &self.storage)
+            .fetch_unknown_ancestors(block_id, &self.storage)
             .await?;
 
         self.extract_deposit_requests(&block.txdata);
@@ -385,7 +385,7 @@ mod tests {
     }
 
     impl StacksInteract for TestHarness {
-        async fn fetch_unknown_ansestors<D>(
+        async fn fetch_unknown_ancestors<D>(
             &self,
             _: blockstack_lib::types::chainstate::StacksBlockId,
             _: &D,

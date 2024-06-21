@@ -18,8 +18,8 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// A trait detailing the interface with the Stacks API and Stacks Nodes.
 pub trait StacksInteract {
     /// Fetch all Nakamoto blocks that are not already stored in the
-    /// database.
-    fn fetch_unknown_ansestors<D>(
+    /// datastore.
+    fn fetch_unknown_ancestors<D>(
         &self,
         block_id: StacksBlockId,
         db: &D,
@@ -36,7 +36,7 @@ pub struct StacksClient {
     pub node_endpoint: url::Url,
     /// The client used to make the request.
     pub client: reqwest::Client,
-    /// The start height of the first EPOCH 3.0 block on the stacks
+    /// The start height of the first EPOCH 3.0 block on the Stacks
     /// blockchain.
     pub nakamoto_start_height: u64,
 }
@@ -58,8 +58,8 @@ impl StacksClient {
     /// # Note
     ///
     /// If the given block ID does not exist or is an ID for a non-Nakamoto
-    /// block then an Result::Err is returned.
-    // #[tracing::instrument(skip(self))]
+    /// block then a Result::Err is returned.
+    #[tracing::instrument(skip(self))]
     async fn get_block(&self, block_id: StacksBlockId) -> Result<NakamotoBlock, Error> {
         let path = format!("/v3/blocks/{}", block_id.to_hex());
         let base = self.node_endpoint.clone();
@@ -93,7 +93,7 @@ impl StacksClient {
     /// # Note
     ///
     /// If the given block ID does not exist or is an ID for a non-Nakamoto
-    /// block then an Result::Err is returned.
+    /// block then a Result::Err is returned.
     #[tracing::instrument(skip(self))]
     async fn get_blocks(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
         let mut blocks = Vec::new();
@@ -121,7 +121,7 @@ impl StacksClient {
             let blks = self.get_tenure(last_block_id).await?;
             // The first block in the GET /v3/tenures/<block-id> response
             // is always the block related to the given <block-id>. But we
-            // already have that block so we can skip adding it again.
+            // already have that block, so we can skip adding it again.
             debug_assert_eq!(blks.first().map(|b| b.block_id()), Some(last_block_id));
             blocks.extend(blks.into_iter().skip(1))
         }
@@ -139,7 +139,7 @@ impl StacksClient {
     ///   single request may not return all Nakamoto blocks.
     /// * The response includes the Nakamoto block for the given block id.
     /// * If the given block ID does not exist or is an ID for a
-    ///   non-Nakamoto block then an Result::Err is returned.
+    ///   non-Nakamoto block then a Result::Err is returned.
     #[tracing::instrument(skip(self))]
     async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
         let base = self.node_endpoint.clone();
@@ -209,7 +209,7 @@ impl StacksClient {
 }
 
 impl StacksInteract for StacksClient {
-    async fn fetch_unknown_ansestors<D>(
+    async fn fetch_unknown_ancestors<D>(
         &self,
         block_id: StacksBlockId,
         db: &D,
@@ -232,8 +232,7 @@ impl StacksInteract for StacksClient {
                 break;
             }
             // We've seen this parent already, so time to stop.
-            let exists = db.stacks_block_exists(block.header.parent_block_id).await;
-            if exists.map_err(Into::into)? {
+            if db.stacks_block_exists(block.header.parent_block_id).await? {
                 tracing::info!("Parent block known in the database");
                 break;
             }
@@ -257,7 +256,7 @@ mod tests {
 
     #[ignore = "This is an integration test that hasn't been setup for CI yet"]
     #[sqlx::test]
-    async fn fetch_unknown_ansestors_works(pool: sqlx::PgPool) {
+    async fn fetch_unknown_ancestors_works(pool: sqlx::PgPool) {
         sbtc_common::logging::setup_logging(false);
 
         let settings = StacksSettings::new_from_config().unwrap();
@@ -265,7 +264,7 @@ mod tests {
         let db = PgStore::from(pool);
 
         let info = client.get_tenure_info().await.unwrap();
-        let blocks = client.fetch_unknown_ansestors(info.tip_block_id, &db).await;
+        let blocks = client.fetch_unknown_ancestors(info.tip_block_id, &db).await;
 
         let blocks = blocks.unwrap();
         db.write_stacks_blocks(&blocks).await.unwrap();
@@ -285,13 +284,13 @@ mod tests {
     ///    `NakamotoBlock`s in the result.
     /// 3. Use the block IDs from step (2) to make two curl requests:
     ///     * The tenure starting with the end block:
-    ///     ```
+    ///     ```bash
     ///     curl http://localhost:20443/v3/tenures/<tenure-end-block-id> \
     ///         --output tests/fixtures/tenure-blocks-0-<tenure-end-block-id>.bin \
     ///         -vvv
     ///     ```
     ///     * The tenure starting at the tenure start block:
-    ///     ```
+    ///     ```bash
     ///     curl http://localhost:20443/v3/tenures/<tenure-start-block-id> \
     ///         --output tests/fixtures/tenure-blocks-1-<tenure-start-block-id>.bin \
     ///         -vvv
@@ -306,48 +305,48 @@ mod tests {
         const TENURE_END_BLOCK_ID: &str =
             "1ed91e0720129bda5072540ee7283dd5345d0f6de0cf5b982c6de3943b6e3291";
 
-        // Okay we need to setup the server to returned what a stacks node
+        // Okay we need to set up the server to returned what a stacks node
         // would return. We load up a file that contains a response from an
         // actual stacks node in regtest mode.
         let path = format!("tests/fixtures/tenure-blocks-0-{TENURE_END_BLOCK_ID}.bin");
         let mut file = std::fs::File::open(path).unwrap();
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf).unwrap();
+        let mut buf1 = Vec::new();
+        file.read_to_end(&mut buf1).unwrap();
 
         let mut stacks_node_server = mockito::Server::new_async().await;
-        let endpoint_path = format!("/v3/tenures/{TENURE_END_BLOCK_ID}");
+        let endpoint_path_tenure_end = format!("/v3/tenures/{TENURE_END_BLOCK_ID}");
         let first_mock = stacks_node_server
-            .mock("GET", endpoint_path.as_str())
+            .mock("GET", endpoint_path_tenure_end.as_str())
             .with_status(200)
             .with_header("content-type", "application/octet-stream")
             .with_header("transfer-encoding", "chunked")
-            .with_chunked_body(move |w| w.write_all(&buf))
+            .with_chunked_body(move |w| w.write_all(&buf1))
             .expect(1)
             .create();
 
         // The StacksClient::get_blocks call should make at least two
         // requests to the stacks node if there are two or more Nakamoto
         // blocks within the same tenure. Our test setup has 23 blocks
-        // within the tenure so we need to tell the mock server what to
+        // within the tenure, so we need to tell the mock server what to
         // return in the second request.
         //
-        // Also worth noting is that the total size of the blocks within a
+        // Also, worth noting is that the total size of the blocks within a
         // GET /v3/tenures/<block-id> is ~16 MB (via the MAX_MESSAGE_LEN
         // constant in stacks-core). The size of the blocks for this test
-        // is well under 1 MB so we get all the data during the first
+        // is well under 1 MB, so we get all the data during the first
         // request, which just don't know that until the second request.
         let path = format!("tests/fixtures/tenure-blocks-1-{TENURE_START_BLOCK_ID}.bin");
         let mut file = std::fs::File::open(path).unwrap();
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf).unwrap();
+        let mut buf2 = Vec::new();
+        file.read_to_end(&mut buf2).unwrap();
 
-        let endpoint_path = format!("/v3/tenures/{TENURE_START_BLOCK_ID}");
+        let endpoint_path_tenure_start = format!("/v3/tenures/{TENURE_START_BLOCK_ID}");
         let second_mock = stacks_node_server
-            .mock("GET", endpoint_path.as_str())
+            .mock("GET", endpoint_path_tenure_start.as_str())
             .with_status(200)
             .with_header("content-type", "application/octet-stream")
             .with_header("transfer-encoding", "chunked")
-            .with_chunked_body(move |w| w.write_all(&buf))
+            .with_chunked_body(move |w| w.write_all(&buf2))
             .expect(1)
             .create();
 
@@ -365,7 +364,7 @@ mod tests {
         assert!(blocks.len() > 1);
         dbg!(blocks.len());
 
-        // We know that the blocks are ordered as a chain and we know the
+        // We know that the blocks are ordered as a chain, and we know the
         // first and last block IDs, let's check that.
         let last_block_id = StacksBlockId::from_hex(TENURE_START_BLOCK_ID).unwrap();
         let n = blocks.len() - 1;
@@ -428,7 +427,7 @@ mod tests {
 
         let info = client.get_tenure_info().await.unwrap();
         let blocks = client
-            .fetch_unknown_ansestors(info.tenure_start_block_id, &storage)
+            .fetch_unknown_ancestors(info.tenure_start_block_id, &storage)
             .await
             .unwrap();
         assert!(!blocks.is_empty());

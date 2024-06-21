@@ -42,6 +42,56 @@ fn contract_transaction_kinds() -> &'static HashMap<&'static str, TransactionTyp
     CONTRACT_FUNCTION_NAME_MAPPING.get_or_init(|| CONTRACT_FUNCTION_NAMES.into_iter().collect())
 }
 
+/// A type used for storing transactions in the stacks_transactions table
+#[derive(Debug, serde::Serialize)]
+struct StacksTx {
+    /// The transaction id for the transaction
+    txid: String,
+    /// The block id for the nakamoto block that this transaction was
+    /// included in.
+    block_id: String,
+    /// The raw transaction binary
+    tx: String,
+    /// The type of sBTC transaction on the stacks blockchain
+    tx_type: TransactionType,
+}
+
+/// A type used for storing transactions in the stacks_transactions table
+#[derive(Debug, serde::Serialize)]
+struct StacksBlockSummary {
+    /// The block id for the nakamoto block that this transaction was
+    /// included in.
+    block_id: String,
+    /// The height of the block
+    chain_length: i64,
+    /// The block id of the block immediately prior to this one in the
+    /// blockchain.
+    parent_block_id: String,
+}
+
+/// This function extracts the signer relevant sBTC related transactions
+/// from the given blocks.
+fn extract_relevant_transactions(blocks: &[NakamotoBlock]) -> Vec<StacksTx> {
+    let transaction_kinds = contract_transaction_kinds();
+    blocks
+        .iter()
+        .flat_map(|block| block.txs.iter().map(|tx| (tx, block.block_id())))
+        .filter_map(|(tx, block_id)| match &tx.payload {
+            TransactionPayload::ContractCall(x)
+                if CONTRACT_NAMES.contains(&x.contract_name.as_str()) =>
+            {
+                Some(StacksTx {
+                    tx_type: *transaction_kinds.get(&x.function_name.as_str())?,
+                    txid: tx.txid().to_hex(),
+                    block_id: block_id.to_hex(),
+                    tx: to_hex(&tx.serialize_to_vec()),
+                })
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 /// A wrapper around a [`sqlx::PgPool`] which implements
 /// [`crate::storage::DbRead`] and [`crate::storage::DbWrite`].
 #[derive(Debug, Clone)]
@@ -94,24 +144,7 @@ impl PgStore {
     /// Write sBTC related transactions in the given blocks to the
     /// database.
     async fn write_stacks_sbtc_txs(&self, blocks: &[NakamotoBlock]) -> Result<(), Error> {
-        let transaction_kinds = contract_transaction_kinds();
-        let block_txs: Vec<StacksTx> = blocks
-            .iter()
-            .flat_map(|block| block.txs.iter().map(|tx| (tx, block.block_id())))
-            .filter_map(|(tx, block_id)| match &tx.payload {
-                TransactionPayload::ContractCall(x)
-                    if CONTRACT_NAMES.contains(&x.contract_name.as_str()) =>
-                {
-                    Some(StacksTx {
-                        tx_type: *transaction_kinds.get(&x.function_name.as_str())?,
-                        txid: tx.txid().to_hex(),
-                        block_id: block_id.to_hex(),
-                        tx: to_hex(&tx.serialize_to_vec()),
-                    })
-                }
-                _ => None,
-            })
-            .collect();
+        let block_txs: Vec<StacksTx> = extract_relevant_transactions(blocks);
 
         if block_txs.is_empty() {
             return Ok(());
@@ -227,38 +260,11 @@ impl super::DbRead for PgStore {
             WHERE block_hash = $1;"#,
             &block_id.0
         )
-            .fetch_optional(&self.0)
-            .await
-            .map(|row| row.is_some())
-            .map_err(Error::SqlxQuery)
+        .fetch_optional(&self.0)
+        .await
+        .map(|row| row.is_some())
+        .map_err(Error::SqlxQuery)
     }
-}
-
-/// A type used for storing transactions in the stacks_transactions table
-#[derive(Debug, serde::Serialize)]
-struct StacksTx {
-    /// The transaction id for the transaction
-    txid: String,
-    /// The block id for the nakamoto block that this transaction was
-    /// included in.
-    block_id: String,
-    /// The raw transaction binary
-    tx: String,
-    /// The type of sBTC transaction on the stacks blockchain
-    tx_type: TransactionType,
-}
-
-/// A type used for storing transactions in the stacks_transactions table
-#[derive(Debug, serde::Serialize)]
-struct StacksBlockSummary {
-    /// The block id for the nakamoto block that this transaction was
-    /// included in.
-    block_id: String,
-    /// The height of the block
-    chain_length: i64,
-    /// The block id of the block immediately prior to this one in the
-    /// blockchain.
-    parent_block_id: String,
 }
 
 impl super::DbWrite for PgStore {
@@ -358,5 +364,54 @@ impl super::DbWrite for PgStore {
     async fn write_stacks_blocks(&self, blocks: &[NakamotoBlock]) -> Result<(), Self::Error> {
         self.write_stacks_block_header(blocks).await?;
         self.write_stacks_sbtc_txs(blocks).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::io::Read;
+
+    use blockstack_lib::chainstate::stacks::TransactionContractCall;
+    use blockstack_lib::clarity::vm::ClarityName;
+    use blockstack_lib::clarity::vm::ContractName;
+    use blockstack_lib::types::chainstate::StacksAddress;
+    use blockstack_lib::util::hash::Hash160;
+    use test_case::test_case;
+
+    /// Test that we can extract the types of function calls that we care
+    /// about
+    #[test_case("sbtc-withdrawal", "initiate-withdrawal-request"; "initiate withdrawal request")]
+    fn extract_transaction_type(contract_name: &str, function_name: &str) {
+        let path = "tests/fixtures/tenure-blocks-0-1ed91e0720129bda5072540ee7283dd5345d0f6de0cf5b982c6de3943b6e3291.bin";
+        let mut file = std::fs::File::open(path).unwrap();
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).unwrap();
+
+        let bytes: &mut &[u8] = &mut buf.as_ref();
+        let mut blocks = Vec::new();
+
+        while !bytes.is_empty() {
+            blocks.push(NakamotoBlock::consensus_deserialize(bytes).unwrap());
+        }
+
+        let txs = extract_relevant_transactions(&blocks);
+        assert!(txs.is_empty());
+
+        let last_block = blocks.last_mut().unwrap();
+        let mut tx = last_block.txs.last().unwrap().clone();
+
+        let contract_call = TransactionContractCall {
+            address: StacksAddress::new(2, Hash160([0u8; 20])),
+            contract_name: ContractName::from(contract_name),
+            function_name: ClarityName::from(function_name),
+            function_args: Vec::new(),
+        };
+        tx.payload = TransactionPayload::ContractCall(contract_call);
+        last_block.txs.push(tx);
+
+        let txs = extract_relevant_transactions(&blocks);
+        assert_eq!(txs.len(), 1);
     }
 }
