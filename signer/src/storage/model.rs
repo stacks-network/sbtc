@@ -152,9 +152,10 @@ pub struct Transaction {
 }
 
 /// The types of transactions the signer is interested in.
-#[derive(Debug, Clone, PartialEq, sqlx::Type, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, sqlx::Type, serde::Serialize, serde::Deserialize)]
 #[sqlx(type_name = "sbtc_signer.transaction_type", rename_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
+#[serde(rename_all = "snake_case")]
 pub enum TransactionType {
     /// An sBTC transaction on Bitcoin.
     SbtcTransaction,

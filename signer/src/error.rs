@@ -30,6 +30,10 @@ pub enum Error {
     #[error("Could not decode Nakamoto block from tenure with block: {1}; {0}")]
     DecodeNakamotoTenure(#[source] blockstack_lib::codec::Error, StacksBlockId),
 
+    /// An error when serializing an object to JSON
+    #[error("{0}")]
+    JsonSerialize(#[source] serde_json::Error),
+
     /// Could not parse the path part of a url
     #[error("Failed to construct a valid URL from {1} and {2}: {0}")]
     PathJoin(#[source] url::ParseError, url::Url, Cow<'static, str>),
@@ -41,6 +45,10 @@ pub enum Error {
     /// Error when reading the signer config.toml
     #[error("Failed to read the signers config file: {0}")]
     SignerConfig(#[source] config::ConfigError),
+
+    /// An error when querying the signer's database.
+    #[error("Received an error when attempting to query the database: {0}")]
+    SqlxQuery(#[source] sqlx::Error),
 
     /// Error when reading the stacks API part of the config.toml
     #[error("Failed to parse the stacks.api portion of the config: {0}")]
