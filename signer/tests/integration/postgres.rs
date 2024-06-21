@@ -114,10 +114,33 @@ async fn writing_stacks_blocks_works(pool: sqlx::PgPool) {
 
     assert_eq!(stored_transaction_count, 1);
 
-    // Last we have a sanity check that there are more transactions that we
+    // We have a sanity check that there are more transactions that we
     // could have saved if we saved all transactions.
     let num_transactions = blocks.iter().map(|blk| blk.txs.len()).sum::<usize>();
     more_asserts::assert_gt!(num_transactions, 1);
+
+    // Last let, we check that attempting to store identical blocks is an
+    // idempotent operation.
+    store.write_stacks_blocks(&blocks).await.unwrap();
+
+    let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_blocks";
+    let stored_block_count_again = sqlx::query_scalar::<_, i64>(sql)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    // No more blocks were written
+    assert_eq!(stored_block_count_again, blocks.len() as i64);
+    assert_eq!(stored_block_count_again, stored_block_count);
+
+    let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_transactions";
+    let stored_transaction_count_again = sqlx::query_scalar::<_, i64>(sql)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    // No more transactions we written
+    assert_eq!(stored_transaction_count_again, 1);
 }
 
 /// Here we test that the DbRead::stacks_block_exists function works, while
