@@ -70,11 +70,13 @@ pub enum Error {
     #[error("key error: {0}")]
     KeyError(#[from] p256k1::keys::Error),
 
-    /// In memory storage error
-    #[error("in memory storage error")]
-    InMemoryStorageError(#[from] crate::storage::in_memory::Error),
-
     /// Missing block
     #[error("missing block")]
     MissingBlock,
+}
+
+impl From<std::convert::Infallible> for Error {
+    fn from(value: std::convert::Infallible) -> Self {
+        match value {}
+    }
 }
