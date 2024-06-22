@@ -7,6 +7,16 @@ use serde::Deserializer;
 
 use crate::error::Error;
 
+#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+/// The Stacks network to use.
+pub enum NetworkKind {
+    /// The mainnet network
+    Mainnet,
+    /// The testnet network
+    Testnet,
+}
+
 /// Top-level configuration for the signer
 #[derive(Deserialize, Clone, Debug)]
 pub struct Settings {
@@ -14,6 +24,8 @@ pub struct Settings {
     pub blocklist_client: BlocklistClientConfig,
     /// Electrum notifier specific config
     pub block_notifier: BlockNotifierConfig,
+    /// Specifies which Stacks network to use.
+    pub network: NetworkKind,
 }
 
 /// Blocklist client specific config

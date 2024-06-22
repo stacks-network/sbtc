@@ -40,6 +40,11 @@ pub enum Error {
     #[error("Failed to construct a valid URL from {1} and {2}: {0}")]
     PathJoin(#[source] url::ParseError, url::Url, Cow<'static, str>),
 
+    /// This happens when we attempt to recover a public key from a
+    /// recoverable EDCSA signature.
+    #[error("Could not recover the public key from the signature: {0}, digest: {1}")]
+    InvalidRecoverableSignature(#[source] secp256k1::Error, secp256k1::Message),
+
     /// Reqwest error
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
@@ -51,6 +56,11 @@ pub enum Error {
     /// An error when querying the signer's database.
     #[error("Received an error when attempting to query the database: {0}")]
     SqlxQuery(#[source] sqlx::Error),
+
+    /// An error for the case where we cannot create a multi-sig
+    /// StacksAddress using given public keys.
+    #[error("Could not create a StacksAddress from the public keys: threshold {0}, keys {1}")]
+    StacksMusltiSig(u16, usize),
 
     /// Error when reading the stacks API part of the config.toml
     #[error("Failed to parse the stacks.api portion of the config: {0}")]
@@ -107,6 +117,10 @@ pub enum Error {
     /// Type conversion error
     #[error("Type conversion error")]
     TypeConversion,
+
+    /// Thrown when the recoverable signature has a public key that is unexpected
+    #[error("Unexpected public key from signature. key {0}; digest: {1}")]
+    UnknownPublicKey(secp256k1::PublicKey, secp256k1::Message),
 }
 
 impl From<std::convert::Infallible> for Error {

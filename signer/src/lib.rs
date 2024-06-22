@@ -6,6 +6,7 @@ pub mod block_observer;
 pub mod blocklist_client;
 pub mod codec;
 pub mod config;
+pub mod contracts;
 pub mod ecdsa;
 pub mod error;
 pub mod fees;
