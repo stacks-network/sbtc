@@ -163,6 +163,7 @@
 ;; 
 ;; This function does not handle validation or moving the funds.
 ;; Instead, it is purely for the purpose of storing the completed deposit.
+;; #[allow(unchecked_data)]
 (define-public (complete-deposit
     (txid (buff 32))
     (vout-index uint)
@@ -187,6 +188,7 @@
 
 ;; Rotate the signer set, multi-sig principal, & aggregate pubkey
 ;; This function can only be called by the bootstrap-signers contract.
+;; #[allow(unchecked_data)]
 (define-public (rotate-keys (new-keys (list 15 (buff 33))) (new-address principal) (new-aggregate-pubkey (buff 33)))
   (begin
     ;; Check that caller is protocol contract

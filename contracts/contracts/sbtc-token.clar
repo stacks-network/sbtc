@@ -89,6 +89,7 @@
 	)
 )
 
+;; #[allow(unchecked_data)]
 (define-private (protocol-mint-many-iter (item {amount: uint, recipient: principal}))
 	(ft-mint? sbtc-token (get amount item) (get recipient item))
 )
