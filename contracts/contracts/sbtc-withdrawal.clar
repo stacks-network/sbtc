@@ -79,7 +79,7 @@
       ;; Call into registry to confirm accepted withdrawal
       (try! (contract-call? .sbtc-registry complete-withdrawal request-id true (some bitcoin-txid) (some signer-bitmap) (some output-index) (some fee)))
 
-      (ok request)
+      (ok true)
   )
 )
 
@@ -123,22 +123,26 @@
 (define-private (complete-individual-withdrawal-helper (withdrawal {request-id: uint, status: bool, signer-bitmap: uint, bitcoin-txid: (optional (buff 32)), output-index: (optional uint), fee: (optional uint)}) (helper-response (response uint uint)))
   (match helper-response 
     index
-      (begin 
+      (let
+        (
+          (current-request-id (get request-id withdrawal))
+          (current-signer-bitmap (get signer-bitmap withdrawal))
+          (current-bitcoin-txid (get bitcoin-txid withdrawal))
+          (current-output-index (get output-index withdrawal))
+          (current-fee (get fee withdrawal))
+        ) 
         (if (get status withdrawal)
           ;; accepted
           (begin 
             (asserts! 
-              (and (is-some (get bitcoin-txid withdrawal)) (is-some (get output-index withdrawal)) (is-some (get fee withdrawal))) 
-            (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
-            (unwrap! (accept-withdrawal-request (get request-id withdrawal) (unwrap-panic (get bitcoin-txid withdrawal)) (get signer-bitmap withdrawal) (unwrap-panic (get output-index withdrawal)) (unwrap-panic (get fee withdrawal))) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
-            (ok (+ index u1))
+              (and (is-some current-bitcoin-txid) (is-some current-output-index) (is-some current-fee)) 
+              (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
+            (unwrap! (accept-withdrawal-request (get request-id withdrawal) (unwrap-panic current-bitcoin-txid) current-signer-bitmap (unwrap-panic current-output-index) (unwrap-panic current-fee)) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
           )
           ;; rejected
-          (begin 
-            (try! (reject-withdrawal (get request-id withdrawal) (get signer-bitmap withdrawal)))
-            (ok (+ index u1))
-          )
+          (unwrap! (reject-withdrawal (get request-id withdrawal) current-signer-bitmap) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
         )
+        (ok (+ index u1))
       )
     err-response
             (err err-response)

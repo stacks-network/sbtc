@@ -1533,31 +1533,7 @@ export const contracts = {
           { name: "output-index", type: "uint128" },
           { name: "fee", type: "uint128" },
         ],
-        outputs: {
-          type: {
-            response: {
-              ok: {
-                tuple: [
-                  { name: "amount", type: "uint128" },
-                  { name: "block-height", type: "uint128" },
-                  { name: "max-fee", type: "uint128" },
-                  {
-                    name: "recipient",
-                    type: {
-                      tuple: [
-                        { name: "hashbytes", type: { buffer: { length: 32 } } },
-                        { name: "version", type: { buffer: { length: 1 } } },
-                      ],
-                    },
-                  },
-                  { name: "sender", type: "principal" },
-                  { name: "status", type: { optional: "bool" } },
-                ],
-              },
-              error: "uint128",
-            },
-          },
-        },
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
         [
           requestId: TypedAbiArg<number | bigint, "requestId">,
@@ -1566,20 +1542,7 @@ export const contracts = {
           outputIndex: TypedAbiArg<number | bigint, "outputIndex">,
           fee: TypedAbiArg<number | bigint, "fee">,
         ],
-        Response<
-          {
-            amount: bigint;
-            blockHeight: bigint;
-            maxFee: bigint;
-            recipient: {
-              hashbytes: Uint8Array;
-              version: Uint8Array;
-            };
-            sender: string;
-            status: boolean | null;
-          },
-          bigint
-        >
+        Response<boolean, bigint>
       >,
       completeWithdrawals: {
         name: "complete-withdrawals",
