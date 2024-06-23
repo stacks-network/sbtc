@@ -80,6 +80,29 @@
   )
 ) 
 
+;; Reject a withdrawal request
+(define-public (reject-withdrawal (request-id uint) (signer-bitmap uint))
+  (let
+     (
+      (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
+      (withdrawal (unwrap! (contract-call? .sbtc-registry get-withdrawal-request request-id) ERR_INVALID_REQUEST))
+     )
+
+    ;; Check that the caller is the current signer principal
+    (asserts! (is-eq (get current-signer-principal current-signer-data) tx-sender) ERR_INVALID_CALLER)
+
+    ;; Check that request status is currently-pending
+    (asserts! (is-none (get status withdrawal)) ERR_ALREADY_PROCESSED)
+
+    ;; Burn sbtc-locked & re-mint sbtc to original requester
+    (try! (contract-call? .sbtc-token protocol-unlock (get amount withdrawal) (get sender withdrawal)))
+
+    (ok true)
+
+  )
+)
+;; Reject multiple withdrawal requests
+
 ;; Validation methods
 
 ;; Validate that a withdrawal's recipient address is well-formed.
