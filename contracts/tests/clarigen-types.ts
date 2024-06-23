@@ -717,19 +717,24 @@ export const contracts = {
         access: "public",
         args: [
           { name: "request-id", type: "uint128" },
-          { name: "bitcoin-txid", type: { buffer: { length: 32 } } },
-          { name: "signer-bitmap", type: "uint128" },
-          { name: "output-index", type: "uint128" },
-          { name: "fee", type: "uint128" },
+          { name: "status", type: "bool" },
+          {
+            name: "bitcoin-txid",
+            type: { optional: { buffer: { length: 32 } } },
+          },
+          { name: "signer-bitmap", type: { optional: "uint128" } },
+          { name: "output-index", type: { optional: "uint128" } },
+          { name: "fee", type: { optional: "uint128" } },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
         [
           requestId: TypedAbiArg<number | bigint, "requestId">,
-          bitcoinTxid: TypedAbiArg<Uint8Array, "bitcoinTxid">,
-          signerBitmap: TypedAbiArg<number | bigint, "signerBitmap">,
-          outputIndex: TypedAbiArg<number | bigint, "outputIndex">,
-          fee: TypedAbiArg<number | bigint, "fee">,
+          status: TypedAbiArg<boolean, "status">,
+          bitcoinTxid: TypedAbiArg<Uint8Array | null, "bitcoinTxid">,
+          signerBitmap: TypedAbiArg<number | bigint | null, "signerBitmap">,
+          outputIndex: TypedAbiArg<number | bigint | null, "outputIndex">,
+          fee: TypedAbiArg<number | bigint | null, "fee">,
         ],
         Response<boolean, bigint>
       >,
@@ -1472,6 +1477,52 @@ export const contracts = {
   },
   sbtcWithdrawal: {
     functions: {
+      completeIndividualWithdrawalHelper: {
+        name: "complete-individual-withdrawal-helper",
+        access: "private",
+        args: [
+          {
+            name: "withdrawal",
+            type: {
+              tuple: [
+                {
+                  name: "bitcoin-txid",
+                  type: { optional: { buffer: { length: 32 } } },
+                },
+                { name: "fee", type: { optional: "uint128" } },
+                { name: "output-index", type: { optional: "uint128" } },
+                { name: "request-id", type: "uint128" },
+                { name: "signer-bitmap", type: "uint128" },
+                { name: "status", type: "bool" },
+              ],
+            },
+          },
+          {
+            name: "helper-response",
+            type: { response: { ok: "uint128", error: "uint128" } },
+          },
+        ],
+        outputs: { type: { response: { ok: "uint128", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          withdrawal: TypedAbiArg<
+            {
+              bitcoinTxid: Uint8Array | null;
+              fee: number | bigint | null;
+              outputIndex: number | bigint | null;
+              requestId: number | bigint;
+              signerBitmap: number | bigint;
+              status: boolean;
+            },
+            "withdrawal"
+          >,
+          helperResponse: TypedAbiArg<
+            Response<number | bigint, number | bigint>,
+            "helperResponse"
+          >,
+        ],
+        Response<bigint, bigint>
+      >,
       acceptWithdrawalRequest: {
         name: "accept-withdrawal-request",
         access: "public",
@@ -1530,6 +1581,49 @@ export const contracts = {
           bigint
         >
       >,
+      completeWithdrawals: {
+        name: "complete-withdrawals",
+        access: "public",
+        args: [
+          {
+            name: "withdrawals",
+            type: {
+              list: {
+                type: {
+                  tuple: [
+                    {
+                      name: "bitcoin-txid",
+                      type: { optional: { buffer: { length: 32 } } },
+                    },
+                    { name: "fee", type: { optional: "uint128" } },
+                    { name: "output-index", type: { optional: "uint128" } },
+                    { name: "request-id", type: "uint128" },
+                    { name: "signer-bitmap", type: "uint128" },
+                    { name: "status", type: "bool" },
+                  ],
+                },
+                length: 100,
+              },
+            },
+          },
+        ],
+        outputs: { type: { response: { ok: "uint128", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          withdrawals: TypedAbiArg<
+            {
+              bitcoinTxid: Uint8Array | null;
+              fee: number | bigint | null;
+              outputIndex: number | bigint | null;
+              requestId: number | bigint;
+              signerBitmap: number | bigint;
+              status: boolean;
+            }[],
+            "withdrawals"
+          >,
+        ],
+        Response<bigint, bigint>
+      >,
       initiateWithdrawalRequest: {
         name: "initiate-withdrawal-request",
         access: "public",
@@ -1560,6 +1654,21 @@ export const contracts = {
           maxFee: TypedAbiArg<number | bigint, "maxFee">,
         ],
         Response<bigint, bigint>
+      >,
+      rejectWithdrawal: {
+        name: "reject-withdrawal",
+        access: "public",
+        args: [
+          { name: "request-id", type: "uint128" },
+          { name: "signer-bitmap", type: "uint128" },
+        ],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          requestId: TypedAbiArg<number | bigint, "requestId">,
+          signerBitmap: TypedAbiArg<number | bigint, "signerBitmap">,
+        ],
+        Response<boolean, bigint>
       >,
       validateRecipient: {
         name: "validate-recipient",
@@ -1666,6 +1775,21 @@ export const contracts = {
         },
         access: "constant",
       } as TypedAbiVariable<Response<null, bigint>>,
+      ERR_WITHDRAWAL_INDEX: {
+        name: "ERR_WITHDRAWAL_INDEX",
+        type: {
+          response: {
+            ok: "none",
+            error: "uint128",
+          },
+        },
+        access: "constant",
+      } as TypedAbiVariable<Response<null, bigint>>,
+      ERR_WITHDRAWAL_INDEX_PREFIX: {
+        name: "ERR_WITHDRAWAL_INDEX_PREFIX",
+        type: "uint128",
+        access: "constant",
+      } as TypedAbiVariable<bigint>,
       MAX_ADDRESS_VERSION: {
         name: "MAX_ADDRESS_VERSION",
         type: "uint128",
@@ -1712,6 +1836,11 @@ export const contracts = {
         isOk: false,
         value: 503n,
       },
+      ERR_WITHDRAWAL_INDEX: {
+        isOk: false,
+        value: 506n,
+      },
+      ERR_WITHDRAWAL_INDEX_PREFIX: 506n,
       MAX_ADDRESS_VERSION: 6n,
       mAX_ADDRESS_VERSION_BUFF_20: 4n,
       mAX_ADDRESS_VERSION_BUFF_32: 6n,

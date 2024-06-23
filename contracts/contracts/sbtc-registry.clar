@@ -172,6 +172,7 @@
     (print {
       topic: "completed-withdrawal",
       request-id: request-id,
+      request-status: status,
       bitcoin-txid: bitcoin-txid,
       signer-bitmap: signer-bitmap,
       output-index: output-index,

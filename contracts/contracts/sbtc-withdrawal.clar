@@ -14,6 +14,9 @@
 (define-constant ERR_ALREADY_PROCESSED (err u505))
 ;; The size of the withdrawal is smaller than the dust limit
 (define-constant ERR_FEE_TOO_HIGH (err u505))
+(define-constant ERR_WITHDRAWAL_INDEX_PREFIX (unwrap-err! ERR_WITHDRAWAL_INDEX (err true)))
+;; The size of the withdrawal is smaller than the dust limit
+(define-constant ERR_WITHDRAWAL_INDEX (err u506))
 
 ;; Maximum value of an address version as a uint
 (define-constant MAX_ADDRESS_VERSION u6)
@@ -78,7 +81,7 @@
 
       (ok request)
   )
-) 
+)
 
 ;; Reject a withdrawal request
 (define-public (reject-withdrawal (request-id uint) (signer-bitmap uint))
@@ -101,10 +104,46 @@
     (try! (contract-call? .sbtc-registry complete-withdrawal request-id false none none none none))
 
     (ok true)
-
   )
 )
 ;; Reject multiple withdrawal requests
+(define-public (complete-withdrawals (withdrawals (list 100 {request-id: uint, status: bool, signer-bitmap: uint, bitcoin-txid: (optional (buff 32)), output-index: (optional uint), fee: (optional uint)})))
+  (let 
+      (
+          (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))
+      )
+
+      ;; Check that the caller is the current signer principal
+      (asserts! (is-eq (get current-signer-principal current-signer-data) tx-sender) ERR_INVALID_CALLER)
+
+      (fold complete-individual-withdrawal-helper withdrawals (ok u0))
+  )
+)
+
+(define-private (complete-individual-withdrawal-helper (withdrawal {request-id: uint, status: bool, signer-bitmap: uint, bitcoin-txid: (optional (buff 32)), output-index: (optional uint), fee: (optional uint)}) (helper-response (response uint uint)))
+  (match helper-response 
+    index
+      (begin 
+        (if (get status withdrawal)
+          ;; accepted
+          (begin 
+            (asserts! 
+              (and (is-some (get bitcoin-txid withdrawal)) (is-some (get output-index withdrawal)) (is-some (get fee withdrawal))) 
+            (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
+            (unwrap! (accept-withdrawal-request (get request-id withdrawal) (unwrap-panic (get bitcoin-txid withdrawal)) (get signer-bitmap withdrawal) (unwrap-panic (get output-index withdrawal)) (unwrap-panic (get fee withdrawal))) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
+            (ok (+ index u1))
+          )
+          ;; rejected
+          (begin 
+            (try! (reject-withdrawal (get request-id withdrawal) (get signer-bitmap withdrawal)))
+            (ok (+ index u1))
+          )
+        )
+      )
+    err-response
+            (err err-response)
+  )
+)
 
 ;; Validation methods
 
