@@ -74,7 +74,7 @@
       )
 
       ;; Call into registry to confirm accepted withdrawal
-      (try! (contract-call? .sbtc-registry complete-withdrawal request-id bitcoin-txid signer-bitmap output-index fee))
+      (try! (contract-call? .sbtc-registry complete-withdrawal request-id true (some bitcoin-txid) (some signer-bitmap) (some output-index) (some fee)))
 
       (ok request)
   )
@@ -96,6 +96,9 @@
 
     ;; Burn sbtc-locked & re-mint sbtc to original requester
     (try! (contract-call? .sbtc-token protocol-unlock (get amount withdrawal) (get sender withdrawal)))
+
+    ;; Call into registry to confirm accepted withdrawal
+    (try! (contract-call? .sbtc-registry complete-withdrawal request-id false none none none none))
 
     (ok true)
 
