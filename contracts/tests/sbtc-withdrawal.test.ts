@@ -75,7 +75,7 @@ describe("initiating a withdrawal request", () => {
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
-        amount: 1000n,
+        amount: 1001n,
         recipient: alice,
       }),
       deployer
@@ -241,7 +241,7 @@ describe("Accepting a withdrawal request", () => {
         amount: 1000n,
         recipient: alice,
       }),
-      alice
+      deployer
     );
     txOk(
       withdrawal.initiateWithdrawalRequest({
@@ -272,7 +272,7 @@ describe("Accepting a withdrawal request", () => {
         amount: 1000n,
         recipient: alice,
       }),
-      alice
+      deployer
     );
     txOk(
       withdrawal.initiateWithdrawalRequest({
@@ -303,7 +303,7 @@ describe("Accepting a withdrawal request", () => {
         amount: 1000n,
         recipient: alice,
       }),
-      alice
+      deployer
     );
     txOk(
       withdrawal.initiateWithdrawalRequest({
@@ -344,7 +344,7 @@ describe("Accepting a withdrawal request", () => {
         amount: 1000n,
         recipient: alice,
       }),
-      alice
+      deployer
     );
     txOk(
       withdrawal.initiateWithdrawalRequest({
@@ -375,7 +375,7 @@ describe("Accepting a withdrawal request", () => {
         amount: 1000n,
         recipient: alice,
       }),
-      alice
+      deployer
     );
     txOk(
       withdrawal.initiateWithdrawalRequest({
@@ -406,7 +406,7 @@ describe("Accepting a withdrawal request", () => {
         amount: 1000n,
         recipient: alice,
       }),
-      alice
+      deployer
     );
     txOk(
       withdrawal.initiateWithdrawalRequest({
