@@ -1,5 +1,6 @@
 import {
   alice,
+  bob,
   deployer,
   deposit,
   errors,
@@ -566,3 +567,67 @@ describe("Reject a withdrawal request", () => {
     expect(receipt.value).toEqual(true);
   });
 })
+
+describe("Complete multiple withdrawals", () => {
+  test("Successfully pass in two withdrawals, one accept, one reject", () => {
+    // Alice setup
+    txOk(
+      deposit.completeDepositWrapper({
+        txid: new Uint8Array(32).fill(0),
+        voutIndex: 0,
+        amount: 1000n,
+        recipient: alice,
+      }),
+      deployer
+    );
+    txOk(
+      withdrawal.initiateWithdrawalRequest({
+        amount: 1000n,
+        recipient: alicePoxAddr,
+        maxFee: 10n,
+      }),
+      alice
+    );
+    // Bob setup
+    txOk(
+      deposit.completeDepositWrapper({
+        txid: new Uint8Array(32).fill(1),
+        voutIndex: 1,
+        amount: 1000n,
+        recipient: bob,
+      }),
+      deployer
+    );
+    txOk(
+      withdrawal.initiateWithdrawalRequest({
+        amount: 1000n,
+        recipient: alicePoxAddr,
+        maxFee: 10n,
+      }),
+      bob
+    );
+    // 
+    const receipt = txOk(
+      withdrawal.completeWithdrawals({withdrawals: [{
+          requestId: 1n,
+          status: true,
+          signerBitmap: 1n,
+          bitcoinTxid: new Uint8Array(32).fill(1),
+          outputIndex: 10n,
+          fee: 10n,
+        },{
+          requestId: 2n,
+          status: false,
+          signerBitmap: 1n,
+          bitcoinTxid: null,
+          outputIndex: null,
+          fee: null,
+        } ]
+      }),
+      deployer
+    );
+    expect(receipt.value).toEqual(2n);
+  });
+})
+
+//(define-public (complete-withdrawals (withdrawals (list 100 {request-id: uint, status: bool, signer-bitmap: uint, bitcoin-txid: (optional (buff 32)), output-index: (optional uint), fee: (optional uint)})))
