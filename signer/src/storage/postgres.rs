@@ -77,9 +77,9 @@ impl PgStore {
               , decode(parent_block_id, 'hex')
               , CURRENT_TIMESTAMP
             FROM JSONB_TO_RECORDSET($1::JSONB) AS x(
-                block_id        VARCHAR
+                block_id        CHAR(64)
               , chain_length    BIGINT
-              , parent_block_id VARCHAR
+              , parent_block_id CHAR(64)
             )
             ON CONFLICT DO NOTHING"#,
         )
@@ -127,7 +127,7 @@ impl PgStore {
               , tx_type::sbtc_signer.transaction_type
               , CURRENT_TIMESTAMP
             FROM JSONB_TO_RECORDSET($1::JSONB) AS x(
-                txid      VARCHAR
+                txid      CHAR(64)
               , tx        VARCHAR
               , tx_type   VARCHAR
             )
@@ -145,8 +145,8 @@ impl PgStore {
                 decode(txid, 'hex')
               , decode(block_id, 'hex')
             FROM JSONB_TO_RECORDSET($1::JSONB) AS x(
-                txid        VARCHAR
-              , block_id    VARCHAR
+                txid        CHAR(64)
+              , block_id    CHAR(64)
             )
             ON CONFLICT DO NOTHING"#,
         )
