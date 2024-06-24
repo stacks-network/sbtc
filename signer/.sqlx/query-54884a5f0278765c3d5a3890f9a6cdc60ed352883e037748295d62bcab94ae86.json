@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT * FROM sbtc_signer.bitcoin_blocks WHERE block_hash = $1;",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "block_hash",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 1,
+        "name": "block_height",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "parent_hash",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 3,
+        "name": "confirms",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "54884a5f0278765c3d5a3890f9a6cdc60ed352883e037748295d62bcab94ae86"
+}
