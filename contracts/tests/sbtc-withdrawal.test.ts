@@ -1,5 +1,6 @@
 import {
   alice,
+  deployer,
   deposit,
   errors,
   registry,
@@ -77,7 +78,7 @@ describe("initiating a withdrawal request", () => {
         amount: 1000n,
         recipient: alice,
       }),
-      alice
+      deployer
     );
     const receipt = txOk(
       withdrawal.initiateWithdrawalRequest({
@@ -141,7 +142,7 @@ describe("initiating a withdrawal request", () => {
         amount: 1000n,
         recipient: alice,
       }),
-      alice
+      deployer
     );
     expect(rovOk(token.getBalance(alice))).toEqual(1000n);
     const receipt = txOk(
@@ -173,7 +174,7 @@ describe("initiating a withdrawal request", () => {
         amount: 4000n,
         recipient: alice,
       }),
-      alice
+      deployer
     );
     expect(
       txErr(
@@ -217,7 +218,7 @@ describe("initiating a withdrawal request", () => {
         amount: 4000n,
         recipient: alice,
       }),
-      alice
+      deployer
     );
     const receipt = txErr(
       withdrawal.initiateWithdrawalRequest({
