@@ -42,7 +42,7 @@ serde = "1.0"
 serde_json = "1.0"
 sha2 = "0.10"
 stackslib = { git = "https://github.com/Trust-Machines/stacks-blockchain/", branch = "develop-upstream" }
-sqlx = { version = "0.7", default-features = false, features = [ "postgres", "time", "runtime-tokio", "tls-rustls", "macros", "migrate" ] }
+sqlx = { version = "0.7", default-features = false, features = [ "postgres", "time", "runtime-tokio", "tls-rustls", "macros", "migrate", "json" ] }
 thiserror = "1.0"
 time = "0.3.36"
 tonic = "0.11.0"

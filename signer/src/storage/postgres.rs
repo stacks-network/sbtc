@@ -68,7 +68,7 @@ impl PgStore {
             return Ok(());
         }
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             INSERT INTO sbtc_signer.stacks_blocks (block_hash, block_height, parent_hash, created_at)
             SELECT
@@ -82,8 +82,8 @@ impl PgStore {
               , parent_block_id CHAR(64)
             )
             ON CONFLICT DO NOTHING"#,
+            serde_json::to_value(&block_summaries).map_err(Error::JsonSerialize)?
         )
-        .bind(serde_json::to_string(&block_summaries).map_err(Error::JsonSerialize)?)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -117,8 +117,8 @@ impl PgStore {
             return Ok(());
         }
 
-        let block_txs_json = serde_json::to_string(&block_txs).map_err(Error::JsonSerialize)?;
-        sqlx::query(
+        let block_txs_json = serde_json::to_value(&block_txs).map_err(Error::JsonSerialize)?;
+        sqlx::query!(
             r#"
             INSERT INTO sbtc_signer.transactions (txid, tx, tx_type, created_at)
             SELECT
@@ -132,13 +132,13 @@ impl PgStore {
               , tx_type   VARCHAR
             )
             ON CONFLICT DO NOTHING"#,
+            &block_txs_json
         )
-        .bind(&block_txs_json)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             INSERT INTO sbtc_signer.stacks_transactions (txid, block_hash)
             SELECT
@@ -149,8 +149,8 @@ impl PgStore {
               , block_id    CHAR(64)
             )
             ON CONFLICT DO NOTHING"#,
+            &block_txs_json
         )
-        .bind(&block_txs_json)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -220,13 +220,13 @@ impl super::DbRead for PgStore {
     }
 
     async fn stacks_block_exists(&self, block_id: StacksBlockId) -> Result<bool, Self::Error> {
-        sqlx::query(
+        sqlx::query!(
             r#"
-            SELECT 1
+            SELECT 1 AS exists
             FROM sbtc_signer.stacks_blocks
             WHERE block_hash = $1;"#,
+            &block_id.0
         )
-            .bind(block_id.0)
             .fetch_optional(&self.0)
             .await
             .map(|row| row.is_some())

@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO sbtc_signer.transactions VALUES ($1, $2, $3, $4)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Bytea",
+        {
+          "Custom": {
+            "name": "transaction_type",
+            "kind": {
+              "Enum": [
+                "sbtc_transaction",
+                "deposit_request",
+                "withdraw_request",
+                "deposit_accept",
+                "withdraw_accept",
+                "withdraw_reject",
+                "update_signer_set",
+                "set_aggregate_key"
+              ]
+            }
+          }
+        },
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3f0879dab4417cf80f9287fe579c2c6b66f3ac4cc3fe4845ecc4cfe85b4c8e8d"
+}
