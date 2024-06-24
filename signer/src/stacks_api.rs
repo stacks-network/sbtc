@@ -17,16 +17,33 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// A trait detailing the interface with the Stacks API and Stacks Nodes.
 pub trait StacksInteract {
-    /// Fetch all Nakamoto blocks that are not already stored in the
-    /// datastore.
-    fn fetch_unknown_ancestors<D>(
+    /// Fetch the raw stacks nakamoto block from a Stacks node given the
+    /// Stacks block ID.
+    fn get_block(
         &self,
         block_id: StacksBlockId,
-        db: &D,
-    ) -> impl Future<Output = Result<Vec<NakamotoBlock>, Error>> + Send
-    where
-        D: DbRead + Send + Sync,
-        Error: From<<D as DbRead>::Error>;
+    ) -> impl Future<Output = Result<NakamotoBlock, Error>> + Send;
+    /// Fetch all Nakamoto ancestor blocks within the same tenure as the
+    /// given block ID from a Stacks node.
+    ///
+    /// The response includes the Nakamoto block for the given block id.
+    ///
+    /// This function is analogous to the GET /v3/tenures/<block-id>
+    /// endpoint on stacks-core nodes, but responses from that endpoint are
+    /// capped at ~16 MB. This function returns all blocks, regardless of
+    /// the size of the blocks within the tenure.
+    fn get_tenure(
+        &self,
+        block_id: StacksBlockId,
+    ) -> impl Future<Output = Result<Vec<NakamotoBlock>, Error>> + Send;
+    /// Get information about the current tenure.
+    ///
+    /// This function is analogous to the GET /v3/tenures/info stacks node
+    /// endpoint for retrieving tenure information.
+    fn get_tenure_info(&self) -> impl Future<Output = Result<RPCGetTenureInfo, Error>> + Send;
+    /// Get the start height of the first EPOCH 3.0 block on the Stacks
+    /// blockchain.
+    fn nakamoto_start_height(&self) -> u64;
 }
 
 /// A client for interacting with Stacks nodes and the Stacks API
@@ -209,39 +226,55 @@ impl StacksClient {
 }
 
 impl StacksInteract for StacksClient {
-    async fn fetch_unknown_ancestors<D>(
-        &self,
-        block_id: StacksBlockId,
-        db: &D,
-    ) -> Result<Vec<NakamotoBlock>, Error>
-    where
-        D: DbRead + Send + Sync,
-        Error: From<<D as DbRead>::Error>,
-    {
-        let mut blocks = vec![self.get_block(block_id).await?];
-
-        while let Some(block) = blocks.last() {
-            // We won't get anymore Nakamoto blocks before this point, so
-            // time to stop.
-            if block.header.chain_length <= self.nakamoto_start_height {
-                tracing::info!(
-                    nakamoto_start_height = %self.nakamoto_start_height,
-                    last_chain_length = %block.header.chain_length,
-                    "Stopping, since we have fetched all Nakamoto blocks"
-                );
-                break;
-            }
-            // We've seen this parent already, so time to stop.
-            if db.stacks_block_exists(block.header.parent_block_id).await? {
-                tracing::info!("Parent block known in the database");
-                break;
-            }
-            // There are more blocks to fetch.
-            blocks.extend(self.get_blocks(block.header.parent_block_id).await?);
-        }
-
-        Ok(blocks)
+    async fn get_block(&self, block_id: StacksBlockId) -> Result<NakamotoBlock, Error> {
+        self.get_block(block_id).await
     }
+    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+        self.get_blocks(block_id).await
+    }
+    async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
+        self.get_tenure_info().await
+    }
+    fn nakamoto_start_height(&self) -> u64 {
+        self.nakamoto_start_height
+    }
+}
+
+/// Fetch all Nakamoto blocks that are not already stored in the
+/// datastore.
+pub async fn fetch_unknown_ancestors<S, D>(
+    stacks: &S,
+    db: &D,
+    block_id: StacksBlockId,
+) -> Result<Vec<NakamotoBlock>, Error>
+where
+    D: DbRead + Send + Sync,
+    S: StacksInteract,
+    Error: From<<D as DbRead>::Error>,
+{
+    let mut blocks = vec![stacks.get_block(block_id).await?];
+
+    while let Some(block) = blocks.last() {
+        // We won't get anymore Nakamoto blocks before this point, so
+        // time to stop.
+        if block.header.chain_length <= stacks.nakamoto_start_height() {
+            tracing::info!(
+                nakamoto_start_height = %stacks.nakamoto_start_height(),
+                last_chain_length = %block.header.chain_length,
+                "Stopping, since we have fetched all Nakamoto blocks"
+            );
+            break;
+        }
+        // We've seen this parent already, so time to stop.
+        if db.stacks_block_exists(block.header.parent_block_id).await? {
+            tracing::info!("Parent block known in the database");
+            break;
+        }
+        // There are more blocks to fetch.
+        blocks.extend(stacks.get_tenure(block.header.parent_block_id).await?);
+    }
+
+    Ok(blocks)
 }
 
 #[cfg(test)]
@@ -264,7 +297,7 @@ mod tests {
         let db = PgStore::from(pool);
 
         let info = client.get_tenure_info().await.unwrap();
-        let blocks = client.fetch_unknown_ancestors(info.tip_block_id, &db).await;
+        let blocks = fetch_unknown_ancestors(&client, &db, info.tip_block_id).await;
 
         let blocks = blocks.unwrap();
         db.write_stacks_blocks(&blocks).await.unwrap();
@@ -426,8 +459,7 @@ mod tests {
         let storage = Store::new_shared();
 
         let info = client.get_tenure_info().await.unwrap();
-        let blocks = client
-            .fetch_unknown_ancestors(info.tenure_start_block_id, &storage)
+        let blocks = fetch_unknown_ancestors(&client, &storage, info.tenure_start_block_id)
             .await
             .unwrap();
         assert!(!blocks.is_empty());

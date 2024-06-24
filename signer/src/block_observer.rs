@@ -20,13 +20,13 @@
 use std::collections::HashMap;
 
 use crate::error;
+use crate::stacks_api::fetch_unknown_ancestors;
 use crate::stacks_api::StacksInteract;
 use crate::storage;
 
 use bitcoin::hashes::Hash;
 use blockstack_lib::chainstate::nakamoto;
 use blockstack_lib::chainstate::stacks;
-use blockstack_lib::types::chainstate::StacksBlockId;
 use futures::stream::StreamExt;
 use storage::model;
 use storage::DbRead;
@@ -150,11 +150,9 @@ where
         known_deposit_requests: &DepositRequestMap,
         block: bitcoin::Block,
     ) -> Result<(), error::Error> {
-        let block_id = StacksBlockId::first_mined();
-        let stacks_blocks = self
-            .stacks_client
-            .fetch_unknown_ancestors(block_id, &self.storage)
-            .await?;
+        let info = self.stacks_client.get_tenure_info().await?;
+        let stacks_blocks =
+            fetch_unknown_ancestors(&self.stacks_client, &self.storage, info.tip_block_id).await?;
 
         self.extract_deposit_requests(&block.txdata);
         self.extract_sbtc_transactions(&block.txdata);
@@ -254,6 +252,9 @@ pub struct DepositRequest {
 
 #[cfg(test)]
 mod tests {
+    use blockstack_lib::chainstate::burn::ConsensusHash;
+    use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
+    use blockstack_lib::types::chainstate::StacksBlockId;
     use rand::seq::IteratorRandom;
     use rand::SeedableRng;
 
@@ -385,20 +386,42 @@ mod tests {
     }
 
     impl StacksInteract for TestHarness {
-        async fn fetch_unknown_ancestors<D>(
+        async fn get_block(
             &self,
-            _: blockstack_lib::types::chainstate::StacksBlockId,
-            _: &D,
-        ) -> Result<Vec<nakamoto::NakamotoBlock>, crate::error::Error>
-        where
-            D: DbRead + Send + Sync,
-        {
+            _: StacksBlockId,
+        ) -> Result<nakamoto::NakamotoBlock, error::Error> {
+            let block = self
+                .stacks_blocks_per_bitcoin_block
+                .values()
+                .flatten()
+                .next()
+                .cloned();
+            Ok(block.unwrap())
+        }
+        async fn get_tenure(
+            &self,
+            _: StacksBlockId,
+        ) -> Result<Vec<nakamoto::NakamotoBlock>, error::Error> {
             Ok(self
                 .stacks_blocks_per_bitcoin_block
                 .values()
                 .flatten()
                 .cloned()
                 .collect())
+        }
+        async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, error::Error> {
+            Ok(RPCGetTenureInfo {
+                consensus_hash: ConsensusHash([0; 20]),
+                tenure_start_block_id: StacksBlockId::first_mined(),
+                parent_consensus_hash: ConsensusHash([0; 20]),
+                parent_tenure_start_block_id: StacksBlockId::first_mined(),
+                tip_block_id: StacksBlockId::first_mined(),
+                tip_height: 0,
+                reward_cycle: 0,
+            })
+        }
+        fn nakamoto_start_height(&self) -> u64 {
+            0
         }
     }
 
