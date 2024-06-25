@@ -112,11 +112,11 @@ impl StacksClient {
     /// If the given block ID does not exist or is an ID for a non-Nakamoto
     /// block then a Result::Err is returned.
     #[tracing::instrument(skip(self))]
-    async fn get_blocks(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
         let mut blocks = Vec::new();
 
         tracing::debug!("Making initial request for Nakamoto blocks within the tenure");
-        blocks.extend(self.get_tenure(block_id).await?);
+        blocks.extend(self.get_tenure_raw(block_id).await?);
 
         let mut prev_last_block_id = block_id;
 
@@ -135,7 +135,7 @@ impl StacksClient {
             prev_last_block_id = last_block_id;
 
             tracing::debug!(%last_block_id, "Fetching more Nakamoto blocks within the tenure");
-            let blks = self.get_tenure(last_block_id).await?;
+            let blks = self.get_tenure_raw(last_block_id).await?;
             // The first block in the GET /v3/tenures/<block-id> response
             // is always the block related to the given <block-id>. But we
             // already have that block, so we can skip adding it again.
@@ -158,7 +158,7 @@ impl StacksClient {
     /// * If the given block ID does not exist or is an ID for a
     ///   non-Nakamoto block then a Result::Err is returned.
     #[tracing::instrument(skip(self))]
-    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+    async fn get_tenure_raw(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
         let base = self.node_endpoint.clone();
         let path = format!("/v3/tenures/{}", block_id.to_hex());
         let url = base
@@ -230,7 +230,7 @@ impl StacksInteract for StacksClient {
         self.get_block(block_id).await
     }
     async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
-        self.get_blocks(block_id).await
+        self.get_tenure(block_id).await
     }
     async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
         self.get_tenure_info().await
@@ -248,8 +248,8 @@ pub async fn fetch_unknown_ancestors<S, D>(
     block_id: StacksBlockId,
 ) -> Result<Vec<NakamotoBlock>, Error>
 where
-    D: DbRead + Send + Sync,
     S: StacksInteract,
+    D: DbRead + Send + Sync,
     Error: From<<D as DbRead>::Error>,
 {
     let mut blocks = vec![stacks.get_block(block_id).await?];
@@ -393,7 +393,7 @@ mod tests {
         let client = StacksClient::new(settings);
         let block_id = StacksBlockId::from_hex(TENURE_END_BLOCK_ID).unwrap();
         // The moment of truth, do the requests succeed?
-        let blocks = client.get_blocks(block_id).await.unwrap();
+        let blocks = client.get_tenure(block_id).await.unwrap();
         assert!(blocks.len() > 1);
         dbg!(blocks.len());
 
