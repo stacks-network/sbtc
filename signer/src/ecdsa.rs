@@ -63,11 +63,12 @@ impl<T: wsts::net::Signable> Signed<T> {
         self.inner.verify(&self.signature, &self.signer_pub_key)
     }
 
-    /// Unique identifyer for the inner message
+    /// Unique identifier for the signed message
     pub fn id(&self) -> [u8; 32] {
         let mut hasher = sha2::Sha256::new();
 
         self.hash(&mut hasher);
+        hasher.update(&self.signature);
 
         hasher.finalize().into()
     }

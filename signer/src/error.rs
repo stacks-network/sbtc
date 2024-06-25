@@ -103,6 +103,10 @@ pub enum Error {
     /// GRPC relay network error
     #[error("GRPC relay network error: {0}")]
     GrpcRelayNetworkError(#[from] network::grpc_relay::RelayError),
+
+    /// Type conversion error
+    #[error("Type conversion error")]
+    TypeConversion,
 }
 
 impl From<std::convert::Infallible> for Error {

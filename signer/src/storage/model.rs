@@ -3,7 +3,7 @@
 use fake::faker::time::en::DateTimeAfter;
 
 /// Bitcoin block.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct BitcoinBlock {
     /// Block hash.
@@ -23,7 +23,7 @@ pub struct BitcoinBlock {
 }
 
 /// Stacks block.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct StacksBlock {
     /// Block hash.
@@ -40,14 +40,15 @@ pub struct StacksBlock {
 }
 
 /// Deposit request.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct DepositRequest {
     /// Transaction ID of the deposit request transaction.
     #[dummy(expr = "fake::vec![u8; 32]")]
     pub txid: BitcoinTxId,
     /// Index of the deposit request UTXO.
-    pub output_index: usize,
+    #[dummy(faker = "0..100")]
+    pub output_index: i32,
     /// Script spendable by the sBTC signers.
     pub spend_script: Bytes,
     /// Script spendable by the depositor.
@@ -69,14 +70,15 @@ pub struct DepositRequest {
 }
 
 /// A signer acknowledging a deposit request.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct DepositSigner {
     /// TxID of the deposit request.
     #[dummy(expr = "fake::vec![u8; 32]")]
     pub txid: BitcoinTxId,
     /// Ouput index of the deposit request.
-    pub output_index: usize,
+    #[dummy(faker = "0..100")]
+    pub output_index: i32,
     /// Public key of the signer.
     pub signer_pub_key: PubKey,
     /// Signals if the signer is prepared to sign for this request.
@@ -87,7 +89,7 @@ pub struct DepositSigner {
 }
 
 /// Withdraw request.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct WithdrawRequest {
     /// Request ID of the withdraw request.
@@ -110,7 +112,7 @@ pub struct WithdrawRequest {
 }
 
 /// A signer acknowledging a withdrawal request.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct WithdrawSigner {
     /// Request ID of the withdraw request.
@@ -128,7 +130,7 @@ pub struct WithdrawSigner {
 }
 
 /// A connection between a bitcoin block and a bitcoin transaction.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BitcoinTransaction {
     /// Transaction ID.
     pub txid: BitcoinTxId,
@@ -137,7 +139,7 @@ pub struct BitcoinTransaction {
 }
 
 /// A raw transaction on either Bitcoin or Stacks.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct Transaction {
     /// Transaction ID.
@@ -152,7 +154,19 @@ pub struct Transaction {
 }
 
 /// The types of transactions the signer is interested in.
-#[derive(Debug, Clone, Copy, PartialEq, sqlx::Type, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    sqlx::Type,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 #[sqlx(type_name = "sbtc_signer.transaction_type", rename_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 #[serde(rename_all = "snake_case")]
@@ -186,7 +200,7 @@ pub type BitcoinTxId = Vec<u8>;
 /// Arbitrary bytes
 pub type Bytes = Vec<u8>;
 /// Secp256k1 Pubkey in compressed form
-pub type PubKey = [u8; 33];
+pub type PubKey = Vec<u8>;
 /// Bitcoin address
 pub type BitcoinAddress = String;
 /// Stacks address

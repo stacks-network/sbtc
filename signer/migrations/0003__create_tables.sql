@@ -32,7 +32,7 @@ CREATE TABLE sbtc_signer.deposit_requests (
     recipient TEXT NOT NULL,
     amount BIGINT NOT NULL,
     max_fee BIGINT NOT NULL,
-    sender_addresses TEXT[],
+    sender_addresses TEXT[] NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (txid, output_index)
 );
