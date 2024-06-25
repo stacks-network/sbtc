@@ -1,10 +1,7 @@
 //! Event handler module for processing API Gateway requests in AWS Lambda
 
 use crate::{
-    errors,
-    operations::deposits,
-    operations::withdrawals,
-    operations::chainstate,
+    config::LambdaContext, errors, operations::{chainstate, deposits, withdrawals}
 };
 use std::collections::HashMap;
 use aws_lambda_events::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
@@ -16,11 +13,13 @@ use http::Method;
 ///
 /// # Arguments
 /// * `event` - A LambdaEvent containing the ApiGatewayProxyRequest.
+/// * `context` - A LambdaContext containing any service clients and environment settings.
 ///
 /// # Returns
 /// A result containing the API Gateway Proxy Response or an lambda_runtime::Error.
 pub async fn handle_event(
-    event: LambdaEvent<ApiGatewayProxyRequest>
+    event: LambdaEvent<ApiGatewayProxyRequest>,
+    context: &LambdaContext,
 ) -> Result<ApiGatewayProxyResponse, lambda_runtime::Error> {
 
     // Extract base data.
@@ -28,24 +27,25 @@ pub async fn handle_event(
     let http_method = event.payload.http_method;
     let body: Option<String> = event.payload.body;
     let path_parameters: HashMap<String, String> = event.payload.path_parameters;
+    let query_parameters: aws_lambda_events::query_map::QueryMap = event.payload.query_string_parameters;
 
     // Dispatch based on API call.
     let event_handler_result = match (resource.as_str(), http_method) {
         // Deposits
-        ("/deposits", Method::POST) => deposits::handle_create_deposit(body),
-        ("/deposits/{txid}", Method::GET) => deposits::handle_get_txn_deposits(path_parameters),
-        ("/deposits/{txid}/{outputIndex}", Method::GET) => deposits::handle_get_deposit(path_parameters),
-        ("/deposits", Method::GET) => deposits::handle_get_deposits(path_parameters),
-        ("/deposits", Method::PUT) => deposits::handle_update_deposits(body),
+        ("/deposits", Method::POST) => deposits::handle_create_deposit(body, context).await,
+        ("/deposits/{txid}", Method::GET) => deposits::handle_get_txn_deposits(path_parameters, context).await,
+        ("/deposits/{txid}/{outputIndex}", Method::GET) => deposits::handle_get_deposit(path_parameters, context).await,
+        ("/deposits", Method::GET) => deposits::handle_get_deposits(path_parameters, query_parameters, context).await,
+        ("/deposits", Method::PUT) => deposits::handle_update_deposits(body, context).await,
         // Withdrawals
-        ("/withdrawals", Method::POST) => withdrawals::handle_create_withdrawal(body),
-        ("/withdrawals/{id}", Method::GET) => withdrawals::handle_get_withdrawal(path_parameters),
-        ("/withdrawals", Method::GET) => withdrawals::handle_get_withdrawals(path_parameters),
-        ("/withdrawals", Method::PUT) => withdrawals::handle_update_withdrawals(body),
+        ("/withdrawals", Method::POST) => withdrawals::handle_create_withdrawal(body, context).await,
+        ("/withdrawals/{id}", Method::GET) => withdrawals::handle_get_withdrawal(path_parameters, context).await,
+        ("/withdrawals", Method::GET) => withdrawals::handle_get_withdrawals(path_parameters, context).await,
+        ("/withdrawals", Method::PUT) => withdrawals::handle_update_withdrawals(body, context).await,
         // Chainstate
-        ("/chainstate", Method::POST) => chainstate::handle_create_chainstate(body),
-        ("/chainstate/{height}", Method::GET) => chainstate::handle_get_chainstate(path_parameters),
-        ("/chainstate", Method::PUT) => chainstate::handle_update_chainstate(body),
+        ("/chainstate", Method::POST) => chainstate::handle_create_chainstate(body, context).await,
+        ("/chainstate/{height}", Method::GET) => chainstate::handle_get_chainstate(path_parameters, context).await,
+        ("/chainstate", Method::PUT) => chainstate::handle_update_chainstate(body, context).await,
         _ => {
             Err(errors::EmilyApiError::BadRequest(format!("Invalid endpoint \"{}\".", resource).to_string()))
         },

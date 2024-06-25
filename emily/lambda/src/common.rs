@@ -95,13 +95,13 @@ pub fn package_response<T: serde::Serialize>(
     status_code: u16,
 ) -> Result<common::SimpleApiResponse, errors::EmilyApiError> {
     serde_json::to_string(&response)
-            .map_err(|e| {
-                errors::EmilyApiError::UnhandledService(Box::new(e))
-            }
-        ).map(|response_str| common::SimpleApiResponse {
-                status_code,
-                body: Some(aws_lambda_events::encodings::Body::Text(response_str))
-            })
+        .map_err(|e| {
+            errors::EmilyApiError::UnhandledService(Box::new(e))
+        })
+        .map(|response_str| common::SimpleApiResponse {
+            status_code,
+            body: Some(aws_lambda_events::encodings::Body::Text(response_str))
+        })
 }
 
 #[cfg(test)]

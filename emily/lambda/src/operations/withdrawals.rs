@@ -4,11 +4,13 @@ use std::collections::HashMap;
 
 use emily::models;
 use crate::common;
+use crate::config::LambdaContext;
 use crate::errors;
 
 /// Handles the creation of a withdrawal request
-pub fn handle_create_withdrawal(
-    body:  Option<String>
+pub async fn handle_create_withdrawal(
+    body: Option<String>,
+    _context: &LambdaContext,
 ) -> Result<common::SimpleApiResponse, errors::EmilyApiError> {
     common::deserialize_request::<models::CreateWithdrawalRequestContent>(body).map(|_request| models::CreateWithdrawalResponseContent {
                 request_id: "BitcoinTxIdHere".to_string(),
@@ -31,8 +33,9 @@ pub fn handle_create_withdrawal(
 }
 
 /// Handles the retrieval of a single withdrawal transaction
-pub fn handle_get_withdrawal(
-    _path_parameters:  HashMap<String, String>
+pub async fn handle_get_withdrawal(
+    _path_parameters: HashMap<String, String>,
+    _context: &LambdaContext,
 ) -> Result<common::SimpleApiResponse, errors::EmilyApiError> {
     Ok(models::GetWithdrawalResponseContent {
         request_id: "BitcoinTxIdHere".to_string(),
@@ -62,8 +65,9 @@ pub fn handle_get_withdrawal(
 }
 
 /// Handles the retrieval of a multiple withdrawal transaction
-pub fn handle_get_withdrawals(
-    _path_parameters:  HashMap<String, String>
+pub async fn handle_get_withdrawals(
+    _path_parameters: HashMap<String, String>,
+    _context: &LambdaContext,
 ) -> Result<common::SimpleApiResponse, errors::EmilyApiError> {
     Ok(models::GetWithdrawalsResponseContent {
         next_token: Some("Cassandra".to_string()),
@@ -94,8 +98,9 @@ pub fn handle_get_withdrawals(
 }
 
 /// Handles the update of withdrawal transactions
-pub fn handle_update_withdrawals(
-    body:  Option<String>
+pub async fn handle_update_withdrawals(
+    body: Option<String>,
+    _context: &LambdaContext,
 ) -> Result<common::SimpleApiResponse, errors::EmilyApiError> {
     common::deserialize_request::<models::UpdateWithdrawalsRequestContent>(body).map(|_request| models::UpdateWithdrawalsResponseContent {
                 withdrawals: Some(vec![

@@ -16,25 +16,25 @@ pub enum EmilyApiError {
     // #[error("Forbidden Error:  {0}")]
     // Forbidden(String),
 
-    // Currently unused.
-    // #[error("Not Found Error: {0}")]
-    // NotFound(String),
+    /// Internal not found error.
+    #[error("Not Found Error: {0}")]
+    NotFound(String),
 
     // Currently unused.
     // #[error("Conflict Error: {0}")]
     // Conflict(String),
 
-    // Currently unused.
-    // #[error("Not Implemented Error: {0}")]
-    // NotImplemented(String),
+    /// Not implemented error.
+    #[error("Not Implemented Error: {0}")]
+    NotImplemented(String),
 
     // Currently unused.
     // #[error("Throttling Error: {0}")]
     // Throttling(String), // Handled by the gateway, here for completeness.
 
-    // Currently unused.
-    // #[error("Internal Server Error: {0}")]
-    // InternalService(String),
+    /// Internal service error.
+    #[error("Internal Server Error: {0}")]
+    InternalService(String),
 
     /// Unhandled server error
     #[error("Unhandled Server Exception: {0}")]
@@ -49,11 +49,11 @@ impl EmilyApiError {
         match *self {
             EmilyApiError::BadRequest(_) => http::StatusCode::BAD_REQUEST,
             // EmilyApiError::Forbidden(_) => http::StatusCode::FORBIDDEN,
-            // EmilyApiError::NotFound(_) => http::StatusCode::NOT_FOUND,
+            EmilyApiError::NotFound(_) => http::StatusCode::NOT_FOUND,
             // EmilyApiError::Conflict(_) => http::StatusCode::CONFLICT,
-            // EmilyApiError::NotImplemented(_) => http::StatusCode::NOT_IMPLEMENTED,
+            EmilyApiError::NotImplemented(_) => http::StatusCode::NOT_IMPLEMENTED,
             // EmilyApiError::Throttling(_) => http::StatusCode::TOO_MANY_REQUESTS,
-            // EmilyApiError::InternalService(_) => http::StatusCode::INTERNAL_SERVER_ERROR,
+            EmilyApiError::InternalService(_) => http::StatusCode::INTERNAL_SERVER_ERROR,
             EmilyApiError::UnhandledService(_) => http::StatusCode::INTERNAL_SERVER_ERROR,
         }.as_u16()
     }
@@ -63,17 +63,17 @@ impl EmilyApiError {
             EmilyApiError::BadRequest(_) =>
                 serde_json::to_string(&models::BadRequestErrorResponseContent { message: self.to_string() }),
             // EmilyApiError::Forbidden(_) =>
-            //     serde_json::to_string(&ForbiddenErrorResponseContent { message: self.to_string() }),
-            // EmilyApiError::NotFound(_) =>
-            //     serde_json::to_string(&NotFoundErrorResponseContent { message: self.to_string() }),
+            //     serde_json::to_string(&models::ForbiddenErrorResponseContent { message: self.to_string() }),
+            EmilyApiError::NotFound(_) =>
+                serde_json::to_string(&models::NotFoundErrorResponseContent { message: self.to_string() }),
             // EmilyApiError::Conflict(_) =>
-            //     serde_json::to_string(&ConflictErrorResponseContent { message: self.to_string() }),
-            // EmilyApiError::NotImplemented(_) =>
-            //     serde_json::to_string(&NotImplementedErrorResponseContent { message: self.to_string() }),
+            //     serde_json::to_string(&models::ConflictErrorResponseContent { message: self.to_string() }),
+            EmilyApiError::NotImplemented(_) =>
+                serde_json::to_string(&models::NotImplementedErrorResponseContent { message: self.to_string() }),
             // EmilyApiError::Throttling(_) =>
-            //     serde_json::to_string(&ThrottlingErrorResponseContent { message: self.to_string() }),
-            // EmilyApiError::InternalService(_) =>
-            //     serde_json::to_string(&models::ServiceErrorResponseContent { message: self.to_string() }),
+            //     serde_json::to_string(&models::ThrottlingErrorResponseContent { message: self.to_string() }),
+            EmilyApiError::InternalService(_) =>
+                serde_json::to_string(&models::ServiceErrorResponseContent { message: self.to_string() }),
             EmilyApiError::UnhandledService(_) =>
                 serde_json::to_string(&models::ServiceErrorResponseContent { message: self.to_string() }),
         }

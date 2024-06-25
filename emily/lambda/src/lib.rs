@@ -14,3 +14,7 @@ pub mod errors;
 pub mod common;
 /// Emily operation handlers.
 pub mod operations;
+/// Emily environment config.
+pub mod config;
+/// Emily Internal REST resource definitions.
+pub mod resources;

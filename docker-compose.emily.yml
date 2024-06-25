@@ -73,7 +73,7 @@ services:
         condition: service_started
     volumes:
       - "./devenv/service-test:/service-test:ro"
-    command: bash /service-test/curl-test.sh
+    command: bash /service-test/curl-test.sh apigateway 3000
     networks:
       - aws-local-vpc
 

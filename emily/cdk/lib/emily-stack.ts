@@ -47,7 +47,7 @@ export class EmilyStack extends cdk.Stack {
             tableName: EmilyStackUtils.getResourceName(tableId, props),
             partitionKey: {
                 name: 'BitcoinTxid',
-                type: dynamodb.AttributeType.BINARY,
+                type: dynamodb.AttributeType.STRING,
             },
             sortKey: {
                 name: 'BitcoinTxOutputIndex',
@@ -72,6 +72,7 @@ export class EmilyStack extends cdk.Stack {
                 "BitcoinTxOutputIndex",
                 "Recipient",
                 "Amount",
+                "LastUpdateBlockHash",
             ]
         });
 
@@ -96,7 +97,7 @@ export class EmilyStack extends cdk.Stack {
             },
             sortKey: {
                 name: 'StacksBlockHash',
-                type: dynamodb.AttributeType.BINARY,
+                type: dynamodb.AttributeType.STRING,
             }
         });
 
@@ -141,7 +142,7 @@ export class EmilyStack extends cdk.Stack {
             },
             sortKey: {
                 name: 'BlockHash',
-                type: dynamodb.AttributeType.BINARY,
+                type: dynamodb.AttributeType.STRING,
             }
         });
     }
