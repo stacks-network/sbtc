@@ -629,5 +629,3 @@ describe("Complete multiple withdrawals", () => {
     expect(receipt.value).toEqual(2n);
   });
 })
-
-//(define-public (complete-withdrawals (withdrawals (list 100 {request-id: uint, status: bool, signer-bitmap: uint, bitcoin-txid: (optional (buff 32)), output-index: (optional uint), fee: (optional uint)})))
