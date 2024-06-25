@@ -6,16 +6,16 @@
 (define-constant ERR_INVALID_ADDR_HASHBYTES (err u501))
 ;; The size of the withdrawal is smaller than the dust limit
 (define-constant ERR_DUST_LIMIT (err u502))
-;; The size of the withdrawal is smaller than the dust limit
+;; The request id was invalid / returned 'none'
 (define-constant ERR_INVALID_REQUEST (err u503))
-;; The size of the withdrawal is smaller than the dust limit
+;; The caller is not the currently-governing multisig principal
 (define-constant ERR_INVALID_CALLER (err u504))
-;; The size of the withdrawal is smaller than the dust limit
+;; The withdrawal request was already processed
 (define-constant ERR_ALREADY_PROCESSED (err u505))
-;; The size of the withdrawal is smaller than the dust limit
+;; The paid fee was higher than requested
 (define-constant ERR_FEE_TOO_HIGH (err u505))
+;; The returned index marks the failed transaction in list
 (define-constant ERR_WITHDRAWAL_INDEX_PREFIX (unwrap-err! ERR_WITHDRAWAL_INDEX (err true)))
-;; The size of the withdrawal is smaller than the dust limit
 (define-constant ERR_WITHDRAWAL_INDEX (err u506))
 
 ;; Maximum value of an address version as a uint
