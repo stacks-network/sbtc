@@ -107,7 +107,13 @@
   )
 )
 ;; Reject multiple withdrawal requests
-(define-public (complete-withdrawals (withdrawals (list 100 {request-id: uint, status: bool, signer-bitmap: uint, bitcoin-txid: (optional (buff 32)), output-index: (optional uint), fee: (optional uint)})))
+(define-public (complete-withdrawals (withdrawals (list 100 
+                                     {request-id: uint, 
+                                     status: bool, 
+                                     signer-bitmap: uint, 
+                                     bitcoin-txid: (optional (buff 32)), 
+                                     output-index: (optional uint), 
+                                     fee: (optional uint)})))
   (let 
       (
           (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))
@@ -120,7 +126,14 @@
   )
 )
 
-(define-private (complete-individual-withdrawal-helper (withdrawal {request-id: uint, status: bool, signer-bitmap: uint, bitcoin-txid: (optional (buff 32)), output-index: (optional uint), fee: (optional uint)}) (helper-response (response uint uint)))
+(define-private (complete-individual-withdrawal-helper (withdrawal 
+                                                        {request-id: uint, 
+                                                        status: bool, 
+                                                        signer-bitmap: uint, 
+                                                        bitcoin-txid: (optional (buff 32)), 
+                                                        output-index: (optional uint), 
+                                                        fee: (optional uint)}) 
+                                                       (helper-response (response uint uint)))
   (match helper-response 
     index
       (let
