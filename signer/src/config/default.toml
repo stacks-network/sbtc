@@ -14,3 +14,6 @@ endpoint = "http://localhost:3999"
 
 [stacks.node]
 endpoint = "http://localhost:20443"
+# This is the start height of the first EPOCH 3.0 block on the stacks
+# blockchain.
+nakamoto_start_height = 31

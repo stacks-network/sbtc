@@ -108,6 +108,9 @@ pub struct StacksNodeSettings {
     /// The endpoint to use when making requests to a stacks node.
     #[serde(deserialize_with = "url_deserializer")]
     pub endpoint: url::Url,
+    /// This is the start height of the first EPOCH 3.0 block on the stacks
+    /// blockchain.
+    pub nakamoto_start_height: u64,
 }
 
 impl StacksSettings {
