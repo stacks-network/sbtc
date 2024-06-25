@@ -290,179 +290,50 @@ pub async fn handle_update_deposits(
     let deposits_to_update: Vec<DepositTableEntry> = try_join_all(futures)
         .await?;
 
-    // For each deposit to update make an
+    // TODO:
+    // Complete.
 
+    // // Get a single entry to update.
+    // let single_update = request.deposits.first()
+    //     .ok_or(EmilyApiError::BadRequest("Request must contain at least one item to update.".to_string()))?;
 
-    // ---- OLD DEBUG CODE.
+    // let bitcoin_txid = single_update.bitcoin_txid.clone();
+    // let bitcoin_tx_output_index = single_update.bitcoin_tx_output_index as u16;
+    // let key: DepositTableEntryKey = DepositTableEntryKey {
+    //     bitcoin_txid,
+    //     bitcoin_tx_output_index,
+    // };
 
-    // Get a single entry to update.
-    let single_update = request.deposits.first()
-        .ok_or(EmilyApiError::BadRequest("Request must contain at least one item to update.".to_string()))?;
+    // // Construct the updates.
+    // let mut updates: HashMap<String, AttributeValueUpdate> = HashMap::new();
+    // updates.insert(
+    //     "Version".to_string(),
+    //     AttributeValueUpdate::builder()
+    //         .value(AttributeValue::N("1".to_string()))
+    //         .action(AttributeAction::Add)
+    //         .build(),
+    // );
+    // let new_list_element = AttributeValue::S("NewListItem".to_string());
+    // updates.insert(
+    //     "Version".to_string(),
+    //     AttributeValueUpdate::builder()
+    //         .value(AttributeValue::L(vec![new_list_element]))
+    //         .action(AttributeAction::Add)
+    //         .build(),
+    // );
 
-    let bitcoin_txid = single_update.bitcoin_txid.clone();
-    let bitcoin_tx_output_index = single_update.bitcoin_tx_output_index as u16;
-    let key: DepositTableEntryKey = DepositTableEntryKey {
-        bitcoin_txid,
-        bitcoin_tx_output_index,
-    };
+    // // Construct the condition expression.
+    // let expected_version = 0;
+    // let mut expected: HashMap<String, ExpectedAttributeValue> = HashMap::new();
+    // expected.insert(
+    //     "Version".to_string(),
+    //     ExpectedAttributeValue::builder()
+    //         .value(AttributeValue::N(expected_version.to_string()))
+    //         .exists(true)
+    //         .build()
+    // );
 
-
-    // Construct the updates.
-    let mut updates: HashMap<String, AttributeValueUpdate> = HashMap::new();
-    updates.insert(
-        "Version".to_string(),
-        AttributeValueUpdate::builder()
-            .value(AttributeValue::N("1".to_string()))
-            .action(AttributeAction::Add)
-            .build(),
-    );
-    let new_list_element = AttributeValue::S("NewListItem".to_string());
-    updates.insert(
-        "Version".to_string(),
-        AttributeValueUpdate::builder()
-            .value(AttributeValue::L(vec![new_list_element]))
-            .action(AttributeAction::Add)
-            .build(),
-    );
-
-    // Construct the condition expression.
-    let expected_version = 0;
-    let mut expected: HashMap<String, ExpectedAttributeValue> = HashMap::new();
-    expected.insert(
-        "Version".to_string(),
-        ExpectedAttributeValue::builder()
-            .value(AttributeValue::N(expected_version.to_string()))
-            .exists(true)
-            .build()
-    );
-
-    // let response: aws_sdk_dynamodb::operation::query::QueryOutput = context
-    //     .dynamodb_client
-    //     .query()
-    //     .table_name(&context.settings.deposit_table_name)
-    //     .index_name("DepositStatus".to_string())
-    //     .key_condition_expression("#pk = :v")
-    //     .expression_attribute_names("#pk", "OpStatus")
-    //     .expression_attribute_values(":v", AttributeValue::N(status_to_id(status).to_string()))
-    //     .send()
-    //     .await
-    //     .map_err(|e| EmilyApiError::InternalService(
-    //         format!("failed at dynamodb call with parameters {:?}: {:?}", path_parameters, e).to_string()))?;
-    let response_1 = context
-        .dynamodb_client
-        .update_item()
-        .table_name(&context.settings.deposit_table_name)
-        .set_key(Some((&key).into()))
-        .set_attribute_updates(Some(updates.clone()))
-        .set_expected(Some(expected.clone()))
-        .return_values(aws_sdk_dynamodb::types::ReturnValue::AllNew)
-        .send()
-        .await
-        .map_err(|e| EmilyApiError::InternalService(
-            format!("failed at dynamodb call {:?}", e)));
-
-    let debug_string_1 = format!("DynamoDB Response = {:?}", response_1);
-
-    let response_2 = context
-        .dynamodb_client
-        .update_item()
-        .table_name(&context.settings.deposit_table_name)
-        .set_key(Some((&key).into()))
-        .set_attribute_updates(Some(updates.clone()))
-        .set_expected(Some(expected.clone()))
-        .return_values(aws_sdk_dynamodb::types::ReturnValue::AllNew)
-        .send()
-        .await
-        .map_err(|e| EmilyApiError::InternalService(
-            format!("failed at dynamodb call {:?}", e)));
-    let debug_string_2 = format!("DynamoDB Response = {:?}", response_2);
-
-
-    let updated_deposits = vec![
-        models::DepositData {
-            bitcoin_txid: "None".to_string(),
-            bitcoin_tx_output_index: 0.0,
-            recipient: "None".to_string(),
-            amount: 0.0,
-            last_update_height: Some(0.0),
-            last_update_block_hash: Some("None".to_string()),
-            status: models::OpStatus::Pending,
-            status_message: debug_string_1,
-            parameters: Box::new(models::DepositParameters {
-                lock_time: 0.0,
-                max_fee: 0.0,
-                reclaim_script: "None".to_string(),
-            }),
-            fulfillment: None,
-        },
-        models::DepositData {
-            bitcoin_txid: "None".to_string(),
-            bitcoin_tx_output_index: 0.0,
-            recipient: "None".to_string(),
-            amount: 0.0,
-            last_update_height: Some(0.0),
-            last_update_block_hash: Some("None".to_string()),
-            status: models::OpStatus::Pending,
-            status_message: debug_string_2,
-            parameters: Box::new(models::DepositParameters {
-                lock_time: 0.0,
-                max_fee: 0.0,
-                reclaim_script: "None".to_string(),
-            }),
-            fulfillment: None,
-        }
-    ];
-
-    common::package_response(
-        models::UpdateDepositsResponseContent {
-            deposits: Some(updated_deposits),
-        }, 202)
-
-
-    // common::deserialize_request::<models::UpdateDepositsRequestContent>(body)
-    //     .map(|_request| models::UpdateDepositsResponseContent {
-    //             deposits: Some(
-    //                 vec![
-    //                 models::DepositData {
-    //                     bitcoin_txid: "Voldemort".to_string(),
-    //                     bitcoin_tx_output_index: 1.0,
-    //                     recipient: "GalileoTheCat".to_string(),
-    //                     amount: 1000000000.0,
-    //                     last_update_height: Some(3.0),
-    //                     last_update_block_hash: Some("HashBrowns".to_string()),
-    //                     status: models::OpStatus::Failed,
-    //                     status_message: "Cortage!".to_string(),
-    //                     parameters: Box::new(models::DepositParameters {
-    //                         lock_time: 22222.0,
-    //                         max_fee: 33333.0,
-    //                         reclaim_script: "iDidntGetMeMoneyGiveMeBakMeMoneyNow".to_string(),
-    //                     }),
-    //                     fulfillment: None,
-    //                 },
-    //                 models::DepositData {
-    //                     bitcoin_txid: "Frederick".to_string(),
-    //                     bitcoin_tx_output_index: 1.0,
-    //                     recipient: "GregAgain".to_string(),
-    //                     amount: 500000000.0,
-    //                     last_update_height: Some(3.0),
-    //                     last_update_block_hash: Some("Candle".to_string()),
-    //                     status: models::OpStatus::Accepted,
-    //                     status_message: "Oh no me arm!".to_string(),
-    //                     parameters: Box::new(models::DepositParameters {
-    //                         lock_time: 22222.0,
-    //                         max_fee: 33333.0,
-    //                         reclaim_script: "Osmosis".to_string()
-    //                     }),
-    //                     fulfillment: None,
-    //                 },
-    //             ]
-    //         )
-    //         })
-    //     .and_then(|response| {
-    //         // Return 202 because this PUT operation won't be reflected in GET calls
-    //         // until the change is consistent in DynamoDB (<1 second).
-    //         common::package_response(response, 202)
-    //     })
+    Err(EmilyApiError::NotImplemented("query not implemented".to_string()))
 }
 
 // Tested in `bin/entrypoint.rs`. Tests will be added here when these outputs no longer mock.
@@ -496,48 +367,51 @@ async fn get_deposit_table_entry(
     Ok(deposit_table_entry)
 }
 
-/// Get deposit table entry for a given bitcoin txid and tx output index
-/// from the DynamoDB table.
-async fn get_deposit_table_entries(
-    keys: Vec<DepositTableEntryKey>,
-    context: &LambdaContext,
-) -> Result<DepositTableEntry, EmilyApiError> {
+// TODO:
+// Complete this function.
+//
+// /// Get deposit table entry for a given bitcoin txid and tx output index
+// /// from the DynamoDB table.
+// async fn get_deposit_table_entries(
+//     keys: Vec<DepositTableEntryKey>,
+//     context: &LambdaContext,
+// ) -> Result<DepositTableEntry, EmilyApiError> {
 
-    let keys_as_dynamodb_lib_structure = keys.iter()
-        .map(|k| k.into())
-        .collect();
+//     let keys_as_dynamodb_lib_structure = keys.iter()
+//         .map(|k| k.into())
+//         .collect();
 
-    // TODO:
-    // Move to DynamoDB table accessor utility.
-    let response = context
-        .dynamodb_client
-        .batch_get_item()
-        // .table_name(&context.settings.deposit_table_name)
-        .request_items(
-            &context.settings.deposit_table_name,
-            KeysAndAttributes::builder()
-            .set_keys(Some(keys_as_dynamodb_lib_structure))
-            .build()
-            .map_err(|e| EmilyApiError::InternalService(
-                "Error making batch table request".to_string(),
-            ))?
-        )
-        .send()
-        .await
-        .map_err(|e| EmilyApiError::InternalService(
-            format!("Failed retrieving multiple deposits. {:?}", e))
-        )?;
+//     // TODO:
+//     // Move to DynamoDB table accessor utility.
+//     let response = context
+//         .dynamodb_client
+//         .batch_get_item()
+//         // .table_name(&context.settings.deposit_table_name)
+//         .request_items(
+//             &context.settings.deposit_table_name,
+//             KeysAndAttributes::builder()
+//             .set_keys(Some(keys_as_dynamodb_lib_structure))
+//             .build()
+//             .map_err(|e| EmilyApiError::InternalService(
+//                 "Error making batch table request".to_string(),
+//             ))?
+//         )
+//         .send()
+//         .await
+//         .map_err(|e| EmilyApiError::InternalService(
+//             format!("Failed retrieving multiple deposits. {:?}", e))
+//         )?;
 
-    let a = response.responses
-        .ok_or(EmilyApiError::InternalService(
-            "Failed unpacking batch get deposits request.".to_string()
-        ))?
-        .iter()
-        .map(f);
+//     let a = response.responses
+//         .ok_or(EmilyApiError::InternalService(
+//             "Failed unpacking batch get deposits request.".to_string()
+//         ))?
+//         .iter()
+//         .map(f);
 
-    let deposit_table_entry: DepositTableEntry = deposit_entry.try_into()?;
-    Ok(deposit_table_entry)
-}
+//     let deposit_table_entry: DepositTableEntry = deposit_entry.try_into()?;
+//     Ok(deposit_table_entry)
+// }
 
 /// Extracts a string representation of a token to continue the paged query from
 /// the laste evaluated key field returned from the DynamoDB call

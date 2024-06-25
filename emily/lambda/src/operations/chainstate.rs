@@ -26,19 +26,19 @@ pub async fn handle_create_chainstate(
     item.insert("BlockHeight".to_string(), AttributeValue::N(request.block_height.to_string()));
     item.insert("BlockHash".to_string(), AttributeValue::S(request.block_hash));
 
-    let response = context.dynamodb_client
+    context.dynamodb_client
         .put_item()
         .table_name(context.settings.chainstate_table_name.clone())
         .set_item(Some(item))
         .send()
-        .await;
-
-    match response {
-        Err(e) => return Err(EmilyApiError::InternalService(
-            format!("Error occurred for table {:?} {:?}", context.settings.chainstate_table_name.clone(), e).to_string()
-        )),
-        _ => {}
-    }
+        .await
+        // TODO:
+        // Make error provide less internal info.
+        .map_err(|e|
+            EmilyApiError::InternalService(
+                format!("Error occurred for table {:?} {:?}", context.settings.chainstate_table_name.clone(), e)
+            )
+        )?;
 
     common::package_response(chainstate_entry, 201)
 }
@@ -50,53 +50,63 @@ pub async fn handle_get_chainstate(
 ) -> Result<common::SimpleApiResponse, errors::EmilyApiError> {
     // // path_parameters.keys()
     let height: &String = _path_parameters.get("height").unwrap();
-    let response = context.dynamodb_client
+    let query_output = context.dynamodb_client
         .query()
         .table_name(context.settings.chainstate_table_name.clone())
         .key_condition_expression("#h = :height")
         .expression_attribute_names("#h", "BlockHeight")
         .expression_attribute_values(":height", AttributeValue::N(height.clone()))
         .send()
-        .await;
+        .await
+        // TODO:
+        // Make error provide less internal info.
+        .map_err(|e|
+            EmilyApiError::InternalService(
+                format!("Error occurred for table {:?} {:?}", context.settings.chainstate_table_name.clone(), e)
+            )
+        )?;
 
-    match response {
-        Err(e) => Err(EmilyApiError::InternalService(
-            format!("Error occurred on height {:?} {:?}", height.clone(), e).to_string()
+    // Change behavior depending on how many entries were found.
+    match query_output.items().len() {
+
+        // No blocks found.
+        0 => Err(EmilyApiError::NotFound(
+            format!("No bock hash found for height {}", height)
         )),
-        Ok(output) => {
-            return match output.items().len() {
-                0 => Err(EmilyApiError::NotFound(
-                    format!("No bock hash found for height {}", height).to_string()
-                )),
-                1 => {
-                    // Extract.
-                    let item = output.items().first().unwrap();
-                    let block_hash = item.get("BlockHash").unwrap().as_s().unwrap();
-                    let block_height = item.get("BlockHeight").unwrap().as_n().unwrap();
 
-                    // Package.
-                    common::package_response(models::GetChainstateResponseContent {
-                        block_hash: block_hash.clone(),
-                        block_height: block_height.parse::<f64>().unwrap(),
-                    }, 200)
-                },
-                _ => {
-                    let block_hashes = output.items()
-                        .iter()
-                        .map(|item| {
-                            item.get("BlockHash").unwrap().as_s().unwrap().clone()
-                        })
-                        .collect::<Vec<String>>();
+        // A single block found; happy path.
+        1 => {
+            // Extract.
+            let item = query_output.items().first().unwrap();
 
-                    Err(EmilyApiError::InternalService(
-                        format!(
-                            "Multiple block hashes for height {}: [{}]",
-                            height,
-                            block_hashes.join(", "),
-                        ).to_string()
-                    ))
-                }
-            }
+            // TODO:
+            // extract fields more safely.
+            let block_hash = item.get("BlockHash").unwrap().as_s().unwrap();
+            let block_height = item.get("BlockHeight").unwrap().as_n().unwrap();
+
+            // Package.
+            common::package_response(models::GetChainstateResponseContent {
+                block_hash: block_hash.clone(),
+                block_height: block_height.parse::<f64>().unwrap(),
+            }, 200)
+        },
+
+        // Multiple conflicting blocks found.
+        _ => {
+            let block_hashes = query_output.items()
+                .iter()
+                .map(|item| {
+                    item.get("BlockHash").unwrap().as_s().unwrap().clone()
+                })
+                .collect::<Vec<String>>();
+
+            Err(EmilyApiError::InternalService(
+                format!(
+                    "Multiple block hashes for height {}: [{}]",
+                    height,
+                    block_hashes.join(", "),
+                ).to_string()
+            ))
         }
     }
 }
@@ -119,19 +129,19 @@ pub async fn handle_update_chainstate(
     item.insert("BlockHeight".to_string(), AttributeValue::N(request.block_height.to_string()));
     item.insert("BlockHash".to_string(), AttributeValue::S(request.block_hash));
 
-    let response = context.dynamodb_client
+    context.dynamodb_client
         .put_item()
         .table_name(context.settings.chainstate_table_name.clone())
         .set_item(Some(item))
         .send()
-        .await;
-
-    match response {
-        Err(e) => return Err(EmilyApiError::InternalService(
-            format!("Error occurred for table {:?} {:?}", context.settings.chainstate_table_name.clone(), e).to_string()
-        )),
-        _ => {}
-    }
+        .await
+        // TODO:
+        // Make error provide less internal info.
+        .map_err(|e|
+            EmilyApiError::InternalService(
+                format!("Error occurred for table {:?} {:?}", context.settings.chainstate_table_name.clone(), e)
+            )
+        )?;
 
     common::package_response(chainstate_entry, 202)
 }

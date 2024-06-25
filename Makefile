@@ -62,9 +62,6 @@ EMILY_API_PROJECT_NAME=emily-api
 EMILY_CDK_PROJECT_NAME=emily-cdk
 CONTAINER_HOST=host.docker.internal
 
-simple:
-	cargo test --package emily-lambda
-
 ifeq ($(findstring Linux, $(shell uname)), Linux)
 _CONTAINER_HOST := localhost
 else
