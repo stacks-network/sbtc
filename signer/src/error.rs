@@ -3,6 +3,8 @@ use std::borrow::Cow;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
 
+use crate::{ecdsa, network};
+
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -81,6 +83,26 @@ pub enum Error {
     /// Missing block
     #[error("missing block")]
     MissingBlock,
+
+    /// Invalid signature
+    #[error("invalid signature")]
+    InvalidSignature,
+
+    /// Slice conversion error
+    #[error("slice conversion failed: {0}")]
+    SliceConversion(#[source] bitcoin::hashes::FromSliceError),
+
+    /// ECDSA error
+    #[error("ECDSA error: {0}")]
+    Ecdsa(#[from] ecdsa::Error),
+
+    /// In-memory network error
+    #[error("in-memory network error: {0}")]
+    InMemoryNetwork(#[from] network::in_memory::Error),
+
+    /// GRPC relay network error
+    #[error("GRPC relay network error: {0}")]
+    GrpcRelayNetworkError(#[from] network::grpc_relay::RelayError),
 }
 
 impl From<std::convert::Infallible> for Error {
