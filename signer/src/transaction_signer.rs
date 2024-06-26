@@ -247,14 +247,18 @@ where
         let created_at = time::OffsetDateTime::now_utc();
 
         let msg_payload: message::Payload = message::SignerDepositDecision {
-            txid: bitcoin::Txid::from_slice(&deposit_request.txid)?,
+            txid: bitcoin::Txid::from_slice(&deposit_request.txid)
+                .map_err(error::Error::SliceConversion)?,
             output_index: deposit_request.output_index,
             accepted: is_accepted,
         }
         .into();
 
         let msg = msg_payload
-            .to_message(bitcoin::BlockHash::from_slice(bitcoin_chain_tip)?)
+            .to_message(
+                bitcoin::BlockHash::from_slice(bitcoin_chain_tip)
+                    .map_err(error::Error::SliceConversion)?,
+            )
             .sign_ecdsa(&self.signer_private_key)?;
 
         let signer_decision = model::DepositSigner {

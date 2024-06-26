@@ -89,19 +89,19 @@ pub enum Error {
     InvalidSignature,
 
     /// Slice conversion error
-    #[error("slice conversion failed")]
-    SliceConversion(#[from] bitcoin::hashes::FromSliceError),
+    #[error("slice conversion failed: {0}")]
+    SliceConversion(#[source] bitcoin::hashes::FromSliceError),
 
     /// ECDSA error
-    #[error("ECDSA error")]
+    #[error("ECDSA error: {0}")]
     Ecdsa(#[from] ecdsa::Error),
 
     /// In-memory network error
-    #[error("in-memory network error")]
+    #[error("in-memory network error: {0}")]
     InMemoryNetwork(#[from] network::in_memory::Error),
 
     /// GRPC relay network error
-    #[error("GRPC relay network error")]
+    #[error("GRPC relay network error: {0}")]
     GrpcRelayNetworkError(#[from] network::grpc_relay::RelayError),
 }
 
