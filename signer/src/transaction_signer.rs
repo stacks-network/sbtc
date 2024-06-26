@@ -517,8 +517,8 @@ mod tests {
     }
 
     impl EventLoopHarness {
-        fn create<Rng: rand::RngCore + rand::CryptoRng>(
-            rng: &mut Rng,
+        fn create<R: rand::RngCore + rand::CryptoRng>(
+            rng: &mut R,
             network: network::in_memory::MpmcBroadcaster,
             context_window: usize,
         ) -> Self {
