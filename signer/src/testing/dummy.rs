@@ -3,6 +3,7 @@
 use bitcoin::hashes::Hash;
 use blockstack_lib::chainstate::{nakamoto, stacks};
 use fake::Fake;
+use rand::Rng;
 
 /// Dummy block
 pub fn block<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> bitcoin::Block {
@@ -159,9 +160,8 @@ fn coinbase_tx<R: rand::RngCore + ?Sized>(
 ) -> bitcoin::Transaction {
     // Numbers below 17 are encoded differently which messes with the block height decoding
     let min_block_height = 17;
-    let block_height_span = 10000;
-    let block_height =
-        config.fake_with_rng::<i64, _>(rng).abs() % block_height_span + min_block_height;
+    let max_block_height = 10000;
+    let block_height = rng.gen_range(min_block_height..max_block_height);
     let coinbase_script = bitcoin::script::Builder::new()
         .push_int(block_height)
         .into_script();
