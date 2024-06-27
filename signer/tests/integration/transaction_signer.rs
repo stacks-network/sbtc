@@ -34,14 +34,21 @@ async fn new_database(pool: &sqlx::PgPool) -> sqlx::PgPool {
     let db_name = format!("test_db_{}", rng.next_u64());
 
     let create_db = format!("CREATE DATABASE \"{}\";", db_name);
-    pool.execute(create_db.as_str()).await.expect("Nooo");
+    pool.execute(create_db.as_str())
+        .await
+        .expect("failed to create test database");
 
     let base_url =
         std::env::var("DATABASE_URL").expect("DATABASE_URL must be set in the environment");
-    let test_db_url = base_url.replace("signer", &db_name); // TODO: Fix
+    let test_db_url = base_url.replace("signer", &db_name);
 
-    let test_pool = sqlx::PgPool::connect(&test_db_url).await.expect("Derp");
-    MIGRATOR.run(&test_pool).await.expect("Flerp");
+    let test_pool = sqlx::PgPool::connect(&test_db_url)
+        .await
+        .expect("failed to connect to test database");
+    MIGRATOR
+        .run(&test_pool)
+        .await
+        .expect("failed to run migrations against test database");
 
     test_pool
 }
