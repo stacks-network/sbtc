@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT 1 AS exists\n            FROM sbtc_signer.stacks_blocks\n            WHERE block_hash = $1;",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "exists",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "4d8b40e94cb12a4fcda6b08063bc247e2229d864bc6c6c6a89f25c91ba60f840"
+}

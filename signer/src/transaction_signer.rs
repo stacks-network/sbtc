@@ -212,7 +212,12 @@ where
     ) -> Result<Vec<model::DepositRequest>, error::Error> {
         Ok(self
             .storage
-            .get_pending_deposit_requests(chain_tip, self.context_window)
+            .get_pending_deposit_requests(
+                chain_tip,
+                self.context_window
+                    .try_into()
+                    .map_err(|_| error::Error::TypeConversion)?,
+            )
             .await?)
     }
 
@@ -242,14 +247,19 @@ where
             })
             .await;
 
-        let signer_pub_key = p256k1::ecdsa::PublicKey::new(&self.signer_private_key)?.to_bytes();
+        let signer_pub_key = p256k1::ecdsa::PublicKey::new(&self.signer_private_key)?
+            .to_bytes()
+            .to_vec();
 
         let created_at = time::OffsetDateTime::now_utc();
 
         let msg_payload: message::Payload = message::SignerDepositDecision {
             txid: bitcoin::Txid::from_slice(&deposit_request.txid)
                 .map_err(error::Error::SliceConversion)?,
-            output_index: deposit_request.output_index,
+            output_index: deposit_request
+                .output_index
+                .try_into()
+                .map_err(|_| error::Error::TypeConversion)?,
             accepted: is_accepted,
         }
         .into();
@@ -289,7 +299,9 @@ where
             .await
             .unwrap_or(false);
 
-        let signer_pub_key = p256k1::ecdsa::PublicKey::new(&self.signer_private_key)?.to_bytes();
+        let signer_pub_key = p256k1::ecdsa::PublicKey::new(&self.signer_private_key)?
+            .to_bytes()
+            .to_vec();
 
         let created_at = time::OffsetDateTime::now_utc();
 
@@ -316,14 +328,16 @@ where
     ) -> Result<(), error::Error> {
         let txid = decision.txid.to_byte_array().to_vec();
         let output_index = decision.output_index;
-        let signer_pub_key = signer_pub_key.to_bytes();
+        let signer_pub_key = signer_pub_key.to_bytes().to_vec();
         let is_accepted = decision.accepted;
         let created_at = time::OffsetDateTime::now_utc();
 
         let signer_decision = model::DepositSigner {
             txid,
             created_at,
-            output_index,
+            output_index: output_index
+                .try_into()
+                .map_err(|_| error::Error::TypeConversion)?,
             signer_pub_key,
             is_accepted,
         };
@@ -355,42 +369,23 @@ pub enum Error {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    use crate::network;
     use crate::storage;
     use crate::testing;
-    use rand::SeedableRng;
 
-    use crate::storage::DbRead;
+    fn test_environment(
+    ) -> testing::transaction_signer::TestEnvironment<fn() -> storage::in_memory::SharedStore> {
+        testing::transaction_signer::TestEnvironment {
+            storage_constructor: storage::in_memory::Store::new_shared,
+            context_window: 3,
+            num_signers: 7,
+        }
+    }
 
     #[tokio::test]
     async fn should_store_decisions_for_pending_deposit_requests() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let network = network::in_memory::Network::new();
-        let context_window = 3;
-
-        let event_loop_harness =
-            EventLoopHarness::create(&mut rng, network.connect(), context_window);
-
-        let mut handle = event_loop_harness.start();
-
-        let test_data = generate_test_data(&mut rng);
-
-        write_test_data(&test_data, &mut handle.storage, &handle.notification_tx).await;
-
-        let storage = handle.stop_event_loop().await;
-
-        let context_window_block_hashes =
-            extract_context_window_block_hashes(&storage, context_window).await;
-
-        assert_only_deposit_requests_in_context_window_has_decisions(
-            &context_window_block_hashes,
-            &test_data.deposit_requests,
-            &storage,
-            1,
-        )
-        .await;
+        test_environment()
+            .assert_should_store_decisions_for_pending_deposit_requests()
+            .await;
     }
 
     #[tokio::test]
@@ -400,192 +395,8 @@ mod tests {
 
     #[tokio::test]
     async fn should_store_decisions_received_from_other_signers() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let network = network::in_memory::Network::new();
-        let context_window = 3;
-        let num_signers = 7;
-
-        let test_data = generate_test_data(&mut rng);
-
-        let mut event_loop_handles: Vec<_> = (0..num_signers)
-            .map(|_| {
-                let event_loop_harness =
-                    EventLoopHarness::create(&mut rng, network.connect(), context_window);
-
-                event_loop_harness.start()
-            })
-            .collect();
-
-        for handle in event_loop_handles.iter_mut() {
-            write_test_data(&test_data, &mut handle.storage, &handle.notification_tx).await;
-        }
-
-        // TODO(258): Ensure we can wait for the signers to finish processing messages
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-
-        for handle in event_loop_handles {
-            let storage = handle.stop_event_loop().await;
-
-            let context_window_block_hashes =
-                extract_context_window_block_hashes(&storage, context_window).await;
-
-            assert_only_deposit_requests_in_context_window_has_decisions(
-                &context_window_block_hashes,
-                &test_data.deposit_requests,
-                &storage,
-                num_signers,
-            )
+        test_environment()
+            .assert_should_store_decisions_received_from_other_signers()
             .await;
-        }
     }
-
-    fn generate_test_data(rng: &mut impl rand::RngCore) -> testing::storage::model::TestData {
-        let test_model_params = testing::storage::model::Params {
-            num_bitcoin_blocks: 20,
-            chain_type: testing::storage::model::ChainType::Chaotic,
-            num_deposit_requests: 100,
-        };
-
-        testing::storage::model::TestData::generate(rng, &test_model_params)
-    }
-
-    async fn write_test_data(
-        test_data: &testing::storage::model::TestData,
-        storage: &mut storage::in_memory::SharedStore,
-        block_observer_notification_tx: &tokio::sync::watch::Sender<()>,
-    ) {
-        test_data.write_to(storage).await;
-
-        block_observer_notification_tx
-            .send(())
-            .expect("Failed to send notification");
-    }
-
-    async fn extract_context_window_block_hashes(
-        storage: &storage::in_memory::SharedStore,
-        context_window: usize,
-    ) -> Vec<model::BitcoinBlockHash> {
-        let mut context_window_block_hashes = Vec::new();
-        let mut block_hash = storage
-            .get_bitcoin_canonical_chain_tip()
-            .await
-            .unwrap()
-            .expect("found no canonical chain tip");
-
-        for _ in 0..context_window {
-            context_window_block_hashes.push(block_hash.clone());
-            let Some(block) = storage.get_bitcoin_block(&block_hash).await.unwrap() else {
-                break;
-            };
-            block_hash = block.parent_hash;
-        }
-
-        context_window_block_hashes
-    }
-
-    async fn assert_only_deposit_requests_in_context_window_has_decisions(
-        context_window_block_hashes: &[model::BitcoinBlockHash],
-        deposit_requests: &[model::DepositRequest],
-        storage: &storage::in_memory::SharedStore,
-        num_expected_decisions: usize,
-    ) {
-        for deposit_request in deposit_requests {
-            let signer_decisions = storage
-                .get_deposit_signers(&deposit_request.txid, deposit_request.output_index)
-                .await
-                .unwrap();
-
-            for deposit_request_block in storage
-                .get_bitcoin_blocks_with_transaction(&deposit_request.txid)
-                .await
-                .unwrap()
-            {
-                if context_window_block_hashes.contains(&deposit_request_block) {
-                    assert_eq!(signer_decisions.len(), num_expected_decisions);
-                    assert!(signer_decisions.first().unwrap().is_accepted)
-                } else {
-                    assert_eq!(signer_decisions.len(), 0);
-                }
-            }
-        }
-    }
-
-    struct EventLoopHarness {
-        event_loop: EventLoop,
-        notification_tx: tokio::sync::watch::Sender<()>,
-        storage: storage::in_memory::SharedStore,
-    }
-
-    impl EventLoopHarness {
-        fn create<R: rand::RngCore + rand::CryptoRng>(
-            rng: &mut R,
-            network: network::in_memory::MpmcBroadcaster,
-            context_window: usize,
-        ) -> Self {
-            let storage = storage::in_memory::Store::new_shared();
-            let blocklist_checker = ();
-            let (notification_tx, block_observer_notifications) = tokio::sync::watch::channel(());
-            let signer_private_key = p256k1::scalar::Scalar::random(rng);
-
-            Self {
-                event_loop: TxSignerEventLoop {
-                    storage: storage.clone(),
-                    network,
-                    blocklist_checker,
-                    block_observer_notifications,
-                    signer_private_key,
-                    context_window,
-                },
-                notification_tx,
-                storage,
-            }
-        }
-
-        fn start(self) -> RunningEventLoopHandle {
-            let notification_tx = self.notification_tx;
-            let storage = self.storage;
-            let join_handle = tokio::spawn(async { self.event_loop.run().await });
-
-            RunningEventLoopHandle {
-                join_handle,
-                notification_tx,
-                storage,
-            }
-        }
-    }
-
-    struct RunningEventLoopHandle {
-        join_handle: tokio::task::JoinHandle<Result<(), error::Error>>,
-        notification_tx: tokio::sync::watch::Sender<()>,
-        storage: storage::in_memory::SharedStore,
-    }
-
-    impl RunningEventLoopHandle {
-        async fn stop_event_loop(self) -> storage::in_memory::SharedStore {
-            // While this explicit drop isn't strictly necessary, it serves to clarify our intention.
-            drop(self.notification_tx);
-
-            self.join_handle
-                .await
-                .expect("joining event loop failed")
-                .expect("event loop returned error");
-
-            self.storage
-        }
-    }
-
-    impl blocklist_client::BlocklistChecker for () {
-        async fn can_accept(
-            &self,
-            _address: &str,
-        ) -> Result<
-            bool,
-            blocklist_api::apis::Error<blocklist_api::apis::address_api::CheckAddressError>,
-        > {
-            Ok(true)
-        }
-    }
-
-    type EventLoop =
-        TxSignerEventLoop<network::in_memory::MpmcBroadcaster, storage::in_memory::SharedStore, ()>;
 }

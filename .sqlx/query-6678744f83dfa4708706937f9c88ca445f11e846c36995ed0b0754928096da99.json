@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO sbtc_signer.stacks_blocks (block_hash, block_height, parent_hash, created_at)\n            SELECT\n                decode(block_id, 'hex')\n              , chain_length\n              , decode(parent_block_id, 'hex')\n              , CURRENT_TIMESTAMP\n            FROM JSONB_TO_RECORDSET($1::JSONB) AS x(\n                block_id        CHAR(64)\n              , chain_length    BIGINT\n              , parent_block_id CHAR(64)\n            )\n            ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6678744f83dfa4708706937f9c88ca445f11e846c36995ed0b0754928096da99"
+}

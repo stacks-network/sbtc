@@ -9,7 +9,7 @@ use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::util::hash::Hash160;
 use futures::StreamExt;
-use signer::storage::postgres::*;
+use signer::storage;
 use signer::storage::DbRead;
 use signer::storage::DbWrite;
 use signer::testing;
@@ -19,7 +19,7 @@ use rand::SeedableRng;
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[sqlx::test]
 async fn should_be_able_to_query_bitcoin_blocks(pool: sqlx::PgPool) {
-    let mut store = PgStore::from(pool);
+    let mut store = storage::postgres::PgStore::from(pool);
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
     let test_model_params = testing::storage::model::Params {
@@ -62,7 +62,7 @@ async fn should_be_able_to_query_bitcoin_blocks(pool: sqlx::PgPool) {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[sqlx::test]
 async fn writing_stacks_blocks_works(pool: sqlx::PgPool) {
-    let store = PgStore::from(pool.clone());
+    let store = storage::postgres::PgStore::from(pool.clone());
 
     let path = "tests/fixtures/tenure-blocks-0-1ed91e0720129bda5072540ee7283dd5345d0f6de0cf5b982c6de3943b6e3291.bin";
     let mut file = std::fs::File::open(path).unwrap();
@@ -149,7 +149,7 @@ async fn writing_stacks_blocks_works(pool: sqlx::PgPool) {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[sqlx::test]
 async fn checking_stacks_blocks_exists_works(pool: sqlx::PgPool) {
-    let store = PgStore::from(pool);
+    let store = storage::postgres::PgStore::from(pool);
 
     let path = "tests/fixtures/tenure-blocks-0-1ed91e0720129bda5072540ee7283dd5345d0f6de0cf5b982c6de3943b6e3291.bin";
     let mut file = std::fs::File::open(path).unwrap();
@@ -178,4 +178,57 @@ async fn checking_stacks_blocks_exists_works(pool: sqlx::PgPool) {
         .all(|block| async { store.stacks_block_exists(block.block_id()).await.unwrap() })
         .await;
     assert!(all_exist);
+}
+
+/// This ensures that the postgres store and the in memory stores returns equivalent results
+/// when fetching pending deposit requests
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[sqlx::test]
+async fn should_return_the_same_pending_deposit_requests_as_in_memory_store(pool: sqlx::PgPool) {
+    let mut pg_store = storage::postgres::PgStore::from(pool);
+    let mut in_memory_store = storage::in_memory::Store::new_shared();
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+    let context_window = 9;
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 20,
+        chain_type: testing::storage::model::ChainType::Chaotic,
+        num_deposit_requests: 100,
+    };
+    let test_data = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
+
+    test_data.write_to(&mut in_memory_store).await;
+    test_data.write_to(&mut pg_store).await;
+
+    let chain_tip = in_memory_store
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .expect("failed to get canonical chain tip")
+        .expect("no chain tip");
+
+    assert_eq!(
+        pg_store
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("failed to get canonical chain tip")
+            .expect("no chain tip"),
+        chain_tip
+    );
+
+    let mut pending_depoist_requests = in_memory_store
+        .get_pending_deposit_requests(&chain_tip, context_window)
+        .await
+        .expect("failed to get pending deposit requests");
+
+    pending_depoist_requests.sort();
+
+    let mut pg_pending_deposit_requests = pg_store
+        .get_pending_deposit_requests(&chain_tip, context_window)
+        .await
+        .expect("failed to get pending deposit requests");
+
+    pg_pending_deposit_requests.sort();
+
+    assert_eq!(pending_depoist_requests, pg_pending_deposit_requests,);
 }

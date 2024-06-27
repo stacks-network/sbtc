@@ -11,7 +11,7 @@ use crate::storage::model;
 /// A store wrapped in an Arc<Mutex<...>> for interior mutability
 pub type SharedStore = Arc<Mutex<Store>>;
 
-type DepositRequestPk = (model::BitcoinTxId, usize);
+type DepositRequestPk = (model::BitcoinTxId, i32);
 
 /// In-memory store
 #[derive(Debug, Default)]
@@ -75,7 +75,7 @@ impl super::DbRead for SharedStore {
     async fn get_pending_deposit_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        context_window: usize,
+        context_window: i32,
     ) -> Result<Vec<model::DepositRequest>, Self::Error> {
         let maps = self.lock().await;
 
@@ -107,7 +107,7 @@ impl super::DbRead for SharedStore {
     async fn get_deposit_signers(
         &self,
         txid: &model::BitcoinTxId,
-        output_index: usize,
+        output_index: i32,
     ) -> Result<Vec<model::DepositSigner>, Self::Error> {
         Ok(self
             .lock()

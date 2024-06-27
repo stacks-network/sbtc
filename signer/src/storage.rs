@@ -35,14 +35,14 @@ pub trait DbRead {
     fn get_pending_deposit_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        context_window: usize,
+        context_window: i32,
     ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Self::Error>> + Send;
 
     /// Get signer decisions for a deposit request
     fn get_deposit_signers(
         &self,
         txid: &model::BitcoinTxId,
-        output_index: usize,
+        output_index: i32,
     ) -> impl Future<Output = Result<Vec<model::DepositSigner>, Self::Error>> + Send;
 
     /// Get pending withdraw requests

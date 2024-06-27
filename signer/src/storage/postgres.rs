@@ -218,23 +218,72 @@ impl super::DbRead for PgStore {
     async fn get_bitcoin_canonical_chain_tip(
         &self,
     ) -> Result<Option<model::BitcoinBlockHash>, Self::Error> {
-        todo!(); // TODO(244): Write query + integration test
+        sqlx::query_as!(
+            model::BitcoinBlock,
+            "SELECT * FROM sbtc_signer.bitcoin_blocks ORDER BY block_height DESC, block_hash DESC"
+        )
+        .fetch_optional(&self.0)
+        .await
+        .map(|maybe_block| maybe_block.map(|block| block.block_hash))
+        .map_err(Error::SqlxQuery)
     }
 
     async fn get_pending_deposit_requests(
         &self,
-        _chain_tip: &model::BitcoinBlockHash,
-        _context_window: usize,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: i32,
     ) -> Result<Vec<model::DepositRequest>, Self::Error> {
-        todo!(); // TODO(244): Write query + integration test
+        sqlx::query_as!(
+            model::DepositRequest,
+            r#"
+            WITH RECURSIVE context_window AS (
+                -- Anchor member: Initialize the recursion with the chain tip
+                SELECT block_hash, block_height, parent_hash, created_at, 1 AS depth
+                FROM sbtc_signer.bitcoin_blocks
+                WHERE block_hash = $1
+                
+                UNION ALL
+                
+                -- Recursive member: Fetch the parent block using the last block's parent_hash
+                SELECT parent.block_hash, parent.block_height, parent.parent_hash,
+                       parent.created_at, last.depth + 1
+                FROM sbtc_signer.bitcoin_blocks parent
+                JOIN context_window last ON parent.block_hash = last.parent_hash
+                WHERE last.depth < $2
+            ),
+            transactions_in_window AS (
+                SELECT transactions.txid
+                FROM context_window blocks_in_window
+                JOIN sbtc_signer.bitcoin_transactions transactions ON
+                    transactions.block_hash = blocks_in_window.block_hash
+            )
+            SELECT deposit_requests.*
+            FROM transactions_in_window transactions
+            JOIN sbtc_signer.deposit_requests deposit_requests ON
+                deposit_requests.txid = transactions.txid
+            "#,
+            chain_tip,
+            context_window,
+        )
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
     }
 
     async fn get_deposit_signers(
         &self,
-        _txid: &model::BitcoinTxId,
-        _output_index: usize,
+        txid: &model::BitcoinTxId,
+        output_index: i32,
     ) -> Result<Vec<model::DepositSigner>, Self::Error> {
-        todo!(); // TODO(244): Write query + integration test
+        sqlx::query_as!(
+            model::DepositSigner,
+            "SELECT * FROM sbtc_signer.deposit_signers WHERE txid = $1 AND output_index = $2",
+            txid,
+            output_index,
+        )
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
     }
 
     async fn get_pending_withdraw_requests(
@@ -242,14 +291,26 @@ impl super::DbRead for PgStore {
         _chain_tip: &model::BitcoinBlockHash,
         _context_window: usize,
     ) -> Result<Vec<model::WithdrawRequest>, Self::Error> {
-        todo!(); // TODO(246): Write query + integration test
+        Ok(Vec::new()) // TODO(246): Write query + integration test
     }
 
     async fn get_bitcoin_blocks_with_transaction(
         &self,
-        _txid: &model::BitcoinTxId,
+        txid: &model::BitcoinTxId,
     ) -> Result<Vec<model::BitcoinBlockHash>, Self::Error> {
-        todo!(); // TODO(244): write query + integration test
+        sqlx::query_as!(
+            model::BitcoinTransaction,
+            "SELECT * FROM sbtc_signer.bitcoin_transactions WHERE txid = $1",
+            txid,
+        )
+        .fetch_all(&self.0)
+        .await
+        .map(|res| {
+            res.into_iter()
+                .map(|junction| junction.block_hash)
+                .collect()
+        })
+        .map_err(Error::SqlxQuery)
     }
 
     async fn stacks_block_exists(&self, block_id: StacksBlockId) -> Result<bool, Self::Error> {
@@ -316,11 +377,24 @@ impl super::DbWrite for PgStore {
         todo!(); // TODO(246): Write query + integration test
     }
 
+    #[tracing::instrument(skip(self))]
     async fn write_deposit_signer_decision(
         &self,
-        _decision: &model::DepositSigner,
+        decision: &model::DepositSigner,
     ) -> Result<(), Self::Error> {
-        todo!(); // TODO(244): Write query + integration test
+        sqlx::query!(
+            "INSERT INTO sbtc_signer.deposit_signers VALUES ($1, $2, $3, $4, $5)",
+            decision.txid,
+            decision.output_index,
+            decision.signer_pub_key,
+            decision.is_accepted,
+            decision.created_at
+        )
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
     }
 
     async fn write_withdraw_signer_decision(

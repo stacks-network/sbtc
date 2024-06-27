@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO sbtc_signer.stacks_transactions (txid, block_hash)\n            SELECT\n                decode(txid, 'hex')\n              , decode(block_id, 'hex')\n            FROM JSONB_TO_RECORDSET($1::JSONB) AS x(\n                txid        CHAR(64)\n              , block_id    CHAR(64)\n            )\n            ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7e247d7abf23d1386a01457bdf87ed9213df9782635a2a8cfe84e27ec8750784"
+}

@@ -1,0 +1,47 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT * FROM sbtc_signer.deposit_signers WHERE txid = $1 AND output_index = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "txid",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 1,
+        "name": "output_index",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "signer_pub_key",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 3,
+        "name": "is_accepted",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "3b8fd67b83409538f2caa03fbed11ebdd058645ad76f8eb25ac0a93f684ebac2"
+}

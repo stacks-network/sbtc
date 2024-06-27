@@ -1,0 +1,71 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            WITH RECURSIVE context_window AS (\n                -- Anchor member: Initialize the recursion with the chain tip\n                SELECT block_hash, block_height, parent_hash, created_at, 1 AS depth\n                FROM sbtc_signer.bitcoin_blocks\n                WHERE block_hash = $1\n                \n                UNION ALL\n                \n                -- Recursive member: Fetch the parent block using the last block's parent_hash\n                SELECT parent.block_hash, parent.block_height, parent.parent_hash,\n                       parent.created_at, last.depth + 1\n                FROM sbtc_signer.bitcoin_blocks parent\n                JOIN context_window last ON parent.block_hash = last.parent_hash\n                WHERE last.depth < $2\n            ),\n            transactions_in_window AS (\n                SELECT transactions.txid\n                FROM context_window blocks_in_window\n                JOIN sbtc_signer.bitcoin_transactions transactions ON\n                    transactions.block_hash = blocks_in_window.block_hash\n            )\n            SELECT deposit_requests.*\n            FROM transactions_in_window transactions\n            JOIN sbtc_signer.deposit_requests deposit_requests ON\n                deposit_requests.txid = transactions.txid\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "txid",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 1,
+        "name": "output_index",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "spend_script",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 3,
+        "name": "reclaim_script",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 4,
+        "name": "recipient",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "amount",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "max_fee",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 7,
+        "name": "sender_addresses",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "395c1480ed7b9388a18401f9f357c5213f36a76e3d702d9f054e5d32ec439c9b"
+}
