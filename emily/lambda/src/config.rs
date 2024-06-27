@@ -1,16 +1,16 @@
 use aws_sdk_dynamodb::Client;
 
 /// Temporary chainstate Table name.
-pub static CHAINSTATE_TABLE_NAME: &str = "ChainstateTable-xxxxxxxxxxxx-us-west-2-local";
+pub static CHAINSTATE_TABLE_NAME: &str = "ChainstateTable-276878302531-us-west-2-local";
 
 /// Temporary withdrawal Table name.
-pub static WITHDRAWAL_TABLE_NAME: &str = "WithdrawalTable-xxxxxxxxxxxx-us-west-2-local";
+pub static WITHDRAWAL_TABLE_NAME: &str = "WithdrawalTable-276878302531-us-west-2-local";
 
 /// Temporary deposit Table name.
-pub static DEPOSIT_TABLE_NAME: &str = "DepositTable-xxxxxxxxxxxx-us-west-2-local";
+pub static DEPOSIT_TABLE_NAME: &str = "DepositTable-276878302531-us-west-2-local";
 
 /// Emily lambda settings.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Settings {
     /// Whether the Emily lambda is running locally.
     pub is_local: bool,
@@ -30,7 +30,8 @@ pub struct LambdaContext {
     pub dynamodb_client: Client,
 }
 
-// TODO:
+// TODO: [ticket link here once PR is approved]
+//
 // Create a `new` function similar to the settings in the blocklist client
 // and the Signer that grabs the configuration values from a local default
 // toml and potentially overwrites the fields with environment values.

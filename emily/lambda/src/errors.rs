@@ -1,5 +1,7 @@
 //! Top-level error type for the Emily lambda
 
+use std::fmt::{Debug, Display};
+
 use aws_lambda_events::apigw::ApiGatewayProxyResponse;
 use aws_lambda_events::encodings::Body;
 use emily::models;
@@ -44,6 +46,20 @@ pub enum EmilyApiError {
     ),
 }
 
+
+/// Temp debug conversion.
+///
+/// TODO: [ticket link here once PR is approved]
+/// Replace this conversion with a more generic method that doesn't provide
+/// too much internal API information to the client.
+pub fn to_emily_api_error<E>(err: E) -> EmilyApiError
+where
+    E: Debug,
+{
+    EmilyApiError::InternalService(format!("{:?}", err))
+}
+
+/// Implementation of EmilyApiError.
 impl EmilyApiError {
     fn status_code(&self) -> u16 {
         match *self {

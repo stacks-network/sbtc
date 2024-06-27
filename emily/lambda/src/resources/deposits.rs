@@ -1,487 +1,353 @@
-use std::{collections::HashMap, convert::{From, TryFrom}, fmt::format, str::FromStr};
-
-use aws_sdk_dynamodb::types::AttributeValue;
-use emily::models::{self, DepositBasicInfo, OpStatus};
-
-use crate::errors::EmilyApiError;
-
-// ------------------------------------------------------------------
-// Api resources.
-// ------------------------------------------------------------------
-
-/// Deposit resource.
-#[derive(Clone)]
-pub struct DepositResource {
-    /// Bitcoin transaction id.
-    pub bitcoin_txid: String,
-    /// Bitcoin transaction output index.
-    pub bitcoin_tx_output_index: u16,
-    /// Recipient of the deposit.
-    pub recipient: String,
-    /// Amount of the deposit.
-    pub amount: u64,
-    /// Last update block height.
-    pub last_update_height: u64,
-    /// Last update block hash.
-    pub last_update_block_hash: String,
-    /// Operation status.
-    pub op_status: OpStatus,
-    /// Status message.
-    pub status_message: String,
-    /// Deposit parameters.
-    pub parameters: DepositParameters,
-    /// Fulfillment information about this deposit.
-    pub fulfillment: Option<DepositFulfillment>,
-}
-
-/// Deposit basic info resource.
-#[derive(Clone)]
-pub struct DepositBasicInfoResource {
-    /// Bitcoin transaction id.
-    pub bitcoin_txid: String,
-    /// Bitcoin transaction output index.
-    pub bitcoin_tx_output_index: f64,
-    /// Recipient of the deposit.
-    pub recipient: String,
-    /// Amount of the deposit.
-    pub amount: u64,
-    /// Last update block height.
-    pub last_update_height: u64,
-    /// Last update block hash.
-    pub last_update_block_hash: String,
-    /// Operation status.
-    pub status: OpStatus,
-}
-
-/// Parameters to the deposit operation.
-#[derive(Clone)]
-pub struct DepositParameters {
-    /// The maximum total BTC fee in satoshis that the deposit initiator is comfortable with
-    /// being taken out of their BTC to pay for the BTC fee of the despot fulfillment transaction.
-    pub max_fee: u64,
-    /// The block height at which the depositor can reclaim their transaction.
-    pub lock_time: u64,
-    /// The script with which the depositor can reclaim their deposit after the lock time.
-    pub reclaim_script: String,
-}
-
-/// Fulfillment data for a deposit.
-#[derive(Clone)]
-pub struct DepositFulfillment {
-    /// Bitcoin txid that fulfilled the deposit.
-    pub bitcoin_txid: String,
-    /// Index of the Bitcoin transaction that fulfilled this specific deposit.
-    pub bitcoin_tx_index: u16,
-    /// Stacks transaction id that fulfilled the deposit.
-    pub txid:String,
-    /// Bitcoin block hash of the transaction that fulfilled the deposit.
-    pub bitcoin_block_hash: String,
-    /// Block height of the bitcoin block that fulfilled this deposit.
-    pub bitcoin_block_height: u64,
-    /// Bitcoin fee used to fulfill the deposit.
-    pub btc_fee: u64,
-}
-
-// Conversions ------------------------------------------------------
-
-/// Convert from resource definition of deposit parameters to the api model version
-/// of the struct.
-impl From<DepositParameters> for Box<models::DepositParameters> {
-    fn from(value: DepositParameters) -> Self {
-        Box::new(models::DepositParameters {
-            max_fee: value.max_fee as f64,
-            lock_time: value.lock_time as f64,
-            reclaim_script: value.reclaim_script,
-        })
-    }
-}
-
-// ------------------------------------------------------------------
-// DynamoDB table entry resources.
-// ------------------------------------------------------------------
+use std::convert::From;
+use emily::models::{self, OpStatus};
+use serde::{Deserialize, Serialize};
 
 /// Deposit table entry key.
-#[derive(Debug)]
-pub struct DepositTableEntryKey {
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct DepositRequestKey {
     /// Bitcoin transaction id.
     pub bitcoin_txid: String,
+
     /// Bitcoin transaction output index.
     pub bitcoin_tx_output_index: u16,
 }
 
 /// Deposit table entry.
-#[derive(Debug)]
-pub struct DepositTableEntry {
+#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct DepositRequest {
     /// Bitcoin transaction id.
     pub bitcoin_txid: String,
+
     /// Bitcoin transaction output index.
     pub bitcoin_tx_output_index: u16,
+
     /// Table entry version. Updated on each alteration.
     pub version: u64,
+
     /// Recipient of the deposit.
     pub recipient: String,
+
     /// Amount of the deposit.
     pub amount: u64,
+
     /// Max fee in satoshis to execute the deposit.
     pub max_fee: u64,
+
     /// Lock time.
     pub lock_time: u64,
+
     /// Reclaim script.
     pub reclaim_script: String,
+
     /// Operation status.
-    pub op_status: models::OpStatus,
+    pub op_status: OpStatus,
+
     /// Last update block height.
     pub last_update_height: u64,
+
     /// Last update block hash.
     pub last_update_block_hash: String,
+
     /// Bitcoin transaction id that fulfills the deposit.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub fulfillment_bitcoin_txid: Option<String>,
+
     /// Output index on the fulfilling Bitcoin transaction that fulfills the deposit.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub fulfillment_bitcoin_tx_index: Option<u16>,
+
     /// Fee on the fulfillment bitcoin transaction paid by this deposit.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub fulfillment_btc_fee: Option<u64>,
+
     /// Stacks transaction id.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub stacks_txid: Option<String>,
+
     /// History of this deposit transaction.
     pub history: Vec<DepositHistoryEntry>,
 }
 
 /// Deposit history entry.
-#[derive(Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct DepositHistoryEntry {
     /// Status code.
-    pub op_status: models::OpStatus,
+    pub op_status: OpStatus,
+
     /// Status message.
     pub message: String,
+
     /// Stacks block heigh at the time of this update.
     pub stacks_block_height: u64,
+
     /// Stacks block hash associated with the height of this update.
     pub stacks_block_hash: String,
 }
 
-// Conversions ------------------------------------------------------
+/// Deposit basic info key.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct DepositRequestBasicInfoKey {
+    /// Bitcoin transaction id.
+    pub bitcoin_txid: String,
 
-/// Converts from the deposit key to a hashmap that can be used as a key
-/// for searching a DynamoDB table.
-impl From<DepositTableEntryKey> for HashMap<String, AttributeValue> {
-    fn from(key_struct: DepositTableEntryKey) -> Self {
-        return (&key_struct).into();
-    }
+    /// Bitcoin transaction output index.
+    pub bitcoin_tx_output_index: u16,
+
+    /// Last update block height.
+    pub last_update_height: u64,
+
+    /// Operation status.
+    pub op_status: OpStatus,
 }
 
-/// Converts from the deposit key to a hashmap that can be used as a key
-/// for searching a DynamoDB table.
-impl From<&DepositTableEntryKey> for HashMap<String, AttributeValue> {
-    fn from(key_struct: &DepositTableEntryKey) -> Self {
-        let mut key: HashMap<String, AttributeValue> = HashMap::new();
-        key.insert(
-            "BitcoinTxid".to_string(),
-            AttributeValue::S(key_struct.bitcoin_txid.clone()),
-        );
-        key.insert(
-            "BitcoinTxOutputIndex".to_string(),
-            AttributeValue::N((key_struct.bitcoin_tx_output_index).to_string()),
-        );
-        return key;
-    }
+/// Deposit basic info resource.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct DepositRequestBasicInfo {
+    /// Bitcoin transaction id.
+    pub bitcoin_txid: String,
+
+    /// Bitcoin transaction output index.
+    pub bitcoin_tx_output_index: u16,
+
+    /// Recipient of the deposit.
+    pub recipient: String,
+
+    /// Amount of the deposit.
+    pub amount: u64,
+
+    /// Last update block height.
+    pub last_update_height: u64,
+
+    /// Last update block hash.
+    pub last_update_block_hash: String,
+
+    /// Operation status.
+    pub op_status: OpStatus,
 }
 
-/// Converts from the deposit resource to a table entry.
-impl From<DepositTableEntry> for HashMap<String, AttributeValue> {
-    fn from(deposit_table_entry: DepositTableEntry) -> Self {
-        (&deposit_table_entry).into()
-    }
-}
-
-/// Converts from the deposit resource to a table entry.
-impl From<&DepositTableEntry> for HashMap<String, AttributeValue> {
-    fn from(deposit_table_entry: &DepositTableEntry) -> Self {
-        let mut item: HashMap<String, AttributeValue> = HashMap::new();
-        item.insert("BitcoinTxid".to_string(), AttributeValue::S(deposit_table_entry.bitcoin_txid.clone()));
-        item.insert("BitcoinTxOutputIndex".to_string(), AttributeValue::N(deposit_table_entry.bitcoin_tx_output_index.to_string()));
-        item.insert("Version".to_string(), AttributeValue::N(0.to_string()));
-        item.insert("Recipient".to_string(), AttributeValue::S(deposit_table_entry.recipient.clone()));
-        item.insert("Amount".to_string(), AttributeValue::N(deposit_table_entry.amount.to_string()));
-        item.insert("MaxFee".to_string(), AttributeValue::N(deposit_table_entry.max_fee.to_string()));
-        item.insert("LockTime".to_string(), AttributeValue::S(deposit_table_entry.lock_time.to_string()));
-        item.insert("ReclaimScript".to_string(), AttributeValue::S(deposit_table_entry.reclaim_script.clone()));
-        item.insert("OpStatus".to_string(), AttributeValue::N(status_to_id(deposit_table_entry.op_status).to_string()));
-        item.insert("LastUpdateHeight".to_string(), AttributeValue::N(deposit_table_entry.last_update_height.to_string()));
-        item.insert("LastUpdateBlockHash".to_string(), AttributeValue::S(deposit_table_entry.last_update_block_hash.clone().to_string()));
-        if let Some(fulfillment_bitcoin_txid) = deposit_table_entry.fulfillment_bitcoin_txid.clone() {
-            item.insert("FulfillmentBitcoinTxid".to_string(), AttributeValue::S(fulfillment_bitcoin_txid.to_string()));
+/// Converts from the reduced table version of a Deposit request to the reduced
+/// api version of the Deposit request.
+impl From<DepositRequestBasicInfo> for models::DepositBasicInfo {
+    fn from(deposit_request_basic_info: DepositRequestBasicInfo) -> Self {
+        models::DepositBasicInfo {
+            bitcoin_txid: deposit_request_basic_info.bitcoin_txid,
+            bitcoin_tx_output_index: deposit_request_basic_info.bitcoin_tx_output_index as f64,
+            recipient: deposit_request_basic_info.recipient,
+            amount: deposit_request_basic_info.amount as f64,
+            last_update_height: deposit_request_basic_info.last_update_height as f64,
+            last_update_block_hash: deposit_request_basic_info.last_update_block_hash,
+            status: deposit_request_basic_info.op_status.into(),
         }
-        if let Some(fulfillment_bitcoin_tx_index) = deposit_table_entry.fulfillment_bitcoin_tx_index {
-            item.insert("FulfillmentBitcoinTxIndex".to_string(), AttributeValue::N(fulfillment_bitcoin_tx_index.to_string()));
-        }
-        if let Some(fulfillment_btc_fee) = deposit_table_entry.fulfillment_btc_fee {
-            item.insert("FulfillmentBtcFee".to_string(), AttributeValue::N(fulfillment_btc_fee.to_string()));
-        }
-        if let Some(stacks_txid) = deposit_table_entry.stacks_txid.clone() {
-            item.insert("StacksTxid".to_string(), AttributeValue::S(stacks_txid.to_string()));
-        }
-        item.insert("History".to_string(), AttributeValue::L(
-            deposit_table_entry.history.iter().map(|history_entry|
-            history_entry.into()
-        ).collect()));
-        item
     }
 }
 
 /// Converts from Deposit Table Entry to Deposit Resource.
-impl From<DepositTableEntry> for DepositResource {
-    fn from(deposit_table_entry: DepositTableEntry) -> Self {
-        (&deposit_table_entry).into()
-    }
-}
+///
+/// TODO: [ticket link here once PR is approved]
+/// Gracefully handle entry validation failures.
+impl From<DepositRequest> for models::DepositData {
+    fn from(deposit_request: DepositRequest) -> Self {
 
-/// Converts from Deposit Table Entry to Deposit Resource.
-impl From<&DepositTableEntry> for DepositResource {
-    fn from(deposit_table_entry: &DepositTableEntry) -> Self {
-        let latest_history_entry = deposit_table_entry.history
+        // Get the latest event.
+        let latest_event = deposit_request.history
             .last() // There must always be at least one entry.
-            .unwrap();
+            .expect(format!("Deposit request missing history: {:?}", &deposit_request).as_str());
 
-        DepositResource {
-            bitcoin_txid: deposit_table_entry.bitcoin_txid.clone(),
-            bitcoin_tx_output_index: deposit_table_entry.bitcoin_tx_output_index,
-            recipient: deposit_table_entry.recipient.clone(),
-            amount: deposit_table_entry.amount,
-            last_update_height: deposit_table_entry.last_update_height,
-            last_update_block_hash: deposit_table_entry.last_update_block_hash.clone(),
-            op_status: deposit_table_entry.op_status,
-            status_message: latest_history_entry.message.clone(),
-            parameters: DepositParameters {
-                max_fee: deposit_table_entry.max_fee,
-                lock_time: deposit_table_entry.lock_time,
-                reclaim_script: deposit_table_entry.reclaim_script.clone(),
+        // Convert status to API version.
+        let status: models::OpStatus = deposit_request.op_status.into();
+
+        // Provide last update height if the fields have a tangible impact
+        // on the status of the deposit.
+        let mut last_update_height: Option<f64> = Some(deposit_request.last_update_height as f64);
+        let mut last_update_block_hash: Option<String> = Some(deposit_request.last_update_block_hash);
+        if status == models::OpStatus::Pending {
+            last_update_height = None;
+            last_update_block_hash = None;
+        }
+
+        // Package data.
+        models::DepositData {
+            bitcoin_txid: deposit_request.bitcoin_txid,
+            bitcoin_tx_output_index: deposit_request.bitcoin_tx_output_index as f64,
+            recipient: deposit_request.recipient,
+            amount: deposit_request.amount as f64,
+            last_update_height,
+            last_update_block_hash,
+            status,
+            status_message: latest_event.message.clone(),
+            parameters: Box::new(models::DepositParameters {
+                max_fee: deposit_request.max_fee as f64,
+                lock_time: deposit_request.lock_time as f64,
+                reclaim_script: deposit_request.reclaim_script,
+            }),
+            fulfillment: match (
+                deposit_request.fulfillment_bitcoin_txid,
+                deposit_request.fulfillment_bitcoin_tx_index,
+                deposit_request.fulfillment_btc_fee,
+                deposit_request.stacks_txid,
+            ) {
+                // Only create the fulfillment struct if all necessary data is present.
+                (
+                    Some(fulfillment_bitcoin_txid),
+                    Some(fulfillment_bitcoin_tx_index),
+                    Some(fulfillment_btc_fee),
+                    Some(stacks_txid),
+                ) => Some(Box::new(models::Fulfillment {
+                    bitcoin_txid: Some(fulfillment_bitcoin_txid),
+                    bitcoin_tx_index: Some(fulfillment_bitcoin_tx_index as f64),
+                    txid: Some(stacks_txid),
+                    btc_fee: Some(fulfillment_btc_fee as f64),
+                    // TODO: [ticket link here once PR is approved]
+                    // Alter API spec so that these fields are accessible to the API database.
+                    bitcoin_block_hash: None,
+                    bitcoin_block_height: None,
+                })),
+                _ => None
             },
-            // TODO
-            fulfillment: None,
         }
     }
 }
 
-/// Converts from Deposit History Entry to a DynamoDB Table Attribute.
-impl From<&DepositHistoryEntry> for AttributeValue {
-    fn from(deposit_history_entry: &DepositHistoryEntry) -> Self {
-        let mut item: HashMap<String, AttributeValue> = HashMap::new();
-        item.insert("OpStatus".to_string(), AttributeValue::N(status_to_id(deposit_history_entry.op_status).to_string()));
-        item.insert("Message".to_string(), AttributeValue::S(deposit_history_entry.message.clone()));
-        item.insert("StacksBlockHeight".to_string(), AttributeValue::N(deposit_history_entry.stacks_block_height.to_string()));
-        item.insert("StacksBlockHash".to_string(), AttributeValue::S(deposit_history_entry.stacks_block_hash.to_string()));
-        AttributeValue::M(item)
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use models::DepositParameters;
+    use serde_json;
+
+    #[test]
+    fn test_deposit_request_serialization() {
+        let deposit_request = DepositRequest {
+            bitcoin_txid: "abc123".to_string(),
+            bitcoin_tx_output_index: 1,
+            version: 1,
+            recipient: "recipient1".to_string(),
+            amount: 1000,
+            max_fee: 10,
+            lock_time: 0,
+            reclaim_script: "script".to_string(),
+            op_status: OpStatus::Pending,
+            last_update_height: 0,
+            last_update_block_hash: "hash".to_string(),
+            fulfillment_bitcoin_txid: Some("fulfillment_txid".to_string()),
+            fulfillment_bitcoin_tx_index: Some(0),
+            fulfillment_btc_fee: Some(5),
+            stacks_txid: Some("stacks_txid".to_string()),
+            history: vec![DepositHistoryEntry {
+                op_status: OpStatus::Pending,
+                message: "status_message".to_string(),
+                stacks_block_height: 0,
+                stacks_block_hash: "block_hash".to_string(),
+            }],
+        };
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&deposit_request).unwrap();
+
+        // Deserialize back to struct
+        let deserialized: DepositRequest = serde_json::from_str(&json).unwrap();
+
+        // Verify that the deserialized struct matches the original
+        assert_eq!(deposit_request, deserialized);
     }
-}
 
-/// Converts from Deposit History Entry to a DynamoDB Table Attribute.
-impl From<DepositHistoryEntry> for AttributeValue {
-    fn from(deposit_history_entry: DepositHistoryEntry) -> Self {
-        (&deposit_history_entry).into()
+    #[test]
+    fn test_deposit_request_basic_info_serialization() {
+        let basic_info = DepositRequestBasicInfo {
+            bitcoin_txid: "abc123".to_string(),
+            bitcoin_tx_output_index: 1,
+            recipient: "recipient1".to_string(),
+            amount: 1000,
+            last_update_height: 0,
+            last_update_block_hash: "hash".to_string(),
+            op_status: OpStatus::Pending,
+        };
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&basic_info).unwrap();
+
+        // Deserialize back to struct
+        let deserialized: DepositRequestBasicInfo = serde_json::from_str(&json).unwrap();
+
+        // Verify that the deserialized struct matches the original
+        assert_eq!(basic_info, deserialized);
     }
-}
 
-// Deposit Resource
+    #[test]
+    fn test_from_deposit_request_basic_info() {
+        let basic_info = DepositRequestBasicInfo {
+            bitcoin_txid: "abc123".to_string(),
+            bitcoin_tx_output_index: 1,
+            recipient: "recipient1".to_string(),
+            amount: 1000,
+            last_update_height: 0,
+            last_update_block_hash: "hash".to_string(),
+            op_status: OpStatus::Pending,
+        };
 
-impl TryFrom<HashMap<String, AttributeValue>> for DepositTableEntry {
-    type Error = EmilyApiError;
-    fn try_from(deposit_table_entry: HashMap<String, AttributeValue>) -> Result<Self, Self::Error> {
-        return (&deposit_table_entry).try_into();
+        let deposit_basic_info: models::DepositBasicInfo = basic_info.into();
+
+        assert_eq!(deposit_basic_info.bitcoin_txid, "abc123");
+        assert_eq!(deposit_basic_info.bitcoin_tx_output_index, 1.0);
+        assert_eq!(deposit_basic_info.recipient, "recipient1");
+        assert_eq!(deposit_basic_info.amount, 1000.0);
+        assert_eq!(deposit_basic_info.last_update_height, 0.0);
+        assert_eq!(deposit_basic_info.last_update_block_hash, "hash");
+        // Convert OpStatus to the appropriate type and compare
+        assert_eq!(deposit_basic_info.status, models::OpStatus::Pending);
     }
-}
 
+    #[test]
+    fn test_from_deposit_request() {
+        let deposit_request = DepositRequest {
+            bitcoin_txid: "abc123".to_string(),
+            bitcoin_tx_output_index: 1,
+            version: 1,
+            recipient: "recipient1".to_string(),
+            amount: 1000,
+            max_fee: 10,
+            lock_time: 0,
+            reclaim_script: "script".to_string(),
+            op_status: OpStatus::Pending,
+            last_update_height: 0,
+            last_update_block_hash: "hash".to_string(),
+            fulfillment_bitcoin_txid: Some("fulfillment_txid".to_string()),
+            fulfillment_bitcoin_tx_index: Some(0),
+            fulfillment_btc_fee: Some(5),
+            stacks_txid: Some("stacks_txid".to_string()),
+            history: vec![DepositHistoryEntry {
+                op_status: OpStatus::Pending,
+                message: "status_message".to_string(),
+                stacks_block_height: 0,
+                stacks_block_hash: "block_hash".to_string(),
+            }],
+        };
 
-fn extract_attribute<T: FromStr>(
-    table_entry: &HashMap<String, AttributeValue>,
-    attribute_name: &str,
-) -> Result<T, EmilyApiError>
-where
-    <T as FromStr>::Err: std::error::Error + 'static,
-{
-    let attribute_value = table_entry
-        .get(attribute_name)
-        .ok_or(EmilyApiError::InternalService(
-            format!("Table entry is missing field: {}.", attribute_name)))?;
+        let deposit_data: models::DepositData = deposit_request.into();
 
-    let attribute_str = match attribute_value {
-        AttributeValue::N(value) => Ok(value),
-        AttributeValue::S(value) => Ok(value),
-        _ => Err(EmilyApiError::InternalService("Error".to_string())),
-    }?;
+        assert_eq!(deposit_data.bitcoin_txid, "abc123");
+        assert_eq!(deposit_data.bitcoin_tx_output_index, 1.0);
+        assert_eq!(deposit_data.recipient, "recipient1");
+        assert_eq!(deposit_data.amount, 1000.0);
+        assert_eq!(deposit_data.status, models::OpStatus::Pending);
+        assert_eq!(deposit_data.status_message, "status_message");
 
-    let attribute: T = attribute_str
-        .parse::<T>()
-        .map_err(|e| EmilyApiError::UnhandledService(Box::new(e)))?;
+        let parameters: &DepositParameters = deposit_data.parameters.as_ref();
+        assert_eq!(parameters.max_fee, 10.0);
+        assert_eq!(parameters.lock_time, 0.0);
+        assert_eq!(parameters.reclaim_script, "script");
 
-    Ok(attribute)
-}
-
-fn extract_optional_attribute<T: FromStr>(
-    table_entry: &HashMap<String, AttributeValue>,
-    attribute_name: &str,
-) -> Result<Option<T>, EmilyApiError>
-where
-    <T as FromStr>::Err: std::error::Error + 'static,
-{
-    let maybe_attribute = table_entry
-        .get(attribute_name);
-    if let Some(attribute_value) = maybe_attribute {
-
-        let attribute_str = match attribute_value {
-            AttributeValue::N(value) => Ok(value),
-            AttributeValue::S(value) => Ok(value),
-            _ => Err(EmilyApiError::InternalService("Error".to_string())),
-        }?;
-
-        let attribute = attribute_str
-            .parse::<T>()
-            .map_err(|e| EmilyApiError::UnhandledService(Box::new(e)))?;
-
-        return Ok(Some(attribute))
-    } else {
-        return Ok(None)
-    }
-}
-
-impl TryFrom<&HashMap<String, AttributeValue>> for DepositTableEntry {
-    type Error = EmilyApiError;
-    fn try_from(deposit_table_entry: &HashMap<String, AttributeValue>) -> Result<Self, Self::Error> {
-
-        let history_result: Result<Vec<DepositHistoryEntry>, EmilyApiError> = deposit_table_entry.get("History")
-            .ok_or(EmilyApiError::InternalService(
-                format!("Failed to get \"History from entry\" {:?}", deposit_table_entry)
-            ))?
-            .as_l()
-            .map_err(|e| EmilyApiError::InternalService(
-                format!("Failed to get deposit history list from attribute: {:?}", e)
-            ))?
-            .iter()
-            .map(|history_entry| {
-                let history_blip: Result<DepositHistoryEntry, EmilyApiError> = history_entry
-                    .try_into()
-                    .map_err(|e| {
-                        EmilyApiError::InternalService(
-                            format!("Failed to convert history entry: {:?}", e),
-                        )
-                    });
-                history_blip
-            })
-            .collect();
-
-        let history = history_result?;
-
-        Ok(DepositTableEntry {
-            bitcoin_txid: extract_attribute(deposit_table_entry, "BitcoinTxid")?,
-            bitcoin_tx_output_index: extract_attribute(deposit_table_entry, "BitcoinTxOutputIndex")?,
-            version: extract_attribute(deposit_table_entry, "Version")?,
-            recipient: extract_attribute(deposit_table_entry, "Recipient")?,
-            amount: extract_attribute(deposit_table_entry, "Amount")?,
-            max_fee: extract_attribute(deposit_table_entry, "MaxFee")?,
-            lock_time: extract_attribute(deposit_table_entry, "LockTime")?,
-            reclaim_script: extract_attribute(deposit_table_entry, "ReclaimScript")?,
-            op_status: id_to_status(extract_attribute(deposit_table_entry, "OpStatus")?)?,
-            last_update_height: extract_attribute(deposit_table_entry, "LastUpdateHeight")?,
-            last_update_block_hash: extract_attribute(deposit_table_entry, "LastUpdateBlockHash")?,
-            fulfillment_bitcoin_txid: extract_optional_attribute(deposit_table_entry, "FulfillmentBitcoinTxid")?,
-            fulfillment_bitcoin_tx_index: extract_optional_attribute(deposit_table_entry, "FulfillmentBitcoinTxIndex")?,
-            fulfillment_btc_fee: extract_optional_attribute(deposit_table_entry, "FulfillmentBtcFee")?,
-            stacks_txid: extract_optional_attribute(deposit_table_entry, "StacksTxid")?,
-            history,
-        })
-    }
-}
-
-
-// Deposit History Entry
-impl TryFrom<AttributeValue> for DepositHistoryEntry {
-    type Error = EmilyApiError;
-    fn try_from(deposit_history_table_entry: AttributeValue) -> Result<Self, Self::Error> {
-        (&deposit_history_table_entry).try_into()
-    }
-}
-
-impl TryFrom<&AttributeValue> for DepositHistoryEntry {
-    type Error = EmilyApiError;
-    fn try_from(deposit_history_table_entry: &AttributeValue) -> Result<Self, Self::Error> {
-        deposit_history_table_entry
-            .as_m()
-            .map_err(|e| EmilyApiError::InternalService(
-                format!("Failed to get deposit history hashmap from attribute: {:?}", e)
-            ))?
-            .try_into()
-    }
-}
-
-impl TryFrom<HashMap<String, AttributeValue>> for DepositHistoryEntry {
-    type Error = EmilyApiError;
-    fn try_from(deposit_history_table_entry: HashMap<String, AttributeValue>) -> Result<Self, Self::Error> {
-        return (&deposit_history_table_entry).try_into();
-    }
-}
-
-impl TryFrom<&HashMap<String, AttributeValue>> for DepositHistoryEntry {
-    type Error = EmilyApiError;
-    fn try_from(deposit_history_table_entry: &HashMap<String, AttributeValue>) -> Result<Self, Self::Error> {
-        Ok(DepositHistoryEntry {
-            op_status: id_to_status(
-                extract_attribute(deposit_history_table_entry, "OpStatus")?
-            )?,
-            message: extract_attribute(deposit_history_table_entry, "Message")?,
-            stacks_block_height: extract_attribute(deposit_history_table_entry, "StacksBlockHeight")?,
-            stacks_block_hash: extract_attribute(deposit_history_table_entry, "StacksBlockHash")?,
-        })
-    }
-}
-
-impl TryFrom<&HashMap<String, AttributeValue>> for DepositBasicInfoResource {
-    type Error = EmilyApiError;
-    fn try_from(deposit_basic_info_table_entry: &HashMap<String, AttributeValue>) -> Result<Self, Self::Error> {
-        Ok(DepositBasicInfoResource {
-            bitcoin_txid: extract_attribute(deposit_basic_info_table_entry, "BitcoinTxid")?,
-            bitcoin_tx_output_index: extract_attribute(deposit_basic_info_table_entry, "BitcoinTxOutputIndex")?,
-            recipient: extract_attribute(deposit_basic_info_table_entry, "Recipient")?,
-            amount: extract_attribute(deposit_basic_info_table_entry, "Amount")?,
-            last_update_height: extract_attribute(deposit_basic_info_table_entry, "LastUpdateHeight")?,
-            last_update_block_hash: extract_attribute(deposit_basic_info_table_entry, "LastUpdateBlockHash")?,
-            status: id_to_status(extract_attribute(deposit_basic_info_table_entry, "OpStatus")?)?,
-        })
-    }
-}
-
-impl From<DepositBasicInfoResource> for DepositBasicInfo {
-    fn from(deposit_basic_info: DepositBasicInfoResource) -> Self {
-        DepositBasicInfo {
-            bitcoin_txid: deposit_basic_info.bitcoin_txid,
-            bitcoin_tx_output_index: deposit_basic_info.bitcoin_tx_output_index,
-            recipient: deposit_basic_info.recipient,
-            amount: deposit_basic_info.amount as f64,
-            last_update_height: deposit_basic_info.last_update_height as f64,
-            last_update_block_hash: deposit_basic_info.last_update_block_hash,
-            status: deposit_basic_info.status,
+        if let Some(fulfillment) = deposit_data.fulfillment.as_ref() {
+            assert_eq!(fulfillment.bitcoin_txid.as_ref().unwrap(), "fulfillment_txid");
+            assert_eq!(fulfillment.bitcoin_tx_index.as_ref().unwrap(), &0.0);
+            assert_eq!(fulfillment.txid.as_ref().unwrap(), "stacks_txid");
+            assert_eq!(fulfillment.btc_fee.as_ref().unwrap(), &5.0);
+        } else {
+            panic!("Fulfillment should be present");
         }
-    }
-}
-
-// ------------------------------------------------------------------
-// Conversions.
-// ------------------------------------------------------------------
-
-/// Converts status to id for table entry.
-pub fn status_to_id(op_status: OpStatus) -> u16 {
-    match op_status {
-        OpStatus::Pending => 0,
-        OpStatus::Accepted => 1,
-        OpStatus::Confirmed => 2,
-        OpStatus::Failed => 3,
-    }
-}
-
-fn id_to_status(status_id: u16) -> Result<OpStatus, EmilyApiError> {
-    match status_id {
-        0 => Ok(OpStatus::Pending),
-        1 => Ok(OpStatus::Accepted),
-        2 => Ok(OpStatus::Confirmed),
-        3 => Ok(OpStatus::Failed),
-        _ => Err(EmilyApiError::InternalService(format!("Invalid op status {}", status_id))),
     }
 }

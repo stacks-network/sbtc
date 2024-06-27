@@ -17,9 +17,11 @@ openssl.workspace = true
 thiserror.workspace = true
 aws-config.workspace = true
 config.workspace = true
-serde_dynamodb.workspace = true
+serde_dynamo.workspace = true
 futures.workspace = true
+base64.workspace = true
 
 [dev-dependencies]
 more-asserts = "0.3"
 test-case = "3.1"
+mockall = "0.12.1"

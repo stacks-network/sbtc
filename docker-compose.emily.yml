@@ -61,19 +61,21 @@ services:
         --docker-network aws-local-vpc
         --warm-containers LAZY
         --env-vars /lambda/env.json
-        -t /cdk.out/EmilyStack.devenv.template.json
+        -t /cdk.out/EmilyStack.devenv.template.json 1> /dev/null
     networks:
       - aws-local-vpc
 
   service-test:
     build: devenv/service-test
     image: "debian:12.5"
+    profiles:
+      - test
     depends_on:
       apigateway:
         condition: service_started
     volumes:
       - "./devenv/service-test:/service-test:ro"
-    command: bash /service-test/curl-test.sh apigateway 3000
+    command: bash /service-test/curl-test.sh apigateway 3000 5
     networks:
       - aws-local-vpc
 

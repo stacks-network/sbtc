@@ -184,7 +184,6 @@ pub fn update_withdrawals_request_body(request_type: RequestType) -> Option<Stri
     }.and_then(|value| Some(value.to_string()))
 }
 
-
 pub fn create_chainstate_request_body(request_type: RequestType) -> Option<String> {
     match request_type {
         RequestType::FULL | RequestType::MINIMAL => Some(json!({

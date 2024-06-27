@@ -60,7 +60,7 @@ export class EmilyStack extends cdk.Stack {
             indexName: indexName,
             partitionKey: {
                 name: 'OpStatus',
-                type:  dynamodb.AttributeType.NUMBER
+                type:  dynamodb.AttributeType.STRING
             },
             sortKey: {
                 name: 'LastUpdateHeight',
@@ -106,7 +106,7 @@ export class EmilyStack extends cdk.Stack {
             indexName: indexName,
             partitionKey: {
                 name: 'OpStatus',
-                type:  dynamodb.AttributeType.NUMBER
+                type:  dynamodb.AttributeType.STRING
             },
             sortKey: {
                 name: 'LastUpdateHeight',
