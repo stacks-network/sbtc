@@ -2,7 +2,7 @@ use std::env;
 
 use aws_config::BehaviorVersion;
 use aws_sdk_dynamodb::Client;
-use emily_lambda::{config::LambdaContext, eventhandler::handle_event};
+use emily_lambda::{config::LambdaContext, eventhandler};
 use emily_lambda::config::{Settings, CHAINSTATE_TABLE_NAME, DEPOSIT_TABLE_NAME, WITHDRAWAL_TABLE_NAME};
 use aws_lambda_events::apigw::ApiGatewayProxyRequest;
 use lambda_runtime::{service_fn, LambdaEvent};
@@ -45,7 +45,7 @@ async fn main() -> Result<(), lambda_runtime::Error> {
     // Run the lambda service.
     lambda_runtime::run(
         service_fn(
-            |event: LambdaEvent<ApiGatewayProxyRequest>| handle_event(event, &context)
+            |event: LambdaEvent<ApiGatewayProxyRequest>| eventhandler::handle_event(event, &context)
         )
     ).await
 }
