@@ -7,10 +7,19 @@ sh ./utils/kill-port-forwards.sh
 kubectl delete -f ./yamls/deployments/bitcoin-deployment.yaml
 kubectl delete -f ./yamls/deployments/bitcoin-miner-deployment.yaml
 kubectl delete -f ./yamls/deployments/postgres-deployment.yaml
-kubectl delete -f ./yamls/deployments/nakamoto-signer-deployment.yaml
+
+kubectl delete -f ./yamls/deployments/nakamoto-signer-1-deployment.yaml
+kubectl delete -f ./yamls/deployments/nakamoto-signer-2-deployment.yaml
+kubectl delete -f ./yamls/deployments/nakamoto-signer-3-deployment.yaml
+
 kubectl delete -f ./yamls/deployments/stacks-deployment.yaml
 kubectl delete -f ./yamls/deployments/stacks-api-deployment.yaml
 kubectl delete -f ./yamls/deployments/stacks-explorer-deployment.yaml
+
+kubectl delete -f ./yamls/deployments/stacker-deployment.yaml
+kubectl delete -f ./yamls/deployments/monitor-deployment.yaml
+kubectl delete -f ./yamls/deployments/tx-broadcaster-deployment.yaml
+
 kubectl delete -f ./yamls/deployments/mariadb-deployment.yaml
 kubectl delete -f ./yamls/deployments/electrs-deployment.yaml
 kubectl delete -f ./yamls/deployments/mempool-backend-deployment.yaml

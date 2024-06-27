@@ -2,28 +2,30 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: bitcoin-regtest-deployment
+  name: bitcoin-deployment
   namespace: sbtc-signer
   labels:
-    app: bitcoin-regtest
+    app: bitcoin
   
 spec:
   replicas: 1
   revisionHistoryLimit: 1
   selector:
     matchLabels:
-      app: bitcoin-regtest
+      app: bitcoin
   
   template:
     metadata:
       labels:
-        app: bitcoin-regtest
+        app: bitcoin
     
     spec:
 
-      # Define a shared volume
+      # Define a shared volume & chainstate bitcoin volume
       volumes:
         - name: shared-data
+          emptyDir: {}
+        - name: chainstate
           emptyDir: {}
 
       # Define init containers
@@ -40,11 +42,28 @@ spec:
 
               SHARED_VOL_DIR="/mnt/shared"
 
+              REGTEST_ON=1
+              TESTNET_ON=0
+              BTC_NETWORK_HEADER="regtest"
 
+              
+              # determine which fields to turn on and off
+              if [[ $BTC_NETWORK == 'mainnet' ]]; then
+                REGTEST_ON=0
+                TESTNET_ON=0
+                BTC_NETWORK_HEADER="main"
+              elif [[ $BTC_NETWORK == 'testnet' ]]; then
+                REGTEST_ON=0
+                TESTNET_ON=1
+                BTC_NETWORK_HEADER="test"
+              fi
+
+              
               tee -a $SHARED_VOL_DIR/bitcoin.conf << END
-              regtest=1 #chain=regtest
+              regtest=$REGTEST_ON
+              testnet=$TESTNET_ON
 
-              [regtest]
+              [$BTC_NETWORK_HEADER]
               # Accept command line and JSON-RPC commands
               server=1
               # Username for JSON-RPC connections
@@ -63,12 +82,6 @@ spec:
               rpcthreads=256
               rpcworkqueue=256
               rpctimeout=100
-
-              # Accept public REST requests (default: 0)
-              # rest=$BTC_REST_ENABLE
-
-              # output all debug info
-              # debug=$BTC_LOG_DEBUG
 
               disablewallet=0
 
@@ -94,16 +107,27 @@ spec:
               value: "0.0.0.0"
             - name: BTC_RPCALLOWIP
               value: "0.0.0.0/0"
+            
             - name: BTC_RPCUSER
-              valueFrom:
-                secretKeyRef:
-                  name: bitcoin-secret
-                  key: BTC_RPCUSER 
+              value: "devnet"
+            
+            ### (If you want to use a secret)
+            # - name: BTC_RPCUSER
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: bitcoin-secret
+            #       key: BTC_RPCUSER 
+            
             - name: BTC_RPCPASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: bitcoin-secret
-                  key: BTC_RPCPASSWORD
+              value: "devnet"
+            
+            ### (If you want to use a secret)
+            # - name: BTC_RPCPASSWORD
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: bitcoin-secret
+            #       key: BTC_RPCPASSWORD
+            
             - name: BTC_RPC_PORT
               value: "18443"
             - name: BTC_P2P_PORT
@@ -119,68 +143,82 @@ spec:
               mountPath: /mnt/shared
 
       containers:
-      - name: bitcoin-regtest-container
-        image: minikube/bitcoin:v1
-        imagePullPolicy: Never
+        - name: bitcoin-container
+          image: minikube/bitcoin:v1
+          imagePullPolicy: Never
 
-        volumeMounts:
-        - name: shared-data
-          mountPath: /mnt/shared
-        
-        resources:
-          requests:
-            memory: 128Mi
-            cpu: 50m
-          limits:
-            memory: 256Mi
-            cpu: 100m
-        
-        ports:
-          - containerPort: 18444
-            protocol: TCP
-          - containerPort: 18443
-            protocol: TCP
-          - containerPort: 18433
-            protocol: TCP
-          - containerPort: 18444
-            protocol: UDP
-          - containerPort: 18443
-            protocol: UDP
-          - containerPort: 18433
-            protocol: UDP
+          volumeMounts:
+          - name: shared-data
+            mountPath: /mnt/shared
+          - name: chainstate
+            mountPath: /root
+          
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 50m
+            limits:
+              memory: 256Mi
+              cpu: 100m
+          
+          ports:
+            - containerPort: 18444
+              protocol: TCP
+            - containerPort: 18443
+              protocol: TCP
+            - containerPort: 18433
+              protocol: TCP
+            - containerPort: 18444
+              protocol: UDP
+            - containerPort: 18443
+              protocol: UDP
+            - containerPort: 18433
+              protocol: UDP
 
-        env:
-          - name: VERSION
-            value: "25.0"
-          - name: ENV
-            value: "DEV"
-          - name: BTC_NETWORK
-            value: "regtest"
-          - name: BTC_PRINTTOCONSOLE
-            value: "1"
-          - name: BTC_DISABLEWALLET
-            value: "0"
-          - name: BTC_TXINDEX
-            value: "1"
-          - name: BTC_RPCBIND
-            value: "0.0.0.0"
-          - name: BTC_RPCALLOWIP
-            value: "0.0.0.0/0"
-          - name: BTC_RPCUSER
-            valueFrom:
-              secretKeyRef:
-                name: bitcoin-secret
-                key: BTC_RPCUSER 
-          - name: BTC_RPCPASSWORD
-            valueFrom:
-              secretKeyRef:
-                name: bitcoin-secret
-                key: BTC_RPCPASSWORD
-          - name: BTC_RPC_PORT
-            value: "18443"
-          - name: BTC_P2P_PORT
-            value: "18444"
-          - name: BTC_LOG_DEBUG
-            value: "0"
-          - name: BTC_REST_ENABLE
-            value: "0"
+          env:
+            - name: VERSION
+              value: "25.0"
+            - name: ENV
+              value: "DEV"
+            - name: BTC_NETWORK
+              value: "regtest"
+            - name: BTC_PRINTTOCONSOLE
+              value: "1"
+            - name: BTC_DISABLEWALLET
+              value: "0"
+            - name: BTC_TXINDEX
+              value: "1"
+            - name: BTC_RPCBIND
+              value: "0.0.0.0"
+            - name: BTC_RPCALLOWIP
+              value: "0.0.0.0/0"
+            
+            - name: BTC_RPCUSER
+              value: "devnet"
+            
+            ### (If you want to use a secret)
+            # - name: BTC_RPCUSER
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: bitcoin-secret
+            #       key: BTC_RPCUSER 
+            
+            - name: BTC_RPCPASSWORD
+              value: "devnet"
+            
+            ### (If you want to use a secret)
+            # - name: BTC_RPCPASSWORD
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: bitcoin-secret
+            #       key: BTC_RPCPASSWORD
+
+            
+            - name: BTC_RPC_PORT
+              value: "18443"
+            - name: BTC_P2P_PORT
+              value: "18444"
+            - name: BTC_LOG_DEBUG
+              value: "0"
+            - name: BTC_REST_ENABLE
+              value: "0"

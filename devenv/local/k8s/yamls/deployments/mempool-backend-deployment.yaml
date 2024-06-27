@@ -49,19 +49,31 @@ spec:
             value: "false"
           # Connect to bitcoin rpc
           - name: CORE_RPC_HOST
-            value: "bitcoin-regtest-service.sbtc-signer"
+            value: "bitcoin-service.sbtc-signer"
           - name: CORE_RPC_PORT
             value: "18443"
+          
           - name: CORE_RPC_USERNAME
-            valueFrom:
-              secretKeyRef:
-                name: bitcoin-secret
-                key: BTC_RPCUSER 
+            value: "devnet"
+          
+          ### (If you want to use a secret)
+          # - name: CORE_RPC_USERNAME
+          #   valueFrom:
+          #     secretKeyRef:
+          #       name: bitcoin-secret
+          #       key: BTC_RPCUSER 
+          
           - name: CORE_RPC_PASSWORD
-            valueFrom:
-              secretKeyRef:
-                name: bitcoin-secret
-                key: BTC_RPCPASSWORD
+            value: "devnet"
+          
+          ### (If you want to use a secret)
+          # - name: CORE_RPC_PASSWORD
+          #   valueFrom:
+          #     secretKeyRef:
+          #       name: bitcoin-secret
+          #       key: BTC_RPCPASSWORD
+
+
           - name: DATABASE_ENABLED
             value: "true"
           - name: DATABASE_HOST

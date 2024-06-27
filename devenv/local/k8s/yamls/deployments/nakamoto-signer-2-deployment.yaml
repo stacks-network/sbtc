@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nakamoto-signer-deployment
+  name: nakamoto-signer-2-deployment
   namespace: sbtc-signer
   labels:
-    app: nakamoto-signer
+    app: nakamoto-signer-2
   
 spec:
   replicas: 1
   revisionHistoryLimit: 1
   selector:
     matchLabels:
-      app: nakamoto-signer
+      app: nakamoto-signer-2
   
   template:
     metadata:
       labels:
-        app: nakamoto-signer
+        app: nakamoto-signer-2
     
     spec:
       
@@ -24,12 +24,14 @@ spec:
       volumes:
         - name: shared-data
           emptyDir: {}
+        - name: chainstate
+          emptyDir: {}
 
 
       # Define init containers
       initContainers:
         - name: init-file-generator
-          image: blockstack/stacks-core:2.5.0.0.3
+          image: debian:bookworm
           imagePullPolicy: Never
           command:
             - /bin/bash
@@ -42,50 +44,51 @@ spec:
 
 
               tee -a $SHARED_VOL_DIR/config.toml << END
-              # The IP address and port where your Stacks node can be accessed. 
-              # The port 20443 is the default RPC endpoint for Stacks nodes. 
-              # Note that you must use an IP address - DNS hosts are not supported at this time.
               node_host = "$STACKS_NODE_RPC_HOST:$STACKS_NODE_RPC_PORT"
-
-              # This is the location where the signer will expose an RPC endpoint for 
-              # receiving events from your Stacks node.
               endpoint = "$SIGNER_ENDPOINT"
 
               # Either “testnet” or “mainnet”
               network = "testnet"
 
-              # this is a file path where your signer will persist data. If using Docker, 
-              # this must be within a volume, so that data can be persisted across restarts
-              db_path = "/var/stacks/signer.sqlite"
+              db_path = "$SIGNER_DB_PATH"
 
-              # an authentication token that is used for some HTTP requests made from the 
-              # signer to your Stacks node. You'll need to use this later on when configuring 
-              # your Stacks node. You create this field yourself, rather than it being generated 
-              # with your private key.
               auth_password = "$MY_HTTP_AUTH_TOKEN"
 
-              # This is the hex-encoded privateKey field from the keys you generated using 
-              # the stacks-cli
               stacks_private_key = "$STACKS_PRIVATE_KEY"
               END
           
           env:
             - name: SIGNER_ENDPOINT
               value: "0.0.0.0:30000"
+
+
             - name: MY_HTTP_AUTH_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: stacks-secret
-                  key: MY_HTTP_AUTH_TOKEN
+              value: "helloworld"
+
+            ### (If you want to use a secret)
+            # - name: MY_HTTP_AUTH_TOKEN
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: stacks-secret
+            #       key: MY_HTTP_AUTH_TOKEN
+            
             - name: STACKS_PRIVATE_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: stacks-secret
-                  key: MINER_KEY
+              value: "b463f0df6c05d2f156393eee73f8016c5372caa0e9e29a901bb7171d90dc4f1401"
+
+            ### (If you want to use a secret)
+            # - name: STACKS_PRIVATE_KEY
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: nakamoto-signer-1-secret
+            #       key: STACKS_PRIVATE_KEY
+
+
             - name: STACKS_NODE_RPC_HOST
               value: "stacks-node-service.sbtc-signer"
             - name: STACKS_NODE_RPC_PORT
               value: "20443"
+            - name: SIGNER_DB_PATH
+              value: "/chainstate/nakamoto-signer-2.sqlite"
 
 
           volumeMounts:
@@ -101,6 +104,8 @@ spec:
         volumeMounts:
         - name: shared-data
           mountPath: /mnt/shared
+        - name: chainstate
+          mountPath: /chainstate
         
         resources:
           requests:

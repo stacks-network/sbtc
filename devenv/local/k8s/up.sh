@@ -30,8 +30,12 @@ kubectl apply -f ./yamls/deployments/postgres-deployment.yaml
 # Mariadb
 kubectl apply -f ./yamls/deployments/mariadb-deployment.yaml
 
-# Nakamoto Signer
-kubectl apply -f ./yamls/deployments/nakamoto-signer-deployment.yaml
+# Nakamoto Signer 1
+kubectl apply -f ./yamls/deployments/nakamoto-signer-1-deployment.yaml
+# Nakamoto Signer 2
+kubectl apply -f ./yamls/deployments/nakamoto-signer-2-deployment.yaml
+# Nakamoto Signer 3
+kubectl apply -f ./yamls/deployments/nakamoto-signer-3-deployment.yaml
 
 
 
@@ -69,6 +73,11 @@ kubectl apply -f ./yamls/deployments/mempool-backend-deployment.yaml
 # WAIT FOR MEMPOOL BACKEND
 kubectl wait --for=condition=available --timeout=30s -f ./yamls/deployments/mempool-backend-deployment.yaml
 kubectl apply -f ./yamls/deployments/mempool-frontend-deployment.yaml
+
+
+kubectl apply -f ./yamls/deployments/monitor-deployment.yaml
+kubectl apply -f ./yamls/deployments/stacker-deployment.yaml
+kubectl apply -f ./yamls/deployments/tx-broadcaster-deployment.yaml
 
 # ----------------------------------------
 # Add a small pause for all deployments to get going (otherwise some tests will fail since it's searching in logs)

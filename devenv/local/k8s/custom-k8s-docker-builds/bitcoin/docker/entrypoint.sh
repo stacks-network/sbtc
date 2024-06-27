@@ -21,14 +21,14 @@ rm -rf "$DOT_BITCOIN_DIR/bitcoin.conf"
 # copy over the file into the location
 cp "$SHARED_VOL_DIR/bitcoin.conf" "$DOT_BITCOIN_DIR"
 
-bitcoind \
-    -regtest \
-    -txindex=${BTC_TXINDEX} \
-    -rpcuser=${BTC_RPCUSER} \
-    -rpcpassword=${BTC_RPCPASSWORD} \
-    -printtoconsole=${BTC_PRINTTOCONSOLE} \
-    -disablewallet=${BTC_DISABLEWALLET} \
-    -rpcallowip=${BTC_RPCALLOWIP} \
-    -rpcport=${BTC_RPC_PORT} \
-    -server=1 \
-    -conf=${DOT_BITCOIN_DIR}/bitcoin.conf
+## Q: Why are making a bitcoin.conf file and also pass in these envs into bitcoind ?
+## A: Just passing in "-conf" arg into bitcoind didn't work and threw many errors. 
+##    Creating a bitcoin.conf and also explictly invoking bitcoind with the parameters worked
+
+if [[ $BTC_NETWORK == 'mainnet' ]]; then
+    bitcoind -txindex=${BTC_TXINDEX} -rpcuser=${BTC_RPCUSER} -rpcpassword=${BTC_RPCPASSWORD} -printtoconsole=${BTC_PRINTTOCONSOLE} -disablewallet=${BTC_DISABLEWALLET} -rpcallowip=${BTC_RPCALLOWIP} -rpcport=${BTC_RPC_PORT} -server=1 -conf=${DOT_BITCOIN_DIR}/bitcoin.conf
+elif [[ $BTC_NETWORK == 'testnet' ]]; then
+    bitcoind -testnet -txindex=${BTC_TXINDEX} -rpcuser=${BTC_RPCUSER} -rpcpassword=${BTC_RPCPASSWORD} -printtoconsole=${BTC_PRINTTOCONSOLE} -disablewallet=${BTC_DISABLEWALLET} -rpcallowip=${BTC_RPCALLOWIP} -rpcport=${BTC_RPC_PORT} -server=1 -conf=${DOT_BITCOIN_DIR}/bitcoin.conf
+else
+    bitcoind -regtest -txindex=${BTC_TXINDEX} -rpcuser=${BTC_RPCUSER} -rpcpassword=${BTC_RPCPASSWORD} -printtoconsole=${BTC_PRINTTOCONSOLE} -disablewallet=${BTC_DISABLEWALLET} -rpcallowip=${BTC_RPCALLOWIP} -rpcport=${BTC_RPC_PORT} -server=1 -conf=${DOT_BITCOIN_DIR}/bitcoin.conf
+fi

@@ -40,25 +40,29 @@ pf_helper() {
 
 echo " -----------------------------------------------------------  "
 
-pf_helper "bitcoin-regtest-deployment" "bitcoin-regtest-service" "18443" "18443" "sbtc-signer" "Bitcoin Node" "1"
+pf_helper "bitcoin-deployment" "bitcoin-service" "18443" "18443" "sbtc-signer" "Bitcoin Node" "1"
 
-pf_helper "nakamoto-signer-deployment" "nakamoto-signer-service" "30000" "30000" "sbtc-signer" "Nakamoto Signer" "2"
+pf_helper "nakamoto-signer-1-deployment" "nakamoto-signer-1-service" "30001" "30000" "sbtc-signer" "Nakamoto Signer 1" "2"
 
-pf_helper "stacks-node-deployment" "stacks-node-service" "20443" "20443" "sbtc-signer" "Stacks Node" "3"
+pf_helper "nakamoto-signer-2-deployment" "nakamoto-signer-2-service" "30002" "30000" "sbtc-signer" "Nakamoto Signer 2" "3"
 
-pf_helper "stacks-api-deployment" "stacks-api-service" "3999" "3999" "sbtc-signer" "Stacks API Public Endpoint" "4"
+pf_helper "nakamoto-signer-3-deployment" "nakamoto-signer-3-service" "30003" "30000" "sbtc-signer" "Nakamoto Signer 3" "4"
 
-pf_helper "stacks-api-deployment" "stacks-api-service" "3700" "3700" "sbtc-signer" "Stacks API Event Observer" "5"
+pf_helper "stacks-node-deployment" "stacks-node-service" "20443" "20443" "sbtc-signer" "Stacks Node" "5"
 
-pf_helper "postgres-deployment" "postgres-service" "5432" "5432" "sbtc-signer" "Postgres" "6"
+pf_helper "stacks-api-deployment" "stacks-api-service" "3999" "3999" "sbtc-signer" "Stacks API Public Endpoint" "6"
 
-pf_helper "stacks-explorer-deployment" "stacks-explorer-service" "3020" "3000" "sbtc-signer" "Stacks Explorer" "7"
+pf_helper "stacks-api-deployment" "stacks-api-service" "3700" "3700" "sbtc-signer" "Stacks API Event Observer" "7"
 
-pf_helper "electrs-deployment" "electrs-service" "60401" "60401" "sbtc-signer" "Electrs" "8"
+pf_helper "postgres-deployment" "postgres-service" "5432" "5432" "sbtc-signer" "Postgres" "8"
 
-pf_helper "mariadb-deployment" "mariadb-service" "3306" "3306" "sbtc-signer" "MariaDB" "9"
+pf_helper "stacks-explorer-deployment" "stacks-explorer-service" "3020" "3000" "sbtc-signer" "Stacks Explorer" "9"
 
-pf_helper "mempool-backend-deployment" "mempool-backend-service" "8999" "8999" "sbtc-signer" "Mempool Backend" "10"
+pf_helper "electrs-deployment" "electrs-service" "60401" "60401" "sbtc-signer" "Electrs" "10"
 
-pf_helper "mempool-frontend-deployment" "mempool-frontend-service" "8083" "8083" "sbtc-signer" "Mempool Frontend" "11"
+pf_helper "mariadb-deployment" "mariadb-service" "3306" "3306" "sbtc-signer" "MariaDB" "11"
+
+pf_helper "mempool-backend-deployment" "mempool-backend-service" "8999" "8999" "sbtc-signer" "Mempool Backend" "12"
+
+pf_helper "mempool-frontend-deployment" "mempool-frontend-service" "8083" "8083" "sbtc-signer" "Mempool Frontend" "13"
 
