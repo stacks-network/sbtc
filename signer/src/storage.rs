@@ -26,6 +26,12 @@ pub trait DbRead {
         block_hash: &model::BitcoinBlockHash,
     ) -> impl Future<Output = Result<Option<model::BitcoinBlock>, Self::Error>> + Send;
 
+    /// Get the stacks block with the given block hash.
+    fn get_stacks_block(
+        &self,
+        block_hash: &model::StacksBlockHash,
+    ) -> impl Future<Output = Result<Option<model::StacksBlock>, Self::Error>> + Send;
+
     /// Get the bitcoin canonical chain tip
     fn get_bitcoin_canonical_chain_tip(
         &self,
@@ -45,11 +51,18 @@ pub trait DbRead {
         output_index: i32,
     ) -> impl Future<Output = Result<Vec<model::DepositSigner>, Self::Error>> + Send;
 
+    /// Get signer decisions for a withdraw request
+    fn get_withdraw_signers(
+        &self,
+        request_id: i32,
+        block_hash: &model::StacksBlockHash,
+    ) -> impl Future<Output = Result<Vec<model::WithdrawSigner>, Self::Error>> + Send;
+
     /// Get pending withdraw requests
     fn get_pending_withdraw_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        context_window: usize,
+        stacks_context_window: usize,
     ) -> impl Future<Output = Result<Vec<model::WithdrawRequest>, Self::Error>> + Send;
 
     /// Get bitcoin blocks that include a particular transaction
@@ -74,6 +87,12 @@ pub trait DbWrite {
     fn write_bitcoin_block(
         &self,
         block: &model::BitcoinBlock,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+
+    /// Write a stacks block.
+    fn write_stacks_block(
+        &self,
+        block: &model::StacksBlock,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     /// Write a deposit request.
@@ -112,7 +131,14 @@ pub trait DbWrite {
         bitcoin_transaction: &model::BitcoinTransaction,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
+    /// Write a connection between a stacks block and a transaction
+    fn write_stacks_transaction(
+        &self,
+        stacks_transaction: &model::StacksTransaction,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+
     /// Write the stacks blocks.
+    /// TODO(212): This function should use model::StacksBlock instead of an external type
     fn write_stacks_blocks(
         &self,
         blocks: &[NakamotoBlock],

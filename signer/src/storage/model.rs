@@ -16,7 +16,7 @@ pub struct BitcoinBlock {
     pub parent_hash: BitcoinBlockHash,
     /// Stacks block confirmed by this block.
     #[dummy(default)]
-    pub confirms: Option<StacksBlockHash>,
+    pub confirms: Vec<StacksBlockHash>,
     /// The time this block entry was created by the signer.
     #[dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")]
     pub created_at: time::OffsetDateTime,
@@ -93,7 +93,7 @@ pub struct DepositSigner {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct WithdrawRequest {
     /// Request ID of the withdraw request.
-    pub request_id: i64,
+    pub request_id: i32,
     /// Stacks block hash of the withdraw request.
     #[dummy(expr = "fake::vec![u8; 32]")]
     pub block_hash: StacksBlockHash,
@@ -116,7 +116,7 @@ pub struct WithdrawRequest {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct WithdrawSigner {
     /// Request ID of the withdraw request.
-    pub request_id: i64,
+    pub request_id: i32,
     /// Stacks block hash of the withdraw request.
     #[dummy(expr = "fake::vec![u8; 32]")]
     pub block_hash: StacksBlockHash,
@@ -138,11 +138,21 @@ pub struct BitcoinTransaction {
     pub block_hash: BitcoinBlockHash,
 }
 
+/// A connection between a bitcoin block and a bitcoin transaction.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct StacksTransaction {
+    /// Transaction ID.
+    pub txid: StacksTxId,
+    /// The block in which the transaction exists.
+    pub block_hash: StacksBlockHash,
+}
+
 /// A raw transaction on either Bitcoin or Stacks.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct Transaction {
     /// Transaction ID.
+    #[dummy(expr = "fake::vec![u8; 32]")]
     pub txid: Bytes,
     /// Encoded transaction.
     pub tx: Bytes,
@@ -197,6 +207,8 @@ pub type BitcoinBlockHash = Vec<u8>;
 pub type StacksBlockHash = Vec<u8>;
 /// Bitcoin transaction ID
 pub type BitcoinTxId = Vec<u8>;
+/// Stacks transaction ID
+pub type StacksTxId = Vec<u8>;
 /// Arbitrary bytes
 pub type Bytes = Vec<u8>;
 /// Secp256k1 Pubkey in compressed form

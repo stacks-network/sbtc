@@ -8,6 +8,7 @@ use crate::storage::model;
 use crate::testing;
 use crate::transaction_signer;
 
+use futures::StreamExt;
 use rand::SeedableRng;
 
 /// Event loop harness
@@ -28,7 +29,8 @@ where
         rng: &mut Rng,
         network: network::in_memory::MpmcBroadcaster,
         storage: S,
-        context_window: usize,
+        bitcoin_context_window: usize,
+        stacks_context_window: usize,
     ) -> Self {
         let blocklist_checker = ();
         let (notification_tx, block_observer_notifications) = tokio::sync::watch::channel(());
@@ -41,7 +43,8 @@ where
                 blocklist_checker,
                 block_observer_notifications,
                 signer_private_key,
-                context_window,
+                bitcoin_context_window,
+                stacks_context_window,
             },
             notification_tx,
             storage,
@@ -101,8 +104,10 @@ impl blocklist_client::BlocklistChecker for () {
 pub struct TestEnvironment<C> {
     /// Function to construct a storage instance
     pub storage_constructor: C,
-    /// Context window
-    pub context_window: usize,
+    /// Bitcoin context window
+    pub bitcoin_context_window: usize,
+    /// Stacks context window
+    pub stacks_context_window: usize,
     /// Num signers
     pub num_signers: usize,
 }
@@ -124,7 +129,8 @@ where
             &mut rng,
             network.connect(),
             (self.storage_constructor)(),
-            self.context_window,
+            self.bitcoin_context_window,
+            self.stacks_context_window,
         );
 
         let mut handle = event_loop_harness.start();
@@ -154,6 +160,46 @@ where
     }
 
     /// Assert that the transaction signer will make and store decisions
+    /// for pending withdraw requests.
+    pub async fn assert_should_store_decisions_for_pending_withdraw_requests(mut self) {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let network = network::in_memory::Network::new();
+
+        let event_loop_harness = EventLoopHarness::create(
+            &mut rng,
+            network.connect(),
+            (self.storage_constructor)(),
+            self.bitcoin_context_window,
+            self.stacks_context_window,
+        );
+
+        let mut handle = event_loop_harness.start();
+
+        let test_data = generate_test_data(&mut rng);
+
+        Self::write_test_data(&test_data, &mut handle.storage).await;
+
+        handle
+            .notification_tx
+            .send(())
+            .expect("failed to send notification");
+
+        let context_window_block_hashes = self
+            .extract_stacks_context_window_block_hashes(&handle.storage)
+            .await;
+
+        let storage = handle.stop_event_loop().await;
+
+        Self::assert_only_withdraw_requests_in_context_window_has_decisions(
+            &storage,
+            &context_window_block_hashes,
+            &test_data.withdraw_requests,
+            1,
+        )
+        .await;
+    }
+
+    /// Assert that the transaction signer will make and store decisions
     /// received from other signers.
     pub async fn assert_should_store_decisions_received_from_other_signers(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
@@ -167,7 +213,8 @@ where
                     &mut rng,
                     network.connect(),
                     (self.storage_constructor)(),
-                    self.context_window,
+                    self.bitcoin_context_window,
+                    self.stacks_context_window,
                 );
 
                 event_loop_harness.start()
@@ -218,9 +265,53 @@ where
             .unwrap()
             .expect("found no canonical chain tip");
 
-        for _ in 0..self.context_window {
+        for _ in 0..self.bitcoin_context_window {
             context_window_block_hashes.push(block_hash.clone());
             let Some(block) = storage.get_bitcoin_block(&block_hash).await.unwrap() else {
+                break;
+            };
+            block_hash = block.parent_hash;
+        }
+
+        context_window_block_hashes
+    }
+
+    async fn extract_stacks_context_window_block_hashes(
+        &self,
+        storage: &S,
+    ) -> Vec<model::StacksBlockHash> {
+        let canoncial_tip_block_hash = storage
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .unwrap()
+            .expect("found no canonical chain tip");
+
+        let chain_tip = storage
+            .get_bitcoin_block(&canoncial_tip_block_hash)
+            .await
+            .expect("failed to get bitcoin block")
+            .expect("missing block");
+
+        let stacks_chain_tip = futures::stream::iter(chain_tip.confirms)
+            .then(|stacks_block_hash| async move {
+                storage
+                    .get_stacks_block(&stacks_block_hash)
+                    .await
+                    .expect("missing block")
+            })
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .flatten()
+            .max_by_key(|block| (block.block_height, block.block_hash.clone()))
+            .expect("missing stacks block");
+
+        let mut block_hash = stacks_chain_tip.block_hash;
+        let mut context_window_block_hashes = Vec::new();
+
+        for _ in 0..self.stacks_context_window {
+            context_window_block_hashes.push(block_hash.clone());
+            let Some(block) = storage.get_stacks_block(&block_hash).await.unwrap() else {
                 break;
             };
             block_hash = block.parent_hash;
@@ -256,13 +347,35 @@ where
             }
         }
     }
+
+    async fn assert_only_withdraw_requests_in_context_window_has_decisions(
+        storage: &S,
+        context_window_block_hashes: &[model::StacksBlockHash],
+        withdraw_requests: &[model::WithdrawRequest],
+        num_expected_decisions: usize,
+    ) {
+        for withdraw_request in withdraw_requests {
+            let signer_decisions = storage
+                .get_withdraw_signers(withdraw_request.request_id, &withdraw_request.block_hash)
+                .await
+                .unwrap();
+
+            if context_window_block_hashes.contains(&withdraw_request.block_hash) {
+                assert_eq!(signer_decisions.len(), num_expected_decisions);
+                assert!(signer_decisions.first().unwrap().is_accepted)
+            } else {
+                assert_eq!(signer_decisions.len(), 0);
+            }
+        }
+    }
 }
 
 fn generate_test_data(rng: &mut impl rand::RngCore) -> testing::storage::model::TestData {
     let test_model_params = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
-        chain_type: testing::storage::model::ChainType::Chaotic,
-        num_deposit_requests: 100,
+        num_stacks_blocks_per_bitcoin_block: 3,
+        num_deposit_requests_per_block: 5,
+        num_withdraw_requests_per_block: 5,
     };
 
     testing::storage::model::TestData::generate(rng, &test_model_params)

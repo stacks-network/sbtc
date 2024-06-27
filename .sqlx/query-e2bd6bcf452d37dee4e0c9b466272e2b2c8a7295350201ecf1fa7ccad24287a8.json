@@ -8,7 +8,7 @@
         "Bytea",
         "Int8",
         "Bytea",
-        "Bytea",
+        "ByteaArray",
         "Timestamptz"
       ]
     },

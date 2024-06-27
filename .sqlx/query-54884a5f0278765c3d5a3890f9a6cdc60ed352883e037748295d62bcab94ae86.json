@@ -21,7 +21,7 @@
       {
         "ordinal": 3,
         "name": "confirms",
-        "type_info": "Bytea"
+        "type_info": "ByteaArray"
       },
       {
         "ordinal": 4,
@@ -38,7 +38,7 @@
       false,
       false,
       false,
-      true,
+      false,
       false
     ]
   },

@@ -13,7 +13,7 @@ CREATE TABLE sbtc_signer.bitcoin_blocks (
     block_hash BYTEA PRIMARY KEY,
     block_height BIGINT NOT NULL,
     parent_hash BYTEA NOT NULL,
-    confirms BYTEA,
+    confirms BYTEA[] NOT NULL,
     created_at TIMESTAMPTZ NOT NULL
 );
 
@@ -50,7 +50,7 @@ CREATE TABLE sbtc_signer.deposit_signers (
 CREATE TABLE sbtc_signer.withdraw_requests (
     request_id INTEGER NOT NULL,
     block_hash BYTEA NOT NULL,
-    recipient BYTEA NOT NULL,
+    recipient TEXT NOT NULL,
     amount BIGINT NOT NULL,
     max_fee BIGINT NOT NULL,
     sender_address TEXT NOT NULL,

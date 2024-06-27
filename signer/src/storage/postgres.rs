@@ -215,6 +215,20 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
+    async fn get_stacks_block(
+        &self,
+        block_hash: &model::StacksBlockHash,
+    ) -> Result<Option<model::StacksBlock>, Self::Error> {
+        sqlx::query_as!(
+            model::StacksBlock,
+            "SELECT * FROM sbtc_signer.stacks_blocks WHERE block_hash = $1;",
+            &block_hash
+        )
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
     async fn get_bitcoin_canonical_chain_tip(
         &self,
     ) -> Result<Option<model::BitcoinBlockHash>, Self::Error> {
@@ -286,6 +300,22 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
+    async fn get_withdraw_signers(
+        &self,
+        request_id: i32,
+        block_hash: &model::StacksBlockHash,
+    ) -> Result<Vec<model::WithdrawSigner>, Self::Error> {
+        sqlx::query_as!(
+            model::WithdrawSigner,
+            "SELECT * FROM sbtc_signer.withdraw_signers WHERE request_id = $1 AND block_hash = $2",
+            request_id,
+            block_hash,
+        )
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
     async fn get_pending_withdraw_requests(
         &self,
         _chain_tip: &model::BitcoinBlockHash,
@@ -337,7 +367,22 @@ impl super::DbWrite for PgStore {
             block.block_hash,
             block.block_height,
             block.parent_hash,
-            block.confirms,
+            &block.confirms,
+            block.created_at
+        )
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
+    }
+
+    async fn write_stacks_block(&self, block: &model::StacksBlock) -> Result<(), Self::Error> {
+        sqlx::query!(
+            "INSERT INTO sbtc_signer.stacks_blocks VALUES ($1, $2, $3, $4)",
+            block.block_hash,
+            block.block_height,
+            block.parent_hash,
             block.created_at
         )
         .execute(&self.0)
@@ -372,9 +417,23 @@ impl super::DbWrite for PgStore {
 
     async fn write_withdraw_request(
         &self,
-        _withdraw_request: &model::WithdrawRequest,
+        withdraw_request: &model::WithdrawRequest,
     ) -> Result<(), Self::Error> {
-        todo!(); // TODO(246): Write query + integration test
+        sqlx::query!(
+            "INSERT INTO sbtc_signer.withdraw_requests VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            withdraw_request.request_id,
+            &withdraw_request.block_hash,
+            &withdraw_request.recipient,
+            withdraw_request.amount,
+            withdraw_request.max_fee,
+            withdraw_request.sender_address,
+            withdraw_request.created_at,
+        )
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
     }
 
     #[tracing::instrument(skip(self))]
@@ -427,6 +486,22 @@ impl super::DbWrite for PgStore {
             "INSERT INTO sbtc_signer.bitcoin_transactions VALUES ($1, $2)",
             bitcoin_transaction.txid,
             bitcoin_transaction.block_hash,
+        )
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
+    }
+
+    async fn write_stacks_transaction(
+        &self,
+        stacks_transaction: &model::StacksTransaction,
+    ) -> Result<(), Self::Error> {
+        sqlx::query!(
+            "INSERT INTO sbtc_signer.stacks_transactions VALUES ($1, $2)",
+            stacks_transaction.txid,
+            stacks_transaction.block_hash,
         )
         .execute(&self.0)
         .await

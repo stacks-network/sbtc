@@ -24,8 +24,9 @@ async fn should_be_able_to_query_bitcoin_blocks(pool: sqlx::PgPool) {
 
     let test_model_params = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
-        chain_type: testing::storage::model::ChainType::Chaotic,
-        num_deposit_requests: 100,
+        num_stacks_blocks_per_bitcoin_block: 3,
+        num_deposit_requests_per_block: 5,
+        num_withdraw_requests_per_block: 5,
     };
 
     let persisted_model = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
@@ -193,8 +194,9 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store(pool
     let context_window = 9;
     let test_model_params = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
-        chain_type: testing::storage::model::ChainType::Chaotic,
-        num_deposit_requests: 100,
+        num_stacks_blocks_per_bitcoin_block: 3,
+        num_deposit_requests_per_block: 5,
+        num_withdraw_requests_per_block: 5,
     };
     let test_data = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
 
