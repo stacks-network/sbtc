@@ -236,7 +236,7 @@ impl super::DbRead for PgStore {
         sqlx::query_as!(
             model::DepositRequest,
             r#"
-            WITH RECURSIVE ContextWindow AS (
+            WITH RECURSIVE context_window AS (
                 -- Anchor member: Initialize the recursion with the chain tip
                 SELECT block_hash, block_height, parent_hash, created_at, 1 AS depth
                 FROM sbtc_signer.bitcoin_blocks
@@ -248,22 +248,19 @@ impl super::DbRead for PgStore {
                 SELECT parent.block_hash, parent.block_height, parent.parent_hash,
                        parent.created_at, last.depth + 1
                 FROM sbtc_signer.bitcoin_blocks parent
-                JOIN ContextWindow last ON parent.block_hash = last.parent_hash
+                JOIN context_window last ON parent.block_hash = last.parent_hash
                 WHERE last.depth < $2
             ),
-            TransactionsInWindow AS (
+            transactions_in_window AS (
                 SELECT transactions.txid
-                FROM ContextWindow blocks_in_window
+                FROM context_window blocks_in_window
                 JOIN sbtc_signer.bitcoin_transactions transactions ON
                     transactions.block_hash = blocks_in_window.block_hash
-            ),
-            DepositsInWindow AS (
-                SELECT deposit_requests.*
-                FROM TransactionsInWindow transactions
-                JOIN sbtc_signer.deposit_requests deposit_requests ON
-                    deposit_requests.txid = transactions.txid
             )
-            SELECT * FROM DepositsInWindow;
+            SELECT deposit_requests.*
+            FROM transactions_in_window transactions
+            JOIN sbtc_signer.deposit_requests deposit_requests ON
+                deposit_requests.txid = transactions.txid
             "#,
             chain_tip,
             context_window,
