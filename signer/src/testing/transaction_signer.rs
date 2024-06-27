@@ -241,11 +241,12 @@ where
                 .await
                 .unwrap();
 
-            for deposit_request_block in storage
+            let blocks = storage
                 .get_bitcoin_blocks_with_transaction(&deposit_request.txid)
                 .await
-                .unwrap()
-            {
+                .unwrap();
+
+            for deposit_request_block in blocks {
                 if context_window_block_hashes.contains(&deposit_request_block) {
                     assert_eq!(signer_decisions.len(), num_expected_decisions);
                     assert!(signer_decisions.first().unwrap().is_accepted)

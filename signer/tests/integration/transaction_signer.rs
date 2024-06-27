@@ -33,7 +33,7 @@ async fn new_database(pool: &sqlx::PgPool) -> sqlx::PgPool {
     let mut rng = rand::rngs::OsRng;
     let db_name = format!("test_db_{}", rng.next_u64());
 
-    let create_db = format!("CREATE DATABASE \"{}\";", db_name);
+    let create_db = format!("CREATE DATABASE \"{db_name}\";");
     pool.execute(create_db.as_str())
         .await
         .expect("failed to create test database");
