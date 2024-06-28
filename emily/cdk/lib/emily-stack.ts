@@ -32,7 +32,10 @@ export class EmilyStack extends cdk.Stack {
             chainstateTable,
             props
         );
-        const emilyApi: apig.SpecRestApi = this.createOrUpdateApi(operationLambda, props);
+
+        // TODO: Uncomment after adding emily api spec generation.
+        //
+        // const emilyApi: apig.SpecRestApi = this.createOrUpdateApi(operationLambda, props);
     }
 
     /**
@@ -196,42 +199,44 @@ export class EmilyStack extends cdk.Stack {
         return operationLambda;
     }
 
-    /**
-     * Creates or updates the API Gateway to connect with the Lambda function.
-     * @param {lambda.Function} operationLambda The Lambda function to connect to the API.
-     * @param {EmilyStackProps} props The stack properties.
-     * @returns {apig.SpecRestApi} The created or updated API Gateway.
-     * @post An API Gateway with execute permissions linked to the Lambda function is returned.
-     */
-    createOrUpdateApi(
-        operationLambda: lambda.Function,
-        props: EmilyStackProps
-    ): apig.SpecRestApi {
+    // TODO: Uncomment after adding emily api spec generation.
+    //
+    // /**
+    //  * Creates or updates the API Gateway to connect with the Lambda function.
+    //  * @param {lambda.Function} operationLambda The Lambda function to connect to the API.
+    //  * @param {EmilyStackProps} props The stack properties.
+    //  * @returns {apig.SpecRestApi} The created or updated API Gateway.
+    //  * @post An API Gateway with execute permissions linked to the Lambda function is returned.
+    //  */
+    // createOrUpdateApi(
+    //     operationLambda: lambda.Function,
+    //     props: EmilyStackProps
+    // ): apig.SpecRestApi {
 
-        const restApiId: string  = "EmilyAPI";
-        const restApi: apig.SpecRestApi = new apig.SpecRestApi(this, restApiId, {
-            restApiName: EmilyStackUtils.getResourceName(restApiId, props),
-            apiDefinition: EmilyStackUtils.restApiDefinitionWithLambdaIntegration(
-                EmilyStackUtils.getPathFromProjectRoot(
-                    ".generated-sources/smithy/openapi/openapi/Emily.openapi.json"
-                ),
-                [
-                    // This must match the Lambda name from the @aws.apigateway#integration trait in the
-                    // smithy operations and resources that should be handled by this Lambda.
-                    ["OperationLambda", operationLambda]
-                ],
-            ),
-            deployOptions: { stageName: props.stageName },
-        });
+    //     const restApiId: string  = "EmilyAPI";
+    //     const restApi: apig.SpecRestApi = new apig.SpecRestApi(this, restApiId, {
+    //         restApiName: EmilyStackUtils.getResourceName(restApiId, props),
+    //         apiDefinition: EmilyStackUtils.restApiDefinitionWithLambdaIntegration(
+    //             EmilyStackUtils.getPathFromProjectRoot(
+    //                 ".generated-sources/smithy/openapi/openapi/Emily.openapi.json"
+    //             ),
+    //             [
+    //                 // This must match the Lambda name from the @aws.apigateway#integration trait in the
+    //                 // smithy operations and resources that should be handled by this Lambda.
+    //                 ["OperationLambda", operationLambda]
+    //             ],
+    //         ),
+    //         deployOptions: { stageName: props.stageName },
+    //     });
 
-        // Give the the rest api execute ARN permission to invoke the lambda.
-        operationLambda.addPermission("ApiInvokeLambdaPermission", {
-            principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
-            action: "lambda:InvokeFunction",
-            sourceArn: restApi.arnForExecuteApi(),
-        });
+    //     // Give the the rest api execute ARN permission to invoke the lambda.
+    //     operationLambda.addPermission("ApiInvokeLambdaPermission", {
+    //         principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
+    //         action: "lambda:InvokeFunction",
+    //         sourceArn: restApi.arnForExecuteApi(),
+    //     });
 
-        // Return api resource.
-        return restApi;
-    }
+    //     // Return api resource.
+    //     return restApi;
+    // }
 }
