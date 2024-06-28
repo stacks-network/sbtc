@@ -7,7 +7,7 @@ use serde::Deserializer;
 
 use crate::error::Error;
 
-#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 /// The Stacks network to use.
 pub enum NetworkKind {

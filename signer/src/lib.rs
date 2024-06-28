@@ -6,14 +6,13 @@ pub mod block_observer;
 pub mod blocklist_client;
 pub mod codec;
 pub mod config;
-pub mod contracts;
 pub mod ecdsa;
 pub mod error;
 pub mod fees;
 pub mod message;
 pub mod network;
 pub mod packaging;
-pub mod stacks_api;
+pub mod stacks;
 pub mod storage;
 #[cfg(feature = "testing")]
 pub mod testing;

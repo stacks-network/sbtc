@@ -1,6 +1,7 @@
 //! Top-level error type for the signer
 use std::borrow::Cow;
 
+use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::{ecdsa, network};
@@ -121,6 +122,12 @@ pub enum Error {
     /// Thrown when the recoverable signature has a public key that is unexpected
     #[error("Unexpected public key from signature. key {0}; digest: {1}")]
     UnknownPublicKey(secp256k1::PublicKey, secp256k1::Message),
+
+    /// The stacks multi-sig wallet only supports signing with an
+    /// order-independent multi-sig spending condition. This is used if we
+    /// somehow see something else.
+    #[error("Auth type unsupported {:?}", .0.auth)]
+    UnsupportedStacksSpendingCondition(StacksTransaction),
 }
 
 impl From<std::convert::Infallible> for Error {

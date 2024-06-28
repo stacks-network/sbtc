@@ -1,40 +1,27 @@
-//! This module contains functionality for creating stacks transactions.
+//! This module contains functionality for signing stacks transactions
+//! using the signers' multi-sig wallet.
 //!
 //! # Note
 //!
-//! This assumes that all relevant contracts were deployed by the same address.
+//! This assumes that all relevant contracts were deployed by the same
+//! address.
 
 use std::collections::BTreeMap;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
-use bitcoin::hashes::Hash as _;
-use bitcoin::OutPoint;
 use blockstack_lib::address::C32_ADDRESS_VERSION_MAINNET_MULTISIG;
 use blockstack_lib::address::C32_ADDRESS_VERSION_TESTNET_MULTISIG;
-use blockstack_lib::chainstate::stacks::AssetInfo;
-use blockstack_lib::chainstate::stacks::FungibleConditionCode;
 use blockstack_lib::chainstate::stacks::OrderIndependentMultisigHashMode;
 use blockstack_lib::chainstate::stacks::OrderIndependentMultisigSpendingCondition;
-use blockstack_lib::chainstate::stacks::PostConditionPrincipal;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::chainstate::stacks::TransactionAnchorMode;
 use blockstack_lib::chainstate::stacks::TransactionAuth;
 use blockstack_lib::chainstate::stacks::TransactionAuthFlags;
-use blockstack_lib::chainstate::stacks::TransactionContractCall;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
-use blockstack_lib::chainstate::stacks::TransactionPostCondition;
-use blockstack_lib::chainstate::stacks::TransactionPostConditionMode;
 use blockstack_lib::chainstate::stacks::TransactionPublicKeyEncoding;
 use blockstack_lib::chainstate::stacks::TransactionSpendingCondition;
 use blockstack_lib::chainstate::stacks::TransactionVersion;
-use blockstack_lib::clarity::vm::types::BuffData;
-use blockstack_lib::clarity::vm::types::PrincipalData;
-use blockstack_lib::clarity::vm::types::SequenceData;
-use blockstack_lib::clarity::vm::types::StandardPrincipalData;
-use blockstack_lib::clarity::vm::ClarityName;
-use blockstack_lib::clarity::vm::ContractName;
-use blockstack_lib::clarity::vm::Value;
 use blockstack_lib::core::CHAIN_ID_MAINNET;
 use blockstack_lib::core::CHAIN_ID_TESTNET;
 use blockstack_lib::types::chainstate::StacksAddress;
@@ -48,6 +35,8 @@ use secp256k1::SECP256K1;
 
 use crate::config::NetworkKind;
 use crate::error::Error;
+use crate::stacks::contracts::AsContractCall;
+
 
 /// Requisite info for the signers' multi-sig wallet on Stacks.
 #[derive(Debug, Clone)]
@@ -111,27 +100,30 @@ impl SignerWallet {
             NetworkKind::Mainnet => C32_ADDRESS_VERSION_MAINNET_MULTISIG,
             NetworkKind::Testnet => C32_ADDRESS_VERSION_TESTNET_MULTISIG,
         };
-        // For a hash mode of AddressHashMode::SerializeP2SH, which
+
+        #[cfg(debug_assertions)]
+        for key in public_keys.iter() {
+            debug_assert!(key.compressed());
+        }
+        // For a hash mode of AddressHashMode::SerializeP2WSH, which
         // corresponds to OrderIndependentMultisigHashMode::P2WSH, the
         // StacksAddress::from_public_keys function will return None if the
-        // threshold is greater than the number of public keys. We enforce
-        // that invariant when creating the struct. If we used a different
-        // hash mode then we would also have to ensure that all public keys
-        // are compressed, which is the case since our public keys are 33
-        // bytes.
+        // threshold is greater than the number of public keys or if any of
+        // the public keys are uncompressed. We enforce the threshold
+        // invariant when creating the struct, and PublicKey::serialize
+        // returns the bytes for a compressed public key.
         StacksAddress::from_public_keys(version, &hash_mode, threshold, &public_keys)
-            .expect("signatures required invariant not upheld")
+            .expect("public key invariants not upheld")
     }
 }
 
 /// Contains the current state of the signers keys.
 #[derive(Debug)]
 pub struct SignerStxState {
-    /// The current set of public keys for all known signers during this
-    /// PoX cycle. These values must be sorted.
+    /// The multi-sig wallet for all known signers during this PoX cycle.
     wallet: SignerWallet,
-    /// The next nonce for the StacksAddress associated with the above public
-    /// keys.
+    /// The next nonce for the StacksAddress associated with the address of
+    /// the wallet.
     nonce: AtomicU64,
     /// This is the stacks address that deployed the sbtc-contracts.
     contract_deployer: StacksAddress,
@@ -147,106 +139,99 @@ impl SignerStxState {
         }
     }
 
+    /// The network that we are operating on
+    pub fn network_kind(&self) -> NetworkKind {
+        self.wallet.network_kind
+    }
+
+    /// Return the public keys associated with the signer's stacks
+    /// multi-sig wallet.
+    pub fn public_keys(&self) -> &[PublicKey] {
+        &self.wallet.public_keys
+    }
+
+    /// The stacks address that deployed sbtc smart contracts.
+    pub fn contract_deployer(&self) -> StacksAddress {
+        self.contract_deployer
+    }
+
     /// Convert the signers wallet to an unsigned stacks spending conditions.
     ///
     /// # Note
     ///
     /// * The auth will have a transaction fee and a nonce set.
     /// * This auth does not contain any signatures.
-    pub fn as_unsigned_tx_auth(&self, tx_fee: u64) -> TransactionAuth {
+    pub fn as_unsigned_tx_auth(&self, tx_fee: u64) -> OrderIndependentMultisigSpendingCondition {
         let signer_addr = self.wallet.address();
-        let cond = OrderIndependentMultisigSpendingCondition {
+        OrderIndependentMultisigSpendingCondition {
             signer: signer_addr.bytes,
             nonce: self.nonce.fetch_add(1, Ordering::Relaxed),
             tx_fee,
             hash_mode: SignerWallet::hash_mode(),
             fields: Vec::new(),
             signatures_required: self.wallet.signatures_required,
-        };
-        TransactionAuth::Standard(TransactionSpendingCondition::OrderIndependentMultisig(cond))
+        }
     }
 }
 
-/// A struct describing any transaction post-execution conditions that we'd
-/// like to enforce.
+/// A helper struct for properly signing a transaction for the signers'
+/// multi-sig wallet.
 ///
-/// # Note
-///
-/// * It's unlikely that this will be necessary since the signers control
-///   the contract to begin with, we implicitly trust it.
-/// * We cannot enforce any conditions on the destination of any sBTC, just
-///   the source and the amount.
-/// * SIP-005 describes the post conditions, including its limitations, and
-///   can be found here
-///   https://github.com/stacksgov/sips/blob/main/sips/sip-005/sip-005-blocks-and-transactions.md#transaction-post-conditions
-#[derive(Debug)]
-pub struct StacksTxPostConditions {
-    /// Specifies whether other asset transfers not covered by the
-    /// post-conditions are permitted.
-    pub post_condition_mode: TransactionPostConditionMode,
-    /// Any post-execution conditions that we'd like to enforce.
-    pub post_conditions: Vec<TransactionPostCondition>,
+/// Only OrderIndependentMultisig auth spending conditions are currently
+/// supported, and this invariant is checked when the struct is created.
+pub struct MultisigTx {
+    /// The unsigned transaction. Only transactions with a
+    /// OrderIndependentMultisig auth spending condition are supported.
+    tx: StacksTransaction,
+    /// The message digest associated with the above transaction that the
+    /// signers must sign for authentication.
+    digest: Message,
+    /// The accumulated signatures for the underlying transaction.
+    signatures: BTreeMap<PublicKey, Option<RecoverableSignature>>,
 }
 
-/// A trait to ease construction of a StacksTransaction making sBTC related contract calls.
-pub trait AsContractCall {
-    /// Converts this struct to a Stacks contract call. The deployer is the
-    /// stacks address that deployed the contract.
-    fn as_contract_call(&self, deployer: StacksAddress) -> TransactionContractCall;
-    /// Any post-execution conditions that we'd like to enforce. The
-    /// deployer corresponds to the principal in the Transaction
-    /// post-conditions, which is the address that sent the asset.
-    fn post_conditions(&self, deployer: StacksAddress) -> StacksTxPostConditions;
-    /// Make a Stacks transaction for the contract call
-    fn as_unsigned_tx(&self, state: &SignerStxState, tx_fee: u64) -> MultisigTransactionSigner {
+impl MultisigTx {
+    /// Create a new Stacks transaction for a contract call that can be
+    /// signed by the signers' multi-sig wallet.
+    pub fn new_contract_call<T>(contract: T, state: &SignerStxState, tx_fee: u64) -> Self
+    where
+        T: AsContractCall,
+    {
         // The chain id is used so transactions can't be replayed on other
         // chains. The "common" chain id values are mentioned in
         // stacks-core, in stacks.js at
         // https://github.com/hirosystems/stacks.js/blob/2c57ea4e5abed76da903f5138c79c1d2eceb008b/packages/transactions/src/constants.ts#L1-L8,
         // and in the clarity docs at
         // https://docs.stacks.co/clarity/keywords#chain-id-clarity2:
-        let (version, chain_id) = match state.wallet.network_kind {
+        let (version, chain_id) = match state.network_kind() {
             NetworkKind::Mainnet => (TransactionVersion::Mainnet, CHAIN_ID_MAINNET),
             NetworkKind::Testnet => (TransactionVersion::Testnet, CHAIN_ID_TESTNET),
         };
 
-        let deployer = state.contract_deployer;
-        let cond = self.post_conditions(deployer);
+        let deployer = state.contract_deployer();
+        let conditions = contract.post_conditions(deployer);
+        let auth = state.as_unsigned_tx_auth(tx_fee);
+        let spending_condition = TransactionSpendingCondition::OrderIndependentMultisig(auth);
 
         let tx = StacksTransaction {
             version,
             chain_id,
-            auth: state.as_unsigned_tx_auth(tx_fee),
+            auth: TransactionAuth::Standard(spending_condition),
             anchor_mode: TransactionAnchorMode::Any,
-            post_condition_mode: cond.post_condition_mode,
-            post_conditions: cond.post_conditions,
-            payload: TransactionPayload::ContractCall(self.as_contract_call(deployer)),
+            post_condition_mode: conditions.post_condition_mode,
+            post_conditions: conditions.post_conditions,
+            payload: TransactionPayload::ContractCall(contract.as_contract_call(deployer)),
         };
-        MultisigTransactionSigner::new(tx, &state.wallet.public_keys)
+
+        let digest = construct_digest(&tx);
+        let signatures = state
+            .public_keys()
+            .iter()
+            .map(|key| (key.clone(), None))
+            .collect();
+
+        Self { digest, signatures, tx }
     }
-}
-
-/// A transactionSigner
-pub struct MultisigTransactionSigner {
-    /// The unsigned transaction
-    tx: StacksTransaction,
-    /// The message digest that the signers must sign to create a valid
-    /// trasnaction.
-    digest: Message,
-    /// The accumulated transactions
-    signatures: BTreeMap<PublicKey, Option<RecoverableSignature>>,
-}
-
-impl MultisigTransactionSigner {
-    /// Create a new one
-    pub fn new(tx: StacksTransaction, public_keys: &[PublicKey]) -> Self {
-        Self {
-            digest: construct_digest(&tx),
-            signatures: public_keys.iter().map(|key| (key.clone(), None)).collect(),
-            tx,
-        }
-    }
-
     /// Return a reference to the underlying transaction
     pub fn tx(&self) -> &StacksTransaction {
         &self.tx
@@ -259,7 +244,7 @@ impl MultisigTransactionSigner {
     /// An error is returned if we could not recover the public key from
     /// the signature, which can happen if the wrong digest. An error also
     /// happens if the signature is for the correct digest but for a public
-    /// key that we werem't expecting.
+    /// key that we weren't expecting.
     pub fn add_signature(&mut self, signature: RecoverableSignature) -> Result<(), Error> {
         let public_key = signature
             .recover(&self.digest)
@@ -281,7 +266,7 @@ impl MultisigTransactionSigner {
         use TransactionSpendingCondition::OrderIndependentMultisig;
         let cond = match &mut self.tx.auth {
             TransactionAuth::Standard(OrderIndependentMultisig(cond)) => cond,
-            _ => panic!(),
+            _ => unreachable!("Spending condition invariant not upheld"),
         };
         let key_encoding = TransactionPublicKeyEncoding::Compressed;
 
@@ -306,7 +291,14 @@ impl MultisigTransactionSigner {
     }
 }
 
-/// Construct a digest to sign from a given transaction
+/// Construct the digest that each signer needs to sign from a given
+/// transaction.
+///
+/// # Note
+///
+/// This function follows the same procedure as the
+/// TransactionSpendingCondition::next_signature function in stacks-core,
+/// except that it stops after the digest is created.
 pub fn construct_digest(tx: &StacksTransaction) -> Message {
     let mut cleared_tx = tx.clone();
     cleared_tx.auth = cleared_tx.auth.into_initial_sighash_auth();
@@ -339,8 +331,8 @@ pub fn sign_ecdsa(tx: &StacksTransaction, secret_key: &SecretKey) -> Recoverable
 /// The RecoverableSignature type is a wrapper of a wrapper for [u8; 65].
 /// Unfortunately, the last wrapper type does not provide a way to get at
 /// the underlying bytes except through the
-/// RecoverableSignature::serialize_compact function, so we need to just
-/// extract them with
+/// RecoverableSignature::serialize_compact function, so we use that
+/// function to just extract them.
 ///
 /// This function is basically lifted from stacks-core at:
 /// https://github.com/stacks-network/stacks-core/blob/35d0840c626d258f1e2d72becdcf207a0572ddcd/stacks-common/src/util/secp256k1.rs#L88-L95
@@ -355,83 +347,20 @@ fn from_secp256k1_recoverable(sig: &RecoverableSignature) -> MessageSignature {
     MessageSignature(ret_bytes)
 }
 
-/// This struct is used to generate a properly formatted Stacks transaction
-/// for the complete-deposit-wrapper contract call.
-#[derive(Copy, Clone, Debug)]
-pub struct CompleteDeposit {
-    /// The outpoint of the bitcoin UTXO that was spent as a deposit for
-    /// sBTC.
-    pub outpoint: OutPoint,
-    /// The amount associated with the above UTXO.
-    pub amount: u64,
-    /// The address where the newly minted sBTC will be deposited.
-    pub recipient: StacksAddress,
-}
-
-impl CompleteDeposit {
-    /// TODO: Make the contract and function names configurable.
-    const CONTRACT_NAME: &'static str = "sbtc-deposit";
-    const FUNCTION_NAME: &'static str = "complete-deposit-wrapper";
-
-    fn as_contract_args(&self) -> Vec<Value> {
-        let txid_data = self.outpoint.txid.to_byte_array().to_vec();
-        let txid = BuffData { data: txid_data };
-        let principle = StandardPrincipalData::from(self.recipient);
-
-        vec![
-            Value::Sequence(SequenceData::Buffer(txid)),
-            Value::UInt(self.outpoint.vout as u128),
-            Value::UInt(self.amount as u128),
-            Value::Principal(PrincipalData::Standard(principle)),
-        ]
-    }
-
-    /// Converts this struct to a Stacks Contract call
-    pub fn as_contract_call(&self, deployer: StacksAddress) -> TransactionContractCall {
-        TransactionContractCall {
-            address: deployer,
-            function_name: ClarityName::from(CompleteDeposit::FUNCTION_NAME),
-            contract_name: ContractName::from(CompleteDeposit::CONTRACT_NAME),
-            function_args: self.as_contract_args(),
-        }
-    }
-
-    /// The post conditions for the transaction
-    pub fn post_conditions(&self, deployer: StacksAddress) -> StacksTxPostConditions {
-        let asset_info = AssetInfo {
-            contract_address: deployer,
-            contract_name: ContractName::from("sbtc-token"),
-            asset_name: ClarityName::from("sBTC"),
-        };
-        let post_condition = TransactionPostCondition::Fungible(
-            PostConditionPrincipal::Contract(deployer, ContractName::from("sbtc-token")),
-            asset_info,
-            FungibleConditionCode::SentEq,
-            self.amount,
-        );
-        StacksTxPostConditions {
-            post_condition_mode: TransactionPostConditionMode::Allow,
-            post_conditions: vec![post_condition],
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use blockstack_lib::chainstate::stacks::TransactionContractCall;
+    use blockstack_lib::chainstate::stacks::TransactionPostConditionMode;
+    use blockstack_lib::clarity::vm::ClarityName;
+    use blockstack_lib::clarity::vm::ContractName;
     use rand::rngs::OsRng;
+    use rand::seq::SliceRandom;
     use secp256k1::Keypair;
-    use secp256k1::Secp256k1;
+
+    use test_case::test_case;
 
     use super::*;
-
-    impl Default for StacksTxPostConditions {
-        fn default() -> Self {
-            Self {
-                post_condition_mode: TransactionPostConditionMode::Allow,
-                post_conditions: Vec::new(),
-            }
-        }
-    }
+    use crate::stacks::contracts::*;
 
     struct TestContractCall;
 
@@ -445,36 +374,107 @@ mod tests {
             }
         }
         fn post_conditions(&self, _: StacksAddress) -> StacksTxPostConditions {
-            StacksTxPostConditions::default()
+            StacksTxPostConditions {
+                post_condition_mode: TransactionPostConditionMode::Allow,
+                post_conditions: Vec::new(),
+            }
         }
     }
 
-    #[test]
-    fn one_of_2_multi_sig_works() {
-        let ctx = Secp256k1::new();
-        let mut key_pairs = vec![
-            Keypair::new(&ctx, &mut OsRng),
-            Keypair::new(&ctx, &mut OsRng),
-        ];
-        key_pairs.sort_by_key(|x| x.public_key());
+    #[derive(Debug)]
+    struct WalletSpec {
+        signatures_required: u16,
+        num_keys: usize,
+    }
+
+    /// Test that if we create a multisig wallet and sign with at least the
+    /// minimum number of signatures that the transaction will pass
+    /// verification.
+    #[test_case::test_matrix(
+        [WalletSpec {signatures_required: 1, num_keys: 1},
+         WalletSpec {signatures_required: 1, num_keys: 2},
+         WalletSpec {signatures_required: 1, num_keys: 3},
+         WalletSpec {signatures_required: 2, num_keys: 3},
+         WalletSpec {signatures_required: 3, num_keys: 3},
+         WalletSpec {signatures_required: 4, num_keys: 7},
+         WalletSpec {signatures_required: 70, num_keys: 100}],
+        [true, false],
+        [NetworkKind::Mainnet, NetworkKind::Testnet]
+    )]
+    fn multi_sig_works(wallet_spec: WalletSpec, max_sigs: bool, network: NetworkKind) {
+        // We do the following:
+        // 1. Construct the specified multi-sig wallet.
+        // 2. Provide enough signatures to the transaction. If max_sigs is
+        //    true then we proved more than enough value signatures,
+        //    otherwise we prove the minimum number of required signatures.
+        // 3. Check that it verifies.
+        let WalletSpec { signatures_required, num_keys } = wallet_spec;
+        let key_pairs: Vec<Keypair> = std::iter::repeat_with(|| Keypair::new_global(&mut OsRng))
+            .take(num_keys)
+            .collect();
 
         let public_keys: Vec<_> = key_pairs.iter().map(|kp| kp.public_key()).collect();
-        let signatures_required = 1;
-        let wallet =
-            SignerWallet::new(public_keys, signatures_required, NetworkKind::Testnet).unwrap();
+        let wallet = SignerWallet::new(public_keys, signatures_required, network).unwrap();
 
+        // The burn StacksAddress here is the address of the sBTC contract.
+        // It may matter for constructing the transaction -- in this case
+        // it doesn't -- but it plays no role in the verification of the
+        // signature.
         let state = SignerStxState::new(wallet, 1, StacksAddress::burn_address(false));
 
-        let mut unsigned_tx = TestContractCall.as_unsigned_tx(&state, 0);
-        let secret_key = key_pairs[0].secret_key();
-        let signature = sign_ecdsa(unsigned_tx.tx(), &secret_key);
-        unsigned_tx.add_signature(signature).unwrap();
+        let mut tx_signer = MultisigTx::new_contract_call(TestContractCall, &state, 25);
+        let tx = tx_signer.tx();
 
-        let tx = unsigned_tx.finalize_transaction();
+        // We can give any number of signatures between the required
+        // threshold and the number of keys. We give either the minimum or
+        // the maximum number of signatures possible depending on the max_sigs flag.
+        let submitted_signatures = if max_sigs {
+            num_keys
+        } else {
+            signatures_required as usize
+        };
+        let signatures: Vec<RecoverableSignature> = key_pairs
+            .iter()
+            .take(submitted_signatures)
+            .map(|kp| sign_ecdsa(tx, &kp.secret_key()))
+            .collect();
 
+        // Now add the signatures to the signing object.
+        for signature in signatures {
+            tx_signer.add_signature(signature).unwrap();
+        }
+
+        // Okay, now finalize the transaction. Afterward, it should be
+        // able to pass verification.
+        let tx = tx_signer.finalize_transaction();
         tx.verify().unwrap();
     }
 
-    #[test]
-    fn public_key_order_independence_signer_wallet() {}
+    #[test_case(NetworkKind::Mainnet; "Main net")]
+    #[test_case(NetworkKind::Testnet; "Test net")]
+    fn public_key_order_independence_signer_wallet(network: NetworkKind) {
+        // Generally, for a stacks multi-sig wallet, the stacks address
+        // changes depending on the ordering of the given list of public
+        // keys. We don't want the address to depend on the ordering of
+        // keys. Check that the SignerWallet returns the same address
+        // regardless of the ordering of the keys given to it on
+        // construction.
+        let mut public_keys: Vec<PublicKey> =
+            std::iter::repeat_with(|| Keypair::new_global(&mut OsRng).public_key())
+                .take(50)
+                .collect();
+
+        let pks1 = public_keys.clone();
+        let wallet1 = SignerWallet::new(pks1.clone(), 5, network).unwrap();
+
+        // Although it's unlikely, it's possible for the shuffle to not
+        // shuffle anything, so we need to keep trying.
+        while pks1 == public_keys {
+            public_keys.shuffle(&mut OsRng);
+        }
+
+        let wallet2 = SignerWallet::new(public_keys, 5, network).unwrap();
+
+        assert_eq!(wallet1.address(), wallet2.address())
+    }
 }
