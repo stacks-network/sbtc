@@ -1,10 +1,5 @@
 //! This module contains functionality for signing stacks transactions
 //! using the signers' multi-sig wallet.
-//!
-//! # Note
-//!
-//! This assumes that all relevant contracts were deployed by the same
-//! address.
 
 use std::collections::BTreeMap;
 use std::sync::atomic::AtomicU64;
@@ -36,7 +31,6 @@ use secp256k1::SECP256K1;
 use crate::config::NetworkKind;
 use crate::error::Error;
 use crate::stacks::contracts::AsContractCall;
-
 
 /// Requisite info for the signers' multi-sig wallet on Stacks.
 #[derive(Debug, Clone)]
@@ -224,11 +218,7 @@ impl MultisigTx {
         };
 
         let digest = construct_digest(&tx);
-        let signatures = state
-            .public_keys()
-            .iter()
-            .map(|key| (key.clone(), None))
-            .collect();
+        let signatures = state.public_keys().iter().map(|&key| (key, None)).collect();
 
         Self { digest, signatures, tx }
     }
@@ -322,8 +312,8 @@ pub fn construct_digest(tx: &StacksTransaction) -> Message {
 /// TransactionSpendingCondition::next_signature function, but we skip a
 /// step of generating the next sighash, since we do not need it.
 pub fn sign_ecdsa(tx: &StacksTransaction, secret_key: &SecretKey) -> RecoverableSignature {
-    let msg = construct_digest(&tx);
-    SECP256K1.sign_ecdsa_recoverable(&msg, &secret_key)
+    let msg = construct_digest(tx);
+    SECP256K1.sign_ecdsa_recoverable(&msg, secret_key)
 }
 
 /// Convert a recoverable signature into a Message Signature.

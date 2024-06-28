@@ -1,5 +1,3 @@
-network = "testnet"
-
 [blocklist_client]
 host = "127.0.0.1"
 port = 8080
@@ -19,7 +17,3 @@ endpoint = "http://localhost:20443"
 # This is the start height of the first EPOCH 3.0 block on the stacks
 # blockchain.
 nakamoto_start_height = 31
-
-[contracts]
-deposit_contract_address = ""
-deposit_contract_name = "sbtc-deposit"

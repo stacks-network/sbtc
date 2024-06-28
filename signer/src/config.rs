@@ -24,8 +24,6 @@ pub struct Settings {
     pub blocklist_client: BlocklistClientConfig,
     /// Electrum notifier specific config
     pub block_notifier: BlockNotifierConfig,
-    /// Specifies which Stacks network to use.
-    pub network: NetworkKind,
 }
 
 /// Blocklist client specific config

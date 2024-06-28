@@ -1,10 +1,5 @@
 //! This module contains functionality for creating stacks transactions for
 //! sBTC contract calls.
-//!
-//! # Note
-//!
-//! This assumes that all relevant contracts were deployed by the same
-//! address.
 
 use blockstack_lib::chainstate::stacks::TransactionContractCall;
 use blockstack_lib::chainstate::stacks::TransactionPostCondition;

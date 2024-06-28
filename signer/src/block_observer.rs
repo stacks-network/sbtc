@@ -20,7 +20,6 @@
 use std::collections::HashMap;
 
 use crate::error;
-// use crate::stacks;
 use crate::stacks::api::StacksInteract;
 use crate::storage;
 
