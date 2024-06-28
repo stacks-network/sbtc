@@ -1219,6 +1219,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "emily-openapi-spec"
+version = "0.1.0"
+dependencies = [
+ "emily-handler",
+ "serde_json",
+ "utoipa",
+]
+
+[[package]]
 name = "encoding_rs"
 version = "0.8.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -32,10 +32,7 @@ export class EmilyStack extends cdk.Stack {
             chainstateTable,
             props
         );
-
-        // TODO: Uncomment after adding emily api spec generation.
-        //
-        // const emilyApi: apig.SpecRestApi = this.createOrUpdateApi(operationLambda, props);
+        const emilyApi: apig.SpecRestApi = this.createOrUpdateApi(operationLambda, props);
     }
 
     /**
@@ -173,7 +170,7 @@ export class EmilyStack extends cdk.Stack {
             code: lambda.Code.fromAsset(EmilyStackUtils.getPathFromProjectRoot(
                 props.stageName === Constants.UNIT_TEST_STAGE_NAME
                     ? "emily/cdk/test/assets/empty-lambda.zip"
-                    : "target/lambda/emily-lambda/bootstrap.zip"
+                    : "target/lambda/emily-handler/bootstrap.zip"
             )),
             // Lambda should be very fast. Something is wrong if it takes > 5 seconds.
             timeout: cdk.Duration.seconds(5),
@@ -199,44 +196,42 @@ export class EmilyStack extends cdk.Stack {
         return operationLambda;
     }
 
-    // TODO: Uncomment after adding emily api spec generation.
-    //
-    // /**
-    //  * Creates or updates the API Gateway to connect with the Lambda function.
-    //  * @param {lambda.Function} operationLambda The Lambda function to connect to the API.
-    //  * @param {EmilyStackProps} props The stack properties.
-    //  * @returns {apig.SpecRestApi} The created or updated API Gateway.
-    //  * @post An API Gateway with execute permissions linked to the Lambda function is returned.
-    //  */
-    // createOrUpdateApi(
-    //     operationLambda: lambda.Function,
-    //     props: EmilyStackProps
-    // ): apig.SpecRestApi {
+    /**
+     * Creates or updates the API Gateway to connect with the Lambda function.
+     * @param {lambda.Function} operationLambda The Lambda function to connect to the API.
+     * @param {EmilyStackProps} props The stack properties.
+     * @returns {apig.SpecRestApi} The created or updated API Gateway.
+     * @post An API Gateway with execute permissions linked to the Lambda function is returned.
+     */
+    createOrUpdateApi(
+        operationLambda: lambda.Function,
+        props: EmilyStackProps
+    ): apig.SpecRestApi {
 
-    //     const restApiId: string  = "EmilyAPI";
-    //     const restApi: apig.SpecRestApi = new apig.SpecRestApi(this, restApiId, {
-    //         restApiName: EmilyStackUtils.getResourceName(restApiId, props),
-    //         apiDefinition: EmilyStackUtils.restApiDefinitionWithLambdaIntegration(
-    //             EmilyStackUtils.getPathFromProjectRoot(
-    //                 ".generated-sources/smithy/openapi/openapi/Emily.openapi.json"
-    //             ),
-    //             [
-    //                 // This must match the Lambda name from the @aws.apigateway#integration trait in the
-    //                 // smithy operations and resources that should be handled by this Lambda.
-    //                 ["OperationLambda", operationLambda]
-    //             ],
-    //         ),
-    //         deployOptions: { stageName: props.stageName },
-    //     });
+        const restApiId: string  = "EmilyAPI";
+        const restApi: apig.SpecRestApi = new apig.SpecRestApi(this, restApiId, {
+            restApiName: EmilyStackUtils.getResourceName(restApiId, props),
+            apiDefinition: EmilyStackUtils.restApiDefinitionWithLambdaIntegration(
+                EmilyStackUtils.getPathFromProjectRoot(
+                    ".generated-sources/emily/openapi/emily-openapi-spec.json"
+                ),
+                [
+                    // This must match the Lambda name from the @aws.apigateway#integration trait in the
+                    // smithy operations and resources that should be handled by this Lambda.
+                    ["OperationLambda", operationLambda]
+                ],
+            ),
+            deployOptions: { stageName: props.stageName },
+        });
 
-    //     // Give the the rest api execute ARN permission to invoke the lambda.
-    //     operationLambda.addPermission("ApiInvokeLambdaPermission", {
-    //         principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
-    //         action: "lambda:InvokeFunction",
-    //         sourceArn: restApi.arnForExecuteApi(),
-    //     });
+        // Give the the rest api execute ARN permission to invoke the lambda.
+        operationLambda.addPermission("ApiInvokeLambdaPermission", {
+            principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
+            action: "lambda:InvokeFunction",
+            sourceArn: restApi.arnForExecuteApi(),
+        });
 
-    //     // Return api resource.
-    //     return restApi;
-    // }
+        // Return api resource.
+        return restApi;
+    }
 }
