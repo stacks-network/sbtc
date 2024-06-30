@@ -173,6 +173,7 @@ impl SignerStxState {
 ///
 /// Only OrderIndependentMultisig auth spending conditions are currently
 /// supported, and this invariant is enforced when the struct is created.
+#[derive(Debug)]
 pub struct MultisigTx {
     /// The unsigned transaction. Only transactions with a
     /// OrderIndependentMultisig auth spending condition are supported.
@@ -354,6 +355,9 @@ mod tests {
     use super::*;
     use crate::stacks::contracts::*;
 
+    // This is the transaction fee. It doesn't matter what value we choose.
+    const TX_FEE: u64 = 25;
+
     struct TestContractCall;
 
     impl AsContractCall for TestContractCall {
@@ -396,10 +400,12 @@ mod tests {
     fn multi_sig_works(wallet_spec: WalletSpec, max_sigs: bool, network: NetworkKind) {
         // We do the following:
         // 1. Construct the specified multi-sig wallet.
-        // 2. Provide enough signatures to the transaction. If max_sigs is
-        //    true then we proved more than enough value signatures,
-        //    otherwise we prove the minimum number of required signatures.
-        // 3. Check that it verifies.
+        // 2. Construct any old transaction. In this case it is a contract
+        //    call.
+        // 3. Provide enough signatures to the transaction. If max_sigs is
+        //    true then we proved more than enough signatures, otherwise we
+        //    prove the minimum number of required signatures.
+        // 4. Check that transaction "verifies".
         let WalletSpec { signatures_required, num_keys } = wallet_spec;
         let key_pairs: Vec<Keypair> = std::iter::repeat_with(|| Keypair::new_global(&mut OsRng))
             .take(num_keys)
@@ -408,13 +414,13 @@ mod tests {
         let public_keys: Vec<_> = key_pairs.iter().map(|kp| kp.public_key()).collect();
         let wallet = SignerWallet::new(public_keys, signatures_required, network).unwrap();
 
-        // The burn StacksAddress here is the address of the sBTC contract.
-        // It may matter for constructing the transaction -- in this case
-        // it doesn't -- but it plays no role in the verification of the
-        // signature.
+        // The burn StacksAddress here is the deployer address of the sBTC
+        // contract. It may matter for constructing the transaction -- in
+        // this case it doesn't -- but it plays no role in the verification
+        // of the signature.
         let state = SignerStxState::new(wallet, 1, StacksAddress::burn_address(false));
 
-        let mut tx_signer = MultisigTx::new_contract_call(TestContractCall, &state, 25);
+        let mut tx_signer = MultisigTx::new_contract_call(TestContractCall, &state, TX_FEE);
         let tx = tx_signer.tx();
 
         // We can give any number of signatures between the required
@@ -440,6 +446,65 @@ mod tests {
         // able to pass verification.
         let tx = tx_signer.finalize_transaction();
         tx.verify().unwrap();
+    }
+
+    /// If one of the signers signs a digest with the wrong key, then we
+    /// will reject it. We also reject the case where they sign the wrong
+    /// digest with a "correct" key.
+    #[test_case(false, false, NetworkKind::Mainnet; "incorrect key, incorrect digest, mainnet")]
+    #[test_case(false, true, NetworkKind::Mainnet; "incorrect key, correct digest, mainnet")]
+    #[test_case(true, false, NetworkKind::Mainnet; "correct key, incorrect digest, mainnet")]
+    #[test_case(false, false, NetworkKind::Testnet; "incorrect key, incorrect digest, testnet")]
+    #[test_case(false, true, NetworkKind::Testnet; "incorrect key, correct digest, testnet")]
+    #[test_case(true, false, NetworkKind::Testnet; "correct key, incorrect digest, testnet")]
+    fn cannot_accept_invalid_sig(correct_key: bool, correct_digest: bool, network: NetworkKind) {
+        let signatures_required = 4;
+        let num_keys = 7;
+        let key_pairs: Vec<Keypair> = std::iter::repeat_with(|| Keypair::new_global(&mut OsRng))
+            .take(num_keys)
+            .collect();
+
+        let public_keys: Vec<_> = key_pairs.iter().map(|kp| kp.public_key()).collect();
+        let wallet = SignerWallet::new(public_keys, signatures_required, network).unwrap();
+
+        let state = SignerStxState::new(wallet, 1, StacksAddress::burn_address(false));
+        let mut tx_signer = MultisigTx::new_contract_call(TestContractCall, &state, TX_FEE);
+
+        // The accumulated signatures start off empty
+        assert!(tx_signer.signatures.values().all(Option::is_none));
+
+        let secret_key = if correct_key {
+            key_pairs[0].secret_key()
+        } else {
+            // This key pair is unlikely to be one of the known key pairs
+            Keypair::new_global(&mut OsRng).secret_key()
+        };
+
+        let msg = if correct_digest {
+            tx_signer.digest
+        } else {
+            // This message is unlikely to be the digest of the transaction
+            Message::from_digest([1; 32])
+        };
+        let signature = SECP256K1.sign_ecdsa_recoverable(&msg, &secret_key);
+
+        // Now let's try to add a bad signature. We skip the case where we
+        // have a correct key and the correct digest so this should always
+        // fail.
+        let res = tx_signer.add_signature(signature);
+        assert!(res.is_err());
+
+        // The inner signaures should still be empty, since we should not
+        // add any bad sigatures
+        assert!(tx_signer.signatures.values().all(Option::is_none));
+
+        // Now for good measure, lets add a valid signature, and make sure
+        // things update correctly.
+        let secret_key = key_pairs[0].secret_key();
+        let msg = tx_signer.digest;
+        let signature = SECP256K1.sign_ecdsa_recoverable(&msg, &secret_key);
+        tx_signer.add_signature(signature).unwrap();
+        assert!(!tx_signer.signatures.values().all(Option::is_none));
     }
 
     #[test_case(NetworkKind::Mainnet; "Main net")]
