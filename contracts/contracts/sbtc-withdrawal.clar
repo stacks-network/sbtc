@@ -122,10 +122,53 @@
       ;; Check that the caller is the current signer principal
       (asserts! (is-eq (get current-signer-principal current-signer-data) tx-sender) ERR_INVALID_CALLER)
 
-      (fold complete-individual-withdrawal-helper withdrawals (ok u0))
+      (fold complete-individual-withdrawal-helper withdrawals {index: u0, agg-errs: none})
+
+      (ok true)
   )
 )
 
+;; (define-private (complete-individual-withdrawal-helper (withdrawal 
+;;                                                         {request-id: uint, 
+;;                                                         status: bool, 
+;;                                                         signer-bitmap: uint, 
+;;                                                         bitcoin-txid: (optional (buff 32)), 
+;;                                                         output-index: (optional uint), 
+;;                                                         fee: (optional uint)}) 
+;;                                                        (helper-response (response uint uint)))
+;;   (match helper-response 
+;;     index
+;;       (let
+;;         (
+;;           (current-request-id (get request-id withdrawal))
+;;           (current-signer-bitmap (get signer-bitmap withdrawal))
+;;           (current-bitcoin-txid (get bitcoin-txid withdrawal))
+;;           (current-output-index (get output-index withdrawal))
+;;           (current-fee (get fee withdrawal))
+;;         ) 
+;;         (if (get status withdrawal)
+;;           ;; accepted
+;;           (begin 
+;;             (asserts! 
+;;               (and (is-some current-bitcoin-txid) (is-some current-output-index) (is-some current-fee)) 
+;;               (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
+;;             (unwrap! (accept-withdrawal-request (get request-id withdrawal) (unwrap-panic current-bitcoin-txid) current-signer-bitmap (unwrap-panic current-output-index) (unwrap-panic current-fee)) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
+;;           )
+;;           ;; rejected
+;;           (unwrap! (reject-withdrawal (get request-id withdrawal) current-signer-bitmap) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
+;;         )
+;;         (ok (+ index u1))
+;;       )
+;;     err-response
+;;             (err err-response)
+;;   )
+;; )
+
+;; Loop through each submission
+;;  Regardless of whether there are errors or not we need to try every submission
+;;  If it's okay, then we just increase the index by one
+;;  If it's not okay, we need create and/or store an error message
+;; At the end, if the error message is empty, all were okay / we return okay
 (define-private (complete-individual-withdrawal-helper (withdrawal 
                                                         {request-id: uint, 
                                                         status: bool, 
@@ -133,33 +176,57 @@
                                                         bitcoin-txid: (optional (buff 32)), 
                                                         output-index: (optional uint), 
                                                         fee: (optional uint)}) 
-                                                       (helper-response (response uint uint)))
-  (match helper-response 
-    index
-      (let
-        (
-          (current-request-id (get request-id withdrawal))
-          (current-signer-bitmap (get signer-bitmap withdrawal))
-          (current-bitcoin-txid (get bitcoin-txid withdrawal))
-          (current-output-index (get output-index withdrawal))
-          (current-fee (get fee withdrawal))
-        ) 
+                                                       (helper-tuple {index: uint, agg-errs: (optional (string-ascii 100))}))
+
+  (let
+    (
+      (current-request-id (get request-id withdrawal))
+      (current-signer-bitmap (get signer-bitmap withdrawal))
+      (current-bitcoin-txid (get bitcoin-txid withdrawal))
+      (current-output-index (get output-index withdrawal))
+      (current-fee (get fee withdrawal))
+      (current-index (get index helper-tuple))
+      (current-agg-errs (get agg-errs helper-tuple))
+    )
+    ;; check / unwrap existing errors
+    (match current-agg-errs 
+      existing-errs
         (if (get status withdrawal)
           ;; accepted
-          (begin 
-            (asserts! 
-              (and (is-some current-bitcoin-txid) (is-some current-output-index) (is-some current-fee)) 
-              (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
-            (unwrap! (accept-withdrawal-request (get request-id withdrawal) (unwrap-panic current-bitcoin-txid) current-signer-bitmap (unwrap-panic current-output-index) (unwrap-panic current-fee)) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
+          (match (accept-withdrawal-request (get request-id withdrawal) (unwrap-panic current-bitcoin-txid) current-signer-bitmap (unwrap-panic current-output-index) (unwrap-panic current-fee))
+            ok-resp
+              {index: (+ u1 current-index), agg-errs: current-agg-errs}
+            err-resp
+              {index: (+ u1 current-index), agg-errs: (as-max-len? (concat existing-errs (int-to-ascii current-index)) u100)}
           )
           ;; rejected
-          (unwrap! (reject-withdrawal (get request-id withdrawal) current-signer-bitmap) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
+          (match (reject-withdrawal (get request-id withdrawal) current-signer-bitmap)
+            ok-resp
+                {index: (+ u1 current-index), agg-errs: current-agg-errs}
+            err-resp
+              {index: (+ u1 current-index), agg-errs: (as-max-len? (concat existing-errs (int-to-ascii current-index)) u100)}
+          )
         )
-        (ok (+ index u1))
+      ;; none value
+      (if (get status withdrawal)
+        ;; accepted
+        (match (accept-withdrawal-request (get request-id withdrawal) (unwrap-panic current-bitcoin-txid) current-signer-bitmap (unwrap-panic current-output-index) (unwrap-panic current-fee))
+          ok-resp
+            {index: (+ u1 current-index), agg-errs: current-agg-errs}
+          err-resp
+            {index: (+ u1 current-index), agg-errs: (some (int-to-ascii current-index))}
+        )
+        ;; rejected
+        (match (reject-withdrawal (get request-id withdrawal) current-signer-bitmap)
+          ok-resp
+              {index: (+ u1 current-index), agg-errs: current-agg-errs}
+          err-resp
+            {index: (+ u1 current-index), agg-errs: (some (int-to-ascii current-index))}
+        )
       )
-    err-response
-            (err err-response)
+    )
   )
+
 )
 
 ;; Validation methods
