@@ -172,7 +172,7 @@ impl SignerStxState {
 /// multi-sig wallet.
 ///
 /// Only OrderIndependentMultisig auth spending conditions are currently
-/// supported, and this invariant is checked when the struct is created.
+/// supported, and this invariant is enforced when the struct is created.
 pub struct MultisigTx {
     /// The unsigned transaction. Only transactions with a
     /// OrderIndependentMultisig auth spending condition are supported.
@@ -231,10 +231,11 @@ impl MultisigTx {
     ///
     /// # Notes
     ///
-    /// An error is returned if we could not recover the public key from
-    /// the signature, which can happen if the wrong digest. An error also
-    /// happens if the signature is for the correct digest but for a public
-    /// key that we weren't expecting.
+    /// There are two Result::Err paths that can happen here:
+    /// 1. We cannot recover the public key from the signature. Perhaps the
+    ///    signature was given over the wrong digest.
+    /// 2. The signature was given over the correct digest, but we were not
+    ///    expecting the associated public key.
     pub fn add_signature(&mut self, signature: RecoverableSignature) -> Result<(), Error> {
         let public_key = signature
             .recover(&self.digest)
@@ -242,7 +243,8 @@ impl MultisigTx {
 
         // Get the entry for the given public key and replace the value
         // with the given signature. If the public key doesn't exist here,
-        // then someone sent a signature with an unexpected public key.
+        // then someone sent a signature using a secret key whose
+        // associated public key was unexpected.
         self.signatures
             .get_mut(&public_key)
             .map(|sig| {

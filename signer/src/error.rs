@@ -118,7 +118,8 @@ pub enum Error {
     #[error("Type conversion error")]
     TypeConversion,
 
-    /// Thrown when the recoverable signature has a public key that is unexpected
+    /// Thrown when the recoverable signature has a public key that is
+    /// unexpected.
     #[error("Unexpected public key from signature. key {0}; digest: {1}")]
     UnknownPublicKey(secp256k1::PublicKey, secp256k1::Message),
 }
