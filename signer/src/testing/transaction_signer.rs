@@ -362,9 +362,9 @@ where
 
             if context_window_block_hashes.contains(&withdraw_request.block_hash) {
                 assert_eq!(signer_decisions.len(), num_expected_decisions);
-                assert!(signer_decisions.first().unwrap().is_accepted)
+                assert!(signer_decisions.iter().all(|decision| decision.is_accepted))
             } else {
-                assert_eq!(signer_decisions.len(), 0);
+                assert!(signer_decisions.is_empty());
             }
         }
     }
