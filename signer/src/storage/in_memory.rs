@@ -160,11 +160,23 @@ impl super::DbRead for SharedStore {
     async fn get_pending_withdraw_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        stacks_context_window: usize,
+        context_window: usize,
     ) -> Result<Vec<model::WithdrawRequest>, Self::Error> {
         let Some(bitcoin_chain_tip) = self.get_bitcoin_block(chain_tip).await? else {
             return Ok(Vec::new());
         };
+
+        let mut context_window_end_block = bitcoin_chain_tip.clone();
+
+        for _ in 0..=context_window {
+            match self
+                .get_bitcoin_block(&context_window_end_block.parent_hash)
+                .await?
+            {
+                Some(parent) => context_window_end_block = parent,
+                None => break,
+            }
+        }
 
         let stacks_blocks = futures::stream::iter(bitcoin_chain_tip.confirms)
             .then(
@@ -184,33 +196,64 @@ impl super::DbRead for SharedStore {
         };
 
         let store = self.lock().await;
-        let stacks_tip = highest_stacks_block.block_hash;
 
-        Ok((0..stacks_context_window)
-            // Find all tracked transaction IDs in the context window
-            .scan(&stacks_tip, |stacks_block_hash, _| {
-                let withdraw_requests: Vec<_> = store
-                    .stacks_block_to_withdraw_requests
-                    .get(*stacks_block_hash)
-                    .cloned()
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|pk| {
-                        store
-                            .withdraw_requests
-                            .get(&pk)
-                            .expect("missing withdraw request")
-                            .clone()
-                    })
-                    .collect();
+        let mut withdraw_requests = Vec::new();
+        let mut cursor = Some(highest_stacks_block);
 
-                let block = store.stacks_blocks.get(*stacks_block_hash)?;
-                *stacks_block_hash = &block.parent_hash;
+        while let Some(stacks_block) = cursor {
+            if context_window_end_block
+                .confirms
+                .contains(&stacks_block.block_hash)
+            {
+                break;
+            }
 
-                Some(withdraw_requests)
-            })
-            .flatten()
-            .collect())
+            let withdraw_requests_in_block: Vec<_> = store
+                .stacks_block_to_withdraw_requests
+                .get(&stacks_block.block_hash)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|pk| {
+                    store
+                        .withdraw_requests
+                        .get(&pk)
+                        .expect("missing withdraw request")
+                        .clone()
+                })
+                .collect();
+
+            withdraw_requests.extend(withdraw_requests_in_block);
+            cursor = store.stacks_blocks.get(&stacks_block.parent_hash).cloned();
+        }
+
+        Ok(withdraw_requests)
+
+        //Ok((0..context_window)
+        //    // Find all tracked transaction IDs in the context window
+        //    .scan(&stacks_tip, |stacks_block_hash, _| {
+        //        let withdraw_requests: Vec<_> = store
+        //            .stacks_block_to_withdraw_requests
+        //            .get(*stacks_block_hash)
+        //            .cloned()
+        //            .unwrap_or_default()
+        //            .into_iter()
+        //            .map(|pk| {
+        //                store
+        //                    .withdraw_requests
+        //                    .get(&pk)
+        //                    .expect("missing withdraw request")
+        //                    .clone()
+        //            })
+        //            .collect();
+
+        //        let block = store.stacks_blocks.get(*stacks_block_hash)?;
+        //        *stacks_block_hash = &block.parent_hash;
+
+        //        Some(withdraw_requests)
+        //    })
+        //    .flatten()
+        //    .collect())
     }
 
     async fn get_bitcoin_blocks_with_transaction(

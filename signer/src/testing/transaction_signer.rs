@@ -29,8 +29,7 @@ where
         rng: &mut Rng,
         network: network::in_memory::MpmcBroadcaster,
         storage: S,
-        bitcoin_context_window: usize,
-        stacks_context_window: usize,
+        context_window: usize,
     ) -> Self {
         let blocklist_checker = ();
         let (notification_tx, block_observer_notifications) = tokio::sync::watch::channel(());
@@ -43,8 +42,7 @@ where
                 blocklist_checker,
                 block_observer_notifications,
                 signer_private_key,
-                bitcoin_context_window,
-                stacks_context_window,
+                context_window,
             },
             notification_tx,
             storage,
@@ -105,9 +103,7 @@ pub struct TestEnvironment<C> {
     /// Function to construct a storage instance
     pub storage_constructor: C,
     /// Bitcoin context window
-    pub bitcoin_context_window: usize,
-    /// Stacks context window
-    pub stacks_context_window: usize,
+    pub context_window: usize,
     /// Num signers
     pub num_signers: usize,
 }
@@ -129,8 +125,7 @@ where
             &mut rng,
             network.connect(),
             (self.storage_constructor)(),
-            self.bitcoin_context_window,
-            self.stacks_context_window,
+            self.context_window,
         );
 
         let mut handle = event_loop_harness.start();
@@ -148,7 +143,7 @@ where
 
         Self::assert_only_deposit_requests_in_context_window_has_decisions(
             &storage,
-            self.bitcoin_context_window,
+            self.context_window,
             &test_data.deposit_requests,
             1,
         )
@@ -165,8 +160,7 @@ where
             &mut rng,
             network.connect(),
             (self.storage_constructor)(),
-            self.bitcoin_context_window,
-            self.stacks_context_window,
+            self.context_window,
         );
 
         let mut handle = event_loop_harness.start();
@@ -184,7 +178,7 @@ where
 
         Self::assert_only_withdraw_requests_in_context_window_has_decisions(
             &storage,
-            self.stacks_context_window,
+            self.context_window,
             &test_data.withdraw_requests,
             1,
         )
@@ -205,8 +199,7 @@ where
                     &mut rng,
                     network.connect(),
                     (self.storage_constructor)(),
-                    self.bitcoin_context_window,
-                    self.stacks_context_window,
+                    self.context_window,
                 );
 
                 event_loop_harness.start()
@@ -232,7 +225,7 @@ where
 
             Self::assert_only_deposit_requests_in_context_window_has_decisions(
                 &storage,
-                self.bitcoin_context_window,
+                self.context_window,
                 &test_data.deposit_requests,
                 self.num_signers,
             )
@@ -273,14 +266,24 @@ where
         let canoncial_tip_block_hash = storage
             .get_bitcoin_canonical_chain_tip()
             .await
-            .unwrap()
+            .expect("storage failure")
             .expect("found no canonical chain tip");
 
         let chain_tip = storage
             .get_bitcoin_block(&canoncial_tip_block_hash)
             .await
-            .expect("failed to get bitcoin block")
+            .expect("storage failure")
             .expect("missing block");
+
+        let context_window_end_block = futures::stream::iter(0..=context_window)
+            .fold(chain_tip.clone(), |block, _| async move {
+                storage
+                    .get_bitcoin_block(&block.parent_hash)
+                    .await
+                    .expect("storage failure")
+                    .unwrap_or(block)
+            })
+            .await;
 
         let stacks_chain_tip = futures::stream::iter(chain_tip.confirms)
             .then(|stacks_block_hash| async move {
@@ -296,15 +299,22 @@ where
             .max_by_key(|block| (block.block_height, block.block_hash.clone()))
             .expect("missing stacks block");
 
-        let mut block_hash = stacks_chain_tip.block_hash;
+        let mut cursor = Some(stacks_chain_tip);
         let mut context_window_block_hashes = Vec::new();
 
-        for _ in 0..context_window {
-            context_window_block_hashes.push(block_hash.clone());
-            let Some(block) = storage.get_stacks_block(&block_hash).await.unwrap() else {
+        while let Some(stacks_block) = cursor {
+            if context_window_end_block
+                .confirms
+                .contains(&stacks_block.block_hash)
+            {
                 break;
-            };
-            block_hash = block.parent_hash;
+            }
+
+            context_window_block_hashes.push(stacks_block.block_hash);
+            cursor = storage
+                .get_stacks_block(&stacks_block.parent_hash)
+                .await
+                .expect("storage failure");
         }
 
         context_window_block_hashes

@@ -87,10 +87,8 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker> {
     pub block_observer_notifications: tokio::sync::watch::Receiver<()>,
     /// Private key of the signer for network communication.
     pub signer_private_key: p256k1::scalar::Scalar,
-    /// How many bitcoin blocks back from the chain tip the signer will look for deposit requests.
-    pub bitcoin_context_window: usize,
-    /// How many stacks blocks back from the chain tip the signer will look for withdraw requests.
-    pub stacks_context_window: usize,
+    /// How many bitcoin blocks back from the chain tip the signer will look for requests.
+    pub context_window: usize,
 }
 
 impl<N, S, B> TxSignerEventLoop<N, S, B>
@@ -216,7 +214,7 @@ where
             .storage
             .get_pending_deposit_requests(
                 chain_tip,
-                self.bitcoin_context_window
+                self.context_window
                     .try_into()
                     .map_err(|_| error::Error::TypeConversion)?,
             )
@@ -230,7 +228,7 @@ where
     ) -> Result<Vec<model::WithdrawRequest>, error::Error> {
         Ok(self
             .storage
-            .get_pending_withdraw_requests(chain_tip, self.stacks_context_window)
+            .get_pending_withdraw_requests(chain_tip, self.context_window)
             .await?)
     }
 
@@ -401,8 +399,7 @@ mod tests {
     ) -> testing::transaction_signer::TestEnvironment<fn() -> storage::in_memory::SharedStore> {
         testing::transaction_signer::TestEnvironment {
             storage_constructor: storage::in_memory::Store::new_shared,
-            bitcoin_context_window: 3,
-            stacks_context_window: 9,
+            context_window: 3,
             num_signers: 7,
         }
     }

@@ -9,8 +9,7 @@ async fn test_environment(
     pool: sqlx::PgPool,
 ) -> testing::transaction_signer::TestEnvironment<impl FnMut() -> storage::postgres::PgStore> {
     let num_signers = 3;
-    let bitcoin_context_window = 3;
-    let stacks_context_window = 9;
+    let context_window = 3;
     let test_databases: Vec<_> = futures::stream::iter(0..num_signers)
         .then(|_| async { new_database(&pool).await })
         .collect()
@@ -23,8 +22,7 @@ async fn test_environment(
             idx = (idx + 1) % test_databases.len();
             storage::postgres::PgStore::from(test_databases.get(idx).unwrap().clone())
         },
-        bitcoin_context_window,
-        stacks_context_window,
+        context_window,
         num_signers,
     }
 }
