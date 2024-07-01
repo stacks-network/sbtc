@@ -144,15 +144,11 @@ where
             .send(())
             .expect("failed to send notification");
 
-        let context_window_block_hashes = self
-            .extract_context_window_block_hashes(&handle.storage)
-            .await;
-
         let storage = handle.stop_event_loop().await;
 
         Self::assert_only_deposit_requests_in_context_window_has_decisions(
             &storage,
-            &context_window_block_hashes,
+            self.bitcoin_context_window,
             &test_data.deposit_requests,
             1,
         )
@@ -184,15 +180,11 @@ where
             .send(())
             .expect("failed to send notification");
 
-        let context_window_block_hashes = self
-            .extract_stacks_context_window_block_hashes(&handle.storage)
-            .await;
-
         let storage = handle.stop_event_loop().await;
 
         Self::assert_only_withdraw_requests_in_context_window_has_decisions(
             &storage,
-            &context_window_block_hashes,
+            self.stacks_context_window,
             &test_data.withdraw_requests,
             1,
         )
@@ -237,12 +229,10 @@ where
 
         for handle in event_loop_handles {
             let storage = handle.stop_event_loop().await;
-            let context_window_block_hashes =
-                self.extract_context_window_block_hashes(&storage).await;
 
             Self::assert_only_deposit_requests_in_context_window_has_decisions(
                 &storage,
-                &context_window_block_hashes,
+                self.bitcoin_context_window,
                 &test_data.deposit_requests,
                 self.num_signers,
             )
@@ -255,7 +245,7 @@ where
     }
 
     async fn extract_context_window_block_hashes(
-        &self,
+        context_window: usize,
         storage: &S,
     ) -> Vec<model::BitcoinBlockHash> {
         let mut context_window_block_hashes = Vec::new();
@@ -265,7 +255,7 @@ where
             .unwrap()
             .expect("found no canonical chain tip");
 
-        for _ in 0..self.bitcoin_context_window {
+        for _ in 0..context_window {
             context_window_block_hashes.push(block_hash.clone());
             let Some(block) = storage.get_bitcoin_block(&block_hash).await.unwrap() else {
                 break;
@@ -277,7 +267,7 @@ where
     }
 
     async fn extract_stacks_context_window_block_hashes(
-        &self,
+        context_window: usize,
         storage: &S,
     ) -> Vec<model::StacksBlockHash> {
         let canoncial_tip_block_hash = storage
@@ -309,7 +299,7 @@ where
         let mut block_hash = stacks_chain_tip.block_hash;
         let mut context_window_block_hashes = Vec::new();
 
-        for _ in 0..self.stacks_context_window {
+        for _ in 0..context_window {
             context_window_block_hashes.push(block_hash.clone());
             let Some(block) = storage.get_stacks_block(&block_hash).await.unwrap() else {
                 break;
@@ -322,10 +312,12 @@ where
 
     async fn assert_only_deposit_requests_in_context_window_has_decisions(
         storage: &S,
-        context_window_block_hashes: &[model::BitcoinBlockHash],
+        context_window: usize,
         deposit_requests: &[model::DepositRequest],
         num_expected_decisions: usize,
     ) {
+        let context_window_block_hashes =
+            Self::extract_context_window_block_hashes(context_window, storage).await;
         for deposit_request in deposit_requests {
             let signer_decisions = storage
                 .get_deposit_signers(&deposit_request.txid, deposit_request.output_index)
@@ -350,10 +342,13 @@ where
 
     async fn assert_only_withdraw_requests_in_context_window_has_decisions(
         storage: &S,
-        context_window_block_hashes: &[model::StacksBlockHash],
+        context_window: usize,
         withdraw_requests: &[model::WithdrawRequest],
         num_expected_decisions: usize,
     ) {
+        let context_window_block_hashes =
+            Self::extract_stacks_context_window_block_hashes(context_window, storage).await;
+
         for withdraw_request in withdraw_requests {
             let signer_decisions = storage
                 .get_withdraw_signers(withdraw_request.request_id, &withdraw_request.block_hash)
