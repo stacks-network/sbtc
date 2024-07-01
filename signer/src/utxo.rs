@@ -436,7 +436,7 @@ impl<'a> Weighted for RequestRef<'a> {
 pub struct SignerUtxo {
     /// The outpoint of the signers' UTXO
     pub outpoint: OutPoint,
-    /// The amount associated with that UTXO
+    /// The amount associated with the above UTXO
     pub amount: u64,
     /// The public key used to create the key-spend only taproot script.
     pub public_key: XOnlyPublicKey,

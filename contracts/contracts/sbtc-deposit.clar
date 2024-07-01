@@ -77,6 +77,7 @@
 ;;
 
 ;; private functions
+;; #[allow(unchecked_data)]
 (define-private (complete-individual-deposits-helper (deposit {txid: (buff 32), vout-index: uint, amount: uint, recipient: principal}) (helper-response (response uint uint)))
     (match helper-response 
         index

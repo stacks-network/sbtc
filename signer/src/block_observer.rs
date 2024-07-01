@@ -20,8 +20,7 @@
 use std::collections::HashMap;
 
 use crate::error;
-use crate::stacks_api;
-use crate::stacks_api::StacksInteract;
+use crate::stacks::api::StacksInteract;
 use crate::storage;
 
 use bitcoin::hashes::Hash;
@@ -151,7 +150,7 @@ where
         block: bitcoin::Block,
     ) -> Result<(), error::Error> {
         let info = self.stacks_client.get_tenure_info().await?;
-        let stacks_blocks = stacks_api::fetch_unknown_ancestors(
+        let stacks_blocks = crate::stacks::api::fetch_unknown_ancestors(
             &self.stacks_client,
             &self.storage,
             info.tip_block_id,
