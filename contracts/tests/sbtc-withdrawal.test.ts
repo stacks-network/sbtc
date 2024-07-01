@@ -569,6 +569,72 @@ describe("Reject a withdrawal request", () => {
 })
 
 describe("Complete multiple withdrawals", () => {
+  test("Fail with three withdrawals", () => {
+    // Alice setup
+    txOk(
+      deposit.completeDepositWrapper({
+        txid: new Uint8Array(32).fill(0),
+        voutIndex: 0,
+        amount: 1000n,
+        recipient: alice,
+      }),
+      deployer
+    );
+    txOk(
+      withdrawal.initiateWithdrawalRequest({
+        amount: 1000n,
+        recipient: alicePoxAddr,
+        maxFee: 10n,
+      }),
+      alice
+    );
+    // Bob setup
+    txOk(
+      deposit.completeDepositWrapper({
+        txid: new Uint8Array(32).fill(1),
+        voutIndex: 1,
+        amount: 1000n,
+        recipient: bob,
+      }),
+      deployer
+    );
+    txOk(
+      withdrawal.initiateWithdrawalRequest({
+        amount: 1000n,
+        recipient: alicePoxAddr,
+        maxFee: 10n,
+      }),
+      bob
+    );
+    // 
+    const receipt = txErr(
+      withdrawal.completeWithdrawals({withdrawals: [{
+          requestId: 1n,
+          status: true,
+          signerBitmap: 1n,
+          bitcoinTxid: new Uint8Array(12).fill(1),
+          outputIndex: 10n,
+          fee: 10n,
+        },{
+          requestId: 4n,
+          status: false,
+          signerBitmap: 1n,
+          bitcoinTxid: null,
+          outputIndex: null,
+          fee: null,
+        }, {
+          requestId: 5n,
+          status: false,
+          signerBitmap: 1n,
+          bitcoinTxid: null,
+          outputIndex: null,
+          fee: null,
+        }]
+      }),
+      deployer
+    );
+    expect(receipt.value).toEqual(510012n);
+  });
   test("Successfully pass in two withdrawals, one accept, one reject", () => {
     // Alice setup
     txOk(
@@ -626,6 +692,6 @@ describe("Complete multiple withdrawals", () => {
       }),
       deployer
     );
-    expect(receipt.value).toEqual(2n);
+    expect(receipt.value).toEqual(true);
   });
 })
