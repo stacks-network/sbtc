@@ -275,7 +275,7 @@ where
             .expect("storage failure")
             .expect("missing block");
 
-        let context_window_end_block = futures::stream::iter(0..=context_window)
+        let context_window_end_block = futures::stream::iter(0..context_window)
             .fold(chain_tip.clone(), |block, _| async move {
                 storage
                     .get_bitcoin_block(&block.parent_hash)

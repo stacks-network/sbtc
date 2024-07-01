@@ -161,7 +161,7 @@ impl super::DbRead for SharedStore {
     async fn get_pending_withdraw_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        context_window: usize,
+        context_window: i32,
     ) -> Result<Vec<model::WithdrawRequest>, Self::Error> {
         let Some(bitcoin_chain_tip) = self.get_bitcoin_block(chain_tip).await? else {
             return Ok(Vec::new());
@@ -175,11 +175,10 @@ impl super::DbRead for SharedStore {
                     .map(|opt| opt.map(|block| (block.clone(), block.parent_hash)))
             },
         )
-        .skip(context_window + 1)
+        .skip((context_window).try_into().unwrap_or_default())
         .boxed()
         .try_next()
-        .await?
-        .unwrap_or_else(|| bitcoin_chain_tip.clone());
+        .await?;
 
         let stacks_blocks: Vec<_> = futures::stream::iter(bitcoin_chain_tip.confirms)
             .then(
@@ -204,8 +203,8 @@ impl super::DbRead for SharedStore {
             })
             .take_while(|stacks_block| {
                 !context_window_end_block
-                    .confirms
-                    .contains(&stacks_block.block_hash)
+                    .as_ref()
+                    .is_some_and(|block| block.confirms.contains(&stacks_block.block_hash))
             })
             .flat_map(|stacks_block| {
                 store
