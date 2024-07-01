@@ -26,6 +26,10 @@ fn main() {
     let mut api_doc = ApiDoc::openapi();
     let new_extensions: HashMap<String, serde_json::Value> = new_operation_extensions();
 
+    // TODO: https://github.com/stacks-network/sbtc/issues/269
+    // Change Emily API Lambda Integrations to use cdk constructs if possible instead of specification
+    // alteration.
+    //
     // Add AWS extension to openapi specification so AWS CDK can attach the appropriate lambda endpoint.
     api_doc.paths.paths.iter_mut()
         .flat_map(|(_, path_item)| path_item.operations.iter_mut())

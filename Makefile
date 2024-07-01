@@ -80,10 +80,23 @@ endif
 
 # Emily Integration Environment ----------------------
 
-# Launches Emily dev environment.
+# Launches Emily integration tests environment.
 emily-integration-test: devenv $(EMILY_LAMBDA_BINARY) $(EMILY_CDK_TEMPLATE) $(EMILY_DOCKER_COMPOSE)
-	CONTAINER_HOST=$(_CONTAINER_HOST) docker compose --file docker-compose.emily.yml up \
+	@echo "Running Emily integration test."
+	CONTAINER_HOST=$(_CONTAINER_HOST) docker compose \
+		--file docker-compose.emily.yml \
+		--profile test \
+		up \
 		--remove-orphans
+
+# Launches Emily dev environment.
+emily-integration-environment: devenv $(EMILY_LAMBDA_BINARY) $(EMILY_CDK_TEMPLATE) $(EMILY_DOCKER_COMPOSE)
+	@echo "Starting Emily integration test environment."
+	CONTAINER_HOST=$(_CONTAINER_HOST) docker compose \
+		--file $(EMILY_DOCKER_COMPOSE) \
+		up \
+		--remove-orphans
+
 .PHONY: emily-integration-test
 
 # Builds all dockerfiles that need to be built for the dev environment.
@@ -93,8 +106,7 @@ devenv: $(wildcard $(subst dir, devenv, $(TWO_DIRS_DEEP)))
 
 # Emily CDK Template ---------------------------------
 
-EMILY_CDK_SOURCE_FILES :=
-EMILY_CDK_SOURCE_FILES := $(wildcard $(subst dir, emily/cdk/lib, $(FIVE_DIRS_DEEP))) $(EMILY_CDK_SOURCE_FILES)
+EMILY_CDK_SOURCE_FILES := $(wildcard $(subst dir, emily/cdk/lib, $(FIVE_DIRS_DEEP)))
 EMILY_CDK_SOURCE_FILES := $(wildcard $(subst dir, emily/bin/lib, $(FIVE_DIRS_DEEP))) $(EMILY_CDK_SOURCE_FILES)
 
 $(EMILY_CDK_TEMPLATE): $(INSTALL_TARGET) $(EMILY_OPENAPI_SPEC) $(EMILY_CDK_SOURCE_FILES)
@@ -103,8 +115,7 @@ $(EMILY_CDK_TEMPLATE): $(INSTALL_TARGET) $(EMILY_OPENAPI_SPEC) $(EMILY_CDK_SOURC
 
 # Emily Handler --------------------------------------
 
-EMILY_HANDLER_SOURCE_FILES :=
-EMILY_HANDLER_SOURCE_FILES := $(wildcard $(subst dir, emily/handler, $(FIVE_DIRS_DEEP))) $(EMILY_HANDLER_SOURCE_FILES)
+EMILY_HANDLER_SOURCE_FILES := $(wildcard $(subst dir, emily/handler, $(FIVE_DIRS_DEEP)))
 
 # Build the OpenAPI specification.
 $(EMILY_OPENAPI_SPEC): $(EMILY_HANDLER_SOURCE_FILES)
@@ -126,7 +137,10 @@ $(EMILY_LAMBDA_BINARY): $(EMILY_HANDLER_SOURCE_FILES)
 emily-lambda: $(EMILY_LAMBDA_BINARY)
 emily-cdk-synth: $(EMILY_CDK_TEMPLATE)
 emily-openapi-spec: $(EMILY_OPENAPI_SPEC)
-.PHONY: emily-lambda emily-cdk-synth emily-openapi-spec
+emily-curl-test: $(EMILY_LAMBDA_BINARY)
+	./devenv/service-test/curl-test.sh localhost 3000 0
+
+.PHONY: emily-lambda emily-cdk-synth emily-openapi-spec emily-curl-test
 
 # Blocklist Client API
 # ----------------------------------------------------
