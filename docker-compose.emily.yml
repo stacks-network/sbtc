@@ -22,7 +22,7 @@ services:
       - "./emily/cdk/cdk.out:/cdk.out"
     environment:
       - DYNAMODB_ENDPOINT=http://dynamodb:8000
-      - LOCAL_LAMBDA_PATH=/code/emily-lambda/bootstrap.zip
+      - LOCAL_LAMBDA_PATH=/code/emily-handler/bootstrap.zip
       - INPUT_CDK_TEMPLATE=/cdk.out/EmilyStack.template.json
       - OUTPUT_CDK_TEMPLATE=/cdk.out/EmilyStack.devenv.template.json
     command: python3 ./initialize.py
@@ -68,12 +68,14 @@ services:
   service-test:
     build: devenv/service-test
     image: "debian:12.5"
+    profiles:
+      - test
     depends_on:
       apigateway:
         condition: service_started
     volumes:
       - "./devenv/service-test:/service-test:ro"
-    command: bash /service-test/curl-test.sh
+    command: bash /service-test/curl-test.sh apigateway 3000 5
     networks:
       - aws-local-vpc
 

@@ -2,11 +2,11 @@
 resolver = "2"
 members = [
   "signer",
-  ".generated-sources/emily",
-  "emily/lambda",
+  "emily/handler",
+  ".generated-sources/emily/openapi",
   "blocklist-client",
-  ".generated-sources/blocklist-openapi-gen"
-, "common"]
+  ".generated-sources/blocklist-openapi-gen",
+  "common"]
 
 [profile.dev]
 # Disabling debug info speeds up builds a bunch,
@@ -18,7 +18,8 @@ lto = "thin"
 codegen-units = 16
 
 [workspace.dependencies]
-emily = { version = "0.1.0", path = ".generated-sources/emily" }
+sbtc-common = { version = "0.1.0", path = "./common" }
+emily-handler = { version = "0.1.0", path = "./emily/handler" }
 
 aquamarine = "0.5.0"
 aws_lambda_events = "0.15.0"

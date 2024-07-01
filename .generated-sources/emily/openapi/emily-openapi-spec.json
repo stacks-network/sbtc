@@ -1,0 +1,118 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "emily-openapi-spec",
+    "description": "",
+    "license": {
+      "name": ""
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/screen/{address}": {
+      "get": {
+        "tags": [
+          "address"
+        ],
+        "summary": "Handles requests to check the blocklist status of a given address.",
+        "description": "Converts successful blocklist status results to JSON and returns them,\nor converts errors into Warp rejections.",
+        "operationId": "checkAddress",
+        "parameters": [
+          {
+            "name": "address",
+            "in": "path",
+            "description": "Address to get risk assessment for",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Risk assessment retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlocklistStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BlocklistStatus": {
+        "type": "object",
+        "description": "The BlocklistStatus of a user address",
+        "required": [
+          "is_blocklisted",
+          "severity",
+          "accept"
+        ],
+        "properties": {
+          "accept": {
+            "type": "boolean",
+            "description": "Blocklist client's acceptance decision based on the risk severity of the address"
+          },
+          "is_blocklisted": {
+            "type": "boolean",
+            "description": "Whether the address is blocklisted or not"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Reason for the acceptance decision",
+            "nullable": true
+          },
+          "severity": {
+            "$ref": "#/components/schemas/RiskSeverity"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Structure representing an error response\nThis is used to serialize error messages in HTTP responses",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "RiskSeverity": {
+        "type": "string",
+        "description": "Risk severity linked to an address",
+        "enum": [
+          "Low",
+          "Medium",
+          "High",
+          "Severe"
+        ]
+      }
+    }
+  }
+}

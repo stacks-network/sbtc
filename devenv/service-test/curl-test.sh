@@ -1,4 +1,14 @@
 #!/bin/bash
 
+# Setup host info.
+HOSTNAME="$1"
+PORT="$2"
+
+ENDPOINT="http://$HOSTNAME:$PORT"
+
+# Wait for apigateway interface to setup.
+SLEEP_TIME="$3"
+sleep "$SLEEP_TIME"
+
 sleep 5
-curl http://apigateway:3000/deposits | jq
+curl "$ENDPOINT/deposits" | jq
