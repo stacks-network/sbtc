@@ -1,5 +1,10 @@
 //! This module contains functionality for creating stacks transactions for
 //! sBTC contract calls.
+//! 
+//! Contains structs for the following contract calls:
+//! * Calling the complete-deposit-wrapper function in the sbtc-deposit
+//!   contract. This finalizes the deposit by minting sBTC and sending it
+//!   to the depositor.
 
 use bitcoin::hashes::Hash as _;
 use bitcoin::OutPoint;
