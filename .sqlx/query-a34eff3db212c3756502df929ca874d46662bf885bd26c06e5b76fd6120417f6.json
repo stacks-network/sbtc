@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO sbtc_signer.stacks_transactions VALUES ($1, $2)",
+  "query": "INSERT INTO sbtc_signer.stacks_transactions (txid, block_hash) VALUES ($1, $2)",
   "describe": {
     "columns": [],
     "parameters": {
@@ -11,5 +11,5 @@
     },
     "nullable": []
   },
-  "hash": "b395476f701e930ff4ef92d9797fecfeb17ba9869abb8c611e03a65815d00fc9"
+  "hash": "a34eff3db212c3756502df929ca874d46662bf885bd26c06e5b76fd6120417f6"
 }

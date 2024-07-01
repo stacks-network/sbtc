@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM sbtc_signer.withdraw_signers WHERE request_id = $1 AND block_hash = $2",
+  "query": "SELECT\n                request_id\n              , block_hash\n              , signer_pub_key\n              , is_accepted\n              , created_at\n            FROM sbtc_signer.withdraw_signers\n            WHERE request_id = $1 AND block_hash = $2",
   "describe": {
     "columns": [
       {
@@ -43,5 +43,5 @@
       false
     ]
   },
-  "hash": "6602993e1e7dbf7b588fbe521cf2243d60e5dafd1cf2c290a5f4b69d43bb9041"
+  "hash": "b211e70490cf93d029b188c86449fdc4208c8439c040ef1d17468437b1c697da"
 }
