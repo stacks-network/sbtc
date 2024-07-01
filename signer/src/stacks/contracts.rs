@@ -48,7 +48,8 @@ pub trait AsContractCall {
 }
 
 /// This struct is used to generate a properly formatted Stacks transaction
-/// for the complete-deposit-wrapper contract call.
+/// for calling the complete-deposit-wrapper function in the sbtc-deposit
+/// smart contract.
 #[derive(Copy, Clone, Debug)]
 pub struct CompleteDepositV1 {
     /// The outpoint of the bitcoin UTXO that was spent as a deposit for
