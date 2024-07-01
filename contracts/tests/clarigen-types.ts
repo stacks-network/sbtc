@@ -1499,38 +1499,10 @@ export const contracts = {
           },
           {
             name: "helper-response",
-            type: {
-              response: {
-                ok: {
-                  tuple: [
-                    {
-                      name: "agg-errs",
-                      type: { optional: { "string-ascii": { length: 100 } } },
-                    },
-                    { name: "index", type: "uint128" },
-                  ],
-                },
-                error: "uint128",
-              },
-            },
+            type: { response: { ok: "uint128", error: "uint128" } },
           },
         ],
-        outputs: {
-          type: {
-            response: {
-              ok: {
-                tuple: [
-                  {
-                    name: "agg-errs",
-                    type: { optional: { "string-ascii": { length: 100 } } },
-                  },
-                  { name: "index", type: "uint128" },
-                ],
-              },
-              error: "none",
-            },
-          },
-        },
+        outputs: { type: { response: { ok: "uint128", error: "uint128" } } },
       } as TypedAbiFunction<
         [
           withdrawal: TypedAbiArg<
@@ -1545,23 +1517,11 @@ export const contracts = {
             "withdrawal"
           >,
           helperResponse: TypedAbiArg<
-            Response<
-              {
-                aggErrs: string | null;
-                index: number | bigint;
-              },
-              number | bigint
-            >,
+            Response<number | bigint, number | bigint>,
             "helperResponse"
           >,
         ],
-        Response<
-          {
-            aggErrs: string | null;
-            index: bigint;
-          },
-          null
-        >
+        Response<bigint, bigint>
       >,
       acceptWithdrawalRequest: {
         name: "accept-withdrawal-request",
@@ -1610,7 +1570,7 @@ export const contracts = {
             },
           },
         ],
-        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+        outputs: { type: { response: { ok: "uint128", error: "uint128" } } },
       } as TypedAbiFunction<
         [
           withdrawals: TypedAbiArg<
@@ -1625,7 +1585,7 @@ export const contracts = {
             "withdrawals"
           >,
         ],
-        Response<boolean, bigint>
+        Response<bigint, bigint>
       >,
       initiateWithdrawalRequest: {
         name: "initiate-withdrawal-request",
@@ -1758,16 +1718,6 @@ export const contracts = {
         },
         access: "constant",
       } as TypedAbiVariable<Response<null, bigint>>,
-      ERR_INVALID_BTC_ID: {
-        name: "ERR_INVALID_BTC_ID",
-        type: {
-          response: {
-            ok: "none",
-            error: "uint128",
-          },
-        },
-        access: "constant",
-      } as TypedAbiVariable<Response<null, bigint>>,
       ERR_INVALID_CALLER: {
         name: "ERR_INVALID_CALLER",
         type: {
@@ -1788,15 +1738,21 @@ export const contracts = {
         },
         access: "constant",
       } as TypedAbiVariable<Response<null, bigint>>,
-      ERR_WITHDRAWALS_PREFIX: {
-        name: "ERR_WITHDRAWALS_PREFIX",
+      ERR_WITHDRAWAL_INDEX: {
+        name: "ERR_WITHDRAWAL_INDEX",
         type: {
-          "string-ascii": {
-            length: 3,
+          response: {
+            ok: "none",
+            error: "uint128",
           },
         },
         access: "constant",
-      } as TypedAbiVariable<string>,
+      } as TypedAbiVariable<Response<null, bigint>>,
+      ERR_WITHDRAWAL_INDEX_PREFIX: {
+        name: "ERR_WITHDRAWAL_INDEX_PREFIX",
+        type: "uint128",
+        access: "constant",
+      } as TypedAbiVariable<bigint>,
       MAX_ADDRESS_VERSION: {
         name: "MAX_ADDRESS_VERSION",
         type: "uint128",
@@ -1835,10 +1791,6 @@ export const contracts = {
         isOk: false,
         value: 500n,
       },
-      ERR_INVALID_BTC_ID: {
-        isOk: false,
-        value: 507n,
-      },
       ERR_INVALID_CALLER: {
         isOk: false,
         value: 504n,
@@ -1847,7 +1799,11 @@ export const contracts = {
         isOk: false,
         value: 503n,
       },
-      ERR_WITHDRAWALS_PREFIX: "510",
+      ERR_WITHDRAWAL_INDEX: {
+        isOk: false,
+        value: 506n,
+      },
+      ERR_WITHDRAWAL_INDEX_PREFIX: 506n,
       MAX_ADDRESS_VERSION: 6n,
       mAX_ADDRESS_VERSION_BUFF_20: 4n,
       mAX_ADDRESS_VERSION_BUFF_32: 6n,
