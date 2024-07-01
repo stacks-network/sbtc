@@ -7,11 +7,26 @@ use utoipa::OpenApi;
 
 #[derive(utoipa::OpenApi)]
 #[openapi(
-    paths(api::handlers::check_address_handler,),
+    paths(
+        // Health check endpoints.
+        api::handlers::health::get_health,
+        // Deposit endpoints.
+        api::handlers::deposit::get_deposit,
+        api::handlers::deposit::get_deposits_for_transaction,
+        api::handlers::deposit::get_deposits,
+        api::handlers::deposit::create_deposit,
+        api::handlers::deposit::update_deposits,
+        // TODO: https://github.com/stacks-network/sbtc/issues/272
+        // Add withdrawal and chainstate endpoints.
+    ),
     components(schemas(
-        common::BlocklistStatus,
-        common::RiskSeverity,
-        common::error::ErrorResponse
+        // TODO: https://github.com/stacks-network/sbtc/issues/271
+        // Add request and response schemas.
+
+        // Health check datatypes.
+        api::models::responses::health::HealthData,
+        // Errors.
+        common::error::ErrorResponse,
     ))
 )]
 struct ApiDoc;

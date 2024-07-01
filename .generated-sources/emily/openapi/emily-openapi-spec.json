@@ -9,19 +9,128 @@
     "version": "0.1.0"
   },
   "paths": {
-    "/screen/{address}": {
+    "/deposit": {
       "get": {
         "tags": [
-          "address"
+          "deposit"
         ],
-        "summary": "Handles requests to check the blocklist status of a given address.",
-        "description": "Converts successful blocklist status results to JSON and returns them,\nor converts errors into Warp rejections.",
-        "operationId": "checkAddress",
+        "summary": "Get deposits handler.",
+        "operationId": "getDeposits",
+        "responses": {
+          "201": {
+            "description": "Deposits retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "deposit"
+        ],
+        "summary": "Create deposit handler.",
+        "operationId": "createDeposit",
+        "responses": {
+          "201": {
+            "description": "Deposit created successfully",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "deposit"
+        ],
+        "summary": "Update deposits handler.",
+        "operationId": "updateDeposits",
+        "responses": {
+          "201": {
+            "description": "Deposits updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/deposit/{txid}": {
+      "get": {
+        "tags": [
+          "deposit"
+        ],
+        "summary": "Get deposits for transaction handler.",
+        "operationId": "getDepositsForTransaction",
         "parameters": [
           {
-            "name": "address",
+            "name": "txid",
             "in": "path",
-            "description": "Address to get risk assessment for",
+            "description": "txid associated with the Deposit.",
             "required": true,
             "schema": {
               "type": "string"
@@ -29,12 +138,108 @@
           }
         ],
         "responses": {
+          "201": {
+            "description": "Deposits retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/deposit/{txid}/{index}": {
+      "get": {
+        "tags": [
+          "deposit"
+        ],
+        "summary": "Get deposit handler.",
+        "operationId": "getDeposit",
+        "parameters": [
+          {
+            "name": "txid",
+            "in": "path",
+            "description": "txid associated with the Deposit.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "description": "output index associated with the Deposit.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Deposit retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Get health handler.",
+        "operationId": "checkHealth",
+        "responses": {
           "200": {
-            "description": "Risk assessment retrieved successfully",
+            "description": "Successfully retrieved health data.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BlocklistStatus"
+                  "$ref": "#/components/schemas/HealthData"
                 }
               }
             }
@@ -64,33 +269,6 @@
   },
   "components": {
     "schemas": {
-      "BlocklistStatus": {
-        "type": "object",
-        "description": "The BlocklistStatus of a user address",
-        "required": [
-          "is_blocklisted",
-          "severity",
-          "accept"
-        ],
-        "properties": {
-          "accept": {
-            "type": "boolean",
-            "description": "Blocklist client's acceptance decision based on the risk severity of the address"
-          },
-          "is_blocklisted": {
-            "type": "boolean",
-            "description": "Whether the address is blocklisted or not"
-          },
-          "reason": {
-            "type": "string",
-            "description": "Reason for the acceptance decision",
-            "nullable": true
-          },
-          "severity": {
-            "$ref": "#/components/schemas/RiskSeverity"
-          }
-        }
-      },
       "ErrorResponse": {
         "type": "object",
         "description": "Structure representing an error response\nThis is used to serialize error messages in HTTP responses",
@@ -103,15 +281,18 @@
           }
         }
       },
-      "RiskSeverity": {
-        "type": "string",
-        "description": "Risk severity linked to an address",
-        "enum": [
-          "Low",
-          "Medium",
-          "High",
-          "Severe"
-        ]
+      "HealthData": {
+        "type": "object",
+        "description": "Struct that represents the current status of the API.",
+        "required": [
+          "is_okay"
+        ],
+        "properties": {
+          "is_okay": {
+            "type": "boolean",
+            "description": "Whether the API is okay."
+          }
+        }
       }
     }
   }
