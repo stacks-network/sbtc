@@ -2,6 +2,7 @@
 //! using the signers' multi-sig wallet.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
@@ -37,7 +38,7 @@ use crate::stacks::contracts::AsContractCall;
 pub struct SignerWallet {
     /// The current set of public keys for all known signers during this
     /// PoX cycle. These values must be sorted.
-    public_keys: Vec<PublicKey>,
+    public_keys: BTreeSet<PublicKey>,
     /// The number of signers necessary for successfully signing a
     /// multi-sig transaction.
     signatures_required: u16,
@@ -50,26 +51,27 @@ impl SignerWallet {
     ///
     /// # Note
     ///
-    /// An error is returned if the
-    /// number of required signatures is greater than the list of public
-    /// keys or if the list of public keys is empty.
+    /// An error is returned if:
+    /// 1. There are no public keys.
+    /// 2. There are no required signatures.
+    /// 3. The number of required signatures exceeding the number of public
+    ///    keys.
     pub fn new(
-        mut public_keys: Vec<PublicKey>,
+        public_keys: &[PublicKey],
         signatures_required: u16,
         network_kind: NetworkKind,
     ) -> Result<Self, Error> {
-        public_keys.sort();
+        let invalid_threshold = public_keys.len() < signatures_required as usize;
 
-        if public_keys.len() < signatures_required as usize || public_keys.is_empty() {
-            return Err(Error::MissingBlock);
-        }
-
-        if signatures_required == 0 || public_keys.is_empty() {
-            return Err(Error::MissingBlock);
+        if invalid_threshold || public_keys.is_empty() || signatures_required == 0 {
+            return Err(Error::InvalidWalletDefinition(
+                signatures_required,
+                public_keys.len(),
+            ));
         }
 
         Ok(Self {
-            public_keys,
+            public_keys: public_keys.iter().copied().collect(),
             signatures_required,
             network_kind,
         })
@@ -140,7 +142,7 @@ impl SignerStxState {
 
     /// Return the public keys associated with the signer's stacks
     /// multi-sig wallet.
-    pub fn public_keys(&self) -> &[PublicKey] {
+    pub fn public_keys(&self) -> &BTreeSet<PublicKey> {
         &self.wallet.public_keys
     }
 
@@ -149,12 +151,15 @@ impl SignerStxState {
         self.contract_deployer
     }
 
-    /// Convert the signers wallet to an unsigned stacks spending conditions.
+    /// Convert the signers wallet to an unsigned stacks spending
+    /// conditions.
     ///
     /// # Note
     ///
-    /// * The auth will have a transaction fee and a nonce set.
-    /// * This auth does not contain any signatures.
+    /// * The returned spending condition auth will have a transaction fee
+    ///   and a nonce set.
+    /// * The returned spending condition auth does not contain any
+    ///   signatures.
     pub fn as_unsigned_tx_auth(&self, tx_fee: u64) -> OrderIndependentMultisigSpendingCondition {
         let signer_addr = self.wallet.address();
         OrderIndependentMultisigSpendingCondition {
@@ -412,7 +417,7 @@ mod tests {
             .collect();
 
         let public_keys: Vec<_> = key_pairs.iter().map(|kp| kp.public_key()).collect();
-        let wallet = SignerWallet::new(public_keys, signatures_required, network).unwrap();
+        let wallet = SignerWallet::new(&public_keys, signatures_required, network).unwrap();
 
         // The burn StacksAddress here is the deployer address of the sBTC
         // contract. It may matter for constructing the transaction -- in
@@ -465,7 +470,7 @@ mod tests {
             .collect();
 
         let public_keys: Vec<_> = key_pairs.iter().map(|kp| kp.public_key()).collect();
-        let wallet = SignerWallet::new(public_keys, signatures_required, network).unwrap();
+        let wallet = SignerWallet::new(&public_keys, signatures_required, network).unwrap();
 
         let state = SignerStxState::new(wallet, 1, StacksAddress::burn_address(false));
         let mut tx_signer = MultisigTx::new_contract_call(TestContractCall, &state, TX_FEE);
@@ -494,8 +499,8 @@ mod tests {
         let res = tx_signer.add_signature(signature);
         assert!(res.is_err());
 
-        // The inner signaures should still be empty, since we should not
-        // add any bad sigatures
+        // The inner signatures should still be empty, since we should not
+        // add any bad signatures
         assert!(tx_signer.signatures.values().all(Option::is_none));
 
         // Now for good measure, lets add a valid signature, and make sure
@@ -522,7 +527,7 @@ mod tests {
                 .collect();
 
         let pks1 = public_keys.clone();
-        let wallet1 = SignerWallet::new(pks1.clone(), 5, network).unwrap();
+        let wallet1 = SignerWallet::new(&pks1, 5, network).unwrap();
 
         // Although it's unlikely, it's possible for the shuffle to not
         // shuffle anything, so we need to keep trying.
@@ -530,7 +535,7 @@ mod tests {
             public_keys.shuffle(&mut OsRng);
         }
 
-        let wallet2 = SignerWallet::new(public_keys, 5, network).unwrap();
+        let wallet2 = SignerWallet::new(&public_keys, 5, network).unwrap();
 
         assert_eq!(wallet1.address(), wallet2.address())
     }

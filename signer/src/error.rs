@@ -45,6 +45,14 @@ pub enum Error {
     #[error("Could not recover the public key from the signature: {0}, digest: {1}")]
     InvalidRecoverableSignature(#[source] secp256k1::Error, secp256k1::Message),
 
+    /// This is thrown when we attempt to create a wallet with:
+    /// 1. No public keys.
+    /// 2. No required signatures.
+    /// 3. The number of required signatures exceeding the number of public
+    ///    keys.
+    #[error("Invalid wallet definition, signatures required: {0}, number of keys: {1}")]
+    InvalidWalletDefinition(u16, usize),
+
     /// Reqwest error
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
