@@ -4046,6 +4046,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sbtc-tx-analysis"
+version = "0.1.0"
+dependencies = [
+ "bitcoin 0.32.0",
+ "tracing",
+ "tracing-attributes",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "schannel"
 version = "0.1.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
