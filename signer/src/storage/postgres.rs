@@ -411,7 +411,9 @@ impl super::DbRead for PgStore {
                   , 1 AS depth
                 FROM sbtc_signer.bitcoin_blocks
                 WHERE block_hash = $1
+
                 UNION ALL
+
                 SELECT
                     parent.block_hash
                   , parent.parent_hash
@@ -435,7 +437,9 @@ impl super::DbRead for PgStore {
                   , stacks_blocks.parent_hash
                 FROM sbtc_signer.stacks_blocks stacks_blocks
                 WHERE stacks_blocks.block_hash = $2
+
                 UNION ALL
+
                 SELECT
                     parent.block_hash
                   , parent.block_height
