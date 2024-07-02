@@ -3,7 +3,7 @@
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
-use warp::reject::Reject;
+use warp::{reject::Reject, reply::Reply};
 
 /// Errors occurring from Blocklist client's API calls to risk client and request handling
 #[derive(thiserror::Error, Debug)]
@@ -57,43 +57,39 @@ pub enum Error {
     RequestTimeout,
 }
 
+/// Error implementation.
 impl Error {
-    /// Converts the error into an HTTP response representation.
-    ///
-    /// # Returns
-    ///
-    /// A tuple containing the corresponding HTTP status code and error message.
-    pub fn as_http_response(&self) -> (StatusCode, String) {
+    /// Provides the status code that corresponds to the error.
+    pub fn status_code(&self) -> StatusCode {
         match self {
-            Error::HttpRequest(code, msg) => (*code, msg.clone()),
-            Error::Network(_) => (StatusCode::BAD_GATEWAY, "Network error".to_string()),
-            Error::Serialization(_) => (
-                StatusCode::BAD_REQUEST,
-                "Error in processing the data".to_string(),
-            ),
-            Error::InvalidApiResponse => (
-                StatusCode::BAD_REQUEST,
-                "Invalid API response structure".to_string(),
-            ),
-            Error::Unauthorized => (
-                StatusCode::UNAUTHORIZED,
-                "Unauthorized access - check your API key".to_string(),
-            ),
-            Error::NotFound => (StatusCode::NOT_FOUND, "Resource not found".to_string()),
-            Error::NotAcceptable => (
-                StatusCode::NOT_ACCEPTABLE,
-                "Not acceptable format requested".to_string(),
-            ),
-            Error::Conflict => (StatusCode::CONFLICT, "Request conflict".to_string()),
-            Error::InternalServer => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal server error".to_string(),
-            ),
-            Error::ServiceUnavailable => (
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Service unavailable".to_string(),
-            ),
-            Error::RequestTimeout => (StatusCode::REQUEST_TIMEOUT, "Request timeout".to_string()),
+            Error::HttpRequest(code, _) => *code,
+            Error::Network(_) => StatusCode::BAD_GATEWAY,
+            Error::Serialization(_) => StatusCode::BAD_REQUEST,
+            Error::InvalidApiResponse => StatusCode::BAD_REQUEST,
+            Error::Unauthorized => StatusCode::UNAUTHORIZED,
+            Error::NotFound => StatusCode::NOT_FOUND,
+            Error::NotAcceptable => StatusCode::NOT_ACCEPTABLE,
+            Error::Conflict => StatusCode::CONFLICT,
+            Error::InternalServer => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
+            Error::RequestTimeout => StatusCode::REQUEST_TIMEOUT,
+        }
+    }
+
+    /// Provides the error message that corresponds to the error.
+    pub fn error_message(&self) -> String {
+        match self {
+            Error::HttpRequest(_, msg) => msg.clone(),
+            Error::Network(_) => "Network error".to_string(),
+            Error::Serialization(_) => "Error in processing the data".to_string(),
+            Error::InvalidApiResponse => "Invalid API response structure".to_string(),
+            Error::Unauthorized => "Unauthorized access - check your API key".to_string(),
+            Error::NotFound => "Resource not found".to_string(),
+            Error::NotAcceptable => "Not acceptable format requested".to_string(),
+            Error::Conflict => "Request conflict".to_string(),
+            Error::InternalServer => "Internal server error".to_string(),
+            Error::ServiceUnavailable => "Service unavailable".to_string(),
+            Error::RequestTimeout => "Request timeout".to_string(),
         }
     }
 }
@@ -105,4 +101,21 @@ pub struct ErrorResponse {
     pub(crate) message: String,
 }
 
+/// Implement reject for error.
 impl Reject for Error {}
+
+/// Implement reply for internal error representation so that the error can be
+/// provided directly from Warp as a reply.
+impl Reply for Error {
+
+    /// Convert self into a warp response.
+    fn into_response(self) -> warp::reply::Response {
+       warp::reply::with_status(
+            warp::reply::json(&ErrorResponse {
+                message: self.error_message(),
+            }),
+            self.status_code(),
+        )
+        .into_response()
+    }
+}

@@ -16,8 +16,9 @@ async fn main() {
 
     let client = Client::new();
 
-    let api_routes = api::routes::routes(client);
-    let routes = api_routes.with(warp::log("api"));
+    let routes = api::routes::routes(client)
+        .recover(api::handlers::handle_rejection)
+        .with(warp::log("api"));
 
     let addr_str = format!("{}:{}", SETTINGS.server.host, SETTINGS.server.port);
     info!("Server will run on {}", addr_str);

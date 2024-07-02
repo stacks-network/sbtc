@@ -21,6 +21,7 @@ tracing-attributes.workspace = true
 tracing-subscriber.workspace = true
 utoipa = "4.2.3"
 warp = "0.3"
+warp_lambda.workspace = true
 
 [dev-dependencies]
 mockito = "0.28"

@@ -1,6 +1,8 @@
-//! This module contains the route configurations and request handlers for the Blocklist client
+//! This module contains the route configurations and request handlers for the Emily API.
 
-/// Defined handlers for the Blocklist client
+/// Request handlers.
 pub mod handlers;
-/// Route configuration for the Blocklist client
+/// Route definitions.
 pub mod routes;
+/// Request and response data structures.
+pub mod models;

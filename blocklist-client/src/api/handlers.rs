@@ -1,7 +1,7 @@
 //! Handlers for the blocklist client API
 
 use crate::client::risk_client;
-use crate::common::error::{Error, ErrorResponse};
+use crate::common::error::ErrorResponse;
 use crate::config::RiskAnalysisConfig;
 use reqwest::Client;
 use std::convert::Infallible;
@@ -31,11 +31,15 @@ pub async fn check_address_handler(
     address: String,
     client: Client,
     config: RiskAnalysisConfig,
-) -> Result<impl Reply, Rejection> {
-    risk_client::check_address(&client, &config, &address)
+) -> impl Reply {
+    let result = risk_client::check_address(&client, &config, &address)
         .await
-        .map(|blocklist_status| warp::reply::json(&blocklist_status))
-        .map_err(warp::reject::custom)
+        .map(|blocklist_status| warp::reply::json(&blocklist_status));
+
+    match result {
+        Ok(blocklist_status) => blocklist_status.into_response(),
+        Err(error) => error.into_response(),
+    }
 }
 
 /// Central error handler for Warp rejections, converting them to appropriate HTTP responses.
@@ -52,13 +56,6 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
             message: format!("Invalid Body: {}", e),
         });
         return Ok(warp::reply::with_status(json, StatusCode::BAD_REQUEST));
-    }
-
-    if let Some(e) = err.find::<Error>() {
-        // Custom application errors
-        let (code, message) = e.as_http_response();
-        let json = warp::reply::json(&ErrorResponse { message });
-        return Ok(warp::reply::with_status(json, code));
     }
 
     if err.find::<warp::reject::MethodNotAllowed>().is_some() {

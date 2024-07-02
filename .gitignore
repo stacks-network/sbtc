@@ -4,6 +4,7 @@
 **.log
 **/node_modules
 **/package-lock.json
+.pnpm-store/**
 
 ## Developer Environment
 devenv/**/*.db

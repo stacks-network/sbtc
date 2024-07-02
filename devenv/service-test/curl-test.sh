@@ -9,6 +9,4 @@ ENDPOINT="http://$HOSTNAME:$PORT"
 # Wait for apigateway interface to setup.
 SLEEP_TIME="$3"
 sleep "$SLEEP_TIME"
-
-sleep 5
-curl "$ENDPOINT/deposits" | jq
+curl "$ENDPOINT/deposit/TRANSACTION/32" | jq
