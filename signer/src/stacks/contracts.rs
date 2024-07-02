@@ -100,8 +100,8 @@ impl AsContractCall for CompleteDepositV1 {
             // appear. Under the hood they call their TryFrom::try_from
             // implementation and then unwrap them(!). We check that this
             // is fine in our test.
-            function_name: ClarityName::from(CompleteDepositV1::FUNCTION_NAME),
-            contract_name: ContractName::from(CompleteDepositV1::CONTRACT_NAME),
+            function_name: ClarityName::from(Self::FUNCTION_NAME),
+            contract_name: ContractName::from(Self::CONTRACT_NAME),
             function_args: self.as_contract_args(),
         }
     }
@@ -125,11 +125,10 @@ pub struct AcceptWithdrawalV1 {
     /// initiate-withdrawal-request function in the sbtc-withdrawal smart
     /// contract.
     pub request_id: u64,
-    /// The outpoint of the bitcoin UTXO that was spent as fulfill the
+    /// The outpoint of the bitcoin UTXO that was spent to fulfill the
     /// withdrawal request.
     pub outpoint: OutPoint,
-    /// The fee that is attributed to the withdrawal request and sent to
-    /// the bitcoin miner.
+    /// The fee that was spent to the bitcoin miner.
     pub tx_fee: u64,
     /// A bitmap of how the signers voted. This structure supports up to
     /// 128 distinct signers. Here, we assume that a 1 (or true) implies
@@ -167,8 +166,8 @@ impl AsContractCall for AcceptWithdrawalV1 {
             // appear. Under the hood they call their TryFrom::try_from
             // implementation and then unwrap them(!). We check that this
             // is fine in our test.
-            function_name: ClarityName::from(AcceptWithdrawalV1::FUNCTION_NAME),
-            contract_name: ContractName::from(AcceptWithdrawalV1::CONTRACT_NAME),
+            function_name: ClarityName::from(Self::FUNCTION_NAME),
+            contract_name: ContractName::from(Self::CONTRACT_NAME),
             function_args: self.as_contract_args(),
         }
     }
