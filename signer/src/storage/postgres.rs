@@ -430,7 +430,7 @@ impl super::DbRead for PgStore {
                 FROM extended_context_window
                 WHERE depth = $3 + 1
             ),
-            StacksContext AS (
+            stacks_context_window AS (
                 SELECT
                     stacks_blocks.block_hash
                   , stacks_blocks.block_height
@@ -445,7 +445,7 @@ impl super::DbRead for PgStore {
                   , parent.block_height
                   , parent.parent_hash
                 FROM sbtc_signer.stacks_blocks parent
-                JOIN StacksContext last
+                JOIN stacks_context_window last
                         ON parent.block_hash = last.parent_hash
                 LEFT JOIN last_bitcoin_block block
                         ON block.confirms @> ARRAY[parent.block_hash]
@@ -460,7 +460,7 @@ impl super::DbRead for PgStore {
               , wr.sender_address
               , wr.created_at
             FROM sbtc_signer.withdraw_requests wr
-            JOIN StacksContext sc ON wr.block_hash = sc.block_hash
+            JOIN stacks_context_window sc ON wr.block_hash = sc.block_hash
             "#,
             chain_tip,
             stacks_chain_tip,
