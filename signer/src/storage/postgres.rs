@@ -421,14 +421,15 @@ impl super::DbRead for PgStore {
                   , last.depth + 1
                 FROM sbtc_signer.bitcoin_blocks parent
                 JOIN extended_context_window last ON parent.block_hash = last.parent_hash
-                WHERE last.depth <= $3 + 1
+                WHERE last.depth <= $3
             ),
             last_bitcoin_block AS (
                 SELECT
                     block_hash
                   , confirms
                 FROM extended_context_window
-                WHERE depth = $3 + 1
+                ORDER BY depth DESC
+                LIMIT 1
             ),
             stacks_context_window AS (
                 SELECT
