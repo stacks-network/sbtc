@@ -17,6 +17,7 @@ async fn main() {
 
     let warp_service = warp::service(routes);
 
+    // TODO(276): Remove warp_lambda in Emily API and use different library.
     warp_lambda::run(warp_service)
         .await
         .expect("An error occured");

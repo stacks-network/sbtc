@@ -119,7 +119,7 @@ impl Reply for Error {
     fn into_response(self) -> warp::reply::Response {
        warp::reply::with_status(
             warp::reply::json(&ErrorResponse {
-                message: self.error_message().to_string(),
+                message: self.error_message(),
             }),
             self.status_code(),
         )
