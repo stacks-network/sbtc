@@ -101,7 +101,7 @@
     (try! (contract-call? .sbtc-token protocol-unlock (get amount withdrawal) (get sender withdrawal)))
 
     ;; Call into registry to confirm accepted withdrawal
-    (try! (contract-call? .sbtc-registry complete-withdrawal request-id false none none none none))
+    (try! (contract-call? .sbtc-registry complete-withdrawal request-id false none (some signer-bitmap) none none))
 
     (ok true)
   )
