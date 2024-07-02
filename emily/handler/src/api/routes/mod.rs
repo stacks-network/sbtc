@@ -3,10 +3,14 @@
 use super::handlers;
 use warp::Filter;
 
+/// Chainstate routes.
+mod chainstate;
 /// Deposit routes.
-pub mod deposit;
+mod deposit;
 /// Health routes.
-pub mod health;
+mod health;
+/// Withdrawal routes.
+mod withdrawal;
 
 /// This function sets up the Warp filters for handling all requests.
 pub fn routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
@@ -14,5 +18,7 @@ pub fn routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejecti
     // testing calls seem to forcibly start with `local`.
     warp::path("local")
         .and(health::routes()
+            .or(chainstate::routes())
             .or(deposit::routes()))
+            .or(withdrawal::routes())
 }

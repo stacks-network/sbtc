@@ -7,10 +7,14 @@ use std::convert::Infallible;
 use tracing::error;
 use warp::{http::StatusCode, Rejection, Reply};
 
+/// Chainstate handlers.
+pub mod chainstate;
 /// Deposit handlers.
 pub mod deposit;
 /// Health handlers.
 pub mod health;
+/// Withdrawal handlers.
+pub mod withdrawal;
 
 /// Central error handler for Warp rejections, converting them to appropriate HTTP responses.
 /// TODO(131): Alter handler for Emily API.

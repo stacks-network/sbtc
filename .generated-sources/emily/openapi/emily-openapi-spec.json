@@ -9,6 +9,131 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/chainstate": {
+      "post": {
+        "tags": [
+          "chainstate"
+        ],
+        "summary": "Set chainstate handler.",
+        "operationId": "setChainstate",
+        "responses": {
+          "201": {
+            "description": "Chainstate updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "chainstate"
+        ],
+        "summary": "Update chainstate handler.",
+        "operationId": "updateChainstate",
+        "responses": {
+          "201": {
+            "description": "Chainstate updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/chainstate/{height}": {
+      "get": {
+        "tags": [
+          "chainstate"
+        ],
+        "summary": "Get chainstate handler.",
+        "operationId": "getChainstate",
+        "parameters": [
+          {
+            "name": "height",
+            "in": "path",
+            "description": "Height of the blockchain data to receive.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chainstate retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
     "/deposit": {
       "get": {
         "tags": [
@@ -17,7 +142,7 @@
         "summary": "Get deposits handler.",
         "operationId": "getDeposits",
         "responses": {
-          "201": {
+          "200": {
             "description": "Deposits retrieved successfully",
             "content": {
               "application/json": {
@@ -138,7 +263,7 @@
           }
         ],
         "responses": {
-          "201": {
+          "200": {
             "description": "Deposits retrieved successfully",
             "content": {
               "application/json": {
@@ -196,7 +321,7 @@
           }
         ],
         "responses": {
-          "201": {
+          "200": {
             "description": "Deposit retrieved successfully",
             "content": {
               "application/json": {
@@ -241,6 +366,165 @@
                 "schema": {
                   "$ref": "#/components/schemas/HealthData"
                 }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/withdrawal": {
+      "get": {
+        "tags": [
+          "withdrawal"
+        ],
+        "summary": "Get withdrawals handler.",
+        "operationId": "getWithdrawals",
+        "responses": {
+          "200": {
+            "description": "Withdrawals retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "withdrawal"
+        ],
+        "summary": "Create withdrawal handler.",
+        "operationId": "createWithdrawal",
+        "responses": {
+          "201": {
+            "description": "Withdrawals updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "withdrawal"
+        ],
+        "summary": "Update withdrawals handler.",
+        "operationId": "updateWithdrawals",
+        "responses": {
+          "201": {
+            "description": "Withdrawals updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/withdrawal/{id}": {
+      "get": {
+        "tags": [
+          "withdrawal"
+        ],
+        "summary": "Get withdrawal handler.",
+        "operationId": "getWithdrawal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "id associated with the Withdrawal",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Withdrawal retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
