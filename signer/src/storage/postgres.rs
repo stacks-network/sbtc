@@ -404,7 +404,11 @@ impl super::DbRead for PgStore {
             model::WithdrawRequest,
             r#"
             WITH RECURSIVE extended_context_window AS (
-                SELECT block_hash, parent_hash, confirms, created_at, 1 AS depth
+                SELECT 
+                    block_hash
+                  , parent_hash
+                  , confirms
+                  , 1 AS depth
                 FROM sbtc_signer.bitcoin_blocks
                 WHERE block_hash = $1
                 UNION ALL
@@ -412,7 +416,6 @@ impl super::DbRead for PgStore {
                     parent.block_hash
                   , parent.parent_hash
                   , parent.confirms
-                  , parent.created_at
                   , last.depth + 1
                 FROM sbtc_signer.bitcoin_blocks parent
                 JOIN extended_context_window last ON parent.block_hash = last.parent_hash
@@ -430,7 +433,6 @@ impl super::DbRead for PgStore {
                     stacks_blocks.block_hash
                   , stacks_blocks.block_height
                   , stacks_blocks.parent_hash
-                  , stacks_blocks.created_at
                 FROM sbtc_signer.stacks_blocks stacks_blocks
                 WHERE stacks_blocks.block_hash = $2
                 UNION ALL
@@ -438,7 +440,6 @@ impl super::DbRead for PgStore {
                     parent.block_hash
                   , parent.block_height
                   , parent.parent_hash
-                  , parent.created_at
                 FROM sbtc_signer.stacks_blocks parent
                 JOIN StacksContext last
                         ON parent.block_hash = last.parent_hash
