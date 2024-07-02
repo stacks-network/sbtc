@@ -64,8 +64,11 @@ async fn should_store_decisions_for_pending_deposit_requests(pool: sqlx::PgPool)
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[sqlx::test]
-async fn should_store_decisions_for_pending_withdraw_requests(_pool: sqlx::PgPool) {
-    // TODO(246): Write test
+async fn should_store_decisions_for_pending_withdraw_requests(pool: sqlx::PgPool) {
+    test_environment(pool)
+        .await
+        .assert_should_store_decisions_for_pending_withdraw_requests()
+        .await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]

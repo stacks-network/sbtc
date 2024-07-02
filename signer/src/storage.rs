@@ -62,7 +62,7 @@ pub trait DbRead {
     fn get_pending_withdraw_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        stacks_context_window: usize,
+        stacks_context_window: i32,
     ) -> impl Future<Output = Result<Vec<model::WithdrawRequest>, Self::Error>> + Send;
 
     /// Get bitcoin blocks that include a particular transaction
