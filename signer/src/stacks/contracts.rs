@@ -1,6 +1,6 @@
 //! This module contains functionality for creating stacks transactions for
 //! sBTC contract calls.
-//! 
+//!
 //! Contains structs for the following contract calls:
 //! * [`CompleteDepositV1`]: Used for calling the complete-deposit-wrapper
 //!   function in the sbtc-deposit contract. This finalizes the deposit by
@@ -122,7 +122,7 @@ mod tests {
         let call = CompleteDepositV1 {
             outpoint: OutPoint::null(),
             amount: 15000,
-            recipient: StacksAddress::burn_address(true)
+            recipient: StacksAddress::burn_address(true),
         };
 
         let _ = call.as_contract_call(StacksAddress::burn_address(false));
