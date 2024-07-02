@@ -49,15 +49,40 @@ pub struct StacksTxPostConditions {
     pub post_conditions: Vec<TransactionPostCondition>,
 }
 
-/// A trait to ease construction of a StacksTransaction making sBTC related contract calls.
+/// A trait to ease construction of a StacksTransaction making sBTC related
+/// contract calls.
 pub trait AsContractCall {
+    /// The name of the clarity smart contract that relates to this struct.
+    fn contract_name() -> &'static str;
+    /// The specific function call that relates to this struct.
+    fn function_name() -> &'static str;
+    /// The arguments to the clarity function.
+    fn as_contract_args(&self) -> Vec<Value>;
     /// Converts this struct to a Stacks contract call. The deployer is the
     /// stacks address that deployed the contract.
-    fn as_contract_call(&self, deployer: StacksAddress) -> TransactionContractCall;
+    fn as_contract_call(&self, deployer: StacksAddress) -> TransactionContractCall {
+        TransactionContractCall {
+            address: deployer,
+            // The following From::from calls are more dangerous than they
+            // appear. Under the hood they call their TryFrom::try_from
+            // implementation and then unwrap them(!). We check that this
+            // is fine in our test.
+            function_name: ClarityName::from(Self::function_name()),
+            contract_name: ContractName::from(Self::contract_name()),
+            function_args: self.as_contract_args(),
+        }
+    }
     /// Any post-execution conditions that we'd like to enforce. The
     /// deployer corresponds to the principal in the Transaction
-    /// post-conditions, which is the address that sent the asset.
-    fn post_conditions(&self, deployer: StacksAddress) -> StacksTxPostConditions;
+    /// post-conditions, which is the address that sent the asset. The
+    /// default is that we do not enforce any conditions since we deployed
+    /// the contract.
+    fn post_conditions(&self, _: StacksAddress) -> StacksTxPostConditions {
+        StacksTxPostConditions {
+            post_condition_mode: TransactionPostConditionMode::Allow,
+            post_conditions: Vec::new(),
+        }
+    }
 }
 
 /// This struct is used to generate a properly formatted Stacks transaction
@@ -74,10 +99,13 @@ pub struct CompleteDepositV1 {
     pub recipient: StacksAddress,
 }
 
-impl CompleteDepositV1 {
-    const CONTRACT_NAME: &'static str = "sbtc-deposit";
-    const FUNCTION_NAME: &'static str = "complete-deposit-wrapper";
-
+impl AsContractCall for CompleteDepositV1 {
+    fn contract_name() -> &'static str {
+        "sbtc-deposit"
+    }
+    fn function_name() -> &'static str {
+        "complete-deposit-wrapper"
+    }
     /// Construct the input arguments to the complete-deposit-wrapper
     /// contract call.
     fn as_contract_args(&self) -> Vec<Value> {
@@ -91,31 +119,6 @@ impl CompleteDepositV1 {
             Value::UInt(self.amount as u128),
             Value::Principal(PrincipalData::Standard(principle)),
         ]
-    }
-}
-
-impl AsContractCall for CompleteDepositV1 {
-    /// Converts this struct to a Stacks Contract call
-    fn as_contract_call(&self, deployer: StacksAddress) -> TransactionContractCall {
-        TransactionContractCall {
-            address: deployer,
-            // The following From::from calls are more dangerous than they
-            // appear. Under the hood they call their TryFrom::try_from
-            // implementation and then unwrap them(!). We check that this
-            // is fine in our test.
-            function_name: ClarityName::from(Self::FUNCTION_NAME),
-            contract_name: ContractName::from(Self::CONTRACT_NAME),
-            function_args: self.as_contract_args(),
-        }
-    }
-
-    /// The post conditions for the transaction. We do not enforce any
-    /// conditions here, since we trust this contract (we deployed it).
-    fn post_conditions(&self, _: StacksAddress) -> StacksTxPostConditions {
-        StacksTxPostConditions {
-            post_condition_mode: TransactionPostConditionMode::Allow,
-            post_conditions: Vec::new(),
-        }
     }
 }
 
@@ -139,12 +142,13 @@ pub struct AcceptWithdrawalV1 {
     pub signer_bitmap: BitArray<[u32; 4]>,
 }
 
-impl AcceptWithdrawalV1 {
-    const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
-    const FUNCTION_NAME: &'static str = "accept-withdrawal-request";
-
-    /// Construct the input arguments to the accept-withdrawal-request
-    /// contract call.
+impl AsContractCall for AcceptWithdrawalV1 {
+    fn contract_name() -> &'static str {
+        "sbtc-withdrawal"
+    }
+    fn function_name() -> &'static str {
+        "accept-withdrawal-request"
+    }
     fn as_contract_args(&self) -> Vec<Value> {
         let txid_data = self.outpoint.txid.to_byte_array().to_vec();
         let txid = BuffData { data: txid_data };
@@ -157,31 +161,6 @@ impl AcceptWithdrawalV1 {
             Value::UInt(self.outpoint.vout as u128),
             Value::UInt(self.tx_fee as u128),
         ]
-    }
-}
-
-impl AsContractCall for AcceptWithdrawalV1 {
-    /// Converts this struct to a Stacks Contract call
-    fn as_contract_call(&self, deployer: StacksAddress) -> TransactionContractCall {
-        TransactionContractCall {
-            address: deployer,
-            // The following From::from calls are more dangerous than they
-            // appear. Under the hood they call their TryFrom::try_from
-            // implementation and then unwrap them(!). We check that this
-            // is fine in our test.
-            function_name: ClarityName::from(Self::FUNCTION_NAME),
-            contract_name: ContractName::from(Self::CONTRACT_NAME),
-            function_args: self.as_contract_args(),
-        }
-    }
-
-    /// The post conditions for the transaction. We do not enforce any
-    /// conditions here, since we trust this contract (we deployed it).
-    fn post_conditions(&self, _: StacksAddress) -> StacksTxPostConditions {
-        StacksTxPostConditions {
-            post_condition_mode: TransactionPostConditionMode::Allow,
-            post_conditions: Vec::new(),
-        }
     }
 }
 
@@ -200,42 +179,18 @@ pub struct RejectWithdrawalV1 {
     pub signer_bitmap: BitArray<[u32; 4]>,
 }
 
-impl RejectWithdrawalV1 {
-    const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
-    const FUNCTION_NAME: &'static str = "reject-withdrawal";
-
-    /// Construct the input arguments to the reject-withdrawal
-    /// contract call.
+impl AsContractCall for RejectWithdrawalV1 {
+    fn contract_name() -> &'static str {
+        "sbtc-withdrawal"
+    }
+    fn function_name() -> &'static str {
+        "reject-withdrawal"
+    }
     fn as_contract_args(&self) -> Vec<Value> {
         vec![
             Value::UInt(self.request_id as u128),
             Value::UInt(self.signer_bitmap.load()),
         ]
-    }
-}
-
-impl AsContractCall for RejectWithdrawalV1 {
-    /// Converts this struct to a Stacks Contract call
-    fn as_contract_call(&self, deployer: StacksAddress) -> TransactionContractCall {
-        TransactionContractCall {
-            address: deployer,
-            // The following From::from calls are more dangerous than they
-            // appear. Under the hood they call their TryFrom::try_from
-            // implementation and then unwrap them(!). We check that this
-            // is fine in our test.
-            function_name: ClarityName::from(Self::FUNCTION_NAME),
-            contract_name: ContractName::from(Self::CONTRACT_NAME),
-            function_args: self.as_contract_args(),
-        }
-    }
-
-    /// The post conditions for the transaction. We do not enforce any
-    /// conditions here, since we trust this contract (we deployed it).
-    fn post_conditions(&self, _: StacksAddress) -> StacksTxPostConditions {
-        StacksTxPostConditions {
-            post_condition_mode: TransactionPostConditionMode::Allow,
-            post_conditions: Vec::new(),
-        }
     }
 }
 
