@@ -53,9 +53,9 @@ pub struct StacksTxPostConditions {
 /// contract calls.
 pub trait AsContractCall {
     /// The name of the clarity smart contract that relates to this struct.
-    fn contract_name() -> &'static str;
+    const CONTRACT_NAME: &'static str;
     /// The specific function name that relates to this struct.
-    fn function_name() -> &'static str;
+    const FUNCTION_NAME: &'static str;
     /// The arguments to the clarity function.
     fn as_contract_args(&self) -> Vec<Value>;
     /// Convert this struct to a Stacks contract call. The deployer is the
@@ -67,8 +67,8 @@ pub trait AsContractCall {
             // appear. Under the hood they call their TryFrom::try_from
             // implementation and then unwrap them(!). We check that this
             // is fine in our test.
-            function_name: ClarityName::from(Self::function_name()),
-            contract_name: ContractName::from(Self::contract_name()),
+            function_name: ClarityName::from(Self::FUNCTION_NAME),
+            contract_name: ContractName::from(Self::CONTRACT_NAME),
             function_args: self.as_contract_args(),
         }
     }
@@ -100,12 +100,8 @@ pub struct CompleteDepositV1 {
 }
 
 impl AsContractCall for CompleteDepositV1 {
-    fn contract_name() -> &'static str {
-        "sbtc-deposit"
-    }
-    fn function_name() -> &'static str {
-        "complete-deposit-wrapper"
-    }
+    const CONTRACT_NAME: &'static str = "sbtc-deposit";
+    const FUNCTION_NAME: &'static str = "complete-deposit-wrapper";
     /// Construct the input arguments to the complete-deposit-wrapper
     /// contract call.
     fn as_contract_args(&self) -> Vec<Value> {
@@ -144,12 +140,9 @@ pub struct AcceptWithdrawalV1 {
 }
 
 impl AsContractCall for AcceptWithdrawalV1 {
-    fn contract_name() -> &'static str {
-        "sbtc-withdrawal"
-    }
-    fn function_name() -> &'static str {
-        "accept-withdrawal-request"
-    }
+    const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
+    const FUNCTION_NAME: &'static str = "accept-withdrawal-request";
+
     fn as_contract_args(&self) -> Vec<Value> {
         let txid_data = self.outpoint.txid.to_byte_array().to_vec();
         let txid = BuffData { data: txid_data };
@@ -181,12 +174,9 @@ pub struct RejectWithdrawalV1 {
 }
 
 impl AsContractCall for RejectWithdrawalV1 {
-    fn contract_name() -> &'static str {
-        "sbtc-withdrawal"
-    }
-    fn function_name() -> &'static str {
-        "reject-withdrawal"
-    }
+    const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
+    const FUNCTION_NAME: &'static str = "reject-withdrawal";
+
     fn as_contract_args(&self) -> Vec<Value> {
         vec![
             Value::UInt(self.request_id as u128),

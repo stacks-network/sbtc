@@ -362,14 +362,10 @@ mod tests {
     struct TestContractCall;
 
     impl AsContractCall for TestContractCall {
+        const CONTRACT_NAME: &'static str = "all-the-sbtc";
+        const FUNCTION_NAME: &'static str = "mint-it-all";
         fn as_contract_args(&self) -> Vec<Value> {
             Vec::new()
-        }
-        fn contract_name() -> &'static str {
-            "all-the-sbtc"
-        }
-        fn function_name() -> &'static str {
-            "mint-it-all"
         }
     }
 
