@@ -4,13 +4,11 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 /// Generic paginated query representation.
-#[derive(Serialize, Deserialize, Debug, ToSchema)]
+#[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PaginatedQuery<T> {
-    /// Next token for search.
-    #[serde(default)]
-    pub page: Option<T>,
+    /// Next token for the search.
+    pub next_token: Option<T>,
     /// Maximum number of results to show.
-    #[serde(default)]
     pub page_size: Option<u32>,
 }

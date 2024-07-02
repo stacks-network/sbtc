@@ -29,8 +29,36 @@ use utoipa::OpenApi;
     components(schemas(
         // TODO(271): Add request and response schemas.
 
+        // Deposit models.
+        api::models::deposit::Deposit,
+        api::models::deposit::DepositParameters,
+        api::models::deposit::DepositInfo,
+        api::models::deposit::requests::CreateDepositRequestBody,
+        api::models::deposit::requests::DepositUpdate,
+        api::models::deposit::requests::UpdateDepositsRequestBody,
+        api::models::deposit::responses::GetDepositResponse,
+        api::models::deposit::responses::CreateDepositResponse,
+        api::models::deposit::responses::GetDepositsForTransactionResponse,
+        api::models::deposit::responses::GetDepositsResponse,
+        api::models::deposit::responses::UpdateDepositsResponse,
+
+        // TODO(NAN): Add schema definitions for these types.
+
+        // API Primitives.
+        // api::models::common::Status,
+        // api::models::common::Fulfillment,
+        // api::models::common::Satoshis,
+        // api::models::common::StacksBlockHash,
+        // api::models::common::BlockHeight,
+        // api::models::common::BitcoinTransactionId,
+        // api::models::common::BitcoinTransactionOutputIndex,
+        // api::models::common::StacksTransactionId,
+        // api::models::common::BitcoinScript,
+        // api::models::common::StacksPrinciple,
+        // api::models::common::BitcoinAddress,
+
         // Health check datatypes.
-        api::models::responses::health::HealthData,
+        api::models::health::responses::HealthData,
         // Errors.
         common::error::ErrorResponse,
     ))
@@ -40,7 +68,7 @@ struct ApiDoc;
 fn main() {
 
     // Ensure that we rerun if the API changes or the build script changes.
-    println!("cargo:rerun-if-changed=../../../emily/handler/api/handlers");
+    println!("cargo:rerun-if-changed=../../../emily/handler/api");
     println!("cargo:rerun-if-changed=build.rs");
 
     let mut api_doc = ApiDoc::openapi();

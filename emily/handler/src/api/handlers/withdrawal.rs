@@ -45,7 +45,7 @@ pub fn get_withdrawal(
     )
 )]
 pub fn get_withdrawals(
-    _query: models::requests::PaginatedQuery<String>,
+    _query: models::common::requests::PaginatedQuery<String>,
     path: FullPath,
 ) -> impl warp::reply::Reply {
     Error::NotImplemented(path)
