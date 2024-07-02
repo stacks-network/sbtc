@@ -6,9 +6,9 @@ use warp::Filter;
 /// Chainstate routes.
 mod chainstate;
 /// Deposit routes.
-pub mod deposit;
+mod deposit;
 /// Health routes.
-pub mod health;
+mod health;
 /// Withdrawal routes.
 mod withdrawal;
 
