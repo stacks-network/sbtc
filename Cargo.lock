@@ -4060,6 +4060,7 @@ dependencies = [
  "bincode",
  "bitcoin 0.32.0",
  "bitcoincore-rpc",
+ "bitvec",
  "blocklist-api",
  "clap",
  "config 0.14.0",
