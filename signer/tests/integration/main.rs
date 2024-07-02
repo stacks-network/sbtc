@@ -1,4 +1,5 @@
 mod block_notifier;
+mod contracts;
 mod postgres;
 mod rbf;
 pub mod regtest;
