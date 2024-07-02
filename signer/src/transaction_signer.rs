@@ -87,7 +87,7 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker> {
     pub block_observer_notifications: tokio::sync::watch::Receiver<()>,
     /// Private key of the signer for network communication.
     pub signer_private_key: p256k1::scalar::Scalar,
-    /// How many blocks back from the chain tip the signer will look for requests.
+    /// How many bitcoin blocks back from the chain tip the signer will look for requests.
     pub context_window: usize,
 }
 
@@ -327,19 +327,20 @@ where
         signer_pub_key: &p256k1::ecdsa::PublicKey,
     ) -> Result<(), error::Error> {
         let txid = decision.txid.to_byte_array().to_vec();
-        let output_index = decision.output_index;
+        let output_index = decision
+            .output_index
+            .try_into()
+            .map_err(|_| error::Error::TypeConversion)?;
         let signer_pub_key = signer_pub_key.to_bytes().to_vec();
         let is_accepted = decision.accepted;
         let created_at = time::OffsetDateTime::now_utc();
 
         let signer_decision = model::DepositSigner {
             txid,
-            created_at,
-            output_index: output_index
-                .try_into()
-                .map_err(|_| error::Error::TypeConversion)?,
+            output_index,
             signer_pub_key,
             is_accepted,
+            created_at,
         };
 
         self.storage
@@ -355,7 +356,29 @@ where
         decision: &message::SignerWithdrawDecision,
         signer_pub_key: &p256k1::ecdsa::PublicKey,
     ) -> Result<(), error::Error> {
-        todo!(); // TODO(245): Implement
+        let request_id = decision
+            .request_id
+            .try_into()
+            .map_err(|_| error::Error::TypeConversion)?;
+
+        let block_hash = decision.block_hash.to_vec();
+        let signer_pub_key = signer_pub_key.to_bytes().to_vec();
+        let is_accepted = decision.accepted;
+        let created_at = time::OffsetDateTime::now_utc();
+
+        let signer_decision = model::WithdrawSigner {
+            request_id,
+            block_hash,
+            signer_pub_key,
+            is_accepted,
+            created_at,
+        };
+
+        self.storage
+            .write_withdraw_signer_decision(&signer_decision)
+            .await?;
+
+        Ok(())
     }
 }
 
@@ -390,7 +413,9 @@ mod tests {
 
     #[tokio::test]
     async fn should_store_decisions_for_pending_withdraw_requests() {
-        // TODO(245): Write test
+        test_environment()
+            .assert_should_store_decisions_for_pending_withdraw_requests()
+            .await;
     }
 
     #[tokio::test]

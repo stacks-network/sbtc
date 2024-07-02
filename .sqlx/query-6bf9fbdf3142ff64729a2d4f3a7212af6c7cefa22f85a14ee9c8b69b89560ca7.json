@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM sbtc_signer.bitcoin_blocks ORDER BY block_height DESC, block_hash DESC",
+  "query": "SELECT\n                block_hash\n              , block_height\n              , parent_hash\n              , created_at\n            FROM sbtc_signer.stacks_blocks\n            WHERE block_hash = $1;",
   "describe": {
     "columns": [
       {
@@ -20,25 +20,21 @@
       },
       {
         "ordinal": 3,
-        "name": "confirms",
-        "type_info": "Bytea"
-      },
-      {
-        "ordinal": 4,
         "name": "created_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Bytea"
+      ]
     },
     "nullable": [
       false,
       false,
       false,
-      true,
       false
     ]
   },
-  "hash": "39656bcc4375ff3ad21c2bd15c09afc703003626942b30592a59ed3dc5a53c37"
+  "hash": "6bf9fbdf3142ff64729a2d4f3a7212af6c7cefa22f85a14ee9c8b69b89560ca7"
 }

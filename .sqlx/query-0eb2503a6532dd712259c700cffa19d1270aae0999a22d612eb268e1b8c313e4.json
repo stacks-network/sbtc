@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM sbtc_signer.bitcoin_transactions WHERE txid = $1",
+  "query": "SELECT txid, block_hash FROM sbtc_signer.bitcoin_transactions WHERE txid = $1",
   "describe": {
     "columns": [
       {
@@ -24,5 +24,5 @@
       false
     ]
   },
-  "hash": "a1841847ee24a2c7b2087335d740901b8b50b384c13afc008224bddfa6df828c"
+  "hash": "0eb2503a6532dd712259c700cffa19d1270aae0999a22d612eb268e1b8c313e4"
 }

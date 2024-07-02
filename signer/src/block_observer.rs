@@ -219,7 +219,7 @@ where
                 .bip34_block_height()
                 .expect("Failed to get block height") as i64,
             parent_hash: block.header.prev_blockhash.to_byte_array().to_vec(),
-            confirms: None,
+            confirms: Vec::new(),
             created_at: time::OffsetDateTime::now_utc(),
         };
 

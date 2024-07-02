@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO sbtc_signer.deposit_requests\n              ( txid\n              , output_index\n              , spend_script\n              , reclaim_script\n              , recipient\n              , amount\n              , max_fee\n              , sender_addresses\n              , created_at\n              )\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Int4",
+        "Bytea",
+        "Bytea",
+        "Text",
+        "Int8",
+        "Int8",
+        "TextArray",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4fb64688cf1d2f19ee77284e573e90c4e0a98a5feaaa5494f9be900fa5711a30"
+}

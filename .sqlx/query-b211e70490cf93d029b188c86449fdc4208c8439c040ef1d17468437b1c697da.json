@@ -1,17 +1,17 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM sbtc_signer.deposit_signers WHERE txid = $1 AND output_index = $2",
+  "query": "SELECT\n                request_id\n              , block_hash\n              , signer_pub_key\n              , is_accepted\n              , created_at\n            FROM sbtc_signer.withdraw_signers\n            WHERE request_id = $1 AND block_hash = $2",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "txid",
-        "type_info": "Bytea"
+        "name": "request_id",
+        "type_info": "Int4"
       },
       {
         "ordinal": 1,
-        "name": "output_index",
-        "type_info": "Int4"
+        "name": "block_hash",
+        "type_info": "Bytea"
       },
       {
         "ordinal": 2,
@@ -31,8 +31,8 @@
     ],
     "parameters": {
       "Left": [
-        "Bytea",
-        "Int4"
+        "Int4",
+        "Bytea"
       ]
     },
     "nullable": [
@@ -43,5 +43,5 @@
       false
     ]
   },
-  "hash": "3b8fd67b83409538f2caa03fbed11ebdd058645ad76f8eb25ac0a93f684ebac2"
+  "hash": "b211e70490cf93d029b188c86449fdc4208c8439c040ef1d17468437b1c697da"
 }
