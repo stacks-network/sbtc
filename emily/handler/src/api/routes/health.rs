@@ -9,7 +9,7 @@ pub fn routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejecti
 }
 
 /// Get health endpoint.
-pub fn get_health() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn get_health() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path("health")
         .and(warp::get())
         // Only get full path because the handler is unimplemented.

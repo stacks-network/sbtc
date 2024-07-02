@@ -16,7 +16,7 @@ use super::models;
     tag = "deposit",
     responses(
         // TODO(271): Add success body.
-        (status = 201, description = "Deposit retrieved successfully", body = serde_json::Value),
+        (status = 200, description = "Deposit retrieved successfully", body = serde_json::Value),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),
         (status = 405, description = "Method not allowed"),
@@ -42,7 +42,7 @@ pub fn get_deposit(
     tag = "deposit",
     responses(
         // TODO(271): Add success body.
-        (status = 201, description = "Deposits retrieved successfully", body = serde_json::Value),
+        (status = 200, description = "Deposits retrieved successfully", body = serde_json::Value),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),
         (status = 405, description = "Method not allowed"),
@@ -65,7 +65,7 @@ pub fn get_deposits_for_transaction(
     tag = "deposit",
     responses(
         // TODO(271): Add success body.
-        (status = 201, description = "Deposits retrieved successfully", body = serde_json::Value),
+        (status = 200, description = "Deposits retrieved successfully", body = serde_json::Value),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),
         (status = 405, description = "Method not allowed"),

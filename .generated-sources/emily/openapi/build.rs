@@ -16,12 +16,18 @@ use utoipa::OpenApi;
         api::handlers::deposit::get_deposits,
         api::handlers::deposit::create_deposit,
         api::handlers::deposit::update_deposits,
-        // TODO: https://github.com/stacks-network/sbtc/issues/272
-        // Add withdrawal and chainstate endpoints.
+        // Withdrawal endpoints.
+        api::handlers::withdrawal::get_withdrawal,
+        api::handlers::withdrawal::get_withdrawals,
+        api::handlers::withdrawal::create_withdrawal,
+        api::handlers::withdrawal::update_withdrawals,
+        // Chainstate endpoints.
+        api::handlers::chainstate::get_chainstate,
+        api::handlers::chainstate::set_chainstate,
+        api::handlers::chainstate::update_chainstate,
     ),
     components(schemas(
-        // TODO: https://github.com/stacks-network/sbtc/issues/271
-        // Add request and response schemas.
+        // TODO(271): Add request and response schemas.
 
         // Health check datatypes.
         api::models::responses::health::HealthData,
@@ -34,15 +40,13 @@ struct ApiDoc;
 fn main() {
 
     // Ensure that we rerun if the API changes or the build script changes.
-    println!("cargo:rerun-if-changed=../../../emily/handler/common/mod.rs");
-    println!("cargo:rerun-if-changed=../../../emily/handler/common/handlers.rs");
+    println!("cargo:rerun-if-changed=../../../emily/handler/api/handlers");
     println!("cargo:rerun-if-changed=build.rs");
 
     let mut api_doc = ApiDoc::openapi();
     let new_extensions: HashMap<String, serde_json::Value> = new_operation_extensions();
 
-    // TODO: https://github.com/stacks-network/sbtc/issues/269
-    // Change Emily API Lambda Integrations to use cdk constructs if possible instead of specification
+    // TODO(269): Change Emily API Lambda Integrations to use cdk constructs if possible instead of specification
     // alteration.
     //
     // Add AWS extension to openapi specification so AWS CDK can attach the appropriate lambda endpoint.
