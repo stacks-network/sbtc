@@ -54,11 +54,11 @@ pub struct StacksTxPostConditions {
 pub trait AsContractCall {
     /// The name of the clarity smart contract that relates to this struct.
     fn contract_name() -> &'static str;
-    /// The specific function call that relates to this struct.
+    /// The specific function name that relates to this struct.
     fn function_name() -> &'static str;
     /// The arguments to the clarity function.
     fn as_contract_args(&self) -> Vec<Value>;
-    /// Converts this struct to a Stacks contract call. The deployer is the
+    /// Convert this struct to a Stacks contract call. The deployer is the
     /// stacks address that deployed the contract.
     fn as_contract_call(&self, deployer: StacksAddress) -> TransactionContractCall {
         TransactionContractCall {
@@ -75,8 +75,8 @@ pub trait AsContractCall {
     /// Any post-execution conditions that we'd like to enforce. The
     /// deployer corresponds to the principal in the Transaction
     /// post-conditions, which is the address that sent the asset. The
-    /// default is that we do not enforce any conditions since we deployed
-    /// the contract.
+    /// default is that we do not enforce any conditions since we usually
+    /// deployed the contract.
     fn post_conditions(&self, _: StacksAddress) -> StacksTxPostConditions {
         StacksTxPostConditions {
             post_condition_mode: TransactionPostConditionMode::Allow,
