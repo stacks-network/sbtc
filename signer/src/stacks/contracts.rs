@@ -134,7 +134,8 @@ pub struct AcceptWithdrawalV1 {
     /// The outpoint of the bitcoin UTXO that was spent to fulfill the
     /// withdrawal request.
     pub outpoint: OutPoint,
-    /// The fee that was spent to the bitcoin miner.
+    /// The fee that was spent to the bitcoin miner when fulfilling the
+    /// withdrawal request.
     pub tx_fee: u64,
     /// A bitmap of how the signers voted. This structure supports up to
     /// 128 distinct signers. Here, we assume that a 1 (or true) implies
