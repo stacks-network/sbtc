@@ -142,7 +142,7 @@
         "summary": "Get deposits handler.",
         "operationId": "getDeposits",
         "responses": {
-          "201": {
+          "200": {
             "description": "Deposits retrieved successfully",
             "content": {
               "application/json": {
@@ -263,7 +263,7 @@
           }
         ],
         "responses": {
-          "201": {
+          "200": {
             "description": "Deposits retrieved successfully",
             "content": {
               "application/json": {
@@ -321,7 +321,7 @@
           }
         ],
         "responses": {
-          "201": {
+          "200": {
             "description": "Deposit retrieved successfully",
             "content": {
               "application/json": {

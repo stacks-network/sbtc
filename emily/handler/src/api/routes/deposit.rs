@@ -13,7 +13,7 @@ pub fn routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejecti
 }
 
 /// Get deposit endpoint.
-pub fn get_deposit() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn get_deposit() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("deposit" / String / u16)
         .and(warp::get())
         // Only get full path because the handler is unimplemented.
@@ -21,8 +21,8 @@ pub fn get_deposit() -> impl Filter<Extract = impl warp::Reply, Error = warp::Re
         .map(handlers::deposit::get_deposit)
 }
 
-/// Get deposits endpoint.
-pub fn get_deposits_for_transaction() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+/// Get deposits for transaction endpoint.
+fn get_deposits_for_transaction() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("deposit" / String)
         .and(warp::get())
         .and(warp::query())
@@ -32,7 +32,7 @@ pub fn get_deposits_for_transaction() -> impl Filter<Extract = impl warp::Reply,
 }
 
 /// Get deposits endpoint.
-pub fn get_deposits() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn get_deposits() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("deposit")
         .and(warp::get())
         .and(warp::query())
@@ -41,8 +41,8 @@ pub fn get_deposits() -> impl Filter<Extract = impl warp::Reply, Error = warp::R
         .map(handlers::deposit::get_deposits)
 }
 
-/// Create deposits endpoint.
-pub fn create_deposit() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+/// Create deposit endpoint.
+fn create_deposit() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("deposit")
         .and(warp::post())
         .and(warp::query())
@@ -52,7 +52,7 @@ pub fn create_deposit() -> impl Filter<Extract = impl warp::Reply, Error = warp:
 }
 
 /// Update deposits endpoint.
-pub fn update_deposits() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn update_deposits() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("deposit")
         .and(warp::post())
         .and(warp::body::json())
