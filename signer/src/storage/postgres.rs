@@ -198,23 +198,15 @@ impl PgStore {
         sqlx::query_as!(
             model::StacksBlock,
             r#"
-            WITH confirmed_by_chain_tip AS (
-                SELECT
-                    stacks_blocks.block_hash
-                  , stacks_blocks.block_height
-                  , stacks_blocks.parent_hash
-                  , stacks_blocks.created_at
-                FROM sbtc_signer.stacks_blocks stacks_blocks
-                JOIN sbtc_signer.bitcoin_blocks bitcoin_blocks
-                    ON bitcoin_blocks.confirms @> ARRAY[stacks_blocks.block_hash]
-                WHERE bitcoin_blocks.block_hash = $1
-            )
-            SELECT
-                block_hash
-              , block_height
-              , parent_hash
-              , created_at
-            FROM confirmed_by_chain_tip
+             SELECT
+                 stacks_blocks.block_hash
+               , stacks_blocks.block_height
+               , stacks_blocks.parent_hash
+               , stacks_blocks.created_at
+             FROM sbtc_signer.stacks_blocks stacks_blocks
+             JOIN sbtc_signer.bitcoin_blocks bitcoin_blocks
+                 ON bitcoin_blocks.confirms @> ARRAY[stacks_blocks.block_hash]
+             WHERE bitcoin_blocks.block_hash = $1
             ORDER BY block_height DESC, block_hash DESC
             LIMIT 1;
             "#,
