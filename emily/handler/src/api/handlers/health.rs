@@ -10,8 +10,7 @@ use warp::filters::path::FullPath;
     path = "/health",
     tag = "health",
     responses(
-        // TODO: https://github.com/stacks-network/sbtc/issues/271
-        // Add success body.
+        // TODO(271): Add success body.
         (status = 200, description = "Successfully retrieved health data.", body = HealthData),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),

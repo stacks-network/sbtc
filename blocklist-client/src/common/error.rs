@@ -7,7 +7,6 @@ use warp::{reject::Reject, reply::Reply};
 
 /// Errors occurring from Blocklist client's API calls to risk client and request handling
 #[derive(thiserror::Error, Debug)]
-#[allow(dead_code)]
 pub enum Error {
     /// The request was unacceptable. This may refer to a missing or improperly formatted parameter
     /// or request body property, or non-valid JSON

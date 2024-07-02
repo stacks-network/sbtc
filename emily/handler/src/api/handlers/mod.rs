@@ -1,4 +1,4 @@
-//! Handlers for the blocklist client API
+//! Handlers for the emily API
 
 use crate::common::error::ErrorResponse;
 use super::models;
@@ -13,8 +13,7 @@ pub mod deposit;
 pub mod health;
 
 /// Central error handler for Warp rejections, converting them to appropriate HTTP responses.
-/// TODO: https://github.com/stacks-network/sbtc/issues/131
-/// Alter handler for Emily API.
+/// TODO(131): Alter handler for Emily API.
 pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
     if err.is_not_found() {
         let json = warp::reply::json(&ErrorResponse {

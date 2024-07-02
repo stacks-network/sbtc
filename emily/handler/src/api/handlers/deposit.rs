@@ -15,8 +15,7 @@ use super::models;
     ),
     tag = "deposit",
     responses(
-        // TODO: https://github.com/stacks-network/sbtc/issues/271
-        // Add success body.
+        // TODO(271): Add success body.
         (status = 201, description = "Deposit retrieved successfully", body = serde_json::Value),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),
@@ -42,8 +41,7 @@ pub fn get_deposit(
     ),
     tag = "deposit",
     responses(
-        // TODO: https://github.com/stacks-network/sbtc/issues/271
-        // Add success body.
+        // TODO(271): Add success body.
         (status = 201, description = "Deposits retrieved successfully", body = serde_json::Value),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),
@@ -66,8 +64,7 @@ pub fn get_deposits_for_transaction(
     path = "/deposit",
     tag = "deposit",
     responses(
-        // TODO: https://github.com/stacks-network/sbtc/issues/271
-        // Add success body.
+        // TODO(271): Add success body.
         (status = 201, description = "Deposits retrieved successfully", body = serde_json::Value),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),
@@ -89,8 +86,7 @@ pub fn get_deposits(
     path = "/deposit",
     tag = "deposit",
     responses(
-        // TODO: https://github.com/stacks-network/sbtc/issues/271
-        // Add success body.
+        // TODO(271): Add success body.
         (status = 201, description = "Deposit created successfully", body = serde_json::Value),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),
@@ -112,8 +108,7 @@ pub fn create_deposit(
     path = "/deposit",
     tag = "deposit",
     responses(
-        // TODO: https://github.com/stacks-network/sbtc/issues/271
-        // Add success body.
+        // TODO(271): Add success body.
         (status = 201, description = "Deposits updated successfully", body = serde_json::Value),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),
