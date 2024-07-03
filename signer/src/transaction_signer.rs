@@ -217,10 +217,11 @@ where
             .await?
             .ok_or(Error::NoChainTip)?;
 
-        if self
+        let is_valid_sign_request = self
             .is_valid_bitcoin_transaction_sign_request(request, &bitcoin_chain_tip)
-            .await?
-        {
+            .await?;
+
+        if is_valid_sign_request {
             let msg = message::BitcoinTransactionSignAck {
                 txid: request.tx.compute_txid(),
             };
