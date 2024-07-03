@@ -1,5 +1,7 @@
 //! Test utilities for the transaction signer
 
+use std::collections::HashMap;
+
 use crate::blocklist_client;
 use crate::error;
 use crate::message;
@@ -48,6 +50,7 @@ where
                 block_observer_notifications,
                 signer_private_key,
                 context_window,
+                signing_rounds: HashMap::new(),
             },
             notification_tx,
             storage,

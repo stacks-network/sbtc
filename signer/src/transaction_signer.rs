@@ -440,7 +440,10 @@ where
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<SignerStateMachine, error::Error> {
-        let maybe_encrypted_shares = self.storage.get_encrypted_dkg_shares(bitcoin_chain_tip).await?
+        let maybe_encrypted_shares = self
+            .storage
+            .get_encrypted_dkg_shares(bitcoin_chain_tip)
+            .await?;
         todo!(); // TODO
     }
 
