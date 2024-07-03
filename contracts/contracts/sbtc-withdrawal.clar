@@ -153,7 +153,7 @@
             (unwrap! (accept-withdrawal-request (get request-id withdrawal) (unwrap-panic current-bitcoin-txid) current-signer-bitmap (unwrap-panic current-output-index) (unwrap-panic current-fee)) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
           )
           ;; rejected
-          (unwrap! (reject-withdrawal (get request-id withdrawal) current-signer-bitmap) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
+          (unwrap! (reject-withdrawal-request (get request-id withdrawal) current-signer-bitmap) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
         )
         (ok (+ index u1))
       )

@@ -1618,8 +1618,8 @@ export const contracts = {
         ],
         Response<bigint, bigint>
       >,
-      rejectWithdrawal: {
-        name: "reject-withdrawal",
+      rejectWithdrawalRequest: {
+        name: "reject-withdrawal-request",
         access: "public",
         args: [
           { name: "request-id", type: "uint128" },
