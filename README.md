@@ -52,7 +52,6 @@ echo "\n--- sBTC tool versions ---" \
     && echo "pnpm $(pnpm --version)" \
     && echo "smithy $(smithy --version)" \
     && make --version | head -n 1 \
-    && java --version | head -n 1
 ```
 
 Below is the output on a machine that is able to build and run all the sources and tests.
@@ -64,7 +63,6 @@ cargo-lambda 1.2.1 (12f9b61 2024-04-05Z)
 pnpm 8.15.4
 smithy 1.47.0
 GNU Make 3.81
-openjdk 21.0.2 2024-01-16
 ```
 
 ### Building
