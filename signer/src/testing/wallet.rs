@@ -1,14 +1,9 @@
 //! Helper module for constructing the signers multi-sig wallet.
 //!
 
-use blockstack_lib::chainstate::stacks::StacksTransaction;
-use blockstack_lib::chainstate::stacks::TransactionAnchorMode;
-use blockstack_lib::chainstate::stacks::TransactionAuth;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::chainstate::stacks::TransactionPostConditionMode;
 use blockstack_lib::chainstate::stacks::TransactionSmartContract;
-use blockstack_lib::chainstate::stacks::TransactionSpendingCondition;
-use blockstack_lib::chainstate::stacks::TransactionVersion;
 use blockstack_lib::clarity::vm::ContractName;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::util::secp256k1::Secp256k1PublicKey;
