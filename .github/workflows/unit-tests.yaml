@@ -27,11 +27,6 @@ jobs:
           node-version: 22.1.0
           cache: "pnpm"
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: "corretto"
-          java-version: "21"
-
       - uses: arduino/setup-protoc@v3
         with:
           version: "25.3"
