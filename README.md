@@ -36,7 +36,6 @@ The following are the developer tools that you should install on your local mach
 - **[pnpm](https://pnpm.io)** - [Installation guide](https://pnpm.io/installation) - Manages node packages
 - **[Smithy](https://smithy.io/2.0/index.html)** - [Installation Guide](https://smithy.io/2.0/guides/smithy-cli/cli_installation.html) - Generates OpenAPI templates
 - **[Make](https://www.gnu.org/software/make/)** - Development task runner; natively present on nearly every system.
-- **[Java 21](https://www.oracle.com/java/)** - [Installation Guide](https://www.oracle.com/java/technologies/downloads/) - Required for OpenAPI Generator
 - **[Docker](https://docs.docker.com/manuals/)** - [Installation Guide](https://docs.docker.com/desktop/). This is used for running integration tests.
 - **[protoc](https://github.com/protocolbuffers/protobuf)** - [Installation Guide](https://grpc.io/docs/protoc-installation/). Compiles protobuf files.
 - **[sqlx-cli](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli)** - [Installation Guide](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli#install) - Needed only for developing, and only when modifying queries or adding new ones.
@@ -53,7 +52,6 @@ echo "\n--- sBTC tool versions ---" \
     && echo "pnpm $(pnpm --version)" \
     && echo "smithy $(smithy --version)" \
     && make --version | head -n 1 \
-    && java --version | head -n 1
 ```
 
 Below is the output on a machine that is able to build and run all the sources and tests.
@@ -65,7 +63,6 @@ cargo-lambda 1.2.1 (12f9b61 2024-04-05Z)
 pnpm 8.15.4
 smithy 1.47.0
 GNU Make 3.81
-openjdk 21.0.2 2024-01-16
 ```
 
 ### Building

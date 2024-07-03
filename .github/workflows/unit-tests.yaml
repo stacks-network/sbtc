@@ -19,18 +19,13 @@ jobs:
 
       - uses: pnpm/action-setup@v2
         with:
-          version: 9.0.6
+          version: 9.1.0
 
       - name: Set Node Version
         uses: actions/setup-node@v3
         with:
           node-version: 22.1.0
           cache: "pnpm"
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: "corretto"
-          java-version: "21"
 
       - uses: arduino/setup-protoc@v3
         with:
