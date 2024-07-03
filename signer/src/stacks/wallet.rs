@@ -347,10 +347,7 @@ fn from_secp256k1_recoverable(sig: &RecoverableSignature) -> MessageSignature {
 
 #[cfg(test)]
 mod tests {
-    use blockstack_lib::chainstate::stacks::TransactionContractCall;
-    use blockstack_lib::chainstate::stacks::TransactionPostConditionMode;
-    use blockstack_lib::clarity::vm::ClarityName;
-    use blockstack_lib::clarity::vm::ContractName;
+    use blockstack_lib::clarity::vm::Value;
     use rand::rngs::OsRng;
     use rand::seq::SliceRandom;
     use secp256k1::Keypair;
@@ -358,7 +355,6 @@ mod tests {
     use test_case::test_case;
 
     use super::*;
-    use crate::stacks::contracts::*;
 
     // This is the transaction fee. It doesn't matter what value we choose.
     const TX_FEE: u64 = 25;
@@ -366,19 +362,10 @@ mod tests {
     struct TestContractCall;
 
     impl AsContractCall for TestContractCall {
-        fn as_contract_call(&self, deployer: StacksAddress) -> TransactionContractCall {
-            TransactionContractCall {
-                address: deployer,
-                contract_name: ContractName::from("all-the-sbtc"),
-                function_name: ClarityName::from("mint-it-all"),
-                function_args: Vec::new(),
-            }
-        }
-        fn post_conditions(&self, _: StacksAddress) -> StacksTxPostConditions {
-            StacksTxPostConditions {
-                post_condition_mode: TransactionPostConditionMode::Allow,
-                post_conditions: Vec::new(),
-            }
+        const CONTRACT_NAME: &'static str = "all-the-sbtc";
+        const FUNCTION_NAME: &'static str = "mint-it-all";
+        fn as_contract_args(&self) -> Vec<Value> {
+            Vec::new()
         }
     }
 
