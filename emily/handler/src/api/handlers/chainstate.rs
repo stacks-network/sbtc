@@ -1,9 +1,10 @@
 //! Handlers for chainstate endpoints.
 use warp::reply::{json, with_status};
-
-use crate::api::models::chainstate::requests::*;
-use crate::api::models::chainstate::responses::*;
-use crate::api::models::common::BlockHeight;
+use crate::api::models::{
+    chainstate::{requests::{SetChainstateRequestBody, UpdateChainstateRequestBody},
+    responses::{GetChainstateResponse, SetChainstateResponse, UpdateChainstateResponse}},
+    common::BlockHeight
+};
 use warp::http::StatusCode;
 
 /// Get chainstate handler.

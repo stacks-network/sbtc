@@ -9,7 +9,7 @@ pub mod requests;
 // Primitives ------------------------------------------------------------------
 
 /// Type used to represent satoshis.
-pub type Satoshis = u128;
+pub type Satoshis = u64;
 /// Type used to represent a block hash.
 pub type StacksBlockHash = String;
 /// Type used to represent a block height.
@@ -67,7 +67,7 @@ pub struct Fulfillment {
     /// operation that corresponds to the fulfillment of this specific operation.
     pub bitcoin_tx_index: BitcoinTransactionOutputIndex,
     /// Stacks transaction Id that fulfilled this operation.
-    pub txid: StacksTransactionId,
+    pub stacks_txid: StacksTransactionId,
     /// Bitcoin block hash of the block that contains the bitcoin transaction that fulfilled
     /// this transaction.
     pub bitcoin_block_hash: StacksBlockHash,

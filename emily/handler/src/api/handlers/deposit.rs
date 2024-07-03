@@ -1,10 +1,13 @@
 //! Handlers for Deposit endpoints.
 use warp::reply::{json, with_status};
 
-use crate::api::models::common::*;
-use crate::api::models::deposit::requests::*;
-use crate::api::models::deposit::responses::*;
 use warp::http::StatusCode;
+
+use crate::api::models::{
+    common::{BitcoinTransactionId, BitcoinTransactionOutputIndex},
+    deposit::requests::{CreateDepositRequestBody, GetDepositsForTransactionQuery, GetDepositsQuery, UpdateDepositsRequestBody},
+    deposit::responses::{CreateDepositResponse, GetDepositResponse, GetDepositsForTransactionResponse, GetDepositsResponse, UpdateDepositsResponse},
+};
 
 /// Get deposit handler.
 #[utoipa::path(

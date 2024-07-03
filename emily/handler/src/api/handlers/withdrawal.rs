@@ -1,10 +1,12 @@
 //! Handlers for withdrawal endpoints.
 use warp::reply::{json, with_status};
 
-use crate::api::models::withdrawal::requests::*;
-use crate::api::models::withdrawal::responses::*;
-use crate::api::models::withdrawal::WithdrawalId;
 use warp::http::StatusCode;
+use crate::api::models::withdrawal::{
+    WithdrawalId,
+    requests::{CreateWithdrawalRequestBody, GetWithdrawalsQuery, UpdateWithdrawalsRequestBody},
+    responses::{CreateWithdrawalResponse, GetWithdrawalResponse, GetWithdrawalsResponse, UpdateWithdrawalsResponse},
+};
 
 /// Get withdrawal handler.
 #[utoipa::path(
