@@ -157,6 +157,7 @@
 )
 
 ;; Complete withdrawal request
+;; #[allow(unchecked_data)]
 (define-public (complete-withdrawal
     (request-id uint) 
     (status bool)

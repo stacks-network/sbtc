@@ -619,5 +619,4 @@ describe("Complete multiple withdrawals", () => {
     );
     expect(receipt.value).toEqual(2n);
   });
-  
 })

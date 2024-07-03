@@ -126,6 +126,7 @@
   )
 )
 
+;; #[allow(unchecked_data)]
 (define-private (complete-individual-withdrawal-helper (withdrawal 
                                                         {request-id: uint, 
                                                         status: bool, 
