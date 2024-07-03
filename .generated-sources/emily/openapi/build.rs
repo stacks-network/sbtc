@@ -27,8 +27,6 @@ use utoipa::OpenApi;
         api::handlers::chainstate::update_chainstate,
     ),
     components(schemas(
-        // TODO(271): Add request and response schemas.
-
         // Chainstate models.
         api::models::chainstate::Chainstate,
         api::models::chainstate::requests::SetChainstateRequestBody,
@@ -53,8 +51,7 @@ use utoipa::OpenApi;
         // Withdrawal Models.
         api::models::withdrawal::Withdrawal,
         api::models::withdrawal::WithdrawalInfo,
-        // TODO(NAN): Add schemas for Aliased types.
-        // api::models::withdrawal::WithdrawalId,
+        // api::models::withdrawal::WithdrawalId, // TODO(283): Add schemas for Aliased types.
         api::models::withdrawal::WithdrawalParameters,
         api::models::withdrawal::requests::CreateWithdrawalRequestBody,
         api::models::withdrawal::requests::WithdrawalUpdate,
@@ -63,8 +60,8 @@ use utoipa::OpenApi;
         api::models::withdrawal::responses::CreateWithdrawalResponse,
         api::models::withdrawal::responses::GetWithdrawalsResponse,
         api::models::withdrawal::responses::UpdateWithdrawalsResponse,
-        // TODO(NAN): Add schemas for Aliased types.
 
+        // TODO(283): Add schemas for Aliased types.
         // API Primitives.
         // api::models::common::Status,
         // api::models::common::Fulfillment,
