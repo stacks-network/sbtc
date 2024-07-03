@@ -16,12 +16,24 @@
         ],
         "summary": "Set chainstate handler.",
         "operationId": "setChainstate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetChainstateRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "Chainstate updated successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SetChainstateResponse"
+                }
               }
             }
           },
@@ -52,12 +64,24 @@
         ],
         "summary": "Update chainstate handler.",
         "operationId": "updateChainstate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateChainstateRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "Chainstate updated successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateChainstateResponse"
+                }
               }
             }
           },
@@ -108,7 +132,9 @@
             "description": "Chainstate retrieved successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GetChainstateResponse"
+                }
               }
             }
           },
@@ -669,6 +695,22 @@
   },
   "components": {
     "schemas": {
+      "Chainstate": {
+        "type": "object",
+        "description": "Deposit.",
+        "required": [
+          "blockHeight",
+          "blockHash"
+        ],
+        "properties": {
+          "blockHash": {
+            "$ref": "#/components/schemas/StacksBlockHash"
+          },
+          "blockHeight": {
+            "$ref": "#/components/schemas/BlockHeight"
+          }
+        }
+      },
       "CreateDepositRequestBody": {
         "type": "object",
         "description": "Request structure for create deposit request.",

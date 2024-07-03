@@ -29,6 +29,14 @@ use utoipa::OpenApi;
     components(schemas(
         // TODO(271): Add request and response schemas.
 
+        // Chainstate models.
+        api::models::chainstate::Chainstate,
+        api::models::chainstate::requests::SetChainstateRequestBody,
+        api::models::chainstate::requests::UpdateChainstateRequestBody,
+        api::models::chainstate::responses::GetChainstateResponse,
+        api::models::chainstate::responses::SetChainstateResponse,
+        api::models::chainstate::responses::UpdateChainstateResponse,
+
         // Deposit models.
         api::models::deposit::Deposit,
         api::models::deposit::DepositParameters,

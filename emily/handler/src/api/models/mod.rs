@@ -1,5 +1,7 @@
 //! This module contains the models used within Emily API endpoint interactions.
 
+/// Api structures for chainstate.
+pub mod chainstate;
 /// Common API structures.
 pub mod common;
 /// Api structures for deposits.
