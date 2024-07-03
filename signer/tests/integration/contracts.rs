@@ -12,26 +12,22 @@ use blockstack_lib::clarity::vm::ContractName;
 use blockstack_lib::core::CHAIN_ID_TESTNET;
 use blockstack_lib::util_lib::strings::StacksString;
 
+use secp256k1::ecdsa::RecoverableSignature;
+use secp256k1::Keypair;
+use signer::stacks::contracts::AsTxPayload;
+use signer::stacks::wallet::sign_ecdsa;
+use signer::stacks::wallet::MultisigTx;
 use signer::stacks::wallet::SignerStxState;
+use signer::testing::wallet;
+use signer::testing::wallet::AsSmartContract;
+use signer::testing::wallet::SmartContract;
 
 pub const DEPOSIT: &str = std::include_str!("../../../contracts/contracts/sbtc-deposit.clar");
 pub const REGISTRY: &str = std::include_str!("../../../contracts/contracts/sbtc-registry.clar");
 pub const TOKEN: &str = std::include_str!("../../../contracts/contracts/sbtc-token.clar");
 pub const WITHDRAWAL: &str = std::include_str!("../../../contracts/contracts/sbtc-withdrawal.clar");
 
-pub trait AsSmartContract {
-    /// The name of the clarity smart contract that relates to this struct.
-    const CONTRACT_NAME: &'static str;
-    /// The specific function name that relates to this struct.
-    const CONTRACT_BODY: &'static str;
-    /// Convert this struct to a Stacks contract deployment.
-    fn as_smart_contract(&self) -> TransactionSmartContract {
-        TransactionSmartContract {
-            name: ContractName::from(Self::CONTRACT_NAME),
-            code_body: StacksString::from_str(Self::CONTRACT_BODY).unwrap(),
-        }
-    }
-}
+const TX_FEE: u64 = 150000;
 
 pub fn new_smart_contract<T>(item: T, state: &SignerStxState, tx_fee: u64) -> StacksTransaction
 where
@@ -51,8 +47,55 @@ where
     }
 }
 
+pub struct SbtcTokenContract;
+
+impl AsSmartContract for SbtcTokenContract {
+    const CONTRACT_BODY: &'static str = TOKEN;
+    const CONTRACT_NAME: &'static str = "sbtc-token";
+}
+
+pub async fn deploy_smart_contract<T>(contract: T, state: &SignerStxState, keys: [Keypair; 3])
+where
+    T: AsTxPayload,
+{
+    let mut unsigned = MultisigTx::new_tx(contract, &state, TX_FEE);
+
+    let signatures: Vec<RecoverableSignature> = keys
+        .iter()
+        .map(|kp| sign_ecdsa(unsigned.tx(), &kp.secret_key()))
+        .collect();
+
+    // This only fails when we are given an invalid signature.
+    for signature in signatures {
+        unsigned.add_signature(signature).unwrap();
+    }
+
+    let tx = unsigned.finalize_transaction();
+}
+
 pub fn deploy_smart_contracts() {
     static SBTC_TOKEN_DEPLOYMENT: OnceLock<bool> = OnceLock::new();
+    let (signer_wallet, key_pairs) = wallet::generate_wallet();
+    let deployer = signer_wallet.address();
+    let state = SignerStxState::new(signer_wallet, 0, deployer);
+
+    SBTC_TOKEN_DEPLOYMENT.get_or_init(|| {
+        let contract = SmartContract(SbtcTokenContract);
+        let mut unsigned = MultisigTx::new_tx(contract, &state, TX_FEE);
+
+        let signatures: Vec<RecoverableSignature> = key_pairs
+            .iter()
+            .map(|kp| sign_ecdsa(unsigned.tx(), &kp.secret_key()))
+            .collect();
+
+        // This only fails when we are given an invalid signature.
+        for signature in signatures {
+            unsigned.add_signature(signature).unwrap();
+        }
+
+        let tx = unsigned.finalize_transaction();
+        true
+    });
 }
 
 #[ignore]
