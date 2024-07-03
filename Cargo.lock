@@ -4067,6 +4067,7 @@ dependencies = [
  "electrum-client",
  "fake",
  "futures",
+ "hashbrown 0.14.5",
  "mockito 1.4.0",
  "more-asserts",
  "once_cell",

@@ -9,6 +9,7 @@ async fn test_environment(
     pool: sqlx::PgPool,
 ) -> testing::transaction_signer::TestEnvironment<impl FnMut() -> storage::postgres::PgStore> {
     let num_signers = 3;
+    let signing_threshold = 2;
     let context_window = 3;
     let test_databases: Vec<_> = futures::stream::iter(0..num_signers)
         .then(|_| async { new_database(&pool).await })
@@ -24,6 +25,7 @@ async fn test_environment(
         },
         context_window,
         num_signers,
+        signing_threshold,
     }
 }
 

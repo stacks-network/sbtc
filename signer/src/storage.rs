@@ -82,6 +82,13 @@ pub trait DbRead {
         &self,
         block_id: StacksBlockId,
     ) -> impl Future<Output = Result<bool, Self::Error>> + Send;
+
+    /// Return the applicable DKG shares for the
+    /// given aggregate key
+    fn get_encrypted_dkg_shares(
+        &self,
+        aggregate_key: &model::PubKey,
+    ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Self::Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.
@@ -148,5 +155,11 @@ pub trait DbWrite {
     fn write_stacks_blocks(
         &self,
         blocks: &[NakamotoBlock],
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+
+    /// Write encrypted DKG shares
+    fn write_encrypted_dkg_shares(
+        &self,
+        shares: &model::EncryptedDkgShares,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }

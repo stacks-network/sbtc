@@ -2,8 +2,13 @@
 
 use bitcoin::hashes::Hash;
 use blockstack_lib::chainstate::{nakamoto, stacks};
+use fake::faker::time::en::DateTimeAfter;
 use fake::Fake;
 use rand::Rng;
+
+use crate::storage::model;
+
+use crate::codec::Encode as _;
 
 /// Dummy block
 pub fn block<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> bitcoin::Block {
@@ -151,6 +156,51 @@ pub fn signature<R: rand::RngCore + ?Sized>(
     let secret_key = p256k1::scalar::Scalar::from(multipurpose_bytes);
 
     p256k1::ecdsa::Signature::new(&multipurpose_bytes, &secret_key).unwrap()
+}
+
+/// Encrypted dummy DKG shares
+pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
+    _config: &fake::Faker,
+    rng: &mut R,
+    signer_private_key: &[u8; 32],
+    group_key: p256k1::point::Point,
+) -> model::EncryptedDkgShares {
+    let aggregate_key = group_key.x().to_bytes().to_vec();
+    let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&group_key, None)
+        .x()
+        .to_bytes()
+        .to_vec();
+    let party_state = wsts::traits::PartyState {
+        polynomial: None,
+        private_keys: vec![],
+        nonce: wsts::common::Nonce::random(rng),
+    };
+
+    let signer_state = wsts::traits::SignerState {
+        id: 0,
+        key_ids: vec![1],
+        num_keys: 1,
+        num_parties: 1,
+        threshold: 1,
+        group_key,
+        parties: vec![(0, party_state)],
+    };
+
+    let encoded = signer_state
+        .encode_to_vec()
+        .expect("encoding to vec failed");
+
+    let encrypted_shares =
+        wsts::util::encrypt(signer_private_key, &encoded, rng).expect("failed to encrypt");
+
+    let created_at = DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH).fake_with_rng(rng);
+
+    model::EncryptedDkgShares {
+        aggregate_key,
+        tweaked_aggregate_key,
+        encrypted_shares,
+        created_at,
+    }
 }
 
 /// Coinbase transaction with random block height
