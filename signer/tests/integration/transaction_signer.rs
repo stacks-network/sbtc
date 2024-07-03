@@ -74,7 +74,6 @@ async fn should_store_decisions_for_pending_withdraw_requests(pool: sqlx::PgPool
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[sqlx::test(migrations = false)]
 async fn should_store_decisions_received_from_other_signers(pool: sqlx::PgPool) {
-    sbtc_common::logging::setup_logging(true);
     test_environment(pool)
         .await
         .assert_should_store_decisions_received_from_other_signers()

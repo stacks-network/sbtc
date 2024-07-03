@@ -340,6 +340,13 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
+    async fn get_accepted_deposit_requests(
+        &self,
+        _signer: &model::PubKey,
+    ) -> Result<Vec<model::DepositRequest>, Self::Error> {
+        todo!() // TODO
+    }
+
     async fn get_deposit_signers(
         &self,
         txid: &model::BitcoinTxId,
