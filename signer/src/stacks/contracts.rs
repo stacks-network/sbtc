@@ -18,6 +18,7 @@ use bitcoin::OutPoint;
 use bitvec::array::BitArray;
 use bitvec::field::BitField as _;
 use blockstack_lib::chainstate::stacks::TransactionContractCall;
+use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::chainstate::stacks::TransactionPostCondition;
 use blockstack_lib::chainstate::stacks::TransactionPostConditionMode;
 use blockstack_lib::clarity::vm::types::BuffData;
@@ -48,6 +49,19 @@ pub struct StacksTxPostConditions {
     pub post_condition_mode: TransactionPostConditionMode,
     /// Any post-execution conditions that we'd like to enforce.
     pub post_conditions: Vec<TransactionPostCondition>,
+}
+
+/// A trait for constructing the payload for a stacks transaction along
+/// with any post execution conditions.
+pub trait AsTxPayload {
+    /// The payload of the transaction
+    fn tx_payload(&self, deployer: StacksAddress) -> TransactionPayload;
+    /// Any post-execution conditions that we'd like to enforce. The
+    /// deployer corresponds to the principal in the Transaction
+    /// post-conditions, which is the address that sent the asset. The
+    /// default is that we do not enforce any conditions since we usually
+    /// deployed the contract.
+    fn post_conditions(&self, deployer: StacksAddress) -> StacksTxPostConditions;
 }
 
 /// A trait to ease construction of a StacksTransaction making sBTC related
@@ -83,6 +97,31 @@ pub trait AsContractCall {
             post_condition_mode: TransactionPostConditionMode::Allow,
             post_conditions: Vec::new(),
         }
+    }
+}
+
+/// Wrapper type that implements AsTxPayload.
+///
+/// # Notes
+///
+/// What we want is to have something like the following:
+///
+/// impl<T: AsContractCall> AsTxPayload for T { ... }
+///
+/// impl<T: AsSmartContract> AsTxPayload for T { ... }
+///
+/// But this cannot work, since the compiler forbids it because it
+/// introduces ambiguity. We use a wrapper type to overcome that and
+/// essentially get what we want.
+pub struct ContractCall<T: AsContractCall>(pub T);
+
+impl<T: AsContractCall> AsTxPayload for ContractCall<T> {
+    fn tx_payload(&self, deployer: StacksAddress) -> TransactionPayload {
+        let contract_call = self.0.as_contract_call(deployer);
+        TransactionPayload::ContractCall(contract_call)
+    }
+    fn post_conditions(&self, deployer: StacksAddress) -> StacksTxPostConditions {
+        self.0.post_conditions(deployer)
     }
 }
 

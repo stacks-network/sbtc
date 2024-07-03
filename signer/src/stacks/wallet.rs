@@ -14,7 +14,6 @@ use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::chainstate::stacks::TransactionAnchorMode;
 use blockstack_lib::chainstate::stacks::TransactionAuth;
 use blockstack_lib::chainstate::stacks::TransactionAuthFlags;
-use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::chainstate::stacks::TransactionPublicKeyEncoding;
 use blockstack_lib::chainstate::stacks::TransactionSpendingCondition;
 use blockstack_lib::chainstate::stacks::TransactionVersion;
@@ -31,7 +30,7 @@ use secp256k1::SECP256K1;
 
 use crate::config::NetworkKind;
 use crate::error::Error;
-use crate::stacks::contracts::AsContractCall;
+use crate::stacks::contracts::AsTxPayload;
 
 /// Requisite info for the signers' multi-sig wallet on Stacks.
 #[derive(Debug, Clone)]
@@ -193,9 +192,9 @@ pub struct MultisigTx {
 impl MultisigTx {
     /// Create a new Stacks transaction for a contract call that can be
     /// signed by the signers' multi-sig wallet.
-    pub fn new_contract_call<T>(contract: T, state: &SignerStxState, tx_fee: u64) -> Self
+    pub fn new_tx<T>(contract: T, state: &SignerStxState, tx_fee: u64) -> Self
     where
-        T: AsContractCall,
+        T: AsTxPayload,
     {
         // The chain id is used so transactions can't be replayed on other
         // chains. The "common" chain id values are mentioned in
@@ -220,7 +219,7 @@ impl MultisigTx {
             anchor_mode: TransactionAnchorMode::Any,
             post_condition_mode: conditions.post_condition_mode,
             post_conditions: conditions.post_conditions,
-            payload: TransactionPayload::ContractCall(contract.as_contract_call(deployer)),
+            payload: contract.tx_payload(deployer),
         };
 
         let digest = construct_digest(&tx);
@@ -354,6 +353,9 @@ mod tests {
 
     use test_case::test_case;
 
+    use crate::stacks::contracts::AsContractCall;
+    use crate::stacks::contracts::ContractCall;
+
     use super::*;
 
     // This is the transaction fee. It doesn't matter what value we choose.
@@ -412,7 +414,8 @@ mod tests {
         // of the signature.
         let state = SignerStxState::new(wallet, 1, StacksAddress::burn_address(false));
 
-        let mut tx_signer = MultisigTx::new_contract_call(TestContractCall, &state, TX_FEE);
+        let contract = ContractCall(TestContractCall);
+        let mut tx_signer = MultisigTx::new_tx(contract, &state, TX_FEE);
         let tx = tx_signer.tx();
 
         // We can give any number of signatures between the required
@@ -460,7 +463,8 @@ mod tests {
         let wallet = SignerWallet::new(&public_keys, signatures_required, network).unwrap();
 
         let state = SignerStxState::new(wallet, 1, StacksAddress::burn_address(false));
-        let mut tx_signer = MultisigTx::new_contract_call(TestContractCall, &state, TX_FEE);
+        let contract = ContractCall(TestContractCall);
+        let mut tx_signer = MultisigTx::new_tx(contract, &state, TX_FEE);
 
         // The accumulated signatures start off empty
         assert!(tx_signer.signatures.values().all(Option::is_none));
