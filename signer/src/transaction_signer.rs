@@ -5,6 +5,8 @@
 //!
 //! For more details, see the [`TxSignerEventLoop`] documentation.
 
+use std::collections::HashMap;
+
 use crate::blocklist_client;
 use crate::ecdsa::SignEcdsa;
 use crate::error;
@@ -88,7 +90,7 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker> {
     /// Private key of the signer for network communication.
     pub signer_private_key: p256k1::scalar::Scalar,
     /// WSTS state machines for active signing rounds
-    pub signing_rounds: SignerStateMachine,
+    pub signing_rounds: HashMap<bitcoin::Txid, SignerStateMachine>,
     /// How many bitcoin blocks back from the chain tip the signer will look for requests.
     pub context_window: usize,
 }
@@ -240,10 +242,11 @@ where
 
     async fn is_valid_bitcoin_transaction_sign_request(
         &mut self,
-        _request: &message::BitcoinTransactionSignRequest,
+        request: &message::BitcoinTransactionSignRequest,
         _bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<bool, error::Error> {
         let signer_pub_key = self.signer_pub_key()?;
+        let txid = request.tx.compute_txid();
         let _accepted_deposit_requests = self
             .storage
             .get_accepted_deposit_requests(&signer_pub_key)
@@ -256,6 +259,10 @@ where
         //    or pays to an approved signer set.
         // - Ensure the transaction fee is lower than the minimum
         //    `max_fee` of any request.
+
+        let new_state_machine = todo!();
+
+        self.signing_rounds.insert(txid, new_state_machine);
 
         Ok(true)
     }
