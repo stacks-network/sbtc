@@ -8,6 +8,7 @@ pub mod requests;
 
 // Primitives ------------------------------------------------------------------
 
+// TODO(287): Replace type aliased primitives with Rust navtive primitives.
 /// Type used to represent satoshis.
 pub type Satoshis = u64;
 /// Type used to represent a block hash.
