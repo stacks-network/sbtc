@@ -31,8 +31,11 @@ pub struct Store {
     /// Deposit requests
     pub withdraw_requests: HashMap<WithdrawRequestPk, model::WithdrawRequest>,
 
-    /// Deposit signers
-    pub deposit_signers: HashMap<DepositRequestPk, Vec<model::DepositSigner>>,
+    /// Deposit request to signers
+    pub deposit_request_to_signers: HashMap<DepositRequestPk, Vec<model::DepositSigner>>,
+
+    /// Deposit signer to request
+    pub signer_to_deposit_request: HashMap<model::PubKey, Vec<DepositRequestPk>>,
 
     /// Withdraw signers
     pub withdraw_signers: HashMap<WithdrawRequestPk, Vec<model::WithdrawSigner>>,
@@ -130,6 +133,30 @@ impl super::DbRead for SharedStore {
             .collect())
     }
 
+    async fn get_accepted_deposit_requests(
+        &self,
+        signer: &model::PubKey,
+    ) -> Result<Vec<model::DepositRequest>, Self::Error> {
+        let store = self.lock().await;
+
+        let accepted_deposit_pks = store
+            .signer_to_deposit_request
+            .get(signer)
+            .cloned()
+            .unwrap_or_default();
+
+        Ok(accepted_deposit_pks
+            .into_iter()
+            .map(|req| {
+                store
+                    .deposit_requests
+                    .get(&req)
+                    .cloned()
+                    .expect("missing deposit request")
+            })
+            .collect())
+    }
+
     async fn get_deposit_signers(
         &self,
         txid: &model::BitcoinTxId,
@@ -138,7 +165,7 @@ impl super::DbRead for SharedStore {
         Ok(self
             .lock()
             .await
-            .deposit_signers
+            .deposit_request_to_signers
             .get(&(txid.clone(), output_index))
             .cloned()
             .unwrap_or_default())
@@ -306,12 +333,21 @@ impl super::DbWrite for SharedStore {
         &self,
         decision: &model::DepositSigner,
     ) -> Result<(), Self::Error> {
-        self.lock()
-            .await
-            .deposit_signers
-            .entry((decision.txid.clone(), decision.output_index))
+        let mut store = self.lock().await;
+
+        let deposit_request_pk = (decision.txid.clone(), decision.output_index);
+
+        store
+            .deposit_request_to_signers
+            .entry(deposit_request_pk.clone())
             .or_default()
             .push(decision.clone());
+
+        store
+            .signer_to_deposit_request
+            .entry(decision.signer_pub_key.clone())
+            .or_default()
+            .push(deposit_request_pk);
 
         Ok(())
     }

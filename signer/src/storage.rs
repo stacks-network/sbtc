@@ -44,6 +44,12 @@ pub trait DbRead {
         context_window: i32,
     ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Self::Error>> + Send;
 
+    /// Get the deposit requests that the signer has accepted to sign
+    fn get_accepted_deposit_requests(
+        &self,
+        signer: &model::PubKey,
+    ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Self::Error>> + Send;
+
     /// Get signer decisions for a deposit request
     fn get_deposit_signers(
         &self,

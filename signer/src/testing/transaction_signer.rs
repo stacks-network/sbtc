@@ -2,14 +2,19 @@
 
 use crate::blocklist_client;
 use crate::error;
+use crate::message;
 use crate::network;
 use crate::storage;
 use crate::storage::model;
 use crate::testing;
 use crate::transaction_signer;
 
-use futures::StreamExt;
-use rand::SeedableRng;
+use crate::ecdsa::SignEcdsa as _;
+use crate::network::MessageTransfer as _;
+
+use bitcoin::hashes::Hash as _;
+use futures::StreamExt as _;
+use rand::SeedableRng as _;
 
 /// Event loop harness
 pub struct EventLoopHarness<S> {
@@ -131,7 +136,6 @@ where
         let mut handle = event_loop_harness.start();
 
         let test_data = generate_test_data(&mut rng);
-
         Self::write_test_data(&test_data, &mut handle.storage).await;
 
         handle
@@ -166,7 +170,6 @@ where
         let mut handle = event_loop_harness.start();
 
         let test_data = generate_test_data(&mut rng);
-
         Self::write_test_data(&test_data, &mut handle.storage).await;
 
         handle
@@ -191,8 +194,6 @@ where
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
 
-        let test_data = generate_test_data(&mut rng);
-
         let mut event_loop_handles: Vec<_> = (0..self.num_signers)
             .map(|_| {
                 let event_loop_harness = EventLoopHarness::create(
@@ -206,6 +207,7 @@ where
             })
             .collect();
 
+        let test_data = generate_test_data(&mut rng);
         for handle in event_loop_handles.iter_mut() {
             Self::write_test_data(&test_data, &mut handle.storage).await;
         }
@@ -231,6 +233,69 @@ where
             )
             .await;
         }
+    }
+
+    /// Assert that the transaction signer will respond to bitcoin transaction sign requests
+    /// with an acknowledge message
+    pub async fn assert_should_respond_to_bitcoin_transaction_sign_requests(mut self) {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let network = network::in_memory::Network::new();
+
+        let event_loop_harness = EventLoopHarness::create(
+            &mut rng,
+            network.connect(),
+            (self.storage_constructor)(),
+            self.context_window,
+        );
+
+        let mut handle = event_loop_harness.start();
+
+        let test_data = generate_test_data(&mut rng);
+        Self::write_test_data(&test_data, &mut handle.storage).await;
+
+        let coordinator_private_key = p256k1::scalar::Scalar::random(&mut rng);
+
+        let transaction_sign_request_payload: message::Payload =
+            message::BitcoinTransactionSignRequest {
+                tx: testing::dummy::tx(&fake::Faker, &mut rng),
+            }
+            .into();
+
+        let chain_tip = handle
+            .storage
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("storage failure")
+            .expect("no chain tip");
+
+        let mut network_handle = network.connect();
+
+        network_handle
+            .broadcast(
+                transaction_sign_request_payload
+                    .to_message(
+                        bitcoin::BlockHash::from_slice(&chain_tip)
+                            .expect("failed to convert to block hash"),
+                    )
+                    .sign_ecdsa(&coordinator_private_key)
+                    .expect("failed to sign"),
+            )
+            .await
+            .expect("broadcast failed");
+
+        let msg = network_handle
+            .receive()
+            .await
+            .expect("failed to receive message");
+
+        assert!(msg.verify());
+
+        assert!(matches!(
+            msg.payload,
+            message::Payload::BitcoinTransactionSignAck(_)
+        ));
+
+        handle.stop_event_loop().await;
     }
 
     async fn write_test_data(test_data: &testing::storage::model::TestData, storage: &mut S) {

@@ -189,8 +189,9 @@ where
                 //TODO(255): Implement
             }
 
-            message::Payload::BitcoinTransactionSignRequest(_) => {
-                //TODO(256): Implement
+            message::Payload::BitcoinTransactionSignRequest(request) => {
+                self.handle_bitcoin_transaction_sign_request(request)
+                    .await?;
             }
 
             message::Payload::WstsMessage(_) => {
@@ -203,6 +204,56 @@ where
         };
 
         Ok(())
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn handle_bitcoin_transaction_sign_request(
+        &mut self,
+        request: &message::BitcoinTransactionSignRequest,
+    ) -> Result<(), error::Error> {
+        let bitcoin_chain_tip = self
+            .storage
+            .get_bitcoin_canonical_chain_tip()
+            .await?
+            .ok_or(Error::NoChainTip)?;
+
+        let is_valid_sign_request = self
+            .is_valid_bitcoin_transaction_sign_request(request, &bitcoin_chain_tip)
+            .await?;
+
+        if is_valid_sign_request {
+            let msg = message::BitcoinTransactionSignAck {
+                txid: request.tx.compute_txid(),
+            };
+
+            self.send_message(msg, &bitcoin_chain_tip).await?;
+        } else {
+            tracing::warn!("received invalid sign request");
+        }
+
+        Ok(())
+    }
+
+    async fn is_valid_bitcoin_transaction_sign_request(
+        &mut self,
+        _request: &message::BitcoinTransactionSignRequest,
+        _bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<bool, error::Error> {
+        let signer_pub_key = self.signer_pub_key()?;
+        let _accepted_deposit_requests = self
+            .storage
+            .get_accepted_deposit_requests(&signer_pub_key)
+            .await?;
+
+        // TODO(286): Validate transaction
+        // - Ensure all inputs are either accepted deposit requests
+        //    or directly spendable by the signers.
+        // - Ensure all outputs are either accepted withdrawals
+        //    or pays to an approved signer set.
+        // - Ensure the transaction fee is lower than the minimum
+        //    `max_fee` of any request.
+
+        Ok(true)
     }
 
     #[tracing::instrument(skip(self))]
@@ -252,13 +303,11 @@ where
             })
             .await;
 
-        let signer_pub_key = p256k1::ecdsa::PublicKey::new(&self.signer_private_key)?
-            .to_bytes()
-            .to_vec();
+        let signer_pub_key = self.signer_pub_key()?;
 
         let created_at = time::OffsetDateTime::now_utc();
 
-        let msg_payload: message::Payload = message::SignerDepositDecision {
+        let msg = message::SignerDepositDecision {
             txid: bitcoin::Txid::from_slice(&deposit_request.txid)
                 .map_err(error::Error::SliceConversion)?,
             output_index: deposit_request
@@ -266,15 +315,7 @@ where
                 .try_into()
                 .map_err(|_| error::Error::TypeConversion)?,
             accepted: is_accepted,
-        }
-        .into();
-
-        let msg = msg_payload
-            .to_message(
-                bitcoin::BlockHash::from_slice(bitcoin_chain_tip)
-                    .map_err(error::Error::SliceConversion)?,
-            )
-            .sign_ecdsa(&self.signer_private_key)?;
+        };
 
         let signer_decision = model::DepositSigner {
             txid: deposit_request.txid,
@@ -288,7 +329,7 @@ where
             .write_deposit_signer_decision(&signer_decision)
             .await?;
 
-        self.network.broadcast(msg).await?;
+        self.send_message(msg, bitcoin_chain_tip).await?;
 
         Ok(())
     }
@@ -304,9 +345,7 @@ where
             .await
             .unwrap_or(false);
 
-        let signer_pub_key = p256k1::ecdsa::PublicKey::new(&self.signer_private_key)?
-            .to_bytes()
-            .to_vec();
+        let signer_pub_key = self.signer_pub_key()?;
 
         let created_at = time::OffsetDateTime::now_utc();
 
@@ -385,6 +424,31 @@ where
 
         Ok(())
     }
+
+    #[tracing::instrument(skip(self, msg))]
+    async fn send_message(
+        &mut self,
+        msg: impl Into<message::Payload>,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<(), error::Error> {
+        let msg = msg
+            .into()
+            .to_message(
+                bitcoin::BlockHash::from_slice(bitcoin_chain_tip)
+                    .map_err(error::Error::SliceConversion)?,
+            )
+            .sign_ecdsa(&self.signer_private_key)?;
+
+        self.network.broadcast(msg).await?;
+
+        Ok(())
+    }
+
+    fn signer_pub_key(&self) -> Result<model::PubKey, error::Error> {
+        Ok(p256k1::ecdsa::PublicKey::new(&self.signer_private_key)?
+            .to_bytes()
+            .to_vec())
+    }
 }
 
 /// Errors occurring in the transaction signer loop.
@@ -427,6 +491,13 @@ mod tests {
     async fn should_store_decisions_received_from_other_signers() {
         test_environment()
             .assert_should_store_decisions_received_from_other_signers()
+            .await;
+    }
+
+    #[tokio::test]
+    async fn should_respond_to_bitcoin_transaction_sign_requests() {
+        test_environment()
+            .assert_should_respond_to_bitcoin_transaction_sign_requests()
             .await;
     }
 }
