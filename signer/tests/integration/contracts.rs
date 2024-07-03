@@ -1,19 +1,17 @@
-use std::sync::OnceLock;
-
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::chainstate::stacks::TransactionAnchorMode;
 use blockstack_lib::chainstate::stacks::TransactionAuth;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::chainstate::stacks::TransactionPostConditionMode;
-use blockstack_lib::chainstate::stacks::TransactionSmartContract;
 use blockstack_lib::chainstate::stacks::TransactionSpendingCondition;
 use blockstack_lib::chainstate::stacks::TransactionVersion;
-use blockstack_lib::clarity::vm::ContractName;
 use blockstack_lib::core::CHAIN_ID_TESTNET;
-use blockstack_lib::util_lib::strings::StacksString;
+use tokio::sync::OnceCell;
 
 use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Keypair;
+use signer::config::StacksSettings;
+use signer::stacks::api::StacksClient;
 use signer::stacks::contracts::AsTxPayload;
 use signer::stacks::wallet::sign_ecdsa;
 use signer::stacks::wallet::MultisigTx;
@@ -54,13 +52,40 @@ impl AsSmartContract for SbtcTokenContract {
     const CONTRACT_NAME: &'static str = "sbtc-token";
 }
 
-pub async fn deploy_smart_contract<T>(contract: T, state: &SignerStxState, keys: [Keypair; 3])
+pub struct SbtcRegistryContract;
+
+impl AsSmartContract for SbtcRegistryContract {
+    const CONTRACT_BODY: &'static str = REGISTRY;
+    const CONTRACT_NAME: &'static str = "sbtc-registry";
+}
+
+pub struct SbtcDepositContract;
+
+impl AsSmartContract for SbtcDepositContract {
+    const CONTRACT_BODY: &'static str = DEPOSIT;
+    const CONTRACT_NAME: &'static str = "sbtc-deposit";
+}
+
+pub struct SbtcWithdrawalContract;
+
+impl AsSmartContract for SbtcWithdrawalContract {
+    const CONTRACT_BODY: &'static str = WITHDRAWAL;
+    const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
+}
+
+pub struct SignerKeyState {
+    pub state: SignerStxState,
+    pub keys: [Keypair; 3],
+}
+
+pub async fn deploy_smart_contract<T>(state: &SignerKeyState, client: &StacksClient, contract: T)
 where
     T: AsTxPayload,
 {
-    let mut unsigned = MultisigTx::new_tx(contract, &state, TX_FEE);
+    let mut unsigned = MultisigTx::new_tx(contract, &state.state, TX_FEE);
 
-    let signatures: Vec<RecoverableSignature> = keys
+    let signatures: Vec<RecoverableSignature> = state
+        .keys
         .iter()
         .map(|kp| sign_ecdsa(unsigned.tx(), &kp.secret_key()))
         .collect();
@@ -71,31 +96,31 @@ where
     }
 
     let tx = unsigned.finalize_transaction();
+
+    client.submit_transaction(&tx).await.unwrap();
 }
 
-pub fn deploy_smart_contracts() {
-    static SBTC_TOKEN_DEPLOYMENT: OnceLock<bool> = OnceLock::new();
+pub async fn deploy_smart_contracts() {
+    static SBTC_DEPLOYMENT: OnceCell<bool> = OnceCell::const_new();
     let (signer_wallet, key_pairs) = wallet::generate_wallet();
     let deployer = signer_wallet.address();
-    let state = SignerStxState::new(signer_wallet, 0, deployer);
+    let state = SignerKeyState {
+        state: SignerStxState::new(signer_wallet, 0, deployer),
+        keys: key_pairs,
+    };
 
-    SBTC_TOKEN_DEPLOYMENT.get_or_init(|| {
-        let contract = SmartContract(SbtcTokenContract);
-        let mut unsigned = MultisigTx::new_tx(contract, &state, TX_FEE);
+    let settings = StacksSettings::new_from_config().unwrap();
+    let client = StacksClient::new(settings);
 
-        let signatures: Vec<RecoverableSignature> = key_pairs
-            .iter()
-            .map(|kp| sign_ecdsa(unsigned.tx(), &kp.secret_key()))
-            .collect();
-
-        // This only fails when we are given an invalid signature.
-        for signature in signatures {
-            unsigned.add_signature(signature).unwrap();
-        }
-
-        let tx = unsigned.finalize_transaction();
-        true
-    });
+    SBTC_DEPLOYMENT
+        .get_or_init(|| async move {
+            deploy_smart_contract(&state, &client, SmartContract(SbtcTokenContract)).await;
+            deploy_smart_contract(&state, &client, SmartContract(SbtcRegistryContract)).await;
+            deploy_smart_contract(&state, &client, SmartContract(SbtcDepositContract)).await;
+            deploy_smart_contract(&state, &client, SmartContract(SbtcWithdrawalContract)).await;
+            true
+        })
+        .await;
 }
 
 #[ignore]
