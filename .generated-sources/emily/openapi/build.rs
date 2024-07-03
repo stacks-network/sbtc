@@ -27,10 +27,56 @@ use utoipa::OpenApi;
         api::handlers::chainstate::update_chainstate,
     ),
     components(schemas(
-        // TODO(271): Add request and response schemas.
+        // Chainstate models.
+        api::models::chainstate::Chainstate,
+        api::models::chainstate::requests::SetChainstateRequestBody,
+        api::models::chainstate::requests::UpdateChainstateRequestBody,
+        api::models::chainstate::responses::GetChainstateResponse,
+        api::models::chainstate::responses::SetChainstateResponse,
+        api::models::chainstate::responses::UpdateChainstateResponse,
+
+        // Deposit models.
+        api::models::deposit::Deposit,
+        api::models::deposit::DepositParameters,
+        api::models::deposit::DepositInfo,
+        api::models::deposit::requests::CreateDepositRequestBody,
+        api::models::deposit::requests::DepositUpdate,
+        api::models::deposit::requests::UpdateDepositsRequestBody,
+        api::models::deposit::responses::GetDepositResponse,
+        api::models::deposit::responses::CreateDepositResponse,
+        api::models::deposit::responses::GetDepositsForTransactionResponse,
+        api::models::deposit::responses::GetDepositsResponse,
+        api::models::deposit::responses::UpdateDepositsResponse,
+
+        // Withdrawal Models.
+        api::models::withdrawal::Withdrawal,
+        api::models::withdrawal::WithdrawalInfo,
+        // api::models::withdrawal::WithdrawalId, // TODO(283): Add schemas for Aliased types.
+        api::models::withdrawal::WithdrawalParameters,
+        api::models::withdrawal::requests::CreateWithdrawalRequestBody,
+        api::models::withdrawal::requests::WithdrawalUpdate,
+        api::models::withdrawal::requests::UpdateWithdrawalsRequestBody,
+        api::models::withdrawal::responses::GetWithdrawalResponse,
+        api::models::withdrawal::responses::CreateWithdrawalResponse,
+        api::models::withdrawal::responses::GetWithdrawalsResponse,
+        api::models::withdrawal::responses::UpdateWithdrawalsResponse,
+
+        // TODO(283): Add schemas for Aliased types.
+        // API Primitives.
+        // api::models::common::Status,
+        // api::models::common::Fulfillment,
+        // api::models::common::Satoshis,
+        // api::models::common::StacksBlockHash,
+        // api::models::common::BlockHeight,
+        // api::models::common::BitcoinTransactionId,
+        // api::models::common::BitcoinTransactionOutputIndex,
+        // api::models::common::StacksTransactionId,
+        // api::models::common::BitcoinScript,
+        // api::models::common::StacksPrinciple,
+        // api::models::common::BitcoinAddress,
 
         // Health check datatypes.
-        api::models::responses::health::HealthData,
+        api::models::health::responses::HealthData,
         // Errors.
         common::error::ErrorResponse,
     ))
@@ -40,7 +86,7 @@ struct ApiDoc;
 fn main() {
 
     // Ensure that we rerun if the API changes or the build script changes.
-    println!("cargo:rerun-if-changed=../../../emily/handler/api/handlers");
+    println!("cargo:rerun-if-changed=../../../emily/handler/api");
     println!("cargo:rerun-if-changed=build.rs");
 
     let mut api_doc = ApiDoc::openapi();

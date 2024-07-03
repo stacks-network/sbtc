@@ -1,6 +1,8 @@
 //! Route definitions for the withdrawal endpoint.
 use warp::Filter;
 
+use crate::api::models::withdrawal::WithdrawalId;
+
 use super::handlers;
 
 /// Withdrawal routes.
@@ -13,10 +15,8 @@ pub fn routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejecti
 
 /// Get withdrawal endpoint.
 fn get_withdrawal() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("withdrawal" / u64)
+    warp::path!("withdrawal" / WithdrawalId)
         .and(warp::get())
-        // Only get full path because the handler is unimplemented.
-        .and(warp::path::full())
         .map(handlers::withdrawal::get_withdrawal)
 }
 
@@ -25,8 +25,6 @@ fn get_withdrawals() -> impl Filter<Extract = impl warp::Reply, Error = warp::Re
     warp::path!("withdrawal")
         .and(warp::get())
         .and(warp::query())
-        // Only get full path because the handler is unimplemented.
-        .and(warp::path::full())
         .map(handlers::withdrawal::get_withdrawals)
 }
 
@@ -35,8 +33,6 @@ fn create_withdrawal() -> impl Filter<Extract = impl warp::Reply, Error = warp::
     warp::path!("withdrawal")
         .and(warp::post())
         .and(warp::body::json())
-        // Only get full path because the handler is unimplemented.
-        .and(warp::path::full())
         .map(handlers::withdrawal::create_withdrawal)
 }
 
@@ -45,8 +41,6 @@ fn update_withdrawals() -> impl Filter<Extract = impl warp::Reply, Error = warp:
     warp::path!("withdrawal")
         .and(warp::put())
         .and(warp::body::json())
-        // Only get full path because the handler is unimplemented.
-        .and(warp::path::full())
         .map(handlers::withdrawal::update_withdrawals)
 }
 
@@ -54,97 +48,70 @@ fn update_withdrawals() -> impl Filter<Extract = impl warp::Reply, Error = warp:
 mod tests {
     use super::*;
     use warp::http::StatusCode;
+    use warp::test::request;
 
     #[tokio::test]
     async fn test_get_withdrawal() {
-        let filter = get_withdrawal();
+        let api = get_withdrawal();
 
-        let response = warp::test::request()
+        let res = request()
             .method("GET")
             .path("/withdrawal/123")
-            .reply(&filter)
+            .reply(&api)
             .await;
 
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(res.status(), StatusCode::OK);
     }
 
     #[tokio::test]
     async fn test_get_withdrawals() {
-        let filter = get_withdrawals();
+        let api = get_withdrawals();
 
-        let response = warp::test::request()
+        let res = request()
             .method("GET")
-            .path("/withdrawal?param=value")
-            .reply(&filter)
+            .path("/withdrawal?status=pending")
+            .reply(&api)
             .await;
 
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(res.status(), StatusCode::OK);
     }
 
     #[tokio::test]
     async fn test_create_withdrawal() {
-        let filter = create_withdrawal();
+        let api = create_withdrawal();
 
-        let response = warp::test::request()
+        let res = request()
             .method("POST")
             .path("/withdrawal")
-            .json(&serde_json::json!({ "key": "value" }))
-            .reply(&filter)
+            .json(&serde_json::json!({
+                "requestId": 0,
+                "blockHash": "DUMMY_BLOCK_HASH",
+                "blockHeight": 0,
+                "recipient": "DUMMY_RECIPIENT",
+                "amount": 0,
+                "parameters": {
+                  "maxFee": 0
+                }
+              }))
+            .reply(&api)
             .await;
 
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(res.status(), StatusCode::CREATED);
     }
 
     #[tokio::test]
     async fn test_update_withdrawals() {
-        let filter = update_withdrawals();
+        let api = update_withdrawals();
 
-        let response = warp::test::request()
+        let res = request()
             .method("PUT")
             .path("/withdrawal")
-            .json(&serde_json::json!({ "key": "value" }))
-            .reply(&filter)
+            .json(&serde_json::json!({
+                "withdrawals": [],
+            }))
+            .reply(&api)
             .await;
 
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
-    }
-
-    #[tokio::test]
-    async fn test_routes() {
-        let filter = routes();
-
-        // Test get_withdrawal
-        let response = warp::test::request()
-            .method("GET")
-            .path("/withdrawal/123")
-            .reply(&filter)
-            .await;
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
-
-        // Test get_withdrawals
-        let response = warp::test::request()
-            .method("GET")
-            .path("/withdrawal?param=value")
-            .reply(&filter)
-            .await;
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
-
-        // Test create_withdrawal
-        let response = warp::test::request()
-            .method("POST")
-            .path("/withdrawal")
-            .json(&serde_json::json!({ "key": "value" }))
-            .reply(&filter)
-            .await;
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
-
-        // Test update_withdrawals
-        let response = warp::test::request()
-            .method("PUT")
-            .path("/withdrawal")
-            .json(&serde_json::json!({ "key": "value" }))
-            .reply(&filter)
-            .await;
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(res.status(), StatusCode::CREATED);
     }
 }

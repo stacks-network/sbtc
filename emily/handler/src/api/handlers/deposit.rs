@@ -1,8 +1,13 @@
 //! Handlers for Deposit endpoints.
+use warp::reply::{json, with_status};
 
-use crate::common::error::Error;
-use warp::filters::path::FullPath;
-use super::models;
+use warp::http::StatusCode;
+
+use crate::api::models::{
+    common::{BitcoinTransactionId, BitcoinTransactionOutputIndex},
+    deposit::requests::{CreateDepositRequestBody, GetDepositsForTransactionQuery, GetDepositsQuery, UpdateDepositsRequestBody},
+    deposit::responses::{CreateDepositResponse, GetDepositResponse, GetDepositsForTransactionResponse, GetDepositsResponse, UpdateDepositsResponse},
+};
 
 /// Get deposit handler.
 #[utoipa::path(
@@ -16,7 +21,7 @@ use super::models;
     tag = "deposit",
     responses(
         // TODO(271): Add success body.
-        (status = 200, description = "Deposit retrieved successfully", body = serde_json::Value),
+        (status = 200, description = "Deposit retrieved successfully", body = GetDepositResponse),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),
         (status = 405, description = "Method not allowed"),
@@ -24,11 +29,13 @@ use super::models;
     )
 )]
 pub fn get_deposit(
-    _txid: String,
-    _index: u16,
-    path: FullPath,
+    _txid: BitcoinTransactionId,
+    _index: BitcoinTransactionOutputIndex,
 ) -> impl warp::reply::Reply {
-    Error::NotImplemented(path)
+    let response = GetDepositResponse {
+        ..Default::default()
+    };
+    with_status(json(&response), StatusCode::OK)
 }
 
 /// Get deposits for transaction handler.
@@ -38,11 +45,12 @@ pub fn get_deposit(
     path = "/deposit/{txid}",
     params(
         ("txid" = String, Path, description = "txid associated with the Deposit."),
+        ("nextToken" = String, Query, description = "the next token value from the previous return of this api call."),
+        ("pageSize" = String, Query, description = "the maximum number of items in the response list.")
     ),
     tag = "deposit",
     responses(
-        // TODO(271): Add success body.
-        (status = 200, description = "Deposits retrieved successfully", body = serde_json::Value),
+        (status = 200, description = "Deposits retrieved successfully", body = GetDepositsForTransactionResponse),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),
         (status = 405, description = "Method not allowed"),
@@ -50,11 +58,13 @@ pub fn get_deposit(
     )
 )]
 pub fn get_deposits_for_transaction(
-    _txid: String,
-    _query: models::requests::PaginatedQuery<String>,
-    path: FullPath,
+    _txid: BitcoinTransactionId,
+    _query: GetDepositsForTransactionQuery,
 ) -> impl warp::reply::Reply {
-    Error::NotImplemented(path)
+    let response = GetDepositsForTransactionResponse {
+        ..Default::default()
+    };
+    with_status(json(&response), StatusCode::OK)
 }
 
 /// Get deposits handler.
@@ -62,10 +72,13 @@ pub fn get_deposits_for_transaction(
     get,
     operation_id = "getDeposits",
     path = "/deposit",
+    params(
+        ("nextToken" = String, Query, description = "the next token value from the previous return of this api call."),
+        ("pageSize" = String, Query, description = "the maximum number of items in the response list.")
+    ),
     tag = "deposit",
     responses(
-        // TODO(271): Add success body.
-        (status = 200, description = "Deposits retrieved successfully", body = serde_json::Value),
+        (status = 200, description = "Deposits retrieved successfully", body = GetDepositsResponse),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),
         (status = 405, description = "Method not allowed"),
@@ -73,10 +86,12 @@ pub fn get_deposits_for_transaction(
     )
 )]
 pub fn get_deposits(
-    _query: models::requests::PaginatedQuery<String>,
-    path: FullPath,
+    _query: GetDepositsQuery,
 ) -> impl warp::reply::Reply {
-    Error::NotImplemented(path)
+    let response = GetDepositsResponse {
+        ..Default::default()
+    };
+    with_status(json(&response), StatusCode::OK)
 }
 
 /// Create deposit handler.
@@ -85,9 +100,9 @@ pub fn get_deposits(
     operation_id = "createDeposit",
     path = "/deposit",
     tag = "deposit",
+    request_body = CreateDepositRequestBody,
     responses(
-        // TODO(271): Add success body.
-        (status = 201, description = "Deposit created successfully", body = serde_json::Value),
+        (status = 201, description = "Deposit created successfully", body = CreateDepositResponse),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),
         (status = 405, description = "Method not allowed"),
@@ -95,10 +110,12 @@ pub fn get_deposits(
     )
 )]
 pub fn create_deposit(
-    _body: serde_json::Value,
-    path: FullPath,
+    _body: CreateDepositRequestBody,
 ) -> impl warp::reply::Reply {
-    Error::NotImplemented(path)
+    let response = CreateDepositResponse {
+        ..Default::default()
+    };
+    with_status(json(&response), StatusCode::CREATED)
 }
 
 /// Update deposits handler.
@@ -107,9 +124,9 @@ pub fn create_deposit(
     operation_id = "updateDeposits",
     path = "/deposit",
     tag = "deposit",
+    request_body = UpdateDepositsRequestBody,
     responses(
-        // TODO(271): Add success body.
-        (status = 201, description = "Deposits updated successfully", body = serde_json::Value),
+        (status = 201, description = "Deposits updated successfully", body = UpdateDepositsResponse),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),
         (status = 405, description = "Method not allowed"),
@@ -117,8 +134,10 @@ pub fn create_deposit(
     )
 )]
 pub fn update_deposits(
-    _body: serde_json::Value,
-    path: FullPath,
+    _body: UpdateDepositsRequestBody,
 ) -> impl warp::reply::Reply {
-    Error::NotImplemented(path)
+    let response = UpdateDepositsResponse {
+        ..Default::default()
+    };
+    with_status(json(&response), StatusCode::CREATED)
 }

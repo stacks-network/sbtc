@@ -16,12 +16,24 @@
         ],
         "summary": "Set chainstate handler.",
         "operationId": "setChainstate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetChainstateRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "Chainstate updated successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SetChainstateResponse"
+                }
               }
             }
           },
@@ -52,12 +64,24 @@
         ],
         "summary": "Update chainstate handler.",
         "operationId": "updateChainstate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateChainstateRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "Chainstate updated successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateChainstateResponse"
+                }
               }
             }
           },
@@ -108,7 +132,9 @@
             "description": "Chainstate retrieved successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GetChainstateResponse"
+                }
               }
             }
           },
@@ -141,12 +167,34 @@
         ],
         "summary": "Get deposits handler.",
         "operationId": "getDeposits",
+        "parameters": [
+          {
+            "name": "nextToken",
+            "in": "query",
+            "description": "the next token value from the previous return of this api call.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "the maximum number of items in the response list.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Deposits retrieved successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GetDepositsResponse"
+                }
               }
             }
           },
@@ -177,12 +225,24 @@
         ],
         "summary": "Create deposit handler.",
         "operationId": "createDeposit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDepositRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "Deposit created successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CreateDepositResponse"
+                }
               }
             }
           },
@@ -213,12 +273,24 @@
         ],
         "summary": "Update deposits handler.",
         "operationId": "updateDeposits",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDepositsRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "Deposits updated successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateDepositsResponse"
+                }
               }
             }
           },
@@ -260,6 +332,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "nextToken",
+            "in": "query",
+            "description": "the next token value from the previous return of this api call.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "the maximum number of items in the response list.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -267,7 +357,9 @@
             "description": "Deposits retrieved successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GetDepositsForTransactionResponse"
+                }
               }
             }
           },
@@ -325,7 +417,9 @@
             "description": "Deposit retrieved successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GetDepositResponse"
+                }
               }
             }
           },
@@ -398,12 +492,34 @@
         ],
         "summary": "Get withdrawals handler.",
         "operationId": "getWithdrawals",
+        "parameters": [
+          {
+            "name": "nextToken",
+            "in": "query",
+            "description": "the next token value from the previous return of this api call.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "the maximum number of items in the response list.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Withdrawals retrieved successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GetWithdrawalsResponse"
+                }
               }
             }
           },
@@ -434,12 +550,24 @@
         ],
         "summary": "Create withdrawal handler.",
         "operationId": "createWithdrawal",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWithdrawalRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
-            "description": "Withdrawals updated successfully",
+            "description": "Withdrawal created successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CreateWithdrawalResponse"
+                }
               }
             }
           },
@@ -470,12 +598,24 @@
         ],
         "summary": "Update withdrawals handler.",
         "operationId": "updateWithdrawals",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWithdrawalsRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "Withdrawals updated successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateWithdrawalsResponse"
+                }
               }
             }
           },
@@ -515,7 +655,7 @@
             "description": "id associated with the Withdrawal",
             "required": true,
             "schema": {
-              "type": "string"
+              "$ref": "#/components/schemas/WithdrawalId"
             }
           }
         ],
@@ -524,7 +664,9 @@
             "description": "Withdrawal retrieved successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GetWithdrawalResponse"
+                }
               }
             }
           },
@@ -553,6 +695,270 @@
   },
   "components": {
     "schemas": {
+      "Chainstate": {
+        "type": "object",
+        "description": "Deposit.",
+        "required": [
+          "blockHeight",
+          "blockHash"
+        ],
+        "properties": {
+          "blockHash": {
+            "$ref": "#/components/schemas/StacksBlockHash"
+          },
+          "blockHeight": {
+            "$ref": "#/components/schemas/BlockHeight"
+          }
+        }
+      },
+      "CreateDepositRequestBody": {
+        "type": "object",
+        "description": "Request structure for create deposit request.",
+        "required": [
+          "bitcoinTxid",
+          "bitcoinTxOutputIndex",
+          "reclaim",
+          "deposit"
+        ],
+        "properties": {
+          "bitcoinTxOutputIndex": {
+            "$ref": "#/components/schemas/BitcoinTransactionOutputIndex"
+          },
+          "bitcoinTxid": {
+            "$ref": "#/components/schemas/BitcoinTransactionId"
+          },
+          "deposit": {
+            "$ref": "#/components/schemas/BitcoinScript"
+          },
+          "reclaim": {
+            "$ref": "#/components/schemas/BitcoinScript"
+          }
+        }
+      },
+      "CreateWithdrawalRequestBody": {
+        "type": "object",
+        "description": "Request structure for the create withdrawal request.",
+        "required": [
+          "requestId",
+          "blockHash",
+          "blockHeight",
+          "recipient",
+          "amount",
+          "parameters"
+        ],
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Satoshis"
+          },
+          "blockHash": {
+            "$ref": "#/components/schemas/StacksBlockHash"
+          },
+          "blockHeight": {
+            "$ref": "#/components/schemas/BlockHeight"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/WithdrawalParameters"
+          },
+          "recipient": {
+            "$ref": "#/components/schemas/BitcoinAddress"
+          },
+          "requestId": {
+            "$ref": "#/components/schemas/WithdrawalId"
+          }
+        }
+      },
+      "Deposit": {
+        "type": "object",
+        "description": "Deposit.",
+        "required": [
+          "bitcoinTxid",
+          "bitcoinTxOutputIndex",
+          "recipient",
+          "amount",
+          "lastUpdateHeight",
+          "lastUpdateBlockHash",
+          "status",
+          "statusMessage",
+          "parameters"
+        ],
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Satoshis"
+          },
+          "bitcoinTxOutputIndex": {
+            "$ref": "#/components/schemas/BitcoinTransactionOutputIndex"
+          },
+          "bitcoinTxid": {
+            "$ref": "#/components/schemas/BitcoinTransactionId"
+          },
+          "fulfillment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Fulfillment"
+              }
+            ],
+            "nullable": true
+          },
+          "lastUpdateBlockHash": {
+            "$ref": "#/components/schemas/StacksBlockHash"
+          },
+          "lastUpdateHeight": {
+            "$ref": "#/components/schemas/BlockHeight"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/DepositParameters"
+          },
+          "recipient": {
+            "$ref": "#/components/schemas/StacksPrinciple"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "statusMessage": {
+            "type": "string",
+            "description": "The status message of the deposit."
+          }
+        }
+      },
+      "DepositInfo": {
+        "type": "object",
+        "description": "Reduced version of the Deposit data.",
+        "required": [
+          "bitcoinTxid",
+          "bitcoinTxOutputIndex",
+          "recipient",
+          "amount",
+          "lastUpdateHeight",
+          "lastUpdateBlockHash",
+          "status"
+        ],
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Satoshis"
+          },
+          "bitcoinTxOutputIndex": {
+            "$ref": "#/components/schemas/BitcoinTransactionOutputIndex"
+          },
+          "bitcoinTxid": {
+            "$ref": "#/components/schemas/BitcoinTransactionId"
+          },
+          "lastUpdateBlockHash": {
+            "$ref": "#/components/schemas/StacksBlockHash"
+          },
+          "lastUpdateHeight": {
+            "$ref": "#/components/schemas/BlockHeight"
+          },
+          "recipient": {
+            "$ref": "#/components/schemas/StacksPrinciple"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        }
+      },
+      "DepositParameters": {
+        "type": "object",
+        "description": "Deposit parameters.",
+        "required": [
+          "maxFee",
+          "lockTime",
+          "reclaimScript"
+        ],
+        "properties": {
+          "lockTime": {
+            "$ref": "#/components/schemas/BlockHeight"
+          },
+          "maxFee": {
+            "$ref": "#/components/schemas/Satoshis"
+          },
+          "reclaimScript": {
+            "$ref": "#/components/schemas/BitcoinScript"
+          }
+        }
+      },
+      "DepositUpdate": {
+        "type": "object",
+        "description": "A Deposit where only the fields that need updating are set.",
+        "properties": {
+          "amount": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Satoshis"
+              }
+            ],
+            "nullable": true
+          },
+          "bitcoinTxOutputIndex": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BitcoinTransactionOutputIndex"
+              }
+            ],
+            "nullable": true
+          },
+          "bitcoinTxid": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BitcoinTransactionId"
+              }
+            ],
+            "nullable": true
+          },
+          "fulfillment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Fulfillment"
+              }
+            ],
+            "nullable": true
+          },
+          "lastUpdateBlockHash": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StacksBlockHash"
+              }
+            ],
+            "nullable": true
+          },
+          "lastUpdateHeight": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BlockHeight"
+              }
+            ],
+            "nullable": true
+          },
+          "parameters": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/super.DepositParameters"
+              }
+            ],
+            "nullable": true
+          },
+          "recipient": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StacksPrinciple"
+              }
+            ],
+            "nullable": true
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Status"
+              }
+            ],
+            "nullable": true
+          },
+          "statusMessage": {
+            "type": "string",
+            "description": "The status message of the deposit.",
+            "nullable": true
+          }
+        }
+      },
       "ErrorResponse": {
         "type": "object",
         "description": "Structure representing an error response\nThis is used to serialize error messages in HTTP responses",
@@ -562,6 +968,69 @@
         "properties": {
           "message": {
             "type": "string"
+          }
+        }
+      },
+      "GetDepositsForTransactionResponse": {
+        "type": "object",
+        "description": "Response to get deposits for transaction request.",
+        "required": [
+          "deposits"
+        ],
+        "properties": {
+          "deposits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/super.Deposit"
+            },
+            "description": "Deposits."
+          },
+          "nextToken": {
+            "type": "string",
+            "description": "Next token for the search.",
+            "nullable": true
+          }
+        }
+      },
+      "GetDepositsResponse": {
+        "type": "object",
+        "description": "Response to get deposits request.",
+        "required": [
+          "deposits"
+        ],
+        "properties": {
+          "deposits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/super.DepositInfo"
+            },
+            "description": "Deposit infos: deposits with a little less data."
+          },
+          "nextToken": {
+            "type": "string",
+            "description": "Next token for the search.",
+            "nullable": true
+          }
+        }
+      },
+      "GetWithdrawalsResponse": {
+        "type": "object",
+        "description": "Response to get withdrawals request.",
+        "required": [
+          "withdrawals"
+        ],
+        "properties": {
+          "nextToken": {
+            "type": "string",
+            "description": "Next token for the search.",
+            "nullable": true
+          },
+          "withdrawals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/super.WithdrawalInfo"
+            },
+            "description": "Withdrawal infos: withdrawals with a little less data."
           }
         }
       },
@@ -575,6 +1044,270 @@
           "is_okay": {
             "type": "boolean",
             "description": "Whether the API is okay."
+          }
+        }
+      },
+      "UpdateDepositsRequestBody": {
+        "type": "object",
+        "description": "Request structure for update deposit request.",
+        "required": [
+          "deposits"
+        ],
+        "properties": {
+          "deposits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DepositUpdate"
+            },
+            "description": "Bitcoin transaction id."
+          }
+        }
+      },
+      "UpdateDepositsResponse": {
+        "type": "object",
+        "description": "Response to update deposits request.",
+        "required": [
+          "deposits"
+        ],
+        "properties": {
+          "deposits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/super.Deposit"
+            },
+            "description": "Deposit infos: deposits with a little less data."
+          }
+        }
+      },
+      "UpdateWithdrawalsRequestBody": {
+        "type": "object",
+        "description": "Request structure for the create withdrawal request.",
+        "required": [
+          "withdrawals"
+        ],
+        "properties": {
+          "withdrawals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WithdrawalUpdate"
+            },
+            "description": "Withdrawal updates to execute."
+          }
+        }
+      },
+      "UpdateWithdrawalsResponse": {
+        "type": "object",
+        "description": "Response to update withdrawals request.",
+        "required": [
+          "withdrawals"
+        ],
+        "properties": {
+          "withdrawals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/super.Withdrawal"
+            },
+            "description": "Updated withdrawals."
+          }
+        }
+      },
+      "Withdrawal": {
+        "type": "object",
+        "description": "Withdrawal.",
+        "required": [
+          "requestId",
+          "blockHash",
+          "blockHeight",
+          "recipient",
+          "amount",
+          "lastUpdateHeight",
+          "lastUpdateBlockHash",
+          "status",
+          "statusMessage",
+          "parameters"
+        ],
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Satoshis"
+          },
+          "blockHash": {
+            "$ref": "#/components/schemas/StacksBlockHash"
+          },
+          "blockHeight": {
+            "$ref": "#/components/schemas/BlockHeight"
+          },
+          "fulfillment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Fulfillment"
+              }
+            ],
+            "nullable": true
+          },
+          "lastUpdateBlockHash": {
+            "$ref": "#/components/schemas/StacksBlockHash"
+          },
+          "lastUpdateHeight": {
+            "$ref": "#/components/schemas/BlockHeight"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/WithdrawalParameters"
+          },
+          "recipient": {
+            "$ref": "#/components/schemas/BitcoinAddress"
+          },
+          "requestId": {
+            "$ref": "#/components/schemas/WithdrawalId"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "statusMessage": {
+            "type": "string",
+            "description": "The status message of the withdrawal."
+          }
+        }
+      },
+      "WithdrawalInfo": {
+        "type": "object",
+        "description": "Reduced version of the Withdrawal.",
+        "required": [
+          "requestId",
+          "blockHash",
+          "blockHeight",
+          "recipient",
+          "amount",
+          "lastUpdateHeight",
+          "lastUpdateBlockHash",
+          "status"
+        ],
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Satoshis"
+          },
+          "blockHash": {
+            "$ref": "#/components/schemas/StacksBlockHash"
+          },
+          "blockHeight": {
+            "$ref": "#/components/schemas/BlockHeight"
+          },
+          "lastUpdateBlockHash": {
+            "$ref": "#/components/schemas/StacksBlockHash"
+          },
+          "lastUpdateHeight": {
+            "$ref": "#/components/schemas/BlockHeight"
+          },
+          "recipient": {
+            "$ref": "#/components/schemas/BitcoinAddress"
+          },
+          "requestId": {
+            "$ref": "#/components/schemas/WithdrawalId"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        }
+      },
+      "WithdrawalParameters": {
+        "type": "object",
+        "description": "Withdrawal parameters.",
+        "required": [
+          "maxFee"
+        ],
+        "properties": {
+          "maxFee": {
+            "$ref": "#/components/schemas/Satoshis"
+          }
+        }
+      },
+      "WithdrawalUpdate": {
+        "type": "object",
+        "description": "Withdrawals where only the fields to update are defined.",
+        "properties": {
+          "amount": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Satoshis"
+              }
+            ],
+            "nullable": true
+          },
+          "blockHash": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StacksBlockHash"
+              }
+            ],
+            "nullable": true
+          },
+          "blockHeight": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BlockHeight"
+              }
+            ],
+            "nullable": true
+          },
+          "fulfillment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Fulfillment"
+              }
+            ],
+            "nullable": true
+          },
+          "lastUpdateBlockHash": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StacksBlockHash"
+              }
+            ],
+            "nullable": true
+          },
+          "lastUpdateHeight": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BlockHeight"
+              }
+            ],
+            "nullable": true
+          },
+          "parameters": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WithdrawalParameters"
+              }
+            ],
+            "nullable": true
+          },
+          "recipient": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BitcoinAddress"
+              }
+            ],
+            "nullable": true
+          },
+          "requestId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WithdrawalId"
+              }
+            ],
+            "nullable": true
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Status"
+              }
+            ],
+            "nullable": true
+          },
+          "statusMessage": {
+            "type": "string",
+            "description": "The status message of the withdrawal.",
+            "nullable": true
           }
         }
       }

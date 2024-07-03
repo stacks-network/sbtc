@@ -1,7 +1,6 @@
 //! Handlers for the emily API
 
 use crate::common::error::ErrorResponse;
-use super::models;
 
 use std::convert::Infallible;
 use tracing::error;

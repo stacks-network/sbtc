@@ -1,6 +1,8 @@
 //! Route definitions for the deposit endpoint.
 use warp::Filter;
 
+use crate::api::models::common::*;
+
 use super::handlers;
 
 /// Deposit routes.
@@ -14,20 +16,16 @@ pub fn routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejecti
 
 /// Get deposit endpoint.
 fn get_deposit() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("deposit" / String / u16)
+    warp::path!("deposit" / BitcoinTransactionId / BitcoinTransactionOutputIndex )
         .and(warp::get())
-        // Only get full path because the handler is unimplemented.
-        .and(warp::path::full())
         .map(handlers::deposit::get_deposit)
 }
 
 /// Get deposits for transaction endpoint.
 fn get_deposits_for_transaction() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("deposit" / String)
+    warp::path!("deposit" / BitcoinTransactionId)
         .and(warp::get())
         .and(warp::query())
-        // Only get full path because the handler is unimplemented.
-        .and(warp::path::full())
         .map(handlers::deposit::get_deposits_for_transaction)
 }
 
@@ -36,8 +34,6 @@ fn get_deposits() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejec
     warp::path!("deposit")
         .and(warp::get())
         .and(warp::query())
-        // Only get full path because the handler is unimplemented.
-        .and(warp::path::full())
         .map(handlers::deposit::get_deposits)
 }
 
@@ -45,9 +41,7 @@ fn get_deposits() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejec
 fn create_deposit() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("deposit")
         .and(warp::post())
-        .and(warp::query())
-        // Only get full path because the handler is unimplemented.
-        .and(warp::path::full())
+        .and(warp::body::json())
         .map(handlers::deposit::create_deposit)
 }
 
@@ -56,8 +50,6 @@ fn update_deposits() -> impl Filter<Extract = impl warp::Reply, Error = warp::Re
     warp::path!("deposit")
         .and(warp::post())
         .and(warp::body::json())
-        // Only get full path because the handler is unimplemented.
-        .and(warp::path::full())
         .map(handlers::deposit::update_deposits)
 }
 
@@ -65,116 +57,79 @@ fn update_deposits() -> impl Filter<Extract = impl warp::Reply, Error = warp::Re
 mod tests {
     use super::*;
     use warp::http::StatusCode;
+    use warp::test::request;
 
     #[tokio::test]
     async fn test_get_deposit() {
-        let filter = get_deposit();
+        let api = get_deposit();
 
-        let response = warp::test::request()
+        let res = request()
             .method("GET")
-            .path("/deposit/abc/123")
-            .reply(&filter)
+            .path("/deposit/some_tx_id/0")
+            .reply(&api)
             .await;
 
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(res.status(), StatusCode::OK);
     }
 
     #[tokio::test]
     async fn test_get_deposits_for_transaction() {
-        let filter = get_deposits_for_transaction();
+        let api = get_deposits_for_transaction();
 
-        let response = warp::test::request()
+        let res = request()
             .method("GET")
-            .path("/deposit/abc?param=value")
-            .reply(&filter)
+            .path("/deposit/some_tx_id")
+            .reply(&api)
             .await;
 
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(res.status(), StatusCode::OK);
     }
 
     #[tokio::test]
     async fn test_get_deposits() {
-        let filter = get_deposits();
+        let api = get_deposits();
 
-        let response = warp::test::request()
+        let res = request()
             .method("GET")
-            .path("/deposit?param=value")
-            .reply(&filter)
+            .path("/deposit?status=pending")
+            .reply(&api)
             .await;
 
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(res.status(), StatusCode::OK);
     }
 
     #[tokio::test]
     async fn test_create_deposit() {
-        let filter = create_deposit();
+        let api = create_deposit();
 
-        let response = warp::test::request()
+        let res = request()
             .method("POST")
-            .path("/deposit?param=value")
-            .reply(&filter)
+            .path("/deposit")
+            .json(&serde_json::json!({
+                "bitcoinTxid": "DUMMY_ID",
+                "bitcoinTxOutputIndex": 231,
+                "reclaim": "DUMMY_RECLAIM",
+                "deposit": "DUMMY_DEPOSIT",
+            }))
+            .reply(&api)
             .await;
 
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(res.status(), StatusCode::CREATED);
     }
 
     #[tokio::test]
     async fn test_update_deposits() {
-        let filter = update_deposits();
+        let api = update_deposits();
 
-        let response = warp::test::request()
+        let res = request()
             .method("POST")
             .path("/deposit")
-            .json(&serde_json::json!({ "key": "value" }))
-            .reply(&filter)
+            .json(&serde_json::json!({
+                "deposits": [],
+            }))
+            .reply(&api)
             .await;
 
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
-    }
-
-    #[tokio::test]
-    async fn test_routes() {
-        let filter = routes();
-
-        // Test get_deposit
-        let response = warp::test::request()
-            .method("GET")
-            .path("/deposit/abc/123")
-            .reply(&filter)
-            .await;
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
-
-        // Test get_deposits_for_transaction
-        let response = warp::test::request()
-            .method("GET")
-            .path("/deposit/abc?param=value")
-            .reply(&filter)
-            .await;
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
-
-        // Test get_deposits
-        let response = warp::test::request()
-            .method("GET")
-            .path("/deposit?param=value")
-            .reply(&filter)
-            .await;
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
-
-        // Test create_deposit
-        let response = warp::test::request()
-            .method("POST")
-            .path("/deposit?param=value")
-            .reply(&filter)
-            .await;
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
-
-        // Test update_deposits
-        let response = warp::test::request()
-            .method("POST")
-            .path("/deposit")
-            .json(&serde_json::json!({ "key": "value" }))
-            .reply(&filter)
-            .await;
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(res.status(), StatusCode::CREATED);
     }
 }
