@@ -5,9 +5,12 @@ use std::future::Future;
 use std::time::Duration;
 
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
+use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use blockstack_lib::types::chainstate::StacksBlockId;
+use reqwest::header::CONTENT_LENGTH;
+use reqwest::header::CONTENT_TYPE;
 
 use crate::config::StacksSettings;
 use crate::error::Error;
@@ -67,6 +70,31 @@ impl StacksClient {
             nakamoto_start_height: settings.node.nakamoto_start_height,
             client: reqwest::Client::new(),
         }
+    }
+
+    /// Submit a transaction to a Stacks node.
+    #[tracing::instrument(skip_all)]
+    pub async fn submit_transaction(&self, tx: &StacksTransaction) -> Result<(), Error> {
+        let path = "/v2/transactions";
+        let base = self.node_endpoint.clone();
+        let url = base
+            .join(path)
+            .map_err(|err| Error::PathJoin(err, base, Cow::Borrowed(path)))?;
+
+        tracing::debug!(txid = %tx.txid(), "Submitting transaction to the stacks node");
+        let body = tx.serialize_to_vec();
+
+        self.client
+            .post(url)
+            .timeout(REQUEST_TIMEOUT)
+            .header(CONTENT_TYPE, "application/octet-stream")
+            .header(CONTENT_LENGTH, body.len())
+            .body(body)
+            .send()
+            .await
+            .map_err(Error::StacksNodeRequest)?;
+
+        Ok(())
     }
 
     /// Fetch the raw stacks nakamoto block from a Stacks node given the
