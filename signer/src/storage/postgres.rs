@@ -190,6 +190,33 @@ impl PgStore {
 
         Ok(())
     }
+
+    async fn get_stacks_chain_tip(
+        &self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<Option<model::StacksBlockHash>, Error> {
+        sqlx::query_as!(
+            model::StacksBlock,
+            r#"
+             SELECT
+                 stacks_blocks.block_hash
+               , stacks_blocks.block_height
+               , stacks_blocks.parent_hash
+               , stacks_blocks.created_at
+             FROM sbtc_signer.stacks_blocks stacks_blocks
+             JOIN sbtc_signer.bitcoin_blocks bitcoin_blocks
+                 ON bitcoin_blocks.confirms @> ARRAY[stacks_blocks.block_hash]
+             WHERE bitcoin_blocks.block_hash = $1
+            ORDER BY block_height DESC, block_hash DESC
+            LIMIT 1;
+            "#,
+            bitcoin_chain_tip
+        )
+        .fetch_optional(&self.0)
+        .await
+        .map(|maybe_block| maybe_block.map(|block| block.block_hash))
+        .map_err(Error::SqlxQuery)
+    }
 }
 
 impl From<sqlx::PgPool> for PgStore {
@@ -361,10 +388,80 @@ impl super::DbRead for PgStore {
 
     async fn get_pending_withdraw_requests(
         &self,
-        _chain_tip: &model::BitcoinBlockHash,
-        _context_window: usize,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: i32,
     ) -> Result<Vec<model::WithdrawRequest>, Self::Error> {
-        Ok(Vec::new()) // TODO(246): Write query + integration test
+        let stacks_chain_tip = self.get_stacks_chain_tip(chain_tip).await?;
+        sqlx::query_as!(
+            model::WithdrawRequest,
+            r#"
+            WITH RECURSIVE extended_context_window AS (
+                SELECT 
+                    block_hash
+                  , parent_hash
+                  , confirms
+                  , 1 AS depth
+                FROM sbtc_signer.bitcoin_blocks
+                WHERE block_hash = $1
+
+                UNION ALL
+
+                SELECT
+                    parent.block_hash
+                  , parent.parent_hash
+                  , parent.confirms
+                  , last.depth + 1
+                FROM sbtc_signer.bitcoin_blocks parent
+                JOIN extended_context_window last ON parent.block_hash = last.parent_hash
+                WHERE last.depth <= $3
+            ),
+            last_bitcoin_block AS (
+                SELECT
+                    block_hash
+                  , confirms
+                FROM extended_context_window
+                ORDER BY depth DESC
+                LIMIT 1
+            ),
+            stacks_context_window AS (
+                SELECT
+                    stacks_blocks.block_hash
+                  , stacks_blocks.block_height
+                  , stacks_blocks.parent_hash
+                FROM sbtc_signer.stacks_blocks stacks_blocks
+                WHERE stacks_blocks.block_hash = $2
+
+                UNION ALL
+
+                SELECT
+                    parent.block_hash
+                  , parent.block_height
+                  , parent.parent_hash
+                FROM sbtc_signer.stacks_blocks parent
+                JOIN stacks_context_window last
+                        ON parent.block_hash = last.parent_hash
+                LEFT JOIN last_bitcoin_block block
+                        ON block.confirms @> ARRAY[parent.block_hash]
+                WHERE block.block_hash IS NULL
+            )
+            SELECT
+                wr.request_id
+              , wr.block_hash
+              , wr.recipient
+              , wr.amount
+              , wr.max_fee
+              , wr.sender_address
+              , wr.created_at
+            FROM sbtc_signer.withdraw_requests wr
+            JOIN stacks_context_window sc ON wr.block_hash = sc.block_hash
+            "#,
+            chain_tip,
+            stacks_chain_tip,
+            context_window,
+        )
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
     }
 
     async fn get_bitcoin_blocks_with_transaction(
@@ -541,9 +638,28 @@ impl super::DbWrite for PgStore {
 
     async fn write_withdraw_signer_decision(
         &self,
-        _decision: &model::WithdrawSigner,
+        decision: &model::WithdrawSigner,
     ) -> Result<(), Self::Error> {
-        todo!(); // TODO(246): Write query + integration test
+        sqlx::query!(
+            "INSERT INTO sbtc_signer.withdraw_signers
+              ( request_id
+              , block_hash
+              , signer_pub_key
+              , is_accepted
+              , created_at
+              )
+            VALUES ($1, $2, $3, $4, $5)",
+            decision.request_id,
+            decision.block_hash,
+            decision.signer_pub_key,
+            decision.is_accepted,
+            decision.created_at
+        )
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
     }
 
     async fn write_transaction(&self, transaction: &model::Transaction) -> Result<(), Self::Error> {

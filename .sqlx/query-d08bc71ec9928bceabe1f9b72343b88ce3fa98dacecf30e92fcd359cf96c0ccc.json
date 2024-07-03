@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n             SELECT\n                 stacks_blocks.block_hash\n               , stacks_blocks.block_height\n               , stacks_blocks.parent_hash\n               , stacks_blocks.created_at\n             FROM sbtc_signer.stacks_blocks stacks_blocks\n             JOIN sbtc_signer.bitcoin_blocks bitcoin_blocks\n                 ON bitcoin_blocks.confirms @> ARRAY[stacks_blocks.block_hash]\n             WHERE bitcoin_blocks.block_hash = $1\n            ORDER BY block_height DESC, block_hash DESC\n            LIMIT 1;\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "block_hash",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 1,
+        "name": "block_height",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "parent_hash",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d08bc71ec9928bceabe1f9b72343b88ce3fa98dacecf30e92fcd359cf96c0ccc"
+}

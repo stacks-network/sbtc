@@ -228,7 +228,12 @@ where
     ) -> Result<Vec<model::WithdrawRequest>, error::Error> {
         Ok(self
             .storage
-            .get_pending_withdraw_requests(chain_tip, self.context_window)
+            .get_pending_withdraw_requests(
+                chain_tip,
+                self.context_window
+                    .try_into()
+                    .map_err(|_| error::Error::TypeConversion)?,
+            )
             .await?)
     }
 
