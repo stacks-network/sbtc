@@ -243,7 +243,7 @@ where
     async fn is_valid_bitcoin_transaction_sign_request(
         &mut self,
         request: &message::BitcoinTransactionSignRequest,
-        _bitcoin_chain_tip: &model::BitcoinBlockHash,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<bool, error::Error> {
         let signer_pub_key = self.signer_pub_key()?;
         let txid = request.tx.compute_txid();
@@ -260,7 +260,7 @@ where
         // - Ensure the transaction fee is lower than the minimum
         //    `max_fee` of any request.
 
-        let new_state_machine = todo!();
+        let new_state_machine = self.create_state_machine(bitcoin_chain_tip).await?;
 
         self.signing_rounds.insert(txid, new_state_machine);
 
@@ -434,6 +434,14 @@ where
             .await?;
 
         Ok(())
+    }
+
+    async fn create_state_machine(
+        &mut self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<SignerStateMachine, error::Error> {
+        let maybe_encrypted_shares = self.storage.get_encrypted_dkg_shares(bitcoin_chain_tip).await?
+        todo!(); // TODO
     }
 
     #[tracing::instrument(skip(self, msg))]

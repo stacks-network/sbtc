@@ -82,6 +82,13 @@ pub trait DbRead {
         &self,
         block_id: StacksBlockId,
     ) -> impl Future<Output = Result<bool, Self::Error>> + Send;
+
+    /// Return the applicable DKG shares for the
+    /// given chain tip
+    fn get_encrypted_dkg_shares(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+    ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Self::Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.

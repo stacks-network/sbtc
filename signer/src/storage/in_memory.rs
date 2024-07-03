@@ -272,6 +272,13 @@ impl super::DbRead for SharedStore {
             .stacks_nakamoto_blocks
             .contains_key(&block_id))
     }
+
+    async fn get_encrypted_dkg_shares(
+        &self,
+        _chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<Option<model::EncryptedDkgShares>, Self::Error> {
+        todo!() // TODO
+    }
 }
 
 impl super::DbWrite for SharedStore {

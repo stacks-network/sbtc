@@ -503,6 +503,13 @@ impl super::DbRead for PgStore {
         .map(|row| row.is_some())
         .map_err(Error::SqlxQuery)
     }
+
+    async fn get_encrypted_dkg_shares(
+        &self,
+        _chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<Option<model::EncryptedDkgShares>, Self::Error> {
+        todo!() // TODO
+    }
 }
 
 impl super::DbWrite for PgStore {
