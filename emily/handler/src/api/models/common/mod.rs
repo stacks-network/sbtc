@@ -24,6 +24,8 @@ pub type StacksTransactionId = String;
 pub type BitcoinScript = String;
 /// Type used to represent a Stacks address principle.
 pub type StacksPrinciple = String;
+/// Type used to represent a Bitcoin address.
+pub type BitcoinAddress = String;
 
 // Common Types ----------------------------------------------------------------
 

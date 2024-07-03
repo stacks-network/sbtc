@@ -42,7 +42,20 @@ use utoipa::OpenApi;
         api::models::deposit::responses::GetDepositsResponse,
         api::models::deposit::responses::UpdateDepositsResponse,
 
-        // TODO(NAN): Add schema definitions for these types.
+        // Withdrawal Models.
+        api::models::withdrawal::Withdrawal,
+        api::models::withdrawal::WithdrawalInfo,
+        // TODO(NAN): Add schemas for Aliased types.
+        // api::models::withdrawal::WithdrawalId,
+        api::models::withdrawal::WithdrawalParameters,
+        api::models::withdrawal::requests::CreateWithdrawalRequestBody,
+        api::models::withdrawal::requests::WithdrawalUpdate,
+        api::models::withdrawal::requests::UpdateWithdrawalsRequestBody,
+        api::models::withdrawal::responses::GetWithdrawalResponse,
+        api::models::withdrawal::responses::CreateWithdrawalResponse,
+        api::models::withdrawal::responses::GetWithdrawalsResponse,
+        api::models::withdrawal::responses::UpdateWithdrawalsResponse,
+        // TODO(NAN): Add schemas for Aliased types.
 
         // API Primitives.
         // api::models::common::Status,

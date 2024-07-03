@@ -1,8 +1,10 @@
 //! Handlers for withdrawal endpoints.
+use warp::reply::{json, with_status};
 
-use crate::common::error::Error;
-use warp::filters::path::FullPath;
-use super::models;
+use crate::api::models::withdrawal::requests::*;
+use crate::api::models::withdrawal::responses::*;
+use crate::api::models::withdrawal::WithdrawalId;
+use warp::http::StatusCode;
 
 /// Get withdrawal handler.
 #[utoipa::path(
@@ -10,12 +12,12 @@ use super::models;
     operation_id = "getWithdrawal",
     path = "/withdrawal/{id}",
     params(
-        ("id" = String, Path, description = "id associated with the Withdrawal"),
+        ("id" = WithdrawalId, Path, description = "id associated with the Withdrawal"),
     ),
     tag = "withdrawal",
     responses(
         // TODO(271): Add success body.
-        (status = 200, description = "Withdrawal retrieved successfully", body = serde_json::Value),
+        (status = 200, description = "Withdrawal retrieved successfully", body = GetWithdrawalResponse),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),
         (status = 405, description = "Method not allowed"),
@@ -23,10 +25,12 @@ use super::models;
     )
 )]
 pub fn get_withdrawal(
-    _id: u64,
-    path: FullPath,
+    _id: WithdrawalId,
 ) -> impl warp::reply::Reply {
-    Error::NotImplemented(path)
+    let response = GetWithdrawalResponse {
+        ..Default::default()
+    };
+    with_status(json(&response), StatusCode::OK)
 }
 
 /// Get withdrawals handler.
@@ -34,10 +38,14 @@ pub fn get_withdrawal(
     get,
     operation_id = "getWithdrawals",
     path = "/withdrawal",
+    params(
+        ("nextToken" = String, Query, description = "the next token value from the previous return of this api call."),
+        ("pageSize" = String, Query, description = "the maximum number of items in the response list.")
+    ),
     tag = "withdrawal",
     responses(
         // TODO(271): Add success body.
-        (status = 200, description = "Withdrawals retrieved successfully", body = serde_json::Value),
+        (status = 200, description = "Withdrawals retrieved successfully", body = GetWithdrawalsResponse),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),
         (status = 405, description = "Method not allowed"),
@@ -45,10 +53,12 @@ pub fn get_withdrawal(
     )
 )]
 pub fn get_withdrawals(
-    _query: models::common::requests::PaginatedQuery<String>,
-    path: FullPath,
+    _query: GetWithdrawalsQuery,
 ) -> impl warp::reply::Reply {
-    Error::NotImplemented(path)
+    let response = GetWithdrawalsResponse {
+        ..Default::default()
+    };
+    with_status(json(&response), StatusCode::OK)
 }
 
 /// Create withdrawal handler.
@@ -57,9 +67,10 @@ pub fn get_withdrawals(
     operation_id = "createWithdrawal",
     path = "/withdrawal",
     tag = "withdrawal",
+    request_body = CreateWithdrawalRequestBody,
     responses(
         // TODO(271): Add success body.
-        (status = 201, description = "Withdrawals updated successfully", body = serde_json::Value),
+        (status = 201, description = "Withdrawal created successfully", body = CreateWithdrawalResponse),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),
         (status = 405, description = "Method not allowed"),
@@ -67,10 +78,12 @@ pub fn get_withdrawals(
     )
 )]
 pub fn create_withdrawal(
-    _body: serde_json::Value,
-    path: FullPath,
+    _body: CreateWithdrawalRequestBody,
 ) -> impl warp::reply::Reply {
-    Error::NotImplemented(path)
+    let response = CreateWithdrawalResponse {
+        ..Default::default()
+    };
+    with_status(json(&response), StatusCode::CREATED)
 }
 
 /// Update withdrawals handler.
@@ -79,9 +92,9 @@ pub fn create_withdrawal(
     operation_id = "updateWithdrawals",
     path = "/withdrawal",
     tag = "withdrawal",
+    request_body = UpdateWithdrawalsRequestBody,
     responses(
-        // TODO(271): Add success body.
-        (status = 201, description = "Withdrawals updated successfully", body = serde_json::Value),
+        (status = 201, description = "Withdrawals updated successfully", body = UpdateWithdrawalsResponse),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),
         (status = 405, description = "Method not allowed"),
@@ -89,8 +102,10 @@ pub fn create_withdrawal(
     )
 )]
 pub fn update_withdrawals(
-    _body: serde_json::Value,
-    path: FullPath,
+    _body: UpdateWithdrawalsRequestBody,
 ) -> impl warp::reply::Reply {
-    Error::NotImplemented(path)
+    let response = UpdateWithdrawalsResponse {
+        ..Default::default()
+    };
+    with_status(json(&response), StatusCode::CREATED)
 }

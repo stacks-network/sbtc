@@ -4,7 +4,7 @@ use warp::reply::{json, with_status};
 use crate::api::models::common::*;
 use crate::api::models::deposit::requests::*;
 use crate::api::models::deposit::responses::*;
-use reqwest::StatusCode;
+use warp::http::StatusCode;
 
 /// Get deposit handler.
 #[utoipa::path(
