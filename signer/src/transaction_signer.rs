@@ -87,9 +87,13 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker> {
     pub block_observer_notifications: tokio::sync::watch::Receiver<()>,
     /// Private key of the signer for network communication.
     pub signer_private_key: p256k1::scalar::Scalar,
+    /// WSTS state machines for active signing rounds
+    pub signing_rounds: SignerStateMachine,
     /// How many bitcoin blocks back from the chain tip the signer will look for requests.
     pub context_window: usize,
 }
+
+type SignerStateMachine = wsts::state_machine::signer::Signer<wsts::v2::Party>;
 
 impl<N, S, B> TxSignerEventLoop<N, S, B>
 where
