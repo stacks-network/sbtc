@@ -454,10 +454,7 @@ describe("Reject a withdrawal request", () => {
     const receipt = txErr(
       withdrawal.rejectWithdrawalRequest({
         requestId: 2n,
-        bitcoinTxid: new Uint8Array(32).fill(0),
         signerBitmap: 0n,
-        outputIndex: 10n,
-        fee: 1n,
       }),
       alice
     );
@@ -485,10 +482,7 @@ describe("Reject a withdrawal request", () => {
     const receipt = txErr(
       withdrawal.rejectWithdrawalRequest({
         requestId: 1n,
-        bitcoinTxid: new Uint8Array(32).fill(0),
         signerBitmap: 0n,
-        outputIndex: 10n,
-        fee: 1n,
       }),
       alice
     );
@@ -526,10 +520,7 @@ describe("Reject a withdrawal request", () => {
     const receipt = txErr(
       withdrawal.rejectWithdrawalRequest({
         requestId: 1n,
-        bitcoinTxid: new Uint8Array(32).fill(0),
         signerBitmap: 0n,
-        outputIndex: 10n,
-        fee: 1n,
       }),
       deployer
     );
