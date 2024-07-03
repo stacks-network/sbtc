@@ -84,7 +84,7 @@
 )
 
 ;; Reject a withdrawal request
-(define-public (reject-withdrawal (request-id uint) (signer-bitmap uint))
+(define-public (reject-withdrawal-request (request-id uint) (signer-bitmap uint))
   (let
      (
       (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
