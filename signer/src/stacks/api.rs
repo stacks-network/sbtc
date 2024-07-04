@@ -64,7 +64,7 @@ pub struct PostTxRejection {
     /// More details about the reason for the rejection.
     pub reason_data: Option<serde_json::Value>,
     /// The transaction ID of the rejected transaction.
-    pub pxid: Txid,
+    pub txid: Txid,
 }
 
 /// The response from a POST /v2/transaction request
