@@ -283,6 +283,7 @@ where
         msg: &message::WstsMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), error::Error> {
+        println!("Handling message: {:?}", msg);
         match &msg.inner {
             wsts::net::Message::DkgBegin(_) => {
                 let state_machine = self.create_dkg_state_machine()?;
@@ -290,7 +291,15 @@ where
                 self.relay_message(&msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
+            wsts::net::Message::DkgPublicShares(_) => {
+                self.relay_message(&msg.txid, &msg.inner, bitcoin_chain_tip)
+                    .await?;
+            }
             wsts::net::Message::DkgPrivateBegin(_) => {
+                self.relay_message(&msg.txid, &msg.inner, bitcoin_chain_tip)
+                    .await?;
+            }
+            wsts::net::Message::DkgPrivateShares(_) => {
                 self.relay_message(&msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
@@ -308,6 +317,7 @@ where
                     .await?;
             }
             _ => {
+                println!("ignoring message");
                 tracing::debug!("ignoring message");
             }
         }
