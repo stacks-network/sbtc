@@ -64,7 +64,7 @@ where
 
     pub fn start(self) -> RunningEventLoopHandle<S> {
         let notification_tx = self.notification_tx;
-        let join_handle = tokio::spawn(async { self.event_loop.run().await });
+        let join_handle = tokio::spawn(async { dbg!(self.event_loop.run().await) });
         let storage = self.storage;
 
         RunningEventLoopHandle {
@@ -628,6 +628,7 @@ impl Coordinator {
                 .expect("message processing failed");
 
             if let Some(packet) = outbound_packet {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 self.send_packet(bitcoin_chain_tip.clone(), txid.clone(), packet)
                     .await;
             }

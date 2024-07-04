@@ -283,7 +283,7 @@ where
         msg: &message::WstsMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), error::Error> {
-        println!("Handling message: {:?}", msg);
+        tracing::info!("handling message");
         match &msg.inner {
             wsts::net::Message::DkgBegin(_) => {
                 let state_machine = self.create_dkg_state_machine()?;
@@ -317,7 +317,6 @@ where
                     .await?;
             }
             _ => {
-                println!("ignoring message");
                 tracing::debug!("ignoring message");
             }
         }
@@ -339,11 +338,20 @@ where
 
         let outbound_messages = state_machine.process(msg).map_err(error::Error::WSTS)?;
 
+        for outbound_message in outbound_messages.iter() {
+            // WSTS assumes we read our own messages
+            state_machine.process(&outbound_message).expect("TODO");
+
+            // TODO: Do we need to extend additional outbounds? I don't think so
+        }
+
         for outbound_message in outbound_messages {
             let msg = message::WstsMessage {
                 txid: txid.clone(),
                 inner: outbound_message,
             };
+
+            tracing::info!(?msg, "sending message");
 
             self.send_message(msg, bitcoin_chain_tip).await?;
         }
