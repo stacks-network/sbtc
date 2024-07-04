@@ -104,7 +104,7 @@ start_height = 108
 
 [[burnchain.epochs]]
 epoch_name = "3.0"
-start_height = 13000
+start_height = 1000001
 
 [[ustx_balance]]
 # secret_key: 99dd7fc1ad584d9b174275ef9de7bda04fc61e38899fdce22fd31a49f3fc47d6
