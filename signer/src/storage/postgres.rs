@@ -733,6 +733,13 @@ impl super::DbWrite for PgStore {
         self.write_stacks_block_header(blocks).await?;
         self.write_stacks_sbtc_txs(blocks).await
     }
+
+    async fn write_encrypted_dkg_shares(
+        &self,
+        _shares: &model::EncryptedDkgShares,
+    ) -> Result<(), Self::Error> {
+        todo!(); // TODO: Implement
+    }
 }
 
 #[cfg(test)]

@@ -156,4 +156,10 @@ pub trait DbWrite {
         &self,
         blocks: &[NakamotoBlock],
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+
+    /// Write encrypted DKG shares
+    fn write_encrypted_dkg_shares(
+        &self,
+        shares: &model::EncryptedDkgShares,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }

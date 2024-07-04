@@ -110,6 +110,10 @@ pub enum Error {
     #[error("missing public key")]
     MissingPublicKey,
 
+    /// Missing state machine
+    #[error("missing state machine")]
+    MissingStateMachine,
+
     /// Invalid signature
     #[error("invalid signature")]
     InvalidSignature,
@@ -146,6 +150,10 @@ pub enum Error {
     /// unexpected.
     #[error("unexpected public key from signature. key {0}; digest: {1}")]
     UnknownPublicKey(secp256k1::PublicKey, secp256k1::Message),
+
+    /// WSTS error
+    #[error("WSTS error: {0}")]
+    WSTS(#[source] wsts::state_machine::signer::Error),
 }
 
 impl From<std::convert::Infallible> for Error {

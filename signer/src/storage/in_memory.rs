@@ -57,6 +57,9 @@ pub struct Store {
 
     /// Stacks blocks under nakamoto
     pub stacks_nakamoto_blocks: HashMap<StacksBlockId, NakamotoBlock>,
+
+    /// Encrypted DKG shares
+    pub encrypted_dkg_shares: Vec<model::EncryptedDkgShares>,
 }
 
 impl Store {
@@ -277,7 +280,7 @@ impl super::DbRead for SharedStore {
         &self,
         _chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Option<model::EncryptedDkgShares>, Self::Error> {
-        todo!() // TODO
+        Ok(self.lock().await.encrypted_dkg_shares.last().cloned())
     }
 }
 
@@ -430,6 +433,15 @@ impl super::DbWrite for SharedStore {
                 .stacks_nakamoto_blocks
                 .insert(block.block_id(), block.clone());
         });
+
+        Ok(())
+    }
+
+    async fn write_encrypted_dkg_shares(
+        &self,
+        shares: &model::EncryptedDkgShares,
+    ) -> Result<(), Self::Error> {
+        self.lock().await.encrypted_dkg_shares.push(shares.clone());
 
         Ok(())
     }

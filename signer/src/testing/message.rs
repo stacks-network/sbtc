@@ -104,7 +104,10 @@ impl fake::Dummy<fake::Faker> for message::WstsMessage {
             key_ids: config.fake_with_rng(rng),
         };
 
-        Self(wsts::net::Message::DkgEndBegin(dkg_end_begin))
+        Self {
+            txid: dummy::txid(config, rng),
+            inner: wsts::net::Message::DkgEndBegin(dkg_end_begin),
+        }
     }
 }
 

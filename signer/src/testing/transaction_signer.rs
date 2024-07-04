@@ -1,5 +1,7 @@
 //! Test utilities for the transaction signer
 
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 
 use crate::blocklist_client;
@@ -32,15 +34,14 @@ where
     error::Error: From<<S as storage::DbWrite>::Error>,
 {
     /// Create
-    pub fn create<Rng: rand::RngCore + rand::CryptoRng>(
-        rng: &mut Rng,
+    fn create(
         network: network::in_memory::MpmcBroadcaster,
         storage: S,
         context_window: usize,
+        signer_info: SignerInfo,
     ) -> Self {
         let blocklist_checker = ();
         let (notification_tx, block_observer_notifications) = tokio::sync::watch::channel(());
-        let signer_private_key = p256k1::scalar::Scalar::random(rng);
 
         Self {
             event_loop: transaction_signer::TxSignerEventLoop {
@@ -48,9 +49,10 @@ where
                 network,
                 blocklist_checker,
                 block_observer_notifications,
-                signer_private_key,
+                signer_private_key: signer_info.signer_private_key,
+                signer_public_keys: signer_info.signer_public_keys,
                 context_window,
-                signing_rounds: HashMap::new(),
+                wsts_state_machines: HashMap::new(),
             },
             notification_tx,
             storage,
@@ -128,12 +130,13 @@ where
     pub async fn assert_should_store_decisions_for_pending_deposit_requests(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
+        let signer_info = generate_signer_info(&mut rng, self.num_signers);
 
         let event_loop_harness = EventLoopHarness::create(
-            &mut rng,
             network.connect(),
             (self.storage_constructor)(),
             self.context_window,
+            signer_info.first().cloned().unwrap(),
         );
 
         let mut handle = event_loop_harness.start();
@@ -162,12 +165,13 @@ where
     pub async fn assert_should_store_decisions_for_pending_withdraw_requests(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
+        let signer_info = generate_signer_info(&mut rng, self.num_signers);
 
         let event_loop_harness = EventLoopHarness::create(
-            &mut rng,
             network.connect(),
             (self.storage_constructor)(),
             self.context_window,
+            signer_info.first().cloned().unwrap(),
         );
 
         let mut handle = event_loop_harness.start();
@@ -196,14 +200,16 @@ where
     pub async fn assert_should_store_decisions_received_from_other_signers(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
+        let signer_info = generate_signer_info(&mut rng, self.num_signers);
 
-        let mut event_loop_handles: Vec<_> = (0..self.num_signers)
-            .map(|_| {
+        let mut event_loop_handles: Vec<_> = signer_info
+            .into_iter()
+            .map(|signer_info| {
                 let event_loop_harness = EventLoopHarness::create(
-                    &mut rng,
                     network.connect(),
                     (self.storage_constructor)(),
                     self.context_window,
+                    signer_info,
                 );
 
                 event_loop_harness.start()
@@ -243,12 +249,13 @@ where
     pub async fn assert_should_respond_to_bitcoin_transaction_sign_requests(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
+        let signer_info = generate_signer_info(&mut rng, self.num_signers);
 
         let event_loop_harness = EventLoopHarness::create(
-            &mut rng,
             network.connect(),
             (self.storage_constructor)(),
             self.context_window,
+            signer_info.first().cloned().unwrap(),
         );
 
         let mut handle = event_loop_harness.start();
@@ -452,4 +459,39 @@ fn generate_test_data(rng: &mut impl rand::RngCore) -> testing::storage::model::
     };
 
     testing::storage::model::TestData::generate(rng, &test_model_params)
+}
+
+fn generate_signer_info<Rng: rand::RngCore + rand::CryptoRng>(
+    rng: &mut Rng,
+    num_signers: usize,
+) -> Vec<SignerInfo> {
+    let signer_keys: BTreeMap<_, _> = (0..num_signers)
+        .map(|_| {
+            let private = p256k1::scalar::Scalar::random(rng);
+            let public =
+                p256k1::ecdsa::PublicKey::new(&private).expect("failed to generate public key");
+
+            (public, private)
+        })
+        .collect();
+
+    let signer_public_keys: BTreeSet<_> = signer_keys.keys().cloned().collect();
+
+    signer_keys
+        .into_iter()
+        .map(|(_, signer_private_key)| SignerInfo {
+            signer_private_key,
+            signer_public_keys: signer_public_keys.clone(),
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone)]
+struct SignerInfo {
+    signer_private_key: p256k1::scalar::Scalar,
+    signer_public_keys: BTreeSet<p256k1::ecdsa::PublicKey>,
+}
+
+struct Coordinator {
+    network: network::in_memory::MpmcBroadcaster,
 }
