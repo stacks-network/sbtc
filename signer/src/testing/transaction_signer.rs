@@ -547,7 +547,11 @@ impl Coordinator {
         }
     }
 
-    async fn run_dkg(&mut self, bitcoin_chain_tip: bitcoin::BlockHash, txid: &bitcoin::Txid) {
+    async fn run_dkg(
+        &mut self,
+        bitcoin_chain_tip: bitcoin::BlockHash,
+        txid: &bitcoin::Txid,
+    ) -> p256k1::point::Point {
         self.wsts_coordinator
             .move_to(coordinator::State::DkgPublicDistribute)
             .expect("failed to move state machine");
@@ -572,7 +576,7 @@ impl Coordinator {
                 sig: Vec::new(),
             };
 
-            let (outbound_packet, _) = self
+            let (outbound_packet, operation_result) = self
                 .wsts_coordinator
                 .process_message(&packet)
                 .expect("message processing failed");
@@ -584,11 +588,17 @@ impl Coordinator {
                     self.wsts_coordinator.state,
                     coordinator::State::DkgPrivateGather
                 ));
-                break;
+            }
+
+            if let Some(result) = operation_result {
+                match result {
+                    wsts::state_machine::OperationResult::Dkg(aggregate_key) => {
+                        return aggregate_key
+                    }
+                    _ => panic!("unexpected operation result"),
+                }
             }
         }
-
-        todo!();
     }
 
     async fn send_packet(
