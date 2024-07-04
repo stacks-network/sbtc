@@ -443,8 +443,10 @@ where
         let maybe_encrypted_shares = self
             .storage
             .get_encrypted_dkg_shares(bitcoin_chain_tip)
-            .await?;
-        todo!(); // TODO
+            .await?
+            .ok_or(error::Error::MissingDkgShares)?;
+
+        let saved_state = todo!(); // TODO
     }
 
     #[tracing::instrument(skip(self, msg))]
