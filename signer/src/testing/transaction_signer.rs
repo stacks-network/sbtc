@@ -20,8 +20,12 @@ use bitcoin::hashes::Hash as _;
 use futures::StreamExt as _;
 use rand::SeedableRng as _;
 
-/// Event loop harness
-pub struct EventLoopHarness<S> {
+use wsts::state_machine::coordinator;
+use wsts::state_machine::coordinator::frost;
+use wsts::state_machine::coordinator::Coordinator as _;
+use wsts::state_machine::StateMachine as _;
+
+struct EventLoopHarness<S> {
     event_loop: EventLoop<S>,
     notification_tx: tokio::sync::watch::Sender<()>,
     storage: S,
@@ -33,7 +37,6 @@ where
     error::Error: From<<S as storage::DbRead>::Error>,
     error::Error: From<<S as storage::DbWrite>::Error>,
 {
-    /// Create
     fn create(
         network: network::in_memory::MpmcBroadcaster,
         storage: S,
@@ -59,7 +62,6 @@ where
         }
     }
 
-    /// Start
     pub fn start(self) -> RunningEventLoopHandle<S> {
         let notification_tx = self.notification_tx;
         let join_handle = tokio::spawn(async { self.event_loop.run().await });
@@ -73,8 +75,7 @@ where
     }
 }
 
-/// Running event loop handle
-pub struct RunningEventLoopHandle<S> {
+struct RunningEventLoopHandle<S> {
     join_handle: tokio::task::JoinHandle<Result<(), error::Error>>,
     notification_tx: tokio::sync::watch::Sender<()>,
     storage: S,
@@ -494,4 +495,118 @@ struct SignerInfo {
 
 struct Coordinator {
     network: network::in_memory::MpmcBroadcaster,
+    wsts_coordinator: frost::Coordinator<wsts::v2::Aggregator>,
+    private_key: p256k1::scalar::Scalar,
+}
+
+impl Coordinator {
+    fn new(network: network::in_memory::MpmcBroadcaster, signer_info: SignerInfo) -> Self {
+        let num_signers = signer_info.signer_public_keys.len().try_into().unwrap();
+        let message_private_key = signer_info.signer_private_key;
+        let private_key = message_private_key.clone();
+        let signer_public_keys: hashbrown::HashMap<u32, _> = signer_info
+            .signer_public_keys
+            .into_iter()
+            .enumerate()
+            .map(|(idx, key)| {
+                (
+                    idx.try_into().unwrap(),
+                    (&p256k1::point::Compressed::from(key.to_bytes()))
+                        .try_into()
+                        .expect("failed to convert public key"),
+                )
+            })
+            .collect();
+        let num_keys = num_signers;
+        let threshold = num_keys / 3 * 2; // TODO: Configure
+        let dkg_threshold = num_keys;
+        let signer_key_ids = (0..num_signers)
+            .map(|signer_id| (signer_id, std::iter::once(signer_id).collect()))
+            .collect();
+        let config = wsts::state_machine::coordinator::Config {
+            num_signers,
+            num_keys,
+            threshold,
+            dkg_threshold,
+            message_private_key,
+            dkg_public_timeout: None,
+            dkg_private_timeout: None,
+            dkg_end_timeout: None,
+            nonce_timeout: None,
+            sign_timeout: None,
+            signer_key_ids,
+            signer_public_keys,
+        };
+
+        let wsts_coordinator = frost::Coordinator::new(config);
+
+        Self {
+            network,
+            wsts_coordinator,
+            private_key,
+        }
+    }
+
+    async fn run_dkg(&mut self, bitcoin_chain_tip: bitcoin::BlockHash, txid: &bitcoin::Txid) {
+        self.wsts_coordinator
+            .move_to(coordinator::State::DkgPublicDistribute)
+            .expect("failed to move state machine");
+
+        let outbound = self
+            .wsts_coordinator
+            .start_public_shares()
+            .expect("failed to start public shares");
+
+        self.send_packet(bitcoin_chain_tip.clone(), txid.clone(), outbound)
+            .await;
+
+        loop {
+            let msg = self.network.receive().await.expect("network error");
+
+            let message::Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
+                continue;
+            };
+
+            let packet = wsts::net::Packet {
+                msg: wsts_msg.inner,
+                sig: Vec::new(),
+            };
+
+            let (outbound_packet, _) = self
+                .wsts_coordinator
+                .process_message(&packet)
+                .expect("message processing failed");
+
+            if let Some(packet) = outbound_packet {
+                self.send_packet(bitcoin_chain_tip.clone(), txid.clone(), packet)
+                    .await;
+                assert!(matches!(
+                    self.wsts_coordinator.state,
+                    coordinator::State::DkgPrivateGather
+                ));
+                break;
+            }
+        }
+
+        todo!();
+    }
+
+    async fn send_packet(
+        &mut self,
+        bitcoin_chain_tip: bitcoin::BlockHash,
+        txid: bitcoin::Txid,
+        packet: wsts::net::Packet,
+    ) {
+        let payload: message::Payload = message::WstsMessage { txid, inner: packet.msg }.into();
+
+        let dkg_begin_msg = payload
+            .to_message(bitcoin_chain_tip)
+            .sign_ecdsa(&self.private_key)
+            .expect("failed to sign message");
+
+        self.network
+            .broadcast(dkg_begin_msg)
+            .await
+            .expect("failed to broadcast dkg begin msg");
+    }
 }
