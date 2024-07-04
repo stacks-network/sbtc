@@ -721,4 +721,11 @@ mod tests {
             .assert_should_respond_to_bitcoin_transaction_sign_requests()
             .await;
     }
+
+    #[tokio::test]
+    async fn should_be_able_to_participate_in_dkg() {
+        test_environment()
+            .assert_should_be_able_to_participate_in_dkg()
+            .await;
+    }
 }

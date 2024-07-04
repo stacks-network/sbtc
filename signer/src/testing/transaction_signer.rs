@@ -309,6 +309,52 @@ where
         handle.stop_event_loop().await;
     }
 
+    /// Assert that a group of transaction signers together can
+    /// participate successfully in a DKG round
+    pub async fn assert_should_be_able_to_participate_in_dkg(mut self) {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let network = network::in_memory::Network::new();
+        let signer_info = generate_signer_info(&mut rng, self.num_signers);
+        let coordinator_signer_info = signer_info.first().unwrap().clone();
+
+        let mut event_loop_handles: Vec<_> = signer_info
+            .into_iter()
+            .map(|signer_info| {
+                let event_loop_harness = EventLoopHarness::create(
+                    network.connect(),
+                    (self.storage_constructor)(),
+                    self.context_window,
+                    signer_info,
+                );
+
+                event_loop_harness.start()
+            })
+            .collect();
+
+        let test_data = generate_test_data(&mut rng);
+        for handle in event_loop_handles.iter_mut() {
+            Self::write_test_data(&test_data, &mut handle.storage).await;
+        }
+
+        let bitcoin_chain_tip = event_loop_handles
+            .first()
+            .unwrap()
+            .storage
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("storage error")
+            .expect("no chain tip");
+        let bitcoin_chain_tip =
+            bitcoin::BlockHash::from_byte_array(bitcoin_chain_tip.try_into().unwrap());
+
+        let dummy_txid = testing::dummy::txid(&fake::Faker, &mut rng);
+
+        let mut coordinator = Coordinator::new(network.connect(), coordinator_signer_info);
+        let aggregate_key = coordinator.run_dkg(bitcoin_chain_tip, &dummy_txid).await;
+        println!("Aggregate key: {}", aggregate_key);
+        panic!("Urh my guwdh!");
+    }
+
     async fn write_test_data(test_data: &testing::storage::model::TestData, storage: &mut S) {
         test_data.write_to(storage).await;
     }
