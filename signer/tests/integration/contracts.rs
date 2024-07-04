@@ -1,3 +1,4 @@
+use signer::stacks::api::SubmitTxResponse;
 use tokio::sync::OnceCell;
 
 use secp256k1::ecdsa::RecoverableSignature;
@@ -61,6 +62,7 @@ pub struct SignerKeyState {
     pub keys: [Keypair; 3],
 }
 
+/// Deploy an sBTC smart contract to the stacks node
 async fn deploy_smart_contract<T>(state: &SignerKeyState, client: &StacksClient, contract: T)
 where
     T: AsTxPayload,
@@ -80,9 +82,13 @@ where
 
     let tx = unsigned.finalize_transaction();
 
-    dbg!(client.submit_tx(&tx).await.unwrap());
+    match client.submit_tx(&tx).await.unwrap() {
+        SubmitTxResponse::Acceptance(_) => (),
+        SubmitTxResponse::Rejection(err) => println!("{}", serde_json::to_string(&err).unwrap()),
+    }
 }
 
+/// Deploy all sBTC smart contracts to the stacks node
 pub async fn deploy_smart_contracts() -> SignerKeyState {
     static SBTC_DEPLOYMENT: OnceCell<bool> = OnceCell::const_new();
     let (signer_wallet, key_pairs) = wallet::generate_wallet();
