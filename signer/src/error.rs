@@ -106,6 +106,10 @@ pub enum Error {
     #[error("missing dkg shares")]
     MissingDkgShares,
 
+    /// Missing public key
+    #[error("missing public key")]
+    MissingPublicKey,
+
     /// Invalid signature
     #[error("invalid signature")]
     InvalidSignature,

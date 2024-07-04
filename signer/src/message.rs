@@ -138,7 +138,13 @@ pub struct BitcoinTransactionSignAck {
 
 /// A wsts message.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct WstsMessage(pub wsts::net::Message);
+pub struct WstsMessage {
+    /// The transaction ID this message relates to,
+    /// will be a dummy ID for DKG messages
+    pub txid: bitcoin::Txid,
+    /// The wsts message
+    pub inner: wsts::net::Message,
+}
 
 impl wsts::net::Signable for SignerMessage {
     fn hash(&self, hasher: &mut sha2::Sha256) {
@@ -151,7 +157,7 @@ impl wsts::net::Signable for SignerMessage {
 impl wsts::net::Signable for Payload {
     fn hash(&self, hasher: &mut sha2::Sha256) {
         match self {
-            Self::WstsMessage(msg) => msg.0.hash(hasher),
+            Self::WstsMessage(msg) => msg.hash(hasher),
             Self::SignerDepositDecision(msg) => msg.hash(hasher),
             Self::SignerWithdrawDecision(msg) => msg.hash(hasher),
             Self::BitcoinTransactionSignRequest(msg) => msg.hash(hasher),
@@ -206,6 +212,14 @@ impl wsts::net::Signable for StacksTransactionSignature {
         hasher.update("SIGNER_STACKS_TRANSACTION_SIGNATURE");
         hasher.update(self.txid);
         hasher.update(self.signature.to_bytes());
+    }
+}
+
+impl wsts::net::Signable for WstsMessage {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        hasher.update("SIGNER_WSTS_MESSAGE");
+        hasher.update(self.txid);
+        self.inner.hash(hasher);
     }
 }
 

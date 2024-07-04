@@ -205,8 +205,8 @@ where
                     .await?;
             }
 
-            message::Payload::WstsMessage(_) => {
-                //TODO(257): Implement
+            message::Payload::WstsMessage(msg) => {
+                self.handle_wsts_message(msg).await?;
             }
 
             // Message types ignored by the transaction signer
@@ -250,7 +250,7 @@ where
         request: &message::BitcoinTransactionSignRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<bool, error::Error> {
-        let signer_pub_key = self.signer_pub_key()?;
+        let signer_pub_key = self.signer_pub_key_model()?;
         let txid = request.tx.compute_txid();
         let _accepted_deposit_requests = self
             .storage
@@ -270,6 +270,44 @@ where
         self.signing_rounds.insert(txid, new_state_machine);
 
         Ok(true)
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn handle_wsts_message(
+        &mut self,
+        msg: &message::WstsMessage,
+    ) -> Result<(), error::Error> {
+        match &msg.inner {
+            wsts::net::Message::DkgBegin(request) => {
+                todo!();
+            }
+            wsts::net::Message::DkgPrivateBegin(request) => {
+                todo!();
+            }
+            wsts::net::Message::DkgEndBegin(request) => {
+                todo!();
+            }
+            wsts::net::Message::NonceRequest(request) => {
+                todo!();
+            }
+            wsts::net::Message::SignatureShareRequest(request) => {
+                todo!();
+            }
+            _ => {
+                tracing::debug!("ignoring message");
+            }
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn handle_dkg_begin(
+        &mut self,
+        txid: &bitcoin::Txid,
+        msg: &wsts::net::DkgBegin,
+    ) -> Result<(), error::Error> {
+        todo!();
     }
 
     #[tracing::instrument(skip(self))]
@@ -319,7 +357,7 @@ where
             })
             .await;
 
-        let signer_pub_key = self.signer_pub_key()?;
+        let signer_pub_key = self.signer_pub_key_model()?;
 
         let created_at = time::OffsetDateTime::now_utc();
 
@@ -361,7 +399,7 @@ where
             .await
             .unwrap_or(false);
 
-        let signer_pub_key = self.signer_pub_key()?;
+        let signer_pub_key = self.signer_pub_key_model()?;
 
         let created_at = time::OffsetDateTime::now_utc();
 
@@ -441,6 +479,51 @@ where
         Ok(())
     }
 
+    async fn create_dkg_state_machine(&mut self) -> Result<SignerStateMachine, error::Error> {
+        let signers: hashbrown::HashMap<u32, _> = self
+            .signer_public_keys
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(id, key)| {
+                id.try_into()
+                    .map(|id| (id, key))
+                    .map_err(|_| error::Error::TypeConversion)
+            })
+            .collect::<Result<_, _>>()?;
+        let key_ids = signers.clone();
+
+        let public_keys = wsts::state_machine::PublicKeys { signers, key_ids };
+
+        let threshold = self.signer_public_keys.len() as u32 / 3 * 2; // TODO: Take from configuration
+        let num_parties = self.signer_public_keys.len() as u32; // TODO: Type conversion
+        let num_keys = self.signer_public_keys.len() as u32;
+        let signer_pub_key = self.signer_pub_key()?;
+        let id: u32 = self
+            .signer_public_keys
+            .iter()
+            .enumerate()
+            .find(|(_, key)| *key == &signer_pub_key)
+            .ok_or_else(|| error::Error::MissingPublicKey)?
+            .0
+            .try_into()
+            .map_err(|_| error::Error::TypeConversion)?;
+
+        let key_ids = vec![id];
+
+        let state_machine = SignerStateMachine::new(
+            threshold,
+            num_parties,
+            num_keys,
+            id,
+            key_ids,
+            self.signer_private_key,
+            public_keys,
+        );
+
+        Ok(state_machine)
+    }
+
     async fn create_state_machine(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -510,10 +593,12 @@ where
         Ok(())
     }
 
-    fn signer_pub_key(&self) -> Result<model::PubKey, error::Error> {
-        Ok(p256k1::ecdsa::PublicKey::new(&self.signer_private_key)?
-            .to_bytes()
-            .to_vec())
+    fn signer_pub_key_model(&self) -> Result<model::PubKey, error::Error> {
+        Ok(self.signer_pub_key()?.to_bytes().to_vec())
+    }
+
+    fn signer_pub_key(&self) -> Result<p256k1::ecdsa::PublicKey, error::Error> {
+        Ok(p256k1::ecdsa::PublicKey::new(&self.signer_private_key)?)
     }
 }
 
