@@ -554,7 +554,7 @@ where
             .try_into()
             .map_err(|_| error::Error::TypeConversion)?;
 
-        let key_ids = vec![id];
+        let key_ids = vec![id + 1];
 
         let state_machine = SignerStateMachine::new(
             threshold,
