@@ -51,11 +51,12 @@ pub trait StacksInteract {
 }
 
 /// A rejection response from the node.
-/// 
+///
 /// For more details on the rejection response, see the official
 /// documentation at
 /// https://github.com/stacks-network/stacks-core/blob/2.05.0.6.0/docs/rpc-endpoints.md
 #[derive(Debug, serde::Deserialize)]
+#[cfg_attr(feature = "testing", derive(serde::Serialize))]
 pub struct PostTxRejection {
     /// The error message
     pub error: String,
