@@ -235,10 +235,15 @@ where
             .ok_or(Error::NoChainTip)?;
 
         let is_valid_sign_request = self
-            .is_valid_bitcoin_transaction_sign_request(request, &bitcoin_chain_tip)
+            .is_valid_bitcoin_transaction_sign_request(request)
             .await?;
 
         if is_valid_sign_request {
+            let new_state_machine = self.create_state_machine(&bitcoin_chain_tip).await?;
+
+            let txid = request.tx.compute_txid();
+            self.wsts_state_machines.insert(txid, new_state_machine);
+
             let msg = message::BitcoinTransactionSignAck {
                 txid: request.tx.compute_txid(),
             };
@@ -253,11 +258,9 @@ where
 
     async fn is_valid_bitcoin_transaction_sign_request(
         &mut self,
-        request: &message::BitcoinTransactionSignRequest,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        _request: &message::BitcoinTransactionSignRequest,
     ) -> Result<bool, error::Error> {
         let signer_pub_key = self.signer_pub_key_model()?;
-        let txid = request.tx.compute_txid();
         let _accepted_deposit_requests = self
             .storage
             .get_accepted_deposit_requests(&signer_pub_key)
@@ -270,10 +273,6 @@ where
         //    or pays to an approved signer set.
         // - Ensure the transaction fee is lower than the minimum
         //    `max_fee` of any request.
-
-        let new_state_machine = self.create_state_machine(bitcoin_chain_tip).await?;
-
-        self.wsts_state_machines.insert(txid, new_state_machine);
 
         Ok(true)
     }
