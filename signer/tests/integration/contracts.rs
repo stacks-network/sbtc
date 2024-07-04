@@ -1,11 +1,3 @@
-use blockstack_lib::chainstate::stacks::StacksTransaction;
-use blockstack_lib::chainstate::stacks::TransactionAnchorMode;
-use blockstack_lib::chainstate::stacks::TransactionAuth;
-use blockstack_lib::chainstate::stacks::TransactionPayload;
-use blockstack_lib::chainstate::stacks::TransactionPostConditionMode;
-use blockstack_lib::chainstate::stacks::TransactionSpendingCondition;
-use blockstack_lib::chainstate::stacks::TransactionVersion;
-use blockstack_lib::core::CHAIN_ID_TESTNET;
 use tokio::sync::OnceCell;
 
 use secp256k1::ecdsa::RecoverableSignature;
@@ -20,30 +12,14 @@ use signer::testing::wallet;
 use signer::testing::wallet::AsSmartContract;
 use signer::testing::wallet::SmartContract;
 
-pub const DEPOSIT: &str = std::include_str!("../../../contracts/contracts/sbtc-deposit.clar");
-pub const REGISTRY: &str = std::include_str!("../../../contracts/contracts/sbtc-registry.clar");
-pub const TOKEN: &str = std::include_str!("../../../contracts/contracts/sbtc-token.clar");
-pub const WITHDRAWAL: &str = std::include_str!("../../../contracts/contracts/sbtc-withdrawal.clar");
+const BOOTSTRAP: &str =
+    std::include_str!("../../../contracts/contracts/sbtc-bootstrap-signers.clar");
+const DEPOSIT: &str = std::include_str!("../../../contracts/contracts/sbtc-deposit.clar");
+const REGISTRY: &str = std::include_str!("../../../contracts/contracts/sbtc-registry.clar");
+const TOKEN: &str = std::include_str!("../../../contracts/contracts/sbtc-token.clar");
+const WITHDRAWAL: &str = std::include_str!("../../../contracts/contracts/sbtc-withdrawal.clar");
 
-const TX_FEE: u64 = 150000;
-
-pub fn new_smart_contract<T>(item: T, state: &SignerStxState, tx_fee: u64) -> StacksTransaction
-where
-    T: AsSmartContract,
-{
-    let auth = state.as_unsigned_tx_auth(tx_fee);
-    let spending_condition = TransactionSpendingCondition::OrderIndependentMultisig(auth);
-
-    StacksTransaction {
-        version: TransactionVersion::Testnet,
-        chain_id: CHAIN_ID_TESTNET,
-        auth: TransactionAuth::Standard(spending_condition),
-        anchor_mode: TransactionAnchorMode::Any,
-        post_condition_mode: TransactionPostConditionMode::Allow,
-        post_conditions: Vec::new(),
-        payload: TransactionPayload::SmartContract(item.as_smart_contract(), None),
-    }
-}
+const TX_FEE: u64 = 15000000;
 
 pub struct SbtcTokenContract;
 
@@ -73,12 +49,19 @@ impl AsSmartContract for SbtcWithdrawalContract {
     const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
 }
 
+pub struct SbtcBootstrapContract;
+
+impl AsSmartContract for SbtcBootstrapContract {
+    const CONTRACT_BODY: &'static str = BOOTSTRAP;
+    const CONTRACT_NAME: &'static str = "sbtc-bootstrap-signers";
+}
+
 pub struct SignerKeyState {
     pub state: SignerStxState,
     pub keys: [Keypair; 3],
 }
 
-pub async fn deploy_smart_contract<T>(state: &SignerKeyState, client: &StacksClient, contract: T)
+async fn deploy_smart_contract<T>(state: &SignerKeyState, client: &StacksClient, contract: T)
 where
     T: AsTxPayload,
 {
@@ -97,10 +80,10 @@ where
 
     let tx = unsigned.finalize_transaction();
 
-    client.submit_tx(&tx).await.unwrap();
+    dbg!(client.submit_tx(&tx).await.unwrap());
 }
 
-pub async fn deploy_smart_contracts() {
+pub async fn deploy_smart_contracts() -> SignerKeyState {
     static SBTC_DEPLOYMENT: OnceCell<bool> = OnceCell::const_new();
     let (signer_wallet, key_pairs) = wallet::generate_wallet();
     let deployer = signer_wallet.address();
@@ -113,7 +96,7 @@ pub async fn deploy_smart_contracts() {
     let client = StacksClient::new(settings);
 
     SBTC_DEPLOYMENT
-        .get_or_init(|| async move {
+        .get_or_init(|| async {
             deploy_smart_contract(&state, &client, SmartContract(SbtcTokenContract)).await;
             deploy_smart_contract(&state, &client, SmartContract(SbtcRegistryContract)).await;
             deploy_smart_contract(&state, &client, SmartContract(SbtcDepositContract)).await;
@@ -121,6 +104,14 @@ pub async fn deploy_smart_contracts() {
             true
         })
         .await;
+
+    state
+}
+
+#[ignore]
+#[tokio::test]
+async fn test_deploy() {
+    let _state = deploy_smart_contracts().await;
 }
 
 #[ignore]
