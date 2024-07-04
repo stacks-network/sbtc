@@ -5,6 +5,7 @@
 //!
 //! For more details, see the [`TxSignerEventLoop`] documentation.
 
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 
 use crate::blocklist_client;
@@ -18,6 +19,7 @@ use crate::storage::model;
 
 use bitcoin::hashes::Hash;
 use futures::StreamExt;
+use wsts::traits::Signer;
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// # Transaction signer event loop
@@ -92,6 +94,8 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker> {
     pub signer_private_key: p256k1::scalar::Scalar,
     /// WSTS state machines for active signing rounds
     pub signing_rounds: HashMap<bitcoin::Txid, SignerStateMachine>,
+    /// Public keys of the other signers
+    pub signer_public_keys: BTreeSet<p256k1::ecdsa::PublicKey>,
     /// How many bitcoin blocks back from the chain tip the signer will look for requests.
     pub context_window: usize,
 }
@@ -456,7 +460,35 @@ where
         let saved_state =
             wsts::traits::SignerState::decode(decrypted.as_slice()).map_err(error::Error::Codec)?;
 
-        todo!();
+        let signers: hashbrown::HashMap<u32, _> = self
+            .signer_public_keys
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(id, key)| {
+                id.try_into()
+                    .map(|id| (id, key))
+                    .map_err(|_| error::Error::TypeConversion)
+            })
+            .collect::<Result<_, _>>()?;
+        let key_ids = signers.clone();
+
+        let public_keys = wsts::state_machine::PublicKeys { signers, key_ids };
+
+        let signer = wsts::v2::Party::load(&saved_state);
+        let mut state_machine = SignerStateMachine::new(
+            saved_state.threshold,
+            saved_state.num_parties,
+            saved_state.num_keys,
+            saved_state.id,
+            saved_state.key_ids,
+            self.signer_private_key,
+            public_keys,
+        );
+
+        state_machine.signer = signer;
+
+        Ok(state_machine)
     }
 
     #[tracing::instrument(skip(self, msg))]
