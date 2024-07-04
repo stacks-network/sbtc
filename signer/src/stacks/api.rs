@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::future::Future;
 use std::time::Duration;
 
+use blockstack_lib::burnchains::Txid;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::codec::StacksMessageCodec;
@@ -49,6 +50,33 @@ pub trait StacksInteract {
     fn nakamoto_start_height(&self) -> u64;
 }
 
+/// A rejection response from the node.
+/// 
+/// For more details on the rejection response, see the official
+/// documentation at
+/// https://github.com/stacks-network/stacks-core/blob/2.05.0.6.0/docs/rpc-endpoints.md
+#[derive(Debug, serde::Deserialize)]
+pub struct PostTxRejection {
+    /// The error message
+    pub error: String,
+    /// Reason for the rejection.
+    pub reason: String,
+    /// More details about the reason for the rejection.
+    pub reason_data: Option<serde_json::Value>,
+    /// The transaction ID of the rejected transaction.
+    pub pxid: Txid,
+}
+
+/// The response from a POST /v2/transaction request
+#[derive(Debug, serde::Deserialize)]
+#[serde(untagged)]
+pub enum SubmitTxResponse {
+    /// The transaction ID for the submitted transaction
+    Acceptance(Txid),
+    /// The response when the transaction is rejected from the node.
+    Rejection(PostTxRejection),
+}
+
 /// A client for interacting with Stacks nodes and the Stacks API
 pub struct StacksClient {
     /// The base URL (with the port) that will be used when making requests
@@ -74,7 +102,7 @@ impl StacksClient {
 
     /// Submit a transaction to a Stacks node.
     #[tracing::instrument(skip_all)]
-    pub async fn submit_transaction(&self, tx: &StacksTransaction) -> Result<(), Error> {
+    pub async fn submit_tx(&self, tx: &StacksTransaction) -> Result<SubmitTxResponse, Error> {
         let path = "/v2/transactions";
         let base = self.node_endpoint.clone();
         let url = base
@@ -84,7 +112,8 @@ impl StacksClient {
         tracing::debug!(txid = %tx.txid(), "Submitting transaction to the stacks node");
         let body = tx.serialize_to_vec();
 
-        self.client
+        let response = self
+            .client
             .post(url)
             .timeout(REQUEST_TIMEOUT)
             .header(CONTENT_TYPE, "application/octet-stream")
@@ -94,7 +123,10 @@ impl StacksClient {
             .await
             .map_err(Error::StacksNodeRequest)?;
 
-        Ok(())
+        response
+            .json()
+            .await
+            .map_err(Error::UnexpectedStacksResponse)
     }
 
     /// Fetch the raw stacks nakamoto block from a Stacks node given the

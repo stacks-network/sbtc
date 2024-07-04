@@ -97,7 +97,7 @@ where
 
     let tx = unsigned.finalize_transaction();
 
-    client.submit_transaction(&tx).await.unwrap();
+    client.submit_tx(&tx).await.unwrap();
 }
 
 pub async fn deploy_smart_contracts() {
