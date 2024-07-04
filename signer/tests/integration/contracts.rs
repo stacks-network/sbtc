@@ -97,10 +97,11 @@ pub async fn deploy_smart_contracts() -> SignerKeyState {
 
     SBTC_DEPLOYMENT
         .get_or_init(|| async {
-            deploy_smart_contract(&state, &client, SmartContract(SbtcTokenContract)).await;
             deploy_smart_contract(&state, &client, SmartContract(SbtcRegistryContract)).await;
+            deploy_smart_contract(&state, &client, SmartContract(SbtcTokenContract)).await;
             deploy_smart_contract(&state, &client, SmartContract(SbtcDepositContract)).await;
             deploy_smart_contract(&state, &client, SmartContract(SbtcWithdrawalContract)).await;
+            deploy_smart_contract(&state, &client, SmartContract(SbtcBootstrapContract)).await;
             true
         })
         .await;
