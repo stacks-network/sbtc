@@ -532,7 +532,11 @@ where
                     .map_err(|_| error::Error::TypeConversion)
             })
             .collect::<Result<_, _>>()?;
-        let key_ids = signers.clone();
+        let key_ids = signers
+            .clone()
+            .into_iter()
+            .map(|(id, key)| (id + 1, key))
+            .collect();
 
         let public_keys = wsts::state_machine::PublicKeys { signers, key_ids };
 
@@ -595,7 +599,11 @@ where
                     .map_err(|_| error::Error::TypeConversion)
             })
             .collect::<Result<_, _>>()?;
-        let key_ids = signers.clone();
+        let key_ids = signers
+            .clone()
+            .into_iter()
+            .map(|(id, key)| (id + 1, key))
+            .collect();
 
         let public_keys = wsts::state_machine::PublicKeys { signers, key_ids };
 
@@ -734,6 +742,7 @@ mod tests {
 
     #[tokio::test]
     async fn should_be_able_to_participate_in_dkg() {
+        sbtc_common::logging::setup_logging(true);
         test_environment()
             .assert_should_be_able_to_participate_in_dkg()
             .await;

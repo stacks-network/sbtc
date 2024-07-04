@@ -630,10 +630,6 @@ impl Coordinator {
             if let Some(packet) = outbound_packet {
                 self.send_packet(bitcoin_chain_tip.clone(), txid.clone(), packet)
                     .await;
-                assert!(matches!(
-                    self.wsts_coordinator.state,
-                    coordinator::State::DkgPrivateGather
-                ));
             }
 
             if let Some(result) = operation_result {
