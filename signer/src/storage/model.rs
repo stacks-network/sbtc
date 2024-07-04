@@ -168,11 +168,11 @@ pub struct Transaction {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct EncryptedDkgShares {
     /// The aggregate key for these shares
-    aggregate_key: PubKey,
+    pub aggregate_key: PubKey,
     /// The tweaked aggregate key for these shares
-    tweaked_aggregate_key: PubKey,
+    pub tweaked_aggregate_key: PubKey,
     /// The encrypted DKG shares
-    encrypted_shares: Bytes,
+    pub encrypted_shares: Bytes,
     /// The time this entry was created by the signer.
     pub created_at: time::OffsetDateTime,
 } // TODO: Real dummy implementation

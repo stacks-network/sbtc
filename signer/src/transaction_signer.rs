@@ -8,7 +8,8 @@
 use std::collections::HashMap;
 
 use crate::blocklist_client;
-use crate::ecdsa::SignEcdsa;
+use crate::codec::Decode as _;
+use crate::ecdsa::SignEcdsa as _;
 use crate::error;
 use crate::message;
 use crate::network;
@@ -440,13 +441,22 @@ where
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<SignerStateMachine, error::Error> {
-        let maybe_encrypted_shares = self
+        let encrypted_shares = self
             .storage
             .get_encrypted_dkg_shares(bitcoin_chain_tip)
             .await?
             .ok_or(error::Error::MissingDkgShares)?;
 
-        let saved_state = todo!(); // TODO
+        let decrypted = wsts::util::decrypt(
+            &self.signer_private_key.to_bytes(),
+            &encrypted_shares.encrypted_shares,
+        )
+        .map_err(|_| error::Error::Encryption)?;
+
+        let saved_state =
+            wsts::traits::SignerState::decode(decrypted.as_slice()).map_err(error::Error::Codec)?;
+
+        todo!();
     }
 
     #[tracing::instrument(skip(self, msg))]
