@@ -100,19 +100,24 @@ pub trait AsContractCall {
     }
 }
 
-/// Wrapper type that implements AsTxPayload.
+/// A generic newtype that implements AsTxPayload for all types that
+/// implement AsContractCall.
 ///
 /// # Notes
 ///
-/// What we want is to have something like the following:
+/// Ideally, every type that implements AsContractCall should implement
+/// AsTxPayload automatically. What we want is to have something like the
+/// following:
 ///
 /// impl<T: AsContractCall> AsTxPayload for T { ... }
 ///
+/// But that would preclude us from adding something like:
+///
 /// impl<T: AsSmartContract> AsTxPayload for T { ... }
 ///
-/// But this cannot work, since the compiler forbids it because it
-/// introduces ambiguity. We use a wrapper type to overcome that and
-/// essentially get what we want.
+/// since doing so is prevented by the compiler because it introduces
+/// ambiguity. One work-around is to use a wrapper type that implements the
+/// trait that we want.
 pub struct ContractCall<T: AsContractCall>(pub T);
 
 impl<T: AsContractCall> AsTxPayload for ContractCall<T> {
