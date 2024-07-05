@@ -17,9 +17,7 @@ jobs:
       - name: Docker test service setup
         run: docker compose --file docker-compose.test.yml up --detach
 
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 9.1.0
+      - uses: pnpm/action-setup@v4
 
       - name: Set Node Version
         uses: actions/setup-node@v3
