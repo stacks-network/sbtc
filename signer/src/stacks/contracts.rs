@@ -17,6 +17,7 @@ use bitcoin::OutPoint;
 use bitvec::array::BitArray;
 use bitvec::field::BitField as _;
 use blockstack_lib::chainstate::stacks::TransactionContractCall;
+use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::chainstate::stacks::TransactionPostCondition;
 use blockstack_lib::chainstate::stacks::TransactionPostConditionMode;
 use blockstack_lib::clarity::vm::types::BuffData;
@@ -47,6 +48,19 @@ pub struct StacksTxPostConditions {
     pub post_condition_mode: TransactionPostConditionMode,
     /// Any post-execution conditions that we'd like to enforce.
     pub post_conditions: Vec<TransactionPostCondition>,
+}
+
+/// A trait for constructing the payload for a stacks transaction along
+/// with any post execution conditions.
+pub trait AsTxPayload {
+    /// The payload of the transaction
+    fn tx_payload(&self) -> TransactionPayload;
+    /// Any post-execution conditions that we'd like to enforce. The
+    /// deployer corresponds to the principal in the Transaction
+    /// post-conditions, which is the address that sent the asset. The
+    /// default is that we do not enforce any conditions since we usually
+    /// deployed the contract.
+    fn post_conditions(&self) -> StacksTxPostConditions;
 }
 
 /// A trait to ease construction of a StacksTransaction making sBTC related

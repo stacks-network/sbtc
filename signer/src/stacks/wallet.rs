@@ -32,6 +32,8 @@ use secp256k1::SECP256K1;
 use crate::config::NetworkKind;
 use crate::error::Error;
 use crate::stacks::contracts::AsContractCall;
+use crate::stacks::contracts::AsTxPayload;
+use crate::stacks::contracts::ContractCall;
 
 /// Requisite info for the signers' multi-sig wallet on Stacks.
 #[derive(Debug, Clone)]
@@ -194,11 +196,11 @@ pub struct MultisigTx {
 }
 
 impl MultisigTx {
-    /// Create a new Stacks transaction for a contract call that can be
+    /// Create a new Stacks transaction for a given payload that can be
     /// signed by the signers' multi-sig wallet.
-    pub fn new_contract_call<T>(contract: T, state: &SignerStxState, tx_fee: u64) -> Self
+    pub fn new_tx<T>(payload: T, state: &SignerStxState, tx_fee: u64) -> Self
     where
-        T: AsContractCall,
+        T: AsTxPayload,
     {
         // The chain id is used so transactions can't be replayed on other
         // chains. The "common" chain id values are mentioned in
@@ -211,8 +213,7 @@ impl MultisigTx {
             NetworkKind::Testnet => (TransactionVersion::Testnet, CHAIN_ID_TESTNET),
         };
 
-        let deployer = state.contract_deployer();
-        let conditions = contract.post_conditions(deployer);
+        let conditions = payload.post_conditions();
         let auth = state.as_unsigned_tx_auth(tx_fee);
         let spending_condition = TransactionSpendingCondition::OrderIndependentMultisig(auth);
 
@@ -223,7 +224,7 @@ impl MultisigTx {
             anchor_mode: TransactionAnchorMode::Any,
             post_condition_mode: conditions.post_condition_mode,
             post_conditions: conditions.post_conditions,
-            payload: TransactionPayload::ContractCall(contract.as_contract_call(deployer)),
+            payload: payload.tx_payload(),
         };
 
         let digest = construct_digest(&tx);
