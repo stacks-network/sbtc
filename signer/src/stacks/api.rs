@@ -187,16 +187,13 @@ impl StacksClient {
     /// block then a Result::Err is returned.
     #[tracing::instrument(skip(self))]
     async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
-        let mut blocks = Vec::new();
-
         tracing::debug!("Making initial request for Nakamoto blocks within the tenure");
-        blocks.extend(self.get_tenure_raw(block_id).await?);
-
+        let mut tenure_blocks = self.get_tenure_raw(block_id).await?;
         let mut prev_last_block_id = block_id;
 
         // Given the response size limit of GET /v3/tenures/<block-id>
         // requests, there could be more blocks that we need to fetch.
-        while let Some(last_block_id) = blocks.last().map(NakamotoBlock::block_id) {
+        while let Some(last_block_id) = tenure_blocks.last().map(NakamotoBlock::block_id) {
             // To determine whether all blocks within a tenure have been
             // retrieved, we check if we've seen the last block in the
             // previous GET /v3/tenures/<block-id> response. Note that the
@@ -209,15 +206,15 @@ impl StacksClient {
             prev_last_block_id = last_block_id;
 
             tracing::debug!(%last_block_id, "Fetching more Nakamoto blocks within the tenure");
-            let blks = self.get_tenure_raw(last_block_id).await?;
+            let blocks = self.get_tenure_raw(last_block_id).await?;
             // The first block in the GET /v3/tenures/<block-id> response
             // is always the block related to the given <block-id>. But we
             // already have that block, so we can skip adding it again.
-            debug_assert_eq!(blks.first().map(|b| b.block_id()), Some(last_block_id));
-            blocks.extend(blks.into_iter().skip(1))
+            debug_assert_eq!(blocks.first().map(|b| b.block_id()), Some(last_block_id));
+            tenure_blocks.extend(blocks.into_iter().skip(1))
         }
 
-        Ok(blocks)
+        Ok(tenure_blocks)
     }
 
     /// Make a GET /v3/tenures/<block-id> request for Nakamoto ancestor
