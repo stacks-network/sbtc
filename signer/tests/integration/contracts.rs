@@ -12,48 +12,47 @@ use signer::testing::wallet;
 use signer::testing::wallet::AsContractDeploy;
 use signer::testing::wallet::ContractDeploy;
 
-const BOOTSTRAP: &str =
-    std::include_str!("../../../contracts/contracts/sbtc-bootstrap-signers.clar");
-const DEPOSIT: &str = std::include_str!("../../../contracts/contracts/sbtc-deposit.clar");
-const REGISTRY: &str = std::include_str!("../../../contracts/contracts/sbtc-registry.clar");
-const TOKEN: &str = std::include_str!("../../../contracts/contracts/sbtc-token.clar");
-const WITHDRAWAL: &str = std::include_str!("../../../contracts/contracts/sbtc-withdrawal.clar");
+const BOOTSTRAP: &str = include_str!("../../../contracts/contracts/sbtc-bootstrap-signers.clar");
+const DEPOSIT: &str = include_str!("../../../contracts/contracts/sbtc-deposit.clar");
+const REGISTRY: &str = include_str!("../../../contracts/contracts/sbtc-registry.clar");
+const TOKEN: &str = include_str!("../../../contracts/contracts/sbtc-token.clar");
+const WITHDRAWAL: &str = include_str!("../../../contracts/contracts/sbtc-withdrawal.clar");
 
 const TX_FEE: u64 = 15000000;
 
 pub struct SbtcTokenContract;
 
 impl AsContractDeploy for SbtcTokenContract {
-    const CONTRACT_BODY: &'static str = TOKEN;
     const CONTRACT_NAME: &'static str = "sbtc-token";
+    const CONTRACT_BODY: &'static str = TOKEN;
 }
 
 pub struct SbtcRegistryContract;
 
 impl AsContractDeploy for SbtcRegistryContract {
-    const CONTRACT_BODY: &'static str = REGISTRY;
     const CONTRACT_NAME: &'static str = "sbtc-registry";
+    const CONTRACT_BODY: &'static str = REGISTRY;
 }
 
 pub struct SbtcDepositContract;
 
 impl AsContractDeploy for SbtcDepositContract {
-    const CONTRACT_BODY: &'static str = DEPOSIT;
     const CONTRACT_NAME: &'static str = "sbtc-deposit";
+    const CONTRACT_BODY: &'static str = DEPOSIT;
 }
 
 pub struct SbtcWithdrawalContract;
 
 impl AsContractDeploy for SbtcWithdrawalContract {
-    const CONTRACT_BODY: &'static str = WITHDRAWAL;
     const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
+    const CONTRACT_BODY: &'static str = WITHDRAWAL;
 }
 
 pub struct SbtcBootstrapContract;
 
 impl AsContractDeploy for SbtcBootstrapContract {
-    const CONTRACT_BODY: &'static str = BOOTSTRAP;
     const CONTRACT_NAME: &'static str = "sbtc-bootstrap-signers";
+    const CONTRACT_BODY: &'static str = BOOTSTRAP;
 }
 
 pub struct SignerKeyState {
@@ -101,12 +100,11 @@ pub async fn deploy_smart_contracts() -> SignerKeyState {
         keys: key_pairs,
     };
 
-
     SBTC_DEPLOYMENT
         .get_or_init(|| async {
-            // The registry and token contracts needing to be deployed
-            // first and second respectively. The rest can be deployed in
-            // any order.
+            // The registry and token contracts need to be deployed first
+            // and second respectively. The rest can be deployed in any
+            // order.
             deploy_smart_contract(&state, &client, SbtcRegistryContract).await;
             deploy_smart_contract(&state, &client, SbtcTokenContract).await;
             deploy_smart_contract(&state, &client, SbtcDepositContract).await;

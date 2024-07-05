@@ -71,10 +71,10 @@ pub trait AsContractCall {
     const CONTRACT_NAME: &'static str;
     /// The specific function name that relates to this struct.
     const FUNCTION_NAME: &'static str;
-    /// The arguments to the clarity function.
-    fn as_contract_args(&self) -> Vec<Value>;
     /// The stacks address that deployed the contract.
     fn deployer_address(&self) -> StacksAddress;
+    /// The arguments to the clarity function.
+    fn as_contract_args(&self) -> Vec<Value>;
     /// Convert this struct to a Stacks contract call.
     fn as_contract_call(&self) -> TransactionContractCall {
         TransactionContractCall {
@@ -101,7 +101,7 @@ pub trait AsContractCall {
     }
 }
 
-/// A generic newtype that implements AsTxPayload for all types that
+/// A generic new-type that implements AsTxPayload for all types that
 /// implement AsContractCall.
 ///
 /// # Notes

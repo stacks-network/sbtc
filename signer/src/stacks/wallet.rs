@@ -88,7 +88,7 @@ impl SignerWallet {
             NetworkKind::Testnet => C32_ADDRESS_VERSION_TESTNET_MULTISIG,
         };
 
-        // The StacksAddress::from_public_keys call below should bever
+        // The StacksAddress::from_public_keys call below should never
         // fail. For the AddressHashMode::SerializeP2WSH hash mode -- which
         // we use since it corresponds to the
         // OrderIndependentMultisigHashMode::P2WSH hash mode-- the
