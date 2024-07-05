@@ -59,7 +59,7 @@ pub struct Store {
     pub stacks_nakamoto_blocks: HashMap<StacksBlockId, NakamotoBlock>,
 
     /// Encrypted DKG shares
-    pub encrypted_dkg_shares: Vec<model::EncryptedDkgShares>,
+    pub encrypted_dkg_shares: HashMap<model::PubKey, model::EncryptedDkgShares>,
 }
 
 impl Store {
@@ -278,9 +278,28 @@ impl super::DbRead for SharedStore {
 
     async fn get_encrypted_dkg_shares(
         &self,
-        _chain_tip: &model::BitcoinBlockHash,
+        aggregate_key: &model::PubKey,
     ) -> Result<Option<model::EncryptedDkgShares>, Self::Error> {
-        Ok(self.lock().await.encrypted_dkg_shares.last().cloned())
+        Ok(self
+            .lock()
+            .await
+            .encrypted_dkg_shares
+            .get(aggregate_key)
+            .cloned())
+    }
+
+    async fn get_aggregate_key(
+        &self,
+        _chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<Option<model::PubKey>, Self::Error> {
+        // TODO: Query based on chain tip
+        Ok(self
+            .lock()
+            .await
+            .encrypted_dkg_shares
+            .keys()
+            .next()
+            .cloned())
     }
 }
 
@@ -441,7 +460,10 @@ impl super::DbWrite for SharedStore {
         &self,
         shares: &model::EncryptedDkgShares,
     ) -> Result<(), Self::Error> {
-        self.lock().await.encrypted_dkg_shares.push(shares.clone());
+        self.lock()
+            .await
+            .encrypted_dkg_shares
+            .insert(shares.aggregate_key.clone(), shares.clone());
 
         Ok(())
     }

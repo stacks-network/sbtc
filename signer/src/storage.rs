@@ -84,11 +84,17 @@ pub trait DbRead {
     ) -> impl Future<Output = Result<bool, Self::Error>> + Send;
 
     /// Return the applicable DKG shares for the
-    /// given chain tip
+    /// given aggregate key
     fn get_encrypted_dkg_shares(
         &self,
-        chain_tip: &model::BitcoinBlockHash,
+        aggregate_key: &model::PubKey,
     ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Self::Error>> + Send;
+
+    /// Return the aggregate key for the given chain tip
+    fn get_aggregate_key(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+    ) -> impl Future<Output = Result<Option<model::PubKey>, Self::Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.

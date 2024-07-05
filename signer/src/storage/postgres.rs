@@ -506,8 +506,15 @@ impl super::DbRead for PgStore {
 
     async fn get_encrypted_dkg_shares(
         &self,
-        _chain_tip: &model::BitcoinBlockHash,
+        _aggregate_key: &model::PubKey,
     ) -> Result<Option<model::EncryptedDkgShares>, Self::Error> {
+        todo!() // TODO
+    }
+
+    async fn get_aggregate_key(
+        &self,
+        _chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<Option<model::PubKey>, Self::Error> {
         todo!() // TODO
     }
 }

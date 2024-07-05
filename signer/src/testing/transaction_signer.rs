@@ -351,7 +351,16 @@ where
 
         let mut coordinator = Coordinator::new(network.connect(), coordinator_signer_info);
         let aggregate_key = coordinator.run_dkg(bitcoin_chain_tip, &dummy_txid).await;
-        println!("Aggregate key: {}", aggregate_key);
+        let aggregate_key_bytes = aggregate_key.x().to_bytes().to_vec();
+
+        for handle in event_loop_handles.into_iter() {
+            let storage = handle.stop_event_loop().await;
+            assert!(storage
+                .get_encrypted_dkg_shares(&aggregate_key_bytes)
+                .await
+                .expect("storage error")
+                .is_none());
+        }
         panic!("Urh my guwdh!");
     }
 
