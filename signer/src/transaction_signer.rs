@@ -656,7 +656,7 @@ where
         let encrypted_shares = wsts::util::encrypt(
             &self.signer_private_key.to_bytes(),
             &encoded,
-            &mut rand::rngs::OsRng,
+            &mut rand::rngs::OsRng, // TODO: Set RNG in struct
         )
         .map_err(|_| error::Error::Encryption)?;
 

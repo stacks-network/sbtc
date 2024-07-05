@@ -261,6 +261,9 @@ where
 
         let mut handle = event_loop_harness.start();
 
+        let signer_private_key = signer_info.first().unwrap().signer_private_key.to_bytes();
+        store_dummy_dkg_shares(&mut rng, &signer_private_key, &mut handle.storage).await;
+
         let test_data = generate_test_data(&mut rng);
         Self::write_test_data(&test_data, &mut handle.storage).await;
 
@@ -670,4 +673,16 @@ impl Coordinator {
             .await
             .expect("failed to broadcast dkg begin msg");
     }
+}
+
+async fn store_dummy_dkg_shares<R, S>(rng: &mut R, signer_private_key: &[u8; 32], storage: &mut S)
+where
+    R: rand::CryptoRng + rand::RngCore,
+    S: storage::DbWrite,
+{
+    let shares = testing::dummy::encrypted_dkg_shares(&fake::Faker, rng, signer_private_key);
+    storage
+        .write_encrypted_dkg_shares(&shares)
+        .await
+        .expect("storage error");
 }
