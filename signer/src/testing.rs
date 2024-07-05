@@ -5,6 +5,7 @@ pub mod message;
 pub mod network;
 pub mod storage;
 pub mod transaction_signer;
+pub mod wallet;
 
 use crate::utxo::UnsignedTransaction;
 use bitcoin::hashes::Hash;
