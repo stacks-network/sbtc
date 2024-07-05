@@ -761,4 +761,12 @@ mod tests {
             .assert_should_be_able_to_participate_in_dkg()
             .await;
     }
+
+    #[tokio::test]
+    async fn should_be_able_to_participate_in_signing_round() {
+        sbtc_common::logging::setup_logging(true);
+        test_environment()
+            .assert_should_be_able_to_participate_in_signing_round()
+            .await;
+    }
 }

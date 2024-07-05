@@ -366,6 +366,70 @@ where
         }
     }
 
+    /// Assert that a group of transaction signers together can
+    /// participate successfully in a signing roundd
+    pub async fn assert_should_be_able_to_participate_in_signing_round(mut self) {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let network = network::in_memory::Network::new();
+        let signer_info = generate_signer_info(&mut rng, self.num_signers);
+        let coordinator_signer_info = signer_info.first().unwrap().clone();
+
+        let mut event_loop_handles: Vec<_> = signer_info
+            .into_iter()
+            .map(|signer_info| {
+                let event_loop_harness = EventLoopHarness::create(
+                    network.connect(),
+                    (self.storage_constructor)(),
+                    self.context_window,
+                    signer_info,
+                );
+
+                event_loop_harness.start()
+            })
+            .collect();
+
+        let test_data = generate_test_data(&mut rng);
+        for handle in event_loop_handles.iter_mut() {
+            Self::write_test_data(&test_data, &mut handle.storage).await;
+        }
+
+        let bitcoin_chain_tip = event_loop_handles
+            .first()
+            .unwrap()
+            .storage
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("storage error")
+            .expect("no chain tip");
+        let bitcoin_chain_tip =
+            bitcoin::BlockHash::from_byte_array(bitcoin_chain_tip.try_into().unwrap());
+
+        let dummy_txid = testing::dummy::txid(&fake::Faker, &mut rng);
+
+        let mut coordinator = Coordinator::new(network.connect(), coordinator_signer_info);
+        let aggregate_key = coordinator.run_dkg(bitcoin_chain_tip, &dummy_txid).await;
+        let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&aggregate_key, None);
+
+        let dummy_txid2 = testing::dummy::txid(&fake::Faker, &mut rng); // TODO: Use
+        let signature = coordinator
+            .run_signing_round(bitcoin_chain_tip, &dummy_txid, &[1, 3, 3, 7])
+            .await;
+
+        assert!(signature.verify(&tweaked_aggregate_key.x(), &[1, 3, 3, 7]));
+        panic!("Myh gaaaaaawdh!")
+        // TODO: More funny message
+        //let aggregate_key_bytes = aggregate_key.x().to_bytes().to_vec();
+
+        //for handle in event_loop_handles.into_iter() {
+        //    let storage = handle.stop_event_loop().await;
+        //    assert!(storage
+        //        .get_encrypted_dkg_shares(&aggregate_key_bytes)
+        //        .await
+        //        .expect("storage error")
+        //        .is_some());
+        //}
+    }
+
     async fn write_test_data(test_data: &testing::storage::model::TestData, storage: &mut S) {
         test_data.write_to(storage).await;
     }
@@ -648,6 +712,55 @@ impl Coordinator {
                 match result {
                     wsts::state_machine::OperationResult::Dkg(aggregate_key) => {
                         return aggregate_key
+                    }
+                    _ => panic!("unexpected operation result"),
+                }
+            }
+        }
+    }
+
+    async fn run_signing_round(
+        &mut self,
+        bitcoin_chain_tip: bitcoin::BlockHash,
+        txid: &bitcoin::Txid,
+        msg: &[u8],
+    ) -> wsts::taproot::SchnorrProof {
+        let outbound = self
+            .wsts_coordinator
+            .start_signing_round(msg, true, None)
+            .expect("failed to start signing round");
+
+        self.send_packet(bitcoin_chain_tip.clone(), txid.clone(), outbound)
+            .await;
+
+        // TODO: Break out duplicated loop code
+        loop {
+            let msg = self.network.receive().await.expect("network error");
+
+            let message::Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
+                continue;
+            };
+
+            let packet = wsts::net::Packet {
+                msg: wsts_msg.inner,
+                sig: Vec::new(),
+            };
+
+            let (outbound_packet, operation_result) = self
+                .wsts_coordinator
+                .process_message(&packet)
+                .expect("message processing failed");
+
+            if let Some(packet) = outbound_packet {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                self.send_packet(bitcoin_chain_tip.clone(), txid.clone(), packet)
+                    .await;
+            }
+
+            if let Some(result) = operation_result {
+                match result {
+                    wsts::state_machine::OperationResult::SignTaproot(signature) => {
+                        return signature
                     }
                     _ => panic!("unexpected operation result"),
                 }
