@@ -100,6 +100,35 @@ pub trait AsContractCall {
     }
 }
 
+/// A generic newtype that implements AsTxPayload for all types that
+/// implement AsContractCall.
+///
+/// # Notes
+///
+/// Ideally, every type that implements AsContractCall should implement
+/// AsTxPayload automatically. What we want is to have something like the
+/// following:
+///
+/// impl<T: AsContractCall> AsTxPayload for T { ... }
+///
+/// But that would preclude us from adding something like:
+///
+/// impl<T: AsSmartContract> AsTxPayload for T { ... }
+///
+/// since doing so is prevented by the compiler because it introduces
+/// ambiguity. One work-around is to use a wrapper type that implements the
+/// trait that we want.
+pub struct ContractCall<T: AsContractCall>(pub T);
+
+impl<T: AsContractCall> AsTxPayload for ContractCall<T> {
+    fn tx_payload(&self) -> TransactionPayload {
+        TransactionPayload::ContractCall(self.0.as_contract_call())
+    }
+    fn post_conditions(&self) -> StacksTxPostConditions {
+        self.0.post_conditions()
+    }
+}
+
 /// This struct is used to generate a properly formatted Stacks transaction
 /// for calling the complete-deposit-wrapper function in the sbtc-deposit
 /// smart contract.

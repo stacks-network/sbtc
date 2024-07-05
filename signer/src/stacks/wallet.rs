@@ -223,6 +223,16 @@ impl MultisigTx {
 
         Self { digest, signatures, tx }
     }
+
+    /// Create a new Stacks transaction for a contract call that can be
+    /// signed by the signers' multi-sig wallet.
+    pub fn new_contract_call<T>(contract: T, state: &SignerStxState, tx_fee: u64) -> Self
+    where
+        T: AsContractCall,
+    {
+        Self::new_tx(ContractCall(contract), state, tx_fee)
+    }
+
     /// Return a reference to the underlying transaction
     pub fn tx(&self) -> &StacksTransaction {
         &self.tx
