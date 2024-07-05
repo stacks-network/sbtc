@@ -91,13 +91,16 @@ where
 pub async fn deploy_smart_contracts() -> SignerKeyState {
     static SBTC_DEPLOYMENT: OnceCell<bool> = OnceCell::const_new();
     let (signer_wallet, key_pairs) = wallet::generate_wallet();
-    let state = SignerKeyState {
-        state: SignerStxState::new(signer_wallet, 0),
-        keys: key_pairs,
-    };
 
     let settings = StacksSettings::new_from_config().unwrap();
     let client = StacksClient::new(settings);
+
+    let account_info = client.get_account(&signer_wallet.address()).await.unwrap();
+    let state = SignerKeyState {
+        state: SignerStxState::new(signer_wallet, account_info.nonce),
+        keys: key_pairs,
+    };
+
 
     SBTC_DEPLOYMENT
         .get_or_init(|| async {
