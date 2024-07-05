@@ -479,6 +479,8 @@ mod tests {
     use crate::storage::postgres::PgStore;
     use crate::storage::DbWrite;
 
+    use test_case::test_case;
+
     use super::*;
     use std::io::Read;
 
@@ -660,17 +662,17 @@ mod tests {
         assert!(!blocks.is_empty());
     }
 
-    #[test_case::test_case("0x1A3B5C7D9E", 112665066910; "uppercase-112665066910")]
-    #[test_case::test_case("0x1a3b5c7d9e", 112665066910; "lowercase-112665066910")]
-    #[test_case::test_case("1a3b5c7d9e", 112665066910; "unprefixed-lowercase-112665066910")]
+    #[test_case("0x1A3B5C7D9E", 112665066910; "uppercase-112665066910")]
+    #[test_case("0x1a3b5c7d9e", 112665066910; "lowercase-112665066910")]
+    #[test_case("1a3b5c7d9e", 112665066910; "unprefixed-lowercase-112665066910")]
     fn parsing_integers(hex: &str, expected: u128) {
         let actual = parse_hex_u128(hex).unwrap();
         assert_eq!(actual, expected);
     }
 
-    #[test_case::test_case(""; "empty-string")]
-    #[test_case::test_case("0x"; "almost-empty-string")]
-    #[test_case::test_case("ZZZ"; "invalid hex")]
+    #[test_case(""; "empty-string")]
+    #[test_case("0x"; "almost-empty-string")]
+    #[test_case("ZZZ"; "invalid hex")]
     fn parsing_integers_bad_input(hex: &str) {
         assert!(parse_hex_u128(hex).is_err());
     }
