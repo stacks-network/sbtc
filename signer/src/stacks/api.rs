@@ -4,10 +4,14 @@ use std::borrow::Cow;
 use std::future::Future;
 use std::time::Duration;
 
+use blockstack_lib::burnchains::Txid;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
+use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use blockstack_lib::types::chainstate::StacksBlockId;
+use reqwest::header::CONTENT_LENGTH;
+use reqwest::header::CONTENT_TYPE;
 
 use crate::config::StacksSettings;
 use crate::error::Error;
@@ -46,6 +50,106 @@ pub trait StacksInteract {
     fn nakamoto_start_height(&self) -> u64;
 }
 
+/// These are the rejection reason codes for submitting a transaction
+///
+/// The official documentation specifies what to expect when there is a
+/// rejection, and that documentation can be found here:
+/// https://github.com/stacks-network/stacks-core/blob/2.5.0.0.5/docs/rpc-endpoints.md
+#[derive(Debug, serde::Deserialize)]
+#[cfg_attr(feature = "testing", derive(serde::Serialize))]
+pub enum RejectionReason {
+    /// From MemPoolRejection::SerializationFailure
+    Serialization,
+    /// From MemPoolRejection::DeserializationFailure
+    Deserialization,
+    /// From MemPoolRejection::FailedToValidate
+    SignatureValidation,
+    /// From MemPoolRejection::FeeTooLow
+    FeeTooLow,
+    /// From MemPoolRejection::BadNonces
+    BadNonce,
+    /// From MemPoolRejection::NotEnoughFunds
+    NotEnoughFunds,
+    /// From MemPoolRejection::NoSuchContract
+    NoSuchContract,
+    /// From MemPoolRejection::NoSuchPublicFunction
+    NoSuchPublicFunction,
+    /// From MemPoolRejection::BadFunctionArgument
+    BadFunctionArgument,
+    /// From MemPoolRejection::ContractAlreadyExists
+    ContractAlreadyExists,
+    /// From MemPoolRejection::PoisonMicroblocksDoNotConflict
+    PoisonMicroblocksDoNotConflict,
+    /// From MemPoolRejection::NoAnchorBlockWithPubkeyHash
+    PoisonMicroblockHasUnknownPubKeyHash,
+    /// From MemPoolRejection::InvalidMicroblocks
+    PoisonMicroblockIsInvalid,
+    /// From MemPoolRejection::BadAddressVersionByte
+    BadAddressVersionByte,
+    /// From MemPoolRejection::NoCoinbaseViaMempool
+    NoCoinbaseViaMempool,
+    /// From MemPoolRejection::NoTenureChangeViaMempool
+    NoTenureChangeViaMempool,
+    /// From MemPoolRejection::NoSuchChainTip
+    ServerFailureNoSuchChainTip,
+    /// From MemPoolRejection::ConflictingNonceInMempool
+    ConflictingNonceInMempool,
+    /// From MemPoolRejection::TooMuchChaining
+    TooMuchChaining,
+    /// From MemPoolRejection::BadTransactionVersion
+    BadTransactionVersion,
+    /// From MemPoolRejection::TransferRecipientIsSender
+    TransferRecipientCannotEqualSender,
+    /// From MemPoolRejection::TransferAmountMustBePositive
+    TransferAmountMustBePositive,
+    /// From MemPoolRejection::DBError or MemPoolRejection::Other
+    ServerFailureDatabase,
+    /// From MemPoolRejection::EstimatorError
+    EstimatorError,
+    /// From MemPoolRejection::TemporarilyBlacklisted
+    TemporarilyBlacklisted,
+}
+
+/// A rejection response from the node.
+///
+/// The official documentation specifies what to expect when there is a
+/// rejection, and that documentation can be found here:
+/// https://github.com/stacks-network/stacks-core/blob/2.5.0.0.5/docs/rpc-endpoints.md
+#[derive(Debug, serde::Deserialize)]
+#[cfg_attr(feature = "testing", derive(serde::Serialize))]
+pub struct TxRejection {
+    /// The error message. It should always be the string "transaction
+    /// rejection".
+    pub error: String,
+    /// The reason code for the rejection.
+    pub reason: RejectionReason,
+    /// More details about the reason for the rejection.
+    pub reason_data: Option<serde_json::Value>,
+    /// The transaction ID of the rejected transaction.
+    pub txid: Txid,
+}
+
+/// The response from a POST /v2/transactions request
+///
+/// The stacks node returns three types of responses, either:
+/// 1. A 200 status hex encoded txid in the response body (on acceptance)
+/// 2. A 400 status with s JSON object body (on rejection),
+/// 3. A 400/500 status string message about some other error (such as
+///    using an unsupported address mode).
+///
+/// All good with the first response type, but the second resposne type
+/// could be due to the fee being too low or because of a bad nonce. These
+/// are retryable "error", so we distinguish them from the thrid kinds of
+/// errors, which are likely not retryable.
+#[derive(Debug, serde::Deserialize)]
+#[serde(untagged)]
+pub enum SubmitTxResponse {
+    /// The transaction ID for the submitted transaction
+    Acceptance(Txid),
+    /// The response when the transaction is rejected from the node.
+    Rejection(TxRejection),
+}
+
 /// A client for interacting with Stacks nodes and the Stacks API
 pub struct StacksClient {
     /// The base URL (with the port) that will be used when making requests
@@ -67,6 +171,40 @@ impl StacksClient {
             nakamoto_start_height: settings.node.nakamoto_start_height,
             client: reqwest::Client::new(),
         }
+    }
+
+    /// Submit a transaction to a Stacks node.
+    ///
+    /// This is done by making a POST /v2/transactions request to a Stacks
+    /// node. That endpoint supports two different content-types in the
+    /// request body: JSON, and an octet-stream. This function always sends
+    /// the raw transaction bytes as an octet-stream.
+    #[tracing::instrument(skip_all)]
+    pub async fn submit_tx(&self, tx: &StacksTransaction) -> Result<SubmitTxResponse, Error> {
+        let path = "/v2/transactions";
+        let base = self.node_endpoint.clone();
+        let url = base
+            .join(path)
+            .map_err(|err| Error::PathJoin(err, base, Cow::Borrowed(path)))?;
+
+        tracing::debug!(txid = %tx.txid(), "Submitting transaction to the stacks node");
+        let body = tx.serialize_to_vec();
+
+        let response: reqwest::Response = self
+            .client
+            .post(url)
+            .timeout(REQUEST_TIMEOUT)
+            .header(CONTENT_TYPE, "application/octet-stream")
+            .header(CONTENT_LENGTH, body.len())
+            .body(body)
+            .send()
+            .await
+            .map_err(Error::StacksNodeRequest)?;
+
+        response
+            .json()
+            .await
+            .map_err(Error::UnexpectedStacksResponse)
     }
 
     /// Fetch the raw stacks nakamoto block from a Stacks node given the
@@ -113,16 +251,13 @@ impl StacksClient {
     /// block then a Result::Err is returned.
     #[tracing::instrument(skip(self))]
     async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
-        let mut blocks = Vec::new();
-
         tracing::debug!("Making initial request for Nakamoto blocks within the tenure");
-        blocks.extend(self.get_tenure_raw(block_id).await?);
-
+        let mut tenure_blocks = self.get_tenure_raw(block_id).await?;
         let mut prev_last_block_id = block_id;
 
         // Given the response size limit of GET /v3/tenures/<block-id>
         // requests, there could be more blocks that we need to fetch.
-        while let Some(last_block_id) = blocks.last().map(NakamotoBlock::block_id) {
+        while let Some(last_block_id) = tenure_blocks.last().map(NakamotoBlock::block_id) {
             // To determine whether all blocks within a tenure have been
             // retrieved, we check if we've seen the last block in the
             // previous GET /v3/tenures/<block-id> response. Note that the
@@ -135,15 +270,15 @@ impl StacksClient {
             prev_last_block_id = last_block_id;
 
             tracing::debug!(%last_block_id, "Fetching more Nakamoto blocks within the tenure");
-            let blks = self.get_tenure_raw(last_block_id).await?;
+            let blocks = self.get_tenure_raw(last_block_id).await?;
             // The first block in the GET /v3/tenures/<block-id> response
             // is always the block related to the given <block-id>. But we
             // already have that block, so we can skip adding it again.
-            debug_assert_eq!(blks.first().map(|b| b.block_id()), Some(last_block_id));
-            blocks.extend(blks.into_iter().skip(1))
+            debug_assert_eq!(blocks.first().map(|b| b.block_id()), Some(last_block_id));
+            tenure_blocks.extend(blocks.into_iter().skip(1))
         }
 
-        Ok(blocks)
+        Ok(tenure_blocks)
     }
 
     /// Make a GET /v3/tenures/<block-id> request for Nakamoto ancestor
