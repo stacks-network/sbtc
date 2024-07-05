@@ -51,7 +51,7 @@ pub trait StacksInteract {
 }
 
 /// These are the rejection reason codes for submitting a transaction
-/// 
+///
 /// The official documentation specifies what to expect when there is a
 /// rejection, and that documentation can be found here:
 /// https://github.com/stacks-network/stacks-core/blob/2.5.0.0.5/docs/rpc-endpoints.md
@@ -110,7 +110,6 @@ pub enum RejectionReason {
     TemporarilyBlacklisted,
 }
 
-
 /// A rejection response from the node.
 ///
 /// The official documentation specifies what to expect when there is a
@@ -134,10 +133,10 @@ pub struct TxRejection {
 ///
 /// The stacks node returns three types of responses, either:
 /// 1. A 200 status hex encoded txid in the response body (on acceptance)
-/// 2. A 400 status with s JSON object body (on rejection), 
+/// 2. A 400 status with s JSON object body (on rejection),
 /// 3. A 400/500 status string message about some other error (such as
 ///    using an unsupported address mode).
-/// 
+///
 /// All good with the first response type, but the second resposne type
 /// could be due to the fee being too low or because of a bad nonce. These
 /// are retryable "error", so we distinguish them from the thrid kinds of
