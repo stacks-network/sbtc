@@ -53,6 +53,10 @@ pub enum Error {
     #[error("Invalid wallet definition, signatures required: {0}, number of keys: {1}")]
     InvalidWalletDefinition(u16, usize),
 
+    /// This is thrown when failing to parse a hex string into an integer.
+    #[error("Could not parse the hex string into an integer")]
+    ParseHexInt(#[source] std::num::ParseIntError),
+
     /// Reqwest error
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
