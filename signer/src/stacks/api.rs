@@ -164,24 +164,19 @@ pub struct AccountInfo {
 
 /// Helper function for converting a hexidecimal string into an integer.
 fn parse_hex_u128(hex: &str) -> Result<u128, Error> {
-    let hex_str = if hex.starts_with("0x") {
-        &hex[2..]
-    } else {
-        hex
-    };
-
+    let hex_str = hex.strip_prefix("0x").unwrap_or(hex);
     u128::from_str_radix(hex_str, 16).map_err(Error::ParseHexInt)
 }
 
 impl TryFrom<AccountEntryResponse> for AccountInfo {
     type Error = Error;
+
     fn try_from(value: AccountEntryResponse) -> Result<Self, Self::Error> {
         Ok(AccountInfo {
             balance: parse_hex_u128(&value.balance)?,
             locked: parse_hex_u128(&value.locked)?,
             nonce: value.nonce,
         })
-        
     }
 }
 
@@ -663,5 +658,31 @@ mod tests {
             .await
             .unwrap();
         assert!(!blocks.is_empty());
+    }
+
+    #[test_case::test_case("0x1A3B5C7D9E", 112665066910; "uppercase-112665066910")]
+    #[test_case::test_case("0x1a3b5c7d9e", 112665066910; "lowercase-112665066910")]
+    #[test_case::test_case("1a3b5c7d9e", 112665066910; "unprefixed-lowercase-112665066910")]
+    fn parsing_integers(hex: &str, expected: u128) {
+        let actual = parse_hex_u128(hex).unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[test_case::test_case(""; "empty-string")]
+    #[test_case::test_case("0x"; "almost-empty-string")]
+    #[test_case::test_case("ZZZ"; "invalid hex")]
+    fn parsing_integers_bad_input(hex: &str) {
+        assert!(parse_hex_u128(hex).is_err());
+    }
+
+    #[tokio::test]
+    #[ignore = "This is an integration test that hasn't been setup for CI yet"]
+    async fn fetching_account_information_works() {
+        let settings = StacksSettings::new_from_config().unwrap();
+        let client = StacksClient::new(settings);
+
+        let address = StacksAddress::burn_address(false);
+        let account = client.get_account(&address).await.unwrap();
+        assert_eq!(account.nonce, 0);
     }
 }
