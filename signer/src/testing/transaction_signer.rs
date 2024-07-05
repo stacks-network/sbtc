@@ -359,9 +359,8 @@ where
                 .get_encrypted_dkg_shares(&aggregate_key_bytes)
                 .await
                 .expect("storage error")
-                .is_none());
+                .is_some());
         }
-        panic!("Urh my guwdh!");
     }
 
     async fn write_test_data(test_data: &testing::storage::model::TestData, storage: &mut S) {
