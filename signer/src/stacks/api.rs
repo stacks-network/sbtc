@@ -50,6 +50,66 @@ pub trait StacksInteract {
     fn nakamoto_start_height(&self) -> u64;
 }
 
+/// These are the rejection reason codes for submitting a transaction
+/// 
+/// The official documentation specifies what to expect when there is a
+/// rejection, and that documentation can be found here:
+/// https://github.com/stacks-network/stacks-core/blob/2.5.0.0.5/docs/rpc-endpoints.md
+#[derive(Debug, serde::Deserialize)]
+#[cfg_attr(feature = "testing", derive(serde::Serialize))]
+pub enum RejectionReason {
+    /// From MemPoolRejection::SerializationFailure
+    Serialization,
+    /// From MemPoolRejection::DeserializationFailure
+    Deserialization,
+    /// From MemPoolRejection::FailedToValidate
+    SignatureValidation,
+    /// From MemPoolRejection::FeeTooLow
+    FeeTooLow,
+    /// From MemPoolRejection::BadNonces
+    BadNonce,
+    /// From MemPoolRejection::NotEnoughFunds
+    NotEnoughFunds,
+    /// From MemPoolRejection::NoSuchContract
+    NoSuchContract,
+    /// From MemPoolRejection::NoSuchPublicFunction
+    NoSuchPublicFunction,
+    /// From MemPoolRejection::BadFunctionArgument
+    BadFunctionArgument,
+    /// From MemPoolRejection::ContractAlreadyExists
+    ContractAlreadyExists,
+    /// From MemPoolRejection::PoisonMicroblocksDoNotConflict
+    PoisonMicroblocksDoNotConflict,
+    /// From MemPoolRejection::NoAnchorBlockWithPubkeyHash
+    PoisonMicroblockHasUnknownPubKeyHash,
+    /// From MemPoolRejection::InvalidMicroblocks
+    PoisonMicroblockIsInvalid,
+    /// From MemPoolRejection::BadAddressVersionByte
+    BadAddressVersionByte,
+    /// From MemPoolRejection::NoCoinbaseViaMempool
+    NoCoinbaseViaMempool,
+    /// From MemPoolRejection::NoTenureChangeViaMempool
+    NoTenureChangeViaMempool,
+    /// From MemPoolRejection::NoSuchChainTip
+    ServerFailureNoSuchChainTip,
+    /// From MemPoolRejection::ConflictingNonceInMempool
+    ConflictingNonceInMempool,
+    /// From MemPoolRejection::TooMuchChaining
+    TooMuchChaining,
+    /// From MemPoolRejection::BadTransactionVersion
+    BadTransactionVersion,
+    /// From MemPoolRejection::TransferRecipientIsSender
+    TransferRecipientCannotEqualSender,
+    /// From MemPoolRejection::TransferAmountMustBePositive
+    TransferAmountMustBePositive,
+    /// From MemPoolRejection::DBError or MemPoolRejection::Other
+    ServerFailureDatabase,
+    /// From MemPoolRejection::EstimatorError
+    EstimatorError,
+    /// From MemPoolRejection::TemporarilyBlacklisted
+    TemporarilyBlacklisted,
+}
+
 
 /// A rejection response from the node.
 ///
@@ -62,8 +122,8 @@ pub struct TxRejection {
     /// The error message. It should always be the string "transaction
     /// rejection".
     pub error: String,
-    /// The reason code enum for the rejection.
-    pub reason: String,
+    /// The reason code for the rejection.
+    pub reason: RejectionReason,
     /// More details about the reason for the rejection.
     pub reason_data: Option<serde_json::Value>,
     /// The transaction ID of the rejected transaction.
