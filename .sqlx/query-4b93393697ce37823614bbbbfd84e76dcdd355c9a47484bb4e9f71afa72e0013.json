@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO sbtc_signer.dkg_shares\n                (aggregate_key, tweaked_aggregate_key, encrypted_shares, created_at)\n            VALUES\n                ($1, $2, $3, $4)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Bytea",
+        "Bytea",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4b93393697ce37823614bbbbfd84e76dcdd355c9a47484bb4e9f71afa72e0013"
+}
