@@ -44,6 +44,8 @@ pub struct SignerWallet {
     signatures_required: u16,
     /// The kind of network we are operating under.
     network_kind: NetworkKind,
+    /// The multi-sig address associated with the public keys.
+    address: StacksAddress,
 }
 
 impl SignerWallet {
@@ -61,19 +63,46 @@ impl SignerWallet {
         signatures_required: u16,
         network_kind: NetworkKind,
     ) -> Result<Self, Error> {
-        let invalid_threshold = public_keys.len() < signatures_required as usize;
+        let num_keys = public_keys.len();
+        let invalid_threshold = num_keys < signatures_required as usize;
 
-        if invalid_threshold || public_keys.is_empty() || signatures_required == 0 {
+        if invalid_threshold || num_keys == 0 || signatures_required == 0 {
             return Err(Error::InvalidWalletDefinition(
                 signatures_required,
-                public_keys.len(),
+                num_keys,
             ));
         }
 
+        let public_keys: BTreeSet<PublicKey> = public_keys.iter().copied().collect();
+        let pubkeys: Vec<Secp256k1PublicKey> = public_keys
+            .iter()
+            .map(|pk| Secp256k1PublicKey::from_slice(&pk.serialize()))
+            .collect::<Result<_, _>>()
+            .map_err(Error::StacksPublicKey)?;
+
+        let num_sigs = signatures_required as usize;
+        let hash_mode = Self::hash_mode().to_address_hash_mode();
+        let version = match network_kind {
+            NetworkKind::Mainnet => C32_ADDRESS_VERSION_MAINNET_MULTISIG,
+            NetworkKind::Testnet => C32_ADDRESS_VERSION_TESTNET_MULTISIG,
+        };
+
+        // The StacksAddress::from_public_keys call below should bever
+        // fail. For the AddressHashMode::SerializeP2WSH hash mode -- which
+        // we use since it corresponds to the
+        // OrderIndependentMultisigHashMode::P2WSH hash mode-- the
+        // StacksAddress::from_public_keys function will return None if the
+        // threshold is greater than the number of public keys or if any of
+        // the public keys are uncompressed. We enforce the threshold
+        // invariant when creating the struct, and our Secp256k1PublicKey
+        // instances are always compressed since PublicKey::serialize
+        // returns the bytes for a compressed public key.
         Ok(Self {
-            public_keys: public_keys.iter().copied().collect(),
+            public_keys,
             signatures_required,
             network_kind,
+            address: StacksAddress::from_public_keys(version, &hash_mode, num_sigs, &pubkeys)
+                .ok_or(Error::StacksMusltiSig(signatures_required, num_keys))?,
         })
     }
 
@@ -83,33 +112,7 @@ impl SignerWallet {
 
     /// Return the stacks address for the signers
     pub fn address(&self) -> StacksAddress {
-        let public_keys: Vec<Secp256k1PublicKey> = self
-            .public_keys
-            .iter()
-            .map(|pk| Secp256k1PublicKey::from_slice(&pk.serialize()))
-            .collect::<Result<_, _>>()
-            .expect("we know these are all valid public keys");
-
-        let threshold = self.signatures_required as usize;
-        let hash_mode = Self::hash_mode().to_address_hash_mode();
-        let version = match self.network_kind {
-            NetworkKind::Mainnet => C32_ADDRESS_VERSION_MAINNET_MULTISIG,
-            NetworkKind::Testnet => C32_ADDRESS_VERSION_TESTNET_MULTISIG,
-        };
-
-        #[cfg(debug_assertions)]
-        for key in public_keys.iter() {
-            debug_assert!(key.compressed());
-        }
-        // For a hash mode of AddressHashMode::SerializeP2WSH, which
-        // corresponds to OrderIndependentMultisigHashMode::P2WSH, the
-        // StacksAddress::from_public_keys function will return None if the
-        // threshold is greater than the number of public keys or if any of
-        // the public keys are uncompressed. We enforce the threshold
-        // invariant when creating the struct, and PublicKey::serialize
-        // returns the bytes for a compressed public key.
-        StacksAddress::from_public_keys(version, &hash_mode, threshold, &public_keys)
-            .expect("public key invariants not upheld")
+        self.address
     }
 }
 

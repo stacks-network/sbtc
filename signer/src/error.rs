@@ -74,6 +74,10 @@ pub enum Error {
     #[error("Failed to parse the stacks.api portion of the config: {0}")]
     StacksApiConfig(#[source] config::ConfigError),
 
+    /// Error when reading the stacks API part of the config.toml
+    #[error("Could not transform sepc256k1::PublicKey to stacks variant: {0}")]
+    StacksPublicKey(&'static str),
+
     /// Could not make a successful request to the stacks API.
     #[error("Failed to make a request to the stacks API: {0}")]
     StacksApiRequest(#[source] reqwest::Error),
