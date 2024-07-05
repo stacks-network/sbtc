@@ -160,6 +160,10 @@ pub enum Error {
     #[error("invalid configuration")]
     InvalidConfiguration,
 
+    /// Observer dropped
+    #[error("observer dropped")]
+    ObserverDropped,
+
     /// Thrown when the recoverable signature has a public key that is
     /// unexpected.
     #[error("unexpected public key from signature. key {0}; digest: {1}")]

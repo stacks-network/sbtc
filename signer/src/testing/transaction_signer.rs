@@ -27,7 +27,8 @@ use wsts::state_machine::StateMachine as _;
 
 struct EventLoopHarness<S, Rng> {
     event_loop: EventLoop<S, Rng>,
-    notification_tx: tokio::sync::watch::Sender<()>,
+    block_observer_notification_tx: tokio::sync::watch::Sender<()>,
+    test_observer_rx: tokio::sync::mpsc::Receiver<transaction_signer::TxSignerEvent>,
     storage: S,
 }
 
@@ -47,7 +48,10 @@ where
         rng: Rng,
     ) -> Self {
         let blocklist_checker = ();
-        let (notification_tx, block_observer_notifications) = tokio::sync::watch::channel(());
+        let (block_observer_notification_tx, block_observer_notifications) =
+            tokio::sync::watch::channel(());
+
+        let (test_observer_tx, test_observer_rx) = tokio::sync::mpsc::channel(128);
 
         Self {
             event_loop: transaction_signer::TxSignerEventLoop {
@@ -61,20 +65,24 @@ where
                 wsts_state_machines: HashMap::new(),
                 threshold,
                 rng,
+                test_observer_tx: Some(test_observer_tx),
             },
-            notification_tx,
+            block_observer_notification_tx,
+            test_observer_rx,
             storage,
         }
     }
 
     pub fn start(self) -> RunningEventLoopHandle<S> {
-        let notification_tx = self.notification_tx;
+        let block_observer_notification_tx = self.block_observer_notification_tx;
+        let test_observer_rx = self.test_observer_rx;
         let join_handle = tokio::spawn(async { self.event_loop.run().await });
         let storage = self.storage;
 
         RunningEventLoopHandle {
             join_handle,
-            notification_tx,
+            block_observer_notification_tx,
+            test_observer_rx,
             storage,
         }
     }
@@ -82,7 +90,8 @@ where
 
 struct RunningEventLoopHandle<S> {
     join_handle: tokio::task::JoinHandle<Result<(), error::Error>>,
-    notification_tx: tokio::sync::watch::Sender<()>,
+    block_observer_notification_tx: tokio::sync::watch::Sender<()>,
+    test_observer_rx: tokio::sync::mpsc::Receiver<transaction_signer::TxSignerEvent>,
     storage: S,
 }
 
@@ -90,7 +99,7 @@ impl<S> RunningEventLoopHandle<S> {
     /// Stop event loop
     pub async fn stop_event_loop(self) -> S {
         // While this explicit drop isn't strictly necessary, it serves to clarify our intention.
-        drop(self.notification_tx);
+        drop(self.block_observer_notification_tx);
 
         self.join_handle
             .await
@@ -98,6 +107,19 @@ impl<S> RunningEventLoopHandle<S> {
             .expect("event loop returned error");
 
         self.storage
+    }
+
+    /// Wait for N instances of the given event
+    pub async fn wait_for_events(&mut self, msg: transaction_signer::TxSignerEvent, mut n: usize) {
+        while let Some(event) = self.test_observer_rx.recv().await {
+            if event == msg {
+                n -= 1;
+            }
+
+            if n == 0 {
+                return;
+            }
+        }
     }
 }
 
@@ -124,6 +146,8 @@ pub struct TestEnvironment<C> {
     pub num_signers: usize,
     /// Signing threshold
     pub signing_threshold: u32,
+    /// Test model parameters
+    pub test_model_parameters: testing::storage::model::Params,
 }
 
 impl<C, S> TestEnvironment<C>
@@ -151,11 +175,11 @@ where
 
         let mut handle = event_loop_harness.start();
 
-        let test_data = generate_test_data(&mut rng);
+        let test_data = self.generate_test_data(&mut rng);
         Self::write_test_data(&test_data, &mut handle.storage).await;
 
         handle
-            .notification_tx
+            .block_observer_notification_tx
             .send(())
             .expect("failed to send notification");
 
@@ -188,11 +212,11 @@ where
 
         let mut handle = event_loop_harness.start();
 
-        let test_data = generate_test_data(&mut rng);
+        let test_data = self.generate_test_data(&mut rng);
         Self::write_test_data(&test_data, &mut handle.storage).await;
 
         handle
-            .notification_tx
+            .block_observer_notification_tx
             .send(())
             .expect("failed to send notification");
 
@@ -230,20 +254,30 @@ where
             })
             .collect();
 
-        let test_data = generate_test_data(&mut rng);
+        let test_data = self.generate_test_data(&mut rng);
         for handle in event_loop_handles.iter_mut() {
             Self::write_test_data(&test_data, &mut handle.storage).await;
         }
 
         for handle in event_loop_handles.iter() {
             handle
-                .notification_tx
+                .block_observer_notification_tx
                 .send(())
                 .expect("failed to send notification");
         }
 
-        // TODO(258): Ensure we can wait for the signers to finish processing messages
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let num_expected_decisions = (self.num_signers - 1)
+            * self.context_window
+            * self.test_model_parameters.num_deposit_requests_per_block;
+
+        for handle in event_loop_handles.iter_mut() {
+            handle
+                .wait_for_events(
+                    transaction_signer::TxSignerEvent::ReceviedDepositDecision,
+                    num_expected_decisions,
+                )
+                .await
+        }
 
         for handle in event_loop_handles {
             let storage = handle.stop_event_loop().await;
@@ -288,7 +322,7 @@ where
         )
         .await;
 
-        let test_data = generate_test_data(&mut rng);
+        let test_data = self.generate_test_data(&mut rng);
         Self::write_test_data(&test_data, &mut handle.storage).await;
 
         let coordinator_private_key = p256k1::scalar::Scalar::random(&mut rng);
@@ -361,7 +395,7 @@ where
             })
             .collect();
 
-        let test_data = generate_test_data(&mut rng);
+        let test_data = self.generate_test_data(&mut rng);
         for handle in event_loop_handles.iter_mut() {
             Self::write_test_data(&test_data, &mut handle.storage).await;
         }
@@ -421,7 +455,7 @@ where
             })
             .collect();
 
-        let test_data = generate_test_data(&mut rng);
+        let test_data = self.generate_test_data(&mut rng);
         for handle in event_loop_handles.iter_mut() {
             Self::write_test_data(&test_data, &mut handle.storage).await;
         }
@@ -602,17 +636,13 @@ where
             }
         }
     }
-}
 
-fn generate_test_data(rng: &mut impl rand::RngCore) -> testing::storage::model::TestData {
-    let test_model_params = testing::storage::model::Params {
-        num_bitcoin_blocks: 20,
-        num_stacks_blocks_per_bitcoin_block: 3,
-        num_deposit_requests_per_block: 5,
-        num_withdraw_requests_per_block: 5,
-    };
-
-    testing::storage::model::TestData::generate(rng, &test_model_params)
+    fn generate_test_data(
+        &self,
+        rng: &mut impl rand::RngCore,
+    ) -> testing::storage::model::TestData {
+        testing::storage::model::TestData::generate(rng, &self.test_model_parameters)
+    }
 }
 
 fn generate_signer_info<Rng: rand::RngCore + rand::CryptoRng>(
