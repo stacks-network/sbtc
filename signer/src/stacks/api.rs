@@ -52,15 +52,16 @@ pub trait StacksInteract {
 
 /// A rejection response from the node.
 ///
-/// For more details on the rejection response, see the official
-/// documentation at
-/// https://github.com/stacks-network/stacks-core/blob/2.05.0.6.0/docs/rpc-endpoints.md
+/// The official documentation specifies what to expect when there is a
+/// rejection, and that documentation can be found here:
+/// https://github.com/stacks-network/stacks-core/blob/2.5.0.0.5/docs/rpc-endpoints.md
 #[derive(Debug, serde::Deserialize)]
 #[cfg_attr(feature = "testing", derive(serde::Serialize))]
-pub struct PostTxRejection {
-    /// The error message
+pub struct TxRejection {
+    /// The error message. It should always be the string "transaction
+    /// rejection".
     pub error: String,
-    /// Reason for the rejection.
+    /// The reason code enum for the rejection.
     pub reason: String,
     /// More details about the reason for the rejection.
     pub reason_data: Option<serde_json::Value>,
@@ -68,14 +69,21 @@ pub struct PostTxRejection {
     pub txid: Txid,
 }
 
-/// The response from a POST /v2/transaction request
+/// The response from a POST /v2/transactions request
+///
+/// We include a catch-all variant just in case there is an update to the
+/// format between now and the Nakamoto launch. The code for kinds of
+/// errors to expect can be found at:
+/// https://github.com/stacks-network/stacks-core/blob/9920ce5e8f44a13a0a993d5ce25bc01a677675ac/stackslib/src/chainstate/stacks/db/blocks.rs#L211-L313
 #[derive(Debug, serde::Deserialize)]
 #[serde(untagged)]
 pub enum SubmitTxResponse {
     /// The transaction ID for the submitted transaction
     Acceptance(Txid),
     /// The response when the transaction is rejected from the node.
-    Rejection(PostTxRejection),
+    Rejection(TxRejection),
+    /// The catch-all response in case we miss something.
+    Uncaught(serde_json::Value),
 }
 
 /// A client for interacting with Stacks nodes and the Stacks API
@@ -102,6 +110,11 @@ impl StacksClient {
     }
 
     /// Submit a transaction to a Stacks node.
+    ///
+    /// This is done by making a POST /v2/transactions request to a Stacks
+    /// node. That endpoint supports two different content-types in the
+    /// request body: JSON, and an octet-stream. This function always sends
+    /// the raw transaction bytes as an octet-stream.
     #[tracing::instrument(skip_all)]
     pub async fn submit_tx(&self, tx: &StacksTransaction) -> Result<SubmitTxResponse, Error> {
         let path = "/v2/transactions";

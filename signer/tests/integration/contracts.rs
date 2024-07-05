@@ -85,6 +85,7 @@ where
     match client.submit_tx(&tx).await.unwrap() {
         SubmitTxResponse::Acceptance(_) => (),
         SubmitTxResponse::Rejection(err) => println!("{}", serde_json::to_string(&err).unwrap()),
+        SubmitTxResponse::Uncaught(err) => println!("{}", serde_json::to_string(&err).unwrap()),
     }
 }
 
