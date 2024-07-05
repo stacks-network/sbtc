@@ -14,7 +14,6 @@ use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::chainstate::stacks::TransactionAnchorMode;
 use blockstack_lib::chainstate::stacks::TransactionAuth;
 use blockstack_lib::chainstate::stacks::TransactionAuthFlags;
-use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::chainstate::stacks::TransactionPublicKeyEncoding;
 use blockstack_lib::chainstate::stacks::TransactionSpendingCondition;
 use blockstack_lib::chainstate::stacks::TransactionVersion;
@@ -126,17 +125,14 @@ pub struct SignerStxState {
     /// The next nonce for the StacksAddress associated with the address of
     /// the wallet.
     nonce: AtomicU64,
-    /// This is the stacks address that deployed the sbtc-contracts.
-    contract_deployer: StacksAddress,
 }
 
 impl SignerStxState {
     /// Create a new SignerStxState
-    pub fn new(wallet: SignerWallet, nonce: u64, deployer: StacksAddress) -> Self {
+    pub fn new(wallet: SignerWallet, nonce: u64) -> Self {
         Self {
             wallet,
             nonce: AtomicU64::new(nonce),
-            contract_deployer: deployer,
         }
     }
 
@@ -149,11 +145,6 @@ impl SignerStxState {
     /// multi-sig wallet.
     pub fn public_keys(&self) -> &BTreeSet<PublicKey> {
         &self.wallet.public_keys
-    }
-
-    /// The stacks address that deployed sbtc smart contracts.
-    pub fn contract_deployer(&self) -> StacksAddress {
-        self.contract_deployer
     }
 
     /// Convert the signers wallet to an unsigned stacks spending
@@ -368,6 +359,9 @@ mod tests {
     impl AsContractCall for TestContractCall {
         const CONTRACT_NAME: &'static str = "all-the-sbtc";
         const FUNCTION_NAME: &'static str = "mint-it-all";
+        fn deployer_address(&self) -> StacksAddress {
+            StacksAddress::burn_address(false)
+        }
         fn as_contract_args(&self) -> Vec<Value> {
             Vec::new()
         }
@@ -414,7 +408,7 @@ mod tests {
         // contract. It may matter for constructing the transaction -- in
         // this case it doesn't -- but it plays no role in the verification
         // of the signature.
-        let state = SignerStxState::new(wallet, 1, StacksAddress::burn_address(false));
+        let state = SignerStxState::new(wallet, 1);
 
         let mut tx_signer = MultisigTx::new_contract_call(TestContractCall, &state, TX_FEE);
         let tx = tx_signer.tx();
@@ -463,7 +457,7 @@ mod tests {
         let public_keys: Vec<_> = key_pairs.iter().map(|kp| kp.public_key()).collect();
         let wallet = SignerWallet::new(&public_keys, signatures_required, network).unwrap();
 
-        let state = SignerStxState::new(wallet, 1, StacksAddress::burn_address(false));
+        let state = SignerStxState::new(wallet, 1);
         let mut tx_signer = MultisigTx::new_contract_call(TestContractCall, &state, TX_FEE);
 
         // The accumulated signatures start off empty

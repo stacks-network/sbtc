@@ -72,11 +72,12 @@ pub trait AsContractCall {
     const FUNCTION_NAME: &'static str;
     /// The arguments to the clarity function.
     fn as_contract_args(&self) -> Vec<Value>;
-    /// Convert this struct to a Stacks contract call. The deployer is the
-    /// stacks address that deployed the contract.
-    fn as_contract_call(&self, deployer: StacksAddress) -> TransactionContractCall {
+    /// The stacks address that deployed the contract.
+    fn deployer_address(&self) -> StacksAddress;
+    /// Convert this struct to a Stacks contract call.
+    fn as_contract_call(&self) -> TransactionContractCall {
         TransactionContractCall {
-            address: deployer,
+            address: self.deployer_address(),
             // The following From::from calls are more dangerous than they
             // appear. Under the hood they call their TryFrom::try_from
             // implementation and then unwrap them(!). We check that this
@@ -91,7 +92,7 @@ pub trait AsContractCall {
     /// post-conditions, which is the address that sent the asset. The
     /// default is that we do not enforce any conditions since we usually
     /// deployed the contract.
-    fn post_conditions(&self, _: StacksAddress) -> StacksTxPostConditions {
+    fn post_conditions(&self) -> StacksTxPostConditions {
         StacksTxPostConditions {
             post_condition_mode: TransactionPostConditionMode::Allow,
             post_conditions: Vec::new(),
@@ -111,11 +112,17 @@ pub struct CompleteDepositV1 {
     pub amount: u64,
     /// The address where the newly minted sBTC will be deposited.
     pub recipient: StacksAddress,
+    /// The address that deployed the contract,
+    pub deployer: StacksAddress,
 }
 
 impl AsContractCall for CompleteDepositV1 {
     const CONTRACT_NAME: &'static str = "sbtc-deposit";
     const FUNCTION_NAME: &'static str = "complete-deposit-wrapper";
+
+    fn deployer_address(&self) -> StacksAddress {
+        self.deployer
+    }
     /// Construct the input arguments to the complete-deposit-wrapper
     /// contract call.
     fn as_contract_args(&self) -> Vec<Value> {
@@ -151,12 +158,17 @@ pub struct AcceptWithdrawalV1 {
     /// 128 distinct signers. Here, we assume that a 1 (or true) implies
     /// that the signer voted *against* the transaction.
     pub signer_bitmap: BitArray<[u64; 2]>,
+    /// The address that deployed the contract,
+    pub deployer: StacksAddress,
 }
 
 impl AsContractCall for AcceptWithdrawalV1 {
     const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
     const FUNCTION_NAME: &'static str = "accept-withdrawal-request";
 
+    fn deployer_address(&self) -> StacksAddress {
+        self.deployer
+    }
     fn as_contract_args(&self) -> Vec<Value> {
         let txid_data = self.outpoint.txid.to_byte_array().to_vec();
         let txid = BuffData { data: txid_data };
@@ -185,12 +197,17 @@ pub struct RejectWithdrawalV1 {
     /// 128 distinct signers. Here, we assume that a 1 (or true) implies
     /// that the signer voted *against* the transaction.
     pub signer_bitmap: BitArray<[u64; 2]>,
+    /// The address that deployed the contract,
+    pub deployer: StacksAddress,
 }
 
 impl AsContractCall for RejectWithdrawalV1 {
     const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
     const FUNCTION_NAME: &'static str = "reject-withdrawal";
 
+    fn deployer_address(&self) -> StacksAddress {
+        self.deployer
+    }
     fn as_contract_args(&self) -> Vec<Value> {
         vec![
             Value::UInt(self.request_id as u128),
@@ -211,9 +228,10 @@ mod tests {
             outpoint: OutPoint::null(),
             amount: 15000,
             recipient: StacksAddress::burn_address(true),
+            deployer: StacksAddress::burn_address(false),
         };
 
-        let _ = call.as_contract_call(StacksAddress::burn_address(false));
+        let _ = call.as_contract_call();
     }
 
     #[test]
@@ -225,9 +243,10 @@ mod tests {
             outpoint: OutPoint::null(),
             tx_fee: 125,
             signer_bitmap: BitArray::new([0; 2]),
+            deployer: StacksAddress::burn_address(false),
         };
 
-        let _ = call.as_contract_call(StacksAddress::burn_address(false));
+        let _ = call.as_contract_call();
     }
 
     #[test]
@@ -237,8 +256,9 @@ mod tests {
         let call = RejectWithdrawalV1 {
             request_id: 42,
             signer_bitmap: BitArray::new([1; 2]),
+            deployer: StacksAddress::burn_address(false),
         };
 
-        let _ = call.as_contract_call(StacksAddress::burn_address(false));
+        let _ = call.as_contract_call();
     }
 }
