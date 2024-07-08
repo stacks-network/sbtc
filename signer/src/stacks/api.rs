@@ -8,7 +8,9 @@ use blockstack_lib::burnchains::Txid;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::codec::StacksMessageCodec;
+use blockstack_lib::net::api::getaccount::AccountEntryResponse;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
+use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use reqwest::header::CONTENT_LENGTH;
 use reqwest::header::CONTENT_TYPE;
@@ -150,6 +152,34 @@ pub enum SubmitTxResponse {
     Rejection(TxRejection),
 }
 
+/// The account info for a stacks account.
+pub struct AccountInfo {
+    /// The balance of the account in micro-STX
+    pub balance: u128,
+    /// The amount locked (stacked?) in micro-STX
+    pub locked: u128,
+    /// The last known nonce of the account.
+    pub nonce: u64,
+}
+
+/// Helper function for converting a hexidecimal string into an integer.
+fn parse_hex_u128(hex: &str) -> Result<u128, Error> {
+    let hex_str = hex.trim_start_matches("0x");
+    u128::from_str_radix(hex_str, 16).map_err(Error::ParseHexInt)
+}
+
+impl TryFrom<AccountEntryResponse> for AccountInfo {
+    type Error = Error;
+
+    fn try_from(value: AccountEntryResponse) -> Result<Self, Self::Error> {
+        Ok(AccountInfo {
+            balance: parse_hex_u128(&value.balance)?,
+            locked: parse_hex_u128(&value.locked)?,
+            nonce: value.nonce,
+        })
+    }
+}
+
 /// A client for interacting with Stacks nodes and the Stacks API
 pub struct StacksClient {
     /// The base URL (with the port) that will be used when making requests
@@ -171,6 +201,36 @@ impl StacksClient {
             nakamoto_start_height: settings.node.nakamoto_start_height,
             client: reqwest::Client::new(),
         }
+    }
+
+    /// Get the latest account info for the given address.
+    ///
+    /// This is done by making a GET /v2/accounts/<principal> request. In
+    /// the request we specify that the nonce and balance proofs should not
+    /// be included in the response.
+    #[tracing::instrument(skip_all)]
+    pub async fn get_account(&self, address: &StacksAddress) -> Result<AccountInfo, Error> {
+        let path = format!("/v2/accounts/{}?proof=0", address);
+        let base = self.node_endpoint.clone();
+        let url = base
+            .join(&path)
+            .map_err(|err| Error::PathJoin(err, base, Cow::Owned(path)))?;
+
+        tracing::debug!(%address, "Fetching the latest account information");
+
+        let response = self
+            .client
+            .get(url)
+            .timeout(REQUEST_TIMEOUT)
+            .send()
+            .await
+            .map_err(Error::StacksNodeRequest)?;
+
+        response
+            .json::<AccountEntryResponse>()
+            .await
+            .map_err(Error::UnexpectedStacksResponse)
+            .and_then(AccountInfo::try_from)
     }
 
     /// Submit a transaction to a Stacks node.
@@ -419,6 +479,8 @@ mod tests {
     use crate::storage::postgres::PgStore;
     use crate::storage::DbWrite;
 
+    use test_case::test_case;
+
     use super::*;
     use std::io::Read;
 
@@ -598,5 +660,33 @@ mod tests {
             .await
             .unwrap();
         assert!(!blocks.is_empty());
+    }
+
+    #[test_case("0x1A3B5C7D9E", 112665066910; "uppercase-112665066910")]
+    #[test_case("0x1a3b5c7d9e", 112665066910; "lowercase-112665066910")]
+    #[test_case("1a3b5c7d9e", 112665066910; "unprefixed-lowercase-112665066910")]
+    #[test_case("0xF0", 240; "uppercase-240")]
+    #[test_case("f0", 240; "unprefixed-lowercase-240")]
+    fn parsing_integers(hex: &str, expected: u128) {
+        let actual = parse_hex_u128(hex).unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[test_case(""; "empty-string")]
+    #[test_case("0x"; "almost-empty-string")]
+    #[test_case("ZZZ"; "invalid hex")]
+    fn parsing_integers_bad_input(hex: &str) {
+        assert!(parse_hex_u128(hex).is_err());
+    }
+
+    #[tokio::test]
+    #[ignore = "This is an integration test that hasn't been setup for CI yet"]
+    async fn fetching_account_information_works() {
+        let settings = StacksSettings::new_from_config().unwrap();
+        let client = StacksClient::new(settings);
+
+        let address = StacksAddress::burn_address(false);
+        let account = client.get_account(&address).await.unwrap();
+        assert_eq!(account.nonce, 0);
     }
 }
