@@ -299,15 +299,9 @@ where
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
-            wsts::net::Message::DkgPublicShares(_) => {
-                self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
-                    .await?;
-            }
-            wsts::net::Message::DkgPrivateBegin(_) => {
-                self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
-                    .await?;
-            }
-            wsts::net::Message::DkgPrivateShares(_) => {
+            wsts::net::Message::DkgPublicShares(_)
+            | wsts::net::Message::DkgPrivateBegin(_)
+            | wsts::net::Message::DkgPrivateShares(_) => {
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
