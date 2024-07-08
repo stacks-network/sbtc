@@ -535,7 +535,7 @@ where
         Ok(())
     }
 
-    fn create_new_state_machine(&mut self) -> Result<SignerStateMachine, error::Error> {
+    fn create_new_state_machine(&self) -> Result<SignerStateMachine, error::Error> {
         let signers: hashbrown::HashMap<u32, _> = self
             .signer_public_keys
             .iter()
