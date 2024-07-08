@@ -146,6 +146,10 @@ pub enum Error {
     #[error("encryption error")]
     Encryption,
 
+    /// Invalid configuration
+    #[error("invalid configuration")]
+    InvalidConfiguration,
+
     /// Thrown when the recoverable signature has a public key that is
     /// unexpected.
     #[error("unexpected public key from signature. key {0}; digest: {1}")]

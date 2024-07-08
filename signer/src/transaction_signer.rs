@@ -577,6 +577,10 @@ where
 
         let key_ids = vec![id + 1];
 
+        if threshold <= num_keys {
+            return Err(error::Error::InvalidConfiguration);
+        };
+
         let state_machine = SignerStateMachine::new(
             threshold,
             num_parties,
