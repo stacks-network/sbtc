@@ -571,7 +571,7 @@ where
 
         let key_ids = vec![id + 1];
 
-        if threshold <= num_keys {
+        if threshold > num_keys {
             return Err(error::Error::InvalidConfiguration);
         };
 
