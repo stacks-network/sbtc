@@ -40,6 +40,15 @@ pub enum Error {
     #[error("Failed to construct a valid URL from {1} and {2}: {0}")]
     PathJoin(#[source] url::ParseError, url::Url, Cow<'static, str>),
 
+    /// This occurs under any of the following conditions:
+    /// - The result would be the point at infinity, i.e. adding a point to
+    ///   its own negation.
+    /// - The provided slice is empty.
+    /// - The number of elements in the provided slice is greater than
+    ///   `i32::MAX`.
+    #[error("{0}")]
+    InvalidAggregateKey(#[source] secp256k1::Error),
+
     /// This happens when we attempt to recover a public key from a
     /// recoverable EDCSA signature.
     #[error("Could not recover the public key from the signature: {0}, digest: {1}")]

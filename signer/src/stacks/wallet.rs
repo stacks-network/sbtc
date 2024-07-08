@@ -48,7 +48,7 @@ const MULTISIG_ADDRESS_HASH_MODE: OrderIndependentMultisigHashMode =
 #[derive(Debug, Clone)]
 pub struct SignerWallet {
     /// The current set of public keys for all known signers during this
-    /// PoX cycle. These values must be sorted.
+    /// PoX cycle.
     public_keys: BTreeSet<PublicKey>,
     /// The number of signers necessary for successfully signing a
     /// multi-sig transaction.
@@ -121,6 +121,11 @@ impl SignerWallet {
     /// Return the stacks address for the signers
     pub fn address(&self) -> StacksAddress {
         self.address
+    }
+
+    /// Return the public keys for the signers' multi-sig wallet
+    pub fn public_keys(&self) -> &BTreeSet<PublicKey> {
+        &self.public_keys
     }
 }
 
