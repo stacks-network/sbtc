@@ -4,19 +4,13 @@ use tokio::sync::OnceCell;
 use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Keypair;
 use signer::config::StacksSettings;
+use signer::stacks;
 use signer::stacks::api::StacksClient;
-use signer::stacks::wallet::sign_ecdsa;
 use signer::stacks::wallet::MultisigTx;
 use signer::stacks::wallet::SignerStxState;
-use signer::testing::wallet;
+use signer::testing;
 use signer::testing::wallet::AsContractDeploy;
 use signer::testing::wallet::ContractDeploy;
-
-const BOOTSTRAP: &str = include_str!("../../../contracts/contracts/sbtc-bootstrap-signers.clar");
-const DEPOSIT: &str = include_str!("../../../contracts/contracts/sbtc-deposit.clar");
-const REGISTRY: &str = include_str!("../../../contracts/contracts/sbtc-registry.clar");
-const TOKEN: &str = include_str!("../../../contracts/contracts/sbtc-token.clar");
-const WITHDRAWAL: &str = include_str!("../../../contracts/contracts/sbtc-withdrawal.clar");
 
 const TX_FEE: u64 = 15000000;
 
@@ -24,35 +18,40 @@ pub struct SbtcTokenContract;
 
 impl AsContractDeploy for SbtcTokenContract {
     const CONTRACT_NAME: &'static str = "sbtc-token";
-    const CONTRACT_BODY: &'static str = TOKEN;
+    const CONTRACT_BODY: &'static str =
+        include_str!("../../../contracts/contracts/sbtc-token.clar");
 }
 
 pub struct SbtcRegistryContract;
 
 impl AsContractDeploy for SbtcRegistryContract {
     const CONTRACT_NAME: &'static str = "sbtc-registry";
-    const CONTRACT_BODY: &'static str = REGISTRY;
+    const CONTRACT_BODY: &'static str =
+        include_str!("../../../contracts/contracts/sbtc-registry.clar");
 }
 
 pub struct SbtcDepositContract;
 
 impl AsContractDeploy for SbtcDepositContract {
     const CONTRACT_NAME: &'static str = "sbtc-deposit";
-    const CONTRACT_BODY: &'static str = DEPOSIT;
+    const CONTRACT_BODY: &'static str =
+        include_str!("../../../contracts/contracts/sbtc-deposit.clar");
 }
 
 pub struct SbtcWithdrawalContract;
 
 impl AsContractDeploy for SbtcWithdrawalContract {
     const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
-    const CONTRACT_BODY: &'static str = WITHDRAWAL;
+    const CONTRACT_BODY: &'static str =
+        include_str!("../../../contracts/contracts/sbtc-withdrawal.clar");
 }
 
 pub struct SbtcBootstrapContract;
 
 impl AsContractDeploy for SbtcBootstrapContract {
     const CONTRACT_NAME: &'static str = "sbtc-bootstrap-signers";
-    const CONTRACT_BODY: &'static str = BOOTSTRAP;
+    const CONTRACT_BODY: &'static str =
+        include_str!("../../../contracts/contracts/sbtc-bootstrap-signers.clar");
 }
 
 pub struct SignerKeyState {
@@ -70,7 +69,7 @@ where
     let signatures: Vec<RecoverableSignature> = state
         .keys
         .iter()
-        .map(|kp| sign_ecdsa(unsigned.tx(), &kp.secret_key()))
+        .map(|kp| stacks::wallet::sign_ecdsa(unsigned.tx(), &kp.secret_key()))
         .collect();
 
     // This only fails when we are given an invalid signature.
@@ -82,14 +81,14 @@ where
 
     match client.submit_tx(&tx).await.unwrap() {
         SubmitTxResponse::Acceptance(_) => (),
-        SubmitTxResponse::Rejection(err) => println!("{}", serde_json::to_string(&err).unwrap()),
+        SubmitTxResponse::Rejection(err) => panic!("{}", serde_json::to_string(&err).unwrap()),
     }
 }
 
 /// Deploy all sBTC smart contracts to the stacks node
 pub async fn deploy_smart_contracts() -> SignerKeyState {
     static SBTC_DEPLOYMENT: OnceCell<bool> = OnceCell::const_new();
-    let (signer_wallet, key_pairs) = wallet::generate_wallet();
+    let (signer_wallet, key_pairs) = testing::wallet::generate_wallet();
 
     let settings = StacksSettings::new_from_config().unwrap();
     let client = StacksClient::new(settings);
