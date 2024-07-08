@@ -14,7 +14,6 @@ use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::chainstate::stacks::TransactionAnchorMode;
 use blockstack_lib::chainstate::stacks::TransactionAuth;
 use blockstack_lib::chainstate::stacks::TransactionAuthFlags;
-use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::chainstate::stacks::TransactionPublicKeyEncoding;
 use blockstack_lib::chainstate::stacks::TransactionSpendingCondition;
 use blockstack_lib::chainstate::stacks::TransactionVersion;
@@ -32,6 +31,8 @@ use secp256k1::SECP256K1;
 use crate::config::NetworkKind;
 use crate::error::Error;
 use crate::stacks::contracts::AsContractCall;
+use crate::stacks::contracts::AsTxPayload;
+use crate::stacks::contracts::ContractCall;
 
 /// Requisite info for the signers' multi-sig wallet on Stacks.
 #[derive(Debug, Clone)]
@@ -44,6 +45,8 @@ pub struct SignerWallet {
     signatures_required: u16,
     /// The kind of network we are operating under.
     network_kind: NetworkKind,
+    /// The multi-sig address associated with the public keys.
+    address: StacksAddress,
 }
 
 impl SignerWallet {
@@ -61,19 +64,46 @@ impl SignerWallet {
         signatures_required: u16,
         network_kind: NetworkKind,
     ) -> Result<Self, Error> {
-        let invalid_threshold = public_keys.len() < signatures_required as usize;
+        let num_keys = public_keys.len();
+        let invalid_threshold = num_keys < signatures_required as usize;
 
-        if invalid_threshold || public_keys.is_empty() || signatures_required == 0 {
+        if invalid_threshold || num_keys == 0 || signatures_required == 0 {
             return Err(Error::InvalidWalletDefinition(
                 signatures_required,
-                public_keys.len(),
+                num_keys,
             ));
         }
 
+        let public_keys: BTreeSet<PublicKey> = public_keys.iter().copied().collect();
+        let pubkeys: Vec<Secp256k1PublicKey> = public_keys
+            .iter()
+            .map(|pk| Secp256k1PublicKey::from_slice(&pk.serialize()))
+            .collect::<Result<_, _>>()
+            .map_err(Error::StacksPublicKey)?;
+
+        let num_sigs = signatures_required as usize;
+        let hash_mode = Self::hash_mode().to_address_hash_mode();
+        let version = match network_kind {
+            NetworkKind::Mainnet => C32_ADDRESS_VERSION_MAINNET_MULTISIG,
+            NetworkKind::Testnet => C32_ADDRESS_VERSION_TESTNET_MULTISIG,
+        };
+
+        // The StacksAddress::from_public_keys call below should bever
+        // fail. For the AddressHashMode::SerializeP2WSH hash mode -- which
+        // we use since it corresponds to the
+        // OrderIndependentMultisigHashMode::P2WSH hash mode-- the
+        // StacksAddress::from_public_keys function will return None if the
+        // threshold is greater than the number of public keys or if any of
+        // the public keys are uncompressed. We enforce the threshold
+        // invariant when creating the struct, and our Secp256k1PublicKey
+        // instances are always compressed since PublicKey::serialize
+        // returns the bytes for a compressed public key.
         Ok(Self {
-            public_keys: public_keys.iter().copied().collect(),
+            public_keys,
             signatures_required,
             network_kind,
+            address: StacksAddress::from_public_keys(version, &hash_mode, num_sigs, &pubkeys)
+                .ok_or(Error::StacksMusltiSig(signatures_required, num_keys))?,
         })
     }
 
@@ -83,33 +113,7 @@ impl SignerWallet {
 
     /// Return the stacks address for the signers
     pub fn address(&self) -> StacksAddress {
-        let public_keys: Vec<Secp256k1PublicKey> = self
-            .public_keys
-            .iter()
-            .map(|pk| Secp256k1PublicKey::from_slice(&pk.serialize()))
-            .collect::<Result<_, _>>()
-            .expect("we know these are all valid public keys");
-
-        let threshold = self.signatures_required as usize;
-        let hash_mode = Self::hash_mode().to_address_hash_mode();
-        let version = match self.network_kind {
-            NetworkKind::Mainnet => C32_ADDRESS_VERSION_MAINNET_MULTISIG,
-            NetworkKind::Testnet => C32_ADDRESS_VERSION_TESTNET_MULTISIG,
-        };
-
-        #[cfg(debug_assertions)]
-        for key in public_keys.iter() {
-            debug_assert!(key.compressed());
-        }
-        // For a hash mode of AddressHashMode::SerializeP2WSH, which
-        // corresponds to OrderIndependentMultisigHashMode::P2WSH, the
-        // StacksAddress::from_public_keys function will return None if the
-        // threshold is greater than the number of public keys or if any of
-        // the public keys are uncompressed. We enforce the threshold
-        // invariant when creating the struct, and PublicKey::serialize
-        // returns the bytes for a compressed public key.
-        StacksAddress::from_public_keys(version, &hash_mode, threshold, &public_keys)
-            .expect("public key invariants not upheld")
+        self.address
     }
 }
 
@@ -121,17 +125,14 @@ pub struct SignerStxState {
     /// The next nonce for the StacksAddress associated with the address of
     /// the wallet.
     nonce: AtomicU64,
-    /// This is the stacks address that deployed the sbtc-contracts.
-    contract_deployer: StacksAddress,
 }
 
 impl SignerStxState {
     /// Create a new SignerStxState
-    pub fn new(wallet: SignerWallet, nonce: u64, deployer: StacksAddress) -> Self {
+    pub fn new(wallet: SignerWallet, nonce: u64) -> Self {
         Self {
             wallet,
             nonce: AtomicU64::new(nonce),
-            contract_deployer: deployer,
         }
     }
 
@@ -144,11 +145,6 @@ impl SignerStxState {
     /// multi-sig wallet.
     pub fn public_keys(&self) -> &BTreeSet<PublicKey> {
         &self.wallet.public_keys
-    }
-
-    /// The stacks address that deployed sbtc smart contracts.
-    pub fn contract_deployer(&self) -> StacksAddress {
-        self.contract_deployer
     }
 
     /// Convert the signers wallet to an unsigned stacks spending
@@ -191,11 +187,11 @@ pub struct MultisigTx {
 }
 
 impl MultisigTx {
-    /// Create a new Stacks transaction for a contract call that can be
+    /// Create a new Stacks transaction for a given payload that can be
     /// signed by the signers' multi-sig wallet.
-    pub fn new_contract_call<T>(contract: T, state: &SignerStxState, tx_fee: u64) -> Self
+    pub fn new_tx<T>(payload: T, state: &SignerStxState, tx_fee: u64) -> Self
     where
-        T: AsContractCall,
+        T: AsTxPayload,
     {
         // The chain id is used so transactions can't be replayed on other
         // chains. The "common" chain id values are mentioned in
@@ -208,8 +204,7 @@ impl MultisigTx {
             NetworkKind::Testnet => (TransactionVersion::Testnet, CHAIN_ID_TESTNET),
         };
 
-        let deployer = state.contract_deployer();
-        let conditions = contract.post_conditions(deployer);
+        let conditions = payload.post_conditions();
         let auth = state.as_unsigned_tx_auth(tx_fee);
         let spending_condition = TransactionSpendingCondition::OrderIndependentMultisig(auth);
 
@@ -220,7 +215,7 @@ impl MultisigTx {
             anchor_mode: TransactionAnchorMode::Any,
             post_condition_mode: conditions.post_condition_mode,
             post_conditions: conditions.post_conditions,
-            payload: TransactionPayload::ContractCall(contract.as_contract_call(deployer)),
+            payload: payload.tx_payload(),
         };
 
         let digest = construct_digest(&tx);
@@ -228,6 +223,16 @@ impl MultisigTx {
 
         Self { digest, signatures, tx }
     }
+
+    /// Create a new Stacks transaction for a contract call that can be
+    /// signed by the signers' multi-sig wallet.
+    pub fn new_contract_call<T>(contract: T, state: &SignerStxState, tx_fee: u64) -> Self
+    where
+        T: AsContractCall,
+    {
+        Self::new_tx(ContractCall(contract), state, tx_fee)
+    }
+
     /// Return a reference to the underlying transaction
     pub fn tx(&self) -> &StacksTransaction {
         &self.tx
@@ -364,6 +369,9 @@ mod tests {
     impl AsContractCall for TestContractCall {
         const CONTRACT_NAME: &'static str = "all-the-sbtc";
         const FUNCTION_NAME: &'static str = "mint-it-all";
+        fn deployer_address(&self) -> StacksAddress {
+            StacksAddress::burn_address(false)
+        }
         fn as_contract_args(&self) -> Vec<Value> {
             Vec::new()
         }
@@ -410,7 +418,7 @@ mod tests {
         // contract. It may matter for constructing the transaction -- in
         // this case it doesn't -- but it plays no role in the verification
         // of the signature.
-        let state = SignerStxState::new(wallet, 1, StacksAddress::burn_address(false));
+        let state = SignerStxState::new(wallet, 1);
 
         let mut tx_signer = MultisigTx::new_contract_call(TestContractCall, &state, TX_FEE);
         let tx = tx_signer.tx();
@@ -459,7 +467,7 @@ mod tests {
         let public_keys: Vec<_> = key_pairs.iter().map(|kp| kp.public_key()).collect();
         let wallet = SignerWallet::new(&public_keys, signatures_required, network).unwrap();
 
-        let state = SignerStxState::new(wallet, 1, StacksAddress::burn_address(false));
+        let state = SignerStxState::new(wallet, 1);
         let mut tx_signer = MultisigTx::new_contract_call(TestContractCall, &state, TX_FEE);
 
         // The accumulated signatures start off empty

@@ -78,6 +78,12 @@ pub enum Error {
     #[error("Failed to parse the stacks.api portion of the config: {0}")]
     StacksApiConfig(#[source] config::ConfigError),
 
+    /// This error happens when converting a sepc256k1::PublicKey into a
+    /// blockstack_lib::util::secp256k1::Secp256k1PublicKey. In general it
+    /// shouldn't happen.
+    #[error("Could not transform sepc256k1::PublicKey to stacks variant: {0}")]
+    StacksPublicKey(&'static str),
+
     /// Could not make a successful request to the stacks API.
     #[error("Failed to make a request to the stacks API: {0}")]
     StacksApiRequest(#[source] reqwest::Error),
