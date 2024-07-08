@@ -157,7 +157,7 @@ pub enum Error {
 
     /// WSTS error
     #[error("WSTS error: {0}")]
-    WSTS(#[source] wsts::state_machine::signer::Error),
+    Wsts(#[source] wsts::state_machine::signer::Error),
 }
 
 impl From<std::convert::Infallible> for Error {

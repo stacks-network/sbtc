@@ -340,13 +340,13 @@ where
             return Ok(());
         };
 
-        let outbound_messages = state_machine.process(msg).map_err(error::Error::WSTS)?;
+        let outbound_messages = state_machine.process(msg).map_err(error::Error::Wsts)?;
 
         for outbound_message in outbound_messages.iter() {
             // The WSTS state machine assume we read our own messages
             state_machine
                 .process(outbound_message)
-                .map_err(error::Error::WSTS)?;
+                .map_err(error::Error::Wsts)?;
         }
 
         for outbound_message in outbound_messages {
