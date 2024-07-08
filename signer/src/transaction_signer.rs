@@ -5,16 +5,23 @@
 //!
 //! For more details, see the [`TxSignerEventLoop`] documentation.
 
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+
 use crate::blocklist_client;
-use crate::ecdsa::SignEcdsa;
 use crate::error;
 use crate::message;
 use crate::network;
 use crate::storage;
 use crate::storage::model;
 
+use crate::codec::Decode as _;
+use crate::codec::Encode as _;
+use crate::ecdsa::SignEcdsa as _;
+
 use bitcoin::hashes::Hash;
 use futures::StreamExt;
+use wsts::traits::Signer;
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// # Transaction signer event loop
@@ -76,7 +83,7 @@ use futures::StreamExt;
 ///     SM --> |WSTS message| RWSM(Relay to WSTS state machine)
 /// ```
 #[derive(Debug)]
-pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker> {
+pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
     /// Interface to the signer network.
     pub network: Network,
     /// Database connection.
@@ -87,11 +94,27 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker> {
     pub block_observer_notifications: tokio::sync::watch::Receiver<()>,
     /// Private key of the signer for network communication.
     pub signer_private_key: p256k1::scalar::Scalar,
+    /// WSTS state machines for active signing rounds and DKG rounds
+    ///
+    /// - For signing rounds, the TxID is the ID of the transaction to be
+    ///   signed.
+    ///
+    /// - For DKG rounds, TxID should be the ID of the transaction that
+    ///   defined the signer set.
+    pub wsts_state_machines: HashMap<bitcoin::Txid, SignerStateMachine>,
+    /// Public keys of the other signers
+    pub signer_public_keys: BTreeSet<p256k1::ecdsa::PublicKey>,
+    /// The threshold for the signer
+    pub threshold: u32,
     /// How many bitcoin blocks back from the chain tip the signer will look for requests.
     pub context_window: usize,
+    /// Random number generator used for encryption
+    pub rng: Rng,
 }
 
-impl<N, S, B> TxSignerEventLoop<N, S, B>
+type SignerStateMachine = wsts::state_machine::signer::Signer<wsts::v2::Party>;
+
+impl<N, S, B, Rng> TxSignerEventLoop<N, S, B, Rng>
 where
     N: network::MessageTransfer,
     error::Error: From<N::Error>,
@@ -99,6 +122,7 @@ where
     S: storage::DbRead + storage::DbWrite,
     error::Error: From<<S as storage::DbRead>::Error>,
     error::Error: From<<S as storage::DbWrite>::Error>,
+    Rng: rand::RngCore + rand::CryptoRng,
 {
     /// Run the signer event loop
     #[tracing::instrument(skip(self))]
@@ -174,6 +198,9 @@ where
             return Err(error::Error::InvalidSignature);
         }
 
+        // TODO(297): Validate the chain tip against database
+        let bitcoin_chain_tip = msg.bitcoin_chain_tip.to_byte_array().to_vec();
+
         match &msg.inner.payload {
             message::Payload::SignerDepositDecision(decision) => {
                 self.persist_received_deposit_decision(decision, &msg.signer_pub_key)
@@ -190,12 +217,13 @@ where
             }
 
             message::Payload::BitcoinTransactionSignRequest(request) => {
-                self.handle_bitcoin_transaction_sign_request(request)
+                self.handle_bitcoin_transaction_sign_request(request, &bitcoin_chain_tip)
                     .await?;
             }
 
-            message::Payload::WstsMessage(_) => {
-                //TODO(257): Implement
+            message::Payload::WstsMessage(wsts_msg) => {
+                self.handle_wsts_message(wsts_msg, &bitcoin_chain_tip)
+                    .await?;
             }
 
             // Message types ignored by the transaction signer
@@ -210,23 +238,25 @@ where
     async fn handle_bitcoin_transaction_sign_request(
         &mut self,
         request: &message::BitcoinTransactionSignRequest,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), error::Error> {
-        let bitcoin_chain_tip = self
-            .storage
-            .get_bitcoin_canonical_chain_tip()
-            .await?
-            .ok_or(Error::NoChainTip)?;
-
         let is_valid_sign_request = self
-            .is_valid_bitcoin_transaction_sign_request(request, &bitcoin_chain_tip)
+            .is_valid_bitcoin_transaction_sign_request(request)
             .await?;
 
         if is_valid_sign_request {
+            let new_state_machine = self
+                .creat_state_machine_with_loaded_state(&request.aggregate_key)
+                .await?;
+
+            let txid = request.tx.compute_txid();
+            self.wsts_state_machines.insert(txid, new_state_machine);
+
             let msg = message::BitcoinTransactionSignAck {
                 txid: request.tx.compute_txid(),
             };
 
-            self.send_message(msg, &bitcoin_chain_tip).await?;
+            self.send_message(msg, bitcoin_chain_tip).await?;
         } else {
             tracing::warn!("received invalid sign request");
         }
@@ -237,9 +267,8 @@ where
     async fn is_valid_bitcoin_transaction_sign_request(
         &mut self,
         _request: &message::BitcoinTransactionSignRequest,
-        _bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<bool, error::Error> {
-        let signer_pub_key = self.signer_pub_key()?;
+        let signer_pub_key = self.signer_pub_key_model()?;
         let _accepted_deposit_requests = self
             .storage
             .get_accepted_deposit_requests(&signer_pub_key)
@@ -254,6 +283,81 @@ where
         //    `max_fee` of any request.
 
         Ok(true)
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn handle_wsts_message(
+        &mut self,
+        msg: &message::WstsMessage,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<(), error::Error> {
+        tracing::info!("handling message");
+        match &msg.inner {
+            wsts::net::Message::DkgBegin(_) => {
+                let state_machine = self.create_new_state_machine()?;
+                self.wsts_state_machines.insert(msg.txid, state_machine);
+                self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
+                    .await?;
+            }
+            wsts::net::Message::DkgPublicShares(_)
+            | wsts::net::Message::DkgPrivateBegin(_)
+            | wsts::net::Message::DkgPrivateShares(_) => {
+                self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
+                    .await?;
+            }
+            wsts::net::Message::DkgEndBegin(_) => {
+                self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
+                    .await?;
+                self.store_dkg_shares(&msg.txid).await?;
+            }
+            wsts::net::Message::NonceRequest(_) => {
+                // TODO(296): Validate that message is the appropriate sighash
+                self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
+                    .await?;
+            }
+            wsts::net::Message::SignatureShareRequest(_) => {
+                // TODO(296): Validate that message is the appropriate sighash
+                self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
+                    .await?;
+            }
+            _ => {
+                tracing::debug!("ignoring message");
+            }
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn relay_message(
+        &mut self,
+        txid: bitcoin::Txid,
+        msg: &wsts::net::Message,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<(), error::Error> {
+        let Some(state_machine) = self.wsts_state_machines.get_mut(&txid) else {
+            tracing::warn!("missing signing round");
+            return Ok(());
+        };
+
+        let outbound_messages = state_machine.process(msg).map_err(error::Error::Wsts)?;
+
+        for outbound_message in outbound_messages.iter() {
+            // The WSTS state machine assume we read our own messages
+            state_machine
+                .process(outbound_message)
+                .map_err(error::Error::Wsts)?;
+        }
+
+        for outbound_message in outbound_messages {
+            let msg = message::WstsMessage { txid, inner: outbound_message };
+
+            tracing::debug!(?msg, "sending message");
+
+            self.send_message(msg, bitcoin_chain_tip).await?;
+        }
+
+        Ok(())
     }
 
     #[tracing::instrument(skip(self))]
@@ -303,7 +407,7 @@ where
             })
             .await;
 
-        let signer_pub_key = self.signer_pub_key()?;
+        let signer_pub_key = self.signer_pub_key_model()?;
 
         let created_at = time::OffsetDateTime::now_utc();
 
@@ -345,7 +449,7 @@ where
             .await
             .unwrap_or(false);
 
-        let signer_pub_key = self.signer_pub_key()?;
+        let signer_pub_key = self.signer_pub_key_model()?;
 
         let created_at = time::OffsetDateTime::now_utc();
 
@@ -425,6 +529,134 @@ where
         Ok(())
     }
 
+    fn create_new_state_machine(&self) -> Result<SignerStateMachine, error::Error> {
+        let signers: hashbrown::HashMap<u32, _> = self
+            .signer_public_keys
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(id, key)| {
+                id.try_into()
+                    .map(|id| (id, key))
+                    .map_err(|_| error::Error::TypeConversion)
+            })
+            .collect::<Result<_, _>>()?;
+        let key_ids = signers
+            .clone()
+            .into_iter()
+            .map(|(id, key)| (id + 1, key))
+            .collect();
+
+        let public_keys = wsts::state_machine::PublicKeys { signers, key_ids };
+
+        let threshold = self.threshold;
+        let num_parties = self
+            .signer_public_keys
+            .len()
+            .try_into()
+            .map_err(|_| error::Error::TypeConversion)?;
+        let num_keys = num_parties;
+
+        let signer_pub_key = self.signer_pub_key()?;
+
+        let id: u32 = self
+            .signer_public_keys
+            .iter()
+            .enumerate()
+            .find(|(_, key)| *key == &signer_pub_key)
+            .ok_or_else(|| error::Error::MissingPublicKey)?
+            .0
+            .try_into()
+            .map_err(|_| error::Error::TypeConversion)?;
+
+        let key_ids = vec![id + 1];
+
+        if threshold > num_keys {
+            return Err(error::Error::InvalidConfiguration);
+        };
+
+        let state_machine = SignerStateMachine::new(
+            threshold,
+            num_parties,
+            num_keys,
+            id,
+            key_ids,
+            self.signer_private_key,
+            public_keys,
+        );
+
+        Ok(state_machine)
+    }
+
+    /// Load the saved DKG shares for the given aggregate key
+    /// and instantiates a new WSTS state machine with the loaded shares.
+    async fn creat_state_machine_with_loaded_state(
+        &mut self,
+        aggregate_key: &p256k1::point::Point,
+    ) -> Result<SignerStateMachine, error::Error> {
+        let encrypted_shares = self
+            .storage
+            .get_encrypted_dkg_shares(&aggregate_key.x().to_bytes().to_vec())
+            .await?
+            .ok_or(error::Error::MissingDkgShares)?;
+
+        let decrypted = wsts::util::decrypt(
+            &self.signer_private_key.to_bytes(),
+            &encrypted_shares.encrypted_shares,
+        )
+        .map_err(|_| error::Error::Encryption)?;
+
+        let saved_state =
+            wsts::traits::SignerState::decode(decrypted.as_slice()).map_err(error::Error::Codec)?;
+
+        // This may panic if the saved state doesn't contain exactly one party,
+        // however, that should never be the case since wsts maintains this invariant
+        // when we save the state.
+        let signer = wsts::v2::Party::load(&saved_state);
+
+        let mut state_machine = self.create_new_state_machine()?;
+
+        state_machine.signer = signer;
+
+        Ok(state_machine)
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn store_dkg_shares(&mut self, txid: &bitcoin::Txid) -> Result<(), error::Error> {
+        let state_machine = self
+            .wsts_state_machines
+            .get(txid)
+            .ok_or(error::Error::MissingStateMachine)?;
+
+        let saved_state = state_machine.signer.save();
+        let aggregate_key = saved_state.group_key.x().to_bytes().to_vec();
+        let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&saved_state.group_key, None)
+            .x()
+            .to_bytes()
+            .to_vec();
+
+        let encoded = saved_state.encode_to_vec().map_err(error::Error::Codec)?;
+
+        let encrypted_shares =
+            wsts::util::encrypt(&self.signer_private_key.to_bytes(), &encoded, &mut self.rng)
+                .map_err(|_| error::Error::Encryption)?;
+
+        let created_at = time::OffsetDateTime::now_utc();
+
+        let encrypted_dkg_shares = model::EncryptedDkgShares {
+            aggregate_key,
+            tweaked_aggregate_key,
+            encrypted_shares,
+            created_at,
+        };
+
+        self.storage
+            .write_encrypted_dkg_shares(&encrypted_dkg_shares)
+            .await?;
+
+        Ok(())
+    }
+
     #[tracing::instrument(skip(self, msg))]
     async fn send_message(
         &mut self,
@@ -444,10 +676,12 @@ where
         Ok(())
     }
 
-    fn signer_pub_key(&self) -> Result<model::PubKey, error::Error> {
-        Ok(p256k1::ecdsa::PublicKey::new(&self.signer_private_key)?
-            .to_bytes()
-            .to_vec())
+    fn signer_pub_key_model(&self) -> Result<model::PubKey, error::Error> {
+        Ok(self.signer_pub_key()?.to_bytes().to_vec())
+    }
+
+    fn signer_pub_key(&self) -> Result<p256k1::ecdsa::PublicKey, error::Error> {
+        Ok(p256k1::ecdsa::PublicKey::new(&self.signer_private_key)?)
     }
 }
 
@@ -470,6 +704,7 @@ mod tests {
             storage_constructor: storage::in_memory::Store::new_shared,
             context_window: 3,
             num_signers: 7,
+            signing_threshold: 5,
         }
     }
 
@@ -498,6 +733,20 @@ mod tests {
     async fn should_respond_to_bitcoin_transaction_sign_requests() {
         test_environment()
             .assert_should_respond_to_bitcoin_transaction_sign_requests()
+            .await;
+    }
+
+    #[tokio::test]
+    async fn should_be_able_to_participate_in_dkg() {
+        test_environment()
+            .assert_should_be_able_to_participate_in_dkg()
+            .await;
+    }
+
+    #[tokio::test]
+    async fn should_be_able_to_participate_in_signing_round() {
+        test_environment()
+            .assert_should_be_able_to_participate_in_signing_round()
             .await;
     }
 }

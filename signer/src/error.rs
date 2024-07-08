@@ -3,7 +3,7 @@ use std::borrow::Cow;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
 
-use crate::{ecdsa, network};
+use crate::{codec, ecdsa, network};
 
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
@@ -112,6 +112,18 @@ pub enum Error {
     #[error("missing block")]
     MissingBlock,
 
+    /// Missing dkg shares
+    #[error("missing dkg shares")]
+    MissingDkgShares,
+
+    /// Missing public key
+    #[error("missing public key")]
+    MissingPublicKey,
+
+    /// Missing state machine
+    #[error("missing state machine")]
+    MissingStateMachine,
+
     /// Invalid signature
     #[error("invalid signature")]
     InvalidSignature,
@@ -124,6 +136,10 @@ pub enum Error {
     #[error("ECDSA error: {0}")]
     Ecdsa(#[from] ecdsa::Error),
 
+    /// Codec error
+    #[error("codec error: {0}")]
+    Codec(#[source] codec::Error),
+
     /// In-memory network error
     #[error("in-memory network error: {0}")]
     InMemoryNetwork(#[from] network::in_memory::Error),
@@ -133,13 +149,25 @@ pub enum Error {
     GrpcRelayNetworkError(#[from] network::grpc_relay::RelayError),
 
     /// Type conversion error
-    #[error("Type conversion error")]
+    #[error("type conversion error")]
     TypeConversion,
+
+    /// Encryption error
+    #[error("encryption error")]
+    Encryption,
+
+    /// Invalid configuration
+    #[error("invalid configuration")]
+    InvalidConfiguration,
 
     /// Thrown when the recoverable signature has a public key that is
     /// unexpected.
-    #[error("Unexpected public key from signature. key {0}; digest: {1}")]
+    #[error("unexpected public key from signature. key {0}; digest: {1}")]
     UnknownPublicKey(secp256k1::PublicKey, secp256k1::Message),
+
+    /// WSTS error
+    #[error("WSTS error: {0}")]
+    Wsts(#[source] wsts::state_machine::signer::Error),
 }
 
 impl From<std::convert::Infallible> for Error {

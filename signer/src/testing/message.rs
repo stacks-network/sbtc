@@ -69,7 +69,15 @@ impl fake::Dummy<fake::Faker> for message::SignerDepositDecision {
 
 impl fake::Dummy<fake::Faker> for message::BitcoinTransactionSignRequest {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        Self { tx: dummy::tx(config, rng) }
+        let mut bytes: [u8; 32] = [0; 32];
+        rng.fill_bytes(&mut bytes);
+        let scalar = p256k1::scalar::Scalar::from(bytes);
+        let aggregate_key = p256k1::point::Point::from(&scalar);
+
+        Self {
+            tx: dummy::tx(config, rng),
+            aggregate_key,
+        }
     }
 }
 
@@ -104,7 +112,10 @@ impl fake::Dummy<fake::Faker> for message::WstsMessage {
             key_ids: config.fake_with_rng(rng),
         };
 
-        Self(wsts::net::Message::DkgEndBegin(dkg_end_begin))
+        Self {
+            txid: dummy::txid(config, rng),
+            inner: wsts::net::Message::DkgEndBegin(dkg_end_begin),
+        }
     }
 }
 

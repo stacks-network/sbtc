@@ -344,7 +344,7 @@ impl super::DbRead for PgStore {
         &self,
         _signer: &model::PubKey,
     ) -> Result<Vec<model::DepositRequest>, Self::Error> {
-        todo!() // TODO
+        todo!() // TODO(295): Implement
     }
 
     async fn get_deposit_signers(
@@ -502,6 +502,13 @@ impl super::DbRead for PgStore {
         .await
         .map(|row| row.is_some())
         .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_encrypted_dkg_shares(
+        &self,
+        _aggregate_key: &model::PubKey,
+    ) -> Result<Option<model::EncryptedDkgShares>, Self::Error> {
+        todo!() // TODO(295): Implement
     }
 }
 
@@ -725,6 +732,13 @@ impl super::DbWrite for PgStore {
     async fn write_stacks_blocks(&self, blocks: &[NakamotoBlock]) -> Result<(), Self::Error> {
         self.write_stacks_block_header(blocks).await?;
         self.write_stacks_sbtc_txs(blocks).await
+    }
+
+    async fn write_encrypted_dkg_shares(
+        &self,
+        _shares: &model::EncryptedDkgShares,
+    ) -> Result<(), Self::Error> {
+        todo!() // TODO(295): Implement
     }
 }
 

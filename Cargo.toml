@@ -31,6 +31,7 @@ bitvec = { version = "1.0", default-features = false }
 config = "0.11.0"
 clap = { version = "4.5.4", features = ["derive", "env"] }
 futures = "0.3.24"
+hashbrown = "0.14.5"
 http = "1.1.0"
 lambda_runtime = "0.11.1"
 # This is necessary to compile the AWS Lambda as a lambda.
