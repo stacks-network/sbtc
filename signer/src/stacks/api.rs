@@ -164,7 +164,7 @@ pub struct AccountInfo {
 
 /// Helper function for converting a hexidecimal string into an integer.
 fn parse_hex_u128(hex: &str) -> Result<u128, Error> {
-    let hex_str = hex.strip_prefix("0x").unwrap_or(hex);
+    let hex_str = hex.trim_start_matches("0x");
     u128::from_str_radix(hex_str, 16).map_err(Error::ParseHexInt)
 }
 
@@ -665,6 +665,8 @@ mod tests {
     #[test_case("0x1A3B5C7D9E", 112665066910; "uppercase-112665066910")]
     #[test_case("0x1a3b5c7d9e", 112665066910; "lowercase-112665066910")]
     #[test_case("1a3b5c7d9e", 112665066910; "unprefixed-lowercase-112665066910")]
+    #[test_case("0xF0", 240; "uppercase-240")]
+    #[test_case("f0", 240; "unprefixed-lowercase-240")]
     fn parsing_integers(hex: &str, expected: u128) {
         let actual = parse_hex_u128(hex).unwrap();
         assert_eq!(actual, expected);
