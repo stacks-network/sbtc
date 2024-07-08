@@ -81,3 +81,21 @@ async fn should_store_decisions_received_from_other_signers(pool: sqlx::PgPool) 
         .assert_should_store_decisions_received_from_other_signers()
         .await;
 }
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[sqlx::test(migrations = false)]
+async fn should_respond_to_bitcoin_transaction_sign_request(pool: sqlx::PgPool) {
+    test_environment(pool)
+        .await
+        .assert_should_respond_to_bitcoin_transaction_sign_requests()
+        .await;
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[sqlx::test(migrations = false)]
+async fn should_be_able_to_participate_in_signing_round(pool: sqlx::PgPool) {
+    test_environment(pool)
+        .await
+        .assert_should_be_able_to_participate_in_signing_round()
+        .await;
+}

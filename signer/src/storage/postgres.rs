@@ -342,9 +342,33 @@ impl super::DbRead for PgStore {
 
     async fn get_accepted_deposit_requests(
         &self,
-        _signer: &model::PubKey,
+        signer: &model::PubKey,
     ) -> Result<Vec<model::DepositRequest>, Self::Error> {
-        todo!() // TODO(295): Implement
+        sqlx::query_as!(
+            model::DepositRequest,
+            r#"
+            SELECT
+                requests.txid
+              , requests.output_index
+              , requests.spend_script
+              , requests.reclaim_script
+              , requests.recipient
+              , requests.amount
+              , requests.max_fee
+              , requests.sender_addresses
+              , requests.created_at
+            FROM sbtc_signer.deposit_requests requests
+                 JOIN sbtc_signer.deposit_signers signers
+                   ON requests.txid = signers.txid
+                  AND requests.output_index = signers.output_index
+            WHERE
+                signers.signer_pub_key = $1
+            "#,
+            signer,
+        )
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
     }
 
     async fn get_deposit_signers(
@@ -506,9 +530,24 @@ impl super::DbRead for PgStore {
 
     async fn get_encrypted_dkg_shares(
         &self,
-        _aggregate_key: &model::PubKey,
+        aggregate_key: &model::PubKey,
     ) -> Result<Option<model::EncryptedDkgShares>, Self::Error> {
-        todo!() // TODO(295): Implement
+        sqlx::query_as!(
+            model::EncryptedDkgShares,
+            r#"
+            SELECT
+                aggregate_key
+              , tweaked_aggregate_key
+              , encrypted_shares
+              , created_at
+            FROM sbtc_signer.dkg_shares
+            WHERE aggregate_key = $1;
+            "#,
+            aggregate_key,
+        )
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
     }
 }
 
@@ -736,9 +775,25 @@ impl super::DbWrite for PgStore {
 
     async fn write_encrypted_dkg_shares(
         &self,
-        _shares: &model::EncryptedDkgShares,
+        shares: &model::EncryptedDkgShares,
     ) -> Result<(), Self::Error> {
-        todo!() // TODO(295): Implement
+        sqlx::query!(
+            r#"
+            INSERT INTO sbtc_signer.dkg_shares
+                (aggregate_key, tweaked_aggregate_key, encrypted_shares, created_at)
+            VALUES
+                ($1, $2, $3, $4)
+            "#,
+            shares.aggregate_key,
+            shares.tweaked_aggregate_key,
+            shares.encrypted_shares,
+            shares.created_at,
+        )
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
     }
 }
 
