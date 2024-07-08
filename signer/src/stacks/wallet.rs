@@ -34,6 +34,16 @@ use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::AsTxPayload;
 use crate::stacks::contracts::ContractCall;
 
+/// Stacks multisig addresses are RIPEMD-160 hashes of bitcoin Scripts
+/// (more or less). The enum value below defines which Script will be used
+/// to construct the address, and so implicitly describes how the multisig
+/// Stacks address is created. The specific hash mode chosen here needs to
+/// match the hash mode used in our smart contracts. This is defined in the
+/// `sbtc-bootstamp-signers.clar` contract in the `pubkeys-to-spend-script`
+/// read-only function. This mode matches the code there.
+const MULTISIG_ADDRESS_HASH_MODE: OrderIndependentMultisigHashMode =
+    OrderIndependentMultisigHashMode::P2SH;
+
 /// Requisite info for the signers' multi-sig wallet on Stacks.
 #[derive(Debug, Clone)]
 pub struct SignerWallet {
@@ -89,15 +99,12 @@ impl SignerWallet {
         };
 
         // The StacksAddress::from_public_keys call below should never
-        // fail. For the AddressHashMode::SerializeP2WSH hash mode -- which
+        // fail. For the AddressHashMode::SerializeP2SH hash mode -- which
         // we use since it corresponds to the
-        // OrderIndependentMultisigHashMode::P2WSH hash mode-- the
+        // OrderIndependentMultisigHashMode::P2SH hash mode-- the
         // StacksAddress::from_public_keys function will return None if the
-        // threshold is greater than the number of public keys or if any of
-        // the public keys are uncompressed. We enforce the threshold
-        // invariant when creating the struct, and our Secp256k1PublicKey
-        // instances are always compressed since PublicKey::serialize
-        // returns the bytes for a compressed public key.
+        // threshold is greater than the number of public keys. We enforce
+        // the threshold invariant above in this function.
         Ok(Self {
             public_keys,
             signatures_required,
@@ -108,7 +115,7 @@ impl SignerWallet {
     }
 
     fn hash_mode() -> OrderIndependentMultisigHashMode {
-        OrderIndependentMultisigHashMode::P2WSH
+        MULTISIG_ADDRESS_HASH_MODE
     }
 
     /// Return the stacks address for the signers
