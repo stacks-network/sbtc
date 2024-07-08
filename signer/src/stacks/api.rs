@@ -139,9 +139,9 @@ pub struct TxRejection {
 /// 3. A 400/500 status string message about some other error (such as
 ///    using an unsupported address mode).
 ///
-/// All good with the first response type, but the second resposne type
+/// All good with the first response type, but the second response type
 /// could be due to the fee being too low or because of a bad nonce. These
-/// are retryable "error", so we distinguish them from the thrid kinds of
+/// are retryable "error", so we distinguish them from the third kinds of
 /// errors, which are likely not retryable.
 #[derive(Debug, serde::Deserialize)]
 #[serde(untagged)]
@@ -664,9 +664,9 @@ mod tests {
 
     #[test_case("0x1A3B5C7D9E", 112665066910; "uppercase-112665066910")]
     #[test_case("0x1a3b5c7d9e", 112665066910; "lowercase-112665066910")]
-    #[test_case("1a3b5c7d9e", 112665066910; "unprefixed-lowercase-112665066910")]
+    #[test_case("1a3b5c7d9e", 112665066910; "no-prefix-lowercase-112665066910")]
     #[test_case("0xF0", 240; "uppercase-240")]
-    #[test_case("f0", 240; "unprefixed-lowercase-240")]
+    #[test_case("f0", 240; "no-prefix-lowercase-240")]
     fn parsing_integers(hex: &str, expected: u128) {
         let actual = parse_hex_u128(hex).unwrap();
         assert_eq!(actual, expected);
