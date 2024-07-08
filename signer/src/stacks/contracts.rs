@@ -119,7 +119,8 @@ pub trait AsContractCall {
 /// since doing so is prevented by the compiler because it introduces
 /// ambiguity. One work-around is to use a wrapper type that implements the
 /// trait that we want.
-pub struct ContractCall<T: AsContractCall>(pub T);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ContractCall<T>(pub T);
 
 impl<T: AsContractCall> AsTxPayload for ContractCall<T> {
     fn tx_payload(&self) -> TransactionPayload {
@@ -127,6 +128,25 @@ impl<T: AsContractCall> AsTxPayload for ContractCall<T> {
     }
     fn post_conditions(&self) -> StacksTxPostConditions {
         self.0.post_conditions()
+    }
+}
+
+impl<T: AsContractCall> From<T> for ContractCall<T> {
+    fn from(value: T) -> Self {
+        ContractCall(value)
+    }
+}
+
+impl<T: AsContractCall> std::ops::Deref for ContractCall<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T: AsContractCall> std::ops::DerefMut for ContractCall<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
