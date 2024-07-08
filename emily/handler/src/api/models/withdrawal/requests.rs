@@ -11,10 +11,13 @@ use super::{WithdrawalId, WithdrawalParameters};
 #[serde(rename_all = "camelCase")]
 pub struct GetWithdrawalsQuery {
     /// Operation status.
-    status: Status,
-    /// Pagination data.
-    #[serde(flatten)]
-    pagination_data: requests::PaginatedQuery<String>,
+    pub status: Status,
+    /// Next token for the search.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_token: Option<String>,
+    /// Maximum number of results to show.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<i32>,
 }
 
 /// Request structure for the create withdrawal request.
@@ -24,9 +27,7 @@ pub struct CreateWithdrawalRequestBody {
     /// The id of the Stacks withdrawal request that initiated the sBTC operation.
     pub request_id: WithdrawalId,
     /// The stacks block hash in which this request id was initiated.
-    pub block_hash: StacksBlockHash,
-    /// The height of the Stacks block in which this request id was initiated.
-    pub block_height: BlockHeight,
+    pub stacks_block_hash: StacksBlockHash,
     /// The recipient Bitcoin address.
     pub recipient: BitcoinAddress,
     /// Amount of BTC being withdrawn.

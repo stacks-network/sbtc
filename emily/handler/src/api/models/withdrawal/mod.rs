@@ -20,9 +20,9 @@ pub struct Withdrawal {
     /// The id of the Stacks withdrawal request that initiated the sBTC operation.
     pub request_id: WithdrawalId,
     /// The stacks block hash in which this request id was initiated.
-    pub block_hash: StacksBlockHash,
+    pub stacks_block_hash: StacksBlockHash,
     /// The height of the Stacks block in which this request id was initiated.
-    pub block_height: BlockHeight,
+    pub stacks_block_height: BlockHeight,
     /// The recipient Bitcoin address.
     pub recipient: BitcoinAddress,
     /// Amount of BTC being withdrawn.
@@ -62,9 +62,9 @@ pub struct WithdrawalInfo {
     /// The id of the Stacks withdrawal request that initiated the sBTC operation.
     pub request_id: WithdrawalId,
     /// The stacks block hash in which this request id was initiated.
-    pub block_hash: StacksBlockHash,
+    pub stacks_block_hash: StacksBlockHash,
     /// The height of the Stacks block in which this request id was initiated.
-    pub block_height: BlockHeight,
+    pub stacks_block_height: BlockHeight,
     /// The recipient Bitcoin address.
     pub recipient: BitcoinAddress,
     /// Amount of BTC being withdrawn.

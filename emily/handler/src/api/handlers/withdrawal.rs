@@ -2,11 +2,17 @@
 use warp::reply::{json, with_status};
 
 use warp::http::StatusCode;
+use crate::api::models::common::{BlockHeight, StacksBlockHash, Status};
+use crate::api::models::withdrawal::{Withdrawal, WithdrawalInfo};
 use crate::api::models::withdrawal::{
     WithdrawalId,
     requests::{CreateWithdrawalRequestBody, GetWithdrawalsQuery, UpdateWithdrawalsRequestBody},
     responses::{CreateWithdrawalResponse, GetWithdrawalResponse, GetWithdrawalsResponse, UpdateWithdrawalsResponse},
 };
+use crate::common::error::Error;
+use crate::context::EmilyContext;
+use crate::database::accessors;
+use crate::database::entries::withdrawal::{WithdrawalEntry, WithdrawalEntryKey, WithdrawalEvent, WithdrawalParametersEntry};
 
 /// Get withdrawal handler.
 #[utoipa::path(
@@ -26,13 +32,42 @@ use crate::api::models::withdrawal::{
         (status = 500, description = "Internal server error")
     )
 )]
-pub fn get_withdrawal(
-    _id: WithdrawalId,
+pub async fn get_withdrawal(
+    context: EmilyContext,
+    request_id: WithdrawalId,
 ) -> impl warp::reply::Reply {
-    let response = GetWithdrawalResponse {
-        ..Default::default()
-    };
-    with_status(json(&response), StatusCode::OK)
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        request_id: WithdrawalId,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        // Get withdrawals - hopefully just one.
+        // If there is more than one withdrawal then there is a state inconsistency. This
+        // is potentially okay but the hope then is that the database is actively being
+        // repaired.
+        let num_to_retrieve_if_multiple = 5;
+        let (entries, _) = accessors::get_withdrawal_entries_for_id(
+            &context,
+            request_id,
+            None,
+            Some(num_to_retrieve_if_multiple),
+        ).await?;
+
+        // Convert data into resource types.
+        let maybe_withdrawals: Result<Vec<Withdrawal>, Error> = entries.into_iter()
+            .map(|entry| entry.try_into())
+            .collect();
+
+        let withdrawals = maybe_withdrawals?;
+        // let a =
+        match &withdrawals[..] {
+            [] => Err(Error::NotFound),
+            [withdrawal] => Ok(with_status(json(withdrawal as &GetWithdrawalResponse), StatusCode::OK)),
+            _ => Err(Error::Debug(format!("Found too many withdrawals: {withdrawals:?}")))
+        }
+    }
+    // Handle and respond.
+    super::to_response(handler(context, request_id).await)
 }
 
 /// Get withdrawals handler.
@@ -54,13 +89,36 @@ pub fn get_withdrawal(
         (status = 500, description = "Internal server error")
     )
 )]
-pub fn get_withdrawals(
-    _query: GetWithdrawalsQuery,
+pub async fn get_withdrawals(
+    context: EmilyContext,
+    query: GetWithdrawalsQuery,
 ) -> impl warp::reply::Reply {
-    let response = GetWithdrawalsResponse {
-        ..Default::default()
-    };
-    with_status(json(&response), StatusCode::OK)
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        query: GetWithdrawalsQuery,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        // Deserialize next token into the exclusive start key if present.
+        let (entries, next_token) = accessors::get_withdrawal_entries(
+            &context,
+            query.status,
+            query.next_token,
+            query.page_size
+        ).await?;
+        // Convert data into resource types.
+        let withdrawals: Vec<WithdrawalInfo> = entries.into_iter()
+            .map(|entry| entry.into())
+            .collect();
+        // Create response.
+        let response = GetWithdrawalsResponse {
+            withdrawals,
+            next_token,
+        };
+        // Respond.
+        Ok(with_status(json(&response), StatusCode::OK))
+    }
+    // Handle and respond.
+    super::to_response(handler(context, query).await)
 }
 
 /// Create withdrawal handler.
@@ -79,13 +137,51 @@ pub fn get_withdrawals(
         (status = 500, description = "Internal server error")
     )
 )]
-pub fn create_withdrawal(
-    _body: CreateWithdrawalRequestBody,
+pub async fn create_withdrawal(
+    context: EmilyContext,
+    body: CreateWithdrawalRequestBody,
 ) -> impl warp::reply::Reply {
-    let response = CreateWithdrawalResponse {
-        ..Default::default()
-    };
-    with_status(json(&response), StatusCode::CREATED)
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        body: CreateWithdrawalRequestBody,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        // Set variables.
+        // TODO: Remove dummy hash; take hash from request.
+        let stacks_block_hash: StacksBlockHash = "PLACEHOLDER_HASH".into();
+        let stacks_block_height: BlockHeight = 0;
+        let status = Status::Pending;
+        // Make table entry.
+        let withdrawal_entry: WithdrawalEntry = WithdrawalEntry {
+            key: WithdrawalEntryKey {
+                request_id: body.request_id,
+                // TODO: Remove dummy hash.
+                stacks_block_hash: stacks_block_hash.clone(),
+            },
+            parameters: WithdrawalParametersEntry {
+                max_fee: body.parameters.max_fee,
+            },
+            history: vec![ WithdrawalEvent {
+                status: Status::Pending,
+                message: "Just received deposit".to_string(),
+                stacks_block_hash: stacks_block_hash.clone(),
+                stacks_block_height,
+            }],
+            status,
+            last_update_block_hash: stacks_block_hash,
+            last_update_height: stacks_block_height,
+            ..Default::default()
+        };
+        // Validate withdrawal entry.
+        withdrawal_entry.validate()?;
+        // Add entry to the table.
+        accessors::add_withdrawal_entry(&context, &withdrawal_entry).await?;
+        // Respond.
+        let response: CreateWithdrawalResponse = withdrawal_entry.try_into()?;
+        Ok(with_status(json(&response), StatusCode::CREATED))
+    }
+    // Handle and respond.
+    super::to_response(handler(context, body).await)
 }
 
 /// Update withdrawals handler.
@@ -103,7 +199,8 @@ pub fn create_withdrawal(
         (status = 500, description = "Internal server error")
     )
 )]
-pub fn update_withdrawals(
+pub async fn update_withdrawals(
+    _context: EmilyContext,
     _body: UpdateWithdrawalsRequestBody,
 ) -> impl warp::reply::Reply {
     let response = UpdateWithdrawalsResponse {
@@ -111,3 +208,5 @@ pub fn update_withdrawals(
     };
     with_status(json(&response), StatusCode::CREATED)
 }
+
+// TODO(TBD): Add handler unit tests.

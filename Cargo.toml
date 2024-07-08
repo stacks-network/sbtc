@@ -22,9 +22,11 @@ sbtc-common = { version = "0.1.0", path = "./common" }
 emily-handler = { version = "0.1.0", path = "./emily/handler" }
 
 aquamarine = "0.5.0"
+aws-config = "1.2.0"
 aws_lambda_events = "0.15.0"
-aws-sdk-dynamodb = { version = "1.3.0" }
+aws-sdk-dynamodb = { version = "1.36.0" }
 backoff = { version = "0.4.0", features = ["tokio"] }
+base64 = "0.22.1"
 bincode = "1.3.3"
 bitcoin = { version = "0.32", features = ["serde"] }
 bitvec = { version = "1.0", default-features = false }
@@ -42,6 +44,7 @@ prost = "0.12.5"
 rand = "0.8"
 reqwest = { version = "0.11", features = ["json"] }
 serde = "1.0"
+serde_dynamo = {version = "4.2", features = ["aws-sdk-dynamodb+1"] }
 serde_json = "1.0"
 sha2 = "0.10"
 sqlx = { version = "0.7", default-features = false, features = [ "postgres", "time", "runtime-tokio", "tls-rustls", "macros", "migrate", "json" ] }

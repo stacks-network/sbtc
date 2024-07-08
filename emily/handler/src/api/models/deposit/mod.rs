@@ -11,7 +11,7 @@ pub mod requests;
 pub mod responses;
 
 /// Deposit.
-#[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
 #[serde(rename_all = "camelCase")]
 pub struct Deposit {
     /// Bitcoin transaction id.
@@ -42,7 +42,7 @@ pub struct Deposit {
 }
 
 /// Deposit parameters.
-#[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
 #[serde(rename_all = "camelCase")]
 pub struct DepositParameters {
     /// Maximum fee the signers are allowed to take from the deposit to facilitate
@@ -55,7 +55,7 @@ pub struct DepositParameters {
 }
 
 /// Reduced version of the Deposit data.
-#[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
 #[serde(rename_all = "camelCase")]
 pub struct DepositInfo {
     /// Bitcoin transaction id.
