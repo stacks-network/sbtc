@@ -58,13 +58,11 @@ pub async fn get_chainstate_at_height(
             None,
             Some(num_to_retrieve_if_multiple),
         ).await?;
-
         // Convert data into resource types.
         let chainstates: Vec<Chainstate> = entries.into_iter()
             .map(|entry| entry.into())
             .collect();
-
-        //
+        // Respond.
         match &chainstates[..] {
             [] => Err(Error::NotFound),
             [chainstate] => Ok(with_status(json(chainstate as &GetChainstateResponse), StatusCode::OK)),

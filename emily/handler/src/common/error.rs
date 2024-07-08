@@ -154,7 +154,6 @@ impl From<serde_dynamo::Error> for Error {
     }
 }
 
-
 /// Structure representing an error response
 /// This is used to serialize error messages in HTTP responses
 #[derive(Serialize, Deserialize, ToSchema)]

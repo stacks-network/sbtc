@@ -59,7 +59,7 @@ pub async fn get_withdrawal(
             .collect();
 
         let withdrawals = maybe_withdrawals?;
-        // let a =
+        // Respond.
         match &withdrawals[..] {
             [] => Err(Error::NotFound),
             [withdrawal] => Ok(with_status(json(withdrawal as &GetWithdrawalResponse), StatusCode::OK)),
