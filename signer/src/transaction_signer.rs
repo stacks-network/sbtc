@@ -588,6 +588,8 @@ where
         Ok(state_machine)
     }
 
+    /// Load the saved DKG shares for the given aggregate key
+    /// and instantiates a new WSTS state machine with the loaded shares.
     async fn creat_state_machine_with_loaded_state(
         &mut self,
         aggregate_key: &p256k1::point::Point,
