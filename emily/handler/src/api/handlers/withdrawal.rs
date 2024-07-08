@@ -147,7 +147,7 @@ pub async fn create_withdrawal(
         body: CreateWithdrawalRequestBody,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Set variables.
-        // TODO: Remove dummy hash; take hash from request.
+        // TODO(TBD): Remove dummy hash; take hash from request.
         let stacks_block_hash: StacksBlockHash = "PLACEHOLDER_HASH".into();
         let stacks_block_height: BlockHeight = 0;
         let status = Status::Pending;
@@ -155,7 +155,7 @@ pub async fn create_withdrawal(
         let withdrawal_entry: WithdrawalEntry = WithdrawalEntry {
             key: WithdrawalEntryKey {
                 request_id: body.request_id,
-                // TODO: Remove dummy hash.
+                // TODO(TBD): Remove dummy hash.
                 stacks_block_hash: stacks_block_hash.clone(),
             },
             parameters: WithdrawalParametersEntry {

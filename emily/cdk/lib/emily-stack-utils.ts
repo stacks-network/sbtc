@@ -126,7 +126,7 @@ export class EmilyStackUtils {
         apiLambdas: [lambdaIdentifier: string, lambdaFunction: lambda.Function][],
     ): ApiDefinition {
 
-        // TODO: https://github.com/stacks-network/sbtc/issues/269
+        // TODO(TBD): https://github.com/stacks-network/sbtc/issues/269
         // Change Emily API Lambda Integrations to use cdk constructs if possible instead of specification
         // alteration.
 

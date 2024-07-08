@@ -54,7 +54,7 @@ pub async fn get_chainstate_entries_for_height(
     ).await
 }
 
-// TODO: Add table access functions for chain tip related queries.
+// TODO(TBD): Add table access functions for chain tip related queries.
 
 // Deposit ---------------------------------------------------------------------
 
