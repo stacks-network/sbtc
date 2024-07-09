@@ -330,7 +330,7 @@ impl RotateKeysV1 {
         static KEYS_ARGUMENT_DATA_TYPE: OnceLock<ListTypeData> = OnceLock::new();
         KEYS_ARGUMENT_DATA_TYPE.get_or_init(|| {
             // A Result::Err is returned whenever the "depth" of the type
-            // is too large or if the the maximum size of an input with the
+            // is too large or if the maximum size of an input with the
             // given type is too large. None of this is true for us, the
             // depth is 1 or 2 and the size is 128 * 33 bytes, which is
             // under the limit of 1 MB.

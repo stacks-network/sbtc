@@ -113,7 +113,7 @@ impl SignerWallet {
             signatures_required,
             network_kind,
             address: StacksAddress::from_public_keys(version, &hash_mode, num_sigs, &pubkeys)
-                .ok_or(Error::StacksMusltiSig(signatures_required, num_keys))?,
+                .ok_or(Error::StacksMultiSig(signatures_required, num_keys))?,
         })
     }
 
