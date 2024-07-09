@@ -325,7 +325,7 @@ impl RotateKeysV1 {
     ///
     /// # Notes
     ///
-    /// One of the inputs, new-keys, is a (list 15 (buff 33)). This
+    /// One of the inputs, new-keys, is a (list 128 (buff 33)). This
     /// function represents this data type.
     fn list_data_type() -> &'static ListTypeData {
         static KEYS_ARGUMENT_DATA_TYPE: OnceLock<ListTypeData> = OnceLock::new();
@@ -333,7 +333,7 @@ impl RotateKeysV1 {
             // A Result::Err is returned whenever the "depth" of the type
             // is too large or if the the maximum size of an input with the
             // given type is too large. None of this is true for us, the
-            // depth is 1 or 2 and the size is 15 * 33 bytes, which is
+            // depth is 1 or 2 and the size is 128 * 33 bytes, which is
             // under the limit of 1 MB.
             ListTypeData::new_list(BUFF_33.clone(), crate::MAX_KEYS as u32)
                 .expect("Error: legal ListTypeData marked as invalid")
@@ -354,7 +354,7 @@ impl AsContractCall for RotateKeysV1 {
     ///
     /// The signature to this function is:
     ///
-    ///     (new-keys (list 15 (buff 33))) (new-aggregate-pubkey (buff 33))
+    ///   (new-keys (list 128 (buff 33))) (new-aggregate-pubkey (buff 33))
     fn as_contract_args(&self) -> Vec<Value> {
         let new_key_data: Vec<Value> = self
             .new_keys

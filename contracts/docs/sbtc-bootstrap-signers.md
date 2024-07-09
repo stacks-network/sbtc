@@ -41,7 +41,7 @@ sBTC Bootstrap Signers contract
 
 [View in file](../contracts/sbtc-bootstrap-signers.clar#L30)
 
-`(define-public (rotate-keys-wrapper ((new-keys (list 15 (buff 33))) (new-aggregate-pubkey (buff 33))) (response bool uint))`
+`(define-public (rotate-keys-wrapper ((new-keys (list 128 (buff 33))) (new-aggregate-pubkey (buff 33))) (response bool uint))`
 
 Rotate keys
 Used to rotate the keys of the signers. This is called whenever
@@ -51,7 +51,7 @@ the signer set is updated.
   <summary>Source code:</summary>
 
 ```clarity
-(define-public (rotate-keys-wrapper (new-keys (list 15 (buff 33))) (new-aggregate-pubkey (buff 33)))
+(define-public (rotate-keys-wrapper (new-keys (list 128 (buff 33))) (new-aggregate-pubkey (buff 33)))
     (let
         (
             (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))
@@ -76,10 +76,10 @@ the signer set is updated.
 
 **Parameters:**
 
-| Name                 | Type                |
-| -------------------- | ------------------- |
-| new-keys             | (list 15 (buff 33)) |
-| new-aggregate-pubkey | (buff 33)           |
+| Name                 | Type                 |
+| -------------------- | -------------------- |
+| new-keys             | (list 128 (buff 33)) |
+| new-aggregate-pubkey | (buff 33)            |
 
 ### signer-key-length-check
 
@@ -120,7 +120,7 @@ Checks that the length of each key is exactly 33 bytes #[allow(unchecked_data)]
 
 [View in file](../contracts/sbtc-bootstrap-signers.clar#L72)
 
-`(define-read-only (pubkeys-to-spend-script ((pubkeys (list 15 (buff 33))) (m uint)) (buff 513))`
+`(define-read-only (pubkeys-to-spend-script ((pubkeys (list 128 (buff 33))) (m uint)) (buff 513))`
 
 Generate the p2sh redeem script for a multisig
 
@@ -129,7 +129,7 @@ Generate the p2sh redeem script for a multisig
 
 ```clarity
 (define-read-only (pubkeys-to-spend-script
-    (pubkeys (list 15 (buff 33)))
+    (pubkeys (list 128 (buff 33)))
     (m uint)
   )
   (concat (uint-to-byte (+ u80 m)) ;; "m" in m-of-n
@@ -144,16 +144,16 @@ Generate the p2sh redeem script for a multisig
 
 **Parameters:**
 
-| Name    | Type                |
-| ------- | ------------------- |
-| pubkeys | (list 15 (buff 33)) |
-| m       | uint                |
+| Name    | Type                 |
+| ------- | -------------------- |
+| pubkeys | (list 128 (buff 33)) |
+| m       | uint                 |
 
 ### pubkeys-to-hash
 
 [View in file](../contracts/sbtc-bootstrap-signers.clar#L84)
 
-`(define-read-only (pubkeys-to-hash ((pubkeys (list 15 (buff 33))) (m uint)) (buff 20))`
+`(define-read-only (pubkeys-to-hash ((pubkeys (list 128 (buff 33))) (m uint)) (buff 20))`
 
 hash160 of the p2sh redeem script
 
@@ -162,7 +162,7 @@ hash160 of the p2sh redeem script
 
 ```clarity
 (define-read-only (pubkeys-to-hash
-    (pubkeys (list 15 (buff 33)))
+    (pubkeys (list 128 (buff 33)))
     (m uint)
   )
   (hash160 (pubkeys-to-spend-script pubkeys m))
@@ -173,16 +173,16 @@ hash160 of the p2sh redeem script
 
 **Parameters:**
 
-| Name    | Type                |
-| ------- | ------------------- |
-| pubkeys | (list 15 (buff 33)) |
-| m       | uint                |
+| Name    | Type                 |
+| ------- | -------------------- |
+| pubkeys | (list 128 (buff 33)) |
+| m       | uint                 |
 
 ### pubkeys-to-principal
 
 [View in file](../contracts/sbtc-bootstrap-signers.clar#L92)
 
-`(define-read-only (pubkeys-to-principal ((pubkeys (list 15 (buff 33))) (m uint)) principal)`
+`(define-read-only (pubkeys-to-principal ((pubkeys (list 128 (buff 33))) (m uint)) principal)`
 
 Given a set of pubkeys and an m-of-n, generate a principal
 
@@ -191,7 +191,7 @@ Given a set of pubkeys and an m-of-n, generate a principal
 
 ```clarity
 (define-read-only (pubkeys-to-principal
-    (pubkeys (list 15 (buff 33)))
+    (pubkeys (list 128 (buff 33)))
     (m uint)
   )
   (unwrap-panic (principal-construct?
@@ -205,16 +205,16 @@ Given a set of pubkeys and an m-of-n, generate a principal
 
 **Parameters:**
 
-| Name    | Type                |
-| ------- | ------------------- |
-| pubkeys | (list 15 (buff 33)) |
-| m       | uint                |
+| Name    | Type                 |
+| ------- | -------------------- |
+| pubkeys | (list 128 (buff 33)) |
+| m       | uint                 |
 
 ### pubkeys-to-bytes
 
 [View in file](../contracts/sbtc-bootstrap-signers.clar#L103)
 
-`(define-read-only (pubkeys-to-bytes ((pubkeys (list 15 (buff 33)))) (buff 510))`
+`(define-read-only (pubkeys-to-bytes ((pubkeys (list 128 (buff 33)))) (buff 510))`
 
 Concat a list of pubkeys into a buffer with length prefixes
 
@@ -222,7 +222,7 @@ Concat a list of pubkeys into a buffer with length prefixes
   <summary>Source code:</summary>
 
 ```clarity
-(define-read-only (pubkeys-to-bytes (pubkeys (list 15 (buff 33))))
+(define-read-only (pubkeys-to-bytes (pubkeys (list 128 (buff 33))))
   (fold concat-pubkeys-fold pubkeys 0x)
 )
 ```
@@ -231,9 +231,9 @@ Concat a list of pubkeys into a buffer with length prefixes
 
 **Parameters:**
 
-| Name    | Type                |
-| ------- | ------------------- |
-| pubkeys | (list 15 (buff 33)) |
+| Name    | Type                 |
+| ------- | -------------------- |
+| pubkeys | (list 128 (buff 33)) |
 
 ### concat-pubkeys-fold
 

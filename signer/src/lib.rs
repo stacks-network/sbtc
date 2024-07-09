@@ -34,4 +34,4 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// 3. The signer bitmap in the clarity contract can take only 128 signers.
 /// 4. The rotate-keys-wrapper public function in one of the clarity
 ///    contracts takes a maximum of 15 keys.
-const MAX_KEYS: u16 = 15;
+const MAX_KEYS: u16 = 128;
