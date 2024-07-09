@@ -40,12 +40,8 @@ pub enum Error {
     #[error("Failed to construct a valid URL from {1} and {2}: {0}")]
     PathJoin(#[source] url::ParseError, url::Url, Cow<'static, str>),
 
-    /// This occurs under any of the following conditions:
-    /// - The result would be the point at infinity, i.e. adding a point to
-    ///   its own negation.
-    /// - The provided slice is empty.
-    /// - The number of elements in the provided slice is greater than
-    ///   `i32::MAX`.
+    /// This occurs when combining many public keys would result in a
+    /// "public key" that is the point at infinity.
     #[error("{0}")]
     InvalidAggregateKey(#[source] secp256k1::Error),
 
@@ -59,6 +55,7 @@ pub enum Error {
     /// 2. No required signatures.
     /// 3. The number of required signatures exceeding the number of public
     ///    keys.
+    /// 4. The number of public keys exceeds the MAX_KEYS constant.
     #[error("Invalid wallet definition, signatures required: {0}, number of keys: {1}")]
     InvalidWalletDefinition(u16, usize),
 
