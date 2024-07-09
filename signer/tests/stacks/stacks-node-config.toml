@@ -127,7 +127,7 @@ amount = 10000000000000000
 # three times using an rand::rng::StdRng struct created with a seed of 100.
 # Once we had 3 public-private key pairs, the SignerWallet struct was used
 # to generate the 2-3 multi sig address below.
-address = "SN326RW8148J2Q1P1MZ5K6JNY6WYDZPPZS45Z5ZBR"
+address = "SN2V7WTJ7BHR03MPHZ1C9A9ZR6NZGR4WM8HT4V67Y"
 amount = 10000000000000000
 
 [[ustx_balance]]

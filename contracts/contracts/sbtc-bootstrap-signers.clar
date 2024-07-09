@@ -27,7 +27,7 @@
 ;; Rotate keys
 ;; Used to rotate the keys of the signers. This is called whenever
 ;; the signer set is updated.
-(define-public (rotate-keys-wrapper (new-keys (list 15 (buff 33))) (new-aggregate-pubkey (buff 33)))
+(define-public (rotate-keys-wrapper (new-keys (list 128 (buff 33))) (new-aggregate-pubkey (buff 33)))
     (let 
         (
             (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
@@ -70,7 +70,7 @@
 
 ;; Generate the p2sh redeem script for a multisig
 (define-read-only (pubkeys-to-spend-script
-    (pubkeys (list 15 (buff 33)))
+    (pubkeys (list 128 (buff 33)))
     (m uint)
   )
   (concat (uint-to-byte (+ u80 m)) ;; "m" in m-of-n
@@ -82,7 +82,7 @@
 
 ;; hash160 of the p2sh redeem script
 (define-read-only (pubkeys-to-hash
-    (pubkeys (list 15 (buff 33)))
+    (pubkeys (list 128 (buff 33)))
     (m uint)
   )
   (hash160 (pubkeys-to-spend-script pubkeys m))
@@ -90,7 +90,7 @@
 
 ;; Given a set of pubkeys and an m-of-n, generate a principal
 (define-read-only (pubkeys-to-principal
-    (pubkeys (list 15 (buff 33)))
+    (pubkeys (list 128 (buff 33)))
     (m uint)
   )
   (unwrap-panic (principal-construct?
@@ -100,7 +100,7 @@
 )
 
 ;; Concat a list of pubkeys into a buffer with length prefixes
-(define-read-only (pubkeys-to-bytes (pubkeys (list 15 (buff 33))))
+(define-read-only (pubkeys-to-bytes (pubkeys (list 128 (buff 33))))
   (fold concat-pubkeys-fold pubkeys 0x)
 )
 

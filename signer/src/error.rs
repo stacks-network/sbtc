@@ -40,6 +40,11 @@ pub enum Error {
     #[error("Failed to construct a valid URL from {1} and {2}: {0}")]
     PathJoin(#[source] url::ParseError, url::Url, Cow<'static, str>),
 
+    /// This occurs when combining many public keys would result in a
+    /// "public key" that is the point at infinity.
+    #[error("{0}")]
+    InvalidAggregateKey(#[source] secp256k1::Error),
+
     /// This happens when we attempt to recover a public key from a
     /// recoverable EDCSA signature.
     #[error("Could not recover the public key from the signature: {0}, digest: {1}")]
@@ -50,6 +55,7 @@ pub enum Error {
     /// 2. No required signatures.
     /// 3. The number of required signatures exceeding the number of public
     ///    keys.
+    /// 4. The number of public keys exceeds the MAX_KEYS constant.
     #[error("Invalid wallet definition, signatures required: {0}, number of keys: {1}")]
     InvalidWalletDefinition(u16, usize),
 
@@ -72,14 +78,14 @@ pub enum Error {
     /// An error for the case where we cannot create a multi-sig
     /// StacksAddress using given public keys.
     #[error("Could not create a StacksAddress from the public keys: threshold {0}, keys {1}")]
-    StacksMusltiSig(u16, usize),
+    StacksMultiSig(u16, usize),
 
     /// Error when reading the stacks API part of the config.toml
     #[error("Failed to parse the stacks.api portion of the config: {0}")]
     StacksApiConfig(#[source] config::ConfigError),
 
     /// This error happens when converting a sepc256k1::PublicKey into a
-    /// blockstack_lib::util::secp256k1::Secp256k1PublicKey. In general it
+    /// blockstack_lib::util::secp256k1::Secp256k1PublicKey. In general, it
     /// shouldn't happen.
     #[error("Could not transform sepc256k1::PublicKey to stacks variant: {0}")]
     StacksPublicKey(&'static str),
@@ -97,7 +103,7 @@ pub enum Error {
     UnexpectedStacksResponse(#[source] reqwest::Error),
 
     /// Taproot error
-    #[error("an error occured when constructing the taproot signing digest: {0}")]
+    #[error("an error occurred when constructing the taproot signing digest: {0}")]
     Taproot(#[from] bitcoin::sighash::TaprootError),
 
     /// Signer loop error

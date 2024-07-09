@@ -12,6 +12,12 @@
 //!   reject-withdrawal-request function in the sbtc-withdrawal contract.
 //!   This finalizes the withdrawal request by returning the locked sBTC to
 //!   the requester.
+//! * [`RotateKeysV1`]: Used for calling the rotate-keys-wrapper function
+//!   in the sbtc-bootstrap-signers contract. This changes the valid caller
+//!   of most sBTC related functions to a new multi-sig wallet.
+
+use std::collections::BTreeSet;
+use std::sync::OnceLock;
 
 use bitcoin::hashes::Hash as _;
 use bitcoin::OutPoint;
@@ -22,13 +28,19 @@ use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::chainstate::stacks::TransactionPostCondition;
 use blockstack_lib::chainstate::stacks::TransactionPostConditionMode;
 use blockstack_lib::clarity::vm::types::BuffData;
+use blockstack_lib::clarity::vm::types::ListData;
+use blockstack_lib::clarity::vm::types::ListTypeData;
 use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::types::SequenceData;
 use blockstack_lib::clarity::vm::types::StandardPrincipalData;
+use blockstack_lib::clarity::vm::types::BUFF_33;
 use blockstack_lib::clarity::vm::ClarityName;
 use blockstack_lib::clarity::vm::ContractName;
 use blockstack_lib::clarity::vm::Value;
 use blockstack_lib::types::chainstate::StacksAddress;
+use secp256k1::PublicKey;
+
+use crate::stacks::wallet::SignerWallet;
 
 /// A struct describing any transaction post-execution conditions that we'd
 /// like to enforce.
@@ -162,7 +174,7 @@ pub struct CompleteDepositV1 {
     pub amount: u64,
     /// The address where the newly minted sBTC will be deposited.
     pub recipient: StacksAddress,
-    /// The address that deployed the contract,
+    /// The address that deployed the contract.
     pub deployer: StacksAddress,
 }
 
@@ -208,7 +220,7 @@ pub struct AcceptWithdrawalV1 {
     /// 128 distinct signers. Here, we assume that a 1 (or true) implies
     /// that the signer voted *against* the transaction.
     pub signer_bitmap: BitArray<[u64; 2]>,
-    /// The address that deployed the contract,
+    /// The address that deployed the contract.
     pub deployer: StacksAddress,
 }
 
@@ -247,7 +259,7 @@ pub struct RejectWithdrawalV1 {
     /// 128 distinct signers. Here, we assume that a 1 (or true) implies
     /// that the signer voted *against* the transaction.
     pub signer_bitmap: BitArray<[u64; 2]>,
-    /// The address that deployed the contract,
+    /// The address that deployed the contract.
     pub deployer: StacksAddress,
 }
 
@@ -266,8 +278,100 @@ impl AsContractCall for RejectWithdrawalV1 {
     }
 }
 
+/// This struct is used to generate a properly formatted Stacks transaction
+/// for calling the rotate-keys-wrapper function in the
+/// sbtc-bootstrap-signers smart contract.
+#[derive(Clone, Debug)]
+pub struct RotateKeysV1 {
+    /// The new set of public keys for all known signers during this
+    /// PoX cycle.
+    new_keys: BTreeSet<PublicKey>,
+    /// The aggregate key created by combining the above public keys.
+    aggregate_key: PublicKey,
+    /// The address that deployed the contract.
+    deployer: StacksAddress,
+}
+
+impl RotateKeysV1 {
+    /// Create a new instance of RotateKeysV1 using the provided wallet.
+    pub fn new(wallet: &SignerWallet, deployer: StacksAddress) -> Self {
+        Self {
+            aggregate_key: wallet.aggregate_key(),
+            new_keys: wallet.public_keys().iter().copied().collect(),
+            deployer,
+        }
+    }
+
+    /// This function returns the clarity description of one of the inputs
+    /// to the contract call.
+    ///
+    /// # Notes
+    ///
+    /// One of the inputs, new-keys, is a (list 128 (buff 33)). This
+    /// function represents this data type.
+    fn list_data_type() -> &'static ListTypeData {
+        static KEYS_ARGUMENT_DATA_TYPE: OnceLock<ListTypeData> = OnceLock::new();
+        KEYS_ARGUMENT_DATA_TYPE.get_or_init(|| {
+            // A Result::Err is returned whenever the "depth" of the type
+            // is too large or if the maximum size of an input with the
+            // given type is too large. None of this is true for us, the
+            // depth is 1 or 2 and the size is 128 * 33 bytes, which is
+            // under the limit of 1 MB.
+            ListTypeData::new_list(BUFF_33.clone(), crate::MAX_KEYS as u32)
+                .expect("Error: legal ListTypeData marked as invalid")
+        })
+    }
+}
+
+impl AsContractCall for RotateKeysV1 {
+    const CONTRACT_NAME: &'static str = "sbtc-bootstrap-signers";
+    const FUNCTION_NAME: &'static str = "rotate-keys-wrapper";
+
+    fn deployer_address(&self) -> StacksAddress {
+        self.deployer
+    }
+    /// The arguments to the contract call function
+    ///
+    /// # Notes
+    ///
+    /// The signature to this function is:
+    ///
+    ///   (new-keys (list 128 (buff 33))) (new-aggregate-pubkey (buff 33))
+    fn as_contract_args(&self) -> Vec<Value> {
+        let new_key_data: Vec<Value> = self
+            .new_keys
+            .iter()
+            .map(|pk| {
+                let data = pk.serialize().to_vec();
+                Value::Sequence(SequenceData::Buffer(BuffData { data }))
+            })
+            .collect();
+
+        let new_keys = ListData {
+            data: new_key_data,
+            type_signature: Self::list_data_type().clone(),
+        };
+
+        // The public key needs to be exactly 33 bytes in this contract
+        // call.
+        let key: [u8; 33] = self.aggregate_key.serialize();
+
+        vec![
+            Value::Sequence(SequenceData::List(new_keys)),
+            Value::Sequence(SequenceData::Buffer(BuffData { data: key.to_vec() })),
+        ]
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use rand::rngs::StdRng;
+    use rand::SeedableRng as _;
+    use secp256k1::SecretKey;
+    use secp256k1::SECP256K1;
+
+    use crate::config::NetworkKind;
+
     use super::*;
 
     #[test]
@@ -309,6 +413,30 @@ mod tests {
             deployer: StacksAddress::burn_address(false),
         };
 
+        let _ = call.as_contract_call();
+    }
+
+    #[test]
+    fn rotate_keys_wrapper_contract_call_creation() {
+        // This is to check that the RotateKeysV1::list_data_type function
+        // doesn't panic. If it doesn't panic now, it can never panic at
+        // runtime.
+        let _ = RotateKeysV1::list_data_type();
+
+        let mut rng = StdRng::seed_from_u64(112);
+        let secret_keys = [
+            SecretKey::new(&mut rng),
+            SecretKey::new(&mut rng),
+            SecretKey::new(&mut rng),
+        ];
+        let public_keys = secret_keys.map(|sk| sk.public_key(SECP256K1));
+        let wallet = SignerWallet::new(&public_keys, 2, NetworkKind::Testnet).unwrap();
+        let deployer = StacksAddress::burn_address(false);
+
+        let call = RotateKeysV1::new(&wallet, deployer);
+
+        // This is to check that this function doesn't implicitly panic. If
+        // it doesn't panic now, it can never panic at runtime.
         let _ = call.as_contract_call();
     }
 }

@@ -36,7 +36,7 @@ export const contracts = {
         args: [
           {
             name: "new-keys",
-            type: { list: { type: { buffer: { length: 33 } }, length: 15 } },
+            type: { list: { type: { buffer: { length: 33 } }, length: 128 } },
           },
           { name: "new-aggregate-pubkey", type: { buffer: { length: 33 } } },
         ],
@@ -78,7 +78,7 @@ export const contracts = {
         args: [
           {
             name: "pubkeys",
-            type: { list: { type: { buffer: { length: 33 } }, length: 15 } },
+            type: { list: { type: { buffer: { length: 33 } }, length: 128 } },
           },
         ],
         outputs: { type: { buffer: { length: 510 } } },
@@ -92,7 +92,7 @@ export const contracts = {
         args: [
           {
             name: "pubkeys",
-            type: { list: { type: { buffer: { length: 33 } }, length: 15 } },
+            type: { list: { type: { buffer: { length: 33 } }, length: 128 } },
           },
           { name: "m", type: "uint128" },
         ],
@@ -110,7 +110,7 @@ export const contracts = {
         args: [
           {
             name: "pubkeys",
-            type: { list: { type: { buffer: { length: 33 } }, length: 15 } },
+            type: { list: { type: { buffer: { length: 33 } }, length: 128 } },
           },
           { name: "m", type: "uint128" },
         ],
@@ -128,7 +128,7 @@ export const contracts = {
         args: [
           {
             name: "pubkeys",
-            type: { list: { type: { buffer: { length: 33 } }, length: 15 } },
+            type: { list: { type: { buffer: { length: 33 } }, length: 128 } },
           },
           { name: "m", type: "uint128" },
         ],
@@ -779,7 +779,7 @@ export const contracts = {
         args: [
           {
             name: "new-keys",
-            type: { list: { type: { buffer: { length: 33 } }, length: 15 } },
+            type: { list: { type: { buffer: { length: 33 } }, length: 128 } },
           },
           { name: "new-address", type: "principal" },
           { name: "new-aggregate-pubkey", type: { buffer: { length: 33 } } },
@@ -841,7 +841,7 @@ export const contracts = {
               {
                 name: "current-signer-set",
                 type: {
-                  list: { type: { buffer: { length: 33 } }, length: 15 },
+                  list: { type: { buffer: { length: 33 } }, length: 128 },
                 },
               },
             ],
@@ -866,7 +866,7 @@ export const contracts = {
         access: "read_only",
         args: [],
         outputs: {
-          type: { list: { type: { buffer: { length: 33 } }, length: 15 } },
+          type: { list: { type: { buffer: { length: 33 } }, length: 128 } },
         },
       } as TypedAbiFunction<[], Uint8Array[]>,
       getWithdrawalRequest: {
@@ -1062,7 +1062,7 @@ export const contracts = {
                 length: 33,
               },
             },
-            length: 15,
+            length: 128,
           },
         },
         access: "variable",

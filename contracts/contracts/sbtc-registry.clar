@@ -10,7 +10,7 @@
 ;; Variables
 
 (define-data-var last-withdrawal-request-id uint u0)
-(define-data-var current-signer-set (list 15 (buff 33)) (list))
+(define-data-var current-signer-set (list 128 (buff 33)) (list))
 (define-data-var current-aggregate-pubkey (buff 33) 0x00)
 (define-data-var current-signer-principal principal tx-sender)
 
@@ -216,7 +216,7 @@
 ;; Rotate the signer set, multi-sig principal, & aggregate pubkey
 ;; This function can only be called by the bootstrap-signers contract.
 ;; #[allow(unchecked_data)]
-(define-public (rotate-keys (new-keys (list 15 (buff 33))) (new-address principal) (new-aggregate-pubkey (buff 33)))
+(define-public (rotate-keys (new-keys (list 128 (buff 33))) (new-address principal) (new-aggregate-pubkey (buff 33)))
   (begin
     ;; Check that caller is protocol contract
     (try! (validate-caller))
