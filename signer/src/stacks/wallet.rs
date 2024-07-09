@@ -169,7 +169,7 @@ impl SignerWallet {
 #[derive(Debug)]
 pub struct SignerStxState {
     /// The multi-sig wallet for all known signers during this PoX cycle.
-    wallet: SignerWallet,
+    pub wallet: SignerWallet,
     /// The next nonce for the StacksAddress associated with the address of
     /// the wallet.
     nonce: AtomicU64,
