@@ -110,9 +110,21 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
     pub context_window: usize,
     /// Random number generator used for encryption
     pub rng: Rng,
+    #[cfg(feature = "testing")]
+    /// Optional channel to communicate progress usable for testing
+    pub test_observer_tx: Option<tokio::sync::mpsc::Sender<TxSignerEvent>>,
 }
 
 type SignerStateMachine = wsts::state_machine::signer::Signer<wsts::v2::Party>;
+
+/// Event useful for tests
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum TxSignerEvent {
+    /// Received a deposit decision
+    ReceviedDepositDecision,
+    /// Received a withdraw decision
+    ReceivedWithdrawDecision,
+}
 
 impl<N, S, B, Rng> TxSignerEventLoop<N, S, B, Rng>
 where
@@ -495,6 +507,13 @@ where
             .write_deposit_signer_decision(&signer_decision)
             .await?;
 
+        #[cfg(feature = "testing")]
+        if let Some(ref tx) = self.test_observer_tx {
+            tx.send(TxSignerEvent::ReceviedDepositDecision)
+                .await
+                .map_err(|_| error::Error::ObserverDropped)?;
+        }
+
         Ok(())
     }
 
@@ -525,6 +544,13 @@ where
         self.storage
             .write_withdraw_signer_decision(&signer_decision)
             .await?;
+
+        #[cfg(feature = "testing")]
+        if let Some(ref tx) = self.test_observer_tx {
+            tx.send(TxSignerEvent::ReceivedWithdrawDecision)
+                .await
+                .map_err(|_| error::Error::ObserverDropped)?;
+        }
 
         Ok(())
     }
@@ -700,11 +726,19 @@ mod tests {
 
     fn test_environment(
     ) -> testing::transaction_signer::TestEnvironment<fn() -> storage::in_memory::SharedStore> {
+        let test_model_parameters = testing::storage::model::Params {
+            num_bitcoin_blocks: 20,
+            num_stacks_blocks_per_bitcoin_block: 3,
+            num_deposit_requests_per_block: 5,
+            num_withdraw_requests_per_block: 5,
+        };
+
         testing::transaction_signer::TestEnvironment {
             storage_constructor: storage::in_memory::Store::new_shared,
             context_window: 3,
             num_signers: 7,
             signing_threshold: 5,
+            test_model_parameters,
         }
     }
 

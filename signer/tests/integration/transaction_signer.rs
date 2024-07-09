@@ -18,6 +18,13 @@ async fn test_environment(
 
     let mut idx = 0;
 
+    let test_model_parameters = testing::storage::model::Params {
+        num_bitcoin_blocks: 20,
+        num_stacks_blocks_per_bitcoin_block: 3,
+        num_deposit_requests_per_block: 5,
+        num_withdraw_requests_per_block: 5,
+    };
+
     testing::transaction_signer::TestEnvironment {
         storage_constructor: move || {
             idx = (idx + 1) % test_databases.len();
@@ -26,6 +33,7 @@ async fn test_environment(
         context_window,
         num_signers,
         signing_threshold,
+        test_model_parameters,
     }
 }
 
