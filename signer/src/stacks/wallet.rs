@@ -35,9 +35,9 @@ use crate::stacks::contracts::AsTxPayload;
 use crate::stacks::contracts::ContractCall;
 use crate::MAX_KEYS;
 
-/// Stacks multisig addresses are RIPEMD-160 hashes of bitcoin Scripts
-/// (more or less). The enum value below defines which Script will be used
-/// to construct the address, and so implicitly describes how the multisig
+/// Stacks multisig addresses are Hash160 hashes of bitcoin Scripts (more
+/// or less). The enum value below defines which Script will be used to
+/// construct the address, and so implicitly describes how the multisig
 /// Stacks address is created. The specific hash mode chosen here needs to
 /// match the hash mode used in our smart contracts. This is defined in the
 /// `sbtc-bootstrap-signers.clar` contract in the `pubkeys-to-spend-script`
