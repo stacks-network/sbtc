@@ -41,7 +41,6 @@ use blockstack_lib::types::chainstate::StacksAddress;
 use secp256k1::PublicKey;
 
 use crate::error::Error;
-
 use crate::stacks::wallet::SignerWallet;
 
 /// A struct describing any transaction post-execution conditions that we'd
@@ -383,7 +382,8 @@ impl AsContractCall for RotateKeysV1 {
 
 #[cfg(test)]
 mod tests {
-    use rand::rngs::OsRng;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng as _;
     use secp256k1::SecretKey;
     use secp256k1::SECP256K1;
 
@@ -440,10 +440,11 @@ mod tests {
         // runtime.
         let _ = RotateKeysV1::list_data_type();
 
+        let mut rng = StdRng::seed_from_u64(112);
         let secret_keys = [
-            SecretKey::new(&mut OsRng),
-            SecretKey::new(&mut OsRng),
-            SecretKey::new(&mut OsRng),
+            SecretKey::new(&mut rng),
+            SecretKey::new(&mut rng),
+            SecretKey::new(&mut rng),
         ];
         let public_keys = secret_keys.map(|sk| sk.public_key(SECP256K1));
         let wallet = SignerWallet::new(&public_keys, 2, NetworkKind::Testnet).unwrap();
@@ -452,7 +453,9 @@ mod tests {
         // Now there is always a small risk that the RotateKeysV1::new
         // function will return a Result::Err, even with perfectly fine
         // inputs. This is highly unlikely by chance, but a Byzantine actor
-        // could trigger it purposefully if we aren't careful.
+        // could trigger it purposefully if we aren't careful. Because the
+        // random number generated uses seed we do not have that issue
+        // here.
         let call = RotateKeysV1::new(&wallet, deployer).unwrap();
 
         // This is to check that this function doesn't implicitly panic. If
