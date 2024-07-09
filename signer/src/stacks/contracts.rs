@@ -40,7 +40,6 @@ use blockstack_lib::clarity::vm::Value;
 use blockstack_lib::types::chainstate::StacksAddress;
 use secp256k1::PublicKey;
 
-use crate::error::Error;
 use crate::stacks::wallet::SignerWallet;
 
 /// A struct describing any transaction post-execution conditions that we'd
@@ -294,29 +293,13 @@ pub struct RotateKeysV1 {
 }
 
 impl RotateKeysV1 {
-    /// Create a new instance of RotateKeysV1.
-    ///
-    /// This function errors when secp256k1::PublicKey::combine_keys
-    /// errors. Here, only happens when the result would be the point at
-    /// infinity.
-    ///
-    /// There are two other conditions where PublicKey::combine_keys
-    /// errors, which are:
-    ///
-    /// * The provided slice of public keys is empty.
-    /// * The number of elements in the provided slice is greater than
-    ///   `i32::MAX`.
-    ///
-    /// But the SignerWallet checks for these two cases and rejects them,
-    /// so they cannot happen here.
-    pub fn new(wallet: &SignerWallet, deployer: StacksAddress) -> Result<Self, Error> {
-        let keys: Vec<&PublicKey> = wallet.public_keys().iter().collect();
-
-        Ok(Self {
-            aggregate_key: PublicKey::combine_keys(&keys).map_err(Error::InvalidAggregateKey)?,
-            new_keys: keys.into_iter().copied().collect(),
+    /// Create a new instance of RotateKeysV1 using the provided wallet.
+    pub fn new(wallet: &SignerWallet, deployer: StacksAddress) -> Self {
+        Self {
+            aggregate_key: wallet.aggregate_key(),
+            new_keys: wallet.public_keys().iter().copied().collect(),
             deployer,
-        })
+        }
     }
 
     /// This function returns the clarity description of one of the inputs
@@ -450,13 +433,7 @@ mod tests {
         let wallet = SignerWallet::new(&public_keys, 2, NetworkKind::Testnet).unwrap();
         let deployer = StacksAddress::burn_address(false);
 
-        // Now there is always a small risk that the RotateKeysV1::new
-        // function will return a Result::Err, even with perfectly fine
-        // inputs. This is highly unlikely by chance, but a Byzantine actor
-        // could trigger it purposefully if we aren't careful. Because the
-        // random number generated uses seed we do not have that issue
-        // here.
-        let call = RotateKeysV1::new(&wallet, deployer).unwrap();
+        let call = RotateKeysV1::new(&wallet, deployer);
 
         // This is to check that this function doesn't implicitly panic. If
         // it doesn't panic now, it can never panic at runtime.

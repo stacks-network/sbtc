@@ -40,7 +40,7 @@ use crate::MAX_KEYS;
 /// to construct the address, and so implicitly describes how the multisig
 /// Stacks address is created. The specific hash mode chosen here needs to
 /// match the hash mode used in our smart contracts. This is defined in the
-/// `sbtc-bootstamp-signers.clar` contract in the `pubkeys-to-spend-script`
+/// `sbtc-bootstrap-signers.clar` contract in the `pubkeys-to-spend-script`
 /// read-only function. This mode matches the code there.
 const MULTISIG_ADDRESS_HASH_MODE: OrderIndependentMultisigHashMode =
     OrderIndependentMultisigHashMode::P2SH;
@@ -51,6 +51,8 @@ pub struct SignerWallet {
     /// The current set of public keys for all known signers during this
     /// PoX cycle.
     public_keys: BTreeSet<PublicKey>,
+    /// The aggregate key created by combining the above public keys.
+    aggregate_key: PublicKey,
     /// The number of signers necessary for successfully signing a
     /// multi-sig transaction.
     signatures_required: u16,
@@ -63,14 +65,35 @@ pub struct SignerWallet {
 impl SignerWallet {
     /// Create the wallet for the signer.
     ///
-    /// # Note
+    /// # Errors
     ///
-    /// An error is returned if:
-    /// 1. There are no public keys.
-    /// 2. The required signatures is zero.
-    /// 3. The number of required signatures exceeding the number of public
+    /// An error is returned here if:
+    /// 1. There are no public keys in the provided slice.
+    /// 2. The number of required signatures is zero.
+    /// 3. The number of required signatures exceeds the number of public
     ///    keys.
     /// 4. The number of public keys exceeds the MAX_KEYS constant.
+    /// 5. The combined public key would be the point at infinity.
+    ///
+    /// Error condition (5) occurs when PublicKey::combine_keys errors.
+    /// There are two other conditions where that function errors, which
+    /// are:
+    ///
+    /// * The provided slice of public keys is empty.
+    /// * The number of elements in the provided slice is greater than
+    ///   `i32::MAX`.
+    ///
+    /// But we enforce that the number of public keys is less than
+    /// `MAX_KEYS` and `MAX_KEYS` <= `u16::MAX` < `i32::MAX` and we
+    /// explicitly check for an empty slice already so these cases are
+    /// covered.
+    ///
+    /// # Notes
+    ///
+    /// Now there is always a small risk that the PublicKey::combine_keys
+    /// function will return a Result::Err, even with perfectly fine
+    /// inputs. This is highly unlikely by chance, but a Byzantine actor
+    /// could trigger it purposefully if we aren't careful.
     pub fn new(
         public_keys: &[PublicKey],
         signatures_required: u16,
@@ -88,11 +111,15 @@ impl SignerWallet {
         }
 
         let public_keys: BTreeSet<PublicKey> = public_keys.iter().copied().collect();
+        // Used for the creating the Stacks address. It should never
+        // actually return a Result::Err.
         let pubkeys: Vec<Secp256k1PublicKey> = public_keys
             .iter()
             .map(|pk| Secp256k1PublicKey::from_slice(&pk.serialize()))
             .collect::<Result<_, _>>()
             .map_err(Error::StacksPublicKey)?;
+        // Used for creating the combined public key
+        let keys: Vec<&PublicKey> = public_keys.iter().collect();
 
         let num_sigs = signatures_required as usize;
         let hash_mode = Self::hash_mode().to_address_hash_mode();
@@ -109,6 +136,7 @@ impl SignerWallet {
         // threshold is greater than the number of public keys. We enforce
         // the threshold invariant above in this function.
         Ok(Self {
+            aggregate_key: PublicKey::combine_keys(&keys).map_err(Error::InvalidAggregateKey)?,
             public_keys,
             signatures_required,
             network_kind,
@@ -129,6 +157,11 @@ impl SignerWallet {
     /// Return the public keys for the signers' multi-sig wallet
     pub fn public_keys(&self) -> &BTreeSet<PublicKey> {
         &self.public_keys
+    }
+
+    /// The aggregate public key of the given public keys.
+    pub fn aggregate_key(&self) -> PublicKey {
+        self.aggregate_key
     }
 }
 
@@ -347,8 +380,8 @@ pub fn sign_ecdsa(tx: &StacksTransaction, secret_key: &SecretKey) -> Recoverable
 /// Convert a recoverable signature into a Message Signature.
 ///
 /// The RecoverableSignature type is a wrapper of a wrapper for [u8; 65].
-/// Unfortunately, the last wrapper type does not provide a way to get at
-/// the underlying bytes except through the
+/// Unfortunately, the outermost wrapper type does not provide a way to
+/// get at the underlying bytes except through the
 /// RecoverableSignature::serialize_compact function, so we use that
 /// function to just extract them.
 ///
