@@ -110,8 +110,9 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
     pub context_window: usize,
     /// Random number generator used for encryption
     pub rng: Rng,
+    #[cfg(feature = "testing")]
     /// Optional channel to communicate progress usable for testing
-    pub test_observer_tx: Option<tokio::sync::mpsc::Sender<TxSignerEvent>>, //TODO: Feature gate on testing
+    pub test_observer_tx: Option<tokio::sync::mpsc::Sender<TxSignerEvent>>,
 }
 
 type SignerStateMachine = wsts::state_machine::signer::Signer<wsts::v2::Party>;
@@ -506,6 +507,7 @@ where
             .write_deposit_signer_decision(&signer_decision)
             .await?;
 
+        #[cfg(feature = "testing")]
         if let Some(ref tx) = self.test_observer_tx {
             tx.send(TxSignerEvent::ReceviedDepositDecision)
                 .await

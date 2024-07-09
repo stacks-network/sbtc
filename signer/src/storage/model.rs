@@ -1,5 +1,6 @@
 //! Database models for the signer.
 
+#[cfg(feature = "testing")]
 use fake::faker::time::en::DateTimeAfter;
 
 /// Bitcoin block.
@@ -7,18 +8,21 @@ use fake::faker::time::en::DateTimeAfter;
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct BitcoinBlock {
     /// Block hash.
-    #[dummy(expr = "fake::vec![u8; 32]")]
+    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub block_hash: BitcoinBlockHash,
     /// Block height.
     pub block_height: i64,
     /// Hash of the parent block.
-    #[dummy(expr = "fake::vec![u8; 32]")]
+    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub parent_hash: BitcoinBlockHash,
     /// Stacks block confirmed by this block.
-    #[dummy(default)]
+    #[cfg_attr(feature = "testing", dummy(default))]
     pub confirms: Vec<StacksBlockHash>,
     /// The time this block entry was created by the signer.
-    #[dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")]
+    #[cfg_attr(
+        feature = "testing",
+        dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")
+    )]
     pub created_at: time::OffsetDateTime,
 }
 
@@ -27,15 +31,18 @@ pub struct BitcoinBlock {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct StacksBlock {
     /// Block hash.
-    #[dummy(expr = "fake::vec![u8; 32]")]
+    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub block_hash: StacksBlockHash,
     /// Block height.
     pub block_height: i64,
     /// Hash of the parent block.
-    #[dummy(expr = "fake::vec![u8; 32]")]
+    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub parent_hash: StacksBlockHash,
     /// The time this block entry was created by the signer.
-    #[dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")]
+    #[cfg_attr(
+        feature = "testing",
+        dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")
+    )]
     pub created_at: time::OffsetDateTime,
 }
 
@@ -44,10 +51,10 @@ pub struct StacksBlock {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct DepositRequest {
     /// Transaction ID of the deposit request transaction.
-    #[dummy(expr = "fake::vec![u8; 32]")]
+    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub txid: BitcoinTxId,
     /// Index of the deposit request UTXO.
-    #[dummy(faker = "0..100")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
     pub output_index: i32,
     /// Script spendable by the sBTC signers.
     pub spend_script: Bytes,
@@ -62,10 +69,13 @@ pub struct DepositRequest {
     /// be used to pay for transaction fees.
     pub max_fee: i64,
     /// The addresses of the input UTXOs funding the deposit request.
-    #[dummy(expr = "fake::vec![String; 1..8]")]
+    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![String; 1..8]"))]
     pub sender_addresses: Vec<BitcoinAddress>,
     /// The time this block entry was created by the signer.
-    #[dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")]
+    #[cfg_attr(
+        feature = "testing",
+        dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")
+    )]
     pub created_at: time::OffsetDateTime,
 }
 
@@ -74,17 +84,20 @@ pub struct DepositRequest {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct DepositSigner {
     /// TxID of the deposit request.
-    #[dummy(expr = "fake::vec![u8; 32]")]
+    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub txid: BitcoinTxId,
     /// Ouput index of the deposit request.
-    #[dummy(faker = "0..100")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
     pub output_index: i32,
     /// Public key of the signer.
     pub signer_pub_key: PubKey,
     /// Signals if the signer is prepared to sign for this request.
     pub is_accepted: bool,
     /// The time this block entry was created by the signer.
-    #[dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")]
+    #[cfg_attr(
+        feature = "testing",
+        dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")
+    )]
     pub created_at: time::OffsetDateTime,
 }
 
@@ -95,7 +108,7 @@ pub struct WithdrawRequest {
     /// Request ID of the withdraw request.
     pub request_id: i32,
     /// Stacks block hash of the withdraw request.
-    #[dummy(expr = "fake::vec![u8; 32]")]
+    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub block_hash: StacksBlockHash,
     /// The address that shuld receive the BTC withdrawal.
     pub recipient: BitcoinAddress,
@@ -107,7 +120,10 @@ pub struct WithdrawRequest {
     /// The address that initiated the request.
     pub sender_address: StacksAddress,
     /// The time this block entry was created by the signer.
-    #[dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")]
+    #[cfg_attr(
+        feature = "testing",
+        dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")
+    )]
     pub created_at: time::OffsetDateTime,
 }
 
@@ -118,14 +134,17 @@ pub struct WithdrawSigner {
     /// Request ID of the withdraw request.
     pub request_id: i32,
     /// Stacks block hash of the withdraw request.
-    #[dummy(expr = "fake::vec![u8; 32]")]
+    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub block_hash: StacksBlockHash,
     /// Public key of the signer.
     pub signer_pub_key: PubKey,
     /// Signals if the signer is prepared to sign for this request.
     pub is_accepted: bool,
     /// The time this block entry was created by the signer.
-    #[dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")]
+    #[cfg_attr(
+        feature = "testing",
+        dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")
+    )]
     pub created_at: time::OffsetDateTime,
 }
 
@@ -152,14 +171,17 @@ pub struct StacksTransaction {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct Transaction {
     /// Transaction ID.
-    #[dummy(expr = "fake::vec![u8; 32]")]
+    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub txid: Bytes,
     /// Encoded transaction.
     pub tx: Bytes,
     /// The type of the transaction.
     pub tx_type: TransactionType,
     /// The time this transaction entry was created by the signer.
-    #[dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")]
+    #[cfg_attr(
+        feature = "testing",
+        dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")
+    )]
     pub created_at: time::OffsetDateTime,
 }
 
