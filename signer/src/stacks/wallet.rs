@@ -33,6 +33,7 @@ use crate::error::Error;
 use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::AsTxPayload;
 use crate::stacks::contracts::ContractCall;
+use crate::MAX_KEYS;
 
 /// Stacks multisig addresses are RIPEMD-160 hashes of bitcoin Scripts
 /// (more or less). The enum value below defines which Script will be used
@@ -66,9 +67,10 @@ impl SignerWallet {
     ///
     /// An error is returned if:
     /// 1. There are no public keys.
-    /// 2. There are no required signatures.
+    /// 2. The required signatures is zero.
     /// 3. The number of required signatures exceeding the number of public
     ///    keys.
+    /// 4. The number of public keys exceeds the MAX_KEYS constant.
     pub fn new(
         public_keys: &[PublicKey],
         signatures_required: u16,
@@ -76,8 +78,9 @@ impl SignerWallet {
     ) -> Result<Self, Error> {
         let num_keys = public_keys.len();
         let invalid_threshold = num_keys < signatures_required as usize;
+        let invalid_num_keys = num_keys == 0 || num_keys > MAX_KEYS as usize;
 
-        if invalid_threshold || num_keys == 0 || signatures_required == 0 {
+        if invalid_threshold || invalid_num_keys || signatures_required == 0 {
             return Err(Error::InvalidWalletDefinition(
                 signatures_required,
                 num_keys,
