@@ -238,7 +238,6 @@ impl AsContractCall for AcceptWithdrawalV1 {
         vec![
             Value::UInt(self.request_id as u128),
             Value::Sequence(SequenceData::Buffer(txid)),
-            Value::UInt(self.outpoint.vout as u128),
             Value::UInt(self.signer_bitmap.load()),
             Value::UInt(self.outpoint.vout as u128),
             Value::UInt(self.tx_fee as u128),
@@ -430,7 +429,7 @@ mod tests {
             SecretKey::new(&mut rng),
         ];
         let public_keys = secret_keys.map(|sk| sk.public_key(SECP256K1));
-        let wallet = SignerWallet::new(&public_keys, 2, NetworkKind::Testnet).unwrap();
+        let wallet = SignerWallet::new(&public_keys, 2, NetworkKind::Testnet, 0).unwrap();
         let deployer = StacksAddress::burn_address(false);
 
         let call = RotateKeysV1::new(&wallet, deployer);

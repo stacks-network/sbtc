@@ -21,23 +21,23 @@ pub enum Error {
     NoGoodFeeEstimates,
 
     /// Parsing the Hex Error
-    #[error("Could not parse the Hex string to a StacksBlockId: {0}, original: {1}")]
+    #[error("could not parse the Hex string to a StacksBlockId: {0}, original: {1}")]
     ParseStacksBlockId(#[source] blockstack_lib::util::HexError, String),
 
     /// Parsing the Hex Error
-    #[error("Could not decode the Nakamoto block with ID: {1}; {0}")]
+    #[error("could not decode the Nakamoto block with ID: {1}; {0}")]
     DecodeNakamotoBlock(#[source] blockstack_lib::codec::Error, StacksBlockId),
 
     /// Thrown when parsing a Nakamoto block within a given tenure.
-    #[error("Could not decode Nakamoto block from tenure with block: {1}; {0}")]
+    #[error("could not decode Nakamoto block from tenure with block: {1}; {0}")]
     DecodeNakamotoTenure(#[source] blockstack_lib::codec::Error, StacksBlockId),
 
     /// An error when serializing an object to JSON
     #[error("{0}")]
     JsonSerialize(#[source] serde_json::Error),
 
-    /// Could not parse the path part of a url
-    #[error("Failed to construct a valid URL from {1} and {2}: {0}")]
+    /// Could not parse the path part of a URL
+    #[error("failed to construct a valid URL from {1} and {2}: {0}")]
     PathJoin(#[source] url::ParseError, url::Url, Cow<'static, str>),
 
     /// This occurs when combining many public keys would result in a
@@ -47,7 +47,7 @@ pub enum Error {
 
     /// This happens when we attempt to recover a public key from a
     /// recoverable EDCSA signature.
-    #[error("Could not recover the public key from the signature: {0}, digest: {1}")]
+    #[error("could not recover the public key from the signature: {0}, digest: {1}")]
     InvalidRecoverableSignature(#[source] secp256k1::Error, secp256k1::Message),
 
     /// This is thrown when we attempt to create a wallet with:
@@ -56,11 +56,11 @@ pub enum Error {
     /// 3. The number of required signatures exceeding the number of public
     ///    keys.
     /// 4. The number of public keys exceeds the MAX_KEYS constant.
-    #[error("Invalid wallet definition, signatures required: {0}, number of keys: {1}")]
+    #[error("invalid wallet definition, signatures required: {0}, number of keys: {1}")]
     InvalidWalletDefinition(u16, usize),
 
     /// This is thrown when failing to parse a hex string into an integer.
-    #[error("Could not parse the hex string into an integer")]
+    #[error("could not parse the hex string into an integer")]
     ParseHexInt(#[source] std::num::ParseIntError),
 
     /// Reqwest error
@@ -68,38 +68,38 @@ pub enum Error {
     Reqwest(#[from] reqwest::Error),
 
     /// Error when reading the signer config.toml
-    #[error("Failed to read the signers config file: {0}")]
+    #[error("failed to read the signers config file: {0}")]
     SignerConfig(#[source] config::ConfigError),
 
     /// An error when querying the signer's database.
-    #[error("Received an error when attempting to query the database: {0}")]
+    #[error("received an error when attempting to query the database: {0}")]
     SqlxQuery(#[source] sqlx::Error),
 
     /// An error for the case where we cannot create a multi-sig
     /// StacksAddress using given public keys.
-    #[error("Could not create a StacksAddress from the public keys: threshold {0}, keys {1}")]
+    #[error("could not create a StacksAddress from the public keys: threshold {0}, keys {1}")]
     StacksMultiSig(u16, usize),
 
     /// Error when reading the stacks API part of the config.toml
-    #[error("Failed to parse the stacks.api portion of the config: {0}")]
+    #[error("failed to parse the stacks.api portion of the config: {0}")]
     StacksApiConfig(#[source] config::ConfigError),
 
     /// This error happens when converting a sepc256k1::PublicKey into a
     /// blockstack_lib::util::secp256k1::Secp256k1PublicKey. In general, it
     /// shouldn't happen.
-    #[error("Could not transform sepc256k1::PublicKey to stacks variant: {0}")]
+    #[error("could not transform sepc256k1::PublicKey to stacks variant: {0}")]
     StacksPublicKey(&'static str),
 
     /// Could not make a successful request to the stacks API.
-    #[error("Failed to make a request to the stacks API: {0}")]
+    #[error("failed to make a request to the stacks API: {0}")]
     StacksApiRequest(#[source] reqwest::Error),
 
-    /// Could not make a successful request to the stacks node.
-    #[error("Failed to make a request to the stacks Node: {0}")]
+    /// Could not make a successful request to the Stacks node.
+    #[error("failed to make a request to the stacks Node: {0}")]
     StacksNodeRequest(#[source] reqwest::Error),
 
     /// Reqwest error
-    #[error("Response from stacks node did not conform to the expected schema: {0}")]
+    #[error("response from stacks node did not conform to the expected schema: {0}")]
     UnexpectedStacksResponse(#[source] reqwest::Error),
 
     /// Taproot error

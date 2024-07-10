@@ -28,10 +28,14 @@ const CONTRACT_NAMES: [&str; 4] = [
     "sbtc-withdrawal",
 ];
 /// TODO(250): Update once we settle on all of the relevant function names.
-const CONTRACT_FUNCTION_NAMES: [(&str, TransactionType); 1] = [(
-    "initiate-withdrawal-request",
-    TransactionType::WithdrawAccept,
-)];
+#[rustfmt::skip]
+const CONTRACT_FUNCTION_NAMES: [(&str, TransactionType); 5] = [
+    ("initiate-withdrawal-request", TransactionType::WithdrawRequest),
+    ("complete-deposit-wrapper", TransactionType::DepositAccept),
+    ("accept-withdrawal-request", TransactionType::WithdrawAccept),
+    ("reject-withdrawal-request", TransactionType::WithdrawReject),
+    ("rotate-keys-wrapper", TransactionType::UpdateSignerSet),
+];
 
 /// Returns the mapping between functions in a contract call and the
 /// transaction type.
@@ -44,9 +48,9 @@ fn contract_transaction_kinds() -> &'static HashMap<&'static str, TransactionTyp
 
 /// A type used for storing transactions in the stacks_transactions table
 #[derive(Debug, serde::Serialize)]
-struct StacksTx {
+pub struct StacksTx {
     /// The transaction id for the transaction
-    txid: String,
+    pub txid: String,
     /// The block id for the nakamoto block that this transaction was
     /// included in.
     block_id: String,
@@ -71,7 +75,7 @@ struct StacksBlockSummary {
 
 /// This function extracts the signer relevant sBTC related transactions
 /// from the given blocks.
-fn extract_relevant_transactions(blocks: &[NakamotoBlock]) -> Vec<StacksTx> {
+pub fn extract_relevant_transactions(blocks: &[NakamotoBlock]) -> Vec<StacksTx> {
     let transaction_kinds = contract_transaction_kinds();
     blocks
         .iter()

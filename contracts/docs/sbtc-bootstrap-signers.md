@@ -242,7 +242,7 @@ Concat a list of pubkeys into a buffer with length prefixes
 `(define-read-only (concat-pubkeys-fold ((pubkey (buff 33)) (iterator (buff 510))) (buff 510))`
 
 Concatenate a pubkey buffer with a length prefix.
-The max size of the iterator is 510 bytes, which is (33 \* 15) 495 bytes
+The max size of the iterator is 4239 bytes, which is (33 \* 128) 4224 bytes
 for the public keys and 15 bytes for the length prefixes.
 
 <details>
