@@ -107,7 +107,7 @@
   )
 )
 ;; Reject multiple withdrawal requests
-(define-public (complete-withdrawals (withdrawals (list 100 
+(define-public (complete-withdrawals (withdrawals (list 1000 
                                      {request-id: uint, 
                                      status: bool, 
                                      signer-bitmap: uint, 

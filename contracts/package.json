@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:report": "vitest run -- --coverage --costs",
     "test:watch": "chokidar \"tests/**/*.ts\" \"contracts/**/*.clar\" -c \"npm run test:report\"",
+    "generate-coverage": "pnpm test:report && genhtml -o coverage/html lcov.info",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
