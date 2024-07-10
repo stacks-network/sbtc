@@ -80,8 +80,11 @@ fn make_signatures(tx: &StacksTransaction, keys: &[Keypair]) -> Vec<RecoverableS
 }
 
 pub struct SignerStxState {
+    /// A multi-sig wallet for the signers.
     pub wallet: SignerWallet,
+    /// These are the private keys to public keys in the above wallet.
     pub keys: [Keypair; 3],
+    /// A stacks client built using the src/config/default.toml config.
     pub stacks_client: &'static StacksClient,
 }
 
@@ -93,10 +96,7 @@ impl SignerStxState {
     {
         let mut unsigned = MultisigTx::new_tx(ContractDeploy(deploy), &self.wallet, TX_FEE);
 
-        let signatures: Vec<RecoverableSignature> = make_signatures(unsigned.tx(), &self.keys);
-
-        // This only fails when we are given an invalid signature.
-        for signature in signatures {
+        for signature in make_signatures(unsigned.tx(), &self.keys) {
             unsigned.add_signature(signature).unwrap();
         }
 
@@ -199,7 +199,6 @@ async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: Contr
     // The submitted transaction tends to linger in the mempool for quite
     // some time before being confirmed in a Nakamoto block (best guess is
     // 5-10 minutes). It's not clear why this is the case.
-
     if true {
         println!("{}", tx.txid());
         return;
