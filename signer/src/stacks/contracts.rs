@@ -238,7 +238,6 @@ impl AsContractCall for AcceptWithdrawalV1 {
         vec![
             Value::UInt(self.request_id as u128),
             Value::Sequence(SequenceData::Buffer(txid)),
-            Value::UInt(self.outpoint.vout as u128),
             Value::UInt(self.signer_bitmap.load()),
             Value::UInt(self.outpoint.vout as u128),
             Value::UInt(self.tx_fee as u128),

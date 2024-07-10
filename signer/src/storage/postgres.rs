@@ -50,7 +50,7 @@ fn contract_transaction_kinds() -> &'static HashMap<&'static str, TransactionTyp
 #[derive(Debug, serde::Serialize)]
 pub struct StacksTx {
     /// The transaction id for the transaction
-    txid: String,
+    pub txid: String,
     /// The block id for the nakamoto block that this transaction was
     /// included in.
     block_id: String,
