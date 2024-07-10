@@ -12,7 +12,6 @@ pub mod postgres;
 
 use std::future::Future;
 
-use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::types::chainstate::StacksBlockId;
 
 /// Represents the ability to read data from the signer storage.
@@ -150,11 +149,17 @@ pub trait DbWrite {
         stacks_transaction: &model::StacksTransaction,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
+    /// Write a connection between a stacks block and a transaction
+    fn write_stacks_transactions(
+        &self,
+        txs: Vec<model::Transaction>,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+
     /// Write the stacks blocks.
     /// TODO(212): This function should use model::StacksBlock instead of an external type
-    fn write_stacks_blocks(
+    fn write_stacks_block_headers(
         &self,
-        blocks: &[NakamotoBlock],
+        blocks: Vec<model::StacksBlock>,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     /// Write encrypted DKG shares

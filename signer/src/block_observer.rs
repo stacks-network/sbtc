@@ -173,8 +173,19 @@ where
         // TODO(#204): Implement
     }
 
-    async fn write_stacks_blocks(&mut self, blocks: &[nakamoto::NakamotoBlock]) -> Result<(), error::Error> {
-        Ok(self.storage.write_stacks_blocks(blocks).await?)
+    async fn write_stacks_blocks(
+        &mut self,
+        blocks: &[nakamoto::NakamotoBlock],
+    ) -> Result<(), error::Error> {
+        let txs = storage::postgres::extract_relevant_transactions(blocks);
+        let blocks = blocks
+            .iter()
+            .map(model::StacksBlock::try_from)
+            .collect::<Result<_, _>>()?;
+
+        self.storage.write_stacks_block_headers(blocks).await?;
+        self.storage.write_stacks_transactions(txs).await?;
+        Ok(())
     }
 
     async fn write_bitcoin_block(&mut self, block: &bitcoin::Block) -> Result<(), error::Error> {

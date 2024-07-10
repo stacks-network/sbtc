@@ -38,8 +38,9 @@ sbtc-common = { path = "../common" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-stackslib.workspace = true
 sqlx.workspace = true
+stackslib.workspace = true
+strum = { version = "0.26", features = ["derive"] }
 thiserror.workspace = true
 time.workspace = true
 tonic.workspace = true

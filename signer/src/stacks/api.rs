@@ -502,7 +502,12 @@ mod tests {
         let blocks = fetch_unknown_ancestors(&client, &db, info.tip_block_id).await;
 
         let blocks = blocks.unwrap();
-        db.write_stacks_blocks(&blocks).await.unwrap();
+        let headers = blocks
+            .iter()
+            .map(TryFrom::try_from)
+            .collect::<Result<_, _>>()
+            .unwrap();
+        db.write_stacks_block_headers(headers).await.unwrap();
     }
 
     /// Test that get_blocks works as expected.

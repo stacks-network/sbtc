@@ -10,6 +10,7 @@ use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::util::hash::Hash160;
 use futures::StreamExt;
 use signer::storage;
+use signer::storage::model;
 use signer::storage::DbRead;
 use signer::storage::DbWrite;
 use signer::testing;
@@ -94,7 +95,12 @@ async fn writing_stacks_blocks_works(pool: sqlx::PgPool) {
 
     // Okay now to save these blocks. We check that all of these blocks are
     // saved and that the transaction that we care about is saved as well.
-    store.write_stacks_blocks(&blocks).await.unwrap();
+    let headers = blocks
+        .iter()
+        .map(model::StacksBlock::try_from)
+        .collect::<Result<_, _>>()
+        .unwrap();
+    store.write_stacks_block_headers(headers).await.unwrap();
 
     // First check that all blocks are saved
     let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_blocks";
@@ -122,7 +128,12 @@ async fn writing_stacks_blocks_works(pool: sqlx::PgPool) {
 
     // Last let, we check that attempting to store identical blocks is an
     // idempotent operation.
-    store.write_stacks_blocks(&blocks).await.unwrap();
+    let headers = blocks
+        .iter()
+        .map(model::StacksBlock::try_from)
+        .collect::<Result<_, _>>()
+        .unwrap();
+    store.write_stacks_block_headers(headers).await.unwrap();
 
     let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_blocks";
     let stored_block_count_again = sqlx::query_scalar::<_, i64>(sql)
@@ -142,6 +153,7 @@ async fn writing_stacks_blocks_works(pool: sqlx::PgPool) {
 
     // No more transactions were written
     assert_eq!(stored_transaction_count_again, 1);
+    assert!(false);
 }
 
 /// Here we test that the DbRead::stacks_block_exists function works, while
@@ -172,7 +184,12 @@ async fn checking_stacks_blocks_exists_works(pool: sqlx::PgPool) {
     assert!(!any_exist);
 
     // Okay now to save these blocks.
-    store.write_stacks_blocks(&blocks).await.unwrap();
+    let headers = blocks
+        .iter()
+        .map(model::StacksBlock::try_from)
+        .collect::<Result<_, _>>()
+        .unwrap();
+    store.write_stacks_block_headers(headers).await.unwrap();
 
     // Now each of them should exist.
     let all_exist = futures::stream::iter(blocks.iter())

@@ -177,12 +177,9 @@ pub struct Transaction {
     pub tx: Bytes,
     /// The type of the transaction.
     pub tx_type: TransactionType,
-    /// The time this transaction entry was created by the signer.
-    #[cfg_attr(
-        feature = "testing",
-        dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")
-    )]
-    pub created_at: time::OffsetDateTime,
+    /// The block id of the stacks block that includes this transaction
+    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
+    pub block_hash: Bytes,
 }
 
 /// Persisted DKG shares
@@ -200,22 +197,10 @@ pub struct EncryptedDkgShares {
 }
 
 /// The types of transactions the signer is interested in.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Hash,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    sqlx::Type,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
 #[sqlx(type_name = "sbtc_signer.transaction_type", rename_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
-#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum TransactionType {
     /// An sBTC transaction on Bitcoin.
     SbtcTransaction,
