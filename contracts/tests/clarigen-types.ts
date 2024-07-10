@@ -1565,7 +1565,7 @@ export const contracts = {
                     { name: "status", type: "bool" },
                   ],
                 },
-                length: 100,
+                length: 1000,
               },
             },
           },
