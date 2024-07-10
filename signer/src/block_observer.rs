@@ -25,7 +25,6 @@ use crate::storage;
 
 use bitcoin::hashes::Hash;
 use blockstack_lib::chainstate::nakamoto;
-use blockstack_lib::chainstate::stacks;
 use futures::stream::StreamExt;
 use storage::model;
 use storage::DbRead;
@@ -160,17 +159,7 @@ where
         self.extract_deposit_requests(&block.txdata);
         self.extract_sbtc_transactions(&block.txdata);
 
-        for stacks_block in stacks_blocks {
-            self.extract_withdraw_requests(&stacks_block.txs);
-            self.extract_withdraw_accept_transactions(&stacks_block.txs);
-            self.extract_withdraw_reject_transactions(&stacks_block.txs);
-            self.extract_deposit_accept_transactions(&stacks_block.txs);
-            self.extract_update_signer_set_transactions(&stacks_block.txs);
-            self.extract_set_aggregate_key_transactions(&stacks_block.txs);
-
-            self.write_stacks_block(&stacks_block).await;
-        }
-
+        self.write_stacks_blocks(&stacks_blocks).await?;
         self.write_bitcoin_block(&block).await?;
 
         Ok(())
@@ -184,32 +173,8 @@ where
         // TODO(#204): Implement
     }
 
-    fn extract_withdraw_requests(&self, _transactions: &[stacks::StacksTransaction]) {
-        // TODO(#205): Implement
-    }
-
-    fn extract_withdraw_accept_transactions(&self, _transactions: &[stacks::StacksTransaction]) {
-        // TODO(#206): Implement
-    }
-
-    fn extract_withdraw_reject_transactions(&self, _transactions: &[stacks::StacksTransaction]) {
-        // TODO(#207): Implement
-    }
-
-    fn extract_deposit_accept_transactions(&self, _transactions: &[stacks::StacksTransaction]) {
-        // TODO(#207): Implement
-    }
-
-    fn extract_update_signer_set_transactions(&self, _transactions: &[stacks::StacksTransaction]) {
-        // TODO(#208): Implement
-    }
-
-    fn extract_set_aggregate_key_transactions(&self, _transactions: &[stacks::StacksTransaction]) {
-        // TODO(#209): Implement
-    }
-
-    async fn write_stacks_block(&mut self, _block: &nakamoto::NakamotoBlock) {
-        // TODO(#212): Implement
+    async fn write_stacks_blocks(&mut self, blocks: &[nakamoto::NakamotoBlock]) -> Result<(), error::Error> {
+        Ok(self.storage.write_stacks_blocks(blocks).await?)
     }
 
     async fn write_bitcoin_block(&mut self, block: &bitcoin::Block) -> Result<(), error::Error> {
