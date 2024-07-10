@@ -146,19 +146,23 @@ pub struct TxRejection {
 #[derive(Debug, serde::Deserialize)]
 #[serde(untagged)]
 pub enum SubmitTxResponse {
-    /// The transaction ID for the submitted transaction
+    /// The transaction ID for the submitted transaction.
     Acceptance(Txid),
     /// The response when the transaction is rejected from the node.
     Rejection(TxRejection),
 }
 
-/// The account info for a stacks account.
+/// The account info for a stacks address.
 pub struct AccountInfo {
-    /// The balance of the account in micro-STX
+    /// The total balance of the account in micro-STX. This amount includes
+    /// the amount locked.
     pub balance: u128,
-    /// The amount locked (stacked?) in micro-STX
+    /// The amount locked (stacked) in micro-STX.
     pub locked: u128,
-    /// The last known nonce of the account.
+    /// The height of the stacks block where the above locked micro-STX
+    /// will be unlocked.
+    pub unlock_height: u64,
+    /// The next nonce for the account.
     pub nonce: u64,
 }
 
@@ -176,6 +180,7 @@ impl TryFrom<AccountEntryResponse> for AccountInfo {
             balance: parse_hex_u128(&value.balance)?,
             locked: parse_hex_u128(&value.locked)?,
             nonce: value.nonce,
+            unlock_height: value.unlock_height,
         })
     }
 }
