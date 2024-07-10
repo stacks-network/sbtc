@@ -12,6 +12,7 @@ use signer::stacks::contracts::AsContractCall;
 use signer::stacks::contracts::ContractCall;
 use signer::stacks::contracts::RejectWithdrawalV1;
 use signer::stacks::contracts::RotateKeysV1;
+use signer::stacks::wallet::SignerWallet;
 use tokio::sync::OnceCell;
 
 use signer::config::StacksSettings;
@@ -22,7 +23,6 @@ use signer::stacks::api::SubmitTxResponse;
 use signer::stacks::api::TxRejection;
 use signer::stacks::contracts::CompleteDepositV1;
 use signer::stacks::wallet::MultisigTx;
-use signer::stacks::wallet::SignerStxState;
 use signer::storage::in_memory::Store;
 use signer::storage::postgres;
 use signer::testing;
@@ -73,8 +73,8 @@ impl AsContractDeploy for SbtcBootstrapContract {
         include_str!("../../../contracts/contracts/sbtc-bootstrap-signers.clar");
 }
 
-pub struct SignerKeys {
-    pub state: SignerStxState,
+pub struct SignerStxState {
+    pub wallet: SignerWallet,
     pub keys: [Keypair; 3],
     pub stacks_client: &'static StacksClient,
 }
@@ -86,13 +86,13 @@ fn make_signatures(tx: &StacksTransaction, keys: &[Keypair]) -> Vec<RecoverableS
 }
 
 /// Deploy an sBTC smart contract to the stacks node
-async fn deploy_smart_contract<T>(state: &SignerKeys, deploy: T)
+async fn deploy_smart_contract<T>(signer: &SignerStxState, deploy: T)
 where
     T: AsContractDeploy,
 {
-    let mut unsigned = MultisigTx::new_tx(ContractDeploy(deploy), &state.state, TX_FEE);
+    let mut unsigned = MultisigTx::new_tx(ContractDeploy(deploy), &signer.wallet, TX_FEE);
 
-    let signatures: Vec<RecoverableSignature> = make_signatures(unsigned.tx(), &state.keys);
+    let signatures: Vec<RecoverableSignature> = make_signatures(unsigned.tx(), &signer.keys);
 
     // This only fails when we are given an invalid signature.
     for signature in signatures {
@@ -101,7 +101,7 @@ where
 
     let tx = unsigned.finalize_transaction();
 
-    match state.stacks_client.submit_tx(&tx).await.unwrap() {
+    match signer.stacks_client.submit_tx(&tx).await.unwrap() {
         SubmitTxResponse::Acceptance(_) => (),
         SubmitTxResponse::Rejection(TxRejection {
             reason: RejectionReason::ContractAlreadyExists,
@@ -112,11 +112,11 @@ where
 }
 
 /// Deploy all sBTC smart contracts to the stacks node
-pub async fn deploy_smart_contracts() -> &'static SignerKeys {
+pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     static SBTC_DEPLOYMENT: OnceCell<()> = OnceCell::const_new();
     static STACKS_CLIENT: OnceLock<StacksClient> = OnceLock::new();
-    static SIGNER_STATE: OnceCell<SignerKeys> = OnceCell::const_new();
-    
+    static SIGNER_STATE: OnceCell<SignerStxState> = OnceCell::const_new();
+
     let (signer_wallet, key_pairs) = testing::wallet::generate_wallet();
 
     let client = STACKS_CLIENT.get_or_init(|| {
@@ -124,11 +124,12 @@ pub async fn deploy_smart_contracts() -> &'static SignerKeys {
         StacksClient::new(settings)
     });
 
-    let state = SIGNER_STATE
+    let signer = SIGNER_STATE
         .get_or_init(|| async {
             let account_info = client.get_account(&signer_wallet.address()).await.unwrap();
-            SignerKeys {
-                state: SignerStxState::new(signer_wallet.clone(), account_info.nonce),
+            signer_wallet.set_nonce(account_info.nonce);
+            SignerStxState {
+                wallet: signer_wallet,
                 keys: key_pairs,
                 stacks_client: client,
             }
@@ -140,15 +141,15 @@ pub async fn deploy_smart_contracts() -> &'static SignerKeys {
             // The registry and token contracts need to be deployed first
             // and second respectively. The rest can be deployed in any
             // order.
-            deploy_smart_contract(state, SbtcRegistryContract).await;
-            deploy_smart_contract(state, SbtcTokenContract).await;
-            deploy_smart_contract(state, SbtcDepositContract).await;
-            deploy_smart_contract(state, SbtcWithdrawalContract).await;
-            deploy_smart_contract(state, SbtcBootstrapContract).await;
+            deploy_smart_contract(signer, SbtcRegistryContract).await;
+            deploy_smart_contract(signer, SbtcTokenContract).await;
+            deploy_smart_contract(signer, SbtcDepositContract).await;
+            deploy_smart_contract(signer, SbtcWithdrawalContract).await;
+            deploy_smart_contract(signer, SbtcBootstrapContract).await;
         })
         .await;
 
-    state
+    signer
 }
 
 #[ignore]
@@ -177,7 +178,7 @@ pub async fn deploy_smart_contracts() -> &'static SignerKeys {
 #[tokio::test]
 async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: ContractCall<T>) {
     let signer = deploy_smart_contracts().await;
-    let mut unsigned = MultisigTx::new_tx(contract, &signer.state, TX_FEE);
+    let mut unsigned = MultisigTx::new_tx(contract, &signer.wallet, TX_FEE);
 
     for signature in make_signatures(unsigned.tx(), &signer.keys) {
         unsigned.add_signature(signature).unwrap();
@@ -194,7 +195,7 @@ async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: Contr
     // The submitted transaction tends to linger in the mempool for quite
     // some time before being confirmed in a Nakamoto block (best guess is
     // 5-10 minutes). It's not clear why this is the case.
-    
+
     if true {
         println!("{}", tx.txid());
         return;
