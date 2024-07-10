@@ -5,7 +5,6 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 use blockstack_lib::address::C32_ADDRESS_VERSION_MAINNET_MULTISIG;
 use blockstack_lib::address::C32_ADDRESS_VERSION_TESTNET_MULTISIG;
@@ -47,7 +46,7 @@ const MULTISIG_ADDRESS_HASH_MODE: OrderIndependentMultisigHashMode =
     OrderIndependentMultisigHashMode::P2SH;
 
 /// Requisite info for the signers' multi-sig wallet on Stacks.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SignerWallet {
     /// The current set of public keys for all known signers during this
     /// PoX cycle.
@@ -63,7 +62,7 @@ pub struct SignerWallet {
     address: StacksAddress,
     /// The next nonce for the StacksAddress associated with the address of
     /// the wallet.
-    nonce: Arc<AtomicU64>,
+    nonce: AtomicU64,
 }
 
 impl SignerWallet {
@@ -148,7 +147,7 @@ impl SignerWallet {
             network_kind,
             address: StacksAddress::from_public_keys(version, &hash_mode, num_sigs, &pubkeys)
                 .ok_or(Error::StacksMultiSig(signatures_required, num_keys))?,
-            nonce: Arc::new(AtomicU64::new(nonce)),
+            nonce: AtomicU64::new(nonce),
         })
     }
 
