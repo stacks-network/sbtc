@@ -73,41 +73,43 @@ impl AsContractDeploy for SbtcBootstrapContract {
         include_str!("../../../contracts/contracts/sbtc-bootstrap-signers.clar");
 }
 
-pub struct SignerStxState {
-    pub wallet: SignerWallet,
-    pub keys: [Keypair; 3],
-    pub stacks_client: &'static StacksClient,
-}
-
 fn make_signatures(tx: &StacksTransaction, keys: &[Keypair]) -> Vec<RecoverableSignature> {
     keys.iter()
         .map(|kp| stacks::wallet::sign_ecdsa(tx, &kp.secret_key()))
         .collect()
 }
 
-/// Deploy an sBTC smart contract to the stacks node
-async fn deploy_smart_contract<T>(signer: &SignerStxState, deploy: T)
-where
-    T: AsContractDeploy,
-{
-    let mut unsigned = MultisigTx::new_tx(ContractDeploy(deploy), &signer.wallet, TX_FEE);
+pub struct SignerStxState {
+    pub wallet: SignerWallet,
+    pub keys: [Keypair; 3],
+    pub stacks_client: &'static StacksClient,
+}
 
-    let signatures: Vec<RecoverableSignature> = make_signatures(unsigned.tx(), &signer.keys);
+impl SignerStxState {
+    /// Deploy an sBTC smart contract to the stacks node
+    async fn deploy_smart_contract<T>(&self, deploy: T)
+    where
+        T: AsContractDeploy,
+    {
+        let mut unsigned = MultisigTx::new_tx(ContractDeploy(deploy), &self.wallet, TX_FEE);
 
-    // This only fails when we are given an invalid signature.
-    for signature in signatures {
-        unsigned.add_signature(signature).unwrap();
-    }
+        let signatures: Vec<RecoverableSignature> = make_signatures(unsigned.tx(), &self.keys);
 
-    let tx = unsigned.finalize_transaction();
+        // This only fails when we are given an invalid signature.
+        for signature in signatures {
+            unsigned.add_signature(signature).unwrap();
+        }
 
-    match signer.stacks_client.submit_tx(&tx).await.unwrap() {
-        SubmitTxResponse::Acceptance(_) => (),
-        SubmitTxResponse::Rejection(TxRejection {
-            reason: RejectionReason::ContractAlreadyExists,
-            ..
-        }) => (),
-        SubmitTxResponse::Rejection(err) => panic!("{}", serde_json::to_string(&err).unwrap()),
+        let tx = unsigned.finalize_transaction();
+
+        match self.stacks_client.submit_tx(&tx).await.unwrap() {
+            SubmitTxResponse::Acceptance(_) => (),
+            SubmitTxResponse::Rejection(TxRejection {
+                reason: RejectionReason::ContractAlreadyExists,
+                ..
+            }) => (),
+            SubmitTxResponse::Rejection(err) => panic!("{}", serde_json::to_string(&err).unwrap()),
+        }
     }
 }
 
@@ -141,11 +143,11 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
             // The registry and token contracts need to be deployed first
             // and second respectively. The rest can be deployed in any
             // order.
-            deploy_smart_contract(signer, SbtcRegistryContract).await;
-            deploy_smart_contract(signer, SbtcTokenContract).await;
-            deploy_smart_contract(signer, SbtcDepositContract).await;
-            deploy_smart_contract(signer, SbtcWithdrawalContract).await;
-            deploy_smart_contract(signer, SbtcBootstrapContract).await;
+            signer.deploy_smart_contract(SbtcRegistryContract).await;
+            signer.deploy_smart_contract(SbtcTokenContract).await;
+            signer.deploy_smart_contract(SbtcDepositContract).await;
+            signer.deploy_smart_contract(SbtcWithdrawalContract).await;
+            signer.deploy_smart_contract(SbtcBootstrapContract).await;
         })
         .await;
 
@@ -185,6 +187,8 @@ async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: Contr
     }
     let tx = unsigned.finalize_transaction();
 
+    // We need to wait for the deployed contracts to be mined before we can
+    // use them. Five seconds seems to be enough time for that to happen.
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
     match signer.stacks_client.submit_tx(&tx).await.unwrap() {
