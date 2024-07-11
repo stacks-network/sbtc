@@ -1,5 +1,5 @@
 //! Handlers for Deposit endpoints.
-use warp::reply::{json, with_status};
+use warp::reply::{json, with_status, Reply};
 use crate::api::models::common::{BlockHeight, StacksBlockHash, Status};
 use crate::api::models::deposit::responses::GetDepositsForTransactionResponse;
 
@@ -58,12 +58,12 @@ pub async fn get_deposit(
         // Respond.
         Ok(with_status(json(&(deposit as GetDepositResponse)), StatusCode::OK))
     }
+
     // Handle and respond.
-    super::to_response(handler(
-        context,
-        bitcoin_txid,
-        bitcoin_tx_output_index
-    ).await)
+    handler(context, bitcoin_txid, bitcoin_tx_output_index)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
+
 }
 
 /// Get deposits for transaction handler.
@@ -104,19 +104,22 @@ pub async fn get_deposits_for_transaction(
             query.page_size
         ).await?;
         // Convert data into response types.
-        let deposits: Result<_, Error> = entries.into_iter()
+        let deposits: Vec<Deposit> = entries.into_iter()
             .map(|entry| entry.try_into())
-            .collect();
+            .collect::<Result<_, _>>()?;
+
         // Create response.
         let response = GetDepositsForTransactionResponse {
-            deposits: deposits?,
+            deposits,
             next_token,
         };
         // Respond.
         Ok(with_status(json(&response), StatusCode::OK))
     }
     // Handle and respond.
-    super::to_response(handler(context, bitcoin_txid, query).await)
+    handler(context, bitcoin_txid, query)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
 }
 
 /// Get deposits handler.
@@ -166,7 +169,9 @@ pub async fn get_deposits(
         Ok(with_status(json(&response), StatusCode::OK))
     }
     // Handle and respond.
-    super::to_response(handler(context, query).await)
+    handler(context, query)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
 }
 
 /// Create deposit handler.
@@ -227,7 +232,9 @@ pub async fn create_deposit(
         Ok(with_status(json(&response), StatusCode::CREATED))
     }
     // Handle and respond.
-    super::to_response(handler(context, body).await)
+    handler(context, body)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
 }
 
 /// Update deposits handler.
@@ -257,7 +264,9 @@ pub async fn update_deposits(
         Err::<warp::reply::Json, Error>(Error::NotImplemented)
     }
     // Handle and respond.
-    super::to_response(handler(context, body).await)
+    handler(context, body)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
 }
 
 // TODO(TBD): Add handler unit tests.

@@ -1,5 +1,5 @@
 //! Handlers for withdrawal endpoints.
-use warp::reply::{json, with_status};
+use warp::reply::{json, with_status, Reply};
 
 use warp::http::StatusCode;
 use crate::api::models::common::{BlockHeight, StacksBlockHash, Status};
@@ -54,11 +54,10 @@ pub async fn get_withdrawal(
         ).await?;
 
         // Convert data into resource types.
-        let maybe_withdrawals: Result<Vec<Withdrawal>, Error> = entries.into_iter()
+        let withdrawals: Vec<Withdrawal> = entries.into_iter()
             .map(|entry| entry.try_into())
-            .collect();
+            .collect::<Result<_, _>>()?;
 
-        let withdrawals = maybe_withdrawals?;
         // Respond.
         match &withdrawals[..] {
             [] => Err(Error::NotFound),
@@ -67,7 +66,9 @@ pub async fn get_withdrawal(
         }
     }
     // Handle and respond.
-    super::to_response(handler(context, request_id).await)
+    handler(context, request_id)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
 }
 
 /// Get withdrawals handler.
@@ -118,7 +119,9 @@ pub async fn get_withdrawals(
         Ok(with_status(json(&response), StatusCode::OK))
     }
     // Handle and respond.
-    super::to_response(handler(context, query).await)
+    handler(context, query)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
 }
 
 /// Create withdrawal handler.
@@ -181,7 +184,9 @@ pub async fn create_withdrawal(
         Ok(with_status(json(&response), StatusCode::CREATED))
     }
     // Handle and respond.
-    super::to_response(handler(context, body).await)
+    handler(context, body)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
 }
 
 /// Update withdrawals handler.

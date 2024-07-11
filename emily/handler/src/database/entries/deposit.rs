@@ -55,8 +55,7 @@ impl DepositEntry {
     /// Implement validate.
     pub fn validate(&self) -> Result<(), Error> {
 
-        let stringy_self = serde_json::to_string(self)
-            .expect("Should be stringable.");
+        let stringy_self = serde_json::to_string(self)?;
 
         // Get latest event.
         let latest_event: &DepositEvent = self.history.last()

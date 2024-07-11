@@ -193,7 +193,7 @@ pub async fn get_withdrawal_entries(
 /// Generic put table entry.
 pub async fn put_entry(
     dynamodb_client: &aws_sdk_dynamodb::Client,
-    table_name: impl Into<String>,
+    table_name: &str,
     entry: impl Serialize,
 ) -> Result<(), Error> {
     // Convert Entry into the type needed for querying.
@@ -212,7 +212,7 @@ pub async fn put_entry(
 /// Generic delete table entry.
 pub async fn _delete_entry(
     dynamodb_client: &aws_sdk_dynamodb::Client,
-    table_name: impl Into<String>,
+    table_name: &str,
     key: impl Serialize,
 ) -> Result<(), Error> {
     // Convert Entry into the type needed for querying.
@@ -231,11 +231,11 @@ pub async fn _delete_entry(
 /// Generic table get.
 pub async fn get_entry<T>(
     dynamodb_client: &aws_sdk_dynamodb::Client,
-    table_name: impl Into<String>,
+    table_name: &str,
     key: impl Serialize,
 ) -> Result<T, Error>
 where
-    T: Serialize + for<'de> Deserialize<'de>,
+    T: for<'de> Deserialize<'de>,
 {
     // Convert key into the type needed for querying.
     let key_item: Item = serde_dynamo::to_item(key)?;
@@ -258,15 +258,15 @@ where
 /// Generic table query for all attributes with a given primary key.
 pub async fn query_with_partition_key<T, K>(
     dynamodb_client: &aws_sdk_dynamodb::Client,
-    table_name: impl Into<String>,
+    table_name: &str,
     partition_key: impl Serialize,
-    partition_key_attribute_name: impl Into<String>,
+    partition_key_attribute_name: &str,
     maybe_page_size: Option<i32>,
     maybe_next_token: Option<String>,
     maybe_index_name: Option<String>,
 ) -> Result<(Vec<T>, Option<String>), Error>
 where
-    T: Serialize + for<'de> Deserialize<'de>,
+    T: for<'de> Deserialize<'de>,
     K: Serialize + for<'de> Deserialize<'de>,
 {
     // Convert inputs into the types needed for querying.

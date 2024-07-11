@@ -1,5 +1,5 @@
 //! Handlers for chainstate endpoints.
-use warp::reply::{json, with_status};
+use warp::reply::{json, with_status, Reply};
 use crate::{
     api::models::{
         chainstate::{
@@ -70,7 +70,9 @@ pub async fn get_chainstate_at_height(
         }
     }
     // Handle and respond.
-    super::to_response(handler(context, height).await)
+    handler(context, height)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
 }
 
 /// Set chainstate handler.
@@ -123,7 +125,9 @@ pub async fn set_chainstate(
 
     }
     // Handle and respond.
-    super::to_response(handler(context, body).await)
+    handler(context, body)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
 }
 
 /// Update chainstate handler.
