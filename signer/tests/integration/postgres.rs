@@ -25,20 +25,20 @@ use signer::testing;
 use rand::SeedableRng;
 use test_case::test_case;
 
-use std::sync::OnceLock;
-
 const DATABASE_URL: &str = "postgres://user:password@localhost:5432/signer";
 
-fn get_connection_pool() -> &'static sqlx::PgPool {
-    static PG_POOL: OnceLock<sqlx::PgPool> = OnceLock::new();
+async fn get_connection_pool() -> &'static sqlx::PgPool {
+    static PG_POOL: tokio::sync::OnceCell<sqlx::PgPool> = tokio::sync::OnceCell::const_new();
 
-    PG_POOL.get_or_init(|| {
+    PG_POOL.get_or_init(|| async {
         sqlx::postgres::PgPoolOptions::new()
-            .max_connections(100)
+            .max_connections(500)
             .acquire_timeout(std::time::Duration::from_secs(5))
-            .connect_lazy(DATABASE_URL)
+            .connect(DATABASE_URL)
+            .await
             .unwrap()
     })
+    .await
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -125,7 +125,7 @@ impl AsContractCall for InitiateWithdrawalRequest {
 )); "rotate-keys")]
 #[tokio::test]
 async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCall<T>) {
-    let default_pool = get_connection_pool();
+    let default_pool = get_connection_pool().await;
     let pool = crate::transaction_signer::new_database(default_pool).await;
     let store = PgStore::from(pool.clone());
 
