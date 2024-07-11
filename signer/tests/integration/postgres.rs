@@ -32,11 +32,11 @@ const DATABASE_URL: &str = "postgres://user:password@localhost:5432/signer";
 /// basically a PoolTimeOut error. This is a known issue:
 /// https://github.com/launchbadge/sqlx/issues/2567
 fn get_connection_pool() -> sqlx::PgPool {
-        sqlx::postgres::PgPoolOptions::new()
-            .max_connections(1)
-            .acquire_timeout(std::time::Duration::from_secs(5))
-            .connect_lazy(DATABASE_URL)
-            .unwrap()
+    sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(std::time::Duration::from_secs(5))
+        .connect_lazy(DATABASE_URL)
+        .unwrap()
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
