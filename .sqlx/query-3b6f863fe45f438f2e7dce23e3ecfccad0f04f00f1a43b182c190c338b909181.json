@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            WITH tx_ids AS (\n                SELECT ROW_NUMBER() OVER (), txid\n                FROM UNNEST($1::bytea[]) AS txid\n            )\n            , txs AS (\n                SELECT ROW_NUMBER() OVER (), tx\n                FROM UNNEST($2::bytea[]) AS tx\n            )\n            , transaction_types AS (\n                SELECT ROW_NUMBER() OVER (), tx_type::sbtc_signer.transaction_type\n                FROM UNNEST($3::VARCHAR[]) AS tx_type\n            )\n            INSERT INTO sbtc_signer.transactions (txid, tx, tx_type, created_at)\n            SELECT\n                txid\n              , tx\n              , tx_type\n              , CURRENT_TIMESTAMP\n            FROM tx_ids \n            JOIN txs USING (row_number)\n            JOIN transaction_types USING (row_number)\n            ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "ByteaArray",
+        "ByteaArray",
+        "VarcharArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3b6f863fe45f438f2e7dce23e3ecfccad0f04f00f1a43b182c190c338b909181"
+}
