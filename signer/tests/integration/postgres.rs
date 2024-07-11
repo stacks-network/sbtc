@@ -27,18 +27,16 @@ use test_case::test_case;
 
 const DATABASE_URL: &str = "postgres://user:password@localhost:5432/signer";
 
-async fn get_connection_pool() -> &'static sqlx::PgPool {
-    static PG_POOL: tokio::sync::OnceCell<sqlx::PgPool> = tokio::sync::OnceCell::const_new();
-
-    PG_POOL.get_or_init(|| async {
+/// It's better to create a new pool for each test since there is some
+/// weird bug in sqlx. The issue that can crop up with pool reuse is
+/// basically a PoolTimeOut error. This is a known issue:
+/// https://github.com/launchbadge/sqlx/issues/2567
+fn get_connection_pool() -> sqlx::PgPool {
         sqlx::postgres::PgPoolOptions::new()
-            .max_connections(500)
+            .max_connections(1)
             .acquire_timeout(std::time::Duration::from_secs(5))
-            .connect(DATABASE_URL)
-            .await
+            .connect_lazy(DATABASE_URL)
             .unwrap()
-    })
-    .await
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -125,8 +123,8 @@ impl AsContractCall for InitiateWithdrawalRequest {
 )); "rotate-keys")]
 #[tokio::test]
 async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCall<T>) {
-    let default_pool = get_connection_pool().await;
-    let pool = crate::transaction_signer::new_database(default_pool).await;
+    let default_pool = get_connection_pool();
+    let pool = crate::transaction_signer::new_database(&default_pool).await;
     let store = PgStore::from(pool.clone());
 
     let path = "tests/fixtures/tenure-blocks-0-1ed91e0720129bda5072540ee7283dd5345d0f6de0cf5b982c6de3943b6e3291.bin";
