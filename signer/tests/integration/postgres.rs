@@ -1,21 +1,44 @@
 use std::io::Read;
 
+use bitvec::array::BitArray;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
-use blockstack_lib::chainstate::stacks::TransactionContractCall;
-use blockstack_lib::chainstate::stacks::TransactionPayload;
-use blockstack_lib::clarity::vm::ClarityName;
-use blockstack_lib::clarity::vm::ContractName;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
-use blockstack_lib::util::hash::Hash160;
+use blockstack_lib::types::Address;
 use futures::StreamExt;
+
+use signer::stacks::contracts::AcceptWithdrawalV1;
+use signer::stacks::contracts::AsContractCall;
+use signer::stacks::contracts::AsTxPayload as _;
+use signer::stacks::contracts::CompleteDepositV1;
+use signer::stacks::contracts::ContractCall;
+use signer::stacks::contracts::RejectWithdrawalV1;
+use signer::stacks::contracts::RotateKeysV1;
 use signer::storage;
 use signer::storage::model;
+use signer::storage::postgres::PgStore;
 use signer::storage::DbRead;
 use signer::storage::DbWrite;
 use signer::testing;
 
 use rand::SeedableRng;
+use test_case::test_case;
+
+use std::sync::OnceLock;
+
+const DATABASE_URL: &str = "postgres://user:password@localhost:5432/signer";
+
+fn get_connection_pool() -> &'static sqlx::PgPool {
+    static PG_POOL: OnceLock<sqlx::PgPool> = OnceLock::new();
+
+    PG_POOL.get_or_init(|| {
+        sqlx::postgres::PgPoolOptions::new()
+            .max_connections(100)
+            .acquire_timeout(std::time::Duration::from_secs(5))
+            .connect_lazy(DATABASE_URL)
+            .unwrap()
+    })
+}
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[sqlx::test]
@@ -62,9 +85,34 @@ async fn should_be_able_to_query_bitcoin_blocks(pool: sqlx::PgPool) {
 /// do, which is store all stacks blocks and store the transactions that we
 /// care about, which, naturally, are sBTC related transactions.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[sqlx::test]
-async fn writing_stacks_blocks_works(pool: sqlx::PgPool) {
-    let store = storage::postgres::PgStore::from(pool.clone());
+// #[tokio::test]
+#[test_case(ContractCall(CompleteDepositV1 {
+    outpoint: bitcoin::OutPoint::null(),
+    amount: 123654,
+    recipient: StacksAddress::from_string("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
+    deployer: testing::wallet::generate_wallet().0.address(),
+}); "complete-deposit")]
+#[test_case(ContractCall(AcceptWithdrawalV1 {
+    request_id: 0,
+    outpoint: bitcoin::OutPoint::null(),
+    tx_fee: 3500,
+    signer_bitmap: BitArray::new([0; 2]),
+    deployer: testing::wallet::generate_wallet().0.address(),
+}); "accept-withdrawal")]
+#[test_case(ContractCall(RejectWithdrawalV1 {
+    request_id: 0,
+    signer_bitmap: BitArray::new([0; 2]),
+    deployer: testing::wallet::generate_wallet().0.address(),
+}); "reject-withdrawal")]
+#[test_case(ContractCall(RotateKeysV1::new(
+    &testing::wallet::generate_wallet().0,
+    testing::wallet::generate_wallet().0.address(),
+)); "rotate-keys")]
+#[tokio::test]
+async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCall<T>) {
+    let default_pool = get_connection_pool();
+    let pool = crate::transaction_signer::new_database(default_pool).await;
+    let store = PgStore::from(pool.clone());
 
     let path = "tests/fixtures/tenure-blocks-0-1ed91e0720129bda5072540ee7283dd5345d0f6de0cf5b982c6de3943b6e3291.bin";
     let mut file = std::fs::File::open(path).unwrap();
@@ -84,24 +132,19 @@ async fn writing_stacks_blocks_works(pool: sqlx::PgPool) {
     let last_block = blocks.last_mut().unwrap();
     let mut tx = last_block.txs.last().unwrap().clone();
 
-    let contract_call = TransactionContractCall {
-        address: StacksAddress::new(2, Hash160([0u8; 20])),
-        contract_name: ContractName::from("sbtc-withdrawal"),
-        function_name: ClarityName::from("initiate-withdrawal-request"),
-        function_args: Vec::new(),
-    };
-    tx.payload = TransactionPayload::ContractCall(contract_call);
+    tx.payload = contract.tx_payload();
     last_block.txs.push(tx);
 
-    // Okay now to save these block headers. We check that all of these
-    // blocks are saved and that the transaction that we care about is
-    // saved as well.
+    // Okay now to save these blocks. We check that all of these blocks are
+    // saved and that the transaction that we care about is saved as well.
+    let txs = storage::postgres::extract_relevant_transactions(&blocks);
     let headers = blocks
         .iter()
         .map(model::StacksBlock::try_from)
         .collect::<Result<_, _>>()
         .unwrap();
     store.write_stacks_block_headers(headers).await.unwrap();
+    store.write_stacks_transactions(txs).await.unwrap();
 
     // First check that all blocks are saved
     let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_blocks";
@@ -154,7 +197,6 @@ async fn writing_stacks_blocks_works(pool: sqlx::PgPool) {
 
     // No more transactions were written
     assert_eq!(stored_transaction_count_again, 1);
-    assert!(false);
 }
 
 /// Here we test that the DbRead::stacks_block_exists function works, while
