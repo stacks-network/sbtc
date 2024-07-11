@@ -2,6 +2,7 @@ use std::io::Read;
 
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
+use blockstack_lib::clarity::vm::Value;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::types::Address;
@@ -81,11 +82,25 @@ async fn should_be_able_to_query_bitcoin_blocks(pool: sqlx::PgPool) {
     }
 }
 
+struct InitiateWithdrawalRequest;
+
+impl AsContractCall for InitiateWithdrawalRequest {
+    const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
+    const FUNCTION_NAME: &'static str = "initiate-withdrawal-request";
+    /// The stacks address that deployed the contract.
+    fn deployer_address(&self) -> StacksAddress {
+        StacksAddress::burn_address(false)
+    }
+    /// The arguments to the clarity function.
+    fn as_contract_args(&self) -> Vec<Value> {
+        Vec::new()
+    }
+}
 /// Test that the write_stacks_blocks function does what it is supposed to
 /// do, which is store all stacks blocks and store the transactions that we
 /// care about, which, naturally, are sBTC related transactions.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-// #[tokio::test]
+#[test_case(ContractCall(InitiateWithdrawalRequest); "initiate-withdrawal")]
 #[test_case(ContractCall(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654,
