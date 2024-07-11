@@ -149,8 +149,7 @@ pub trait DbWrite {
         stacks_transaction: &model::StacksTransaction,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
-    /// Write sBTC related transactions in the given blocks to the
-    /// data store.
+    /// Write the stacks transactions to the data store.
     fn write_stacks_transactions(
         &self,
         txs: Vec<model::Transaction>,
