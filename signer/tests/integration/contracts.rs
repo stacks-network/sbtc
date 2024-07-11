@@ -218,8 +218,8 @@ async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: Contr
 
     let txids = transactions
         .iter()
-        .map(|stx| blockstack_lib::burnchains::Txid::from_hex(&stx.txid))
-        .collect::<Result<HashSet<_>, _>>()
+        .map(|stx| blockstack_lib::burnchains::Txid::from_bytes(&stx.txid))
+        .collect::<Option<HashSet<_>>>()
         .unwrap();
 
     assert!(txids.contains(&tx.txid()));

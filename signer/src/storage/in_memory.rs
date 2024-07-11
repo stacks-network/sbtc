@@ -1,6 +1,5 @@
 //! In-memory store implementation - useful for tests
 
-use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use futures::StreamExt;
 use futures::TryStreamExt;
@@ -56,7 +55,7 @@ pub struct Store {
     pub stacks_block_to_withdraw_requests: HashMap<model::StacksBlockHash, Vec<WithdrawRequestPk>>,
 
     /// Stacks blocks under nakamoto
-    pub stacks_nakamoto_blocks: HashMap<StacksBlockId, NakamotoBlock>,
+    pub stacks_nakamoto_blocks: HashMap<model::StacksBlockHash, model::StacksBlock>,
 
     /// Encrypted DKG shares
     pub encrypted_dkg_shares: HashMap<model::PubKey, model::EncryptedDkgShares>,
@@ -273,7 +272,7 @@ impl super::DbRead for SharedStore {
             .lock()
             .await
             .stacks_nakamoto_blocks
-            .contains_key(&block_id))
+            .contains_key(&block_id.to_bytes().to_vec()))
     }
 
     async fn get_encrypted_dkg_shares(
@@ -431,12 +430,30 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_stacks_blocks(&self, blocks: &[NakamotoBlock]) -> Result<(), Self::Error> {
+    async fn write_stacks_transactions(
+        &self,
+        stacks_transactions: Vec<model::Transaction>,
+    ) -> Result<(), Self::Error> {
+        for tx in stacks_transactions {
+            let stacks_transaction = model::StacksTransaction {
+                txid: tx.txid,
+                block_hash: tx.block_hash,
+            };
+            self.write_stacks_transaction(&stacks_transaction).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn write_stacks_block_headers(
+        &self,
+        blocks: Vec<model::StacksBlock>,
+    ) -> Result<(), Self::Error> {
         let mut store = self.lock().await;
         blocks.iter().for_each(|block| {
             store
                 .stacks_nakamoto_blocks
-                .insert(block.block_id(), block.clone());
+                .insert(block.block_hash.clone(), block.clone());
         });
 
         Ok(())

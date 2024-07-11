@@ -39,7 +39,7 @@ async fn test_environment(
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
 
-async fn new_database(pool: &sqlx::PgPool) -> sqlx::PgPool {
+pub async fn new_database(pool: &sqlx::PgPool) -> sqlx::PgPool {
     let mut rng = rand::rngs::OsRng;
     let db_name = format!("test_db_{}", rng.next_u64());
 
