@@ -209,6 +209,10 @@ where
 
     // Determine if the current coordinator is the coordinator
     //
+    // The coordinator is decided using the hash of the bitcoin
+    // chain tip. We don't use the chain tip directly because
+    // it typically starts with a lot of leading zeros.
+    //
     // Note that this function is technically not fallible,
     // but for now we have chosen to return phantom errors
     // instead of adding expects/unwraps in the code.
