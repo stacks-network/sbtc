@@ -178,12 +178,12 @@ where
         blocks: &[nakamoto::NakamotoBlock],
     ) -> Result<(), error::Error> {
         let txs = storage::postgres::extract_relevant_transactions(blocks);
-        let blocks = blocks
+        let headers = blocks
             .iter()
             .map(model::StacksBlock::try_from)
             .collect::<Result<_, _>>()?;
 
-        self.storage.write_stacks_block_headers(blocks).await?;
+        self.storage.write_stacks_block_headers(headers).await?;
         self.storage.write_stacks_transactions(txs).await?;
         Ok(())
     }

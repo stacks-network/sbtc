@@ -93,8 +93,9 @@ async fn writing_stacks_blocks_works(pool: sqlx::PgPool) {
     tx.payload = TransactionPayload::ContractCall(contract_call);
     last_block.txs.push(tx);
 
-    // Okay now to save these blocks. We check that all of these blocks are
-    // saved and that the transaction that we care about is saved as well.
+    // Okay now to save these block headers. We check that all of these
+    // blocks are saved and that the transaction that we care about is
+    // saved as well.
     let headers = blocks
         .iter()
         .map(model::StacksBlock::try_from)

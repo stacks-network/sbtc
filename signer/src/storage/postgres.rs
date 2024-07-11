@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
-use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksBlockId;
@@ -28,7 +27,7 @@ const CONTRACT_NAMES: [&str; 4] = [
     // BTC on chain.
     "sbtc-withdrawal",
 ];
-/// TODO(250): Update once we settle on all of the relevant function names.
+
 #[rustfmt::skip]
 const CONTRACT_FUNCTION_NAMES: [(&str, TransactionType); 5] = [
     ("initiate-withdrawal-request", TransactionType::WithdrawRequest),
@@ -45,18 +44,6 @@ fn contract_transaction_kinds() -> &'static HashMap<&'static str, TransactionTyp
         OnceLock::new();
 
     CONTRACT_FUNCTION_NAME_MAPPING.get_or_init(|| CONTRACT_FUNCTION_NAMES.into_iter().collect())
-}
-
-/// A type used for storing transactions in the stacks_transactions table
-#[derive(Debug)]
-pub struct StacksTx<'a> {
-    /// The block id for the nakamoto block that this transaction was
-    /// included in.
-    pub block_id: StacksBlockId,
-    /// The Stacks transaction
-    pub tx: &'a StacksTransaction,
-    /// The type of sBTC transaction on the stacks blockchain
-    pub tx_type: TransactionType,
 }
 
 /// This function extracts the signer relevant sBTC related transactions
@@ -111,138 +98,6 @@ impl PgStore {
         Ok(Self(sqlx::PgPool::connect(url).await?))
     }
 
-    /// Write parts of the Stacks Nakamoto block headers to the database.
-    async fn write_stacks_block_header(
-        &self,
-        blocks: Vec<model::StacksBlock>,
-    ) -> Result<(), Error> {
-        if blocks.is_empty() {
-            return Ok(());
-        }
-
-        let mut block_ids = Vec::with_capacity(blocks.len());
-        let mut parent_block_ids = Vec::with_capacity(blocks.len());
-        let mut chain_lengths = Vec::<i64>::with_capacity(blocks.len());
-
-        for block in blocks {
-            block_ids.push(block.block_hash);
-            parent_block_ids.push(block.parent_hash);
-            chain_lengths.push(block.block_height);
-        }
-
-        sqlx::query!(
-            r#"
-            WITH block_ids AS (
-                SELECT ROW_NUMBER() OVER (), block_id
-                FROM UNNEST($1::bytea[]) AS block_id
-            )
-            , parent_block_ids AS (
-                SELECT ROW_NUMBER() OVER (), parent_block_id
-                FROM UNNEST($2::bytea[]) AS parent_block_id
-            )
-            , chain_lengths AS (
-                SELECT ROW_NUMBER() OVER (), chain_length
-                FROM UNNEST($3::bigint[]) AS chain_length
-            )
-            INSERT INTO sbtc_signer.stacks_blocks (block_hash, block_height, parent_hash, created_at)
-            SELECT
-                block_id
-              , chain_length
-              , parent_block_id
-              , CURRENT_TIMESTAMP
-            FROM block_ids 
-            JOIN parent_block_ids USING (row_number)
-            JOIN chain_lengths USING (row_number)
-            ON CONFLICT DO NOTHING"#,
-            block_ids.as_slice(),
-            parent_block_ids.as_slice(),
-            chain_lengths.as_slice(),
-        )
-        .execute(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
-        Ok(())
-    }
-
-    /// Write sBTC related transactions in the given blocks to the
-    /// database.
-    async fn write_stacks_sbtc_txs(&self, block_txs: Vec<Transaction>) -> Result<(), Error> {
-        if block_txs.is_empty() {
-            return Ok(());
-        }
-
-        let mut tx_ids = Vec::with_capacity(block_txs.len());
-        let mut txs = Vec::with_capacity(block_txs.len());
-        let mut tx_types = Vec::with_capacity(block_txs.len());
-        let mut block_ids = Vec::with_capacity(block_txs.len());
-
-        for stx in block_txs {
-            tx_ids.push(stx.txid);
-            txs.push(stx.tx);
-            tx_types.push(stx.tx_type.to_string());
-            block_ids.push(stx.block_hash)
-        }
-
-        sqlx::query!(
-            r#"
-            WITH tx_ids AS (
-                SELECT ROW_NUMBER() OVER (), txid
-                FROM UNNEST($1::bytea[]) AS txid
-            )
-            , txs AS (
-                SELECT ROW_NUMBER() OVER (), tx
-                FROM UNNEST($2::bytea[]) AS tx
-            )
-            , transaction_types AS (
-                SELECT ROW_NUMBER() OVER (), tx_type::sbtc_signer.transaction_type
-                FROM UNNEST($3::VARCHAR[]) AS tx_type
-            )
-            INSERT INTO sbtc_signer.transactions (txid, tx, tx_type, created_at)
-            SELECT
-                txid
-              , tx
-              , tx_type
-              , CURRENT_TIMESTAMP
-            FROM tx_ids 
-            JOIN txs USING (row_number)
-            JOIN transaction_types USING (row_number)
-            ON CONFLICT DO NOTHING"#,
-            &tx_ids,
-            &txs,
-            &tx_types,
-        )
-        .execute(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
-        sqlx::query!(
-            r#"
-            WITH tx_ids AS (
-                SELECT ROW_NUMBER() OVER (), txid
-                FROM UNNEST($1::bytea[]) AS txid
-            )
-            , block_ids AS (
-                SELECT ROW_NUMBER() OVER (), block_id
-                FROM UNNEST($2::bytea[]) AS block_id
-            )
-            INSERT INTO sbtc_signer.stacks_transactions (txid, block_hash)
-            SELECT
-                txid
-              , block_id
-            FROM tx_ids 
-            JOIN block_ids USING (row_number)
-            ON CONFLICT DO NOTHING"#,
-            &tx_ids,
-            &block_ids,
-        )
-        .execute(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
-        Ok(())
-    }
-
     async fn get_stacks_chain_tip(
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -268,18 +123,6 @@ impl PgStore {
         .await
         .map(|maybe_block| maybe_block.map(|block| block.block_hash))
         .map_err(Error::SqlxQuery)
-    }
-
-    /// Write the stacks block and the transactions in them
-    pub async fn write_stacks_blocks(&self, blocks: &[NakamotoBlock]) -> Result<(), Error> {
-        let block_txs = extract_relevant_transactions(blocks);
-        let blocks = blocks
-            .iter()
-            .map(model::StacksBlock::try_from)
-            .collect::<Result<_, _>>()?;
-
-        self.write_stacks_block_header(blocks).await?;
-        self.write_stacks_sbtc_txs(block_txs).await
     }
 }
 
@@ -833,9 +676,81 @@ impl super::DbWrite for PgStore {
 
     async fn write_stacks_transactions(
         &self,
-        txs: Vec<model::Transaction>,
+        stx_txs: Vec<model::Transaction>,
     ) -> Result<(), Self::Error> {
-        self.write_stacks_sbtc_txs(txs).await
+        if stx_txs.is_empty() {
+            return Ok(());
+        }
+
+        let mut tx_ids = Vec::with_capacity(stx_txs.len());
+        let mut txs = Vec::with_capacity(stx_txs.len());
+        let mut tx_types = Vec::with_capacity(stx_txs.len());
+        let mut block_ids = Vec::with_capacity(stx_txs.len());
+
+        for stx in stx_txs {
+            tx_ids.push(stx.txid);
+            txs.push(stx.tx);
+            tx_types.push(stx.tx_type.to_string());
+            block_ids.push(stx.block_hash)
+        }
+
+        sqlx::query!(
+            r#"
+            WITH tx_ids AS (
+                SELECT ROW_NUMBER() OVER (), txid
+                FROM UNNEST($1::bytea[]) AS txid
+            )
+            , txs AS (
+                SELECT ROW_NUMBER() OVER (), tx
+                FROM UNNEST($2::bytea[]) AS tx
+            )
+            , transaction_types AS (
+                SELECT ROW_NUMBER() OVER (), tx_type::sbtc_signer.transaction_type
+                FROM UNNEST($3::VARCHAR[]) AS tx_type
+            )
+            INSERT INTO sbtc_signer.transactions (txid, tx, tx_type, created_at)
+            SELECT
+                txid
+              , tx
+              , tx_type
+              , CURRENT_TIMESTAMP
+            FROM tx_ids 
+            JOIN txs USING (row_number)
+            JOIN transaction_types USING (row_number)
+            ON CONFLICT DO NOTHING"#,
+            &tx_ids,
+            &txs,
+            &tx_types,
+        )
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        sqlx::query!(
+            r#"
+            WITH tx_ids AS (
+                SELECT ROW_NUMBER() OVER (), txid
+                FROM UNNEST($1::bytea[]) AS txid
+            )
+            , block_ids AS (
+                SELECT ROW_NUMBER() OVER (), block_id
+                FROM UNNEST($2::bytea[]) AS block_id
+            )
+            INSERT INTO sbtc_signer.stacks_transactions (txid, block_hash)
+            SELECT
+                txid
+              , block_id
+            FROM tx_ids 
+            JOIN block_ids USING (row_number)
+            ON CONFLICT DO NOTHING"#,
+            &tx_ids,
+            &block_ids,
+        )
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
     }
 
     async fn write_stacks_block_headers(
@@ -880,9 +795,9 @@ impl super::DbWrite for PgStore {
             JOIN parent_block_ids USING (row_number)
             JOIN chain_lengths USING (row_number)
             ON CONFLICT DO NOTHING"#,
-            block_ids.as_slice(),
-            parent_block_ids.as_slice(),
-            chain_lengths.as_slice(),
+            &block_ids,
+            &parent_block_ids,
+            &chain_lengths,
         )
         .execute(&self.0)
         .await
