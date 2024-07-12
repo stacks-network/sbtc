@@ -640,6 +640,7 @@ mod tests {
             num_stacks_blocks_per_bitcoin_block: 3,
             num_deposit_requests_per_block: 5,
             num_withdraw_requests_per_block: 5,
+            num_signers_per_request: 0,
         };
 
         testing::transaction_signer::TestEnvironment {

@@ -90,6 +90,7 @@ pub struct DepositSigner {
     #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
     pub output_index: i32,
     /// Public key of the signer.
+    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub signer_pub_key: PubKey,
     /// Signals if the signer is prepared to sign for this request.
     pub is_accepted: bool,
@@ -137,6 +138,7 @@ pub struct WithdrawSigner {
     #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub block_hash: StacksBlockHash,
     /// Public key of the signer.
+    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub signer_pub_key: PubKey,
     /// Signals if the signer is prepared to sign for this request.
     pub is_accepted: bool,

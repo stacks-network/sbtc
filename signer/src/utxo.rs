@@ -3,6 +3,8 @@
 use std::sync::OnceLock;
 
 use bitcoin::absolute::LockTime;
+use bitcoin::address::NetworkUnchecked;
+use bitcoin::hashes::Hash;
 use bitcoin::key::Secp256k1;
 use bitcoin::secp256k1::SECP256K1;
 use bitcoin::sighash::Prevouts;
@@ -32,6 +34,7 @@ use secp256k1::Message;
 use crate::error::Error;
 use crate::packaging::compute_optimal_packages;
 use crate::packaging::Weighted;
+use crate::storage::model;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
 /// transactions.
@@ -359,6 +362,54 @@ impl DepositRequest {
     }
 }
 
+impl TryFrom<model::DepositRequest> for DepositRequest {
+    type Error = Error;
+
+    fn try_from(request: model::DepositRequest) -> Result<Self, Self::Error> {
+        let txid = bitcoin::Txid::from_byte_array(
+            request.txid.try_into().map_err(|_| Error::TypeConversion)?,
+        );
+
+        let vout = request
+            .output_index
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
+
+        let outpoint = OutPoint { txid, vout };
+
+        let max_fee = request
+            .max_fee
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
+
+        let signer_bitmap = Vec::new(); // TODO(326): Populate
+
+        let amount = request
+            .amount
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
+
+        let deposit_script = bitcoin::consensus::deserialize(&request.spend_script)
+            .map_err(Error::BitcoinSerialization)?;
+
+        let redeem_script = bitcoin::consensus::deserialize(&request.reclaim_script)
+            .map_err(Error::BitcoinSerialization)?;
+
+        let signers_public_key =
+            XOnlyPublicKey::from_slice(&[0; 32]).map_err(|_| Error::TypeConversion)?;
+
+        Ok(Self {
+            outpoint,
+            max_fee,
+            signer_bitmap,
+            amount,
+            deposit_script,
+            redeem_script,
+            signers_public_key,
+        })
+    }
+}
+
 /// An accepted or pending withdraw request.
 #[derive(Debug, Clone)]
 pub struct WithdrawalRequest {
@@ -384,6 +435,34 @@ impl WithdrawalRequest {
             value: Amount::from_sat(self.amount),
             script_pubkey: self.address.script_pubkey(),
         }
+    }
+}
+
+impl TryFrom<model::WithdrawRequest> for WithdrawalRequest {
+    type Error = Error;
+
+    fn try_from(request: model::WithdrawRequest) -> Result<Self, Self::Error> {
+        let amount = request
+            .amount
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
+        let max_fee = request
+            .max_fee
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
+        let address: Address<NetworkUnchecked> = request
+            .sender_address
+            .parse()
+            .map_err(Error::ParseAddress)?;
+        let address = address.assume_checked(); // We do not validate the request address here
+        let signer_bitmap = Vec::new(); // TODO(326): Populate
+
+        Ok(Self {
+            amount,
+            max_fee,
+            address,
+            signer_bitmap,
+        })
     }
 }
 
