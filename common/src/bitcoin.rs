@@ -1,14 +1,14 @@
 //! This is the transaction analysis module
 //!
 
-use bitcoin::address::Address;
-use bitcoin::taproot::TapTree;
-use bitcoin::Script;
-use bitcoin::XOnlyPublicKey;
+use bitcoin::Address;
+use bitcoin::Network;
+use bitcoin::ScriptBuf;
+use secp256k1::PublicKey;
 
 /// Error
 #[derive(Debug, thiserror::Error)]
-pub enum ValidationError {
+pub enum Error {
     /// The script tree contained more than the allowed elements
     #[error("")]
     BadScriptTree,
@@ -23,25 +23,26 @@ pub enum ValidationError {
     BadMerkleRoot,
 }
 
-/// This struct contains the key variable inputs when constructing a deposit address.
+/// This struct contains the key variable inputs when constructing a
+/// deposit address.
+#[derive(Debug, Clone)]
 pub struct DepositInputs {
     /// The last known public key of the signers.
-    pub signer_key: XOnlyPublicKey,
-    /// The stacks address to deposit the sBTC to.
-    pub stacks_address: [u8; 21],
+    pub signer_key: PublicKey,
+    /// The stacks address to deposit the sBTC to. This can be either a
+    /// standard address (which is 21 bytes), or a contract address (which
+    /// is between 22 and 150 bytes)
+    pub stacks_address: Vec<u8>,
     /// The reclaim script.
-    pub reclaim_script: Script,
+    pub reclaim_script: ScriptBuf,
+    /// The max fee amount to use for the BTC deposit transaction.
+    pub max_fee: u64,
 }
 
-/// Check the passed script tree against the deposit and peg wallet addresses
-///
-///   return Ok(()) if the leaves are valid and hash to the UTxO address
-///   return Err(ValidationError) if the leaves are bad or don’t hash to addr
-pub fn validate(
-    _script_tree: TapTree,
-    _deposit_address: Address,
-    _peg_wallet_address: Address,
-    _min_reclaim_blocks: u32,
-) -> Result<(), ValidationError> {
-    Ok(())
+impl DepositInputs {
+    /// Construct a bitcoin address for a deposit transaction on the given
+    /// network.
+    pub fn to_address(&self, _network: Network) -> Result<Address, Error> {
+        unimplemented!()
+    }
 }

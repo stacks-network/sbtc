@@ -11,3 +11,7 @@ thiserror.workspace = true
 tracing.workspace = true
 tracing-attributes.workspace = true
 tracing-subscriber.workspace = true
+
+[dependencies.secp256k1]
+version = "*"
+features = ["rand-std", "global-context"]
