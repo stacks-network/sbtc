@@ -5,6 +5,18 @@
 //!
 //! For more details, see the [`TxCoordinatorEventLoop`] documentation.
 
+use std::collections::BTreeSet;
+
+use sha2::Digest;
+
+use crate::bitcoin::BitcoinInteract;
+use crate::error;
+use crate::network;
+use crate::storage;
+use crate::storage::model;
+use crate::utxo;
+use crate::wsts_state_machine;
+
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// # Transaction coordinator event loop
 ///
@@ -73,4 +85,193 @@
 ///     CMS --> BST
 ///     BST --> DONE
 /// ```
-pub struct TxCoordinatorEventLoop;
+#[derive(Debug)]
+pub struct TxCoordinatorEventLoop<Network, Storage, BitcoinClient> {
+    /// Interface to the signer network.
+    pub network: Network,
+    /// Database connection.
+    pub storage: Storage,
+    /// Bitcoin client
+    pub bitcoin_client: BitcoinClient,
+    /// Notification receiver from the block observer.
+    pub block_observer_notifications: tokio::sync::watch::Receiver<()>,
+    /// Public keys of the other signers
+    // TODO(317): Read from storage when needed
+    pub signer_public_keys: BTreeSet<p256k1::ecdsa::PublicKey>,
+    /// Private key of the coordinator for network communication.
+    pub private_key: p256k1::scalar::Scalar,
+    /// The threshold for the signer
+    pub threshold: u32,
+    /// How many bitcoin blocks back from the chain tip the signer will look for requests.
+    pub context_window: usize,
+}
+
+impl<N, S, B> TxCoordinatorEventLoop<N, S, B>
+where
+    N: network::MessageTransfer,
+    S: storage::DbRead + storage::DbWrite,
+    B: BitcoinInteract,
+    error::Error: From<N::Error>,
+    error::Error: From<<S as storage::DbRead>::Error>,
+    error::Error: From<<S as storage::DbWrite>::Error>,
+    error::Error: From<B::Error>,
+{
+    /// Run the coordinator event loop
+    #[tracing::instrument(skip(self))]
+    pub async fn run(mut self) -> Result<(), error::Error> {
+        loop {
+            match self.block_observer_notifications.changed().await {
+                Ok(()) => self.process_new_blocks().await?,
+                Err(_) => {
+                    tracing::info!("block observer notification channel closed");
+                    break;
+                }
+            }
+        }
+        tracing::info!("shutting down transaction coordinator event loop");
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn process_new_blocks(&mut self) -> Result<(), error::Error> {
+        let bitcoin_chain_tip = self
+            .storage
+            .get_bitcoin_canonical_chain_tip()
+            .await?
+            .ok_or(error::Error::NoChainTip)?;
+
+        if self.is_coordinator(&bitcoin_chain_tip)? {
+            self.construct_and_sign_bitcoin_sbtc_transactions(&bitcoin_chain_tip)
+                .await?;
+
+            self.construct_and_sign_stacks_sbtc_response_transactions(&bitcoin_chain_tip)
+                .await?;
+        }
+
+        Ok(())
+    }
+
+    /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
+    /// fulfilling pending deposit and withdraw requests.
+    #[tracing::instrument(skip(self))]
+    async fn construct_and_sign_bitcoin_sbtc_transactions(
+        &mut self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<(), error::Error> {
+        let fee_rate = self.bitcoin_client.estimate_fee_rate().await?;
+
+        let aggregate_key = self.get_aggregate_key(bitcoin_chain_tip).await?;
+
+        let signer_btc_state = self.get_btc_state(fee_rate, &aggregate_key).await?;
+
+        let pending_requests = self.get_pending_requests(signer_btc_state).await?;
+
+        let transaction_package = pending_requests.construct_transactions()?;
+
+        for transaction in transaction_package {
+            self.sign_and_broadcast(aggregate_key, transaction).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Construct and coordinate signing rounds for
+    /// `deposit-accept`, `withdraw-accept` and `withdraw-reject` transactions.
+    #[tracing::instrument(skip(self))]
+    async fn construct_and_sign_stacks_sbtc_response_transactions(
+        &mut self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<(), error::Error> {
+        // TODO(320): Implement
+        todo!();
+    }
+
+    /// Coordinate a signing round for the given request
+    /// and broadcast it once it's signed.
+    #[tracing::instrument(skip(self))]
+    async fn sign_and_broadcast(
+        &mut self,
+        aggregate_key: p256k1::point::Point,
+        transaction: utxo::UnsignedTransaction<'_>,
+    ) -> Result<(), error::Error> {
+        let _coordinator_state_machine = wsts_state_machine::CoordinatorStateMachine::load(
+            &mut self.storage,
+            aggregate_key,
+            self.signer_public_keys.clone(),
+            self.threshold,
+            self.private_key,
+        )
+        .await?;
+        // TODO(319): Coordinate signing round and broadcast result
+        todo!();
+    }
+
+    // Determine if the current coordinator is the coordinator
+    //
+    // The coordinator is decided using the hash of the bitcoin
+    // chain tip. We don't use the chain tip directly because
+    // it typically starts with a lot of leading zeros.
+    //
+    // Note that this function is technically not fallible,
+    // but for now we have chosen to return phantom errors
+    // instead of adding expects/unwraps in the code.
+    // Ideally the code should be formulated in a way to guarantee
+    // it being infallible without relying on sequentially coupling
+    // expressions. However, that is left for future work.
+    fn is_coordinator(
+        &self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<bool, error::Error> {
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(bitcoin_chain_tip);
+        let digest = hasher.finalize();
+        let index =
+            usize::from_be_bytes(*digest.first_chunk().ok_or(error::Error::TypeConversion)?);
+
+        let pub_key = self.pub_key()?;
+
+        Ok(self
+            .signer_public_keys
+            .iter()
+            .nth(index % self.signer_public_keys.len())
+            .map(|coordinator_pub_key| coordinator_pub_key == &pub_key)
+            .unwrap_or(false))
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn get_aggregate_key(
+        &mut self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<p256k1::point::Point, error::Error> {
+        // TODO(317): Get the relevant aggregate key for the current signer set
+        todo!();
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn get_btc_state(
+        &mut self,
+        fee_rate: f64,
+        aggregate_key: &p256k1::point::Point,
+    ) -> Result<utxo::SignerBtcState, error::Error> {
+        // TODO(319): Assemble the relevant information for the btc state
+        todo!();
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn get_pending_requests(
+        &mut self,
+        signer_btc_state: utxo::SignerBtcState,
+    ) -> Result<utxo::SbtcRequests, error::Error> {
+        // TODO(318): Fetch pending deposit and withdraw requests
+        // with enough votes and connect them into the right format
+        todo!();
+    }
+
+    // Return the public key of self.
+    //
+    // Technically not a fallible operation.
+    fn pub_key(&self) -> Result<p256k1::ecdsa::PublicKey, error::Error> {
+        Ok(p256k1::ecdsa::PublicKey::new(&self.private_key)?)
+    }
+}

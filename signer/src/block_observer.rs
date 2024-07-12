@@ -19,6 +19,7 @@
 
 use std::collections::HashMap;
 
+use crate::bitcoin::BitcoinInteract;
 use crate::error;
 use crate::stacks::api::StacksInteract;
 use crate::storage;
@@ -60,6 +61,7 @@ where
     BHS: futures::stream::Stream<Item = bitcoin::BlockHash> + Unpin,
     error::Error: From<<S as DbRead>::Error>,
     error::Error: From<<S as DbWrite>::Error>,
+    error::Error: From<BC::Error>,
 {
     /// Run the block observer
     #[tracing::instrument(skip(self))]
@@ -118,7 +120,7 @@ where
             let block = self
                 .bitcoin_client
                 .get_block(&block_hash)
-                .await
+                .await?
                 .ok_or(error::Error::MissingBlock)?;
 
             block_hash = block.header.prev_blockhash;
@@ -206,15 +208,6 @@ where
 }
 
 // Placehoder traits. To be replaced with the actual traits once implemented.
-
-/// Placeholder trait
-pub trait BitcoinInteract {
-    /// Get block
-    fn get_block(
-        &mut self,
-        block_hash: &bitcoin::BlockHash,
-    ) -> impl std::future::Future<Output = Option<bitcoin::Block>>;
-}
 
 /// Placeholder trait
 pub trait EmilyInteract {
@@ -357,11 +350,20 @@ mod tests {
     }
 
     impl BitcoinInteract for TestHarness {
-        async fn get_block(&mut self, block_hash: &bitcoin::BlockHash) -> Option<bitcoin::Block> {
-            self.bitcoin_blocks
+        type Error = error::Error;
+        async fn get_block(
+            &mut self,
+            block_hash: &bitcoin::BlockHash,
+        ) -> Result<Option<bitcoin::Block>, Self::Error> {
+            Ok(self
+                .bitcoin_blocks
                 .iter()
                 .find(|block| &block.block_hash() == block_hash)
-                .cloned()
+                .cloned())
+        }
+
+        async fn estimate_fee_rate(&mut self) -> Result<f64, Self::Error> {
+            unimplemented!()
         }
     }
 

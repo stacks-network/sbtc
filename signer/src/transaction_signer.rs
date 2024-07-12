@@ -15,9 +15,9 @@ use crate::network;
 use crate::storage;
 use crate::storage::model;
 
-use crate::codec::Decode as _;
 use crate::codec::Encode as _;
 use crate::ecdsa::SignEcdsa as _;
+use crate::wsts_state_machine;
 
 use bitcoin::hashes::Hash;
 use futures::StreamExt;
@@ -101,8 +101,9 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
     ///
     /// - For DKG rounds, TxID should be the ID of the transaction that
     ///   defined the signer set.
-    pub wsts_state_machines: HashMap<bitcoin::Txid, SignerStateMachine>,
+    pub wsts_state_machines: HashMap<bitcoin::Txid, wsts_state_machine::SignerStateMachine>,
     /// Public keys of the other signers
+    // TODO(317): Read from storage when needed
     pub signer_public_keys: BTreeSet<p256k1::ecdsa::PublicKey>,
     /// The threshold for the signer
     pub threshold: u32,
@@ -114,8 +115,6 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
     /// Optional channel to communicate progress usable for testing
     pub test_observer_tx: Option<tokio::sync::mpsc::Sender<TxSignerEvent>>,
 }
-
-type SignerStateMachine = wsts::state_machine::signer::Signer<wsts::v2::Party>;
 
 /// Event useful for tests
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -182,7 +181,7 @@ where
             .storage
             .get_bitcoin_canonical_chain_tip()
             .await?
-            .ok_or(Error::NoChainTip)?;
+            .ok_or(error::Error::NoChainTip)?;
 
         for deposit_request in self
             .get_pending_deposit_requests(&bitcoin_chain_tip)
@@ -257,11 +256,17 @@ where
             .await?;
 
         if is_valid_sign_request {
-            let new_state_machine = self
-                .creat_state_machine_with_loaded_state(&request.aggregate_key)
-                .await?;
+            let new_state_machine = wsts_state_machine::SignerStateMachine::load(
+                &mut self.storage,
+                request.aggregate_key,
+                self.signer_public_keys.clone(),
+                self.threshold,
+                self.signer_private_key,
+            )
+            .await?;
 
             let txid = request.tx.compute_txid();
+
             self.wsts_state_machines.insert(txid, new_state_machine);
 
             let msg = message::BitcoinTransactionSignAck {
@@ -306,7 +311,11 @@ where
         tracing::info!("handling message");
         match &msg.inner {
             wsts::net::Message::DkgBegin(_) => {
-                let state_machine = self.create_new_state_machine()?;
+                let state_machine = wsts_state_machine::SignerStateMachine::new(
+                    self.signer_public_keys.clone(),
+                    self.threshold,
+                    self.signer_private_key,
+                )?;
                 self.wsts_state_machines.insert(msg.txid, state_machine);
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
@@ -555,98 +564,6 @@ where
         Ok(())
     }
 
-    fn create_new_state_machine(&self) -> Result<SignerStateMachine, error::Error> {
-        let signers: hashbrown::HashMap<u32, _> = self
-            .signer_public_keys
-            .iter()
-            .cloned()
-            .enumerate()
-            .map(|(id, key)| {
-                id.try_into()
-                    .map(|id| (id, key))
-                    .map_err(|_| error::Error::TypeConversion)
-            })
-            .collect::<Result<_, _>>()?;
-        let key_ids = signers
-            .clone()
-            .into_iter()
-            .map(|(id, key)| (id + 1, key))
-            .collect();
-
-        let public_keys = wsts::state_machine::PublicKeys { signers, key_ids };
-
-        let threshold = self.threshold;
-        let num_parties = self
-            .signer_public_keys
-            .len()
-            .try_into()
-            .map_err(|_| error::Error::TypeConversion)?;
-        let num_keys = num_parties;
-
-        let signer_pub_key = self.signer_pub_key()?;
-
-        let id: u32 = self
-            .signer_public_keys
-            .iter()
-            .enumerate()
-            .find(|(_, key)| *key == &signer_pub_key)
-            .ok_or_else(|| error::Error::MissingPublicKey)?
-            .0
-            .try_into()
-            .map_err(|_| error::Error::TypeConversion)?;
-
-        let key_ids = vec![id + 1];
-
-        if threshold > num_keys {
-            return Err(error::Error::InvalidConfiguration);
-        };
-
-        let state_machine = SignerStateMachine::new(
-            threshold,
-            num_parties,
-            num_keys,
-            id,
-            key_ids,
-            self.signer_private_key,
-            public_keys,
-        );
-
-        Ok(state_machine)
-    }
-
-    /// Load the saved DKG shares for the given aggregate key
-    /// and instantiates a new WSTS state machine with the loaded shares.
-    async fn creat_state_machine_with_loaded_state(
-        &mut self,
-        aggregate_key: &p256k1::point::Point,
-    ) -> Result<SignerStateMachine, error::Error> {
-        let encrypted_shares = self
-            .storage
-            .get_encrypted_dkg_shares(&aggregate_key.x().to_bytes().to_vec())
-            .await?
-            .ok_or(error::Error::MissingDkgShares)?;
-
-        let decrypted = wsts::util::decrypt(
-            &self.signer_private_key.to_bytes(),
-            &encrypted_shares.encrypted_shares,
-        )
-        .map_err(|_| error::Error::Encryption)?;
-
-        let saved_state =
-            wsts::traits::SignerState::decode(decrypted.as_slice()).map_err(error::Error::Codec)?;
-
-        // This may panic if the saved state doesn't contain exactly one party,
-        // however, that should never be the case since wsts maintains this invariant
-        // when we save the state.
-        let signer = wsts::v2::Party::load(&saved_state);
-
-        let mut state_machine = self.create_new_state_machine()?;
-
-        state_machine.signer = signer;
-
-        Ok(state_machine)
-    }
-
     #[tracing::instrument(skip(self))]
     async fn store_dkg_shares(&mut self, txid: &bitcoin::Txid) -> Result<(), error::Error> {
         let state_machine = self
@@ -709,14 +626,6 @@ where
     fn signer_pub_key(&self) -> Result<p256k1::ecdsa::PublicKey, error::Error> {
         Ok(p256k1::ecdsa::PublicKey::new(&self.signer_private_key)?)
     }
-}
-
-/// Errors occurring in the transaction signer loop.
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    /// No chain tip found.
-    #[error("no bitcoin chain tip")]
-    NoChainTip,
 }
 
 #[cfg(test)]
