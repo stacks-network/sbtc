@@ -3,8 +3,11 @@
 //! # SBTC Common Library
 //!
 //! This library provides common functionality for the sBTC project, including logging setup
+use std::sync::OnceLock;
 
-pub mod bitcoin;
+use bitcoin::XOnlyPublicKey;
+
+pub mod deposits;
 pub mod logging;
 
 /// The x-coordinate public key with no known discrete logarithm.
@@ -29,3 +32,17 @@ pub const NUMS_X_COORDINATE: [u8; 32] = [
 /// The number of bitcoin blocks that must elapse from when the deposit
 /// transaction is confirmed before it can be reclaimed by the depositor.
 pub const LOCK_TIME: u32 = 150;
+
+/// Returns an address with no known private key, since it has no known
+/// discrete logarithm.
+///
+/// # Notes
+///
+/// This function returns the public key to used in the key-spend path of
+/// the taproot address. Since we do not want a key-spend path for sBTC
+/// deposit transactions, this address is such that it does not have a
+/// known private key.
+pub fn unspendable_taproot_key() -> &'static XOnlyPublicKey {
+    static UNSPENDABLE_KEY: OnceLock<XOnlyPublicKey> = OnceLock::new();
+    UNSPENDABLE_KEY.get_or_init(|| XOnlyPublicKey::from_slice(&NUMS_X_COORDINATE).unwrap())
+}

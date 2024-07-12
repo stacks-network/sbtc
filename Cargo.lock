@@ -3699,7 +3699,7 @@ name = "sbtc-common"
 version = "0.1.0"
 dependencies = [
  "bitcoin 0.32.0",
- "secp256k1 0.24.3",
+ "secp256k1 0.29.0",
  "thiserror",
  "tracing",
  "tracing-attributes",
@@ -3743,7 +3743,6 @@ version = "0.24.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b1629c9c557ef9b293568b338dddfc8208c98a18c59d722a9d53f859d9c9b62"
 dependencies = [
- "rand 0.8.5",
  "secp256k1-sys 0.6.1",
  "serde 1.0.203",
 ]
