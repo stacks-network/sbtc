@@ -20,7 +20,7 @@ struct TestDepositTransactionData {
     pub number_of_outputs: u32,
 }
 
-/// Statically configured settings for the signer
+/// Test data for deposits.
 static TEST_DEPOSIT_DATA: Lazy<Vec<TestDepositTransactionData>> =
     Lazy::new(|| vec![
         TestDepositTransactionData {

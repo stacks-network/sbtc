@@ -95,11 +95,11 @@ endif
 # ------------------------------------------------------------------------------
 
 emily-integration-env-up: devenv $(EMILY_LAMBDA_BINARY) $(EMILY_CDK_TEMPLATE) $(EMILY_DOCKER_COMPOSE)
-	CONTAINER_HOST=$(_CONTAINER_HOST) docker compose --file $(EMILY_DOCKER_COMPOSE) up --detach --remove-orphans
+	rm -rf devenv/dynamodb/data/shared-local-instance.db
+	CONTAINER_HOST=$(_CONTAINER_HOST) docker compose --file $(EMILY_DOCKER_COMPOSE) up --remove-orphans # --detach
 
 emily-integration-test:
 	@echo "Clearing database and starting integration tests for Emily"
-	rm -rf devenv/dynamodb/data/shared-local-instance.db
 	cargo test --package emily-handler --test integration --all-features -- --test-threads=1 --nocapture
 
 emily-integration-env-down:
@@ -108,7 +108,6 @@ emily-integration-env-down:
 emily-integration-test-full: emily-integration-env-up emily-integration-test emily-integration-env-down
 
 .PHONY: emily-integration-env-up emily-integration-test emily-integration-env-up emily-integration-test-full
-
 
 # Builds all dockerfiles that need to be built for the dev environment.
 devenv: $(wildcard $(subst dir, devenv, $(TWO_DIRS_DEEP)))
