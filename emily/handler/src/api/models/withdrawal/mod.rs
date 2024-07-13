@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use utoipa::{ToResponse, ToSchema};
 
-use crate::api::{handlers::withdrawal, models::common::*};
+use crate::api::models::common::*;
 
 /// Requests.
 pub mod requests;

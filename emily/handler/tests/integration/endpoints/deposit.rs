@@ -6,6 +6,7 @@ use serde_json::json;
 use serial_test::serial;
 use tokio;
 use super::EMILY_ENDPOINT;
+use crate::endpoints::util;
 
 use emily_handler::api::models::deposit::responses::{CreateDepositResponse, GetDepositResponse};
 
@@ -77,6 +78,9 @@ fn just_created_deposit(
     }
 }
 
+/// Create all the deposits one at a time that are required for the rest of the
+/// tests. Note that this test suite assumes the database is empty when the integration
+/// tests start and this test should populate the table in its entirety.
 #[tokio::test]
 #[serial]
 async fn create_deposits() {
@@ -109,10 +113,12 @@ async fn create_deposits() {
             bitcoin_tx_output_index,
         );
 
-        assert_eq!(actual, expected);
+        util::assert_eq_pretty(actual, expected);
     };
 }
 
+/// Get every deposit from the previous test one at a time.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 #[serial]
 async fn get_deposit() {
@@ -139,10 +145,12 @@ async fn get_deposit() {
             bitcoin_tx_output_index,
         );
 
-        assert_eq!(actual, expected);
+        util::assert_eq_pretty(actual, expected);
     }
 }
 
+/// Get all deposits for each transaction using a page size large enough to get all entries.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 #[serial]
 async fn get_deposits_for_transaction() {
@@ -176,6 +184,9 @@ async fn get_deposits_for_transaction() {
 
 }
 
+/// Get deposits for transaction using a small page size that will require multiple calls
+/// to the paginated endpoint to get all the deposits.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 #[serial]
 async fn get_deposits_for_transaction_with_small_page_size() {
@@ -235,6 +246,10 @@ async fn get_deposits_for_transaction_with_small_page_size() {
     }
 }
 
+/// Get pending deposits by searching for all deposits that have a `pending` status
+/// and using a small enough page size that will require multiple calls to the paginated
+/// endpoing to get all the pending deposits present.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 #[serial]
 async fn get_pending_deposits() {

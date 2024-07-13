@@ -62,6 +62,7 @@ fn just_created_withdrawal(
 /// Make a bunch of withdrawals that will be used by the rest of the following tests.
 /// This test suite, and the rest of the tests, assume that the database is empty
 /// when this test suite starts up.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 #[serial]
 async fn create_withdrawals() {
@@ -108,6 +109,7 @@ async fn create_withdrawals() {
 }
 
 /// Get every withdrawal from the previous test one at a time.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 #[serial]
 async fn get_withdrawal() {
@@ -139,7 +141,7 @@ async fn get_withdrawal() {
             stacks_block_hash,
         );
 
-        assert_eq!(actual, expected);
+        util::assert_eq_pretty(actual, expected);
     }
 }
 
@@ -147,6 +149,7 @@ async fn get_withdrawal() {
 /// for all `pending` withdrawals. This test uses a small page size so that the
 /// "nextToken" and repeated queries are required to get all the withdrawals in
 /// the table.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 #[serial]
 async fn get_withdrawals() {

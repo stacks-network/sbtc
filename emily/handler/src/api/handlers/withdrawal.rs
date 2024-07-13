@@ -2,7 +2,7 @@
 use warp::reply::{json, with_status, Reply};
 
 use warp::http::StatusCode;
-use crate::api::models::common::{BlockHeight, StacksBlockHash, Status};
+use crate::api::models::common::{BlockHeight, Status};
 use crate::api::models::withdrawal::{Withdrawal, WithdrawalInfo};
 use crate::api::models::withdrawal::{
     WithdrawalId,
