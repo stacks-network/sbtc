@@ -27,15 +27,15 @@ use stacks_common::types::chainstate::STACKS_ADDRESS_ENCODED_SIZE;
 /// 21 bytes, since data is prefixed with the size of the data in bitcoin
 /// script. Thus its 5 bytes for the opcodes, 1 byte for the length of the
 /// public key hash data and 20 bytes for the actual public key hash.
-const DEPOSI_SCRIPT_FIXED_LENGTH: usize = 26;
+const DEPOSIT_SCRIPT_FIXED_LENGTH: usize = 26;
 
 /// This is the typical number of bytes of a deposit script. It's 1 byte
 /// for the length of the following 29 bytes of data, which is 8 bytes for
 /// the max fee followed by 21 bytes for a standard stacks address,
 /// followed by 26 bytes for the fixed length portion of the deposit
 /// script. So we have the standard length is 1 + 8 + 21 + 26 = 56.
-const STANDARD_SCRIPT_LENGTH: usize = 1 + 8 +
-    STACKS_ADDRESS_ENCODED_SIZE as usize + DEPOSI_SCRIPT_FIXED_LENGTH;
+const STANDARD_SCRIPT_LENGTH: usize =
+    1 + 8 + STACKS_ADDRESS_ENCODED_SIZE as usize + DEPOSIT_SCRIPT_FIXED_LENGTH;
 
 /// Error
 #[derive(Debug, thiserror::Error)]
@@ -76,15 +76,17 @@ pub struct DepositInputs {
 /// This struct contains the key variable inputs when constructing a
 /// deposit address.
 #[derive(Debug, Clone)]
-pub struct DepositExtracts {
+pub struct DepositScript {
     /// The last known public key of the signers.
     pub signers_pubkey_hash: PubkeyHash,
     /// The stacks address to deposit the sBTC to. This can be either a
     /// standard address (which is 21 bytes), or a contract address (which
     /// is between 23 and 150 bytes)
     pub stacks_address: StacksAddress,
+    /// The name of the contract if this is a contract address.
+    pub contract_name: Option<String>,
     /// The reclaim script.
-    pub reclaim_script: ScriptBuf,
+    // pub reclaim_script: ScriptBuf,
     ///
     pub deposit_script: ScriptBuf,
     /// The max fee amount to use for the BTC deposit transaction.
@@ -146,23 +148,69 @@ impl DepositInputs {
 }
 
 ///
-pub fn extract(deposit: ScriptBuf, reclaim: ScriptBuf) -> Result<DepositExtracts, Error> {
-    let script_bytes = deposit.as_bytes();
-    match script_bytes.len() {
-        STANDARD_SCRIPT_LENGTH => {
-            let max_fee = u64::from_be_bytes(*script_bytes[1..9].first_chunk().unwrap());
-            let address_version: u8 = script_bytes[9];
-            let address_hash160: [u8; 20] = *script_bytes[10..30].first_chunk().unwrap();
-            let pubkey_hash_bytes: [u8; 20] = *script_bytes[34..54].first_chunk().unwrap();
+pub const DROP: u8 = opcodes::all::OP_DROP.to_u8();
+///
+pub const DUP: u8 = opcodes::all::OP_DUP.to_u8();
+///
+pub const HASH160: u8 = opcodes::all::OP_HASH160.to_u8();
+///
+pub const EQUALVERIFY: u8 = opcodes::all::OP_EQUALVERIFY.to_u8();
+///
+pub const CHECKSIG: u8 = opcodes::all::OP_CHECKSIG.to_u8();
 
-            Ok(DepositExtracts {
-                signers_pubkey_hash: PubkeyHash::from_byte_array(pubkey_hash_bytes),
-                stacks_address: StacksAddress::new(address_version, address_hash160.into()),
+/// This function checks that the deposit script is valid. Specifically, it
+/// checks that it follows the format laid out in (TODO).
+pub fn extract(deposit: ScriptBuf) -> Result<DepositScript, Error> {
+    let script_bytes = deposit.as_bytes();
+
+    // Valid deposit scripts cannot be less than this length.
+    if script_bytes.len() < STANDARD_SCRIPT_LENGTH {
+        return Err(Error::BadReclaimScript);
+    }
+    match script_bytes.split_at(script_bytes.len() - DEPOSIT_SCRIPT_FIXED_LENGTH) {
+        // This case is for when we are dealing with a standard address.
+        // Standard addresses are encoded as a 1-byte version number, a
+        // 20-byte Hash160.
+        //
+        // We always know the second slice has length
+        // DEPOSIT_SCRIPT_FIXED_LENGTH, so we know the pubkey_hash variable
+        // has length 20. We also know that params has length 29 because of
+        // the check.
+        ([29, params @ ..], [DROP, DUP, HASH160, 20, pubkey_hash @ .., EQUALVERIFY, CHECKSIG])
+            if params.len() == 29 =>
+        {
+            // The params variable has a length of 29, so we can safely get
+            // the first 8 bytes without issue.
+            let max_fee = u64::from_be_bytes(params.first_chunk().copied().unwrap());
+            // This cannot panic, params contains 29 bytes.
+            let address_version: u8 = params[8];
+            // This cannot panic, params contains 29 bytes.
+            let address_hash160: [u8; 20] = *params.last_chunk().unwrap();
+
+            Ok(DepositScript {
+                // This cannot panic, pubkey_hash must have a size of 20 bytes.
+                signers_pubkey_hash: PubkeyHash::from_slice(pubkey_hash).unwrap(),
                 deposit_script: deposit,
+                stacks_address: StacksAddress::new(address_version, address_hash160.into()),
+                contract_name: None,
                 max_fee,
-                reclaim_script: reclaim,
             })
         }
+        // This case is for when we are dealing with a contract address.
+        // Contract addresses are encoded as a 1-byte version number, a
+        // 20-byte Hash160, a 1-byte name length up to 128, and a
+        // variable-length name in UTF-8 of up to 128 characters. This
+        // string must be accepted by the regex
+        // ^[a-zA-Z]([a-zA-Z0-9]|[-_])*$.
+        // 
+        // Like in the above case, we always know the second slice has
+        // length DEPOSIT_SCRIPT_FIXED_LENGTH, so we know the pubkey_hash
+        // variable has length 20. We also know that params has length 29
+        // because of the check.
+        ([n, params @ ..], [DROP, DUP, HASH160, 20, pubkeykash @ .., EQUALVERIFY, CHECKSIG])
+            if params.len() > 30 => {
+                unimplemented!()
+            }
         _ => unimplemented!(),
     }
 }
