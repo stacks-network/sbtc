@@ -175,17 +175,21 @@ pub fn extract(deposit: ScriptBuf) -> Result<DepositScript, Error> {
         // We always know the second slice has length
         // DEPOSIT_SCRIPT_FIXED_LENGTH, so we know the pubkey_hash variable
         // has length 20. We also know that params has length 29 because of
-        // the check.
+        // the check. In bitcoin script, bytes `20` and `29` correspond to
+        // the OP_PUSHBYTES_20 and OP_PUSHBYTES_29 opcodes respectively.
         ([29, params @ ..], [DROP, DUP, HASH160, 20, pubkey_hash @ .., EQUALVERIFY, CHECKSIG])
             if params.len() == 29 =>
         {
-            // The params variable has a length of 29, so we can safely get
-            // the first 8 bytes without issue.
-            let max_fee = u64::from_be_bytes(params.first_chunk().copied().unwrap());
+            // The `slice::first_chunk` and `slice::last_chunk` functions
+            // return Option<&[u8; N]>, and None is returend if the length
+            // of the slice is less than N. Here N is 8 and the params
+            // variable has a length of 29, so we can safely get the first
+            // 8 bytes without issue.
+            let max_fee = u64::from_be_bytes(*params.first_chunk::<8>().unwrap());
             // This cannot panic, params contains 29 bytes.
             let address_version: u8 = params[8];
             // This cannot panic, params contains 29 bytes.
-            let address_hash160: [u8; 20] = *params.last_chunk().unwrap();
+            let address_hash160: [u8; 20] = *params.last_chunk::<20>().unwrap();
 
             Ok(DepositScript {
                 // This cannot panic, pubkey_hash must have a size of 20 bytes.
@@ -202,15 +206,16 @@ pub fn extract(deposit: ScriptBuf) -> Result<DepositScript, Error> {
         // variable-length name in UTF-8 of up to 128 characters. This
         // string must be accepted by the regex
         // ^[a-zA-Z]([a-zA-Z0-9]|[-_])*$.
-        // 
+        //
         // Like in the above case, we always know the second slice has
         // length DEPOSIT_SCRIPT_FIXED_LENGTH, so we know the pubkey_hash
         // variable has length 20. We also know that params has length 29
         // because of the check.
         ([n, params @ ..], [DROP, DUP, HASH160, 20, pubkeykash @ .., EQUALVERIFY, CHECKSIG])
-            if params.len() > 30 => {
-                unimplemented!()
-            }
+            if 30 < params.len() && params.len() < 76 =>
+        {
+            unimplemented!()
+        }
         _ => unimplemented!(),
     }
 }
@@ -219,6 +224,7 @@ pub fn extract(deposit: ScriptBuf) -> Result<DepositScript, Error> {
 mod tests {
     use rand::rngs::OsRng;
     use secp256k1::SecretKey;
+    use stacks_common::codec::StacksMessageCodec;
 
     use super::*;
 
@@ -226,7 +232,15 @@ mod tests {
     fn test() {
         let secret_key = SecretKey::new(&mut OsRng);
         let public_key = secret_key.x_only_public_key(SECP256K1).0;
+
+        let mut deposit_data = 15000u64.to_be_bytes().to_vec();
+        let address = StacksAddress::burn_address(false);
+        deposit_data.extend_from_slice(&address.serialize_to_vec());
+
+        let deposit_data: [u8; 29] = deposit_data.try_into().unwrap();
+
         let script = ScriptBuf::builder()
+            .push_slice(deposit_data)
             .push_opcode(opcodes::all::OP_DROP)
             .push_opcode(opcodes::all::OP_DUP)
             .push_opcode(opcodes::all::OP_HASH160)
@@ -236,5 +250,6 @@ mod tests {
             .into_script();
 
         println!("{}", script.len());
+        let extracts = dbg!(extract(script).unwrap());
     }
 }
