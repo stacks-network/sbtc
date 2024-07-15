@@ -8,16 +8,13 @@ use bitcoin::taproot::LeafVersion;
 use bitcoin::taproot::NodeInfo;
 use bitcoin::taproot::TaprootSpendInfo;
 use bitcoin::Address;
-use bitcoin::KnownHrp;
 use bitcoin::Network;
 use bitcoin::PubkeyHash;
 use bitcoin::ScriptBuf;
 use bitcoin::XOnlyPublicKey;
 use clarity::codec::StacksMessageCodec;
 use clarity::vm::types::PrincipalData;
-use clarity::vm::ContractName;
 use secp256k1::SECP256K1;
-use stacks_common::types::chainstate::StacksAddress;
 use stacks_common::types::chainstate::STACKS_ADDRESS_ENCODED_SIZE;
 
 /// This is the length of the fixed portion of the deposit script, which
@@ -53,10 +50,6 @@ pub enum Error {
     /// Could not parse the Stacks principal address.
     #[error("")]
     ParseStacksAddress(#[source] stacks_common::codec::Error),
-    /// Error when trying to push too many bytes on the stack in a bitcoin
-    /// script.
-    #[error("")]
-    PushBytes(#[source] bitcoin::script::PushBytesError),
 }
 
 /// This struct contains the key variable inputs when constructing a
@@ -66,9 +59,8 @@ pub struct DepositInputs {
     /// The last known public key of the signers.
     pub signers_public_key: XOnlyPublicKey,
     /// The stacks address to deposit the sBTC to. This can be either a
-    /// standard address (which is 21 bytes), or a contract address (which
-    /// is between 23 and 150 bytes)
-    pub stacks_address: Vec<u8>,
+    /// standard address or a contract address.
+    pub stacks_address: PrincipalData,
     /// The reclaim script.
     pub reclaim_script: ScriptBuf,
     /// The max fee amount to use for the BTC deposit transaction.
@@ -82,11 +74,8 @@ pub struct DepositScript {
     /// The last known public key of the signers.
     pub signers_pubkey_hash: PubkeyHash,
     /// The stacks address to deposit the sBTC to. This can be either a
-    /// standard address (which is 21 bytes), or a contract address (which
-    /// is between 23 and 150 bytes)
-    pub stacks_address: StacksAddress,
-    /// The name of the contract if this is a contract address.
-    pub contract_name: Option<ContractName>,
+    /// standard address or a contract address.
+    pub stacks_address: PrincipalData,
     /// The raw deposit script
     pub deposit_script: ScriptBuf,
     /// The max fee amount to use for the BTC deposit transaction.
@@ -96,8 +85,8 @@ pub struct DepositScript {
 impl DepositInputs {
     /// Construct a bitcoin address for a deposit transaction on the given
     /// network.
-    pub fn to_address(&self, network: Network) -> Result<Address, Error> {
-        let deposit_script = self.deposit_script()?;
+    pub fn to_address(&self, network: Network) -> Address {
+        let deposit_script = self.deposit_script();
         let ver = LeafVersion::TapScript;
 
         // For such a simple tree, we construct it by hand.
@@ -114,20 +103,25 @@ impl DepositInputs {
 
         let merkle_root =
             TaprootSpendInfo::from_node_info(SECP256K1, *internal_key, node).merkle_root();
-        let hrp = KnownHrp::from(network);
-        Ok(Address::p2tr(SECP256K1, *internal_key, merkle_root, hrp))
+        Address::p2tr(SECP256K1, *internal_key, merkle_root, network)
     }
 
-    fn deposit_script(&self) -> Result<ScriptBuf, Error> {
-        // The format of the OP_DROP data is shown in
-        // https://github.com/stacks-network/sbtc/issues/30
-        let mut op_drop_data = PushBytesBuf::with_capacity(self.stacks_address.len() + 8);
+    /// Construct a deposit script from the inputs
+    pub fn deposit_script(&self) -> ScriptBuf {
+        // The format of the OP_DROP data, as shown in
+        // https://github.com/stacks-network/sbtc/issues/30, is 8 bytes for
+        // the max fee followed by up to 151 bytes for the stacks address.
+        let stacks_address_bytes = self.stacks_address.serialize_to_vec();
+        let mut op_drop_data = PushBytesBuf::with_capacity(stacks_address_bytes.len() + 8);
+        // These should never fail. The PushBytesBuf type only
+        // errors if the total length of the buffer is greater than
+        // u32::MAX. We're pushing a max of 159 bytes.
         op_drop_data
             .extend_from_slice(&self.max_fee.to_be_bytes())
-            .map_err(Error::PushBytes)?;
+            .expect("8 is greater than u32::MAX?");
         op_drop_data
-            .extend_from_slice(&self.stacks_address)
-            .map_err(Error::PushBytes)?;
+            .extend_from_slice(&stacks_address_bytes)
+            .expect("159 is greater than u32::MAX?");
 
         // When using the bitcoin::script::Builder, push_slice
         // automatically inserts the appropriate opcodes based on the data
@@ -135,7 +129,7 @@ impl DepositInputs {
         // used if the data length is between 76 and 255 bytes.
         // OP_PUSHDATA2 is used for slice lengths that require 2 bytes to
         // express, and so on.
-        Ok(ScriptBuf::builder()
+        ScriptBuf::builder()
             .push_slice(op_drop_data)
             .push_opcode(opcodes::all::OP_DROP)
             .push_opcode(opcodes::all::OP_DUP)
@@ -143,7 +137,7 @@ impl DepositInputs {
             .push_slice(PubkeyHash::hash(&self.signers_public_key.serialize()))
             .push_opcode(opcodes::all::OP_EQUALVERIFY)
             .push_opcode(opcodes::all::OP_CHECKSIG)
-            .into_script())
+            .into_script()
     }
 }
 
@@ -188,7 +182,7 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScript,
     // use the OP_PUSHDATA1 opcode (you can also use this opcode to push
     // between 1 and 75 bytes on the stack, but it's cheaper to use the
     // OP_PUSHBYTES_N opcodes when you can). When need to check all cases
-    // contract addresses can have a size of up to 150 bytes.
+    // contract addresses can have a size of up to 151 bytes.
     let data = match params {
         // This branch represents a contract address.
         [OP_PUSHDATA1, n, data @ ..] if data.len() == *n as usize && 30 < *n && *n < 159 => data,
@@ -204,12 +198,8 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScript,
     let Some((max_fee_bytes, mut address)) = data.split_first_chunk::<8>() else {
         return Err(Error::BadDepositScript);
     };
-    let principal =
+    let stacks_address =
         PrincipalData::consensus_deserialize(&mut address).map_err(Error::ParseStacksAddress)?;
-    let (stacks_address, contract_name) = match principal {
-        PrincipalData::Standard(s) => (StacksAddress::from(s), None),
-        PrincipalData::Contract(c) => (StacksAddress::from(c.issuer), Some(c.name)),
-    };
 
     Ok(DepositScript {
         // This cannot panic, pubkey_hash must have a size of 20 bytes
@@ -219,7 +209,6 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScript,
         max_fee: u64::from_be_bytes(*max_fee_bytes),
         deposit_script: deposit_script.clone(),
         stacks_address,
-        contract_name,
     })
 }
 
@@ -228,6 +217,7 @@ mod tests {
     use rand::rngs::OsRng;
     use secp256k1::SecretKey;
     use stacks_common::codec::StacksMessageCodec;
+    use stacks_common::types::chainstate::StacksAddress;
 
     use super::*;
 
@@ -258,8 +248,7 @@ mod tests {
 
         let extracts = parse_deposit_script(&script).unwrap();
         assert_eq!(extracts.signers_pubkey_hash, pubkey_hash);
-        assert_eq!(extracts.contract_name, None);
-        assert_eq!(extracts.stacks_address, StacksAddress::burn_address(false));
+        assert_eq!(extracts.stacks_address, address);
         assert_eq!(extracts.max_fee, max_fee);
         assert_eq!(extracts.deposit_script, script);
     }
