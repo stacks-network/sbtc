@@ -1,7 +1,6 @@
 //! This is the transaction analysis module
 //!
 
-use bitcoin::hashes::Hash as _;
 use bitcoin::opcodes;
 use bitcoin::script::PushBytesBuf;
 use bitcoin::taproot::LeafVersion;
@@ -9,7 +8,6 @@ use bitcoin::taproot::NodeInfo;
 use bitcoin::taproot::TaprootSpendInfo;
 use bitcoin::Address;
 use bitcoin::Network;
-use bitcoin::PubkeyHash;
 use bitcoin::ScriptBuf;
 use bitcoin::XOnlyPublicKey;
 use clarity::codec::StacksMessageCodec;
@@ -20,21 +18,18 @@ use stacks_common::types::chainstate::STACKS_ADDRESS_ENCODED_SIZE;
 /// This is the length of the fixed portion of the deposit script, which
 /// is:
 /// ```text
-///  OP_DROP OP_DUP OP_HASH160 <pubkey_hash> OP_EQUALVERIFY OP_CHECKSIG
+///  OP_DROP OP_PUSHBYTES_32 <x-only-public-key-data> OP_CHECKSIG
 /// ```
-/// Although this reads as though it is 25 bytes (20 bytes for the Hash160
-/// of the public key and 5 bytes of opcodes), the public key hash data is
-/// 21 bytes, since data is prefixed with the size of the data in bitcoin
-/// script. Thus, its 5 bytes for the opcodes, 1 byte for the length of the
-/// public key hash data and 20 bytes for the actual public key hash.
-const DEPOSIT_SCRIPT_FIXED_LENGTH: usize = 26;
+/// Since we are using Schnorr signatures, we only use the x-coordinate of
+/// the public key. The full public key is assumed to be even.
+const DEPOSIT_SCRIPT_FIXED_LENGTH: usize = 35;
 
 /// This is the typical number of bytes of a deposit script. It's 1 byte
 /// for the length of the following 30 bytes of data, which is 8 bytes for
 /// the max fee followed by 1 byte for the address type, 21 bytes the
-/// actual standard stacks address, followed by 26 bytes for the fixed
+/// actual standard stacks address, followed by 34 bytes for the fixed
 /// length portion of the deposit script. So we have the standard length is
-/// 1 + 1 + 8 + 21 + 26 = 57.
+/// 1 + 1 + 8 + 21 + 34 = 65.
 const STANDARD_SCRIPT_LENGTH: usize =
     1 + 1 + 8 + STACKS_ADDRESS_ENCODED_SIZE as usize + DEPOSIT_SCRIPT_FIXED_LENGTH;
 
@@ -44,6 +39,9 @@ pub enum Error {
     /// The deposit script was invalid
     #[error("")]
     InvalidDepositScript,
+    /// The x only public key was invalid
+    #[error("")]
+    InvalidXOnlyPublicKey(#[source] secp256k1::Error),
     /// The reclaim script was invalid
     #[error("")]
     BadReclaimScript,
@@ -71,8 +69,8 @@ pub struct DepositInputs {
 /// deposit address.
 #[derive(Debug, Clone)]
 pub struct DepositScript {
-    /// The public key hash of the signers.
-    pub signers_pubkey_hash: PubkeyHash,
+    /// The last known public key of the signers.
+    pub signers_public_key: XOnlyPublicKey,
     /// The stacks address to deposit the sBTC to. This can be either a
     /// standard address or a contract address.
     pub stacks_address: PrincipalData,
@@ -125,17 +123,14 @@ impl DepositInputs {
 
         // When using the bitcoin::script::Builder, push_slice
         // automatically inserts the appropriate opcodes based on the data
-        // size to be pushed onto the stack. For example, OP_PUSHDATA1 is
-        // used if the data length is between 76 and 255 bytes.
-        // OP_PUSHDATA2 is used for slice lengths that require 2 bytes to
-        // express, and so on.
+        // size to be pushed onto the stack. Here, OP_PUSHBYTES_32 is
+        // pushed before the public key. Also, OP_PUSHBYTES_N is used if
+        // the OP_DROP data length is between 1 and 75 otherwise
+        // OP_PUSHDATA1 is used since the data length is less than 255.
         ScriptBuf::builder()
             .push_slice(op_drop_data)
             .push_opcode(opcodes::all::OP_DROP)
-            .push_opcode(opcodes::all::OP_DUP)
-            .push_opcode(opcodes::all::OP_HASH160)
-            .push_slice(PubkeyHash::hash(&self.signers_public_key.serialize()))
-            .push_opcode(opcodes::all::OP_EQUALVERIFY)
+            .push_slice(self.signers_public_key.serialize())
             .push_opcode(opcodes::all::OP_CHECKSIG)
             .into_script()
     }
@@ -143,12 +138,6 @@ impl DepositInputs {
 
 /// Drops the top stack item
 pub const DROP: u8 = opcodes::all::OP_DROP.to_u8();
-/// Duplicate the top stack item and puts it on the stack.
-pub const DUP: u8 = opcodes::all::OP_DUP.to_u8();
-/// Pop the top stack item and push its RIPEMD-160(SHA256) hash.
-pub const HASH160: u8 = opcodes::all::OP_HASH160.to_u8();
-/// Returns success if the inputs are exactly equal, failure otherwise.
-pub const EQUALVERIFY: u8 = opcodes::all::OP_EQUALVERIFY.to_u8();
 /// <https://en.bitcoin.it/wiki/OP_CHECKSIG> pushing 1/0 for
 /// success/failure.
 pub const CHECKSIG: u8 = opcodes::all::OP_CHECKSIG.to_u8();
@@ -170,8 +159,8 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScript,
     let (params, check) = script.split_at(script.len() - DEPOSIT_SCRIPT_FIXED_LENGTH);
     // Below, we know the script length is DEPOSIT_SCRIPT_FIXED_LENGTH,
     // because of how `slice::split_at` works, so we know the pubkey_hash
-    // variable has length 20.
-    let [DROP, DUP, HASH160, 20, pubkey_hash @ .., EQUALVERIFY, CHECKSIG] = check else {
+    // variable has length 32.
+    let [DROP, 32, public_key @ .., CHECKSIG] = check else {
         return Err(Error::InvalidDepositScript);
     };
 
@@ -202,10 +191,8 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScript,
         PrincipalData::consensus_deserialize(&mut address).map_err(Error::ParseStacksAddress)?;
 
     Ok(DepositScript {
-        // This cannot panic, pubkey_hash must have a size of 20 bytes
-        // given the let else check above.
-        signers_pubkey_hash: PubkeyHash::from_slice(pubkey_hash)
-            .map_err(|_| Error::InvalidDepositScript)?,
+        signers_public_key: XOnlyPublicKey::from_slice(public_key)
+            .map_err(Error::InvalidXOnlyPublicKey)?,
         max_fee: u64::from_be_bytes(*max_fee_bytes),
         deposit_script: deposit_script.clone(),
         stacks_address,
@@ -230,7 +217,6 @@ mod tests {
     fn deposit_script_parsing_works_standard_principal(address: PrincipalData) {
         let secret_key = SecretKey::new(&mut OsRng);
         let public_key = secret_key.x_only_public_key(SECP256K1).0;
-        let pubkey_hash = PubkeyHash::hash(&public_key.serialize());
         let max_fee: u64 = 15000;
 
         let mut deposit_data = max_fee.to_be_bytes().to_vec();
@@ -241,10 +227,7 @@ mod tests {
         let script = ScriptBuf::builder()
             .push_slice(deposit_data)
             .push_opcode(opcodes::all::OP_DROP)
-            .push_opcode(opcodes::all::OP_DUP)
-            .push_opcode(opcodes::all::OP_HASH160)
-            .push_slice(pubkey_hash)
-            .push_opcode(opcodes::all::OP_EQUALVERIFY)
+            .push_slice(public_key.serialize())
             .push_opcode(opcodes::all::OP_CHECKSIG)
             .into_script();
 
@@ -253,7 +236,7 @@ mod tests {
         }
 
         let extracts = parse_deposit_script(&script).unwrap();
-        assert_eq!(extracts.signers_pubkey_hash, pubkey_hash);
+        assert_eq!(extracts.signers_public_key, public_key);
         assert_eq!(extracts.stacks_address, address);
         assert_eq!(extracts.max_fee, max_fee);
         assert_eq!(extracts.deposit_script, script);
