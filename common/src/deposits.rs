@@ -44,30 +44,19 @@ const STANDARD_SCRIPT_LENGTH: usize =
 /// Error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// The script tree contained more than the allowed elements
-    #[error("")]
-    BadScriptTree,
     /// The deposit script was invalid
     #[error("")]
     BadDepositScript,
     /// The reclaim script was invalid
     #[error("")]
     BadReclaimScript,
-    /// The script tree did not hash the the correct merkle root
+    /// Could not parse the Stacks principal address.
     #[error("")]
-    BadMerkleRoot,
-    /// The script tree did not hash the the correct merkle root
+    ParseStacksAddress(#[source] stacks_common::codec::Error),
+    /// Error when trying to push too many bytes on the stack in a bitcoin
+    /// script.
     #[error("")]
     PushBytes(#[source] bitcoin::script::PushBytesError),
-    /// The script tree did not hash the the correct merkle root
-    #[error("")]
-    InvalidContractName(#[source] clarity::vm::errors::RuntimeErrorType),
-    /// The script tree did not hash the the correct merkle root
-    #[error("")]
-    InvalidUtf8(#[source] std::string::FromUtf8Error),
-    /// The script tree did not hash the the correct merkle root
-    #[error("")]
-    StacksCodec(#[source] stacks_common::codec::Error),
 }
 
 /// This struct contains the key variable inputs when constructing a
@@ -216,7 +205,7 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScript,
         return Err(Error::BadDepositScript);
     };
     let principal =
-        PrincipalData::consensus_deserialize(&mut address).map_err(Error::StacksCodec)?;
+        PrincipalData::consensus_deserialize(&mut address).map_err(Error::ParseStacksAddress)?;
     let (stacks_address, contract_name) = match principal {
         PrincipalData::Standard(s) => (StacksAddress::from(s), None),
         PrincipalData::Contract(c) => (StacksAddress::from(c.issuer), Some(c.name)),
