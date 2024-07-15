@@ -43,7 +43,7 @@ const STANDARD_SCRIPT_LENGTH: usize =
 pub enum Error {
     /// The deposit script was invalid
     #[error("")]
-    BadDepositScript,
+    InvalidDepositScript,
     /// The reclaim script was invalid
     #[error("")]
     BadReclaimScript,
@@ -71,7 +71,7 @@ pub struct DepositInputs {
 /// deposit address.
 #[derive(Debug, Clone)]
 pub struct DepositScript {
-    /// The last known public key of the signers.
+    /// The public key hash of the signers.
     pub signers_pubkey_hash: PubkeyHash,
     /// The stacks address to deposit the sBTC to. This can be either a
     /// standard address or a contract address.
@@ -159,20 +159,20 @@ pub const OP_PUSHDATA1: u8 = opcodes::all::OP_PUSHDATA1.to_u8();
 /// This function checks that the deposit script is valid. Specifically, it
 /// checks that it follows the format laid out in (TODO).
 pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScript, Error> {
-    let script_bytes = deposit_script.as_bytes();
+    let script = deposit_script.as_bytes();
 
     // Valid deposit scripts cannot be less than this length.
-    if script_bytes.len() < STANDARD_SCRIPT_LENGTH {
-        return Err(Error::BadReclaimScript);
+    if script.len() < STANDARD_SCRIPT_LENGTH {
+        return Err(Error::InvalidDepositScript);
     }
     // This cannot panic because of the above check and the fact that
     // DEPOSIT_SCRIPT_FIXED_LENGTH < STANDARD_SCRIPT_LENGTH.
-    let (params, script) = script_bytes.split_at(script_bytes.len() - DEPOSIT_SCRIPT_FIXED_LENGTH);
+    let (params, check) = script.split_at(script.len() - DEPOSIT_SCRIPT_FIXED_LENGTH);
     // Below, we know the script length is DEPOSIT_SCRIPT_FIXED_LENGTH,
     // because of how `slice::split_at` works, so we know the pubkey_hash
     // variable has length 20.
-    let [DROP, DUP, HASH160, 20, pubkey_hash @ .., EQUALVERIFY, CHECKSIG] = script else {
-        return Err(Error::BadDepositScript);
+    let [DROP, DUP, HASH160, 20, pubkey_hash @ .., EQUALVERIFY, CHECKSIG] = check else {
+        return Err(Error::InvalidDepositScript);
     };
 
     // In bitcoin script, the code for pushing N bytes onto the stack is
@@ -185,18 +185,18 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScript,
     // contract addresses can have a size of up to 151 bytes.
     let data = match params {
         // This branch represents a contract address.
-        [OP_PUSHDATA1, n, data @ ..] if data.len() == *n as usize && 30 < *n && *n < 159 => data,
+        [OP_PUSHDATA1, n, data @ ..] if data.len() == *n as usize && *n < 160 => data,
         // This branch can be a standard (non-contract) Stacks addresses
         // when n == 29 and is a contract address otherwise.
-        [n, data @ ..] if data.len() == *n as usize && 29 < *n && *n < 76 => data,
-        _ => return Err(Error::BadDepositScript),
+        [n, data @ ..] if data.len() == *n as usize && *n < 76 => data,
+        _ => return Err(Error::InvalidDepositScript),
     };
     // Here, `split_first_chunk::<N>` returns Option<(&[u8; N], &[u8])>,
     // where None is returned if the length of the slice is less than N.
     // Since N is 8 and the data variable has a length 30 or greater, the
     // error path cannot happen.
     let Some((max_fee_bytes, mut address)) = data.split_first_chunk::<8>() else {
-        return Err(Error::BadDepositScript);
+        return Err(Error::InvalidDepositScript);
     };
     let stacks_address =
         PrincipalData::consensus_deserialize(&mut address).map_err(Error::ParseStacksAddress)?;
@@ -205,7 +205,7 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScript,
         // This cannot panic, pubkey_hash must have a size of 20 bytes
         // given the let else check above.
         signers_pubkey_hash: PubkeyHash::from_slice(pubkey_hash)
-            .map_err(|_| Error::BadDepositScript)?,
+            .map_err(|_| Error::InvalidDepositScript)?,
         max_fee: u64::from_be_bytes(*max_fee_bytes),
         deposit_script: deposit_script.clone(),
         stacks_address,
@@ -221,18 +221,22 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test() {
+    use test_case::test_case;
+
+    const CONTRACT_ADDRESS: &str = "ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y.contract-name";
+
+    #[test_case(PrincipalData::from(StacksAddress::burn_address(false)) ; "standard address")]
+    #[test_case(PrincipalData::parse(CONTRACT_ADDRESS).unwrap(); "contract address")]
+    fn deposit_script_parsing_works_standard_principal(address: PrincipalData) {
         let secret_key = SecretKey::new(&mut OsRng);
         let public_key = secret_key.x_only_public_key(SECP256K1).0;
         let pubkey_hash = PubkeyHash::hash(&public_key.serialize());
         let max_fee: u64 = 15000;
 
         let mut deposit_data = max_fee.to_be_bytes().to_vec();
-        let address = PrincipalData::from(StacksAddress::burn_address(false));
         deposit_data.extend_from_slice(&address.serialize_to_vec());
 
-        let deposit_data: [u8; 30] = deposit_data.try_into().unwrap();
+        let deposit_data: PushBytesBuf = deposit_data.try_into().unwrap();
 
         let script = ScriptBuf::builder()
             .push_slice(deposit_data)
@@ -244,7 +248,9 @@ mod tests {
             .push_opcode(opcodes::all::OP_CHECKSIG)
             .into_script();
 
-        assert_eq!(script.len(), STANDARD_SCRIPT_LENGTH);
+        if matches!(address, PrincipalData::Standard(_)) {
+            assert_eq!(script.len(), STANDARD_SCRIPT_LENGTH);
+        }
 
         let extracts = parse_deposit_script(&script).unwrap();
         assert_eq!(extracts.signers_pubkey_hash, pubkey_hash);
