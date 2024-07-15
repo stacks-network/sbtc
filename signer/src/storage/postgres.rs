@@ -34,7 +34,7 @@ const CONTRACT_FUNCTION_NAMES: [(&str, TransactionType); 5] = [
     ("complete-deposit-wrapper", TransactionType::DepositAccept),
     ("accept-withdrawal-request", TransactionType::WithdrawAccept),
     ("reject-withdrawal-request", TransactionType::WithdrawReject),
-    ("rotate-keys-wrapper", TransactionType::UpdateSignerSet),
+    ("rotate-keys-wrapper", TransactionType::RotateKeys),
 ];
 
 /// Returns the mapping between functions in a contract call and the
@@ -96,33 +96,6 @@ impl PgStore {
     /// Connect to the Postgres database at `url`.
     pub async fn connect(url: &str) -> Result<Self, sqlx::Error> {
         Ok(Self(sqlx::PgPool::connect(url).await?))
-    }
-
-    async fn get_stacks_chain_tip(
-        &self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<Option<model::StacksBlockHash>, Error> {
-        sqlx::query_as!(
-            model::StacksBlock,
-            r#"
-             SELECT
-                 stacks_blocks.block_hash
-               , stacks_blocks.block_height
-               , stacks_blocks.parent_hash
-               , stacks_blocks.created_at
-             FROM sbtc_signer.stacks_blocks stacks_blocks
-             JOIN sbtc_signer.bitcoin_blocks bitcoin_blocks
-                 ON bitcoin_blocks.confirms @> ARRAY[stacks_blocks.block_hash]
-             WHERE bitcoin_blocks.block_hash = $1
-            ORDER BY block_height DESC, block_hash DESC
-            LIMIT 1;
-            "#,
-            bitcoin_chain_tip
-        )
-        .fetch_optional(&self.0)
-        .await
-        .map(|maybe_block| maybe_block.map(|block| block.block_hash))
-        .map_err(Error::SqlxQuery)
     }
 }
 
@@ -193,6 +166,32 @@ impl super::DbRead for PgStore {
         .fetch_optional(&self.0)
         .await
         .map(|maybe_block| maybe_block.map(|block| block.block_hash))
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_stacks_chain_tip(
+        &self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<Option<model::StacksBlock>, Error> {
+        sqlx::query_as!(
+            model::StacksBlock,
+            r#"
+             SELECT
+                 stacks_blocks.block_hash
+               , stacks_blocks.block_height
+               , stacks_blocks.parent_hash
+               , stacks_blocks.created_at
+             FROM sbtc_signer.stacks_blocks stacks_blocks
+             JOIN sbtc_signer.bitcoin_blocks bitcoin_blocks
+                 ON bitcoin_blocks.confirms @> ARRAY[stacks_blocks.block_hash]
+             WHERE bitcoin_blocks.block_hash = $1
+            ORDER BY block_height DESC, block_hash DESC
+            LIMIT 1;
+            "#,
+            bitcoin_chain_tip
+        )
+        .fetch_optional(&self.0)
+        .await
         .map_err(Error::SqlxQuery)
     }
 
@@ -390,7 +389,9 @@ impl super::DbRead for PgStore {
         chain_tip: &model::BitcoinBlockHash,
         context_window: i32,
     ) -> Result<Vec<model::WithdrawRequest>, Self::Error> {
-        let stacks_chain_tip = self.get_stacks_chain_tip(chain_tip).await?;
+        let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
+            return Ok(Vec::new());
+        };
         sqlx::query_as!(
             model::WithdrawRequest,
             r#"
@@ -455,7 +456,7 @@ impl super::DbRead for PgStore {
             JOIN stacks_context_window sc ON wr.block_hash = sc.block_hash
             "#,
             chain_tip,
-            stacks_chain_tip,
+            stacks_chain_tip.block_hash,
             context_window,
         )
         .fetch_all(&self.0)
@@ -469,7 +470,9 @@ impl super::DbRead for PgStore {
         context_window: i32,
         threshold: i64,
     ) -> Result<Vec<model::WithdrawRequest>, Self::Error> {
-        let stacks_chain_tip = self.get_stacks_chain_tip(chain_tip).await?;
+        let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
+            return Ok(Vec::new());
+        };
         sqlx::query_as!(
             model::WithdrawRequest,
             r#"
@@ -541,7 +544,7 @@ impl super::DbRead for PgStore {
             HAVING COUNT(wr.request_id) >= $4
             "#,
             chain_tip,
-            stacks_chain_tip,
+            stacks_chain_tip.block_hash,
             context_window,
             threshold,
         )
@@ -593,12 +596,59 @@ impl super::DbRead for PgStore {
             SELECT
                 aggregate_key
               , tweaked_aggregate_key
-              , encrypted_shares
+              , encrypted_private_shares
+              , public_shares
               , created_at
             FROM sbtc_signer.dkg_shares
             WHERE aggregate_key = $1;
             "#,
             aggregate_key,
+        )
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    // Finds the last key rotation by iterating backwards from the stacks chain tip
+    // scanning all transactions until we encounter a key rotation transactions.
+    //
+    // This might become quite inefficient for long chains with infrequent key
+    // rotations, so we might have to consider data model updates to allow
+    // more efficient querying of the last key rotation.
+    async fn get_last_key_rotation(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<Option<model::RotateKeysTransaction>, Self::Error> {
+        let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
+            return Ok(None);
+        };
+
+        sqlx::query_as!(
+            model::RotateKeysTransaction,
+            r#"
+            WITH RECURSIVE stacks_blocks AS (
+                SELECT
+                    block_hash, parent_hash, 1 AS depth
+                FROM sbtc_signer.stacks_blocks
+                WHERE block_hash = $1
+
+                UNION ALL
+
+                SELECT
+                    parent.block_hash, parent.parent_hash, last.depth + 1
+                FROM sbtc_signer.stacks_blocks parent
+                JOIN stacks_blocks last ON parent.block_hash = last.parent_hash
+            )
+            SELECT
+                rkt.txid
+              , rkt.aggregate_key
+              , rkt.signer_set
+            FROM sbtc_signer.rotate_keys_transactions rkt
+            JOIN sbtc_signer.stacks_transactions st ON st.txid = rkt.txid
+            JOIN stacks_blocks sb on st.block_hash = sb.block_hash
+            ORDER BY sb.depth DESC LIMIT 1
+            "#,
+            stacks_chain_tip.block_hash,
         )
         .fetch_optional(&self.0)
         .await
@@ -961,14 +1011,37 @@ impl super::DbWrite for PgStore {
         sqlx::query!(
             r#"
             INSERT INTO sbtc_signer.dkg_shares
-                (aggregate_key, tweaked_aggregate_key, encrypted_shares, created_at)
+                (aggregate_key, tweaked_aggregate_key, encrypted_private_shares, public_shares, created_at)
             VALUES
-                ($1, $2, $3, $4)
+                ($1, $2, $3, $4, $5)
             "#,
             shares.aggregate_key,
             shares.tweaked_aggregate_key,
-            shares.encrypted_shares,
+            shares.encrypted_private_shares,
+            shares.public_shares,
             shares.created_at,
+        )
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
+    }
+
+    async fn write_rotate_keys_transaction(
+        &self,
+        key_rotation: &model::RotateKeysTransaction,
+    ) -> Result<(), Self::Error> {
+        sqlx::query!(
+            r#"
+            INSERT INTO sbtc_signer.rotate_keys_transactions
+                (txid, aggregate_key, signer_set)
+            VALUES
+                ($1, $2, $3)
+            "#,
+            key_rotation.txid,
+            key_rotation.aggregate_key,
+            &key_rotation.signer_set,
         )
         .execute(&self.0)
         .await

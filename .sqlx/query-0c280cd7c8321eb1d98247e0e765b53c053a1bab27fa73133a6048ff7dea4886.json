@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            WITH RECURSIVE stacks_blocks AS (\n                SELECT\n                    block_hash, parent_hash, 1 AS depth\n                FROM sbtc_signer.stacks_blocks\n                WHERE block_hash = $1\n\n                UNION ALL\n\n                SELECT\n                    parent.block_hash, parent.parent_hash, last.depth + 1\n                FROM sbtc_signer.stacks_blocks parent\n                JOIN stacks_blocks last ON parent.block_hash = last.parent_hash\n            )\n            SELECT\n                rkt.txid\n              , rkt.aggregate_key\n              , rkt.signer_set\n            FROM sbtc_signer.rotate_keys_transactions rkt\n            JOIN sbtc_signer.stacks_transactions st ON st.txid = rkt.txid\n            JOIN stacks_blocks sb on st.block_hash = sb.block_hash\n            ORDER BY sb.depth DESC LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "txid",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 1,
+        "name": "aggregate_key",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 2,
+        "name": "signer_set",
+        "type_info": "ByteaArray"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0c280cd7c8321eb1d98247e0e765b53c053a1bab27fa73133a6048ff7dea4886"
+}

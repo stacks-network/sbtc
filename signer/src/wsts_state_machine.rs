@@ -1,10 +1,15 @@
 //! Utilities for constructing and loading WSTS state machines
 
+use std::collections::BTreeMap;
+
 use crate::error;
 use crate::storage;
+use crate::storage::model;
 
 use crate::codec::Decode as _;
+use crate::codec::Encode as _;
 use wsts::state_machine::coordinator::Coordinator as _;
+use wsts::state_machine::StateMachine as _;
 use wsts::traits::Signer as _;
 
 /// Wrapper around a WSTS signer state machine
@@ -90,7 +95,7 @@ impl SignerStateMachine {
 
         let decrypted = wsts::util::decrypt(
             &signer_private_key.to_bytes(),
-            &encrypted_shares.encrypted_shares,
+            &encrypted_shares.encrypted_private_shares,
         )
         .map_err(|_| error::Error::Encryption)?;
 
@@ -107,6 +112,39 @@ impl SignerStateMachine {
         state_machine.0.signer = signer;
 
         Ok(state_machine)
+    }
+
+    /// Get the encrypted DKG shares
+    pub fn get_encrypted_dkg_shares<Rng: rand::CryptoRng + rand::RngCore>(
+        &self,
+        rng: &mut Rng,
+    ) -> Result<model::EncryptedDkgShares, error::Error> {
+        let saved_state = self.signer.save();
+        let aggregate_key = saved_state.group_key.x().to_bytes().to_vec();
+        let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&saved_state.group_key, None)
+            .x()
+            .to_bytes()
+            .to_vec();
+
+        let encoded = saved_state.encode_to_vec().map_err(error::Error::Codec)?;
+        let public_shares = self
+            .dkg_public_shares
+            .encode_to_vec()
+            .map_err(error::Error::Codec)?;
+
+        let encrypted_private_shares =
+            wsts::util::encrypt(&self.0.network_private_key.to_bytes(), &encoded, rng)
+                .map_err(|_| error::Error::Encryption)?;
+
+        let created_at = time::OffsetDateTime::now_utc();
+
+        Ok(model::EncryptedDkgShares {
+            aggregate_key: aggregate_key.clone(),
+            tweaked_aggregate_key: tweaked_aggregate_key.clone(),
+            encrypted_private_shares,
+            public_shares,
+            created_at,
+        })
     }
 }
 
@@ -176,27 +214,81 @@ impl CoordinatorStateMachine {
     }
 
     /// Create a new coordinator state machine from loaded DkgPublicShares messages
-    /// for the given aggregate key
+    /// for the given aggregate key.
     pub async fn load<S>(
-        _storage: &mut S,
-        _aggregate_key: p256k1::point::Point,
-        _signers: impl IntoIterator<Item = p256k1::ecdsa::PublicKey>,
-        _threshold: u32,
-        _message_private_key: p256k1::scalar::Scalar,
+        storage: &mut S,
+        aggregate_key: p256k1::point::Point,
+        signers: impl IntoIterator<Item = p256k1::ecdsa::PublicKey>,
+        threshold: u32,
+        message_private_key: p256k1::scalar::Scalar,
     ) -> Result<Self, error::Error>
     where
         S: storage::DbRead + storage::DbWrite,
         error::Error: From<<S as storage::DbRead>::Error>,
         error::Error: From<<S as storage::DbWrite>::Error>,
     {
-        // TODO(317): (Link ticket) - add storage implementation for DKG public shares,
-        // ensure they are persisted in the signer and implement this function.
-        //
-        // Note that while the WSTS coordinator struct holds a lot of ephemeral state,
-        // the `party_polynomials` is the only field we need to load to coordinate signing
-        // rounds. There is no interface to write this directly, so a workaround to set this is to
-        // call `.gather_public_shares` on persisted public shares to get this in place.
-        todo!();
+        let encrypted_shares = storage
+            .get_encrypted_dkg_shares(&aggregate_key.x().to_bytes().to_vec())
+            .await?
+            .ok_or(error::Error::MissingDkgShares)?;
+
+        let public_dkg_shares: BTreeMap<u32, wsts::net::DkgPublicShares> =
+            BTreeMap::decode(encrypted_shares.public_shares.as_slice())
+                .map_err(error::Error::Codec)?;
+
+        let mut coordinator = Self::new(signers, threshold, message_private_key)?;
+
+        // TODO(338): Replace this for-loop with a simpler method to set the public DKG shares.
+        for msg in public_dkg_shares.values().cloned() {
+            let packet = wsts::net::Packet {
+                msg: wsts::net::Message::DkgPublicShares(msg),
+                sig: Vec::new(),
+            };
+
+            coordinator
+                .move_to(wsts::state_machine::coordinator::State::DkgPublicDistribute)
+                .map_err(coordinator_error)?;
+            coordinator
+                .move_to(wsts::state_machine::coordinator::State::DkgPublicGather)
+                .map_err(coordinator_error)?;
+
+            coordinator
+                .process_message(&packet)
+                .map_err(coordinator_error)?;
+
+            coordinator
+                .process_message(&packet)
+                .map_err(coordinator_error)?;
+        }
+
+        coordinator
+            .move_to(wsts::state_machine::coordinator::State::DkgPrivateGather)
+            .map_err(coordinator_error)?;
+
+        coordinator
+            .move_to(wsts::state_machine::coordinator::State::DkgEndDistribute)
+            .map_err(coordinator_error)?;
+
+        coordinator
+            .move_to(wsts::state_machine::coordinator::State::DkgEndGather)
+            .map_err(coordinator_error)?;
+
+        let msg = wsts::net::DkgEnd {
+            dkg_id: 0,
+            signer_id: 0,
+            status: wsts::net::DkgStatus::Success,
+        };
+
+        let packet = wsts::net::Packet {
+            msg: wsts::net::Message::DkgEnd(msg),
+            sig: Vec::new(),
+        };
+
+        coordinator
+            .process_message(&packet)
+            .map_err(coordinator_error)?;
+
+        Ok(coordinator)
     }
 }
 
@@ -212,4 +304,8 @@ impl std::ops::DerefMut for CoordinatorStateMachine {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
+}
+
+fn coordinator_error(err: wsts::state_machine::coordinator::Error) -> error::Error {
+    error::Error::WstsCoordinator(Box::new(err))
 }
