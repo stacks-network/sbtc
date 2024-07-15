@@ -81,6 +81,7 @@ fn just_created_deposit(
 /// Create all the deposits one at a time that are required for the rest of the
 /// tests. Note that this test suite assumes the database is empty when the integration
 /// tests start and this test should populate the table in its entirety.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 #[serial]
 async fn create_deposits() {
@@ -312,6 +313,7 @@ async fn get_pending_deposits() {
     assert_eq_unordered!(aggregate_deposits, expected_deposit_infos);
 }
 
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 #[serial]
 async fn get_failed_deposits() {
