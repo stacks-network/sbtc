@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 bitcoin = { workspace = true, features = ["rand-std"] }
+clarity = { git = "https://github.com/Trust-Machines/stacks-blockchain/", branch = "develop-upstream" }
 rand.workspace = true
 stacks-common = { git = "https://github.com/Trust-Machines/stacks-blockchain/", branch = "develop-upstream" }
 thiserror.workspace = true
