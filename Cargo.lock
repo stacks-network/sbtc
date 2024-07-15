@@ -3698,6 +3698,13 @@ dependencies = [
 name = "sbtc-common"
 version = "0.1.0"
 dependencies = [
+ "bitcoin 0.32.0",
+ "clarity",
+ "rand 0.8.5",
+ "secp256k1 0.29.0",
+ "stacks-common",
+ "test-case",
+ "thiserror",
  "tracing",
  "tracing-attributes",
  "tracing-subscriber",
