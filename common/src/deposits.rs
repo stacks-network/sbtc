@@ -18,7 +18,7 @@ use stacks_common::types::chainstate::STACKS_ADDRESS_ENCODED_SIZE;
 /// This is the length of the fixed portion of the deposit script, which
 /// is:
 /// ```text
-///  OP_DROP OP_PUSHBYTES_32 <x-only-public-key-data> OP_CHECKSIG
+///  OP_DROP OP_PUSHBYTES_32 <x-only-public-key> OP_CHECKSIG
 /// ```
 /// Since we are using Schnorr signatures, we only use the x-coordinate of
 /// the public key. The full public key is assumed to be even.
@@ -33,40 +33,22 @@ const DEPOSIT_SCRIPT_FIXED_LENGTH: usize = 35;
 const STANDARD_SCRIPT_LENGTH: usize =
     1 + 1 + 8 + STACKS_ADDRESS_ENCODED_SIZE as usize + DEPOSIT_SCRIPT_FIXED_LENGTH;
 
-/// Error
+/// Errors
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// The deposit script was invalid
-    #[error("")]
+    #[error("Invalid deposit script")]
     InvalidDepositScript,
-    /// The x only public key was invalid
-    #[error("")]
+    /// The X-only public key was invalid
+    #[error("the x-only public key in the script was invalid: {0}")]
     InvalidXOnlyPublicKey(#[source] secp256k1::Error),
-    /// The reclaim script was invalid
-    #[error("")]
-    BadReclaimScript,
     /// Could not parse the Stacks principal address.
-    #[error("")]
+    #[error("could not parse the stacks principal address: {0}")]
     ParseStacksAddress(#[source] stacks_common::codec::Error),
 }
 
 /// This struct contains the key variable inputs when constructing a
-/// deposit address.
-#[derive(Debug, Clone)]
-pub struct DepositInputs {
-    /// The last known public key of the signers.
-    pub signers_public_key: XOnlyPublicKey,
-    /// The stacks address to deposit the sBTC to. This can be either a
-    /// standard address or a contract address.
-    pub stacks_address: PrincipalData,
-    /// The reclaim script.
-    pub reclaim_script: ScriptBuf,
-    /// The max fee amount to use for the BTC deposit transaction.
-    pub max_fee: u64,
-}
-
-/// This struct contains the key variable inputs when constructing a
-/// deposit address.
+/// deposit script address.
 #[derive(Debug, Clone)]
 pub struct DepositScript {
     /// The last known public key of the signers.
@@ -74,22 +56,20 @@ pub struct DepositScript {
     /// The stacks address to deposit the sBTC to. This can be either a
     /// standard address or a contract address.
     pub stacks_address: PrincipalData,
-    /// The raw deposit script
-    pub deposit_script: ScriptBuf,
     /// The max fee amount to use for the BTC deposit transaction.
     pub max_fee: u64,
 }
 
-impl DepositInputs {
+impl DepositScript {
     /// Construct a bitcoin address for a deposit transaction on the given
     /// network.
-    pub fn to_address(&self, network: Network) -> Address {
+    pub fn to_address(&self, reclaim_script: ScriptBuf, network: Network) -> Address {
         let deposit_script = self.deposit_script();
         let ver = LeafVersion::TapScript;
 
         // For such a simple tree, we construct it by hand.
         let leaf1 = NodeInfo::new_leaf_with_ver(deposit_script, ver);
-        let leaf2 = NodeInfo::new_leaf_with_ver(self.reclaim_script.clone(), ver);
+        let leaf2 = NodeInfo::new_leaf_with_ver(reclaim_script, ver);
 
         // A Result::Err is returned by NodeInfo::combine if the depth of
         // our taproot tree exceeds the maximum depth of taproot trees,
@@ -146,7 +126,12 @@ pub const CHECKSIG: u8 = opcodes::all::OP_CHECKSIG.to_u8();
 pub const OP_PUSHDATA1: u8 = opcodes::all::OP_PUSHDATA1.to_u8();
 
 /// This function checks that the deposit script is valid. Specifically, it
-/// checks that it follows the format laid out in (TODO).
+/// checks that it follows the format laid out in
+/// https://github.com/stacks-network/sbtc/issues/30, where the script is
+/// expected to be
+/// ```text
+///  <deposit-data> OP_DROP OP_PUSHBYTES_32 <x-only-public-key> OP_CHECKSIG
+/// ```
 pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScript, Error> {
     let script = deposit_script.as_bytes();
 
@@ -194,7 +179,6 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScript,
         signers_public_key: XOnlyPublicKey::from_slice(public_key)
             .map_err(Error::InvalidXOnlyPublicKey)?,
         max_fee: u64::from_be_bytes(*max_fee_bytes),
-        deposit_script: deposit_script.clone(),
         stacks_address,
     })
 }
@@ -239,6 +223,6 @@ mod tests {
         assert_eq!(extracts.signers_public_key, public_key);
         assert_eq!(extracts.stacks_address, address);
         assert_eq!(extracts.max_fee, max_fee);
-        assert_eq!(extracts.deposit_script, script);
+        assert_eq!(extracts.deposit_script(), script);
     }
 }
