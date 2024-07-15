@@ -260,8 +260,8 @@ pub struct DepositRequest {
     pub amount: u64,
     /// The deposit script used so that the signers' can spend funds.
     pub deposit_script: ScriptBuf,
-    /// The redeem script for the deposit.
-    pub redeem_script: ScriptBuf,
+    /// The reclaim script for the deposit.
+    pub reclaim_script: ScriptBuf,
     /// The public key used in the deposit script. The signers public key
     /// is a Schnorr public key.
     ///
@@ -305,8 +305,8 @@ impl DepositRequest {
 
     /// Construct the witness data for the taproot script of the deposit.
     ///
-    /// Deposit UTXOs are taproot spend what a "null" key spend path,
-    /// a deposit script-path spend, and a redeem script-path spend. This
+    /// Deposit UTXOs are taproot spend with a "null" key spend path,
+    /// a deposit script-path spend, and a reclaim script-path spend. This
     /// function creates the witness data for the deposit script-path
     /// spend where the script takes only one piece of data as input, the
     /// signature. The deposit script is:
@@ -345,7 +345,7 @@ impl DepositRequest {
     fn construct_taproot_info(&self, ver: LeafVersion) -> TaprootSpendInfo {
         // For such a simple tree, we construct it by hand.
         let leaf1 = NodeInfo::new_leaf_with_ver(self.deposit_script.clone(), ver);
-        let leaf2 = NodeInfo::new_leaf_with_ver(self.redeem_script.clone(), ver);
+        let leaf2 = NodeInfo::new_leaf_with_ver(self.reclaim_script.clone(), ver);
 
         // A Result::Err is returned by NodeInfo::combine if the depth of
         // our taproot tree exceeds the maximum depth of taproot trees,
@@ -814,7 +814,7 @@ mod tests {
             signer_bitmap: std::iter::repeat(false).take(votes_against).collect(),
             amount,
             deposit_script: testing::peg_in_deposit_script(&signers_public_key),
-            redeem_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
             signers_public_key,
         }
     }
@@ -897,7 +897,7 @@ mod tests {
             signer_bitmap: signer_bitmap.to_vec(),
             amount: 100_000,
             deposit_script: ScriptBuf::new(),
-            redeem_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
             signers_public_key: XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap(),
         };
 
@@ -914,7 +914,7 @@ mod tests {
             signer_bitmap: Vec::new(),
             amount: 100_000,
             deposit_script: ScriptBuf::from_bytes(vec![1, 2, 3]),
-            redeem_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
             signers_public_key: XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap(),
         };
 
