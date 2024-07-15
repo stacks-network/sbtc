@@ -50,17 +50,17 @@ pub enum Error {
 /// This struct contains the key variable inputs when constructing a
 /// deposit script address.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DepositScript {
+pub struct DepositScriptInputs {
     /// The last known public key of the signers.
     pub signers_public_key: XOnlyPublicKey,
     /// The stacks address to deposit the sBTC to. This can be either a
     /// standard address or a contract address.
-    pub stacks_address: PrincipalData,
+    pub recipient: PrincipalData,
     /// The max fee amount to use for the BTC deposit transaction.
     pub max_fee: u64,
 }
 
-impl DepositScript {
+impl DepositScriptInputs {
     /// Construct a bitcoin address for a deposit transaction on the given
     /// network.
     pub fn to_address(&self, reclaim_script: ScriptBuf, network: Network) -> Address {
@@ -89,8 +89,8 @@ impl DepositScript {
         // The format of the OP_DROP data, as shown in
         // https://github.com/stacks-network/sbtc/issues/30, is 8 bytes for
         // the max fee followed by up to 151 bytes for the stacks address.
-        let stacks_address_bytes = self.stacks_address.serialize_to_vec();
-        let mut op_drop_data = PushBytesBuf::with_capacity(stacks_address_bytes.len() + 8);
+        let recipient_bytes = self.recipient.serialize_to_vec();
+        let mut op_drop_data = PushBytesBuf::with_capacity(recipient_bytes.len() + 8);
         // These should never fail. The PushBytesBuf type only
         // errors if the total length of the buffer is greater than
         // u32::MAX. We're pushing a max of 159 bytes.
@@ -98,7 +98,7 @@ impl DepositScript {
             .extend_from_slice(&self.max_fee.to_be_bytes())
             .expect("8 is greater than u32::MAX?");
         op_drop_data
-            .extend_from_slice(&stacks_address_bytes)
+            .extend_from_slice(&recipient_bytes)
             .expect("159 is greater than u32::MAX?");
 
         // When using the bitcoin::script::Builder, push_slice
@@ -117,10 +117,10 @@ impl DepositScript {
 }
 
 /// Drops the top stack item
-pub const DROP: u8 = opcodes::OP_DROP.to_u8();
+pub const OP_DROP: u8 = opcodes::OP_DROP.to_u8();
 /// <https://en.bitcoin.it/wiki/OP_CHECKSIG> pushing 1/0 for
 /// success/failure.
-pub const CHECKSIG: u8 = opcodes::OP_CHECKSIG.to_u8();
+pub const OP_CHECKSIG: u8 = opcodes::OP_CHECKSIG.to_u8();
 /// Read the next byte as N; push the next N bytes as an array onto the
 /// stack.
 pub const OP_PUSHDATA1: u8 = opcodes::OP_PUSHDATA1.to_u8();
@@ -132,7 +132,7 @@ pub const OP_PUSHDATA1: u8 = opcodes::OP_PUSHDATA1.to_u8();
 /// ```text
 ///  <deposit-data> OP_DROP OP_PUSHBYTES_32 <x-only-public-key> OP_CHECKSIG
 /// ```
-pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScript, Error> {
+pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScriptInputs, Error> {
     let script = deposit_script.as_bytes();
 
     // Valid deposit scripts cannot be less than this length.
@@ -145,7 +145,7 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScript,
     // Below, we know the script length is DEPOSIT_SCRIPT_FIXED_LENGTH,
     // because of how `slice::split_at` works, so we know the pubkey_hash
     // variable has length 32.
-    let [DROP, 32, public_key @ .., CHECKSIG] = check else {
+    let [OP_DROP, 32, public_key @ .., OP_CHECKSIG] = check else {
         return Err(Error::InvalidDepositScript);
     };
 
@@ -175,11 +175,11 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScript,
     let stacks_address =
         PrincipalData::consensus_deserialize(&mut address).map_err(Error::ParseStacksAddress)?;
 
-    Ok(DepositScript {
+    Ok(DepositScriptInputs {
         signers_public_key: XOnlyPublicKey::from_slice(public_key)
             .map_err(Error::InvalidXOnlyPublicKey)?,
         max_fee: u64::from_be_bytes(*max_fee_bytes),
-        stacks_address,
+        recipient: stacks_address,
     })
 }
 
@@ -201,13 +201,13 @@ mod tests {
     /// parsed.
     #[test_case(PrincipalData::from(StacksAddress::burn_address(false)) ; "standard address")]
     #[test_case(PrincipalData::parse(CONTRACT_ADDRESS).unwrap(); "contract address")]
-    fn deposit_script_parsing_works_standard_principal(stacks_address: PrincipalData) {
+    fn deposit_script_parsing_works_standard_principal(recipient: PrincipalData) {
         let secret_key = SecretKey::new(&mut OsRng);
         let public_key = secret_key.x_only_public_key(SECP256K1).0;
         let max_fee: u64 = 15000;
 
         let mut deposit_data = max_fee.to_be_bytes().to_vec();
-        deposit_data.extend_from_slice(&stacks_address.serialize_to_vec());
+        deposit_data.extend_from_slice(&recipient.serialize_to_vec());
 
         let deposit_data: PushBytesBuf = deposit_data.try_into().unwrap();
 
@@ -218,13 +218,13 @@ mod tests {
             .push_opcode(opcodes::OP_CHECKSIG)
             .into_script();
 
-        if matches!(stacks_address, PrincipalData::Standard(_)) {
+        if matches!(recipient, PrincipalData::Standard(_)) {
             assert_eq!(script.len(), STANDARD_SCRIPT_LENGTH);
         }
 
         let extracts = parse_deposit_script(&script).unwrap();
         assert_eq!(extracts.signers_public_key, public_key);
-        assert_eq!(extracts.stacks_address, stacks_address);
+        assert_eq!(extracts.recipient, recipient);
         assert_eq!(extracts.max_fee, max_fee);
         assert_eq!(extracts.deposit_script(), script);
     }
@@ -233,16 +233,16 @@ mod tests {
     /// `parse_deposit_script` function are inverses of one another.
     #[test_case(PrincipalData::from(StacksAddress::burn_address(false)) ; "standard address")]
     #[test_case(PrincipalData::parse(CONTRACT_ADDRESS).unwrap(); "contract address")]
-    fn deposit_script_parsing_and_creation_are_inverses(stacks_address: PrincipalData) {
+    fn deposit_script_parsing_and_creation_are_inverses(recipient: PrincipalData) {
         let secret_key = SecretKey::new(&mut OsRng);
 
-        let deposit = DepositScript {
+        let deposit = DepositScriptInputs {
             signers_public_key: secret_key.x_only_public_key(SECP256K1).0,
             max_fee: 15000,
-            stacks_address,
+            recipient,
         };
 
-        let deposit_script = deposit.deposit_script();        
+        let deposit_script = deposit.deposit_script();
         let parsed_deposit = parse_deposit_script(&deposit_script).unwrap();
 
         assert_eq!(deposit, parsed_deposit);
@@ -251,13 +251,13 @@ mod tests {
     /// Basic check that we can create an address without any issues
     #[test_case(PrincipalData::from(StacksAddress::burn_address(false)) ; "standard address")]
     #[test_case(PrincipalData::parse(CONTRACT_ADDRESS).unwrap(); "contract address")]
-    fn btc_address(stacks_address: PrincipalData) {
+    fn btc_address(recipient: PrincipalData) {
         let secret_key = SecretKey::new(&mut OsRng);
 
-        let deposit = DepositScript {
+        let deposit = DepositScriptInputs {
             signers_public_key: secret_key.x_only_public_key(SECP256K1).0,
             max_fee: 15000,
-            stacks_address,
+            recipient,
         };
 
         let address = deposit.to_address(ScriptBuf::new(), Network::Regtest);
