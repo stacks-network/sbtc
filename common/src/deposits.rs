@@ -28,7 +28,7 @@ use stacks_common::types::chainstate::STACKS_ADDRESS_ENCODED_SIZE;
 /// Although this reads as though it is 25 bytes (20 bytes for the Hash160
 /// of the public key and 5 bytes of opcodes), the public key hash data is
 /// 21 bytes, since data is prefixed with the size of the data in bitcoin
-/// script. Thus its 5 bytes for the opcodes, 1 byte for the length of the
+/// script. Thus, its 5 bytes for the opcodes, 1 byte for the length of the
 /// public key hash data and 20 bytes for the actual public key hash.
 const DEPOSIT_SCRIPT_FIXED_LENGTH: usize = 26;
 
@@ -151,7 +151,7 @@ impl DepositInputs {
 pub const DROP: u8 = opcodes::all::OP_DROP.to_u8();
 /// Duplicate the top stack item and puts it on the stack.
 pub const DUP: u8 = opcodes::all::OP_DUP.to_u8();
-/// Pop the top stack item and push its RIPEMD(SHA256) hash.
+/// Pop the top stack item and push its RIPEMD-160(SHA256) hash.
 pub const HASH160: u8 = opcodes::all::OP_HASH160.to_u8();
 /// Returns success if the inputs are exactly equal, failure otherwise.
 pub const EQUALVERIFY: u8 = opcodes::all::OP_EQUALVERIFY.to_u8();
@@ -186,21 +186,21 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScript,
     // representation of these opcodes is the byte representation of N. If
     // you need to push between 76 and 255 bytes of data then you need to
     // use the OP_PUSHDATA1 opcode (you can also use this opcode to push
-    // between 1 and 75 bytes on the stack but it's cheaper to use the
+    // between 1 and 75 bytes on the stack, but it's cheaper to use the
     // OP_PUSHBYTES_N opcodes when you can). When need to check all cases
     // contract addresses can have a size of up to 150 bytes.
     let data = match params {
-        // The next two branches represent contract addresses.
+        // This branch represents a contract address.
         [OP_PUSHDATA1, n, data @ ..] if data.len() == *n as usize && 30 < *n && *n < 159 => data,
         // This branch can be a standard (non-contract) Stacks addresses
         // when n == 29 and is a contract address otherwise.
         [n, data @ ..] if data.len() == *n as usize && 29 < *n && *n < 76 => data,
         _ => return Err(Error::BadDepositScript),
     };
-    // The `split_first_chunk::<N>` function returns Option<&[u8; N]>,
-    // where None is returend if the length of the slice is less than N.
-    // Here N is 8 and the the data variable has a length 29 or greater, so
-    // the error path cannot happen.
+    // Here, `split_first_chunk::<N>` returns Option<(&[u8; N], &[u8])>,
+    // where None is returned if the length of the slice is less than N.
+    // Since N is 8 and the data variable has a length 30 or greater, the
+    // error path cannot happen.
     let Some((max_fee_bytes, mut address)) = data.split_first_chunk::<8>() else {
         return Err(Error::BadDepositScript);
     };
@@ -212,7 +212,8 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScript,
     };
 
     Ok(DepositScript {
-        // This cannot panic, pubkey_hash must have a size of 20 bytes.
+        // This cannot panic, pubkey_hash must have a size of 20 bytes
+        // given the let else check above.
         signers_pubkey_hash: PubkeyHash::from_slice(pubkey_hash)
             .map_err(|_| Error::BadDepositScript)?,
         max_fee: u64::from_be_bytes(*max_fee_bytes),
