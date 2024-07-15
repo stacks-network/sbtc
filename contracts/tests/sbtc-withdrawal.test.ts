@@ -11,15 +11,7 @@ import {
   withdrawal,
 } from "./helpers";
 import { test, expect, describe } from "vitest";
-import {
-  txOk,
-  filterEvents,
-  rov,
-  txErr,
-  rovOk,
-  rovErr,
-  varGet,
-} from "@clarigen/test";
+import { txOk, filterEvents, rov, txErr, rovOk, rovErr } from "@clarigen/test";
 import { CoreNodeEventType, cvToValue } from "@clarigen/core";
 
 const alicePoxAddr = stxAddressToPoxAddress(alice);
