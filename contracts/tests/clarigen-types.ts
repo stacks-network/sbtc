@@ -559,7 +559,7 @@ export const contracts = {
                     { name: "vout-index", type: "uint128" },
                   ],
                 },
-                length: 1000,
+                length: 650,
               },
             },
           },
