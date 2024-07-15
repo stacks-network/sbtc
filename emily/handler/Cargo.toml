@@ -10,7 +10,6 @@ name = "emily-handler"
 default = ["testing"]
 integration-tests = ["testing"]
 testing = ["fake"]
-emily = ["integration-tests"]
 
 [dependencies]
 aws-config.workspace = true
