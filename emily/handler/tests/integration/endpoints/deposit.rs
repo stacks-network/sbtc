@@ -1,4 +1,3 @@
-use assert_unordered::assert_eq_unordered;
 use emily_handler::api::models::deposit::{responses::{GetDepositsForTransactionResponse, GetDepositsResponse}, Deposit, DepositInfo, DepositParameters};
 use once_cell::sync::Lazy;
 use reqwest::Client;
@@ -237,13 +236,16 @@ async fn get_deposits_for_transaction_with_small_page_size() {
         }
 
         // Make the expected deposits.
-        let expected_deposits: Vec<Deposit> = (0..number_of_outputs)
+        let mut expected_deposits: Vec<Deposit> = (0..number_of_outputs)
             .map(|bitcoin_tx_output_index| just_created_deposit(
                 bitcoin_txid.clone(),
                 bitcoin_tx_output_index,
             ))
             .collect();
-        assert_eq_unordered!(aggregate_deposits, expected_deposits);
+
+        aggregate_deposits.sort();
+        expected_deposits.sort();
+        assert_eq!(aggregate_deposits, expected_deposits);
     }
 }
 
@@ -301,7 +303,7 @@ async fn get_pending_deposits() {
     }
 
     // Assert.
-    let expected_deposit_infos: Vec<DepositInfo> = all_test_deposit_data()
+    let mut expected_deposit_infos: Vec<DepositInfo> = all_test_deposit_data()
         .map(|test_deposit_data| just_created_deposit(
             test_deposit_data.bitcoin_txid,
             test_deposit_data.bitcoin_tx_output_index,
@@ -309,8 +311,9 @@ async fn get_pending_deposits() {
         .map(|deposit| deposit.into())
         .collect();
 
-    assert_eq!(aggregate_deposits.len(), expected_deposit_infos.len());
-    assert_eq_unordered!(aggregate_deposits, expected_deposit_infos);
+    aggregate_deposits.sort();
+    expected_deposit_infos.sort();
+    assert_eq!(aggregate_deposits, expected_deposit_infos);
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]

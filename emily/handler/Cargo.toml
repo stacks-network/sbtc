@@ -39,4 +39,3 @@ fake = { version = "2.9.2", features = ["derive", "time"], optional = true }
 mockito = "0.28"
 mockall = "0.10"
 serial_test = "0.5"
-assert_unordered = "0.2"

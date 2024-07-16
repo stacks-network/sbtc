@@ -1,4 +1,3 @@
-use assert_unordered::assert_eq_unordered;
 use emily_handler::api::models::{common::Status, withdrawal::{responses::{CreateWithdrawalResponse, GetWithdrawalResponse, GetWithdrawalsResponse}, Withdrawal, WithdrawalInfo}};
 use once_cell::sync::Lazy;
 use reqwest::Client;
@@ -200,7 +199,7 @@ async fn get_withdrawals() {
     }
 
     // Assert.
-    let expected_withdrawal_infos: Vec<WithdrawalInfo> = TEST_WITHDRAWAL_DATA.iter()
+    let mut expected_withdrawal_infos: Vec<WithdrawalInfo> = TEST_WITHDRAWAL_DATA.iter()
         .map(|test_withdrawal_data| {
             // Extract testing data.
             let TestWithdrawalData {
@@ -217,7 +216,7 @@ async fn get_withdrawals() {
         })
         .map(|withdrawal| withdrawal.into())
         .collect();
-
-    assert_eq!(aggregate_withdrawals.len(), expected_withdrawal_infos.len());
-    assert_eq_unordered!(aggregate_withdrawals, expected_withdrawal_infos);
+    aggregate_withdrawals.sort();
+    expected_withdrawal_infos.sort();
+    assert_eq!(aggregate_withdrawals, expected_withdrawal_infos);
 }

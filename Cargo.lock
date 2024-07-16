@@ -198,12 +198,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "assert_unordered"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4bc3e7ea80927e7fccbd0f0fe761bbe8552511900d6033868db51e2b4c6a7857"
-
-[[package]]
 name = "async-stream"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1576,7 +1570,6 @@ dependencies = [
 name = "emily-handler"
 version = "0.1.0"
 dependencies = [
- "assert_unordered",
  "aws-config",
  "aws-sdk-dynamodb",
  "base64 0.22.1",
