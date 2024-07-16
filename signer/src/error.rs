@@ -181,7 +181,7 @@ pub enum Error {
 
     /// Bitcoin address parse error
     #[error("bitcoin address parse error")]
-    BitcoinAddressParseError(#[source] bitcoin::address::ParseError),
+    BitcoinAddressParse(#[source] bitcoin::address::ParseError),
 
     /// Parsing address failed
     #[error("failed to parse address")]

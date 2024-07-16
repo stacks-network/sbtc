@@ -451,7 +451,7 @@ impl WithdrawalRequest {
             .map_err(Error::ParseAddress)?;
         let address = address
             .require_network(network)
-            .map_err(Error::BitcoinAddressParseError)?;
+            .map_err(Error::BitcoinAddressParse)?;
         let signer_bitmap = Vec::new(); // TODO(326): Populate
 
         Ok(Self {

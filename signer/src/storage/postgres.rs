@@ -265,8 +265,12 @@ impl super::DbRead for PgStore {
                 UNION ALL
                 
                 -- Recursive member: Fetch the parent block using the last block's parent_hash
-                SELECT parent.block_hash, parent.block_height, parent.parent_hash,
-                       parent.created_at, last.depth + 1
+                SELECT
+                    parent.block_hash
+                  , parent.block_height
+                  , parent.parent_hash
+                  , parent.created_at
+                  , last.depth + 1
                 FROM sbtc_signer.bitcoin_blocks parent
                 JOIN context_window last ON parent.block_hash = last.parent_hash
                 WHERE last.depth < $2
