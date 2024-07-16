@@ -215,7 +215,6 @@ impl Coordinator {
                 .expect("message processing failed");
 
             if let Some(packet) = outbound_packet {
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 self.send_packet(bitcoin_chain_tip, txid, packet).await;
             }
 
@@ -283,6 +282,41 @@ impl Signer {
                     .await;
 
                 if let wsts::net::Message::DkgEnd(_) = packet.msg {
+                    return self;
+                }
+            }
+        }
+    }
+
+    /// Participate in a signing round and return the result
+    pub async fn run_until_signature_share_response(mut self) -> Self {
+        loop {
+            let msg = self.network.receive().await.expect("network error");
+            let bitcoin_chain_tip = msg.bitcoin_chain_tip;
+
+            let message::Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
+                continue;
+            };
+
+            let packet = wsts::net::Packet {
+                msg: wsts_msg.inner,
+                sig: Vec::new(),
+            };
+
+            let outbound_packets = self
+                .wsts_signer
+                .process_inbound_messages(&[packet])
+                .expect("message processing failed");
+
+            for packet in outbound_packets {
+                self.wsts_signer
+                    .process_inbound_messages(&[packet.clone()])
+                    .expect("message processing failed");
+
+                self.send_packet(bitcoin_chain_tip, wsts_msg.txid, packet.clone())
+                    .await;
+
+                if let wsts::net::Message::SignatureShareResponse(_) = packet.msg {
                     return self;
                 }
             }
@@ -394,6 +428,20 @@ impl SignerSet {
                 })
                 .collect(),
         )
+    }
+
+    /// Participate in a signing round coordinated by an external coordinator
+    pub async fn participate_in_signing_round(&mut self) {
+        let mut signer_handles = Vec::new();
+        for signer in self.signers.drain(..) {
+            let handle = tokio::spawn(async { signer.run_until_signature_share_response().await });
+            signer_handles.push(handle);
+        }
+
+        for handle in signer_handles {
+            let signer = handle.await.expect("signer crashed");
+            self.signers.push(signer)
+        }
     }
 
     /// Dump the current signer set as a dummy rotate-keys transaction to the given storage

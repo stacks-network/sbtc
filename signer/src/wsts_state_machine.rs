@@ -246,6 +246,9 @@ impl CoordinatorStateMachine {
             };
 
             coordinator
+                .move_to(wsts::state_machine::coordinator::State::Idle)
+                .map_err(coordinator_error)?;
+            coordinator
                 .move_to(wsts::state_machine::coordinator::State::DkgPublicDistribute)
                 .map_err(coordinator_error)?;
             coordinator
@@ -255,11 +258,11 @@ impl CoordinatorStateMachine {
             coordinator
                 .process_message(&packet)
                 .map_err(coordinator_error)?;
-
-            coordinator
-                .process_message(&packet)
-                .map_err(coordinator_error)?;
         }
+
+        coordinator
+            .move_to(wsts::state_machine::coordinator::State::DkgPrivateDistribute)
+            .map_err(coordinator_error)?;
 
         coordinator
             .move_to(wsts::state_machine::coordinator::State::DkgPrivateGather)
@@ -306,6 +309,7 @@ impl std::ops::DerefMut for CoordinatorStateMachine {
     }
 }
 
-fn coordinator_error(err: wsts::state_machine::coordinator::Error) -> error::Error {
+/// Convert a coordinator error to a `error::Error`
+pub fn coordinator_error(err: wsts::state_machine::coordinator::Error) -> error::Error {
     error::Error::WstsCoordinator(Box::new(err))
 }

@@ -445,10 +445,8 @@ impl WithdrawalRequest {
             .max_fee
             .try_into()
             .map_err(|_| Error::TypeConversion)?;
-        let address: Address<NetworkUnchecked> = request
-            .sender_address
-            .parse()
-            .map_err(Error::ParseAddress)?;
+        let address: Address<NetworkUnchecked> =
+            request.recipient.parse().map_err(Error::ParseAddress)?;
         let address = address
             .require_network(network)
             .map_err(Error::BitcoinAddressParse)?;

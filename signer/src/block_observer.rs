@@ -235,6 +235,7 @@ mod tests {
 
     use crate::storage;
     use crate::testing::dummy;
+    use crate::utxo;
 
     use super::*;
 
@@ -363,6 +364,26 @@ mod tests {
         }
 
         async fn estimate_fee_rate(&mut self) -> Result<f64, Self::Error> {
+            unimplemented!()
+        }
+
+        async fn get_signer_utxo(
+            &mut self,
+            _point: p256k1::point::Point,
+        ) -> Result<Option<utxo::SignerUtxo>, Self::Error> {
+            unimplemented!()
+        }
+        async fn get_last_fee(
+            &mut self,
+            _utxo: bitcoin::OutPoint,
+        ) -> Result<Option<utxo::Fees>, Self::Error> {
+            unimplemented!()
+        }
+
+        async fn broadcast_transaction(
+            &mut self,
+            _tx: &bitcoin::Transaction,
+        ) -> Result<(), Self::Error> {
             unimplemented!()
         }
     }
