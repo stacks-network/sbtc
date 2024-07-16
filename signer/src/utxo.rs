@@ -3,6 +3,8 @@
 use std::sync::OnceLock;
 
 use bitcoin::absolute::LockTime;
+use bitcoin::address::NetworkUnchecked;
+use bitcoin::hashes::Hash;
 use bitcoin::key::Secp256k1;
 use bitcoin::secp256k1::SECP256K1;
 use bitcoin::sighash::Prevouts;
@@ -32,6 +34,7 @@ use secp256k1::Message;
 use crate::error::Error;
 use crate::packaging::compute_optimal_packages;
 use crate::packaging::Weighted;
+use crate::storage::model;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
 /// transactions.
@@ -357,6 +360,49 @@ impl DepositRequest {
 
         TaprootSpendInfo::from_node_info(SECP256K1, *internal_key, node)
     }
+
+    /// Try convert from a model::DepositRequest with some additional info.
+    pub fn try_from_model(
+        request: model::DepositRequest,
+        signers_public_key: XOnlyPublicKey,
+    ) -> Result<Self, Error> {
+        let txid = bitcoin::Txid::from_byte_array(
+            request.txid.try_into().map_err(|_| Error::TypeConversion)?,
+        );
+
+        let vout = request
+            .output_index
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
+
+        let outpoint = OutPoint { txid, vout };
+
+        let max_fee = request
+            .max_fee
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
+
+        let signer_bitmap = Vec::new(); // TODO(326): Populate
+
+        let amount = request
+            .amount
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
+
+        let deposit_script = ScriptBuf::from_bytes(request.spend_script);
+
+        let reclaim_script = ScriptBuf::from_bytes(request.reclaim_script);
+
+        Ok(Self {
+            outpoint,
+            max_fee,
+            signer_bitmap,
+            amount,
+            deposit_script,
+            reclaim_script,
+            signers_public_key,
+        })
+    }
 }
 
 /// An accepted or pending withdraw request.
@@ -384,6 +430,36 @@ impl WithdrawalRequest {
             value: Amount::from_sat(self.amount),
             script_pubkey: self.address.script_pubkey(),
         }
+    }
+
+    /// Try convert from a model::DepositRequest with some additional info.
+    pub fn try_from_model(
+        request: model::WithdrawRequest,
+        network: bitcoin::Network,
+    ) -> Result<Self, Error> {
+        let amount = request
+            .amount
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
+        let max_fee = request
+            .max_fee
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
+        let address: Address<NetworkUnchecked> = request
+            .sender_address
+            .parse()
+            .map_err(Error::ParseAddress)?;
+        let address = address
+            .require_network(network)
+            .map_err(Error::BitcoinAddressParse)?;
+        let signer_bitmap = Vec::new(); // TODO(326): Populate
+
+        Ok(Self {
+            amount,
+            max_fee,
+            address,
+            signer_bitmap,
+        })
     }
 }
 

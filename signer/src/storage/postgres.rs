@@ -247,6 +247,67 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
+    async fn get_pending_accepted_deposit_requests(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: i32,
+        threshold: i64,
+    ) -> Result<Vec<model::DepositRequest>, Self::Error> {
+        sqlx::query_as!(
+            model::DepositRequest,
+            r#"
+            WITH RECURSIVE context_window AS (
+                -- Anchor member: Initialize the recursion with the chain tip
+                SELECT block_hash, block_height, parent_hash, created_at, 1 AS depth
+                FROM sbtc_signer.bitcoin_blocks
+                WHERE block_hash = $1
+                
+                UNION ALL
+                
+                -- Recursive member: Fetch the parent block using the last block's parent_hash
+                SELECT
+                    parent.block_hash
+                  , parent.block_height
+                  , parent.parent_hash
+                  , parent.created_at
+                  , last.depth + 1
+                FROM sbtc_signer.bitcoin_blocks parent
+                JOIN context_window last ON parent.block_hash = last.parent_hash
+                WHERE last.depth < $2
+            ),
+            transactions_in_window AS (
+                SELECT transactions.txid
+                FROM context_window blocks_in_window
+                JOIN sbtc_signer.bitcoin_transactions transactions ON
+                    transactions.block_hash = blocks_in_window.block_hash
+            )
+            SELECT
+                deposit_requests.txid
+              , deposit_requests.output_index
+              , deposit_requests.spend_script
+              , deposit_requests.reclaim_script
+              , deposit_requests.recipient
+              , deposit_requests.amount
+              , deposit_requests.max_fee
+              , deposit_requests.sender_addresses
+              , deposit_requests.created_at
+            FROM transactions_in_window transactions
+            JOIN sbtc_signer.deposit_requests deposit_requests USING(txid)
+            JOIN sbtc_signer.deposit_signers signers USING(txid, output_index)
+            WHERE
+                signers.is_accepted
+            GROUP BY deposit_requests.txid, deposit_requests.output_index
+            HAVING COUNT(signers.txid) >= $3
+            "#,
+            chain_tip,
+            context_window,
+            threshold,
+        )
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
     async fn get_accepted_deposit_requests(
         &self,
         signer: &model::PubKey,
@@ -396,6 +457,93 @@ impl super::DbRead for PgStore {
             chain_tip,
             stacks_chain_tip,
             context_window,
+        )
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_pending_accepted_withdraw_requests(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: i32,
+        threshold: i64,
+    ) -> Result<Vec<model::WithdrawRequest>, Self::Error> {
+        let stacks_chain_tip = self.get_stacks_chain_tip(chain_tip).await?;
+        sqlx::query_as!(
+            model::WithdrawRequest,
+            r#"
+            WITH RECURSIVE extended_context_window AS (
+                SELECT 
+                    block_hash
+                  , parent_hash
+                  , confirms
+                  , 1 AS depth
+                FROM sbtc_signer.bitcoin_blocks
+                WHERE block_hash = $1
+
+                UNION ALL
+
+                SELECT
+                    parent.block_hash
+                  , parent.parent_hash
+                  , parent.confirms
+                  , last.depth + 1
+                FROM sbtc_signer.bitcoin_blocks parent
+                JOIN extended_context_window last ON parent.block_hash = last.parent_hash
+                WHERE last.depth <= $3
+            ),
+            last_bitcoin_block AS (
+                SELECT
+                    block_hash
+                  , confirms
+                FROM extended_context_window
+                ORDER BY depth DESC
+                LIMIT 1
+            ),
+            stacks_context_window AS (
+                SELECT
+                    stacks_blocks.block_hash
+                  , stacks_blocks.block_height
+                  , stacks_blocks.parent_hash
+                FROM sbtc_signer.stacks_blocks stacks_blocks
+                WHERE stacks_blocks.block_hash = $2
+
+                UNION ALL
+
+                SELECT
+                    parent.block_hash
+                  , parent.block_height
+                  , parent.parent_hash
+                FROM sbtc_signer.stacks_blocks parent
+                JOIN stacks_context_window last
+                        ON parent.block_hash = last.parent_hash
+                LEFT JOIN last_bitcoin_block block
+                        ON block.confirms @> ARRAY[parent.block_hash]
+                WHERE block.block_hash IS NULL
+            )
+            SELECT
+                wr.request_id
+              , wr.block_hash
+              , wr.recipient
+              , wr.amount
+              , wr.max_fee
+              , wr.sender_address
+              , wr.created_at
+            FROM sbtc_signer.withdraw_requests wr
+            JOIN stacks_context_window sc ON wr.block_hash = sc.block_hash
+            JOIN sbtc_signer.withdraw_signers signers ON
+                wr.request_id = signers.request_id AND
+                wr.block_hash = signers.block_hash
+            WHERE
+                signers.is_accepted
+            GROUP BY wr.request_id, wr.block_hash
+            HAVING COUNT(wr.request_id) >= $4
+            "#,
+            chain_tip,
+            stacks_chain_tip,
+            context_window,
+            threshold,
         )
         .fetch_all(&self.0)
         .await

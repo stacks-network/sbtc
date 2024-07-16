@@ -50,6 +50,7 @@ async fn should_be_able_to_query_bitcoin_blocks(pool: sqlx::PgPool) {
         num_stacks_blocks_per_bitcoin_block: 3,
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
+        num_signers_per_request: 0,
     };
 
     let persisted_model = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
@@ -270,6 +271,7 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store(pool
         num_stacks_blocks_per_bitcoin_block: 3,
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
+        num_signers_per_request: 0,
     };
     let test_data = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
 
@@ -324,6 +326,7 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store(poo
         num_stacks_blocks_per_bitcoin_block: 3,
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 1,
+        num_signers_per_request: 0,
     };
     let test_data = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
 
@@ -360,4 +363,130 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store(poo
     pg_pending_withdraw_requests.sort();
 
     assert_eq!(pending_withdraw_requests, pg_pending_withdraw_requests);
+}
+
+/// This ensures that the postgres store and the in memory stores returns equivalent results
+/// when fetching pending accepted deposit requests
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[sqlx::test]
+async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_store(
+    pool: sqlx::PgPool,
+) {
+    let mut pg_store = storage::postgres::PgStore::from(pool);
+    let mut in_memory_store = storage::in_memory::Store::new_shared();
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+    let context_window = 9;
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 20,
+        num_stacks_blocks_per_bitcoin_block: 3,
+        num_deposit_requests_per_block: 5,
+        num_withdraw_requests_per_block: 5,
+        num_signers_per_request: 7,
+    };
+    let threshold = 4;
+    let test_data = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
+
+    test_data.write_to(&mut in_memory_store).await;
+    test_data.write_to(&mut pg_store).await;
+
+    let chain_tip = in_memory_store
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .expect("failed to get canonical chain tip")
+        .expect("no chain tip");
+
+    assert_eq!(
+        pg_store
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("failed to get canonical chain tip")
+            .expect("no chain tip"),
+        chain_tip
+    );
+
+    let mut pending_accepted_deposit_requests = in_memory_store
+        .get_pending_accepted_deposit_requests(&chain_tip, context_window, threshold)
+        .await
+        .expect("failed to get pending deposit requests");
+
+    pending_accepted_deposit_requests.sort();
+
+    assert!(!pending_accepted_deposit_requests.is_empty());
+
+    let mut pg_pending_accepted_deposit_requests = pg_store
+        .get_pending_accepted_deposit_requests(&chain_tip, context_window, threshold)
+        .await
+        .expect("failed to get pending deposit requests");
+
+    pg_pending_accepted_deposit_requests.sort();
+
+    assert_eq!(
+        pending_accepted_deposit_requests,
+        pg_pending_accepted_deposit_requests
+    );
+}
+
+/// This ensures that the postgres store and the in memory stores returns equivalent results
+/// when fetching pending accepted withdraw requests
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[sqlx::test]
+async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_store(
+    pool: sqlx::PgPool,
+) {
+    let mut pg_store = storage::postgres::PgStore::from(pool);
+    let mut in_memory_store = storage::in_memory::Store::new_shared();
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+    let context_window = 3;
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 20,
+        num_stacks_blocks_per_bitcoin_block: 3,
+        num_deposit_requests_per_block: 5,
+        num_withdraw_requests_per_block: 1,
+        num_signers_per_request: 7,
+    };
+    let threshold = 4;
+    let test_data = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
+
+    test_data.write_to(&mut in_memory_store).await;
+    test_data.write_to(&mut pg_store).await;
+
+    let chain_tip = in_memory_store
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .expect("failed to get canonical chain tip")
+        .expect("no chain tip");
+
+    assert_eq!(
+        pg_store
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("failed to get canonical chain tip")
+            .expect("no chain tip"),
+        chain_tip
+    );
+
+    let mut pending_accepted_withdraw_requests = in_memory_store
+        .get_pending_accepted_withdraw_requests(&chain_tip, context_window, threshold)
+        .await
+        .expect("failed to get pending_accepted deposit requests");
+
+    pending_accepted_withdraw_requests.sort();
+
+    assert!(!pending_accepted_withdraw_requests.is_empty());
+
+    let mut pg_pending_accepted_withdraw_requests = pg_store
+        .get_pending_accepted_withdraw_requests(&chain_tip, context_window, threshold)
+        .await
+        .expect("failed to get pending_accepted deposit requests");
+
+    pg_pending_accepted_withdraw_requests.sort();
+
+    assert_eq!(
+        pending_accepted_withdraw_requests,
+        pg_pending_accepted_withdraw_requests
+    );
 }

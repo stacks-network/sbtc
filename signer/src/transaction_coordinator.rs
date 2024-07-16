@@ -104,6 +104,8 @@ pub struct TxCoordinatorEventLoop<Network, Storage, BitcoinClient> {
     pub threshold: u32,
     /// How many bitcoin blocks back from the chain tip the signer will look for requests.
     pub context_window: usize,
+    /// The bitcoin network we're targeting
+    pub bitcoin_network: bitcoin::Network,
 }
 
 impl<N, S, B> TxCoordinatorEventLoop<N, S, B>
@@ -165,7 +167,9 @@ where
 
         let signer_btc_state = self.get_btc_state(fee_rate, &aggregate_key).await?;
 
-        let pending_requests = self.get_pending_requests(signer_btc_state).await?;
+        let pending_requests = self
+            .get_pending_requests(bitcoin_chain_tip, signer_btc_state)
+            .await?;
 
         let transaction_package = pending_requests.construct_transactions()?;
 
@@ -261,11 +265,61 @@ where
     #[tracing::instrument(skip(self))]
     async fn get_pending_requests(
         &mut self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
         signer_btc_state: utxo::SignerBtcState,
     ) -> Result<utxo::SbtcRequests, error::Error> {
-        // TODO(318): Fetch pending deposit and withdraw requests
-        // with enough votes and connect them into the right format
-        todo!();
+        let context_window = self
+            .context_window
+            .try_into()
+            .map_err(|_| error::Error::TypeConversion)?;
+
+        let threshold = self.threshold.into();
+
+        let pending_deposit_requests = self
+            .storage
+            .get_pending_accepted_deposit_requests(bitcoin_chain_tip, context_window, threshold)
+            .await?;
+
+        let pending_withdraw_requests = self
+            .storage
+            .get_pending_accepted_withdraw_requests(bitcoin_chain_tip, context_window, threshold)
+            .await?;
+
+        let signers_public_key = self.get_aggregate_key(bitcoin_chain_tip).await?;
+        let signers_public_key =
+            bitcoin::XOnlyPublicKey::from_slice(&signers_public_key.x().to_bytes())
+                .map_err(|_| error::Error::TypeConversion)?;
+
+        let convert_deposit =
+            |request| utxo::DepositRequest::try_from_model(request, signers_public_key);
+
+        let deposits: Vec<utxo::DepositRequest> = pending_deposit_requests
+            .into_iter()
+            .map(convert_deposit)
+            .collect::<Result<_, _>>()?;
+
+        let convert_withdraw =
+            |request| utxo::WithdrawalRequest::try_from_model(request, self.bitcoin_network);
+
+        let withdrawals = pending_withdraw_requests
+            .into_iter()
+            .map(convert_withdraw)
+            .collect::<Result<_, _>>()?;
+
+        let accept_threshold = self.threshold;
+        let num_signers = self
+            .signer_public_keys
+            .len()
+            .try_into()
+            .map_err(|_| error::Error::TypeConversion)?;
+
+        Ok(utxo::SbtcRequests {
+            deposits,
+            withdrawals,
+            signer_state: signer_btc_state,
+            accept_threshold,
+            num_signers,
+        })
     }
 
     // Return the public key of self.

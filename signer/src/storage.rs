@@ -43,6 +43,14 @@ pub trait DbRead {
         context_window: i32,
     ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Self::Error>> + Send;
 
+    /// Get pending deposit requests that have been accepted by at least `threshold` signers and has no responses
+    fn get_pending_accepted_deposit_requests(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: i32,
+        threshold: i64,
+    ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Self::Error>> + Send;
+
     /// Get the deposit requests that the signer has accepted to sign
     fn get_accepted_deposit_requests(
         &self,
@@ -67,7 +75,15 @@ pub trait DbRead {
     fn get_pending_withdraw_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        stacks_context_window: i32,
+        context_window: i32,
+    ) -> impl Future<Output = Result<Vec<model::WithdrawRequest>, Self::Error>> + Send;
+
+    /// Get pending withdraw requests that have been accepted by at least `threshold` signers and has no responses
+    fn get_pending_accepted_withdraw_requests(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: i32,
+        threshold: i64,
     ) -> impl Future<Output = Result<Vec<model::WithdrawRequest>, Self::Error>> + Send;
 
     /// Get bitcoin blocks that include a particular transaction

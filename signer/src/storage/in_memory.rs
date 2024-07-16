@@ -37,7 +37,7 @@ pub struct Store {
     pub signer_to_deposit_request: HashMap<model::PubKey, Vec<DepositRequestPk>>,
 
     /// Withdraw signers
-    pub withdraw_signers: HashMap<WithdrawRequestPk, Vec<model::WithdrawSigner>>,
+    pub withdraw_request_to_signers: HashMap<WithdrawRequestPk, Vec<model::WithdrawSigner>>,
 
     /// Bitcoin blocks to transactions
     pub bitcoin_block_to_transactions: HashMap<model::BitcoinBlockHash, Vec<model::BitcoinTxId>>,
@@ -135,6 +135,33 @@ impl super::DbRead for SharedStore {
             .collect())
     }
 
+    async fn get_pending_accepted_deposit_requests(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: i32,
+        threshold: i64,
+    ) -> Result<Vec<model::DepositRequest>, Self::Error> {
+        let pending_deposit_requests = self
+            .get_pending_deposit_requests(chain_tip, context_window)
+            .await?;
+        let store = self.lock().await;
+
+        let threshold = threshold.try_into().expect("type conversion failure");
+
+        Ok(pending_deposit_requests
+            .into_iter()
+            .filter(|deposit_request| {
+                store
+                    .deposit_request_to_signers
+                    .get(&(deposit_request.txid.clone(), deposit_request.output_index))
+                    .map(|signers| {
+                        signers.iter().filter(|signer| signer.is_accepted).count() >= threshold
+                    })
+                    .unwrap_or_default()
+            })
+            .collect())
+    }
+
     async fn get_accepted_deposit_requests(
         &self,
         signer: &model::PubKey,
@@ -181,7 +208,7 @@ impl super::DbRead for SharedStore {
         Ok(self
             .lock()
             .await
-            .withdraw_signers
+            .withdraw_request_to_signers
             .get(&(request_id, block_hash.clone()))
             .cloned()
             .unwrap_or_default())
@@ -252,6 +279,36 @@ impl super::DbRead for SharedStore {
             })
             .collect(),
         )
+    }
+
+    async fn get_pending_accepted_withdraw_requests(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: i32,
+        threshold: i64,
+    ) -> Result<Vec<model::WithdrawRequest>, Self::Error> {
+        let pending_withdraw_requests = self
+            .get_pending_withdraw_requests(chain_tip, context_window)
+            .await?;
+        let store = self.lock().await;
+
+        let threshold = threshold.try_into().expect("type conversion failure");
+
+        Ok(pending_withdraw_requests
+            .into_iter()
+            .filter(|withdraw_request| {
+                store
+                    .withdraw_request_to_signers
+                    .get(&(
+                        withdraw_request.request_id,
+                        withdraw_request.block_hash.clone(),
+                    ))
+                    .map(|signers| {
+                        signers.iter().filter(|signer| signer.is_accepted).count() >= threshold
+                    })
+                    .unwrap_or_default()
+            })
+            .collect())
     }
 
     async fn get_bitcoin_blocks_with_transaction(
@@ -372,7 +429,7 @@ impl super::DbWrite for SharedStore {
     ) -> Result<(), Self::Error> {
         self.lock()
             .await
-            .withdraw_signers
+            .withdraw_request_to_signers
             .entry((decision.request_id, decision.block_hash.clone()))
             .or_default()
             .push(decision.clone());

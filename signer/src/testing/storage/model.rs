@@ -34,6 +34,12 @@ pub struct TestData {
 
     /// Connection between bitcoin blocks and transactions
     pub stacks_transactions: Vec<model::StacksTransaction>,
+
+    /// Deposit signers
+    pub deposit_signers: Vec<model::DepositSigner>,
+
+    /// Withdraw signers
+    pub withdraw_signers: Vec<model::WithdrawSigner>,
 }
 
 impl TestData {
@@ -64,14 +70,19 @@ impl TestData {
             .confirms
             .push(stacks_blocks.last().unwrap().block_hash.clone());
 
-        let deposit_data =
-            DepositData::generate(rng, &block, params.num_deposit_requests_per_block);
+        let deposit_data = DepositData::generate(
+            rng,
+            &block,
+            params.num_deposit_requests_per_block,
+            params.num_signers_per_request,
+        );
 
         let withdraw_data = WithdrawData::generate(
             rng,
             &stacks_blocks,
             &self.withdraw_requests,
             params.num_withdraw_requests_per_block,
+            params.num_signers_per_request,
         );
 
         let transactions = deposit_data
@@ -86,7 +97,9 @@ impl TestData {
             bitcoin_blocks,
             stacks_blocks,
             deposit_requests: deposit_data.deposit_requests,
+            deposit_signers: deposit_data.deposit_signers,
             withdraw_requests: withdraw_data.withdraw_requests,
+            withdraw_signers: withdraw_data.withdraw_signers,
             bitcoin_transactions: deposit_data.bitcoin_transactions,
             stacks_transactions: withdraw_data.stacks_transactions,
             transactions,
@@ -98,7 +111,9 @@ impl TestData {
         self.bitcoin_blocks.extend(new_data.bitcoin_blocks);
         self.stacks_blocks.extend(new_data.stacks_blocks);
         self.deposit_requests.extend(new_data.deposit_requests);
+        self.deposit_signers.extend(new_data.deposit_signers);
         self.withdraw_requests.extend(new_data.withdraw_requests);
+        self.withdraw_signers.extend(new_data.withdraw_signers);
         self.bitcoin_transactions
             .extend(new_data.bitcoin_transactions);
         self.stacks_transactions
@@ -159,6 +174,20 @@ impl TestData {
                 .await
                 .expect("failed to write stacks transaction");
         }
+
+        for decision in self.deposit_signers.iter() {
+            storage
+                .write_deposit_signer_decision(decision)
+                .await
+                .expect("failed to write signer decision");
+        }
+
+        for decision in self.withdraw_signers.iter() {
+            storage
+                .write_withdraw_signer_decision(decision)
+                .await
+                .expect("failed to write signer decision");
+        }
     }
 
     fn generate_bitcoin_block(&self, rng: &mut impl rand::RngCore) -> model::BitcoinBlock {
@@ -218,6 +247,7 @@ impl TestData {
 #[derive(Debug, Clone, Default)]
 struct DepositData {
     pub deposit_requests: Vec<model::DepositRequest>,
+    pub deposit_signers: Vec<model::DepositSigner>,
     pub transactions: Vec<model::Transaction>,
     pub bitcoin_transactions: Vec<model::BitcoinTransaction>,
 }
@@ -231,9 +261,19 @@ impl DepositData {
         rng: &mut impl rand::RngCore,
         bitcoin_block: &model::BitcoinBlock,
         num_deposit_requests: usize,
+        num_signers_per_request: usize,
     ) -> Self {
         (0..num_deposit_requests).fold(Self::new(), |mut deposit_data, _| {
             let deposit_request: model::DepositRequest = fake::Faker.fake_with_rng(rng);
+
+            let deposit_signers: Vec<_> = (0..num_signers_per_request)
+                .map(|_| {
+                    let mut signer: model::DepositSigner = fake::Faker.fake_with_rng(rng);
+                    signer.txid = deposit_request.txid.clone();
+                    signer.output_index = deposit_request.output_index;
+                    signer
+                })
+                .collect();
 
             let mut raw_transaction: model::Transaction = fake::Faker.fake_with_rng(rng);
             raw_transaction.txid = deposit_request.txid.clone();
@@ -247,6 +287,7 @@ impl DepositData {
             deposit_data.bitcoin_transactions.push(bitcoin_transaction);
             deposit_data.deposit_requests.push(deposit_request);
             deposit_data.transactions.push(raw_transaction);
+            deposit_data.deposit_signers.extend(deposit_signers);
 
             deposit_data
         })
@@ -256,6 +297,7 @@ impl DepositData {
 #[derive(Debug, Clone, Default)]
 struct WithdrawData {
     pub withdraw_requests: Vec<model::WithdrawRequest>,
+    pub withdraw_signers: Vec<model::WithdrawSigner>,
     pub transactions: Vec<model::Transaction>,
     pub stacks_transactions: Vec<model::StacksTransaction>,
 }
@@ -270,6 +312,7 @@ impl WithdrawData {
         stacks_blocks: &[model::StacksBlock],
         withdraw_requests: &[model::WithdrawRequest],
         num_withdraw_requests: usize,
+        num_signers_per_request: usize,
     ) -> Self {
         let next_withdraw_request_id = withdraw_requests
             .iter()
@@ -298,11 +341,21 @@ impl WithdrawData {
                         block_hash: stacks_block_hash,
                     };
 
+                    let withdraw_signers: Vec<_> = (0..num_signers_per_request)
+                        .map(|_| {
+                            let mut signer: model::WithdrawSigner = fake::Faker.fake_with_rng(rng);
+                            signer.request_id = withdraw_request.request_id;
+                            signer.block_hash = withdraw_request.block_hash.clone();
+                            signer
+                        })
+                        .collect();
+
                     withdraw_requests
                         .stacks_transactions
                         .push(stacks_transaction);
                     withdraw_requests.withdraw_requests.push(withdraw_request);
                     withdraw_requests.transactions.push(raw_transaction);
+                    withdraw_requests.withdraw_signers.extend(withdraw_signers);
 
                     (withdraw_requests, next_withdraw_request_id + 1)
                 },
@@ -322,6 +375,8 @@ pub struct Params {
     pub num_deposit_requests_per_block: usize,
     /// The number of withdraw requests to generate per bitcoin block,
     pub num_withdraw_requests_per_block: usize,
+    /// The number of signers to hallucinate per request
+    pub num_signers_per_request: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
