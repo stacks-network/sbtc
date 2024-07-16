@@ -360,12 +360,12 @@ impl DepositRequest {
 
         TaprootSpendInfo::from_node_info(SECP256K1, *internal_key, node)
     }
-}
 
-impl TryFrom<model::DepositRequest> for DepositRequest {
-    type Error = Error;
-
-    fn try_from(request: model::DepositRequest) -> Result<Self, Self::Error> {
+    /// Try convert from a model::DepositRequest with some additional info.
+    pub fn try_from_model(
+        request: model::DepositRequest,
+        signers_public_key: XOnlyPublicKey,
+    ) -> Result<Self, Error> {
         let txid = bitcoin::Txid::from_byte_array(
             request.txid.try_into().map_err(|_| Error::TypeConversion)?,
         );
@@ -389,14 +389,9 @@ impl TryFrom<model::DepositRequest> for DepositRequest {
             .try_into()
             .map_err(|_| Error::TypeConversion)?;
 
-        let deposit_script = bitcoin::consensus::deserialize(&request.spend_script)
-            .map_err(Error::BitcoinSerialization)?;
+        let deposit_script = ScriptBuf::from_bytes(request.spend_script);
 
-        let redeem_script = bitcoin::consensus::deserialize(&request.reclaim_script)
-            .map_err(Error::BitcoinSerialization)?;
-
-        let signers_public_key =
-            XOnlyPublicKey::from_slice(&[0; 32]).map_err(|_| Error::TypeConversion)?;
+        let redeem_script = ScriptBuf::from_bytes(request.reclaim_script);
 
         Ok(Self {
             outpoint,
@@ -436,12 +431,12 @@ impl WithdrawalRequest {
             script_pubkey: self.address.script_pubkey(),
         }
     }
-}
 
-impl TryFrom<model::WithdrawRequest> for WithdrawalRequest {
-    type Error = Error;
-
-    fn try_from(request: model::WithdrawRequest) -> Result<Self, Self::Error> {
+    /// Try convert from a model::DepositRequest with some additional info.
+    pub fn try_from_model(
+        request: model::WithdrawRequest,
+        network: bitcoin::Network,
+    ) -> Result<Self, Error> {
         let amount = request
             .amount
             .try_into()
@@ -454,7 +449,9 @@ impl TryFrom<model::WithdrawRequest> for WithdrawalRequest {
             .sender_address
             .parse()
             .map_err(Error::ParseAddress)?;
-        let address = address.assume_checked(); // We do not validate the request address here
+        let address = address
+            .require_network(network)
+            .map_err(Error::BitcoinAddressParseError)?;
         let signer_bitmap = Vec::new(); // TODO(326): Populate
 
         Ok(Self {

@@ -104,6 +104,8 @@ pub struct TxCoordinatorEventLoop<Network, Storage, BitcoinClient> {
     pub threshold: u32,
     /// How many bitcoin blocks back from the chain tip the signer will look for requests.
     pub context_window: usize,
+    /// The bitcoin network we're targeting
+    pub bitcoin_network: bitcoin::Network,
 }
 
 impl<N, S, B> TxCoordinatorEventLoop<N, S, B>
@@ -283,14 +285,25 @@ where
             .get_pending_accepted_withdraw_requests(bitcoin_chain_tip, context_window, threshold)
             .await?;
 
+        let signers_public_key = self.get_aggregate_key(bitcoin_chain_tip).await?;
+        let signers_public_key =
+            bitcoin::XOnlyPublicKey::from_slice(&signers_public_key.x().to_bytes())
+                .map_err(|_| error::Error::TypeConversion)?;
+
+        let convert_deposit =
+            |request| utxo::DepositRequest::try_from_model(request, signers_public_key);
+
         let deposits: Vec<utxo::DepositRequest> = pending_deposit_requests
             .into_iter()
-            .map(|request| request.try_into())
+            .map(convert_deposit)
             .collect::<Result<_, _>>()?;
+
+        let convert_withdraw =
+            |request| utxo::WithdrawalRequest::try_from_model(request, self.bitcoin_network);
 
         let withdrawals = pending_withdraw_requests
             .into_iter()
-            .map(|request| request.try_into())
+            .map(convert_withdraw)
             .collect::<Result<_, _>>()?;
 
         let accept_threshold = self.threshold;

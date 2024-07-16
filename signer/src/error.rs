@@ -179,9 +179,9 @@ pub enum Error {
     #[error("no bitcoin chain tip")]
     NoChainTip,
 
-    /// Bitcoin serialization error.
-    #[error("serailization failure")]
-    BitcoinSerialization(#[source] bitcoin::consensus::encode::Error),
+    /// Bitcoin address parse error
+    #[error("bitcoin address parse error")]
+    BitcoinAddressParseError(#[source] bitcoin::address::ParseError),
 
     /// Parsing address failed
     #[error("failed to parse address")]
