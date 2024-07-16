@@ -143,7 +143,7 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScriptI
     // DEPOSIT_SCRIPT_FIXED_LENGTH < STANDARD_SCRIPT_LENGTH.
     let (params, check) = script.split_at(script.len() - DEPOSIT_SCRIPT_FIXED_LENGTH);
     // Below, we know the script length is DEPOSIT_SCRIPT_FIXED_LENGTH,
-    // because of how `slice::split_at` works, so we know the pubkey_hash
+    // because of how `slice::split_at` works, so we know the public_key
     // variable has length 32.
     let [OP_DROP, 32, public_key @ .., OP_CHECKSIG] = check else {
         return Err(Error::InvalidDepositScript);
@@ -156,12 +156,12 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScriptI
     // use the OP_PUSHDATA1 opcode (you can also use this opcode to push
     // between 1 and 75 bytes on the stack, but it's cheaper to use the
     // OP_PUSHBYTES_N opcodes when you can). When need to check all cases
-    // contract addresses can have a size of up to 151 bytes.
+    // since contract addresses can have a size of up to 151 bytes.
     let data = match params {
         // This branch represents a contract address.
         [OP_PUSHDATA1, n, data @ ..] if data.len() == *n as usize && *n < 160 => data,
         // This branch can be a standard (non-contract) Stacks addresses
-        // when n == 29 and is a contract address otherwise.
+        // when n == 30 and is a contract address otherwise.
         [n, data @ ..] if data.len() == *n as usize && *n < 76 => data,
         _ => return Err(Error::InvalidDepositScript),
     };
