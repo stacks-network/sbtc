@@ -288,11 +288,8 @@ impl super::DbRead for PgStore {
               , deposit_requests.sender_addresses
               , deposit_requests.created_at
             FROM transactions_in_window transactions
-            JOIN sbtc_signer.deposit_requests deposit_requests ON
-                deposit_requests.txid = transactions.txid
-            JOIN sbtc_signer.deposit_signers signers ON
-                deposit_requests.txid = signers.txid AND
-                deposit_requests.output_index = signers.output_index
+            JOIN sbtc_signer.deposit_requests deposit_requests USING(txid)
+            JOIN sbtc_signer.deposit_signers signers USING(txid, output_index)
             WHERE
                 signers.is_accepted
             GROUP BY deposit_requests.txid, deposit_requests.output_index
