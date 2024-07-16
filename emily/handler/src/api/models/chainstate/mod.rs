@@ -11,7 +11,7 @@ pub mod requests;
 pub mod responses;
 
 /// Chainstate.
-#[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
+#[derive(Clone, Default, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
 #[serde(rename_all = "camelCase")]
 pub struct Chainstate {
     /// Stacks block height.

@@ -2,7 +2,7 @@
 use warp::reply::{json, with_status, Reply};
 
 use warp::http::StatusCode;
-use crate::api::models::common::{BlockHeight, StacksBlockHash, Status};
+use crate::api::models::common::{BlockHeight, Status};
 use crate::api::models::withdrawal::{Withdrawal, WithdrawalInfo};
 use crate::api::models::withdrawal::{
     WithdrawalId,
@@ -151,22 +151,33 @@ pub async fn create_withdrawal(
     ) -> Result<impl warp::reply::Reply, Error> {
         // Set variables.
         // TODO(TBD): Remove dummy hash; take hash from request.
-        let stacks_block_hash: StacksBlockHash = "PLACEHOLDER_HASH".into();
+
+        let CreateWithdrawalRequestBody {
+            request_id,
+            stacks_block_hash,
+            recipient,
+            amount,
+            parameters,
+        } = body;
+
         let stacks_block_height: BlockHeight = 0;
         let status = Status::Pending;
+
         // Make table entry.
         let withdrawal_entry: WithdrawalEntry = WithdrawalEntry {
             key: WithdrawalEntryKey {
-                request_id: body.request_id,
+                request_id,
                 // TODO(TBD): Remove dummy hash.
                 stacks_block_hash: stacks_block_hash.clone(),
             },
+            recipient,
+            amount,
             parameters: WithdrawalParametersEntry {
-                max_fee: body.parameters.max_fee,
+                max_fee: parameters.max_fee,
             },
             history: vec![ WithdrawalEvent {
                 status: Status::Pending,
-                message: "Just received deposit".to_string(),
+                message: "Just received withdrawal".to_string(),
                 stacks_block_hash: stacks_block_hash.clone(),
                 stacks_block_height,
             }],

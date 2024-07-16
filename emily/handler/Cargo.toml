@@ -6,6 +6,7 @@ edition = "2021"
 [[bin]]
 name = "emily-handler"
 
+[features]
 default = ["testing"]
 integration-tests = ["testing"]
 testing = ["fake"]
@@ -32,6 +33,9 @@ utoipa = "4.2.3"
 warp = "0.3"
 warp_lambda.workspace = true
 
+fake = { version = "2.9.2", features = ["derive", "time"], optional = true }
+
 [dev-dependencies]
 mockito = "0.28"
 mockall = "0.10"
+serial_test = "0.5"
