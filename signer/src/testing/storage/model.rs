@@ -1,5 +1,6 @@
 //! Test data generation utilities
 
+use bitcoin::hashes::Hash;
 use fake::Fake;
 
 use crate::storage::model;
@@ -332,6 +333,11 @@ impl WithdrawData {
 
                     withdraw_request.block_hash = stacks_block_hash.clone();
                     withdraw_request.request_id = next_withdraw_request_id;
+                    withdraw_request.recipient = bitcoin::Address::p2pkh(
+                        bitcoin::PubkeyHash::from_byte_array([0; 20]),
+                        bitcoin::Network::Testnet,
+                    )
+                    .to_string();
 
                     let mut raw_transaction: model::Transaction = fake::Faker.fake_with_rng(rng);
                     raw_transaction.tx_type = model::TransactionType::WithdrawRequest;

@@ -130,6 +130,10 @@ pub enum Error {
     #[error("missing key rotation")]
     MissingKeyRotation,
 
+    /// Missing signer utxo
+    #[error("missing signer utxo")]
+    MissingSignerUtxo,
+
     /// Invalid signature
     #[error("invalid signature")]
     InvalidSignature,

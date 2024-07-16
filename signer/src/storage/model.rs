@@ -64,9 +64,11 @@ pub struct DepositRequest {
     /// can be a smart contract address.
     pub recipient: StacksAddress,
     /// The amount deposited.
+    #[cfg_attr(feature = "testing", dummy(faker = "2000..10000"))]
     pub amount: i64,
     /// The maximum portion of the deposited amount that may
     /// be used to pay for transaction fees.
+    #[cfg_attr(feature = "testing", dummy(faker = "100..200"))]
     pub max_fee: i64,
     /// The addresses of the input UTXOs funding the deposit request.
     #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![String; 1..8]"))]
@@ -114,9 +116,11 @@ pub struct WithdrawRequest {
     /// The address that shuld receive the BTC withdrawal.
     pub recipient: BitcoinAddress,
     /// The amount to withdraw.
+    #[cfg_attr(feature = "testing", dummy(faker = "2000..10000"))]
     pub amount: i64,
     /// The maximum portion of the withdrawn amount that may
     /// be used to pay for transaction fees.
+    #[cfg_attr(feature = "testing", dummy(faker = "100..200"))]
     pub max_fee: i64,
     /// The address that initiated the request.
     pub sender_address: StacksAddress,

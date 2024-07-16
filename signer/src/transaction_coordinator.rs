@@ -7,15 +7,19 @@
 
 use std::collections::BTreeSet;
 
-use sha2::Digest;
-
 use crate::bitcoin::BitcoinInteract;
 use crate::error;
+use crate::message;
 use crate::network;
 use crate::storage;
 use crate::storage::model;
 use crate::utxo;
 use crate::wsts_state_machine;
+
+use crate::ecdsa::SignEcdsa as _;
+use bitcoin::hashes::Hash as _;
+use sha2::Digest as _;
+use wsts::state_machine::coordinator::Coordinator as _;
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// # Transaction coordinator event loop
@@ -172,9 +176,7 @@ where
         aggregate_key: p256k1::point::Point,
         signer_public_keys: &BTreeSet<p256k1::ecdsa::PublicKey>,
     ) -> Result<(), error::Error> {
-        let fee_rate = self.bitcoin_client.estimate_fee_rate().await?;
-
-        let signer_btc_state = self.get_btc_state(fee_rate, &aggregate_key).await?;
+        let signer_btc_state = self.get_btc_state(aggregate_key).await?;
 
         let pending_requests = self
             .get_pending_requests(
@@ -188,8 +190,13 @@ where
         let transaction_package = pending_requests.construct_transactions()?;
 
         for transaction in transaction_package {
-            self.sign_and_broadcast(aggregate_key, signer_public_keys, transaction)
-                .await?;
+            self.sign_and_broadcast(
+                bitcoin_chain_tip,
+                aggregate_key,
+                signer_public_keys,
+                transaction,
+            )
+            .await?;
         }
 
         Ok(())
@@ -205,7 +212,7 @@ where
         signer_public_keys: &BTreeSet<p256k1::ecdsa::PublicKey>,
     ) -> Result<(), error::Error> {
         // TODO(320): Implement
-        todo!();
+        Ok(())
     }
 
     /// Coordinate a signing round for the given request
@@ -213,11 +220,12 @@ where
     #[tracing::instrument(skip(self))]
     async fn sign_and_broadcast(
         &mut self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: p256k1::point::Point,
         signer_public_keys: &BTreeSet<p256k1::ecdsa::PublicKey>,
-        transaction: utxo::UnsignedTransaction<'_>,
+        mut transaction: utxo::UnsignedTransaction<'_>,
     ) -> Result<(), error::Error> {
-        let _coordinator_state_machine = wsts_state_machine::CoordinatorStateMachine::load(
+        let mut coordinator_state_machine = wsts_state_machine::CoordinatorStateMachine::load(
             &mut self.storage,
             aggregate_key,
             signer_public_keys.clone(),
@@ -225,8 +233,118 @@ where
             self.private_key,
         )
         .await?;
-        // TODO(319): Coordinate signing round and broadcast result
-        todo!();
+
+        let sighashes = transaction.construct_digests()?;
+        let msg = sighashes.signers.to_raw_hash().to_byte_array();
+
+        let txid = transaction.tx.compute_txid();
+
+        let signature = self
+            .coordinate_signing_round(
+                bitcoin_chain_tip,
+                &mut coordinator_state_machine,
+                txid,
+                &msg,
+            )
+            .await?;
+
+        let signature = bitcoin::taproot::Signature {
+            signature: secp256k1::schnorr::Signature::from_slice(&signature.to_bytes())
+                .expect("TODO"), // TODO: Error handling
+            sighash_type: bitcoin::TapSighashType::Default,
+        };
+        let signer_witness = bitcoin::Witness::p2tr_key_spend(&signature);
+
+        let mut deposit_witness = Vec::new();
+
+        for (deposit, sighash) in sighashes.deposits.into_iter() {
+            let msg = sighash.to_raw_hash().to_byte_array();
+
+            let signature = self
+                .coordinate_signing_round(
+                    bitcoin_chain_tip,
+                    &mut coordinator_state_machine,
+                    txid,
+                    &msg,
+                )
+                .await?;
+
+            let signature = bitcoin::taproot::Signature {
+                signature: secp256k1::schnorr::Signature::from_slice(&signature.to_bytes())
+                    .expect("TODO"), // TODO: Error handling
+                sighash_type: bitcoin::TapSighashType::Default,
+            };
+
+            let witness = deposit.construct_witness_data(signature);
+
+            deposit_witness.push(witness); // TODO: Make more functional
+        }
+
+        let witness_data: Vec<bitcoin::Witness> = std::iter::once(signer_witness)
+            .chain(deposit_witness)
+            .collect();
+
+        transaction
+            .tx
+            .input
+            .iter_mut()
+            .zip(witness_data)
+            .for_each(|(tx_in, witness)| {
+                tx_in.witness = witness;
+            });
+
+        self.bitcoin_client
+            .broadcast_transaction(&transaction.tx)
+            .await?;
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn coordinate_signing_round(
+        &mut self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        coordinator_state_machine: &mut wsts_state_machine::CoordinatorStateMachine,
+        txid: bitcoin::Txid,
+        msg: &[u8],
+    ) -> Result<wsts::taproot::SchnorrProof, error::Error> {
+        let outbound = coordinator_state_machine
+            .start_signing_round(msg, true, None)
+            .map_err(wsts_state_machine::coordinator_error)?;
+
+        let msg = message::WstsMessage { txid, inner: outbound.msg };
+        self.send_message(msg, bitcoin_chain_tip).await?;
+
+        // TODO: Terminate after timeout
+        loop {
+            let msg = self.network.receive().await?;
+
+            let message::Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
+                continue;
+            };
+
+            let packet = wsts::net::Packet {
+                msg: wsts_msg.inner,
+                sig: Vec::new(),
+            };
+
+            let (outbound_packet, operation_result) = coordinator_state_machine
+                .process_message(&packet)
+                .expect("message processing failed");
+
+            if let Some(packet) = outbound_packet {
+                let msg = message::WstsMessage { txid, inner: packet.msg };
+                self.send_message(msg, bitcoin_chain_tip).await?;
+            }
+
+            match operation_result {
+                Some(wsts::state_machine::OperationResult::SignTaproot(signature)) => {
+                    return Ok(signature)
+                }
+                None => continue,
+                Some(_) => panic!("Oh nooo"), // TODO
+            }
+        }
     }
 
     // Determine if the current coordinator is the coordinator
@@ -264,11 +382,24 @@ where
     #[tracing::instrument(skip(self))]
     async fn get_btc_state(
         &mut self,
-        fee_rate: f64,
-        aggregate_key: &p256k1::point::Point,
+        aggregate_key: p256k1::point::Point,
     ) -> Result<utxo::SignerBtcState, error::Error> {
-        // TODO(319): Assemble the relevant information for the btc state
-        todo!();
+        let fee_rate = self.bitcoin_client.estimate_fee_rate().await?;
+        let utxo = self
+            .bitcoin_client
+            .get_signer_utxo(aggregate_key)
+            .await?
+            .ok_or(error::Error::MissingSignerUtxo)?;
+        let public_key = bitcoin::XOnlyPublicKey::from_slice(&aggregate_key.x().to_bytes())
+            .map_err(|_| error::Error::TypeConversion)?;
+        let last_fees = self.bitcoin_client.get_last_fee(utxo.outpoint).await?;
+
+        Ok(utxo::SignerBtcState {
+            fee_rate,
+            utxo,
+            public_key,
+            last_fees,
+        })
     }
 
     #[tracing::instrument(skip(self))]
@@ -342,7 +473,8 @@ where
             .ok_or(error::Error::MissingKeyRotation)?;
 
         let aggregate_key = p256k1::point::Point::lift_x(
-            &bitcoin_chain_tip
+            &last_key_rotation
+                .aggregate_key
                 .as_slice()
                 .try_into()
                 .map_err(|_| error::Error::TypeConversion)?,
@@ -369,5 +501,57 @@ where
     // Technically not a fallible operation.
     fn pub_key(&self) -> Result<p256k1::ecdsa::PublicKey, error::Error> {
         Ok(p256k1::ecdsa::PublicKey::new(&self.private_key)?)
+    }
+
+    #[tracing::instrument(skip(self, msg))]
+    async fn send_message(
+        &mut self,
+        msg: impl Into<message::Payload>,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<(), error::Error> {
+        let msg = msg
+            .into()
+            .to_message(
+                bitcoin::BlockHash::from_slice(bitcoin_chain_tip)
+                    .map_err(error::Error::SliceConversion)?,
+            )
+            .sign_ecdsa(&self.private_key)?;
+
+        self.network.broadcast(msg).await?;
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::storage;
+    use crate::testing;
+
+    fn test_environment(
+    ) -> testing::transaction_coordinator::TestEnvironment<fn() -> storage::in_memory::SharedStore>
+    {
+        let test_model_parameters = testing::storage::model::Params {
+            num_bitcoin_blocks: 20,
+            num_stacks_blocks_per_bitcoin_block: 3,
+            num_deposit_requests_per_block: 5,
+            num_withdraw_requests_per_block: 5,
+            num_signers_per_request: 7,
+        };
+
+        testing::transaction_coordinator::TestEnvironment {
+            storage_constructor: storage::in_memory::Store::new_shared,
+            context_window: 5,
+            num_signers: 7,
+            signing_threshold: 5,
+            test_model_parameters,
+        }
+    }
+
+    #[tokio::test]
+    async fn should_be_able_to_coordinate_signing_rounds() {
+        test_environment()
+            .assert_should_be_able_to_coordinate_signing_rounds()
+            .await;
     }
 }
