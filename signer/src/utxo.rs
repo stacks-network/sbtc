@@ -391,7 +391,7 @@ impl DepositRequest {
 
         let deposit_script = ScriptBuf::from_bytes(request.spend_script);
 
-        let redeem_script = ScriptBuf::from_bytes(request.reclaim_script);
+        let reclaim_script = ScriptBuf::from_bytes(request.reclaim_script);
 
         Ok(Self {
             outpoint,
@@ -399,7 +399,7 @@ impl DepositRequest {
             signer_bitmap,
             amount,
             deposit_script,
-            redeem_script,
+            reclaim_script,
             signers_public_key,
         })
     }
