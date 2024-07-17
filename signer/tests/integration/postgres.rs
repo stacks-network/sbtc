@@ -105,7 +105,7 @@ impl AsContractCall for InitiateWithdrawalRequest {
     amount: 123654,
     recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
     deployer: testing::wallet::generate_wallet().0.address(),
-}); "complete-deposit")]
+}); "complete-deposit standard recipient")]
 #[test_case(ContractCall(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654,
