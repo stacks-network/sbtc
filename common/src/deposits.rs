@@ -203,6 +203,7 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScriptI
 
 /// This struct contains the key variable inputs when constructing a
 /// deposit script address.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReclaimScriptInputs {
     /// This is the lock time used for the OP_CSV opcode in the reclaim
     /// script.
@@ -445,6 +446,18 @@ mod tests {
         let extracts = parse_reclaim_script(&reclaim_script).unwrap();
         assert_eq!(extracts.lock_time, lock_time);
         assert_eq!(extracts.reclaim_script(), reclaim_script);
+
+        // Let's check that ReclaimScriptInputs::reclaim_script and
+        // parse_reclaim_script and are inverses in the other direction.
+        let script = ScriptBuf::builder()
+            .push_opcode(opcodes::OP_DROP)
+            .push_slice([2; 32])
+            .push_opcode(opcodes::OP_CHECKSIG)
+            .into_script();
+
+        let inputs = ReclaimScriptInputs::try_new(lock_time, script).unwrap();
+        let reclaim_script = inputs.reclaim_script();
+        assert_eq!(parse_reclaim_script(&reclaim_script).unwrap(), inputs);
     }
 
     #[test]
@@ -510,6 +523,8 @@ mod tests {
         .push_opcode(opcodes::OP_CSV)
         .into_script() ; "start with 0")]
     fn invalid_script_start(reclaim_script: ScriptBuf) {
+        // The script must start with <lock-time> OP_CSV or we get an
+        // error.
         assert!(parse_reclaim_script(&reclaim_script).is_err());
     }
 }
