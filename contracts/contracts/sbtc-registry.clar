@@ -65,6 +65,7 @@
 (map-set protocol-contracts .sbtc-deposit true)
 (map-set protocol-contracts .sbtc-withdrawal true)
 (if (not is-in-mainnet) (map-set protocol-contracts tx-sender true) true)
+(map-set protocol-contracts .sbtc-token true)
 
 ;; Read-only functions
 ;; Get a withdrawal request by its ID.
