@@ -687,12 +687,6 @@ export const contracts = {
         args: [],
         outputs: { type: "uint128" },
       } as TypedAbiFunction<[], bigint>,
-      validateCaller: {
-        name: "validate-caller",
-        access: "private",
-        args: [],
-        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
-      } as TypedAbiFunction<[], Response<boolean, bigint>>,
       completeDeposit: {
         name: "complete-deposit",
         access: "public",
@@ -912,11 +906,17 @@ export const contracts = {
       isProtocolCaller: {
         name: "is-protocol-caller",
         access: "read_only",
-        args: [{ name: "principal-checked", type: "principal" }],
-        outputs: { type: "bool" },
+        args: [],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+      } as TypedAbiFunction<[], Response<boolean, bigint>>,
+      validateProtocolCaller: {
+        name: "validate-protocol-caller",
+        access: "read_only",
+        args: [{ name: "caller", type: "principal" }],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
-        [principalChecked: TypedAbiArg<string, "principalChecked">],
-        boolean
+        [caller: TypedAbiArg<string, "caller">],
+        Response<boolean, bigint>
       >,
     },
     maps: {
@@ -1391,12 +1391,6 @@ export const contracts = {
         args: [],
         outputs: { type: { response: { ok: "uint128", error: "none" } } },
       } as TypedAbiFunction<[], Response<bigint, null>>,
-      isProtocolCaller: {
-        name: "is-protocol-caller",
-        access: "read_only",
-        args: [],
-        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
-      } as TypedAbiFunction<[], Response<boolean, bigint>>,
     },
     maps: {},
     variables: {

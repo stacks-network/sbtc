@@ -95,7 +95,7 @@ describe("sBTC token contract", () => {
         }),
         bob
       );
-      expect(receipt.value).toEqual(errors.token.ERR_NOT_AUTH);
+      expect(receipt.value).toEqual(errors.registry.ERR_UNAUTHORIZED);
     });
 
     test("Fail transferring sbtc when not owner", () => {

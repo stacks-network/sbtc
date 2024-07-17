@@ -65,7 +65,6 @@
 (map-set protocol-contracts .sbtc-deposit true)
 (map-set protocol-contracts .sbtc-withdrawal true)
 (if (not is-in-mainnet) (map-set protocol-contracts tx-sender true) true)
-(map-set protocol-contracts .sbtc-token true)
 
 ;; Read-only functions
 ;; Get a withdrawal request by its ID.
@@ -250,5 +249,10 @@
 
 ;; Checks whether the contract-caller is a protocol contract
 (define-read-only (is-protocol-caller)
-  (ok (asserts! (is-some (map-get? protocol-contracts contract-caller)) ERR_UNAUTHORIZED))
+  (validate-protocol-caller contract-caller)
+)
+
+;; Validate that a given principal is a protocol contract
+(define-read-only (validate-protocol-caller (caller principal))
+  (ok (asserts! (is-some (map-get? protocol-contracts caller)) ERR_UNAUTHORIZED))
 )

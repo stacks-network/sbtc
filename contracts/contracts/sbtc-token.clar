@@ -14,7 +14,7 @@
 ;; #[allow(unchecked_data)]
 (define-public (protocol-transfer (amount uint) (sender principal) (recipient principal))
 	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller))
+		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
 		(ft-transfer? sbtc-token amount sender recipient)
 	)
 )
@@ -22,7 +22,7 @@
 ;; #[allow(unchecked_data)]
 (define-public (protocol-lock (amount uint) (owner principal))
 	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller))
+		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
 		(try! (ft-burn? sbtc-token amount owner))
 		(ft-mint? sbtc-token-locked amount owner)
 	)
@@ -31,7 +31,7 @@
 ;; #[allow(unchecked_data)]
 (define-public (protocol-unlock (amount uint) (owner principal))
 	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller))
+		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
 		(try! (ft-burn? sbtc-token-locked amount owner))
 		(ft-mint? sbtc-token amount owner)
 	)
@@ -40,7 +40,7 @@
 ;; #[allow(unchecked_data)]
 (define-public (protocol-mint (amount uint) (recipient principal))
 	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller))
+		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
 		(ft-mint? sbtc-token amount recipient)
 	)
 )
@@ -48,7 +48,7 @@
 ;; #[allow(unchecked_data)]
 (define-public (protocol-burn (amount uint) (owner principal))
 	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller))
+		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
 		(ft-burn? sbtc-token amount owner)
 	)
 )
@@ -56,7 +56,7 @@
 ;; #[allow(unchecked_data)]
 (define-public (protocol-burn-locked (amount uint) (owner principal))
 	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller))
+		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
 		(ft-burn? sbtc-token-locked amount owner)
 	)
 )
@@ -64,7 +64,7 @@
 ;; #[allow(unchecked_data)]
 (define-public (protocol-set-name (new-name (string-ascii 32)))
 	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller))
+		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
 		(ok (var-set token-name new-name))
 	)
 )
@@ -72,7 +72,7 @@
 ;; #[allow(unchecked_data)]
 (define-public (protocol-set-symbol (new-symbol (string-ascii 10)))
 	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller))
+		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
 		(ok (var-set token-symbol new-symbol))
 	)
 )
@@ -80,7 +80,7 @@
 ;; #[allow(unchecked_data)]
 (define-public (protocol-set-token-uri (new-uri (optional (string-utf8 256))))
 	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller))
+		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
 		(ok (var-set token-uri new-uri))
 	)
 )
@@ -93,7 +93,7 @@
 ;; #[allow(unchecked_data)]
 (define-public (protocol-mint-many (recipients (list 200 {amount: uint, recipient: principal})))
 	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller))
+		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
 		(ok (map protocol-mint-many-iter recipients))
 	)
 )
