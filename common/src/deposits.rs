@@ -225,7 +225,7 @@ impl ReclaimScriptInputs {
         Ok(Self { lock_time, script })
     }
 
-    /// Create an the reclaim script from the inputs
+    /// Create the reclaim script from the inputs
     pub fn reclaim_script(&self) -> ScriptBuf {
         let mut lock_script = ScriptBuf::builder()
             .push_int(self.lock_time)
@@ -238,7 +238,7 @@ impl ReclaimScriptInputs {
     }
 }
 
-/// Parse the reclaim script for the locktime.
+/// Parse the reclaim script for the lock time.
 ///
 /// The goal of this function is to make sure that there are no surprises
 /// in the reclaim script. These scripts are conceptually very simple and
@@ -301,7 +301,7 @@ fn read_scriptint(v: &[u8], max_size: usize) -> Result<i64, Error> {
         None => return Ok(0),
     };
     // In rust-bitcoin, max_size is hardcoded to 4, while in bitcoin-core
-    // it is a variable and sometimes they set it to 5. This is the only
+    // it is a variable, and sometimes they set it to 5. This is the only
     // modification to this function body from rust-bitcoin's code.
     if v.len() > max_size {
         return Err(Error::ScriptError(bitcoin::script::Error::NumericOverflow));
@@ -358,6 +358,17 @@ mod tests {
     use test_case::test_case;
 
     const CONTRACT_ADDRESS: &str = "ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y.contract-name";
+
+    /// A full reclaim script with a p2pk script at the end.
+    fn reclaim_p2pk(lock_time: i64) -> ScriptBuf {
+        ScriptBuf::builder()
+            .push_int(lock_time)
+            .push_opcode(opcodes::OP_CSV)
+            .push_opcode(opcodes::OP_DROP)
+            .push_slice([0; 32])
+            .push_opcode(opcodes::OP_CHECKSIG)
+            .into_script()
+    }
 
     /// Check that manually creating the expected script can correctly be
     /// parsed.
@@ -426,7 +437,7 @@ mod tests {
         assert_eq!(address.address_type(), Some(AddressType::P2tr));
     }
 
-    #[test_case(0; "sneaky guy setting the locktime to zero")]
+    #[test_case(0; "sneaky guy setting the lock time to zero")]
     #[test_case(6; "6, a minimal number")]
     #[test_case(15; "15, another minimal number")]
     #[test_case(0x00000000ff; "1 byte non-minimal")]
@@ -435,13 +446,7 @@ mod tests {
     #[test_case(0x005f000000; "4 bytes non-minimal")]
     #[test_case(0x7fffffffff; "5 bytes non-minimal 2**39 - 1")]
     fn reclaim_script_lock_time(lock_time: i64) {
-        let reclaim_script = ScriptBuf::builder()
-            .push_int(lock_time)
-            .push_opcode(opcodes::OP_CSV)
-            .push_opcode(opcodes::OP_DROP)
-            .push_slice([0; 32])
-            .push_opcode(opcodes::OP_CHECKSIG)
-            .into_script();
+        let reclaim_script = reclaim_p2pk(lock_time);
 
         let extracts = parse_reclaim_script(&reclaim_script).unwrap();
         assert_eq!(extracts.lock_time, lock_time);
@@ -463,14 +468,7 @@ mod tests {
     #[test]
     fn reclaim_6_bytes_bad() {
         let lock_time = 0x10000000000;
-        let reclaim_script = ScriptBuf::builder()
-            .push_int(lock_time)
-            .push_opcode(opcodes::OP_CSV)
-            .push_opcode(opcodes::OP_DROP)
-            .push_slice([0; 32])
-            .push_opcode(opcodes::OP_CHECKSIG)
-            .into_script();
-
+        let reclaim_script = reclaim_p2pk(lock_time);
         assert!(parse_reclaim_script(&reclaim_script).is_err());
     }
 
@@ -478,13 +476,7 @@ mod tests {
     #[test_case(-16; "negative sixteen")]
     #[test_case(-1000; "negative 1000")]
     fn reclaim_negative_numbers_bytes_bad(lock_time: i64) {
-        let reclaim_script = ScriptBuf::builder()
-            .push_int(lock_time)
-            .push_opcode(opcodes::OP_CSV)
-            .push_opcode(opcodes::OP_DROP)
-            .push_slice([0; 32])
-            .push_opcode(opcodes::OP_CHECKSIG)
-            .into_script();
+        let reclaim_script = reclaim_p2pk(lock_time);
 
         match parse_reclaim_script(&reclaim_script) {
             Err(Error::InvalidReclaimScriptLockTime(parsed_lock_time)) => {
@@ -523,7 +515,7 @@ mod tests {
         .push_opcode(opcodes::OP_CSV)
         .into_script() ; "start with 0")]
     fn invalid_script_start(reclaim_script: ScriptBuf) {
-        // The script must start with <lock-time> OP_CSV or we get an
+        // The script must start with `<lock-time> OP_CSV` or we get an
         // error.
         assert!(parse_reclaim_script(&reclaim_script).is_err());
     }
