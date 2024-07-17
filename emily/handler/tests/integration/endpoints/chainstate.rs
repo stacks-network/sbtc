@@ -1,15 +1,15 @@
+use super::EMILY_ENDPOINT;
+use crate::endpoints::util;
 use emily_handler::api::models::chainstate::Chainstate;
 use once_cell::sync::Lazy;
 use reqwest::Client;
 use serde_json::json;
 use serial_test::serial;
 use tokio;
-use super::EMILY_ENDPOINT;
-use crate::endpoints::util;
 
 /// Test data for chainstate tests.
-static TEST_CHAINSTATE_DATA: Lazy<Vec<Chainstate>> =
-    Lazy::new(|| vec![
+static TEST_CHAINSTATE_DATA: Lazy<Vec<Chainstate>> = Lazy::new(|| {
+    vec![
         Chainstate {
             stacks_block_height: 1,
             stacks_block_hash: "test_hash_1".to_string(),
@@ -23,7 +23,7 @@ static TEST_CHAINSTATE_DATA: Lazy<Vec<Chainstate>> =
             stacks_block_hash: "test_hash_5".to_string(),
         },
     ]
-);
+});
 
 /// Initialize the chainstate table with a bunch of chainstates.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -32,7 +32,6 @@ static TEST_CHAINSTATE_DATA: Lazy<Vec<Chainstate>> =
 async fn create_chainstates() {
     let client = Client::new();
     for test_chainstate_data in TEST_CHAINSTATE_DATA.iter() {
-
         // Arrange.
         let Chainstate {
             stacks_block_height,
@@ -43,21 +42,19 @@ async fn create_chainstates() {
         let response = client
             .post(format!("{EMILY_ENDPOINT}/chainstate"))
             .json(&json!({
-                "stacksBlockHeight": stacks_block_height,
-                "stacksBlockHash": stacks_block_hash,
-              }))
+              "stacksBlockHeight": stacks_block_height,
+              "stacksBlockHash": stacks_block_hash,
+            }))
             .send()
             .await
             .expect("Request should succeed");
 
         // Assert.
-        let actual: Chainstate = response.json()
-            .await
-            .expect("msg");
+        let actual: Chainstate = response.json().await.expect("msg");
 
         let expected = test_chainstate_data;
         util::assert_eq_pretty(&actual, expected);
-    };
+    }
 }
 
 /// Get every chainstate from the previous test one at a time.
@@ -67,7 +64,6 @@ async fn create_chainstates() {
 async fn get_chainstate_at_height() {
     let client = Client::new();
     for test_chainstate_data in TEST_CHAINSTATE_DATA.iter() {
-
         // Arrange..
         let Chainstate {
             stacks_block_height,
@@ -82,7 +78,8 @@ async fn get_chainstate_at_height() {
             .expect("Request should succeed");
 
         // Assert.
-        let actual: Chainstate = response.json()
+        let actual: Chainstate = response
+            .json()
             .await
             .expect("Failed to parse JSON response");
 

@@ -4,10 +4,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     api::models::{
-        common::{BitcoinAddress, BlockHeight, Fulfillment, Satoshis, StacksBlockHash, StacksPrinciple, Status},
-        withdrawal::{Withdrawal, WithdrawalId, WithdrawalInfo, WithdrawalParameters}
+        common::{
+            BitcoinAddress, BlockHeight, Fulfillment, Satoshis, StacksBlockHash, StacksPrinciple,
+            Status,
+        },
+        withdrawal::{Withdrawal, WithdrawalId, WithdrawalInfo, WithdrawalParameters},
     },
-    common::error::Error
+    common::error::Error,
 };
 
 // Withdrawal entry ---------------------------------------------------------------
@@ -65,10 +68,9 @@ impl WithdrawalEntry {
         let stringy_self = serde_json::to_string(self)?;
 
         // Get latest event.
-        let latest_event: &WithdrawalEvent = self.history.last()
-            .ok_or(Error::Debug(
-                format!("Failed getting the last history element for withdrawal. {stringy_self:?}")
-            ))?;
+        let latest_event: &WithdrawalEvent = self.history.last().ok_or(Error::Debug(format!(
+            "Failed getting the last history element for withdrawal. {stringy_self:?}"
+        )))?;
 
         // Verify that the latest event is the current one shown in the entry.
         if self.last_update_block_hash != latest_event.stacks_block_hash {
@@ -96,7 +98,9 @@ impl TryFrom<WithdrawalEntry> for Withdrawal {
         // Ensure entry is valid.
         withdrawal_entry.validate()?;
         // Get the latest event.
-        let latest_event: &WithdrawalEvent = withdrawal_entry.history.last()
+        let latest_event: &WithdrawalEvent = withdrawal_entry
+            .history
+            .last()
             .expect("Withdrawal history is invalid but was just validate.");
         // Create withdrawal from table entry.
         Ok(Withdrawal {

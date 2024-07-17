@@ -1,18 +1,23 @@
 //! Handlers for withdrawal endpoints.
 use warp::reply::{json, with_status, Reply};
 
-use warp::http::StatusCode;
 use crate::api::models::common::{BlockHeight, Status};
-use crate::api::models::withdrawal::{Withdrawal, WithdrawalInfo};
 use crate::api::models::withdrawal::{
-    WithdrawalId,
     requests::{CreateWithdrawalRequestBody, GetWithdrawalsQuery, UpdateWithdrawalsRequestBody},
-    responses::{CreateWithdrawalResponse, GetWithdrawalResponse, GetWithdrawalsResponse, UpdateWithdrawalsResponse},
+    responses::{
+        CreateWithdrawalResponse, GetWithdrawalResponse, GetWithdrawalsResponse,
+        UpdateWithdrawalsResponse,
+    },
+    WithdrawalId,
 };
+use crate::api::models::withdrawal::{Withdrawal, WithdrawalInfo};
 use crate::common::error::Error;
 use crate::context::EmilyContext;
 use crate::database::accessors;
-use crate::database::entries::withdrawal::{WithdrawalEntry, WithdrawalEntryKey, WithdrawalEvent, WithdrawalParametersEntry};
+use crate::database::entries::withdrawal::{
+    WithdrawalEntry, WithdrawalEntryKey, WithdrawalEvent, WithdrawalParametersEntry,
+};
+use warp::http::StatusCode;
 
 /// Get withdrawal handler.
 #[utoipa::path(
@@ -51,18 +56,25 @@ pub async fn get_withdrawal(
             request_id,
             None,
             Some(num_to_retrieve_if_multiple),
-        ).await?;
+        )
+        .await?;
 
         // Convert data into resource types.
-        let withdrawals: Vec<Withdrawal> = entries.into_iter()
+        let withdrawals: Vec<Withdrawal> = entries
+            .into_iter()
             .map(|entry| entry.try_into())
             .collect::<Result<_, _>>()?;
 
         // Respond.
         match &withdrawals[..] {
             [] => Err(Error::NotFound),
-            [withdrawal] => Ok(with_status(json(withdrawal as &GetWithdrawalResponse), StatusCode::OK)),
-            _ => Err(Error::Debug(format!("Found too many withdrawals: {withdrawals:?}")))
+            [withdrawal] => Ok(with_status(
+                json(withdrawal as &GetWithdrawalResponse),
+                StatusCode::OK,
+            )),
+            _ => Err(Error::Debug(format!(
+                "Found too many withdrawals: {withdrawals:?}"
+            ))),
         }
     }
     // Handle and respond.
@@ -104,17 +116,14 @@ pub async fn get_withdrawals(
             &context,
             query.status,
             query.next_token,
-            query.page_size
-        ).await?;
+            query.page_size,
+        )
+        .await?;
         // Convert data into resource types.
-        let withdrawals: Vec<WithdrawalInfo> = entries.into_iter()
-            .map(|entry| entry.into())
-            .collect();
+        let withdrawals: Vec<WithdrawalInfo> =
+            entries.into_iter().map(|entry| entry.into()).collect();
         // Create response.
-        let response = GetWithdrawalsResponse {
-            withdrawals,
-            next_token,
-        };
+        let response = GetWithdrawalsResponse { withdrawals, next_token };
         // Respond.
         Ok(with_status(json(&response), StatusCode::OK))
     }
@@ -172,10 +181,8 @@ pub async fn create_withdrawal(
             },
             recipient,
             amount,
-            parameters: WithdrawalParametersEntry {
-                max_fee: parameters.max_fee,
-            },
-            history: vec![ WithdrawalEvent {
+            parameters: WithdrawalParametersEntry { max_fee: parameters.max_fee },
+            history: vec![WithdrawalEvent {
                 status: Status::Pending,
                 message: "Just received withdrawal".to_string(),
                 stacks_block_hash: stacks_block_hash.clone(),
@@ -219,9 +226,7 @@ pub async fn update_withdrawals(
     _context: EmilyContext,
     _body: UpdateWithdrawalsRequestBody,
 ) -> impl warp::reply::Reply {
-    let response = UpdateWithdrawalsResponse {
-        ..Default::default()
-    };
+    let response = UpdateWithdrawalsResponse { ..Default::default() };
     with_status(json(&response), StatusCode::CREATED)
 }
 

@@ -2,7 +2,16 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{api::models::{common::{BitcoinScript, BitcoinTransactionId, BitcoinTransactionOutputIndex, BlockHeight, Fulfillment, Satoshis, StacksBlockHash, StacksPrinciple, Status}, deposit::{Deposit, DepositInfo, DepositParameters}}, common::error::Error};
+use crate::{
+    api::models::{
+        common::{
+            BitcoinScript, BitcoinTransactionId, BitcoinTransactionOutputIndex, BlockHeight,
+            Fulfillment, Satoshis, StacksBlockHash, StacksPrinciple, Status,
+        },
+        deposit::{Deposit, DepositInfo, DepositParameters},
+    },
+    common::error::Error,
+};
 
 // Deposit entry ---------------------------------------------------------------
 
@@ -54,14 +63,12 @@ pub struct DepositEntry {
 impl DepositEntry {
     /// Implement validate.
     pub fn validate(&self) -> Result<(), Error> {
-
         let stringy_self = serde_json::to_string(self)?;
 
         // Get latest event.
-        let latest_event: &DepositEvent = self.history.last()
-            .ok_or(Error::Debug(
-                format!("Failed getting the last history element for deposit. {stringy_self:?}")
-            ))?;
+        let latest_event: &DepositEvent = self.history.last().ok_or(Error::Debug(format!(
+            "Failed getting the last history element for deposit. {stringy_self:?}"
+        )))?;
 
         // Verify that the latest event is the current one shown in the entry.
         if self.last_update_block_hash != latest_event.stacks_block_hash {
@@ -89,7 +96,9 @@ impl TryFrom<DepositEntry> for Deposit {
         // Ensure entry is valid.
         deposit_entry.validate()?;
         // Get the latest event.
-        let latest_event: &DepositEvent = deposit_entry.history.last()
+        let latest_event: &DepositEvent = deposit_entry
+            .history
+            .last()
             .expect("Deposit history is invalid but was just validate.");
         // Create deposit from table entry.
         Ok(Deposit {

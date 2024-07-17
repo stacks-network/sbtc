@@ -1,22 +1,22 @@
 //! Handlers for chainstate endpoints.
-use warp::reply::{json, with_status, Reply};
 use crate::{
     api::models::{
         chainstate::{
             requests::{SetChainstateRequestBody, UpdateChainstateRequestBody},
             responses::{GetChainstateResponse, SetChainstateResponse},
-            Chainstate
+            Chainstate,
         },
-        common::BlockHeight
+        common::BlockHeight,
     },
     common::error::Error,
     context::EmilyContext,
     database::{
         accessors,
-        entries::chainstate::{ChainstateEntry, ChainstateEntryKey}
-    }
+        entries::chainstate::{ChainstateEntry, ChainstateEntryKey},
+    },
 };
 use warp::http::StatusCode;
+use warp::reply::{json, with_status, Reply};
 
 // TODO(TBD): Add conflict handling to the chainstate endpoint.
 
@@ -57,16 +57,20 @@ pub async fn get_chainstate_at_height(
             height,
             None,
             Some(num_to_retrieve_if_multiple),
-        ).await?;
+        )
+        .await?;
         // Convert data into resource types.
-        let chainstates: Vec<Chainstate> = entries.into_iter()
-            .map(|entry| entry.into())
-            .collect();
+        let chainstates: Vec<Chainstate> = entries.into_iter().map(|entry| entry.into()).collect();
         // Respond.
         match &chainstates[..] {
             [] => Err(Error::NotFound),
-            [chainstate] => Ok(with_status(json(chainstate as &GetChainstateResponse), StatusCode::OK)),
-            _ => Err(Error::Debug(format!("Found too many withdrawals: {chainstates:?}")))
+            [chainstate] => Ok(with_status(
+                json(chainstate as &GetChainstateResponse),
+                StatusCode::OK,
+            )),
+            _ => Err(Error::Debug(format!(
+                "Found too many withdrawals: {chainstates:?}"
+            ))),
         }
     }
     // Handle and respond.
@@ -121,8 +125,10 @@ pub async fn set_chainstate(
 
         accessors::add_chainstate_entry(&context, &new_chainstate_entry).await?;
         let response: Chainstate = new_chainstate_entry.into();
-        Ok(with_status(json(&(response as SetChainstateResponse)), StatusCode::CREATED))
-
+        Ok(with_status(
+            json(&(response as SetChainstateResponse)),
+            StatusCode::CREATED,
+        ))
     }
     // Handle and respond.
     handler(context, body)

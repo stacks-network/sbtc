@@ -1,11 +1,14 @@
-use emily_handler::api::models::deposit::{responses::{GetDepositsForTransactionResponse, GetDepositsResponse}, Deposit, DepositInfo, DepositParameters};
+use super::EMILY_ENDPOINT;
+use crate::endpoints::util;
+use emily_handler::api::models::deposit::{
+    responses::{GetDepositsForTransactionResponse, GetDepositsResponse},
+    Deposit, DepositInfo, DepositParameters,
+};
 use once_cell::sync::Lazy;
 use reqwest::Client;
 use serde_json::json;
 use serial_test::serial;
 use tokio;
-use super::EMILY_ENDPOINT;
-use crate::endpoints::util;
 
 use emily_handler::api::models::deposit::responses::{CreateDepositResponse, GetDepositResponse};
 
@@ -21,8 +24,8 @@ struct TestDepositTransactionData {
 }
 
 /// Test data for deposits.
-static TEST_DEPOSIT_DATA: Lazy<Vec<TestDepositTransactionData>> =
-    Lazy::new(|| vec![
+static TEST_DEPOSIT_DATA: Lazy<Vec<TestDepositTransactionData>> = Lazy::new(|| {
+    vec![
         TestDepositTransactionData {
             bitcoin_txid: "example_txid_1".to_string(),
             number_of_outputs: 4,
@@ -36,7 +39,7 @@ static TEST_DEPOSIT_DATA: Lazy<Vec<TestDepositTransactionData>> =
             number_of_outputs: 8,
         },
     ]
-);
+});
 
 /// Data about a single deposit.
 struct TestDepositData {
@@ -46,13 +49,16 @@ struct TestDepositData {
 
 /// Creates a list of test deposit datas based on `TEST_DEPOSIT_DATA`.
 fn all_test_deposit_data() -> impl Iterator<Item = TestDepositData> {
-    TEST_DEPOSIT_DATA.iter()
-        .map(|test_deposit_transaction_data|
-            (0..test_deposit_transaction_data.number_of_outputs)
-                .map(move |bitcoin_tx_output_index| TestDepositData {
+    TEST_DEPOSIT_DATA
+        .iter()
+        .map(|test_deposit_transaction_data| {
+            (0..test_deposit_transaction_data.number_of_outputs).map(
+                move |bitcoin_tx_output_index| TestDepositData {
                     bitcoin_txid: test_deposit_transaction_data.bitcoin_txid.clone(),
                     bitcoin_tx_output_index,
-                }))
+                },
+            )
+        })
         .flatten()
 }
 
@@ -60,10 +66,7 @@ fn all_test_deposit_data() -> impl Iterator<Item = TestDepositData> {
 /// bitcoin txid and bitcoin tx output index. Note that this will
 /// need to be changed as the creation function becomes more
 /// complex and correct.
-fn just_created_deposit(
-    bitcoin_txid: String,
-    bitcoin_tx_output_index: u32,
-) -> Deposit {
+fn just_created_deposit(bitcoin_txid: String, bitcoin_tx_output_index: u32) -> Deposit {
     Deposit {
         bitcoin_txid,
         bitcoin_tx_output_index,
@@ -104,17 +107,15 @@ async fn create_deposits() {
             .expect("Request should succeed");
 
         // Assert.
-        let actual: CreateDepositResponse = response.json()
+        let actual: CreateDepositResponse = response
+            .json()
             .await
             .expect("Failed to parse JSON response");
 
-        let expected = just_created_deposit(
-            bitcoin_txid,
-            bitcoin_tx_output_index,
-        );
+        let expected = just_created_deposit(bitcoin_txid, bitcoin_tx_output_index);
 
         util::assert_eq_pretty(actual, expected);
-    };
+    }
 }
 
 /// Get every deposit from the previous test one at a time.
@@ -130,20 +131,20 @@ async fn get_deposit() {
 
         // Act.
         let response = client
-            .get(format!("{EMILY_ENDPOINT}/deposit/{bitcoin_txid}/{bitcoin_tx_output_index}"))
+            .get(format!(
+                "{EMILY_ENDPOINT}/deposit/{bitcoin_txid}/{bitcoin_tx_output_index}"
+            ))
             .send()
             .await
             .expect("Request should succeed");
 
         // Assert.
-        let actual: GetDepositResponse = response.json()
+        let actual: GetDepositResponse = response
+            .json()
             .await
             .expect("Failed to parse JSON response");
 
-        let expected = just_created_deposit(
-            bitcoin_txid,
-            bitcoin_tx_output_index,
-        );
+        let expected = just_created_deposit(bitcoin_txid, bitcoin_tx_output_index);
 
         util::assert_eq_pretty(actual, expected);
     }
@@ -174,14 +175,14 @@ async fn get_deposits_for_transaction() {
             .expect("Request should succeed");
 
         // Assert.
-        let actual: GetDepositsForTransactionResponse = response.json()
+        let actual: GetDepositsForTransactionResponse = response
+            .json()
             .await
             .expect("Failed to parse JSON response");
 
         assert_eq!(actual.deposits.len(), number_of_outputs as usize);
         assert_eq!(actual.next_token, None);
     }
-
 }
 
 /// Get deposits for transaction using a small page size that will require multiple calls
@@ -203,9 +204,7 @@ async fn get_deposits_for_transaction_with_small_page_size() {
         // Act.
         let mut response: GetDepositsForTransactionResponse = client
             .get(&uri)
-            .query(&[
-                ("pageSize", page_size.to_string())
-            ])
+            .query(&[("pageSize", page_size.to_string())])
             .send()
             .await
             .expect("Request should succeed")
@@ -222,7 +221,7 @@ async fn get_deposits_for_transaction_with_small_page_size() {
                 .get(&uri)
                 .query(&[
                     ("pageSize", page_size.to_string()),
-                    ("nextToken", next_token)
+                    ("nextToken", next_token),
                 ])
                 .send()
                 .await
@@ -237,10 +236,9 @@ async fn get_deposits_for_transaction_with_small_page_size() {
 
         // Make the expected deposits.
         let mut expected_deposits: Vec<Deposit> = (0..number_of_outputs)
-            .map(|bitcoin_tx_output_index| just_created_deposit(
-                bitcoin_txid.clone(),
-                bitcoin_tx_output_index,
-            ))
+            .map(|bitcoin_tx_output_index| {
+                just_created_deposit(bitcoin_txid.clone(), bitcoin_tx_output_index)
+            })
             .collect();
 
         aggregate_deposits.sort();
@@ -256,7 +254,6 @@ async fn get_deposits_for_transaction_with_small_page_size() {
 #[tokio::test]
 #[serial]
 async fn get_pending_deposits() {
-
     // Arrange.
     let client = Client::new();
     let uri: String = format!("{EMILY_ENDPOINT}/deposit");
@@ -269,7 +266,7 @@ async fn get_pending_deposits() {
         .get(&uri)
         .query(&[
             ("pageSize", page_size.to_string()),
-            ("status", "pending".to_string())
+            ("status", "pending".to_string()),
         ])
         .send()
         .await
@@ -289,7 +286,7 @@ async fn get_pending_deposits() {
             .query(&[
                 ("pageSize", page_size.to_string()),
                 ("status", "pending".to_string()),
-                ("nextToken", next_token)
+                ("nextToken", next_token),
             ])
             .send()
             .await
@@ -304,10 +301,12 @@ async fn get_pending_deposits() {
 
     // Assert.
     let mut expected_deposit_infos: Vec<DepositInfo> = all_test_deposit_data()
-        .map(|test_deposit_data| just_created_deposit(
-            test_deposit_data.bitcoin_txid,
-            test_deposit_data.bitcoin_tx_output_index,
-        ))
+        .map(|test_deposit_data| {
+            just_created_deposit(
+                test_deposit_data.bitcoin_txid,
+                test_deposit_data.bitcoin_tx_output_index,
+            )
+        })
         .map(|deposit| deposit.into())
         .collect();
 
@@ -320,7 +319,6 @@ async fn get_pending_deposits() {
 #[tokio::test]
 #[serial]
 async fn get_failed_deposits() {
-
     // Arrange.
     let client = Client::new();
     let uri: String = format!("{EMILY_ENDPOINT}/deposit");
@@ -328,9 +326,7 @@ async fn get_failed_deposits() {
     // Act.
     let response: GetDepositsResponse = client
         .get(&uri)
-        .query(&[
-            ("status", "failed".to_string())
-        ])
+        .query(&[("status", "failed".to_string())])
         .send()
         .await
         .expect("Request should succeed")

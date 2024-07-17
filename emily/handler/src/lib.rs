@@ -3,5 +3,5 @@
 
 pub mod api;
 pub mod common;
-pub mod database;
 pub mod context;
+pub mod database;

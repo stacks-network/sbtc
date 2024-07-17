@@ -1,16 +1,13 @@
 //! Route definitions for the deposit endpoint.
 use warp::Filter;
 
-use crate::{
-    api::models::common::*,
-    context::EmilyContext,
-};
+use crate::{api::models::common::*, context::EmilyContext};
 
 use super::handlers;
 
 /// Deposit routes.
 pub fn routes(
-    context: EmilyContext
+    context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     get_deposit(context.clone())
         .or(get_deposits_for_transaction(context.clone()))
@@ -21,19 +18,23 @@ pub fn routes(
 
 /// Get deposit endpoint.
 fn get_deposit(
-    context: EmilyContext
+    context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::any().map(move || context.clone())
-        .and(warp::path!("deposit" / BitcoinTransactionId / BitcoinTransactionOutputIndex ))
+    warp::any()
+        .map(move || context.clone())
+        .and(warp::path!(
+            "deposit" / BitcoinTransactionId / BitcoinTransactionOutputIndex
+        ))
         .and(warp::get())
         .then(handlers::deposit::get_deposit)
 }
 
 /// Get deposits for transaction endpoint.
 fn get_deposits_for_transaction(
-    context: EmilyContext
+    context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::any().map(move || context.clone())
+    warp::any()
+        .map(move || context.clone())
         .and(warp::path!("deposit" / BitcoinTransactionId))
         .and(warp::get())
         .and(warp::query())
@@ -42,9 +43,10 @@ fn get_deposits_for_transaction(
 
 /// Get deposits endpoint.
 fn get_deposits(
-    context: EmilyContext
+    context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::any().map(move || context.clone())
+    warp::any()
+        .map(move || context.clone())
         .and(warp::path!("deposit"))
         .and(warp::get())
         .and(warp::query())
@@ -53,9 +55,10 @@ fn get_deposits(
 
 /// Create deposit endpoint.
 fn create_deposit(
-    context: EmilyContext
+    context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::any().map(move || context.clone())
+    warp::any()
+        .map(move || context.clone())
         .and(warp::path!("deposit"))
         .and(warp::post())
         .and(warp::body::json())
@@ -64,9 +67,10 @@ fn create_deposit(
 
 /// Update deposits endpoint.
 fn update_deposits(
-    context: EmilyContext
+    context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::any().map(move || context.clone())
+    warp::any()
+        .map(move || context.clone())
         .and(warp::path!("deposit"))
         .and(warp::post())
         .and(warp::body::json())

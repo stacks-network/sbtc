@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::models::{
     chainstate::Chainstate,
-    common::{BlockHeight, StacksBlockHash}
+    common::{BlockHeight, StacksBlockHash},
 };
 
 // Chainstate entry ---------------------------------------------------------------

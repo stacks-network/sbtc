@@ -7,16 +7,24 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{api::models::{common::BlockHeight, withdrawal::WithdrawalId}, common::error::Error};
+use crate::{
+    api::models::{common::BlockHeight, withdrawal::WithdrawalId},
+    common::error::Error,
+};
 
 use serde_dynamo::Item;
 
-use crate::{api::models::common::{BitcoinTransactionId, Status}, context::EmilyContext};
+use crate::{
+    api::models::common::{BitcoinTransactionId, Status},
+    context::EmilyContext,
+};
 
 use super::entries::{
     chainstate::{ChainstateEntry, ChainstateEntryKey},
     deposit::{DepositEntry, DepositEntryKey, DepositInfoEntry, DepositInfoEntrySearchToken},
-    withdrawal::{WithdrawalEntry, WithdrawalEntryKey, WithdrawalInfoEntry, WithdrawalInfoEntrySearchToken}
+    withdrawal::{
+        WithdrawalEntry, WithdrawalEntryKey, WithdrawalInfoEntry, WithdrawalInfoEntrySearchToken,
+    },
 };
 
 // Chainstate ------------------------------------------------------------------
@@ -24,13 +32,14 @@ use super::entries::{
 /// Add a chainstate entry.
 pub async fn add_chainstate_entry(
     context: &EmilyContext,
-    entry: &ChainstateEntry
+    entry: &ChainstateEntry,
 ) -> Result<(), Error> {
     put_entry(
         &(context.dynamodb_client),
         &context.settings.chainstate_table_name,
         entry,
-    ).await
+    )
+    .await
 }
 
 /// Get all chainstate entries for a given height.
@@ -51,7 +60,8 @@ pub async fn get_chainstate_entries_for_height(
         maybe_page_size,
         maybe_next_token,
         maybe_index_name,
-    ).await
+    )
+    .await
 }
 
 // TODO(TBD): Add table access functions for chain tip related queries.
@@ -61,25 +71,24 @@ pub async fn get_chainstate_entries_for_height(
 /// Get deposit entry.
 pub async fn get_deposit_entry(
     context: &EmilyContext,
-    key: DepositEntryKey
+    key: DepositEntryKey,
 ) -> Result<DepositEntry, Error> {
     get_entry(
         &(context.dynamodb_client),
         &context.settings.deposit_table_name,
-        key
-    ).await
+        key,
+    )
+    .await
 }
 
 /// Add deposit entry.
-pub async fn add_deposit_entry(
-    context: &EmilyContext,
-    entry: &DepositEntry
-) -> Result<(), Error> {
+pub async fn add_deposit_entry(context: &EmilyContext, entry: &DepositEntry) -> Result<(), Error> {
     put_entry(
         &(context.dynamodb_client),
         &context.settings.deposit_table_name,
         entry,
-    ).await
+    )
+    .await
 }
 
 /// Get deposit entries.
@@ -99,7 +108,8 @@ pub async fn get_deposit_entries(
         maybe_page_size,
         maybe_next_token,
         maybe_index_name,
-    ).await
+    )
+    .await
 }
 
 /// Get deposit entries for a given transaction.
@@ -119,7 +129,8 @@ pub async fn get_deposit_entries_for_transaction(
         maybe_page_size,
         maybe_next_token,
         maybe_index_name,
-    ).await
+    )
+    .await
 }
 
 // Withdrawal ------------------------------------------------------------------
@@ -127,25 +138,27 @@ pub async fn get_deposit_entries_for_transaction(
 /// Add withdrawal entry.
 pub async fn add_withdrawal_entry(
     context: &EmilyContext,
-    entry: &WithdrawalEntry
+    entry: &WithdrawalEntry,
 ) -> Result<(), Error> {
     put_entry(
         &(context.dynamodb_client),
         &context.settings.withdrawal_table_name,
         entry,
-    ).await
+    )
+    .await
 }
 
 /// Get withdrawal entry.
 pub async fn _get_withdrawal_entry(
     context: &EmilyContext,
-    key: WithdrawalEntryKey
+    key: WithdrawalEntryKey,
 ) -> Result<WithdrawalEntry, Error> {
     get_entry(
         &(context.dynamodb_client),
         &context.settings.withdrawal_table_name,
-        key
-    ).await
+        key,
+    )
+    .await
 }
 
 /// Get all withdrawal with a given id.
@@ -165,7 +178,8 @@ pub async fn get_withdrawal_entries_for_id(
         maybe_page_size,
         maybe_next_token,
         maybe_index_name,
-    ).await
+    )
+    .await
 }
 
 /// Get withdrawal entries.
@@ -185,7 +199,8 @@ pub async fn get_withdrawal_entries(
         maybe_page_size,
         maybe_next_token,
         maybe_index_name,
-    ).await
+    )
+    .await
 }
 
 // Generics --------------------------------------------------------------------
@@ -247,8 +262,7 @@ where
         .send()
         .await?;
     // Get DynamoDB item.
-    let item = get_item_output.item
-        .ok_or(Error::NotFound)?;
+    let item = get_item_output.item.ok_or(Error::NotFound)?;
     // Convert item into entry.
     let entry = serde_dynamo::from_item(item)?;
     // Return.
@@ -270,8 +284,7 @@ where
     K: Serialize + for<'de> Deserialize<'de>,
 {
     // Convert inputs into the types needed for querying.
-    let exclusive_start_key = maybe_exclusive_start_key_from_next_token::<K>(
-        maybe_next_token)?;
+    let exclusive_start_key = maybe_exclusive_start_key_from_next_token::<K>(maybe_next_token)?;
     let partition_key_attribute_value = serde_dynamo::to_attribute_value(partition_key)?;
     // Query the database.
     let query_output = dynamodb_client
@@ -287,8 +300,8 @@ where
         .await?;
     // Convert data into output format.
     let entries: Vec<T> = serde_dynamo::from_items(query_output.items.unwrap_or_default())?;
-    let next_token = maybe_next_token_from_last_evaluated_key::<K>(
-        query_output.last_evaluated_key)?;
+    let next_token =
+        maybe_next_token_from_last_evaluated_key::<K>(query_output.last_evaluated_key)?;
     // Return.
     Ok((entries, next_token))
 }
@@ -302,7 +315,7 @@ pub fn maybe_next_token_from_last_evaluated_key<T>(
     maybe_last_evaluated_key: Option<HashMap<String, AttributeValue>>,
 ) -> Result<Option<String>, Error>
 where
-    T: Serialize + for<'de> Deserialize<'de>
+    T: Serialize + for<'de> Deserialize<'de>,
 {
     let maybe_next_token = maybe_last_evaluated_key
         .map(|key| serde_dynamo::from_item(key))
@@ -315,7 +328,7 @@ where
 /// Turns an optional key into a token.
 pub fn tokenize<T>(key: T) -> Result<String, Error>
 where
-    T: Serialize
+    T: Serialize,
 {
     let serialied = serde_json::to_string(&key)?;
     let encoded: String = URL_SAFE_NO_PAD.encode(serialied);
@@ -326,10 +339,10 @@ where
 /// the exclusive start key. If the `Option` contains a value, it is deserialized into a type `T`
 /// and then serialized into a `HashMap<String, AttributeValue>`.
 pub fn maybe_exclusive_start_key_from_next_token<T>(
-    maybe_next_token: Option<String>
+    maybe_next_token: Option<String>,
 ) -> Result<Option<HashMap<String, AttributeValue>>, Error>
 where
-    T: Serialize + for<'de> Deserialize<'de>
+    T: Serialize + for<'de> Deserialize<'de>,
 {
     let maybe_exclusive_start_key = maybe_next_token
         .map(|next_token| detokenize(next_token))
@@ -343,7 +356,7 @@ where
 /// Turns an optional token into a key.
 pub fn detokenize<T>(token: String) -> Result<T, Error>
 where
-    T: for<'de> Deserialize<'de>
+    T: for<'de> Deserialize<'de>,
 {
     let decoded = URL_SAFE_NO_PAD.decode(token)?;
     let deserialized = serde_json::from_slice::<T>(&decoded)?;
@@ -351,4 +364,3 @@ where
 }
 
 // TODO(TBD): Test the generic functions with unit tests and a mock.
-

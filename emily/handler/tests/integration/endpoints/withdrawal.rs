@@ -1,11 +1,17 @@
-use emily_handler::api::models::{common::Status, withdrawal::{responses::{CreateWithdrawalResponse, GetWithdrawalResponse, GetWithdrawalsResponse}, Withdrawal, WithdrawalInfo}};
+use super::EMILY_ENDPOINT;
+use crate::endpoints::util;
+use emily_handler::api::models::{
+    common::Status,
+    withdrawal::{
+        responses::{CreateWithdrawalResponse, GetWithdrawalResponse, GetWithdrawalsResponse},
+        Withdrawal, WithdrawalInfo,
+    },
+};
 use once_cell::sync::Lazy;
 use reqwest::Client;
 use serde_json::json;
 use serial_test::serial;
 use tokio;
-use super::EMILY_ENDPOINT;
-use crate::endpoints::util;
 
 /// Contains the data about a withdrawal that will be used for testing. There are
 /// more fields in a withdrawal than listed here; this represents the data that we
@@ -17,8 +23,8 @@ struct TestWithdrawalData {
 }
 
 /// Test data for withdrawals.
-static TEST_WITHDRAWAL_DATA: Lazy<Vec<TestWithdrawalData>> =
-    Lazy::new(|| vec![
+static TEST_WITHDRAWAL_DATA: Lazy<Vec<TestWithdrawalData>> = Lazy::new(|| {
+    vec![
         TestWithdrawalData {
             request_id: 1,
             recipient: "test_recipient_1".to_string(),
@@ -35,7 +41,7 @@ static TEST_WITHDRAWAL_DATA: Lazy<Vec<TestWithdrawalData>> =
             stacks_block_hash: "test_stacks_block_hash_213842".to_string(),
         },
     ]
-);
+});
 
 /// Creates the withdrawal that one would expect to receive from the API
 /// after it was JUST created. Note that this will need to be changed when
@@ -67,7 +73,6 @@ fn just_created_withdrawal(
 async fn create_withdrawals() {
     let client = Client::new();
     for test_withdrawal_data in TEST_WITHDRAWAL_DATA.iter() {
-
         // Arrange.
         let TestWithdrawalData {
             request_id,
@@ -79,32 +84,26 @@ async fn create_withdrawals() {
         let response = client
             .post(format!("{EMILY_ENDPOINT}/withdrawal"))
             .json(&json!({
-                "requestId": request_id,
-                "stacksBlockHash": stacks_block_hash,
-                "recipient": recipient,
-                "amount": 0,
-                "parameters": {
-                   "maxFee": 0
-                }
-              }))
-
+              "requestId": request_id,
+              "stacksBlockHash": stacks_block_hash,
+              "recipient": recipient,
+              "amount": 0,
+              "parameters": {
+                 "maxFee": 0
+              }
+            }))
             .send()
             .await
             .expect("Request should succeed");
 
         // Assert.
-        let actual: CreateWithdrawalResponse = response.json()
-            .await
-            .expect("msg");
+        let actual: CreateWithdrawalResponse = response.json().await.expect("msg");
 
-        let expected: CreateWithdrawalResponse = just_created_withdrawal(
-            request_id,
-            recipient,
-            stacks_block_hash,
-        );
+        let expected: CreateWithdrawalResponse =
+            just_created_withdrawal(request_id, recipient, stacks_block_hash);
 
         util::assert_eq_pretty(actual, expected);
-    };
+    }
 }
 
 /// Get every withdrawal from the previous test one at a time.
@@ -114,7 +113,6 @@ async fn create_withdrawals() {
 async fn get_withdrawal() {
     let client = Client::new();
     for test_withdrawal_data in TEST_WITHDRAWAL_DATA.iter() {
-
         // Arrange.
         let TestWithdrawalData {
             request_id,
@@ -130,15 +128,12 @@ async fn get_withdrawal() {
             .expect("Request should succeed");
 
         // Assert.
-        let actual: GetWithdrawalResponse = response.json()
+        let actual: GetWithdrawalResponse = response
+            .json()
             .await
             .expect("Failed to parse JSON response");
 
-        let expected = just_created_withdrawal(
-            request_id,
-            recipient,
-            stacks_block_hash,
-        );
+        let expected = just_created_withdrawal(request_id, recipient, stacks_block_hash);
 
         util::assert_eq_pretty(actual, expected);
     }
@@ -152,7 +147,6 @@ async fn get_withdrawal() {
 #[tokio::test]
 #[serial]
 async fn get_withdrawals() {
-
     // Arrange.
     let client = Client::new();
     let uri: String = format!("{EMILY_ENDPOINT}/withdrawal");
@@ -165,7 +159,7 @@ async fn get_withdrawals() {
         .get(&uri)
         .query(&[
             ("pageSize", page_size.to_string()),
-            ("status", "pending".to_string())
+            ("status", "pending".to_string()),
         ])
         .send()
         .await
@@ -185,7 +179,7 @@ async fn get_withdrawals() {
             .query(&[
                 ("pageSize", page_size.to_string()),
                 ("status", "pending".to_string()),
-                ("nextToken", next_token)
+                ("nextToken", next_token),
             ])
             .send()
             .await
@@ -199,7 +193,8 @@ async fn get_withdrawals() {
     }
 
     // Assert.
-    let mut expected_withdrawal_infos: Vec<WithdrawalInfo> = TEST_WITHDRAWAL_DATA.iter()
+    let mut expected_withdrawal_infos: Vec<WithdrawalInfo> = TEST_WITHDRAWAL_DATA
+        .iter()
         .map(|test_withdrawal_data| {
             // Extract testing data.
             let TestWithdrawalData {
@@ -208,11 +203,7 @@ async fn get_withdrawals() {
                 stacks_block_hash,
             } = test_withdrawal_data;
             // Make withdrawal.
-            just_created_withdrawal(
-                request_id,
-                recipient,
-                stacks_block_hash,
-            )
+            just_created_withdrawal(request_id, recipient, stacks_block_hash)
         })
         .map(|withdrawal| withdrawal.into())
         .collect();

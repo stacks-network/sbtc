@@ -56,11 +56,13 @@ impl EmilyContext {
     /// Create struct instance from env.
     pub async fn from_env() -> Result<Self, Error> {
         let settings: Settings = Settings::from_env()?;
-        let mut config: aws_config::SdkConfig = aws_config::load_defaults(BehaviorVersion::latest()).await;
+        let mut config: aws_config::SdkConfig =
+            aws_config::load_defaults(BehaviorVersion::latest()).await;
         // TODO(TBD): Instead of using `is_local` configuration parameter set the specific
         // field in the config.
         if settings.is_local {
-            config = config.into_builder()
+            config = config
+                .into_builder()
                 .endpoint_url("http://dynamodb:8000")
                 .build();
         }

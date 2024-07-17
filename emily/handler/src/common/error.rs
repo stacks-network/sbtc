@@ -2,7 +2,13 @@
 
 use std::env;
 
-use aws_sdk_dynamodb::{error::SdkError, operation::{delete_item::DeleteItemError, get_item::GetItemError, put_item::PutItemError, query::QueryError}};
+use aws_sdk_dynamodb::{
+    error::SdkError,
+    operation::{
+        delete_item::DeleteItemError, get_item::GetItemError, put_item::PutItemError,
+        query::QueryError,
+    },
+};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -167,13 +173,10 @@ impl Reject for Error {}
 /// Implement reply for internal error representation so that the error can be
 /// provided directly from Warp as a reply.
 impl Reply for Error {
-
     /// Convert self into a warp response.
     fn into_response(self) -> warp::reply::Response {
-       warp::reply::with_status(
-            warp::reply::json(&ErrorResponse {
-                message: self.error_message(),
-            }),
+        warp::reply::with_status(
+            warp::reply::json(&ErrorResponse { message: self.error_message() }),
             self.status_code(),
         )
         .into_response()

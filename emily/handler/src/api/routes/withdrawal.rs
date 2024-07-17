@@ -7,7 +7,7 @@ use super::handlers;
 
 /// Withdrawal routes.
 pub fn routes(
-    context: EmilyContext
+    context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     get_withdrawal(context.clone())
         .or(get_withdrawals(context.clone()))
@@ -17,9 +17,10 @@ pub fn routes(
 
 /// Get withdrawal endpoint.
 fn get_withdrawal(
-    context: EmilyContext
+    context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::any().map(move || context.clone())
+    warp::any()
+        .map(move || context.clone())
         .and(warp::path!("withdrawal" / WithdrawalId))
         .and(warp::get())
         .then(handlers::withdrawal::get_withdrawal)
@@ -27,9 +28,10 @@ fn get_withdrawal(
 
 /// Get withdrawals endpoint.
 fn get_withdrawals(
-    context: EmilyContext
+    context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::any().map(move || context.clone())
+    warp::any()
+        .map(move || context.clone())
         .and(warp::path("withdrawal"))
         .and(warp::get())
         .and(warp::query())
@@ -38,9 +40,10 @@ fn get_withdrawals(
 
 /// Create withdrawal endpoint.
 fn create_withdrawal(
-    context: EmilyContext
+    context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::any().map(move || context.clone())
+    warp::any()
+        .map(move || context.clone())
         .and(warp::path("withdrawal"))
         .and(warp::post())
         .and(warp::body::json())
@@ -49,9 +52,10 @@ fn create_withdrawal(
 
 /// Update withdrawals endpoint.
 fn update_withdrawals(
-    context: EmilyContext
+    context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::any().map(move || context.clone())
+    warp::any()
+        .map(move || context.clone())
         .and(warp::path("withdrawal"))
         .and(warp::put())
         .and(warp::body::json())

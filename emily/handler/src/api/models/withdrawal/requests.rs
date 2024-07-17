@@ -3,8 +3,8 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::api::models::common::*;
 use super::{WithdrawalId, WithdrawalParameters};
+use crate::api::models::common::*;
 
 /// Query structure for the get withdrawals request.
 #[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema)]
@@ -84,5 +84,5 @@ pub struct WithdrawalUpdate {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateWithdrawalsRequestBody {
     /// Withdrawal updates to execute.
-    withdrawals: Vec<WithdrawalUpdate>
+    withdrawals: Vec<WithdrawalUpdate>,
 }

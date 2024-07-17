@@ -8,7 +8,7 @@ use super::handlers;
 
 /// Chainstate routes.
 pub fn routes(
-    context: EmilyContext
+    context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     get_chainstate_at_height(context.clone())
         .or(set_chainstate(context.clone()))
@@ -17,9 +17,10 @@ pub fn routes(
 
 /// Get chainstate at height endpoint.
 fn get_chainstate_at_height(
-    context: EmilyContext
+    context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::any().map(move || context.clone())
+    warp::any()
+        .map(move || context.clone())
         .and(warp::path!("chainstate" / u64))
         .and(warp::get())
         .then(handlers::chainstate::get_chainstate_at_height)
@@ -27,9 +28,10 @@ fn get_chainstate_at_height(
 
 /// Set chainstate endpoint.
 fn set_chainstate(
-    context: EmilyContext
+    context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::any().map(move || context.clone())
+    warp::any()
+        .map(move || context.clone())
         .and(warp::path!("chainstate"))
         .and(warp::post())
         .and(warp::body::json())
@@ -38,9 +40,10 @@ fn set_chainstate(
 
 /// Update chainstate endpoint.
 fn update_chainstate(
-    context: EmilyContext
+    context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::any().map(move || context.clone())
+    warp::any()
+        .map(move || context.clone())
         .and(warp::path!("chainstate"))
         .and(warp::put())
         .and(warp::body::json())

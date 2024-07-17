@@ -14,7 +14,20 @@ pub mod responses;
 pub type WithdrawalId = u64;
 
 /// Withdrawal.
-#[derive(Clone, Default, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
+#[derive(
+    Clone,
+    Default,
+    Debug,
+    Eq,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    ToResponse,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Withdrawal {
     /// The id of the Stacks withdrawal request that initiated the sBTC operation.
@@ -47,7 +60,20 @@ pub struct Withdrawal {
 }
 
 /// Withdrawal parameters.
-#[derive(Clone, Default, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
+#[derive(
+    Clone,
+    Default,
+    Debug,
+    Eq,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    ToResponse,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct WithdrawalParameters {
     /// Maximum fee the signers are allowed to take from the withdrawal to facilitate
@@ -56,7 +82,20 @@ pub struct WithdrawalParameters {
 }
 
 /// Reduced version of the Withdrawal.
-#[derive(Clone, Default, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
+#[derive(
+    Clone,
+    Default,
+    Debug,
+    Eq,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    ToResponse,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct WithdrawalInfo {
     /// The id of the Stacks withdrawal request that initiated the sBTC operation.

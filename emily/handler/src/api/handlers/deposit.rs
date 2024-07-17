@@ -1,20 +1,25 @@
 //! Handlers for Deposit endpoints.
-use warp::reply::{json, with_status, Reply};
 use crate::api::models::common::{BlockHeight, StacksBlockHash, Status};
 use crate::api::models::deposit::responses::GetDepositsForTransactionResponse;
+use warp::reply::{json, with_status, Reply};
 
 use warp::http::StatusCode;
 
 use crate::api::models::deposit::{Deposit, DepositInfo};
 use crate::api::models::{
     common::{BitcoinTransactionId, BitcoinTransactionOutputIndex},
-    deposit::requests::{CreateDepositRequestBody, GetDepositsForTransactionQuery, GetDepositsQuery, UpdateDepositsRequestBody},
+    deposit::requests::{
+        CreateDepositRequestBody, GetDepositsForTransactionQuery, GetDepositsQuery,
+        UpdateDepositsRequestBody,
+    },
     deposit::responses::{CreateDepositResponse, GetDepositResponse, GetDepositsResponse},
 };
 use crate::common::error::Error;
 use crate::context::EmilyContext;
 use crate::database::accessors;
-use crate::database::entries::deposit::{DepositEntry, DepositEvent, DepositParametersEntry, DepositEntryKey};
+use crate::database::entries::deposit::{
+    DepositEntry, DepositEntryKey, DepositEvent, DepositParametersEntry,
+};
 
 /// Get deposit handler.
 #[utoipa::path(
@@ -56,14 +61,16 @@ pub async fn get_deposit(
             .await?
             .try_into()?;
         // Respond.
-        Ok(with_status(json(&(deposit as GetDepositResponse)), StatusCode::OK))
+        Ok(with_status(
+            json(&(deposit as GetDepositResponse)),
+            StatusCode::OK,
+        ))
     }
 
     // Handle and respond.
     handler(context, bitcoin_txid, bitcoin_tx_output_index)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
-
 }
 
 /// Get deposits for transaction handler.
@@ -101,18 +108,17 @@ pub async fn get_deposits_for_transaction(
             &context,
             bitcoin_txid,
             query.next_token,
-            query.page_size
-        ).await?;
+            query.page_size,
+        )
+        .await?;
         // Convert data into response types.
-        let deposits: Vec<Deposit> = entries.into_iter()
+        let deposits: Vec<Deposit> = entries
+            .into_iter()
             .map(|entry| entry.try_into())
             .collect::<Result<_, _>>()?;
 
         // Create response.
-        let response = GetDepositsForTransactionResponse {
-            deposits,
-            next_token,
-        };
+        let response = GetDepositsForTransactionResponse { deposits, next_token };
         // Respond.
         Ok(with_status(json(&response), StatusCode::OK))
     }
@@ -154,17 +160,13 @@ pub async fn get_deposits(
             &context,
             query.status,
             query.next_token,
-            query.page_size
-        ).await?;
+            query.page_size,
+        )
+        .await?;
         // Convert data into resource types.
-        let deposits: Vec<DepositInfo> = entries.into_iter()
-            .map(|entry| entry.into())
-            .collect();
+        let deposits: Vec<DepositInfo> = entries.into_iter().map(|entry| entry.into()).collect();
         // Create response.
-        let response = GetDepositsResponse {
-            deposits,
-            next_token,
-        };
+        let response = GetDepositsResponse { deposits, next_token };
         // Respond.
         Ok(with_status(json(&response), StatusCode::OK))
     }
@@ -212,7 +214,7 @@ pub async fn create_deposit(
                 reclaim_script: body.reclaim,
                 ..Default::default()
             },
-            history: vec![ DepositEvent {
+            history: vec![DepositEvent {
                 status: Status::Pending,
                 message: "Just received deposit".to_string(),
                 stacks_block_hash: stacks_block_hash.clone(),
