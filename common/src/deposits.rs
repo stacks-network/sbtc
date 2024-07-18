@@ -45,9 +45,9 @@ pub enum Error {
     /// The reclaim script was invalid.
     #[error("the reclaim script format was invalid")]
     InvalidReclaimScript,
-    /// The deposit script was invalid
-    #[error("Invalid deposit script")]
-    ScriptError(#[source] bitcoin::script::Error),
+    /// The reclaim script lock time was invalid
+    #[error("reclaim script lock time was either too large or non-minimal: {0}")]
+    ScriptNum(#[source] bitcoin::script::Error),
     /// The X-only public key was invalid
     #[error("the x-only public key in the script was invalid: {0}")]
     InvalidXOnlyPublicKey(#[source] secp256k1::Error),
@@ -304,7 +304,7 @@ fn read_scriptint(v: &[u8], max_size: usize) -> Result<i64, Error> {
     // it is a variable, and sometimes they set it to 5. This is the only
     // modification to this function body from rust-bitcoin's code.
     if v.len() > max_size {
-        return Err(Error::ScriptError(bitcoin::script::Error::NumericOverflow));
+        return Err(Error::ScriptNum(bitcoin::script::Error::NumericOverflow));
     }
     // Comment and code copied from Bitcoin Core:
     // https://github.com/bitcoin/bitcoin/blob/447f50e4aed9a8b1d80e1891cda85801aeb80b4e/src/script/script.h#L247-L262
@@ -318,7 +318,7 @@ fn read_scriptint(v: &[u8], max_size: usize) -> Result<i64, Error> {
         // is +-255, which encode to 0xff00 and 0xff80 respectively.
         // (big-endian).
         if v.len() <= 1 || (v[v.len() - 2] & 0x80) == 0 {
-            return Err(Error::ScriptError(bitcoin::script::Error::NonMinimalPush));
+            return Err(Error::ScriptNum(bitcoin::script::Error::NonMinimalPush));
         }
     }
 
