@@ -8,7 +8,10 @@ use bitcoin::taproot::NodeInfo;
 use bitcoin::taproot::TaprootSpendInfo;
 use bitcoin::Address;
 use bitcoin::Network;
+use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
+use bitcoin::Transaction;
+use bitcoin::Txid;
 use bitcoin::XOnlyPublicKey;
 use clarity::codec::StacksMessageCodec;
 use clarity::vm::types::PrincipalData;
@@ -57,7 +60,7 @@ const OP_PUSHNUM_NEG1: u8 = opcodes::OP_PUSHNUM_NEG1.to_u8();
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// The deposit script was invalid
-    #[error("Invalid deposit script")]
+    #[error("invalid deposit script")]
     InvalidDepositScript,
     /// The lock time included in the reclaim script was invalid.
     #[error("the lock time included in the reclaim script was invalid: {0}")]
@@ -74,6 +77,158 @@ pub enum Error {
     /// Could not parse the Stacks principal address.
     #[error("could not parse the stacks principal address: {0}")]
     ParseStacksAddress(#[source] stacks_common::codec::Error),
+    /// Failed to parse the hex as a bitcoin::Transaction.
+    #[error("could not parse the BTC transaction hex: {0}")]
+    DecodeFromHex(#[source] bitcoin::consensus::encode::FromHexError),
+    /// Failed to extract the outpoint from the bitcoin::Transaction.
+    #[error("could not get outpoint {1} from BTC transaction: {0}")]
+    OutpointIndex(
+        #[source] bitcoin::blockdata::transaction::OutputsIndexError,
+        OutPoint,
+    ),
+    /// The ScriptPubKey of the UTXO did not match what was expected from
+    /// the given deposit script and reclaim script.
+    #[error("mismatch in expected and actual ScriptPubKeys. outpoint: {0}")]
+    UtxoScriptPubKeyMismatch(OutPoint),
+    /// Failed to parse the hex as a bitcoin::Transaction.
+    #[error("could not parse the bitcoin transaction hex")]
+    TxidMismatch {
+        /// This is the transaction ID of the actual transaction
+        from_tx: Txid,
+        /// This is the transaction ID of from the request
+        from_request: Txid,
+    },
+}
+
+/// All the info required to verify the validity of a deposit
+/// transaction. This info is sent by the user to the Emily API
+pub struct CreateDepositRequest {
+    /// The output index and txid of the depositing transaction.
+    pub outpoint: OutPoint,
+    /// The raw reclaim script.
+    pub reclaim_script: ScriptBuf,
+    /// The raw deposit script.
+    pub deposit_script: ScriptBuf,
+}
+
+/// All the deposit script with the relevant parts of the deposit and
+/// reclaim scripts parsed.
+#[derive(Debug, Clone)]
+pub struct ParsedDepositRequest {
+    /// The UTXO to be spent by the signers.
+    pub outpoint: OutPoint,
+    /// The max fee amount to use for the BTC deposit transaction.
+    pub max_fee: u64,
+    /// The amount of sats in the deposit UTXO.
+    pub amount: u64,
+    /// The deposit script used so that the signers' can spend funds.
+    pub deposit_script: ScriptBuf,
+    /// The reclaim script for the deposit.
+    pub reclaim_script: ScriptBuf,
+    /// The public key used in the deposit script. The signers public key
+    /// is for Schnorr signatures.
+    pub signers_public_key: XOnlyPublicKey,
+    /// The stacks address to deposit the sBTC to. This can be either a
+    /// standard address or a contract address.
+    pub recipient: PrincipalData,
+    /// The relative lock time in the reclaim script.
+    pub lock_time: u64,
+}
+
+impl CreateDepositRequest {
+    /// Validate the deposit request.
+    ///
+    /// This function checks the following
+    /// * That the provided tx hex is a valid transaction.
+    /// * That the transaction's txid matches the expected txid from the
+    ///   request.
+    /// * That the expected UTXO is in the transaction.
+    /// * That the deposit script and reclaim script in the request match
+    ///   the expected formats for deposit transactions.
+    /// * That deposit script and the reclaim script are part of the UTXO
+    ///   ScriptPubKey.
+    pub fn validate_tx(&self, tx_hex: &str) -> Result<ParsedDepositRequest, Error> {
+        let tx: Transaction =
+            bitcoin::consensus::encode::deserialize_hex(tx_hex).map_err(Error::DecodeFromHex)?;
+
+        if tx.compute_txid() != self.outpoint.txid {
+            // The expectation is that the transaction hex was fetched from
+            // the blockchain using the txid, so in practice this should
+            // never happen.
+            return Err(Error::TxidMismatch {
+                from_request: self.outpoint.txid,
+                from_tx: tx.compute_txid(),
+            });
+        }
+
+        let tx_out = tx
+            .tx_out(self.outpoint.vout as usize)
+            .map_err(|err| Error::OutpointIndex(err, self.outpoint))?;
+        // Validate that the deposit and reclaim scripts in the request
+        // match the expected formats for deposit transactions.
+        let deposit = DepositScriptInputs::parse(&self.deposit_script)?;
+        let reclaim = ReclaimScriptInputs::parse(&self.reclaim_script)?;
+        // Okay, the deposit and reclaim scripts are valid. Now make sure
+        // that the ScriptPubKey in the transaction matches the one implied
+        // by the given scripts. So now create the expected ScriptPubKey.
+        let deposit_script = deposit.deposit_script();
+        let reclaim_script = reclaim.reclaim_script();
+
+        debug_assert_eq!(deposit_script, self.deposit_script);
+        debug_assert_eq!(reclaim_script, self.reclaim_script);
+
+        let expected_script_pubkey = to_script_pubkey(deposit_script, reclaim_script);
+        // Check that the expected scriptPubkey matches the actual public
+        // key of our parsed UTXO.
+        if expected_script_pubkey != tx_out.script_pubkey {
+            return Err(Error::UtxoScriptPubKeyMismatch(self.outpoint));
+        }
+
+        Ok(ParsedDepositRequest {
+            max_fee: deposit.max_fee,
+            deposit_script: self.deposit_script.clone(),
+            reclaim_script: self.reclaim_script.clone(),
+            signers_public_key: deposit.signers_public_key,
+            recipient: deposit.recipient,
+            lock_time: reclaim.lock_time as u64,
+            amount: tx_out.value.to_sat(),
+            outpoint: self.outpoint,
+        })
+    }
+}
+
+/// Construct the expected taproot info for a deposit UTXO on the given
+/// the deposit and reclaim scripts.
+pub fn to_taproot(deposit_script: ScriptBuf, reclaim_script: ScriptBuf) -> TaprootSpendInfo {
+    let ver = LeafVersion::TapScript;
+    // For such a simple tree, we construct it by hand.
+    let leaf1 = NodeInfo::new_leaf_with_ver(deposit_script, ver);
+    let leaf2 = NodeInfo::new_leaf_with_ver(reclaim_script, ver);
+    // A Result::Err is returned by NodeInfo::combine if the depth of
+    // our taproot tree exceeds the maximum depth of taproot trees,
+    // which is 128. We have two nodes so the depth is 1 so this will
+    // never panic.
+    let node = NodeInfo::combine(leaf1, leaf2).expect("Tree depth is greater than the max of 128");
+    let internal_key = crate::unspendable_taproot_key();
+
+    TaprootSpendInfo::from_node_info(SECP256K1, *internal_key, node)
+}
+
+/// Create the expected ScriptPubKey from the deposit and reclaim scripts.
+pub fn to_script_pubkey(deposit_script: ScriptBuf, reclaim_script: ScriptBuf) -> ScriptBuf {
+    let merkle_root = to_taproot(deposit_script, reclaim_script).merkle_root();
+    // Deposit transactions use a NUMS (nothing up my sleeve) public
+    // key for the key-spend path of taproot scripts.
+    let internal_key = crate::unspendable_taproot_key();
+    ScriptBuf::new_p2tr(SECP256K1, *internal_key, merkle_root)
+}
+
+/// Construct a bitcoin address for a deposit UTXO on the given
+/// network.
+fn p2tr_address(deposit_script: ScriptBuf, reclaim_script: ScriptBuf, network: Network) -> Address {
+    let internal_key = crate::unspendable_taproot_key();
+    let merkle_root = to_taproot(deposit_script, reclaim_script).merkle_root();
+    Address::p2tr(SECP256K1, *internal_key, merkle_root, network)
 }
 
 /// This struct contains the key variable inputs when constructing a
@@ -90,27 +245,11 @@ pub struct DepositScriptInputs {
 }
 
 impl DepositScriptInputs {
-    /// Construct a bitcoin address for a deposit transaction on the given
-    /// network.
+    /// Construct a bitcoin address for a deposit UTXO on the given
+    /// network and reclaim script.
     pub fn to_address(&self, reclaim_script: ScriptBuf, network: Network) -> Address {
         let deposit_script = self.deposit_script();
-        let ver = LeafVersion::TapScript;
-
-        // For such a simple tree, we construct it by hand.
-        let leaf1 = NodeInfo::new_leaf_with_ver(deposit_script, ver);
-        let leaf2 = NodeInfo::new_leaf_with_ver(reclaim_script, ver);
-
-        // A Result::Err is returned by NodeInfo::combine if the depth of
-        // our taproot tree exceeds the maximum depth of taproot trees,
-        // which is 128. We have two nodes so the depth is 1 so this will
-        // never panic.
-        let node =
-            NodeInfo::combine(leaf1, leaf2).expect("Tree depth is greater than the max of 128");
-        let internal_key = crate::unspendable_taproot_key();
-
-        let merkle_root =
-            TaprootSpendInfo::from_node_info(SECP256K1, *internal_key, node).merkle_root();
-        Address::p2tr(SECP256K1, *internal_key, merkle_root, network)
+        p2tr_address(deposit_script, reclaim_script, network)
     }
 
     /// Construct a deposit script from the inputs
@@ -129,7 +268,6 @@ impl DepositScriptInputs {
         op_drop_data
             .extend_from_slice(&recipient_bytes)
             .expect("159 is greater than u32::MAX?");
-
         // When using the bitcoin::script::Builder, push_slice
         // automatically inserts the appropriate opcodes based on the data
         // size to be pushed onto the stack. Here, OP_PUSHBYTES_32 is
@@ -348,7 +486,12 @@ fn scriptint_parse(v: &[u8]) -> i64 {
 
 #[cfg(test)]
 mod tests {
+    use bitcoin::absolute::LockTime;
+    use bitcoin::hashes::Hash as _;
+    use bitcoin::transaction::Version;
     use bitcoin::AddressType;
+    use bitcoin::Amount;
+    use bitcoin::TxOut;
     use rand::rngs::OsRng;
     use secp256k1::SecretKey;
     use stacks_common::codec::StacksMessageCodec;
@@ -369,6 +512,41 @@ mod tests {
             .push_slice([0; 32])
             .push_opcode(opcodes::OP_CHECKSIG)
             .into_script()
+    }
+
+    struct TxSetup {
+        tx: Transaction,
+        deposit: DepositScriptInputs,
+        reclaim: ReclaimScriptInputs,
+    }
+
+    // The BTC transaction that is in this TxSetup is consistent with
+    // the deposit and reclaim scripts.
+    fn tx_setup(lock_time: i64, max_fee: u64, amount: u64) -> TxSetup {
+        let secret_key = SecretKey::new(&mut OsRng);
+
+        let deposit = DepositScriptInputs {
+            signers_public_key: secret_key.x_only_public_key(SECP256K1).0,
+            recipient: PrincipalData::from(StacksAddress::burn_address(false)),
+            max_fee,
+        };
+        let reclaim = ReclaimScriptInputs::try_new(lock_time, ScriptBuf::new()).unwrap();
+
+        let deposit_script = deposit.deposit_script();
+        let reclaim_script = reclaim.reclaim_script();
+        // This transaction is kinda invalid because it doesn't have any
+        // inputs. But it is fine for our purposes.
+        let tx = Transaction {
+            version: Version::TWO,
+            lock_time: LockTime::ZERO,
+            input: Vec::new(),
+            output: vec![TxOut {
+                value: Amount::from_sat(amount),
+                script_pubkey: to_script_pubkey(deposit_script, reclaim_script),
+            }],
+        };
+
+        TxSetup { tx, reclaim, deposit }
     }
 
     /// Check that manually creating the expected script can correctly be
@@ -519,5 +697,164 @@ mod tests {
         // The script must start with `<lock-time> OP_CSV` or we get an
         // error.
         assert!(ReclaimScriptInputs::parse(&reclaim_script).is_err());
+    }
+
+    #[test]
+    fn happy_path_tx_validation() {
+        let max_fee: u64 = 15000;
+        let amount_sats = 500_000;
+        let lock_time = 150;
+
+        let setup: TxSetup = tx_setup(lock_time, max_fee, amount_sats);
+
+        let tx_hex = bitcoin::consensus::encode::serialize_hex(&setup.tx);
+        let request = CreateDepositRequest {
+            outpoint: OutPoint::new(setup.tx.compute_txid(), 0),
+            reclaim_script: setup.reclaim.reclaim_script(),
+            deposit_script: setup.deposit.deposit_script(),
+        };
+
+        let parsed = request.validate_tx(&tx_hex).unwrap();
+
+        assert_eq!(parsed.outpoint, request.outpoint);
+        assert_eq!(parsed.deposit_script, request.deposit_script);
+        assert_eq!(parsed.reclaim_script, request.reclaim_script);
+        assert_eq!(parsed.amount, amount_sats);
+        assert_eq!(parsed.signers_public_key, setup.deposit.signers_public_key);
+        assert_eq!(parsed.lock_time, lock_time as u64);
+        assert_eq!(parsed.recipient, setup.deposit.recipient);
+    }
+
+    #[test]
+    fn valid_deposit_script_not_matching_tx_rejected() {
+        let max_fee: u64 = 15000;
+        let amount_sats = 500_000;
+        let lock_time = 150;
+
+        let mut setup: TxSetup = tx_setup(lock_time, max_fee, amount_sats);
+
+        let tx_hex = bitcoin::consensus::encode::serialize_hex(&setup.tx);
+
+        // Let's modify the max_fee of the deposit script and send that in
+        // the request.
+        setup.deposit.max_fee = 3000;
+
+        let request = CreateDepositRequest {
+            outpoint: OutPoint::new(setup.tx.compute_txid(), 0),
+            deposit_script: setup.deposit.deposit_script(),
+            reclaim_script: setup.reclaim.reclaim_script(),
+        };
+
+        let error = request.validate_tx(&tx_hex).unwrap_err();
+        assert!(matches!(error, Error::UtxoScriptPubKeyMismatch(_)));
+    }
+
+    #[test]
+    fn valid_reclaim_script_not_matching_tx_rejected() {
+        let max_fee: u64 = 15000;
+        let amount_sats = 500_000;
+        let lock_time = 0;
+
+        let mut setup: TxSetup = tx_setup(lock_time, max_fee, amount_sats);
+
+        let tx_hex = bitcoin::consensus::encode::serialize_hex(&setup.tx);
+
+        // Let's modify the lock time of the reclaim script to look more
+        // reasonable in the request.
+        setup.reclaim.lock_time = 150;
+
+        let request = CreateDepositRequest {
+            outpoint: OutPoint::new(setup.tx.compute_txid(), 0),
+            deposit_script: setup.deposit.deposit_script(),
+            reclaim_script: setup.reclaim.reclaim_script(),
+        };
+
+        let error = request.validate_tx(&tx_hex).unwrap_err();
+        assert!(matches!(error, Error::UtxoScriptPubKeyMismatch(_)));
+    }
+
+    #[test]
+    fn incorrect_tx_outpoint_rejected() {
+        let max_fee: u64 = 15000;
+        let amount_sats = 500_000;
+        let lock_time = 150;
+
+        let setup: TxSetup = tx_setup(lock_time, max_fee, amount_sats);
+
+        let tx_hex = bitcoin::consensus::encode::serialize_hex(&setup.tx);
+
+        let request = CreateDepositRequest {
+            // This output index is guaranteed to always be incorrect.
+            outpoint: OutPoint::new(setup.tx.compute_txid(), setup.tx.output.len() as u32),
+            deposit_script: setup.deposit.deposit_script(),
+            reclaim_script: setup.reclaim.reclaim_script(),
+        };
+
+        let error = request.validate_tx(&tx_hex).unwrap_err();
+        assert!(matches!(error, Error::OutpointIndex(_, _)));
+
+        let request = CreateDepositRequest {
+            // This txid is almost certainly incorrect.
+            outpoint: OutPoint::new(Txid::all_zeros(), 0),
+            deposit_script: setup.deposit.deposit_script(),
+            reclaim_script: setup.reclaim.reclaim_script(),
+        };
+
+        let error = request.validate_tx(&tx_hex).unwrap_err();
+        assert!(matches!(error, Error::TxidMismatch { .. }));
+    }
+
+    #[test]
+    fn incorrect_tx_hex_rejected() {
+        let max_fee: u64 = 15000;
+        let amount_sats = 500_000;
+        let lock_time = 150;
+
+        let setup: TxSetup = tx_setup(lock_time, max_fee, amount_sats);
+
+        let request = CreateDepositRequest {
+            // This output index is guaranteed to be incorrect.
+            outpoint: OutPoint::new(setup.tx.compute_txid(), 0),
+            deposit_script: setup.deposit.deposit_script(),
+            reclaim_script: setup.reclaim.reclaim_script(),
+        };
+
+        let error = request.validate_tx("abc123").unwrap_err();
+        assert!(matches!(error, Error::DecodeFromHex(_)));
+    }
+
+    #[test]
+    fn correct_tx_request_has_invalid_deposit_or_reclaim_script() {
+        let max_fee: u64 = 15000;
+        let amount_sats = 500_000;
+        let lock_time = 150;
+
+        let setup: TxSetup = tx_setup(lock_time, max_fee, amount_sats);
+
+        let tx_hex = bitcoin::consensus::encode::serialize_hex(&setup.tx);
+
+        let request = CreateDepositRequest {
+            outpoint: OutPoint::new(setup.tx.compute_txid(), 0),
+            // The actual deposit script in the transaction is fine, but
+            // they told us a lie and sent us an invalid deposit script in
+            // their request.
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: setup.reclaim.reclaim_script(),
+        };
+
+        let error = request.validate_tx(&tx_hex).unwrap_err();
+        assert!(matches!(error, Error::InvalidDepositScript));
+
+        let request = CreateDepositRequest {
+            outpoint: OutPoint::new(setup.tx.compute_txid(), 0),
+            deposit_script: setup.deposit.deposit_script(),
+            // The actual reclaim script in the transaction is fine, but
+            // they told us a lie, and sent us an invalid reclaim script in
+            // their request.
+            reclaim_script: ScriptBuf::new(),
+        };
+
+        let error = request.validate_tx(&tx_hex).unwrap_err();
+        assert!(matches!(error, Error::InvalidReclaimScript));
     }
 }
