@@ -31,7 +31,7 @@ impl Args {
 async fn main() {
     let args = Args::parse();
 
-    sbtc_common::logging::setup_logging(args.pretty_logs);
+    sbtc::logging::setup_logging("info,signer=debug,relay-server=debug", args.pretty_logs);
 
     let server = grpc_relay::RelayServer::new();
     server.serve(args.address()).await.expect("server failed");
