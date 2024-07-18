@@ -29,10 +29,6 @@ pub const NUMS_X_COORDINATE: [u8; 32] = [
     0x47, 0xbf, 0xee, 0x9a, 0xce, 0x80, 0x3a, 0xc0,
 ];
 
-/// The number of bitcoin blocks that must elapse from when the deposit
-/// transaction is confirmed before it can be reclaimed by the depositor.
-pub const LOCK_TIME: u32 = 150;
-
 /// Returns an address with no known private key, since it has no known
 /// discrete logarithm.
 ///

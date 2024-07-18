@@ -39,6 +39,15 @@ pub enum Error {
     /// The deposit script was invalid
     #[error("Invalid deposit script")]
     InvalidDepositScript,
+    /// The lock time included in the reclaim script was invalid.
+    #[error("the lock time included in the reclaim script was invalid: {0}")]
+    InvalidReclaimScriptLockTime(i64),
+    /// The reclaim script was invalid.
+    #[error("the reclaim script format was invalid")]
+    InvalidReclaimScript,
+    /// The reclaim script lock time was invalid
+    #[error("reclaim script lock time was either too large or non-minimal: {0}")]
+    ScriptNum(#[source] bitcoin::script::Error),
     /// The X-only public key was invalid
     #[error("the x-only public key in the script was invalid: {0}")]
     InvalidXOnlyPublicKey(#[source] secp256k1::Error),
@@ -117,13 +126,22 @@ impl DepositScriptInputs {
 }
 
 /// Drops the top stack item
-pub const OP_DROP: u8 = opcodes::OP_DROP.to_u8();
+const OP_DROP: u8 = opcodes::OP_DROP.to_u8();
 /// <https://en.bitcoin.it/wiki/OP_CHECKSIG> pushing 1/0 for
 /// success/failure.
-pub const OP_CHECKSIG: u8 = opcodes::OP_CHECKSIG.to_u8();
+const OP_CHECKSIG: u8 = opcodes::OP_CHECKSIG.to_u8();
 /// Read the next byte as N; push the next N bytes as an array onto the
 /// stack.
-pub const OP_PUSHDATA1: u8 = opcodes::OP_PUSHDATA1.to_u8();
+const OP_PUSHDATA1: u8 = opcodes::OP_PUSHDATA1.to_u8();
+/// The OP_CHECKSEQUENCEVERIFY opcode described in
+/// https://github.com/bitcoin/bips/blob/master/bip-0112.mediawiki
+const OP_CSV: u8 = opcodes::OP_CSV.to_u8();
+/// Represents the number 1.
+const OP_PUSHNUM_1: u8 = opcodes::OP_PUSHNUM_1.to_u8();
+/// Represents the number 16.
+const OP_PUSHNUM_16: u8 = opcodes::OP_PUSHNUM_16.to_u8();
+/// Represents the number -1.
+const OP_PUSHNUM_NEG1: u8 = opcodes::OP_PUSHNUM_NEG1.to_u8();
 
 /// This function checks that the deposit script is valid. Specifically, it
 /// checks that it follows the format laid out in
@@ -143,7 +161,7 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScriptI
     // DEPOSIT_SCRIPT_FIXED_LENGTH < STANDARD_SCRIPT_LENGTH.
     let (params, check) = script.split_at(script.len() - DEPOSIT_SCRIPT_FIXED_LENGTH);
     // Below, we know the script length is DEPOSIT_SCRIPT_FIXED_LENGTH,
-    // because of how `slice::split_at` works, so we know the pubkey_hash
+    // because of how `slice::split_at` works, so we know the public_key
     // variable has length 32.
     let [OP_DROP, 32, public_key @ .., OP_CHECKSIG] = check else {
         return Err(Error::InvalidDepositScript);
@@ -156,12 +174,12 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScriptI
     // use the OP_PUSHDATA1 opcode (you can also use this opcode to push
     // between 1 and 75 bytes on the stack, but it's cheaper to use the
     // OP_PUSHBYTES_N opcodes when you can). When need to check all cases
-    // contract addresses can have a size of up to 151 bytes.
+    // since contract addresses can have a size of up to 151 bytes.
     let data = match params {
         // This branch represents a contract address.
         [OP_PUSHDATA1, n, data @ ..] if data.len() == *n as usize && *n < 160 => data,
         // This branch can be a standard (non-contract) Stacks addresses
-        // when n == 29 and is a contract address otherwise.
+        // when n == 30 and is a contract address otherwise.
         [n, data @ ..] if data.len() == *n as usize && *n < 76 => data,
         _ => return Err(Error::InvalidDepositScript),
     };
@@ -183,6 +201,150 @@ pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScriptI
     })
 }
 
+/// This struct contains the key variable inputs when constructing a
+/// deposit script address.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReclaimScriptInputs {
+    /// This is the lock time used for the OP_CSV opcode in the reclaim
+    /// script.
+    lock_time: i64,
+    /// The reclaim script after the <locked-time> OP_CSV part of the script
+    script: ScriptBuf,
+}
+
+impl ReclaimScriptInputs {
+    /// Create a new one
+    pub fn try_new(lock_time: i64, script: ScriptBuf) -> Result<Self, Error> {
+        // We can only use numbers that can be expressed as a 5-byte signed
+        // integer, which has a max of 2**39 - 1. Negative numbers might be
+        // considered non-standard, so we reject them as well.
+        if lock_time > i64::pow(2, 39) - 1 || lock_time < 0 {
+            return Err(Error::InvalidReclaimScriptLockTime(lock_time));
+        }
+
+        Ok(Self { lock_time, script })
+    }
+
+    /// Create the reclaim script from the inputs
+    pub fn reclaim_script(&self) -> ScriptBuf {
+        let mut lock_script = ScriptBuf::builder()
+            .push_int(self.lock_time)
+            .push_opcode(opcodes::OP_CSV)
+            .into_script()
+            .into_bytes();
+
+        lock_script.extend(self.script.as_bytes());
+        ScriptBuf::from_bytes(lock_script)
+    }
+}
+
+/// Parse the reclaim script for the lock time.
+///
+/// The goal of this function is to make sure that there are no surprises
+/// in the reclaim script. These scripts are conceptually very simple and
+/// are their format is
+/// ```text
+///  <locked-time> OP_CHECKSEQUENCEVERIFY <rest-of-reclaim-script>
+/// ```
+/// This function extracts the <locked-time> from the script. If the
+/// script does not start with <locked-time> OP_CHECKSEQUENCEVERIFY then
+/// we return an error.
+///
+/// laid out in https://github.com/stacks-network/sbtc/issues/30, where the
+/// script
+pub fn parse_reclaim_script(reclaim_script: &ScriptBuf) -> Result<ReclaimScriptInputs, Error> {
+    let (lock_time, script) = match reclaim_script.as_bytes() {
+        // These first two branches check for the case when the script is
+        // written with as few bytes as possible (called minimal CScriptNum
+        // format or something like that).
+        [0, OP_CSV, script @ ..] => (0, script),
+        // This catches numbers 1-16 and -1.
+        [n, OP_CSV, script @ ..]
+            if OP_PUSHNUM_NEG1 == *n || (OP_PUSHNUM_1..OP_PUSHNUM_16).contains(n) =>
+        {
+            (*n as i64 - OP_PUSHNUM_1 as i64 + 1, script)
+        }
+        // Numbers in bitcoin script are typically only 4 bytes (with a
+        // range from -2**31+1 to 2**31-1), unless we are working with
+        // OP_CSV or OP_CLTV, where 5-byte numbers are acceptable (with a
+        // range of -2**39+1 to 2**39-1).  See the following for how the
+        // code works in bitcoin-core:
+        // https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L531-L573
+        [n, rest @ ..] if *n <= 5 && rest.get(*n as usize) == Some(&OP_CSV) => {
+            // We know the error and panic paths cannot happen because of
+            // the above `if` check.
+            let (script_num, [OP_CSV, script @ ..]) = rest.split_at(*n as usize) else {
+                return Err(Error::InvalidDepositScript);
+            };
+            (read_scriptint(script_num, 5)?, script)
+        }
+        _ => return Err(Error::InvalidReclaimScript),
+    };
+
+    let script = ScriptBuf::from_bytes(script.to_vec());
+    ReclaimScriptInputs::try_new(lock_time, script)
+}
+
+/// Decodes an integer in script(minimal CScriptNum) format.
+///
+/// # Notes
+///
+/// This code is a slightly modified version of the code in rust-bitcoin:
+/// https://github.com/rust-bitcoin/rust-bitcoin/blob/bitcoin-0.32.2/bitcoin/src/blockdata/script/mod.rs#L158-L200.
+///
+/// The logic here and in rust-bitcoin are both based on the `CScriptNum`
+/// constructor in Bitcoin Core:
+/// https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/script.h#L244C1-L269C6
+fn read_scriptint(v: &[u8], max_size: usize) -> Result<i64, Error> {
+    let last = match v.last() {
+        Some(last) => last,
+        None => return Ok(0),
+    };
+    // In rust-bitcoin, max_size is hardcoded to 4, while in bitcoin-core
+    // it is a variable, and sometimes they set it to 5. This is the only
+    // modification to this function body from rust-bitcoin's code.
+    if v.len() > max_size {
+        return Err(Error::ScriptNum(bitcoin::script::Error::NumericOverflow));
+    }
+    // Comment and code copied from Bitcoin Core:
+    // https://github.com/bitcoin/bitcoin/blob/447f50e4aed9a8b1d80e1891cda85801aeb80b4e/src/script/script.h#L247-L262
+    // If the most-significant-byte - excluding the sign bit - is zero
+    // then we're not minimal. Note how this test also rejects the
+    // negative-zero encoding, 0x80.
+    if (*last & 0x7f) == 0 {
+        // One exception: if there's more than one byte and the most
+        // significant bit of the second-most-significant-byte is set
+        // it would conflict with the sign bit. An example of this case
+        // is +-255, which encode to 0xff00 and 0xff80 respectively.
+        // (big-endian).
+        if v.len() <= 1 || (v[v.len() - 2] & 0x80) == 0 {
+            return Err(Error::ScriptNum(bitcoin::script::Error::NonMinimalPush));
+        }
+    }
+
+    Ok(scriptint_parse(v))
+}
+
+/// Caller to guarantee that `v` is not empty.
+///
+/// # Notes
+///
+/// This code was lifted from rust-bitcoin without modification:
+/// https://github.com/rust-bitcoin/rust-bitcoin/blob/bitcoin-0.32.2/bitcoin/src/blockdata/script/mod.rs#L218-L226C2.
+///
+/// The logic there follows the logic in bitcoin-core:
+/// https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/script.h#L382C1-L400C3
+fn scriptint_parse(v: &[u8]) -> i64 {
+    let (mut ret, sh) = v
+        .iter()
+        .fold((0, 0), |(acc, sh), n| (acc + ((*n as i64) << sh), sh + 8));
+    if v[v.len() - 1] & 0x80 != 0 {
+        ret &= (1 << (sh - 1)) - 1;
+        ret = -ret;
+    }
+    ret
+}
+
 #[cfg(test)]
 mod tests {
     use bitcoin::AddressType;
@@ -196,6 +358,17 @@ mod tests {
     use test_case::test_case;
 
     const CONTRACT_ADDRESS: &str = "ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y.contract-name";
+
+    /// A full reclaim script with a p2pk script at the end.
+    fn reclaim_p2pk(lock_time: i64) -> ScriptBuf {
+        ScriptBuf::builder()
+            .push_int(lock_time)
+            .push_opcode(opcodes::OP_CSV)
+            .push_opcode(opcodes::OP_DROP)
+            .push_slice([0; 32])
+            .push_opcode(opcodes::OP_CHECKSIG)
+            .into_script()
+    }
 
     /// Check that manually creating the expected script can correctly be
     /// parsed.
@@ -262,5 +435,88 @@ mod tests {
 
         let address = deposit.to_address(ScriptBuf::new(), Network::Regtest);
         assert_eq!(address.address_type(), Some(AddressType::P2tr));
+    }
+
+    #[test_case(0; "sneaky guy setting the lock time to zero")]
+    #[test_case(6; "6, a minimal number")]
+    #[test_case(15; "15, another minimal number")]
+    #[test_case(0x00000000ff; "1 byte non-minimal")]
+    #[test_case(0x000000ffff; "2 bytes non-minimal")]
+    #[test_case(0x0000ffffff; "3 bytes non-minimal")]
+    #[test_case(0x005f000000; "4 bytes non-minimal")]
+    #[test_case(0x7fffffffff; "5 bytes non-minimal 2**39 - 1")]
+    fn reclaim_script_lock_time(lock_time: i64) {
+        let reclaim_script = reclaim_p2pk(lock_time);
+
+        let extracts = parse_reclaim_script(&reclaim_script).unwrap();
+        assert_eq!(extracts.lock_time, lock_time);
+        assert_eq!(extracts.reclaim_script(), reclaim_script);
+
+        // Let's check that ReclaimScriptInputs::reclaim_script and
+        // parse_reclaim_script and are inverses in the other direction.
+        let script = ScriptBuf::builder()
+            .push_opcode(opcodes::OP_DROP)
+            .push_slice([2; 32])
+            .push_opcode(opcodes::OP_CHECKSIG)
+            .into_script();
+
+        let inputs = ReclaimScriptInputs::try_new(lock_time, script).unwrap();
+        let reclaim_script = inputs.reclaim_script();
+        assert_eq!(parse_reclaim_script(&reclaim_script).unwrap(), inputs);
+    }
+
+    #[test]
+    fn reclaim_6_bytes_bad() {
+        let lock_time = 0x10000000000;
+        let reclaim_script = reclaim_p2pk(lock_time);
+        assert!(parse_reclaim_script(&reclaim_script).is_err());
+    }
+
+    #[test_case(-1; "negative one")]
+    #[test_case(-16; "negative sixteen")]
+    #[test_case(-1000; "negative 1000")]
+    fn reclaim_negative_numbers_bytes_bad(lock_time: i64) {
+        let reclaim_script = reclaim_p2pk(lock_time);
+
+        match parse_reclaim_script(&reclaim_script) {
+            Err(Error::InvalidReclaimScriptLockTime(parsed_lock_time)) => {
+                assert_eq!(parsed_lock_time, lock_time)
+            }
+            _ => panic!("This shouldn't trigger"),
+        };
+    }
+
+    #[test]
+    fn no_real_reclaim_script_is_fine() {
+        let lock_time = 150;
+        let reclaim_script = ScriptBuf::builder()
+            .push_int(lock_time)
+            .push_opcode(opcodes::OP_CSV)
+            .into_script();
+
+        let extracts = parse_reclaim_script(&reclaim_script).unwrap();
+        assert_eq!(extracts.lock_time, lock_time);
+        assert_eq!(extracts.reclaim_script(), reclaim_script);
+    }
+
+    #[test_case(ScriptBuf::builder()
+        .push_opcode(opcodes::OP_RETURN)
+        .push_int(150)
+        .push_opcode(opcodes::OP_CSV)
+        .into_script() ; "start with OP_RETURN")]
+    #[test_case(ScriptBuf::builder()
+        .push_opcode(opcodes::OP_PUSHNUM_1)
+        .push_int(150)
+        .push_opcode(opcodes::OP_CSV)
+        .into_script() ; "start with OP_TRUE")]
+    #[test_case(ScriptBuf::builder()
+        .push_int(0)
+        .push_int(150)
+        .push_opcode(opcodes::OP_CSV)
+        .into_script() ; "start with 0")]
+    fn invalid_script_start(reclaim_script: ScriptBuf) {
+        // The script must start with `<lock-time> OP_CSV` or we get an
+        // error.
+        assert!(parse_reclaim_script(&reclaim_script).is_err());
     }
 }
