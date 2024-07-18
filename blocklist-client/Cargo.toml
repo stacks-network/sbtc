@@ -13,7 +13,6 @@ path = "src/main.rs"
 config.workspace = true
 once_cell.workspace = true
 reqwest.workspace = true
-sbtc-common = { path = "../common" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
