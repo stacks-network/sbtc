@@ -33,6 +33,26 @@ const DEPOSIT_SCRIPT_FIXED_LENGTH: usize = 35;
 const STANDARD_SCRIPT_LENGTH: usize =
     1 + 1 + 8 + STACKS_ADDRESS_ENCODED_SIZE as usize + DEPOSIT_SCRIPT_FIXED_LENGTH;
 
+/// Script opcodes as the bytes in bitcoin Script.
+///
+/// Drops the top stack item
+const OP_DROP: u8 = opcodes::OP_DROP.to_u8();
+/// <https://en.bitcoin.it/wiki/OP_CHECKSIG> pushing 1/0 for
+/// success/failure.
+const OP_CHECKSIG: u8 = opcodes::OP_CHECKSIG.to_u8();
+/// Read the next byte as N; push the next N bytes as an array onto the
+/// stack.
+const OP_PUSHDATA1: u8 = opcodes::OP_PUSHDATA1.to_u8();
+/// The OP_CHECKSEQUENCEVERIFY opcode described in
+/// https://github.com/bitcoin/bips/blob/master/bip-0112.mediawiki
+const OP_CSV: u8 = opcodes::OP_CSV.to_u8();
+/// Represents the number 1.
+const OP_PUSHNUM_1: u8 = opcodes::OP_PUSHNUM_1.to_u8();
+/// Represents the number 16.
+const OP_PUSHNUM_16: u8 = opcodes::OP_PUSHNUM_16.to_u8();
+/// Represents the number -1.
+const OP_PUSHNUM_NEG1: u8 = opcodes::OP_PUSHNUM_NEG1.to_u8();
+
 /// Errors
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -123,84 +143,65 @@ impl DepositScriptInputs {
             .push_opcode(opcodes::OP_CHECKSIG)
             .into_script()
     }
-}
 
-/// Drops the top stack item
-const OP_DROP: u8 = opcodes::OP_DROP.to_u8();
-/// <https://en.bitcoin.it/wiki/OP_CHECKSIG> pushing 1/0 for
-/// success/failure.
-const OP_CHECKSIG: u8 = opcodes::OP_CHECKSIG.to_u8();
-/// Read the next byte as N; push the next N bytes as an array onto the
-/// stack.
-const OP_PUSHDATA1: u8 = opcodes::OP_PUSHDATA1.to_u8();
-/// The OP_CHECKSEQUENCEVERIFY opcode described in
-/// https://github.com/bitcoin/bips/blob/master/bip-0112.mediawiki
-const OP_CSV: u8 = opcodes::OP_CSV.to_u8();
-/// Represents the number 1.
-const OP_PUSHNUM_1: u8 = opcodes::OP_PUSHNUM_1.to_u8();
-/// Represents the number 16.
-const OP_PUSHNUM_16: u8 = opcodes::OP_PUSHNUM_16.to_u8();
-/// Represents the number -1.
-const OP_PUSHNUM_NEG1: u8 = opcodes::OP_PUSHNUM_NEG1.to_u8();
+    /// This function checks that the deposit script is valid.
+    /// Specifically, it checks that it follows the format laid out in
+    /// https://github.com/stacks-network/sbtc/issues/30, where the script
+    /// is expected to be
+    /// ```text
+    ///  <deposit-data> OP_DROP OP_PUSHBYTES_32 <x-only-public-key> OP_CHECKSIG
+    /// ```
+    pub fn parse(deposit_script: &ScriptBuf) -> Result<Self, Error> {
+        let script = deposit_script.as_bytes();
 
-/// This function checks that the deposit script is valid. Specifically, it
-/// checks that it follows the format laid out in
-/// https://github.com/stacks-network/sbtc/issues/30, where the script is
-/// expected to be
-/// ```text
-///  <deposit-data> OP_DROP OP_PUSHBYTES_32 <x-only-public-key> OP_CHECKSIG
-/// ```
-pub fn parse_deposit_script(deposit_script: &ScriptBuf) -> Result<DepositScriptInputs, Error> {
-    let script = deposit_script.as_bytes();
+        // Valid deposit scripts cannot be less than this length.
+        if script.len() < STANDARD_SCRIPT_LENGTH {
+            return Err(Error::InvalidDepositScript);
+        }
+        // This cannot panic because of the above check and the fact that
+        // DEPOSIT_SCRIPT_FIXED_LENGTH < STANDARD_SCRIPT_LENGTH.
+        let (params, check) = script.split_at(script.len() - DEPOSIT_SCRIPT_FIXED_LENGTH);
+        // Below, we know the script length is DEPOSIT_SCRIPT_FIXED_LENGTH,
+        // because of how `slice::split_at` works, so we know the
+        // public_key variable has length 32.
+        let [OP_DROP, 32, public_key @ .., OP_CHECKSIG] = check else {
+            return Err(Error::InvalidDepositScript);
+        };
+        // In bitcoin script, the code for pushing N bytes onto the stack
+        // is OP_PUSHBYTES_N where N is between 1 and 75 inclusive. The
+        // byte representation of these opcodes is the byte representation
+        // of N. If you need to push between 76 and 255 bytes of data then
+        // you need to use the OP_PUSHDATA1 opcode (you can also use this
+        // opcode to push between 1 and 75 bytes on the stack, but it's
+        // cheaper to use the OP_PUSHBYTES_N opcodes when you can). When
+        // need to check all cases since contract addresses can have a size
+        // of up to 151 bytes.
+        let data = match params {
+            // This branch represents a contract address.
+            [OP_PUSHDATA1, n, data @ ..] if data.len() == *n as usize && *n < 160 => data,
+            // This branch can be a standard (non-contract) Stacks
+            // addresses when n == 30 and is a contract address otherwise.
+            [n, data @ ..] if data.len() == *n as usize && *n < 76 => data,
+            _ => return Err(Error::InvalidDepositScript),
+        };
+        // Here `split_first_chunk::<N>` returns Option<(&[u8; N], &[u8])>,
+        // where None is returned if the length of the slice is less than
+        // N. Since N is 8 and the data variable has a length 30 or
+        // greater, the error path cannot happen.
+        let Some((max_fee_bytes, mut address)) = data.split_first_chunk::<8>() else {
+            return Err(Error::InvalidDepositScript);
+        };
+        let stacks_address = PrincipalData::consensus_deserialize(&mut address)
+            .map_err(Error::ParseStacksAddress)?;
 
-    // Valid deposit scripts cannot be less than this length.
-    if script.len() < STANDARD_SCRIPT_LENGTH {
-        return Err(Error::InvalidDepositScript);
+        Ok(DepositScriptInputs {
+            signers_public_key: XOnlyPublicKey::from_slice(public_key)
+                .map_err(Error::InvalidXOnlyPublicKey)?,
+            max_fee: u64::from_be_bytes(*max_fee_bytes),
+            recipient: stacks_address,
+        })
     }
-    // This cannot panic because of the above check and the fact that
-    // DEPOSIT_SCRIPT_FIXED_LENGTH < STANDARD_SCRIPT_LENGTH.
-    let (params, check) = script.split_at(script.len() - DEPOSIT_SCRIPT_FIXED_LENGTH);
-    // Below, we know the script length is DEPOSIT_SCRIPT_FIXED_LENGTH,
-    // because of how `slice::split_at` works, so we know the public_key
-    // variable has length 32.
-    let [OP_DROP, 32, public_key @ .., OP_CHECKSIG] = check else {
-        return Err(Error::InvalidDepositScript);
-    };
-
-    // In bitcoin script, the code for pushing N bytes onto the stack is
-    // OP_PUSHBYTES_N where N is between 1 and 75 inclusive. The byte
-    // representation of these opcodes is the byte representation of N. If
-    // you need to push between 76 and 255 bytes of data then you need to
-    // use the OP_PUSHDATA1 opcode (you can also use this opcode to push
-    // between 1 and 75 bytes on the stack, but it's cheaper to use the
-    // OP_PUSHBYTES_N opcodes when you can). When need to check all cases
-    // since contract addresses can have a size of up to 151 bytes.
-    let data = match params {
-        // This branch represents a contract address.
-        [OP_PUSHDATA1, n, data @ ..] if data.len() == *n as usize && *n < 160 => data,
-        // This branch can be a standard (non-contract) Stacks addresses
-        // when n == 30 and is a contract address otherwise.
-        [n, data @ ..] if data.len() == *n as usize && *n < 76 => data,
-        _ => return Err(Error::InvalidDepositScript),
-    };
-    // Here, `split_first_chunk::<N>` returns Option<(&[u8; N], &[u8])>,
-    // where None is returned if the length of the slice is less than N.
-    // Since N is 8 and the data variable has a length 30 or greater, the
-    // error path cannot happen.
-    let Some((max_fee_bytes, mut address)) = data.split_first_chunk::<8>() else {
-        return Err(Error::InvalidDepositScript);
-    };
-    let stacks_address =
-        PrincipalData::consensus_deserialize(&mut address).map_err(Error::ParseStacksAddress)?;
-
-    Ok(DepositScriptInputs {
-        signers_public_key: XOnlyPublicKey::from_slice(public_key)
-            .map_err(Error::InvalidXOnlyPublicKey)?,
-        max_fee: u64::from_be_bytes(*max_fee_bytes),
-        recipient: stacks_address,
-    })
 }
-
 /// This struct contains the key variable inputs when constructing a
 /// deposit script address.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -236,53 +237,53 @@ impl ReclaimScriptInputs {
         lock_script.extend(self.script.as_bytes());
         ScriptBuf::from_bytes(lock_script)
     }
-}
 
-/// Parse the reclaim script for the lock time.
-///
-/// The goal of this function is to make sure that there are no surprises
-/// in the reclaim script. These scripts are conceptually very simple and
-/// are their format is
-/// ```text
-///  <locked-time> OP_CHECKSEQUENCEVERIFY <rest-of-reclaim-script>
-/// ```
-/// This function extracts the <locked-time> from the script. If the
-/// script does not start with <locked-time> OP_CHECKSEQUENCEVERIFY then
-/// we return an error.
-///
-/// laid out in https://github.com/stacks-network/sbtc/issues/30, where the
-/// script
-pub fn parse_reclaim_script(reclaim_script: &ScriptBuf) -> Result<ReclaimScriptInputs, Error> {
-    let (lock_time, script) = match reclaim_script.as_bytes() {
-        // These first two branches check for the case when the script is
-        // written with as few bytes as possible (called minimal CScriptNum
-        // format or something like that).
-        [0, OP_CSV, script @ ..] => (0, script),
-        // This catches numbers 1-16 and -1.
-        [n, OP_CSV, script @ ..]
-            if OP_PUSHNUM_NEG1 == *n || (OP_PUSHNUM_1..OP_PUSHNUM_16).contains(n) =>
-        {
-            (*n as i64 - OP_PUSHNUM_1 as i64 + 1, script)
-        }
-        // Numbers in bitcoin script are typically only 4 bytes (with a
-        // range from -2**31+1 to 2**31-1), unless we are working with
-        // OP_CSV or OP_CLTV, where 5-byte numbers are acceptable (with a
-        // range of -2**39+1 to 2**39-1).  See the following for how the
-        // code works in bitcoin-core:
-        // https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L531-L573
-        [n, rest @ ..] if *n <= 5 && rest.get(*n as usize) == Some(&OP_CSV) => {
-            // We know the error and panic paths cannot happen because of
-            // the above `if` check.
-            let (script_num, [OP_CSV, script @ ..]) = rest.split_at(*n as usize) else {
-                return Err(Error::InvalidDepositScript);
-            };
-            (read_scriptint(script_num, 5)?, script)
-        }
-        _ => return Err(Error::InvalidReclaimScript),
-    };
+    /// Parse the reclaim script for the lock time.
+    ///
+    /// The goal of this function is to make sure that there are no
+    /// surprises in the reclaim script. These scripts are conceptually
+    /// very simple and are their format is
+    /// ```text
+    ///  <locked-time> OP_CHECKSEQUENCEVERIFY <rest-of-reclaim-script>
+    /// ```
+    /// This function extracts the <locked-time> from the script. If the
+    /// script does not start with <locked-time> OP_CHECKSEQUENCEVERIFY
+    /// then we return an error.
+    ///
+    /// laid out in https://github.com/stacks-network/sbtc/issues/30, where
+    /// the script
+    pub fn parse(reclaim_script: &ScriptBuf) -> Result<Self, Error> {
+        let (lock_time, script) = match reclaim_script.as_bytes() {
+            // These first two branches check for the case when the script
+            // is written with as few bytes as possible (called minimal
+            // CScriptNum format or something like that).
+            [0, OP_CSV, script @ ..] => (0, script),
+            // This catches numbers 1-16 and -1.
+            [n, OP_CSV, script @ ..]
+                if OP_PUSHNUM_NEG1 == *n || (OP_PUSHNUM_1..OP_PUSHNUM_16).contains(n) =>
+            {
+                (*n as i64 - OP_PUSHNUM_1 as i64 + 1, script)
+            }
+            // Numbers in bitcoin script are typically only 4 bytes (with a
+            // range from -2**31+1 to 2**31-1), unless we are working with
+            // OP_CSV or OP_CLTV, where 5-byte numbers are acceptable (with
+            // a range of -2**39+1 to 2**39-1).  See the following for how
+            // the code works in bitcoin-core:
+            // https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L531-L573
+            [n, rest @ ..] if *n <= 5 && rest.get(*n as usize) == Some(&OP_CSV) => {
+                // We know the error and panic paths cannot happen because
+                // of the above `if` check.
+                let (script_num, [OP_CSV, script @ ..]) = rest.split_at(*n as usize) else {
+                    return Err(Error::InvalidDepositScript);
+                };
+                (read_scriptint(script_num, 5)?, script)
+            }
+            _ => return Err(Error::InvalidReclaimScript),
+        };
 
-    let script = ScriptBuf::from_bytes(script.to_vec());
-    ReclaimScriptInputs::try_new(lock_time, script)
+        let script = ScriptBuf::from_bytes(script.to_vec());
+        ReclaimScriptInputs::try_new(lock_time, script)
+    }
 }
 
 /// Decodes an integer in script(minimal CScriptNum) format.
@@ -395,7 +396,7 @@ mod tests {
             assert_eq!(script.len(), STANDARD_SCRIPT_LENGTH);
         }
 
-        let extracts = parse_deposit_script(&script).unwrap();
+        let extracts = DepositScriptInputs::parse(&script).unwrap();
         assert_eq!(extracts.signers_public_key, public_key);
         assert_eq!(extracts.recipient, recipient);
         assert_eq!(extracts.max_fee, max_fee);
@@ -416,7 +417,7 @@ mod tests {
         };
 
         let deposit_script = deposit.deposit_script();
-        let parsed_deposit = parse_deposit_script(&deposit_script).unwrap();
+        let parsed_deposit = DepositScriptInputs::parse(&deposit_script).unwrap();
 
         assert_eq!(deposit, parsed_deposit);
     }
@@ -448,7 +449,7 @@ mod tests {
     fn reclaim_script_lock_time(lock_time: i64) {
         let reclaim_script = reclaim_p2pk(lock_time);
 
-        let extracts = parse_reclaim_script(&reclaim_script).unwrap();
+        let extracts = ReclaimScriptInputs::parse(&reclaim_script).unwrap();
         assert_eq!(extracts.lock_time, lock_time);
         assert_eq!(extracts.reclaim_script(), reclaim_script);
 
@@ -462,14 +463,14 @@ mod tests {
 
         let inputs = ReclaimScriptInputs::try_new(lock_time, script).unwrap();
         let reclaim_script = inputs.reclaim_script();
-        assert_eq!(parse_reclaim_script(&reclaim_script).unwrap(), inputs);
+        assert_eq!(ReclaimScriptInputs::parse(&reclaim_script).unwrap(), inputs);
     }
 
     #[test]
     fn reclaim_6_bytes_bad() {
         let lock_time = 0x10000000000;
         let reclaim_script = reclaim_p2pk(lock_time);
-        assert!(parse_reclaim_script(&reclaim_script).is_err());
+        assert!(ReclaimScriptInputs::parse(&reclaim_script).is_err());
     }
 
     #[test_case(-1; "negative one")]
@@ -478,7 +479,7 @@ mod tests {
     fn reclaim_negative_numbers_bytes_bad(lock_time: i64) {
         let reclaim_script = reclaim_p2pk(lock_time);
 
-        match parse_reclaim_script(&reclaim_script) {
+        match ReclaimScriptInputs::parse(&reclaim_script) {
             Err(Error::InvalidReclaimScriptLockTime(parsed_lock_time)) => {
                 assert_eq!(parsed_lock_time, lock_time)
             }
@@ -494,7 +495,7 @@ mod tests {
             .push_opcode(opcodes::OP_CSV)
             .into_script();
 
-        let extracts = parse_reclaim_script(&reclaim_script).unwrap();
+        let extracts = ReclaimScriptInputs::parse(&reclaim_script).unwrap();
         assert_eq!(extracts.lock_time, lock_time);
         assert_eq!(extracts.reclaim_script(), reclaim_script);
     }
@@ -517,6 +518,6 @@ mod tests {
     fn invalid_script_start(reclaim_script: ScriptBuf) {
         // The script must start with `<lock-time> OP_CSV` or we get an
         // error.
-        assert!(parse_reclaim_script(&reclaim_script).is_err());
+        assert!(ReclaimScriptInputs::parse(&reclaim_script).is_err());
     }
 }
