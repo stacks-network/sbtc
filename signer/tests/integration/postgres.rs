@@ -2,10 +2,10 @@ use std::io::Read;
 
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
+use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::Value;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
-use blockstack_lib::types::Address;
 use futures::StreamExt;
 
 use signer::stacks::contracts::AcceptWithdrawalV1;
@@ -103,9 +103,15 @@ impl AsContractCall for InitiateWithdrawalRequest {
 #[test_case(ContractCall(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654,
-    recipient: StacksAddress::from_string("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
+    recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
     deployer: testing::wallet::generate_wallet().0.address(),
-}); "complete-deposit")]
+}); "complete-deposit standard recipient")]
+#[test_case(ContractCall(CompleteDepositV1 {
+    outpoint: bitcoin::OutPoint::null(),
+    amount: 123654,
+    recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y.my-contract-name").unwrap(),
+    deployer: testing::wallet::generate_wallet().0.address(),
+}); "complete-deposit contract recipient")]
 #[test_case(ContractCall(AcceptWithdrawalV1 {
     request_id: 0,
     outpoint: bitcoin::OutPoint::null(),

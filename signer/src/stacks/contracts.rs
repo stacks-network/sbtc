@@ -32,7 +32,6 @@ use blockstack_lib::clarity::vm::types::ListData;
 use blockstack_lib::clarity::vm::types::ListTypeData;
 use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::types::SequenceData;
-use blockstack_lib::clarity::vm::types::StandardPrincipalData;
 use blockstack_lib::clarity::vm::types::BUFF_33;
 use blockstack_lib::clarity::vm::ClarityName;
 use blockstack_lib::clarity::vm::ContractName;
@@ -165,7 +164,7 @@ impl<T: AsContractCall> std::ops::DerefMut for ContractCall<T> {
 /// This struct is used to generate a properly formatted Stacks transaction
 /// for calling the complete-deposit-wrapper function in the sbtc-deposit
 /// smart contract.
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct CompleteDepositV1 {
     /// The outpoint of the bitcoin UTXO that was spent as a deposit for
     /// sBTC.
@@ -173,7 +172,7 @@ pub struct CompleteDepositV1 {
     /// The amount of sats associated with the above UTXO.
     pub amount: u64,
     /// The address where the newly minted sBTC will be deposited.
-    pub recipient: StacksAddress,
+    pub recipient: PrincipalData,
     /// The address that deployed the contract.
     pub deployer: StacksAddress,
 }
@@ -190,13 +189,12 @@ impl AsContractCall for CompleteDepositV1 {
     fn as_contract_args(&self) -> Vec<Value> {
         let txid_data = self.outpoint.txid.to_byte_array().to_vec();
         let txid = BuffData { data: txid_data };
-        let principle = StandardPrincipalData::from(self.recipient);
 
         vec![
             Value::Sequence(SequenceData::Buffer(txid)),
             Value::UInt(self.outpoint.vout as u128),
             Value::UInt(self.amount as u128),
-            Value::Principal(PrincipalData::Standard(principle)),
+            Value::Principal(self.recipient.clone()),
         ]
     }
 }
@@ -380,7 +378,7 @@ mod tests {
         let call = CompleteDepositV1 {
             outpoint: OutPoint::null(),
             amount: 15000,
-            recipient: StacksAddress::burn_address(true),
+            recipient: PrincipalData::from(StacksAddress::burn_address(true)),
             deployer: StacksAddress::burn_address(false),
         };
 
