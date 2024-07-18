@@ -34,7 +34,7 @@ p256k1.workspace = true
 prost.workspace = true
 rand.workspace = true
 reqwest.workspace = true
-sbtc-common = { path = "../common" }
+sbtc = { path = "../sbtc" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

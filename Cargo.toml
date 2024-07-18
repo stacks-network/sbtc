@@ -6,7 +6,8 @@ members = [
   ".generated-sources/emily/openapi",
   "blocklist-client",
   ".generated-sources/blocklist-openapi-gen",
-  "common"]
+  "sbtc",
+]
 
 [profile.dev]
 # Disabling debug info speeds up builds a bunch,
@@ -18,7 +19,7 @@ lto = "thin"
 codegen-units = 16
 
 [workspace.dependencies]
-sbtc-common = { version = "0.1.0", path = "./common" }
+sbtc = { path = "./sbtc" }
 emily-handler = { version = "0.1.0", path = "./emily/handler" }
 
 aquamarine = "0.5.0"

@@ -2,7 +2,6 @@
 
 use api::handlers;
 use context::EmilyContext;
-use sbtc_common::logging::setup_logging;
 use tracing::info;
 use warp::Filter;
 
@@ -13,7 +12,7 @@ mod database;
 
 #[tokio::main]
 async fn main() {
-    setup_logging(true);
+    sbtc::logging::setup_logging("info,emily-handler=debug", false);
 
     // TODO(TBD): Handle config pickup in a way that will only fail for the relevant call.
     let emily_context: EmilyContext = EmilyContext::from_env()

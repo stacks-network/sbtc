@@ -1,6 +1,5 @@
 use crate::config::SETTINGS;
 use reqwest::Client;
-use sbtc_common::logging::setup_logging;
 use std::net::ToSocketAddrs;
 use tracing::{error, info};
 use warp::Filter;
@@ -12,7 +11,7 @@ mod config;
 
 #[tokio::main]
 async fn main() {
-    setup_logging(false);
+    blocklist_client::logging::setup_logging(false);
 
     let client = Client::new();
 

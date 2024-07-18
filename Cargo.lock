@@ -927,7 +927,6 @@ dependencies = [
  "mockito 0.28.0",
  "once_cell",
  "reqwest 0.11.27",
- "sbtc-common",
  "serde 1.0.203",
  "serde_json",
  "thiserror",
@@ -1580,7 +1579,7 @@ dependencies = [
  "once_cell",
  "openssl",
  "reqwest 0.11.27",
- "sbtc-common",
+ "sbtc",
  "serde 1.0.203",
  "serde_dynamo",
  "serde_json",
@@ -4211,7 +4210,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sbtc-common"
+name = "sbtc"
 version = "0.1.0"
 dependencies = [
  "bitcoin 0.32.0",
@@ -4631,7 +4630,7 @@ dependencies = [
  "prost",
  "rand 0.8.5",
  "reqwest 0.11.27",
- "sbtc-common",
+ "sbtc",
  "secp256k1 0.29.0",
  "serde 1.0.203",
  "serde_json",

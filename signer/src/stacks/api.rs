@@ -492,7 +492,7 @@ mod tests {
     #[ignore = "This is an integration test that hasn't been setup for CI yet"]
     #[sqlx::test]
     async fn fetch_unknown_ancestors_works(pool: sqlx::PgPool) {
-        sbtc_common::logging::setup_logging(false);
+        sbtc::logging::setup_logging("info,signer=debug", false);
 
         let settings = StacksSettings::new_from_config().unwrap();
         let client = StacksClient::new(settings);
