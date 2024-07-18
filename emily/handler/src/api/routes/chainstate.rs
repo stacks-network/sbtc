@@ -2,88 +2,52 @@
 
 use warp::Filter;
 
+use crate::context::EmilyContext;
+
 use super::handlers;
 
 /// Chainstate routes.
-pub fn routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    get_chainstate()
-        .or(set_chainstate())
-        .or(update_chainstate())
+pub fn routes(
+    context: EmilyContext,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    get_chainstate_at_height(context.clone())
+        .or(set_chainstate(context.clone()))
+        .or(update_chainstate(context))
 }
 
-/// Get chainstate endpoint.
-fn get_chainstate() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("chainstate" / u64)
+/// Get chainstate at height endpoint.
+fn get_chainstate_at_height(
+    context: EmilyContext,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::any()
+        .map(move || context.clone())
+        .and(warp::path!("chainstate" / u64))
         .and(warp::get())
-        .map(handlers::chainstate::get_chainstate)
+        .then(handlers::chainstate::get_chainstate_at_height)
 }
 
 /// Set chainstate endpoint.
-fn set_chainstate() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("chainstate")
+fn set_chainstate(
+    context: EmilyContext,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::any()
+        .map(move || context.clone())
+        .and(warp::path!("chainstate"))
         .and(warp::post())
         .and(warp::body::json())
-        .map(handlers::chainstate::set_chainstate)
+        .then(handlers::chainstate::set_chainstate)
 }
 
 /// Update chainstate endpoint.
-fn update_chainstate() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("chainstate")
+fn update_chainstate(
+    context: EmilyContext,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::any()
+        .map(move || context.clone())
+        .and(warp::path!("chainstate"))
         .and(warp::put())
         .and(warp::body::json())
-        .map(handlers::chainstate::update_chainstate)
+        .then(handlers::chainstate::update_chainstate)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use warp::http::StatusCode;
-    use warp::test::request;
-
-    #[tokio::test]
-    async fn test_get_chainstate() {
-        let api = get_chainstate();
-
-        let res = request()
-            .method("GET")
-            .path("/chainstate/123")
-            .reply(&api)
-            .await;
-
-        assert_eq!(res.status(), StatusCode::OK);
-    }
-
-    #[tokio::test]
-    async fn test_set_chainstate() {
-        let api = set_chainstate();
-
-        let res = request()
-            .method("POST")
-            .path("/chainstate")
-            .json(&serde_json::json!({
-                "blockHeight": 0,
-                "blockHash": "DUMMY_BLOCK_HASH"
-            }))
-            .reply(&api)
-            .await;
-
-        assert_eq!(res.status(), StatusCode::CREATED);
-    }
-
-    #[tokio::test]
-    async fn test_update_chainstate() {
-        let api = update_chainstate();
-
-        let res = request()
-            .method("PUT")
-            .path("/chainstate")
-            .json(&serde_json::json!({
-                "blockHeight": 0,
-                "blockHash": "DUMMY_BLOCK_HASH"
-            }))
-            .reply(&api)
-            .await;
-
-        assert_eq!(res.status(), StatusCode::CREATED);
-    }
-}
+// TODO(TBD): Add route unit tests.

@@ -113,7 +113,7 @@
           "chainstate"
         ],
         "summary": "Get chainstate handler.",
-        "operationId": "getChainstate",
+        "operationId": "getChainstateAtHeight",
         "parameters": [
           {
             "name": "height",
@@ -697,16 +697,16 @@
     "schemas": {
       "Chainstate": {
         "type": "object",
-        "description": "Deposit.",
+        "description": "Chainstate.",
         "required": [
-          "blockHeight",
-          "blockHash"
+          "stacksBlockHeight",
+          "stacksBlockHash"
         ],
         "properties": {
-          "blockHash": {
+          "stacksBlockHash": {
             "$ref": "#/components/schemas/StacksBlockHash"
           },
-          "blockHeight": {
+          "stacksBlockHeight": {
             "$ref": "#/components/schemas/BlockHeight"
           }
         }
@@ -740,8 +740,7 @@
         "description": "Request structure for the create withdrawal request.",
         "required": [
           "requestId",
-          "blockHash",
-          "blockHeight",
+          "stacksBlockHash",
           "recipient",
           "amount",
           "parameters"
@@ -749,12 +748,6 @@
         "properties": {
           "amount": {
             "$ref": "#/components/schemas/Satoshis"
-          },
-          "blockHash": {
-            "$ref": "#/components/schemas/StacksBlockHash"
-          },
-          "blockHeight": {
-            "$ref": "#/components/schemas/BlockHeight"
           },
           "parameters": {
             "$ref": "#/components/schemas/WithdrawalParameters"
@@ -764,6 +757,9 @@
           },
           "requestId": {
             "$ref": "#/components/schemas/WithdrawalId"
+          },
+          "stacksBlockHash": {
+            "$ref": "#/components/schemas/StacksBlockHash"
           }
         }
       },
@@ -1116,8 +1112,8 @@
         "description": "Withdrawal.",
         "required": [
           "requestId",
-          "blockHash",
-          "blockHeight",
+          "stacksBlockHash",
+          "stacksBlockHeight",
           "recipient",
           "amount",
           "lastUpdateHeight",
@@ -1129,12 +1125,6 @@
         "properties": {
           "amount": {
             "$ref": "#/components/schemas/Satoshis"
-          },
-          "blockHash": {
-            "$ref": "#/components/schemas/StacksBlockHash"
-          },
-          "blockHeight": {
-            "$ref": "#/components/schemas/BlockHeight"
           },
           "fulfillment": {
             "allOf": [
@@ -1159,6 +1149,12 @@
           "requestId": {
             "$ref": "#/components/schemas/WithdrawalId"
           },
+          "stacksBlockHash": {
+            "$ref": "#/components/schemas/StacksBlockHash"
+          },
+          "stacksBlockHeight": {
+            "$ref": "#/components/schemas/BlockHeight"
+          },
           "status": {
             "$ref": "#/components/schemas/Status"
           },
@@ -1173,8 +1169,8 @@
         "description": "Reduced version of the Withdrawal.",
         "required": [
           "requestId",
-          "blockHash",
-          "blockHeight",
+          "stacksBlockHash",
+          "stacksBlockHeight",
           "recipient",
           "amount",
           "lastUpdateHeight",
@@ -1184,12 +1180,6 @@
         "properties": {
           "amount": {
             "$ref": "#/components/schemas/Satoshis"
-          },
-          "blockHash": {
-            "$ref": "#/components/schemas/StacksBlockHash"
-          },
-          "blockHeight": {
-            "$ref": "#/components/schemas/BlockHeight"
           },
           "lastUpdateBlockHash": {
             "$ref": "#/components/schemas/StacksBlockHash"
@@ -1202,6 +1192,12 @@
           },
           "requestId": {
             "$ref": "#/components/schemas/WithdrawalId"
+          },
+          "stacksBlockHash": {
+            "$ref": "#/components/schemas/StacksBlockHash"
+          },
+          "stacksBlockHeight": {
+            "$ref": "#/components/schemas/BlockHeight"
           },
           "status": {
             "$ref": "#/components/schemas/Status"

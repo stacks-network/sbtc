@@ -6,15 +6,25 @@ edition = "2021"
 [[bin]]
 name = "emily-handler"
 
+[features]
+default = ["testing"]
+integration-tests = ["testing"]
+testing = ["fake"]
+
 [dependencies]
+aws-config.workspace = true
+aws-sdk-dynamodb.workspace = true
+base64.workspace = true
 config.workspace = true
 once_cell.workspace = true
 openssl.workspace = true
 reqwest.workspace = true
 sbtc-common.workspace = true
 serde = { workspace = true, features = ["derive"] }
+serde_dynamo.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+time = { workspace = true, features = ["serde"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "rt", "macros"] }
 tracing.workspace = true
 tracing-attributes.workspace = true
@@ -23,5 +33,9 @@ utoipa = "4.2.3"
 warp = "0.3"
 warp_lambda.workspace = true
 
+fake = { version = "2.9.2", features = ["derive", "time"], optional = true }
+
 [dev-dependencies]
 mockito = "0.28"
+mockall = "0.10"
+serial_test = "0.5"

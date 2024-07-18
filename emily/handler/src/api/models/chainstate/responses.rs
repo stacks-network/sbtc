@@ -7,4 +7,5 @@ pub type GetChainstateResponse = super::Chainstate;
 pub type SetChainstateResponse = super::Chainstate;
 
 /// Response to update chainstate request.
+#[allow(dead_code)] // Used by the utoipa generation.
 pub type UpdateChainstateResponse = super::Chainstate;
