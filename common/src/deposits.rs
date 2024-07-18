@@ -283,12 +283,29 @@ impl DepositScriptInputs {
     }
 
     /// This function checks that the deposit script is valid.
+    ///
     /// Specifically, it checks that it follows the format laid out in
     /// https://github.com/stacks-network/sbtc/issues/30, where the script
     /// is expected to be
     /// ```text
     ///  <deposit-data> OP_DROP OP_PUSHBYTES_32 <x-only-public-key> OP_CHECKSIG
     /// ```
+    /// The <deposit-data> is expected to have the format
+    /// <max-fee><recipient-address>, where the recipient address follows
+    /// the format for a principal from SIP-005. So the expected wire
+    /// format is:
+    ///
+    /// 0         8             9         10        30            31             159
+    /// |---------|-------------|---------|---------|-------------|---------------|
+    ///   max fee   type prefix   version   hash160   name length   contract name
+    ///                                               (optional)    (optional)
+    ///
+    /// Above, the max fee is expressed as an 8-byte big endian integer and
+    /// the contract name is a UTF-8 encoded string and must be accepted by
+    /// the regex `^[a-zA-Z]([a-zA-Z0-9]|[-_])*$`.
+    ///
+    /// SIP-005:
+    /// https://github.com/stacksgov/sips/blob/0b19b15a9f2dd43caf6607de4fe53cad8313ff40/sips/sip-005/sip-005-blocks-and-transactions.md#transaction-post-conditions
     pub fn parse(deposit_script: &ScriptBuf) -> Result<Self, Error> {
         let script = deposit_script.as_bytes();
 
@@ -315,7 +332,7 @@ impl DepositScriptInputs {
         // you can). We need to check all cases since contract addresses
         // can have a size of up to 151 bytes. Note that the data slice
         // here starts with the 8 byte max fee.
-        let data = match params {
+        let deposit_data = match params {
             // This branch represents a contract address.
             [OP_PUSHDATA1, n, data @ ..] if data.len() == *n as usize && *n < 160 => data,
             // This branch can be a standard (non-contract) Stacks
@@ -328,7 +345,7 @@ impl DepositScriptInputs {
         // where None is returned if the length of the slice is less than
         // N. Since N is 8 and the data variable has a length 30 or
         // greater, the error path cannot happen.
-        let Some((max_fee_bytes, mut address)) = data.split_first_chunk::<8>() else {
+        let Some((max_fee_bytes, mut address)) = deposit_data.split_first_chunk::<8>() else {
             return Err(Error::InvalidDepositScript);
         };
         let stacks_address = PrincipalData::consensus_deserialize(&mut address)
@@ -612,15 +629,14 @@ mod tests {
         let principal_str = format!("{}.{contract_name}", StacksAddress::burn_address(false));
         let secret_key = SecretKey::new(&mut OsRng);
 
-        
         let deposit = DepositScriptInputs {
             signers_public_key: secret_key.x_only_public_key(SECP256K1).0,
             max_fee: 25000,
             recipient: PrincipalData::parse(&principal_str).unwrap(),
         };
-        
+
         assert_eq!(deposit.recipient.serialize_to_vec().len(), 151);
-        
+
         let deposit_script = deposit.deposit_script();
         let parsed_deposit = DepositScriptInputs::parse(&deposit_script).unwrap();
 
