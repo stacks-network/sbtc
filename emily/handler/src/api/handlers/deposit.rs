@@ -1,12 +1,24 @@
 //! Handlers for Deposit endpoints.
-use warp::reply::{json, with_status};
+use crate::api::models::common::{BlockHeight, StacksBlockHash, Status};
+use crate::api::models::deposit::responses::GetDepositsForTransactionResponse;
+use warp::reply::{json, with_status, Reply};
 
 use warp::http::StatusCode;
 
+use crate::api::models::deposit::{Deposit, DepositInfo};
 use crate::api::models::{
     common::{BitcoinTransactionId, BitcoinTransactionOutputIndex},
-    deposit::requests::{CreateDepositRequestBody, GetDepositsForTransactionQuery, GetDepositsQuery, UpdateDepositsRequestBody},
-    deposit::responses::{CreateDepositResponse, GetDepositResponse, GetDepositsForTransactionResponse, GetDepositsResponse, UpdateDepositsResponse},
+    deposit::requests::{
+        CreateDepositRequestBody, GetDepositsForTransactionQuery, GetDepositsQuery,
+        UpdateDepositsRequestBody,
+    },
+    deposit::responses::{CreateDepositResponse, GetDepositResponse, GetDepositsResponse},
+};
+use crate::common::error::Error;
+use crate::context::EmilyContext;
+use crate::database::accessors;
+use crate::database::entries::deposit::{
+    DepositEntry, DepositEntryKey, DepositEvent, DepositParametersEntry,
 };
 
 /// Get deposit handler.
@@ -28,14 +40,37 @@ use crate::api::models::{
         (status = 500, description = "Internal server error")
     )
 )]
-pub fn get_deposit(
-    _txid: BitcoinTransactionId,
-    _index: BitcoinTransactionOutputIndex,
+pub async fn get_deposit(
+    context: EmilyContext,
+    bitcoin_txid: BitcoinTransactionId,
+    bitcoin_tx_output_index: BitcoinTransactionOutputIndex,
 ) -> impl warp::reply::Reply {
-    let response = GetDepositResponse {
-        ..Default::default()
-    };
-    with_status(json(&response), StatusCode::OK)
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        bitcoin_txid: BitcoinTransactionId,
+        bitcoin_tx_output_index: BitcoinTransactionOutputIndex,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        // Make key.
+        let key: DepositEntryKey = DepositEntryKey {
+            bitcoin_txid,
+            bitcoin_tx_output_index,
+        };
+        // Get deposit.
+        let deposit: Deposit = accessors::get_deposit_entry(&context, key)
+            .await?
+            .try_into()?;
+        // Respond.
+        Ok(with_status(
+            json(&(deposit as GetDepositResponse)),
+            StatusCode::OK,
+        ))
+    }
+
+    // Handle and respond.
+    handler(context, bitcoin_txid, bitcoin_tx_output_index)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
 }
 
 /// Get deposits for transaction handler.
@@ -57,14 +92,40 @@ pub fn get_deposit(
         (status = 500, description = "Internal server error")
     )
 )]
-pub fn get_deposits_for_transaction(
-    _txid: BitcoinTransactionId,
-    _query: GetDepositsForTransactionQuery,
+pub async fn get_deposits_for_transaction(
+    context: EmilyContext,
+    bitcoin_txid: BitcoinTransactionId,
+    query: GetDepositsForTransactionQuery,
 ) -> impl warp::reply::Reply {
-    let response = GetDepositsForTransactionResponse {
-        ..Default::default()
-    };
-    with_status(json(&response), StatusCode::OK)
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        bitcoin_txid: BitcoinTransactionId,
+        query: GetDepositsForTransactionQuery,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        // Deserialize next token into the exclusive start key if present/
+        let (entries, next_token) = accessors::get_deposit_entries_for_transaction(
+            &context,
+            bitcoin_txid,
+            query.next_token,
+            query.page_size,
+        )
+        .await?;
+        // Convert data into response types.
+        let deposits: Vec<Deposit> = entries
+            .into_iter()
+            .map(|entry| entry.try_into())
+            .collect::<Result<_, _>>()?;
+
+        // Create response.
+        let response = GetDepositsForTransactionResponse { deposits, next_token };
+        // Respond.
+        Ok(with_status(json(&response), StatusCode::OK))
+    }
+    // Handle and respond.
+    handler(context, bitcoin_txid, query)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
 }
 
 /// Get deposits handler.
@@ -85,13 +146,34 @@ pub fn get_deposits_for_transaction(
         (status = 500, description = "Internal server error")
     )
 )]
-pub fn get_deposits(
-    _query: GetDepositsQuery,
+pub async fn get_deposits(
+    context: EmilyContext,
+    query: GetDepositsQuery,
 ) -> impl warp::reply::Reply {
-    let response = GetDepositsResponse {
-        ..Default::default()
-    };
-    with_status(json(&response), StatusCode::OK)
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        query: GetDepositsQuery,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        // Deserialize next token into the exclusive start key if present/
+        let (entries, next_token) = accessors::get_deposit_entries(
+            &context,
+            query.status,
+            query.next_token,
+            query.page_size,
+        )
+        .await?;
+        // Convert data into resource types.
+        let deposits: Vec<DepositInfo> = entries.into_iter().map(|entry| entry.into()).collect();
+        // Create response.
+        let response = GetDepositsResponse { deposits, next_token };
+        // Respond.
+        Ok(with_status(json(&response), StatusCode::OK))
+    }
+    // Handle and respond.
+    handler(context, query)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
 }
 
 /// Create deposit handler.
@@ -109,13 +191,52 @@ pub fn get_deposits(
         (status = 500, description = "Internal server error")
     )
 )]
-pub fn create_deposit(
-    _body: CreateDepositRequestBody,
+pub async fn create_deposit(
+    context: EmilyContext,
+    body: CreateDepositRequestBody,
 ) -> impl warp::reply::Reply {
-    let response = CreateDepositResponse {
-        ..Default::default()
-    };
-    with_status(json(&response), StatusCode::CREATED)
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        body: CreateDepositRequestBody,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        // Set variables.
+        let stacks_block_hash: StacksBlockHash = "DUMMY_HASH".into();
+        let stacks_block_height: BlockHeight = 0;
+        let status = Status::Pending;
+        // Make table entry.
+        let deposit_entry: DepositEntry = DepositEntry {
+            key: DepositEntryKey {
+                bitcoin_txid: body.bitcoin_txid,
+                bitcoin_tx_output_index: body.bitcoin_tx_output_index,
+            },
+            parameters: DepositParametersEntry {
+                reclaim_script: body.reclaim,
+                ..Default::default()
+            },
+            history: vec![DepositEvent {
+                status: Status::Pending,
+                message: "Just received deposit".to_string(),
+                stacks_block_hash: stacks_block_hash.clone(),
+                stacks_block_height,
+            }],
+            status,
+            last_update_block_hash: stacks_block_hash,
+            last_update_height: stacks_block_height,
+            ..Default::default()
+        };
+        // Validate deposit entry.
+        deposit_entry.validate()?;
+        // Add entry to the table.
+        accessors::add_deposit_entry(&context, &deposit_entry).await?;
+        // Respond.
+        let response: CreateDepositResponse = deposit_entry.try_into()?;
+        Ok(with_status(json(&response), StatusCode::CREATED))
+    }
+    // Handle and respond.
+    handler(context, body)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
 }
 
 /// Update deposits handler.
@@ -133,11 +254,21 @@ pub fn create_deposit(
         (status = 500, description = "Internal server error")
     )
 )]
-pub fn update_deposits(
-    _body: UpdateDepositsRequestBody,
+pub async fn update_deposits(
+    context: EmilyContext,
+    body: UpdateDepositsRequestBody,
 ) -> impl warp::reply::Reply {
-    let response = UpdateDepositsResponse {
-        ..Default::default()
-    };
-    with_status(json(&response), StatusCode::CREATED)
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        _context: EmilyContext,
+        _body: UpdateDepositsRequestBody,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        Err::<warp::reply::Json, Error>(Error::NotImplemented)
+    }
+    // Handle and respond.
+    handler(context, body)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
 }
+
+// TODO(TBD): Add handler unit tests.

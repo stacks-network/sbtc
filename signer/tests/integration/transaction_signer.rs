@@ -23,6 +23,7 @@ async fn test_environment(
         num_stacks_blocks_per_bitcoin_block: 3,
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
+        num_signers_per_request: 0,
     };
 
     testing::transaction_signer::TestEnvironment {
@@ -39,7 +40,7 @@ async fn test_environment(
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
 
-async fn new_database(pool: &sqlx::PgPool) -> sqlx::PgPool {
+pub async fn new_database(pool: &sqlx::PgPool) -> sqlx::PgPool {
     let mut rng = rand::rngs::OsRng;
     let db_name = format!("test_db_{}", rng.next_u64());
 

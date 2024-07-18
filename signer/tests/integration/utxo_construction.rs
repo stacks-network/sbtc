@@ -36,10 +36,10 @@ where
     let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
     let deposit_script = signer::testing::peg_in_deposit_script(&signers_public_key);
 
-    let redeem_script = ScriptBuf::new_op_return([0u8, 1, 2, 3]);
+    let reclaim_script = ScriptBuf::new_op_return([0u8, 1, 2, 3]);
     let ver = LeafVersion::TapScript;
     let leaf1 = NodeInfo::new_leaf_with_ver(deposit_script.clone(), ver);
-    let leaf2 = NodeInfo::new_leaf_with_ver(redeem_script.clone(), ver);
+    let leaf2 = NodeInfo::new_leaf_with_ver(reclaim_script.clone(), ver);
 
     let node = NodeInfo::combine(leaf1, leaf2).unwrap();
 
@@ -76,7 +76,7 @@ where
         signer_bitmap: Vec::new(),
         amount,
         deposit_script: deposit_script.clone(),
-        redeem_script: redeem_script.clone(),
+        reclaim_script: reclaim_script.clone(),
         signers_public_key,
     };
     (deposit_tx, req)

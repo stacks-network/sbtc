@@ -1,9 +1,18 @@
 //! Top-level error type for the Blocklist client
 
+use std::env;
+
+use aws_sdk_dynamodb::{
+    error::SdkError,
+    operation::{
+        delete_item::DeleteItemError, get_item::GetItemError, put_item::PutItemError,
+        query::QueryError,
+    },
+};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
-use warp::{filters::path::FullPath, reject::Reject, reply::Reply};
+use warp::{reject::Reject, reply::Reply};
 
 /// Errors from the internal API logic.
 #[allow(dead_code)]
@@ -43,7 +52,7 @@ pub enum Error {
 
     /// The request targeted an endpoint that is not yet implemented.
     #[error("Not implemented")]
-    NotImplemented(FullPath),
+    NotImplemented,
 
     /// The request has a conflict
     #[error("Request conflict")]
@@ -52,6 +61,10 @@ pub enum Error {
     /// Internal error
     #[error("Internal server error")]
     InternalServer,
+
+    /// Debug error.
+    #[error("Debug error: {0}")]
+    Debug(String),
 
     /// Server may be unavailable or not ready to handle the request
     #[error("Service unavailable")]
@@ -74,9 +87,10 @@ impl Error {
             Error::Unauthorized => StatusCode::UNAUTHORIZED,
             Error::NotFound => StatusCode::NOT_FOUND,
             Error::NotAcceptable => StatusCode::NOT_ACCEPTABLE,
-            Error::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
+            Error::NotImplemented => StatusCode::NOT_IMPLEMENTED,
             Error::Conflict => StatusCode::CONFLICT,
             Error::InternalServer => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::Debug(_) => StatusCode::IM_A_TEAPOT,
             Error::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             Error::RequestTimeout => StatusCode::REQUEST_TIMEOUT,
         }
@@ -92,12 +106,57 @@ impl Error {
             Error::Unauthorized => "Unauthorized access - check your API key".to_string(),
             Error::NotFound => "Resource not found".to_string(),
             Error::NotAcceptable => "Not acceptable format requested".to_string(),
-            Error::NotImplemented(path) => format!("Handling {path:?} is not implemented."),
+            Error::NotImplemented => "Not implemented".to_string(),
             Error::Conflict => "Request conflict".to_string(),
             Error::InternalServer => "Internal server error".to_string(),
+            Error::Debug(s) => format!("Debug error: {s}"),
             Error::ServiceUnavailable => "Service unavailable".to_string(),
             Error::RequestTimeout => "Request timeout".to_string(),
         }
+    }
+}
+
+/// TODO(TBD): Route errors to the appropriate Emily API error.
+///
+/// Implement from for API Errors.
+impl From<SdkError<GetItemError>> for Error {
+    fn from(err: SdkError<GetItemError>) -> Self {
+        Error::Debug(format!("SdkError<GetItemError> - {err:?}"))
+    }
+}
+impl From<SdkError<PutItemError>> for Error {
+    fn from(err: SdkError<PutItemError>) -> Self {
+        Error::Debug(format!("SdkError<PutItemError> - {err:?}"))
+    }
+}
+impl From<SdkError<QueryError>> for Error {
+    fn from(err: SdkError<QueryError>) -> Self {
+        Error::Debug(format!("SdkError<QueryError> - {err:?}"))
+    }
+}
+impl From<SdkError<DeleteItemError>> for Error {
+    fn from(err: SdkError<DeleteItemError>) -> Self {
+        Error::Debug(format!("SdkError<DeleteItemError> - {err:?}"))
+    }
+}
+impl From<base64::DecodeError> for Error {
+    fn from(err: base64::DecodeError) -> Self {
+        Error::Debug(format!("base64::DecodeError - {err:?}"))
+    }
+}
+impl From<env::VarError> for Error {
+    fn from(err: env::VarError) -> Self {
+        Error::Debug(format!("env::VarError - {err:?}"))
+    }
+}
+impl From<serde_json::Error> for Error {
+    fn from(err: serde_json::Error) -> Self {
+        Error::Debug(format!("serde_json::Error - {err:?}"))
+    }
+}
+impl From<serde_dynamo::Error> for Error {
+    fn from(err: serde_dynamo::Error) -> Self {
+        Error::Debug(format!("serde_dynamo::Error - {err:?}"))
     }
 }
 
@@ -114,16 +173,12 @@ impl Reject for Error {}
 /// Implement reply for internal error representation so that the error can be
 /// provided directly from Warp as a reply.
 impl Reply for Error {
-
     /// Convert self into a warp response.
     fn into_response(self) -> warp::reply::Response {
-       warp::reply::with_status(
-            warp::reply::json(&ErrorResponse {
-                message: self.error_message(),
-            }),
+        warp::reply::with_status(
+            warp::reply::json(&ErrorResponse { message: self.error_message() }),
             self.status_code(),
         )
         .into_response()
     }
 }
-

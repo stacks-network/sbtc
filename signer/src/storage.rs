@@ -12,7 +12,6 @@ pub mod postgres;
 
 use std::future::Future;
 
-use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::types::chainstate::StacksBlockId;
 
 /// Represents the ability to read data from the signer storage.
@@ -44,6 +43,14 @@ pub trait DbRead {
         context_window: i32,
     ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Self::Error>> + Send;
 
+    /// Get pending deposit requests that have been accepted by at least `threshold` signers and has no responses
+    fn get_pending_accepted_deposit_requests(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: i32,
+        threshold: i64,
+    ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Self::Error>> + Send;
+
     /// Get the deposit requests that the signer has accepted to sign
     fn get_accepted_deposit_requests(
         &self,
@@ -68,7 +75,15 @@ pub trait DbRead {
     fn get_pending_withdraw_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        stacks_context_window: i32,
+        context_window: i32,
+    ) -> impl Future<Output = Result<Vec<model::WithdrawRequest>, Self::Error>> + Send;
+
+    /// Get pending withdraw requests that have been accepted by at least `threshold` signers and has no responses
+    fn get_pending_accepted_withdraw_requests(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: i32,
+        threshold: i64,
     ) -> impl Future<Output = Result<Vec<model::WithdrawRequest>, Self::Error>> + Send;
 
     /// Get bitcoin blocks that include a particular transaction
@@ -150,11 +165,16 @@ pub trait DbWrite {
         stacks_transaction: &model::StacksTransaction,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
-    /// Write the stacks blocks.
-    /// TODO(212): This function should use model::StacksBlock instead of an external type
-    fn write_stacks_blocks(
+    /// Write the stacks transactions to the data store.
+    fn write_stacks_transactions(
         &self,
-        blocks: &[NakamotoBlock],
+        txs: Vec<model::Transaction>,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+
+    /// Write the stacks block ids and their parent block ids.
+    fn write_stacks_block_headers(
+        &self,
+        headers: Vec<model::StacksBlock>,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     /// Write encrypted DKG shares

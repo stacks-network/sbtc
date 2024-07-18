@@ -3,6 +3,8 @@
 use std::sync::OnceLock;
 
 use bitcoin::absolute::LockTime;
+use bitcoin::address::NetworkUnchecked;
+use bitcoin::hashes::Hash;
 use bitcoin::key::Secp256k1;
 use bitcoin::secp256k1::SECP256K1;
 use bitcoin::sighash::Prevouts;
@@ -32,6 +34,7 @@ use secp256k1::Message;
 use crate::error::Error;
 use crate::packaging::compute_optimal_packages;
 use crate::packaging::Weighted;
+use crate::storage::model;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
 /// transactions.
@@ -260,8 +263,8 @@ pub struct DepositRequest {
     pub amount: u64,
     /// The deposit script used so that the signers' can spend funds.
     pub deposit_script: ScriptBuf,
-    /// The redeem script for the deposit.
-    pub redeem_script: ScriptBuf,
+    /// The reclaim script for the deposit.
+    pub reclaim_script: ScriptBuf,
     /// The public key used in the deposit script. The signers public key
     /// is a Schnorr public key.
     ///
@@ -305,8 +308,8 @@ impl DepositRequest {
 
     /// Construct the witness data for the taproot script of the deposit.
     ///
-    /// Deposit UTXOs are taproot spend what a "null" key spend path,
-    /// a deposit script-path spend, and a redeem script-path spend. This
+    /// Deposit UTXOs are taproot spend with a "null" key spend path,
+    /// a deposit script-path spend, and a reclaim script-path spend. This
     /// function creates the witness data for the deposit script-path
     /// spend where the script takes only one piece of data as input, the
     /// signature. The deposit script is:
@@ -345,7 +348,7 @@ impl DepositRequest {
     fn construct_taproot_info(&self, ver: LeafVersion) -> TaprootSpendInfo {
         // For such a simple tree, we construct it by hand.
         let leaf1 = NodeInfo::new_leaf_with_ver(self.deposit_script.clone(), ver);
-        let leaf2 = NodeInfo::new_leaf_with_ver(self.redeem_script.clone(), ver);
+        let leaf2 = NodeInfo::new_leaf_with_ver(self.reclaim_script.clone(), ver);
 
         // A Result::Err is returned by NodeInfo::combine if the depth of
         // our taproot tree exceeds the maximum depth of taproot trees,
@@ -356,6 +359,49 @@ impl DepositRequest {
         let internal_key = unspendable_taproot_key();
 
         TaprootSpendInfo::from_node_info(SECP256K1, *internal_key, node)
+    }
+
+    /// Try convert from a model::DepositRequest with some additional info.
+    pub fn try_from_model(
+        request: model::DepositRequest,
+        signers_public_key: XOnlyPublicKey,
+    ) -> Result<Self, Error> {
+        let txid = bitcoin::Txid::from_byte_array(
+            request.txid.try_into().map_err(|_| Error::TypeConversion)?,
+        );
+
+        let vout = request
+            .output_index
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
+
+        let outpoint = OutPoint { txid, vout };
+
+        let max_fee = request
+            .max_fee
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
+
+        let signer_bitmap = Vec::new(); // TODO(326): Populate
+
+        let amount = request
+            .amount
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
+
+        let deposit_script = ScriptBuf::from_bytes(request.spend_script);
+
+        let reclaim_script = ScriptBuf::from_bytes(request.reclaim_script);
+
+        Ok(Self {
+            outpoint,
+            max_fee,
+            signer_bitmap,
+            amount,
+            deposit_script,
+            reclaim_script,
+            signers_public_key,
+        })
     }
 }
 
@@ -384,6 +430,36 @@ impl WithdrawalRequest {
             value: Amount::from_sat(self.amount),
             script_pubkey: self.address.script_pubkey(),
         }
+    }
+
+    /// Try convert from a model::DepositRequest with some additional info.
+    pub fn try_from_model(
+        request: model::WithdrawRequest,
+        network: bitcoin::Network,
+    ) -> Result<Self, Error> {
+        let amount = request
+            .amount
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
+        let max_fee = request
+            .max_fee
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
+        let address: Address<NetworkUnchecked> = request
+            .sender_address
+            .parse()
+            .map_err(Error::ParseAddress)?;
+        let address = address
+            .require_network(network)
+            .map_err(Error::BitcoinAddressParse)?;
+        let signer_bitmap = Vec::new(); // TODO(326): Populate
+
+        Ok(Self {
+            amount,
+            max_fee,
+            address,
+            signer_bitmap,
+        })
     }
 }
 
@@ -814,7 +890,7 @@ mod tests {
             signer_bitmap: std::iter::repeat(false).take(votes_against).collect(),
             amount,
             deposit_script: testing::peg_in_deposit_script(&signers_public_key),
-            redeem_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
             signers_public_key,
         }
     }
@@ -897,7 +973,7 @@ mod tests {
             signer_bitmap: signer_bitmap.to_vec(),
             amount: 100_000,
             deposit_script: ScriptBuf::new(),
-            redeem_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
             signers_public_key: XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap(),
         };
 
@@ -914,7 +990,7 @@ mod tests {
             signer_bitmap: Vec::new(),
             amount: 100_000,
             deposit_script: ScriptBuf::from_bytes(vec![1, 2, 3]),
-            redeem_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
             signers_public_key: XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap(),
         };
 

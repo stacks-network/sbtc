@@ -31,7 +31,20 @@ pub type BitcoinAddress = String;
 // Common Types ----------------------------------------------------------------
 
 /// The status of the in-flight sBTC operation.
-#[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
+#[derive(
+    Clone,
+    Default,
+    Debug,
+    Eq,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    ToResponse,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
     /// Transaction hasn't yet been addressed by the sBTC Signers.
@@ -60,7 +73,20 @@ pub enum Status {
 }
 
 /// Data about the fulfillment of an sBTC Operation.
-#[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
+#[derive(
+    Clone,
+    Default,
+    Debug,
+    Eq,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    ToResponse,
+)]
 pub struct Fulfillment {
     /// Bitcoin transaction id of the Bitcoin transaction that fulfilled the operation.
     pub bitcoin_txid: BitcoinTransactionId,

@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![deny(missing_docs)]
 
+pub mod bitcoin;
 pub mod block_notifier;
 pub mod block_observer;
 pub mod blocklist_client;
@@ -19,6 +20,7 @@ pub mod testing;
 pub mod transaction_coordinator;
 pub mod transaction_signer;
 pub mod utxo;
+pub mod wsts_state_machine;
 
 /// Package version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

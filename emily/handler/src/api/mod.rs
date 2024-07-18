@@ -2,7 +2,7 @@
 
 /// Request handlers.
 pub mod handlers;
-/// Route definitions.
-pub mod routes;
 /// Request and response data structures.
 pub mod models;
+/// Route definitions.
+pub mod routes;

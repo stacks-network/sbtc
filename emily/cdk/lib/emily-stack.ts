@@ -23,31 +23,59 @@ export class EmilyStack extends cdk.Stack {
      */
     constructor(scope: Construct, id: string, props: EmilyStackProps) {
         super(scope, id, props);
-        const depositTable: dynamodb.Table = this.createOrUpdateDepositTable(props);
-        const withdrawalTable: dynamodb.Table = this.createOrUpdateWithdrawalTable(props);
-        const chainstateTable: dynamodb.Table = this.createOrUpdateChainstateTable(props);
+
+        const depositTableId: string = 'DepositTable';
+        const depositTableName: string = EmilyStackUtils.getResourceName(depositTableId, props);
+        const depositTable: dynamodb.Table = this.createOrUpdateDepositTable(
+            depositTableId,
+            depositTableName,
+        );
+
+        const withdrawalTableId: string = 'WithdrawalTable';
+        const withdrawalTableName: string = EmilyStackUtils.getResourceName(withdrawalTableId, props);
+        const withdrawalTable: dynamodb.Table = this.createOrUpdateWithdrawalTable(
+            withdrawalTableId,
+            withdrawalTableName,
+        );
+
+        const chainstateTableId: string = 'ChainstateTable';
+        const chainstateTableName: string = EmilyStackUtils.getResourceName(chainstateTableId, props);
+        const chainstateTable: dynamodb.Table = this.createOrUpdateChainstateTable(
+            chainstateTableId,
+            chainstateTableName,
+        );
+
         const operationLambda: lambda.Function = this.createOrUpdateOperationLambda(
-            depositTable,
-            withdrawalTable,
-            chainstateTable,
+            depositTableName,
+            withdrawalTableName,
+            chainstateTableName,
             props
         );
+
+        // Give the operation lambda full access to the DynamoDB tables.
+        depositTable.grantReadWriteData(operationLambda);
+        withdrawalTable.grantReadWriteData(operationLambda);
+        chainstateTable.grantReadWriteData(operationLambda);
+
         const emilyApi: apig.SpecRestApi = this.createOrUpdateApi(operationLambda, props);
     }
 
     /**
      * Creates or updates a DynamoDB table for deposits.
-     * @param {EmilyStackProps} props The stack properties.
+     * @param {string} tableId The id of the table AWS resource.
+     * @param {string} tableName The name of the DynamoDB table.
      * @returns {dynamodb.Table} The created or updated DynamoDB table.
      * @post A DynamoDB table with configured indexes is returned.
      */
-    createOrUpdateDepositTable(props: EmilyStackProps): dynamodb.Table {
-        const tableId: string = 'DepositTable';
-        const table: dynamodb.Table = new dynamodb.Table(this, tableId, {
-            tableName: EmilyStackUtils.getResourceName(tableId, props),
+    createOrUpdateDepositTable(
+        depositTableId: string,
+        depositTableName: string,
+    ): dynamodb.Table {
+        const table: dynamodb.Table = new dynamodb.Table(this, depositTableId, {
+            tableName: depositTableName,
             partitionKey: {
                 name: 'BitcoinTxid',
-                type: dynamodb.AttributeType.BINARY,
+                type: dynamodb.AttributeType.STRING,
             },
             sortKey: {
                 name: 'BitcoinTxOutputIndex',
@@ -60,7 +88,7 @@ export class EmilyStack extends cdk.Stack {
             indexName: indexName,
             partitionKey: {
                 name: 'OpStatus',
-                type:  dynamodb.AttributeType.NUMBER
+                type:  dynamodb.AttributeType.STRING
             },
             sortKey: {
                 name: 'LastUpdateHeight',
@@ -72,31 +100,35 @@ export class EmilyStack extends cdk.Stack {
                 "BitcoinTxOutputIndex",
                 "Recipient",
                 "Amount",
+                "LastUpdateBlockHash",
             ]
         });
 
-        // TODO: Add an additional GSI for querying by user; not required for MVP.
+        // TODO(TBD): Add an additional GSI for querying by user; not required for MVP.
         return table;
     }
 
     /**
      * Creates or updates a DynamoDB table for withdrawals.
-     * @param {EmilyStackProps} props The stack properties.
+     * @param {string} tableId The id of the table AWS resource.
+     * @param {string} tableName The name of the DynamoDB table.
      * @returns {dynamodb.Table} The created or updated DynamoDB table.
      * @post A DynamoDB table with configured indexes is returned.
      */
-    createOrUpdateWithdrawalTable(props: EmilyStackProps): dynamodb.Table {
+    createOrUpdateWithdrawalTable(
+        tableId: string,
+        tableName: string,
+    ): dynamodb.Table {
         // Create DynamoDB table to store the messages. Encrypted by default.
-        const tableId: string = 'WithdrawalTable';
         const table: dynamodb.Table = new dynamodb.Table(this, tableId, {
-            tableName: EmilyStackUtils.getResourceName(tableId, props),
+            tableName: tableName,
             partitionKey: {
                 name: 'RequestId',
                 type: dynamodb.AttributeType.NUMBER,
             },
             sortKey: {
                 name: 'StacksBlockHash',
-                type: dynamodb.AttributeType.BINARY,
+                type: dynamodb.AttributeType.STRING,
             }
         });
 
@@ -105,7 +137,7 @@ export class EmilyStack extends cdk.Stack {
             indexName: indexName,
             partitionKey: {
                 name: 'OpStatus',
-                type:  dynamodb.AttributeType.NUMBER
+                type:  dynamodb.AttributeType.STRING
             },
             sortKey: {
                 name: 'LastUpdateHeight',
@@ -115,50 +147,55 @@ export class EmilyStack extends cdk.Stack {
             nonKeyAttributes: [
                 "RequestId",
                 "StacksBlockHash",
+                "StacksBlockHeight",
                 "Recipient",
                 "Amount",
+                "LastUpdateBlockHash",
             ]
         });
 
-        // TODO: Add an additional GSI for querying by user; not required for MVP.
+        // TODO(TBD): Add an additional GSI for querying by user; not required for MVP.
         return table;
     }
 
     /**
      * Creates or updates a DynamoDB table for chain state.
-     * @param {EmilyStackProps} props The stack properties.
+     * @param {string} tableId The id of the table AWS resource.
+     * @param {string} tableName The name of the DynamoDB table.
      * @returns {dynamodb.Table} The created or updated DynamoDB table.
      * @post A DynamoDB table is returned without additional configuration.
      */
-    createOrUpdateChainstateTable(props: EmilyStackProps): dynamodb.Table {
+    createOrUpdateChainstateTable(
+        tableId: string,
+        tableName: string,
+    ): dynamodb.Table {
         // Create DynamoDB table to store the messages. Encrypted by default.
-        const tableId: string = 'ChainstateTable';
         return new dynamodb.Table(this, tableId, {
-            tableName: EmilyStackUtils.getResourceName(tableId, props),
+            tableName: tableName,
             partitionKey: {
-                name: 'BlockHeight',
+                name: 'Height',
                 type: dynamodb.AttributeType.NUMBER,
             },
             sortKey: {
-                name: 'BlockHash',
-                type: dynamodb.AttributeType.BINARY,
+                name: 'Hash',
+                type: dynamodb.AttributeType.STRING,
             }
         });
     }
 
     /**
      * Creates or updates the operation Lambda function.
-     * @param {dynamodb.Table} depositTable The deposit DynamoDB table.
-     * @param {dynamodb.Table} withdrawalTable The withdrawal DynamoDB table.
-     * @param {dynamodb.Table} chainstateTable The chainstate DynamoDB table.
+     * @param {string} depositTableName The name of the deposit DynamoDB table.
+     * @param {string} withdrawalTableName The name of the withdrawal DynamoDB table.
+     * @param {string} chainstateTableName The name of the chainstate DynamoDB table.
      * @param {EmilyStackProps} props The stack properties.
      * @returns {lambda.Function} The created or updated Lambda function.
      * @post Lambda function with environment variables set and permissions for DynamoDB access is returned.
      */
     createOrUpdateOperationLambda(
-        depositTable: dynamodb.Table,
-        withdrawalTable: dynamodb.Table,
-        chainstateTable: dynamodb.Table,
+        depositTableName: string,
+        withdrawalTableName: string,
+        chainstateTableName: string,
         props: EmilyStackProps
     ): lambda.Function {
 
@@ -177,20 +214,15 @@ export class EmilyStack extends cdk.Stack {
             handler: "main",
             environment: {
                 // Give lambda access to the table name.
-                DEPOSIT_TABLE_NAME: depositTable.tableName,
-                WITHDRAWAL_TABLE_NAME: withdrawalTable.tableName,
-                CHAINSTATE_TABLE_NAME: chainstateTable.tableName,
+                DEPOSIT_TABLE_NAME: depositTableName,
+                WITHDRAWAL_TABLE_NAME: withdrawalTableName,
+                CHAINSTATE_TABLE_NAME: chainstateTableName,
                 // Declare an environment variable that will be overwritten in local SAM
                 // deployments the AWS stack. SAM can only set environment variables that are
                 // already expected to be present in the lambda.
                 IS_LOCAL: "false",
             }
         });
-
-        // Give the server lambda full access to the DynamoDB tables.
-        depositTable.grantReadWriteData(operationLambda);
-        withdrawalTable.grantReadWriteData(operationLambda);
-        chainstateTable.grantReadWriteData(operationLambda);
 
         // Return lambda resource.
         return operationLambda;

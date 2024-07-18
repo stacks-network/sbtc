@@ -106,10 +106,6 @@ pub enum Error {
     #[error("an error occurred when constructing the taproot signing digest: {0}")]
     Taproot(#[from] bitcoin::sighash::TaprootError),
 
-    /// Signer loop error
-    #[error("signer loop error: {0}")]
-    TransactionSignerError(#[from] crate::transaction_signer::Error),
-
     /// Key error
     #[error("key error: {0}")]
     KeyError(#[from] p256k1::keys::Error),
@@ -175,9 +171,21 @@ pub enum Error {
     #[error("unexpected public key from signature. key {0}; digest: {1}")]
     UnknownPublicKey(secp256k1::PublicKey, secp256k1::Message),
 
-    /// WSTS error
+    /// WSTS error.
     #[error("WSTS error: {0}")]
     Wsts(#[source] wsts::state_machine::signer::Error),
+
+    /// No chain tip found.
+    #[error("no bitcoin chain tip")]
+    NoChainTip,
+
+    /// Bitcoin address parse error
+    #[error("bitcoin address parse error")]
+    BitcoinAddressParse(#[source] bitcoin::address::ParseError),
+
+    /// Parsing address failed
+    #[error("failed to parse address")]
+    ParseAddress(#[source] bitcoin::address::ParseError),
 }
 
 impl From<std::convert::Infallible> for Error {
