@@ -265,14 +265,14 @@ pub struct DepositRequest {
     pub deposit_script: ScriptBuf,
     /// The reclaim script for the deposit.
     pub reclaim_script: ScriptBuf,
-    /// The public key used in the deposit script. The signers public key
-    /// is a Schnorr public key.
+    /// The public key used in the deposit script.
     ///
-    /// Note that taproot Schnorr public keys are slightly different from
-    /// the usual compressed public keys since they use only the x-coordinate
-    /// with the y-coordinate assumed to be even. This means they use
-    /// 32 bytes instead of the 33 byte public keys used before where the
-    /// additional byte indicated the y-coordinate's parity.
+    /// Note that taproot public keys for Schnorr signatures are slightly
+    /// different from the usual compressed public keys since they use only
+    /// the x-coordinate with the y-coordinate assumed to be even. This
+    /// means they use 32 bytes instead of the 33 byte public keys used
+    /// before where the additional byte indicated the y-coordinate's
+    /// parity.
     pub signers_public_key: XOnlyPublicKey,
 }
 
@@ -315,7 +315,7 @@ impl DepositRequest {
     /// signature. The deposit script is:
     ///
     /// ```text
-    ///   <data> OP_DROP OP_DUP OP_HASH160 <pubkey_hash> OP_EQUALVERIFY OP_CHECKSIG
+    ///   <data> OP_DROP <public-key> OP_CHECKSIG
     /// ```
     ///
     /// where `<data>` is the stacks deposit address and <pubkey_hash> is
