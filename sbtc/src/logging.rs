@@ -12,16 +12,14 @@ use tracing_subscriber::EnvFilter;
 ///
 /// * `pretty` - A boolean that determines if the logging format should be pretty or JSON
 
-pub fn setup_logging(pretty: bool) {
+pub fn setup_logging(directives: &str, pretty: bool) {
     match pretty {
-        true => setup_logging_pretty(),
-        false => setup_logging_json(),
+        true => setup_logging_pretty(directives),
+        false => setup_logging_json(directives),
     }
 }
 
-fn setup_logging_json() {
-    let dirs = "info,signer=debug";
-
+fn setup_logging_json(directives: &str) {
     let main_layer = tracing_subscriber::fmt::layer()
         .json()
         .flatten_event(true)
@@ -33,20 +31,18 @@ fn setup_logging_json() {
         .with_timer(UtcTime::rfc_3339());
 
     tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(dirs)))
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(directives)))
         .with(main_layer)
         .init()
 }
 
-fn setup_logging_pretty() {
-    let dirs = "info,signer=debug";
-
+fn setup_logging_pretty(directives: &str) {
     let main_layer = tracing_subscriber::fmt::layer()
         .pretty()
         .with_timer(UtcTime::rfc_3339());
 
     tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(dirs)))
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(directives)))
         .with(main_layer)
         .init()
 }
