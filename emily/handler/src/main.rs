@@ -12,7 +12,7 @@ mod database;
 
 #[tokio::main]
 async fn main() {
-    sbtc::logging::setup_logging("info,emily=debug", false);
+    sbtc::logging::setup_logging("info,emily-handler=debug", false);
 
     // TODO(TBD): Handle config pickup in a way that will only fail for the relevant call.
     let emily_context: EmilyContext = EmilyContext::from_env()
