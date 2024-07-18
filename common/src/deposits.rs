@@ -311,14 +311,16 @@ impl DepositScriptInputs {
         // of N. If you need to push between 76 and 255 bytes of data then
         // you need to use the OP_PUSHDATA1 opcode (you can also use this
         // opcode to push between 1 and 75 bytes on the stack, but it's
-        // cheaper to use the OP_PUSHBYTES_N opcodes when you can). When
-        // need to check all cases since contract addresses can have a size
-        // of up to 151 bytes.
+        // non-standard and cheaper to use the OP_PUSHBYTES_N opcodes when
+        // you can). We need to check all cases since contract addresses
+        // can have a size of up to 151 bytes. Note that the data slice
+        // here starts with the 8 byte max fee.
         let data = match params {
             // This branch represents a contract address.
             [OP_PUSHDATA1, n, data @ ..] if data.len() == *n as usize && *n < 160 => data,
             // This branch can be a standard (non-contract) Stacks
-            // addresses when n == 30 and is a contract address otherwise.
+            // addresses when n == 30 (8 byte max fee + 22 byte address)
+            // and is a contract address otherwise.
             [n, data @ ..] if data.len() == *n as usize && *n < 76 => data,
             _ => return Err(Error::InvalidDepositScript),
         };
@@ -388,15 +390,19 @@ impl ReclaimScriptInputs {
     /// script does not start with <locked-time> OP_CHECKSEQUENCEVERIFY
     /// then we return an error.
     ///
-    /// laid out in https://github.com/stacks-network/sbtc/issues/30, where
-    /// the script
+    /// See https://github.com/stacks-network/sbtc/issues/30 for the
+    /// expected format of the reclaim script. And see BIP-0112 for
+    /// the details and input conditions of OP_CHECKSEQUENCEVERIFY:
+    /// https://github.com/bitcoin/bips/blob/812907c2b00b92ee31e2b638622a4fe14a428aee/bip-0112.mediawiki#summary
     pub fn parse(reclaim_script: &ScriptBuf) -> Result<Self, Error> {
         let (lock_time, script) = match reclaim_script.as_bytes() {
             // These first two branches check for the case when the script
             // is written with as few bytes as possible (called minimal
             // CScriptNum format or something like that).
             [0, OP_CSV, script @ ..] => (0, script),
-            // This catches numbers 1-16 and -1.
+            // This catches numbers 1-16 and -1. Negative numbers are
+            // invalid for OP_CHECKSEQUENCEVERIFY, but we filter them out
+            // later in `ReclaimScriptInputs::try_new`.
             [n, OP_CSV, script @ ..]
                 if OP_PUSHNUM_NEG1 == *n || (OP_PUSHNUM_1..OP_PUSHNUM_16).contains(n) =>
             {
@@ -405,8 +411,8 @@ impl ReclaimScriptInputs {
             // Numbers in bitcoin script are typically only 4 bytes (with a
             // range from -2**31+1 to 2**31-1), unless we are working with
             // OP_CSV or OP_CLTV, where 5-byte numbers are acceptable (with
-            // a range of -2**39+1 to 2**39-1).  See the following for how
-            // the code works in bitcoin-core:
+            // a range of 0 to 2**39-1). See the following for how the code
+            // works in bitcoin-core:
             // https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L531-L573
             [n, rest @ ..] if *n <= 5 && rest.get(*n as usize) == Some(&OP_CSV) => {
                 // We know the error and panic paths cannot happen because
@@ -594,6 +600,27 @@ mod tests {
             recipient,
         };
 
+        let deposit_script = deposit.deposit_script();
+        let parsed_deposit = DepositScriptInputs::parse(&deposit_script).unwrap();
+
+        assert_eq!(deposit, parsed_deposit);
+    }
+
+    #[test]
+    fn deposit_script_128_byte_contract_name() {
+        let contract_name = std::iter::repeat('a').take(128).collect::<String>();
+        let principal_str = format!("{}.{contract_name}", StacksAddress::burn_address(false));
+        let secret_key = SecretKey::new(&mut OsRng);
+
+        
+        let deposit = DepositScriptInputs {
+            signers_public_key: secret_key.x_only_public_key(SECP256K1).0,
+            max_fee: 25000,
+            recipient: PrincipalData::parse(&principal_str).unwrap(),
+        };
+        
+        assert_eq!(deposit.recipient.serialize_to_vec().len(), 151);
+        
         let deposit_script = deposit.deposit_script();
         let parsed_deposit = DepositScriptInputs::parse(&deposit_script).unwrap();
 
