@@ -429,7 +429,7 @@ describe("Accepting a withdrawal request", () => {
     );
     expect(rovOk(token.getBalance(alice))).toEqual(1n);
   });
-})
+});
 
 describe("Reject a withdrawal request", () => {
   test("Fails with non-existant request-id", () => {
@@ -557,7 +557,7 @@ describe("Reject a withdrawal request", () => {
     );
     expect(receipt.value).toEqual(true);
   });
-})
+});
 
 describe("Complete multiple withdrawals", () => {
   test("Successfully pass in two withdrawals, one accept, one reject", () => {
@@ -597,26 +597,30 @@ describe("Complete multiple withdrawals", () => {
       }),
       bob
     );
-    // 
+    //
     const receipt = txOk(
-      withdrawal.completeWithdrawals({withdrawals: [{
-          requestId: 1n,
-          status: true,
-          signerBitmap: 1n,
-          bitcoinTxid: new Uint8Array(32).fill(1),
-          outputIndex: 10n,
-          fee: 10n,
-        },{
-          requestId: 2n,
-          status: false,
-          signerBitmap: 1n,
-          bitcoinTxid: null,
-          outputIndex: null,
-          fee: null,
-        } ]
+      withdrawal.completeWithdrawals({
+        withdrawals: [
+          {
+            requestId: 1n,
+            status: true,
+            signerBitmap: 1n,
+            bitcoinTxid: new Uint8Array(32).fill(1),
+            outputIndex: 10n,
+            fee: 10n,
+          },
+          {
+            requestId: 2n,
+            status: false,
+            signerBitmap: 1n,
+            bitcoinTxid: null,
+            outputIndex: null,
+            fee: null,
+          },
+        ],
       }),
       deployer
     );
     expect(receipt.value).toEqual(2n);
   });
-})
+});

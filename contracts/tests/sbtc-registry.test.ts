@@ -33,7 +33,7 @@ describe("sBTC registry contract", () => {
           sender: alice,
           height: simnet.blockHeight,
         }),
-        alice
+        deployer
       );
       expect(receipt.value).toEqual(1n);
 
@@ -62,7 +62,7 @@ describe("sBTC registry contract", () => {
           sender: bob,
           height: simnet.blockHeight,
         }),
-        alice
+        deployer
       );
       const prints = filterEvents(
         receipt.events,
@@ -103,7 +103,7 @@ describe("sBTC registry contract", () => {
           maxFee: 10n,
           height: simnet.blockHeight,
         }),
-        alice
+        deployer
       );
 
       const request = rov(registry.getWithdrawalRequest(1n));
