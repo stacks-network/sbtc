@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+export STACKS_CORE_RPC_HOST=$1
+export STACKS_CORE_RPC_PORT=80 
+export STACKS_30_HEIGHT=131 
+export STACKS_25_HEIGHT=121 
+export STACKING_KEYS="6a1a754ba863d7bab14adbbc3f8ebb090af9e871ace621d3e5ab634e1422885e01,b463f0df6c05d2f156393eee73f8016c5372caa0e9e29a901bb7171d90dc4f1401,7036b29cb5e235e5fd9b09ae3e8eec4404e44906814d5d01cbca968a60ed4bfb01"
+# export STACKS_LOG_JSON=1
+export SERVICE_NAME=monitor
+
+npx tsx monitor.ts
