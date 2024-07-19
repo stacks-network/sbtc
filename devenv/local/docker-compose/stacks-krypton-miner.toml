@@ -192,3 +192,11 @@ address = "STT8DSJTWAW9TVJ1B17SD3S6F7SYH4TXG7TWS7Q9"
 amount = 10000000000000000
 # privateKey = 16226f674796712dfbd53bf402304579b8b6d04d4bed4d466bf84ce6db973d4401
 # mnemonic = "essay grief twin tube concert idea prosper good alarm goddess shell glare hurt belt endless patch lumber wrap labor body erupt brown style test"
+## sBTC deployer
+
+[[ustx_balance]]
+# mnemonic = "twice kind fence tip hidden tilt action fragile skin nothing glory cousin green tomorrow spring wrist shed math olympic multiply hip blue scout claw"
+amount = 10000000
+# secret_key: 753b7cc01a1a2e86221266a154af739463fce51219d97e4f856cd7200c3bd2a601
+address = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM"
+# btc_address: mqVnk6NPRdhntvfm4hh9vvjiRkFDUuSYsH

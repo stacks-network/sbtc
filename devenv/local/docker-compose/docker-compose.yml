@@ -509,6 +509,25 @@ services:
         set -e
         exec npx tsx /root/tx-broadcaster.ts
 
+  contract-deployer:
+    image: hirosystems/clarinet:latest
+    volumes:
+      - ../../../contracts/Clarinet.toml:/Clarinet.toml
+      - ../../../contracts/contracts:/contracts
+      - ../../../contracts/settings:/settings
+      - ../../../contracts/deployments:/deployments
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        set -e
+        echo "Sleeping for 15 seconds before starting deployment..."
+        sleep 15
+        clarinet deployments apply -p /deployments/default.devnet-docker.yaml --no-dashboard -m /Clarinet.toml -d
+    depends_on:
+      - stacks
+      - stacks-api
+
 networks:
   aws-local-vpc:
     name: aws-local-vpc
