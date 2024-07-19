@@ -85,6 +85,15 @@ A local development network is managed through a Docker Compose file in [`./deve
 - `make devenv-up`: Start the network
 - `make devenv-down`: Stop the network and remove containers and networks
 
+Once running, the following services are available:
+
+- Stacks node at [localhost:20443](http://localhost:20443)
+- Stacks API at [localhost:3999](http://localhost:3999)
+- Bitcoin node at [devnet:devnet@localhost:18443](http://devnet:devnet@localhost:18443)
+- 3 Nakamoto signers at [localhost:30000](http://localhost:30000), [localhost:30001](http://localhost:30001), and [localhost:30002](http://localhost:30002)
+- Stacks explorer at [localhost:3020](http://localhost:3020)
+- Mempool.space Bitcoin explorer at [localhost:8083](http://localhost:8083)
+
 ### Operating Systems
 
 This project currently supports development on UNIX-based operating systems but
