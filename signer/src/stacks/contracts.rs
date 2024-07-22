@@ -217,7 +217,7 @@ pub struct AcceptWithdrawalV1 {
     /// A bitmap of how the signers voted. This structure supports up to
     /// 128 distinct signers. Here, we assume that a 1 (or true) implies
     /// that the signer voted *against* the transaction.
-    pub signer_bitmap: BitArray<[u64; 2]>,
+    pub signer_bitmap: BitArray<[u8; 16]>,
     /// The address that deployed the contract.
     pub deployer: StacksAddress,
 }
@@ -255,7 +255,7 @@ pub struct RejectWithdrawalV1 {
     /// A bitmap of how the signers voted. This structure supports up to
     /// 128 distinct signers. Here, we assume that a 1 (or true) implies
     /// that the signer voted *against* the transaction.
-    pub signer_bitmap: BitArray<[u64; 2]>,
+    pub signer_bitmap: BitArray<[u8; 16]>,
     /// The address that deployed the contract.
     pub deployer: StacksAddress,
 }
@@ -393,7 +393,7 @@ mod tests {
             request_id: 42,
             outpoint: OutPoint::null(),
             tx_fee: 125,
-            signer_bitmap: BitArray::new([0; 2]),
+            signer_bitmap: BitArray::ZERO,
             deployer: StacksAddress::burn_address(false),
         };
 
@@ -406,7 +406,7 @@ mod tests {
         // it doesn't panic now, it can never panic at runtime.
         let call = RejectWithdrawalV1 {
             request_id: 42,
-            signer_bitmap: BitArray::new([1; 2]),
+            signer_bitmap: BitArray::new([1; 16]),
             deployer: StacksAddress::burn_address(false),
         };
 
