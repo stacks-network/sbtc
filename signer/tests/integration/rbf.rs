@@ -169,8 +169,9 @@ pub fn transaction_with_rbf(
     let deposits: Vec<DepositRequest> =
         std::iter::repeat_with(|| generate_depositor(rpc, faucet, &signer))
             .take(ctx.initial_deposits.max(ctx.rbf_deposits))
-            .map(|mut req| {
-                req.signer_bitmap.push(false);
+            .enumerate()
+            .map(|(index, mut req)| {
+                req.signer_bitmap.set(index, true);
                 req
             })
             .collect();
@@ -178,9 +179,10 @@ pub fn transaction_with_rbf(
     let mut withdrawal_recipients: Vec<Recipient> = Vec::new();
     let withdrawals: Vec<WithdrawalRequest> = std::iter::repeat_with(regtest::generate_withdrawal)
         .take(ctx.initial_withdrawals.max(ctx.rbf_withdrawals))
-        .map(|(mut req, recipient)| {
+        .enumerate()
+        .map(|(index, (mut req, recipient))| {
             withdrawal_recipients.push(recipient);
-            req.signer_bitmap.push(false);
+            req.signer_bitmap.set(index, true);
             req
         })
         .collect();

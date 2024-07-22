@@ -28,6 +28,7 @@ use bitcoin::TxOut;
 use bitcoin::Weight;
 use bitcoin::Witness;
 use bitcoin::XOnlyPublicKey;
+use bitvec::array::BitArray;
 use secp256k1::Keypair;
 use secp256k1::Message;
 
@@ -257,8 +258,10 @@ pub struct DepositRequest {
     pub outpoint: OutPoint,
     /// The max fee amount to use for the BTC deposit transaction.
     pub max_fee: u64,
-    /// How each of the signers voted for the transaction.
-    pub signer_bitmap: Vec<bool>,
+    /// A bitmap of how the signers voted. This structure supports up to
+    /// 128 distinct signers. Here, we assume that a 1 (or true) implies
+    /// that the signer voted *against* the transaction.
+    pub signer_bitmap: BitArray<[u8; 16]>,
     /// The amount of sats in the deposit UTXO.
     pub amount: u64,
     /// The deposit script used so that the signers' can spend funds.
@@ -279,7 +282,7 @@ pub struct DepositRequest {
 impl DepositRequest {
     /// Returns the number of signers who voted against this request.
     fn votes_against(&self) -> u32 {
-        self.signer_bitmap.iter().map(|vote| !vote as u32).sum()
+        self.signer_bitmap.count_ones() as u32
     }
 
     /// Create a TxIn object with witness data for the deposit script of
@@ -382,7 +385,7 @@ impl DepositRequest {
             .try_into()
             .map_err(|_| Error::TypeConversion)?;
 
-        let signer_bitmap = Vec::new(); // TODO(326): Populate
+        let signer_bitmap = BitArray::ZERO; // TODO(326): Populate
 
         let amount = request
             .amount
@@ -414,14 +417,16 @@ pub struct WithdrawalRequest {
     pub max_fee: u64,
     /// The address to spend the output.
     pub address: Address,
-    /// How each of the signers voted for the transaction.
-    pub signer_bitmap: Vec<bool>,
+    /// A bitmap of how the signers voted. This structure supports up to
+    /// 128 distinct signers. Here, we assume that a 1 (or true) implies
+    /// that the signer voted *against* the transaction.
+    pub signer_bitmap: BitArray<[u8; 16]>,
 }
 
 impl WithdrawalRequest {
     /// Returns the number of signers who voted against this request.
     fn votes_against(&self) -> u32 {
-        self.signer_bitmap.iter().map(|vote| !vote as u32).sum()
+        self.signer_bitmap.count_ones() as u32
     }
 
     /// Withdrawal UTXOs pay to the given address
@@ -452,7 +457,7 @@ impl WithdrawalRequest {
         let address = address
             .require_network(network)
             .map_err(Error::BitcoinAddressParse)?;
-        let signer_bitmap = Vec::new(); // TODO(326): Populate
+        let signer_bitmap = BitArray::ZERO; // TODO(326): Populate
 
         Ok(Self {
             amount,
@@ -883,11 +888,13 @@ mod tests {
     /// Create a new deposit request depositing from a random public key.
     fn create_deposit(amount: u64, max_fee: u64, votes_against: usize) -> DepositRequest {
         let signers_public_key = generate_x_only_public_key();
+        let mut signer_bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
+        signer_bitmap[..votes_against].fill(true);
 
         DepositRequest {
             outpoint: generate_outpoint(amount, 1),
             max_fee,
-            signer_bitmap: std::iter::repeat(false).take(votes_against).collect(),
+            signer_bitmap,
             amount,
             deposit_script: testing::peg_in_deposit_script(&signers_public_key),
             reclaim_script: ScriptBuf::new(),
@@ -897,9 +904,12 @@ mod tests {
 
     /// Create a new withdrawal request withdrawing to a random address.
     fn create_withdrawal(amount: u64, max_fee: u64, votes_against: usize) -> WithdrawalRequest {
+        let mut signer_bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
+        signer_bitmap[..votes_against].fill(true);
+
         WithdrawalRequest {
             max_fee,
-            signer_bitmap: std::iter::repeat(false).take(votes_against).collect(),
+            signer_bitmap,
             amount,
             address: generate_address(),
         }
@@ -963,14 +973,19 @@ mod tests {
         println!("Solo withdrawal vsize: {}", unsigned.tx.vsize());
     }
 
-    #[test_case(&[false, false, true, false, true, true, true], 3; "case 1")]
-    #[test_case(&[false, false, true, true, true, true, true], 2; "case 2")]
-    #[test_case(&[true, true, true, true, true, true, true], 0; "case 3")]
+    #[test_case(&[true, true, false, true, false, false, false], 3; "case 1")]
+    #[test_case(&[true, true, false, false, false, false, false], 2; "case 2")]
+    #[test_case(&[false, false, false, false, false, false, false], 0; "case 3")]
     fn test_deposit_votes_against(signer_bitmap: &[bool], expected: u32) {
+        let mut bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
+        for (index, value) in signer_bitmap.iter().enumerate() {
+            bitmap.set(index, *value);
+        }
+
         let deposit = DepositRequest {
             outpoint: OutPoint::null(),
             max_fee: 0,
-            signer_bitmap: signer_bitmap.to_vec(),
+            signer_bitmap: bitmap,
             amount: 100_000,
             deposit_script: ScriptBuf::new(),
             reclaim_script: ScriptBuf::new(),
@@ -987,7 +1002,7 @@ mod tests {
         let deposit = DepositRequest {
             outpoint: OutPoint::null(),
             max_fee: 0,
-            signer_bitmap: Vec::new(),
+            signer_bitmap: BitArray::ZERO,
             amount: 100_000,
             deposit_script: ScriptBuf::from_bytes(vec![1, 2, 3]),
             reclaim_script: ScriptBuf::new(),
