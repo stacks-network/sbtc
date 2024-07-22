@@ -4,6 +4,7 @@ import {
   deployer,
   deposit,
   errors,
+  randomPublicKeys,
   registry,
   stxAddressToPoxAddress,
   token,
@@ -622,5 +623,49 @@ describe("Complete multiple withdrawals", () => {
       deployer
     );
     expect(receipt.value).toEqual(2n);
+  });
+});
+
+describe("optimization tests for completing withdrawals", () => {
+  test("maximizing the number of withdrawal completions in one tx", () => {
+    const totalAmount = 1000000n;
+    const runs = 500;
+    const perAmount = totalAmount / BigInt(runs);
+    const txids = randomPublicKeys(runs).map((pk) => pk.slice(0, 32));
+    for (let index = 0; index < runs; index++) {
+      const txid = txids[index];
+      txOk(
+        deposit.completeDepositWrapper({
+          txid,
+          voutIndex: 0,
+          amount: perAmount,
+          recipient: alice,
+        }),
+        deployer
+      );
+      txOk(
+        withdrawal.initiateWithdrawalRequest({
+          amount: perAmount,
+          recipient: alicePoxAddr,
+          maxFee: 10n,
+        }),
+        alice
+      );
+    }
+    txOk(
+      withdrawal.completeWithdrawals(
+        txids.map((txid, index) => {
+          return {
+            requestId: index + 1,
+            status: true,
+            signerBitmap: 1n,
+            bitcoinTxid: txid,
+            outputIndex: 0n,
+            fee: 10n,
+          };
+        })
+      ),
+      deployer
+    );
   });
 });

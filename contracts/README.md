@@ -51,3 +51,14 @@ You can re-generate them with:
 ```bash
 pnpm clarigen docs
 ```
+
+## Contract test coverage
+
+To generate and view test coverage for Clarity contracts, run tests and then convert the `lcov` file to HTML:
+
+```bash
+pnpm test:report
+pnpm generate-coverage
+```
+
+Then, you can open [`./coverage/html/index.html`](./coverage/html/index.html) to view the coverage report.
