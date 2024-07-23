@@ -8,10 +8,8 @@ pub mod transaction_signer;
 pub mod wallet;
 
 use crate::utxo::UnsignedTransaction;
-use bitcoin::hashes::Hash;
 use bitcoin::key::TapTweak;
 use bitcoin::opcodes;
-use bitcoin::PubkeyHash;
 use bitcoin::ScriptBuf;
 use bitcoin::TapSighashType;
 use bitcoin::Witness;
@@ -58,12 +56,9 @@ pub fn peg_in_deposit_script(signers_public_key: &XOnlyPublicKey) -> ScriptBuf {
         // wants the sBTC deposited to. According to https://docs.stacks.co/stacks-101/accounts,
         // stacks addresses are c32check encoded RIPEMD-160 hashes of the
         // SHA256 of the public key. This means they are 25 bytes long
-        .push_slice([0u8; 25])
+        .push_slice([0u8; 30])
         .push_opcode(opcodes::all::OP_DROP)
-        .push_opcode(opcodes::all::OP_DUP)
-        .push_opcode(opcodes::all::OP_HASH160)
-        .push_slice(PubkeyHash::hash(&signers_public_key.serialize()))
-        .push_opcode(opcodes::all::OP_EQUALVERIFY)
+        .push_slice(signers_public_key.serialize())
         .push_opcode(opcodes::all::OP_CHECKSIG)
         .into_script()
 }
