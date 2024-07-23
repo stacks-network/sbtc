@@ -1168,6 +1168,81 @@ mod tests {
         assert!(unsigned.tx.output[0].script_pubkey.is_p2tr());
     }
 
+    /// We aggregate the bitmaps to form a single one at the end. Check
+    /// that it is aggregated correctly.
+    #[test]
+    fn the_bitmaps_merge_correctly() {
+        const OP_RETURN: u8 = bitcoin::opcodes::all::OP_RETURN.to_u8();
+        const OP_PUSHBYTES_21: u8 = bitcoin::opcodes::all::OP_PUSHBYTES_21.to_u8();
+
+        let mut requests = SbtcRequests {
+            deposits: vec![create_deposit(123456, 0, 0)],
+            withdrawals: vec![create_withdrawal(1000, 0, 0), create_withdrawal(2000, 0, 0)],
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: generate_outpoint(5500, 0),
+                    amount: 5500,
+                    public_key: generate_x_only_public_key(),
+                },
+                fee_rate: 0.0,
+                public_key: generate_x_only_public_key(),
+                last_fees: None,
+                magic_bytes: [b'T', b'3'],
+            },
+            num_signers: 10,
+            accept_threshold: 0,
+        };
+
+        // We'll have the deposit get two vote against, and the withdrawals
+        // each have three votes against. We will have each them share one
+        // overlapping voter. The votes look like this:
+        //
+        // 1 1 0 0 0 0 0 0 0 0
+        // 0 1 1 1 0 0 0 0 0 0
+        // 0 1 0 0 1 1 0 0 0 0
+        //
+        // So the aggregated bit map should look like this
+        //
+        // 1 1 1 1 1 1 0 0 0 0
+
+        // Okay, this one looks like
+        // 1 1 0 0 0 0 0 0 0 0
+        requests.deposits[0].signer_bitmap.set(0, true);
+        requests.deposits[0].signer_bitmap.set(1, true);
+        // This one looks like
+        // 0 1 1 1 0 0 0 0 0 0
+        requests.withdrawals[0].signer_bitmap.set(1, true);
+        requests.withdrawals[0].signer_bitmap.set(2, true);
+        requests.withdrawals[0].signer_bitmap.set(3, true);
+        // And this one looks like
+        // 0 1 0 0 1 1 0 0 0 0
+        requests.withdrawals[1].signer_bitmap.set(1, true);
+        requests.withdrawals[1].signer_bitmap.set(4, true);
+        requests.withdrawals[1].signer_bitmap.set(5, true);
+
+        // This should all be in one transaction given the threshold
+        let mut transactions = requests.construct_transactions().unwrap();
+        assert_eq!(transactions.len(), 1);
+
+        let unsigned_tx = transactions.pop().unwrap();
+        assert_eq!(unsigned_tx.tx.input.len(), 2);
+        assert_eq!(unsigned_tx.tx.output.len(), 4);
+
+        let bitmap_data = match unsigned_tx.tx.output[1].script_pubkey.as_bytes() {
+            [OP_RETURN, OP_PUSHBYTES_21, b'T', b'3', OP_RETURN_OP, 0, 1, data @ ..] => data,
+            _ => panic!("Invalid OP_RETURN FORMAT"),
+        };
+        // And this should start like this
+        // 1 1 1 1 1 1 0 0 0 0
+        let bitmap = <[u8; 16]>::try_from(bitmap_data).unwrap();
+        let bitmap = BitArray::<[u8; 16]>::try_from(bitmap).unwrap();
+
+        assert_eq!(bitmap.count_ones(), 6);
+        // And the first six bits are all ones followed by all zeros.
+        assert!(bitmap[..6].all());
+        assert!(!bitmap[6..].any());
+    }
+
     /// Deposit requests add to the signers' UTXO.
     #[test]
     fn deposits_increase_signers_utxo_amount() {
