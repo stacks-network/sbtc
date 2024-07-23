@@ -1,0 +1,225 @@
+[node]
+name = "krypton-node"
+rpc_bind = "0.0.0.0:20443"
+p2p_bind = "0.0.0.0:20444"
+data_url = "http://127.0.0.1:20443"
+p2p_address = "127.0.0.1:20443"
+working_dir = "$DATA_DIR"
+
+seed = "$MINER_SEED"
+local_peer_seed = "$MINER_SEED"
+
+miner = true
+use_test_genesis_chainstate = true
+pox_sync_sample_secs = 0
+wait_time_for_blocks = 0
+wait_time_for_microblocks = 0
+mine_microblocks = false
+microblock_frequency = 1000
+# mine_microblocks = true
+# max_microblocks = 10
+
+[miner]
+min_tx_fee = 1
+first_attempt_time_ms = 180_000
+subsequent_attempt_time_ms = 360_000
+wait_for_block_download = false
+microblock_attempt_time_ms = 10
+#self_signing_seed = 1
+mining_key = "19ec1c3e31d139c989a23a27eac60d1abfad5277d3ae9604242514c738258efa01"
+$REWARD_RECIPIENT_CONF
+
+[connection_options]
+# inv_sync_interval = 10
+# download_interval = 10
+# walk_interval = 10
+disable_block_download = true
+disable_inbound_handshakes = true
+disable_inbound_walks = true
+public_ip_address = "1.1.1.1:1234"
+block_proposal_token = "12345"
+
+# Add stacks-api as an event observer
+[[events_observer]]
+endpoint = "stacks-api:3700"
+retry_count = 255
+include_data_events = false
+events_keys = ["*"]
+
+# Add stacks-signer as an event observer
+[[events_observer]]
+endpoint = "stacks-signer-1:30001"
+retry_count = 255
+include_data_events = false
+events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
+
+[[events_observer]]
+endpoint = "stacks-signer-2:30002"
+retry_count = 255
+include_data_events = false
+events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
+
+[[events_observer]]
+endpoint = "stacks-signer-3:30003"
+retry_count = 255
+include_data_events = false
+events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
+
+[burnchain]
+chain = "bitcoin"
+mode = "nakamoto-neon"
+poll_time_secs = 1
+magic_bytes = "T3"
+pox_prepare_length = $POX_PREPARE_LENGTH
+pox_reward_length = $POX_REWARD_LENGTH
+burn_fee_cap = 20_000
+
+### bitcoind-regtest connection info
+peer_host = "$BITCOIN_PEER_HOST"
+peer_port = $BITCOIN_PEER_PORT
+rpc_port = $BITCOIN_RPC_PORT
+rpc_ssl = false
+username = "$BITCOIN_RPC_USER"
+password = "$BITCOIN_RPC_PASS"
+timeout = 30
+wallet_name = "main"
+
+[[burnchain.epochs]]
+epoch_name = "1.0"
+start_height = 0
+
+[[burnchain.epochs]]
+epoch_name = "2.0"
+start_height = $STACKS_20_HEIGHT
+
+[[burnchain.epochs]]
+epoch_name = "2.05"
+start_height = $STACKS_2_05_HEIGHT
+
+[[burnchain.epochs]]
+epoch_name = "2.1"
+start_height = $STACKS_21_HEIGHT
+
+[[burnchain.epochs]]
+epoch_name = "2.2"
+start_height = $STACKS_22_HEIGHT
+
+[[burnchain.epochs]]
+epoch_name = "2.3"
+start_height = $STACKS_23_HEIGHT
+
+[[burnchain.epochs]]
+epoch_name = "2.4"
+start_height = $STACKS_24_HEIGHT
+
+[[burnchain.epochs]]
+epoch_name = "2.5"
+start_height = $STACKS_25_HEIGHT
+
+[[burnchain.epochs]]
+epoch_name = "3.0"
+start_height = $STACKS_30_HEIGHT
+
+
+[[ustx_balance]]
+address = "STB44HYPYAT2BB2QE513NSP81HTMYWBJP02HPGK6"
+amount = 10000000000000000
+# secretKey = "cb3df38053d132895220b9ce471f6b676db5b9bf0b4adefb55f2118ece2478df01"
+
+[[ustx_balance]]
+address = "ST11NJTTKGVT6D1HY4NJRVQWMQM7TVAR091EJ8P2Y"
+amount = 10000000000000000
+# secretKey = "21d43d2ae0da1d9d04cfcaac7d397a33733881081f0b2cd038062cf0ccbb752601"
+
+[[ustx_balance]]
+address = "ST1HB1T8WRNBYB0Y3T7WXZS38NKKPTBR3EG9EPJKR"
+amount = 10000000000000000
+# Account keys 3
+# secretKey = "c71700b07d520a8c9731e4d0f095aa6efb91e16e25fb27ce2b72e7b698f8127a01"
+
+[[ustx_balance]]
+address = "ST2PGGD0ZXAWEMY4EZ025RD1X47EEVH287SQKA8BC"
+amount = 10000000000000000
+# Account keys 2
+# secretKey = "975b251dd7809469ef0c26ec3917971b75c51cd73a022024df4bf3b232cc2dc001"
+
+[[ustx_balance]]
+address = "ST29V10QEA7BRZBTWRFC4M70NJ4J6RJB5P1C6EE84"
+amount = 10000000000000000
+# Account keys 1
+# secretKey = "0d2f965b472a82efd5a96e6513c8b9f7edc725d5c96c7d35d6c722cedeb80d1b01"
+
+# Stacker/signer
+[[ustx_balance]]
+address = "ST3AM1A56AK2C1XAFJ4115ZSV26EB49BVQ10MGCS0"
+amount = 10000000000000000
+# secret_key: 7036b29cb5e235e5fd9b09ae3e8eec4404e44906814d5d01cbca968a60ed4bfb01
+# mnemonic = "area desk dutch sign gold cricket dawn toward giggle vibrant indoor bench warfare wagon number tiny universe sand talk dilemma pottery bone trap buddy"
+# stx_address: ST3AM1A56AK2C1XAFJ4115ZSV26EB49BVQ10MGCS0
+# btc_address: mzxXgV6e4BZSsz8zVHm3TmqbECt7mbuErt
+
+# Stacker/signer
+[[ustx_balance]]
+address = "ST3PF13W7Z0RRM42A8VZRVFQ75SV1K26RXEP8YGKJ"
+amount = 10000000000000000
+# secret_key: b463f0df6c05d2f156393eee73f8016c5372caa0e9e29a901bb7171d90dc4f1401
+# mnemonic = "prevent gallery kind limb income control noise together echo rival record wedding sense uncover school version force bleak nuclear include danger skirt enact arrow"
+# stx_address: ST3PF13W7Z0RRM42A8VZRVFQ75SV1K26RXEP8YGKJ
+# btc_address: n37mwmru2oaVosgfuvzBwgV2ysCQRrLko7
+
+# Stacker/signer
+[[ustx_balance]]
+address = "ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP"
+amount = 10000000000000000
+# secret_key: 6a1a754ba863d7bab14adbbc3f8ebb090af9e871ace621d3e5ab634e1422885e01
+# mnemonic = "female adjust gallery certain visit token during great side clown fitness like hurt clip knife warm bench start reunion globe detail dream depend fortune"
+# stx_address: ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP
+# btc_address: n2v875jbJ4RjBnTjgbfikDfnwsDV5iUByw
+
+[[ustx_balance]]
+address = "ST5B3TD6YF085JWKSSW9HDWCDZTR842RFNP19HQC"
+amount = 10000000000000000
+# used in "flood.ts"
+# secretKey = 66b7a77a3e0abc2cddaa51ed38fc4553498e19d3620ef08eb141afcfd0e3f5b501
+
+[[ustx_balance]]
+address = "STEH2J3C05BAHYS0RBAQBANJ1AXR6SR43VMZ0D49"
+amount = 10000000000000000
+# secretKey = 5b8303150239eceaba43892af7cdd1fa7fc26eda5182ebaaa568e3341d54a4d001
+
+[[ustx_balance]]
+address = "STT8DSJTWAW9TVJ1B17SD3S6F7SYH4TXG7TWS7Q9"
+amount = 10000000000000000
+# privateKey = 16226f674796712dfbd53bf402304579b8b6d04d4bed4d466bf84ce6db973d4401
+# mnemonic = "essay grief twin tube concert idea prosper good alarm goddess shell glare hurt belt endless patch lumber wrap labor body erupt brown style test"
+
+## sBTC Signers
+
+[[ustx_balance]]
+# secret_key: 99dd7fc1ad584d9b174275ef9de7bda04fc61e38899fdce22fd31a49f3fc47d6
+address = "ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y"
+amount = 10000000000000000
+
+[[ustx_balance]]
+# secret_key: 126242834c575d4ccd51fa7081775c09746305ab0889844fff09c2018a5548bd
+address = "ST23T3EMEKV8MD6WMEWRHX4HQG0EC4GYM1W1NEQHQ"
+amount = 10000000000000000
+
+[[ustx_balance]]
+# secret_key: 440adaf1522f26e3d981d114c137090c6bf627ebb163b5cbb449c73f9659a003
+address = "ST1SJ3DTE5DN7X54YDH5D64R3BCB6A2AG2ZQ8YPD5"
+amount = 10000000000000000
+
+[[ustx_balance]]
+# This is a 2-3 multi-sig address controlled using the above three addresses
+address = "SN2V7WTJ7BHR03MPHZ1C9A9ZR6NZGR4WM8HT4V67Y"
+amount = 10000000000000000
+
+## sBTC deployer
+
+[[ustx_balance]]
+# mnemonic = "twice kind fence tip hidden tilt action fragile skin nothing glory cousin green tomorrow spring wrist shed math olympic multiply hip blue scout claw"
+amount = 10000000
+# secret_key: 753b7cc01a1a2e86221266a154af739463fce51219d97e4f856cd7200c3bd2a601
+address = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM"
+# btc_address: mqVnk6NPRdhntvfm4hh9vvjiRkFDUuSYsH

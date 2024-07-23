@@ -4,5 +4,8 @@
   "engines": {
     "pnpm": "9"
   },
-  "packageManager": "pnpm@9.1.0+sha1.217063ce3fcbf44f3051666f38b810f1ddefee4a"
+  "packageManager": "pnpm@9.1.0+sha1.217063ce3fcbf44f3051666f38b810f1ddefee4a",
+  "resolutions": {
+    "@stacks/network": "6.11.4-pr.36558cf.0"
+  }
 }
