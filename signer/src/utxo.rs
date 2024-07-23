@@ -29,7 +29,6 @@ use bitcoin::Weight;
 use bitcoin::Witness;
 use bitcoin::XOnlyPublicKey;
 use bitvec::array::BitArray;
-use blockstack_lib::burnchains::BLOCKSTACK_MAGIC_MAINNET;
 use secp256k1::Keypair;
 use secp256k1::Message;
 
@@ -121,6 +120,9 @@ pub struct SignerBtcState {
     /// The total fee amount and the fee rate for the last transaction that
     /// used this UTXO as an input.
     pub last_fees: Option<Fees>,
+    /// Two byte prefix for BTC transactions that are related to the Stacks
+    /// blockchain.
+    pub magic_bytes: [u8; 2],
 }
 
 /// The set of sBTC requests with additional relevant
@@ -662,7 +664,7 @@ impl<'a> UnsignedTransaction<'a> {
             lock_time: LockTime::ZERO,
             input: std::iter::once(signer_input).chain(deposits).collect(),
             output: std::iter::once(signer_output)
-                .chain(Self::new_op_return_output(reqs))
+                .chain(Self::new_op_return_output(reqs, state))
                 .chain(withdrawals)
                 .collect(),
         })
@@ -694,7 +696,7 @@ impl<'a> UnsignedTransaction<'a> {
     /// In the above layout, magic is the UTF-8 encoded string "ST", op is
     /// the UTF-8 encoded string "B", and N_d is the number of deposits in
     /// the transaction.
-    fn new_op_return_output(reqs: &[RequestRef]) -> Option<TxOut> {
+    fn new_op_return_output(reqs: &[RequestRef], state: &SignerBtcState) -> Option<TxOut> {
         let bitmap: BitArray<[u8; 16]> = reqs
             .iter()
             .map(RequestRef::signer_bitmap)
@@ -702,8 +704,9 @@ impl<'a> UnsignedTransaction<'a> {
         let num_deposits = reqs.iter().filter_map(RequestRef::as_deposit).count() as u16;
 
         let mut data: [u8; 21] = [0; 21];
-        // The BLOCKSTACK_MAGIC_MAINNET constant is exactly 2 bytes
-        data[0..2].copy_from_slice(&BLOCKSTACK_MAGIC_MAINNET.into_bytes());
+        // The magic_bytes is exactly 2 bytes
+        data[0..2].copy_from_slice(&state.magic_bytes);
+        // Yeah, this is one byte.
         data[2..3].copy_from_slice(&[OP_RETURN_OP]);
         // The num_deposits variable is a u16, so 2 bytes.
         data[3..5].copy_from_slice(&num_deposits.to_be_bytes());
@@ -993,6 +996,7 @@ mod tests {
                 fee_rate: 5.0,
                 public_key: generate_x_only_public_key(),
                 last_fees: None,
+                magic_bytes: [0; 2],
             },
             num_signers: 10,
             accept_threshold: 2,
@@ -1090,6 +1094,7 @@ mod tests {
                 fee_rate: 0.0,
                 public_key: generate_x_only_public_key(),
                 last_fees: None,
+                magic_bytes: [0; 2],
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -1157,6 +1162,7 @@ mod tests {
                 fee_rate: 0.0,
                 public_key,
                 last_fees: None,
+                magic_bytes: [0; 2],
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -1202,6 +1208,7 @@ mod tests {
                 fee_rate: 0.0,
                 public_key,
                 last_fees: None,
+                magic_bytes: [0; 2],
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -1242,6 +1249,7 @@ mod tests {
                 fee_rate: 0.0,
                 public_key,
                 last_fees: None,
+                magic_bytes: [0; 2],
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -1293,6 +1301,7 @@ mod tests {
                 fee_rate: 0.0,
                 public_key,
                 last_fees: None,
+                magic_bytes: [0; 2],
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -1385,6 +1394,7 @@ mod tests {
                 fee_rate: 25.0,
                 public_key,
                 last_fees: None,
+                magic_bytes: [0; 2],
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -1465,6 +1475,7 @@ mod tests {
                 fee_rate: 25.0,
                 public_key,
                 last_fees: None,
+                magic_bytes: [0; 2],
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -1555,6 +1566,7 @@ mod tests {
                 fee_rate: 25.0,
                 public_key,
                 last_fees: None,
+                magic_bytes: [0; 2],
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -1589,6 +1601,7 @@ mod tests {
                 fee_rate: 0.0,
                 public_key,
                 last_fees: None,
+                magic_bytes: [0; 2],
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -1644,6 +1657,7 @@ mod tests {
                 fee_rate,
                 public_key,
                 last_fees: None,
+                magic_bytes: [0; 2],
             },
             num_signers: 10,
             accept_threshold: 8,

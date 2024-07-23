@@ -219,6 +219,9 @@ pub fn transaction_with_rbf(
             fee_rate: ctx.initial_fee_rate,
             public_key: signers_public_key,
             last_fees: None,
+            // The value here isn't important, but it matches what happens
+            // in Nakamoto testnet.
+            magic_bytes: ['T' as u8, '3' as u8],
         },
         accept_threshold: failure_threshold,
         num_signers: 2 * failure_threshold,
