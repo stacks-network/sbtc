@@ -53,9 +53,10 @@ pub fn set_witness_data(unsigned: &mut UnsignedTransaction, keypair: secp256k1::
 pub fn peg_in_deposit_script(signers_public_key: &XOnlyPublicKey) -> ScriptBuf {
     ScriptBuf::builder()
         // Just some dummy data representing the stacks address the user
-        // wants the sBTC deposited to. According to https://docs.stacks.co/stacks-101/accounts,
-        // stacks addresses are c32check encoded RIPEMD-160 hashes of the
-        // SHA256 of the public key. This means they are 25 bytes long
+        // wants the sBTC deposited to and their max fee. We encoded
+        // standard stacks addresses as 22 bytes, following the principal
+        // encoding detailed in SIP-05, and the max fee is an 8 byte
+        // unsigned integer. So the total is a 30 byte long data slice.
         .push_slice([0u8; 30])
         .push_opcode(opcodes::all::OP_DROP)
         .push_slice(signers_public_key.serialize())
