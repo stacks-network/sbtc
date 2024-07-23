@@ -63,7 +63,7 @@ const SATS_PER_VBYTE_INCREMENT: f64 = 0.001;
 
 /// The OP_RETURN operation byte for deposit or withdrawal sweeps. This is
 /// the UTF8 encoded string "B".
-const OP_RETURN_OP: u8 = 'B' as u8;
+const OP_RETURN_OP: u8 = b'B';
 
 /// The x-coordinate public key with no known discrete logarithm.
 ///

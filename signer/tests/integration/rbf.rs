@@ -221,7 +221,7 @@ pub fn transaction_with_rbf(
             last_fees: None,
             // The value here isn't important, but it matches what happens
             // in Nakamoto testnet.
-            magic_bytes: ['T' as u8, '3' as u8],
+            magic_bytes: [b'T', b'3'],
         },
         accept_threshold: failure_threshold,
         num_signers: 2 * failure_threshold,
