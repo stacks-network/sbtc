@@ -694,8 +694,8 @@ impl<'a> UnsignedTransaction<'a> {
     ///   magic  op  N_d       signer bitmap
     ///
     /// In the above layout, magic is the UTF-8 encoded string "ST", op is
-    /// the UTF-8 encoded string "B", and N_d is the number of deposits in
-    /// the transaction.
+    /// the UTF-8 encoded string "B", and N_d is the of deposits in this
+    /// transaction encoded as a big-endian two byte integer.
     fn new_op_return_output(reqs: &[RequestRef], state: &SignerBtcState) -> Option<TxOut> {
         let bitmap: BitArray<[u8; 16]> = reqs
             .iter()
@@ -1142,6 +1142,32 @@ mod tests {
         assert_eq!(new_utxo.public_key, requests.signer_state.public_key);
     }
 
+    /// Transactions that do not service requests do not have the OP_RETURN
+    /// output.
+    #[test]
+    fn no_requests_no_op_return() {
+        let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
+        let signer_state = SignerBtcState {
+            utxo: SignerUtxo {
+                outpoint: OutPoint::null(),
+                amount: 55,
+                public_key,
+            },
+            fee_rate: 0.0,
+            public_key,
+            last_fees: None,
+            magic_bytes: [0; 2],
+        };
+
+        // No requests so the first output should be the signers UTXO and
+        // that's it. No OP_RETURN output.
+        let unsigned = UnsignedTransaction::new(Vec::new(), &signer_state).unwrap();
+        assert_eq!(unsigned.tx.output.len(), 1);
+
+        // There is only one output and it's a P2TR output
+        assert!(unsigned.tx.output[0].script_pubkey.is_p2tr());
+    }
+
     /// Deposit requests add to the signers' UTXO.
     #[test]
     fn deposits_increase_signers_utxo_amount() {
@@ -1177,6 +1203,9 @@ mod tests {
         // signers' UTXO and the OP_RETURN output.
         let unsigned_tx = transactions.pop().unwrap();
         assert_eq!(unsigned_tx.tx.output.len(), 2);
+
+        assert!(unsigned_tx.tx.output[0].script_pubkey.is_p2tr());
+        assert!(unsigned_tx.tx.output[1].script_pubkey.is_op_return());
 
         // The new amount should be the sum of the old amount plus the deposits.
         let new_amount: u64 = unsigned_tx
@@ -1218,7 +1247,12 @@ mod tests {
         assert_eq!(transactions.len(), 1);
 
         let unsigned_tx = transactions.pop().unwrap();
+        // We have 3 withdrawals so with the signers output and the
+        // OP_RETURN output we have a total of 5 outputs.
         assert_eq!(unsigned_tx.tx.output.len(), 5);
+
+        assert!(unsigned_tx.tx.output[0].script_pubkey.is_p2tr());
+        assert!(unsigned_tx.tx.output[1].script_pubkey.is_op_return());
 
         let signer_utxo = unsigned_tx.tx.output.first().unwrap();
         assert_eq!(signer_utxo.value.to_sat(), 9500 - 1000 - 2000 - 3000);
@@ -1265,6 +1299,12 @@ mod tests {
             let previous_output1 = utx1.tx.input[0].previous_output;
             assert_eq!(utx0.tx.compute_txid(), previous_output1.txid);
             assert_eq!(previous_output1.vout, 0);
+
+            assert!(utx0.tx.output[0].script_pubkey.is_p2tr());
+            assert!(utx0.tx.output[1].script_pubkey.is_op_return());
+
+            assert!(utx1.tx.output[0].script_pubkey.is_p2tr());
+            assert!(utx1.tx.output[1].script_pubkey.is_op_return());
         })
     }
 
@@ -1336,6 +1376,9 @@ mod tests {
                 .filter_map(|x| x.as_withdrawal())
                 .count();
             assert_eq!(utx.tx.output.len(), num_withdrawals + 2);
+
+            assert!(utx.tx.output[0].script_pubkey.is_p2tr());
+            assert!(utx.tx.output[1].script_pubkey.is_op_return());
 
             // Check that each deposit is referenced exactly once
             // We ship the first one since that is the signers' UTXO
