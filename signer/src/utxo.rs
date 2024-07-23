@@ -29,6 +29,7 @@ use bitcoin::Weight;
 use bitcoin::Witness;
 use bitcoin::XOnlyPublicKey;
 use bitvec::array::BitArray;
+use blockstack_lib::burnchains::BLOCKSTACK_MAGIC_MAINNET;
 use secp256k1::Keypair;
 use secp256k1::Message;
 
@@ -60,6 +61,10 @@ const BASE_WITHDRAWAL_TX_VSIZE: f64 = 120.0;
 /// is the smallest detectable increment for bumping the fee rate in sats
 /// per vbyte.
 const SATS_PER_VBYTE_INCREMENT: f64 = 0.001;
+
+/// The OP_RETURN operation byte for deposit or withdrawal sweeps. This is
+/// the UTF8 encoded string "B".
+const OP_RETURN_OP: u8 = 'B' as u8;
 
 /// The x-coordinate public key with no known discrete logarithm.
 ///
@@ -493,6 +498,14 @@ impl<'a> RequestRef<'a> {
             _ => None,
         }
     }
+
+    /// Extract the signer bitmap for the underlying request.
+    pub fn signer_bitmap(&self) -> BitArray<[u8; 16]> {
+        match self {
+            RequestRef::Deposit(req) => req.signer_bitmap,
+            RequestRef::Withdrawal(req) => req.signer_bitmap,
+        }
+    }
 }
 
 impl<'a> Weighted for RequestRef<'a> {
@@ -594,7 +607,8 @@ impl<'a> UnsignedTransaction<'a> {
     /// The returned BTC transaction has the following properties:
     ///   1. The amounts for each output has taken fees into consideration.
     ///   2. The signer input UTXO is the first input.
-    ///   3. The signer output UTXO is the first output.
+    ///   3. The signer output UTXO is the first output. The second output
+    ///      is the OP_RETURN data output.
     ///   4. Each input needs a signature in the witness data.
     ///   5. There is no witness data for deposit UTXOs.
     pub fn new(requests: Vec<RequestRef<'a>>, state: &SignerBtcState) -> Result<Self, Error> {
@@ -648,7 +662,10 @@ impl<'a> UnsignedTransaction<'a> {
             version: Version::TWO,
             lock_time: LockTime::ZERO,
             input: std::iter::once(signer_input).chain(deposits).collect(),
-            output: std::iter::once(signer_output).chain(withdrawals).collect(),
+            output: std::iter::once(signer_output)
+                .chain(Self::new_op_return_output(reqs))
+                .chain(withdrawals)
+                .collect(),
         })
     }
 
@@ -662,6 +679,42 @@ impl<'a> UnsignedTransaction<'a> {
             amount: self.tx.output[0].value.to_sat(),
             public_key: self.signer_public_key,
         }
+    }
+
+    /// An OP_RETURN output with the bitmap for how the signers voted for
+    /// the package.
+    ///
+    /// None is only returned if there are no requests in the input slice.
+    ///
+    /// The data layout for the OP_RETURN is:
+    ///
+    ///  0      2  3    5                           21
+    ///  |------|--|----|---------------------------|
+    ///   magic  op  N_d       signer bitmap
+    ///
+    /// In the above layout, magic is the UTF-8 encoded string "ST", op is
+    /// the UTF-8 encoded string "B", and N_d is the number of deposits in
+    /// the transaction.
+    fn new_op_return_output(reqs: &[RequestRef]) -> Option<TxOut> {
+        let bitmap: BitArray<[u8; 16]> = reqs
+            .iter()
+            .map(RequestRef::signer_bitmap)
+            .reduce(|bm1, bm2| bm1 | bm2)?;
+        let num_deposits = reqs.iter().filter_map(RequestRef::as_deposit).count() as u16;
+
+        let mut data: [u8; 21] = [0; 21];
+        // The BLOCKSTACK_MAGIC_MAINNET constant is exactly 2 bytes
+        data[0..2].copy_from_slice(&BLOCKSTACK_MAGIC_MAINNET.into_bytes());
+        data[2..3].copy_from_slice(&[OP_RETURN_OP]);
+        // The num_deposits variable is a u16, so 2 bytes.
+        data[3..5].copy_from_slice(&num_deposits.to_be_bytes());
+        // The bitmap is 16 bytes so this fits exactly.
+        data[5..].copy_from_slice(&bitmap.into_inner());
+
+        Some(TxOut {
+            value: Amount::ZERO,
+            script_pubkey: ScriptBuf::new_op_return(data),
+        })
     }
 
     /// Constructs the set of digests that need to be signed before broadcasting
@@ -778,7 +831,7 @@ impl<'a> UnsignedTransaction<'a> {
         // The sum of all fees paid for each withdrawal UTXO.
         let mut withdrawal_fees: u64 = 0;
         // We now update the remaining withdrawal amounts to account for fees.
-        tx.output.iter_mut().skip(1).for_each(|tx_out| {
+        tx.output.iter_mut().skip(2).for_each(|tx_out| {
             let fee = (tx_out.weight().to_vbytes_ceil() * tx_fee).div_ceil(requests_vsize);
             withdrawal_fees += fee;
             tx_out.value = Amount::from_sat(tx_out.value.to_sat().saturating_sub(fee));
@@ -801,12 +854,13 @@ impl<'a> UnsignedTransaction<'a> {
     /// the ones related to the signers' UTXO.
     fn request_weight(tx: &Transaction) -> Weight {
         // We skip the first input and output because those are always the
-        // signers' UTXO input and output.
+        // signers' UTXO input and output. We skip the second output
+        // because that is always the data output.
         tx.input
             .iter()
             .skip(1)
             .map(|x| x.segwit_weight())
-            .chain(tx.output.iter().skip(1).map(|x| x.weight()))
+            .chain(tx.output.iter().skip(2).map(|x| x.weight()))
             .sum()
     }
 
@@ -963,11 +1017,11 @@ mod tests {
 
         let mut unsigned = transactions.pop().unwrap();
         assert_eq!(unsigned.tx.input.len(), 1);
-        assert_eq!(unsigned.tx.output.len(), 2);
+        assert_eq!(unsigned.tx.output.len(), 3);
 
         // We need to zero out the withdrawal script since this value
         // changes depending on the user.
-        unsigned.tx.output[1].script_pubkey = ScriptBuf::new();
+        unsigned.tx.output[2].script_pubkey = ScriptBuf::new();
         testing::set_witness_data(&mut unsigned, keypair);
 
         println!("Solo withdrawal vsize: {}", unsigned.tx.vsize());
@@ -1021,9 +1075,10 @@ mod tests {
         assert!(tx_in.script_sig.is_empty());
     }
 
-    /// The first input and output are related to the signers' UTXO.
+    /// The first input and output are related to the signers' UTXO. The
+    /// second output is a data output.
     #[test]
-    fn the_first_input_and_output_is_signers() {
+    fn the_first_input_and_output_is_signers_second_output_data() {
         let requests = SbtcRequests {
             deposits: vec![create_deposit(123456, 0, 0)],
             withdrawals: vec![create_withdrawal(1000, 0, 0), create_withdrawal(2000, 0, 0)],
@@ -1056,8 +1111,10 @@ mod tests {
         assert_eq!(signers_utxo_input.previous_output.txid, old_outpoint.txid);
         assert_eq!(signers_utxo_input.previous_output.vout, old_outpoint.vout);
 
-        // We had two withdrawal requests so there should be 1 + 2 outputs
-        assert_eq!(unsigned_tx.tx.output.len(), 3);
+        // Tthere are always two outputs whenever there are requests to
+        // service and we had two withdrawal requests so there should be 4
+        // outputs.
+        assert_eq!(unsigned_tx.tx.output.len(), 4);
 
         // The signers' UTXO, the first one, contains the balance of all
         // deposits and withdrawals. It's also a P2TR script.
@@ -1068,8 +1125,10 @@ mod tests {
         );
         assert!(signers_utxo_output.script_pubkey.is_p2tr());
 
+        // The second output is an OP_RETURN output.
+        assert!(unsigned_tx.tx.output[1].script_pubkey.is_op_return());
         // All the other UTXOs are P2WPKH outputs.
-        unsigned_tx.tx.output.iter().skip(1).for_each(|output| {
+        unsigned_tx.tx.output.iter().skip(2).for_each(|output| {
             assert!(output.script_pubkey.is_p2wpkh());
         });
 
@@ -1109,10 +1168,10 @@ mod tests {
         let mut transactions = requests.construct_transactions().unwrap();
         assert_eq!(transactions.len(), 1);
 
-        // The transaction should have one output corresponding to the
-        // signers' UTXO
+        // The transaction should have two output corresponding to the
+        // signers' UTXO and the OP_RETURN output.
         let unsigned_tx = transactions.pop().unwrap();
-        assert_eq!(unsigned_tx.tx.output.len(), 1);
+        assert_eq!(unsigned_tx.tx.output.len(), 2);
 
         // The new amount should be the sum of the old amount plus the deposits.
         let new_amount: u64 = unsigned_tx
@@ -1153,7 +1212,7 @@ mod tests {
         assert_eq!(transactions.len(), 1);
 
         let unsigned_tx = transactions.pop().unwrap();
-        assert_eq!(unsigned_tx.tx.output.len(), 4);
+        assert_eq!(unsigned_tx.tx.output.len(), 5);
 
         let signer_utxo = unsigned_tx.tx.output.first().unwrap();
         assert_eq!(signer_utxo.value.to_sat(), 9500 - 1000 - 2000 - 3000);
@@ -1258,7 +1317,7 @@ mod tests {
         transactions.iter().for_each(|utx| {
             let num_inputs = utx.tx.input.len();
             let num_outputs = utx.tx.output.len();
-            assert_eq!(utx.requests.len() + 2, num_inputs + num_outputs);
+            assert_eq!(utx.requests.len() + 3, num_inputs + num_outputs);
 
             let num_deposits = utx.requests.iter().filter_map(|x| x.as_deposit()).count();
             assert_eq!(utx.tx.input.len(), num_deposits + 1);
@@ -1268,14 +1327,14 @@ mod tests {
                 .iter()
                 .filter_map(|x| x.as_withdrawal())
                 .count();
-            assert_eq!(utx.tx.output.len(), num_withdrawals + 1);
+            assert_eq!(utx.tx.output.len(), num_withdrawals + 2);
 
             // Check that each deposit is referenced exactly once
             // We ship the first one since that is the signers' UTXO
             for tx_in in utx.tx.input.iter().skip(1) {
                 assert!(input_txs.remove(&tx_in.previous_output.txid));
             }
-            for tx_out in utx.tx.output.iter().skip(1) {
+            for tx_out in utx.tx.output.iter().skip(2) {
                 assert!(output_scripts.remove(&tx_out.script_pubkey.to_hex_string()));
             }
         });
@@ -1285,11 +1344,12 @@ mod tests {
     }
 
     /// Check the following:
-    /// * The fees for each transaction is at least as large as the fee_rate
-    ///   in the signers' state.
-    /// * Each deposit and withdrawal request pays the same fee.
-    /// * The total fees are equal to the number of request times the fee per
-    ///   request amount.
+    /// * The fees for each transaction is at least as large as the
+    ///   fee_rate in the signers' state.
+    /// * Each deposit and withdrawal request pays a fee proportional to
+    ///   their weight in the transaction.
+    /// * The total fees are equal to the number of request times the fee
+    ///   per request amount.
     /// * Deposit requests pay fees too, but implicitly by the amounts
     ///   deducted from the signers.
     #[test]
@@ -1360,7 +1420,7 @@ mod tests {
             let request_vsize = UnsignedTransaction::request_weight(&utx.tx).to_vbytes_ceil();
 
             let reqs = utx.requests.iter().filter_map(RequestRef::as_withdrawal);
-            for (output, req) in utx.tx.output.iter().skip(1).zip(reqs) {
+            for (output, req) in utx.tx.output.iter().skip(2).zip(reqs) {
                 let expected_fee =
                     (output.weight().to_vbytes_ceil() * total_fees).div_ceil(request_vsize);
                 let fee = req.amount - output.value.to_sat();
@@ -1445,7 +1505,7 @@ mod tests {
             .tx
             .output
             .iter()
-            .skip(1)
+            .skip(2)
             .zip(deposit_requests)
             .map(|(tx_out, req)| req.amount - tx_out.value.to_sat())
             .sum();
@@ -1612,6 +1672,6 @@ mod tests {
 
         // The additional 1 is for the signers' UTXO
         assert_eq!(unsigned.tx.input.len(), 1 + good_deposit_count);
-        assert_eq!(unsigned.tx.output.len(), 1 + good_withdrawal_count);
+        assert_eq!(unsigned.tx.output.len(), 2 + good_withdrawal_count);
     }
 }
