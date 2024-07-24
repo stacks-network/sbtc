@@ -19,7 +19,6 @@ config.workspace = true
 once_cell.workspace = true
 openssl.workspace = true
 reqwest.workspace = true
-sbtc.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_dynamo.workspace = true
 serde_json.workspace = true

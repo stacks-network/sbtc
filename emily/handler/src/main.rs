@@ -9,12 +9,13 @@ mod api;
 mod common;
 mod context;
 mod database;
+mod logging;
 
 #[tokio::main]
 async fn main() {
-    sbtc::logging::setup_logging("info,emily-handler=debug", false);
+    crate::logging::setup_logging("info,emily-handler=debug", false);
 
-    // TODO(TBD): Handle config pickup in a way that will only fail for the relevant call.
+    // TODO(358): Handle config pickup in a way that will only fail for the relevant call.
     let emily_context: EmilyContext = EmilyContext::from_env()
         .await
         .unwrap_or_else(|e| panic!("{e}"));
