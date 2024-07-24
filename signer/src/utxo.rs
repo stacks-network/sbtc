@@ -232,7 +232,7 @@ impl SbtcRequests {
 ///    must pay a fee at least 500 satoshis higher than the sum of the
 ///    originals.
 ///
-/// Also noteworthy is that the fee rate of the RBF transaction
+/// Also, noteworthy is that the fee rate of the RBF transaction
 /// must also be greater than the fee rate of the old transaction.
 ///
 /// ## References
@@ -708,7 +708,7 @@ impl<'a> UnsignedTransaction<'a> {
         data[0..2].copy_from_slice(&state.magic_bytes);
         // Yeah, this is one byte.
         data[2..3].copy_from_slice(&[OP_RETURN_OP]);
-        // The num_deposits variable is a u16, so 2 bytes.
+        // The num_deposits variable is an u16, so 2 bytes.
         data[3..5].copy_from_slice(&num_deposits.to_be_bytes());
         // The bitmap is 16 bytes so this fits exactly.
         data[5..].copy_from_slice(&bitmap.into_inner());
@@ -1115,8 +1115,8 @@ mod tests {
         assert_eq!(signers_utxo_input.previous_output.txid, old_outpoint.txid);
         assert_eq!(signers_utxo_input.previous_output.vout, old_outpoint.vout);
 
-        // Tthere are always two outputs whenever there are requests to
-        // service and we had two withdrawal requests so there should be 4
+        // There are always two outputs whenever there are requests to
+        // service, and we had two withdrawal requests so there should be 4
         // outputs.
         assert_eq!(unsigned_tx.tx.output.len(), 4);
 
