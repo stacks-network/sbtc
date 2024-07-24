@@ -1579,7 +1579,6 @@ dependencies = [
  "once_cell",
  "openssl",
  "reqwest 0.11.27",
- "sbtc",
  "serde 1.0.203",
  "serde_dynamo",
  "serde_json",
