@@ -49,7 +49,6 @@ serde_dynamo = {version = "4.2", features = ["aws-sdk-dynamodb+1"] }
 serde_json = "1.0"
 sha2 = "0.10"
 sqlx = { version = "0.7", default-features = false, features = [ "postgres", "time", "runtime-tokio", "tls-rustls", "macros", "migrate", "json" ] }
-stackslib = { git = "https://github.com/Trust-Machines/stacks-blockchain/", branch = "develop-upstream" }
 strum = { version = "0.26", features = ["derive"] }
 thiserror = "1.0"
 time = "0.3.36"
@@ -62,6 +61,23 @@ tracing-attributes = "0.1"
 url = "2.5"
 warp_lambda = "0.1.4"
 wsts = "9.1.0"
+
+[workspace.dependencies.clarity]
+git = "https://github.com/stacks-network/stacks-core/"
+rev = "202b45cc65b88a15d31a33370e47850cf98d7c21"
+default-features = false
+features = ["developer-mode"]
+
+[workspace.dependencies.stacks-common]
+git = "https://github.com/stacks-network/stacks-core/"
+rev = "202b45cc65b88a15d31a33370e47850cf98d7c21"
+default-features = false
+features = ["developer-mode"]
+
+[workspace.dependencies.stackslib]
+git = "https://github.com/Trust-Machines/stacks-blockchain/"
+branch = "develop-upstream"
+
 
 [workspace.dependencies.tracing-subscriber]
 version = "0.3"

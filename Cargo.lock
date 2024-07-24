@@ -1121,7 +1121,29 @@ dependencies = [
  "serde_json",
  "serde_stacker",
  "slog",
- "stacks-common",
+ "stacks-common 0.0.1 (git+https://github.com/Trust-Machines/stacks-blockchain/?branch=develop-upstream)",
+ "time 0.2.27",
+]
+
+[[package]]
+name = "clarity"
+version = "0.0.1"
+source = "git+https://github.com/stacks-network/stacks-core/?rev=202b45cc65b88a15d31a33370e47850cf98d7c21#202b45cc65b88a15d31a33370e47850cf98d7c21"
+dependencies = [
+ "hashbrown 0.14.5",
+ "integer-sqrt",
+ "lazy_static",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "regex",
+ "rstest",
+ "rstest_reuse",
+ "serde 1.0.203",
+ "serde_derive",
+ "serde_json",
+ "serde_stacker",
+ "slog",
+ "stacks-common 0.0.1 (git+https://github.com/stacks-network/stacks-core/?rev=202b45cc65b88a15d31a33370e47850cf98d7c21)",
  "time 0.2.27",
 ]
 
@@ -2717,13 +2739,13 @@ name = "libstackerdb"
 version = "0.0.1"
 source = "git+https://github.com/Trust-Machines/stacks-blockchain/?branch=develop-upstream#6ca747f0d2bd1028489ece5134a9e84c03ac82e9"
 dependencies = [
- "clarity",
+ "clarity 0.0.1 (git+https://github.com/Trust-Machines/stacks-blockchain/?branch=develop-upstream)",
  "secp256k1 0.24.3",
  "serde 1.0.203",
  "serde_derive",
  "serde_stacker",
  "sha2",
- "stacks-common",
+ "stacks-common 0.0.1 (git+https://github.com/Trust-Machines/stacks-blockchain/?branch=develop-upstream)",
 ]
 
 [[package]]
@@ -3503,9 +3525,9 @@ name = "pox-locking"
 version = "2.4.0"
 source = "git+https://github.com/Trust-Machines/stacks-blockchain/?branch=develop-upstream#6ca747f0d2bd1028489ece5134a9e84c03ac82e9"
 dependencies = [
- "clarity",
+ "clarity 0.0.1 (git+https://github.com/Trust-Machines/stacks-blockchain/?branch=develop-upstream)",
  "slog",
- "stacks-common",
+ "stacks-common 0.0.1 (git+https://github.com/Trust-Machines/stacks-blockchain/?branch=develop-upstream)",
 ]
 
 [[package]]
@@ -4214,10 +4236,10 @@ name = "sbtc"
 version = "0.1.0"
 dependencies = [
  "bitcoin 0.32.0",
- "clarity",
+ "clarity 0.0.1 (git+https://github.com/stacks-network/stacks-core/?rev=202b45cc65b88a15d31a33370e47850cf98d7c21)",
  "rand 0.8.5",
  "secp256k1 0.29.0",
- "stacks-common",
+ "stacks-common 0.0.1 (git+https://github.com/stacks-network/stacks-core/?rev=202b45cc65b88a15d31a33370e47850cf98d7c21)",
  "test-case",
  "thiserror",
  "tracing",
@@ -4989,12 +5011,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "stacks-common"
+version = "0.0.1"
+source = "git+https://github.com/stacks-network/stacks-core/?rev=202b45cc65b88a15d31a33370e47850cf98d7c21#202b45cc65b88a15d31a33370e47850cf98d7c21"
+dependencies = [
+ "chrono",
+ "curve25519-dalek 2.0.0",
+ "ed25519-dalek",
+ "hashbrown 0.14.5",
+ "lazy_static",
+ "libc",
+ "nix",
+ "percent-encoding",
+ "rand 0.8.5",
+ "ripemd",
+ "secp256k1 0.24.3",
+ "serde 1.0.203",
+ "serde_derive",
+ "serde_json",
+ "serde_stacker",
+ "sha2",
+ "sha3",
+ "slog",
+ "slog-term",
+ "time 0.2.27",
+ "winapi 0.3.9",
+ "wsts",
+]
+
+[[package]]
 name = "stackslib"
 version = "0.0.1"
 source = "git+https://github.com/Trust-Machines/stacks-blockchain/?branch=develop-upstream#6ca747f0d2bd1028489ece5134a9e84c03ac82e9"
 dependencies = [
  "chrono",
- "clarity",
+ "clarity 0.0.1 (git+https://github.com/Trust-Machines/stacks-blockchain/?branch=develop-upstream)",
  "curve25519-dalek 2.0.0",
  "ed25519-dalek",
  "hashbrown 0.14.5",
@@ -5022,7 +5073,7 @@ dependencies = [
  "siphasher",
  "slog",
  "slog-term",
- "stacks-common",
+ "stacks-common 0.0.1 (git+https://github.com/Trust-Machines/stacks-blockchain/?branch=develop-upstream)",
  "tikv-jemallocator",
  "time 0.2.27",
  "url",
