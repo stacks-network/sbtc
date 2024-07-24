@@ -1225,14 +1225,21 @@ mod tests {
         assert_eq!(transactions.len(), 1);
 
         let unsigned_tx = transactions.pop().unwrap();
+        // We have one input for the signers' UTXO and another input for
+        // the deposit.
         assert_eq!(unsigned_tx.tx.input.len(), 2);
+        // We have one output for the signers' UTXO and another for the
+        // OP_RETURN output, and two more for the withdrawals.
         assert_eq!(unsigned_tx.tx.output.len(), 4);
 
         let bitmap_data = match unsigned_tx.tx.output[1].script_pubkey.as_bytes() {
+            // The data layout is detailed in the documentation for the
+            // UnsignedTransaction::new_op_return_output function.
             [OP_RETURN, OP_PUSHBYTES_21, b'T', b'3', OP_RETURN_OP, 0, 1, data @ ..] => data,
             _ => panic!("Invalid OP_RETURN FORMAT"),
         };
-        // And this should start like this
+        // This is the aggregate bitmap for the votes, so it should start
+        // like this:
         // 1 1 1 1 1 1 0 0 0 0
         let bitmap = <[u8; 16]>::try_from(bitmap_data).unwrap();
         let bitmap = BitArray::<[u8; 16]>::try_from(bitmap).unwrap();
