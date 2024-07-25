@@ -328,6 +328,9 @@ pub fn transaction_with_rbf(
             utx.requests
                 .iter()
                 .filter_map(RequestRef::as_withdrawal)
+                // We only care about the outputs that coorrespond to
+                // withdrawals. The first two outputs are the signers' UTXO
+                // and the OP_RETURN output, so we skip them first.
                 .zip(utx.tx.output.iter().skip(2))
                 .map(|(req, tx_out)| (req.address.clone(), req.amount - tx_out.value.to_sat()))
         })

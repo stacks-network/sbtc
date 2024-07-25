@@ -857,7 +857,7 @@ impl<'a> UnsignedTransaction<'a> {
     fn request_weight(tx: &Transaction) -> Weight {
         // We skip the first input and output because those are always the
         // signers' UTXO input and output. We skip the second output
-        // because that is always the data output.
+        // because that is always the OP_RETURN data output.
         tx.input
             .iter()
             .skip(1)
@@ -1241,8 +1241,8 @@ mod tests {
         // This is the aggregate bitmap for the votes, so it should start
         // like this:
         // 1 1 1 1 1 1 0 0 0 0
-        let bitmap = <[u8; 16]>::try_from(bitmap_data).unwrap();
-        let bitmap = BitArray::<[u8; 16]>::try_from(bitmap).unwrap();
+        let bitmap_data = <[u8; 16]>::try_from(bitmap_data).unwrap();
+        let bitmap = BitArray::<[u8; 16]>::new(bitmap_data);
 
         assert_eq!(bitmap.count_ones(), 6);
         // And the first six bits are all ones followed by all zeros.
@@ -1467,6 +1467,8 @@ mod tests {
             for tx_in in utx.tx.input.iter().skip(1) {
                 assert!(input_txs.remove(&tx_in.previous_output.txid));
             }
+            // We skip the first two outputs because they are the signers'
+            // new UTXO and the OP_RETURN output.
             for tx_out in utx.tx.output.iter().skip(2) {
                 assert!(output_scripts.remove(&tx_out.script_pubkey.to_hex_string()));
             }
