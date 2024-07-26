@@ -169,8 +169,9 @@ pub fn transaction_with_rbf(
     let deposits: Vec<DepositRequest> =
         std::iter::repeat_with(|| generate_depositor(rpc, faucet, &signer))
             .take(ctx.initial_deposits.max(ctx.rbf_deposits))
-            .map(|mut req| {
-                req.signer_bitmap.push(false);
+            .enumerate()
+            .map(|(index, mut req)| {
+                req.signer_bitmap.set(index, true);
                 req
             })
             .collect();
@@ -178,9 +179,10 @@ pub fn transaction_with_rbf(
     let mut withdrawal_recipients: Vec<Recipient> = Vec::new();
     let withdrawals: Vec<WithdrawalRequest> = std::iter::repeat_with(regtest::generate_withdrawal)
         .take(ctx.initial_withdrawals.max(ctx.rbf_withdrawals))
-        .map(|(mut req, recipient)| {
+        .enumerate()
+        .map(|(index, (mut req, recipient))| {
             withdrawal_recipients.push(recipient);
-            req.signer_bitmap.push(false);
+            req.signer_bitmap.set(index, true);
             req
         })
         .collect();
@@ -217,6 +219,9 @@ pub fn transaction_with_rbf(
             fee_rate: ctx.initial_fee_rate,
             public_key: signers_public_key,
             last_fees: None,
+            // The value here isn't important, but it matches what happens
+            // in Nakamoto testnet.
+            magic_bytes: [b'T', b'3'],
         },
         accept_threshold: failure_threshold,
         num_signers: 2 * failure_threshold,
@@ -323,7 +328,10 @@ pub fn transaction_with_rbf(
             utx.requests
                 .iter()
                 .filter_map(RequestRef::as_withdrawal)
-                .zip(utx.tx.output.iter().skip(1))
+                // We only care about the outputs that coorrespond to
+                // withdrawals. The first two outputs are the signers' UTXO
+                // and the OP_RETURN output, so we skip them first.
+                .zip(utx.tx.output.iter().skip(2))
                 .map(|(req, tx_out)| (req.address.clone(), req.amount - tx_out.value.to_sat()))
         })
         .collect();

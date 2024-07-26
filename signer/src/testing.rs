@@ -8,10 +8,8 @@ pub mod transaction_signer;
 pub mod wallet;
 
 use crate::utxo::UnsignedTransaction;
-use bitcoin::hashes::Hash;
 use bitcoin::key::TapTweak;
 use bitcoin::opcodes;
-use bitcoin::PubkeyHash;
 use bitcoin::ScriptBuf;
 use bitcoin::TapSighashType;
 use bitcoin::Witness;
@@ -55,15 +53,13 @@ pub fn set_witness_data(unsigned: &mut UnsignedTransaction, keypair: secp256k1::
 pub fn peg_in_deposit_script(signers_public_key: &XOnlyPublicKey) -> ScriptBuf {
     ScriptBuf::builder()
         // Just some dummy data representing the stacks address the user
-        // wants the sBTC deposited to. According to https://docs.stacks.co/stacks-101/accounts,
-        // stacks addresses are c32check encoded RIPEMD-160 hashes of the
-        // SHA256 of the public key. This means they are 25 bytes long
-        .push_slice([0u8; 25])
+        // wants the sBTC deposited to and their max fee. We encoded
+        // standard stacks addresses as 22 bytes, following the principal
+        // encoding detailed in SIP-05, and the max fee is an 8 byte
+        // unsigned integer. So the total is a 30 byte long data slice.
+        .push_slice([0u8; 30])
         .push_opcode(opcodes::all::OP_DROP)
-        .push_opcode(opcodes::all::OP_DUP)
-        .push_opcode(opcodes::all::OP_HASH160)
-        .push_slice(PubkeyHash::hash(&signers_public_key.serialize()))
-        .push_opcode(opcodes::all::OP_EQUALVERIFY)
+        .push_slice(signers_public_key.serialize())
         .push_opcode(opcodes::all::OP_CHECKSIG)
         .into_script()
 }

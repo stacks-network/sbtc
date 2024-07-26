@@ -14,6 +14,7 @@ use bitcoin::TxOut;
 use bitcoin::Witness;
 use bitcoin::XOnlyPublicKey;
 use bitcoincore_rpc::RpcApi;
+use bitvec::array::BitArray;
 use secp256k1::SECP256K1;
 use signer::utxo::DepositRequest;
 use signer::utxo::SbtcRequests;
@@ -73,7 +74,7 @@ where
     let req = DepositRequest {
         outpoint: OutPoint::new(deposit_tx.compute_txid(), 0),
         max_fee: amount,
-        signer_bitmap: Vec::new(),
+        signer_bitmap: BitArray::ZERO,
         amount,
         deposit_script: deposit_script.clone(),
         reclaim_script: reclaim_script.clone(),
@@ -178,6 +179,7 @@ fn deposits_add_to_controlled_amounts() {
             fee_rate: 10.0,
             public_key: signers_public_key,
             last_fees: None,
+            magic_bytes: [b'T', b'3'],
         },
         accept_threshold: 4,
         num_signers: 7,
@@ -241,6 +243,7 @@ fn withdrawals_reduce_to_signers_amounts() {
             fee_rate: FEE_RATE,
             public_key: signers_public_key,
             last_fees: None,
+            magic_bytes: [b'T', b'3'],
         },
         accept_threshold: 4,
         num_signers: 7,

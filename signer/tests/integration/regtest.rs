@@ -32,6 +32,7 @@ use bitcoincore_rpc::Auth;
 use bitcoincore_rpc::Client;
 use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi;
+use bitvec::array::BitArray;
 use rand::distributions::Uniform;
 use rand::Rng;
 use secp256k1::SECP256K1;
@@ -378,7 +379,7 @@ pub fn generate_withdrawal() -> (WithdrawalRequest, Recipient) {
         amount: rand::rngs::OsRng.sample(Uniform::new(100_000, 250_000)),
         max_fee: 250_000,
         address: recipient.address.clone(),
-        signer_bitmap: Vec::new(),
+        signer_bitmap: BitArray::ZERO,
     };
 
     (req, recipient)

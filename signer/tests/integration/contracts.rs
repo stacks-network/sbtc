@@ -170,12 +170,12 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     request_id: 0,
     outpoint: bitcoin::OutPoint::null(),
     tx_fee: 3500,
-    signer_bitmap: BitArray::new([0; 2]),
+    signer_bitmap: BitArray::ZERO,
     deployer: testing::wallet::generate_wallet().0.address(),
 }); "accept-withdrawal")]
 #[test_case(ContractCall(RejectWithdrawalV1 {
     request_id: 0,
-    signer_bitmap: BitArray::new([0; 2]),
+    signer_bitmap: BitArray::ZERO,
     deployer: testing::wallet::generate_wallet().0.address(),
 }); "reject-withdrawal")]
 #[test_case(ContractCall(RotateKeysV1::new(
