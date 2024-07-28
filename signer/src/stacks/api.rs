@@ -835,7 +835,6 @@ mod tests {
         let expected: RPCFeeEstimateResponse = serde_json::from_str(raw_json_response).unwrap();
 
         assert_eq!(resp, expected);
-        first_mock.assert();
 
         // Now lets check that the interface function returns the high
         // priority fee.
@@ -843,7 +842,9 @@ mod tests {
             .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD)
             .await
             .unwrap();
+
         assert_eq!(fee, 25505);
+        first_mock.assert();
     }
 
     #[tokio::test]
