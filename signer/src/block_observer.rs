@@ -430,6 +430,12 @@ mod tests {
                 .map(|(_, block, _)| block.header.chain_length)
                 .unwrap_or_default()
         }
+        async fn estimate_fees<T>(&self, _: &T) -> Result<u64, error::Error>
+        where
+            T: crate::stacks::contracts::AsTxPayload,
+        {
+            Ok(500_000)
+        }
     }
 
     impl EmilyInteract for () {

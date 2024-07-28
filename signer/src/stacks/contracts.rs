@@ -75,6 +75,18 @@ pub trait AsTxPayload {
     fn post_conditions(&self) -> StacksTxPostConditions;
 }
 
+impl AsTxPayload for TransactionPayload {
+    fn tx_payload(&self) -> TransactionPayload {
+        self.clone()
+    }
+    fn post_conditions(&self) -> StacksTxPostConditions {
+        StacksTxPostConditions {
+            post_condition_mode: TransactionPostConditionMode::Allow,
+            post_conditions: Vec::new(),
+        }
+    }
+}
+
 /// A trait to ease construction of a StacksTransaction making sBTC related
 /// contract calls.
 pub trait AsContractCall {
