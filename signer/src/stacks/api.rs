@@ -135,7 +135,7 @@ pub struct TxRejection {
 ///
 /// The stacks node returns three types of responses, either:
 /// 1. A 200 status hex encoded txid in the response body (on acceptance)
-/// 2. A 400 status with s JSON object body (on rejection),
+/// 2. A 400 status with a JSON object body (on rejection),
 /// 3. A 400/500 status string message about some other error (such as
 ///    using an unsupported address mode).
 ///
@@ -232,6 +232,8 @@ impl StacksClient {
             .map_err(Error::StacksNodeRequest)?;
 
         response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
             .json::<AccountEntryResponse>()
             .await
             .map_err(Error::UnexpectedStacksResponse)
@@ -296,7 +298,10 @@ impl StacksClient {
             .send()
             .await
             .map_err(Error::StacksNodeRequest)?;
+
         let resp = response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
             .bytes()
             .await
             .map_err(Error::UnexpectedStacksResponse)?;
@@ -380,6 +385,8 @@ impl StacksClient {
         // in [`StacksHttpResponse::decode_nakamoto_tenure`], which just
         // keeps decoding until there are no more bytes.
         let resp = response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
             .bytes()
             .await
             .map_err(Error::UnexpectedStacksResponse)?;
@@ -419,6 +426,8 @@ impl StacksClient {
             .map_err(Error::StacksNodeRequest)?;
 
         response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
             .json()
             .await
             .map_err(Error::UnexpectedStacksResponse)
