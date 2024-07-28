@@ -70,13 +70,10 @@ pub trait StacksInteract {
     /// This function is analogous to the GET /v3/tenures/info stacks node
     /// endpoint for retrieving tenure information.
     fn get_tenure_info(&self) -> impl Future<Output = Result<RPCGetTenureInfo, Error>> + Send;
-    /// Estimate the priority transaction fees for the input contract call
+    /// Estimate the priority transaction fees for the input transaction
     /// for the current state of the mempool. The result should be and
     /// estimated total fee in microSTX.
-    fn estimate_fees<T>(
-        &self,
-        contract_call: &T,
-    ) -> impl Future<Output = Result<u64, Error>> + Send
+    fn estimate_fees<T>(&self, payload: &T) -> impl Future<Output = Result<u64, Error>> + Send
     where
         T: AsTxPayload + Send + Sync;
     /// Get the start height of the first EPOCH 3.0 block on the Stacks
