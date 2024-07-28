@@ -4,8 +4,10 @@ use std::sync::OnceLock;
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::clarity::vm::types::PrincipalData;
+use blockstack_lib::types::chainstate::StacksAddress;
 use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Keypair;
+use signer::stacks::api::StacksInteract;
 use signer::stacks::contracts::AcceptWithdrawalV1;
 use signer::stacks::contracts::AsContractCall;
 use signer::stacks::contracts::ContractCall;
@@ -112,18 +114,23 @@ impl SignerStxState {
     }
 }
 
+/// Create or return a long-lived stacks client.
+fn stacks_client() -> &'static StacksClient {
+    static STACKS_CLIENT: OnceLock<StacksClient> = OnceLock::new();
+    STACKS_CLIENT.get_or_init(|| {
+        let settings = StacksSettings::new_from_config().unwrap();
+        StacksClient::new(settings)
+    })
+}
+
 /// Deploy all sBTC smart contracts to the stacks node
 pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     static SBTC_DEPLOYMENT: OnceCell<()> = OnceCell::const_new();
-    static STACKS_CLIENT: OnceLock<StacksClient> = OnceLock::new();
     static SIGNER_STATE: OnceCell<SignerStxState> = OnceCell::const_new();
 
     let (signer_wallet, key_pairs) = testing::wallet::generate_wallet();
 
-    let client = STACKS_CLIENT.get_or_init(|| {
-        let settings = StacksSettings::new_from_config().unwrap();
-        StacksClient::new(settings)
-    });
+    let client = stacks_client();
 
     let signer = SIGNER_STATE
         .get_or_init(|| async {
@@ -228,4 +235,28 @@ async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: Contr
         .unwrap();
 
     assert!(txids.contains(&tx.txid()));
+}
+
+#[ignore = "This is an integration test that requires a stacks-node to work"]
+#[tokio::test]
+async fn estimate_tx_fees() {
+    sbtc::logging::setup_logging("info", false);
+    let client = stacks_client();
+
+    let contract = SbtcRegistryContract;
+    let payload = ContractDeploy(contract);
+
+    let _ = client.get_fee_estimate(&payload).await.unwrap();
+
+    let contract_call = CompleteDepositV1 {
+        outpoint: bitcoin::OutPoint::null(),
+        amount: 123654,
+        recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
+        deployer: StacksAddress::burn_address(false),
+    };
+    let payload = ContractCall(contract_call);
+
+    // This likely isn't going to work
+    let fee = client.estimate_fees(&payload).await.unwrap();
+    more_asserts::assert_gt!(fee, 0);
 }

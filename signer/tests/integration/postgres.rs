@@ -95,6 +95,7 @@ impl AsContractCall for InitiateWithdrawalRequest {
         Vec::new()
     }
 }
+
 /// Test that the write_stacks_blocks function does what it is supposed to
 /// do, which is store all stacks blocks and store the transactions that we
 /// care about, which, naturally, are sBTC related transactions.
