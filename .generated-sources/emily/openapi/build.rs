@@ -84,7 +84,6 @@ use utoipa::OpenApi;
 struct ApiDoc;
 
 fn main() {
-
     // Ensure that we rerun if the API changes or the build script changes.
     println!("cargo:rerun-if-changed=../../../emily/handler/api");
     println!("cargo:rerun-if-changed=build.rs");
@@ -96,12 +95,17 @@ fn main() {
     // alteration.
     //
     // Add AWS extension to openapi specification so AWS CDK can attach the appropriate lambda endpoint.
-    api_doc.paths.paths.iter_mut()
+    api_doc
+        .paths
+        .paths
+        .iter_mut()
         .flat_map(|(_, path_item)| path_item.operations.iter_mut())
-        .for_each(|(_, operation)|
-            operation.extensions
+        .for_each(|(_, operation)| {
+            operation
+                .extensions
                 .get_or_insert(Default::default())
-                .extend(new_extensions.clone()));
+                .extend(new_extensions.clone())
+        });
 
     // Generate string for api doc.
     let spec_json = api_doc
@@ -113,7 +117,6 @@ fn main() {
         File::create("emily-openapi-spec.json").expect("Failed to create OpenAPI spec file");
     file.write_all(spec_json.as_bytes())
         .expect("Failed to write OpenAPI spec file");
-
 }
 
 /// Creates the map of the extensions to be included in each operation.
