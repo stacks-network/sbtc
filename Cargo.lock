@@ -925,7 +925,6 @@ version = "0.0.1"
 dependencies = [
  "config 0.11.0",
  "mockito 0.28.0",
- "once_cell",
  "reqwest 0.11.27",
  "serde 1.0.203",
  "serde_json",
@@ -1576,7 +1575,6 @@ dependencies = [
  "fake",
  "mockall",
  "mockito 0.28.0",
- "once_cell",
  "openssl",
  "reqwest 0.11.27",
  "serde 1.0.203",
@@ -4624,7 +4622,6 @@ dependencies = [
  "hashbrown 0.14.5",
  "mockito 1.4.0",
  "more-asserts",
- "once_cell",
  "p256k1",
  "prost",
  "rand 0.8.5",

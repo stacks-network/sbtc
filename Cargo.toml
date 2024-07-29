@@ -39,7 +39,6 @@ http = "1.1.0"
 lambda_runtime = "0.11.1"
 # This is necessary to compile the AWS Lambda as a lambda.
 openssl = { version = "0.10", features = ["vendored"] }
-once_cell = "1.8.0"
 p256k1 = "7.1.0"
 prost = "0.12.5"
 rand = "0.8"

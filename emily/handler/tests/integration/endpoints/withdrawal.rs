@@ -7,10 +7,10 @@ use emily_handler::api::models::{
         Withdrawal, WithdrawalInfo,
     },
 };
-use once_cell::sync::Lazy;
 use reqwest::Client;
 use serde_json::json;
 use serial_test::serial;
+use std::sync::LazyLock;
 use tokio;
 
 /// Contains the data about a withdrawal that will be used for testing. There are
@@ -23,7 +23,7 @@ struct TestWithdrawalData {
 }
 
 /// Test data for withdrawals.
-static TEST_WITHDRAWAL_DATA: Lazy<Vec<TestWithdrawalData>> = Lazy::new(|| {
+static TEST_WITHDRAWAL_DATA: LazyLock<Vec<TestWithdrawalData>> = LazyLock::new(|| {
     vec![
         TestWithdrawalData {
             request_id: 1,
