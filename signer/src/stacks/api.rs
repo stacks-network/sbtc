@@ -851,7 +851,7 @@ mod tests {
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(raw_json_response)
-            .expect(2)
+            .expect(4)
             .create();
 
         let settings = StacksSettings {
@@ -870,14 +870,26 @@ mod tests {
 
         assert_eq!(resp, expected);
 
-        // Now lets check that the interface function returns the high
-        // priority fee.
+        // Now lets check that the interface function returns the requested
+        // priority fees.
         let fee = client
-            .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD)
+            .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::Low)
             .await
             .unwrap();
+        assert_eq!(fee, 7679);
 
+        let fee = client
+            .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::Medium)
+            .await
+            .unwrap();
+        assert_eq!(fee, 7680);
+
+        let fee = client
+            .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::High)
+            .await
+            .unwrap();
         assert_eq!(fee, 25505);
+
         first_mock.assert();
     }
 

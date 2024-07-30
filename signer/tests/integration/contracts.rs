@@ -18,6 +18,7 @@ use tokio::sync::OnceCell;
 
 use signer::config::StacksSettings;
 use signer::stacks;
+use signer::stacks::api::FeePriority;
 use signer::stacks::api::RejectionReason;
 use signer::stacks::api::StacksClient;
 use signer::stacks::api::SubmitTxResponse;
@@ -256,7 +257,11 @@ async fn estimate_tx_fees() {
     };
     let payload = ContractCall(contract_call);
 
-    // This likely isn't going to work
-    let fee = client.estimate_fees(&payload).await.unwrap();
+    // This should work, but will likely be an estimate for a STX transfer
+    // transaction.
+    let fee = client
+        .estimate_fees(&payload, FeePriority::Medium)
+        .await
+        .unwrap();
     more_asserts::assert_gt!(fee, 0);
 }
