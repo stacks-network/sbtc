@@ -18,6 +18,8 @@ use clarity::vm::types::PrincipalData;
 use secp256k1::SECP256K1;
 use stacks_common::types::chainstate::STACKS_ADDRESS_ENCODED_SIZE;
 
+use crate::error::Error;
+
 /// This is the length of the fixed portion of the deposit script, which
 /// is:
 /// ```text
@@ -55,50 +57,6 @@ const OP_PUSHNUM_1: u8 = opcodes::OP_PUSHNUM_1.to_u8();
 const OP_PUSHNUM_16: u8 = opcodes::OP_PUSHNUM_16.to_u8();
 /// Represents the number -1.
 const OP_PUSHNUM_NEG1: u8 = opcodes::OP_PUSHNUM_NEG1.to_u8();
-
-/// Errors
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    /// The deposit script was invalid
-    #[error("invalid deposit script")]
-    InvalidDepositScript,
-    /// The lock time included in the reclaim script was invalid.
-    #[error("the lock time included in the reclaim script was invalid: {0}")]
-    InvalidReclaimScriptLockTime(i64),
-    /// The reclaim script was invalid.
-    #[error("the reclaim script format was invalid")]
-    InvalidReclaimScript,
-    /// The reclaim script lock time was invalid
-    #[error("reclaim script lock time was either too large or non-minimal: {0}")]
-    ScriptNum(#[source] bitcoin::script::Error),
-    /// The X-only public key was invalid
-    #[error("the x-only public key in the script was invalid: {0}")]
-    InvalidXOnlyPublicKey(#[source] secp256k1::Error),
-    /// Could not parse the Stacks principal address.
-    #[error("could not parse the stacks principal address: {0}")]
-    ParseStacksAddress(#[source] stacks_common::codec::Error),
-    /// Failed to parse the hex as a bitcoin::Transaction.
-    #[error("could not parse the BTC transaction hex: {0}")]
-    DecodeFromHex(#[source] bitcoin::consensus::encode::FromHexError),
-    /// Failed to extract the outpoint from the bitcoin::Transaction.
-    #[error("could not get outpoint {1} from BTC transaction: {0}")]
-    OutpointIndex(
-        #[source] bitcoin::blockdata::transaction::OutputsIndexError,
-        OutPoint,
-    ),
-    /// The ScriptPubKey of the UTXO did not match what was expected from
-    /// the given deposit script and reclaim script.
-    #[error("mismatch in expected and actual ScriptPubKeys. outpoint: {0}")]
-    UtxoScriptPubKeyMismatch(OutPoint),
-    /// Failed to parse the hex as a bitcoin::Transaction.
-    #[error("could not parse the bitcoin transaction hex")]
-    TxidMismatch {
-        /// This is the transaction ID of the actual transaction
-        from_tx: Txid,
-        /// This is the transaction ID of from the request
-        from_request: Txid,
-    },
-}
 
 /// All the info required to verify the validity of a deposit
 /// transaction. This info is sent by the user to the Emily API

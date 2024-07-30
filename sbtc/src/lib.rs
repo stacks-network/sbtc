@@ -8,6 +8,7 @@ use std::sync::OnceLock;
 use bitcoin::XOnlyPublicKey;
 
 pub mod deposits;
+pub mod error;
 pub mod logging;
 
 /// The x-coordinate public key with no known discrete logarithm.
