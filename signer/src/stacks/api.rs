@@ -559,6 +559,7 @@ impl StacksInteract for StacksClient {
             .estimations
             .iter()
             .map(|estimate| estimate.fee)
+            // TODO(366): have priority be configurable.
             .max()
             .unwrap_or(DEFAULT_TX_FEE);
 
