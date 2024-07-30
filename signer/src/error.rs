@@ -91,8 +91,8 @@ pub enum Error {
     StacksPublicKey(&'static str),
 
     /// Could not make a successful request to the stacks API.
-    #[error("failed to make a request to the stacks API: {0}")]
-    StacksApiRequest(#[source] reqwest::Error),
+    #[error("received a non success status code response from a stacks node: {0}")]
+    StacksNodeResponse(#[source] reqwest::Error),
 
     /// Could not make a successful request to the Stacks node.
     #[error("failed to make a request to the stacks Node: {0}")]

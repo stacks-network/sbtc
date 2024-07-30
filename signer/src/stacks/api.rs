@@ -7,11 +7,18 @@ use std::time::Duration;
 use blockstack_lib::burnchains::Txid;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
+use blockstack_lib::chainstate::stacks::TokenTransferMemo;
+use blockstack_lib::chainstate::stacks::TransactionPayload;
+use blockstack_lib::clarity::vm::types::PrincipalData;
+use blockstack_lib::clarity::vm::types::StandardPrincipalData;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::net::api::getaccount::AccountEntryResponse;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
+use blockstack_lib::net::api::postfeerate::FeeRateEstimateRequestBody;
+use blockstack_lib::net::api::postfeerate::RPCFeeEstimateResponse;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::types::chainstate::StacksBlockId;
+use futures::TryFutureExt;
 use reqwest::header::CONTENT_LENGTH;
 use reqwest::header::CONTENT_TYPE;
 
@@ -19,7 +26,23 @@ use crate::config::StacksSettings;
 use crate::error::Error;
 use crate::storage::DbRead;
 
+use super::contracts::AsTxPayload;
+
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The default fee in microSTX for a stacks transaction if the stacks node
+/// does not return any fee estimations for the transaction. This should
+/// never happen, since it's hard coded to return three estimates in
+/// stacks-core.
+const DEFAULT_TX_FEE: u64 = 1_000_000;
+
+/// This is a dummy STX transfer payload used only for estimating STX
+/// transfer costs.
+const DUMMY_STX_TRANSFER_PAYLOAD: TransactionPayload = TransactionPayload::TokenTransfer(
+    PrincipalData::Standard(StandardPrincipalData(0, [0; 20])),
+    0,
+    TokenTransferMemo([0; 34]),
+);
 
 /// A trait detailing the interface with the Stacks API and Stacks Nodes.
 pub trait StacksInteract {
@@ -47,6 +70,12 @@ pub trait StacksInteract {
     /// This function is analogous to the GET /v3/tenures/info stacks node
     /// endpoint for retrieving tenure information.
     fn get_tenure_info(&self) -> impl Future<Output = Result<RPCGetTenureInfo, Error>> + Send;
+    /// Estimate the priority transaction fees for the input transaction
+    /// for the current state of the mempool. The result should be and
+    /// estimated total fee in microSTX.
+    fn estimate_fees<T>(&self, payload: &T) -> impl Future<Output = Result<u64, Error>> + Send
+    where
+        T: AsTxPayload + Send + Sync;
     /// Get the start height of the first EPOCH 3.0 block on the Stacks
     /// blockchain.
     fn nakamoto_start_height(&self) -> u64;
@@ -135,7 +164,7 @@ pub struct TxRejection {
 ///
 /// The stacks node returns three types of responses, either:
 /// 1. A 200 status hex encoded txid in the response body (on acceptance)
-/// 2. A 400 status with s JSON object body (on rejection),
+/// 2. A 400 status with a JSON object body (on rejection),
 /// 3. A 400/500 status string message about some other error (such as
 ///    using an unsupported address mode).
 ///
@@ -232,6 +261,8 @@ impl StacksClient {
             .map_err(Error::StacksNodeRequest)?;
 
         response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
             .json::<AccountEntryResponse>()
             .await
             .map_err(Error::UnexpectedStacksResponse)
@@ -272,6 +303,57 @@ impl StacksClient {
             .map_err(Error::UnexpectedStacksResponse)
     }
 
+    /// Estimate the current mempool transaction fees.
+    ///
+    /// This is done by making a POST /v2/fees/transaction request to a
+    /// Stacks node. The response provides 3 estimates by default, but
+    /// sometimes the stacks node cannot estimate the fees. When the node
+    /// cannot estimate the fees, it returns a 400 response with a simple
+    /// string message. This function does not try to distinguish between
+    /// the different error modes.
+    ///
+    /// The docs for this RPC can be found here:
+    /// https://docs.stacks.co/stacks-101/api#v2-fees-transaction
+    #[tracing::instrument(skip_all)]
+    pub async fn get_fee_estimate<T>(&self, payload: &T) -> Result<RPCFeeEstimateResponse, Error>
+    where
+        T: AsTxPayload + Send,
+    {
+        let path = "/v2/fees/transaction";
+        let base = self.node_endpoint.clone();
+        let url = base
+            .join(path)
+            .map_err(|err| Error::PathJoin(err, base, Cow::Borrowed(path)))?;
+
+        let tx_payload = payload.tx_payload().serialize_to_vec();
+        let request_body = FeeRateEstimateRequestBody {
+            estimated_len: None,
+            transaction_payload: blockstack_lib::util::hash::to_hex(&tx_payload),
+        };
+        let body = serde_json::to_string(&request_body).map_err(Error::JsonSerialize)?;
+
+        tracing::debug!("Making request to the stacks-node for a tx fee estimate");
+        let response: reqwest::Response = self
+            .client
+            .post(url)
+            .timeout(REQUEST_TIMEOUT)
+            .header(CONTENT_TYPE, "application/json")
+            .header(CONTENT_LENGTH, body.len())
+            .body(body)
+            .send()
+            .await
+            .map_err(Error::StacksNodeRequest)?;
+
+        // Only parse the JSON if it's a success status, otherwise return
+        // an error.
+        response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
+            .json()
+            .await
+            .map_err(Error::UnexpectedStacksResponse)
+    }
+
     /// Fetch the raw stacks nakamoto block from a Stacks node given the
     /// Stacks block ID.
     ///
@@ -296,7 +378,10 @@ impl StacksClient {
             .send()
             .await
             .map_err(Error::StacksNodeRequest)?;
+
         let resp = response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
             .bytes()
             .await
             .map_err(Error::UnexpectedStacksResponse)?;
@@ -380,6 +465,8 @@ impl StacksClient {
         // in [`StacksHttpResponse::decode_nakamoto_tenure`], which just
         // keeps decoding until there are no more bytes.
         let resp = response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
             .bytes()
             .await
             .map_err(Error::UnexpectedStacksResponse)?;
@@ -419,6 +506,8 @@ impl StacksClient {
             .map_err(Error::StacksNodeRequest)?;
 
         response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
             .json()
             .await
             .map_err(Error::UnexpectedStacksResponse)
@@ -434,6 +523,47 @@ impl StacksInteract for StacksClient {
     }
     async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
         self.get_tenure_info().await
+    }
+    /// Estimate the high priority transaction fee for the input
+    /// transaction call given the current state of the mempool.
+    ///
+    /// This function attempts to use the POST /v2/fees/transaction
+    /// endpoint on a stacks node to estimate the current high priority
+    /// transaction fee for a given transaction. If the node does not
+    /// have enough information to provide an estimate, we then get the
+    /// current high priority fee for an STX transfer and use that as an
+    /// estimate for the transaction fee.
+    async fn estimate_fees<T>(&self, payload: &T) -> Result<u64, Error>
+    where
+        T: AsTxPayload + Send + Sync,
+    {
+        // If we cannot get an estimate for the transaction, try the
+        // generic STX transfer since we should always be able to get the
+        // STX transfer fee estimate. If that fails then we bail, maybe we
+        // should try another node.
+        let fee_estimates = self
+            .get_fee_estimate(payload)
+            .or_else(|err| async move {
+                tracing::warn!("could not estimate contract call fees: {err}");
+                // Estimating STX transfers is simple since the estimate
+                // doesn't depend on the recipient, amount, or memo. So a
+                // dummy transfer payload will do.
+                self.get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD).await
+            })
+            .await?;
+        // As of this writing the RPC response includes exactly 3 estimates
+        // (the low, medium, and high priority estimates). We want to use
+        // the high priority estimate (the max) to make sure that the
+        // transaction gets confirmed as quickly as possible.
+        let fee_estimate = fee_estimates
+            .estimations
+            .iter()
+            .map(|estimate| estimate.fee)
+            // TODO(366): have priority be configurable.
+            .max()
+            .unwrap_or(DEFAULT_TX_FEE);
+
+        Ok(fee_estimate)
     }
     fn nakamoto_start_height(&self) -> u64 {
         self.nakamoto_start_height
@@ -654,6 +784,64 @@ mod tests {
         let expected: RPCGetTenureInfo = serde_json::from_str(raw_json_response).unwrap();
 
         assert_eq!(resp, expected);
+        first_mock.assert();
+    }
+
+    /// Check that everything works as expected in the happy path case.
+    #[tokio::test]
+    async fn get_fee_estimate_works() {
+        // The following was taken from a locally running stacks node for
+        // the cost of a contract deploy.
+        let raw_json_response = r#"{
+            "estimated_cost":{
+                "write_length":3893,
+                "write_count":3,
+                "read_length":94,
+                "read_count":3,
+                "runtime":157792
+            },
+            "estimated_cost_scalar":44,
+            "estimations":[
+                {"fee_rate":156.45435901001113,"fee":7679},
+                {"fee_rate":174.56585442157953,"fee":7680},
+                {"fee_rate":579.6667045875889,"fee":25505}
+            ],
+            "cost_scalar_change_by_byte":0.00476837158203125
+        }"#;
+
+        let mut stacks_node_server = mockito::Server::new_async().await;
+        let first_mock = stacks_node_server
+            .mock("POST", "/v2/fees/transaction")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(raw_json_response)
+            .expect(2)
+            .create();
+
+        let settings = StacksSettings {
+            node: StacksNodeSettings {
+                endpoint: url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
+                nakamoto_start_height: 20,
+            },
+        };
+
+        let client = StacksClient::new(settings);
+        let resp = client
+            .get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD)
+            .await
+            .unwrap();
+        let expected: RPCFeeEstimateResponse = serde_json::from_str(raw_json_response).unwrap();
+
+        assert_eq!(resp, expected);
+
+        // Now lets check that the interface function returns the high
+        // priority fee.
+        let fee = client
+            .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD)
+            .await
+            .unwrap();
+
+        assert_eq!(fee, 25505);
         first_mock.assert();
     }
 
