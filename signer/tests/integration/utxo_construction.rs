@@ -330,7 +330,6 @@ fn withdrawals_reduce_to_signers_amounts() {
     rpc.send_raw_transaction(&tx).unwrap();
     faucet.generate_blocks(1);
 
-    dbg!(tx.compute_txid());
     // Let's make sure their ending balances are correct. We start with the
     // Withdrawal recipient.
     let recipient_balance = recipient.get_balance(rpc).to_sat();

@@ -4,7 +4,7 @@ services:
     container_name: bitcoind
     image: lncm/bitcoind:v27.0
     volumes:
-      - ./signer/tests/bitcoin/bitcoin.conf:/data/.bitcoin/bitcoin.conf:ro
+      - ./signer/tests/service-configs/bitcoin.conf:/data/.bitcoin/bitcoin.conf:ro
     restart: on-failure
     stop_grace_period: 10s
     ports:
@@ -57,7 +57,7 @@ services:
     container_name: electrs
     stop_grace_period: 5s
     volumes:
-      - ./signer/tests/bitcoin/electrs.toml:/etc/electrs/config.toml:ro
+      - ./signer/tests/service-configs/electrs.toml:/etc/electrs/config.toml:ro
     ports:
       # This is the monitoring port
       - 24224:24224
