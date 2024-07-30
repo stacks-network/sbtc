@@ -21,10 +21,11 @@ use signer::utxo::SignerUtxo;
 use signer::utxo::UnsignedTransaction;
 use signer::utxo::WithdrawalRequest;
 
-use crate::regtest;
-use crate::regtest::AsUtxo;
-use crate::regtest::Faucet;
+use sbtc::testing::regtest;
+use sbtc::testing::regtest::AsUtxo;
+use sbtc::testing::regtest::Faucet;
 use crate::utxo_construction::make_deposit_request;
+use crate::utxo_construction::generate_withdrawal;
 use regtest::Recipient;
 
 #[derive(Debug, Clone)]
@@ -177,7 +178,7 @@ pub fn transaction_with_rbf(
             .collect();
 
     let mut withdrawal_recipients: Vec<Recipient> = Vec::new();
-    let withdrawals: Vec<WithdrawalRequest> = std::iter::repeat_with(regtest::generate_withdrawal)
+    let withdrawals: Vec<WithdrawalRequest> = std::iter::repeat_with(generate_withdrawal)
         .take(ctx.initial_withdrawals.max(ctx.rbf_withdrawals))
         .enumerate()
         .map(|(index, (mut req, recipient))| {

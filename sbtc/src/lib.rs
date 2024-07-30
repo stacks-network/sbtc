@@ -12,6 +12,9 @@ pub mod error;
 pub mod logging;
 pub mod rpc;
 
+#[cfg(feature = "testing")]
+pub mod testing;
+
 /// The x-coordinate public key with no known discrete logarithm.
 ///
 /// # Notes
