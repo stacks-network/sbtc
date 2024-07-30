@@ -54,7 +54,7 @@ pub trait BitcoinRpcClient {
 /// A client for interacting with bitcoin-core
 pub struct BtcClient {
     /// The underlying bitcoin-core client
-    pub client: bitcoincore_rpc::Client,
+    inner: bitcoincore_rpc::Client,
 }
 
 impl BtcClient {
@@ -68,7 +68,7 @@ impl BtcClient {
         let client = bitcoincore_rpc::Client::new(url, auth)
             .map_err(|err| Error::BitcoinCoreRpcClient(err, url.to_string()))?;
 
-        Ok(Self { client })
+        Ok(Self { inner: client })
     }
     /// Fetch and decode raw transaction from bitcoin-core using the
     /// getrawtransaction RPC.
@@ -81,7 +81,7 @@ impl BtcClient {
     /// mempool or any block.
     pub fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
         let response = self
-            .client
+            .inner
             .get_raw_transaction_info(txid, None)
             .map_err(|err| Error::GetTransactionBitcoinCore(err, *txid))?;
         let tx = Transaction::consensus_decode(&mut response.hex.as_slice())
@@ -109,7 +109,7 @@ impl BitcoinRpcClient for BtcClient {
 /// A client for interacting with Electrum server
 pub struct ElectrumClient {
     /// The underlying electrum client
-    pub client: electrum_client::Client,
+    inner: electrum_client::Client,
 }
 
 impl ElectrumClient {
@@ -137,7 +137,7 @@ impl ElectrumClient {
         let client = electrum_client::Client::from_config(url, config)
             .map_err(|err| Error::ElectrumClientBuild(err, url.to_string()))?;
 
-        Ok(Self { client })
+        Ok(Self { inner: client })
     }
     /// Fetch and decode raw transaction from the electrum server.
     ///
@@ -152,7 +152,7 @@ impl ElectrumClient {
     pub fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
         let params = [Param::String(txid.to_string()), Param::Bool(true)];
         let value = self
-            .client
+            .inner
             .raw_call("blockchain.transaction.get", params)
             .map_err(|err| Error::GetTransactionElectrum(err, *txid))?;
 
