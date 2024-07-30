@@ -483,6 +483,7 @@ mod tests {
     use bitcoin::transaction::Version;
     use bitcoin::AddressType;
     use bitcoin::Amount;
+    use bitcoin::Txid;
     use bitcoin::TxOut;
     use rand::rngs::OsRng;
     use secp256k1::SecretKey;
