@@ -233,6 +233,7 @@ mod tests {
     use rand::seq::IteratorRandom;
     use rand::SeedableRng;
 
+    use crate::stacks::api::FeePriority;
     use crate::storage;
     use crate::testing::dummy;
 
@@ -430,7 +431,7 @@ mod tests {
                 .map(|(_, block, _)| block.header.chain_length)
                 .unwrap_or_default()
         }
-        async fn estimate_fees<T>(&self, _: &T) -> Result<u64, error::Error>
+        async fn estimate_fees<T>(&self, _: &T, _: FeePriority) -> Result<u64, error::Error>
         where
             T: crate::stacks::contracts::AsTxPayload,
         {

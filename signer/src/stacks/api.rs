@@ -36,6 +36,10 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// stacks-core.
 const DEFAULT_TX_FEE: u64 = 1_000_000;
 
+/// The max fee in microSTX for a stacks transaction. Used as a backstop in
+/// case the stacks node returns wonky values. This is 10 STX.
+const MAX_TX_FEE: u64 = DEFAULT_TX_FEE * 10;
+
 /// This is a dummy STX transfer payload used only for estimating STX
 /// transfer costs.
 const DUMMY_STX_TRANSFER_PAYLOAD: TransactionPayload = TransactionPayload::TokenTransfer(
@@ -43,6 +47,27 @@ const DUMMY_STX_TRANSFER_PAYLOAD: TransactionPayload = TransactionPayload::Token
     0,
     TokenTransferMemo([0; 34]),
 );
+
+/// An enum representing the types of estimates returns by the stacks node.
+///
+/// The when a stacks node returns an estimate for the transaction fee it
+/// returns a Low, middle, and High fee. It has a few fee different
+/// estimators for arriving at the returned estimates. One uses a weighted
+/// percentile approach where "larger" transactions have move weight[1],
+/// while another is uses the execution cost and takes the 5th, 50th, and
+/// 95th percentile of fees[2].
+///
+/// [^1]: https://github.com/stacks-network/stacks-core/blob/47db1d0a8bf70eda1c93cb3e0731bdf5595f7baa/stackslib/src/cost_estimates/fee_medians.rs#L33-L51
+/// [^2]: https://github.com/stacks-network/stacks-core/blob/47db1d0a8bf70eda1c93cb3e0731bdf5595f7baa/stackslib/src/cost_estimates/fee_scalar.rs#L30-L42
+#[derive(Debug, Clone, Copy)]
+pub enum FeePriority {
+    /// Think of it as the 5th percentile of all fees by execution cost.
+    Low,
+    /// Think of it as the 50th percentile of all fees by execution cost.
+    Medium,
+    /// Think of it as the 95th percentile of all fees by execution cost.
+    High,
+}
 
 /// A trait detailing the interface with the Stacks API and Stacks Nodes.
 pub trait StacksInteract {
@@ -73,7 +98,14 @@ pub trait StacksInteract {
     /// Estimate the priority transaction fees for the input transaction
     /// for the current state of the mempool. The result should be and
     /// estimated total fee in microSTX.
-    fn estimate_fees<T>(&self, payload: &T) -> impl Future<Output = Result<u64, Error>> + Send
+    ///
+    /// This function usually uses the POST /v2/fees/transaction endpoint
+    /// of a stacks node.
+    fn estimate_fees<T>(
+        &self,
+        payload: &T,
+        priority: FeePriority,
+    ) -> impl Future<Output = Result<u64, Error>> + Send
     where
         T: AsTxPayload + Send + Sync;
     /// Get the start height of the first EPOCH 3.0 block on the Stacks
@@ -533,7 +565,7 @@ impl StacksInteract for StacksClient {
     /// have enough information to provide an estimate, we then get the
     /// current high priority fee for an STX transfer and use that as an
     /// estimate for the transaction fee.
-    async fn estimate_fees<T>(&self, payload: &T) -> Result<u64, Error>
+    async fn estimate_fees<T>(&self, payload: &T, priority: FeePriority) -> Result<u64, Error>
     where
         T: AsTxPayload + Send + Sync,
     {
@@ -541,7 +573,7 @@ impl StacksInteract for StacksClient {
         // generic STX transfer since we should always be able to get the
         // STX transfer fee estimate. If that fails then we bail, maybe we
         // should try another node.
-        let fee_estimates = self
+        let mut resp = self
             .get_fee_estimate(payload)
             .or_else(|err| async move {
                 tracing::warn!("could not estimate contract call fees: {err}");
@@ -552,18 +584,22 @@ impl StacksInteract for StacksClient {
             })
             .await?;
         // As of this writing the RPC response includes exactly 3 estimates
-        // (the low, medium, and high priority estimates). We want to use
-        // the high priority estimate (the max) to make sure that the
-        // transaction gets confirmed as quickly as possible.
-        let fee_estimate = fee_estimates
-            .estimations
-            .iter()
-            .map(|estimate| estimate.fee)
-            // TODO(366): have priority be configurable.
-            .max()
-            .unwrap_or(DEFAULT_TX_FEE);
+        // (the low, medium, and high priority estimates). It's note worthy
+        // if this changes so we log it but the code here is robust to such
+        // a change.
+        let num_estimates = resp.estimations.len();
+        if num_estimates != 3 {
+            tracing::info!("Unexpected number of fee estimates: {num_estimates}");
+        }
+        // Now we sort them and take the low, middle, and high fees
+        resp.estimations.sort_by_key(|estimate| estimate.fee);
+        let fee_estimate = match priority {
+            FeePriority::Low => resp.estimations.first().map(|est| est.fee),
+            FeePriority::Medium => resp.estimations.get(num_estimates / 2).map(|est| est.fee),
+            FeePriority::High => resp.estimations.last().map(|est| est.fee),
+        };
 
-        Ok(fee_estimate)
+        Ok(fee_estimate.unwrap_or(DEFAULT_TX_FEE).min(MAX_TX_FEE))
     }
     fn nakamoto_start_height(&self) -> u64 {
         self.nakamoto_start_height
@@ -815,7 +851,7 @@ mod tests {
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(raw_json_response)
-            .expect(2)
+            .expect(4)
             .create();
 
         let settings = StacksSettings {
@@ -834,14 +870,26 @@ mod tests {
 
         assert_eq!(resp, expected);
 
-        // Now lets check that the interface function returns the high
-        // priority fee.
+        // Now lets check that the interface function returns the requested
+        // priority fees.
         let fee = client
-            .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD)
+            .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::Low)
             .await
             .unwrap();
+        assert_eq!(fee, 7679);
 
+        let fee = client
+            .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::Medium)
+            .await
+            .unwrap();
+        assert_eq!(fee, 7680);
+
+        let fee = client
+            .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::High)
+            .await
+            .unwrap();
         assert_eq!(fee, 25505);
+
         first_mock.assert();
     }
 
