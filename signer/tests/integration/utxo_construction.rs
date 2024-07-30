@@ -15,15 +15,31 @@ use bitcoin::Witness;
 use bitcoin::XOnlyPublicKey;
 use bitcoincore_rpc::RpcApi;
 use bitvec::array::BitArray;
+use rand::distributions::Uniform;
+use rand::Rng as _;
 use secp256k1::SECP256K1;
 use signer::utxo::DepositRequest;
 use signer::utxo::SbtcRequests;
 use signer::utxo::SignerBtcState;
 use signer::utxo::SignerUtxo;
+use signer::utxo::WithdrawalRequest;
 
-use crate::regtest;
-use crate::regtest::AsUtxo;
+use sbtc::testing::regtest;
+use sbtc::testing::regtest::AsUtxo;
 use regtest::Recipient;
+
+pub fn generate_withdrawal() -> (WithdrawalRequest, Recipient) {
+    let recipient = Recipient::new(AddressType::P2tr);
+
+    let req = WithdrawalRequest {
+        amount: rand::rngs::OsRng.sample(Uniform::new(100_000, 250_000)),
+        max_fee: 250_000,
+        address: recipient.address.clone(),
+        signer_bitmap: BitArray::ZERO,
+    };
+
+    (req, recipient)
+}
 
 pub fn make_deposit_request<U>(
     depositor: &Recipient,
@@ -223,7 +239,7 @@ fn withdrawals_reduce_to_signers_amounts() {
 
     // Now lets make a withdrawal request. This recipient shouldn't
     // have any coins to their name.
-    let (withdrawal_request, recipient) = regtest::generate_withdrawal();
+    let (withdrawal_request, recipient) = generate_withdrawal();
     assert_eq!(recipient.get_balance(rpc).to_sat(), 0);
 
     // Okay now we try to peg-out the withdrawal by making a transaction. Let's

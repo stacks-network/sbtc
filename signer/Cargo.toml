@@ -12,7 +12,7 @@ name = "relay-client"
 
 [features]
 default = ["testing"]
-integration-tests = ["testing"]
+integration-tests = ["testing", "sbtc/testing"]
 testing = ["fake"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -26,7 +26,7 @@ bitvec = { workspace = true, default-features = false, features = ["std"] }
 blocklist-api = { path = "../.generated-sources/blocklist-api" }
 clap.workspace = true
 config = "0.14"
-electrum-client = "0.19.0"
+electrum-client.workspace = true
 futures.workspace = true
 hashbrown.workspace = true
 p256k1.workspace = true
@@ -59,7 +59,7 @@ version = "*"
 features = ["rand-std", "global-context"]
 
 [dev-dependencies]
-bitcoincore-rpc = { version = "0.19" }
+bitcoincore-rpc.workspace = true
 mockito = "1.4.0"
 more-asserts = "0.3"
 test-case = "3.1"

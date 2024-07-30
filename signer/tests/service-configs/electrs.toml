@@ -1,0 +1,36 @@
+# The full config file specification can be found in
+# https://github.com/romanz/electrs/blob/831ab0a5252034e3c766e9164406ceb40cd29b3a/internal/config_specification.toml
+# 
+# This toml was adapted from
+# https://github.com/romanz/electrs/blob/831ab0a5252034e3c766e9164406ceb40cd29b3a/doc/config_example.toml
+# 
+# It contains only the most important settings. See docs or electrs man
+# page for advanced settings.
+
+# This cookie file is probably deprecated, see:
+# https://github.com/romanz/electrs/blob/831ab0a5252034e3c766e9164406ceb40cd29b3a/doc/cookie_deprecation.md
+# File where bitcoind stores the cookie, usually file .cookie in its datadir
+# cookie_file = "/var/run/bitcoin-mainnet/cookie"
+
+# The listening RPC address of bitcoind, the mainnet port is usually 8332
+daemon_rpc_addr = "bitcoind:18443"
+
+# The listening P2P address of bitcoind, the mainnet port is usually 8333
+daemon_p2p_addr = "bitcoind:18444"
+
+# Directory where the index should be stored. It should have at least 70GB
+# of free space.
+# db_dir = "/some/fast/storage/with/big/size"
+
+# The choices are: bitcoin, testnet, signet, and regtest. bitcoin means
+# mainnet.
+network = "regtest"
+
+# The address on which electrs should listen.
+electrum_rpc_addr = "0.0.0.0:60401"
+
+# How much information about internal workings should electrs print.
+log_filters = "INFO"
+
+# The username and password for bitcoin-core JSONRPC authentication.
+auth="devnet:devnet"

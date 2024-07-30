@@ -1,3 +1,6 @@
+//! Integration testing helper functions
+//!  
+
 use bitcoin::absolute::LockTime;
 use bitcoin::key::TapTweak;
 use bitcoin::sighash::Prevouts;
@@ -32,17 +35,16 @@ use bitcoincore_rpc::Auth;
 use bitcoincore_rpc::Client;
 use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi;
-use bitvec::array::BitArray;
-use rand::distributions::Uniform;
-use rand::Rng;
 use secp256k1::SECP256K1;
-use signer::utxo::WithdrawalRequest;
 use std::sync::OnceLock;
 
 /// These must match the username and password in bitcoin.conf
-const BITCOIN_CORE_RPC_USERNAME: &str = "alice";
-const BITCOIN_CORE_RPC_PASSWORD: &str = "pw";
+/// The username for RPC calls in bitcoin-core
+pub const BITCOIN_CORE_RPC_USERNAME: &str = "devnet";
+/// The password for RPC calls in bitcoin-core
+pub const BITCOIN_CORE_RPC_PASSWORD: &str = "devnet";
 
+/// The fallback fee in bitcoin core
 pub const BITCOIN_CORE_FALLBACK_FEE: Amount = Amount::from_sat(1000);
 
 /// The name of our wallet on bitcoin-core
@@ -75,7 +77,7 @@ pub fn initialize_blockchain() -> (&'static Client, &'static Faucet) {
     });
 
     let faucet = FAUCET.get_or_init(|| {
-        get_or_create_wallet(&rpc, BITCOIN_CORE_WALLET_NAME);
+        get_or_create_wallet(rpc, BITCOIN_CORE_WALLET_NAME);
         let faucet = Faucet::new(FAUCET_SECRET_KEY, AddressType::P2wpkh, rpc);
         faucet.track_address(FAUCET_LABEL);
 
@@ -107,15 +109,22 @@ fn get_or_create_wallet(rpc: &Client, wallet: &str) {
     };
 }
 
+/// Struct representing the bitcoin miner, all coins are usually generated
+/// to this recipient.
 pub struct Faucet {
+    /// The public/private key pair.
     pub keypair: secp256k1::Keypair,
+    /// The address associated with the above keypair.
     pub address: Address,
+    /// The rpc client for interacting with bitcoin core.
     pub rpc: &'static Client,
 }
 
 /// Helper struct for representing an address we control on bitcoin.
 pub struct Recipient {
+    /// The public/private key pair
     pub keypair: secp256k1::Keypair,
+    /// The address associated with the above keypair.
     pub address: Address,
 }
 
@@ -280,11 +289,17 @@ impl Faucet {
     }
 }
 
+/// Extract the relevant aspects of a UTXO
 pub trait AsUtxo {
+    /// The transaction ID
     fn txid(&self) -> Txid;
+    /// The output index of the UTXO
     fn vout(&self) -> u32;
+    /// The amount locked in the UTXO
     fn amount(&self) -> Amount;
+    /// The scriptPubKey for the UTXO
     fn script_pubkey(&self) -> &ScriptBuf;
+    /// Transform this into a "UTXO" object
     fn to_tx_out(&self) -> TxOut {
         TxOut {
             value: self.amount(),
@@ -323,6 +338,7 @@ impl AsUtxo for ListUnspentResultEntry {
     }
 }
 
+/// Provide a signature to the input P2WPKH UTXO
 pub fn p2wpkh_sign_transaction<U>(
     tx: &mut Transaction,
     input_index: usize,
@@ -348,6 +364,7 @@ pub fn p2wpkh_sign_transaction<U>(
     tx.input[input_index].witness = Witness::p2wpkh(&signature, &keys.public_key());
 }
 
+/// Provide a signature to the input P2TR UTXO
 pub fn p2tr_sign_transaction<U>(
     tx: &mut Transaction,
     input_index: usize,
@@ -370,17 +387,4 @@ pub fn p2tr_sign_transaction<U>(
     let signature = bitcoin::taproot::Signature { signature, sighash_type };
 
     tx.input[input_index].witness = Witness::p2tr_key_spend(&signature);
-}
-
-pub fn generate_withdrawal() -> (WithdrawalRequest, Recipient) {
-    let recipient = Recipient::new(AddressType::P2tr);
-
-    let req = WithdrawalRequest {
-        amount: rand::rngs::OsRng.sample(Uniform::new(100_000, 250_000)),
-        max_fee: 250_000,
-        address: recipient.address.clone(),
-        signer_bitmap: BitArray::ZERO,
-    };
-
-    (req, recipient)
 }

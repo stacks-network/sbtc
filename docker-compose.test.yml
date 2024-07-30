@@ -1,56 +1,24 @@
 services:
 
-#  bitcoin:
-#    image: bitcoin:latest
-#    container_name: bitcoin
-#    stop_grace_period: 5s
-#    build:
-#      context: ./devenv/local/docker-compose/bitcoin/docker
-#      args:
-#        VERSION: "25.0"
-#        BTC_NETWORK: "regtest"
-#        BTC_PRINTTOCONSOLE: 1
-#        BTC_DISABLEWALLET: 0
-#        BTC_TXINDEX: 1
-#        BTC_RPCBIND: "0.0.0.0"
-#        BTC_RPCALLOWIP: "0.0.0.0"
-#        BTC_RPCPASSWORD: "devnet"
-#        BTC_RPCUSER: "devnet"
-#        BTC_RPC_PORT: 18443
-#        BTC_P2P_PORT: 18444
-#        BTC_LOG_DEBUG: 0
-#        BTC_REST_ENABLE: 0
-#    ports:
-#      - 18444:18444
-#      - 18443:18443
-#      - 18433:18433
-#    environment:
-#      BTC_NETWORK: regtest
-#      BTC_PRINTTOCONSOLE: 1
-#      BTC_DISABLEWALLET: 0
-#      BTC_TXINDEX: 1
-#      BTC_RPCBIND: "0.0.0.0"
-#      BTC_RPCALLOWIP: "0.0.0.0/0"
-#      BTC_RPCPASSWORD: devnet
-#      BTC_RPCUSER: devnet
-#      BTC_RPC_PORT: 18443
-#      BTC_P2P_PORT: 18444
-#      BTC_LOG_DEBUG: 0
-#      BTC_REST_ENABLE: 0
-
   bitcoind:
     container_name: bitcoind
     image: lncm/bitcoind:v27.0
     volumes:
-      - ./signer/tests/bitcoin/bitcoin.conf:/data/.bitcoin/bitcoin.conf:ro
+      - ./signer/tests/service-configs/bitcoin.conf:/data/.bitcoin/bitcoin.conf:ro
     restart: on-failure
     stop_grace_period: 10s
     ports:
       - 8333:8333
       - 8332:8332
       - 18443:18443
+      - 18444:18444
       - 28332:28332
       - 28333:28333
+    healthcheck:
+      test: ["CMD-SHELL", "bitcoin-cli getblockcount"]
+      interval: 3s
+      timeout: 1s
+      retries: 3
 
   postgres:
     image: postgres:16.3
@@ -82,19 +50,23 @@ services:
       postgres:
         condition: service_healthy
 
-#  electrs:
-#    image: electrs:latest
-#    container_name: electrs
-#    stop_grace_period: 5s
-#    build:
-#      context: ./devenv/local/docker-compose/electrs/docker
-#    ports:
-#      - 60401:60401
-#      - 3002:3002
-#    depends_on:
-#      - bitcoin
-#    environment:
-#      RUST_BACKTRACE: 1
-#      BITCOIN_RPC_HOST: 172.18.0.3
-#      BITCOIN_RPC_PORT: 18443
+  # This is from https://github.com/getumbrel/docker-electrs and is built
+  # from v0.10.2 of https://github.com/romanz/electrs
+  electrs: 
+    image: getumbrel/electrs:v0.10.2
+    container_name: electrs
+    stop_grace_period: 5s
+    volumes:
+      - ./signer/tests/service-configs/electrs.toml:/etc/electrs/config.toml:ro
+    ports:
+      # This is the monitoring port
+      - 24224:24224
+      # The is the RPC port
+      - 60401:60401
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    environment:
+      RUST_BACKTRACE: 1
+
 
