@@ -1,9 +1,9 @@
 //! Configuration management for the signer
 
 use config::{Config, ConfigError, Environment, File};
-use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Deserializer;
+use std::sync::LazyLock;
 
 use crate::error::Error;
 
@@ -51,8 +51,8 @@ pub struct BlockNotifierConfig {
 }
 
 /// Statically configured settings for the signer
-pub static SETTINGS: Lazy<Settings> =
-    Lazy::new(|| Settings::new().expect("Failed to load configuration"));
+pub static SETTINGS: LazyLock<Settings> =
+    LazyLock::new(|| Settings::new().expect("Failed to load configuration"));
 
 impl Settings {
     /// Initializing the global config first with default values and then with provided/overwritten environment variables.

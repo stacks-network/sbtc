@@ -1,14 +1,14 @@
 use super::EMILY_ENDPOINT;
 use crate::endpoints::util;
 use emily_handler::api::models::chainstate::Chainstate;
-use once_cell::sync::Lazy;
 use reqwest::Client;
 use serde_json::json;
 use serial_test::serial;
+use std::sync::LazyLock;
 use tokio;
 
 /// Test data for chainstate tests.
-static TEST_CHAINSTATE_DATA: Lazy<Vec<Chainstate>> = Lazy::new(|| {
+static TEST_CHAINSTATE_DATA: LazyLock<Vec<Chainstate>> = LazyLock::new(|| {
     vec![
         Chainstate {
             stacks_block_height: 1,

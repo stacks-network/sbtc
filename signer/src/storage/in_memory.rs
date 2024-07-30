@@ -329,7 +329,7 @@ impl super::DbRead for SharedStore {
             .lock()
             .await
             .stacks_nakamoto_blocks
-            .contains_key(&block_id.to_bytes().to_vec()))
+            .contains_key(block_id.to_bytes().as_slice()))
     }
 
     async fn get_encrypted_dkg_shares(

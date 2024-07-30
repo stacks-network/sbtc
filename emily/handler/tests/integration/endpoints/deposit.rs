@@ -4,10 +4,10 @@ use emily_handler::api::models::deposit::{
     responses::{GetDepositsForTransactionResponse, GetDepositsResponse},
     Deposit, DepositInfo, DepositParameters,
 };
-use once_cell::sync::Lazy;
 use reqwest::Client;
 use serde_json::json;
 use serial_test::serial;
+use std::sync::LazyLock;
 use tokio;
 
 use emily_handler::api::models::deposit::responses::{CreateDepositResponse, GetDepositResponse};
@@ -24,7 +24,7 @@ struct TestDepositTransactionData {
 }
 
 /// Test data for deposits.
-static TEST_DEPOSIT_DATA: Lazy<Vec<TestDepositTransactionData>> = Lazy::new(|| {
+static TEST_DEPOSIT_DATA: LazyLock<Vec<TestDepositTransactionData>> = LazyLock::new(|| {
     vec![
         TestDepositTransactionData {
             bitcoin_txid: "example_txid_1".to_string(),

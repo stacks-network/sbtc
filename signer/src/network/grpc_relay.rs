@@ -1,19 +1,22 @@
 //! # Relay server and client for signer communication over gRPC
 //!
-//! This module provides an implementation of the [`crate::network::MessageTransfer`]
-//! trait over gRPC.
+//! This module provides an implementation of the
+//! [`crate::network::MessageTransfer`] trait over gRPC.
 //!
 //! ## Features
 //!
-//! - **RelayServer**: Server implementation that listens to incoming connections and forwards incoming messages to all connected clients.
-//! - **RelayClient**: Client implementation which exposes the `MessageTransfer` interface for the signer.
+//! - **RelayServer**: Server implementation that listens to incoming
+//!   connections and forwards incoming messages to all connected clients.
+//! - **RelayClient**: Client implementation which exposes the
+//!   `MessageTransfer` interface for the signer.
 //!
 //! ## Examples
 //!
-//! - `src/bin/relay-server.rs` shows how to properly spin up a relay server.
+//! - `src/bin/relay-server.rs` shows how to properly spin up a relay
+//!   server.
 //!
-//! - `examples/relay-client.rs` is an an example of
-//! how to concurrently send messages to and receive messages from the server.
+//! - `examples/relay-client.rs` is an an example of how to concurrently
+//!   send messages to and receive messages from the server.
 
 #[allow(missing_docs)]
 pub mod proto {

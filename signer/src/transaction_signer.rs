@@ -26,16 +26,18 @@ use wsts::traits::Signer;
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// # Transaction signer event loop
 ///
-/// This struct contains the implementation of the transaction signer logic.
-/// The event loop subscribes to storage update notifications from the block observer,
-/// and listens to signer messages over the signer network.
+/// This struct contains the implementation of the transaction signer
+/// logic. The event loop subscribes to storage update notifications from
+/// the block observer, and listens to signer messages over the signer
+/// network.
 ///
 /// ## On block observer notification
 ///
-/// When the signer receives a notification from the block observer, indicating that
-/// new blocks have been added to the signer state, it must go over each of the pending
-/// requests and decide whether to accept or reject it. The decision is then persisted
-/// and broadcast to the other signers. The following flowchart illustrates the flow.
+/// When the signer receives a notification from the block observer,
+/// indicating that new blocks have been added to the signer state, it must
+/// go over each of the pending requests and decide whether to accept or
+/// reject it. The decision is then persisted and broadcast to the other
+/// signers. The following flowchart illustrates the flow.
 ///
 /// ```mermaid
 /// flowchart TD
@@ -50,22 +52,26 @@ use wsts::traits::Signer;
 ///
 /// ## On signer message
 ///
-/// When the signer receives a message from another signer, it needs to do a few different things
-/// depending on the type of the message.
+/// When the signer receives a message from another signer, it needs to do
+/// a few different things depending on the type of the message.
 ///
-/// - **Signer decision**: When receiving a signer decision, the transaction signer
-/// only needs to persist the decision to its database.
-/// - **Stacks sign request**: When receiving a request to sign a stacks transaction,
-/// the signer must verify that it has decided to sign the transaction, and if it has,
-/// send a transaction signature back over the network.
-/// - **Bitcoin sign request**: When receiving a request to sign a bitcoin transaction,
-/// the signer must verify that it has decided to accept all requests that the
-/// transaction fulfills. Once verified, the transaction signer creates a dedicated
-/// WSTS state machine to participate in a signing round for this transaction. Thereafter,
-/// the signer sends a bitcoin transaction sign ack message back over the network to signal
-/// its readiness.
-/// - **WSTS message**: When receiving a WSTS message, the signer will look up the corresponding
-/// state machine and dispatch the WSTS message to it.
+/// - **Signer decision**: When receiving a signer decision, the
+///   transaction signer only needs to persist the decision to its
+///   database.
+/// - **Stacks sign request**: When receiving a request to sign a stacks
+///   transaction, the signer must verify that it has decided to sign the
+///   transaction, and if it has, send a transaction signature back over
+///   the network.
+/// - **Bitcoin sign request**: When receiving a request to sign a bitcoin
+///   transaction, the signer must verify that it has decided to accept all
+///   requests that the transaction fulfills. Once verified, the
+///   transaction signer creates a dedicated WSTS state machine to
+///   participate in a signing round for this transaction. Thereafter, the
+///   signer sends a bitcoin transaction sign ack message back over the
+///   network to signal its readiness.
+/// - **WSTS message**: When receiving a WSTS message, the signer will look
+///   up the corresponding state machine and dispatch the WSTS message to
+///   it.
 ///
 /// The following flowchart illustrates the process.
 ///

@@ -1,8 +1,8 @@
 //! Configuration management for the Blocklist client
 
 use config::{Config, ConfigError, Environment, File};
-use once_cell::sync::Lazy;
 use serde::Deserialize;
+use std::sync::LazyLock;
 
 /// Top-level configuration for the Blocklist client
 #[derive(Deserialize, Clone, Debug)]
@@ -32,8 +32,8 @@ pub struct RiskAnalysisConfig {
 }
 
 /// Statically configured settings for the Blocklist client
-pub static SETTINGS: Lazy<Settings> =
-    Lazy::new(|| Settings::new().expect("Failed to load configuration"));
+pub static SETTINGS: LazyLock<Settings> =
+    LazyLock::new(|| Settings::new().expect("Failed to load configuration"));
 
 impl Settings {
     /// Initializing the global config first with default values and then with provided/overwritten environment variables.
