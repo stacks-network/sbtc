@@ -10,6 +10,7 @@ use bitcoin::XOnlyPublicKey;
 pub mod deposits;
 pub mod error;
 pub mod logging;
+pub mod rpc;
 
 /// The x-coordinate public key with no known discrete logarithm.
 ///

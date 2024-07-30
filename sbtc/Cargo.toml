@@ -5,10 +5,19 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = []
+integration-tests = ["testing"]
+testing = []
+
 [dependencies]
 bitcoin = { workspace = true, features = ["rand-std"] }
+bitcoincore-rpc.workspace = true
 clarity = { git = "https://github.com/Trust-Machines/stacks-blockchain/", branch = "develop-upstream" }
+electrum-client.workspace = true
 rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 stacks-common = { git = "https://github.com/Trust-Machines/stacks-blockchain/", branch = "develop-upstream" }
 thiserror.workspace = true
 tracing.workspace = true
