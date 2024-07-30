@@ -478,13 +478,9 @@ fn scriptint_parse(v: &[u8]) -> i64 {
 mod tests {
     use std::collections::HashMap;
 
-    use bitcoin::absolute::LockTime;
     use bitcoin::hashes::Hash as _;
-    use bitcoin::transaction::Version;
     use bitcoin::AddressType;
-    use bitcoin::Amount;
     use bitcoin::Txid;
-    use bitcoin::TxOut;
     use rand::rngs::OsRng;
     use secp256k1::SecretKey;
     use stacks_common::codec::StacksMessageCodec;
@@ -492,6 +488,8 @@ mod tests {
 
     use super::*;
     use crate::rpc::GetTxResponse;
+    use crate::testing;
+    use crate::testing::deposits::TxSetup;
 
     use test_case::test_case;
 
@@ -537,41 +535,6 @@ mod tests {
             .push_slice([0; 32])
             .push_opcode(opcodes::OP_CHECKSIG)
             .into_script()
-    }
-
-    struct TxSetup {
-        tx: Transaction,
-        deposit: DepositScriptInputs,
-        reclaim: ReclaimScriptInputs,
-    }
-
-    // The BTC transaction that is in this TxSetup is consistent with
-    // the deposit and reclaim scripts.
-    fn tx_setup(lock_time: i64, max_fee: u64, amount: u64) -> TxSetup {
-        let secret_key = SecretKey::new(&mut OsRng);
-
-        let deposit = DepositScriptInputs {
-            signers_public_key: secret_key.x_only_public_key(SECP256K1).0,
-            recipient: PrincipalData::from(StacksAddress::burn_address(false)),
-            max_fee,
-        };
-        let reclaim = ReclaimScriptInputs::try_new(lock_time, ScriptBuf::new()).unwrap();
-
-        let deposit_script = deposit.deposit_script();
-        let reclaim_script = reclaim.reclaim_script();
-        // This transaction is kinda invalid because it doesn't have any
-        // inputs. But it is fine for our purposes.
-        let tx = Transaction {
-            version: Version::TWO,
-            lock_time: LockTime::ZERO,
-            input: Vec::new(),
-            output: vec![TxOut {
-                value: Amount::from_sat(amount),
-                script_pubkey: to_script_pubkey(deposit_script, reclaim_script),
-            }],
-        };
-
-        TxSetup { tx, reclaim, deposit }
     }
 
     /// Check that manually creating the expected script can correctly be
@@ -751,7 +714,7 @@ mod tests {
         let amount_sats = 500_000;
         let lock_time = 150;
 
-        let setup: TxSetup = tx_setup(lock_time, max_fee, amount_sats);
+        let setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
 
         let request = CreateDepositRequest {
             outpoint: OutPoint::new(setup.tx.compute_txid(), 0),
@@ -781,7 +744,7 @@ mod tests {
         let amount_sats = 500_000;
         let lock_time = 150;
 
-        let mut setup: TxSetup = tx_setup(lock_time, max_fee, amount_sats);
+        let mut setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
 
         // Let's modify the max_fee of the deposit script and send that in
         // the request.
@@ -803,7 +766,7 @@ mod tests {
         let amount_sats = 500_000;
         let lock_time = 0;
 
-        let mut setup: TxSetup = tx_setup(lock_time, max_fee, amount_sats);
+        let mut setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
 
         // Let's modify the lock time of the reclaim script to look more
         // reasonable in the request.
@@ -825,7 +788,7 @@ mod tests {
         let amount_sats = 500_000;
         let lock_time = 150;
 
-        let setup: TxSetup = tx_setup(lock_time, max_fee, amount_sats);
+        let setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
 
         let request = CreateDepositRequest {
             // This output index is guaranteed to always be incorrect.
@@ -854,7 +817,7 @@ mod tests {
         let amount_sats = 500_000;
         let lock_time = 150;
 
-        let setup: TxSetup = tx_setup(lock_time, max_fee, amount_sats);
+        let setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
 
         let request = CreateDepositRequest {
             outpoint: OutPoint::new(setup.tx.compute_txid(), 0),
