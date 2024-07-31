@@ -106,7 +106,7 @@ where
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct StacksSettings {
     /// The configuration entries related to the Stacks node
-    pub node: StacksNodeSettings,
+    pub nodes: Vec<StacksNodeSettings>,
 }
 
 /// Settings associated with the stacks node that this signer uses for information
@@ -163,29 +163,29 @@ mod tests {
         // The default toml used here specifies http://localhost:20443
         // as the stacks node endpoint.
         let settings = StacksSettings::new_from_config().unwrap();
-        let host = settings.node.endpoint.host();
+        let host = settings.nodes[0].endpoint.host();
         assert_eq!(host, Some(url::Host::Domain("localhost")));
-        assert_eq!(settings.node.endpoint.port(), Some(20443));
+        assert_eq!(settings.nodes[0].endpoint.port(), Some(20443));
 
         std::env::set_var("SIGNER_STACKS_NODE_ENDPOINT", "http://whatever:1234");
 
         let settings = StacksSettings::new_from_config().unwrap();
-        let host = settings.node.endpoint.host();
+        let host = settings.nodes[0].endpoint.host();
         assert_eq!(host, Some(url::Host::Domain("whatever")));
-        assert_eq!(settings.node.endpoint.port(), Some(1234));
+        assert_eq!(settings.nodes[0].endpoint.port(), Some(1234));
 
         std::env::set_var("SIGNER_STACKS_NODE_ENDPOINT", "http://127.0.0.1:5678");
 
         let settings = StacksSettings::new_from_config().unwrap();
         let ip: std::net::Ipv4Addr = "127.0.0.1".parse().unwrap();
-        assert_eq!(settings.node.endpoint.host(), Some(url::Host::Ipv4(ip)));
-        assert_eq!(settings.node.endpoint.port(), Some(5678));
+        assert_eq!(settings.nodes[0].endpoint.host(), Some(url::Host::Ipv4(ip)));
+        assert_eq!(settings.nodes[0].endpoint.port(), Some(5678));
 
         std::env::set_var("SIGNER_STACKS_NODE_ENDPOINT", "http://[::1]:9101");
 
         let settings = StacksSettings::new_from_config().unwrap();
         let ip: std::net::Ipv6Addr = "::1".parse().unwrap();
-        assert_eq!(settings.node.endpoint.host(), Some(url::Host::Ipv6(ip)));
-        assert_eq!(settings.node.endpoint.port(), Some(9101));
+        assert_eq!(settings.nodes[0].endpoint.host(), Some(url::Host::Ipv6(ip)));
+        assert_eq!(settings.nodes[0].endpoint.port(), Some(9101));
     }
 }
