@@ -86,3 +86,36 @@ fn btc_client_unsubmitted_tx<C: BitcoinRpcClient>(client: C) {
         _ => panic!("Incorrect error variants returned"),
     }
 }
+
+/// bitcoin-core will return a fee rate estimate if there are enough
+/// transactions for it to do so. If this test runs last among integration
+/// tests in this repo then there will be enough data for bitcoin-core to
+/// estimate the fee rate, otherwise it will return an error. Since we do
+/// not ensure that bitcoin-core has enough transactions to estimate fees
+/// in the test, we just check that the two client implementations return
+/// the same result when they return success.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[test]
+fn estimate_fee_rate() {
+    let _ = regtest::initialize_blockchain();
+    let btc_client = BtcClient::new(
+        "http://localhost:18443",
+        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
+        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
+    )
+    .unwrap();
+    let resp1 = btc_client.estimate_fee_rate(1);
+
+    let electrum = ElectrumClient::new("tcp://localhost:60401", None).unwrap();
+    let resp2 = electrum.estimate_fee_rate(1);
+
+    // The two clients' success and/or failure should coincide. This is by
+    // design as much as possible. Also, the electrum server used in CI
+    // uses bitcoin-core under the hood for its `blockchain.estimatefee`
+    // RPC implementation.
+    assert_eq!(resp1.is_ok(), resp2.is_ok());
+
+    if resp1.is_ok() {
+        assert_eq!(resp1.unwrap(), resp2.unwrap());
+    }
+}
