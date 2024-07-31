@@ -128,7 +128,7 @@ emily-integration-test-full: emily-integration-env-up emily-integration-test emi
 devenv: $(wildcard $(subst dir, devenv, $(TWO_DIRS_DEEP)))
 	DYNAMODB_DB_DIR=./devenv/dynamodb/pre-populated \
 		CONTAINER_HOST=$(_CONTAINER_HOST) \
-		docker compose -f docker-compose.emily.yml build
+		docker compose --file $(EMILY_DOCKER_COMPOSE) build
 	@touch devenv
 
 # Emily CDK Template ---------------------------------
