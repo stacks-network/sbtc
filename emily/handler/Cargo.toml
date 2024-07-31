@@ -10,6 +10,7 @@ name = "emily-handler"
 default = ["testing"]
 integration-tests = ["testing"]
 testing = ["fake"]
+populate = ["testing"]
 
 [dependencies]
 aws-config.workspace = true
@@ -34,6 +35,7 @@ warp_lambda.workspace = true
 fake = { version = "2.9.2", features = ["derive", "time"], optional = true }
 
 [dev-dependencies]
+rand = "0.8"
 mockito = "0.28"
 mockall = "0.10"
 serial_test = "0.5"

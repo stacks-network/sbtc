@@ -93,10 +93,21 @@ endif
 
 # Emily Integration tests.
 # ------------------------------------------------------------------------------
+emily-integration-env-up-default-database: devenv $(EMILY_LAMBDA_BINARY) $(EMILY_CDK_TEMPLATE) $(EMILY_DOCKER_COMPOSE)
+	rm -rf ./devenv/dynamodb/default/shared-local-instance.db
+	DYNAMODB_DB_DIR=./devenv/dynamodb/default \
+		CONTAINER_HOST=$(_CONTAINER_HOST) \
+		docker compose --file $(EMILY_DOCKER_COMPOSE) up --remove-orphans # --detach
+
+emily-populate-default-database:
+	@echo "Populating default database"
+	cargo test --package emily-handler --test integration --features populate -- --test-threads=1 --nocapture
 
 emily-integration-env-up: devenv $(EMILY_LAMBDA_BINARY) $(EMILY_CDK_TEMPLATE) $(EMILY_DOCKER_COMPOSE)
-	rm -rf devenv/dynamodb/data/shared-local-instance.db
-	CONTAINER_HOST=$(_CONTAINER_HOST) docker compose --file $(EMILY_DOCKER_COMPOSE) up --remove-orphans # --detach
+	rm -rf ./devenv/dynamodb/dynamic/shared-local-instance.db
+	DYNAMODB_DB_DIR=./devenv/dynamodb/dynamic \
+		CONTAINER_HOST=$(_CONTAINER_HOST) \
+		docker compose --file $(EMILY_DOCKER_COMPOSE) up --remove-orphans # --detach
 
 emily-integration-test:
 	@echo "Clearing database and starting integration tests for Emily"
@@ -111,7 +122,9 @@ emily-integration-test-full: emily-integration-env-up emily-integration-test emi
 
 # Builds all dockerfiles that need to be built for the dev environment.
 devenv: $(wildcard $(subst dir, devenv, $(TWO_DIRS_DEEP)))
-	docker compose -f docker-compose.emily.yml build
+	DYNAMODB_DB_DIR=./devenv/dynamodb/default \
+		CONTAINER_HOST=$(_CONTAINER_HOST) \
+		docker compose -f docker-compose.emily.yml build
 	@touch devenv
 
 # Emily CDK Template ---------------------------------
@@ -149,7 +162,6 @@ emily-cdk-synth: $(EMILY_CDK_TEMPLATE)
 emily-openapi-spec: $(EMILY_OPENAPI_SPEC)
 emily-curl-test: $(EMILY_LAMBDA_BINARY)
 	./devenv/service-test/curl-test.sh localhost 3000 0
-
 
 .PHONY: emily-lambda emily-cdk-synth emily-openapi-spec emily-curl-test
 
