@@ -93,14 +93,13 @@ endif
 
 # Emily Integration tests.
 # ------------------------------------------------------------------------------
-emily-integration-env-up-default-database: devenv $(EMILY_LAMBDA_BINARY) $(EMILY_CDK_TEMPLATE) $(EMILY_DOCKER_COMPOSE)
-	rm -rf ./devenv/dynamodb/default/shared-local-instance.db
-	DYNAMODB_DB_DIR=./devenv/dynamodb/default \
+emily-integration-env-up-populated-database: devenv $(EMILY_LAMBDA_BINARY) $(EMILY_CDK_TEMPLATE) $(EMILY_DOCKER_COMPOSE)
+	DYNAMODB_DB_DIR=./devenv/dynamodb/populated \
 		CONTAINER_HOST=$(_CONTAINER_HOST) \
 		docker compose --file $(EMILY_DOCKER_COMPOSE) up --remove-orphans # --detach
 
-emily-populate-default-database:
-	@echo "Populating default database"
+emily-populate-database:
+	@echo "Populating populated database"
 	cargo test --package emily-handler --test integration --features populate -- --test-threads=1 --nocapture
 
 emily-integration-env-up: devenv $(EMILY_LAMBDA_BINARY) $(EMILY_CDK_TEMPLATE) $(EMILY_DOCKER_COMPOSE)
@@ -122,7 +121,7 @@ emily-integration-test-full: emily-integration-env-up emily-integration-test emi
 
 # Builds all dockerfiles that need to be built for the dev environment.
 devenv: $(wildcard $(subst dir, devenv, $(TWO_DIRS_DEEP)))
-	DYNAMODB_DB_DIR=./devenv/dynamodb/default \
+	DYNAMODB_DB_DIR=./devenv/dynamodb/pre-populated \
 		CONTAINER_HOST=$(_CONTAINER_HOST) \
 		docker compose -f docker-compose.emily.yml build
 	@touch devenv
