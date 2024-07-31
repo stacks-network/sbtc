@@ -262,10 +262,12 @@ impl DepositScriptInputs {
     /// the format for a principal from SIP-005. So the expected wire
     /// format is:
     ///
+    /// ```text
     /// 0         8             9         10        30            31             159
     /// |---------|-------------|---------|---------|-------------|---------------|
     ///   max fee   type prefix   version   hash160   name length   contract name
     ///                                               (optional)    (optional)
+    /// ```
     ///
     /// Above, the max fee is expressed as an 8-byte big endian integer and
     /// the contract name is a UTF-8 encoded string and must be accepted by
