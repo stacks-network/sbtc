@@ -24,9 +24,9 @@ use signer::utxo::SignerBtcState;
 use signer::utxo::SignerUtxo;
 use signer::utxo::WithdrawalRequest;
 
+use regtest::Recipient;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::AsUtxo;
-use regtest::Recipient;
 
 pub fn generate_withdrawal() -> (WithdrawalRequest, Recipient) {
     let recipient = Recipient::new(AddressType::P2tr);

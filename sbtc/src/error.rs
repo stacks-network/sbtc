@@ -7,23 +7,35 @@ use bitcoin::Txid;
 /// Errors
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// Bitcoin-core RPC error
-    #[error("{0}")]
+    /// Error when creating an RPC client to bitcoin-core
+    #[error("could not create RPC client to {1}; {0}")]
     BitcoinCoreRpcClient(#[source] bitcoincore_rpc::Error, String),
-    /// Bitcoin-core RPC error
-    #[error("{0}")]
+    /// Returned when we could not decode the hex into a
+    /// bitcoin::Transaction.
+    #[error("failed to decode the provided hex into a transaction. txid: {1}. {0}")]
     DecodeTx(#[source] bitcoin::consensus::encode::Error, Txid),
-    /// Bitcoin-core RPC error
-    #[error("{0}")]
+    /// Could not deserialize the "blockchain.transaction.get" response
+    /// into a GetTxResponse.
+    #[error("failed to deserialize the blockchain.transaction.get response. txid: {1}. {0}")]
     DeserializeGetTransaction(#[source] serde_json::Error, Txid),
     /// Could not build the electrum client
-    #[error("{0}")]
+    #[error("could not build the electrum client to url {1}. {0}")]
     ElectrumClientBuild(#[source] electrum_client::Error, String),
-    /// Bitcoin-core RPC error
-    #[error("{0}")]
+    /// Received an error in call to blockchain.estimatefee RPC call
+    #[error("failed to get fee estimate from electrum for target {1}. {0}")]
+    EstimateFeeElectrum(#[source] electrum_client::Error, u16),
+    /// Received an error in call to estimatesmartfee RPC call
+    #[error("failed to get fee estimate from bitcoin-core for target {1}. {0}")]
+    EstimateSmartFee(#[source] bitcoincore_rpc::Error, u16),
+    /// Received an error in response to estimatesmartfee RPC call
+    #[error("failed to get fee estimate from bitcoin-core for target {1}. {0:?}")]
+    EstimateSmartFeeResponse(Option<Vec<String>>, u16),
+    /// Received an error in response to getrawtransaction RPC call
+    #[error("failed to retrieve the raw transaction for txid {1} from bitcoin-core. {0}")]
     GetTransactionBitcoinCore(#[source] bitcoincore_rpc::Error, Txid),
-    /// Bitcoin-core RPC error
-    #[error("{0}")]
+    /// Received an error in response to blockchain.transaction.get
+    /// electrum call.
+    #[error("failed to retrieve the raw transaction for txid {1} from electrum. {0}")]
     GetTransactionElectrum(#[source] electrum_client::Error, Txid),
     /// The deposit script was invalid
     #[error("invalid deposit script")]
@@ -34,6 +46,10 @@ pub enum Error {
     /// The reclaim script was invalid.
     #[error("the reclaim script format was invalid")]
     InvalidReclaimScript,
+    /// Failed to convert response into an Amount, which is unsigned and
+    /// bounded.
+    #[error("Could not convert float {1} into bitcoin::Amount: {0}")]
+    ParseAmount(#[source] bitcoin::amount::ParseAmountError, f64),
     /// The reclaim script lock time was invalid
     #[error("reclaim script lock time was either too large or non-minimal: {0}")]
     ScriptNum(#[source] bitcoin::script::Error),

@@ -4,6 +4,7 @@ use std::future::Future;
 use std::time::Duration;
 
 use serde::Deserialize;
+use sbtc::rpc::FeeEstimate;
 
 use crate::error::Error;
 
@@ -12,7 +13,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Compute the current market fee rate by averaging the recommended price
 /// estimates from various sources.
-pub async fn estimate_fee_rate(client: &reqwest::Client) -> Result<f64, Error> {
+pub async fn estimate_fee_rate(client: &reqwest::Client) -> Result<FeeEstimate, Error> {
     let sources: [FeeSource; 2] = [
         FeeSource::MempoolSpace(MempoolSpace {
             base_url: "https://mempool.space".to_string(),
@@ -29,7 +30,7 @@ pub async fn estimate_fee_rate(client: &reqwest::Client) -> Result<f64, Error> {
 
 /// Used to compute the average price of the fee estimates from the given
 /// sources.
-async fn estimate_fee_rate_impl<T>(sources: &[T]) -> Result<f64, Error>
+async fn estimate_fee_rate_impl<T>(sources: &[T]) -> Result<FeeEstimate, Error>
 where
     T: EstimateFees,
 {
@@ -50,7 +51,8 @@ where
         .map(|x| x.sats_per_vbyte)
         .sum::<f64>();
 
-    Ok(sum_sats_per_vbyte / num_responses as f64)
+    let sats_per_vbyte = sum_sats_per_vbyte / num_responses as f64;
+    Ok(FeeEstimate { sats_per_vbyte })
 }
 
 /// A struct representing requests to https://bitcoiner.live
@@ -111,14 +113,6 @@ struct MempoolSpaceResponse {
     hour_fee: u64,
     economy_fee: u64,
     minimum_fee: u64,
-}
-
-/// A struct representing the recommended fee, in sats per vbyte, from a
-/// particular source.
-#[derive(Debug)]
-pub struct FeeEstimate {
-    /// Satoshis per vbyte
-    pub sats_per_vbyte: f64,
 }
 
 /// Trait representing the ability to provide a fee rate estimation
@@ -217,9 +211,9 @@ mod tests {
             KnownFeeEstimator(7.),
             KnownFeeEstimator(9.),
         ];
-        let sats_per_vbyte = estimate_fee_rate_impl(&sources).await.unwrap();
+        let est = estimate_fee_rate_impl(&sources).await.unwrap();
 
-        assert_eq!(sats_per_vbyte, 5.);
+        assert_eq!(est.sats_per_vbyte, 5.);
     }
 
     #[tokio::test]
@@ -228,7 +222,18 @@ mod tests {
         let client = reqwest::Client::new();
 
         let ans = estimate_fee_rate(&client).await.unwrap();
-        more_asserts::assert_gt!(ans, 0.0);
+        more_asserts::assert_gt!(ans.sats_per_vbyte, 0.0);
+
+        // It's not obvious from the docs that mempool.space returns a fee
+        // rate in sats per vbyte, so this is to help manually validate
+        // that.
+        let mempool = MempoolSpace {
+            base_url: "https://mempool.space".to_string(),
+            client: client.clone(),
+        };
+
+        let ans = mempool.estimate_fee_rate().await.unwrap();
+        more_asserts::assert_gt!(ans.sats_per_vbyte, 0.0);
     }
 
     #[tokio::test]
@@ -312,7 +317,7 @@ mod tests {
 
         // The expected response here is (15 + 13) / 2 = 14.
         let expected_estimate = 14.0;
-        assert_eq!(actual_estimate, expected_estimate);
+        assert_eq!(actual_estimate.sats_per_vbyte, expected_estimate);
 
         mempool_mock.assert();
         bitcoiner_mock.assert();
@@ -361,7 +366,7 @@ mod tests {
         // Only mempool responded, so only its response is used to compute
         // the average.
         let expected_estimate = 13.0;
-        assert_eq!(actual_estimate, expected_estimate);
+        assert_eq!(actual_estimate.sats_per_vbyte, expected_estimate);
 
         mempool_mock.assert();
         bitcoiner_mock.assert();

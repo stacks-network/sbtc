@@ -4,11 +4,14 @@ use std::num::NonZeroU8;
 
 use bitcoin::consensus;
 use bitcoin::consensus::Decodable as _;
+use bitcoin::Amount;
 use bitcoin::BlockHash;
+use bitcoin::Denomination;
 use bitcoin::Transaction;
 use bitcoin::Txid;
+use bitcoincore_rpc::json::EstimateMode;
 use bitcoincore_rpc::Auth;
-use bitcoincore_rpc::RpcApi;
+use bitcoincore_rpc::RpcApi as _;
 use electrum_client::ElectrumApi as _;
 use electrum_client::Param;
 use serde::Deserialize;
@@ -42,6 +45,14 @@ pub struct GetTxResponse {
     /// the active chain or not. It is only present when the "blockhash"
     /// argument is present in the RPC.
     pub in_active_chain: Option<bool>,
+}
+
+/// A struct representing the recommended fee, in sats per vbyte, from a
+/// particular source.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FeeEstimate {
+    /// Satoshis per vbyte
+    pub sats_per_vbyte: f64,
 }
 
 /// Trait for interacting with bitcoin-core
@@ -97,6 +108,39 @@ impl BtcClient {
             block_time: response.blocktime.map(|time| time as u64),
             in_active_chain: response.in_active_chain,
         })
+    }
+
+    /// Estimates the approximate fee in sats per vbyte needed for a
+    /// transaction to be confirmed within `num_blocks`.
+    ///
+    /// # Notes
+    ///
+    /// Modified from the bitcoin-core docs[1]:
+    ///
+    /// This returns a "conservative" estimate, which is potentially
+    /// returns a higher fee rate and is more likely to be sufficient for
+    /// the desired target, but is not as responsive to short term drops in
+    /// the prevailing fee market. Also, the docs mention the response is
+    /// in BTC/kB, but from the comments in  bitcoin-core[2] this is really
+    /// BTC/kvB (kvB is kilo-vbyte).
+    ///
+    /// [^1]: https://developer.bitcoin.org/reference/rpc/estimatesmartfee.html
+    /// [^2]: https://github.com/bitcoin/bitcoin/blob/d367a4e36f7357c4ebd018e8e1c9c5071db2e1c2/src/rpc/fees.cpp#L90-L91
+    pub fn estimate_fee_rate(&self, num_blocks: u16) -> Result<FeeEstimate, Error> {
+        let estimate_mode = Some(EstimateMode::Conservative);
+        let resp = self
+            .inner
+            .estimate_smart_fee(num_blocks, estimate_mode)
+            .map_err(|err| Error::EstimateSmartFee(err, num_blocks))?;
+
+        // In local testing resp.fee_rate is `None` whenever there haven't
+        // been enough transactions to make an estimate.
+        let sats_per_vbyte = match resp.fee_rate {
+            Some(fee_rate) => fee_rate.to_float_in(Denomination::Satoshi) / 1000.,
+            None => return Err(Error::EstimateSmartFeeResponse(resp.errors, num_blocks)),
+        };
+
+        Ok(FeeEstimate { sats_per_vbyte })
     }
 }
 
@@ -159,6 +203,41 @@ impl ElectrumClient {
         serde_json::from_value::<GetTxResponse>(value)
             .inspect(|response| debug_assert_eq!(txid, &response.txid))
             .map_err(|err| Error::DeserializeGetTransaction(err, *txid))
+    }
+    /// Estimate the current mempool fee rate using the
+    /// `blockchain.estimatefee` RPC call
+    ///
+    /// # Notes
+    ///
+    /// The underlying call returns BTC per kilo-vbyte, just like
+    /// bitcoin-core. Some implementations of electrum, such as
+    /// romanz/electrs, use the estimatesmartfee RPC on bitcoin core for
+    /// this[1]. These implementations currently do not set the fee
+    /// estimation mode and use the default. Right now the default is
+    /// "conservative", which is what we want, but it is slated to change
+    /// to economical later versions of bitcoin-core[2].
+    ///
+    /// [^1]: https://github.com/romanz/electrs/blob/v0.10.5/src/daemon.rs#L150-L156
+    /// [^2]: https://github.com/bitcoin/bitcoin/pull/30275
+    ///
+    /// https://electrumx-spesmilo.readthedocs.io/en/latest/protocol-methods.html#blockchain-estimatefee
+    pub fn estimate_fee_rate(&self, num_blocks: u16) -> Result<FeeEstimate, Error> {
+        // The response is in BTC per kilobyte... except when it isn't.
+        // Electrum will return -1 if it couldn't estimate the fee rate.
+        let btc_per_kilo_vbyte = self
+            .inner
+            .estimate_fee(num_blocks as usize)
+            .map_err(|err| Error::EstimateFeeElectrum(err, num_blocks))?;
+
+        // If `btc_per_kilo_vbyte == -1` then Amount::from_btc returns an
+        // error, so this function behaves similarly to the BtcClient
+        // implementation.
+        let sats_per_vbyte = Amount::from_btc(btc_per_kilo_vbyte)
+            .map_err(|err| Error::ParseAmount(err, btc_per_kilo_vbyte))?
+            .to_float_in(Denomination::Satoshi)
+            / 1000.;
+
+        Ok(FeeEstimate { sats_per_vbyte })
     }
 }
 
