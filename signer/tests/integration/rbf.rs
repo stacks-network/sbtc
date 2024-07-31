@@ -21,12 +21,12 @@ use signer::utxo::SignerUtxo;
 use signer::utxo::UnsignedTransaction;
 use signer::utxo::WithdrawalRequest;
 
+use crate::utxo_construction::generate_withdrawal;
+use crate::utxo_construction::make_deposit_request;
+use regtest::Recipient;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::AsUtxo;
 use sbtc::testing::regtest::Faucet;
-use crate::utxo_construction::make_deposit_request;
-use crate::utxo_construction::generate_withdrawal;
-use regtest::Recipient;
 
 #[derive(Debug, Clone)]
 pub struct FullUtxo {
