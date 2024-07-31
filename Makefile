@@ -93,11 +93,16 @@ endif
 
 # Emily Integration tests.
 # ------------------------------------------------------------------------------
+
+# Runs a version of the emily integration environment with a pre-populated database. This is intended
+# to be used for testing the sbtc bridge website, and is not intended to be used for running code that
+# alters the API - though it could be used for that.
 emily-integration-env-up-populated-database: devenv $(EMILY_LAMBDA_BINARY) $(EMILY_CDK_TEMPLATE) $(EMILY_DOCKER_COMPOSE)
 	DYNAMODB_DB_DIR=./devenv/dynamodb/populated \
 		CONTAINER_HOST=$(_CONTAINER_HOST) \
 		docker compose --file $(EMILY_DOCKER_COMPOSE) up --remove-orphans # --detach
 
+# Populates the Emily API database.
 emily-populate-database:
 	@echo "Populating populated database"
 	cargo test --package emily-handler --test integration --features populate -- --test-threads=1 --nocapture
