@@ -205,9 +205,7 @@ pub async fn get_withdrawal_entries(
 
 /// Wipes all the tables.
 /// TODO(TBD): Include check for whether the table is running locally.
-pub async fn wipe_all_tables(
-    context: &EmilyContext,
-) -> Result<(), Error> {
+pub async fn wipe_all_tables(context: &EmilyContext) -> Result<(), Error> {
     wipe_deposit_table(context).await?;
     wipe_withdrawal_table(context).await?;
     wipe_chainstate_table(context).await?;
@@ -215,36 +213,33 @@ pub async fn wipe_all_tables(
 }
 
 /// Wipes the deposit table.
-async fn wipe_deposit_table(
-    context: &EmilyContext,
-) -> Result<(), Error> {
+async fn wipe_deposit_table(context: &EmilyContext) -> Result<(), Error> {
     wipe_table::<DepositEntry, DepositEntryKey>(
         &context.dynamodb_client,
         context.settings.deposit_table_name.as_str(),
-        |entry: DepositEntry| entry.key
-    ).await
+        |entry: DepositEntry| entry.key,
+    )
+    .await
 }
 
 /// Wipes the withdrawal table.
-async fn wipe_withdrawal_table(
-    context: &EmilyContext,
-) -> Result<(), Error> {
+async fn wipe_withdrawal_table(context: &EmilyContext) -> Result<(), Error> {
     wipe_table::<WithdrawalEntry, WithdrawalEntryKey>(
         &context.dynamodb_client,
         context.settings.withdrawal_table_name.as_str(),
-        |entry: WithdrawalEntry| entry.key
-    ).await
+        |entry: WithdrawalEntry| entry.key,
+    )
+    .await
 }
 
 /// Wipes the chainstate table.
-async fn wipe_chainstate_table(
-    context: &EmilyContext,
-) -> Result<(), Error> {
+async fn wipe_chainstate_table(context: &EmilyContext) -> Result<(), Error> {
     wipe_table::<ChainstateEntry, ChainstateEntryKey>(
         &context.dynamodb_client,
         &context.settings.chainstate_table_name.as_str(),
-        |entry: ChainstateEntry| entry.key
-    ).await
+        |entry: ChainstateEntry| entry.key,
+    )
+    .await
 }
 
 // Generics --------------------------------------------------------------------
@@ -297,24 +292,21 @@ where
     T: for<'de> Deserialize<'de>,
     K: Serialize + for<'de> Deserialize<'de>,
 {
-    let keys_to_delete: Vec<K> = serde_dynamo::from_items(
-        get_all_entries(
-            dynamodb_client,
-            table_name,
-        ).await?
-    )?
-    .into_iter()
-    .map(key_from_entry)
-    .collect();
+    let keys_to_delete: Vec<K> =
+        serde_dynamo::from_items(get_all_entries(dynamodb_client, table_name).await?)?
+            .into_iter()
+            .map(key_from_entry)
+            .collect();
 
     // Get keys
     let mut write_delete_requests: Vec<WriteRequest> = Vec::new();
     for key in keys_to_delete {
         let key_item = serde_dynamo::to_item::<K, Item>(key)?;
         let write_request = WriteRequest::builder()
-            .delete_request(DeleteRequest::builder()
-                .set_key(Some(key_item.into()))
-                .build()?
+            .delete_request(
+                DeleteRequest::builder()
+                    .set_key(Some(key_item.into()))
+                    .build()?,
             )
             .build();
         write_delete_requests.push(write_request);
@@ -341,15 +333,10 @@ async fn get_all_entries(
     let mut all_items: Vec<HashMap<String, AttributeValue>> = Vec::new();
 
     // Create the base scan builder with the table name.
-    let scan_builder = dynamodb_client
-        .scan()
-        .table_name(table_name);
+    let scan_builder = dynamodb_client.scan().table_name(table_name);
 
     // Scan the table for as many entries as possible.
-    let mut scan_output = scan_builder
-        .clone()
-        .send()
-        .await?;
+    let mut scan_output = scan_builder.clone().send().await?;
 
     // Put items into aggregate list.
     all_items.extend_from_slice(scan_output.items());

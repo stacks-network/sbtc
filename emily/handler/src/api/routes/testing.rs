@@ -18,9 +18,7 @@ fn wipe_databases(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .map(move || context.clone())
-        .and(warp::path!(
-            "testing" / "wipe"
-        ))
+        .and(warp::path!("testing" / "wipe"))
         .and(warp::post())
         .then(handlers::testing::wipe_databases)
 }
