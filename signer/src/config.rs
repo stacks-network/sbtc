@@ -101,6 +101,7 @@ where
         let url = s.parse().map_err(serde::de::Error::custom)?;
         v.push(url);
     }
+    Ok(v)
 }
 
 /// A struct for the entries in the signers Config.toml (which is currently
