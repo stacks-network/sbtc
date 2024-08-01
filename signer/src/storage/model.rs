@@ -104,7 +104,6 @@ impl From<ParsedDepositRequest> for DepositRequest {
     }
 }
 
-
 /// A signer acknowledging a deposit request.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
