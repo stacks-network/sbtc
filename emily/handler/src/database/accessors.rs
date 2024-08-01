@@ -2,11 +2,10 @@
 
 use std::collections::HashMap;
 
-use aws_sdk_dynamodb::{operation::{batch_write_item::BatchWriteItemInput, scan::builders::ScanFluentBuilder}, types::{AttributeValue, DeleteRequest, WriteRequest}};
+use aws_sdk_dynamodb::types::{AttributeValue, DeleteRequest, WriteRequest};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 
 use serde::{Deserialize, Serialize};
-use tracing::info;
 
 use crate::{
     api::models::{common::BlockHeight, withdrawal::WithdrawalId},

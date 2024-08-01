@@ -1,6 +1,5 @@
-//! Route definitions for the deposit endpoint.
+//! Route definitions for the testing endpoint.
 use warp::Filter;
-
 
 use crate::context::EmilyContext;
 
@@ -10,7 +9,7 @@ use super::handlers;
 pub fn routes(
     context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    wipe_databases(context.clone())
+    wipe_databases(context)
 }
 
 /// Wipe databases

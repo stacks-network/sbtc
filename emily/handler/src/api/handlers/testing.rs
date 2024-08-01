@@ -1,4 +1,4 @@
-//! Handlers for Health endpoint endpoints.
+//! Handlers for testing endpoint endpoints.
 
 use reqwest::StatusCode;
 use serde_json::json;
