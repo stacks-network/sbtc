@@ -217,12 +217,15 @@ async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: Contr
         return;
     }
 
+    let settings = StacksSettings::new_from_config().unwrap();
+    let mut client = StacksClient::new(settings);
+
     // We need a block id
-    let info = signer.stacks_client.get_tenure_info().await.unwrap();
+    let info = client.get_tenure_info().await.unwrap();
     let storage = Store::new_shared();
 
     let blocks =
-        stacks::api::fetch_unknown_ancestors(signer.stacks_client, &storage, info.tip_block_id)
+        stacks::api::fetch_unknown_ancestors(&mut client, &storage, info.tip_block_id)
             .await
             .unwrap();
 
@@ -259,6 +262,10 @@ async fn estimate_tx_fees() {
 
     // This should work, but will likely be an estimate for a STX transfer
     // transaction.
+
+    let settings = StacksSettings::new_from_config().unwrap();
+    let mut client = StacksClient::new(settings);
+
     let fee = client
         .estimate_fees(&payload, FeePriority::Medium)
         .await
