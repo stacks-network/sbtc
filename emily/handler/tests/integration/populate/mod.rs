@@ -5,9 +5,16 @@
 //!
 //! TODO(370): Move this functionality to a CLI command.
 
-use emily_handler::api::models::{chainstate::Chainstate, deposit::{requests::CreateDepositRequestBody, responses::CreateDepositResponse, Deposit}, withdrawal::{requests::CreateWithdrawalRequestBody, responses::CreateWithdrawalResponse, WithdrawalParameters}};
-use reqwest::Client;
+use emily_handler::api::models::{
+    chainstate::Chainstate,
+    deposit::{requests::CreateDepositRequestBody, responses::CreateDepositResponse, Deposit},
+    withdrawal::{
+        requests::CreateWithdrawalRequestBody, responses::CreateWithdrawalResponse,
+        WithdrawalParameters,
+    },
+};
 use rand::Rng;
+use reqwest::Client;
 
 const EMILY_ENDPOINT: &'static str = "http://localhost:3000";
 const NUM_ENTRIES: u32 = 1000;
@@ -22,9 +29,7 @@ pub async fn populate_emily() {
     create_chainstates(&client).await;
 }
 
-async fn create_deposits(
-    client: &Client,
-) {
+async fn create_deposits(client: &Client) {
     let mut rng = rand::thread_rng();
     for i in 0..NUM_ENTRIES {
         let n = rng.gen_range(1..=3);
@@ -56,9 +61,7 @@ async fn create_deposit(
         .expect("Failed to deserialize create deposit request response")
 }
 
-async fn create_withdrawals(
-    client: &Client,
-) {
+async fn create_withdrawals(client: &Client) {
     let mut rng = rand::thread_rng();
     for i in 0..NUM_ENTRIES {
         let create_request = CreateWithdrawalRequestBody {
@@ -67,7 +70,7 @@ async fn create_withdrawals(
             recipient: format!("recipient-{i}"),
             amount: rng.gen_range(1000..=1000000) as u64,
             parameters: WithdrawalParameters {
-                max_fee: rng.gen_range(100..=300)
+                max_fee: rng.gen_range(100..=300),
             },
         };
         create_withdrawal(client, create_request).await;
@@ -89,9 +92,7 @@ async fn create_withdrawal(
         .expect("Failed to deserialize create withdrawal request response")
 }
 
-async fn create_chainstates(
-    client: &Client,
-) {
+async fn create_chainstates(client: &Client) {
     for i in 0..NUM_ENTRIES {
         let create_request = Chainstate {
             stacks_block_height: i as u64,
@@ -101,10 +102,7 @@ async fn create_chainstates(
     }
 }
 
-async fn create_chainstate(
-    client: &Client,
-    request: Chainstate,
-) -> Chainstate {
+async fn create_chainstate(client: &Client, request: Chainstate) -> Chainstate {
     client
         .post(format!("{EMILY_ENDPOINT}/chainstate"))
         .json(&request)
