@@ -15,7 +15,7 @@ use reqwest::Client;
 
 use crate::util;
 
-const NUM_ENTRIES: u32 = 1000;
+const NUM_ENTRIES: u32 = 30;
 
 /// Populates emily.
 #[cfg_attr(not(feature = "populate"), ignore)]
