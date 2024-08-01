@@ -756,11 +756,13 @@ mod tests {
             .expect(1)
             .create();
 
-        let settings = StacksSettings {
-            node: StacksNodeSettings {
+        let nodes = Vec::new();
+        nodes.push(StacksNodeSettings {
                 endpoint: url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
                 nakamoto_start_height: 20,
-            },
+            });
+        let settings = StacksSettings {
+            nodes,
         };
 
         let client = StacksClient::new(settings);
