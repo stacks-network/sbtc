@@ -149,8 +149,18 @@ impl StacksSettings {
             .build()
             .map_err(Error::SignerConfig)?;
 
-        conf.get::<StacksSettings>("stacks")
-            .map_err(Error::StacksApiConfig)
+        let settings: Self = conf.get::<StacksSettings>("stacks")
+            .map_err(Error::StacksApiConfig);
+
+        settings.validate()?;
+
+        Ok(settings)
+    }
+
+    fn validate(&self) -> Result<(), ConfigError> {
+        if self.nodes.is_empty() {
+            return Err(ConfigError::Message("nodes cannot be empty".to_string()));
+        }
     }
 }
 
