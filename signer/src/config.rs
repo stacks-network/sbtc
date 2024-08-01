@@ -92,13 +92,15 @@ impl Settings {
 }
 
 /// A deserializer for the url::Url type.
-fn url_deserializer<'de, D>(deserializer: D) -> Result<url::Url, D::Error>
+fn url_deserializer<'de, D>(deserializer: D) -> Result<Vec<url::Url>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    String::deserialize(deserializer)?
-        .parse()
-        .map_err(serde::de::Error::custom)
+    let v = Vec::new();
+    for s in String::deserialize(deserializer)?.split(",") {
+        let url = s.parse().map_err(serde::de::Error::custom)?;
+        v.push(url);
+    }
 }
 
 /// A struct for the entries in the signers Config.toml (which is currently
@@ -117,7 +119,7 @@ pub struct StacksNodeSettings {
     ///
     /// The endpoint to use when making requests to a stacks node.
     #[serde(deserialize_with = "url_deserializer")]
-    pub endpoint: url::Url,
+    pub endpoints: Vec<url::Url>,
     /// This is the start height of the first EPOCH 3.0 block on the stacks
     /// blockchain.
     pub nakamoto_start_height: u64,
