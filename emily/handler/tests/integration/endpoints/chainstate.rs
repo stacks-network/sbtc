@@ -1,5 +1,4 @@
-use super::EMILY_ENDPOINT;
-use crate::endpoints::util;
+use crate::util::{self, constants::EMILY_CHAINSTATE_ENDPOINT};
 use emily_handler::api::models::chainstate::Chainstate;
 use reqwest::Client;
 use serde_json::json;
@@ -40,7 +39,7 @@ async fn create_chainstates() {
 
         // Act.
         let response = client
-            .post(format!("{EMILY_ENDPOINT}/chainstate"))
+            .post(EMILY_CHAINSTATE_ENDPOINT)
             .json(&json!({
               "stacksBlockHeight": stacks_block_height,
               "stacksBlockHash": stacks_block_hash,
@@ -72,7 +71,7 @@ async fn get_chainstate_at_height() {
 
         // Act.
         let response = client
-            .get(format!("{EMILY_ENDPOINT}/chainstate/{stacks_block_height}"))
+            .get(format!("{EMILY_CHAINSTATE_ENDPOINT}/{stacks_block_height}"))
             .send()
             .await
             .expect("Request should succeed");

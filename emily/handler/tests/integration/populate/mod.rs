@@ -7,16 +7,14 @@
 
 use emily_handler::api::models::{
     chainstate::Chainstate,
-    deposit::{requests::CreateDepositRequestBody, responses::CreateDepositResponse, Deposit},
-    withdrawal::{
-        requests::CreateWithdrawalRequestBody, responses::CreateWithdrawalResponse,
-        WithdrawalParameters,
-    },
+    deposit::requests::CreateDepositRequestBody,
+    withdrawal::{requests::CreateWithdrawalRequestBody, WithdrawalParameters},
 };
 use rand::Rng;
 use reqwest::Client;
 
-const EMILY_ENDPOINT: &'static str = "http://localhost:3000";
+use crate::util;
+
 const NUM_ENTRIES: u32 = 1000;
 
 /// Populates emily.
@@ -41,24 +39,9 @@ async fn create_deposits(client: &Client) {
                 reclaim: format!("reclaim-script-{i}"),
                 deposit: format!("deposit-script-{i}"),
             };
-            create_deposit(client, create_request).await;
+            util::create_deposit(client, create_request).await;
         }
     }
-}
-
-async fn create_deposit(
-    client: &Client,
-    request: CreateDepositRequestBody,
-) -> CreateDepositResponse {
-    client
-        .post(format!("{EMILY_ENDPOINT}/deposit"))
-        .json(&request)
-        .send()
-        .await
-        .expect("Create deposit request should succeed")
-        .json()
-        .await
-        .expect("Failed to deserialize create deposit request response")
 }
 
 async fn create_withdrawals(client: &Client) {
@@ -73,23 +56,8 @@ async fn create_withdrawals(client: &Client) {
                 max_fee: rng.gen_range(100..=300),
             },
         };
-        create_withdrawal(client, create_request).await;
+        util::create_withdrawal(client, create_request).await;
     }
-}
-
-async fn create_withdrawal(
-    client: &Client,
-    request: CreateWithdrawalRequestBody,
-) -> CreateWithdrawalResponse {
-    client
-        .post(format!("{EMILY_ENDPOINT}/withdrawal"))
-        .json(&request)
-        .send()
-        .await
-        .expect("Create withdrawal request should succeed")
-        .json()
-        .await
-        .expect("Failed to deserialize create withdrawal request response")
 }
 
 async fn create_chainstates(client: &Client) {
@@ -98,18 +66,6 @@ async fn create_chainstates(client: &Client) {
             stacks_block_height: i as u64,
             stacks_block_hash: format!("stacks-block-hash-{i}"),
         };
-        create_chainstate(client, create_request).await;
+        util::create_chainstate(client, create_request).await;
     }
-}
-
-async fn create_chainstate(client: &Client, request: Chainstate) -> Chainstate {
-    client
-        .post(format!("{EMILY_ENDPOINT}/chainstate"))
-        .json(&request)
-        .send()
-        .await
-        .expect("Create chainstate request should succeed")
-        .json()
-        .await
-        .expect("Failed to deserialize create chainstate request response")
 }
