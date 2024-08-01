@@ -98,6 +98,13 @@ impl From<&ParsedDepositRequest> for DepositRequest {
     }
 }
 
+impl From<ParsedDepositRequest> for DepositRequest {
+    fn from(value: ParsedDepositRequest) -> Self {
+        Self::from(&value)
+    }
+}
+
+
 /// A signer acknowledging a deposit request.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]

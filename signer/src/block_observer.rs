@@ -21,17 +21,17 @@ use std::collections::HashMap;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::error;
+use crate::error::Error;
 use crate::stacks::api::StacksInteract;
 use crate::storage;
-
-use bitcoin::hashes::Hash;
+use crate::storage::model;
+use crate::storage::DbRead;
+use crate::storage::DbWrite;
+use bitcoin::hashes::Hash as _;
+use bitcoin::Transaction;
 use blockstack_lib::chainstate::nakamoto;
 use futures::stream::StreamExt;
-use storage::model;
-use storage::DbRead;
-use storage::DbWrite;
-
-type DepositRequestMap = HashMap<bitcoin::Txid, Vec<DepositRequest>>;
+use sbtc::deposits::ParsedDepositRequest;
 
 /// Block observer
 #[derive(Debug)]
@@ -50,6 +50,9 @@ pub struct BlockObserver<BitcoinClient, StacksClient, EmilyClient, BlockHashStre
     pub subscribers: tokio::sync::watch::Sender<()>,
     /// How far back in time the observer should look
     pub horizon: usize,
+    /// An in memory map of deposit requests that haven't been confirmed
+    /// yet.
+    pub deposit_requests: HashMap<bitcoin::Txid, Vec<ParsedDepositRequest>>,
 }
 
 impl<BC, SC, EC, BHS, S> BlockObserver<BC, SC, EC, BHS, S>
@@ -66,15 +69,11 @@ where
     /// Run the block observer
     #[tracing::instrument(skip(self))]
     pub async fn run(mut self) -> Result<(), error::Error> {
-        let mut known_deposit_requests = HashMap::new();
-
         while let Some(new_block_hash) = self.bitcoin_blocks.next().await {
-            self.load_latest_deposit_requests(&mut known_deposit_requests)
-                .await;
+            self.load_latest_deposit_requests().await;
 
             for block in self.next_blocks_to_process(new_block_hash).await? {
-                self.process_bitcoin_block(&known_deposit_requests, block)
-                    .await?;
+                self.process_bitcoin_block(block).await?;
             }
 
             if self.subscribers.send(()).is_err() {
@@ -89,17 +88,14 @@ where
     }
 
     #[tracing::instrument(skip(self))]
-    async fn load_latest_deposit_requests(
-        &mut self,
-        known_deposit_requests: &mut DepositRequestMap,
-    ) {
+    async fn load_latest_deposit_requests(&mut self) {
         self.emily_client
             .get_deposits()
             .await
             .into_iter()
             .for_each(|deposit| {
-                known_deposit_requests
-                    .entry(deposit.txid)
+                self.deposit_requests
+                    .entry(deposit.outpoint.txid)
                     .or_default()
                     .push(deposit)
             });
@@ -145,11 +141,7 @@ where
     }
 
     #[tracing::instrument(skip(self))]
-    async fn process_bitcoin_block(
-        &mut self,
-        known_deposit_requests: &DepositRequestMap,
-        block: bitcoin::Block,
-    ) -> Result<(), error::Error> {
+    async fn process_bitcoin_block(&mut self, block: bitcoin::Block) -> Result<(), error::Error> {
         let info = self.stacks_client.get_tenure_info().await?;
         let stacks_blocks = crate::stacks::api::fetch_unknown_ancestors(
             &self.stacks_client,
@@ -158,7 +150,7 @@ where
         )
         .await?;
 
-        self.extract_deposit_requests(&block.txdata);
+        self.extract_deposit_requests(&block.txdata).await?;
         self.extract_sbtc_transactions(&block.txdata);
 
         self.write_stacks_blocks(&stacks_blocks).await?;
@@ -167,8 +159,16 @@ where
         Ok(())
     }
 
-    fn extract_deposit_requests(&self, _transactions: &[bitcoin::Transaction]) {
-        // TODO(#203): Implement
+    async fn extract_deposit_requests(&mut self, txs: &[Transaction]) -> Result<(), Error> {
+        let deposit_request: Vec<model::DepositRequest> = txs
+            .iter()
+            .filter_map(|tx| self.deposit_requests.remove(&tx.compute_txid()))
+            .flatten()
+            .map(model::DepositRequest::from)
+            .collect();
+
+        self.storage.write_deposit_requests(deposit_request).await?;
+        Ok(())
     }
 
     fn extract_sbtc_transactions(&self, _transactions: &[bitcoin::Transaction]) {
@@ -212,14 +212,7 @@ where
 /// Placeholder trait
 pub trait EmilyInteract {
     /// Get deposits
-    fn get_deposits(&mut self) -> impl std::future::Future<Output = Vec<DepositRequest>>;
-}
-
-/// Placeholder type
-#[derive(Debug, Clone, Hash, PartialEq)]
-pub struct DepositRequest {
-    /// Txid
-    txid: bitcoin::Txid,
+    fn get_deposits(&mut self) -> impl std::future::Future<Output = Vec<ParsedDepositRequest>>;
 }
 
 #[cfg(test)]
@@ -255,6 +248,7 @@ mod tests {
             storage: storage.clone(),
             subscribers,
             horizon: 1,
+            deposit_requests: HashMap::new(),
         };
 
         block_observer.run().await.expect("block observer failed");
@@ -440,7 +434,7 @@ mod tests {
     }
 
     impl EmilyInteract for () {
-        async fn get_deposits(&mut self) -> Vec<DepositRequest> {
+        async fn get_deposits(&mut self) -> Vec<ParsedDepositRequest> {
             Vec::new()
         }
     }
