@@ -159,7 +159,7 @@ impl StacksSettings {
 
     fn validate(&self) -> Result<(), Error> {
         if self.nodes.is_empty() {
-            return Err(Error::StacksApiConfig);
+            return Err(Error::StacksApiConfig(ConfigError::Message("Host cannot be empty".to_string())));
         }
 
         Ok(())
