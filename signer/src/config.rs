@@ -157,9 +157,9 @@ impl StacksSettings {
         Ok(settings)
     }
 
-    fn validate(&self) -> Result<(), ConfigError> {
+    fn validate(&self) -> Result<(), Error> {
         if self.nodes.is_empty() {
-            return Err(ConfigError::Message("nodes cannot be empty".to_string()));
+            return Err(Error::StacksApiConfig);
         }
 
         Ok(())
