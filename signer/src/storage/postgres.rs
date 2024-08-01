@@ -687,6 +687,84 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
+    async fn write_deposit_requests(
+        &self,
+        deposit_requests: Vec<model::DepositRequest>,
+    ) -> Result<(), Self::Error> {
+        if deposit_requests.is_empty() {
+            return Ok(());
+        }
+
+        let mut txid = Vec::with_capacity(deposit_requests.len());
+        let mut output_index = Vec::with_capacity(deposit_requests.len());
+        let mut spend_script = Vec::with_capacity(deposit_requests.len());
+        let mut reclaim_script = Vec::with_capacity(deposit_requests.len());
+        let mut recipient = Vec::with_capacity(deposit_requests.len());
+        let mut amount = Vec::with_capacity(deposit_requests.len());
+        let mut max_fee = Vec::with_capacity(deposit_requests.len());
+
+        for req in deposit_requests {
+            txid.push(req.txid);
+            output_index.push(req.output_index);
+            spend_script.push(req.spend_script);
+            reclaim_script.push(req.reclaim_script);
+            recipient.push(req.recipient);
+            amount.push(req.amount);
+            max_fee.push(req.max_fee);
+        }
+
+        sqlx::query(
+            r#"
+            WITH tx_ids       AS (SELECT ROW_NUMBER() OVER (), txid FROM UNNEST($1::BYTEA[]) AS txid)
+            , output_index    AS (SELECT ROW_NUMBER() OVER (), tx FROM UNNEST($2::INTEGER[]) AS tx)
+            , spend_script    AS (SELECT ROW_NUMBER() OVER (), spend_script FROM UNNEST($3::BYTEA[]) AS spend_script)
+            , reclaim_script  AS (SELECT ROW_NUMBER() OVER (), reclaim_script FROM UNNEST($4::BYTEA[]) AS reclaim_script)
+            , recipient       AS (SELECT ROW_NUMBER() OVER (), recipient FROM UNNEST($5::BYTEA[]) AS recipient)
+            , amount          AS (SELECT ROW_NUMBER() OVER (), amount FROM UNNEST($6::BIGINT[]) AS amount)
+            , max_fee         AS (SELECT ROW_NUMBER() OVER (), max_fee FROM UNNEST($7::BIGINT[]) AS max_fee)
+            INSERT INTO sbtc_signer.transactions (
+                  txid
+                , output_index
+                , spend_script
+                , reclaim_script
+                , recipient
+                , amount
+                , max_fee
+                , sender_addresses
+                , created_at)
+            SELECT
+                txid
+              , output_index
+              , spend_script
+              , reclaim_script
+              , recipient
+              , amount
+              , max_fee
+              , {} as sender_addresses
+              , CURRENT_TIMESTAMP
+            FROM tx_ids
+            JOIN output_index USING (row_number)
+            JOIN spend_script USING (row_number)
+            JOIN reclaim_script USING (row_number)
+            JOIN recipient USING (row_number)
+            JOIN amount USING (row_number)
+            JOIN max_fee USING (row_number)
+            ON CONFLICT DO NOTHING"#,
+        )
+        .bind(txid)
+        .bind(output_index)
+        .bind(spend_script)
+        .bind(reclaim_script)
+        .bind(recipient)
+        .bind(amount)
+        .bind(max_fee)
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
+    }
+
     async fn write_withdraw_request(
         &self,
         withdraw_request: &model::WithdrawRequest,
