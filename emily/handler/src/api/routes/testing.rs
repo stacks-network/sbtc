@@ -5,7 +5,7 @@ use crate::context::EmilyContext;
 
 use super::handlers;
 
-/// Debug routes
+/// Testing routes
 pub fn routes(
     context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {

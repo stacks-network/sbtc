@@ -490,7 +490,7 @@
         "tags": [
           "testing"
         ],
-        "summary": "Get health handler.",
+        "summary": "Wipe databases handler.",
         "operationId": "wipeDatabases",
         "responses": {
           "204": {

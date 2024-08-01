@@ -8,7 +8,7 @@ use crate::common::error::Error;
 use crate::context::EmilyContext;
 use crate::database::accessors;
 
-/// Get health handler.
+/// Wipe databases handler.
 #[utoipa::path(
     post,
     operation_id = "wipeDatabases",
