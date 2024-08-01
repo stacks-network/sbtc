@@ -1,5 +1,8 @@
 //! Database models for the signer.
 
+use bitcoin::hashes::Hash as _;
+use sbtc::deposits::ParsedDepositRequest;
+
 #[cfg(feature = "testing")]
 use fake::faker::time::en::DateTimeAfter;
 
@@ -77,6 +80,22 @@ pub struct DepositRequest {
         dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")
     )]
     pub created_at: time::OffsetDateTime,
+}
+
+impl From<&ParsedDepositRequest> for DepositRequest {
+    fn from(value: &ParsedDepositRequest) -> Self {
+        Self {
+            txid: value.outpoint.txid.to_byte_array().to_vec(),
+            output_index: value.outpoint.vout as i32,
+            spend_script: value.deposit_script.to_bytes(),
+            reclaim_script: value.reclaim_script.to_bytes(),
+            recipient: value.recipient.to_string(),
+            amount: value.amount as i64,
+            max_fee: value.max_fee as i64,
+            sender_addresses: Vec::new(),
+            created_at: time::OffsetDateTime::now_utc(),
+        }
+    }
 }
 
 /// A signer acknowledging a deposit request.
