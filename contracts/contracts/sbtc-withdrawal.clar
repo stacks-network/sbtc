@@ -17,6 +17,7 @@
 ;; The returned index marks the failed transaction in list
 (define-constant ERR_WITHDRAWAL_INDEX_PREFIX (unwrap-err! ERR_WITHDRAWAL_INDEX (err true)))
 (define-constant ERR_WITHDRAWAL_INDEX (err u506))
+(define-constant ERR_NO_SPONSOR (err u507))
 
 ;; Maximum value of an address version as a uint
 (define-constant MAX_ADDRESS_VERSION u6)
@@ -41,6 +42,26 @@
     ;; Validate the recipient address
     (try! (validate-recipient recipient))
     
+    (ok (try! (contract-call? .sbtc-registry create-withdrawal-request amount max-fee tx-sender recipient burn-block-height)))
+  )
+)
+
+;; Initiate a new sponsored withdrawal request
+(define-public (initiate-sponsored-withdrawal-request (amount uint)
+                                            (sender principal)
+                                            (recipient { version: (buff 1), hashbytes: (buff 32) })
+                                            (max-fee uint)
+                                            (sponsor-fee uint)
+  )
+  (begin
+    ;; Pay the fee.
+		(try! (contract-call? .sbtc-token protocol-transfer sponsor-fee sender (unwrap! tx-sponsor? ERR_NO_SPONSOR)))
+    ;; Lock the sBTC
+    (try! (contract-call? .sbtc-token protocol-lock amount tx-sender))
+    ;; Check that the amount is above the dust limit
+    (asserts! (> amount DUST_LIMIT) ERR_DUST_LIMIT)
+    ;; Validate the recipient address
+    (try! (validate-recipient recipient))
     (ok (try! (contract-call? .sbtc-registry create-withdrawal-request amount max-fee tx-sender recipient burn-block-height)))
   )
 )
