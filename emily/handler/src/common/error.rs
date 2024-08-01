@@ -5,8 +5,7 @@ use std::env;
 use aws_sdk_dynamodb::{
     error::SdkError,
     operation::{
-        delete_item::DeleteItemError, get_item::GetItemError, put_item::PutItemError,
-        query::QueryError, scan::ScanError,
+        batch_write_item::BatchWriteItemError, delete_item::DeleteItemError, get_item::GetItemError, put_item::PutItemError, query::QueryError, scan::ScanError
     },
 };
 use reqwest::StatusCode;
@@ -142,6 +141,11 @@ impl From<SdkError<DeleteItemError>> for Error {
 impl From<SdkError<ScanError>> for Error {
     fn from(err: SdkError<ScanError>) -> Self {
         Error::Debug(format!("SdkError<ScanError> - {err:?}"))
+    }
+}
+impl From<SdkError<BatchWriteItemError>> for Error {
+    fn from(err: SdkError<BatchWriteItemError>) -> Self {
+        Error::Debug(format!("SdkError<BatchWriteItemError> - {err:?}"))
     }
 }
 impl From<aws_sdk_dynamodb::error::BuildError> for Error {

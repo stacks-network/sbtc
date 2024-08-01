@@ -314,11 +314,11 @@ where
 
     let mut chunks = write_delete_requests.chunks(25);
     while let Some(chunk) = chunks.next() {
-        let _ = dynamodb_client
+        dynamodb_client
             .batch_write_item()
             .request_items(table_name, chunk.to_vec())
             .send()
-            .await;
+            .await?;
     }
 
     Ok(())
