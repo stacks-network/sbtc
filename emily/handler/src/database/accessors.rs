@@ -236,7 +236,7 @@ async fn wipe_withdrawal_table(context: &EmilyContext) -> Result<(), Error> {
 async fn wipe_chainstate_table(context: &EmilyContext) -> Result<(), Error> {
     wipe_table::<ChainstateEntry, ChainstateEntryKey>(
         &context.dynamodb_client,
-        &context.settings.chainstate_table_name.as_str(),
+        context.settings.chainstate_table_name.as_str(),
         |entry: ChainstateEntry| entry.key,
     )
     .await
@@ -312,8 +312,8 @@ where
         write_delete_requests.push(write_request);
     }
 
-    let mut chunks = write_delete_requests.chunks(25);
-    while let Some(chunk) = chunks.next() {
+    // let chunks = write_delete_requests.chunks(25);
+    for chunk in write_delete_requests.chunks(25) {
         dynamodb_client
             .batch_write_item()
             .request_items(table_name, chunk.to_vec())
