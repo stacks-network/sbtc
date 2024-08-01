@@ -263,7 +263,7 @@ impl StacksClient {
     /// StacksSettings.
     pub fn new(settings: StacksSettings) -> Self {
         Self {
-            node_endpoint: settings.nodes[0].endpoint,
+            node_endpoint: settings.nodes[0].endpoint.clone(),
             nakamoto_start_height: settings.nodes[0].nakamoto_start_height,
             client: reqwest::Client::new(),
         }
