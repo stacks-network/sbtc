@@ -13,11 +13,28 @@ mod deposit;
 mod health;
 /// Withdrawal routes.
 mod withdrawal;
+/// Testing routes.
+#[cfg(feature = "testing")]
+mod testing;
 
 /// This function sets up the Warp filters for handling all requests.
+#[cfg(feature = "testing")]
 pub fn routes(
     context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    // TODO(273):  Remove the "local" prefix once we figure out why all local
+    // testing calls seem to forcibly start with `local`.
+    warp::path("local").and(
+        health::routes()
+            .or(chainstate::routes(context.clone()))
+            .or(deposit::routes(context.clone()))
+            .or(withdrawal::routes(context.clone()))
+            .or(testing::routes(context)),
+    )
+}
+
+#[cfg(not(feature = "testing"))]
+fn debug_routes() -> Option<impl Filter<Extract = impl warp::Reply, Error = warp::Rejection>> {
     // TODO(273):  Remove the "local" prefix once we figure out why all local
     // testing calls seem to forcibly start with `local`.
     warp::path("local").and(

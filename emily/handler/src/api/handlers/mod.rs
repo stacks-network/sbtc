@@ -14,6 +14,9 @@ pub mod deposit;
 pub mod health;
 /// Withdrawal handlers.
 pub mod withdrawal;
+/// Testing handlers.
+#[cfg(feature = "testing")]
+pub mod testing;
 
 /// Central error handler for Warp rejections, converting them to appropriate HTTP responses.
 /// TODO(131): Alter handler for Emily API.
