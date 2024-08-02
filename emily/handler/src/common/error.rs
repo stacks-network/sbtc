@@ -5,8 +5,8 @@ use std::env;
 use aws_sdk_dynamodb::{
     error::SdkError,
     operation::{
-        delete_item::DeleteItemError, get_item::GetItemError, put_item::PutItemError,
-        query::QueryError,
+        batch_write_item::BatchWriteItemError, delete_item::DeleteItemError,
+        get_item::GetItemError, put_item::PutItemError, query::QueryError, scan::ScanError,
     },
 };
 use reqwest::StatusCode;
@@ -137,6 +137,21 @@ impl From<SdkError<QueryError>> for Error {
 impl From<SdkError<DeleteItemError>> for Error {
     fn from(err: SdkError<DeleteItemError>) -> Self {
         Error::Debug(format!("SdkError<DeleteItemError> - {err:?}"))
+    }
+}
+impl From<SdkError<ScanError>> for Error {
+    fn from(err: SdkError<ScanError>) -> Self {
+        Error::Debug(format!("SdkError<ScanError> - {err:?}"))
+    }
+}
+impl From<SdkError<BatchWriteItemError>> for Error {
+    fn from(err: SdkError<BatchWriteItemError>) -> Self {
+        Error::Debug(format!("SdkError<BatchWriteItemError> - {err:?}"))
+    }
+}
+impl From<aws_sdk_dynamodb::error::BuildError> for Error {
+    fn from(err: aws_sdk_dynamodb::error::BuildError) -> Self {
+        Error::Debug(format!("aws_sdk_dynamodb::error::BuildError - {err:?}"))
     }
 }
 impl From<base64::DecodeError> for Error {

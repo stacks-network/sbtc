@@ -485,6 +485,39 @@
         }
       }
     },
+    "/testing/wipe": {
+      "post": {
+        "tags": [
+          "testing"
+        ],
+        "summary": "Wipe databases handler.",
+        "operationId": "wipeDatabases",
+        "responses": {
+          "204": {
+            "description": "Successfully wiped databases."
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
     "/withdrawal": {
       "get": {
         "tags": [

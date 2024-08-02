@@ -25,6 +25,8 @@ use utoipa::OpenApi;
         api::handlers::chainstate::get_chainstate_at_height,
         api::handlers::chainstate::set_chainstate,
         api::handlers::chainstate::update_chainstate,
+        // Testing endpoints.
+        api::handlers::testing::wipe_databases,
     ),
     components(schemas(
         // Chainstate models.

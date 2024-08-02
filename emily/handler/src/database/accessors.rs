@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use aws_sdk_dynamodb::types::AttributeValue;
+use aws_sdk_dynamodb::types::{AttributeValue, DeleteRequest, WriteRequest};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 
 use serde::{Deserialize, Serialize};
@@ -203,6 +203,45 @@ pub async fn get_withdrawal_entries(
     .await
 }
 
+/// Wipes all the tables.
+/// TODO(TBD): Include check for whether the table is running locally.
+pub async fn wipe_all_tables(context: &EmilyContext) -> Result<(), Error> {
+    wipe_deposit_table(context).await?;
+    wipe_withdrawal_table(context).await?;
+    wipe_chainstate_table(context).await?;
+    Ok(())
+}
+
+/// Wipes the deposit table.
+async fn wipe_deposit_table(context: &EmilyContext) -> Result<(), Error> {
+    wipe_table::<DepositEntry, DepositEntryKey>(
+        &context.dynamodb_client,
+        context.settings.deposit_table_name.as_str(),
+        |entry: DepositEntry| entry.key,
+    )
+    .await
+}
+
+/// Wipes the withdrawal table.
+async fn wipe_withdrawal_table(context: &EmilyContext) -> Result<(), Error> {
+    wipe_table::<WithdrawalEntry, WithdrawalEntryKey>(
+        &context.dynamodb_client,
+        context.settings.withdrawal_table_name.as_str(),
+        |entry: WithdrawalEntry| entry.key,
+    )
+    .await
+}
+
+/// Wipes the chainstate table.
+async fn wipe_chainstate_table(context: &EmilyContext) -> Result<(), Error> {
+    wipe_table::<ChainstateEntry, ChainstateEntryKey>(
+        &context.dynamodb_client,
+        context.settings.chainstate_table_name.as_str(),
+        |entry: ChainstateEntry| entry.key,
+    )
+    .await
+}
+
 // Generics --------------------------------------------------------------------
 
 /// Generic put table entry.
@@ -241,6 +280,78 @@ pub async fn _delete_entry(
         .await?;
     // Return.
     Ok(())
+}
+
+/// Wipes a specific table.
+async fn wipe_table<T, K>(
+    dynamodb_client: &aws_sdk_dynamodb::Client,
+    table_name: &str,
+    key_from_entry: fn(T) -> K,
+) -> Result<(), Error>
+where
+    T: for<'de> Deserialize<'de>,
+    K: Serialize + for<'de> Deserialize<'de>,
+{
+    let keys_to_delete: Vec<K> =
+        serde_dynamo::from_items(get_all_entries(dynamodb_client, table_name).await?)?
+            .into_iter()
+            .map(key_from_entry)
+            .collect();
+
+    // Get keys
+    let mut write_delete_requests: Vec<WriteRequest> = Vec::new();
+    for key in keys_to_delete {
+        let key_item = serde_dynamo::to_item::<K, Item>(key)?;
+        let write_request = WriteRequest::builder()
+            .delete_request(
+                DeleteRequest::builder()
+                    .set_key(Some(key_item.into()))
+                    .build()?,
+            )
+            .build();
+        write_delete_requests.push(write_request);
+    }
+
+    // let chunks = write_delete_requests.chunks(25);
+    for chunk in write_delete_requests.chunks(25) {
+        dynamodb_client
+            .batch_write_item()
+            .request_items(table_name, chunk.to_vec())
+            .send()
+            .await?;
+    }
+
+    Ok(())
+}
+
+/// Get all entries from a dynamodb table.
+async fn get_all_entries(
+    dynamodb_client: &aws_sdk_dynamodb::Client,
+    table_name: &str,
+) -> Result<Vec<HashMap<String, AttributeValue>>, Error> {
+    // Create vector to aggregate items in.
+    let mut all_items: Vec<HashMap<String, AttributeValue>> = Vec::new();
+
+    // Create the base scan builder with the table name.
+    let scan_builder = dynamodb_client.scan().table_name(table_name);
+
+    // Scan the table for as many entries as possible.
+    let mut scan_output = scan_builder.clone().send().await?;
+
+    // Put items into aggregate list.
+    all_items.extend_from_slice(scan_output.items());
+
+    // Continue to query until the scan is done.
+    while let Some(exclusive_start_key) = scan_output.last_evaluated_key {
+        scan_output = scan_builder
+            .clone()
+            .set_exclusive_start_key(Some(exclusive_start_key))
+            .send()
+            .await?;
+        all_items.extend_from_slice(scan_output.items());
+    }
+
+    Ok(all_items)
 }
 
 /// Generic table get.

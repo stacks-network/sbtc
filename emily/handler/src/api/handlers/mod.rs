@@ -12,6 +12,9 @@ pub mod chainstate;
 pub mod deposit;
 /// Health handlers.
 pub mod health;
+/// Testing handlers.
+#[cfg(feature = "testing")]
+pub mod testing;
 /// Withdrawal handlers.
 pub mod withdrawal;
 
