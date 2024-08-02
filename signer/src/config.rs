@@ -96,7 +96,7 @@ fn url_deserializer<'de, D>(deserializer: D) -> Result<Vec<url::Url>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let v = Vec::new();
+    let mut v = Vec::new();
     for s in String::deserialize(deserializer)?.split(",") {
         let url = s.parse().map_err(serde::de::Error::custom)?;
         v.push(url);
