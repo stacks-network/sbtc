@@ -29,9 +29,12 @@ use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use bitcoin::hashes::Hash as _;
 use bitcoin::Transaction;
+use bitcoin::Txid;
 use blockstack_lib::chainstate::nakamoto;
 use futures::stream::StreamExt;
-use sbtc::deposits::ParsedDepositRequest;
+use sbtc::deposits::CreateDepositRequest;
+use sbtc::deposits::Deposit;
+use sbtc::rpc::BitcoinClient;
 
 /// Block observer
 #[derive(Debug)]
@@ -51,20 +54,22 @@ pub struct BlockObserver<BitcoinClient, StacksClient, EmilyClient, BlockHashStre
     /// How far back in time the observer should look
     pub horizon: usize,
     /// An in memory map of deposit requests that haven't been confirmed
-    /// yet.
-    pub deposit_requests: HashMap<bitcoin::Txid, Vec<ParsedDepositRequest>>,
+    /// on bitcoin yet.
+    pub deposit_requests: HashMap<Txid, Vec<Deposit>>,
+    /// The bitcoin network
+    pub network: bitcoin::Network,
 }
 
 impl<BC, SC, EC, BHS, S> BlockObserver<BC, SC, EC, BHS, S>
 where
-    BC: BitcoinInteract,
+    BC: BitcoinInteract + BitcoinClient,
     SC: StacksInteract,
     EC: EmilyInteract,
     S: DbWrite + DbRead + Send + Sync,
     BHS: futures::stream::Stream<Item = bitcoin::BlockHash> + Unpin,
     error::Error: From<<S as DbRead>::Error>,
     error::Error: From<<S as DbWrite>::Error>,
-    error::Error: From<BC::Error>,
+    error::Error: From<<BC as BitcoinInteract>::Error>,
 {
     /// Run the block observer
     #[tracing::instrument(skip(self))]
@@ -89,13 +94,19 @@ where
 
     #[tracing::instrument(skip(self))]
     async fn load_latest_deposit_requests(&mut self) {
-        self.emily_client
-            .get_deposits()
-            .await
+        let deposit_requests = self.emily_client.get_deposits().await;
+
+        deposit_requests
             .into_iter()
+            .flat_map(|request| {
+                request
+                    .validate(&self.bitcoin_client)
+                    .inspect_err(|err| tracing::warn!("could not validate deposit request: {err}"))
+                    .ok()
+            })
             .for_each(|deposit| {
                 self.deposit_requests
-                    .entry(deposit.outpoint.txid)
+                    .entry(deposit.info.outpoint.txid)
                     .or_default()
                     .push(deposit)
             });
@@ -164,7 +175,7 @@ where
             .iter()
             .filter_map(|tx| self.deposit_requests.remove(&tx.compute_txid()))
             .flatten()
-            .map(model::DepositRequest::from)
+            .map(|deposit| model::DepositRequest::from_deposit(&deposit, self.network))
             .collect();
 
         self.storage.write_deposit_requests(deposit_request).await?;
@@ -212,7 +223,7 @@ where
 /// Placeholder trait
 pub trait EmilyInteract {
     /// Get deposits
-    fn get_deposits(&mut self) -> impl std::future::Future<Output = Vec<ParsedDepositRequest>>;
+    fn get_deposits(&mut self) -> impl std::future::Future<Output = Vec<CreateDepositRequest>>;
 }
 
 #[cfg(test)]
@@ -225,6 +236,7 @@ mod tests {
     use blockstack_lib::types::chainstate::StacksBlockId;
     use rand::seq::IteratorRandom;
     use rand::SeedableRng;
+    use sbtc::rpc::BitcoinClient;
 
     use crate::stacks::api::FeePriority;
     use crate::storage;
@@ -249,6 +261,7 @@ mod tests {
             subscribers,
             horizon: 1,
             deposit_requests: HashMap::new(),
+            network: bitcoin::Network::Regtest,
         };
 
         block_observer.run().await.expect("block observer failed");
@@ -273,6 +286,8 @@ mod tests {
         /// is used to identify tenures. That is, all NakamotoBlocks that
         /// have the same bitcoin::BlockHash occur within the same tenure.
         stacks_blocks: Vec<(StacksBlockId, NakamotoBlock, BlockHash)>,
+        /// This represents deposit transactions
+        deposits: HashMap<Txid, sbtc::rpc::GetTxResponse>,
     }
 
     impl TestHarness {
@@ -320,7 +335,11 @@ mod tests {
                 .flatten()
                 .collect();
 
-            Self { bitcoin_blocks, stacks_blocks }
+            Self {
+                bitcoin_blocks,
+                stacks_blocks,
+                deposits: HashMap::new(),
+            }
         }
 
         fn spawn_block_hash_stream(
@@ -359,6 +378,13 @@ mod tests {
 
         async fn estimate_fee_rate(&mut self) -> Result<f64, Self::Error> {
             unimplemented!()
+        }
+    }
+
+    impl BitcoinClient for TestHarness {
+        type Error = Error;
+        fn get_tx(&self, txid: &Txid) -> Result<sbtc::rpc::GetTxResponse, Self::Error> {
+            self.deposits.get(txid).cloned().ok_or(Error::Encryption)
         }
     }
 
@@ -434,7 +460,7 @@ mod tests {
     }
 
     impl EmilyInteract for () {
-        async fn get_deposits(&mut self) -> Vec<ParsedDepositRequest> {
+        async fn get_deposits(&mut self) -> Vec<CreateDepositRequest> {
             Vec::new()
         }
     }

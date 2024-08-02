@@ -1,7 +1,8 @@
 //! Database models for the signer.
 
 use bitcoin::hashes::Hash as _;
-use sbtc::deposits::ParsedDepositRequest;
+use bitcoin::Address;
+use sbtc::deposits::Deposit;
 
 #[cfg(feature = "testing")]
 use fake::faker::time::en::DateTimeAfter;
@@ -82,25 +83,28 @@ pub struct DepositRequest {
     pub created_at: time::OffsetDateTime,
 }
 
-impl From<&ParsedDepositRequest> for DepositRequest {
-    fn from(value: &ParsedDepositRequest) -> Self {
+impl DepositRequest {
+    /// Create me from a full deposit.
+    pub fn from_deposit(deposit: &Deposit, network: bitcoin::Network) -> Self {
+        let tx_input_iter = deposit.tx.input.iter();
+        let sender_addresses = tx_input_iter
+            .flat_map(|tx_in| {
+                Address::from_script(&tx_in.script_sig, network)
+                    .inspect_err(|err| tracing::warn!("could not create address: {err}"))
+                    .map(|address| address.to_string())
+            })
+            .collect();
         Self {
-            txid: value.outpoint.txid.to_byte_array().to_vec(),
-            output_index: value.outpoint.vout as i32,
-            spend_script: value.deposit_script.to_bytes(),
-            reclaim_script: value.reclaim_script.to_bytes(),
-            recipient: value.recipient.to_string(),
-            amount: value.amount as i64,
-            max_fee: value.max_fee as i64,
-            sender_addresses: Vec::new(),
+            txid: deposit.info.outpoint.txid.to_byte_array().to_vec(),
+            output_index: deposit.info.outpoint.vout as i32,
+            spend_script: deposit.info.deposit_script.to_bytes(),
+            reclaim_script: deposit.info.reclaim_script.to_bytes(),
+            recipient: deposit.info.recipient.to_string(),
+            amount: deposit.info.amount as i64,
+            max_fee: deposit.info.max_fee as i64,
+            sender_addresses,
             created_at: time::OffsetDateTime::now_utc(),
         }
-    }
-}
-
-impl From<ParsedDepositRequest> for DepositRequest {
-    fn from(value: ParsedDepositRequest) -> Self {
-        Self::from(&value)
     }
 }
 
