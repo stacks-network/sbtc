@@ -250,7 +250,10 @@ impl TryFrom<AccountEntryResponse> for AccountInfo {
 pub struct StacksClient {
     /// The base URL (with the port) that will be used when making requests
     /// for to a Stacks node.
-    pub node_endpoint: url::Url,
+    pub node_endpoints: Vec<url::Url>,
+    /// The current index into the endpoints list
+    /// Increment this on network failure
+    pub endpoint_index: usize,
     /// The client used to make the request.
     pub client: reqwest::Client,
     /// The start height of the first EPOCH 3.0 block on the Stacks
@@ -263,7 +266,8 @@ impl StacksClient {
     /// StacksSettings.
     pub fn new(settings: StacksSettings) -> Self {
         Self {
-            node_endpoint: settings.node.endpoint,
+            node_endpoints: settings.node.endpoints,
+            endpoint_index: 0,
             nakamoto_start_height: settings.node.nakamoto_start_height,
             client: reqwest::Client::new(),
         }
@@ -277,7 +281,7 @@ impl StacksClient {
     #[tracing::instrument(skip_all)]
     pub async fn get_account(&self, address: &StacksAddress) -> Result<AccountInfo, Error> {
         let path = format!("/v2/accounts/{}?proof=0", address);
-        let base = self.node_endpoint.clone();
+        let base = self.node_endpoints[self.endpoint_index].clone();
         let url = base
             .join(&path)
             .map_err(|err| Error::PathJoin(err, base, Cow::Owned(path)))?;
@@ -310,7 +314,7 @@ impl StacksClient {
     #[tracing::instrument(skip_all)]
     pub async fn submit_tx(&self, tx: &StacksTransaction) -> Result<SubmitTxResponse, Error> {
         let path = "/v2/transactions";
-        let base = self.node_endpoint.clone();
+        let base = self.node_endpoints[self.endpoint_index].clone();
         let url = base
             .join(path)
             .map_err(|err| Error::PathJoin(err, base, Cow::Borrowed(path)))?;
@@ -352,7 +356,7 @@ impl StacksClient {
         T: AsTxPayload + Send,
     {
         let path = "/v2/fees/transaction";
-        let base = self.node_endpoint.clone();
+        let base = self.node_endpoints[self.endpoint_index].clone();
         let url = base
             .join(path)
             .map_err(|err| Error::PathJoin(err, base, Cow::Borrowed(path)))?;
@@ -396,7 +400,7 @@ impl StacksClient {
     #[tracing::instrument(skip(self))]
     async fn get_block(&self, block_id: StacksBlockId) -> Result<NakamotoBlock, Error> {
         let path = format!("/v3/blocks/{}", block_id.to_hex());
-        let base = self.node_endpoint.clone();
+        let base = self.node_endpoints[self.endpoint_index].clone();
         let url = base
             .join(&path)
             .map_err(|err| Error::PathJoin(err, base, Cow::Owned(path)))?;
