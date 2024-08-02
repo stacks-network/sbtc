@@ -480,7 +480,7 @@ impl StacksClient {
     ///   non-Nakamoto block then a Result::Err is returned.
     #[tracing::instrument(skip(self))]
     async fn get_tenure_raw(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
-        let base = self.node_endpoint.clone();
+        let base = self.node_endpoints[self.endpoint_index].clone();
         let path = format!("/v3/tenures/{}", block_id.to_hex());
         let url = base
             .join(&path)
@@ -526,7 +526,7 @@ impl StacksClient {
     /// tenure information.
     #[tracing::instrument(skip(self))]
     pub async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
-        let base = self.node_endpoint.clone();
+        let base = self.node_endpoints[self.endpoint_index].clone();
         let path = "/v3/tenures/info";
         let url = base
             .join(path)
