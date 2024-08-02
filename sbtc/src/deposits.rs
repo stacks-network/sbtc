@@ -102,7 +102,7 @@ pub struct DepositInfo {
 pub struct Deposit {
     /// The transaction that includes the deposit information.
     pub tx: Transaction,
-    /// The information included in one of the outputs of the above
+    /// The deposit information included in one of the outputs of the above
     /// transaction.
     pub info: DepositInfo,
     /// The block hash of the block that includes this transaction. If this
@@ -532,7 +532,7 @@ mod tests {
 
     const CONTRACT_ADDRESS: &str = "ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y.contract-name";
 
-    struct DummyClient(HashMap<Txid, Transaction>);
+    struct DummyClient(pub HashMap<Txid, Transaction>);
 
     impl DummyClient {
         fn new_from_tx(tx: &Transaction) -> Self {
@@ -545,16 +545,10 @@ mod tests {
     impl BitcoinClient for DummyClient {
         type Error = Error;
         fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
-            let tx = self
-                .0
-                .get(txid)
-                .cloned()
-                .ok_or(Error::GetTransactionElectrum(
-                    electrum_client::Error::CouldntLockReader,
-                    *txid,
-                ))?;
+            let tx = self.0.get(txid).cloned();
+
             Ok(GetTxResponse {
-                tx,
+                tx: tx.ok_or(Error::BitcoinClient(Box::new(Error::InvalidDepositScript)))?,
                 block_hash: None,
                 confirmations: None,
                 block_time: None,

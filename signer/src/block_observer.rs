@@ -102,7 +102,6 @@ where
                 request
                     .validate(&self.bitcoin_client)
                     .inspect_err(|err| tracing::warn!("could not validate deposit request: {err}"))
-                    .ok()
             })
             .for_each(|deposit| {
                 self.deposit_requests
@@ -244,6 +243,15 @@ mod tests {
 
     use super::*;
 
+    #[derive(Debug, Clone)]
+    struct DummyEmily(pub Vec<CreateDepositRequest>);
+
+    impl EmilyInteract for DummyEmily {
+        async fn get_deposits(&mut self) -> Vec<CreateDepositRequest> {
+            self.0.clone()
+        }
+    }
+
     #[tokio::test]
     async fn should_be_able_to_extract_bitcoin_blocks_given_a_block_header_stream() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
@@ -277,6 +285,180 @@ mod tests {
         }
 
         std::mem::drop(subscriber_rx);
+    }
+
+    /// Test that `BlockObserver::load_latest_deposit_requests` takes
+    /// deposits from emily, validates them and only keeps the ones that
+    /// pass validation.
+    #[tokio::test]
+    async fn validated_deposits_get_added_to_state() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let mut test_harness = TestHarness::generate(&mut rng, 20, 0..5);
+
+        let lock_time = 150;
+        let max_fee = 32000;
+        let amount = 500_000;
+
+        // We're going to create two deposit requests, the first one valid
+        // and the second one invalid. Emily will return both the valid and
+        // invalid requests (even though it should've validated them) and
+        // BitcoinClient will return the right transaction for both of
+        // them.
+        let tx_setup0 = sbtc::testing::deposits::tx_setup(lock_time, max_fee, amount);
+        let deposit_request0 = CreateDepositRequest {
+            outpoint: bitcoin::OutPoint {
+                txid: tx_setup0.tx.compute_txid(),
+                vout: 0,
+            },
+            deposit_script: tx_setup0.deposit.deposit_script(),
+            reclaim_script: tx_setup0.reclaim.reclaim_script(),
+        };
+        // When we validate the deposit request, we fetch the transaction
+        // from bitcoin-core's mempool or blockchain. The stubs out that
+        // response.
+        let get_tx_resp0 = sbtc::rpc::GetTxResponse {
+            tx: tx_setup0.tx.clone(),
+            block_hash: None,
+            confirmations: None,
+            block_time: None,
+            in_active_chain: None,
+        };
+
+        let tx_setup1 = sbtc::testing::deposits::tx_setup(300, 2000, amount);
+        // This one is an invalid deposit request because the deposit
+        // script is wrong
+        let deposit_request1 = CreateDepositRequest {
+            outpoint: bitcoin::OutPoint {
+                txid: tx_setup1.tx.compute_txid(),
+                vout: 0,
+            },
+            deposit_script: bitcoin::ScriptBuf::new(),
+            reclaim_script: tx_setup1.reclaim.reclaim_script(),
+        };
+        // The transaction is also in the mempool, even though it is an
+        // invalid deposit.
+        let get_tx_resp1 = sbtc::rpc::GetTxResponse {
+            tx: tx_setup1.tx.clone(),
+            block_hash: None,
+            confirmations: None,
+            block_time: None,
+            in_active_chain: None,
+        };
+
+        // Let's add the "responses" to the field that feeds the
+        // response to the `BitcoinClient::get_tx` call.
+        test_harness
+            .deposits
+            .insert(get_tx_resp0.tx.compute_txid(), get_tx_resp0);
+        test_harness
+            .deposits
+            .insert(get_tx_resp1.tx.compute_txid(), get_tx_resp1);
+
+        // Now we finish setting up the block observer.
+        let storage = storage::in_memory::Store::new_shared();
+        let block_hash_stream = test_harness.spawn_block_hash_stream();
+        let (subscribers, _subscriber_rx) = tokio::sync::watch::channel(());
+
+        let mut block_observer = BlockObserver {
+            bitcoin_client: test_harness.clone(),
+            stacks_client: test_harness.clone(),
+            emily_client: DummyEmily(vec![deposit_request0, deposit_request1]),
+            bitcoin_blocks: block_hash_stream,
+            storage: storage.clone(),
+            subscribers,
+            horizon: 1,
+            deposit_requests: HashMap::new(),
+            network: bitcoin::Network::Regtest,
+        };
+
+        block_observer.load_latest_deposit_requests().await;
+        // Only the transaction from tx_setup0 was valid.
+        assert_eq!(block_observer.deposit_requests.len(), 1);
+
+        let deposit = block_observer
+            .deposit_requests
+            .get(&tx_setup0.tx.compute_txid())
+            .cloned()
+            .unwrap();
+        assert_eq!(deposit.len(), 1);
+        assert_eq!(deposit[0].tx, tx_setup0.tx);
+    }
+
+    /// Test that `BlockObserver::extract_deposit_requests` after
+    /// `BlockObserver::load_latest_deposit_requests` stores validated
+    /// deposit requests into "storage".
+    #[tokio::test]
+    async fn extract_deposit_requests_stores_validated_deposits() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(365);
+        let mut test_harness = TestHarness::generate(&mut rng, 20, 0..5);
+
+        let lock_time = 150;
+        let max_fee = 32000;
+        let amount = 500_000;
+
+        // We're going to create two deposit requests, the first one valid
+        // and the second one invalid. Emily will return both the valid and
+        // invalid requests (even though it should've validated them) and
+        // BitcoinClient will return the right transaction for both of
+        // them.
+        let tx_setup0 = sbtc::testing::deposits::tx_setup(lock_time, max_fee, amount);
+        let deposit_request0 = CreateDepositRequest {
+            outpoint: bitcoin::OutPoint {
+                txid: tx_setup0.tx.compute_txid(),
+                vout: 0,
+            },
+            deposit_script: tx_setup0.deposit.deposit_script(),
+            reclaim_script: tx_setup0.reclaim.reclaim_script(),
+        };
+        // When we validate the deposit request, we fetch the transaction
+        // from bitcoin-core's mempool or blockchain. The stubs out that
+        // response.
+        let get_tx_resp0 = sbtc::rpc::GetTxResponse {
+            tx: tx_setup0.tx.clone(),
+            block_hash: None,
+            confirmations: None,
+            block_time: None,
+            in_active_chain: None,
+        };
+
+        // Let's add the "responses" to the field that feeds the
+        // response to the `BitcoinClient::get_tx` call.
+        test_harness
+            .deposits
+            .insert(get_tx_resp0.tx.compute_txid(), get_tx_resp0);
+
+        // Now we finish setting up the block observer.
+        let storage = storage::in_memory::Store::new_shared();
+        let block_hash_stream = test_harness.spawn_block_hash_stream();
+        let (subscribers, _subscriber_rx) = tokio::sync::watch::channel(());
+
+        let mut block_observer = BlockObserver {
+            bitcoin_client: test_harness.clone(),
+            stacks_client: test_harness.clone(),
+            emily_client: DummyEmily(vec![deposit_request0]),
+            bitcoin_blocks: block_hash_stream,
+            storage: storage.clone(),
+            subscribers,
+            horizon: 1,
+            deposit_requests: HashMap::new(),
+            network: bitcoin::Network::Regtest,
+        };
+
+        block_observer.load_latest_deposit_requests().await;
+        // The transaction from tx_setup0 was valid.
+        assert_eq!(block_observer.deposit_requests.len(), 1);
+
+        block_observer
+            .extract_deposit_requests(&[tx_setup0.tx.clone()])
+            .await
+            .unwrap();
+        let storage = block_observer.storage.lock().await;
+        assert_eq!(storage.deposit_requests.len(), 1);
+        let db_outpoint = (tx_setup0.tx.compute_txid().to_byte_array().to_vec(), 0);
+        assert!(storage.deposit_requests.get(&db_outpoint).is_some());
+
+        // Now the deposit_requests thing should be empty now, since we stored the things.
+        assert!(block_observer.deposit_requests.is_empty());
     }
 
     #[derive(Debug, Clone)]

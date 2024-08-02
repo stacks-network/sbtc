@@ -202,9 +202,17 @@ impl ElectrumClient {
             .raw_call("blockchain.transaction.get", params)
             .map_err(|err| Error::GetTransactionElectrum(err, *txid))?;
 
-        serde_json::from_value::<GetTxResponse>(value)
+        let resp = serde_json::from_value::<GetTxResponse>(value)
             .inspect(|response| debug_assert_eq!(txid, &response.tx.compute_txid()))
-            .map_err(|err| Error::DeserializeGetTransaction(err, *txid))
+            .map_err(|err| Error::DeserializeGetTransaction(err, *txid))?;
+
+        // This should never happen, but couldn't hurt to check.
+        if &resp.tx.compute_txid() != txid {
+            let from_tx = resp.tx.compute_txid();
+            return Err(Error::TxidMismatch { from_tx, from_request: *txid });
+        }
+
+        Ok(resp)
     }
     /// Estimate the current mempool fee rate using the
     /// `blockchain.estimatefee` RPC call
