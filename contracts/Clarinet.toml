@@ -5,6 +5,11 @@ authors = []
 telemetry = false
 cache_dir = './.cache'
 requirements = []
+[contracts.example-sponsored]
+path = 'contracts/example-sponsored.clar'
+clarity_version = 2
+epoch = 2.5
+
 [contracts.sbtc-bootstrap-signers]
 path = 'contracts/sbtc-bootstrap-signers.clar'
 clarity_version = 2
@@ -20,13 +25,18 @@ path = 'contracts/sbtc-registry.clar'
 clarity_version = 2
 epoch = 2.5
 
+[contracts.sbtc-token]
+path = 'contracts/sbtc-token.clar'
+clarity_version = 2
+epoch = 2.5
+
 [contracts.sbtc-withdrawal]
 path = 'contracts/sbtc-withdrawal.clar'
 clarity_version = 2
 epoch = 2.5
 
-[contracts.sbtc-token]
-path = 'contracts/sbtc-token.clar'
+[contracts.trait-sip-010]
+path = 'contracts/trait-sip-010.clar'
 clarity_version = 2
 epoch = 2.5
 [repl.analysis]
