@@ -28,9 +28,7 @@ pub async fn wipe_databases(context: EmilyContext) -> impl warp::reply::Reply {
     async fn handler(context: EmilyContext) -> Result<impl warp::reply::Reply, Error> {
         accessors::wipe_all_tables(&context).await?;
         Ok(warp::reply::with_status(
-            warp::reply::json(&json!({
-                "message": "wiped database"
-            })),
+            warp::reply(),
             StatusCode::NO_CONTENT,
         ))
     }

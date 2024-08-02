@@ -34,7 +34,9 @@ pub fn routes(
 }
 
 #[cfg(not(feature = "testing"))]
-fn debug_routes() -> Option<impl Filter<Extract = impl warp::Reply, Error = warp::Rejection>> {
+pub fn routes(
+    context: EmilyContext,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     // TODO(273):  Remove the "local" prefix once we figure out why all local
     // testing calls seem to forcibly start with `local`.
     warp::path("local").and(
