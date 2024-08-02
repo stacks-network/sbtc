@@ -6,20 +6,20 @@ use sbtc::error::Error;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::Recipient;
 
-use sbtc::rpc::BitcoinRpcClient;
-use sbtc::rpc::BtcClient;
+use sbtc::rpc::BitcoinClient;
+use sbtc::rpc::BitcoinCoreClient;
 use sbtc::rpc::ElectrumClient;
 use test_case::test_case;
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[test_case(BtcClient::new(
+#[test_case(BitcoinCoreClient::new(
         "http://localhost:18443",
         regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
         regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
     )
     .unwrap(); "bitcoin client")]
 #[test_case(ElectrumClient::new("tcp://localhost:60401", None).unwrap() ; "electrum client")]
-fn btc_client_gets_transactions<C: BitcoinRpcClient>(client: C) {
+fn btc_client_gets_transactions<C: BitcoinClient>(client: C) {
     let (rpc, faucet) = regtest::initialize_blockchain();
     let signer = Recipient::new(AddressType::P2tr);
 
@@ -35,7 +35,6 @@ fn btc_client_gets_transactions<C: BitcoinRpcClient>(client: C) {
 
     let response = client.get_tx(&outpoint.txid).unwrap();
     // Let's make sure we got the right transaction
-    assert_eq!(response.tx.compute_txid(), response.txid);
     assert_eq!(response.tx.compute_txid(), outpoint.txid);
     assert_eq!(response.tx.output[vout].value.to_sat(), 500_000);
     // The transaction has not been confirmed, so these should be None.
@@ -49,7 +48,6 @@ fn btc_client_gets_transactions<C: BitcoinRpcClient>(client: C) {
 
     let response = client.get_tx(&outpoint.txid).unwrap();
     // Let's make sure we got the right transaction
-    assert_eq!(response.tx.compute_txid(), response.txid);
     assert_eq!(response.tx.compute_txid(), outpoint.txid);
     assert_eq!(response.tx.output[vout].value.to_sat(), 500_000);
     // The transaction has been confirmed, so these should be `Some(_)`.
@@ -69,14 +67,14 @@ fn btc_client_gets_transactions<C: BitcoinRpcClient>(client: C) {
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[test_case(BtcClient::new(
+#[test_case(BitcoinCoreClient::new(
         "http://localhost:18443",
         regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
         regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
     )
     .unwrap(); "bitcoin client")]
 #[test_case(ElectrumClient::new("tcp://localhost:60401", None).unwrap() ; "electrum client")]
-fn btc_client_unsubmitted_tx<C: BitcoinRpcClient>(client: C) {
+fn btc_client_unsubmitted_tx<C: BitcoinClient<Error = Error>>(client: C) {
     let _ = regtest::initialize_blockchain();
     let txid = bitcoin::Txid::all_zeros();
 
@@ -98,7 +96,7 @@ fn btc_client_unsubmitted_tx<C: BitcoinRpcClient>(client: C) {
 #[test]
 fn estimate_fee_rate() {
     let _ = regtest::initialize_blockchain();
-    let btc_client = BtcClient::new(
+    let btc_client = BitcoinCoreClient::new(
         "http://localhost:18443",
         regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
         regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
