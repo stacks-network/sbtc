@@ -5,7 +5,8 @@ use std::env;
 use aws_sdk_dynamodb::{
     error::SdkError,
     operation::{
-        batch_write_item::BatchWriteItemError, delete_item::DeleteItemError, get_item::GetItemError, put_item::PutItemError, query::QueryError, scan::ScanError
+        batch_write_item::BatchWriteItemError, delete_item::DeleteItemError,
+        get_item::GetItemError, put_item::PutItemError, query::QueryError, scan::ScanError,
     },
 };
 use reqwest::StatusCode;

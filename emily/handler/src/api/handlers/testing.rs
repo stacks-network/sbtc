@@ -1,7 +1,6 @@
 //! Handlers for testing endpoint endpoints.
 
 use reqwest::StatusCode;
-use serde_json::json;
 use warp::reply::Reply;
 
 use crate::common::error::Error;
