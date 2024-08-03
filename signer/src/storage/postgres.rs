@@ -702,6 +702,7 @@ impl super::DbWrite for PgStore {
         let mut recipient = Vec::with_capacity(deposit_requests.len());
         let mut amount = Vec::with_capacity(deposit_requests.len());
         let mut max_fee = Vec::with_capacity(deposit_requests.len());
+        let mut sender_addresses = Vec::with_capacity(deposit_requests.len());
 
         for req in deposit_requests {
             txid.push(req.txid);
@@ -711,6 +712,7 @@ impl super::DbWrite for PgStore {
             recipient.push(req.recipient);
             amount.push(req.amount);
             max_fee.push(req.max_fee);
+            sender_addresses.push(req.sender_addresses.join(","));
         }
 
         sqlx::query(
@@ -722,6 +724,7 @@ impl super::DbWrite for PgStore {
             , recipient       AS (SELECT ROW_NUMBER() OVER (), recipient FROM UNNEST($5::BYTEA[]) AS recipient)
             , amount          AS (SELECT ROW_NUMBER() OVER (), amount FROM UNNEST($6::BIGINT[]) AS amount)
             , max_fee         AS (SELECT ROW_NUMBER() OVER (), max_fee FROM UNNEST($7::BIGINT[]) AS max_fee)
+            , sender_address  AS (SELECT ROW_NUMBER() OVER (), sender_address FROM UNNEST($8::VARCHAR[]) AS sender_address)
             INSERT INTO sbtc_signer.deposit_requests (
                   txid
                 , output_index
@@ -740,7 +743,7 @@ impl super::DbWrite for PgStore {
               , recipient
               , amount
               , max_fee
-              , ARRAY[]::VARCHAR[] as sender_addresses
+              , regexp_split_to_array(sender_address, ',')
               , CURRENT_TIMESTAMP
             FROM tx_ids
             JOIN output_index USING (row_number)
@@ -749,6 +752,7 @@ impl super::DbWrite for PgStore {
             JOIN recipient USING (row_number)
             JOIN amount USING (row_number)
             JOIN max_fee USING (row_number)
+            JOIN sender_address USING (row_number)
             ON CONFLICT DO NOTHING"#,
         )
         .bind(txid)
@@ -758,6 +762,7 @@ impl super::DbWrite for PgStore {
         .bind(recipient)
         .bind(amount)
         .bind(max_fee)
+        .bind(sender_addresses)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
