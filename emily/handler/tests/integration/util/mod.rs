@@ -22,6 +22,8 @@ use serde::{Deserialize, Serialize};
 
 /// Test constants module.
 pub mod constants;
+/// Test errors modules.
+pub mod error;
 
 use constants::{
     ALL_STATUSES, EMILY_CHAINSTATE_ENDPOINT, EMILY_DEPOSIT_ENDPOINT, EMILY_TESTING_ENDPOINT,
@@ -66,6 +68,7 @@ impl TestClient {
         self.reset_environment().await;
     }
 
+    /// Reset test environment.
     pub async fn reset_environment(&self) {
         let endpoint: String = format!("{EMILY_TESTING_ENDPOINT}/wipe");
         self.inner
