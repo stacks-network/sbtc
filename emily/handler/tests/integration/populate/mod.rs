@@ -11,9 +11,8 @@ use emily_handler::api::models::{
     withdrawal::{requests::CreateWithdrawalRequestBody, WithdrawalParameters},
 };
 use rand::Rng;
-use reqwest::Client;
 
-use crate::util;
+use crate::util::TestClient;
 
 const NUM_ENTRIES: u32 = 30;
 
@@ -21,13 +20,13 @@ const NUM_ENTRIES: u32 = 30;
 #[cfg_attr(not(feature = "populate"), ignore)]
 #[tokio::test]
 pub async fn populate_emily() {
-    let client = Client::new();
+    let client = TestClient::new();
     create_deposits(&client).await;
     create_withdrawals(&client).await;
     create_chainstates(&client).await;
 }
 
-async fn create_deposits(client: &Client) {
+async fn create_deposits(client: &TestClient) {
     let mut rng = rand::thread_rng();
     for i in 0..NUM_ENTRIES {
         let n = rng.gen_range(1..=3);
@@ -39,12 +38,12 @@ async fn create_deposits(client: &Client) {
                 reclaim: format!("reclaim-script-{i}"),
                 deposit: format!("deposit-script-{i}"),
             };
-            util::create_deposit(client, create_request).await;
+            client.create_deposit(create_request).await;
         }
     }
 }
 
-async fn create_withdrawals(client: &Client) {
+async fn create_withdrawals(client: &TestClient) {
     let mut rng = rand::thread_rng();
     for i in 0..NUM_ENTRIES {
         let create_request = CreateWithdrawalRequestBody {
@@ -56,16 +55,16 @@ async fn create_withdrawals(client: &Client) {
                 max_fee: rng.gen_range(100..=300),
             },
         };
-        util::create_withdrawal(client, create_request).await;
+        client.create_withdrawal(create_request).await;
     }
 }
 
-async fn create_chainstates(client: &Client) {
+async fn create_chainstates(client: &TestClient) {
     for i in 0..NUM_ENTRIES {
         let create_request = Chainstate {
             stacks_block_height: i as u64,
             stacks_block_hash: format!("stacks-block-hash-{i}"),
         };
-        util::create_chainstate(client, create_request).await;
+        client.create_chainstate(create_request).await;
     }
 }
