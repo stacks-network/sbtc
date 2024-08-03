@@ -13,6 +13,21 @@ pub enum TestError {
     /// Unknown error
     #[error("An unknown error occurred: {0}")]
     Unknown(String),
+    /// Endpoint request error.
+    #[error("Request error for endpoint [{endpoint}]: {source}")]
+    Request {
+        endpoint: String,
+        source: reqwest::Error,
+    },
+    /// Test deserialization error.
+    #[error(
+        "Deserialization error for endpoint [{endpoint}]: {source}\nResponse text: {response_text}"
+    )]
+    Deserialization {
+        endpoint: String,
+        source: serde_json::Error,
+        response_text: String,
+    },
 }
 
 /// reqwest error conversion.

@@ -1,16 +1,19 @@
 use emily_handler::api::models::{
-    chainstate::Chainstate,
-    deposit::requests::CreateDepositRequestBody,
+    chainstate::Chainstate, deposit::requests::CreateDepositRequestBody,
     withdrawal::requests::CreateWithdrawalRequestBody,
 };
 
 use crate::util::{
+    self,
     constants::{
         TEST_BITCOIN_TXID, TEST_DEPOSIT_SCRIPT, TEST_RECIPIENT, TEST_RECLAIM_SCRIPT,
         TEST_WITHDRAWAL_PARAMETERS,
-    }, error::TestError, TestClient,
+    },
+    error::TestError,
+    TestClient,
 };
 
+/// Testing scenario for a blockchain reorg.
 struct ReorgScenario {
     /// The total length of the chain to create.
     initial_chain_length: u64,
@@ -18,18 +21,33 @@ struct ReorgScenario {
     reorg_depth: u64,
 }
 
+/// Reorg validate implementation.
 impl ReorgScenario {
+    /// Validate.
     fn validate(&self) -> Result<(), TestError> {
         if self.initial_chain_length < self.reorg_depth {
+            return Err(TestError::TestConditions(format!(
+                "Initial chain length less than reorg depth: {} < {}",
+                self.initial_chain_length, self.reorg_depth,
+            )));
+        } else if self.reorg_depth < 1 {
             return Err(TestError::TestConditions(
-                format!(
-                    "Initial chain length less than reorg depth: {} < {}",
-                    self.initial_chain_length,
-                    self.reorg_depth,
-                )
-            ))
+                "Reorg depth mut be at least 1".to_string(),
+            ));
         }
         Ok(())
+    }
+
+    /// Lowest reorganized block height.
+    fn lowest_reorganized_block_height(&self) -> u64 {
+        self.initial_chain_length - self.reorg_depth
+    }
+
+    /// Creates a list of reorganized chainstates with the standard test block hash format.
+    fn reorganized_chainstates(&self, fork_id: u32) -> Vec<Chainstate> {
+        ((self.lowest_reorganized_block_height())..self.initial_chain_length)
+            .map(|height| util::test_chainstate(height, fork_id))
+            .collect()
     }
 }
 
@@ -45,12 +63,12 @@ pub async fn simple_reorg() {
     simple_reorg_test_base(ReorgScenario {
         initial_chain_length: 10,
         reorg_depth: 5,
-    }).await;
+    })
+    .await;
 }
 
-async fn simple_reorg_test_base(
-    scenario: ReorgScenario
-) {
+/// Base reorg test.
+async fn simple_reorg_test_base(scenario: ReorgScenario) {
     // Extract the scenario.
     scenario.validate().unwrap();
     let ReorgScenario {
@@ -63,7 +81,10 @@ async fn simple_reorg_test_base(
     client.setup_test().await;
 
     // Identifier for the current fork.
-    let fork_id: i32 = 0;
+    let mut fork_id: u32 = 0;
+
+    // Step 1: Make an initial fork.
+    // -------------------------------------------------------------------------
 
     // Process some deposits and withdrawals.
     for stacks_block_height in 0..initial_chain_length {
@@ -98,11 +119,36 @@ async fn simple_reorg_test_base(
 
     // Ensure that all right number of deposits and withdrawals were created.
     let all_deposits = client.get_all_deposits().await;
-    let all_withdrawals =client.get_all_withdrawals().await;
+    let all_withdrawals = client.get_all_withdrawals().await;
 
     // Ensure that the right number of deposits and withdrawals were made.
     assert_eq!(all_deposits.len(), scenario.initial_chain_length as usize);
-    assert_eq!(all_withdrawals.len(), scenario.initial_chain_length as usize);
+    assert_eq!(
+        all_withdrawals.len(),
+        scenario.initial_chain_length as usize
+    );
+
+    // Step 2: Create a conflicting fork.
+    // -------------------------------------------------------------------------
+    fork_id += 1;
+
+    // Set a conflicting chainstate for a lower than top depth to initiate an internal reorg.
+    let reorganized_chainstates = scenario.reorganized_chainstates(fork_id);
+    let lowest_reorganized_block: Chainstate = reorganized_chainstates.first().unwrap().clone();
+    client.update_chainstate(lowest_reorganized_block).await;
+
+    // Description:
+    //
+    // Now that there's a conflicting fork we should see that all the withdrawals created
+    // within the span of the reorged blocks are effectively "wiped". Because we created one
+    // withdrawal per block, we should only see as many withdrawals as there were un-reorged
+    // blocks.
+
+    let all_deposits = client.get_all_deposits().await;
+    let all_withdrawals = client.get_all_withdrawals().await;
+
+    assert_eq!(all_deposits.len(), initial_chain_length as usize);
+    assert_eq!(all_withdrawals.len(), reorganized_chainstates.len());
 
     // Setup for the next test.
     client.reset_environment().await;
