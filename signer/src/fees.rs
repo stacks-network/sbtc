@@ -3,8 +3,8 @@
 use std::future::Future;
 use std::time::Duration;
 
-use serde::Deserialize;
 use sbtc::rpc::FeeEstimate;
+use serde::Deserialize;
 
 use crate::error::Error;
 
