@@ -88,15 +88,9 @@ async fn simple_reorg_test_base(scenario: ReorgScenario) {
 
     // Process some deposits and withdrawals.
     for stacks_block_height in 0..initial_chain_length {
-        // Make stacks block hash for the current block.
-        let stacks_block_hash: String =
-            format!("stacks-block-{stacks_block_height}-hash-fork-{fork_id}");
-
         // Setup requests.
-        let chainstate = Chainstate {
-            stacks_block_height,
-            stacks_block_hash: stacks_block_hash.clone(),
-        };
+        let chainstate = util::test_chainstate(stacks_block_height, fork_id);
+        let stacks_block_hash = chainstate.stacks_block_hash.clone();
         let deposit_request = CreateDepositRequestBody {
             bitcoin_txid: format!("{TEST_BITCOIN_TXID}-{stacks_block_height}"),
             bitcoin_tx_output_index: 1,
@@ -112,9 +106,9 @@ async fn simple_reorg_test_base(scenario: ReorgScenario) {
         };
 
         // Make requests to populate the database.
-        client.create_chainstate(chainstate).await;
-        client.create_deposit(deposit_request).await;
-        client.create_withdrawal(withdrawal_request).await;
+        client.create_chainstate(&chainstate).await;
+        client.create_deposit(&deposit_request).await;
+        client.create_withdrawal(&withdrawal_request).await;
     }
 
     // Ensure that all right number of deposits and withdrawals were created.
@@ -122,10 +116,17 @@ async fn simple_reorg_test_base(scenario: ReorgScenario) {
     let all_withdrawals = client.get_all_withdrawals().await;
 
     // Ensure that the right number of deposits and withdrawals were made.
-    assert_eq!(all_deposits.len(), scenario.initial_chain_length as usize);
+    assert_eq!(all_deposits.len(), initial_chain_length as usize);
     assert_eq!(
         all_withdrawals.len(),
-        scenario.initial_chain_length as usize
+        initial_chain_length as usize
+    );
+
+    // Verify that the chain tip is the highest block created.
+    let chain_tip: Chainstate = client.get_chaintip().await;
+    assert_eq!(
+        chain_tip,
+        util::test_chainstate(initial_chain_length - 1, fork_id),
     );
 
     // Step 2: Create a conflicting fork.
@@ -135,7 +136,11 @@ async fn simple_reorg_test_base(scenario: ReorgScenario) {
     // Set a conflicting chainstate for a lower than top depth to initiate an internal reorg.
     let reorganized_chainstates = scenario.reorganized_chainstates(fork_id);
     let lowest_reorganized_block: Chainstate = reorganized_chainstates.first().unwrap().clone();
-    client.update_chainstate(lowest_reorganized_block).await;
+    client.update_chainstate(&lowest_reorganized_block).await;
+
+    // Verify that the chain tip is updated to be the new reorg height.
+    let chain_tip: Chainstate = client.get_chaintip().await;
+    assert_eq!(chain_tip, lowest_reorganized_block);
 
     // Description:
     //

@@ -38,7 +38,7 @@ async fn create_deposits(client: &TestClient) {
                 reclaim: format!("reclaim-script-{i}"),
                 deposit: format!("deposit-script-{i}"),
             };
-            client.create_deposit(create_request).await;
+            client.create_deposit(&create_request).await;
         }
     }
 }
@@ -55,7 +55,7 @@ async fn create_withdrawals(client: &TestClient) {
                 max_fee: rng.gen_range(100..=300),
             },
         };
-        client.create_withdrawal(create_request).await;
+        client.create_withdrawal(&create_request).await;
     }
 }
 
@@ -65,6 +65,6 @@ async fn create_chainstates(client: &TestClient) {
             stacks_block_height: i as u64,
             stacks_block_hash: format!("stacks-block-hash-{i}"),
         };
-        client.create_chainstate(create_request).await;
+        client.create_chainstate(&create_request).await;
     }
 }

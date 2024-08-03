@@ -86,7 +86,7 @@ impl TestClient {
     }
 
     /// Create deposit.
-    pub async fn create_deposit(&self, request: CreateDepositRequestBody) -> CreateDepositResponse {
+    pub async fn create_deposit(&self, request: &CreateDepositRequestBody) -> CreateDepositResponse {
         create_xyz(&self.inner, EMILY_DEPOSIT_ENDPOINT, request)
             .await
             .unwrap()
@@ -95,7 +95,7 @@ impl TestClient {
     /// Create withdrawal.
     pub async fn create_withdrawal(
         &self,
-        request: CreateWithdrawalRequestBody,
+        request: &CreateWithdrawalRequestBody,
     ) -> CreateWithdrawalResponse {
         create_xyz(&self.inner, EMILY_WITHDRAWAL_ENDPOINT, request)
             .await
@@ -103,14 +103,21 @@ impl TestClient {
     }
 
     /// Create chainstate.
-    pub async fn create_chainstate(&self, request: Chainstate) -> Chainstate {
+    pub async fn create_chainstate(&self, request: &Chainstate) -> Chainstate {
         create_xyz(&self.inner, EMILY_CHAINSTATE_ENDPOINT, request)
             .await
             .unwrap()
     }
 
+    /// Gets the chain tip.
+    pub async fn get_chaintip(&self) -> Chainstate {
+        get_xyz(&self.inner, &format!("{EMILY_CHAINSTATE_ENDPOINT}"))
+            .await
+            .unwrap()
+    }
+
     /// Update chainstate.
-    pub async fn update_chainstate(&self, request: Chainstate) -> Chainstate {
+    pub async fn update_chainstate(&self, request: &Chainstate) -> Chainstate {
         update_xyz(&self.inner, EMILY_CHAINSTATE_ENDPOINT, request)
             .await
             .unwrap()
@@ -169,28 +176,33 @@ impl TestClient {
 // -----------------------------------------------------------------------------
 
 /// Generic create function.
-async fn create_xyz<T, R>(client: &Client, endpoint: &str, request: T) -> Result<R, TestError>
+async fn create_xyz<T, R>(client: &Client, endpoint: &str, request: &T) -> Result<R, TestError>
 where
     T: Serialize,
     R: for<'de> Deserialize<'de>,
 {
-    do_xyz(client.post(endpoint).json(&request), endpoint).await
+    do_xyz(client.post(endpoint).json(request), endpoint).await
 }
 
 /// Generic update function.
-async fn update_xyz<T, R>(client: &Client, endpoint: &str, request: T) -> Result<R, TestError>
+async fn update_xyz<T, R>(client: &Client, endpoint: &str, request: &T) -> Result<R, TestError>
 where
     T: Serialize,
     R: for<'de> Deserialize<'de>,
 {
-    do_xyz(client.put(endpoint).json(&request), endpoint).await
+    do_xyz(client.put(endpoint).json(request), endpoint).await
+}
+
+/// Generic update function.
+async fn get_xyz<R>(client: &Client, endpoint: &str) -> Result<R, TestError>
+where
+    R: for<'de> Deserialize<'de>,
+{
+    do_xyz(client.get(endpoint), endpoint).await
 }
 
 /// Generic function that handles building and launching a request.
-async fn do_xyz<R>(
-    request_builder: RequestBuilder,
-    endpoint: &str,
-) -> Result<R, TestError>
+async fn do_xyz<R>(request_builder: RequestBuilder, endpoint: &str) -> Result<R, TestError>
 where
     R: for<'de> Deserialize<'de>,
 {
