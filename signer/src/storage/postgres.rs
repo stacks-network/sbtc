@@ -712,6 +712,11 @@ impl super::DbWrite for PgStore {
             recipient.push(req.recipient);
             amount.push(req.amount);
             max_fee.push(req.max_fee);
+            // We need to join the addresses like this (and later split
+            // them), because handling of multi-dimensional arrays in
+            // postgres is tough. The naive approach of doing
+            // UNNEST($1::VARCHAR[][]) doesn't work, since that completely
+            // flattens the array.
             sender_addresses.push(req.sender_addresses.join(","));
         }
 
