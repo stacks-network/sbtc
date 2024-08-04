@@ -132,24 +132,14 @@ pub async fn set_chainstate(
         context: EmilyContext,
         body: SetChainstateRequestBody,
     ) -> Result<impl warp::reply::Reply, Error> {
+        // Convert body to the correct type.
         let chainstate: Chainstate = body as Chainstate;
         let chainstate_entry: ChainstateEntry = chainstate.clone().into();
-
-        // TODO(TBD): Tactfully handle state inconsistencies and race conditions across
-        // multiple requests.
-        //
-        // - chain tip is ahead.
-        // - chain tip is far behind.
-        // - two chain tips are proposed at the same time for conflicting hashes
-        // - etc.
-        //
-        // `get_chain_tip_or_set_if_absent` is inappropriate in the long run and should be
-        // deleted.
-
+        // TODO(TBD): handle a conflicting internal state error.
         accessors::add_chainstate_entry(&context, &chainstate_entry).await?;
-        let response: Chainstate = chainstate_entry.into();
+        // Respond.
         Ok(with_status(
-            json(&(response as SetChainstateResponse)),
+            json(&(chainstate as SetChainstateResponse)),
             StatusCode::CREATED,
         ))
     }

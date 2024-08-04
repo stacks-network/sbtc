@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use warp::{reject::Reject, reply::Reply};
 
+use crate::database::entries::chainstate::ChainstateEntry;
+
 /// Errors from the internal API logic.
 #[allow(dead_code)]
 #[derive(thiserror::Error, Debug)]
@@ -75,8 +77,8 @@ pub enum Error {
     RequestTimeout,
 
     /// Inconsistent API state detected during request
-    #[error("Inconsistent internal state: {0}")]
-    InconsistentState(String),
+    #[error("Inconsistent internal state: {0:?}")]
+    InconsistentState(Vec<ChainstateEntry>),
 }
 
 /// Error implementation.
@@ -116,7 +118,6 @@ impl Error {
             Error::NotImplemented
             | Error::Debug(_)
             | Error::Network(_)
-            | Error::InconsistentState(_)
             | Error::ServiceUnavailable => Error::InternalServer,
             err => err,
         }

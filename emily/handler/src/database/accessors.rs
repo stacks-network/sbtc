@@ -34,14 +34,95 @@ pub async fn add_chainstate_entry(
     context: &EmilyContext,
     entry: &ChainstateEntry,
 ) -> Result<(), Error> {
-    // Always set chain tip.
-    set_chain_tip(context, entry).await?;
-    put_entry(
-        &(context.dynamodb_client),
-        &context.settings.chainstate_table_name,
-        entry,
-    )
-    .await
+    // Get the existing chainstate entry for height. If there's a conflict
+    // then propagate it back to the caller.
+    let current_chainstate_entry_result = get_chainstate_entry_at_height(context, entry.key.height)
+        .await
+        .and_then(|existing_entry| {
+            if existing_entry != *entry {
+                Err(Error::InconsistentState(vec![
+                    entry.clone(),
+                    existing_entry,
+                ]))
+            } else {
+                Ok(())
+            }
+        });
+
+    // Exit here unless this chain height hasn't been detected before.
+    match current_chainstate_entry_result {
+        // Fall through if there is no existing entry..
+        Err(Error::NotFound) => (),
+        // ..otherwise exit here.
+        irrecoverable_or_okay => {
+            return irrecoverable_or_okay;
+        }
+    };
+
+    // TODO(TBD): Determine whether the order for these operations is correct
+    // given the eventual consistency guarantees of dynamodb.
+    //
+    // TODO(TBD): Handle api status being "Reorg" during this period.
+    let mut api_state = get_api_state(context).await?;
+    let blocks_higher_than_current_tip = entry.key.height - api_state.chaintip.key.height;
+
+    if blocks_higher_than_current_tip == 1 || api_state.chaintip.key.height == 0 {
+        api_state.chaintip = entry.clone();
+        // Put the chainstate entry into the table. If two lambdas get exactly here at the same time
+        // and have different views of the block hash at this height it would result in two hashes
+        // for the same height. This will be explicitly handled when the api attempts to retrieve the
+        // chainstate for this height and finds multiple, indicating a conflicting internal state.
+        put_entry(
+            &context.dynamodb_client,
+            &context.settings.chainstate_table_name,
+            entry,
+        )
+        .await?;
+        // Version locked api state prevents inconsistencies here.
+        set_api_state(context, &api_state).await
+    } else if blocks_higher_than_current_tip > 1 {
+        // Attempting to put an entry into the table that's significantly higher than the current
+        // known chain tip.
+        Err(Error::NotAcceptable)
+    } else {
+        // Current tip is higher than the entry we attempted to emplace
+        // but there is no record of the chainstate at the current height.
+        // This means that we're trying to back populate the chainstate from a period
+        // that has never had a history before.
+        //
+        // We'll consider this an internal state inconsistency because we choose to
+        // interpret reverting to filling out an earlier point in time to mean that a
+        // reorg has reset the knowledge of the API maintainer to an earlier time.
+        //
+        // Worst case this causes an unnecessary reorg.
+        Err(Error::InconsistentState(vec![]))
+    }
+}
+
+/// Gets the chainstate at the given height, and provides a conflict error
+/// if there's a conflict.
+pub async fn get_chainstate_entry_at_height(
+    context: &EmilyContext,
+    height: BlockHeight,
+) -> Result<ChainstateEntry, Error> {
+    let partition_key_attribute_name = "Height";
+    let entries: Vec<ChainstateEntry> =
+        query_with_partition_key_without_pages::<_, ChainstateEntryKey>(
+            &(context.dynamodb_client),
+            &context.settings.chainstate_table_name,
+            height,
+            partition_key_attribute_name,
+            None,
+        )
+        .await?;
+
+    // If there are multiple entries at this height report an inconsistent state
+    // error.
+    match entries.as_slice() {
+        [] => Err(Error::NotFound),
+        [single_entry] => Ok(single_entry.clone()),
+        [_, ..] => Err(Error::InconsistentState(entries)),
+    }
 }
 
 /// Get all chainstate entries for a given height.
@@ -105,7 +186,7 @@ pub async fn set_api_state(context: &EmilyContext, api_state: &ApiStateEntry) ->
 }
 
 /// Sets a new chain tip.
-pub async fn set_chain_tip(
+pub async fn _set_chain_tip(
     context: &EmilyContext,
     new_chaintip: &ChainstateEntry,
 ) -> Result<(), Error> {
@@ -445,6 +526,33 @@ where
     let entry = serde_dynamo::from_item(item)?;
     // Return.
     Ok(entry)
+}
+
+/// Generic table query that queries for a partition key but doesn't use pages.
+/// This function is best used for accessing entries that shouldn't have multiple
+/// entries for a primary key but potentially can.
+async fn query_with_partition_key_without_pages<T, K>(
+    dynamodb_client: &aws_sdk_dynamodb::Client,
+    table_name: &str,
+    partition_key: impl Serialize,
+    partition_key_attribute_name: &str,
+    maybe_index_name: Option<String>,
+) -> Result<Vec<T>, Error>
+where
+    T: for<'de> Deserialize<'de>,
+    K: Serialize + for<'de> Deserialize<'de>,
+{
+    query_with_partition_key::<T, K>(
+        dynamodb_client,
+        table_name,
+        partition_key,
+        partition_key_attribute_name,
+        None,
+        None,
+        maybe_index_name,
+    )
+    .await
+    .map(|(entries, _)| entries)
 }
 
 /// Generic table query for all attributes with a given primary key.
