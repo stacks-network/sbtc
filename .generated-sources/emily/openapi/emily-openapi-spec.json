@@ -10,6 +10,41 @@
   },
   "paths": {
     "/chainstate": {
+      "get": {
+        "tags": [
+          "chainstate"
+        ],
+        "summary": "Get chain tip handler.",
+        "operationId": "getChainTip",
+        "responses": {
+          "200": {
+            "description": "Chain tip retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetChainstateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
       "post": {
         "tags": [
           "chainstate"

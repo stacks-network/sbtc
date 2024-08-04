@@ -86,7 +86,10 @@ impl TestClient {
     }
 
     /// Create deposit.
-    pub async fn create_deposit(&self, request: &CreateDepositRequestBody) -> CreateDepositResponse {
+    pub async fn create_deposit(
+        &self,
+        request: &CreateDepositRequestBody,
+    ) -> CreateDepositResponse {
         create_xyz(&self.inner, EMILY_DEPOSIT_ENDPOINT, request)
             .await
             .unwrap()

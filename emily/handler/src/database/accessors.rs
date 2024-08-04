@@ -20,7 +20,7 @@ use crate::{
 };
 
 use super::entries::{
-    chainstate::{ChainstateEntry, ChainstateEntryKey},
+    chainstate::{ApiStateEntry, ChainstateEntry, ChainstateEntryKey},
     deposit::{DepositEntry, DepositEntryKey, DepositInfoEntry, DepositInfoEntrySearchToken},
     withdrawal::{
         WithdrawalEntry, WithdrawalEntryKey, WithdrawalInfoEntry, WithdrawalInfoEntrySearchToken,
@@ -34,6 +34,8 @@ pub async fn add_chainstate_entry(
     context: &EmilyContext,
     entry: &ChainstateEntry,
 ) -> Result<(), Error> {
+    // Always set chain tip.
+    set_chain_tip(context, entry).await?;
     put_entry(
         &(context.dynamodb_client),
         &context.settings.chainstate_table_name,
@@ -64,7 +66,53 @@ pub async fn get_chainstate_entries_for_height(
     .await
 }
 
-// TODO(TBD): Add table access functions for chain tip related queries.
+/// Gets the state of the API.
+pub async fn get_api_state(context: &EmilyContext) -> Result<ApiStateEntry, Error> {
+    let get_api_state_result: Result<ApiStateEntry, Error> = get_entry(
+        &(context.dynamodb_client),
+        &context.settings.chainstate_table_name,
+        ApiStateEntry::key(),
+    )
+    .await;
+
+    match get_api_state_result {
+        // If the API state wasn't found then initialize it into the table.
+        // TODO(TBD): Handle any race conditions with the version field in case
+        // the entry was initialized and then updated after creation.
+        Err(Error::NotFound) => {
+            let initial_api_state_entry = ApiStateEntry::default();
+            put_entry(
+                &(context.dynamodb_client),
+                &context.settings.chainstate_table_name,
+                &initial_api_state_entry,
+            )
+            .await?;
+            Ok(initial_api_state_entry)
+        }
+        result => result,
+    }
+}
+
+/// Sets the API state.
+/// TODO(TBD): Include the relevant logic for updating the entry version.
+pub async fn set_api_state(context: &EmilyContext, api_state: &ApiStateEntry) -> Result<(), Error> {
+    put_entry(
+        &(context.dynamodb_client),
+        &context.settings.chainstate_table_name,
+        api_state,
+    )
+    .await
+}
+
+/// Sets a new chain tip.
+pub async fn set_chain_tip(
+    context: &EmilyContext,
+    new_chaintip: &ChainstateEntry,
+) -> Result<(), Error> {
+    let mut api_state = get_api_state(context).await?;
+    api_state.chaintip = new_chaintip.clone();
+    set_api_state(context, &api_state).await
+}
 
 // Deposit ---------------------------------------------------------------------
 
@@ -234,6 +282,12 @@ async fn wipe_withdrawal_table(context: &EmilyContext) -> Result<(), Error> {
 
 /// Wipes the chainstate table.
 async fn wipe_chainstate_table(context: &EmilyContext) -> Result<(), Error> {
+    delete_entry(
+        &context.dynamodb_client,
+        context.settings.chainstate_table_name.as_str(),
+        ApiStateEntry::key(),
+    )
+    .await?;
     wipe_table::<ChainstateEntry, ChainstateEntryKey>(
         &context.dynamodb_client,
         context.settings.chainstate_table_name.as_str(),
@@ -264,7 +318,7 @@ pub async fn put_entry(
 }
 
 /// Generic delete table entry.
-pub async fn _delete_entry(
+pub async fn delete_entry(
     dynamodb_client: &aws_sdk_dynamodb::Client,
     table_name: &str,
     key: impl Serialize,
@@ -290,38 +344,17 @@ async fn wipe_table<T, K>(
 ) -> Result<(), Error>
 where
     T: for<'de> Deserialize<'de>,
-    K: Serialize + for<'de> Deserialize<'de>,
+    K: Serialize,
 {
+    // Get keys to delete.
     let keys_to_delete: Vec<K> =
         serde_dynamo::from_items(get_all_entries(dynamodb_client, table_name).await?)?
             .into_iter()
             .map(key_from_entry)
             .collect();
 
-    // Get keys
-    let mut write_delete_requests: Vec<WriteRequest> = Vec::new();
-    for key in keys_to_delete {
-        let key_item = serde_dynamo::to_item::<K, Item>(key)?;
-        let write_request = WriteRequest::builder()
-            .delete_request(
-                DeleteRequest::builder()
-                    .set_key(Some(key_item.into()))
-                    .build()?,
-            )
-            .build();
-        write_delete_requests.push(write_request);
-    }
-
-    // let chunks = write_delete_requests.chunks(25);
-    for chunk in write_delete_requests.chunks(25) {
-        dynamodb_client
-            .batch_write_item()
-            .request_items(table_name, chunk.to_vec())
-            .send()
-            .await?;
-    }
-
-    Ok(())
+    // Delete all entries.
+    delete_entries(dynamodb_client, table_name, keys_to_delete).await
 }
 
 /// Get all entries from a dynamodb table.
@@ -352,6 +385,40 @@ async fn get_all_entries(
     }
 
     Ok(all_items)
+}
+
+/// Deletes every entry in a table with the specified keys.
+async fn delete_entries<K>(
+    dynamodb_client: &aws_sdk_dynamodb::Client,
+    table_name: &str,
+    keys_to_delete: Vec<K>,
+) -> Result<(), Error>
+where
+    K: Serialize,
+{
+    let mut write_delete_requests: Vec<WriteRequest> = Vec::new();
+    for key in keys_to_delete {
+        let key_item = serde_dynamo::to_item::<K, Item>(key)?;
+        let write_request = WriteRequest::builder()
+            .delete_request(
+                DeleteRequest::builder()
+                    .set_key(Some(key_item.into()))
+                    .build()?,
+            )
+            .build();
+        write_delete_requests.push(write_request);
+    }
+
+    // Execute the deletes in chunks.
+    for chunk in write_delete_requests.chunks(25) {
+        dynamodb_client
+            .batch_write_item()
+            .request_items(table_name, chunk.to_vec())
+            .send()
+            .await?;
+    }
+
+    Ok(())
 }
 
 /// Generic table get.

@@ -10,15 +10,43 @@ use crate::{
     },
     common::error::Error,
     context::EmilyContext,
-    database::{
-        accessors,
-        entries::chainstate::{ChainstateEntry, ChainstateEntryKey},
-    },
+    database::{accessors, entries::chainstate::ChainstateEntry},
 };
 use warp::http::StatusCode;
 use warp::reply::{json, with_status, Reply};
 
 // TODO(TBD): Add conflict handling to the chainstate endpoint.
+
+/// Get chain tip handler.
+#[utoipa::path(
+    get,
+    operation_id = "getChainTip",
+    path = "/chainstate",
+    tag = "chainstate",
+    responses(
+        // TODO(271): Add success body.
+        (status = 200, description = "Chain tip retrieved successfully", body = GetChainstateResponse),
+        (status = 404, description = "Address not found"),
+        (status = 405, description = "Method not allowed"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn get_chain_tip(context: EmilyContext) -> impl warp::reply::Reply {
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(context: EmilyContext) -> Result<impl warp::reply::Reply, Error> {
+        // TODO(TBD): Handle multiple being in the tip list here.
+        let api_state = accessors::get_api_state(&context).await?;
+        let chaintip: Chainstate = api_state.chaintip.into();
+        Ok(with_status(
+            json(&(chaintip as GetChainstateResponse)),
+            StatusCode::OK,
+        ))
+    }
+    // Handle and respond.
+    handler(context)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
+}
 
 /// Get chainstate handler.
 #[utoipa::path(
@@ -104,13 +132,8 @@ pub async fn set_chainstate(
         context: EmilyContext,
         body: SetChainstateRequestBody,
     ) -> Result<impl warp::reply::Reply, Error> {
-        // Create new chainstate table entry.
-        let new_chainstate_entry: ChainstateEntry = ChainstateEntry {
-            key: ChainstateEntryKey {
-                height: body.stacks_block_height,
-                hash: body.stacks_block_hash,
-            },
-        };
+        let chainstate: Chainstate = body as Chainstate;
+        let chainstate_entry: ChainstateEntry = chainstate.clone().into();
 
         // TODO(TBD): Tactfully handle state inconsistencies and race conditions across
         // multiple requests.
@@ -123,8 +146,8 @@ pub async fn set_chainstate(
         // `get_chain_tip_or_set_if_absent` is inappropriate in the long run and should be
         // deleted.
 
-        accessors::add_chainstate_entry(&context, &new_chainstate_entry).await?;
-        let response: Chainstate = new_chainstate_entry.into();
+        accessors::add_chainstate_entry(&context, &chainstate_entry).await?;
+        let response: Chainstate = chainstate_entry.into();
         Ok(with_status(
             json(&(response as SetChainstateResponse)),
             StatusCode::CREATED,
