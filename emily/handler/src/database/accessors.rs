@@ -225,7 +225,7 @@ pub async fn add_chainstate_entry(
     let current_chainstate_entry_result = get_chainstate_entry_at_height(context, entry.key.height)
         .await
         .and_then(|existing_entry| {
-            if existing_entry != *entry {
+            if &existing_entry != entry {
                 Err(Error::InconsistentState(vec![
                     entry.clone(),
                     existing_entry,
