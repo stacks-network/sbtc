@@ -121,7 +121,10 @@ emily-integration-test:
 	cargo test --package emily-handler --test integration --features integration-tests -- --test-threads=1 --nocapture
 
 emily-complex-integration-test:
-	cargo test --package emily-handler --test integration --features integration-tests -- complex --test-threads=1 --nocapture
+	cargo test --package emily-handler --test integration --features integration-tests -- \
+		complex \
+		endpoints::chainstate::backfill_chainstate_causes_error \
+		--test-threads=1 --nocapture
 
 emily-integration-env-down:
 	CONTAINER_HOST=$(_CONTAINER_HOST) docker compose --file $(EMILY_DOCKER_COMPOSE) down
