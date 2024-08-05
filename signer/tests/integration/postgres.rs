@@ -22,6 +22,7 @@ use signer::storage::DbRead;
 use signer::storage::DbWrite;
 use signer::testing;
 
+use fake::Fake;
 use rand::SeedableRng;
 use test_case::test_case;
 
@@ -496,4 +497,46 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
         pending_accepted_withdraw_requests,
         pg_pending_accepted_withdraw_requests
     );
+}
+
+/// Here we test that we can store deposit request model objects. We also
+/// test that if we attempt to write another deposit request then we do not
+/// write it and that we do not error.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[sqlx::test]
+async fn writing_deposit_requests_postgres(pool: sqlx::PgPool) {
+    let num_rows = 15;
+    let store = storage::postgres::PgStore::from(pool.clone());
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let deposit_requests: Vec<model::DepositRequest> =
+        std::iter::repeat_with(|| fake::Faker.fake_with_rng(&mut rng))
+            .take(num_rows)
+            .collect();
+
+    // Let's see if we can write these rows to the database.
+    store
+        .write_deposit_requests(deposit_requests.clone())
+        .await
+        .unwrap();
+    let count =
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.deposit_requests"#)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    // Were they all written?
+    assert_eq!(num_rows, count as usize);
+
+    // Okay now lets test that we do not write duplicates.
+    store
+        .write_deposit_requests(deposit_requests)
+        .await
+        .unwrap();
+    let count =
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.deposit_requests"#)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+    // No new records written right?
+    assert_eq!(num_rows, count as usize);
 }

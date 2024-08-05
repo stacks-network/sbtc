@@ -129,6 +129,12 @@ pub trait DbWrite {
         deposit_request: &model::DepositRequest,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
+    /// Write many deposit requests.
+    fn write_deposit_requests(
+        &self,
+        deposit_requests: Vec<model::DepositRequest>,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+
     /// Write a withdrawal request.
     fn write_withdraw_request(
         &self,

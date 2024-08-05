@@ -378,6 +378,19 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
+    async fn write_deposit_requests(
+        &self,
+        deposit_requests: Vec<model::DepositRequest>,
+    ) -> Result<(), Self::Error> {
+        let mut store = self.lock().await;
+        for req in deposit_requests.into_iter() {
+            store
+                .deposit_requests
+                .insert((req.txid.clone(), req.output_index), req);
+        }
+        Ok(())
+    }
+
     async fn write_withdraw_request(
         &self,
         withdraw_request: &model::WithdrawRequest,

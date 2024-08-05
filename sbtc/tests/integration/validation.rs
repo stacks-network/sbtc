@@ -9,8 +9,8 @@ use bitcoin::Witness;
 use bitcoincore_rpc::RpcApi;
 
 use sbtc::deposits::CreateDepositRequest;
-use sbtc::rpc::BitcoinRpcClient;
-use sbtc::rpc::BtcClient;
+use sbtc::rpc::BitcoinClient;
+use sbtc::rpc::BitcoinCoreClient;
 use sbtc::rpc::ElectrumClient;
 use sbtc::testing::deposits::TxSetup;
 use sbtc::testing::regtest;
@@ -23,14 +23,14 @@ use test_case::test_case;
 /// We check that we can validate a transaction in the mempool using the
 /// electrum and bitcoin-core clients
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[test_case(BtcClient::new(
+#[test_case(BitcoinCoreClient::new(
         "http://localhost:18443",
         regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
         regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
     )
     .unwrap(); "bitcoin client")]
 #[test_case(ElectrumClient::new("tcp://localhost:60401", None).unwrap() ; "electrum client")]
-fn tx_validation_from_mempool<C: BitcoinRpcClient>(client: C) {
+fn tx_validation_from_mempool<C: BitcoinClient>(client: C) {
     let max_fee: u64 = 15000;
     let amount_sats = 49_900_000;
     let lock_time = 150;
@@ -63,7 +63,7 @@ fn tx_validation_from_mempool<C: BitcoinRpcClient>(client: C) {
     regtest::p2tr_sign_transaction(&mut setup.tx, 0, &utxos, &depositor.keypair);
     rpc.send_raw_transaction(&setup.tx).unwrap();
 
-    let parsed = request.validate(&client).unwrap();
+    let parsed = request.validate(&client).unwrap().info;
 
     assert_eq!(parsed.outpoint, request.outpoint);
     assert_eq!(parsed.deposit_script, request.deposit_script);

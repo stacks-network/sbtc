@@ -1,12 +1,15 @@
 //! This is the transaction analysis module
 //!
 
+use std::marker::PhantomData;
+
 use bitcoin::opcodes::all as opcodes;
 use bitcoin::script::PushBytesBuf;
 use bitcoin::taproot::LeafVersion;
 use bitcoin::taproot::NodeInfo;
 use bitcoin::taproot::TaprootSpendInfo;
 use bitcoin::Address;
+use bitcoin::BlockHash;
 use bitcoin::Network;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
@@ -18,7 +21,7 @@ use secp256k1::SECP256K1;
 use stacks_common::types::chainstate::STACKS_ADDRESS_ENCODED_SIZE;
 
 use crate::error::Error;
-use crate::rpc::BitcoinRpcClient;
+use crate::rpc::BitcoinClient;
 
 /// This is the length of the fixed portion of the deposit script, which
 /// is:
@@ -60,6 +63,7 @@ const OP_PUSHNUM_NEG1: u8 = opcodes::OP_PUSHNUM_NEG1.to_u8();
 
 /// All the info required to verify the validity of a deposit
 /// transaction. This info is sent by the user to the Emily API
+#[derive(Debug, Clone)]
 pub struct CreateDepositRequest {
     /// The output index and txid of the depositing transaction.
     pub outpoint: OutPoint,
@@ -72,7 +76,7 @@ pub struct CreateDepositRequest {
 /// All the deposit script with the relevant parts of the deposit and
 /// reclaim scripts parsed.
 #[derive(Debug, Clone)]
-pub struct ParsedDepositRequest {
+pub struct DepositInfo {
     /// The UTXO to be spent by the signers.
     pub outpoint: OutPoint,
     /// The max fee amount to use for the BTC deposit transaction.
@@ -93,19 +97,53 @@ pub struct ParsedDepositRequest {
     pub lock_time: u64,
 }
 
+/// A full "deposit", containing the bitcoin transaction and a fully
+/// extracted and verified `scriptPubKey` from one of the transaction's
+/// UTXOs.
+#[derive(Debug, Clone)]
+pub struct Deposit {
+    /// The transaction spent to the signers as a deposit for sBTC.
+    pub tx: Transaction,
+    /// The deposit information included in one of the output
+    /// `scriptPubKey`s of the above transaction.
+    pub info: DepositInfo,
+    /// The block hash of the block that includes this transaction. If this
+    /// is `None` then this transaction is in the mempool. TODO(384): In
+    /// the case of a reorg, it's not clear what happens if this was
+    /// confirmed.
+    pub block_hash: Option<BlockHash>,
+    /// The number of confirmations deep from that chain tip of the bitcoin
+    /// block that includes this transaction. If `None` then this is in the
+    /// mempool. TODO(384): In the case of a reorg, it's not clear what
+    /// happens if this was confirmed.
+    pub confirmations: Option<u32>,
+    /// This is to make sure that this struct cannot be created without the
+    /// above invariants being upheld.
+    _phantom: PhantomData<()>,
+}
+
 impl CreateDepositRequest {
     /// Validate this deposit request from the transaction.
     ///
     /// This function fetches the transaction using the given client and
     /// checks that the transaction has been confirmed. The transaction
     /// need not be confirmed.
-    pub fn validate<C>(&self, client: &C) -> Result<ParsedDepositRequest, Error>
+    pub fn validate<C>(&self, client: &C) -> Result<Deposit, Error>
     where
-        C: BitcoinRpcClient,
+        C: BitcoinClient,
     {
         // Fetch the transaction from either a block or from the mempool
-        let response = client.get_tx(&self.outpoint.txid)?;
-        self.validate_tx(&response.tx)
+        let response = client
+            .get_tx(&self.outpoint.txid)
+            .map_err(|err| Error::BitcoinClient(Box::new(err)))?;
+
+        Ok(Deposit {
+            info: self.validate_tx(&response.tx)?,
+            tx: response.tx,
+            block_hash: response.block_hash,
+            confirmations: response.confirmations,
+            _phantom: PhantomData,
+        })
     }
     /// Validate this deposit request.
     ///
@@ -117,7 +155,7 @@ impl CreateDepositRequest {
     ///   the expected formats for deposit transactions.
     /// * That deposit script and the reclaim script are part of the UTXO
     ///   ScriptPubKey.
-    pub fn validate_tx(&self, tx: &Transaction) -> Result<ParsedDepositRequest, Error> {
+    pub fn validate_tx(&self, tx: &Transaction) -> Result<DepositInfo, Error> {
         if tx.compute_txid() != self.outpoint.txid {
             // The expectation is that the transaction hex was fetched from
             // the blockchain using the txid, so in practice this should
@@ -151,7 +189,7 @@ impl CreateDepositRequest {
             return Err(Error::UtxoScriptPubKeyMismatch(self.outpoint));
         }
 
-        Ok(ParsedDepositRequest {
+        Ok(DepositInfo {
             max_fee: deposit.max_fee,
             deposit_script: self.deposit_script.clone(),
             reclaim_script: self.reclaim_script.clone(),
@@ -497,7 +535,7 @@ mod tests {
 
     const CONTRACT_ADDRESS: &str = "ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y.contract-name";
 
-    struct DummyClient(HashMap<Txid, Transaction>);
+    struct DummyClient(pub HashMap<Txid, Transaction>);
 
     impl DummyClient {
         fn new_from_tx(tx: &Transaction) -> Self {
@@ -507,19 +545,13 @@ mod tests {
         }
     }
 
-    impl BitcoinRpcClient for DummyClient {
+    impl BitcoinClient for DummyClient {
+        type Error = Error;
         fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
-            let tx = self
-                .0
-                .get(txid)
-                .cloned()
-                .ok_or(Error::GetTransactionElectrum(
-                    electrum_client::Error::CouldntLockReader,
-                    *txid,
-                ))?;
+            let tx = self.0.get(txid).cloned();
+
             Ok(GetTxResponse {
-                tx,
-                txid: *txid,
+                tx: tx.ok_or(Error::BitcoinClient(Box::new(Error::InvalidDepositScript)))?,
                 block_hash: None,
                 confirmations: None,
                 block_time: None,
@@ -726,7 +758,7 @@ mod tests {
 
         let parsed = if use_client {
             let client = DummyClient::new_from_tx(&setup.tx);
-            request.validate(&client).unwrap()
+            request.validate(&client).unwrap().info
         } else {
             request.validate_tx(&setup.tx).unwrap()
         };

@@ -1,5 +1,13 @@
 //! Database models for the signer.
 
+use std::ops::Range;
+
+use bitcoin::hashes::Hash as _;
+use bitcoin::Address;
+use bitcoin::Network;
+use rand::seq::IteratorRandom as _;
+use sbtc::deposits::Deposit;
+
 #[cfg(feature = "testing")]
 use fake::faker::time::en::DateTimeAfter;
 
@@ -47,7 +55,7 @@ pub struct StacksBlock {
 }
 
 /// Deposit request.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct DepositRequest {
     /// Transaction ID of the deposit request transaction.
@@ -69,7 +77,7 @@ pub struct DepositRequest {
     /// be used to pay for transaction fees.
     pub max_fee: i64,
     /// The addresses of the input UTXOs funding the deposit request.
-    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![String; 1..8]"))]
+    #[cfg_attr(feature = "testing", dummy(faker = "BitcoinAddresses(1..5)"))]
     pub sender_addresses: Vec<BitcoinAddress>,
     /// The time this block entry was created by the signer.
     #[cfg_attr(
@@ -77,6 +85,52 @@ pub struct DepositRequest {
         dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")
     )]
     pub created_at: time::OffsetDateTime,
+}
+
+/// Used to for fine grained control of generating fake testing addresses.
+#[cfg(feature = "testing")]
+#[derive(Debug)]
+pub struct BitcoinAddresses(Range<usize>);
+
+#[cfg(feature = "testing")]
+impl fake::Dummy<BitcoinAddresses> for Vec<String> {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &BitcoinAddresses, rng: &mut R) -> Self {
+        let num_addresses = config.0.clone().choose(rng).unwrap_or(1);
+        std::iter::repeat_with(|| secp256k1::Keypair::new_global(rng))
+            .take(num_addresses)
+            .map(|kp| {
+                let pk = bitcoin::CompressedPublicKey(kp.public_key());
+                Address::p2wpkh(&pk, Network::Regtest).to_string()
+            })
+            .collect()
+    }
+}
+
+impl DepositRequest {
+    /// Create me from a full deposit.
+    pub fn from_deposit(deposit: &Deposit, network: Network) -> Self {
+        let tx_input_iter = deposit.tx.input.iter();
+        // It's most likely the case that each of the inputs "come" from
+        // the same Address, so we filter out duplicates.
+        let sender_addresses: std::collections::HashSet<String> = tx_input_iter
+            .flat_map(|tx_in| {
+                Address::from_script(&tx_in.script_sig, network)
+                    .inspect_err(|err| tracing::warn!("could not create address: {err}"))
+                    .map(|address| address.to_string())
+            })
+            .collect();
+        Self {
+            txid: deposit.info.outpoint.txid.to_byte_array().to_vec(),
+            output_index: deposit.info.outpoint.vout as i32,
+            spend_script: deposit.info.deposit_script.to_bytes(),
+            reclaim_script: deposit.info.reclaim_script.to_bytes(),
+            recipient: deposit.info.recipient.to_string(),
+            amount: deposit.info.amount as i64,
+            max_fee: deposit.info.max_fee as i64,
+            sender_addresses: sender_addresses.into_iter().collect(),
+            created_at: time::OffsetDateTime::now_utc(),
+        }
+    }
 }
 
 /// A signer acknowledging a deposit request.

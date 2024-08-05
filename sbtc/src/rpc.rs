@@ -29,8 +29,6 @@ pub struct GetTxResponse {
     #[serde(with = "consensus::serde::With::<consensus::serde::Hex>")]
     #[serde(rename = "hex")]
     pub tx: Transaction,
-    /// The transaction ID.
-    pub txid: Txid,
     /// The block hash of the Bitcoin block that includes this transaction.
     #[serde(rename = "blockhash")]
     pub block_hash: Option<BlockHash>,
@@ -56,19 +54,21 @@ pub struct FeeEstimate {
 }
 
 /// Trait for interacting with bitcoin-core
-pub trait BitcoinRpcClient {
+pub trait BitcoinClient {
+    /// The error type returned for RPC calls.
+    type Error: std::error::Error + 'static;
     /// Return the transaction if the transaction is in the mempool or in
     /// any block.
-    fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error>;
+    fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Self::Error>;
 }
 
 /// A client for interacting with bitcoin-core
-pub struct BtcClient {
+pub struct BitcoinCoreClient {
     /// The underlying bitcoin-core client
     inner: bitcoincore_rpc::Client,
 }
 
-impl BtcClient {
+impl BitcoinCoreClient {
     /// Return a bitcoin-core RPC client. Will error if the URL is an invalid URL.
     ///
     /// # Notes
@@ -102,7 +102,6 @@ impl BtcClient {
 
         Ok(GetTxResponse {
             tx,
-            txid: response.txid,
             block_hash: response.blockhash,
             confirmations: response.confirmations,
             block_time: response.blocktime.map(|time| time as u64),
@@ -117,12 +116,13 @@ impl BtcClient {
     ///
     /// Modified from the bitcoin-core docs[1]:
     ///
-    /// This returns a "conservative" estimate, which is potentially
-    /// returns a higher fee rate and is more likely to be sufficient for
-    /// the desired target, but is not as responsive to short term drops in
-    /// the prevailing fee market. Also, the docs mention the response is
-    /// in BTC/kB, but from the comments in  bitcoin-core[2] this is really
-    /// BTC/kvB (kvB is kilo-vbyte).
+    /// Bitcoin-core has two different modes for fee rate estimation,
+    /// "conservative" and "economical". We use the "conservative" estimate
+    /// because it is more likely to be sufficient for the desired target,
+    /// but is not as responsive to short term drops in the prevailing fee
+    /// market when compared to the "economical" fee rate. Also, the docs
+    /// mention the response is in BTC/kB, but from the comments in
+    /// bitcoin-core[2] this is really BTC/kvB (kvB is kilo-vbyte).
     ///
     /// [^1]: https://developer.bitcoin.org/reference/rpc/estimatesmartfee.html
     /// [^2]: https://github.com/bitcoin/bitcoin/blob/d367a4e36f7357c4ebd018e8e1c9c5071db2e1c2/src/rpc/fees.cpp#L90-L91
@@ -134,7 +134,8 @@ impl BtcClient {
             .map_err(|err| Error::EstimateSmartFee(err, num_blocks))?;
 
         // In local testing resp.fee_rate is `None` whenever there haven't
-        // been enough transactions to make an estimate.
+        // been enough transactions to make an estimate. Also, the fee rate
+        // is in BTC/kvB, so we need to convert that to sats/vb.
         let sats_per_vbyte = match resp.fee_rate {
             Some(fee_rate) => fee_rate.to_float_in(Denomination::Satoshi) / 1000.,
             None => return Err(Error::EstimateSmartFeeResponse(resp.errors, num_blocks)),
@@ -144,7 +145,8 @@ impl BtcClient {
     }
 }
 
-impl BitcoinRpcClient for BtcClient {
+impl BitcoinClient for BitcoinCoreClient {
+    type Error = Error;
     fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
         self.get_tx(txid)
     }
@@ -200,9 +202,17 @@ impl ElectrumClient {
             .raw_call("blockchain.transaction.get", params)
             .map_err(|err| Error::GetTransactionElectrum(err, *txid))?;
 
-        serde_json::from_value::<GetTxResponse>(value)
-            .inspect(|response| debug_assert_eq!(txid, &response.txid))
-            .map_err(|err| Error::DeserializeGetTransaction(err, *txid))
+        let resp = serde_json::from_value::<GetTxResponse>(value)
+            .inspect(|response| debug_assert_eq!(txid, &response.tx.compute_txid()))
+            .map_err(|err| Error::DeserializeGetTransaction(err, *txid))?;
+
+        // This should never happen, but couldn't hurt to check.
+        if &resp.tx.compute_txid() != txid {
+            let from_tx = resp.tx.compute_txid();
+            return Err(Error::TxidMismatch { from_tx, from_request: *txid });
+        }
+
+        Ok(resp)
     }
     /// Estimate the current mempool fee rate using the
     /// `blockchain.estimatefee` RPC call
@@ -241,7 +251,8 @@ impl ElectrumClient {
     }
 }
 
-impl BitcoinRpcClient for ElectrumClient {
+impl BitcoinClient for ElectrumClient {
+    type Error = Error;
     fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
         self.get_tx(txid)
     }
