@@ -97,7 +97,9 @@ pub struct DepositInfo {
     pub lock_time: u64,
 }
 
-/// A full deposit, with a fully extracted and verified `scriptPubKey`
+/// A full "deposit", containing the bitcoin transaction and a fully
+/// extracted and verified `scriptPubKey` from one of the transaction's
+/// UTXOs.
 #[derive(Debug, Clone)]
 pub struct Deposit {
     /// The transaction spent to the signers as a deposit for sBTC.

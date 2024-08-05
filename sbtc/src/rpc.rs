@@ -116,7 +116,7 @@ impl BitcoinCoreClient {
     ///
     /// Modified from the bitcoin-core docs[1]:
     ///
-    /// Bitcoin-core has too different modes for fee rate estimation,
+    /// Bitcoin-core has two different modes for fee rate estimation,
     /// "conservative" and "economical". We use the "conservative" estimate
     /// because it is more likely to be sufficient for the desired target,
     /// but is not as responsive to short term drops in the prevailing fee
@@ -135,7 +135,7 @@ impl BitcoinCoreClient {
 
         // In local testing resp.fee_rate is `None` whenever there haven't
         // been enough transactions to make an estimate. Also, the fee rate
-        // is in BTC/kvB so we need to convert that to sats/vb.
+        // is in BTC/kvB, so we need to convert that to sats/vb.
         let sats_per_vbyte = match resp.fee_rate {
             Some(fee_rate) => fee_rate.to_float_in(Denomination::Satoshi) / 1000.,
             None => return Err(Error::EstimateSmartFeeResponse(resp.errors, num_blocks)),
