@@ -11,6 +11,9 @@ use tokio;
 
 use emily_handler::api::models::deposit::responses::{CreateDepositResponse, GetDepositResponse};
 
+// TODO(TBD): Use test setup functions to wipe the database before performing these
+// tests instead of relying on circumstantial test execution order.
+
 /// Contains data about a deposit transaction used for testing so that
 /// all the tests have a common understanding of the deposits in the
 /// system. Deposit transactions can have multiple deposits within them;

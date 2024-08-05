@@ -6,6 +6,9 @@ use serial_test::serial;
 use std::sync::LazyLock;
 use tokio;
 
+// TODO(TBD): Use test setup functions to wipe the database before performing these
+// tests instead of relying on circumstantial test execution order.
+
 /// Test data for chainstate tests.
 static TEST_CHAINSTATE_DATA: LazyLock<Vec<Chainstate>> = LazyLock::new(|| {
     vec![

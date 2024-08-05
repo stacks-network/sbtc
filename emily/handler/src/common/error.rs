@@ -112,6 +112,9 @@ impl Error {
     }
     /// Convert error into a presentable version of the error that can be
     /// provided to a client in production.
+    ///
+    /// TODO(131): Scrutinize the outputs of the error messages to ensure they're
+    /// production ready.
     pub fn into_production_error(self) -> Error {
         match self {
             Error::Serialization(_) | Error::InvalidApiResponse => Error::NotAcceptable,

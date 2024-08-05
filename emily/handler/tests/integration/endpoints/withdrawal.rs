@@ -13,6 +13,9 @@ use tokio;
 
 use crate::util::{self, constants::EMILY_WITHDRAWAL_ENDPOINT};
 
+// TODO(TBD): Use test setup functions to wipe the database before performing these
+// tests instead of relying on circumstantial test execution order.
+
 /// Contains the data about a withdrawal that will be used for testing. There are
 /// more fields in a withdrawal than listed here; this represents the data that we
 /// expect to be common accross the tests.
