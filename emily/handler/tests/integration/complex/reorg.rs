@@ -126,6 +126,7 @@ async fn simple_reorg_test_base(scenario: ReorgScenario) {
         util::test_chainstate(initial_chain_length - 1, fork_id),
     );
 
+    // // TODO(348): Uncomment once updates are supported.
     // // Step 2: Create a conflicting fork.
     // // -------------------------------------------------------------------------
     // fork_id += 1;
