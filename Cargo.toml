@@ -58,11 +58,13 @@ tonic = "0.11.0"
 tonic-build = "0.11.0"
 tokio = "1.32.0"
 tokio-stream = {version = "0.1.15", features = ["sync"] }
+tokio-util = "0.7"
 tracing = { version = "0.1", default-features = false }
 tracing-attributes = "0.1"
 url = "2.5"
 warp_lambda = "0.1.4"
 wsts = "9.1.0"
+zeromq = { version = "0.4.0", default-features = false, features = ["tokio-runtime", "all-transport"] }
 
 [workspace.dependencies.tracing-subscriber]
 version = "0.3"
