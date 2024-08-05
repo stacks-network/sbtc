@@ -76,6 +76,11 @@ impl TestClient {
         self.reset_environment().await;
     }
 
+    /// Sets up the test environment.
+    pub async fn teardown(&self) {
+        self.reset_environment().await;
+    }
+
     /// Reset test environment.
     pub async fn reset_environment(&self) {
         let endpoint: String = format!("{EMILY_TESTING_ENDPOINT}/wipe");
