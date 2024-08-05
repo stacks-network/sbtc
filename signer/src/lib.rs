@@ -21,6 +21,7 @@ pub mod transaction_coordinator;
 pub mod transaction_signer;
 pub mod utxo;
 pub mod wsts_state_machine;
+pub mod zmq;
 
 /// Package version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

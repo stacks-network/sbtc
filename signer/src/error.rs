@@ -25,6 +25,10 @@ pub enum Error {
     ParseStacksBlockId(#[source] blockstack_lib::util::HexError, String),
 
     /// Parsing the Hex Error
+    #[error("could not decode the bitcoin block: {0}")]
+    DecodeBitcoinBlock(#[source] bitcoin::consensus::encode::Error),
+
+    /// Parsing the Hex Error
     #[error("could not decode the Nakamoto block with ID: {1}; {0}")]
     DecodeNakamotoBlock(#[source] blockstack_lib::codec::Error, StacksBlockId),
 
@@ -186,6 +190,24 @@ pub enum Error {
     /// Parsing address failed
     #[error("failed to parse address")]
     ParseAddress(#[source] bitcoin::address::ParseError),
+
+    /// Could not connect to bitcoin-core with a zeromq subscription
+    /// socket.
+    #[error("{0}")]
+    ZmqConnect(#[source] zeromq::ZmqError),
+
+    /// Error when receiving a message from to bitcoin-core over zeromq.
+    #[error("{0}")]
+    ZmqMessage(#[source] zeromq::ZmqError),
+
+    /// Error when receiving a message from to bitcoin-core over zeromq.
+    #[error("{0}")]
+    ZmqReceive(#[source] zeromq::ZmqError),
+
+    /// Could not subscribe to bitcoin-core with a zeromq subscription
+    /// socket.
+    #[error("{0}")]
+    ZmqSubscribe(#[source] zeromq::ZmqError),
 }
 
 impl From<std::convert::Infallible> for Error {

@@ -58,7 +58,6 @@ tonic = "0.11.0"
 tonic-build = "0.11.0"
 tokio = "1.32.0"
 tokio-stream = {version = "0.1.15", features = ["sync"] }
-tokio-util = "0.7"
 tracing = { version = "0.1", default-features = false }
 tracing-attributes = "0.1"
 url = "2.5"
