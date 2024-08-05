@@ -33,6 +33,7 @@ pub fn routes(
     )
 }
 
+/// This function sets the Warp filters for handling all requests.
 #[cfg(not(feature = "testing"))]
 pub fn routes(
     context: EmilyContext,

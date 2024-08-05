@@ -166,6 +166,7 @@ pub async fn get_withdrawal_entries(
 
 /// Wipes all the tables.
 /// TODO(395): Include check for whether the table is running locally.
+#[cfg(feature = "testing")]
 pub async fn wipe_all_tables(context: &EmilyContext) -> Result<(), Error> {
     wipe_deposit_table(context).await?;
     wipe_withdrawal_table(context).await?;
@@ -174,6 +175,7 @@ pub async fn wipe_all_tables(context: &EmilyContext) -> Result<(), Error> {
 }
 
 /// Wipes the deposit table.
+#[cfg(feature = "testing")]
 async fn wipe_deposit_table(context: &EmilyContext) -> Result<(), Error> {
     wipe_table::<DepositEntry, DepositEntryKey>(
         &context.dynamodb_client,
@@ -184,6 +186,7 @@ async fn wipe_deposit_table(context: &EmilyContext) -> Result<(), Error> {
 }
 
 /// Wipes the withdrawal table.
+#[cfg(feature = "testing")]
 async fn wipe_withdrawal_table(context: &EmilyContext) -> Result<(), Error> {
     wipe_table::<WithdrawalEntry, WithdrawalEntryKey>(
         &context.dynamodb_client,
@@ -194,6 +197,7 @@ async fn wipe_withdrawal_table(context: &EmilyContext) -> Result<(), Error> {
 }
 
 /// Wipes the chainstate table.
+#[cfg(feature = "testing")]
 async fn wipe_chainstate_table(context: &EmilyContext) -> Result<(), Error> {
     delete_entry(
         &context.dynamodb_client,
@@ -246,7 +250,7 @@ pub async fn add_chainstate_entry(
     //
     // TODO(TBD): Handle api status being "Reorg" during this period.
     let mut api_state = get_api_state(context).await?;
-    let blocks_higher_than_current_tip = entry.key.height - api_state.chaintip.key.height;
+    let blocks_higher_than_current_tip = (entry.key.height as i128) - (api_state.chaintip.key.height as i128);
 
     if blocks_higher_than_current_tip == 1 || api_state.chaintip.key.height == 0 {
         api_state.chaintip = entry.clone();
@@ -418,6 +422,7 @@ pub async fn delete_entry(
 }
 
 /// Wipes a specific table.
+#[cfg(feature = "testing")]
 async fn wipe_table<T, K>(
     dynamodb_client: &aws_sdk_dynamodb::Client,
     table_name: &str,
