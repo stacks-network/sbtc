@@ -77,7 +77,7 @@ pub struct DepositRequest {
     /// be used to pay for transaction fees.
     pub max_fee: i64,
     /// The addresses of the input UTXOs funding the deposit request.
-    #[cfg_attr(feature = "testing", dummy(faker = "BitcoinAddresses(1..5, Network::Regtest)"))]
+    #[cfg_attr(feature = "testing", dummy(faker = "BitcoinAddresses(1..5)"))]
     pub sender_addresses: Vec<BitcoinAddress>,
     /// The time this block entry was created by the signer.
     #[cfg_attr(
@@ -90,7 +90,7 @@ pub struct DepositRequest {
 /// Used to for fine grained control of generating fake testing addresses.
 #[cfg(feature = "testing")]
 #[derive(Debug)]
-pub struct BitcoinAddresses(Range<usize>, Network);
+pub struct BitcoinAddresses(Range<usize>);
 
 #[cfg(feature = "testing")]
 impl fake::Dummy<BitcoinAddresses> for Vec<String> {
@@ -100,7 +100,7 @@ impl fake::Dummy<BitcoinAddresses> for Vec<String> {
             .take(num_addresses)
             .map(|kp| {
                 let pk = bitcoin::CompressedPublicKey(kp.public_key());
-                Address::p2wpkh(&pk, config.1).to_string()
+                Address::p2wpkh(&pk, Network::Regtest).to_string()
             })
             .collect()
     }
