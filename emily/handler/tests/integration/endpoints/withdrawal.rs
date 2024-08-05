@@ -7,7 +7,6 @@ use emily_handler::api::models::{
     },
 };
 use serde_json::json;
-use serial_test::serial;
 use std::sync::LazyLock;
 use tokio;
 
@@ -103,7 +102,6 @@ fn just_created_withdrawal(
 /// when this test suite starts up.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-#[serial]
 async fn create_withdrawals() {
     // The setup function runs what was origninally the create tests by creating the
     // resources and then assessing what was created.
@@ -114,7 +112,6 @@ async fn create_withdrawals() {
 /// Get every withdrawal one at a time.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-#[serial]
 async fn get_withdrawal() {
     let client = setup_deposit_integration_test().await;
     for test_withdrawal_data in TEST_WITHDRAWAL_DATA.iter() {
@@ -152,7 +149,6 @@ async fn get_withdrawal() {
 /// the table.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-#[serial]
 async fn get_withdrawals() {
     // Arrange.
     let client = setup_deposit_integration_test().await;

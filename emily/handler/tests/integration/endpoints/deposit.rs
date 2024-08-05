@@ -5,7 +5,6 @@ use emily_handler::api::models::deposit::{
     Deposit, DepositInfo, DepositParameters,
 };
 use serde_json::json;
-use serial_test::serial;
 use std::sync::LazyLock;
 use tokio;
 
@@ -109,7 +108,6 @@ fn just_created_deposit(bitcoin_txid: String, bitcoin_tx_output_index: u32) -> D
 /// Test that the creation works.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-#[serial]
 async fn create_deposits() {
     // The setup function runs what was origninally the create tests by creating the
     // resources and then assessing what was created.
@@ -120,7 +118,6 @@ async fn create_deposits() {
 /// Get every deposit from the previous test one at a time.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-#[serial]
 async fn get_deposit() {
     let client = setup_deposit_integration_test().await;
     for test_deposit in all_test_deposit_data() {
@@ -154,7 +151,6 @@ async fn get_deposit() {
 /// Get all deposits for each transaction using a page size large enough to get all entries.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-#[serial]
 async fn get_deposits_for_transaction() {
     let client = setup_deposit_integration_test().await;
     for test_deposit_transaction_data in TEST_DEPOSIT_DATA.iter() {
@@ -191,7 +187,6 @@ async fn get_deposits_for_transaction() {
 /// to the paginated endpoint to get all the deposits.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-#[serial]
 async fn get_deposits_for_transaction_with_small_page_size() {
     let client = setup_deposit_integration_test().await;
     for test_deposit_transaction_data in TEST_DEPOSIT_DATA.iter() {
@@ -256,7 +251,6 @@ async fn get_deposits_for_transaction_with_small_page_size() {
 /// endpoing to get all the pending deposits present.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-#[serial]
 async fn get_pending_deposits() {
     // Arrange.
     let client = setup_deposit_integration_test().await;
@@ -325,7 +319,6 @@ async fn get_pending_deposits() {
 /// this should always be empty.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-#[serial]
 async fn get_failed_deposits() {
     // Arrange.
     let client = setup_deposit_integration_test().await;

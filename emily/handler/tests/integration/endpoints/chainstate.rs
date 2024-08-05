@@ -1,7 +1,6 @@
 use crate::util::{self, constants::EMILY_CHAINSTATE_ENDPOINT, TestClient};
 use emily_handler::api::models::chainstate::Chainstate;
 use serde_json::json;
-use serial_test::serial;
 use std::sync::LazyLock;
 use tokio;
 
@@ -42,7 +41,6 @@ async fn setup_chainstate_integration_test() -> TestClient {
 /// Test that the creation works.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-#[serial]
 async fn create_chainstates() {
     // The setup function runs what was origninally the create tests by creating the
     // resources and then assessing what was created.
@@ -53,7 +51,6 @@ async fn create_chainstates() {
 /// Get every chainstate from the previous test one at a time.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-#[serial]
 async fn get_chainstate_at_height() {
     let client = setup_chainstate_integration_test().await;
     for test_chainstate_data in TEST_CHAINSTATE_DATA.iter() {
