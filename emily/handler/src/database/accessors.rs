@@ -165,7 +165,7 @@ pub async fn get_withdrawal_entries(
 }
 
 /// Wipes all the tables.
-/// TODO(TBD): Include check for whether the table is running locally.
+/// TODO(395): Include check for whether the table is running locally.
 pub async fn wipe_all_tables(context: &EmilyContext) -> Result<(), Error> {
     wipe_deposit_table(context).await?;
     wipe_withdrawal_table(context).await?;
@@ -241,7 +241,7 @@ pub async fn add_chainstate_entry(
         }
     };
 
-    // TODO(TBD): Determine whether the order for these operations is correct
+    // TODO(390): Determine whether the order for these operations is correct
     // given the eventual consistency guarantees of dynamodb.
     //
     // TODO(TBD): Handle api status being "Reorg" during this period.
@@ -340,7 +340,7 @@ pub async fn get_api_state(context: &EmilyContext) -> Result<ApiStateEntry, Erro
 
     match get_api_state_result {
         // If the API state wasn't found then initialize it into the table.
-        // TODO(TBD): Handle any race conditions with the version field in case
+        // TODO(390): Handle any race conditions with the version field in case
         // the entry was initialized and then updated after creation.
         Err(Error::NotFound) => {
             let initial_api_state_entry = ApiStateEntry::default();
@@ -649,4 +649,4 @@ where
     Ok(deserialized)
 }
 
-// TODO(TBD): Test the generic functions with unit tests and a mock.
+// TODO(397): Add accessor function unit tests.

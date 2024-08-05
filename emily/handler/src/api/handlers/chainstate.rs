@@ -34,7 +34,7 @@ use warp::reply::{json, with_status, Reply};
 pub async fn get_chain_tip(context: EmilyContext) -> impl warp::reply::Reply {
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(context: EmilyContext) -> Result<impl warp::reply::Reply, Error> {
-        // TODO(TBD): Handle multiple being in the tip list here.
+        // TODO(390): Handle multiple being in the tip list here.
         let api_state = accessors::get_api_state(&context).await?;
         let chaintip: Chainstate = api_state.chaintip.into();
         Ok(with_status(
@@ -172,4 +172,4 @@ pub async fn update_chainstate(
     Error::NotImplemented
 }
 
-// TODO(TBD): Add handler unit tests.
+// TODO(393): Add handler unit tests.

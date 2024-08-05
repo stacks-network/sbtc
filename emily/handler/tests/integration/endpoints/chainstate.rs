@@ -6,7 +6,7 @@ use serial_test::serial;
 use std::sync::LazyLock;
 use tokio;
 
-// TODO(TBD): Use test setup functions to wipe the database before performing these
+// TODO(392): Use test setup functions to wipe the database before performing these
 // tests instead of relying on circumstantial test execution order.
 
 /// Test data for chainstate tests.

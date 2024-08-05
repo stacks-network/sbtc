@@ -1,5 +1,5 @@
 //! Context.
-//! TODO(TBD): Improve the configuration setup.
+//! TODO(389): Improve the configuration setup.
 //!
 //! Create a `new` function similar to the settings in the blocklist client
 //! and the Signer that grabs the configuration values from a local default
@@ -54,11 +54,12 @@ impl Settings {
 /// Implementation of Context.
 impl EmilyContext {
     /// Create struct instance from env.
+    /// TODO(389): Make the implementation of this context more standard.
     pub async fn from_env() -> Result<Self, Error> {
         let settings: Settings = Settings::from_env()?;
         let mut config: aws_config::SdkConfig =
             aws_config::load_defaults(BehaviorVersion::latest()).await;
-        // TODO(TBD): Instead of using `is_local` configuration parameter set the specific
+        // TODO(389): Instead of using `is_local` configuration parameter set the specific
         // field in the config.
         if settings.is_local {
             config = config
