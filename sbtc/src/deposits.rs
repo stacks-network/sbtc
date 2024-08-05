@@ -100,10 +100,10 @@ pub struct DepositInfo {
 /// A full deposit, with a fully extracted and verified `scriptPubKey`
 #[derive(Debug, Clone)]
 pub struct Deposit {
-    /// The transaction that includes the deposit information.
+    /// The transaction spent to the signers as a deposit for sBTC.
     pub tx: Transaction,
-    /// The deposit information included in one of the outputs of the above
-    /// transaction.
+    /// The deposit information included in one of the output
+    /// `scriptPubKey`s of the above transaction.
     pub info: DepositInfo,
     /// The block hash of the block that includes this transaction. If this
     /// is `None` then this transaction is in the mempool. TODO(384): In

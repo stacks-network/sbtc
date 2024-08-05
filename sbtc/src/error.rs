@@ -10,8 +10,8 @@ pub enum Error {
     /// Error when creating an RPC client to bitcoin-core
     #[error("could not create RPC client to {1}; {0}")]
     BitcoinCoreRpcClient(#[source] bitcoincore_rpc::Error, String),
-    /// Error when using a BtcClient trait function
-    #[error("could execute BTC RPC call {0}")]
+    /// Error when using a BitcoinClient trait function
+    #[error("could not execute bitcoin client RPC call {0}")]
     BitcoinClient(#[source] Box<dyn std::error::Error>),
     /// Returned when we could not decode the hex into a
     /// bitcoin::Transaction.
