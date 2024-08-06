@@ -1,11 +1,5 @@
 name: Rust and Clarity Tests
-on:
-  push:
-  pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
+on: [push]
 
 jobs:
   tests:
