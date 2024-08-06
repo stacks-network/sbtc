@@ -133,7 +133,7 @@ pub async fn set_chainstate(
         body: SetChainstateRequestBody,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Convert body to the correct type.
-        let chainstate: Chainstate = Chainstate::from(body);
+        let chainstate: Chainstate = body;
         let chainstate_entry: ChainstateEntry = chainstate.clone().into();
         // TODO(TBD): handle a conflicting internal state error.
         accessors::add_chainstate_entry(&context, &chainstate_entry).await?;
