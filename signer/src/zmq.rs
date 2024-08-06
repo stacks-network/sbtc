@@ -162,7 +162,7 @@ impl BitcoinCoreMessageStream {
     }
 
     /// Creat a new one using the endpoint(s) in the config.
-    /// 
+    ///
     /// Note that setting the subscription to the empty string is
     /// equivalent to setting the subscription to all available
     /// subscriptions enabled on bitcoin-core.
