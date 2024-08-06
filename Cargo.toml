@@ -34,7 +34,6 @@ bitcoincore-rpc = { version = "0.19" }
 bitvec = { version = "1.0", default-features = false }
 config = "0.11.0"
 clap = { version = "4.5.4", features = ["derive", "env"] }
-electrum-client = { version = "0.20" }
 futures = "0.3.24"
 hashbrown = "0.14.5"
 http = "1.1.0"

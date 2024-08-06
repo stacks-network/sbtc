@@ -21,12 +21,6 @@ pub enum Error {
     /// into a GetTxResponse.
     #[error("failed to deserialize the blockchain.transaction.get response. txid: {1}. {0}")]
     DeserializeGetTransaction(#[source] serde_json::Error, Txid),
-    /// Could not build the electrum client
-    #[error("could not build the electrum client to url {1}. {0}")]
-    ElectrumClientBuild(#[source] electrum_client::Error, String),
-    /// Received an error in call to blockchain.estimatefee RPC call
-    #[error("failed to get fee estimate from electrum for target {1}. {0}")]
-    EstimateFeeElectrum(#[source] electrum_client::Error, u16),
     /// Received an error in call to estimatesmartfee RPC call
     #[error("failed to get fee estimate from bitcoin-core for target {1}. {0}")]
     EstimateSmartFee(#[source] bitcoincore_rpc::Error, u16),
@@ -36,10 +30,6 @@ pub enum Error {
     /// Received an error in response to getrawtransaction RPC call
     #[error("failed to retrieve the raw transaction for txid {1} from bitcoin-core. {0}")]
     GetTransactionBitcoinCore(#[source] bitcoincore_rpc::Error, Txid),
-    /// Received an error in response to blockchain.transaction.get
-    /// electrum call.
-    #[error("failed to retrieve the raw transaction for txid {1} from electrum. {0}")]
-    GetTransactionElectrum(#[source] electrum_client::Error, Txid),
     /// The deposit script was invalid
     #[error("invalid deposit script")]
     InvalidDepositScript,
