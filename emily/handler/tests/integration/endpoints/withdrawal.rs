@@ -1,17 +1,16 @@
 use emily_handler::api::models::{
     common::Status,
     withdrawal::{
-        responses::{CreateWithdrawalResponse, GetWithdrawalResponse, GetWithdrawalsResponse},
+        requests::CreateWithdrawalRequestBody,
+        responses::{GetWithdrawalResponse, GetWithdrawalsResponse},
         Withdrawal, WithdrawalInfo,
     },
 };
-use reqwest::Client;
 use serde_json::json;
-use serial_test::serial;
 use std::sync::LazyLock;
 use tokio;
 
-use crate::util::{self, constants::EMILY_WITHDRAWAL_ENDPOINT};
+use crate::util::{self, constants::EMILY_WITHDRAWAL_ENDPOINT, TestClient};
 
 // TODO(392): Use test setup functions to wipe the database before performing these
 // tests instead of relying on circumstantial test execution order.
@@ -46,6 +45,37 @@ static TEST_WITHDRAWAL_DATA: LazyLock<Vec<TestWithdrawalData>> = LazyLock::new(|
     ]
 });
 
+/// Setup function that wipes the database and populates it with the necessary
+/// withdrawal data.
+async fn setup_deposit_integration_test() -> TestClient {
+    let client = TestClient::new();
+    client.setup_test().await;
+    for test_withdrawal_data in TEST_WITHDRAWAL_DATA.iter() {
+        // Arrange.
+        let TestWithdrawalData {
+            request_id,
+            recipient,
+            stacks_block_hash,
+        } = test_withdrawal_data;
+        let request: CreateWithdrawalRequestBody = serde_json::from_value(json!({
+          "requestId": request_id,
+          "stacksBlockHash": stacks_block_hash,
+          "recipient": recipient,
+          "amount": 0,
+          "parameters": {
+             "maxFee": 0
+          }
+        }))
+        .expect("Failed to deserialize create withdrawal request body in test setup");
+        let response = client.create_withdrawal(&request).await;
+        util::assert_eq_pretty(
+            response,
+            just_created_withdrawal(request_id, recipient, stacks_block_hash),
+        );
+    }
+    client
+}
+
 /// Creates the withdrawal that one would expect to receive from the API
 /// after it was JUST created. Note that this will need to be changed when
 /// the API becomes more complicated and correct; many of the default values
@@ -72,49 +102,18 @@ fn just_created_withdrawal(
 /// when this test suite starts up.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-#[serial]
 async fn create_withdrawals() {
-    let client = Client::new();
-    for test_withdrawal_data in TEST_WITHDRAWAL_DATA.iter() {
-        // Arrange.
-        let TestWithdrawalData {
-            request_id,
-            recipient,
-            stacks_block_hash,
-        } = test_withdrawal_data;
-
-        // Act.
-        let response = client
-            .post(EMILY_WITHDRAWAL_ENDPOINT)
-            .json(&json!({
-              "requestId": request_id,
-              "stacksBlockHash": stacks_block_hash,
-              "recipient": recipient,
-              "amount": 0,
-              "parameters": {
-                 "maxFee": 0
-              }
-            }))
-            .send()
-            .await
-            .expect("Request should succeed");
-
-        // Assert.
-        let actual: CreateWithdrawalResponse = response.json().await.expect("msg");
-
-        let expected: CreateWithdrawalResponse =
-            just_created_withdrawal(request_id, recipient, stacks_block_hash);
-
-        util::assert_eq_pretty(actual, expected);
-    }
+    // The setup function runs what was origninally the create tests by creating the
+    // resources and then assessing what was created.
+    let client = setup_deposit_integration_test().await;
+    client.teardown().await;
 }
 
-/// Get every withdrawal from the previous test one at a time.
+/// Get every withdrawal one at a time.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-#[serial]
 async fn get_withdrawal() {
-    let client = Client::new();
+    let client = setup_deposit_integration_test().await;
     for test_withdrawal_data in TEST_WITHDRAWAL_DATA.iter() {
         // Arrange.
         let TestWithdrawalData {
@@ -125,6 +124,7 @@ async fn get_withdrawal() {
 
         // Act.
         let response = client
+            .inner
             .get(format!("{EMILY_WITHDRAWAL_ENDPOINT}/{request_id}"))
             .send()
             .await
@@ -140,6 +140,7 @@ async fn get_withdrawal() {
 
         util::assert_eq_pretty(actual, expected);
     }
+    client.teardown().await;
 }
 
 /// Get withdrawals from the paginated endpoit `ENDPOINT/withdrawal` searching
@@ -148,16 +149,16 @@ async fn get_withdrawal() {
 /// the table.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-#[serial]
 async fn get_withdrawals() {
     // Arrange.
-    let client = Client::new();
+    let client = setup_deposit_integration_test().await;
     let page_size: i32 = 1;
 
     let mut aggregate_withdrawals: Vec<WithdrawalInfo> = vec![];
 
     // Act 1.
     let mut response: GetWithdrawalsResponse = client
+        .inner
         .get(EMILY_WITHDRAWAL_ENDPOINT)
         .query(&[
             ("pageSize", page_size.to_string()),
@@ -177,6 +178,7 @@ async fn get_withdrawals() {
     // Act 2.
     while let Some(next_token) = response.next_token.clone() {
         response = client
+            .inner
             .get(EMILY_WITHDRAWAL_ENDPOINT)
             .query(&[
                 ("pageSize", page_size.to_string()),
@@ -212,4 +214,5 @@ async fn get_withdrawals() {
     aggregate_withdrawals.sort();
     expected_withdrawal_infos.sort();
     assert_eq!(aggregate_withdrawals, expected_withdrawal_infos);
+    client.teardown().await;
 }

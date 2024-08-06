@@ -38,4 +38,3 @@ fake = { version = "2.9.2", features = ["derive", "time"], optional = true }
 rand = "0.8"
 mockito = "0.28"
 mockall = "0.10"
-serial_test = "0.5"
