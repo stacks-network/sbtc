@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use warp::{reject::Reject, reply::Reply};
 
+use crate::database::entries::chainstate::ChainstateEntry;
+
 /// Errors from the internal API logic.
 #[allow(dead_code)]
 #[derive(thiserror::Error, Debug)]
@@ -31,7 +33,7 @@ pub enum Error {
     #[error("Serialization error: {0}")]
     Serialization(String),
 
-    /// Mismatch between defined response data model and what is returned by the risk API
+    /// Mismatch between defined response data model and what is returned by the API
     #[error("Invalid API response structure")]
     InvalidApiResponse,
 
@@ -73,6 +75,10 @@ pub enum Error {
     /// Request timeout error
     #[error("Request timeout")]
     RequestTimeout,
+
+    /// Inconsistent API state detected during request
+    #[error("Inconsistent internal state: {0:?}")]
+    InconsistentState(Vec<ChainstateEntry>),
 }
 
 /// Error implementation.
@@ -93,30 +99,35 @@ impl Error {
             Error::Debug(_) => StatusCode::IM_A_TEAPOT,
             Error::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             Error::RequestTimeout => StatusCode::REQUEST_TIMEOUT,
+            Error::InconsistentState(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
-
-    /// Provides the error message that corresponds to the error.
-    pub fn error_message(&self) -> String {
+    /// Converts the error into a warp response.
+    pub fn into_response(self) -> warp::reply::Response {
+        warp::reply::with_status(
+            warp::reply::json(&ErrorResponse { message: format!("{self:?}") }),
+            self.status_code(),
+        )
+        .into_response()
+    }
+    /// Convert error into a presentable version of the error that can be
+    /// provided to a client in production.
+    ///
+    /// TODO(131): Scrutinize the outputs of the error messages to ensure they're
+    /// production ready.
+    pub fn into_production_error(self) -> Error {
         match self {
-            Error::HttpRequest(_, msg) => msg.clone(),
-            Error::Network(_) => "Network error".to_string(),
-            Error::Serialization(_) => "Error in processing the data".to_string(),
-            Error::InvalidApiResponse => "Invalid API response structure".to_string(),
-            Error::Unauthorized => "Unauthorized access - check your API key".to_string(),
-            Error::NotFound => "Resource not found".to_string(),
-            Error::NotAcceptable => "Not acceptable format requested".to_string(),
-            Error::NotImplemented => "Not implemented".to_string(),
-            Error::Conflict => "Request conflict".to_string(),
-            Error::InternalServer => "Internal server error".to_string(),
-            Error::Debug(s) => format!("Debug error: {s}"),
-            Error::ServiceUnavailable => "Service unavailable".to_string(),
-            Error::RequestTimeout => "Request timeout".to_string(),
+            Error::Serialization(_) | Error::InvalidApiResponse => Error::NotAcceptable,
+            Error::NotImplemented
+            | Error::Debug(_)
+            | Error::Network(_)
+            | Error::ServiceUnavailable => Error::InternalServer,
+            err => err,
         }
     }
 }
 
-/// TODO(TBD): Route errors to the appropriate Emily API error.
+/// TODO(391): Route errors to the appropriate Emily API error.
 ///
 /// Implement from for API Errors.
 impl From<SdkError<GetItemError>> for Error {
@@ -189,11 +200,13 @@ impl Reject for Error {}
 /// provided directly from Warp as a reply.
 impl Reply for Error {
     /// Convert self into a warp response.
+    #[cfg(not(feature = "testing"))]
+    fn into_response(self: Error) -> warp::reply::Response {
+        self.into_production_error().into_response()
+    }
+    /// Convert self into a warp response.
+    #[cfg(feature = "testing")]
     fn into_response(self) -> warp::reply::Response {
-        warp::reply::with_status(
-            warp::reply::json(&ErrorResponse { message: self.error_message() }),
-            self.status_code(),
-        )
-        .into_response()
+        self.into_response()
     }
 }

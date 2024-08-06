@@ -30,11 +30,100 @@ pub struct ChainstateEntry {
     pub key: ChainstateEntryKey,
 }
 
+/// Convert from entry to its corresponding chainstate.
 impl From<ChainstateEntry> for Chainstate {
     fn from(chainstate_entry: ChainstateEntry) -> Self {
         Chainstate {
             stacks_block_hash: chainstate_entry.key.hash,
             stacks_block_height: chainstate_entry.key.height,
         }
+    }
+}
+
+/// Convert from chainstate to its corresponding entry.
+impl From<Chainstate> for ChainstateEntry {
+    fn from(chainstate_entry: Chainstate) -> Self {
+        ChainstateEntry {
+            key: ChainstateEntryKey {
+                hash: chainstate_entry.stacks_block_hash,
+                height: chainstate_entry.stacks_block_height,
+            },
+        }
+    }
+}
+
+// Api State Entry -------------------------------------------------------------
+
+/// Special hash value for the chainstate entry that stores information about the
+/// whole API state.
+const API_STATE_HASH_TOKEN: &str = "API_STATE";
+
+/// Special height value for the chainstate entry that stores information about the
+/// whole API state.
+const API_STATE_HEIGHT_TOKEN: i32 = -1;
+
+/// A special api state key definition that redefines the height type to be
+/// an i32 so that it can be negative one. Using a constant hash and a negative
+/// height where the height is regularly represented as a u64 make accessing this
+/// special entry nearly impossible for any regular access path.
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct SpecialApiStateKey {
+    /// Special token that takes the place of the hash field. Constant fields
+    /// are set in the `Default` function for this struct.
+    #[serde(rename = "Hash")]
+    api_state_token: String,
+    /// Special token that takes the place of the height field. Constant fields
+    /// are set in the `Default` function for this struct.
+    #[serde(rename = "Height")]
+    negative_one: i32,
+}
+
+/// Implementation of default for SpecialApiStateKey.
+impl Default for SpecialApiStateKey {
+    /// Implementation of default that set constant specific values that
+    /// cannot be changed for the SpecialApiStateKey.
+    fn default() -> Self {
+        SpecialApiStateKey {
+            api_state_token: API_STATE_HASH_TOKEN.to_string(),
+            negative_one: API_STATE_HEIGHT_TOKEN,
+        }
+    }
+}
+
+/// Api status that indicates the overall state of the API.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum ApiStatus {
+    /// The API is currently stable.
+    #[default]
+    Stable,
+    /// The API state is currently being reorganized and should be assumed to
+    /// be unsafe to modify.
+    Reorg,
+}
+
+/// API state struct.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct ApiStateEntry {
+    /// Special immutable table entry key that will always point to the status
+    /// of the whole API.
+    #[serde(flatten)]
+    special_api_state_key: SpecialApiStateKey,
+    /// Version field to prevent race conditions in updating the entry. If this field
+    /// increments once a nanosecond it will overflow in ~ 584.94 years.
+    pub version: u64,
+    /// Current chain tip.
+    pub chaintip: ChainstateEntry,
+    /// Api Status.
+    pub api_status: ApiStatus,
+}
+
+impl ApiStateEntry {
+    /// Get the special key.
+    pub fn key() -> serde_json::Value {
+        serde_json::to_value(SpecialApiStateKey::default())
+            .expect("Default key cannot fail to serialize.")
     }
 }

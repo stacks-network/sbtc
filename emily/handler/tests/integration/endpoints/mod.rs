@@ -1,7 +1,8 @@
-pub mod chainstate;
-pub mod deposit;
-/// Common testing utilities.
-pub mod util;
-pub mod withdrawal;
+//! Endpoint integration test module.
 
-const EMILY_ENDPOINT: &'static str = "http://localhost:3000";
+/// Chainstate endpoint tests.
+pub mod chainstate;
+/// Deposit endpoint tests.
+pub mod deposit;
+/// Withdrawal endpoint tests.
+pub mod withdrawal;

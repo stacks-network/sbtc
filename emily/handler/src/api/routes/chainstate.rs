@@ -12,7 +12,19 @@ pub fn routes(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     get_chainstate_at_height(context.clone())
         .or(set_chainstate(context.clone()))
-        .or(update_chainstate(context))
+        .or(update_chainstate(context.clone()))
+        .or(get_chain_tip(context))
+}
+
+/// Get chain tip endpoint.
+fn get_chain_tip(
+    context: EmilyContext,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::any()
+        .map(move || context.clone())
+        .and(warp::path!("chainstate"))
+        .and(warp::get())
+        .then(handlers::chainstate::get_chain_tip)
 }
 
 /// Get chainstate at height endpoint.
@@ -50,4 +62,4 @@ fn update_chainstate(
         .then(handlers::chainstate::update_chainstate)
 }
 
-// TODO(TBD): Add route unit tests.
+// TODO(387): Add route unit tests.

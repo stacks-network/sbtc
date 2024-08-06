@@ -159,7 +159,7 @@ pub async fn create_withdrawal(
         body: CreateWithdrawalRequestBody,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Set variables.
-        // TODO(TBD): Remove dummy hash; take hash from request.
+        // TODO(396): Remove dummy hash; take hash from request.
 
         let CreateWithdrawalRequestBody {
             request_id,
@@ -176,7 +176,7 @@ pub async fn create_withdrawal(
         let withdrawal_entry: WithdrawalEntry = WithdrawalEntry {
             key: WithdrawalEntryKey {
                 request_id,
-                // TODO(TBD): Remove dummy hash.
+                // TODO(396): Remove dummy hash.
                 stacks_block_hash: stacks_block_hash.clone(),
             },
             recipient,
@@ -230,4 +230,4 @@ pub async fn update_withdrawals(
     with_status(json(&response), StatusCode::CREATED)
 }
 
-// TODO(TBD): Add handler unit tests.
+// TODO(393): Add handler unit tests.

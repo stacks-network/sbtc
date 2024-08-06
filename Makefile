@@ -118,8 +118,13 @@ emily-integration-env-up: devenv $(EMILY_LAMBDA_BINARY) $(EMILY_CDK_TEMPLATE) $(
 		docker compose --file $(EMILY_DOCKER_COMPOSE) up --remove-orphans # --detach
 
 emily-integration-test:
-	@echo "Clearing database and starting integration tests for Emily"
-	cargo test --package emily-handler --test integration --all-features -- --test-threads=1 --nocapture
+	cargo test --package emily-handler --test integration --features integration-tests -- --test-threads=1 --nocapture
+
+emily-complex-integration-test:
+	cargo test --package emily-handler --test integration --features integration-tests -- \
+		complex \
+		endpoints::chainstate::backfill_chainstate_causes_error \
+		--test-threads=1 --nocapture
 
 emily-integration-env-down:
 	CONTAINER_HOST=$(_CONTAINER_HOST) docker compose --file $(EMILY_DOCKER_COMPOSE) down

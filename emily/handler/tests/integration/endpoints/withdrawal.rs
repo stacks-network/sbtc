@@ -1,5 +1,3 @@
-use super::EMILY_ENDPOINT;
-use crate::endpoints::util;
 use emily_handler::api::models::{
     common::Status,
     withdrawal::{
@@ -12,6 +10,11 @@ use serde_json::json;
 use serial_test::serial;
 use std::sync::LazyLock;
 use tokio;
+
+use crate::util::{self, constants::EMILY_WITHDRAWAL_ENDPOINT};
+
+// TODO(392): Use test setup functions to wipe the database before performing these
+// tests instead of relying on circumstantial test execution order.
 
 /// Contains the data about a withdrawal that will be used for testing. There are
 /// more fields in a withdrawal than listed here; this represents the data that we
@@ -82,7 +85,7 @@ async fn create_withdrawals() {
 
         // Act.
         let response = client
-            .post(format!("{EMILY_ENDPOINT}/withdrawal"))
+            .post(EMILY_WITHDRAWAL_ENDPOINT)
             .json(&json!({
               "requestId": request_id,
               "stacksBlockHash": stacks_block_hash,
@@ -122,7 +125,7 @@ async fn get_withdrawal() {
 
         // Act.
         let response = client
-            .get(format!("{EMILY_ENDPOINT}/withdrawal/{request_id}"))
+            .get(format!("{EMILY_WITHDRAWAL_ENDPOINT}/{request_id}"))
             .send()
             .await
             .expect("Request should succeed");
@@ -149,14 +152,13 @@ async fn get_withdrawal() {
 async fn get_withdrawals() {
     // Arrange.
     let client = Client::new();
-    let uri: String = format!("{EMILY_ENDPOINT}/withdrawal");
     let page_size: i32 = 1;
 
     let mut aggregate_withdrawals: Vec<WithdrawalInfo> = vec![];
 
     // Act 1.
     let mut response: GetWithdrawalsResponse = client
-        .get(&uri)
+        .get(EMILY_WITHDRAWAL_ENDPOINT)
         .query(&[
             ("pageSize", page_size.to_string()),
             ("status", "pending".to_string()),
@@ -175,7 +177,7 @@ async fn get_withdrawals() {
     // Act 2.
     while let Some(next_token) = response.next_token.clone() {
         response = client
-            .get(&uri)
+            .get(EMILY_WITHDRAWAL_ENDPOINT)
             .query(&[
                 ("pageSize", page_size.to_string()),
                 ("status", "pending".to_string()),

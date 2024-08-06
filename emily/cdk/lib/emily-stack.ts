@@ -104,7 +104,7 @@ export class EmilyStack extends cdk.Stack {
             ]
         });
 
-        // TODO(TBD): Add an additional GSI for querying by user; not required for MVP.
+        // TODO(388): Add an additional GSI for querying by user; not required for MVP.
         return table;
     }
 
@@ -154,7 +154,7 @@ export class EmilyStack extends cdk.Stack {
             ]
         });
 
-        // TODO(TBD): Add an additional GSI for querying by user; not required for MVP.
+        // TODO(388): Add an additional GSI for querying by user; not required for MVP.
         return table;
     }
 

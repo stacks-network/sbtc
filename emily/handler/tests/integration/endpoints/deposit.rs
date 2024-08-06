@@ -1,5 +1,4 @@
-use super::EMILY_ENDPOINT;
-use crate::endpoints::util;
+use crate::util::{self, constants::EMILY_DEPOSIT_ENDPOINT};
 use emily_handler::api::models::deposit::{
     responses::{GetDepositsForTransactionResponse, GetDepositsResponse},
     Deposit, DepositInfo, DepositParameters,
@@ -11,6 +10,9 @@ use std::sync::LazyLock;
 use tokio;
 
 use emily_handler::api::models::deposit::responses::{CreateDepositResponse, GetDepositResponse};
+
+// TODO(392): Use test setup functions to wipe the database before performing these
+// tests instead of relying on circumstantial test execution order.
 
 /// Contains data about a deposit transaction used for testing so that
 /// all the tests have a common understanding of the deposits in the
@@ -95,7 +97,7 @@ async fn create_deposits() {
 
         // Act.
         let response = client
-            .post(format!("{EMILY_ENDPOINT}/deposit"))
+            .post(EMILY_DEPOSIT_ENDPOINT)
             .json(&json!({
                 "bitcoinTxid": bitcoin_txid.clone(),
                 "bitcoinTxOutputIndex": bitcoin_tx_output_index,
@@ -132,7 +134,7 @@ async fn get_deposit() {
         // Act.
         let response = client
             .get(format!(
-                "{EMILY_ENDPOINT}/deposit/{bitcoin_txid}/{bitcoin_tx_output_index}"
+                "{EMILY_DEPOSIT_ENDPOINT}/{bitcoin_txid}/{bitcoin_tx_output_index}"
             ))
             .send()
             .await
@@ -164,7 +166,7 @@ async fn get_deposits_for_transaction() {
 
         // Act.
         let response = client
-            .get(format!("{EMILY_ENDPOINT}/deposit/{bitcoin_txid}"))
+            .get(format!("{EMILY_DEPOSIT_ENDPOINT}/{bitcoin_txid}"))
             .query(&[
                 // Query for one more than expected so that the call
                 // doesn't return a `next_token`.
@@ -199,7 +201,7 @@ async fn get_deposits_for_transaction_with_small_page_size() {
         let number_of_outputs = test_deposit_transaction_data.number_of_outputs;
         let bitcoin_txid = test_deposit_transaction_data.bitcoin_txid.clone();
         let page_size: i32 = 2;
-        let uri: String = format!("{EMILY_ENDPOINT}/deposit/{bitcoin_txid}");
+        let uri: String = format!("{EMILY_DEPOSIT_ENDPOINT}/{bitcoin_txid}");
 
         // Act.
         let mut response: GetDepositsForTransactionResponse = client
@@ -256,14 +258,13 @@ async fn get_deposits_for_transaction_with_small_page_size() {
 async fn get_pending_deposits() {
     // Arrange.
     let client = Client::new();
-    let uri: String = format!("{EMILY_ENDPOINT}/deposit");
     let page_size: i32 = 2;
 
     let mut aggregate_deposits: Vec<DepositInfo> = vec![];
 
     // Act 1.
     let mut response: GetDepositsResponse = client
-        .get(&uri)
+        .get(EMILY_DEPOSIT_ENDPOINT)
         .query(&[
             ("pageSize", page_size.to_string()),
             ("status", "pending".to_string()),
@@ -282,7 +283,7 @@ async fn get_pending_deposits() {
     // Act 2.
     while let Some(next_token) = response.next_token.clone() {
         response = client
-            .get(&uri)
+            .get(EMILY_DEPOSIT_ENDPOINT)
             .query(&[
                 ("pageSize", page_size.to_string()),
                 ("status", "pending".to_string()),
@@ -321,11 +322,10 @@ async fn get_pending_deposits() {
 async fn get_failed_deposits() {
     // Arrange.
     let client = Client::new();
-    let uri: String = format!("{EMILY_ENDPOINT}/deposit");
 
     // Act.
     let response: GetDepositsResponse = client
-        .get(&uri)
+        .get(EMILY_DEPOSIT_ENDPOINT)
         .query(&[("status", "failed".to_string())])
         .send()
         .await

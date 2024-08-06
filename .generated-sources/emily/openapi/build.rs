@@ -22,6 +22,7 @@ use utoipa::OpenApi;
         api::handlers::withdrawal::create_withdrawal,
         api::handlers::withdrawal::update_withdrawals,
         // Chainstate endpoints.
+        api::handlers::chainstate::get_chain_tip,
         api::handlers::chainstate::get_chainstate_at_height,
         api::handlers::chainstate::set_chainstate,
         api::handlers::chainstate::update_chainstate,

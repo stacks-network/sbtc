@@ -15,7 +15,7 @@ mod logging;
 async fn main() {
     crate::logging::setup_logging("info,emily-handler=debug", false);
 
-    // TODO(358): Handle config pickup in a way that will only fail for the relevant call.
+    // TODO(389 + 358): Handle config pickup in a way that will only fail for the relevant call.
     let emily_context: EmilyContext = EmilyContext::from_env()
         .await
         .unwrap_or_else(|e| panic!("{e}"));
