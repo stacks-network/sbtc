@@ -22,9 +22,9 @@ async fn block_stream_streams_blocks() {
     let mut block_stream = stream.to_block_stream();
 
     // We want to have our stream always waiting for blocks so that we get
-    // them as they arrise. The issue is that await points essentially
-    // block progress on the current code execution path. So we spawn a new
-    // task to handle the blocking part, and have the task send us blocks
+    // them as they arise. The issue is that await points essentially block
+    // progress on the current code execution path. So we spawn a new task
+    // to handle the blocking part, and have the task send us blocks
     // through a channel as they arrive.
     let (sx, mut rx) = tokio::sync::mpsc::channel::<Block>(100);
 
@@ -40,9 +40,9 @@ async fn block_stream_streams_blocks() {
         }
     });
 
-    // Our faucet can generate blocks, and when it does it notes the block
-    // hash of the generated block. We'll match this hash with the hash of
-    // the block received from our task above.
+    // When the faucet generates a blocks it returns the block hash of the
+    // generated block. We'll match this hash with the hash of the block
+    // received from our task above.
     let block_hashes = faucet.generate_blocks(1);
     let item = rx.recv().await;
 
@@ -75,11 +75,11 @@ async fn block_hash_stream_streams_block_hashes() {
 
     let mut block_hash_stream = stream.to_block_hash_stream();
 
-    // We want to have our stream always waiting for blocks so that we get
-    // them as they arrise. The issue is that await points essentially
-    // block progress on the current code execution path. So we spawn a new
-    // task to handle the blocking part, and have the task send us blocks
-    // through a channel as they arrive.
+    // We want to have our stream always waiting for block hashes so that
+    // we get them as they arise. The issue is that await points
+    // essentially block progress on the current code execution path. So we
+    // spawn a new task to handle the blocking part, and have the task send
+    // us blocks through a channel as they arrive.
     let (sx, mut rx) = tokio::sync::mpsc::channel::<BlockHash>(100);
 
     // This task will "watch" for bitcoin blocks and send them to us.
@@ -94,9 +94,9 @@ async fn block_hash_stream_streams_block_hashes() {
         }
     });
 
-    // Our faucet can generate blocks, and when it does it notes the block
-    // hash of the generated block. We'll match this hash with the hash of
-    // the block received from our task above.
+    // When the faucet generates a blocks it returns the block hash of the
+    // generated block. We'll match this hash with the hash received from
+    // our task above.
     let block_hashes = faucet.generate_blocks(1);
     let item = rx.recv().await;
 

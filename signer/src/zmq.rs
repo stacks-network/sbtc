@@ -1,8 +1,8 @@
-//! This module provides functionality for reciveing new blocks from
+//! This module provides functionality for receiving new blocks from
 //! bitcoin-core's ZeroMQ interface[1]. From the bitcoin-core docs:
 //!
 //! > The ZeroMQ facility implements a notification interface through a set
-//! > of specific notifiers. Currently there are notifiers that publish
+//! > of specific notifiers. Currently, there are notifiers that publish
 //! > blocks and transactions. This read-only facility requires only the
 //! > connection of a corresponding ZeroMQ subscriber port in receiving
 //! > software; it is not authenticated nor is there any two-way protocol
@@ -142,7 +142,7 @@ pub fn parse_bitcoin_core_message(message: ZmqMessage) -> Result<BitcoinCoreMess
 /// A struct for messages over bitcoin-core's ZeroMQ interface.
 pub struct BitcoinCoreMessageStream {
     /// We actually want this type to be a futures::stream::Unfold<...>, or
-    /// maybe a pinned version of that, but we cannot write the type down
+    /// maybe a pinned version of that, but we cannot write the type down,
     /// so we Box it up.
     inner: Pin<Box<dyn Stream<Item = Result<BitcoinCoreMessage, Error>> + Send>>,
 }
