@@ -6,9 +6,7 @@ labels: ["tech debt"]
 assignees: ""
 ---
 
-# Tech Debt - Fix [OFFENCE_COMMITTED]
-
-## 1. Description
+## Description
 
 PR that introduced tech-debt:
 
