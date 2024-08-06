@@ -1,14 +1,15 @@
-use crate::util::{self, constants::EMILY_DEPOSIT_ENDPOINT, TestClient};
+use crate::util::{self, constants::EMILY_DEPOSIT_ENDPOINT};
 use emily_handler::api::models::deposit::{
-    requests::CreateDepositRequestBody,
     responses::{GetDepositsForTransactionResponse, GetDepositsResponse},
     Deposit, DepositInfo, DepositParameters,
 };
+use reqwest::Client;
 use serde_json::json;
+use serial_test::serial;
 use std::sync::LazyLock;
 use tokio;
 
-use emily_handler::api::models::deposit::responses::GetDepositResponse;
+use emily_handler::api::models::deposit::responses::{CreateDepositResponse, GetDepositResponse};
 
 // TODO(392): Use test setup functions to wipe the database before performing these
 // tests instead of relying on circumstantial test execution order.
@@ -48,30 +49,6 @@ struct TestDepositData {
     pub bitcoin_tx_output_index: u32,
 }
 
-/// Setup function that wipes the database and populates it with the necessary
-/// deposit data.
-async fn setup_deposit_integration_test() -> TestClient {
-    let client = TestClient::new();
-    client.setup_test().await;
-    for test_deposit in all_test_deposit_data() {
-        let bitcoin_txid: String = test_deposit.bitcoin_txid;
-        let bitcoin_tx_output_index: u32 = test_deposit.bitcoin_tx_output_index;
-        let request: CreateDepositRequestBody = serde_json::from_value(json!({
-            "bitcoinTxid": bitcoin_txid.clone(),
-            "bitcoinTxOutputIndex": bitcoin_tx_output_index,
-            "reclaim": "example_reclaim_script",
-            "deposit": "example_deposit_script",
-        }))
-        .expect("Failed to deserialize create deposit request body in test setup");
-        let response = client.create_deposit(&request).await;
-        util::assert_eq_pretty(
-            response,
-            just_created_deposit(bitcoin_txid, bitcoin_tx_output_index),
-        );
-    }
-    client
-}
-
 /// Creates a list of test deposit datas based on `TEST_DEPOSIT_DATA`.
 fn all_test_deposit_data() -> impl Iterator<Item = TestDepositData> {
     TEST_DEPOSIT_DATA
@@ -105,21 +82,50 @@ fn just_created_deposit(bitcoin_txid: String, bitcoin_tx_output_index: u32) -> D
     }
 }
 
-/// Test that the creation works.
+/// Create all the deposits one at a time that are required for the rest of the
+/// tests. Note that this test suite assumes the database is empty when the integration
+/// tests start and this test should populate the table in its entirety.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
+#[serial]
 async fn create_deposits() {
-    // The setup function runs what was origninally the create tests by creating the
-    // resources and then assessing what was created.
-    let client = setup_deposit_integration_test().await;
-    client.teardown().await;
+    let client = Client::new();
+    for test_deposit in all_test_deposit_data() {
+        // Arrange.
+        let bitcoin_txid: String = test_deposit.bitcoin_txid;
+        let bitcoin_tx_output_index: u32 = test_deposit.bitcoin_tx_output_index;
+
+        // Act.
+        let response = client
+            .post(EMILY_DEPOSIT_ENDPOINT)
+            .json(&json!({
+                "bitcoinTxid": bitcoin_txid.clone(),
+                "bitcoinTxOutputIndex": bitcoin_tx_output_index,
+                "reclaim": "example_reclaim_script",
+                "deposit": "example_deposit_script",
+            }))
+            .send()
+            .await
+            .expect("Request should succeed");
+
+        // Assert.
+        let actual: CreateDepositResponse = response
+            .json()
+            .await
+            .expect("Failed to parse JSON response");
+
+        let expected = just_created_deposit(bitcoin_txid, bitcoin_tx_output_index);
+
+        util::assert_eq_pretty(actual, expected);
+    }
 }
 
 /// Get every deposit from the previous test one at a time.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
+#[serial]
 async fn get_deposit() {
-    let client = setup_deposit_integration_test().await;
+    let client = Client::new();
     for test_deposit in all_test_deposit_data() {
         // Arrange.
         let bitcoin_txid: String = test_deposit.bitcoin_txid.clone();
@@ -127,7 +133,6 @@ async fn get_deposit() {
 
         // Act.
         let response = client
-            .inner
             .get(format!(
                 "{EMILY_DEPOSIT_ENDPOINT}/{bitcoin_txid}/{bitcoin_tx_output_index}"
             ))
@@ -145,14 +150,15 @@ async fn get_deposit() {
 
         util::assert_eq_pretty(actual, expected);
     }
-    client.teardown().await;
 }
 
 /// Get all deposits for each transaction using a page size large enough to get all entries.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
+#[serial]
 async fn get_deposits_for_transaction() {
-    let client = setup_deposit_integration_test().await;
+    let client = Client::new();
+
     for test_deposit_transaction_data in TEST_DEPOSIT_DATA.iter() {
         // Arrange.
         let number_of_outputs = test_deposit_transaction_data.number_of_outputs;
@@ -160,7 +166,6 @@ async fn get_deposits_for_transaction() {
 
         // Act.
         let response = client
-            .inner
             .get(format!("{EMILY_DEPOSIT_ENDPOINT}/{bitcoin_txid}"))
             .query(&[
                 // Query for one more than expected so that the call
@@ -180,15 +185,16 @@ async fn get_deposits_for_transaction() {
         assert_eq!(actual.deposits.len(), number_of_outputs as usize);
         assert_eq!(actual.next_token, None);
     }
-    client.teardown().await;
 }
 
 /// Get deposits for transaction using a small page size that will require multiple calls
 /// to the paginated endpoint to get all the deposits.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
+#[serial]
 async fn get_deposits_for_transaction_with_small_page_size() {
-    let client = setup_deposit_integration_test().await;
+    let client = Client::new();
+
     for test_deposit_transaction_data in TEST_DEPOSIT_DATA.iter() {
         // Arrange.
         let mut aggregate_deposits: Vec<Deposit> = vec![];
@@ -199,7 +205,6 @@ async fn get_deposits_for_transaction_with_small_page_size() {
 
         // Act.
         let mut response: GetDepositsForTransactionResponse = client
-            .inner
             .get(&uri)
             .query(&[("pageSize", page_size.to_string())])
             .send()
@@ -215,7 +220,6 @@ async fn get_deposits_for_transaction_with_small_page_size() {
         while let Some(next_token) = response.next_token.clone() {
             // Act.
             response = client
-                .inner
                 .get(&uri)
                 .query(&[
                     ("pageSize", page_size.to_string()),
@@ -243,7 +247,6 @@ async fn get_deposits_for_transaction_with_small_page_size() {
         expected_deposits.sort();
         assert_eq!(aggregate_deposits, expected_deposits);
     }
-    client.teardown().await;
 }
 
 /// Get pending deposits by searching for all deposits that have a `pending` status
@@ -251,16 +254,16 @@ async fn get_deposits_for_transaction_with_small_page_size() {
 /// endpoing to get all the pending deposits present.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
+#[serial]
 async fn get_pending_deposits() {
     // Arrange.
-    let client = setup_deposit_integration_test().await;
+    let client = Client::new();
     let page_size: i32 = 2;
 
     let mut aggregate_deposits: Vec<DepositInfo> = vec![];
 
     // Act 1.
     let mut response: GetDepositsResponse = client
-        .inner
         .get(EMILY_DEPOSIT_ENDPOINT)
         .query(&[
             ("pageSize", page_size.to_string()),
@@ -280,7 +283,6 @@ async fn get_pending_deposits() {
     // Act 2.
     while let Some(next_token) = response.next_token.clone() {
         response = client
-            .inner
             .get(EMILY_DEPOSIT_ENDPOINT)
             .query(&[
                 ("pageSize", page_size.to_string()),
@@ -312,20 +314,17 @@ async fn get_pending_deposits() {
     aggregate_deposits.sort();
     expected_deposit_infos.sort();
     assert_eq!(aggregate_deposits, expected_deposit_infos);
-    client.teardown().await;
 }
 
-/// Get failed deposits. Because there are no failed deposits in the set of test data
-/// this should always be empty.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
+#[serial]
 async fn get_failed_deposits() {
     // Arrange.
-    let client = setup_deposit_integration_test().await;
+    let client = Client::new();
 
     // Act.
     let response: GetDepositsResponse = client
-        .inner
         .get(EMILY_DEPOSIT_ENDPOINT)
         .query(&[("status", "failed".to_string())])
         .send()
@@ -337,5 +336,4 @@ async fn get_failed_deposits() {
 
     // Assert.
     assert_eq!(response.deposits.len(), 0);
-    client.teardown().await;
 }
