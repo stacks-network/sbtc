@@ -6,6 +6,10 @@ services:
     volumes:
       - ./signer/tests/service-configs/bitcoin.conf:/data/.bitcoin/bitcoin.conf:ro
     restart: on-failure
+    # For some reason, the CMD is set to publish events on zeromq, and it
+    # might interfere with the events that we want to publish somehow. So
+    # we overwrite the command by just setting the server argument.
+    command: ["-server"]
     stop_grace_period: 10s
     ports:
       - 8333:8333

@@ -9,6 +9,7 @@ use bitcoin::transaction::Version;
 use bitcoin::Address;
 use bitcoin::AddressType;
 use bitcoin::Amount;
+use bitcoin::BlockHash;
 use bitcoin::CompressedPublicKey;
 use bitcoin::EcdsaSighashType;
 use bitcoin::Network;
@@ -230,10 +231,10 @@ impl Faucet {
 
     /// Generate num_blocks blocks with coinbase rewards being sent to this
     /// recipient.
-    pub fn generate_blocks(&self, num_blocks: u64) {
+    pub fn generate_blocks(&self, num_blocks: u64) -> Vec<BlockHash> {
         self.rpc
             .generate_to_address(num_blocks, &self.address)
-            .unwrap();
+            .unwrap()
     }
 
     /// Return all UTXOs for this recipient where the amount is greater
