@@ -162,25 +162,30 @@ impl BitcoinCoreMessageStream {
     }
 
     /// Creat a new one using the endpoint(s) in the config.
-    pub async fn new_from_endpoint(endpoint: &str) -> Result<Self, Error> {
+    /// 
+    /// Note that setting the subscription to the empty string is
+    /// equivalent to setting the subscription to all available
+    /// subscriptions enabled on bitcoin-core.
+    pub async fn new_from_endpoint<T>(endpoint: &str, subscriptions: &[T]) -> Result<Self, Error>
+    where
+        T: AsRef<str>,
+    {
         let mut socket = SubSocket::new();
         socket.connect(endpoint).await.map_err(Error::ZmqConnect)?;
-        // Note that setting the subscription to the empty string is
-        // equivalent to setting the subscription to all available
-        // subscriptions enabled on bitcoin-core. We only care about raw
-        // bitcoin blocks (and maybe block hashes) so we only subscribe to
-        // those events.
-        socket
-            .subscribe("rawblock")
-            .await
-            .map_err(Error::ZmqSubscribe)?;
+        for subscription in subscriptions {
+            socket
+                .subscribe(subscription.as_ref())
+                .await
+                .map_err(Error::ZmqSubscribe)?;
+        }
 
         Ok(Self::new_from_socket(socket))
     }
 
-    /// Creat a new one using the endpoint(s) in the config.
+    /// Creat a new one using the endpoint(s) in the config. This only
+    /// subscribes to bitcoin blocks.
     pub async fn new_from_config(settings: Settings) -> Result<Self, Error> {
-        Self::new_from_endpoint(&settings.block_notifier.server).await
+        Self::new_from_endpoint(&settings.block_notifier.server, &["rawblock"]).await
     }
 
     /// Convert this stream into one that returns only blocks
