@@ -250,7 +250,8 @@ pub async fn add_chainstate_entry(
     //
     // TODO(TBD): Handle api status being "Reorg" during this period.
     let mut api_state = get_api_state(context).await?;
-    let blocks_higher_than_current_tip = (entry.key.height as i128) - (api_state.chaintip.key.height as i128);
+    let blocks_higher_than_current_tip =
+        (entry.key.height as i128) - (api_state.chaintip.key.height as i128);
 
     if blocks_higher_than_current_tip == 1 || api_state.chaintip.key.height == 0 {
         api_state.chaintip = entry.clone();
