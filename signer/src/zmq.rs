@@ -85,7 +85,7 @@ pub enum BitcoinCoreMessage {
 ///
 /// Bitcoin core sends one of 5 different message types. The messages
 /// themselves all follow a similar multipart layout: topic, body,
-/// sequence.
+/// sequence. This parses `hashblock` and `rawblock` messages.
 ///
 /// The bitcoin repo has a nice python example for what to expect here:
 /// https://github.com/bitcoin/bitcoin/blob/902dd14382256c9d33bce667795a64079f3bee6b/contrib/zmq/zmq_sub.py
@@ -96,40 +96,46 @@ pub fn parse_bitcoin_core_message(message: ZmqMessage) -> Result<BitcoinCoreMess
         .map(AsRef::as_ref)
         .collect::<Vec<&[u8]>>()
         .try_into()
-        .map_err(|_err| Error::Encryption)?;
+        .map_err(|err: Vec<_>| Error::BitcoinCoreZmqMessageLayout(err.len()))?;
 
     // The sequence number is always sent as a little endian 4 byte
     // unsigned integer.
     match data {
-        [b"hashblock", block_hash, sequence_bytes] => {
+        [b"hashblock", block_hash, seq] => {
             // The hash here is returned as Little-endian bytes while the
             // BlockHash::from_byte_array function expects Big-endian
             // bytes, so we need to reverse them.
-            let mut block_hash_bytes: [u8; 32] =
-                block_hash.try_into().map_err(|_err| Error::Encryption)?;
+            let mut block_hash_bytes: [u8; 32] = block_hash
+                .try_into()
+                .map_err(|_| Error::BitcoinCoreZmqBlockHash(block_hash.len()))?;
             block_hash_bytes.reverse();
             let block_hash = BlockHash::from_byte_array(block_hash_bytes);
 
-            let seq: [u8; 4] = sequence_bytes
+            let sequence_bytes: [u8; 4] = seq
                 .try_into()
-                .map_err(|_err| Error::Encryption)?;
-            let sequence = u32::from_le_bytes(seq);
+                .map_err(|_| Error::BitcoinCoreZmqSequenceNumber(seq.len()))?;
+            let sequence = u32::from_le_bytes(sequence_bytes);
 
             Ok(BitcoinCoreMessage::HashBlock(block_hash, sequence))
         }
-        [b"rawblock", mut raw_block, sequence_bytes] => {
+        [b"rawblock", mut raw_block, seq] => {
             let block =
                 Block::consensus_decode(&mut raw_block).map_err(Error::DecodeBitcoinBlock)?;
 
-            let seq: [u8; 4] = sequence_bytes
+            let sequence_bytes: [u8; 4] = seq
                 .try_into()
-                .map_err(|_err| Error::Encryption)?;
-            let sequence = u32::from_le_bytes(seq);
+                .map_err(|_| Error::BitcoinCoreZmqSequenceNumber(seq.len()))?;
+            let sequence = u32::from_le_bytes(sequence_bytes);
 
             Ok(BitcoinCoreMessage::RawBlock(block, sequence))
         }
-        // We do not implement parsing for any other message types.
-        _ => Err(Error::Encryption),
+        // We do not implement parsing for any other message types but if
+        // we are, then we probably have a valid message from bitcoin-core,
+        // so let's try to note the topic for easier debugging.
+        _ => {
+            let topic = core::str::from_utf8(data[0]).map(ToString::to_string);
+            Err(Error::BitcoinCoreZmqUnsupported(topic))
+        }
     }
 }
 
