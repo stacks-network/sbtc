@@ -1,6 +1,7 @@
 //! Contains functionality for interacting with the Bitcoin blockchain
 
 pub mod fees;
+pub mod packaging;
 pub mod utxo;
 pub mod zmq;
 

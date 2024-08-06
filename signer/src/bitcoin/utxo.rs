@@ -33,8 +33,8 @@ use secp256k1::Keypair;
 use secp256k1::Message;
 
 use crate::error::Error;
-use crate::packaging::compute_optimal_packages;
-use crate::packaging::Weighted;
+use crate::bitcoin::packaging::compute_optimal_packages;
+use crate::bitcoin::packaging::Weighted;
 use crate::storage::model;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
