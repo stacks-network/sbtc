@@ -3,7 +3,7 @@
 //! # SBTC Common Library
 //!
 //! This library provides common functionality for the sBTC project, including logging setup
-use std::sync::OnceLock;
+use std::sync::LazyLock;
 
 use bitcoin::XOnlyPublicKey;
 
@@ -43,7 +43,5 @@ pub const NUMS_X_COORDINATE: [u8; 32] = [
 /// the taproot address. Since we do not want a key-spend path for sBTC
 /// deposit transactions, this address is such that it does not have a
 /// known private key.
-pub fn unspendable_taproot_key() -> &'static XOnlyPublicKey {
-    static UNSPENDABLE_KEY: OnceLock<XOnlyPublicKey> = OnceLock::new();
-    UNSPENDABLE_KEY.get_or_init(|| XOnlyPublicKey::from_slice(&NUMS_X_COORDINATE).unwrap())
-}
+pub static UNSPENDABLE_TAPROOT_KEY: LazyLock<XOnlyPublicKey> =
+    LazyLock::new(|| XOnlyPublicKey::from_slice(&NUMS_X_COORDINATE).unwrap());

@@ -60,7 +60,7 @@ where
 
     let node = NodeInfo::combine(leaf1, leaf2).unwrap();
 
-    let unspendable_key = *signer::bitcoin::utxo::unspendable_taproot_key();
+    let unspendable_key = *sbtc::UNSPENDABLE_TAPROOT_KEY;
     let taproot = TaprootSpendInfo::from_node_info(SECP256K1, unspendable_key, node);
     let merkle_root = taproot.merkle_root();
 

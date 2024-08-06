@@ -214,9 +214,9 @@ pub fn to_taproot(deposit_script: ScriptBuf, reclaim_script: ScriptBuf) -> Tapro
     // which is 128. We have two nodes so the depth is 1 so this will
     // never panic.
     let node = NodeInfo::combine(leaf1, leaf2).expect("Tree depth is greater than the max of 128");
-    let internal_key = crate::unspendable_taproot_key();
+    let internal_key = *crate::UNSPENDABLE_TAPROOT_KEY;
 
-    TaprootSpendInfo::from_node_info(SECP256K1, *internal_key, node)
+    TaprootSpendInfo::from_node_info(SECP256K1, internal_key, node)
 }
 
 /// Create the expected ScriptPubKey from the deposit and reclaim scripts.
@@ -224,16 +224,16 @@ pub fn to_script_pubkey(deposit_script: ScriptBuf, reclaim_script: ScriptBuf) ->
     let merkle_root = to_taproot(deposit_script, reclaim_script).merkle_root();
     // Deposit transactions use a NUMS (nothing up my sleeve) public
     // key for the key-spend path of taproot scripts.
-    let internal_key = crate::unspendable_taproot_key();
-    ScriptBuf::new_p2tr(SECP256K1, *internal_key, merkle_root)
+    let internal_key = *crate::UNSPENDABLE_TAPROOT_KEY;
+    ScriptBuf::new_p2tr(SECP256K1, internal_key, merkle_root)
 }
 
 /// Construct a bitcoin address for a deposit UTXO on the given
 /// network.
 fn p2tr_address(deposit_script: ScriptBuf, reclaim_script: ScriptBuf, network: Network) -> Address {
-    let internal_key = crate::unspendable_taproot_key();
+    let internal_key = *crate::UNSPENDABLE_TAPROOT_KEY;
     let merkle_root = to_taproot(deposit_script, reclaim_script).merkle_root();
-    Address::p2tr(SECP256K1, *internal_key, merkle_root, network)
+    Address::p2tr(SECP256K1, internal_key, merkle_root, network)
 }
 
 /// This struct contains the key variable inputs when constructing a
@@ -876,5 +876,14 @@ mod tests {
 
         let error = request.validate_tx(&setup.tx).unwrap_err();
         assert!(matches!(error, Error::InvalidReclaimScript));
+    }
+
+    #[test]
+    fn unspendable_taproot_key_no_panic() {
+        // The following function calls unwrap() when called the first
+        // time, check that it does not panic.
+        let var1 = *crate::UNSPENDABLE_TAPROOT_KEY;
+        let var2 = *crate::UNSPENDABLE_TAPROOT_KEY;
+        assert_eq!(var1, var2);
     }
 }
