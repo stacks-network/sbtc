@@ -14,7 +14,7 @@ use crate::error;
 use crate::network;
 use crate::storage;
 use crate::storage::model;
-use crate::utxo;
+use crate::bitcoin::utxo;
 use crate::wsts_state_machine;
 
 #[cfg_attr(doc, aquamarine::aquamarine)]

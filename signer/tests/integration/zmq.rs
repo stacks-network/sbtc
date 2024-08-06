@@ -2,7 +2,7 @@ use bitcoin::Block;
 use bitcoin::BlockHash;
 use futures::StreamExt;
 use sbtc::testing::regtest;
-use signer::zmq::BitcoinCoreMessageStream;
+use signer::bitcoin::zmq::BitcoinCoreMessageStream;
 
 const BITCOIN_CORE_ZMQ_ENDPOINT: &str = "tcp://localhost:28332";
 
