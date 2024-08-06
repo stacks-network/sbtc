@@ -12,7 +12,6 @@ const BITCOIN_CORE_ZMQ_ENDPOINT: &str = "tcp://localhost:28332";
 #[tokio::test]
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 async fn block_stream_streams_blocks() {
-    sbtc::logging::setup_logging("info,signer=debug", false);
     let (_, faucet) = regtest::initialize_blockchain();
 
     let stream =
@@ -33,7 +32,6 @@ async fn block_stream_streams_blocks() {
     tokio::spawn(async move {
         while let Some(Ok(block)) = block_stream.next().await {
             if sx.is_closed() {
-                tracing::info!("Closed?");
                 break;
             }
 
@@ -68,7 +66,6 @@ async fn block_stream_streams_blocks() {
 #[tokio::test]
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 async fn block_hash_stream_streams_block_hashes() {
-    sbtc::logging::setup_logging("info,signer=debug", false);
     let (_, faucet) = regtest::initialize_blockchain();
 
     let stream =
@@ -89,7 +86,6 @@ async fn block_hash_stream_streams_block_hashes() {
     tokio::spawn(async move {
         while let Some(Ok(block_hash)) = block_hash_stream.next().await {
             if sx.is_closed() {
-                tracing::info!("Closed?");
                 break;
             }
 
