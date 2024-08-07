@@ -133,11 +133,15 @@ pub trait AsContractCall {
 /// AsTxPayload automatically. What we want is to have something like the
 /// following:
 ///
+/// ```text
 /// impl<T: AsContractCall> AsTxPayload for T { ... }
+/// ```
 ///
 /// But that would preclude us from adding something like:
 ///
+/// ```text
 /// impl<T: AsSmartContract> AsTxPayload for T { ... }
+/// ```
 ///
 /// since doing so is prevented by the compiler because it introduces
 /// ambiguity. One work-around is to use a wrapper type that implements the
