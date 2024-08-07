@@ -587,19 +587,19 @@ impl super::DbRead for PgStore {
         &self,
         aggregate_key: &model::PubKey,
     ) -> Result<Option<model::EncryptedDkgShares>, Self::Error> {
-        sqlx::query_as!(
-            model::EncryptedDkgShares,
+        sqlx::query_as::<_, model::EncryptedDkgShares>(
             r#"
             SELECT
                 aggregate_key
               , tweaked_aggregate_key
+              , script_pubkey
               , encrypted_shares
               , created_at
             FROM sbtc_signer.dkg_shares
             WHERE aggregate_key = $1;
             "#,
-            aggregate_key,
         )
+        .bind(aggregate_key)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -1046,18 +1046,19 @@ impl super::DbWrite for PgStore {
         &self,
         shares: &model::EncryptedDkgShares,
     ) -> Result<(), Self::Error> {
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO sbtc_signer.dkg_shares
-                (aggregate_key, tweaked_aggregate_key, encrypted_shares, created_at)
+                (aggregate_key, tweaked_aggregate_key, encrypted_shares, script_pubkey, created_at)
             VALUES
-                ($1, $2, $3, $4)
+                ($1, $2, $3, $4, $5)
             "#,
-            shares.aggregate_key,
-            shares.tweaked_aggregate_key,
-            shares.encrypted_shares,
-            shares.created_at,
         )
+        .bind(&shares.aggregate_key)
+        .bind(&shares.tweaked_aggregate_key)
+        .bind(&shares.encrypted_shares)
+        .bind(&shares.script_pubkey)
+        .bind(&shares.created_at)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

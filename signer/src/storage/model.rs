@@ -239,13 +239,15 @@ pub struct Transaction {
 }
 
 /// Persisted DKG shares
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct EncryptedDkgShares {
     /// The aggregate key for these shares
     pub aggregate_key: PubKey,
     /// The tweaked aggregate key for these shares
     pub tweaked_aggregate_key: PubKey,
+    /// The encrypted DKG shares
+    pub script_pubkey: Bytes,
     /// The encrypted DKG shares
     pub encrypted_shares: Bytes,
     /// The time this entry was created by the signer.
