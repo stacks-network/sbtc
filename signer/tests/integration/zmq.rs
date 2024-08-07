@@ -40,7 +40,7 @@ async fn block_stream_streams_blocks() {
         }
     });
 
-    // When the faucet generates a blocks it returns the block hash of the
+    // When the faucet generates a block it returns the block hash of the
     // generated block. We'll match this hash with the hash of the block
     // received from our task above.
     let block_hashes = faucet.generate_blocks(1);
@@ -94,7 +94,7 @@ async fn block_hash_stream_streams_block_hashes() {
         }
     });
 
-    // When the faucet generates a blocks it returns the block hash of the
+    // When the faucet generates a block it returns the block hash of the
     // generated block. We'll match this hash with the hash received from
     // our task above.
     let block_hashes = faucet.generate_blocks(1);
