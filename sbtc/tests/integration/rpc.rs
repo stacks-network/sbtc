@@ -3,23 +3,19 @@
 use bitcoin::hashes::Hash;
 use bitcoin::AddressType;
 use sbtc::error::Error;
+use sbtc::rpc::BitcoinCoreClient;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::Recipient;
 
-use sbtc::rpc::BitcoinClient;
-use sbtc::rpc::BitcoinCoreClient;
-use sbtc::rpc::ElectrumClient;
-use test_case::test_case;
-
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[test_case(BitcoinCoreClient::new(
+#[test]
+fn btc_client_gets_transactions() {
+    let client = BitcoinCoreClient::new(
         "http://localhost:18443",
         regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
         regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
     )
-    .unwrap(); "bitcoin client")]
-#[test_case(ElectrumClient::new("tcp://localhost:60401", None).unwrap() ; "electrum client")]
-fn btc_client_gets_transactions<C: BitcoinClient>(client: C) {
+    .unwrap();
     let (rpc, faucet) = regtest::initialize_blockchain();
     let signer = Recipient::new(AddressType::P2tr);
 
@@ -67,20 +63,19 @@ fn btc_client_gets_transactions<C: BitcoinClient>(client: C) {
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[test_case(BitcoinCoreClient::new(
+#[test]
+fn btc_client_unsubmitted_tx() {
+    let client = BitcoinCoreClient::new(
         "http://localhost:18443",
         regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
         regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
     )
-    .unwrap(); "bitcoin client")]
-#[test_case(ElectrumClient::new("tcp://localhost:60401", None).unwrap() ; "electrum client")]
-fn btc_client_unsubmitted_tx<C: BitcoinClient<Error = Error>>(client: C) {
+    .unwrap();
     let _ = regtest::initialize_blockchain();
     let txid = bitcoin::Txid::all_zeros();
 
     match client.get_tx(&txid).unwrap_err() {
-        Error::GetTransactionBitcoinCore(_, txid1) | Error::GetTransactionElectrum(_, txid1)
-            if txid1 == txid => {}
+        Error::GetTransactionBitcoinCore(_, txid1) if txid1 == txid => {}
         _ => panic!("Incorrect error variants returned"),
     }
 }
@@ -90,8 +85,7 @@ fn btc_client_unsubmitted_tx<C: BitcoinClient<Error = Error>>(client: C) {
 /// tests in this repo then there will be enough data for bitcoin-core to
 /// estimate the fee rate, otherwise it will return an error. Since we do
 /// not ensure that bitcoin-core has enough transactions to estimate fees
-/// in the test, we just check that the two client implementations return
-/// the same result when they return success.
+/// in the test, we just check that fee is positive.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test]
 fn estimate_fee_rate() {
@@ -102,18 +96,9 @@ fn estimate_fee_rate() {
         regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
     )
     .unwrap();
-    let resp1 = btc_client.estimate_fee_rate(1);
+    let resp = btc_client.estimate_fee_rate(1);
 
-    let electrum = ElectrumClient::new("tcp://localhost:60401", None).unwrap();
-    let resp2 = electrum.estimate_fee_rate(1);
-
-    // The two clients' success and/or failure should coincide. This is by
-    // design as much as possible. Also, the electrum server used in CI
-    // uses bitcoin-core under the hood for its `blockchain.estimatefee`
-    // RPC implementation.
-    assert_eq!(resp1.is_ok(), resp2.is_ok());
-
-    if resp1.is_ok() {
-        assert_eq!(resp1.unwrap(), resp2.unwrap());
+    if resp.is_ok() {
+        assert!(resp.unwrap().sats_per_vbyte > 0.0);
     }
 }

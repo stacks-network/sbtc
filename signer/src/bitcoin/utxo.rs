@@ -1,7 +1,5 @@
 //! Utxo management and transaction construction
 
-use std::sync::OnceLock;
-
 use bitcoin::absolute::LockTime;
 use bitcoin::address::NetworkUnchecked;
 use bitcoin::hashes::Hash;
@@ -32,9 +30,9 @@ use bitvec::array::BitArray;
 use secp256k1::Keypair;
 use secp256k1::Message;
 
+use crate::bitcoin::packaging::compute_optimal_packages;
+use crate::bitcoin::packaging::Weighted;
 use crate::error::Error;
-use crate::packaging::compute_optimal_packages;
-use crate::packaging::Weighted;
 use crate::storage::model;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
@@ -64,39 +62,6 @@ const SATS_PER_VBYTE_INCREMENT: f64 = 0.001;
 /// The OP_RETURN operation byte for deposit or withdrawal sweeps. This is
 /// the UTF8 encoded string "B".
 const OP_RETURN_OP: u8 = b'B';
-
-/// The x-coordinate public key with no known discrete logarithm.
-///
-/// # Notes
-///
-/// This particular X-coordinate was discussed in the original taproot BIP
-/// on spending rules BIP-0341[1]. Specifically, the X-coordinate is formed
-/// by taking the hash of the standard uncompressed encoding of the 
-/// secp256k1 base point G as the X-coordinate. In that BIP the authors
-/// wrote the X-coordinate that is reproduced below.
-///
-/// [1]: https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#constructing-and-spending-taproot-outputs
-#[rustfmt::skip]
-const NUMS_X_COORDINATE: [u8; 32] = [
-    0x50, 0x92, 0x9b, 0x74, 0xc1, 0xa0, 0x49, 0x54,
-    0xb7, 0x8b, 0x4b, 0x60, 0x35, 0xe9, 0x7a, 0x5e,
-    0x07, 0x8a, 0x5a, 0x0f, 0x28, 0xec, 0x96, 0xd5,
-    0x47, 0xbf, 0xee, 0x9a, 0xce, 0x80, 0x3a, 0xc0,
-];
-
-/// Returns an address with no known private key, since it has no known
-/// discrete logarithm.
-///
-/// # Notes
-///
-/// This function returns the public key to used in the key-spend path of
-/// the taproot address. Since we do not want a key-spend path for sBTC
-/// deposit transactions, this address is such that it does not have a
-/// known private key.
-pub fn unspendable_taproot_key() -> &'static XOnlyPublicKey {
-    static UNSPENDABLE_KEY: OnceLock<XOnlyPublicKey> = OnceLock::new();
-    UNSPENDABLE_KEY.get_or_init(|| XOnlyPublicKey::from_slice(&NUMS_X_COORDINATE).unwrap())
-}
 
 /// Describes the fees for a transaction.
 #[derive(Debug, Clone, Copy)]
@@ -308,11 +273,11 @@ impl DepositRequest {
     fn as_tx_out(&self) -> TxOut {
         let ver = LeafVersion::TapScript;
         let merkle_root = self.construct_taproot_info(ver).merkle_root();
-        let internal_key = unspendable_taproot_key();
+        let internal_key = *sbtc::UNSPENDABLE_TAPROOT_KEY;
 
         TxOut {
             value: Amount::from_sat(self.amount),
-            script_pubkey: ScriptBuf::new_p2tr(SECP256K1, *internal_key, merkle_root),
+            script_pubkey: ScriptBuf::new_p2tr(SECP256K1, internal_key, merkle_root),
         }
     }
 
@@ -365,9 +330,9 @@ impl DepositRequest {
         // never panic.
         let node =
             NodeInfo::combine(leaf1, leaf2).expect("This tree depth greater than max of 128");
-        let internal_key = unspendable_taproot_key();
+        let internal_key = *sbtc::UNSPENDABLE_TAPROOT_KEY;
 
-        TaprootSpendInfo::from_node_info(SECP256K1, *internal_key, node)
+        TaprootSpendInfo::from_node_info(SECP256K1, internal_key, node)
     }
 
     /// Try convert from a model::DepositRequest with some additional info.
@@ -969,15 +934,6 @@ mod tests {
             amount,
             address: generate_address(),
         }
-    }
-
-    #[test]
-    fn unspendable_taproot_key_no_panic() {
-        // The following function calls unwrap() when called the first
-        // time, check that it does not panic.
-        let var1 = unspendable_taproot_key();
-        let var2 = unspendable_taproot_key();
-        assert_eq!(var1, var2);
     }
 
     #[ignore = "For generating the SOLO_(DEPOSIT|WITHDRAWAL)_SIZE constants"]

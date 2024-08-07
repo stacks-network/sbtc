@@ -18,11 +18,11 @@ use bitvec::array::BitArray;
 use rand::distributions::Uniform;
 use rand::Rng as _;
 use secp256k1::SECP256K1;
-use signer::utxo::DepositRequest;
-use signer::utxo::SbtcRequests;
-use signer::utxo::SignerBtcState;
-use signer::utxo::SignerUtxo;
-use signer::utxo::WithdrawalRequest;
+use signer::bitcoin::utxo::DepositRequest;
+use signer::bitcoin::utxo::SbtcRequests;
+use signer::bitcoin::utxo::SignerBtcState;
+use signer::bitcoin::utxo::SignerUtxo;
+use signer::bitcoin::utxo::WithdrawalRequest;
 
 use regtest::Recipient;
 use sbtc::testing::regtest;
@@ -60,7 +60,7 @@ where
 
     let node = NodeInfo::combine(leaf1, leaf2).unwrap();
 
-    let unspendable_key = *signer::utxo::unspendable_taproot_key();
+    let unspendable_key = *sbtc::UNSPENDABLE_TAPROOT_KEY;
     let taproot = TaprootSpendInfo::from_node_info(SECP256K1, unspendable_key, node);
     let merkle_root = taproot.merkle_root();
 

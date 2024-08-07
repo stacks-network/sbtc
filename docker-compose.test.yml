@@ -54,24 +54,3 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-
-  # This is from https://github.com/getumbrel/docker-electrs and is built
-  # from v0.10.2 of https://github.com/romanz/electrs
-  electrs: 
-    image: getumbrel/electrs:v0.10.2
-    container_name: electrs
-    stop_grace_period: 5s
-    volumes:
-      - ./signer/tests/service-configs/electrs.toml:/etc/electrs/config.toml:ro
-    ports:
-      # This is the monitoring port
-      - 24224:24224
-      # The is the RPC port
-      - 60401:60401
-    depends_on:
-      bitcoind:
-        condition: service_healthy
-    environment:
-      RUST_BACKTRACE: 1
-
-

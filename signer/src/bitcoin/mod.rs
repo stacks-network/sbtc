@@ -1,5 +1,10 @@
 //! Contains functionality for interacting with the Bitcoin blockchain
 
+pub mod fees;
+pub mod packaging;
+pub mod utxo;
+pub mod zmq;
+
 /// Represents the ability to interact with the bitcoin blockchain
 pub trait BitcoinInteract {
     /// Error type

@@ -26,7 +26,6 @@ bitvec = { workspace = true, default-features = false, features = ["std"] }
 blocklist-api = { path = "../.generated-sources/blocklist-api" }
 clap.workspace = true
 config = "0.14"
-electrum-client.workspace = true
 futures.workspace = true
 hashbrown.workspace = true
 p256k1.workspace = true

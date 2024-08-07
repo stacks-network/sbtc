@@ -1,10 +1,7 @@
 //! Contains client wrappers for bitcoin core and electrum.
 
-use std::num::NonZeroU8;
-
 use bitcoin::consensus;
 use bitcoin::consensus::Decodable as _;
-use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::Denomination;
 use bitcoin::Transaction;
@@ -12,8 +9,6 @@ use bitcoin::Txid;
 use bitcoincore_rpc::json::EstimateMode;
 use bitcoincore_rpc::Auth;
 use bitcoincore_rpc::RpcApi as _;
-use electrum_client::ElectrumApi as _;
-use electrum_client::Param;
 use serde::Deserialize;
 
 use crate::error::Error;
@@ -146,112 +141,6 @@ impl BitcoinCoreClient {
 }
 
 impl BitcoinClient for BitcoinCoreClient {
-    type Error = Error;
-    fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
-        self.get_tx(txid)
-    }
-}
-
-/// A client for interacting with Electrum server
-pub struct ElectrumClient {
-    /// The underlying electrum client
-    inner: electrum_client::Client,
-}
-
-impl ElectrumClient {
-    /// Establish a connection to the electrum server and return a client.
-    ///
-    /// # Notes
-    ///
-    /// * Attempts to establish a connection with the server using the
-    ///   given URL.
-    /// * The URL must be prefixed with either tcp:// or ssl://.
-    /// * The electrum-client authors use an u8 for the timeout instead
-    ///   Duration, so we mirror that here. A timeout of zero will error so
-    ///   disallow it. A timeout of None means no timeout.
-    pub fn new(url: &str, timeout: Option<NonZeroU8>) -> Result<Self, Error> {
-        // The config builder will panic if the timeout is set to zero, so
-        // we set it to None, which means no timeout. Kind of surprising
-        // but this is what is usually meant by a timeout of zero anyway.
-        let config = electrum_client::Config::builder()
-            .timeout(timeout.map(NonZeroU8::get))
-            .retry(2)
-            .validate_domain(true)
-            .build();
-        // This actually attempts to establish a connection with the server
-        // and returns and Error otherwise.
-        let client = electrum_client::Client::from_config(url, config)
-            .map_err(|err| Error::ElectrumClientBuild(err, url.to_string()))?;
-
-        Ok(Self { inner: client })
-    }
-    /// Fetch and decode raw transaction from the electrum server.
-    ///
-    /// # Notes
-    ///
-    /// This function uses the `blockchain.transaction.get` Electrum
-    /// protocol method for the response. That method uses bitcoin-core's
-    /// getrawtransaction RPC under the hood, but supplies the correct
-    /// block hash fetched from Electrum server's index. The benefit of
-    /// using electrum for this is that you do not need to set -txindex = 1
-    /// in bitcoin-core, and electrum is (presumably) much more efficient.
-    pub fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
-        let params = [Param::String(txid.to_string()), Param::Bool(true)];
-        let value = self
-            .inner
-            .raw_call("blockchain.transaction.get", params)
-            .map_err(|err| Error::GetTransactionElectrum(err, *txid))?;
-
-        let resp = serde_json::from_value::<GetTxResponse>(value)
-            .inspect(|response| debug_assert_eq!(txid, &response.tx.compute_txid()))
-            .map_err(|err| Error::DeserializeGetTransaction(err, *txid))?;
-
-        // This should never happen, but couldn't hurt to check.
-        if &resp.tx.compute_txid() != txid {
-            let from_tx = resp.tx.compute_txid();
-            return Err(Error::TxidMismatch { from_tx, from_request: *txid });
-        }
-
-        Ok(resp)
-    }
-    /// Estimate the current mempool fee rate using the
-    /// `blockchain.estimatefee` RPC call
-    ///
-    /// # Notes
-    ///
-    /// The underlying call returns BTC per kilo-vbyte, just like
-    /// bitcoin-core. Some implementations of electrum, such as
-    /// romanz/electrs, use the estimatesmartfee RPC on bitcoin core for
-    /// this[1]. These implementations currently do not set the fee
-    /// estimation mode and use the default. Right now the default is
-    /// "conservative", which is what we want, but it is slated to change
-    /// to economical later versions of bitcoin-core[2].
-    ///
-    /// [^1]: https://github.com/romanz/electrs/blob/v0.10.5/src/daemon.rs#L150-L156
-    /// [^2]: https://github.com/bitcoin/bitcoin/pull/30275
-    ///
-    /// https://electrumx-spesmilo.readthedocs.io/en/latest/protocol-methods.html#blockchain-estimatefee
-    pub fn estimate_fee_rate(&self, num_blocks: u16) -> Result<FeeEstimate, Error> {
-        // The response is in BTC per kilobyte... except when it isn't.
-        // Electrum will return -1 if it couldn't estimate the fee rate.
-        let btc_per_kilo_vbyte = self
-            .inner
-            .estimate_fee(num_blocks as usize)
-            .map_err(|err| Error::EstimateFeeElectrum(err, num_blocks))?;
-
-        // If `btc_per_kilo_vbyte == -1` then Amount::from_btc returns an
-        // error, so this function behaves similarly to the BtcClient
-        // implementation.
-        let sats_per_vbyte = Amount::from_btc(btc_per_kilo_vbyte)
-            .map_err(|err| Error::ParseAmount(err, btc_per_kilo_vbyte))?
-            .to_float_in(Denomination::Satoshi)
-            / 1000.;
-
-        Ok(FeeEstimate { sats_per_vbyte })
-    }
-}
-
-impl BitcoinClient for ElectrumClient {
     type Error = Error;
     fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
         self.get_tx(txid)

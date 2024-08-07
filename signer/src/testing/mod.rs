@@ -7,7 +7,7 @@ pub mod storage;
 pub mod transaction_signer;
 pub mod wallet;
 
-use crate::utxo::UnsignedTransaction;
+use crate::bitcoin::utxo::UnsignedTransaction;
 use bitcoin::key::TapTweak;
 use bitcoin::opcodes;
 use bitcoin::ScriptBuf;
