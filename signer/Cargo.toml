@@ -50,6 +50,7 @@ tracing-attributes.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
 wsts.workspace = true
+zeromq.workspace = true
 
 # Only for testing
 fake = { version = "2.9.2", features = ["derive", "time"], optional = true }

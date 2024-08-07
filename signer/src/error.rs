@@ -8,6 +8,24 @@ use crate::{codec, ecdsa, network};
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Error when breaking out the ZeroMQ message into three parts.
+    #[error("Bitcoin messages should have a three part layout, receieved {0} parts")]
+    BitcoinCoreZmqMessageLayout(usize),
+
+    /// Happens when the bitcoin block hash in the ZeroMQ message is not 32
+    /// bytes.
+    #[error("Block hashes should be 32 bytes, but we received {0} bytes")]
+    BitcoinCoreZmqBlockHash(usize),
+
+    /// Happens when the ZeroMQ sequence number is not 4 bytes.
+    #[error("Sequence numbers should be 4 bytes, but we received {0} bytes")]
+    BitcoinCoreZmqSequenceNumber(usize),
+
+    /// The given message type is unsupported. We attempt to parse what the
+    /// topic is but that might fail as well.
+    #[error("The message topic {0:?} is unsupported")]
+    BitcoinCoreZmqUnsupported(Result<String, std::str::Utf8Error>),
+
     /// Invalid amount
     #[error("the change amounts for the transaction is negative: {0}")]
     InvalidAmount(i64),
@@ -23,6 +41,10 @@ pub enum Error {
     /// Parsing the Hex Error
     #[error("could not parse the Hex string to a StacksBlockId: {0}, original: {1}")]
     ParseStacksBlockId(#[source] blockstack_lib::util::HexError, String),
+
+    /// Parsing the Hex Error
+    #[error("could not decode the bitcoin block: {0}")]
+    DecodeBitcoinBlock(#[source] bitcoin::consensus::encode::Error),
 
     /// Parsing the Hex Error
     #[error("could not decode the Nakamoto block with ID: {1}; {0}")]
@@ -186,6 +208,20 @@ pub enum Error {
     /// Parsing address failed
     #[error("failed to parse address")]
     ParseAddress(#[source] bitcoin::address::ParseError),
+
+    /// Could not connect to bitcoin-core with a zeromq subscription
+    /// socket.
+    #[error("{0}")]
+    ZmqConnect(#[source] zeromq::ZmqError),
+
+    /// Error when receiving a message from to bitcoin-core over zeromq.
+    #[error("{0}")]
+    ZmqReceive(#[source] zeromq::ZmqError),
+
+    /// Could not subscribe to bitcoin-core with a zeromq subscription
+    /// socket.
+    #[error("{0}")]
+    ZmqSubscribe(#[source] zeromq::ZmqError),
 }
 
 impl From<std::convert::Infallible> for Error {

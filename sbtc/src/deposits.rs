@@ -157,9 +157,9 @@ impl CreateDepositRequest {
     ///   ScriptPubKey.
     pub fn validate_tx(&self, tx: &Transaction) -> Result<DepositInfo, Error> {
         if tx.compute_txid() != self.outpoint.txid {
-            // The expectation is that the transaction hex was fetched from
-            // the blockchain using the txid, so in practice this should
-            // never happen.
+            // The expectation is that the transaction was fetched from the
+            // blockchain using the txid, so in practice this should never
+            // happen.
             return Err(Error::TxidMismatch {
                 from_request: self.outpoint.txid,
                 from_tx: tx.compute_txid(),
