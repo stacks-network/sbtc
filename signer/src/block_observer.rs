@@ -28,6 +28,7 @@ use crate::storage::model;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use bitcoin::hashes::Hash as _;
+use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
 use bitcoin::Txid;
 use blockstack_lib::chainstate::nakamoto;
@@ -35,6 +36,7 @@ use futures::stream::StreamExt;
 use sbtc::deposits::CreateDepositRequest;
 use sbtc::deposits::Deposit;
 use sbtc::rpc::BitcoinClient;
+use std::collections::HashSet;
 
 /// Block observer
 #[derive(Debug)]
@@ -161,7 +163,7 @@ where
         .await?;
 
         self.extract_deposit_requests(&block.txdata).await?;
-        self.extract_sbtc_transactions(&block.txdata);
+        self.extract_sbtc_transactions(&block.txdata).await?;
 
         self.write_stacks_blocks(&stacks_blocks).await?;
         self.write_bitcoin_block(&block).await?;
@@ -181,8 +183,16 @@ where
         Ok(())
     }
 
-    fn extract_sbtc_transactions(&self, _transactions: &[bitcoin::Transaction]) {
-        // TODO(#204): Implement
+    async fn extract_sbtc_transactions(&self, _txs: &[Transaction]) -> Result<(), Error> {
+        let _keys: HashSet<ScriptBuf> = self
+            .storage
+            .get_signers_script_pubkeys()
+            .await?
+            .into_iter()
+            .map(ScriptBuf::from_bytes)
+            .collect();
+
+        Ok(())
     }
 
     async fn write_stacks_blocks(

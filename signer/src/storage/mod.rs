@@ -104,6 +104,11 @@ pub trait DbRead {
         &self,
         aggregate_key: &model::PubKey,
     ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Self::Error>> + Send;
+
+    /// Get the last 365 days worth of the signers' `scriptPubkey`s.
+    fn get_signers_script_pubkeys(
+        &self,
+    ) -> impl Future<Output = Result<Vec<model::Bytes>, Self::Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.

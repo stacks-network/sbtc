@@ -604,6 +604,19 @@ impl super::DbRead for PgStore {
         .await
         .map_err(Error::SqlxQuery)
     }
+
+    async fn get_signers_script_pubkeys(&self) -> Result<Vec<model::Bytes>, Self::Error> {
+        sqlx::query_scalar::<_, model::Bytes>(
+            r#"
+            SELECT script_pubkey
+            FROM sbtc_signer.dkg_shares
+            WHERE created_at > CURRENT_TIMESTAMP - INTERVAL '365 DAYS';
+            "#,
+        )
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
 }
 
 impl super::DbWrite for PgStore {

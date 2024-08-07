@@ -343,6 +343,12 @@ impl super::DbRead for SharedStore {
             .get(aggregate_key)
             .cloned())
     }
+
+    fn get_signers_script_pubkeys(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Vec<model::Bytes>, Self::Error>> + Send {
+        std::future::ready(Ok(Vec::new()))
+    }
 }
 
 impl super::DbWrite for SharedStore {
