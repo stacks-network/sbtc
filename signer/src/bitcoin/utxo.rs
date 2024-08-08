@@ -80,9 +80,9 @@ impl SignerScriptPubkey for XOnlyPublicKey {
 
 impl SignerScriptPubkey for p256k1::point::Point {
     fn signers_script_pubkey(&self) -> ScriptBuf {
-        // The type is a thin wrapper of the a libsecp256k1 type. The
+        // The type is a thin wrapper of a libsecp256k1 type. The
         // underlying type represents a group element of the secp256k1
-        // curve, in jacobian coordinates. So this should always be on the
+        // curve, in Jacobian coordinates. So this should always be on the
         // curve.
         XOnlyPublicKey::from_slice(&self.x().to_bytes())
             .expect("BUG: p256k1::point::Points should lie on the curve!")
@@ -959,6 +959,22 @@ mod tests {
             amount,
             address: generate_address(),
         }
+    }
+
+    // If we have a XOnlyPublicKey and a p256k1::point::Point that
+    // represent the same point on the curve, then the associated signer
+    // `scriptPubKey`s must match.
+    #[test]
+    fn p256k1_point_and_secp256k1_pubkey_same_script() {
+        let public_key = generate_x_only_public_key();
+
+        let element = p256k1::field::Element::from(public_key.serialize());
+        let point = p256k1::point::Point::lift_x(&element).unwrap();
+
+        assert_eq!(
+            public_key.signers_script_pubkey(),
+            point.signers_script_pubkey()
+        );
     }
 
     #[ignore = "For generating the SOLO_(DEPOSIT|WITHDRAWAL)_SIZE constants"]
