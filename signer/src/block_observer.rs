@@ -29,6 +29,7 @@ use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
+use bitcoin::BlockHash;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
 use bitcoin::Txid;
@@ -164,7 +165,8 @@ where
         .await?;
 
         self.extract_deposit_requests(&block.txdata).await?;
-        self.extract_sbtc_transactions(&block).await?;
+        self.extract_sbtc_transactions(block.block_hash(), &block.txdata)
+            .await?;
 
         self.write_stacks_blocks(&stacks_blocks).await?;
         self.write_bitcoin_block(&block).await?;
@@ -186,7 +188,11 @@ where
 
     /// Extract all BTC transactions from the block where one of the UTXOs
     /// can be spent by the signers.
-    async fn extract_sbtc_transactions(&self, block: &bitcoin::Block) -> Result<(), Error> {
+    async fn extract_sbtc_transactions(
+        &self,
+        block_hash: BlockHash,
+        txs: &[Transaction],
+    ) -> Result<(), Error> {
         let signer_script_pubkeys: HashSet<ScriptBuf> = self
             .storage
             .get_signers_script_pubkeys()
@@ -195,10 +201,7 @@ where
             .map(ScriptBuf::from_bytes)
             .collect();
 
-        let block_hash = block.block_hash();
-
-        let sbtc_txs = block
-            .txdata
+        let sbtc_txs = txs
             .iter()
             .filter(|tx| {
                 // If any of the outputs are spend to one of the signers'
@@ -267,7 +270,9 @@ pub trait EmilyInteract {
 
 #[cfg(test)]
 mod tests {
+    use bitcoin::Amount;
     use bitcoin::BlockHash;
+    use bitcoin::TxOut;
     use blockstack_lib::chainstate::burn::ConsensusHash;
     use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
     use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
@@ -499,6 +504,112 @@ mod tests {
 
         // Now the deposit_requests thing should be empty now, since we stored the things.
         assert!(block_observer.deposit_requests.is_empty());
+    }
+
+    /// Test that `BlockObserver::extract_sbtc_transactions` takes the
+    /// stored signer `scriptPubKey`s and stores all transactions from a
+    /// bitcoin block that match one of those `scriptPubkey`s.
+    #[tokio::test]
+    async fn sbtc_transactions_get_stored() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let test_harness = TestHarness::generate(&mut rng, 20, 0..5);
+
+        let block_hash = BlockHash::from_byte_array([1u8; 32]);
+        // We're going to do the following:
+        // 1. pretend that the below bytes represent the signers
+        //    `scriptPubKey`. We store it in our datastore along with some
+        //    "DKG shares".
+        // 2. We then create two transactions, one spending to our
+        //    scriptPubKey and another not spending to it.
+        // 3. We try "extracting" a block with one transaction that does
+        //    not spend to the signers. This one transaction should not be
+        //    extracted (we should not see it in storage).
+        // 4. We try "extracting" a block with two transactions where one
+        //    of them spends to the signers. The one transaction should be
+        //    stored in our storage.
+        let signers_script_pubkey = vec![1, 2, 3, 4];
+
+        // We start by storing our `scriptPubKey`.
+        let storage = storage::in_memory::Store::new_shared();
+        let shares = model::EncryptedDkgShares {
+            aggregate_key: Vec::new(),
+            tweaked_aggregate_key: Vec::new(),
+            script_pubkey: signers_script_pubkey.clone(),
+            created_at: time::OffsetDateTime::now_utc(),
+            encrypted_shares: Vec::new(),
+        };
+        storage.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+        // Now let's create two transactions, one spending to the signers
+        // and another not spending to the signers. We use
+        // sbtc::testing::deposits::tx_setup just to quickly create a
+        // transaction; any one will do since we will be adding the UTXO
+        // that spends to the signer afterwards.
+        let mut tx_setup0 = sbtc::testing::deposits::tx_setup(0, 0, 100);
+        tx_setup0.tx.output.push(TxOut {
+            value: Amount::ONE_BTC,
+            script_pubkey: ScriptBuf::from_bytes(signers_script_pubkey.clone()),
+        });
+
+        // This one does not spend to the signers :(
+        let tx_setup1 = sbtc::testing::deposits::tx_setup(1, 10, 2000);
+
+        // Now we finish setting up the block observer.
+        let (subscribers, _) = tokio::sync::watch::channel(());
+
+        let block_observer = BlockObserver {
+            bitcoin_client: test_harness.clone(),
+            stacks_client: test_harness.clone(),
+            emily_client: (),
+            bitcoin_blocks: test_harness.spawn_block_hash_stream(),
+            storage: storage.clone(),
+            subscribers,
+            horizon: 1,
+            deposit_requests: HashMap::new(),
+            network: bitcoin::Network::Regtest,
+        };
+
+        // First we try extracting the transactions from a block that does
+        // not contain any transactions spent to the signers
+        let txs = [tx_setup1.tx.clone()];
+        block_observer
+            .extract_sbtc_transactions(block_hash, &txs)
+            .await
+            .unwrap();
+
+        // We need to change the scope so that the mutex guard is dropped.
+        {
+            let store = block_observer.storage.lock().await;
+            // Under the hood, bitcoin transactions get stored in the
+            // `bitcoin_block_to_transactions` field, so lets check there
+            let stored_transactions = store
+                .bitcoin_block_to_transactions
+                .get(&block_hash.as_byte_array().to_vec());
+
+            // Nothing should be stored so the map get call should return
+            // None.
+            assert!(stored_transactions.is_none());
+        }
+
+        // Noe we try again but we include the transaction that spends to
+        // the signer. This one should turn out differently.
+        let txs = [tx_setup0.tx.clone(), tx_setup1.tx.clone()];
+        block_observer
+            .extract_sbtc_transactions(block_hash, &txs)
+            .await
+            .unwrap();
+
+        let store = block_observer.storage.lock().await;
+        let stored_transactions = store
+            .bitcoin_block_to_transactions
+            .get(&block_hash.as_byte_array().to_vec());
+
+        // Is our one transaction stored? This block hash should now have
+        // only one transaction with the expected txid.
+        let tx_ids = stored_transactions.unwrap();
+        let expexted_tx_id = tx_setup0.tx.compute_txid().to_byte_array().to_vec();
+        assert_eq!(tx_ids.len(), 1);
+        assert_eq!(tx_ids[0], expexted_tx_id);
     }
 
     #[derive(Debug, Clone)]

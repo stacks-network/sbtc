@@ -344,10 +344,14 @@ impl super::DbRead for SharedStore {
             .cloned())
     }
 
-    fn get_signers_script_pubkeys(
-        &self,
-    ) -> impl std::future::Future<Output = Result<Vec<model::Bytes>, Self::Error>> + Send {
-        std::future::ready(Ok(Vec::new()))
+    async fn get_signers_script_pubkeys(&self) -> Result<Vec<model::Bytes>, Self::Error> {
+        Ok(self
+            .lock()
+            .await
+            .encrypted_dkg_shares
+            .values()
+            .map(|share| share.script_pubkey.clone())
+            .collect())
     }
 }
 
