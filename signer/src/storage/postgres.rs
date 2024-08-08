@@ -540,7 +540,7 @@ impl super::DbRead for PgStore {
             JOIN stacks_context_window sc ON wr.block_hash = sc.block_hash
             "#,
             chain_tip,
-            stacks_chain_tip.block_hash,
+            stacks_chain_tip,
             context_window,
         )
         .fetch_all(&self.0)
@@ -628,7 +628,7 @@ impl super::DbRead for PgStore {
             HAVING COUNT(wr.request_id) >= $4
             "#,
             chain_tip,
-            stacks_chain_tip.block_hash,
+            stacks_chain_tip,
             context_window,
             threshold,
         )
@@ -732,7 +732,7 @@ impl super::DbRead for PgStore {
             JOIN stacks_blocks sb on st.block_hash = sb.block_hash
             ORDER BY sb.depth DESC LIMIT 1
             "#,
-            stacks_chain_tip.block_hash,
+            stacks_chain_tip,
         )
         .fetch_optional(&self.0)
         .await

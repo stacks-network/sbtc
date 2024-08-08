@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::bitcoin::utxo::SignerScriptPubkey;
 use crate::error;
 use crate::storage;
 use crate::storage::model;
@@ -121,10 +122,7 @@ impl SignerStateMachine {
     ) -> Result<model::EncryptedDkgShares, error::Error> {
         let saved_state = self.signer.save();
         let aggregate_key = saved_state.group_key.x().to_bytes().to_vec();
-        let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&saved_state.group_key, None)
-            .x()
-            .to_bytes()
-            .to_vec();
+        let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&saved_state.group_key, None);
 
         let encoded = saved_state.encode_to_vec().map_err(error::Error::Codec)?;
         let public_shares = self
@@ -140,7 +138,8 @@ impl SignerStateMachine {
 
         Ok(model::EncryptedDkgShares {
             aggregate_key: aggregate_key.clone(),
-            tweaked_aggregate_key: tweaked_aggregate_key.clone(),
+            tweaked_aggregate_key: tweaked_aggregate_key.x().to_bytes().to_vec(),
+            script_pubkey: tweaked_aggregate_key.signers_script_pubkey().to_bytes(),
             encrypted_private_shares,
             public_shares,
             created_at,

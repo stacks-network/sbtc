@@ -8,7 +8,6 @@
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 
-use crate::bitcoin::utxo::SignerScriptPubkey as _;
 use crate::blocklist_client;
 use crate::error;
 use crate::message;
