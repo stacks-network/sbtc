@@ -91,7 +91,7 @@ impl Settings {
     }
 }
 
-/// A deserializer for the url::Url type.
+/// A deserializer for the url::Url type.  Guaranteed to deserialize to a non-empty vec, or return an error.
 fn url_deserializer<'de, D>(deserializer: D) -> Result<Vec<url::Url>, D::Error>
 where
     D: Deserializer<'de>,

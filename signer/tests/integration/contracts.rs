@@ -224,10 +224,9 @@ async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: Contr
     let info = client.get_tenure_info().await.unwrap();
     let storage = Store::new_shared();
 
-    let blocks =
-        stacks::api::fetch_unknown_ancestors(&mut client, &storage, info.tip_block_id)
-            .await
-            .unwrap();
+    let blocks = stacks::api::fetch_unknown_ancestors(&mut client, &storage, info.tip_block_id)
+        .await
+        .unwrap();
 
     let transactions = postgres::extract_relevant_transactions(&blocks);
     assert!(!transactions.is_empty());
