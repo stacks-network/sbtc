@@ -261,10 +261,10 @@ impl TryFrom<AccountEntryResponse> for AccountInfo {
 pub struct StacksClient {
     /// The base URL (with the port) that will be used when making requests
     /// for to a Stacks node.
-    pub node_endpoints: Vec<url::Url>,
+    node_endpoints: Vec<url::Url>,
     /// The current index into the endpoints list
     /// Increment this on network failure
-    pub endpoint_index: usize,
+    endpoint_index: usize,
     /// The client used to make the request.
     pub client: reqwest::Client,
     /// The start height of the first EPOCH 3.0 block on the Stacks
