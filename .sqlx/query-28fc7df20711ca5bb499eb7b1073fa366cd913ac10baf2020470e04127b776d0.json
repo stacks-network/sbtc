@@ -18,8 +18,7 @@
                 "deposit_accept",
                 "withdraw_accept",
                 "withdraw_reject",
-                "update_signer_set",
-                "set_aggregate_key"
+                "rotate_keys"
               ]
             }
           }

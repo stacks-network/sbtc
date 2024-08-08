@@ -95,9 +95,6 @@ pub struct TxCoordinatorEventLoop<Network, Storage, BitcoinClient> {
     pub bitcoin_client: BitcoinClient,
     /// Notification receiver from the block observer.
     pub block_observer_notifications: tokio::sync::watch::Receiver<()>,
-    /// Public keys of the other signers
-    // TODO(317): Read from storage when needed
-    pub signer_public_keys: BTreeSet<p256k1::ecdsa::PublicKey>,
     /// Private key of the coordinator for network communication.
     pub private_key: p256k1::scalar::Scalar,
     /// The threshold for the signer
@@ -143,12 +140,24 @@ where
             .await?
             .ok_or(error::Error::NoChainTip)?;
 
-        if self.is_coordinator(&bitcoin_chain_tip)? {
-            self.construct_and_sign_bitcoin_sbtc_transactions(&bitcoin_chain_tip)
-                .await?;
+        let (aggregate_key, signer_public_keys) = self
+            .get_signer_public_keys_and_aggregate_key(&bitcoin_chain_tip)
+            .await?;
 
-            self.construct_and_sign_stacks_sbtc_response_transactions(&bitcoin_chain_tip)
-                .await?;
+        if self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys)? {
+            self.construct_and_sign_bitcoin_sbtc_transactions(
+                &bitcoin_chain_tip,
+                aggregate_key,
+                &signer_public_keys,
+            )
+            .await?;
+
+            self.construct_and_sign_stacks_sbtc_response_transactions(
+                &bitcoin_chain_tip,
+                aggregate_key,
+                &signer_public_keys,
+            )
+            .await?;
         }
 
         Ok(())
@@ -160,21 +169,27 @@ where
     async fn construct_and_sign_bitcoin_sbtc_transactions(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
+        aggregate_key: p256k1::point::Point,
+        signer_public_keys: &BTreeSet<p256k1::ecdsa::PublicKey>,
     ) -> Result<(), error::Error> {
         let fee_rate = self.bitcoin_client.estimate_fee_rate().await?;
-
-        let aggregate_key = self.get_aggregate_key(bitcoin_chain_tip).await?;
 
         let signer_btc_state = self.get_btc_state(fee_rate, &aggregate_key).await?;
 
         let pending_requests = self
-            .get_pending_requests(bitcoin_chain_tip, signer_btc_state)
+            .get_pending_requests(
+                bitcoin_chain_tip,
+                signer_btc_state,
+                aggregate_key,
+                signer_public_keys,
+            )
             .await?;
 
         let transaction_package = pending_requests.construct_transactions()?;
 
         for transaction in transaction_package {
-            self.sign_and_broadcast(aggregate_key, transaction).await?;
+            self.sign_and_broadcast(aggregate_key, signer_public_keys, transaction)
+                .await?;
         }
 
         Ok(())
@@ -186,6 +201,8 @@ where
     async fn construct_and_sign_stacks_sbtc_response_transactions(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
+        aggregate_key: p256k1::point::Point,
+        signer_public_keys: &BTreeSet<p256k1::ecdsa::PublicKey>,
     ) -> Result<(), error::Error> {
         // TODO(320): Implement
         todo!();
@@ -197,12 +214,13 @@ where
     async fn sign_and_broadcast(
         &mut self,
         aggregate_key: p256k1::point::Point,
+        signer_public_keys: &BTreeSet<p256k1::ecdsa::PublicKey>,
         transaction: utxo::UnsignedTransaction<'_>,
     ) -> Result<(), error::Error> {
         let _coordinator_state_machine = wsts_state_machine::CoordinatorStateMachine::load(
             &mut self.storage,
             aggregate_key,
-            self.signer_public_keys.clone(),
+            signer_public_keys.clone(),
             self.threshold,
             self.private_key,
         )
@@ -226,6 +244,7 @@ where
     fn is_coordinator(
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
+        signer_public_keys: &BTreeSet<p256k1::ecdsa::PublicKey>,
     ) -> Result<bool, error::Error> {
         let mut hasher = sha2::Sha256::new();
         hasher.update(bitcoin_chain_tip);
@@ -235,21 +254,11 @@ where
 
         let pub_key = self.pub_key()?;
 
-        Ok(self
-            .signer_public_keys
+        Ok(signer_public_keys
             .iter()
-            .nth(index % self.signer_public_keys.len())
+            .nth(index % signer_public_keys.len())
             .map(|coordinator_pub_key| coordinator_pub_key == &pub_key)
             .unwrap_or(false))
-    }
-
-    #[tracing::instrument(skip(self))]
-    async fn get_aggregate_key(
-        &mut self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<p256k1::point::Point, error::Error> {
-        // TODO(317): Get the relevant aggregate key for the current signer set
-        todo!();
     }
 
     #[tracing::instrument(skip(self))]
@@ -267,6 +276,8 @@ where
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         signer_btc_state: utxo::SignerBtcState,
+        aggregate_key: p256k1::point::Point,
+        signer_public_keys: &BTreeSet<p256k1::ecdsa::PublicKey>,
     ) -> Result<utxo::SbtcRequests, error::Error> {
         let context_window = self
             .context_window
@@ -285,10 +296,8 @@ where
             .get_pending_accepted_withdraw_requests(bitcoin_chain_tip, context_window, threshold)
             .await?;
 
-        let signers_public_key = self.get_aggregate_key(bitcoin_chain_tip).await?;
-        let signers_public_key =
-            bitcoin::XOnlyPublicKey::from_slice(&signers_public_key.x().to_bytes())
-                .map_err(|_| error::Error::TypeConversion)?;
+        let signers_public_key = bitcoin::XOnlyPublicKey::from_slice(&aggregate_key.x().to_bytes())
+            .map_err(|_| error::Error::TypeConversion)?;
 
         let convert_deposit =
             |request| utxo::DepositRequest::try_from_model(request, signers_public_key);
@@ -307,8 +316,7 @@ where
             .collect::<Result<_, _>>()?;
 
         let accept_threshold = self.threshold;
-        let num_signers = self
-            .signer_public_keys
+        let num_signers = signer_public_keys
             .len()
             .try_into()
             .map_err(|_| error::Error::TypeConversion)?;
@@ -320,6 +328,40 @@ where
             accept_threshold,
             num_signers,
         })
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn get_signer_public_keys_and_aggregate_key(
+        &mut self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<(p256k1::point::Point, BTreeSet<p256k1::ecdsa::PublicKey>), error::Error> {
+        let last_key_rotation = self
+            .storage
+            .get_last_key_rotation(bitcoin_chain_tip)
+            .await?
+            .ok_or(error::Error::MissingKeyRotation)?;
+
+        let aggregate_key = p256k1::point::Point::lift_x(
+            &bitcoin_chain_tip
+                .as_slice()
+                .try_into()
+                .map_err(|_| error::Error::TypeConversion)?,
+        )
+        .map_err(|_| error::Error::TypeConversion)?;
+
+        Ok((
+            aggregate_key,
+            last_key_rotation
+                .signer_set
+                .into_iter()
+                .map(|bytes| {
+                    bytes
+                        .as_slice()
+                        .try_into()
+                        .map_err(|_| error::Error::TypeConversion)
+                })
+                .collect::<Result<_, _>>()?,
+        ))
     }
 
     // Return the public key of self.

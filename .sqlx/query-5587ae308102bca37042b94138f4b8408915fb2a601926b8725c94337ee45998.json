@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                aggregate_key\n              , tweaked_aggregate_key\n              , encrypted_shares\n              , created_at\n            FROM sbtc_signer.dkg_shares\n            WHERE aggregate_key = $1;\n            ",
+  "query": "\n            SELECT\n                aggregate_key\n              , tweaked_aggregate_key\n              , encrypted_private_shares\n              , public_shares\n              , created_at\n            FROM sbtc_signer.dkg_shares\n            WHERE aggregate_key = $1;\n            ",
   "describe": {
     "columns": [
       {
@@ -15,11 +15,16 @@
       },
       {
         "ordinal": 2,
-        "name": "encrypted_shares",
+        "name": "encrypted_private_shares",
         "type_info": "Bytea"
       },
       {
         "ordinal": 3,
+        "name": "public_shares",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 4,
         "name": "created_at",
         "type_info": "Timestamptz"
       }
@@ -33,8 +38,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "401d4ec8deeda7e5e51c95c745d79cfd676c534cc3e557fb00cb75ddae4bbc8f"
+  "hash": "5587ae308102bca37042b94138f4b8408915fb2a601926b8725c94337ee45998"
 }

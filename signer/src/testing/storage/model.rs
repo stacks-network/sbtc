@@ -9,9 +9,8 @@ use rand::seq::SliceRandom;
 
 /// Collection of related data usable for database tests.
 ///
-/// Right now this is only a chain of bitcoin blocks,
-/// but this struct is intended to grow to encompass
-/// items of all of the types in the storage model.
+/// The primary use case of this type is to load a database
+/// with mocked data.
 #[derive(Debug, Clone, Default)]
 pub struct TestData {
     /// Bitcoin blocks
@@ -46,6 +45,7 @@ impl TestData {
     fn new() -> Self {
         Self::default()
     }
+
     /// Generate random test data with the given parameters.
     pub fn generate(rng: &mut impl rand::RngCore, params: &Params) -> Self {
         let mut test_data = Self::new();

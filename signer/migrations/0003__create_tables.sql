@@ -5,8 +5,7 @@ CREATE TYPE sbtc_signer.transaction_type AS ENUM (
    'deposit_accept',
    'withdraw_accept',
    'withdraw_reject',
-   'update_signer_set',
-   'set_aggregate_key'
+   'rotate_keys'
 );
 
 CREATE TABLE sbtc_signer.bitcoin_blocks (
@@ -79,8 +78,9 @@ CREATE TABLE sbtc_signer.transactions (
 CREATE TABLE sbtc_signer.dkg_shares (
     aggregate_key BYTEA PRIMARY KEY,
     tweaked_aggregate_key BYTEA NOT NULL,
+    encrypted_private_shares BYTEA NOT NULL,
+    public_shares BYTEA NOT NULL,
     script_pubkey BYTEA NOT NULL,
-    encrypted_shares BYTEA NOT NULL,
     created_at TIMESTAMPTZ NOT NULL
 );
 
@@ -109,12 +109,11 @@ CREATE TABLE sbtc_signer.stacks_transactions (
     FOREIGN KEY (block_hash) REFERENCES sbtc_signer.stacks_blocks(block_hash) ON DELETE CASCADE
 );
 
-CREATE TABLE sbtc_signer.aggregate_key_transactions (
-    txid BYTEA NOT NULL,
+CREATE TABLE sbtc_signer.rotate_keys_transactions (
+    txid BYTEA PRIMARY KEY,
     aggregate_key BYTEA NOT NULL,
-    PRIMARY KEY (txid, aggregate_key),
-    FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE,
-    FOREIGN KEY (aggregate_key) REFERENCES sbtc_signer.dkg_shares(aggregate_key) ON DELETE CASCADE
+    signer_set BYTEA[] NOT NULL,
+    FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE
 );
 
 CREATE TABLE sbtc_signer.deposit_responses (
