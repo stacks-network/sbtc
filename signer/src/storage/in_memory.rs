@@ -363,6 +363,21 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
+    async fn write_bitcoin_transactions(
+        &self,
+        txs: Vec<model::Transaction>,
+    ) -> Result<(), Self::Error> {
+        for tx in txs {
+            let bitcoin_transaction = model::BitcoinTransaction {
+                txid: tx.txid,
+                block_hash: tx.block_hash,
+            };
+            self.write_bitcoin_transaction(&bitcoin_transaction).await?;
+        }
+
+        Ok(())
+    }
+
     async fn write_stacks_block(&self, block: &model::StacksBlock) -> Result<(), Self::Error> {
         self.lock()
             .await

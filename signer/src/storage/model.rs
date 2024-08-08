@@ -222,6 +222,15 @@ pub struct StacksTransaction {
     pub block_hash: StacksBlockHash,
 }
 
+/// For writing to the stacks_transactions or bitcoin_transactions table.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TransactionIds {
+    /// Transaction IDs.
+    pub tx_ids: Vec<Vec<u8>>,
+    /// The blocks in which the transactions exists.
+    pub block_hashes: Vec<Vec<u8>>,
+}
+
 /// A raw transaction on either Bitcoin or Stacks.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]

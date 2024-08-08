@@ -27,6 +27,7 @@ use crate::storage;
 use crate::storage::model;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
+use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
@@ -163,7 +164,7 @@ where
         .await?;
 
         self.extract_deposit_requests(&block.txdata).await?;
-        self.extract_sbtc_transactions(&block.txdata).await?;
+        self.extract_sbtc_transactions(&block).await?;
 
         self.write_stacks_blocks(&stacks_blocks).await?;
         self.write_bitcoin_block(&block).await?;
@@ -183,8 +184,10 @@ where
         Ok(())
     }
 
-    async fn extract_sbtc_transactions(&self, _txs: &[Transaction]) -> Result<(), Error> {
-        let _keys: HashSet<ScriptBuf> = self
+    /// Extract all BTC transactions from the block where one of the UTXOs
+    /// can be spent by the signers.
+    async fn extract_sbtc_transactions(&self, block: &bitcoin::Block) -> Result<(), Error> {
+        let signer_script_pubkeys: HashSet<ScriptBuf> = self
             .storage
             .get_signers_script_pubkeys()
             .await?
@@ -192,6 +195,33 @@ where
             .map(ScriptBuf::from_bytes)
             .collect();
 
+        let block_hash = block.block_hash();
+
+        let sbtc_txs = block
+            .txdata
+            .iter()
+            .filter(|tx| {
+                // If any of the outputs are spend to one of the signers'
+                // addresses, then we care about it
+                tx.output
+                    .iter()
+                    .any(|tx_out| signer_script_pubkeys.contains(&tx_out.script_pubkey))
+            })
+            .map(|tx| {
+                let mut tx_bytes = Vec::new();
+                tx.consensus_encode(&mut tx_bytes)?;
+
+                Ok::<_, bitcoin::io::Error>(model::Transaction {
+                    txid: tx.compute_txid().to_byte_array().to_vec(),
+                    tx: tx_bytes,
+                    tx_type: model::TransactionType::SbtcTransaction,
+                    block_hash: block_hash.to_byte_array().to_vec(),
+                })
+            })
+            .collect::<Result<Vec<model::Transaction>, _>>()
+            .map_err(Error::BitcoinEncodeTransaction)?;
+
+        self.storage.write_bitcoin_transactions(sbtc_txs).await?;
         Ok(())
     }
 

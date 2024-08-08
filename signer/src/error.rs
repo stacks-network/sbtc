@@ -9,22 +9,27 @@ use crate::{codec, ecdsa, network};
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// Error when breaking out the ZeroMQ message into three parts.
-    #[error("Bitcoin messages should have a three part layout, receieved {0} parts")]
+    #[error("bitcoin messages should have a three part layout, receieved {0} parts")]
     BitcoinCoreZmqMessageLayout(usize),
 
     /// Happens when the bitcoin block hash in the ZeroMQ message is not 32
     /// bytes.
-    #[error("Block hashes should be 32 bytes, but we received {0} bytes")]
+    #[error("block hashes should be 32 bytes, but we received {0} bytes")]
     BitcoinCoreZmqBlockHash(usize),
 
     /// Happens when the ZeroMQ sequence number is not 4 bytes.
-    #[error("Sequence numbers should be 4 bytes, but we received {0} bytes")]
+    #[error("sequence numbers should be 4 bytes, but we received {0} bytes")]
     BitcoinCoreZmqSequenceNumber(usize),
 
     /// The given message type is unsupported. We attempt to parse what the
     /// topic is but that might fail as well.
-    #[error("The message topic {0:?} is unsupported")]
+    #[error("the message topic {0:?} is unsupported")]
     BitcoinCoreZmqUnsupported(Result<String, std::str::Utf8Error>),
+
+    /// This is for when bitcoin::Transaction::consensus_encode fails. It
+    /// should never happen.
+    #[error("could not serialize bitcoin transaction into bytes.")]
+    BitcoinEncodeTransaction(#[source] bitcoin::io::Error),
 
     /// Invalid amount
     #[error("the change amounts for the transaction is negative: {0}")]
