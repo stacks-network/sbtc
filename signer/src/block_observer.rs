@@ -197,7 +197,7 @@ where
         block_hash: BlockHash,
         txs: &[Transaction],
     ) -> Result<(), Error> {
-        // We store all of the scriptPubKeys associated with the signers'
+        // We store all the scriptPubKeys associated with the signers'
         // aggregate public key. Let's get the last years worth of them.
         let signer_script_pubkeys: HashSet<ScriptBuf> = self
             .storage
@@ -207,7 +207,7 @@ where
             .map(ScriptBuf::from_bytes)
             .collect();
 
-        // Look through all of the UTXOs in the given transaction slice and
+        // Look through all the UTXOs in the given transaction slice and
         // keep the transactions where a UTXO is locked with a
         // `scriptPubKey` controlled by the signers.
         let sbtc_txs = txs
@@ -274,7 +274,7 @@ where
     }
 }
 
-// Placehoder traits. To be replaced with the actual traits once implemented.
+// Placeholder traits. To be replaced with the actual traits once implemented.
 
 /// Placeholder trait
 pub trait EmilyInteract {
@@ -558,7 +558,7 @@ mod tests {
         // and another not spending to the signers. We use
         // sbtc::testing::deposits::tx_setup just to quickly create a
         // transaction; any one will do since we will be adding the UTXO
-        // that spends to the signer afterwards.
+        // that spends to the signer afterward.
         let mut tx_setup0 = sbtc::testing::deposits::tx_setup(0, 0, 100);
         tx_setup0.tx.output.push(TxOut {
             value: Amount::ONE_BTC,
@@ -605,7 +605,7 @@ mod tests {
             assert!(stored_transactions.is_none());
         }
 
-        // Noe we try again but we include the transaction that spends to
+        // Now we try again, but we include the transaction that spends to
         // the signer. This one should turn out differently.
         let txs = [tx_setup0.tx.clone(), tx_setup1.tx.clone()];
         block_observer
@@ -621,15 +621,15 @@ mod tests {
         // Is our one transaction stored? This block hash should now have
         // only one transaction with the expected txid.
         let tx_ids = stored_transactions.unwrap();
-        let expexted_tx_id = tx_setup0.tx.compute_txid().to_byte_array().to_vec();
+        let expected_tx_id = tx_setup0.tx.compute_txid().to_byte_array().to_vec();
         assert_eq!(tx_ids.len(), 1);
-        assert_eq!(tx_ids[0], expexted_tx_id);
+        assert_eq!(tx_ids[0], expected_tx_id);
     }
 
     #[derive(Debug, Clone)]
     struct TestHarness {
         bitcoin_blocks: Vec<bitcoin::Block>,
-        /// This represents the Stacks block chain. The bitcoin::BlockHash
+        /// This represents the Stacks blockchain. The bitcoin::BlockHash
         /// is used to identify tenures. That is, all NakamotoBlocks that
         /// have the same bitcoin::BlockHash occur within the same tenure.
         stacks_blocks: Vec<(StacksBlockId, NakamotoBlock, BlockHash)>,
