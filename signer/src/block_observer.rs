@@ -198,7 +198,7 @@ where
         txs: &[Transaction],
     ) -> Result<(), Error> {
         // We store all of the scriptPubKeys associated with the signers'
-        // aggregate public key. Let's get the last years worth of them. 
+        // aggregate public key. Let's get the last years worth of them.
         let signer_script_pubkeys: HashSet<ScriptBuf> = self
             .storage
             .get_signers_script_pubkeys()

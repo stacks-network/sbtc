@@ -1120,7 +1120,7 @@ impl super::DbWrite for PgStore {
         .bind(&shares.tweaked_aggregate_key)
         .bind(&shares.encrypted_shares)
         .bind(&shares.script_pubkey)
-        .bind(&shares.created_at)
+        .bind(shares.created_at)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

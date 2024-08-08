@@ -576,7 +576,7 @@ async fn writing_transactions_postgres(pool: sqlx::PgPool) {
     // constrait
     store.write_bitcoin_block(&db_block).await.unwrap();
 
-    // Let's see if we can write these transactions to the database. 
+    // Let's see if we can write these transactions to the database.
     store.write_bitcoin_transactions(txs.clone()).await.unwrap();
     let count =
         sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.bitcoin_transactions"#)
