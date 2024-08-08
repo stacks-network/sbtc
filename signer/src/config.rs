@@ -91,14 +91,17 @@ impl Settings {
     }
 }
 
-/// A deserializer for the url::Url type.
-fn url_deserializer<'de, D>(deserializer: D) -> Result<url::Url, D::Error>
+/// A deserializer for the url::Url type.  Guaranteed to deserialize to a non-empty vec, or return an error.
+fn url_deserializer<'de, D>(deserializer: D) -> Result<Vec<url::Url>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    String::deserialize(deserializer)?
-        .parse()
-        .map_err(serde::de::Error::custom)
+    let mut v = Vec::new();
+    for s in String::deserialize(deserializer)?.split(",") {
+        let url = s.parse().map_err(serde::de::Error::custom)?;
+        v.push(url);
+    }
+    Ok(v)
 }
 
 /// A struct for the entries in the signers Config.toml (which is currently
@@ -117,7 +120,7 @@ pub struct StacksNodeSettings {
     ///
     /// The endpoint to use when making requests to a stacks node.
     #[serde(deserialize_with = "url_deserializer")]
-    pub endpoint: url::Url,
+    pub endpoints: Vec<url::Url>,
     /// This is the start height of the first EPOCH 3.0 block on the stacks
     /// blockchain.
     pub nakamoto_start_height: u64,
@@ -134,7 +137,7 @@ impl StacksSettings {
     /// overridden are:
     ///
     /// * SIGNER_STACKS_API_ENDPOINT <-> stacks.api.endpoint
-    /// * SIGNER_STACKS_NODE_ENDPOINT <-> stacks.node.endpoint
+    /// * SIGNER_STACKS_NODE_ENDPOINTS <-> stacks.node.endpoints
     ///
     /// Each of these overrides an entry in the signer's `config.toml`
     pub fn new_from_config() -> Result<Self, Error> {
@@ -163,29 +166,35 @@ mod tests {
         // The default toml used here specifies http://localhost:20443
         // as the stacks node endpoint.
         let settings = StacksSettings::new_from_config().unwrap();
-        let host = settings.node.endpoint.host();
+        let host = settings.node.endpoints[0].host();
         assert_eq!(host, Some(url::Host::Domain("localhost")));
-        assert_eq!(settings.node.endpoint.port(), Some(20443));
+        assert_eq!(settings.node.endpoints[0].port(), Some(20443));
 
-        std::env::set_var("SIGNER_STACKS_NODE_ENDPOINT", "http://whatever:1234");
+        std::env::set_var(
+            "SIGNER_STACKS_NODE_ENDPOINTS",
+            "http://whatever:1234,http://whateva:4321",
+        );
 
         let settings = StacksSettings::new_from_config().unwrap();
-        let host = settings.node.endpoint.host();
+        let host = settings.node.endpoints[0].host();
         assert_eq!(host, Some(url::Host::Domain("whatever")));
-        assert_eq!(settings.node.endpoint.port(), Some(1234));
+        assert_eq!(settings.node.endpoints[0].port(), Some(1234));
+        let host = settings.node.endpoints[1].host();
+        assert_eq!(host, Some(url::Host::Domain("whateva")));
+        assert_eq!(settings.node.endpoints[1].port(), Some(4321));
 
-        std::env::set_var("SIGNER_STACKS_NODE_ENDPOINT", "http://127.0.0.1:5678");
+        std::env::set_var("SIGNER_STACKS_NODE_ENDPOINTS", "http://127.0.0.1:5678");
 
         let settings = StacksSettings::new_from_config().unwrap();
         let ip: std::net::Ipv4Addr = "127.0.0.1".parse().unwrap();
-        assert_eq!(settings.node.endpoint.host(), Some(url::Host::Ipv4(ip)));
-        assert_eq!(settings.node.endpoint.port(), Some(5678));
+        assert_eq!(settings.node.endpoints[0].host(), Some(url::Host::Ipv4(ip)));
+        assert_eq!(settings.node.endpoints[0].port(), Some(5678));
 
-        std::env::set_var("SIGNER_STACKS_NODE_ENDPOINT", "http://[::1]:9101");
+        std::env::set_var("SIGNER_STACKS_NODE_ENDPOINTS", "http://[::1]:9101");
 
         let settings = StacksSettings::new_from_config().unwrap();
         let ip: std::net::Ipv6Addr = "::1".parse().unwrap();
-        assert_eq!(settings.node.endpoint.host(), Some(url::Host::Ipv6(ip)));
-        assert_eq!(settings.node.endpoint.port(), Some(9101));
+        assert_eq!(settings.node.endpoints[0].host(), Some(url::Host::Ipv6(ip)));
+        assert_eq!(settings.node.endpoints[0].port(), Some(9101));
     }
 }
