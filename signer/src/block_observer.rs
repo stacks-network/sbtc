@@ -164,12 +164,10 @@ where
         )
         .await?;
 
-        self.extract_deposit_requests(&block.txdata).await?;
-        self.extract_sbtc_transactions(block.block_hash(), &block.txdata)
-            .await?;
-
         self.write_stacks_blocks(&stacks_blocks).await?;
         self.write_bitcoin_block(&block).await?;
+
+        self.extract_deposit_requests(&block.txdata).await?;
 
         Ok(())
     }
@@ -188,11 +186,19 @@ where
 
     /// Extract all BTC transactions from the block where one of the UTXOs
     /// can be spent by the signers.
+    ///
+    /// # Note
+    ///
+    /// When using the postgres storage, we need to make sure that this
+    /// function is called after the `Self::write_bitcoin_block` function
+    /// because of the foreign key constraints.
     async fn extract_sbtc_transactions(
         &self,
         block_hash: BlockHash,
         txs: &[Transaction],
     ) -> Result<(), Error> {
+        // We store all of the scriptPubKeys associated with the signers'
+        // aggregate public key. Let's get the last years worth of them. 
         let signer_script_pubkeys: HashSet<ScriptBuf> = self
             .storage
             .get_signers_script_pubkeys()
@@ -201,6 +207,9 @@ where
             .map(ScriptBuf::from_bytes)
             .collect();
 
+        // Look through all of the UTXOs in the given transaction slice and
+        // keep the transactions where a UTXO is locked with a
+        // `scriptPubKey` controlled by the signers.
         let sbtc_txs = txs
             .iter()
             .filter(|tx| {
@@ -224,6 +233,7 @@ where
             .collect::<Result<Vec<model::Transaction>, _>>()
             .map_err(Error::BitcoinEncodeTransaction)?;
 
+        // Write these transactions into storage.
         self.storage.write_bitcoin_transactions(sbtc_txs).await?;
         Ok(())
     }
@@ -243,6 +253,8 @@ where
         Ok(())
     }
 
+    /// Write the bitcoin block to the database. We also write any
+    /// transactions that are spend to any of the signers `scriptPubKey`s
     async fn write_bitcoin_block(&mut self, block: &bitcoin::Block) -> Result<(), error::Error> {
         let db_block = model::BitcoinBlock {
             block_hash: block.block_hash().to_byte_array().to_vec(),
@@ -255,6 +267,8 @@ where
         };
 
         self.storage.write_bitcoin_block(&db_block).await?;
+        self.extract_sbtc_transactions(block.block_hash(), &block.txdata)
+            .await?;
 
         Ok(())
     }
