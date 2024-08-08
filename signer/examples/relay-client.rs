@@ -55,7 +55,7 @@ impl Args {
 async fn main() {
     let args = Args::parse();
 
-    sbtc_common::logging::setup_logging(args.pretty_logs);
+    sbtc::logging::setup_logging("info,signer=debug,relay-client=debug", args.pretty_logs);
 
     let mut client = grpc_relay::RelayClient::connect(args.address())
         .await

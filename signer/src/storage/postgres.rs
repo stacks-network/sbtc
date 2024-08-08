@@ -10,7 +10,6 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::error::Error;
 use crate::storage::model;
-use crate::storage::model::Transaction;
 use crate::storage::model::TransactionType;
 
 const CONTRACT_NAMES: [&str; 4] = [
@@ -48,7 +47,7 @@ fn contract_transaction_kinds() -> &'static HashMap<&'static str, TransactionTyp
 
 /// This function extracts the signer relevant sBTC related transactions
 /// from the given blocks.
-pub fn extract_relevant_transactions(blocks: &[NakamotoBlock]) -> Vec<Transaction> {
+pub fn extract_relevant_transactions(blocks: &[NakamotoBlock]) -> Vec<model::Transaction> {
     let transaction_kinds = contract_transaction_kinds();
     blocks
         .iter()
@@ -57,7 +56,7 @@ pub fn extract_relevant_transactions(blocks: &[NakamotoBlock]) -> Vec<Transactio
             TransactionPayload::ContractCall(x)
                 if CONTRACT_NAMES.contains(&x.contract_name.as_str()) =>
             {
-                Some(Transaction {
+                Some(model::Transaction {
                     txid: tx.txid().to_bytes().to_vec(),
                     block_hash: block_id.to_bytes().to_vec(),
                     tx: tx.serialize_to_vec(),
@@ -96,6 +95,91 @@ impl PgStore {
     /// Connect to the Postgres database at `url`.
     pub async fn connect(url: &str) -> Result<Self, sqlx::Error> {
         Ok(Self(sqlx::PgPool::connect(url).await?))
+    }
+
+    async fn get_stacks_chain_tip(
+        &self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<Option<model::StacksBlockHash>, Error> {
+        sqlx::query_as!(
+            model::StacksBlock,
+            r#"
+             SELECT
+                 stacks_blocks.block_hash
+               , stacks_blocks.block_height
+               , stacks_blocks.parent_hash
+               , stacks_blocks.created_at
+             FROM sbtc_signer.stacks_blocks stacks_blocks
+             JOIN sbtc_signer.bitcoin_blocks bitcoin_blocks
+                 ON bitcoin_blocks.confirms @> ARRAY[stacks_blocks.block_hash]
+             WHERE bitcoin_blocks.block_hash = $1
+            ORDER BY block_height DESC, block_hash DESC
+            LIMIT 1;
+            "#,
+            bitcoin_chain_tip
+        )
+        .fetch_optional(&self.0)
+        .await
+        .map(|maybe_block| maybe_block.map(|block| block.block_hash))
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn write_transactions(
+        &self,
+        txs: Vec<model::Transaction>,
+    ) -> Result<model::TransactionIds, Error> {
+        if txs.is_empty() {
+            return Ok(model::TransactionIds {
+                tx_ids: Vec::new(),
+                block_hashes: Vec::new(),
+            });
+        }
+
+        let mut tx_ids = Vec::with_capacity(txs.len());
+        let mut txs_bytes = Vec::with_capacity(txs.len());
+        let mut tx_types = Vec::with_capacity(txs.len());
+        let mut block_hashes = Vec::with_capacity(txs.len());
+
+        for tx in txs {
+            tx_ids.push(tx.txid);
+            txs_bytes.push(tx.tx);
+            tx_types.push(tx.tx_type.to_string());
+            block_hashes.push(tx.block_hash)
+        }
+
+        sqlx::query!(
+            r#"
+            WITH tx_ids AS (
+                SELECT ROW_NUMBER() OVER (), txid
+                FROM UNNEST($1::bytea[]) AS txid
+            )
+            , txs AS (
+                SELECT ROW_NUMBER() OVER (), tx
+                FROM UNNEST($2::bytea[]) AS tx
+            )
+            , transaction_types AS (
+                SELECT ROW_NUMBER() OVER (), tx_type::sbtc_signer.transaction_type
+                FROM UNNEST($3::VARCHAR[]) AS tx_type
+            )
+            INSERT INTO sbtc_signer.transactions (txid, tx, tx_type, created_at)
+            SELECT
+                txid
+              , tx
+              , tx_type
+              , CURRENT_TIMESTAMP
+            FROM tx_ids 
+            JOIN txs USING (row_number)
+            JOIN transaction_types USING (row_number)
+            ON CONFLICT DO NOTHING"#,
+            &tx_ids,
+            &txs_bytes,
+            &tx_types,
+        )
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(model::TransactionIds { tx_ids, block_hashes })
     }
 }
 
@@ -590,20 +674,20 @@ impl super::DbRead for PgStore {
         &self,
         aggregate_key: &model::PubKey,
     ) -> Result<Option<model::EncryptedDkgShares>, Self::Error> {
-        sqlx::query_as!(
-            model::EncryptedDkgShares,
+        sqlx::query_as::<_, model::EncryptedDkgShares>(
             r#"
             SELECT
                 aggregate_key
               , tweaked_aggregate_key
+              , script_pubkey
               , encrypted_private_shares
               , public_shares
               , created_at
             FROM sbtc_signer.dkg_shares
             WHERE aggregate_key = $1;
             "#,
-            aggregate_key,
         )
+        .bind(aggregate_key)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -651,6 +735,19 @@ impl super::DbRead for PgStore {
             stacks_chain_tip.block_hash,
         )
         .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_signers_script_pubkeys(&self) -> Result<Vec<model::Bytes>, Self::Error> {
+        sqlx::query_scalar::<_, model::Bytes>(
+            r#"
+            SELECT script_pubkey
+            FROM sbtc_signer.dkg_shares
+            WHERE created_at > CURRENT_TIMESTAMP - INTERVAL '365 DAYS';
+            "#,
+        )
+        .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }
@@ -730,6 +827,94 @@ impl super::DbWrite for PgStore {
             &deposit_request.sender_addresses,
             deposit_request.created_at,
         )
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
+    }
+
+    async fn write_deposit_requests(
+        &self,
+        deposit_requests: Vec<model::DepositRequest>,
+    ) -> Result<(), Self::Error> {
+        if deposit_requests.is_empty() {
+            return Ok(());
+        }
+
+        let mut txid = Vec::with_capacity(deposit_requests.len());
+        let mut output_index = Vec::with_capacity(deposit_requests.len());
+        let mut spend_script = Vec::with_capacity(deposit_requests.len());
+        let mut reclaim_script = Vec::with_capacity(deposit_requests.len());
+        let mut recipient = Vec::with_capacity(deposit_requests.len());
+        let mut amount = Vec::with_capacity(deposit_requests.len());
+        let mut max_fee = Vec::with_capacity(deposit_requests.len());
+        let mut sender_addresses = Vec::with_capacity(deposit_requests.len());
+
+        for req in deposit_requests {
+            txid.push(req.txid);
+            output_index.push(req.output_index);
+            spend_script.push(req.spend_script);
+            reclaim_script.push(req.reclaim_script);
+            recipient.push(req.recipient);
+            amount.push(req.amount);
+            max_fee.push(req.max_fee);
+            // We need to join the addresses like this (and later split
+            // them), because handling of multidimensional arrays in
+            // postgres is tough. The naive approach of doing
+            // UNNEST($1::VARCHAR[][]) doesn't work, since that completely
+            // flattens the array.
+            sender_addresses.push(req.sender_addresses.join(","));
+        }
+
+        sqlx::query(
+            r#"
+            WITH tx_ids       AS (SELECT ROW_NUMBER() OVER (), txid FROM UNNEST($1::BYTEA[]) AS txid)
+            , output_index    AS (SELECT ROW_NUMBER() OVER (), output_index FROM UNNEST($2::INTEGER[]) AS output_index)
+            , spend_script    AS (SELECT ROW_NUMBER() OVER (), spend_script FROM UNNEST($3::BYTEA[]) AS spend_script)
+            , reclaim_script  AS (SELECT ROW_NUMBER() OVER (), reclaim_script FROM UNNEST($4::BYTEA[]) AS reclaim_script)
+            , recipient       AS (SELECT ROW_NUMBER() OVER (), recipient FROM UNNEST($5::BYTEA[]) AS recipient)
+            , amount          AS (SELECT ROW_NUMBER() OVER (), amount FROM UNNEST($6::BIGINT[]) AS amount)
+            , max_fee         AS (SELECT ROW_NUMBER() OVER (), max_fee FROM UNNEST($7::BIGINT[]) AS max_fee)
+            , sender_address  AS (SELECT ROW_NUMBER() OVER (), sender_address FROM UNNEST($8::VARCHAR[]) AS sender_address)
+            INSERT INTO sbtc_signer.deposit_requests (
+                  txid
+                , output_index
+                , spend_script
+                , reclaim_script
+                , recipient
+                , amount
+                , max_fee
+                , sender_addresses
+                , created_at)
+            SELECT
+                txid
+              , output_index
+              , spend_script
+              , reclaim_script
+              , recipient
+              , amount
+              , max_fee
+              , regexp_split_to_array(sender_address, ',')
+              , CURRENT_TIMESTAMP
+            FROM tx_ids
+            JOIN output_index USING (row_number)
+            JOIN spend_script USING (row_number)
+            JOIN reclaim_script USING (row_number)
+            JOIN recipient USING (row_number)
+            JOIN amount USING (row_number)
+            JOIN max_fee USING (row_number)
+            JOIN sender_address USING (row_number)
+            ON CONFLICT DO NOTHING"#,
+        )
+        .bind(txid)
+        .bind(output_index)
+        .bind(spend_script)
+        .bind(reclaim_script)
+        .bind(recipient)
+        .bind(amount)
+        .bind(max_fee)
+        .bind(sender_addresses)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -856,6 +1041,41 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
+    async fn write_bitcoin_transactions(
+        &self,
+        txs: Vec<model::Transaction>,
+    ) -> Result<(), Self::Error> {
+        let summary = self.write_transactions(txs).await?;
+        if summary.tx_ids.is_empty() {
+            return Ok(());
+        }
+        sqlx::query(
+            r#"
+            WITH tx_ids AS (
+                SELECT ROW_NUMBER() OVER (), txid
+                FROM UNNEST($1::bytea[]) AS txid
+            )
+            , block_ids AS (
+                SELECT ROW_NUMBER() OVER (), block_id
+                FROM UNNEST($2::bytea[]) AS block_id
+            )
+            INSERT INTO sbtc_signer.bitcoin_transactions (txid, block_hash)
+            SELECT
+                txid
+              , block_id
+            FROM tx_ids 
+            JOIN block_ids USING (row_number)
+            ON CONFLICT DO NOTHING"#,
+        )
+        .bind(&summary.tx_ids)
+        .bind(&summary.block_hashes)
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
+    }
+
     async fn write_stacks_transaction(
         &self,
         stacks_transaction: &model::StacksTransaction,
@@ -874,57 +1094,14 @@ impl super::DbWrite for PgStore {
 
     async fn write_stacks_transactions(
         &self,
-        stx_txs: Vec<model::Transaction>,
+        txs: Vec<model::Transaction>,
     ) -> Result<(), Self::Error> {
-        if stx_txs.is_empty() {
+        let summary = self.write_transactions(txs).await?;
+        if summary.tx_ids.is_empty() {
             return Ok(());
         }
 
-        let mut tx_ids = Vec::with_capacity(stx_txs.len());
-        let mut txs = Vec::with_capacity(stx_txs.len());
-        let mut tx_types = Vec::with_capacity(stx_txs.len());
-        let mut block_ids = Vec::with_capacity(stx_txs.len());
-
-        for stx in stx_txs {
-            tx_ids.push(stx.txid);
-            txs.push(stx.tx);
-            tx_types.push(stx.tx_type.to_string());
-            block_ids.push(stx.block_hash)
-        }
-
-        sqlx::query!(
-            r#"
-            WITH tx_ids AS (
-                SELECT ROW_NUMBER() OVER (), txid
-                FROM UNNEST($1::bytea[]) AS txid
-            )
-            , txs AS (
-                SELECT ROW_NUMBER() OVER (), tx
-                FROM UNNEST($2::bytea[]) AS tx
-            )
-            , transaction_types AS (
-                SELECT ROW_NUMBER() OVER (), tx_type::sbtc_signer.transaction_type
-                FROM UNNEST($3::VARCHAR[]) AS tx_type
-            )
-            INSERT INTO sbtc_signer.transactions (txid, tx, tx_type, created_at)
-            SELECT
-                txid
-              , tx
-              , tx_type
-              , CURRENT_TIMESTAMP
-            FROM tx_ids 
-            JOIN txs USING (row_number)
-            JOIN transaction_types USING (row_number)
-            ON CONFLICT DO NOTHING"#,
-            &tx_ids,
-            &txs,
-            &tx_types,
-        )
-        .execute(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
-        sqlx::query!(
+        sqlx::query(
             r#"
             WITH tx_ids AS (
                 SELECT ROW_NUMBER() OVER (), txid
@@ -941,9 +1118,9 @@ impl super::DbWrite for PgStore {
             FROM tx_ids 
             JOIN block_ids USING (row_number)
             ON CONFLICT DO NOTHING"#,
-            &tx_ids,
-            &block_ids,
         )
+        .bind(&summary.tx_ids)
+        .bind(&summary.block_hashes)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1008,19 +1185,20 @@ impl super::DbWrite for PgStore {
         &self,
         shares: &model::EncryptedDkgShares,
     ) -> Result<(), Self::Error> {
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO sbtc_signer.dkg_shares
-                (aggregate_key, tweaked_aggregate_key, encrypted_private_shares, public_shares, created_at)
+                (aggregate_key, tweaked_aggregate_key, encrypted_private_shares, public_shares, script_pubkey, created_at)
             VALUES
-                ($1, $2, $3, $4, $5)
+                ($1, $2, $3, $4, $5, $6)
             "#,
-            shares.aggregate_key,
-            shares.tweaked_aggregate_key,
-            shares.encrypted_private_shares,
-            shares.public_shares,
-            shares.created_at,
         )
+        .bind(&shares.aggregate_key)
+        .bind(&shares.tweaked_aggregate_key)
+        .bind(&shares.encrypted_private_shares)
+        .bind(&shares.public_shares)
+        .bind(&shares.script_pubkey)
+        .bind(shares.created_at)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

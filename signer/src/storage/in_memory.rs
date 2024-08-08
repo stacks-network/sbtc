@@ -338,7 +338,7 @@ impl super::DbRead for SharedStore {
             .lock()
             .await
             .stacks_nakamoto_blocks
-            .contains_key(&block_id.to_bytes().to_vec()))
+            .contains_key(block_id.to_bytes().as_slice()))
     }
 
     async fn get_encrypted_dkg_shares(
@@ -378,6 +378,16 @@ impl super::DbRead for SharedStore {
             .cloned(),
         )
     }
+
+    async fn get_signers_script_pubkeys(&self) -> Result<Vec<model::Bytes>, Self::Error> {
+        Ok(self
+            .lock()
+            .await
+            .encrypted_dkg_shares
+            .values()
+            .map(|share| share.script_pubkey.clone())
+            .collect())
+    }
 }
 
 impl super::DbWrite for SharedStore {
@@ -388,6 +398,21 @@ impl super::DbWrite for SharedStore {
             .await
             .bitcoin_blocks
             .insert(block.block_hash.clone(), block.clone());
+
+        Ok(())
+    }
+
+    async fn write_bitcoin_transactions(
+        &self,
+        txs: Vec<model::Transaction>,
+    ) -> Result<(), Self::Error> {
+        for tx in txs {
+            let bitcoin_transaction = model::BitcoinTransaction {
+                txid: tx.txid,
+                block_hash: tx.block_hash,
+            };
+            self.write_bitcoin_transaction(&bitcoin_transaction).await?;
+        }
 
         Ok(())
     }
@@ -410,6 +435,19 @@ impl super::DbWrite for SharedStore {
             deposit_request.clone(),
         );
 
+        Ok(())
+    }
+
+    async fn write_deposit_requests(
+        &self,
+        deposit_requests: Vec<model::DepositRequest>,
+    ) -> Result<(), Self::Error> {
+        let mut store = self.lock().await;
+        for req in deposit_requests.into_iter() {
+            store
+                .deposit_requests
+                .insert((req.txid.clone(), req.output_index), req);
+        }
         Ok(())
     }
 

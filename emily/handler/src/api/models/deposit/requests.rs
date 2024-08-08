@@ -9,9 +9,12 @@ use crate::api::models::common::*;
 #[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetDepositsForTransactionQuery {
-    /// Pagination data.
-    #[serde(flatten)]
-    pagination_data: requests::PaginatedQuery<String>,
+    /// Next token for the search.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_token: Option<String>,
+    /// Maximum number of results to show.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<i32>,
 }
 
 /// Query structure for the GetDepositsQuery struct.
@@ -19,10 +22,13 @@ pub struct GetDepositsForTransactionQuery {
 #[serde(rename_all = "camelCase")]
 pub struct GetDepositsQuery {
     /// Operation status.
-    status: Status,
-    /// Pagination data.
-    #[serde(flatten)]
-    pagination_data: requests::PaginatedQuery<String>,
+    pub status: Status,
+    /// Next token for the search.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_token: Option<String>,
+    /// Maximum number of results to show.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<i32>,
 }
 
 /// Request structure for create deposit request.

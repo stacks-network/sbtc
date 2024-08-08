@@ -7,9 +7,10 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - "./devenv/dynamodb/data:/home/dynamodblocal/data"
+      - "${DYNAMODB_DB_DIR}:/home/dynamodblocal/data"
     networks:
       - aws-local-vpc
+
 
   # Modifies the CDK template and creates DynamoDB Tables if necessary.
   aws-setup:

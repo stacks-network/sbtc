@@ -134,7 +134,7 @@
     (
       (id (increment-last-withdrawal-request-id))
     )
-    (try! (validate-caller))
+    (try! (is-protocol-caller))
     ;; #[allow(unchecked_data)]
     (map-insert withdrawal-requests id {
       amount: amount,
@@ -167,7 +167,7 @@
     (fee (optional uint))
   )
   (begin 
-    (try! (validate-caller))
+    (try! (is-protocol-caller))
     ;; Mark the withdrawal as completed
     (map-insert withdrawal-status request-id status)
     (print {
@@ -198,7 +198,7 @@
     (recipient principal)
   )
   (begin
-    (try! (validate-caller))
+    (try! (is-protocol-caller))
     (map-insert completed-deposits {txid: txid, vout-index: vout-index} {
       amount: amount,
       recipient: recipient
@@ -219,7 +219,7 @@
 (define-public (rotate-keys (new-keys (list 128 (buff 33))) (new-address principal) (new-aggregate-pubkey (buff 33)))
   (begin
     ;; Check that caller is protocol contract
-    (try! (validate-caller))
+    (try! (is-protocol-caller))
     ;; Check that the aggregate pubkey is not already in the map
     (asserts! (map-insert aggregate-pubkeys new-aggregate-pubkey true) ERR_AGG_PUBKEY_REPLAY)
     ;; Check that the new address (multi-sig) is not already in the map
@@ -247,20 +247,12 @@
   )
 )
 
-;; Validate the caller of the function.
-;; TODO: Once other contracts are in place, update this
-;; to use the sBTC controller.
-(define-private (validate-caller)
-  ;; To provide an explicit error type, add a branch that
-  ;; wont be hit
-  ;; (if (is-eq contract-caller .controller) (ok true) (err ERR_UNAUTHORIZED))
-  (if false ERR_UNAUTHORIZED (ok true))
-)
-
 ;; Checks whether the contract-caller is a protocol contract
-(define-read-only (is-protocol-caller (principal-checked principal))
-  (is-some (map-get? protocol-contracts principal-checked))
+(define-read-only (is-protocol-caller)
+  (validate-protocol-caller contract-caller)
 )
 
-;; TODO: Add a function to add a protocol contract
-;; TODO: Add a function to remove a protocol contract
+;; Validate that a given principal is a protocol contract
+(define-read-only (validate-protocol-caller (caller principal))
+  (ok (asserts! (is-some (map-get? protocol-contracts caller)) ERR_UNAUTHORIZED))
+)

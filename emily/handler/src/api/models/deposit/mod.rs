@@ -11,7 +11,20 @@ pub mod requests;
 pub mod responses;
 
 /// Deposit.
-#[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
+#[derive(
+    Clone,
+    Default,
+    Debug,
+    Eq,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    ToResponse,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Deposit {
     /// Bitcoin transaction id.
@@ -42,7 +55,20 @@ pub struct Deposit {
 }
 
 /// Deposit parameters.
-#[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
+#[derive(
+    Clone,
+    Default,
+    Debug,
+    Eq,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    ToResponse,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct DepositParameters {
     /// Maximum fee the signers are allowed to take from the deposit to facilitate
@@ -55,7 +81,20 @@ pub struct DepositParameters {
 }
 
 /// Reduced version of the Deposit data.
-#[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
+#[derive(
+    Clone,
+    Default,
+    Debug,
+    Eq,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    ToResponse,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct DepositInfo {
     /// Bitcoin transaction id.
@@ -76,4 +115,19 @@ pub struct DepositInfo {
     pub last_update_block_hash: StacksBlockHash,
     /// The status of the deposit.
     pub status: Status,
+}
+
+/// Create a DepositInfo, which has a subset of the data within a Deposit, from a Deposit.
+impl From<Deposit> for DepositInfo {
+    fn from(deposit: Deposit) -> Self {
+        DepositInfo {
+            bitcoin_txid: deposit.bitcoin_txid,
+            bitcoin_tx_output_index: deposit.bitcoin_tx_output_index,
+            recipient: deposit.recipient,
+            amount: deposit.amount,
+            last_update_height: deposit.last_update_height,
+            last_update_block_hash: deposit.last_update_block_hash,
+            status: deposit.status,
+        }
+    }
 }

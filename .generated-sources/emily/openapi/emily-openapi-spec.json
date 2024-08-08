@@ -10,6 +10,41 @@
   },
   "paths": {
     "/chainstate": {
+      "get": {
+        "tags": [
+          "chainstate"
+        ],
+        "summary": "Get chain tip handler.",
+        "operationId": "getChainTip",
+        "responses": {
+          "200": {
+            "description": "Chain tip retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetChainstateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
       "post": {
         "tags": [
           "chainstate"
@@ -113,7 +148,7 @@
           "chainstate"
         ],
         "summary": "Get chainstate handler.",
-        "operationId": "getChainstate",
+        "operationId": "getChainstateAtHeight",
         "parameters": [
           {
             "name": "height",
@@ -485,6 +520,39 @@
         }
       }
     },
+    "/testing/wipe": {
+      "post": {
+        "tags": [
+          "testing"
+        ],
+        "summary": "Wipe databases handler.",
+        "operationId": "wipeDatabases",
+        "responses": {
+          "204": {
+            "description": "Successfully wiped databases."
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
     "/withdrawal": {
       "get": {
         "tags": [
@@ -697,16 +765,16 @@
     "schemas": {
       "Chainstate": {
         "type": "object",
-        "description": "Deposit.",
+        "description": "Chainstate.",
         "required": [
-          "blockHeight",
-          "blockHash"
+          "stacksBlockHeight",
+          "stacksBlockHash"
         ],
         "properties": {
-          "blockHash": {
+          "stacksBlockHash": {
             "$ref": "#/components/schemas/StacksBlockHash"
           },
-          "blockHeight": {
+          "stacksBlockHeight": {
             "$ref": "#/components/schemas/BlockHeight"
           }
         }
@@ -740,8 +808,7 @@
         "description": "Request structure for the create withdrawal request.",
         "required": [
           "requestId",
-          "blockHash",
-          "blockHeight",
+          "stacksBlockHash",
           "recipient",
           "amount",
           "parameters"
@@ -749,12 +816,6 @@
         "properties": {
           "amount": {
             "$ref": "#/components/schemas/Satoshis"
-          },
-          "blockHash": {
-            "$ref": "#/components/schemas/StacksBlockHash"
-          },
-          "blockHeight": {
-            "$ref": "#/components/schemas/BlockHeight"
           },
           "parameters": {
             "$ref": "#/components/schemas/WithdrawalParameters"
@@ -764,6 +825,9 @@
           },
           "requestId": {
             "$ref": "#/components/schemas/WithdrawalId"
+          },
+          "stacksBlockHash": {
+            "$ref": "#/components/schemas/StacksBlockHash"
           }
         }
       },
@@ -1116,8 +1180,8 @@
         "description": "Withdrawal.",
         "required": [
           "requestId",
-          "blockHash",
-          "blockHeight",
+          "stacksBlockHash",
+          "stacksBlockHeight",
           "recipient",
           "amount",
           "lastUpdateHeight",
@@ -1129,12 +1193,6 @@
         "properties": {
           "amount": {
             "$ref": "#/components/schemas/Satoshis"
-          },
-          "blockHash": {
-            "$ref": "#/components/schemas/StacksBlockHash"
-          },
-          "blockHeight": {
-            "$ref": "#/components/schemas/BlockHeight"
           },
           "fulfillment": {
             "allOf": [
@@ -1159,6 +1217,12 @@
           "requestId": {
             "$ref": "#/components/schemas/WithdrawalId"
           },
+          "stacksBlockHash": {
+            "$ref": "#/components/schemas/StacksBlockHash"
+          },
+          "stacksBlockHeight": {
+            "$ref": "#/components/schemas/BlockHeight"
+          },
           "status": {
             "$ref": "#/components/schemas/Status"
           },
@@ -1173,8 +1237,8 @@
         "description": "Reduced version of the Withdrawal.",
         "required": [
           "requestId",
-          "blockHash",
-          "blockHeight",
+          "stacksBlockHash",
+          "stacksBlockHeight",
           "recipient",
           "amount",
           "lastUpdateHeight",
@@ -1184,12 +1248,6 @@
         "properties": {
           "amount": {
             "$ref": "#/components/schemas/Satoshis"
-          },
-          "blockHash": {
-            "$ref": "#/components/schemas/StacksBlockHash"
-          },
-          "blockHeight": {
-            "$ref": "#/components/schemas/BlockHeight"
           },
           "lastUpdateBlockHash": {
             "$ref": "#/components/schemas/StacksBlockHash"
@@ -1202,6 +1260,12 @@
           },
           "requestId": {
             "$ref": "#/components/schemas/WithdrawalId"
+          },
+          "stacksBlockHash": {
+            "$ref": "#/components/schemas/StacksBlockHash"
+          },
+          "stacksBlockHeight": {
+            "$ref": "#/components/schemas/BlockHeight"
           },
           "status": {
             "$ref": "#/components/schemas/Status"

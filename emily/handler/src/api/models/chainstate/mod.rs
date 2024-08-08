@@ -10,12 +10,25 @@ pub mod requests;
 /// Responses.
 pub mod responses;
 
-/// Deposit.
-#[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
+/// Chainstate.
+#[derive(
+    Clone,
+    Default,
+    Debug,
+    Eq,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    ToResponse,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Chainstate {
     /// Stacks block height.
-    pub block_height: BlockHeight,
+    pub stacks_block_height: BlockHeight,
     /// Stacks block hash at the height.
-    pub block_hash: StacksBlockHash,
+    pub stacks_block_hash: StacksBlockHash,
 }

@@ -4,6 +4,7 @@ import {
   deployer,
   deposit,
   errors,
+  randomPublicKeys,
   registry,
   stxAddressToPoxAddress,
   token,
@@ -429,7 +430,7 @@ describe("Accepting a withdrawal request", () => {
     );
     expect(rovOk(token.getBalance(alice))).toEqual(1n);
   });
-})
+});
 
 describe("Reject a withdrawal request", () => {
   test("Fails with non-existant request-id", () => {
@@ -557,7 +558,7 @@ describe("Reject a withdrawal request", () => {
     );
     expect(receipt.value).toEqual(true);
   });
-})
+});
 
 describe("Complete multiple withdrawals", () => {
   test("Successfully pass in two withdrawals, one accept, one reject", () => {
@@ -597,26 +598,74 @@ describe("Complete multiple withdrawals", () => {
       }),
       bob
     );
-    // 
+    //
     const receipt = txOk(
-      withdrawal.completeWithdrawals({withdrawals: [{
-          requestId: 1n,
-          status: true,
-          signerBitmap: 1n,
-          bitcoinTxid: new Uint8Array(32).fill(1),
-          outputIndex: 10n,
-          fee: 10n,
-        },{
-          requestId: 2n,
-          status: false,
-          signerBitmap: 1n,
-          bitcoinTxid: null,
-          outputIndex: null,
-          fee: null,
-        } ]
+      withdrawal.completeWithdrawals({
+        withdrawals: [
+          {
+            requestId: 1n,
+            status: true,
+            signerBitmap: 1n,
+            bitcoinTxid: new Uint8Array(32).fill(1),
+            outputIndex: 10n,
+            fee: 10n,
+          },
+          {
+            requestId: 2n,
+            status: false,
+            signerBitmap: 1n,
+            bitcoinTxid: null,
+            outputIndex: null,
+            fee: null,
+          },
+        ],
       }),
       deployer
     );
     expect(receipt.value).toEqual(2n);
   });
-})
+});
+
+describe("optimization tests for completing withdrawals", () => {
+  test("maximizing the number of withdrawal completions in one tx", () => {
+    const totalAmount = 1000000n;
+    const runs = 500;
+    const perAmount = totalAmount / BigInt(runs);
+    const txids = randomPublicKeys(runs).map((pk) => pk.slice(0, 32));
+    for (let index = 0; index < runs; index++) {
+      const txid = txids[index];
+      txOk(
+        deposit.completeDepositWrapper({
+          txid,
+          voutIndex: 0,
+          amount: perAmount,
+          recipient: alice,
+        }),
+        deployer
+      );
+      txOk(
+        withdrawal.initiateWithdrawalRequest({
+          amount: perAmount,
+          recipient: alicePoxAddr,
+          maxFee: 10n,
+        }),
+        alice
+      );
+    }
+    txOk(
+      withdrawal.completeWithdrawals(
+        txids.map((txid, index) => {
+          return {
+            requestId: index + 1,
+            status: true,
+            signerBitmap: 1n,
+            bitcoinTxid: txid,
+            outputIndex: 0n,
+            fee: 10n,
+          };
+        })
+      ),
+      deployer
+    );
+  });
+});

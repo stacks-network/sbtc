@@ -48,7 +48,7 @@ pub trait AsContractDeploy {
 /// A wrapper type for smart contract deployment that implements
 /// AsTxPayload. This is analogous to the
 /// crate::stacks::contracts::ContractCall struct.
-pub struct ContractDeploy<T: AsContractDeploy>(pub T);
+pub struct ContractDeploy<T>(pub T);
 
 impl<T: AsContractDeploy> AsTxPayload for ContractDeploy<T> {
     fn tx_payload(&self) -> TransactionPayload {

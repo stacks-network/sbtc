@@ -26,4 +26,3 @@ pub struct UpdateWithdrawalsResponse {
     /// Updated withdrawals.
     pub withdrawals: Vec<super::Withdrawal>,
 }
-

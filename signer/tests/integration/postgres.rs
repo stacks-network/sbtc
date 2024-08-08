@@ -1,11 +1,13 @@
 use std::io::Read;
 
+use bitcoin::hashes::Hash as _;
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
+use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::Value;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
-use blockstack_lib::types::Address;
+use futures::StreamExt;
 
 use signer::network;
 use signer::stacks::contracts::AcceptWithdrawalV1;
@@ -19,14 +21,13 @@ use signer::storage;
 use signer::storage::model;
 use signer::storage::postgres::PgStore;
 use signer::testing;
-
-use test_case::test_case;
-
-use bitcoin::hashes::Hash;
-use futures::StreamExt;
-use rand::SeedableRng;
 use signer::storage::DbRead;
 use signer::storage::DbWrite;
+
+use fake::Fake;
+use rand::SeedableRng;
+use test_case::test_case;
+
 
 const DATABASE_URL: &str = "postgres://user:password@localhost:5432/signer";
 
@@ -98,6 +99,7 @@ impl AsContractCall for InitiateWithdrawalRequest {
         Vec::new()
     }
 }
+
 /// Test that the write_stacks_blocks function does what it is supposed to
 /// do, which is store all stacks blocks and store the transactions that we
 /// care about, which, naturally, are sBTC related transactions.
@@ -106,19 +108,25 @@ impl AsContractCall for InitiateWithdrawalRequest {
 #[test_case(ContractCall(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654,
-    recipient: StacksAddress::from_string("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
+    recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
     deployer: testing::wallet::generate_wallet().0.address(),
-}); "complete-deposit")]
+}); "complete-deposit standard recipient")]
+#[test_case(ContractCall(CompleteDepositV1 {
+    outpoint: bitcoin::OutPoint::null(),
+    amount: 123654,
+    recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y.my-contract-name").unwrap(),
+    deployer: testing::wallet::generate_wallet().0.address(),
+}); "complete-deposit contract recipient")]
 #[test_case(ContractCall(AcceptWithdrawalV1 {
     request_id: 0,
     outpoint: bitcoin::OutPoint::null(),
     tx_fee: 3500,
-    signer_bitmap: BitArray::new([0; 2]),
+    signer_bitmap: BitArray::ZERO,
     deployer: testing::wallet::generate_wallet().0.address(),
 }); "accept-withdrawal")]
 #[test_case(ContractCall(RejectWithdrawalV1 {
     request_id: 0,
-    signer_bitmap: BitArray::new([0; 2]),
+    signer_bitmap: BitArray::ZERO,
     deployer: testing::wallet::generate_wallet().0.address(),
 }); "reject-withdrawal")]
 #[test_case(ContractCall(RotateKeysV1::new(
@@ -564,4 +572,119 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store(pool: sqlx:
         last_key_rotation_pg.as_ref().unwrap().signer_set,
         last_key_rotation_in_memory.as_ref().unwrap().signer_set
     );
+}
+
+/// Here we test that we can store deposit request model objects. We also
+/// test that if we attempt to write another deposit request then we do not
+/// write it and that we do not error.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[sqlx::test]
+async fn writing_deposit_requests_postgres(pool: sqlx::PgPool) {
+    let num_rows = 15;
+    let store = storage::postgres::PgStore::from(pool.clone());
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let deposit_requests: Vec<model::DepositRequest> =
+        std::iter::repeat_with(|| fake::Faker.fake_with_rng(&mut rng))
+            .take(num_rows)
+            .collect();
+
+    // Let's see if we can write these rows to the database.
+    store
+        .write_deposit_requests(deposit_requests.clone())
+        .await
+        .unwrap();
+    let count =
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.deposit_requests"#)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    // Were they all written?
+    assert_eq!(num_rows, count as usize);
+
+    // Okay now lets test that we do not write duplicates.
+    store
+        .write_deposit_requests(deposit_requests)
+        .await
+        .unwrap();
+    let count =
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.deposit_requests"#)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+    // No new records written right?
+    assert_eq!(num_rows, count as usize);
+}
+
+/// This is very similar to the above test; we test that we can store
+/// transaction model objects. We also test that if we attempt to write
+/// duplicate transactions then we do not write it and that we do not
+/// error.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[sqlx::test]
+async fn writing_transactions_postgres(pool: sqlx::PgPool) {
+    let num_rows = 12;
+    let store = storage::postgres::PgStore::from(pool.clone());
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut txs: Vec<model::Transaction> =
+        std::iter::repeat_with(|| fake::Faker.fake_with_rng(&mut rng))
+            .take(num_rows)
+            .collect();
+
+    let parent_hash = bitcoin::BlockHash::from_byte_array([0; 32]);
+    let block_hash = bitcoin::BlockHash::from_byte_array([1; 32]);
+
+    txs.iter_mut().for_each(|tx| {
+        tx.block_hash = block_hash.to_byte_array().to_vec();
+    });
+
+    let db_block = model::BitcoinBlock {
+        block_hash: block_hash.to_byte_array().to_vec(),
+        block_height: 15,
+        parent_hash: parent_hash.to_byte_array().to_vec(),
+        confirms: Vec::new(),
+        created_at: time::OffsetDateTime::now_utc(),
+    };
+
+    // We start by writing the bitcoin block because of the foreign key
+    // constrait
+    store.write_bitcoin_block(&db_block).await.unwrap();
+
+    // Let's see if we can write these transactions to the database.
+    store.write_bitcoin_transactions(txs.clone()).await.unwrap();
+    let count =
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.bitcoin_transactions"#)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    // Were they all written?
+    assert_eq!(num_rows, count as usize);
+
+    // what about the transactions table, the same number of rows should
+    // have been written there as well.
+    let count = sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.transactions"#)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    assert_eq!(num_rows, count as usize);
+    // Okay now lets test that we do not write duplicates.
+    store.write_bitcoin_transactions(txs).await.unwrap();
+    let count =
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.bitcoin_transactions"#)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+    // No new records written right?
+    assert_eq!(num_rows, count as usize);
+
+    // what about duplicates in the transactions table.
+    let count = sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.transactions"#)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    // let's see, who knows what will happen!
+    assert_eq!(num_rows, count as usize);
 }

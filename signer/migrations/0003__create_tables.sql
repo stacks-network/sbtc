@@ -80,6 +80,7 @@ CREATE TABLE sbtc_signer.dkg_shares (
     tweaked_aggregate_key BYTEA NOT NULL,
     encrypted_private_shares BYTEA NOT NULL,
     public_shares BYTEA NOT NULL,
+    script_pubkey BYTEA NOT NULL,
     created_at TIMESTAMPTZ NOT NULL
 );
 
