@@ -10,7 +10,6 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::error::Error;
 use crate::storage::model;
-use crate::storage::model::Transaction;
 use crate::storage::model::TransactionType;
 
 const CONTRACT_NAMES: [&str; 4] = [
@@ -48,7 +47,7 @@ fn contract_transaction_kinds() -> &'static HashMap<&'static str, TransactionTyp
 
 /// This function extracts the signer relevant sBTC related transactions
 /// from the given blocks.
-pub fn extract_relevant_transactions(blocks: &[NakamotoBlock]) -> Vec<Transaction> {
+pub fn extract_relevant_transactions(blocks: &[NakamotoBlock]) -> Vec<model::Transaction> {
     let transaction_kinds = contract_transaction_kinds();
     blocks
         .iter()
@@ -57,7 +56,7 @@ pub fn extract_relevant_transactions(blocks: &[NakamotoBlock]) -> Vec<Transactio
             TransactionPayload::ContractCall(x)
                 if CONTRACT_NAMES.contains(&x.contract_name.as_str()) =>
             {
-                Some(Transaction {
+                Some(model::Transaction {
                     txid: tx.txid().to_bytes().to_vec(),
                     block_hash: block_id.to_bytes().to_vec(),
                     tx: tx.serialize_to_vec(),
