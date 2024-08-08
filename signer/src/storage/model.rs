@@ -87,7 +87,7 @@ pub struct DepositRequest {
     pub created_at: time::OffsetDateTime,
 }
 
-/// Used to for fine grained control of generating fake testing addresses.
+/// Used to for fine-grained control of generating fake testing addresses.
 #[cfg(feature = "testing")]
 #[derive(Debug)]
 pub struct BitcoinAddresses(Range<usize>);
@@ -140,7 +140,7 @@ pub struct DepositSigner {
     /// TxID of the deposit request.
     #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub txid: BitcoinTxId,
-    /// Ouput index of the deposit request.
+    /// Output index of the deposit request.
     #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
     pub output_index: i32,
     /// Public key of the signer.
@@ -160,12 +160,12 @@ pub struct DepositSigner {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct WithdrawRequest {
-    /// Request ID of the withdraw request.
+    /// Request ID of the withdrawal request.
     pub request_id: i32,
-    /// Stacks block hash of the withdraw request.
+    /// Stacks block hash of the withdrawal request.
     #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub block_hash: StacksBlockHash,
-    /// The address that shuld receive the BTC withdrawal.
+    /// The address that should receive the BTC withdrawal.
     pub recipient: BitcoinAddress,
     /// The amount to withdraw.
     pub amount: i64,
@@ -186,9 +186,9 @@ pub struct WithdrawRequest {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct WithdrawSigner {
-    /// Request ID of the withdraw request.
+    /// Request ID of the withdrawal request.
     pub request_id: i32,
-    /// Stacks block hash of the withdraw request.
+    /// Stacks block hash of the withdrawal request.
     #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub block_hash: StacksBlockHash,
     /// Public key of the signer.
@@ -222,6 +222,15 @@ pub struct StacksTransaction {
     pub block_hash: StacksBlockHash,
 }
 
+/// For writing to the stacks_transactions or bitcoin_transactions table.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TransactionIds {
+    /// Transaction IDs.
+    pub tx_ids: Vec<Vec<u8>>,
+    /// The blocks in which the transactions exist.
+    pub block_hashes: Vec<Vec<u8>>,
+}
+
 /// A raw transaction on either Bitcoin or Stacks.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
@@ -239,13 +248,15 @@ pub struct Transaction {
 }
 
 /// Persisted DKG shares
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct EncryptedDkgShares {
     /// The aggregate key for these shares
     pub aggregate_key: PubKey,
     /// The tweaked aggregate key for these shares
     pub tweaked_aggregate_key: PubKey,
+    /// The `scriptPubKey` for the aggregate public key.
+    pub script_pubkey: Bytes,
     /// The encrypted DKG shares
     pub encrypted_shares: Bytes,
     /// The time this entry was created by the signer.
@@ -262,15 +273,15 @@ pub enum TransactionType {
     SbtcTransaction,
     /// A deposit request transaction on Bitcoin.
     DepositRequest,
-    /// A withdraw request transaction on Stacks.
+    /// A withdrawal request transaction on Stacks.
     WithdrawRequest,
     /// A deposit accept transaction on Stacks.
     DepositAccept,
-    /// A withdraw accept transaction on Stacks.
+    /// A withdrawal accept transaction on Stacks.
     WithdrawAccept,
     /// A withdraw reject transaction on Stacks.
     WithdrawReject,
-    /// A update signer set call on Stacks.
+    /// An update signer set call on Stacks.
     UpdateSignerSet,
     /// A set aggregate key call on Stacks.
     SetAggregateKey,

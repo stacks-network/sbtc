@@ -39,11 +39,13 @@ impl ReorgScenario {
     }
 
     /// Lowest reorganized block height.
+    #[allow(dead_code)]
     fn lowest_reorganized_block_height(&self) -> u64 {
         self.initial_chain_length - self.reorg_depth
     }
 
     /// Creates a list of reorganized chainstates with the standard test block hash format.
+    #[allow(dead_code)]
     fn reorganized_chainstates(&self, fork_id: u32) -> Vec<Chainstate> {
         ((self.lowest_reorganized_block_height())..self.initial_chain_length)
             .map(|height| util::test_chainstate(height, fork_id))
@@ -81,7 +83,7 @@ async fn simple_reorg_test_base(scenario: ReorgScenario) {
     client.setup_test().await;
 
     // Identifier for the current fork.
-    let mut fork_id: u32 = 0;
+    let fork_id: u32 = 0;
 
     // Step 1: Make an initial fork.
     // -------------------------------------------------------------------------

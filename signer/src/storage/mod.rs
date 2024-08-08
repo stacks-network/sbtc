@@ -104,6 +104,11 @@ pub trait DbRead {
         &self,
         aggregate_key: &model::PubKey,
     ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Self::Error>> + Send;
+
+    /// Get the last 365 days worth of the signers' `scriptPubkey`s.
+    fn get_signers_script_pubkeys(
+        &self,
+    ) -> impl Future<Output = Result<Vec<model::Bytes>, Self::Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.
@@ -163,6 +168,12 @@ pub trait DbWrite {
     fn write_bitcoin_transaction(
         &self,
         bitcoin_transaction: &model::BitcoinTransaction,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+
+    /// Write the bitcoin transactions to the data store.
+    fn write_bitcoin_transactions(
+        &self,
+        txs: Vec<model::Transaction>,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     /// Write a connection between a stacks block and a transaction

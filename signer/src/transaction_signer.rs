@@ -8,6 +8,7 @@
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 
+use crate::bitcoin::utxo::SignerScriptPubkey as _;
 use crate::blocklist_client;
 use crate::error;
 use crate::message;
@@ -579,10 +580,7 @@ where
 
         let saved_state = state_machine.signer.save();
         let aggregate_key = saved_state.group_key.x().to_bytes().to_vec();
-        let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&saved_state.group_key, None)
-            .x()
-            .to_bytes()
-            .to_vec();
+        let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&saved_state.group_key, None);
 
         let encoded = saved_state.encode_to_vec().map_err(error::Error::Codec)?;
 
@@ -594,7 +592,8 @@ where
 
         let encrypted_dkg_shares = model::EncryptedDkgShares {
             aggregate_key,
-            tweaked_aggregate_key,
+            tweaked_aggregate_key: tweaked_aggregate_key.x().to_bytes().to_vec(),
+            script_pubkey: tweaked_aggregate_key.signers_script_pubkey().into_bytes(),
             encrypted_shares,
             created_at,
         };

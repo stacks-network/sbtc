@@ -343,6 +343,16 @@ impl super::DbRead for SharedStore {
             .get(aggregate_key)
             .cloned())
     }
+
+    async fn get_signers_script_pubkeys(&self) -> Result<Vec<model::Bytes>, Self::Error> {
+        Ok(self
+            .lock()
+            .await
+            .encrypted_dkg_shares
+            .values()
+            .map(|share| share.script_pubkey.clone())
+            .collect())
+    }
 }
 
 impl super::DbWrite for SharedStore {
@@ -353,6 +363,21 @@ impl super::DbWrite for SharedStore {
             .await
             .bitcoin_blocks
             .insert(block.block_hash.clone(), block.clone());
+
+        Ok(())
+    }
+
+    async fn write_bitcoin_transactions(
+        &self,
+        txs: Vec<model::Transaction>,
+    ) -> Result<(), Self::Error> {
+        for tx in txs {
+            let bitcoin_transaction = model::BitcoinTransaction {
+                txid: tx.txid,
+                block_hash: tx.block_hash,
+            };
+            self.write_bitcoin_transaction(&bitcoin_transaction).await?;
+        }
 
         Ok(())
     }
