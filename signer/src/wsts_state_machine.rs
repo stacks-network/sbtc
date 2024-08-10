@@ -282,9 +282,11 @@ impl CoordinatorStateMachine {
                 .map_err(coordinator_error)?;
         }
 
-        // Once we've processed all DKG shares for all participants in the
-        // signing round, WSTS moves the state to `DKG_PRIVATE_DISTRIBUTE`
-        // automatically.
+        // Once we've processed all DKG public shares for all participants,
+        // WSTS moves the state to `DKG_PRIVATE_DISTRIBUTE` automatically.
+        // If this fails then we no that there is a mismatch between the
+        // number of stored public shares and the size of the input
+        // `signers` variable.
         debug_assert_eq!(coordinator.0.state, WstsState::DkgPrivateDistribute);
 
         // Okay we've already gotten the private keys, we're just loading
