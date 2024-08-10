@@ -742,10 +742,12 @@ mod tests {
 
     impl StacksInteract for TestHarness {
         async fn get_account(&mut self, _address: &StacksAddress) -> Result<AccountInfo, Error> {
+            // issue #118
             todo!()
         }
 
         async fn submit_tx(&mut self, _tx: &StacksTransaction) -> Result<SubmitTxResponse, Error> {
+            // issue #118
             todo!()
         }
 
