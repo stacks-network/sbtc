@@ -118,7 +118,7 @@ impl super::DbRead for SharedStore {
             .confirms
             .iter()
             .filter_map(|stacks_block_hash| store.stacks_blocks.get(stacks_block_hash))
-            .max_by_key(|block| (block.block_height, block.block_hash.clone()))
+            .max_by_key(|block| (block.block_height, &block.block_hash))
             .cloned())
     }
 
@@ -251,7 +251,7 @@ impl super::DbRead for SharedStore {
                     .map(|opt| opt.map(|block| (block.clone(), block.parent_hash)))
             },
         )
-        .skip((context_window).try_into().unwrap_or_default())
+        .skip(context_window.try_into().unwrap_or_default())
         .boxed()
         .try_next()
         .await?;

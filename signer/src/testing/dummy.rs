@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use bitcoin::hashes::Hash;
+use bitcoin::hashes::Hash as _;
 use blockstack_lib::chainstate::{nakamoto, stacks};
 use fake::faker::time::en::DateTimeAfter;
 use fake::Fake;

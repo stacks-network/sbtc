@@ -20,14 +20,13 @@ use signer::stacks::contracts::RotateKeysV1;
 use signer::storage;
 use signer::storage::model;
 use signer::storage::postgres::PgStore;
-use signer::testing;
 use signer::storage::DbRead;
 use signer::storage::DbWrite;
+use signer::testing;
 
 use fake::Fake;
 use rand::SeedableRng;
 use test_case::test_case;
-
 
 const DATABASE_URL: &str = "postgres://user:password@localhost:5432/signer";
 

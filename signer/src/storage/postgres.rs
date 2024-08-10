@@ -1187,10 +1187,15 @@ impl super::DbWrite for PgStore {
     ) -> Result<(), Self::Error> {
         sqlx::query(
             r#"
-            INSERT INTO sbtc_signer.dkg_shares
-                (aggregate_key, tweaked_aggregate_key, encrypted_private_shares, public_shares, script_pubkey, created_at)
-            VALUES
-                ($1, $2, $3, $4, $5, $6)
+            INSERT INTO sbtc_signer.dkg_shares (
+                aggregate_key
+              , tweaked_aggregate_key
+              , encrypted_private_shares
+              , public_shares
+              , script_pubkey
+              , created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
             "#,
         )
         .bind(&shares.aggregate_key)
