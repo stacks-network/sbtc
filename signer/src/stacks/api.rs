@@ -18,6 +18,7 @@ use blockstack_lib::net::api::postfeerate::FeeRateEstimateRequestBody;
 use blockstack_lib::net::api::postfeerate::RPCFeeEstimateResponse;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::types::chainstate::StacksBlockId;
+use futures::TryFutureExt;
 use reqwest::header::CONTENT_LENGTH;
 use reqwest::header::CONTENT_TYPE;
 
@@ -113,7 +114,7 @@ pub trait StacksInteract {
     /// This function usually uses the POST /v2/fees/transaction endpoint
     /// of a stacks node.
     fn estimate_fees<T>(
-        &mut self,
+        &self,
         payload: &T,
         priority: FeePriority,
     ) -> impl Future<Output = Result<u64, Error>> + Send
@@ -546,7 +547,7 @@ impl StacksClient {
     /// Uses the GET /v3/tenures/info stacks node endpoint for retrieving
     /// tenure information.
     #[tracing::instrument(skip(self))]
-    pub async fn get_tenure_info(&mut self) -> Result<RPCGetTenureInfo, Error> {
+    pub async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
         let base = self.get_current_endpoint();
         let path = "/v3/tenures/info";
         let url = base
@@ -571,58 +572,38 @@ impl StacksClient {
     }
 }
 
+fn check_result<T>(client: &mut StacksClient, result: Result<T, Error>) -> Result<T, Error> {
+    match &result {
+        Err(Error::StacksNodeRequest(e)) => {
+            if e.is_timeout() || e.is_connect() {
+                client.next_endpoint();
+            }
+        }
+        Err(Error::StacksNodeResponse(e)) => {
+            if e.is_timeout() || e.is_connect() {
+                client.next_endpoint();
+            }
+        }
+        _ => (),
+    }
+    result
+}
+
 impl StacksInteract for StacksClient {
     async fn get_account(&mut self, address: &StacksAddress) -> Result<AccountInfo, Error> {
-        let result = StacksClient::get_account(self, address).await;
-        match result {
-            Err(Error::StacksNodeRequest(_)) | Err(Error::StacksNodeResponse(_)) => {
-                self.next_endpoint();
-            }
-            _ => (),
-        }
-        result
+        check_result(self, StacksClient::get_account(self, address).await)
     }
-
     async fn submit_tx(&mut self, tx: &StacksTransaction) -> Result<SubmitTxResponse, Error> {
-        let result = StacksClient::submit_tx(self, tx).await;
-        match result {
-            Err(Error::StacksNodeRequest(_)) | Err(Error::StacksNodeResponse(_)) => {
-                self.next_endpoint();
-            }
-            _ => (),
-        }
-        result
+        check_result(self, StacksClient::submit_tx(self, tx).await)
     }
-
     async fn get_block(&mut self, block_id: StacksBlockId) -> Result<NakamotoBlock, Error> {
-        let result = StacksClient::get_block(self, block_id).await;
-        match result {
-            Err(Error::StacksNodeRequest(_)) | Err(Error::StacksNodeResponse(_)) => {
-                self.next_endpoint();
-            }
-            _ => (),
-        }
-        result
+        check_result(self, StacksClient::get_block(self, block_id).await)
     }
     async fn get_tenure(&mut self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
-        let result = StacksClient::get_tenure(self, block_id).await;
-        match result {
-            Err(Error::StacksNodeRequest(_)) | Err(Error::StacksNodeResponse(_)) => {
-                self.next_endpoint();
-            }
-            _ => (),
-        }
-        result
+        check_result(self, StacksClient::get_tenure(self, block_id).await)
     }
     async fn get_tenure_info(&mut self) -> Result<RPCGetTenureInfo, Error> {
-        let result = StacksClient::get_tenure_info(self).await;
-        match result {
-            Err(Error::StacksNodeRequest(_)) | Err(Error::StacksNodeResponse(_)) => {
-                self.next_endpoint();
-            }
-            _ => (),
-        }
-        result
+        check_result(self, StacksClient::get_tenure_info(self).await)
     }
     /// Estimate the high priority transaction fee for the input
     /// transaction call given the current state of the mempool.
@@ -633,7 +614,7 @@ impl StacksInteract for StacksClient {
     /// have enough information to provide an estimate, we then get the
     /// current high priority fee for an STX transfer and use that as an
     /// estimate for the transaction fee.
-    async fn estimate_fees<T>(&mut self, payload: &T, priority: FeePriority) -> Result<u64, Error>
+    async fn estimate_fees<T>(&self, payload: &T, priority: FeePriority) -> Result<u64, Error>
     where
         T: AsTxPayload + Send + Sync,
     {
@@ -641,17 +622,16 @@ impl StacksInteract for StacksClient {
         // generic STX transfer since we should always be able to get the
         // STX transfer fee estimate. If that fails then we bail, maybe we
         // should try another node.
-        let resp = StacksClient::get_fee_estimate(self, payload).await;
-        let mut resp = match resp {
-            Ok(r) => r,
-            Err(err) => {
+        let mut resp = self
+            .get_fee_estimate(payload)
+            .or_else(|err| async move {
                 tracing::warn!("could not estimate contract call fees: {err}");
                 // Estimating STX transfers is simple since the estimate
                 // doesn't depend on the recipient, amount, or memo. So a
                 // dummy transfer payload will do.
-                StacksClient::get_fee_estimate(self, &DUMMY_STX_TRANSFER_PAYLOAD).await?
-            }
-        };
+                self.get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD).await
+            })
+            .await?;
 
         // As of this writing the RPC response includes exactly 3 estimates
         // (the low, medium, and high priority estimates). It's note worthy
@@ -885,7 +865,7 @@ mod tests {
             },
         };
 
-        let mut client = StacksClient::new(settings);
+        let client = StacksClient::new(settings);
         let resp = client.get_tenure_info().await.unwrap();
         let expected: RPCGetTenureInfo = serde_json::from_str(raw_json_response).unwrap();
 
@@ -931,7 +911,7 @@ mod tests {
             },
         };
 
-        let mut client = StacksClient::new(settings);
+        let client = StacksClient::new(settings);
         let resp = client
             .get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD)
             .await

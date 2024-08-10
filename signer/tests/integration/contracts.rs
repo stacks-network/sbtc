@@ -262,9 +262,6 @@ async fn estimate_tx_fees() {
     // This should work, but will likely be an estimate for a STX transfer
     // transaction.
 
-    let settings = StacksSettings::new_from_config().unwrap();
-    let mut client = StacksClient::new(settings);
-
     let fee = client
         .estimate_fees(&payload, FeePriority::Medium)
         .await

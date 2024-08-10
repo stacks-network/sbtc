@@ -814,7 +814,7 @@ mod tests {
                 .map(|(_, block, _)| block.header.chain_length)
                 .unwrap_or_default()
         }
-        async fn estimate_fees<T>(&mut self, _: &T, _: FeePriority) -> Result<u64, error::Error>
+        async fn estimate_fees<T>(&self, _: &T, _: FeePriority) -> Result<u64, error::Error>
         where
             T: crate::stacks::contracts::AsTxPayload,
         {
