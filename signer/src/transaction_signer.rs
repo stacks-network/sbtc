@@ -20,6 +20,8 @@ use crate::wsts_state_machine;
 
 use bitcoin::hashes::Hash;
 use futures::StreamExt;
+use wsts::net::DkgEnd;
+use wsts::net::DkgStatus;
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// # Transaction signer event loop
@@ -346,7 +348,18 @@ where
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
-            _ => {
+            wsts::net::Message::DkgEnd(DkgEnd { status: DkgStatus::Success, .. }) => {
+                tracing::info!("DKG ended in success");
+            }
+            wsts::net::Message::DkgEnd(DkgEnd {
+                status: DkgStatus::Failure(fail),
+                ..
+            }) => {
+                tracing::info!("DKG ended in failure: {fail:?}");
+                // TODO(#414): handle DKG failute
+            }
+            wsts::net::Message::NonceResponse(_)
+            | wsts::net::Message::SignatureShareResponse(_) => {
                 tracing::debug!("ignoring message");
             }
         }
