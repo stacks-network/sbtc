@@ -218,7 +218,6 @@ where
         transaction: utxo::UnsignedTransaction<'_>,
     ) -> Result<(), error::Error> {
         let _coordinator_state_machine = wsts_state_machine::CoordinatorStateMachine::load(
-            &mut self.storage,
             aggregate_key,
             signer_public_keys.clone(),
             self.threshold,

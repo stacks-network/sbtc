@@ -1,17 +1,13 @@
 //! Utilities for constructing and loading WSTS state machines
 
-use std::collections::BTreeMap;
-
 use crate::bitcoin::utxo::SignerScriptPubkey;
 use crate::error;
 use crate::storage;
 use crate::storage::model;
-
+use crate::error::Error;
 use crate::codec::Decode as _;
 use crate::codec::Encode as _;
 use wsts::state_machine::coordinator::Coordinator as _;
-use wsts::state_machine::coordinator::State as WstsState;
-use wsts::state_machine::StateMachine as _;
 use wsts::traits::Signer as _;
 
 /// Wrapper around a WSTS signer state machine
@@ -213,92 +209,29 @@ impl CoordinatorStateMachine {
         Ok(Self(wsts_coordinator))
     }
 
-    /// Create a new coordinator state machine from loaded DkgPublicShares messages
-    /// for the given aggregate key.
-    pub async fn load<S>(
-        storage: &mut S,
+    /// Create a new coordinator state machine from the given aggregate
+    /// key.
+    ///
+    /// # Notes
+    ///
+    /// The `WstsCoordinator` is a state machine that is responsible for
+    /// DKG and for facilitating signing rounds. When created the
+    /// `WstsCoordinator` state machine starts off in the `IDLE` state,
+    /// where you can either start a signing round or start DKG. This
+    /// function is for loading the state with the assumption that DKG has
+    /// already been successfully completed. That's why all we need to do
+    /// is set the aggregate key and call it a day.
+    pub async fn load<I>(
         aggregate_key: p256k1::point::Point,
-        signers: impl IntoIterator<Item = p256k1::ecdsa::PublicKey>,
+        signers: I,
         threshold: u32,
         message_private_key: p256k1::scalar::Scalar,
-    ) -> Result<Self, error::Error>
+    ) -> Result<Self, Error>
     where
-        S: storage::DbRead + storage::DbWrite,
-        error::Error: From<<S as storage::DbRead>::Error>,
-        error::Error: From<<S as storage::DbWrite>::Error>,
+        I: IntoIterator<Item = p256k1::ecdsa::PublicKey>,
     {
-        let encrypted_shares = storage
-            .get_encrypted_dkg_shares(&aggregate_key.x().to_bytes().to_vec())
-            .await?
-            .ok_or(error::Error::MissingDkgShares)?;
-
-        let public_dkg_shares: BTreeMap<u32, wsts::net::DkgPublicShares> =
-            BTreeMap::decode(encrypted_shares.public_shares.as_slice())
-                .map_err(error::Error::Codec)?;
-
         let mut coordinator = Self::new(signers, threshold, message_private_key)?;
-
-        // The `coordinator` is a state machine that starts off in the
-        // `IDLE` state, but we need to move it into a state where it can
-        // accept the above public DKG shares. To do that we need to move
-        // it to the `DKG_PUBLIC_GATHER` state and make sure that it is
-        // properly initialized. The way to do that is to process a
-        // `DKG_BEGIN` message, it will automatically move the state of the
-        // machine to the `DKG_PUBLIC_GATHER` state.
-        let packet = wsts::net::Packet {
-            msg: wsts::net::Message::DkgBegin(wsts::net::DkgBegin { dkg_id: 1 }),
-            sig: Vec::new(),
-        };
-        // If WSTS thinks that the we've already completed DKG for the
-        // given ID, then it will return with `(None, None)`. This only
-        // happens when the coordinator's `dkg_id` is greater than or equal
-        // to the value given in the message. But the coordinator's dkg_id
-        // starts at 0 and we start our's at 1.
-        let (Some(_), _) = coordinator
-            .process_message(&packet)
-            .map_err(coordinator_error)?
-        else {
-            let msg = "".to_string();
-            let err = wsts::state_machine::coordinator::Error::BadStateChange(msg);
-            return Err(coordinator_error(err));
-        };
-
-        // TODO(338): Replace this for-loop with a simpler method to set
-        // the public DKG shares.
-        //
-        // In this part we are trying to fast-forward the WstsCoordinator
-        // machine with all of the known public keys that we stored in the
-        // database.
-        for msg in public_dkg_shares.values().cloned() {
-            let packet = wsts::net::Packet {
-                msg: wsts::net::Message::DkgPublicShares(msg),
-                sig: Vec::new(),
-            };
-
-            // We're in the state that can accept public keys, let's
-            // process them.
-            coordinator
-                .process_message(&packet)
-                .map_err(coordinator_error)?;
-        }
-
-        // Once we've processed all DKG public shares for all participants,
-        // WSTS moves the state to `DKG_PRIVATE_DISTRIBUTE` automatically.
-        // If this fails then we no that there is a mismatch between the
-        // number of stored public shares and the size of the input
-        // `signers` variable.
-        debug_assert_eq!(coordinator.0.state, WstsState::DkgPrivateDistribute);
-
-        // Okay we've already gotten the private keys, we're just loading
-        // the state here, which needs to public keys. so we can safely
-        // skip to the end and move it to the `IDLE` state, which is the
-        // state after a successful DKG round.
-        coordinator.0.aggregate_public_key = Some(aggregate_key);
-        // TODO: set the private key shares.
-        coordinator
-            .move_to(WstsState::Idle)
-            .map_err(coordinator_error)?;
-
+        coordinator.set_aggregate_public_key(Some(aggregate_key));
         Ok(coordinator)
     }
 }
@@ -317,6 +250,7 @@ impl std::ops::DerefMut for CoordinatorStateMachine {
     }
 }
 
-fn coordinator_error(err: wsts::state_machine::coordinator::Error) -> error::Error {
+/// Convert an error
+pub fn coordinator_error(err: wsts::state_machine::coordinator::Error) -> error::Error {
     error::Error::WstsCoordinator(Box::new(err))
 }
