@@ -25,6 +25,7 @@ bitcoin = { workspace = true, features = ["rand-std"] }
 bitvec = { workspace = true, default-features = false, features = ["std"] }
 blocklist-api = { path = "../.generated-sources/blocklist-api" }
 clap.workspace = true
+clarity.workspace = true
 config = "0.14"
 futures.workspace = true
 hashbrown.workspace = true
@@ -38,6 +39,7 @@ serde_json.workspace = true
 sha2.workspace = true
 sqlx.workspace = true
 stackslib.workspace = true
+stacks-common.workspace = true
 strum.workspace = true
 thiserror.workspace = true
 time.workspace = true
