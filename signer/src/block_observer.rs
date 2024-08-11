@@ -158,7 +158,7 @@ where
     async fn process_bitcoin_block(&mut self, block: bitcoin::Block) -> Result<(), error::Error> {
         let info = self.stacks_client.get_tenure_info().await?;
         let stacks_blocks = crate::stacks::api::fetch_unknown_ancestors(
-            &self.stacks_client,
+            &mut self.stacks_client,
             &self.storage,
             info.tip_block_id,
         )
@@ -290,13 +290,18 @@ mod tests {
     use blockstack_lib::chainstate::burn::ConsensusHash;
     use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
     use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
+    use blockstack_lib::chainstate::stacks::StacksTransaction;
     use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
+    use blockstack_lib::types::chainstate::StacksAddress;
     use blockstack_lib::types::chainstate::StacksBlockId;
     use rand::seq::IteratorRandom;
     use rand::SeedableRng;
     use sbtc::rpc::BitcoinClient;
 
+    use crate::error::Error;
+    use crate::stacks::api::AccountInfo;
     use crate::stacks::api::FeePriority;
+    use crate::stacks::api::SubmitTxResponse;
     use crate::storage;
     use crate::testing::dummy;
 
@@ -736,7 +741,20 @@ mod tests {
     }
 
     impl StacksInteract for TestHarness {
-        async fn get_block(&self, block_id: StacksBlockId) -> Result<NakamotoBlock, error::Error> {
+        async fn get_account(&mut self, _address: &StacksAddress) -> Result<AccountInfo, Error> {
+            // issue #118
+            todo!()
+        }
+
+        async fn submit_tx(&mut self, _tx: &StacksTransaction) -> Result<SubmitTxResponse, Error> {
+            // issue #118
+            todo!()
+        }
+
+        async fn get_block(
+            &mut self,
+            block_id: StacksBlockId,
+        ) -> Result<NakamotoBlock, error::Error> {
             self.stacks_blocks
                 .iter()
                 .skip_while(|(id, _, _)| &block_id != id)
@@ -746,7 +764,7 @@ mod tests {
                 .ok_or(error::Error::MissingBlock)
         }
         async fn get_tenure(
-            &self,
+            &mut self,
             block_id: StacksBlockId,
         ) -> Result<Vec<NakamotoBlock>, error::Error> {
             let (stx_block_id, stx_block, btc_block_id) = self
@@ -768,7 +786,7 @@ mod tests {
 
             Ok(blocks)
         }
-        async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, error::Error> {
+        async fn get_tenure_info(&mut self) -> Result<RPCGetTenureInfo, error::Error> {
             let (_, _, btc_block_id) = self.stacks_blocks.last().unwrap();
 
             Ok(RPCGetTenureInfo {

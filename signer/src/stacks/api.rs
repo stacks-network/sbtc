@@ -71,10 +71,22 @@ pub enum FeePriority {
 
 /// A trait detailing the interface with the Stacks API and Stacks Nodes.
 pub trait StacksInteract {
+    /// Get the latest account info for the given address.
+    fn get_account(
+        &mut self,
+        address: &StacksAddress,
+    ) -> impl Future<Output = Result<AccountInfo, Error>>;
+
+    /// Submit a transaction to a Stacks node.
+    fn submit_tx(
+        &mut self,
+        tx: &StacksTransaction,
+    ) -> impl Future<Output = Result<SubmitTxResponse, Error>>;
+
     /// Fetch the raw stacks nakamoto block from a Stacks node given the
     /// Stacks block ID.
     fn get_block(
-        &self,
+        &mut self,
         block_id: StacksBlockId,
     ) -> impl Future<Output = Result<NakamotoBlock, Error>> + Send;
     /// Fetch all Nakamoto ancestor blocks within the same tenure as the
@@ -87,14 +99,14 @@ pub trait StacksInteract {
     /// capped at ~16 MB. This function returns all blocks, regardless of
     /// the size of the blocks within the tenure.
     fn get_tenure(
-        &self,
+        &mut self,
         block_id: StacksBlockId,
     ) -> impl Future<Output = Result<Vec<NakamotoBlock>, Error>> + Send;
     /// Get information about the current tenure.
     ///
     /// This function is analogous to the GET /v3/tenures/info stacks node
     /// endpoint for retrieving tenure information.
-    fn get_tenure_info(&self) -> impl Future<Output = Result<RPCGetTenureInfo, Error>> + Send;
+    fn get_tenure_info(&mut self) -> impl Future<Output = Result<RPCGetTenureInfo, Error>> + Send;
     /// Estimate the priority transaction fees for the input transaction
     /// for the current state of the mempool. The result should be and
     /// estimated total fee in microSTX.
@@ -250,7 +262,10 @@ impl TryFrom<AccountEntryResponse> for AccountInfo {
 pub struct StacksClient {
     /// The base URL (with the port) that will be used when making requests
     /// for to a Stacks node.
-    pub node_endpoint: url::Url,
+    node_endpoints: Vec<url::Url>,
+    /// The current index into the endpoints list
+    /// Increment this on network failure
+    endpoint_index: usize,
     /// The client used to make the request.
     pub client: reqwest::Client,
     /// The start height of the first EPOCH 3.0 block on the Stacks
@@ -263,10 +278,21 @@ impl StacksClient {
     /// StacksSettings.
     pub fn new(settings: StacksSettings) -> Self {
         Self {
-            node_endpoint: settings.node.endpoint,
+            node_endpoints: settings.node.endpoints,
+            endpoint_index: 0,
             nakamoto_start_height: settings.node.nakamoto_start_height,
             client: reqwest::Client::new(),
         }
+    }
+
+    /// iterate the stored endpoint index, wrapping
+    pub fn next_endpoint(&mut self) {
+        self.endpoint_index = (self.endpoint_index + 1) % self.node_endpoints.len();
+    }
+
+    /// get the current endpoint
+    pub fn get_current_endpoint(&self) -> url::Url {
+        self.node_endpoints[self.endpoint_index].clone()
     }
 
     /// Get the latest account info for the given address.
@@ -277,7 +303,7 @@ impl StacksClient {
     #[tracing::instrument(skip_all)]
     pub async fn get_account(&self, address: &StacksAddress) -> Result<AccountInfo, Error> {
         let path = format!("/v2/accounts/{}?proof=0", address);
-        let base = self.node_endpoint.clone();
+        let base = self.get_current_endpoint();
         let url = base
             .join(&path)
             .map_err(|err| Error::PathJoin(err, base, Cow::Owned(path)))?;
@@ -310,7 +336,7 @@ impl StacksClient {
     #[tracing::instrument(skip_all)]
     pub async fn submit_tx(&self, tx: &StacksTransaction) -> Result<SubmitTxResponse, Error> {
         let path = "/v2/transactions";
-        let base = self.node_endpoint.clone();
+        let base = self.get_current_endpoint();
         let url = base
             .join(path)
             .map_err(|err| Error::PathJoin(err, base, Cow::Borrowed(path)))?;
@@ -352,7 +378,7 @@ impl StacksClient {
         T: AsTxPayload + Send,
     {
         let path = "/v2/fees/transaction";
-        let base = self.node_endpoint.clone();
+        let base = self.get_current_endpoint();
         let url = base
             .join(path)
             .map_err(|err| Error::PathJoin(err, base, Cow::Borrowed(path)))?;
@@ -396,7 +422,7 @@ impl StacksClient {
     #[tracing::instrument(skip(self))]
     async fn get_block(&self, block_id: StacksBlockId) -> Result<NakamotoBlock, Error> {
         let path = format!("/v3/blocks/{}", block_id.to_hex());
-        let base = self.node_endpoint.clone();
+        let base = self.get_current_endpoint();
         let url = base
             .join(&path)
             .map_err(|err| Error::PathJoin(err, base, Cow::Owned(path)))?;
@@ -476,7 +502,7 @@ impl StacksClient {
     ///   non-Nakamoto block then a Result::Err is returned.
     #[tracing::instrument(skip(self))]
     async fn get_tenure_raw(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
-        let base = self.node_endpoint.clone();
+        let base = self.get_current_endpoint();
         let path = format!("/v3/tenures/{}", block_id.to_hex());
         let url = base
             .join(&path)
@@ -522,7 +548,7 @@ impl StacksClient {
     /// tenure information.
     #[tracing::instrument(skip(self))]
     pub async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
-        let base = self.node_endpoint.clone();
+        let base = self.get_current_endpoint();
         let path = "/v3/tenures/info";
         let url = base
             .join(path)
@@ -546,15 +572,38 @@ impl StacksClient {
     }
 }
 
+fn check_result<T>(client: &mut StacksClient, result: Result<T, Error>) -> Result<T, Error> {
+    match &result {
+        Err(Error::StacksNodeRequest(e)) => {
+            if e.is_timeout() || e.is_connect() {
+                client.next_endpoint();
+            }
+        }
+        Err(Error::StacksNodeResponse(e)) => {
+            if e.is_timeout() || e.is_connect() {
+                client.next_endpoint();
+            }
+        }
+        _ => (),
+    }
+    result
+}
+
 impl StacksInteract for StacksClient {
-    async fn get_block(&self, block_id: StacksBlockId) -> Result<NakamotoBlock, Error> {
-        self.get_block(block_id).await
+    async fn get_account(&mut self, address: &StacksAddress) -> Result<AccountInfo, Error> {
+        check_result(self, StacksClient::get_account(self, address).await)
     }
-    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
-        self.get_tenure(block_id).await
+    async fn submit_tx(&mut self, tx: &StacksTransaction) -> Result<SubmitTxResponse, Error> {
+        check_result(self, StacksClient::submit_tx(self, tx).await)
     }
-    async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
-        self.get_tenure_info().await
+    async fn get_block(&mut self, block_id: StacksBlockId) -> Result<NakamotoBlock, Error> {
+        check_result(self, StacksClient::get_block(self, block_id).await)
+    }
+    async fn get_tenure(&mut self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+        check_result(self, StacksClient::get_tenure(self, block_id).await)
+    }
+    async fn get_tenure_info(&mut self) -> Result<RPCGetTenureInfo, Error> {
+        check_result(self, StacksClient::get_tenure_info(self).await)
     }
     /// Estimate the high priority transaction fee for the input
     /// transaction call given the current state of the mempool.
@@ -583,6 +632,7 @@ impl StacksInteract for StacksClient {
                 self.get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD).await
             })
             .await?;
+
         // As of this writing the RPC response includes exactly 3 estimates
         // (the low, medium, and high priority estimates). It's note worthy
         // if this changes so we log it but the code here is robust to such
@@ -609,7 +659,7 @@ impl StacksInteract for StacksClient {
 /// Fetch all Nakamoto blocks that are not already stored in the
 /// datastore.
 pub async fn fetch_unknown_ancestors<S, D>(
-    stacks: &S,
+    stacks: &mut S,
     db: &D,
     block_id: StacksBlockId,
 ) -> Result<Vec<NakamotoBlock>, Error>
@@ -661,11 +711,11 @@ mod tests {
         sbtc::logging::setup_logging("info,signer=debug", false);
 
         let settings = StacksSettings::new_from_config().unwrap();
-        let client = StacksClient::new(settings);
+        let mut client = StacksClient::new(settings);
         let db = PgStore::from(pool);
 
         let info = client.get_tenure_info().await.unwrap();
-        let blocks = fetch_unknown_ancestors(&client, &db, info.tip_block_id).await;
+        let blocks = fetch_unknown_ancestors(&mut client, &db, info.tip_block_id).await;
 
         let blocks = blocks.unwrap();
         let headers = blocks
@@ -758,7 +808,7 @@ mod tests {
 
         let settings = StacksSettings {
             node: StacksNodeSettings {
-                endpoint: url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
+                endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
                 nakamoto_start_height: 20,
             },
         };
@@ -810,7 +860,7 @@ mod tests {
 
         let settings = StacksSettings {
             node: StacksNodeSettings {
-                endpoint: url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
+                endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
                 nakamoto_start_height: 20,
             },
         };
@@ -856,7 +906,7 @@ mod tests {
 
         let settings = StacksSettings {
             node: StacksNodeSettings {
-                endpoint: url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
+                endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
                 nakamoto_start_height: 20,
             },
         };
@@ -897,12 +947,12 @@ mod tests {
     #[ignore = "This is an integration test that hasn't been setup for CI yet"]
     async fn fetching_last_tenure_blocks_works() {
         let settings = StacksSettings::new_from_config().unwrap();
-        let client = StacksClient::new(settings);
+        let mut client = StacksClient::new(settings);
 
         let storage = Store::new_shared();
 
         let info = client.get_tenure_info().await.unwrap();
-        let blocks = fetch_unknown_ancestors(&client, &storage, info.tenure_start_block_id)
+        let blocks = fetch_unknown_ancestors(&mut client, &storage, info.tenure_start_block_id)
             .await
             .unwrap();
         assert!(!blocks.is_empty());
