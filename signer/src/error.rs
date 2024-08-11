@@ -72,6 +72,16 @@ pub enum Error {
     #[error("{0}")]
     InvalidAggregateKey(#[source] secp256k1::Error),
 
+    /// This occurs when converting a byte slice to our internal public key
+    /// type, which is a thin wrapper around the secp256k1::PublicKey.
+    #[error("{0}")]
+    InvalidPublicKey(#[source] secp256k1::Error),
+
+    /// This occurs when converting a byte slice to our internal public key
+    /// type, which is a thin wrapper around the secp256k1::SecretKey.
+    #[error("{0}")]
+    InvalidPrivateKey(#[source] secp256k1::Error),
+
     /// This happens when we attempt to recover a public key from a
     /// recoverable EDCSA signature.
     #[error("could not recover the public key from the signature: {0}, digest: {1}")]
