@@ -689,20 +689,18 @@ async fn store_dummy_dkg_shares<R, S>(
         .expect("storage error");
 }
 
-/// This function runs a DKG round for the given signers and
-/// stores the result in the provided stores for all signers.
-async fn run_dkg_and_store_results_for_signers<
-    's: 'r,
-    'r,
-    S: storage::DbRead + storage::DbWrite + 's,
-    Rng: rand::CryptoRng + rand::RngCore,
->(
+/// This function runs a DKG round for the given signers and stores the
+/// result in the provided stores for all signers.
+async fn run_dkg_and_store_results_for_signers<'s: 'r, 'r, S, Rng>(
     signer_info: &[testing::wsts::SignerInfo],
     chain_tip: &model::BitcoinBlockHash,
     threshold: u32,
     stores: impl IntoIterator<Item = &'r mut S>,
     rng: &mut Rng,
-) {
+) where
+    S: storage::DbRead + storage::DbWrite + 's,
+    Rng: rand::CryptoRng + rand::RngCore,
+{
     let network = network::in_memory::Network::new();
     let mut testing_signer_set =
         testing::wsts::SignerSet::new(signer_info, threshold, || network.connect());
