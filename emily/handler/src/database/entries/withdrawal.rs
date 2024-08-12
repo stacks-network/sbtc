@@ -13,6 +13,10 @@ use crate::{
     common::error::Error,
 };
 
+use super::{
+    EntryTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait, SecondaryIndex, SecondaryIndexTrait,
+};
+
 // Withdrawal entry ---------------------------------------------------------------
 
 /// Withdrawal table entry key. This is the root table key.
@@ -145,6 +149,43 @@ pub struct WithdrawalEvent {
     pub stacks_block_hash: StacksBlockHash,
 }
 
+/// Implements the key trait for the deposit entry key.
+impl KeyTrait for WithdrawalEntryKey {
+    /// The type of the partition key.
+    type PartitionKey = u64;
+    /// the type of the sort key.
+    type SortKey = StacksBlockHash;
+    /// The table field name of the partition key.
+    const PARTITION_KEY_NAME: &'static str = "RequestId";
+    /// The table field name of the sort key.
+    const _SORT_KEY_NAME: &'static str = "StacksBlockHash";
+}
+
+/// Implements the entry trait for the deposit entry.
+impl EntryTrait for WithdrawalEntry {
+    /// The type of the key for this entry type.
+    type Key = WithdrawalEntryKey;
+    /// Extract the key from the deposit entry.
+    fn key(&self) -> Self::Key {
+        WithdrawalEntryKey {
+            request_id: self.key.request_id,
+            stacks_block_hash: self.key.stacks_block_hash.clone(),
+        }
+    }
+}
+
+/// Primary index struct.
+pub struct WithdrawalTablePrimaryIndexInner;
+/// Withdrawal table primary index type.
+pub type WithdrawalTablePrimaryIndex = PrimaryIndex<WithdrawalTablePrimaryIndexInner>;
+/// Definition of Primary index trait.
+impl PrimaryIndexTrait for WithdrawalTablePrimaryIndexInner {
+    type Entry = WithdrawalEntry;
+    fn table_name(settings: &crate::context::Settings) -> &str {
+        &settings.withdrawal_table_name
+    }
+}
+
 // Withdrawal info entry ----------------------------------------------------------
 
 /// Search token for GSI.
@@ -192,6 +233,42 @@ pub struct WithdrawalInfoEntry {
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this hash is the Stacks block hash that contains that artifact.
     pub last_update_block_hash: StacksBlockHash,
+}
+
+/// Implements the key trait for the deposit entry key.
+impl KeyTrait for WithdrawalInfoEntryKey {
+    /// The type of the partition key.
+    type PartitionKey = Status;
+    /// the type of the sort key.
+    type SortKey = BlockHeight;
+    /// The table field name of the partition key.
+    const PARTITION_KEY_NAME: &'static str = "OpStatus";
+    /// The table field name of the sort key.
+    const _SORT_KEY_NAME: &'static str = "LastUpdateHeight";
+}
+
+/// Implements the entry trait for the deposit entry.
+impl EntryTrait for WithdrawalInfoEntry {
+    /// The type of the key for this entry type.
+    type Key = WithdrawalInfoEntryKey;
+    /// Extract the key from the deposit info entry.
+    fn key(&self) -> Self::Key {
+        WithdrawalInfoEntryKey {
+            status: self.key.status.clone(),
+            last_update_height: self.key.last_update_height,
+        }
+    }
+}
+
+/// Primary index struct.
+pub struct WithdrawalTableSecondaryIndexInner;
+/// Deposit table primary index type.
+pub type WithdrawalTableSecondaryIndex = SecondaryIndex<WithdrawalTableSecondaryIndexInner>;
+/// Definition of Primary index trait.
+impl SecondaryIndexTrait for WithdrawalTableSecondaryIndexInner {
+    type PrimaryIndex = WithdrawalTablePrimaryIndex;
+    type Entry = WithdrawalInfoEntry;
+    const INDEX_NAME: &'static str = "WithdrawalStatus";
 }
 
 impl From<WithdrawalInfoEntry> for WithdrawalInfo {

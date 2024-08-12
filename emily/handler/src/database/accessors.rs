@@ -1,18 +1,9 @@
 //! Accessors.
 
-use std::collections::HashMap;
-
-use aws_sdk_dynamodb::types::{AttributeValue, DeleteRequest, WriteRequest};
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-
-use serde::{Deserialize, Serialize};
-
 use crate::{
     api::models::{common::BlockHeight, withdrawal::WithdrawalId},
     common::error::Error,
 };
-
-use serde_dynamo::Item;
 
 use crate::{
     api::models::common::{BitcoinTransactionId, Status},
@@ -20,55 +11,50 @@ use crate::{
 };
 
 use super::entries::{
-    chainstate::{ApiStateEntry, ChainstateEntry, ChainstateEntryKey},
-    deposit::{DepositEntry, DepositEntryKey, DepositInfoEntry, DepositInfoEntrySearchToken},
-    withdrawal::{
-        WithdrawalEntry, WithdrawalEntryKey, WithdrawalInfoEntry, WithdrawalInfoEntrySearchToken,
+    chainstate::{
+        ApiStateEntry, ChainstateEntry, ChainstateTablePrimaryIndex, SpecialApiStateIndex,
     },
+    deposit::{
+        DepositEntry, DepositEntryKey, DepositInfoEntry, DepositTablePrimaryIndex,
+        DepositTableSecondaryIndex,
+    },
+    withdrawal::{
+        WithdrawalEntry, WithdrawalEntryKey, WithdrawalInfoEntry, WithdrawalTablePrimaryIndex,
+        WithdrawalTableSecondaryIndex,
+    },
+    EntryTrait, KeyTrait, TableIndexTrait,
 };
 
+// TODO: have different Table structs for each of the table types instead of
+// these individual wrappers.
+
 // Deposit ---------------------------------------------------------------------
+
+/// Add deposit entry.
+pub async fn add_deposit_entry(context: &EmilyContext, entry: &DepositEntry) -> Result<(), Error> {
+    put_entry::<DepositTablePrimaryIndex>(context, entry).await
+}
 
 /// Get deposit entry.
 pub async fn get_deposit_entry(
     context: &EmilyContext,
-    key: DepositEntryKey,
+    key: &DepositEntryKey,
 ) -> Result<DepositEntry, Error> {
-    get_entry(
-        &(context.dynamodb_client),
-        &context.settings.deposit_table_name,
-        key,
-    )
-    .await
-}
-
-/// Add deposit entry.
-pub async fn add_deposit_entry(context: &EmilyContext, entry: &DepositEntry) -> Result<(), Error> {
-    put_entry(
-        &(context.dynamodb_client),
-        &context.settings.deposit_table_name,
-        entry,
-    )
-    .await
+    get_entry::<DepositTablePrimaryIndex>(context, key).await
 }
 
 /// Get deposit entries.
 pub async fn get_deposit_entries(
     context: &EmilyContext,
-    status: Status,
+    status: &Status,
     maybe_next_token: Option<String>,
     maybe_page_size: Option<i32>,
 ) -> Result<(Vec<DepositInfoEntry>, Option<String>), Error> {
-    let partition_key_attribute_name = "OpStatus";
-    let maybe_index_name = Some("DepositStatus".to_string());
-    query_with_partition_key::<_, DepositInfoEntrySearchToken>(
-        &(context.dynamodb_client),
-        &context.settings.deposit_table_name,
+    query_with_partition_key::<DepositTableSecondaryIndex>(
+        context,
         status,
-        partition_key_attribute_name,
-        maybe_page_size,
         maybe_next_token,
-        maybe_index_name,
+        maybe_page_size,
     )
     .await
 }
@@ -76,20 +62,15 @@ pub async fn get_deposit_entries(
 /// Get deposit entries for a given transaction.
 pub async fn get_deposit_entries_for_transaction(
     context: &EmilyContext,
-    bitcoin_txid: BitcoinTransactionId,
+    bitcoin_txid: &BitcoinTransactionId,
     maybe_next_token: Option<String>,
     maybe_page_size: Option<i32>,
 ) -> Result<(Vec<DepositEntry>, Option<String>), Error> {
-    let partition_key_attribute_name = "BitcoinTxid";
-    let maybe_index_name = None;
-    query_with_partition_key::<_, DepositEntryKey>(
-        &(context.dynamodb_client),
-        &context.settings.deposit_table_name,
+    query_with_partition_key::<DepositTablePrimaryIndex>(
+        context,
         bitcoin_txid,
-        partition_key_attribute_name,
-        maybe_page_size,
         maybe_next_token,
-        maybe_index_name,
+        maybe_page_size,
     )
     .await
 }
@@ -101,44 +82,29 @@ pub async fn add_withdrawal_entry(
     context: &EmilyContext,
     entry: &WithdrawalEntry,
 ) -> Result<(), Error> {
-    put_entry(
-        &(context.dynamodb_client),
-        &context.settings.withdrawal_table_name,
-        entry,
-    )
-    .await
+    put_entry::<WithdrawalTablePrimaryIndex>(context, entry).await
 }
 
 /// Get withdrawal entry.
 pub async fn _get_withdrawal_entry(
     context: &EmilyContext,
-    key: WithdrawalEntryKey,
+    key: &WithdrawalEntryKey,
 ) -> Result<WithdrawalEntry, Error> {
-    get_entry(
-        &(context.dynamodb_client),
-        &context.settings.withdrawal_table_name,
-        key,
-    )
-    .await
+    get_entry::<WithdrawalTablePrimaryIndex>(context, key).await
 }
 
 /// Get all withdrawal with a given id.
 pub async fn get_withdrawal_entries_for_id(
     context: &EmilyContext,
-    request_id: WithdrawalId,
+    request_id: &WithdrawalId,
     maybe_next_token: Option<String>,
     maybe_page_size: Option<i32>,
 ) -> Result<(Vec<WithdrawalEntry>, Option<String>), Error> {
-    let partition_key_attribute_name = "RequestId";
-    let maybe_index_name = None;
-    query_with_partition_key::<_, WithdrawalEntryKey>(
-        &(context.dynamodb_client),
-        &context.settings.withdrawal_table_name,
+    query_with_partition_key::<WithdrawalTablePrimaryIndex>(
+        context,
         request_id,
-        partition_key_attribute_name,
-        maybe_page_size,
         maybe_next_token,
-        maybe_index_name,
+        maybe_page_size,
     )
     .await
 }
@@ -146,69 +112,15 @@ pub async fn get_withdrawal_entries_for_id(
 /// Get withdrawal entries.
 pub async fn get_withdrawal_entries(
     context: &EmilyContext,
-    status: Status,
+    status: &Status,
     maybe_next_token: Option<String>,
     maybe_page_size: Option<i32>,
 ) -> Result<(Vec<WithdrawalInfoEntry>, Option<String>), Error> {
-    let partition_key_attribute_name = "OpStatus";
-    let maybe_index_name = Some("WithdrawalStatus".to_string());
-    query_with_partition_key::<_, WithdrawalInfoEntrySearchToken>(
-        &(context.dynamodb_client),
-        &context.settings.withdrawal_table_name,
+    query_with_partition_key::<WithdrawalTableSecondaryIndex>(
+        context,
         status,
-        partition_key_attribute_name,
-        maybe_page_size,
         maybe_next_token,
-        maybe_index_name,
-    )
-    .await
-}
-
-/// Wipes all the tables.
-/// TODO(395): Include check for whether the table is running locally.
-#[cfg(feature = "testing")]
-pub async fn wipe_all_tables(context: &EmilyContext) -> Result<(), Error> {
-    wipe_deposit_table(context).await?;
-    wipe_withdrawal_table(context).await?;
-    wipe_chainstate_table(context).await?;
-    Ok(())
-}
-
-/// Wipes the deposit table.
-#[cfg(feature = "testing")]
-async fn wipe_deposit_table(context: &EmilyContext) -> Result<(), Error> {
-    wipe_table::<DepositEntry, DepositEntryKey>(
-        &context.dynamodb_client,
-        context.settings.deposit_table_name.as_str(),
-        |entry: DepositEntry| entry.key,
-    )
-    .await
-}
-
-/// Wipes the withdrawal table.
-#[cfg(feature = "testing")]
-async fn wipe_withdrawal_table(context: &EmilyContext) -> Result<(), Error> {
-    wipe_table::<WithdrawalEntry, WithdrawalEntryKey>(
-        &context.dynamodb_client,
-        context.settings.withdrawal_table_name.as_str(),
-        |entry: WithdrawalEntry| entry.key,
-    )
-    .await
-}
-
-/// Wipes the chainstate table.
-#[cfg(feature = "testing")]
-async fn wipe_chainstate_table(context: &EmilyContext) -> Result<(), Error> {
-    delete_entry(
-        &context.dynamodb_client,
-        context.settings.chainstate_table_name.as_str(),
-        ApiStateEntry::key(),
-    )
-    .await?;
-    wipe_table::<ChainstateEntry, ChainstateEntryKey>(
-        &context.dynamodb_client,
-        context.settings.chainstate_table_name.as_str(),
-        |entry: ChainstateEntry| entry.key,
+        maybe_page_size,
     )
     .await
 }
@@ -222,18 +134,19 @@ pub async fn add_chainstate_entry(
 ) -> Result<(), Error> {
     // Get the existing chainstate entry for height. If there's a conflict
     // then propagate it back to the caller.
-    let current_chainstate_entry_result = get_chainstate_entry_at_height(context, entry.key.height)
-        .await
-        .and_then(|existing_entry| {
-            if &existing_entry != entry {
-                Err(Error::InconsistentState(vec![
-                    entry.clone(),
-                    existing_entry,
-                ]))
-            } else {
-                Ok(())
-            }
-        });
+    let current_chainstate_entry_result =
+        get_chainstate_entry_at_height(context, &entry.key.height)
+            .await
+            .and_then(|existing_entry| {
+                if &existing_entry != entry {
+                    Err(Error::InconsistentState(vec![
+                        entry.clone(),
+                        existing_entry,
+                    ]))
+                } else {
+                    Ok(())
+                }
+            });
 
     // Exit here unless this chain height hasn't been detected before.
     match current_chainstate_entry_result {
@@ -259,12 +172,7 @@ pub async fn add_chainstate_entry(
         // and have different views of the block hash at this height it would result in two hashes
         // for the same height. This will be explicitly handled when the api attempts to retrieve the
         // chainstate for this height and finds multiple, indicating a conflicting internal state.
-        put_entry(
-            &context.dynamodb_client,
-            &context.settings.chainstate_table_name,
-            entry,
-        )
-        .await?;
+        put_entry::<ChainstateTablePrimaryIndex>(context, entry).await?;
         // Version locked api state prevents inconsistencies here.
         set_api_state(context, &api_state).await
     } else if blocks_higher_than_current_tip > 1 {
@@ -290,19 +198,11 @@ pub async fn add_chainstate_entry(
 /// if there's a conflict.
 pub async fn get_chainstate_entry_at_height(
     context: &EmilyContext,
-    height: BlockHeight,
+    height: &BlockHeight,
 ) -> Result<ChainstateEntry, Error> {
-    let partition_key_attribute_name = "Height";
-    let entries: Vec<ChainstateEntry> =
-        query_with_partition_key_without_pages::<_, ChainstateEntryKey>(
-            &(context.dynamodb_client),
-            &context.settings.chainstate_table_name,
-            height,
-            partition_key_attribute_name,
-            None,
-        )
-        .await?;
-
+    let (entries, _) =
+        query_with_partition_key::<ChainstateTablePrimaryIndex>(context, height, None, None)
+            .await?;
     // If there are multiple entries at this height report an inconsistent state
     // error.
     match entries.as_slice() {
@@ -316,45 +216,30 @@ pub async fn get_chainstate_entry_at_height(
 /// Note that there should only really be one.
 pub async fn get_chainstate_entries_for_height(
     context: &EmilyContext,
-    height: BlockHeight,
+    height: &BlockHeight,
     maybe_next_token: Option<String>,
     maybe_page_size: Option<i32>,
 ) -> Result<(Vec<ChainstateEntry>, Option<String>), Error> {
-    let partition_key_attribute_name = "Height";
-    let maybe_index_name = None;
-    query_with_partition_key::<_, ChainstateEntryKey>(
-        &(context.dynamodb_client),
-        &context.settings.chainstate_table_name,
+    query_with_partition_key::<ChainstateTablePrimaryIndex>(
+        context,
         height,
-        partition_key_attribute_name,
-        maybe_page_size,
         maybe_next_token,
-        maybe_index_name,
+        maybe_page_size,
     )
     .await
 }
 
 /// Gets the state of the API.
 pub async fn get_api_state(context: &EmilyContext) -> Result<ApiStateEntry, Error> {
-    let get_api_state_result: Result<ApiStateEntry, Error> = get_entry(
-        &(context.dynamodb_client),
-        &context.settings.chainstate_table_name,
-        ApiStateEntry::key(),
-    )
-    .await;
-
+    let get_api_state_result =
+        get_entry::<SpecialApiStateIndex>(context, &ApiStateEntry::key()).await;
     match get_api_state_result {
         // If the API state wasn't found then initialize it into the table.
         // TODO(390): Handle any race conditions with the version field in case
         // the entry was initialized and then updated after creation.
         Err(Error::NotFound) => {
             let initial_api_state_entry = ApiStateEntry::default();
-            put_entry(
-                &(context.dynamodb_client),
-                &context.settings.chainstate_table_name,
-                &initial_api_state_entry,
-            )
-            .await?;
+            put_entry::<SpecialApiStateIndex>(context, &initial_api_state_entry).await?;
             Ok(initial_api_state_entry)
         }
         result => result,
@@ -364,295 +249,82 @@ pub async fn get_api_state(context: &EmilyContext) -> Result<ApiStateEntry, Erro
 /// Sets the API state.
 /// TODO(TBD): Include the relevant logic for updating the entry version.
 pub async fn set_api_state(context: &EmilyContext, api_state: &ApiStateEntry) -> Result<(), Error> {
-    put_entry(
-        &(context.dynamodb_client),
-        &context.settings.chainstate_table_name,
-        api_state,
-    )
-    .await
+    put_entry::<SpecialApiStateIndex>(context, api_state).await
 }
 
-/// Sets a new chain tip.
-pub async fn _set_chain_tip(
-    context: &EmilyContext,
-    new_chaintip: &ChainstateEntry,
-) -> Result<(), Error> {
-    let mut api_state = get_api_state(context).await?;
-    api_state.chaintip = new_chaintip.clone();
-    set_api_state(context, &api_state).await
+// Testing ---------------------------------------------------------------------
+
+/// Wipes all the tables.
+/// TODO(395): Include check for whether the table is running locally.
+#[cfg(feature = "testing")]
+pub async fn wipe_all_tables(context: &EmilyContext) -> Result<(), Error> {
+    wipe_deposit_table(context).await?;
+    wipe_withdrawal_table(context).await?;
+    wipe_chainstate_table(context).await?;
+    Ok(())
+}
+
+/// Wipes the deposit table.
+#[cfg(feature = "testing")]
+async fn wipe_deposit_table(context: &EmilyContext) -> Result<(), Error> {
+    wipe::<DepositTablePrimaryIndex>(context).await
+}
+
+/// Wipes the withdrawal table.
+#[cfg(feature = "testing")]
+async fn wipe_withdrawal_table(context: &EmilyContext) -> Result<(), Error> {
+    wipe::<WithdrawalTablePrimaryIndex>(context).await
+}
+
+/// Wipes the chainstate table.
+#[cfg(feature = "testing")]
+async fn wipe_chainstate_table(context: &EmilyContext) -> Result<(), Error> {
+    delete_entry::<SpecialApiStateIndex>(context, &ApiStateEntry::key()).await?;
+    wipe::<SpecialApiStateIndex>(context).await
 }
 
 // Generics --------------------------------------------------------------------
 
-/// Generic put table entry.
-pub async fn put_entry(
-    dynamodb_client: &aws_sdk_dynamodb::Client,
-    table_name: &str,
-    entry: impl Serialize,
+async fn get_entry<T: TableIndexTrait>(
+    context: &EmilyContext,
+    key: &<<T as TableIndexTrait>::Entry as EntryTrait>::Key,
+) -> Result<<T as TableIndexTrait>::Entry, Error> {
+    <T as TableIndexTrait>::get_entry(&context.dynamodb_client, &context.settings, key).await
+}
+
+async fn put_entry<T: TableIndexTrait>(
+    context: &EmilyContext,
+    entry: &<T as TableIndexTrait>::Entry,
 ) -> Result<(), Error> {
-    // Convert Entry into the type needed for querying.
-    let entry_item: Item = serde_dynamo::to_item(&entry)?;
-    // Add to the database.
-    dynamodb_client
-        .put_item()
-        .table_name(table_name)
-        .set_item(Some(entry_item.into()))
-        .send()
-        .await?;
-    // Return.
-    Ok(())
+    <T as TableIndexTrait>::put_entry(&context.dynamodb_client, &context.settings, entry).await
 }
 
-/// Generic delete table entry.
-pub async fn delete_entry(
-    dynamodb_client: &aws_sdk_dynamodb::Client,
-    table_name: &str,
-    key: impl Serialize,
+async fn delete_entry<T: TableIndexTrait>(
+    context: &EmilyContext,
+    key: &<<T as TableIndexTrait>::Entry as EntryTrait>::Key,
 ) -> Result<(), Error> {
-    // Convert Entry into the type needed for querying.
-    let key_item: Item = serde_dynamo::to_item(&key)?;
-    // Add to the database.
-    dynamodb_client
-        .delete_item()
-        .table_name(table_name)
-        .set_key(Some(key_item.into()))
-        .send()
-        .await?;
-    // Return.
-    Ok(())
+    <T as TableIndexTrait>::delete_entry(&context.dynamodb_client, &context.settings, key).await
 }
 
-/// Wipes a specific table.
-#[cfg(feature = "testing")]
-async fn wipe_table<T, K>(
-    dynamodb_client: &aws_sdk_dynamodb::Client,
-    table_name: &str,
-    key_from_entry: fn(T) -> K,
-) -> Result<(), Error>
-where
-    T: for<'de> Deserialize<'de>,
-    K: Serialize,
-{
-    // Get keys to delete.
-    let keys_to_delete: Vec<K> =
-        serde_dynamo::from_items(get_all_entries(dynamodb_client, table_name).await?)?
-            .into_iter()
-            .map(key_from_entry)
-            .collect();
-
-    // Delete all entries.
-    delete_entries(dynamodb_client, table_name, keys_to_delete).await
-}
-
-/// Get all entries from a dynamodb table.
-async fn get_all_entries(
-    dynamodb_client: &aws_sdk_dynamodb::Client,
-    table_name: &str,
-) -> Result<Vec<HashMap<String, AttributeValue>>, Error> {
-    // Create vector to aggregate items in.
-    let mut all_items: Vec<HashMap<String, AttributeValue>> = Vec::new();
-
-    // Create the base scan builder with the table name.
-    let scan_builder = dynamodb_client.scan().table_name(table_name);
-
-    // Scan the table for as many entries as possible.
-    let mut scan_output = scan_builder.clone().send().await?;
-
-    // Put items into aggregate list.
-    all_items.extend_from_slice(scan_output.items());
-
-    // Continue to query until the scan is done.
-    while let Some(exclusive_start_key) = scan_output.last_evaluated_key {
-        scan_output = scan_builder
-            .clone()
-            .set_exclusive_start_key(Some(exclusive_start_key))
-            .send()
-            .await?;
-        all_items.extend_from_slice(scan_output.items());
-    }
-
-    Ok(all_items)
-}
-
-/// Deletes every entry in a table with the specified keys.
-async fn delete_entries<K>(
-    dynamodb_client: &aws_sdk_dynamodb::Client,
-    table_name: &str,
-    keys_to_delete: Vec<K>,
-) -> Result<(), Error>
-where
-    K: Serialize,
-{
-    let mut write_delete_requests: Vec<WriteRequest> = Vec::new();
-    for key in keys_to_delete {
-        let key_item = serde_dynamo::to_item::<K, Item>(key)?;
-        let write_request = WriteRequest::builder()
-            .delete_request(
-                DeleteRequest::builder()
-                    .set_key(Some(key_item.into()))
-                    .build()?,
-            )
-            .build();
-        write_delete_requests.push(write_request);
-    }
-
-    // Execute the deletes in chunks.
-    for chunk in write_delete_requests.chunks(25) {
-        dynamodb_client
-            .batch_write_item()
-            .request_items(table_name, chunk.to_vec())
-            .send()
-            .await?;
-    }
-
-    Ok(())
-}
-
-/// Generic table get.
-pub async fn get_entry<T>(
-    dynamodb_client: &aws_sdk_dynamodb::Client,
-    table_name: &str,
-    key: impl Serialize,
-) -> Result<T, Error>
-where
-    T: for<'de> Deserialize<'de>,
-{
-    // Convert key into the type needed for querying.
-    let key_item: Item = serde_dynamo::to_item(key)?;
-    // Query the database.
-    let get_item_output = dynamodb_client
-        .get_item()
-        .table_name(table_name)
-        .set_key(Some(key_item.into()))
-        .send()
-        .await?;
-    // Get DynamoDB item.
-    let item = get_item_output.item.ok_or(Error::NotFound)?;
-    // Convert item into entry.
-    let entry = serde_dynamo::from_item(item)?;
-    // Return.
-    Ok(entry)
-}
-
-/// Generic table query that queries for a partition key but doesn't use pages.
-/// This function is best used for accessing entries that shouldn't have multiple
-/// entries for a primary key but potentially can.
-async fn query_with_partition_key_without_pages<T, K>(
-    dynamodb_client: &aws_sdk_dynamodb::Client,
-    table_name: &str,
-    partition_key: impl Serialize,
-    partition_key_attribute_name: &str,
-    maybe_index_name: Option<String>,
-) -> Result<Vec<T>, Error>
-where
-    T: for<'de> Deserialize<'de>,
-    K: Serialize + for<'de> Deserialize<'de>,
-{
-    query_with_partition_key::<T, K>(
-        dynamodb_client,
-        table_name,
-        partition_key,
-        partition_key_attribute_name,
-        None,
-        None,
-        maybe_index_name,
+async fn query_with_partition_key<T: TableIndexTrait>(
+    context: &EmilyContext,
+    parition_key: &<<<T as TableIndexTrait>::Entry as EntryTrait>::Key as KeyTrait>::PartitionKey,
+    maybe_next_token: Option<String>,
+    maybe_page_size: Option<i32>,
+) -> Result<(Vec<<T as TableIndexTrait>::Entry>, Option<String>), Error> {
+    <T as TableIndexTrait>::query_with_partition_key(
+        &context.dynamodb_client,
+        &context.settings,
+        parition_key,
+        maybe_next_token,
+        maybe_page_size,
     )
     .await
-    .map(|(entries, _)| entries)
 }
 
-/// Generic table query for all attributes with a given primary key.
-pub async fn query_with_partition_key<T, K>(
-    dynamodb_client: &aws_sdk_dynamodb::Client,
-    table_name: &str,
-    partition_key: impl Serialize,
-    partition_key_attribute_name: &str,
-    maybe_page_size: Option<i32>,
-    maybe_next_token: Option<String>,
-    maybe_index_name: Option<String>,
-) -> Result<(Vec<T>, Option<String>), Error>
-where
-    T: for<'de> Deserialize<'de>,
-    K: Serialize + for<'de> Deserialize<'de>,
-{
-    // Convert inputs into the types needed for querying.
-    let exclusive_start_key = maybe_exclusive_start_key_from_next_token::<K>(maybe_next_token)?;
-    let partition_key_attribute_value = serde_dynamo::to_attribute_value(partition_key)?;
-    // Query the database.
-    let query_output = dynamodb_client
-        .query()
-        .table_name(table_name)
-        .set_exclusive_start_key(exclusive_start_key)
-        .set_limit(maybe_page_size)
-        .set_index_name(maybe_index_name)
-        .key_condition_expression("#pk = :v")
-        .expression_attribute_names("#pk", partition_key_attribute_name)
-        .expression_attribute_values(":v", partition_key_attribute_value)
-        .send()
-        .await?;
-    // Convert data into output format.
-    let entries: Vec<T> = serde_dynamo::from_items(query_output.items.unwrap_or_default())?;
-    let next_token =
-        maybe_next_token_from_last_evaluated_key::<K>(query_output.last_evaluated_key)?;
-    // Return.
-    Ok((entries, next_token))
-}
-
-// Utilities -------------------------------------------------------------------
-
-/// Converts an optional `HashMap<String, AttributeValue>` representing the last evaluated key
-/// into an optional token string. If the `Option` contains a value, it is deserialized into a type `T`
-/// and then serialized into a token string.
-pub fn maybe_next_token_from_last_evaluated_key<T>(
-    maybe_last_evaluated_key: Option<HashMap<String, AttributeValue>>,
-) -> Result<Option<String>, Error>
-where
-    T: Serialize + for<'de> Deserialize<'de>,
-{
-    let maybe_next_token = maybe_last_evaluated_key
-        .map(|key| serde_dynamo::from_item(key))
-        .transpose()?
-        .map(|token_data: T| tokenize(token_data))
-        .transpose()?;
-    Ok(maybe_next_token)
-}
-
-/// Turns an optional key into a token.
-pub fn tokenize<T>(key: T) -> Result<String, Error>
-where
-    T: Serialize,
-{
-    let serialied = serde_json::to_string(&key)?;
-    let encoded: String = URL_SAFE_NO_PAD.encode(serialied);
-    Ok(encoded)
-}
-
-/// Converts an optional token string into an optional `HashMap<String, AttributeValue>` representing
-/// the exclusive start key. If the `Option` contains a value, it is deserialized into a type `T`
-/// and then serialized into a `HashMap<String, AttributeValue>`.
-pub fn maybe_exclusive_start_key_from_next_token<T>(
-    maybe_next_token: Option<String>,
-) -> Result<Option<HashMap<String, AttributeValue>>, Error>
-where
-    T: Serialize + for<'de> Deserialize<'de>,
-{
-    let maybe_exclusive_start_key = maybe_next_token
-        .map(|next_token| detokenize(next_token))
-        .transpose()?
-        .map(|token_data: T| serde_dynamo::to_item(token_data))
-        .transpose()?
-        .map(|token_item: Item| token_item.into());
-    Ok(maybe_exclusive_start_key)
-}
-
-/// Turns an optional token into a key.
-pub fn detokenize<T>(token: String) -> Result<T, Error>
-where
-    T: for<'de> Deserialize<'de>,
-{
-    let decoded = URL_SAFE_NO_PAD.decode(token)?;
-    let deserialized = serde_json::from_slice::<T>(&decoded)?;
-    Ok(deserialized)
+#[cfg(feature = "testing")]
+async fn wipe<T: TableIndexTrait>(context: &EmilyContext) -> Result<(), Error> {
+    <T as TableIndexTrait>::wipe(&context.dynamodb_client, &context.settings).await
 }
 
 // TODO(397): Add accessor function unit tests.

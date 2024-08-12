@@ -52,14 +52,15 @@ pub async fn get_deposit(
         bitcoin_tx_output_index: BitcoinTransactionOutputIndex,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Make key.
-        let key: DepositEntryKey = DepositEntryKey {
+        let key = DepositEntryKey {
             bitcoin_txid,
             bitcoin_tx_output_index,
         };
         // Get deposit.
-        let deposit: Deposit = accessors::get_deposit_entry(&context, key)
+        let deposit: Deposit = accessors::get_deposit_entry(&context, &key)
             .await?
             .try_into()?;
+
         // Respond.
         Ok(with_status(
             json(&(deposit as GetDepositResponse)),
@@ -103,20 +104,18 @@ pub async fn get_deposits_for_transaction(
         bitcoin_txid: BitcoinTransactionId,
         query: GetDepositsForTransactionQuery,
     ) -> Result<impl warp::reply::Reply, Error> {
-        // Deserialize next token into the exclusive start key if present/
         let (entries, next_token) = accessors::get_deposit_entries_for_transaction(
             &context,
-            bitcoin_txid,
+            &bitcoin_txid,
             query.next_token,
             query.page_size,
         )
         .await?;
-        // Convert data into response types.
+        // Get deposits as the right type.
         let deposits: Vec<Deposit> = entries
             .into_iter()
             .map(|entry| entry.try_into())
             .collect::<Result<_, _>>()?;
-
         // Create response.
         let response = GetDepositsForTransactionResponse { deposits, next_token };
         // Respond.
@@ -158,7 +157,7 @@ pub async fn get_deposits(
         // Deserialize next token into the exclusive start key if present/
         let (entries, next_token) = accessors::get_deposit_entries(
             &context,
-            query.status,
+            &query.status,
             query.next_token,
             query.page_size,
         )

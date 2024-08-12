@@ -82,7 +82,7 @@ pub async fn get_chainstate_at_height(
         let num_to_retrieve_if_multiple = 5;
         let (entries, _) = accessors::get_chainstate_entries_for_height(
             &context,
-            height,
+            &height,
             None,
             Some(num_to_retrieve_if_multiple),
         )

@@ -53,7 +53,7 @@ pub async fn get_withdrawal(
         let num_to_retrieve_if_multiple = 5;
         let (entries, _) = accessors::get_withdrawal_entries_for_id(
             &context,
-            request_id,
+            &request_id,
             None,
             Some(num_to_retrieve_if_multiple),
         )
@@ -114,7 +114,7 @@ pub async fn get_withdrawals(
         // Deserialize next token into the exclusive start key if present.
         let (entries, next_token) = accessors::get_withdrawal_entries(
             &context,
-            query.status,
+            &query.status,
             query.next_token,
             query.page_size,
         )

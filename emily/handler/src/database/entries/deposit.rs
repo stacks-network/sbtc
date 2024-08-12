@@ -13,6 +13,10 @@ use crate::{
     common::error::Error,
 };
 
+use super::{
+    EntryTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait, SecondaryIndex, SecondaryIndexTrait,
+};
+
 // Deposit entry ---------------------------------------------------------------
 
 /// Deposit table entry key. This is the primary index key.
@@ -57,6 +61,43 @@ pub struct DepositEntry {
     pub fulfillment: Option<Fulfillment>,
     /// History of this deposit transaction.
     pub history: Vec<DepositEvent>,
+}
+
+/// Implements the key trait for the deposit entry key.
+impl KeyTrait for DepositEntryKey {
+    /// The type of the partition key.
+    type PartitionKey = BitcoinTransactionId;
+    /// the type of the sort key.
+    type SortKey = BitcoinTransactionOutputIndex;
+    /// The table field name of the partition key.
+    const PARTITION_KEY_NAME: &'static str = "BitcoinTxid";
+    /// The table field name of the sort key.
+    const _SORT_KEY_NAME: &'static str = "BitcoinTxOutputIndex";
+}
+
+/// Implements the entry trait for the deposit entry.
+impl EntryTrait for DepositEntry {
+    /// The type of the key for this entry type.
+    type Key = DepositEntryKey;
+    /// Extract the key from the deposit entry.
+    fn key(&self) -> Self::Key {
+        DepositEntryKey {
+            bitcoin_txid: self.key.bitcoin_txid.clone(),
+            bitcoin_tx_output_index: self.key.bitcoin_tx_output_index,
+        }
+    }
+}
+
+/// Primary index struct.
+pub struct DepositTablePrimaryIndexInner;
+/// Deposit table primary index type.
+pub type DepositTablePrimaryIndex = PrimaryIndex<DepositTablePrimaryIndexInner>;
+/// Definition of Primary index trait.
+impl PrimaryIndexTrait for DepositTablePrimaryIndexInner {
+    type Entry = DepositEntry;
+    fn table_name(settings: &crate::context::Settings) -> &str {
+        &settings.deposit_table_name
+    }
 }
 
 /// Implementation of deposit entry.
@@ -193,6 +234,42 @@ pub struct DepositInfoEntry {
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this hash is the Stacks block hash that contains that artifact.
     pub last_update_block_hash: StacksBlockHash,
+}
+
+/// Implements the key trait for the deposit entry key.
+impl KeyTrait for DepositInfoEntryKey {
+    /// The type of the partition key.
+    type PartitionKey = Status;
+    /// the type of the sort key.
+    type SortKey = BlockHeight;
+    /// The table field name of the partition key.
+    const PARTITION_KEY_NAME: &'static str = "OpStatus";
+    /// The table field name of the sort key.
+    const _SORT_KEY_NAME: &'static str = "LastUpdateHeight";
+}
+
+/// Implements the entry trait for the deposit entry.
+impl EntryTrait for DepositInfoEntry {
+    /// The type of the key for this entry type.
+    type Key = DepositInfoEntryKey;
+    /// Extract the key from the deposit info entry.
+    fn key(&self) -> Self::Key {
+        DepositInfoEntryKey {
+            status: self.key.status.clone(),
+            last_update_height: self.key.last_update_height,
+        }
+    }
+}
+
+/// Primary index struct.
+pub struct DepositTableSecondaryIndexInner;
+/// Deposit table primary index type.
+pub type DepositTableSecondaryIndex = SecondaryIndex<DepositTableSecondaryIndexInner>;
+/// Definition of Primary index trait.
+impl SecondaryIndexTrait for DepositTableSecondaryIndexInner {
+    type PrimaryIndex = DepositTablePrimaryIndex;
+    type Entry = DepositInfoEntry;
+    const INDEX_NAME: &'static str = "DepositStatus";
 }
 
 impl From<DepositInfoEntry> for DepositInfo {
