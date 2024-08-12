@@ -3,7 +3,7 @@
 //! the various crypto libraries and crates used here: rust-secp256k1,
 //! stacks-common, and p256k1. All three crates depend on the libsecp256k1
 //! C library under the hood.
-//! 
+//!
 //! ## PublicKey conversions to-from p256k1 types.
 //!
 //! Every `PublicKey` is a valid `p256k1::point::Point` because a
@@ -11,9 +11,9 @@
 //! `p256k1::point::Point` type can represent any point on the curve,
 //! including the identity point (also called the point at infinity), but
 //! that point is not a valid public key.
-//! 
+//!
 //! ## PrivateKey conversions to-from p256k1 types
-//! 
+//!
 //! Every `PrivateKey` is a valid `p256k1::scalar::Scalar`, but not the
 //! other way around. This is because zero is an invalid `PrivateKey` but
 //! it is a valid `p256k1::scalar::Scalar`. The `secp256k1::SecretKey` type
@@ -265,8 +265,8 @@ mod tests {
 
     use rand::rngs::OsRng;
     use secp256k1::SecretKey;
-    use stacks_common::util::secp256k1::Secp256k1PublicKey;
     use stacks_common::util::secp256k1::Secp256k1PrivateKey;
+    use stacks_common::util::secp256k1::Secp256k1PublicKey;
 
     use test_case::test_case;
 
