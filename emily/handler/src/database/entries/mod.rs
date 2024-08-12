@@ -304,13 +304,10 @@ pub(crate) trait TableIndexTrait {
         let mut write_delete_requests: Vec<WriteRequest> = Vec::new();
         for key in keys_to_delete {
             let key_item = serde_dynamo::to_item::<<Self::Entry as EntryTrait>::Key, Item>(key)?;
-            let write_request = WriteRequest::builder()
-                .delete_request(
-                    DeleteRequest::builder()
-                        .set_key(Some(key_item.into()))
-                        .build()?,
-                )
-                .build();
+            let req = DeleteRequest::builder()
+                .set_key(Some(key_item.into()))
+                .build()?;
+            let write_request = WriteRequest::builder().delete_request(req).build();
             write_delete_requests.push(write_request);
         }
         // Execute the deletes in chunks.
@@ -335,17 +332,19 @@ pub(crate) trait TableIndexTrait {
         match Self::INDEX_NAME_IF_GSI {
             // If this is secondary index, so go to primary:
             Some(_) => {
+                let keys_to_delete = <Self::PrimaryIndex as TableIndexTrait>::get_all_entries(
+                    dynamodb_client,
+                    settings,
+                )
+                .await?
+                .iter()
+                .map(<<Self::PrimaryIndex as TableIndexTrait>::Entry as EntryTrait>::key)
+                .collect();
+
                 <Self::PrimaryIndex as TableIndexTrait>::delete_entries(
                     dynamodb_client,
                     settings,
-                    <Self::PrimaryIndex as TableIndexTrait>::get_all_entries(
-                        dynamodb_client,
-                        settings,
-                    )
-                    .await?
-                    .iter()
-                    .map(<<Self::PrimaryIndex as TableIndexTrait>::Entry as EntryTrait>::key)
-                    .collect(),
+                    keys_to_delete,
                 )
                 .await
             }
