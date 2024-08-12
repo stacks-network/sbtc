@@ -210,7 +210,7 @@ pub enum Error {
     /// Thrown when the recoverable signature has a public key that is
     /// unexpected.
     #[error("unexpected public key from signature. key {0}; digest: {1}")]
-    UnknownPublicKey(secp256k1::PublicKey, secp256k1::Message),
+    UnknownPublicKey(crate::keys::PublicKey, secp256k1::Message),
 
     /// WSTS error.
     #[error("WSTS error: {0}")]

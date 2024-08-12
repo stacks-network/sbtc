@@ -50,6 +50,18 @@ impl From<&PublicKey> for secp256k1::PublicKey {
     }
 }
 
+impl From<secp256k1::PublicKey> for PublicKey {
+    fn from(value: secp256k1::PublicKey) -> Self {
+        Self(value)
+    }
+}
+
+impl From<PublicKey> for secp256k1::PublicKey {
+    fn from(value: PublicKey) -> Self {
+        value.0
+    }
+}
+
 impl From<&PublicKey> for secp256k1::XOnlyPublicKey {
     fn from(value: &PublicKey) -> Self {
         value.0.x_only_public_key().0
@@ -162,6 +174,23 @@ impl PublicKey {
     /// single bit, as x determines it up to one bit.
     pub fn serialize(&self) -> [u8; 33] {
         self.0.serialize()
+    }
+
+    /// Combine many keys into one aggregate key
+    pub fn combine_keys<'a, I>(keys: I) -> Result<Self, Error>
+    where
+        I: IntoIterator<Item = &'a PublicKey>,
+    {
+        let keys: Vec<&secp256k1::PublicKey> = keys.into_iter().map(|key| &key.0).collect();
+        secp256k1::PublicKey::combine_keys(&keys)
+            .map(Self)
+            .map_err(Error::InvalidAggregateKey)
+    }
+}
+
+impl std::fmt::Display for PublicKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 

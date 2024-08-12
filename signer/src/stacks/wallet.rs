@@ -24,12 +24,12 @@ use blockstack_lib::util::secp256k1::MessageSignature;
 use blockstack_lib::util::secp256k1::Secp256k1PublicKey;
 use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Message;
-use secp256k1::PublicKey;
 use secp256k1::SecretKey;
 use secp256k1::SECP256K1;
 
 use crate::config::NetworkKind;
 use crate::error::Error;
+use crate::keys::PublicKey;
 use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::AsTxPayload;
 use crate::stacks::contracts::ContractCall;
@@ -118,13 +118,9 @@ impl SignerWallet {
         let public_keys: BTreeSet<PublicKey> = public_keys.iter().copied().collect();
         // Used for the creating the Stacks address. It should never
         // actually return a Result::Err.
-        let pubkeys: Vec<Secp256k1PublicKey> = public_keys
-            .iter()
-            .map(|pk| Secp256k1PublicKey::from_slice(&pk.serialize()))
-            .collect::<Result<_, _>>()
-            .map_err(Error::StacksPublicKey)?;
+        let pubkeys: Vec<Secp256k1PublicKey> =
+            public_keys.iter().map(Secp256k1PublicKey::from).collect();
         // Used for creating the combined public key
-        let keys: Vec<&PublicKey> = public_keys.iter().collect();
 
         let num_sigs = signatures_required as usize;
         let hash_mode = Self::hash_mode().to_address_hash_mode();
@@ -141,7 +137,7 @@ impl SignerWallet {
         // threshold is greater than the number of public keys. We enforce
         // the threshold invariant above in this function.
         Ok(Self {
-            aggregate_key: PublicKey::combine_keys(&keys).map_err(Error::InvalidAggregateKey)?,
+            aggregate_key: PublicKey::combine_keys(public_keys.iter())?,
             public_keys,
             signatures_required,
             network_kind,
@@ -275,8 +271,9 @@ impl MultisigTx {
     /// 2. The signature was given over the correct digest, but we were not
     ///    expecting the associated public key.
     pub fn add_signature(&mut self, signature: RecoverableSignature) -> Result<(), Error> {
-        let public_key = signature
+        let public_key: PublicKey = signature
             .recover(&self.digest)
+            .map(PublicKey::from)
             .map_err(|err| Error::InvalidRecoverableSignature(err, self.digest))?;
 
         // Get the entry for the given public key and replace the value
@@ -438,7 +435,7 @@ mod tests {
             .take(num_keys)
             .collect();
 
-        let public_keys: Vec<_> = key_pairs.iter().map(|kp| kp.public_key()).collect();
+        let public_keys: Vec<_> = key_pairs.iter().map(|kp| kp.public_key().into()).collect();
         let wallet = SignerWallet::new(&public_keys, signatures_required, network, 1).unwrap();
 
         let mut tx_signer = MultisigTx::new_contract_call(TestContractCall, &wallet, TX_FEE);
@@ -485,7 +482,7 @@ mod tests {
             .take(num_keys)
             .collect();
 
-        let public_keys: Vec<_> = key_pairs.iter().map(|kp| kp.public_key()).collect();
+        let public_keys: Vec<_> = key_pairs.iter().map(|kp| kp.public_key().into()).collect();
         let wallet = SignerWallet::new(&public_keys, signatures_required, network, 1).unwrap();
 
         let mut tx_signer = MultisigTx::new_contract_call(TestContractCall, &wallet, TX_FEE);
@@ -537,7 +534,8 @@ mod tests {
         // regardless of the ordering of the keys given to it on
         // construction.
         let mut public_keys: Vec<PublicKey> =
-            std::iter::repeat_with(|| Keypair::new_global(&mut OsRng).public_key())
+            std::iter::repeat_with(|| Keypair::new_global(&mut OsRng))
+                .map(|kp| kp.public_key().into())
                 .take(50)
                 .collect();
 
