@@ -8,7 +8,7 @@ use fake::faker::time::en::DateTimeAfter;
 use fake::Fake;
 use rand::Rng;
 
-use crate::bitcoin::utxo::SignerScriptPubkey as _;
+use crate::keys::SignerScriptPubkey as _;
 use crate::storage::model;
 
 use crate::codec::Encode;

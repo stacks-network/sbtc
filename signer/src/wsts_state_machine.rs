@@ -2,11 +2,11 @@
 
 use std::collections::BTreeMap;
 
-use crate::bitcoin::utxo::SignerScriptPubkey;
 use crate::codec::Decode as _;
 use crate::codec::Encode as _;
 use crate::error;
 use crate::error::Error;
+use crate::keys::SignerScriptPubkey;
 use crate::storage;
 use crate::storage::model;
 
