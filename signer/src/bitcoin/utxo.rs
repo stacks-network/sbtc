@@ -24,10 +24,10 @@ use bitcoin::TxIn;
 use bitcoin::TxOut;
 use bitcoin::Weight;
 use bitcoin::Witness;
-use bitcoin::XOnlyPublicKey;
 use bitvec::array::BitArray;
 use secp256k1::Keypair;
 use secp256k1::Message;
+use secp256k1::XOnlyPublicKey;
 
 use crate::bitcoin::packaging::compute_optimal_packages;
 use crate::bitcoin::packaging::Weighted;
