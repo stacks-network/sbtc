@@ -19,6 +19,7 @@
 //! ```
 //! use sha2::Digest;
 //! use signer::ecdsa::SignEcdsa;
+//! use signer::keys::PrivateKey;
 //!
 //! struct SignableStr(&'static str);
 //!
@@ -30,7 +31,7 @@
 //! }
 //!
 //! let msg = SignableStr("Sign me please!");
-//! let private_key = p256k1::scalar::Scalar::from(1337);
+//! let private_key = PrivateKey::try_from(&p256k1::scalar::Scalar::from(1337)).unwrap();
 //!
 //! // Sign the message.
 //! let signed_msg = msg
@@ -42,7 +43,7 @@
 
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
-use sha2::Digest;
+use sha2::Digest as _;
 
 /// Wraps an inner type with a public key and a signature,
 /// allowing easy verification of the integrity of the inner data.
@@ -133,7 +134,7 @@ impl Signed<crate::message::SignerMessage> {
     ) -> Self {
         let inner = crate::message::SignerMessage::random(rng);
         inner
-            .sign_ecdsa(&private_key)
+            .sign_ecdsa(private_key)
             .expect("Failed to sign message")
     }
 }

@@ -32,7 +32,7 @@ use secp256k1::XOnlyPublicKey;
 use crate::bitcoin::packaging::compute_optimal_packages;
 use crate::bitcoin::packaging::Weighted;
 use crate::error::Error;
-use crate::keys::SignerScriptPubkey as _;
+use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
@@ -926,21 +926,6 @@ mod tests {
             amount,
             address: generate_address(),
         }
-    }
-
-    // If we have a XOnlyPublicKey and a p256k1::point::Point that
-    // represent the same point on the curve, then the associated signer
-    // `scriptPubKey`s must match.
-    #[test]
-    fn p256k1_point_and_secp256k1_pubkey_same_script() {
-        let x_part = generate_x_only_public_key();
-        let pk = secp256k1::PublicKey::from_x_only_public_key(x_part, secp256k1::Parity::Even);
-        let public_key = crate::keys::PublicKey::from(pk);
-
-        assert_eq!(
-            public_key.signers_script_pubkey(),
-            x_part.signers_script_pubkey()
-        );
     }
 
     #[ignore = "For generating the SOLO_(DEPOSIT|WITHDRAWAL)_SIZE constants"]

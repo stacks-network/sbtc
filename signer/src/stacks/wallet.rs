@@ -303,14 +303,7 @@ impl MultisigTx {
                     let signature = from_secp256k1_recoverable(&sig);
                     cond.push_signature(key_encoding, signature);
                 }
-                None => {
-                    let compressed_data = public_key.serialize();
-                    let public_key = Secp256k1PublicKey::from_slice(&compressed_data)
-                        .expect("we know this is a valid public key");
-
-                    debug_assert!(public_key.compressed());
-                    cond.push_public_key(public_key);
-                }
+                None => cond.push_public_key(Secp256k1PublicKey::from(&public_key)),
             });
 
         self.tx

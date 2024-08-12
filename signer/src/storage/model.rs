@@ -254,7 +254,7 @@ pub struct EncryptedDkgShares {
     /// The aggregate key for these shares
     pub aggregate_key: PublicKey,
     /// The tweaked aggregate key for these shares
-    pub tweaked_aggregate_key: [u8; 32],
+    pub tweaked_aggregate_key: PublicKey,
     /// The `scriptPubKey` for the aggregate public key.
     pub script_pubkey: Bytes,
     /// The encrypted DKG shares

@@ -301,6 +301,7 @@ mod tests {
 
     use crate::error::Error;
     use crate::keys::PublicKey;
+    use crate::keys::SignerScriptPubKey as _;
     use crate::stacks::api::AccountInfo;
     use crate::stacks::api::FeePriority;
     use crate::stacks::api::SubmitTxResponse;
@@ -552,9 +553,10 @@ mod tests {
 
         // We start by storing our `scriptPubKey`.
         let storage = storage::in_memory::Store::new_shared();
+        let aggregate_key = PublicKey::dummy_with_rng(&fake::Faker, &mut rng);
         let shares = model::EncryptedDkgShares {
-            aggregate_key: PublicKey::dummy_with_rng(&fake::Faker, &mut rng),
-            tweaked_aggregate_key: [0; 32],
+            aggregate_key,
+            tweaked_aggregate_key: aggregate_key.signers_tweaked_pubkey().unwrap(),
             script_pubkey: signers_script_pubkey.clone(),
             created_at: time::OffsetDateTime::now_utc(),
             encrypted_private_shares: Vec::new(),

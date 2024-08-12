@@ -6,7 +6,7 @@ use crate::blocklist_client;
 use crate::error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
-use crate::keys::SignerScriptPubkey as _;
+use crate::keys::SignerScriptPubKey as _;
 use crate::message;
 use crate::network;
 use crate::storage;
@@ -20,6 +20,7 @@ use crate::network::MessageTransfer as _;
 use bitcoin::hashes::Hash as _;
 use futures::StreamExt as _;
 use rand::SeedableRng as _;
+use sha2::Digest as _;
 
 struct EventLoopHarness<S, Rng> {
     event_loop: EventLoop<S, Rng>,
@@ -464,7 +465,7 @@ where
                     self.context_window,
                     signer_info.signer_private_key,
                     self.signing_threshold,
-                    rng.clone(),
+                    rand::rngs::OsRng,
                 );
 
                 event_loop_harness.start()
@@ -510,19 +511,29 @@ where
 
         let tx = testing::dummy::tx(&fake::Faker, &mut rng);
         let txid = tx.compute_txid();
-        let msg = "sign here please".as_bytes(); // TODO(296): Compute proper sighash from transaction
+
+        let mut hasher = sha2::Sha256::new();
+        hasher.update("sign here please");
+        let msg: [u8; 32] = hasher.finalize().into(); // TODO(296): Compute proper sighash from transaction
 
         coordinator
             .request_sign_transaction(bitcoin_chain_tip, tx, aggregate_key)
             .await;
 
         let signature = coordinator
-            .run_signing_round(bitcoin_chain_tip, txid, msg)
+            .run_signing_round(bitcoin_chain_tip, txid, &msg)
             .await;
 
-        let tweaked_aggregate_key = aggregate_key.tweaked_public_key();
-        let tweaked_key_element = p256k1::field::Element::from(tweaked_aggregate_key.serialize());
-        assert!(signature.verify(&tweaked_key_element, msg));
+        // Let's check the signature using the secp256k1 types.
+        let sig = secp256k1::schnorr::Signature::from_slice(&signature.to_bytes()).unwrap();
+        let msg_digest = secp256k1::Message::from_digest(msg);
+        let pk = aggregate_key.signers_tweaked_pubkey().unwrap();
+        let x_only_pk = secp256k1::XOnlyPublicKey::from(&pk);
+        sig.verify(&msg_digest, &x_only_pk).unwrap();
+
+        // Let's check using the p256k1 types
+        let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&aggregate_key.into(), None);
+        assert!(signature.verify(&tweaked_aggregate_key.x(), &msg));
     }
 
     async fn write_test_data(test_data: &testing::storage::model::TestData, storage: &mut S) {

@@ -9,7 +9,7 @@ use fake::Fake;
 use rand::Rng;
 
 use crate::keys::PublicKey;
-use crate::keys::SignerScriptPubkey as _;
+use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
 
 use crate::codec::Encode;
@@ -202,7 +202,7 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         aggregate_key: group_key,
         encrypted_private_shares,
         public_shares,
-        tweaked_aggregate_key: group_key.tweaked_public_key().serialize(),
+        tweaked_aggregate_key: group_key.signers_tweaked_pubkey().unwrap(),
         script_pubkey: group_key.signers_script_pubkey().into_bytes(),
         created_at,
     }

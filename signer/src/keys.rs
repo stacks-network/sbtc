@@ -28,18 +28,17 @@
 //! [^3]: https://github.com/Trust-Machines/p256k1/blob/3ecb941c1af13741d52335ef911693b6d6fda94b/p256k1/src/scalar.rs#L245-L257
 //! [^4]: https://github.com/bitcoin-core/secp256k1/blob/3fdf146bad042a17f6b2f490ef8bd9d8e774cdbd/src/scalar.h#L31-L36
 
-use bitcoin::key::TapTweak as _;
 use bitcoin::ScriptBuf;
-use bitcoin::XOnlyPublicKey;
+use bitcoin::TapTweakHash;
 use secp256k1::Parity;
 use secp256k1::SECP256K1;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::error::Error;
 
 /// The public key type for the secp256k1 elliptic curve.
-#[derive(
-    Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PublicKey(secp256k1::PublicKey);
 
 impl From<&secp256k1::PublicKey> for PublicKey {
@@ -199,7 +198,7 @@ impl PublicKey {
     }
 
     /// Creates a new public key from a [`Private`] and the global
-    /// [`secp256k1::SECP256K1`] context.
+    /// [`SECP256K1`] context.
     pub fn from_private_key(key: &PrivateKey) -> Self {
         Self(secp256k1::PublicKey::from_secret_key_global(&key.0))
     }
@@ -315,7 +314,7 @@ impl PrivateKey {
     }
 
     /// Constructs an ECDSA signature for `message` using the global
-    /// [`secp256k1::SECP256K1`] context and returns it in "low S" form.
+    /// [`SECP256K1`] context and returns it in "low S" form.
     pub fn sign_ecdsa<M>(&self, message: M) -> secp256k1::ecdsa::Signature
     where
         M: MessageDigest,
@@ -327,7 +326,7 @@ impl PrivateKey {
     }
 
     /// Constructs an ECDSA signature for `message` using the global
-    /// [`secp256k1::SECP256K1`] context and returns it in "low S" form.
+    /// [`SECP256K1`] context and returns it in "low S" form.
     pub fn sign_ecdsa_recoverable<M>(&self, message: M) -> secp256k1::ecdsa::RecoverableSignature
     where
         M: MessageDigest,
@@ -356,34 +355,53 @@ impl MessageDigest for [u8; 32] {
 }
 
 /// This trait is used to provide a unifying interface for converting
-/// different public key types to the `scriptPubKey` associated with the
-/// signers. We represent the `scriptPubkey` using rust-bitcoin's ScriptBuf
-/// type.
-pub trait SignerScriptPubkey {
+/// different public key types to the `scriptPubKey` and the tweaked public
+/// key associated with the signers. We represent the `scriptPubkey` using
+/// rust-bitcoin's ScriptBuf type.
+pub trait SignerScriptPubKey: Sized {
     /// Convert this type to the `scriptPubkey` used by the signers to lock
     /// their UTXO.
     fn signers_script_pubkey(&self) -> ScriptBuf;
     /// Construct the signers tweaked public key.
-    fn tweaked_public_key(&self) -> XOnlyPublicKey;
+    fn signers_tweaked_pubkey(&self) -> Result<PublicKey, Error>;
 }
 
-impl SignerScriptPubkey for PublicKey {
+impl SignerScriptPubKey for PublicKey {
     fn signers_script_pubkey(&self) -> ScriptBuf {
-        let internal_key = secp256k1::XOnlyPublicKey::from(self);
-        ScriptBuf::new_p2tr(SECP256K1, internal_key, None)
+        secp256k1::XOnlyPublicKey::from(self).signers_script_pubkey()
     }
-    fn tweaked_public_key(&self) -> XOnlyPublicKey {
-        let x_key = XOnlyPublicKey::from(self);
-        x_key.tap_tweak(SECP256K1, None).0.to_inner()
+    /// Construct the signers tweaked public key.
+    ///
+    /// The implementation below is the same as the first step in the
+    /// [`ScriptBuf::new_p2tr`] implementation, which we know does what we
+    /// want.
+    fn signers_tweaked_pubkey(&self) -> Result<PublicKey, Error> {
+        let internal_key = secp256k1::XOnlyPublicKey::from(self);
+        let tweak = TapTweakHash::from_key_and_tweak(internal_key, None).to_scalar();
+        self.0
+            .add_exp_tweak(SECP256K1, &tweak)
+            .map(PublicKey)
+            .map_err(Error::InvalidPublicKeyTweak)
     }
 }
 
-impl SignerScriptPubkey for secp256k1::XOnlyPublicKey {
+impl SignerScriptPubKey for secp256k1::XOnlyPublicKey {
     fn signers_script_pubkey(&self) -> ScriptBuf {
         ScriptBuf::new_p2tr(SECP256K1, *self, None)
     }
-    fn tweaked_public_key(&self) -> XOnlyPublicKey {
-        self.tap_tweak(SECP256K1, None).0.to_inner()
+    /// The [`secp256k1::XOnlyPublicKey`] type has a tap_tweak public
+    /// function that panics when adding the tweak leads to an invalid
+    /// public key. Although it is extremely unlikely for the resulting
+    /// public key to be invalid by chance, we still bubble this one up.
+    fn signers_tweaked_pubkey(&self) -> Result<PublicKey, Error> {
+        let tweak = TapTweakHash::from_key_and_tweak(*self, None).to_scalar();
+        let (output_key, parity) = self
+            .add_tweak(SECP256K1, &tweak)
+            .map_err(Error::InvalidPublicKeyTweak)?;
+
+        debug_assert!(self.tweak_add_check(SECP256K1, &output_key, parity, tweak));
+        let pk = secp256k1::PublicKey::from_x_only_public_key(output_key, parity);
+        Ok(PublicKey(pk))
     }
 }
 
@@ -476,6 +494,13 @@ mod tests {
     }
 
     #[test]
+    fn stacks_common_public_key_compressed() {
+        let public_key = PublicKey::from_private_key(&PrivateKey::new(&mut OsRng));
+        let key = stacks_common::util::secp256k1::Secp256k1PublicKey::from(&public_key);
+        assert!(key.compressed())
+    }
+
+    #[test]
     fn selective_conversion_private_key() {
         // We test that we can go from a scalar to a PrivateKey with high
         // probability, and we can go back 100% of the time.
@@ -493,5 +518,35 @@ mod tests {
         let from_scalar = PrivateKey::try_from(&scalar).unwrap();
 
         assert_eq!(pk, from_scalar);
+    }
+
+    // If we have a XOnlyPublicKey and a PublicKey that represent the same
+    // x-coordinate on the curve, then the associated signer
+    // `scriptPubKey`s must match.
+    #[test]
+    fn x_only_key_and_secp256k1_pubkey_same_script() {
+        let secret_key = SecretKey::new(&mut OsRng);
+        let x_part = secret_key.x_only_public_key(SECP256K1).0;
+        // It doesn't matter what the parity bit is.
+        let pk = secp256k1::PublicKey::from_x_only_public_key(x_part, Parity::Even);
+        let public_key = PublicKey(pk);
+
+        assert_eq!(
+            public_key.signers_script_pubkey(),
+            x_part.signers_script_pubkey()
+        );
+    }
+
+    #[test]
+    fn tap_tweak_equivalence() {
+        let private_key = PrivateKey::new(&mut OsRng);
+        let public_key = PublicKey::from_private_key(&private_key);
+        let tweaked_aggregate_key1 = wsts::compute::tweaked_public_key(&public_key.into(), None);
+        let tweaked_aggregate_key2 = public_key.signers_tweaked_pubkey().unwrap();
+
+        let tweaked_aggregate_key1_bytes = tweaked_aggregate_key1.x().to_bytes();
+        let tweaked_aggregate_key2_bytes =
+            tweaked_aggregate_key2.0.x_only_public_key().0.serialize();
+        assert_eq!(tweaked_aggregate_key1_bytes, tweaked_aggregate_key2_bytes);
     }
 }

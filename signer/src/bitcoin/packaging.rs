@@ -5,14 +5,14 @@ use std::collections::BTreeMap;
 /// Package a list of items into bags where the total capacity of each bag
 /// is less than the given capacity.
 ///
-/// Note that items with wieght that is greater than the capacity are
+/// Note that items with weight that is greater than the capacity are
 /// filtered out.
 pub fn compute_optimal_packages<I, T>(items: I, capacity: u32) -> impl Iterator<Item = Vec<T>>
 where
     I: IntoIterator<Item = T>,
     T: Weighted,
 {
-    // This is an implementation of the Best-Fit-Decreasing algorithm so
+    // This is an implementation of the Best-Fit-Decreasing algorithm, so
     // we need to sort by weight decreasing.
     let mut item_vec: Vec<(u32, T)> = items
         .into_iter()
@@ -22,7 +22,7 @@ where
     item_vec.sort_by_key(|(weight, _)| std::cmp::Reverse(*weight));
 
     // Now we just add each item into a bag, and return the
-    // collection of bags afterwards.
+    // collection of bags afterward.
     let mut packager = BestFitPackager::new(capacity);
     for (weight, req) in item_vec {
         packager.insert_item(weight, req);
@@ -149,7 +149,7 @@ mod tests {
     }
 
     /// We want to use as few bags as possible for packaging the given
-    /// input "items". If OPL reperesents the optimal number of bags, then
+    /// input "items". If OPL represents the optimal number of bags, then
     /// this algorithm packages into N bags N <= (11 / 9) * OPL + 1
     #[test_case(&[5, 7, 5, 2, 4, 2, 5, 1, 6], 10, 4; "uci example")]
     #[test_case(&[6, 1, 0, 3, 0, 4, 4, 0, 0, 2], 10, 2; "made-up example")]
