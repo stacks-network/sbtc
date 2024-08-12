@@ -254,7 +254,7 @@ pub struct EncryptedDkgShares {
     /// The aggregate key for these shares
     pub aggregate_key: PublicKey,
     /// The tweaked aggregate key for these shares
-    pub tweaked_aggregate_key: PubKey,
+    pub tweaked_aggregate_key: [u8; 32],
     /// The `scriptPubKey` for the aggregate public key.
     pub script_pubkey: Bytes,
     /// The encrypted DKG shares
@@ -275,7 +275,7 @@ pub struct RotateKeysTransaction {
     /// The aggregate key for these shares.
     pub aggregate_key: PublicKey,
     /// The public keys of the signers.
-    pub signer_set: Vec<Bytes>,
+    pub signer_set: Vec<PublicKey>,
 }
 
 /// The types of transactions the signer is interested in.

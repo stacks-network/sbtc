@@ -12,6 +12,8 @@ use sha2::Digest;
 use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
 use crate::error;
+use crate::keys::PrivateKey;
+use crate::keys::PublicKey;
 use crate::network;
 use crate::storage;
 use crate::storage::model;
@@ -96,7 +98,7 @@ pub struct TxCoordinatorEventLoop<Network, Storage, BitcoinClient> {
     /// Notification receiver from the block observer.
     pub block_observer_notifications: tokio::sync::watch::Receiver<()>,
     /// Private key of the coordinator for network communication.
-    pub private_key: p256k1::scalar::Scalar,
+    pub private_key: PrivateKey,
     /// The threshold for the signer
     pub threshold: u32,
     /// How many bitcoin blocks back from the chain tip the signer will look for requests.
@@ -169,8 +171,8 @@ where
     async fn construct_and_sign_bitcoin_sbtc_transactions(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: p256k1::point::Point,
-        signer_public_keys: &BTreeSet<p256k1::ecdsa::PublicKey>,
+        aggregate_key: PublicKey,
+        signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<(), error::Error> {
         let fee_rate = self.bitcoin_client.estimate_fee_rate().await?;
 
@@ -201,8 +203,8 @@ where
     async fn construct_and_sign_stacks_sbtc_response_transactions(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: p256k1::point::Point,
-        signer_public_keys: &BTreeSet<p256k1::ecdsa::PublicKey>,
+        aggregate_key: PublicKey,
+        signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<(), error::Error> {
         // TODO(320): Implement
         todo!();
@@ -213,8 +215,8 @@ where
     #[tracing::instrument(skip(self))]
     async fn sign_and_broadcast(
         &mut self,
-        aggregate_key: p256k1::point::Point,
-        signer_public_keys: &BTreeSet<p256k1::ecdsa::PublicKey>,
+        aggregate_key: PublicKey,
+        signer_public_keys: &BTreeSet<PublicKey>,
         transaction: utxo::UnsignedTransaction<'_>,
     ) -> Result<(), error::Error> {
         let _coordinator_state_machine = wsts_state_machine::CoordinatorStateMachine::load(
@@ -244,7 +246,7 @@ where
     fn is_coordinator(
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        signer_public_keys: &BTreeSet<p256k1::ecdsa::PublicKey>,
+        signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<bool, error::Error> {
         let mut hasher = sha2::Sha256::new();
         hasher.update(bitcoin_chain_tip);
@@ -252,7 +254,7 @@ where
         let index =
             usize::from_be_bytes(*digest.first_chunk().ok_or(error::Error::TypeConversion)?);
 
-        let pub_key = self.pub_key()?;
+        let pub_key = self.pub_key();
 
         Ok(signer_public_keys
             .iter()
@@ -265,7 +267,7 @@ where
     async fn get_btc_state(
         &mut self,
         fee_rate: f64,
-        aggregate_key: &p256k1::point::Point,
+        aggregate_key: &PublicKey,
     ) -> Result<utxo::SignerBtcState, error::Error> {
         // TODO(319): Assemble the relevant information for the btc state
         todo!();
@@ -276,8 +278,8 @@ where
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         signer_btc_state: utxo::SignerBtcState,
-        aggregate_key: p256k1::point::Point,
-        signer_public_keys: &BTreeSet<p256k1::ecdsa::PublicKey>,
+        aggregate_key: PublicKey,
+        signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<utxo::SbtcRequests, error::Error> {
         let context_window = self
             .context_window
@@ -296,8 +298,7 @@ where
             .get_pending_accepted_withdraw_requests(bitcoin_chain_tip, context_window, threshold)
             .await?;
 
-        let signers_public_key = bitcoin::XOnlyPublicKey::from_slice(&aggregate_key.x().to_bytes())
-            .map_err(|_| error::Error::TypeConversion)?;
+        let signers_public_key = bitcoin::XOnlyPublicKey::from(&aggregate_key);
 
         let convert_deposit =
             |request| utxo::DepositRequest::try_from_model(request, signers_public_key);
@@ -334,40 +335,22 @@ where
     async fn get_signer_public_keys_and_aggregate_key(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<(p256k1::point::Point, BTreeSet<p256k1::ecdsa::PublicKey>), error::Error> {
+    ) -> Result<(PublicKey, BTreeSet<PublicKey>), error::Error> {
         let last_key_rotation = self
             .storage
             .get_last_key_rotation(bitcoin_chain_tip)
             .await?
             .ok_or(error::Error::MissingKeyRotation)?;
 
-        let aggregate_key = p256k1::point::Point::lift_x(
-            &bitcoin_chain_tip
-                .as_slice()
-                .try_into()
-                .map_err(|_| error::Error::TypeConversion)?,
-        )
-        .map_err(|_| error::Error::TypeConversion)?;
-
-        Ok((
-            aggregate_key,
-            last_key_rotation
-                .signer_set
-                .into_iter()
-                .map(|bytes| {
-                    bytes
-                        .as_slice()
-                        .try_into()
-                        .map_err(|_| error::Error::TypeConversion)
-                })
-                .collect::<Result<_, _>>()?,
-        ))
+        let aggregate_key = last_key_rotation.aggregate_key;
+        let signer_set = last_key_rotation.signer_set.into_iter().collect();
+        Ok((aggregate_key, signer_set))
     }
 
     // Return the public key of self.
     //
     // Technically not a fallible operation.
-    fn pub_key(&self) -> Result<p256k1::ecdsa::PublicKey, error::Error> {
-        Ok(p256k1::ecdsa::PublicKey::new(&self.private_key)?)
+    fn pub_key(&self) -> PublicKey {
+        PublicKey::from_private_key(&self.private_key)
     }
 }

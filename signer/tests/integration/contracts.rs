@@ -77,7 +77,7 @@ impl AsContractDeploy for SbtcBootstrapContract {
 
 fn make_signatures(tx: &StacksTransaction, keys: &[Keypair]) -> Vec<RecoverableSignature> {
     keys.iter()
-        .map(|kp| stacks::wallet::sign_ecdsa(tx, &kp.secret_key()))
+        .map(|kp| stacks::wallet::sign_ecdsa(tx, &kp.secret_key().into()))
         .collect()
 }
 

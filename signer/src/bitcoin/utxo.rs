@@ -933,14 +933,13 @@ mod tests {
     // `scriptPubKey`s must match.
     #[test]
     fn p256k1_point_and_secp256k1_pubkey_same_script() {
-        let public_key = generate_x_only_public_key();
-
-        let element = p256k1::field::Element::from(public_key.serialize());
-        let point = p256k1::point::Point::lift_x(&element).unwrap();
+        let x_part = generate_x_only_public_key();
+        let pk = secp256k1::PublicKey::from_x_only_public_key(x_part, secp256k1::Parity::Even);
+        let public_key = crate::keys::PublicKey::from(pk);
 
         assert_eq!(
             public_key.signers_script_pubkey(),
-            point.signers_script_pubkey()
+            x_part.signers_script_pubkey()
         );
     }
 

@@ -294,11 +294,13 @@ mod tests {
     use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
     use blockstack_lib::types::chainstate::StacksAddress;
     use blockstack_lib::types::chainstate::StacksBlockId;
+    use fake::Dummy;
     use rand::seq::IteratorRandom;
     use rand::SeedableRng;
     use sbtc::rpc::BitcoinClient;
 
     use crate::error::Error;
+    use crate::keys::PublicKey;
     use crate::stacks::api::AccountInfo;
     use crate::stacks::api::FeePriority;
     use crate::stacks::api::SubmitTxResponse;
@@ -551,8 +553,8 @@ mod tests {
         // We start by storing our `scriptPubKey`.
         let storage = storage::in_memory::Store::new_shared();
         let shares = model::EncryptedDkgShares {
-            aggregate_key: Vec::new(),
-            tweaked_aggregate_key: Vec::new(),
+            aggregate_key: PublicKey::dummy_with_rng(&fake::Faker, &mut rng),
+            tweaked_aggregate_key: [0; 32],
             script_pubkey: signers_script_pubkey.clone(),
             created_at: time::OffsetDateTime::now_utc(),
             encrypted_private_shares: Vec::new(),

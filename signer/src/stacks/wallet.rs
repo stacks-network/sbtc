@@ -24,11 +24,10 @@ use blockstack_lib::util::secp256k1::MessageSignature;
 use blockstack_lib::util::secp256k1::Secp256k1PublicKey;
 use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Message;
-use secp256k1::SecretKey;
-use secp256k1::SECP256K1;
 
 use crate::config::NetworkKind;
 use crate::error::Error;
+use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::AsTxPayload;
@@ -348,9 +347,9 @@ pub fn construct_digest(tx: &StacksTransaction) -> Message {
 /// using the same process that is done in the
 /// TransactionSpendingCondition::next_signature function, but we skip a
 /// step of generating the next sighash, since we do not need it.
-pub fn sign_ecdsa(tx: &StacksTransaction, secret_key: &SecretKey) -> RecoverableSignature {
-    let msg = construct_digest(tx);
-    SECP256K1.sign_ecdsa_recoverable(&msg, secret_key)
+pub fn sign_ecdsa(tx: &StacksTransaction, private_key: &PrivateKey) -> RecoverableSignature {
+    let message = construct_digest(tx);
+    private_key.sign_ecdsa_recoverable(message)
 }
 
 /// Convert a recoverable signature into a Message Signature.
@@ -380,6 +379,7 @@ mod tests {
     use rand::rngs::OsRng;
     use rand::seq::SliceRandom;
     use secp256k1::Keypair;
+    use secp256k1::SECP256K1;
 
     use test_case::test_case;
 
@@ -452,7 +452,7 @@ mod tests {
         let signatures: Vec<RecoverableSignature> = key_pairs
             .iter()
             .take(submitted_signatures)
-            .map(|kp| sign_ecdsa(tx, &kp.secret_key()))
+            .map(|kp| sign_ecdsa(tx, &kp.secret_key().into()))
             .collect();
 
         // Now add the signatures to the signing object.

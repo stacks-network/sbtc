@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::keys::PublicKey;
 use crate::storage::model;
 
 /// A store wrapped in an Arc<Mutex<...>> for interior mutability
@@ -34,7 +35,7 @@ pub struct Store {
     pub deposit_request_to_signers: HashMap<DepositRequestPk, Vec<model::DepositSigner>>,
 
     /// Deposit signer to request
-    pub signer_to_deposit_request: HashMap<model::PubKey, Vec<DepositRequestPk>>,
+    pub signer_to_deposit_request: HashMap<PublicKey, Vec<DepositRequestPk>>,
 
     /// Withdraw signers
     pub withdraw_request_to_signers: HashMap<WithdrawRequestPk, Vec<model::WithdrawSigner>>,
@@ -58,7 +59,7 @@ pub struct Store {
     pub stacks_nakamoto_blocks: HashMap<model::StacksBlockHash, model::StacksBlock>,
 
     /// Encrypted DKG shares
-    pub encrypted_dkg_shares: HashMap<model::PubKey, model::EncryptedDkgShares>,
+    pub encrypted_dkg_shares: HashMap<PublicKey, model::EncryptedDkgShares>,
 
     /// Rotate keys transactions
     pub rotate_keys_transactions: HashMap<model::StacksTxId, model::RotateKeysTransaction>,
@@ -184,7 +185,7 @@ impl super::DbRead for SharedStore {
 
     async fn get_accepted_deposit_requests(
         &self,
-        signer: &model::PubKey,
+        signer: &PublicKey,
     ) -> Result<Vec<model::DepositRequest>, Self::Error> {
         let store = self.lock().await;
 
@@ -343,7 +344,7 @@ impl super::DbRead for SharedStore {
 
     async fn get_encrypted_dkg_shares(
         &self,
-        aggregate_key: &model::PubKey,
+        aggregate_key: &PublicKey,
     ) -> Result<Option<model::EncryptedDkgShares>, Self::Error> {
         Ok(self
             .lock()
@@ -489,7 +490,7 @@ impl super::DbWrite for SharedStore {
 
         store
             .signer_to_deposit_request
-            .entry(decision.signer_pub_key.clone())
+            .entry(decision.signer_pub_key)
             .or_default()
             .push(deposit_request_pk);
 
@@ -596,7 +597,7 @@ impl super::DbWrite for SharedStore {
         self.lock()
             .await
             .encrypted_dkg_shares
-            .insert(shares.aggregate_key.clone(), shares.clone());
+            .insert(shares.aggregate_key, shares.clone());
 
         Ok(())
     }

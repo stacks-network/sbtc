@@ -9,6 +9,7 @@ use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::error::Error;
+use crate::keys::PublicKey;
 use crate::storage::model;
 use crate::storage::model::TransactionType;
 
@@ -393,8 +394,9 @@ impl super::DbRead for PgStore {
 
     async fn get_accepted_deposit_requests(
         &self,
-        signer: &model::PubKey,
+        signer: &PublicKey,
     ) -> Result<Vec<model::DepositRequest>, Self::Error> {
+        let key = signer.serialize();
         sqlx::query_as!(
             model::DepositRequest,
             r#"
@@ -415,7 +417,7 @@ impl super::DbRead for PgStore {
             WHERE
                 signers.signer_pub_key = $1
             "#,
-            signer,
+            key.as_slice(),
         )
         .fetch_all(&self.0)
         .await
@@ -670,7 +672,7 @@ impl super::DbRead for PgStore {
 
     async fn get_encrypted_dkg_shares(
         &self,
-        aggregate_key: &model::PubKey,
+        aggregate_key: &PublicKey,
     ) -> Result<Option<model::EncryptedDkgShares>, Self::Error> {
         sqlx::query_as::<_, model::EncryptedDkgShares>(
             r#"
@@ -1203,8 +1205,8 @@ impl super::DbWrite for PgStore {
             VALUES ($1, $2, $3, $4, $5, $6)
             "#,
         )
-        .bind(&shares.aggregate_key)
-        .bind(&shares.tweaked_aggregate_key)
+        .bind(shares.aggregate_key)
+        .bind(shares.tweaked_aggregate_key)
         .bind(&shares.encrypted_private_shares)
         .bind(&shares.public_shares)
         .bind(&shares.script_pubkey)
