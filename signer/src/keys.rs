@@ -202,11 +202,23 @@ impl<'r> sqlx::Decode<'r, sqlx::Postgres> for PublicKey {
     }
 }
 
+impl<'r> sqlx::Type<sqlx::Postgres> for PublicKey {
+    fn type_info() -> sqlx::postgres::PgTypeInfo {
+        <Vec<u8> as sqlx::Type<sqlx::Postgres>>::type_info()
+    }
+}
+
 /// We write the compressed public key bytes to the database
 impl<'r> sqlx::Encode<'r, sqlx::Postgres> for PublicKey {
     fn encode_by_ref(&self, buf: &mut sqlx::postgres::PgArgumentBuffer) -> sqlx::encode::IsNull {
         let bytes = self.serialize();
         <[u8; 33] as sqlx::Encode<'r, sqlx::Postgres>>::encode_by_ref(&bytes, buf)
+    }
+}
+#[cfg(feature = "testing")]
+impl fake::Dummy<fake::Faker> for PublicKey {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
+        Self(secp256k1::PublicKey::from_secret_key_global(&secp256k1::SecretKey::new(rng)))
     }
 }
 
