@@ -8,7 +8,6 @@
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 
-use crate::bitcoin::utxo::SignerScriptPubkey as _;
 use crate::blocklist_client;
 use crate::error;
 use crate::message;
@@ -16,13 +15,13 @@ use crate::network;
 use crate::storage;
 use crate::storage::model;
 
-use crate::codec::Encode as _;
 use crate::ecdsa::SignEcdsa as _;
 use crate::wsts_state_machine;
 
 use bitcoin::hashes::Hash;
 use futures::StreamExt;
-use wsts::traits::Signer;
+use wsts::net::DkgEnd;
+use wsts::net::DkgStatus;
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// # Transaction signer event loop
@@ -109,9 +108,6 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
     /// - For DKG rounds, TxID should be the ID of the transaction that
     ///   defined the signer set.
     pub wsts_state_machines: HashMap<bitcoin::Txid, wsts_state_machine::SignerStateMachine>,
-    /// Public keys of the other signers
-    // TODO(317): Read from storage when needed
-    pub signer_public_keys: BTreeSet<p256k1::ecdsa::PublicKey>,
     /// The threshold for the signer
     pub threshold: u32,
     /// How many bitcoin blocks back from the chain tip the signer will look for requests.
@@ -263,10 +259,12 @@ where
             .await?;
 
         if is_valid_sign_request {
+            let signer_public_keys = self.get_signer_public_keys(bitcoin_chain_tip).await?;
+
             let new_state_machine = wsts_state_machine::SignerStateMachine::load(
                 &mut self.storage,
                 request.aggregate_key,
-                self.signer_public_keys.clone(),
+                signer_public_keys,
                 self.threshold,
                 self.signer_private_key,
             )
@@ -318,8 +316,10 @@ where
         tracing::info!("handling message");
         match &msg.inner {
             wsts::net::Message::DkgBegin(_) => {
+                let signer_public_keys = self.get_signer_public_keys(bitcoin_chain_tip).await?;
+
                 let state_machine = wsts_state_machine::SignerStateMachine::new(
-                    self.signer_public_keys.clone(),
+                    signer_public_keys,
                     self.threshold,
                     self.signer_private_key,
                 )?;
@@ -348,7 +348,18 @@ where
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
-            _ => {
+            wsts::net::Message::DkgEnd(DkgEnd { status: DkgStatus::Success, .. }) => {
+                tracing::info!("DKG ended in success");
+            }
+            wsts::net::Message::DkgEnd(DkgEnd {
+                status: DkgStatus::Failure(fail),
+                ..
+            }) => {
+                tracing::info!("DKG ended in failure: {fail:?}");
+                // TODO(#414): handle DKG failute
+            }
+            wsts::net::Message::NonceResponse(_)
+            | wsts::net::Message::SignatureShareResponse(_) => {
                 tracing::debug!("ignoring message");
             }
         }
@@ -578,25 +589,7 @@ where
             .get(txid)
             .ok_or(error::Error::MissingStateMachine)?;
 
-        let saved_state = state_machine.signer.save();
-        let aggregate_key = saved_state.group_key.x().to_bytes().to_vec();
-        let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&saved_state.group_key, None);
-
-        let encoded = saved_state.encode_to_vec().map_err(error::Error::Codec)?;
-
-        let encrypted_shares =
-            wsts::util::encrypt(&self.signer_private_key.to_bytes(), &encoded, &mut self.rng)
-                .map_err(|_| error::Error::Encryption)?;
-
-        let created_at = time::OffsetDateTime::now_utc();
-
-        let encrypted_dkg_shares = model::EncryptedDkgShares {
-            aggregate_key,
-            tweaked_aggregate_key: tweaked_aggregate_key.x().to_bytes().to_vec(),
-            script_pubkey: tweaked_aggregate_key.signers_script_pubkey().into_bytes(),
-            encrypted_shares,
-            created_at,
-        };
+        let encrypted_dkg_shares = state_machine.get_encrypted_dkg_shares(&mut self.rng)?;
 
         self.storage
             .write_encrypted_dkg_shares(&encrypted_dkg_shares)
@@ -622,6 +615,29 @@ where
         self.network.broadcast(msg).await?;
 
         Ok(())
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn get_signer_public_keys(
+        &mut self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<BTreeSet<p256k1::ecdsa::PublicKey>, error::Error> {
+        let last_key_rotation = self
+            .storage
+            .get_last_key_rotation(bitcoin_chain_tip)
+            .await?
+            .ok_or(error::Error::MissingKeyRotation)?;
+
+        last_key_rotation
+            .signer_set
+            .into_iter()
+            .map(|bytes| {
+                bytes
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| error::Error::TypeConversion)
+            })
+            .collect()
     }
 
     fn signer_pub_key_model(&self) -> Result<model::PubKey, error::Error> {

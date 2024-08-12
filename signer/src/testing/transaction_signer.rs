@@ -1,7 +1,5 @@
 //! Test utilities for the transaction signer
 
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::collections::HashMap;
 
 use crate::blocklist_client;
@@ -19,11 +17,6 @@ use crate::network::MessageTransfer as _;
 use bitcoin::hashes::Hash as _;
 use futures::StreamExt as _;
 use rand::SeedableRng as _;
-
-use wsts::state_machine::coordinator;
-use wsts::state_machine::coordinator::frost;
-use wsts::state_machine::coordinator::Coordinator as _;
-use wsts::state_machine::StateMachine as _;
 
 struct EventLoopHarness<S, Rng> {
     event_loop: EventLoop<S, Rng>,
@@ -43,7 +36,7 @@ where
         network: network::in_memory::MpmcBroadcaster,
         storage: S,
         context_window: usize,
-        signer_info: SignerInfo,
+        signer_private_key: p256k1::scalar::Scalar,
         threshold: u32,
         rng: Rng,
     ) -> Self {
@@ -59,8 +52,7 @@ where
                 network,
                 blocklist_checker,
                 block_observer_notifications,
-                signer_private_key: signer_info.signer_private_key,
-                signer_public_keys: signer_info.signer_public_keys,
+                signer_private_key,
                 context_window,
                 wsts_state_machines: HashMap::new(),
                 threshold,
@@ -162,13 +154,13 @@ where
     pub async fn assert_should_store_decisions_for_pending_deposit_requests(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
-        let signer_info = generate_signer_info(&mut rng, self.num_signers);
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
 
         let event_loop_harness = EventLoopHarness::create(
             network.connect(),
             (self.storage_constructor)(),
             self.context_window,
-            signer_info.first().cloned().unwrap(),
+            signer_info.first().cloned().unwrap().signer_private_key,
             self.signing_threshold,
             rng.clone(),
         );
@@ -199,13 +191,13 @@ where
     pub async fn assert_should_store_decisions_for_pending_withdraw_requests(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
-        let signer_info = generate_signer_info(&mut rng, self.num_signers);
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
 
         let event_loop_harness = EventLoopHarness::create(
             network.connect(),
             (self.storage_constructor)(),
             self.context_window,
-            signer_info.first().cloned().unwrap(),
+            signer_info.first().cloned().unwrap().signer_private_key,
             self.signing_threshold,
             rng.clone(),
         );
@@ -236,7 +228,7 @@ where
     pub async fn assert_should_store_decisions_received_from_other_signers(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
-        let signer_info = generate_signer_info(&mut rng, self.num_signers);
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
 
         let mut event_loop_handles: Vec<_> = signer_info
             .into_iter()
@@ -245,7 +237,7 @@ where
                     network.connect(),
                     (self.storage_constructor)(),
                     self.context_window,
-                    signer_info,
+                    signer_info.signer_private_key,
                     self.signing_threshold,
                     rng.clone(),
                 );
@@ -297,13 +289,13 @@ where
     pub async fn assert_should_respond_to_bitcoin_transaction_sign_requests(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
-        let signer_info = generate_signer_info(&mut rng, self.num_signers);
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
 
         let event_loop_harness = EventLoopHarness::create(
             network.connect(),
             (self.storage_constructor)(),
             self.context_window,
-            signer_info.first().cloned().unwrap(),
+            signer_info.first().cloned().unwrap().signer_private_key,
             self.signing_threshold,
             rng.clone(),
         );
@@ -332,8 +324,6 @@ where
             aggregate_key: dummy_aggregate_key,
         };
 
-        let transaction_sign_request_payload: message::Payload = transaction_sign_request.into();
-
         let chain_tip = handle
             .storage
             .get_bitcoin_canonical_chain_tip()
@@ -341,7 +331,18 @@ where
             .expect("storage failure")
             .expect("no chain tip");
 
+        run_dkg_and_store_results_for_signers(
+            &signer_info,
+            &chain_tip,
+            self.signing_threshold,
+            [&mut handle.storage],
+            &mut rng,
+        )
+        .await;
+
         let mut network_handle = network.connect();
+
+        let transaction_sign_request_payload: message::Payload = transaction_sign_request.into();
 
         network_handle
             .broadcast(
@@ -376,17 +377,18 @@ where
     pub async fn assert_should_be_able_to_participate_in_dkg(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
-        let signer_info = generate_signer_info(&mut rng, self.num_signers);
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().unwrap().clone();
 
         let mut event_loop_handles: Vec<_> = signer_info
+            .clone()
             .into_iter()
             .map(|signer_info| {
                 let event_loop_harness = EventLoopHarness::create(
                     network.connect(),
                     (self.storage_constructor)(),
                     self.context_window,
-                    signer_info,
+                    signer_info.signer_private_key,
                     self.signing_threshold,
                     rng.clone(),
                 );
@@ -408,12 +410,24 @@ where
             .await
             .expect("storage error")
             .expect("no chain tip");
+
+        run_dkg_and_store_results_for_signers(
+            &signer_info,
+            &bitcoin_chain_tip,
+            self.signing_threshold,
+            event_loop_handles
+                .iter_mut()
+                .map(|handle| &mut handle.storage),
+            &mut rng,
+        )
+        .await;
+
         let bitcoin_chain_tip =
             bitcoin::BlockHash::from_byte_array(bitcoin_chain_tip.try_into().unwrap());
 
         let dummy_txid = testing::dummy::txid(&fake::Faker, &mut rng);
 
-        let mut coordinator = Coordinator::new(
+        let mut coordinator = testing::wsts::Coordinator::new(
             network.connect(),
             coordinator_signer_info,
             self.signing_threshold,
@@ -436,17 +450,18 @@ where
     pub async fn assert_should_be_able_to_participate_in_signing_round(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
-        let signer_info = generate_signer_info(&mut rng, self.num_signers);
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().unwrap().clone();
 
         let mut event_loop_handles: Vec<_> = signer_info
+            .clone()
             .into_iter()
             .map(|signer_info| {
                 let event_loop_harness = EventLoopHarness::create(
                     network.connect(),
                     (self.storage_constructor)(),
                     self.context_window,
-                    signer_info,
+                    signer_info.signer_private_key,
                     self.signing_threshold,
                     rng.clone(),
                 );
@@ -468,12 +483,24 @@ where
             .await
             .expect("storage error")
             .expect("no chain tip");
+
+        run_dkg_and_store_results_for_signers(
+            &signer_info,
+            &bitcoin_chain_tip,
+            self.signing_threshold,
+            event_loop_handles
+                .iter_mut()
+                .map(|handle| &mut handle.storage),
+            &mut rng,
+        )
+        .await;
+
         let bitcoin_chain_tip =
             bitcoin::BlockHash::from_byte_array(bitcoin_chain_tip.try_into().unwrap());
 
         let dummy_txid = testing::dummy::txid(&fake::Faker, &mut rng);
 
-        let mut coordinator = Coordinator::new(
+        let mut coordinator = testing::wsts::Coordinator::new(
             network.connect(),
             coordinator_signer_info,
             self.signing_threshold,
@@ -645,225 +672,6 @@ where
     }
 }
 
-fn generate_signer_info<Rng: rand::RngCore + rand::CryptoRng>(
-    rng: &mut Rng,
-    num_signers: usize,
-) -> Vec<SignerInfo> {
-    let signer_keys: BTreeMap<_, _> = (0..num_signers)
-        .map(|_| {
-            let private = p256k1::scalar::Scalar::random(rng);
-            let public =
-                p256k1::ecdsa::PublicKey::new(&private).expect("failed to generate public key");
-
-            (public, private)
-        })
-        .collect();
-
-    let signer_public_keys: BTreeSet<_> = signer_keys.keys().cloned().collect();
-
-    signer_keys
-        .into_values()
-        .map(|signer_private_key| SignerInfo {
-            signer_private_key,
-            signer_public_keys: signer_public_keys.clone(),
-        })
-        .collect()
-}
-
-#[derive(Debug, Clone)]
-struct SignerInfo {
-    signer_private_key: p256k1::scalar::Scalar,
-    signer_public_keys: BTreeSet<p256k1::ecdsa::PublicKey>,
-}
-
-struct Coordinator {
-    network: network::in_memory::MpmcBroadcaster,
-    wsts_coordinator: frost::Coordinator<wsts::v2::Aggregator>,
-    private_key: p256k1::scalar::Scalar,
-    num_signers: u32,
-}
-
-impl Coordinator {
-    fn new(
-        network: network::in_memory::MpmcBroadcaster,
-        signer_info: SignerInfo,
-        threshold: u32,
-    ) -> Self {
-        let num_signers = signer_info.signer_public_keys.len().try_into().unwrap();
-        let message_private_key = signer_info.signer_private_key;
-        let signer_public_keys: hashbrown::HashMap<u32, _> = signer_info
-            .signer_public_keys
-            .into_iter()
-            .enumerate()
-            .map(|(idx, key)| {
-                (
-                    idx.try_into().unwrap(),
-                    (&p256k1::point::Compressed::from(key.to_bytes()))
-                        .try_into()
-                        .expect("failed to convert public key"),
-                )
-            })
-            .collect();
-        let num_keys = num_signers;
-        let dkg_threshold = num_keys;
-        let signer_key_ids = (0..num_signers)
-            .map(|signer_id| (signer_id, std::iter::once(signer_id).collect()))
-            .collect();
-        let config = wsts::state_machine::coordinator::Config {
-            num_signers,
-            num_keys,
-            threshold,
-            dkg_threshold,
-            message_private_key,
-            dkg_public_timeout: None,
-            dkg_private_timeout: None,
-            dkg_end_timeout: None,
-            nonce_timeout: None,
-            sign_timeout: None,
-            signer_key_ids,
-            signer_public_keys,
-        };
-
-        let wsts_coordinator = frost::Coordinator::new(config);
-
-        Self {
-            network,
-            wsts_coordinator,
-            private_key: message_private_key,
-            num_signers,
-        }
-    }
-
-    async fn run_dkg(
-        &mut self,
-        bitcoin_chain_tip: bitcoin::BlockHash,
-        txid: bitcoin::Txid,
-    ) -> p256k1::point::Point {
-        self.wsts_coordinator
-            .move_to(coordinator::State::DkgPublicDistribute)
-            .expect("failed to move state machine");
-
-        let outbound = self
-            .wsts_coordinator
-            .start_public_shares()
-            .expect("failed to start public shares");
-
-        self.send_packet(bitcoin_chain_tip, txid, outbound).await;
-
-        match self.loop_until_result(bitcoin_chain_tip, txid).await {
-            wsts::state_machine::OperationResult::Dkg(aggregate_key) => aggregate_key,
-            _ => panic!("unexpected operation result"),
-        }
-    }
-
-    async fn request_sign_transaction(
-        &mut self,
-        bitcoin_chain_tip: bitcoin::BlockHash,
-        tx: bitcoin::Transaction,
-        aggregate_key: p256k1::point::Point,
-    ) {
-        let payload: message::Payload =
-            message::BitcoinTransactionSignRequest { tx, aggregate_key }.into();
-
-        let msg = payload
-            .to_message(bitcoin_chain_tip)
-            .sign_ecdsa(&self.private_key)
-            .expect("failed to sign message");
-
-        self.network
-            .broadcast(msg)
-            .await
-            .expect("failed to broadcast dkg begin msg");
-
-        let mut responses = 0;
-
-        loop {
-            let msg = self.network.receive().await.expect("network error");
-
-            let message::Payload::BitcoinTransactionSignAck(_) = msg.inner.payload else {
-                continue;
-            };
-
-            responses += 1;
-
-            if responses >= self.num_signers {
-                break;
-            }
-        }
-    }
-
-    async fn run_signing_round(
-        &mut self,
-        bitcoin_chain_tip: bitcoin::BlockHash,
-        txid: bitcoin::Txid,
-        msg: &[u8],
-    ) -> wsts::taproot::SchnorrProof {
-        let outbound = self
-            .wsts_coordinator
-            .start_signing_round(msg, true, None)
-            .expect("failed to start signing round");
-
-        self.send_packet(bitcoin_chain_tip, txid, outbound).await;
-
-        match self.loop_until_result(bitcoin_chain_tip, txid).await {
-            wsts::state_machine::OperationResult::SignTaproot(signature) => signature,
-            _ => panic!("unexpected operation result"),
-        }
-    }
-
-    async fn loop_until_result(
-        &mut self,
-        bitcoin_chain_tip: bitcoin::BlockHash,
-        txid: bitcoin::Txid,
-    ) -> wsts::state_machine::OperationResult {
-        loop {
-            let msg = self.network.receive().await.expect("network error");
-
-            let message::Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
-                continue;
-            };
-
-            let packet = wsts::net::Packet {
-                msg: wsts_msg.inner,
-                sig: Vec::new(),
-            };
-
-            let (outbound_packet, operation_result) = self
-                .wsts_coordinator
-                .process_message(&packet)
-                .expect("message processing failed");
-
-            if let Some(packet) = outbound_packet {
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                self.send_packet(bitcoin_chain_tip, txid, packet).await;
-            }
-
-            if let Some(result) = operation_result {
-                return result;
-            }
-        }
-    }
-
-    async fn send_packet(
-        &mut self,
-        bitcoin_chain_tip: bitcoin::BlockHash,
-        txid: bitcoin::Txid,
-        packet: wsts::net::Packet,
-    ) {
-        let payload: message::Payload = message::WstsMessage { txid, inner: packet.msg }.into();
-
-        let msg = payload
-            .to_message(bitcoin_chain_tip)
-            .sign_ecdsa(&self.private_key)
-            .expect("failed to sign message");
-
-        self.network
-            .broadcast(msg)
-            .await
-            .expect("failed to broadcast dkg begin msg");
-    }
-}
-
 async fn store_dummy_dkg_shares<R, S>(
     rng: &mut R,
     signer_private_key: &[u8; 32],
@@ -879,4 +687,39 @@ async fn store_dummy_dkg_shares<R, S>(
         .write_encrypted_dkg_shares(&shares)
         .await
         .expect("storage error");
+}
+
+/// This function runs a DKG round for the given signers and stores the
+/// result in the provided stores for all signers.
+async fn run_dkg_and_store_results_for_signers<'s: 'r, 'r, S, Rng>(
+    signer_info: &[testing::wsts::SignerInfo],
+    chain_tip: &model::BitcoinBlockHash,
+    threshold: u32,
+    stores: impl IntoIterator<Item = &'r mut S>,
+    rng: &mut Rng,
+) where
+    S: storage::DbRead + storage::DbWrite + 's,
+    Rng: rand::CryptoRng + rand::RngCore,
+{
+    let network = network::in_memory::Network::new();
+    let mut testing_signer_set =
+        testing::wsts::SignerSet::new(signer_info, threshold, || network.connect());
+    let dkg_txid = testing::dummy::txid(&fake::Faker, rng);
+    let bitcoin_chain_tip = bitcoin::BlockHash::from_byte_array(
+        chain_tip.clone().try_into().expect("conversion failed"),
+    );
+    let (aggregate_key, all_dkg_shares) = testing_signer_set
+        .run_dkg(bitcoin_chain_tip, dkg_txid, rng)
+        .await;
+
+    for (storage, encrypted_dkg_shares) in stores.into_iter().zip(all_dkg_shares) {
+        testing_signer_set
+            .write_as_rotate_keys_tx(storage, chain_tip, aggregate_key, rng)
+            .await;
+
+        storage
+            .write_encrypted_dkg_shares(&encrypted_dkg_shares)
+            .await
+            .expect("failed to write encrypted shares");
+    }
 }

@@ -555,7 +555,8 @@ mod tests {
             tweaked_aggregate_key: Vec::new(),
             script_pubkey: signers_script_pubkey.clone(),
             created_at: time::OffsetDateTime::now_utc(),
-            encrypted_shares: Vec::new(),
+            encrypted_private_shares: Vec::new(),
+            public_shares: Vec::new(),
         };
         storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 

@@ -9,6 +9,7 @@ use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
 use futures::StreamExt;
 
+use signer::network;
 use signer::stacks::contracts::AcceptWithdrawalV1;
 use signer::stacks::contracts::AsContractCall;
 use signer::stacks::contracts::AsTxPayload as _;
@@ -497,6 +498,79 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
     assert_eq!(
         pending_accepted_withdraw_requests,
         pg_pending_accepted_withdraw_requests
+    );
+}
+
+/// This ensures that the postgres store and the in memory stores returns
+/// equivalent results when fetching pending the last key rotation.
+/// TODO(415): Make this robust to multiple key rotations.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[sqlx::test]
+async fn should_return_the_same_last_key_rotation_as_in_memory_store(pool: sqlx::PgPool) {
+    let mut pg_store = storage::postgres::PgStore::from(pool);
+    let mut in_memory_store = storage::in_memory::Store::new_shared();
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 20,
+        num_stacks_blocks_per_bitcoin_block: 3,
+        num_deposit_requests_per_block: 5,
+        num_withdraw_requests_per_block: 1,
+        num_signers_per_request: 7,
+    };
+    let num_signers = 7;
+    let threshold = 4;
+    let test_data = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
+
+    test_data.write_to(&mut in_memory_store).await;
+    test_data.write_to(&mut pg_store).await;
+
+    let chain_tip = in_memory_store
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .expect("failed to get canonical chain tip")
+        .expect("no chain tip");
+
+    let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
+
+    let dummy_wsts_network = network::in_memory::Network::new();
+    let mut testing_signer_set =
+        testing::wsts::SignerSet::new(&signer_info, threshold, || dummy_wsts_network.connect());
+    let dkg_txid = testing::dummy::txid(&fake::Faker, &mut rng);
+    let bitcoin_chain_tip = bitcoin::BlockHash::from_byte_array(
+        chain_tip.clone().try_into().expect("conversion failed"),
+    );
+    let (aggregate_key, _) = testing_signer_set
+        .run_dkg(bitcoin_chain_tip, dkg_txid, &mut rng)
+        .await;
+
+    testing_signer_set
+        .write_as_rotate_keys_tx(&mut in_memory_store, &chain_tip, aggregate_key, &mut rng)
+        .await;
+
+    testing_signer_set
+        .write_as_rotate_keys_tx(&mut pg_store, &chain_tip, aggregate_key, &mut rng)
+        .await;
+
+    let last_key_rotation_in_memory = in_memory_store
+        .get_last_key_rotation(&chain_tip)
+        .await
+        .expect("failed to get last key rotation from in memory store");
+
+    let last_key_rotation_pg = pg_store
+        .get_last_key_rotation(&chain_tip)
+        .await
+        .expect("failed to get last key rotation from postgres");
+
+    assert!(last_key_rotation_in_memory.is_some());
+    assert_eq!(
+        last_key_rotation_pg.as_ref().unwrap().aggregate_key,
+        last_key_rotation_in_memory.as_ref().unwrap().aggregate_key
+    );
+    assert_eq!(
+        last_key_rotation_pg.as_ref().unwrap().signer_set,
+        last_key_rotation_in_memory.as_ref().unwrap().signer_set
     );
 }
 

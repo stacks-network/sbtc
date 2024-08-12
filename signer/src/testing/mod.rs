@@ -6,6 +6,7 @@ pub mod network;
 pub mod storage;
 pub mod transaction_signer;
 pub mod wallet;
+pub mod wsts;
 
 use crate::bitcoin::utxo::UnsignedTransaction;
 use bitcoin::key::TapTweak;

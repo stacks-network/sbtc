@@ -153,6 +153,10 @@ pub enum Error {
     #[error("missing state machine")]
     MissingStateMachine,
 
+    /// Missing key rotation
+    #[error("missing key rotation")]
+    MissingKeyRotation,
+
     /// Invalid signature
     #[error("invalid signature")]
     InvalidSignature,
@@ -201,6 +205,10 @@ pub enum Error {
     /// WSTS error.
     #[error("WSTS error: {0}")]
     Wsts(#[source] wsts::state_machine::signer::Error),
+
+    /// WSTS coordinator error.
+    #[error("WSTS coordinator error: {0}")]
+    WstsCoordinator(#[source] Box<wsts::state_machine::coordinator::Error>),
 
     /// No chain tip found.
     #[error("no bitcoin chain tip")]

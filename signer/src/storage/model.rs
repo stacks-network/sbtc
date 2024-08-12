@@ -258,9 +258,24 @@ pub struct EncryptedDkgShares {
     /// The `scriptPubKey` for the aggregate public key.
     pub script_pubkey: Bytes,
     /// The encrypted DKG shares
-    pub encrypted_shares: Bytes,
+    pub encrypted_private_shares: Bytes,
+    /// The public DKG shares
+    pub public_shares: Bytes,
     /// The time this entry was created by the signer.
     pub created_at: time::OffsetDateTime,
+}
+
+/// Persisted public DKG shares from other signers
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct RotateKeysTransaction {
+    /// Transaction ID.
+    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
+    pub txid: Bytes,
+    /// The aggregate key for these shares.
+    pub aggregate_key: PubKey,
+    /// The public keys of the signers.
+    pub signer_set: Vec<Bytes>,
 }
 
 /// The types of transactions the signer is interested in.
@@ -281,10 +296,8 @@ pub enum TransactionType {
     WithdrawAccept,
     /// A withdraw reject transaction on Stacks.
     WithdrawReject,
-    /// An update signer set call on Stacks.
-    UpdateSignerSet,
-    /// A set aggregate key call on Stacks.
-    SetAggregateKey,
+    /// A rotate keys call on Stacks.
+    RotateKeys,
 }
 
 /// A stacks transaction

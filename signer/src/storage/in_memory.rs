@@ -59,6 +59,9 @@ pub struct Store {
 
     /// Encrypted DKG shares
     pub encrypted_dkg_shares: HashMap<model::PubKey, model::EncryptedDkgShares>,
+
+    /// Rotate keys transactions
+    pub rotate_keys_transactions: HashMap<model::StacksTxId, model::RotateKeysTransaction>,
 }
 
 impl Store {
@@ -100,6 +103,23 @@ impl super::DbRead for SharedStore {
             .values()
             .max_by_key(|block| (block.block_height, block.block_hash.clone()))
             .map(|block| block.block_hash.clone()))
+    }
+
+    async fn get_stacks_chain_tip(
+        &self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<Option<model::StacksBlock>, Self::Error> {
+        let store = self.lock().await;
+        let Some(bitcoin_chain_tip) = store.bitcoin_blocks.get(bitcoin_chain_tip) else {
+            return Ok(None);
+        };
+
+        Ok(bitcoin_chain_tip
+            .confirms
+            .iter()
+            .filter_map(|stacks_block_hash| store.stacks_blocks.get(stacks_block_hash))
+            .max_by_key(|block| (block.block_height, &block.block_hash))
+            .cloned())
     }
 
     async fn get_pending_deposit_requests(
@@ -231,30 +251,19 @@ impl super::DbRead for SharedStore {
                     .map(|opt| opt.map(|block| (block.clone(), block.parent_hash)))
             },
         )
-        .skip((context_window).try_into().unwrap_or_default())
+        .skip(context_window.try_into().unwrap_or_default())
         .boxed()
         .try_next()
         .await?;
 
-        let stacks_blocks: Vec<_> = futures::stream::iter(bitcoin_chain_tip.confirms)
-            .then(
-                |stacks_block_hash| async move { self.get_stacks_block(&stacks_block_hash).await },
-            )
-            .try_collect()
-            .await?;
-
-        let Some(highest_stacks_block) = stacks_blocks
-            .into_iter()
-            .flatten()
-            .max_by_key(|block| (block.block_height, block.block_hash.clone()))
-        else {
+        let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
             return Ok(Vec::new());
         };
 
         let store = self.lock().await;
 
         Ok(
-            std::iter::successors(Some(&highest_stacks_block), |stacks_block| {
+            std::iter::successors(Some(&stacks_chain_tip), |stacks_block| {
                 store.stacks_blocks.get(&stacks_block.parent_hash)
             })
             .take_while(|stacks_block| {
@@ -342,6 +351,32 @@ impl super::DbRead for SharedStore {
             .encrypted_dkg_shares
             .get(aggregate_key)
             .cloned())
+    }
+
+    async fn get_last_key_rotation(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<Option<model::RotateKeysTransaction>, Self::Error> {
+        let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
+            return Ok(None);
+        };
+
+        let store = self.lock().await;
+
+        Ok(
+            std::iter::successors(Some(&stacks_chain_tip), |stacks_block| {
+                store.stacks_blocks.get(&stacks_block.parent_hash)
+            })
+            .find_map(|block| {
+                store
+                    .stacks_block_to_transactions
+                    .get(&block.block_hash)
+                    .into_iter()
+                    .flatten()
+                    .find_map(|txid| store.rotate_keys_transactions.get(txid))
+            })
+            .cloned(),
+        )
     }
 
     async fn get_signers_script_pubkeys(&self) -> Result<Vec<model::Bytes>, Self::Error> {
@@ -562,6 +597,18 @@ impl super::DbWrite for SharedStore {
             .await
             .encrypted_dkg_shares
             .insert(shares.aggregate_key.clone(), shares.clone());
+
+        Ok(())
+    }
+
+    async fn write_rotate_keys_transaction(
+        &self,
+        key_rotation: &model::RotateKeysTransaction,
+    ) -> Result<(), Self::Error> {
+        self.lock()
+            .await
+            .rotate_keys_transactions
+            .insert(key_rotation.txid.clone(), key_rotation.clone());
 
         Ok(())
     }

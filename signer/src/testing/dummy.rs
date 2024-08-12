@@ -1,6 +1,8 @@
 //! Utilities for generating dummy values on external types
 
-use bitcoin::hashes::Hash;
+use std::collections::BTreeMap;
+
+use bitcoin::hashes::Hash as _;
 use blockstack_lib::chainstate::{nakamoto, stacks};
 use fake::faker::time::en::DateTimeAfter;
 use fake::Fake;
@@ -9,7 +11,7 @@ use rand::Rng;
 use crate::bitcoin::utxo::SignerScriptPubkey as _;
 use crate::storage::model;
 
-use crate::codec::Encode as _;
+use crate::codec::Encode;
 
 /// Dummy block
 pub fn block<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> bitcoin::Block {
@@ -188,16 +190,21 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         .encode_to_vec()
         .expect("encoding to vec failed");
 
-    let encrypted_shares =
+    let encrypted_private_shares =
         wsts::util::encrypt(signer_private_key, &encoded, rng).expect("failed to encrypt");
+    let public_shares: BTreeMap<u32, wsts::net::DkgPublicShares> = BTreeMap::new();
+    let public_shares = public_shares
+        .encode_to_vec()
+        .expect("encoding to vec failed");
 
     let created_at = DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH).fake_with_rng(rng);
 
     model::EncryptedDkgShares {
         aggregate_key,
+        encrypted_private_shares,
+        public_shares,
         tweaked_aggregate_key: tweaked_aggregate_key.x().to_bytes().to_vec(),
         script_pubkey: tweaked_aggregate_key.signers_script_pubkey().into_bytes(),
-        encrypted_shares,
         created_at,
     }
 }

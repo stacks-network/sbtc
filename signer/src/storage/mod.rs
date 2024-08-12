@@ -31,10 +31,17 @@ pub trait DbRead {
         block_hash: &model::StacksBlockHash,
     ) -> impl Future<Output = Result<Option<model::StacksBlock>, Self::Error>> + Send;
 
-    /// Get the bitcoin canonical chain tip
+    /// Get the bitcoin canonical chain tip.
     fn get_bitcoin_canonical_chain_tip(
         &self,
     ) -> impl Future<Output = Result<Option<model::BitcoinBlockHash>, Self::Error>> + Send;
+
+    /// Get the stacks chain tip, defined as the highest stacks block
+    /// confirmed by the bitcoin chain tip.
+    fn get_stacks_chain_tip(
+        &self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> impl Future<Output = Result<Option<model::StacksBlock>, Self::Error>> + Send;
 
     /// Get pending deposit requests
     fn get_pending_deposit_requests(
@@ -104,6 +111,12 @@ pub trait DbRead {
         &self,
         aggregate_key: &model::PubKey,
     ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Self::Error>> + Send;
+
+    /// Return the latest rotate-keys transaction confirmed by the given `chain-tip`.
+    fn get_last_key_rotation(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+    ) -> impl Future<Output = Result<Option<model::RotateKeysTransaction>, Self::Error>> + Send;
 
     /// Get the last 365 days worth of the signers' `scriptPubkey`s.
     fn get_signers_script_pubkeys(
@@ -198,5 +211,11 @@ pub trait DbWrite {
     fn write_encrypted_dkg_shares(
         &self,
         shares: &model::EncryptedDkgShares,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+
+    /// Write rotate-keys transaction
+    fn write_rotate_keys_transaction(
+        &self,
+        key_rotation: &model::RotateKeysTransaction,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
