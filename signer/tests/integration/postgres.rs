@@ -501,8 +501,9 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
     );
 }
 
-/// This ensures that the postgres store and the in memory stores returns equivalent results
-/// when fetching pending the last key rotation
+/// This ensures that the postgres store and the in memory stores returns
+/// equivalent results when fetching pending the last key rotation.
+/// TODO(415): Make this robust to multiple key rotations.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[sqlx::test]
 async fn should_return_the_same_last_key_rotation_as_in_memory_store(pool: sqlx::PgPool) {

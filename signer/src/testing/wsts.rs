@@ -397,16 +397,16 @@ impl SignerSet {
     }
 
     /// Dump the current signer set as a dummy rotate-keys transaction to the given storage
-    pub async fn write_as_rotate_keys_tx<
-        S: storage::DbWrite + storage::DbRead,
-        Rng: rand::RngCore + rand::CryptoRng,
-    >(
+    pub async fn write_as_rotate_keys_tx<S, Rng>(
         &self,
         storage: &mut S,
         chain_tip: &model::BitcoinBlockHash,
         aggregate_key: p256k1::point::Point,
         rng: &mut Rng,
-    ) {
+    ) where
+        S: storage::DbWrite + storage::DbRead,
+        Rng: rand::RngCore + rand::CryptoRng,
+    {
         let aggregate_key = aggregate_key.x().to_bytes().to_vec();
         let signer_set = self
             .signers

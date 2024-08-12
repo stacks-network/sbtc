@@ -693,12 +693,13 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    // Finds the last key rotation by iterating backwards from the stacks chain tip
-    // scanning all transactions until we encounter a key rotation transactions.
-    //
-    // This might become quite inefficient for long chains with infrequent key
-    // rotations, so we might have to consider data model updates to allow
-    // more efficient querying of the last key rotation.
+    /// Find the last key rotation by iterating backwards from the stacks
+    /// chain tip scanning all transactions until we encounter a key
+    /// rotation transactions.
+    ///
+    /// This might become quite inefficient for long chains with infrequent
+    /// key rotations, so we might have to consider data model updates to
+    /// allow more efficient querying of the last key rotation.
     async fn get_last_key_rotation(
         &self,
         chain_tip: &model::BitcoinBlockHash,
@@ -707,19 +708,24 @@ impl super::DbRead for PgStore {
             return Ok(None);
         };
 
-        sqlx::query_as!(
-            model::RotateKeysTransaction,
+        sqlx::query_as::<_, model::RotateKeysTransaction>(
             r#"
             WITH RECURSIVE stacks_blocks AS (
                 SELECT
-                    block_hash, parent_hash, 1 AS depth
+                    block_hash
+                  , parent_hash
+                  , block_height
+                  , 1 AS depth
                 FROM sbtc_signer.stacks_blocks
                 WHERE block_hash = $1
 
                 UNION ALL
 
                 SELECT
-                    parent.block_hash, parent.parent_hash, last.depth + 1
+                    parent.block_hash
+                  , parent.parent_hash
+                  , parent.block_height
+                  , last.depth + 1
                 FROM sbtc_signer.stacks_blocks parent
                 JOIN stacks_blocks last ON parent.block_hash = last.parent_hash
             )
@@ -730,10 +736,11 @@ impl super::DbRead for PgStore {
             FROM sbtc_signer.rotate_keys_transactions rkt
             JOIN sbtc_signer.stacks_transactions st ON st.txid = rkt.txid
             JOIN stacks_blocks sb on st.block_hash = sb.block_hash
-            ORDER BY sb.depth DESC LIMIT 1
+            ORDER BY sb.block_height DESC, sb.block_hash DESC
+            LIMIT 1
             "#,
-            stacks_chain_tip,
         )
+        .bind(stacks_chain_tip)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)

@@ -171,11 +171,10 @@ type WstsCoordinator = wsts::state_machine::coordinator::frost::Coordinator<wsts
 
 impl CoordinatorStateMachine {
     /// Create a new state machine
-    pub fn new(
-        signers: impl IntoIterator<Item = p256k1::ecdsa::PublicKey>,
-        threshold: u32,
-        message_private_key: p256k1::scalar::Scalar,
-    ) -> Result<Self, error::Error> {
+    pub fn new<I>(signers: I, threshold: u32, message_private_key: p256k1::scalar::Scalar) -> Self
+    where
+        I: IntoIterator<Item = p256k1::ecdsa::PublicKey>,
+    {
         let signer_public_keys: hashbrown::HashMap<u32, _> = signers
             .into_iter()
             .enumerate()
@@ -189,17 +188,20 @@ impl CoordinatorStateMachine {
             })
             .collect();
 
-        let num_signers = signer_public_keys.len().try_into().unwrap();
-        let num_keys = num_signers;
-        let dkg_threshold = num_keys;
+        // The number of possible signers is capped at a number well below
+        // u32::MAX, so this conversion should always work.
+        let num_signers: u32 = signer_public_keys
+            .len()
+            .try_into()
+            .expect("The number of signers is creater than u32::MAX?");
         let signer_key_ids = (0..num_signers)
             .map(|signer_id| (signer_id, std::iter::once(signer_id).collect()))
             .collect();
         let config = wsts::state_machine::coordinator::Config {
             num_signers,
-            num_keys,
+            num_keys: num_signers,
             threshold,
-            dkg_threshold,
+            dkg_threshold: num_signers,
             message_private_key,
             dkg_public_timeout: None,
             dkg_private_timeout: None,
@@ -211,7 +213,7 @@ impl CoordinatorStateMachine {
         };
 
         let wsts_coordinator = WstsCoordinator::new(config);
-        Ok(Self(wsts_coordinator))
+        Self(wsts_coordinator)
     }
 
     /// Create a new coordinator state machine from the given aggregate
@@ -246,7 +248,7 @@ impl CoordinatorStateMachine {
         let public_dkg_shares: BTreeMap<u32, wsts::net::DkgPublicShares> =
             BTreeMap::decode(encrypted_shares.public_shares.as_slice()).map_err(Error::Codec)?;
 
-        let mut coordinator = Self::new(signers, threshold, message_private_key)?;
+        let mut coordinator = Self::new(signers, threshold, message_private_key);
 
         // The `coordinator` is a state machine that starts off in the
         // `IDLE` state, but we need to move it into a state where it can

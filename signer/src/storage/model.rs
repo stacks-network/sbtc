@@ -266,7 +266,7 @@ pub struct EncryptedDkgShares {
 }
 
 /// Persisted public DKG shares from other signers
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct RotateKeysTransaction {
     /// Transaction ID.
