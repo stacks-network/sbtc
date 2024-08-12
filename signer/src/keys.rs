@@ -2,7 +2,7 @@
 //! throughout this crate. These types allow for easy conversion between
 //! the various crypto libraries and crates used here: rust-secp256k1,
 //! stacks-common, and p256k1. All three crates depend on the libsecp256k1
-//! C linrary under the hood.
+//! C library under the hood.
 //! 
 //! ## PublicKey conversions to-from p256k1 types.
 //!
