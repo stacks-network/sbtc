@@ -4,6 +4,9 @@ use std::collections::HashMap;
 
 use crate::blocklist_client;
 use crate::error;
+use crate::keys::PrivateKey;
+use crate::keys::PublicKey;
+use crate::keys::SignerScriptPubKey as _;
 use crate::message;
 use crate::network;
 use crate::storage;
@@ -17,6 +20,7 @@ use crate::network::MessageTransfer as _;
 use bitcoin::hashes::Hash as _;
 use futures::StreamExt as _;
 use rand::SeedableRng as _;
+use sha2::Digest as _;
 
 struct EventLoopHarness<S, Rng> {
     event_loop: EventLoop<S, Rng>,
@@ -36,7 +40,7 @@ where
         network: network::in_memory::MpmcBroadcaster,
         storage: S,
         context_window: usize,
-        signer_private_key: p256k1::scalar::Scalar,
+        signer_private_key: PrivateKey,
         threshold: u32,
         rng: Rng,
     ) -> Self {
@@ -303,8 +307,7 @@ where
         let mut handle = event_loop_harness.start();
 
         let signer_private_key = signer_info.first().unwrap().signer_private_key.to_bytes();
-        let dummy_aggregate_key =
-            p256k1::point::Point::from(&p256k1::scalar::Scalar::random(&mut rng));
+        let dummy_aggregate_key = PublicKey::from_private_key(&PrivateKey::new(&mut rng));
 
         store_dummy_dkg_shares(
             &mut rng,
@@ -317,7 +320,7 @@ where
         let test_data = self.generate_test_data(&mut rng);
         Self::write_test_data(&test_data, &mut handle.storage).await;
 
-        let coordinator_private_key = p256k1::scalar::Scalar::random(&mut rng);
+        let coordinator_private_key = PrivateKey::new(&mut rng);
 
         let transaction_sign_request = message::BitcoinTransactionSignRequest {
             tx: testing::dummy::tx(&fake::Faker, &mut rng),
@@ -433,12 +436,11 @@ where
             self.signing_threshold,
         );
         let aggregate_key = coordinator.run_dkg(bitcoin_chain_tip, dummy_txid).await;
-        let aggregate_key_bytes = aggregate_key.x().to_bytes().to_vec();
 
         for handle in event_loop_handles.into_iter() {
             let storage = handle.stop_event_loop().await;
             assert!(storage
-                .get_encrypted_dkg_shares(&aggregate_key_bytes)
+                .get_encrypted_dkg_shares(&aggregate_key)
                 .await
                 .expect("storage error")
                 .is_some());
@@ -506,21 +508,32 @@ where
             self.signing_threshold,
         );
         let aggregate_key = coordinator.run_dkg(bitcoin_chain_tip, dummy_txid).await;
-        let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&aggregate_key, None);
 
         let tx = testing::dummy::tx(&fake::Faker, &mut rng);
         let txid = tx.compute_txid();
-        let msg = "sign here please".as_bytes(); // TODO(296): Compute proper sighash from transaction
+
+        let mut hasher = sha2::Sha256::new();
+        hasher.update("sign here please");
+        let msg: [u8; 32] = hasher.finalize().into(); // TODO(296): Compute proper sighash from transaction
 
         coordinator
             .request_sign_transaction(bitcoin_chain_tip, tx, aggregate_key)
             .await;
 
         let signature = coordinator
-            .run_signing_round(bitcoin_chain_tip, txid, msg)
+            .run_signing_round(bitcoin_chain_tip, txid, &msg)
             .await;
 
-        assert!(signature.verify(&tweaked_aggregate_key.x(), msg));
+        // Let's check the signature using the secp256k1 types.
+        let sig = secp256k1::schnorr::Signature::from_slice(&signature.to_bytes()).unwrap();
+        let msg_digest = secp256k1::Message::from_digest(msg);
+        let pk = aggregate_key.signers_tweaked_pubkey().unwrap();
+        let x_only_pk = secp256k1::XOnlyPublicKey::from(&pk);
+        sig.verify(&msg_digest, &x_only_pk).unwrap();
+
+        // Let's check using the p256k1 types
+        let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&aggregate_key.into(), None);
+        assert!(signature.verify(&tweaked_aggregate_key.x(), &msg));
     }
 
     async fn write_test_data(test_data: &testing::storage::model::TestData, storage: &mut S) {
@@ -676,7 +689,7 @@ async fn store_dummy_dkg_shares<R, S>(
     rng: &mut R,
     signer_private_key: &[u8; 32],
     storage: &mut S,
-    group_key: p256k1::point::Point,
+    group_key: PublicKey,
 ) where
     R: rand::CryptoRng + rand::RngCore,
     S: storage::DbWrite,

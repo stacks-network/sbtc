@@ -9,7 +9,7 @@ use crate::{codec, ecdsa, network};
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// Error when breaking out the ZeroMQ message into three parts.
-    #[error("bitcoin messages should have a three part layout, receieved {0} parts")]
+    #[error("bitcoin messages should have a three part layout, received {0} parts")]
     BitcoinCoreZmqMessageLayout(usize),
 
     /// Happens when the bitcoin block hash in the ZeroMQ message is not 32
@@ -76,6 +76,16 @@ pub enum Error {
     /// type, which is a thin wrapper around the secp256k1::PublicKey.
     #[error("{0}")]
     InvalidPublicKey(#[source] secp256k1::Error),
+
+    /// This happens when we tweak our public key by a scalar, and the
+    /// result is an invalid public key. I think It is very unlikely that
+    /// we will see this one by chance, since the probability that this
+    /// happens is something like: 1 / (2^256 - 2^32^ - 977), where the
+    /// denominator is the order of the secp256k1 curve. This is because
+    /// for a given public key, the there is only one tweak that will lead
+    /// to an invalid public key.
+    #[error("invalid tweak? seriously? {0}")]
+    InvalidPublicKeyTweak(#[source] secp256k1::Error),
 
     /// This occurs when converting a byte slice to our internal public key
     /// type, which is a thin wrapper around the secp256k1::SecretKey.
@@ -210,7 +220,7 @@ pub enum Error {
     /// Thrown when the recoverable signature has a public key that is
     /// unexpected.
     #[error("unexpected public key from signature. key {0}; digest: {1}")]
-    UnknownPublicKey(secp256k1::PublicKey, secp256k1::Message),
+    UnknownPublicKey(crate::keys::PublicKey, secp256k1::Message),
 
     /// WSTS error.
     #[error("WSTS error: {0}")]

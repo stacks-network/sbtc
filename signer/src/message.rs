@@ -3,6 +3,8 @@
 use blockstack_lib::chainstate::stacks;
 use sha2::Digest;
 
+use crate::keys::PublicKey;
+
 /// Messages exchanged between signers
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SignerMessage {
@@ -128,7 +130,7 @@ pub struct BitcoinTransactionSignRequest {
     /// The transaction.
     pub tx: bitcoin::Transaction,
     /// The aggregate key used to sign the transaction,
-    pub aggregate_key: p256k1::point::Point,
+    pub aggregate_key: PublicKey,
 }
 
 /// Represents an acknowledgment of a signed Bitcoin transaction.
@@ -233,9 +235,9 @@ mod tests {
     use super::*;
     use crate::codec::{Decode, Encode};
     use crate::ecdsa::{SignEcdsa, Signed};
+    use crate::keys::PrivateKey;
 
-    use p256k1::scalar::Scalar;
-    use rand::{RngCore, SeedableRng};
+    use rand::SeedableRng;
 
     #[test]
     fn signer_messages_should_be_signable() {
@@ -264,7 +266,7 @@ mod tests {
         P: fake::Dummy<fake::Faker> + Into<Payload>,
     {
         let rng = &mut rand::rngs::StdRng::seed_from_u64(1337);
-        let private_key = Scalar::from(rng.next_u32());
+        let private_key = PrivateKey::new(rng);
 
         let signed_message = SignerMessage::random_with_payload_type::<P, _>(rng)
             .sign_ecdsa(&private_key)
@@ -278,7 +280,7 @@ mod tests {
         P: fake::Dummy<fake::Faker> + Into<Payload>,
     {
         let rng = &mut rand::rngs::StdRng::seed_from_u64(42);
-        let private_key = Scalar::from(rng.next_u32());
+        let private_key = PrivateKey::new(rng);
 
         let signed_message = SignerMessage::random_with_payload_type::<P, _>(rng)
             .sign_ecdsa(&private_key)

@@ -4,6 +4,8 @@ use bitcoin::hashes::Hash;
 use fake::Fake;
 use rand::seq::SliceRandom;
 
+use crate::keys::PrivateKey;
+use crate::keys::PublicKey;
 use crate::message;
 use crate::testing::dummy;
 
@@ -71,12 +73,11 @@ impl fake::Dummy<fake::Faker> for message::BitcoinTransactionSignRequest {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let mut bytes: [u8; 32] = [0; 32];
         rng.fill_bytes(&mut bytes);
-        let scalar = p256k1::scalar::Scalar::from(bytes);
-        let aggregate_key = p256k1::point::Point::from(&scalar);
+        let private_key = PrivateKey::new(rng);
 
         Self {
             tx: dummy::tx(config, rng),
-            aggregate_key,
+            aggregate_key: PublicKey::from_private_key(&private_key),
         }
     }
 }

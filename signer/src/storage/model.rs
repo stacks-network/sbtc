@@ -8,6 +8,8 @@ use bitcoin::Network;
 use rand::seq::IteratorRandom as _;
 use sbtc::deposits::Deposit;
 
+use crate::keys::PublicKey;
+
 #[cfg(feature = "testing")]
 use fake::faker::time::en::DateTimeAfter;
 
@@ -134,7 +136,7 @@ impl DepositRequest {
 }
 
 /// A signer acknowledging a deposit request.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct DepositSigner {
     /// TxID of the deposit request.
@@ -144,8 +146,7 @@ pub struct DepositSigner {
     #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
     pub output_index: i32,
     /// Public key of the signer.
-    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
-    pub signer_pub_key: PubKey,
+    pub signer_pub_key: PublicKey,
     /// Signals if the signer is prepared to sign for this request.
     pub is_accepted: bool,
     /// The time this block entry was created by the signer.
@@ -183,7 +184,7 @@ pub struct WithdrawRequest {
 }
 
 /// A signer acknowledging a withdrawal request.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct WithdrawSigner {
     /// Request ID of the withdrawal request.
@@ -192,8 +193,7 @@ pub struct WithdrawSigner {
     #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub block_hash: StacksBlockHash,
     /// Public key of the signer.
-    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
-    pub signer_pub_key: PubKey,
+    pub signer_pub_key: PublicKey,
     /// Signals if the signer is prepared to sign for this request.
     pub is_accepted: bool,
     /// The time this block entry was created by the signer.
@@ -252,9 +252,9 @@ pub struct Transaction {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct EncryptedDkgShares {
     /// The aggregate key for these shares
-    pub aggregate_key: PubKey,
+    pub aggregate_key: PublicKey,
     /// The tweaked aggregate key for these shares
-    pub tweaked_aggregate_key: PubKey,
+    pub tweaked_aggregate_key: PublicKey,
     /// The `scriptPubKey` for the aggregate public key.
     pub script_pubkey: Bytes,
     /// The encrypted DKG shares
@@ -273,9 +273,9 @@ pub struct RotateKeysTransaction {
     #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub txid: Bytes,
     /// The aggregate key for these shares.
-    pub aggregate_key: PubKey,
+    pub aggregate_key: PublicKey,
     /// The public keys of the signers.
-    pub signer_set: Vec<Bytes>,
+    pub signer_set: Vec<PublicKey>,
 }
 
 /// The types of transactions the signer is interested in.

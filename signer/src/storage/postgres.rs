@@ -9,6 +9,7 @@ use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::error::Error;
+use crate::keys::PublicKey;
 use crate::storage::model;
 use crate::storage::model::TransactionType;
 
@@ -393,8 +394,9 @@ impl super::DbRead for PgStore {
 
     async fn get_accepted_deposit_requests(
         &self,
-        signer: &model::PubKey,
+        signer: &PublicKey,
     ) -> Result<Vec<model::DepositRequest>, Self::Error> {
+        let key = signer.serialize();
         sqlx::query_as!(
             model::DepositRequest,
             r#"
@@ -415,7 +417,7 @@ impl super::DbRead for PgStore {
             WHERE
                 signers.signer_pub_key = $1
             "#,
-            signer,
+            key.as_slice(),
         )
         .fetch_all(&self.0)
         .await
@@ -427,8 +429,7 @@ impl super::DbRead for PgStore {
         txid: &model::BitcoinTxId,
         output_index: i32,
     ) -> Result<Vec<model::DepositSigner>, Self::Error> {
-        sqlx::query_as!(
-            model::DepositSigner,
+        sqlx::query_as::<_, model::DepositSigner>(
             "SELECT
                 txid
               , output_index
@@ -437,9 +438,9 @@ impl super::DbRead for PgStore {
               , created_at
             FROM sbtc_signer.deposit_signers 
             WHERE txid = $1 AND output_index = $2",
-            txid,
-            output_index,
         )
+        .bind(txid)
+        .bind(output_index)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -450,8 +451,7 @@ impl super::DbRead for PgStore {
         request_id: i32,
         block_hash: &model::StacksBlockHash,
     ) -> Result<Vec<model::WithdrawSigner>, Self::Error> {
-        sqlx::query_as!(
-            model::WithdrawSigner,
+        sqlx::query_as::<_, model::WithdrawSigner>(
             "SELECT
                 request_id
               , block_hash
@@ -460,9 +460,9 @@ impl super::DbRead for PgStore {
               , created_at
             FROM sbtc_signer.withdraw_signers
             WHERE request_id = $1 AND block_hash = $2",
-            request_id,
-            block_hash,
         )
+        .bind(request_id)
+        .bind(block_hash)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -672,7 +672,7 @@ impl super::DbRead for PgStore {
 
     async fn get_encrypted_dkg_shares(
         &self,
-        aggregate_key: &model::PubKey,
+        aggregate_key: &PublicKey,
     ) -> Result<Option<model::EncryptedDkgShares>, Self::Error> {
         sqlx::query_as::<_, model::EncryptedDkgShares>(
             r#"
@@ -964,7 +964,7 @@ impl super::DbWrite for PgStore {
         &self,
         decision: &model::DepositSigner,
     ) -> Result<(), Self::Error> {
-        sqlx::query!(
+        sqlx::query(
             "INSERT INTO sbtc_signer.deposit_signers
               ( txid
               , output_index
@@ -973,12 +973,12 @@ impl super::DbWrite for PgStore {
               , created_at
               )
             VALUES ($1, $2, $3, $4, $5)",
-            decision.txid,
-            decision.output_index,
-            decision.signer_pub_key,
-            decision.is_accepted,
-            decision.created_at
         )
+        .bind(&decision.txid)
+        .bind(decision.output_index)
+        .bind(decision.signer_pub_key)
+        .bind(decision.is_accepted)
+        .bind(decision.created_at)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -990,7 +990,7 @@ impl super::DbWrite for PgStore {
         &self,
         decision: &model::WithdrawSigner,
     ) -> Result<(), Self::Error> {
-        sqlx::query!(
+        sqlx::query(
             "INSERT INTO sbtc_signer.withdraw_signers
               ( request_id
               , block_hash
@@ -999,12 +999,12 @@ impl super::DbWrite for PgStore {
               , created_at
               )
             VALUES ($1, $2, $3, $4, $5)",
-            decision.request_id,
-            decision.block_hash,
-            decision.signer_pub_key,
-            decision.is_accepted,
-            decision.created_at
         )
+        .bind(decision.request_id)
+        .bind(&decision.block_hash)
+        .bind(decision.signer_pub_key)
+        .bind(decision.is_accepted)
+        .bind(decision.created_at)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1205,8 +1205,8 @@ impl super::DbWrite for PgStore {
             VALUES ($1, $2, $3, $4, $5, $6)
             "#,
         )
-        .bind(&shares.aggregate_key)
-        .bind(&shares.tweaked_aggregate_key)
+        .bind(shares.aggregate_key)
+        .bind(shares.tweaked_aggregate_key)
         .bind(&shares.encrypted_private_shares)
         .bind(&shares.public_shares)
         .bind(&shares.script_pubkey)
@@ -1222,17 +1222,17 @@ impl super::DbWrite for PgStore {
         &self,
         key_rotation: &model::RotateKeysTransaction,
     ) -> Result<(), Self::Error> {
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO sbtc_signer.rotate_keys_transactions
                 (txid, aggregate_key, signer_set)
             VALUES
                 ($1, $2, $3)
             "#,
-            key_rotation.txid,
-            key_rotation.aggregate_key,
-            &key_rotation.signer_set,
         )
+        .bind(&key_rotation.txid)
+        .bind(key_rotation.aggregate_key)
+        .bind(&key_rotation.signer_set)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

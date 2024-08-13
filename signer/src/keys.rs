@@ -29,13 +29,16 @@
 //! [^4]: https://github.com/bitcoin-core/secp256k1/blob/3fdf146bad042a17f6b2f490ef8bd9d8e774cdbd/src/scalar.h#L31-L36
 
 use bitcoin::ScriptBuf;
+use bitcoin::TapTweakHash;
 use secp256k1::Parity;
 use secp256k1::SECP256K1;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::error::Error;
 
 /// The public key type for the secp256k1 elliptic curve.
-#[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PublicKey(secp256k1::PublicKey);
 
 impl From<&secp256k1::PublicKey> for PublicKey {
@@ -46,6 +49,18 @@ impl From<&secp256k1::PublicKey> for PublicKey {
 
 impl From<&PublicKey> for secp256k1::PublicKey {
     fn from(value: &PublicKey) -> Self {
+        value.0
+    }
+}
+
+impl From<secp256k1::PublicKey> for PublicKey {
+    fn from(value: secp256k1::PublicKey) -> Self {
+        Self(value)
+    }
+}
+
+impl From<PublicKey> for secp256k1::PublicKey {
+    fn from(value: PublicKey) -> Self {
         value.0
     }
 }
@@ -98,6 +113,12 @@ impl From<&PublicKey> for p256k1::point::Point {
     }
 }
 
+impl From<PublicKey> for p256k1::point::Point {
+    fn from(value: PublicKey) -> Self {
+        Self::from(&value)
+    }
+}
+
 /// This should only error when the `p256k1::point::Point` is the identity
 /// point (also called the at infinity).
 impl TryFrom<&p256k1::point::Point> for PublicKey {
@@ -132,6 +153,18 @@ impl From<&p256k1::keys::PublicKey> for PublicKey {
     }
 }
 
+impl From<PublicKey> for p256k1::keys::PublicKey {
+    fn from(value: PublicKey) -> Self {
+        Self::from(&value)
+    }
+}
+
+impl From<p256k1::keys::PublicKey> for PublicKey {
+    fn from(value: p256k1::keys::PublicKey) -> Self {
+        Self::from(&value)
+    }
+}
+
 /// Under the hood stacks-common wraps the rust-secp256k1 types, so these
 /// implementations should always map correctly.
 impl From<&PublicKey> for stacks_common::util::secp256k1::Secp256k1PublicKey {
@@ -163,6 +196,29 @@ impl PublicKey {
     pub fn serialize(&self) -> [u8; 33] {
         self.0.serialize()
     }
+
+    /// Creates a new public key from a [`Private`] and the global
+    /// [`SECP256K1`] context.
+    pub fn from_private_key(key: &PrivateKey) -> Self {
+        Self(secp256k1::PublicKey::from_secret_key_global(&key.0))
+    }
+
+    /// Combine many keys into one aggregate key
+    pub fn combine_keys<'a, I>(keys: I) -> Result<Self, Error>
+    where
+        I: IntoIterator<Item = &'a PublicKey>,
+    {
+        let keys: Vec<&secp256k1::PublicKey> = keys.into_iter().map(|key| &key.0).collect();
+        secp256k1::PublicKey::combine_keys(&keys)
+            .map(Self)
+            .map_err(Error::InvalidAggregateKey)
+    }
+}
+
+impl std::fmt::Display for PublicKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
 }
 
 /// We expect the compressed public key bytes from the database
@@ -173,11 +229,32 @@ impl<'r> sqlx::Decode<'r, sqlx::Postgres> for PublicKey {
     }
 }
 
+impl sqlx::Type<sqlx::Postgres> for PublicKey {
+    fn type_info() -> sqlx::postgres::PgTypeInfo {
+        <[u8; 33] as sqlx::Type<sqlx::Postgres>>::type_info()
+    }
+}
+
 /// We write the compressed public key bytes to the database
 impl<'r> sqlx::Encode<'r, sqlx::Postgres> for PublicKey {
     fn encode_by_ref(&self, buf: &mut sqlx::postgres::PgArgumentBuffer) -> sqlx::encode::IsNull {
         let bytes = self.serialize();
         <[u8; 33] as sqlx::Encode<'r, sqlx::Postgres>>::encode_by_ref(&bytes, buf)
+    }
+}
+
+impl sqlx::postgres::PgHasArrayType for PublicKey {
+    fn array_type_info() -> sqlx::postgres::PgTypeInfo {
+        <[u8; 33] as sqlx::postgres::PgHasArrayType>::array_type_info()
+    }
+}
+
+#[cfg(feature = "testing")]
+impl fake::Dummy<fake::Faker> for PublicKey {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
+        Self(secp256k1::PublicKey::from_secret_key_global(
+            &secp256k1::SecretKey::new(rng),
+        ))
     }
 }
 
@@ -213,49 +290,118 @@ impl From<&PrivateKey> for p256k1::scalar::Scalar {
     }
 }
 
+impl From<PrivateKey> for p256k1::scalar::Scalar {
+    fn from(value: PrivateKey) -> Self {
+        Self::from(&value)
+    }
+}
+
 impl PrivateKey {
+    /// Create a new one
+    pub fn new<R: rand::Rng + ?Sized>(rng: &mut R) -> Self {
+        Self(secp256k1::SecretKey::new(rng))
+    }
     /// Creates a private key directly from a slice.
     pub fn from_slice(data: &[u8]) -> Result<Self, Error> {
         secp256k1::SecretKey::from_slice(data)
             .map(Self)
             .map_err(Error::InvalidPrivateKey)
     }
+
+    /// Returns the secret key as a byte array.
+    pub fn to_bytes(&self) -> [u8; 32] {
+        self.0.secret_bytes()
+    }
+
+    /// Constructs an ECDSA signature for `message` using the global
+    /// [`SECP256K1`] context and returns it in "low S" form.
+    pub fn sign_ecdsa<M>(&self, msg: M) -> secp256k1::ecdsa::Signature
+    where
+        M: MessageDigest,
+    {
+        let msg = secp256k1::Message::from_digest(msg.digest());
+        let mut sig = self.0.sign_ecdsa(msg);
+        sig.normalize_s();
+        sig
+    }
+
+    /// Constructs an ECDSA signature for `message` using the global
+    /// [`SECP256K1`] context and returns it in "low S" form.
+    pub fn sign_ecdsa_recoverable<M>(&self, msg: M) -> secp256k1::ecdsa::RecoverableSignature
+    where
+        M: MessageDigest,
+    {
+        let msg = secp256k1::Message::from_digest(msg.digest());
+        SECP256K1.sign_ecdsa_recoverable(&msg, &self.0)
+    }
+}
+
+/// For creating signatures.
+pub trait MessageDigest {
+    /// The digest to sign.
+    fn digest(&self) -> [u8; 32];
+}
+
+impl MessageDigest for secp256k1::Message {
+    fn digest(&self) -> [u8; 32] {
+        *self.as_ref()
+    }
+}
+
+impl MessageDigest for [u8; 32] {
+    fn digest(&self) -> [u8; 32] {
+        *self
+    }
 }
 
 /// This trait is used to provide a unifying interface for converting
-/// different public key types to the `scriptPubKey` associated with the
-/// signers. We represent the `scriptPubkey` using rust-bitcoin's ScriptBuf
-/// type.
-pub trait SignerScriptPubkey {
+/// different public key types to the `scriptPubKey` and the tweaked public
+/// key associated with the signers. We represent the `scriptPubkey` using
+/// rust-bitcoin's ScriptBuf type.
+pub trait SignerScriptPubKey: Sized {
     /// Convert this type to the `scriptPubkey` used by the signers to lock
     /// their UTXO.
     fn signers_script_pubkey(&self) -> ScriptBuf;
+    /// Construct the signers tweaked public key.
+    fn signers_tweaked_pubkey(&self) -> Result<PublicKey, Error>;
 }
 
-impl SignerScriptPubkey for PublicKey {
+impl SignerScriptPubKey for PublicKey {
     fn signers_script_pubkey(&self) -> ScriptBuf {
+        secp256k1::XOnlyPublicKey::from(self).signers_script_pubkey()
+    }
+    /// Construct the signers tweaked public key.
+    ///
+    /// The implementation below is the same as the first step in the
+    /// [`ScriptBuf::new_p2tr`] implementation, which we know does what we
+    /// want.
+    fn signers_tweaked_pubkey(&self) -> Result<PublicKey, Error> {
         let internal_key = secp256k1::XOnlyPublicKey::from(self);
-        ScriptBuf::new_p2tr(SECP256K1, internal_key, None)
+        let tweak = TapTweakHash::from_key_and_tweak(internal_key, None).to_scalar();
+        self.0
+            .add_exp_tweak(SECP256K1, &tweak)
+            .map(PublicKey)
+            .map_err(Error::InvalidPublicKeyTweak)
     }
 }
 
-impl SignerScriptPubkey for secp256k1::XOnlyPublicKey {
+impl SignerScriptPubKey for secp256k1::XOnlyPublicKey {
     fn signers_script_pubkey(&self) -> ScriptBuf {
         ScriptBuf::new_p2tr(SECP256K1, *self, None)
     }
-}
+    /// The [`secp256k1::XOnlyPublicKey`] type has a tap_tweak public
+    /// function that panics when adding the tweak leads to an invalid
+    /// public key. Although it is extremely unlikely for the resulting
+    /// public key to be invalid by chance, we still bubble this one up.
+    fn signers_tweaked_pubkey(&self) -> Result<PublicKey, Error> {
+        let tweak = TapTweakHash::from_key_and_tweak(*self, None).to_scalar();
+        let (output_key, parity) = self
+            .add_tweak(SECP256K1, &tweak)
+            .map_err(Error::InvalidPublicKeyTweak)?;
 
-/// TODO(417) This should be removed when we use the PublicKey type
-/// throughout.
-impl SignerScriptPubkey for p256k1::point::Point {
-    fn signers_script_pubkey(&self) -> ScriptBuf {
-        // The type is a thin wrapper of a libsecp256k1 type. The
-        // underlying type represents a group element of the secp256k1
-        // curve, in Jacobian coordinates. So this should always be on the
-        // curve.
-        secp256k1::XOnlyPublicKey::from_slice(&self.x().to_bytes())
-            .expect("BUG: p256k1::point::Points should lie on the curve!")
-            .signers_script_pubkey()
+        debug_assert!(self.tweak_add_check(SECP256K1, &output_key, parity, tweak));
+        let pk = secp256k1::PublicKey::from_x_only_public_key(output_key, parity);
+        Ok(PublicKey(pk))
     }
 }
 
@@ -348,6 +494,13 @@ mod tests {
     }
 
     #[test]
+    fn stacks_common_public_key_compressed() {
+        let public_key = PublicKey::from_private_key(&PrivateKey::new(&mut OsRng));
+        let key = stacks_common::util::secp256k1::Secp256k1PublicKey::from(&public_key);
+        assert!(key.compressed())
+    }
+
+    #[test]
     fn selective_conversion_private_key() {
         // We test that we can go from a scalar to a PrivateKey with high
         // probability, and we can go back 100% of the time.
@@ -365,5 +518,35 @@ mod tests {
         let from_scalar = PrivateKey::try_from(&scalar).unwrap();
 
         assert_eq!(pk, from_scalar);
+    }
+
+    // If we have a XOnlyPublicKey and a PublicKey that represent the same
+    // x-coordinate on the curve, then the associated signer
+    // `scriptPubKey`s must match.
+    #[test]
+    fn x_only_key_and_secp256k1_pubkey_same_script() {
+        let secret_key = SecretKey::new(&mut OsRng);
+        let x_part = secret_key.x_only_public_key(SECP256K1).0;
+        // It doesn't matter what the parity bit is.
+        let pk = secp256k1::PublicKey::from_x_only_public_key(x_part, Parity::Even);
+        let public_key = PublicKey(pk);
+
+        assert_eq!(
+            public_key.signers_script_pubkey(),
+            x_part.signers_script_pubkey()
+        );
+    }
+
+    #[test]
+    fn tap_tweak_equivalence() {
+        let private_key = PrivateKey::new(&mut OsRng);
+        let public_key = PublicKey::from_private_key(&private_key);
+        let tweaked_aggregate_key1 = wsts::compute::tweaked_public_key(&public_key.into(), None);
+        let tweaked_aggregate_key2 = public_key.signers_tweaked_pubkey().unwrap();
+
+        let tweaked_aggregate_key1_bytes = tweaked_aggregate_key1.x().to_bytes();
+        let tweaked_aggregate_key2_bytes =
+            tweaked_aggregate_key2.0.x_only_public_key().0.serialize();
+        assert_eq!(tweaked_aggregate_key1_bytes, tweaked_aggregate_key2_bytes);
     }
 }

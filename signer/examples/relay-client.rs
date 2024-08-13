@@ -1,10 +1,10 @@
 #[cfg(feature = "testing")]
 use clap::Parser;
 
-use p256k1::keys::PublicKey;
-use p256k1::scalar::Scalar;
 use rand::rngs::OsRng;
 use signer::ecdsa;
+use signer::keys::PrivateKey;
+use signer::keys::PublicKey;
 use signer::message;
 use signer::network::grpc_relay;
 
@@ -87,16 +87,16 @@ async fn main() {
     }
 }
 
-fn setup_keypair() -> Scalar {
-    let private_key = Scalar::random(&mut OsRng);
-    let public_key = PublicKey::new(&private_key).expect("Failed to generate public key");
+fn setup_keypair() -> PrivateKey {
+    let private_key = PrivateKey::new(&mut OsRng);
+    let public_key = PublicKey::from_private_key(&private_key);
 
     tracing::info!(%public_key, "generated key pair");
     private_key
 }
 
 fn spawn_message_source(
-    private_key: Scalar,
+    private_key: PrivateKey,
     send_period: std::time::Duration,
 ) -> tokio::sync::mpsc::Receiver<Msg> {
     let (heartbeat_tx, heartbeat_rx) = tokio::sync::mpsc::channel(128);

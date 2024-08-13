@@ -2,11 +2,13 @@
 
 use std::collections::BTreeMap;
 
-use crate::bitcoin::utxo::SignerScriptPubkey;
 use crate::codec::Decode as _;
 use crate::codec::Encode as _;
 use crate::error;
 use crate::error::Error;
+use crate::keys::PrivateKey;
+use crate::keys::PublicKey;
+use crate::keys::SignerScriptPubKey as _;
 use crate::storage;
 use crate::storage::model;
 
@@ -24,20 +26,16 @@ type WstsStateMachine = wsts::state_machine::signer::Signer<wsts::v2::Party>;
 impl SignerStateMachine {
     /// Create a new state machine
     pub fn new(
-        signers: impl IntoIterator<Item = p256k1::ecdsa::PublicKey>,
+        signers: impl IntoIterator<Item = PublicKey>,
         threshold: u32,
-        signer_private_key: p256k1::scalar::Scalar,
+        signer_private_key: PrivateKey,
     ) -> Result<Self, error::Error> {
-        let signer_pub_key = p256k1::ecdsa::PublicKey::new(&signer_private_key)?;
+        let signer_pub_key = PublicKey::from_private_key(&signer_private_key);
         let signers: hashbrown::HashMap<u32, _> = signers
             .into_iter()
             .enumerate()
-            .map(|(id, key)| {
-                id.try_into()
-                    .map(|id| (id, key))
-                    .map_err(|_| error::Error::TypeConversion)
-            })
-            .collect::<Result<_, _>>()?;
+            .map(|(id, key)| (id as u32, p256k1::keys::PublicKey::from(&key)))
+            .collect();
 
         let key_ids = signers
             .clone()
@@ -51,9 +49,10 @@ impl SignerStateMachine {
             .map_err(|_| error::Error::TypeConversion)?;
         let num_keys = num_parties;
 
+        let p256k1_public_key = p256k1::keys::PublicKey::from(&signer_pub_key);
         let id: u32 = *signers
             .iter()
-            .find(|(_, key)| *key == &signer_pub_key)
+            .find(|(_, key)| *key == &p256k1_public_key)
             .ok_or_else(|| error::Error::MissingPublicKey)?
             .0;
 
@@ -71,7 +70,7 @@ impl SignerStateMachine {
             num_keys,
             id,
             key_ids,
-            signer_private_key,
+            signer_private_key.into(),
             public_keys,
         );
 
@@ -81,10 +80,10 @@ impl SignerStateMachine {
     /// Create a state machine from loaded DKG shares for the given aggregate key
     pub async fn load<S>(
         storage: &mut S,
-        aggregate_key: p256k1::point::Point,
-        signers: impl IntoIterator<Item = p256k1::ecdsa::PublicKey>,
+        aggregate_key: PublicKey,
+        signers: impl IntoIterator<Item = PublicKey>,
         threshold: u32,
-        signer_private_key: p256k1::scalar::Scalar,
+        signer_private_key: PrivateKey,
     ) -> Result<Self, error::Error>
     where
         S: storage::DbRead + storage::DbWrite,
@@ -92,7 +91,7 @@ impl SignerStateMachine {
         error::Error: From<<S as storage::DbWrite>::Error>,
     {
         let encrypted_shares = storage
-            .get_encrypted_dkg_shares(&aggregate_key.x().to_bytes().to_vec())
+            .get_encrypted_dkg_shares(&aggregate_key)
             .await?
             .ok_or(error::Error::MissingDkgShares)?;
 
@@ -123,8 +122,7 @@ impl SignerStateMachine {
         rng: &mut Rng,
     ) -> Result<model::EncryptedDkgShares, error::Error> {
         let saved_state = self.signer.save();
-        let aggregate_key = saved_state.group_key.x().to_bytes().to_vec();
-        let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&saved_state.group_key, None);
+        let aggregate_key = PublicKey::try_from(&saved_state.group_key)?;
 
         let encoded = saved_state.encode_to_vec().map_err(error::Error::Codec)?;
         let public_shares = self
@@ -139,9 +137,9 @@ impl SignerStateMachine {
         let created_at = time::OffsetDateTime::now_utc();
 
         Ok(model::EncryptedDkgShares {
-            aggregate_key: aggregate_key.clone(),
-            tweaked_aggregate_key: tweaked_aggregate_key.x().to_bytes().to_vec(),
-            script_pubkey: tweaked_aggregate_key.signers_script_pubkey().to_bytes(),
+            aggregate_key,
+            tweaked_aggregate_key: aggregate_key.signers_tweaked_pubkey()?,
+            script_pubkey: aggregate_key.signers_script_pubkey().to_bytes(),
             encrypted_private_shares,
             public_shares,
             created_at,
@@ -171,21 +169,14 @@ type WstsCoordinator = wsts::state_machine::coordinator::frost::Coordinator<wsts
 
 impl CoordinatorStateMachine {
     /// Create a new state machine
-    pub fn new<I>(signers: I, threshold: u32, message_private_key: p256k1::scalar::Scalar) -> Self
+    pub fn new<I>(signers: I, threshold: u32, message_private_key: PrivateKey) -> Self
     where
-        I: IntoIterator<Item = p256k1::ecdsa::PublicKey>,
+        I: IntoIterator<Item = PublicKey>,
     {
         let signer_public_keys: hashbrown::HashMap<u32, _> = signers
             .into_iter()
             .enumerate()
-            .map(|(idx, key)| {
-                (
-                    idx.try_into().unwrap(),
-                    (&p256k1::point::Compressed::from(key.to_bytes()))
-                        .try_into()
-                        .expect("failed to convert public key"),
-                )
-            })
+            .map(|(idx, key)| (idx as u32, key.into()))
             .collect();
 
         // The number of possible signers is capped at a number well below
@@ -202,7 +193,7 @@ impl CoordinatorStateMachine {
             num_keys: num_signers,
             threshold,
             dkg_threshold: num_signers,
-            message_private_key,
+            message_private_key: message_private_key.into(),
             dkg_public_timeout: None,
             dkg_private_timeout: None,
             dkg_end_timeout: None,
@@ -229,19 +220,19 @@ impl CoordinatorStateMachine {
     /// already been successfully completed.
     pub async fn load<I, S>(
         storage: &mut S,
-        aggregate_key: p256k1::point::Point,
+        aggregate_key: PublicKey,
         signers: I,
         threshold: u32,
-        message_private_key: p256k1::scalar::Scalar,
+        message_private_key: PrivateKey,
     ) -> Result<Self, Error>
     where
-        I: IntoIterator<Item = p256k1::ecdsa::PublicKey>,
+        I: IntoIterator<Item = PublicKey>,
         S: storage::DbRead + storage::DbWrite,
         Error: From<<S as storage::DbRead>::Error>,
         Error: From<<S as storage::DbWrite>::Error>,
     {
         let encrypted_shares = storage
-            .get_encrypted_dkg_shares(&aggregate_key.x().to_bytes().to_vec())
+            .get_encrypted_dkg_shares(&aggregate_key)
             .await?
             .ok_or(Error::MissingDkgShares)?;
 
@@ -305,7 +296,7 @@ impl CoordinatorStateMachine {
         // `party_polynomials` variable in the `WstsCoordinator`. Now we
         // can just set the aggregate key and move the state to the `IDLE`,
         // which is the state after a successful DKG round.
-        coordinator.set_aggregate_public_key(Some(aggregate_key));
+        coordinator.set_aggregate_public_key(Some(aggregate_key.into()));
 
         coordinator
             .move_to(WstsState::Idle)

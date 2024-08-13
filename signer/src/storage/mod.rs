@@ -14,6 +14,8 @@ use std::future::Future;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
 
+use crate::keys::PublicKey;
+
 /// Represents the ability to read data from the signer storage.
 pub trait DbRead {
     /// Read error.
@@ -61,7 +63,7 @@ pub trait DbRead {
     /// Get the deposit requests that the signer has accepted to sign
     fn get_accepted_deposit_requests(
         &self,
-        signer: &model::PubKey,
+        signer: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Self::Error>> + Send;
 
     /// Get signer decisions for a deposit request
@@ -109,7 +111,7 @@ pub trait DbRead {
     /// given aggregate key
     fn get_encrypted_dkg_shares(
         &self,
-        aggregate_key: &model::PubKey,
+        aggregate_key: &PublicKey,
     ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Self::Error>> + Send;
 
     /// Return the latest rotate-keys transaction confirmed by the given `chain-tip`.

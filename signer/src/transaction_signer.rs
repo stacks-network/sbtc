@@ -10,6 +10,8 @@ use std::collections::HashMap;
 
 use crate::blocklist_client;
 use crate::error;
+use crate::keys::PrivateKey;
+use crate::keys::PublicKey;
 use crate::message;
 use crate::network;
 use crate::storage;
@@ -99,7 +101,7 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
     /// Notification receiver from the block observer.
     pub block_observer_notifications: tokio::sync::watch::Receiver<()>,
     /// Private key of the signer for network communication.
-    pub signer_private_key: p256k1::scalar::Scalar,
+    pub signer_private_key: PrivateKey,
     /// WSTS state machines for active signing rounds and DKG rounds
     ///
     /// - For signing rounds, the TxID is the ID of the transaction to be
@@ -217,12 +219,12 @@ where
 
         match &msg.inner.payload {
             message::Payload::SignerDepositDecision(decision) => {
-                self.persist_received_deposit_decision(decision, &msg.signer_pub_key)
+                self.persist_received_deposit_decision(decision, msg.signer_pub_key)
                     .await?;
             }
 
             message::Payload::SignerWithdrawDecision(decision) => {
-                self.persist_received_withdraw_decision(decision, &msg.signer_pub_key)
+                self.persist_received_withdraw_decision(decision, msg.signer_pub_key)
                     .await?;
             }
 
@@ -290,7 +292,7 @@ where
         &mut self,
         _request: &message::BitcoinTransactionSignRequest,
     ) -> Result<bool, error::Error> {
-        let signer_pub_key = self.signer_pub_key_model()?;
+        let signer_pub_key = self.signer_pub_key();
         let _accepted_deposit_requests = self
             .storage
             .get_accepted_deposit_requests(&signer_pub_key)
@@ -446,8 +448,6 @@ where
             })
             .await;
 
-        let signer_pub_key = self.signer_pub_key_model()?;
-
         let created_at = time::OffsetDateTime::now_utc();
 
         let msg = message::SignerDepositDecision {
@@ -463,7 +463,7 @@ where
         let signer_decision = model::DepositSigner {
             txid: deposit_request.txid,
             output_index: deposit_request.output_index,
-            signer_pub_key,
+            signer_pub_key: self.signer_pub_key(),
             is_accepted,
             created_at,
         };
@@ -488,14 +488,12 @@ where
             .await
             .unwrap_or(false);
 
-        let signer_pub_key = self.signer_pub_key_model()?;
-
         let created_at = time::OffsetDateTime::now_utc();
 
         let signer_decision = model::WithdrawSigner {
             request_id: withdraw_request.request_id,
             block_hash: withdraw_request.block_hash,
-            signer_pub_key,
+            signer_pub_key: self.signer_pub_key(),
             is_accepted,
             created_at,
         };
@@ -511,14 +509,13 @@ where
     async fn persist_received_deposit_decision(
         &mut self,
         decision: &message::SignerDepositDecision,
-        signer_pub_key: &p256k1::ecdsa::PublicKey,
+        signer_pub_key: PublicKey,
     ) -> Result<(), error::Error> {
         let txid = decision.txid.to_byte_array().to_vec();
         let output_index = decision
             .output_index
             .try_into()
             .map_err(|_| error::Error::TypeConversion)?;
-        let signer_pub_key = signer_pub_key.to_bytes().to_vec();
         let is_accepted = decision.accepted;
         let created_at = time::OffsetDateTime::now_utc();
 
@@ -548,7 +545,7 @@ where
     async fn persist_received_withdraw_decision(
         &mut self,
         decision: &message::SignerWithdrawDecision,
-        signer_pub_key: &p256k1::ecdsa::PublicKey,
+        signer_pub_key: PublicKey,
     ) -> Result<(), error::Error> {
         let request_id = decision
             .request_id
@@ -556,7 +553,6 @@ where
             .map_err(|_| error::Error::TypeConversion)?;
 
         let block_hash = decision.block_hash.to_vec();
-        let signer_pub_key = signer_pub_key.to_bytes().to_vec();
         let is_accepted = decision.accepted;
         let created_at = time::OffsetDateTime::now_utc();
 
@@ -604,12 +600,11 @@ where
         msg: impl Into<message::Payload>,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), error::Error> {
-        let msg = msg
-            .into()
-            .to_message(
-                bitcoin::BlockHash::from_slice(bitcoin_chain_tip)
-                    .map_err(error::Error::SliceConversion)?,
-            )
+        let bitcoin_chain_tip = bitcoin::BlockHash::from_slice(bitcoin_chain_tip)
+            .map_err(error::Error::SliceConversion)?;
+        let payload: message::Payload = msg.into();
+        let msg = payload
+            .to_message(bitcoin_chain_tip)
             .sign_ecdsa(&self.signer_private_key)?;
 
         self.network.broadcast(msg).await?;
@@ -621,31 +616,20 @@ where
     async fn get_signer_public_keys(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<BTreeSet<p256k1::ecdsa::PublicKey>, error::Error> {
+    ) -> Result<BTreeSet<PublicKey>, error::Error> {
         let last_key_rotation = self
             .storage
             .get_last_key_rotation(bitcoin_chain_tip)
             .await?
             .ok_or(error::Error::MissingKeyRotation)?;
 
-        last_key_rotation
-            .signer_set
-            .into_iter()
-            .map(|bytes| {
-                bytes
-                    .as_slice()
-                    .try_into()
-                    .map_err(|_| error::Error::TypeConversion)
-            })
-            .collect()
+        let signer_set = last_key_rotation.signer_set.into_iter().collect();
+
+        Ok(signer_set)
     }
 
-    fn signer_pub_key_model(&self) -> Result<model::PubKey, error::Error> {
-        Ok(self.signer_pub_key()?.to_bytes().to_vec())
-    }
-
-    fn signer_pub_key(&self) -> Result<p256k1::ecdsa::PublicKey, error::Error> {
-        Ok(p256k1::ecdsa::PublicKey::new(&self.signer_private_key)?)
+    fn signer_pub_key(&self) -> PublicKey {
+        PublicKey::from_private_key(&self.signer_private_key)
     }
 }
 

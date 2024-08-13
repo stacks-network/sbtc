@@ -8,7 +8,8 @@ use fake::faker::time::en::DateTimeAfter;
 use fake::Fake;
 use rand::Rng;
 
-use crate::bitcoin::utxo::SignerScriptPubkey as _;
+use crate::keys::PublicKey;
+use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
 
 use crate::codec::Encode;
@@ -166,10 +167,8 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
     _config: &fake::Faker,
     rng: &mut R,
     signer_private_key: &[u8; 32],
-    group_key: p256k1::point::Point,
+    group_key: PublicKey,
 ) -> model::EncryptedDkgShares {
-    let aggregate_key = group_key.x().to_bytes().to_vec();
-    let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&group_key, None);
     let party_state = wsts::traits::PartyState {
         polynomial: None,
         private_keys: vec![],
@@ -182,7 +181,7 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         num_keys: 1,
         num_parties: 1,
         threshold: 1,
-        group_key,
+        group_key: group_key.into(),
         parties: vec![(0, party_state)],
     };
 
@@ -200,11 +199,11 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
     let created_at = DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH).fake_with_rng(rng);
 
     model::EncryptedDkgShares {
-        aggregate_key,
+        aggregate_key: group_key,
         encrypted_private_shares,
         public_shares,
-        tweaked_aggregate_key: tweaked_aggregate_key.x().to_bytes().to_vec(),
-        script_pubkey: tweaked_aggregate_key.signers_script_pubkey().into_bytes(),
+        tweaked_aggregate_key: group_key.signers_tweaked_pubkey().unwrap(),
+        script_pubkey: group_key.signers_script_pubkey().into_bytes(),
         created_at,
     }
 }

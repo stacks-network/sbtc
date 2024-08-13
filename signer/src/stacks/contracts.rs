@@ -37,8 +37,8 @@ use blockstack_lib::clarity::vm::ClarityName;
 use blockstack_lib::clarity::vm::ContractName;
 use blockstack_lib::clarity::vm::Value;
 use blockstack_lib::types::chainstate::StacksAddress;
-use secp256k1::PublicKey;
 
+use crate::keys::PublicKey;
 use crate::stacks::wallet::SignerWallet;
 
 /// A struct describing any transaction post-execution conditions that we'd
@@ -310,7 +310,7 @@ impl RotateKeysV1 {
     pub fn new(wallet: &SignerWallet, deployer: StacksAddress) -> Self {
         Self {
             aggregate_key: wallet.aggregate_key(),
-            new_keys: wallet.public_keys().iter().copied().collect(),
+            new_keys: wallet.public_keys().clone(),
             deployer,
         }
     }
@@ -442,7 +442,7 @@ mod tests {
             SecretKey::new(&mut rng),
             SecretKey::new(&mut rng),
         ];
-        let public_keys = secret_keys.map(|sk| sk.public_key(SECP256K1));
+        let public_keys = secret_keys.map(|sk| sk.public_key(SECP256K1).into());
         let wallet = SignerWallet::new(&public_keys, 2, NetworkKind::Testnet, 0).unwrap();
         let deployer = StacksAddress::burn_address(false);
 
