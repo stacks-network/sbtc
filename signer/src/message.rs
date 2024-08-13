@@ -1,9 +1,11 @@
 //! Signer message definition for network communication
 
 use blockstack_lib::chainstate::stacks;
+use secp256k1::ecdsa::RecoverableSignature;
 use sha2::Digest;
 
 use crate::keys::PublicKey;
+use crate::signature::RecoverableEcdsaSignature as _;
 
 /// Messages exchanged between signers
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -120,8 +122,9 @@ pub struct StacksTransactionSignRequest {
 pub struct StacksTransactionSignature {
     /// Id of the signed transaction.
     pub txid: blockstack_lib::burnchains::Txid,
-    /// An ECDSA signature over the transaction.
-    pub signature: p256k1::ecdsa::Signature,
+    /// A recoverable ECDSA signature over the transaction.
+    #[serde(with = "crate::signature::serde_utils")]
+    pub signature: RecoverableSignature,
 }
 
 /// Represents a request to sign a Bitcoin transaction.
@@ -215,7 +218,7 @@ impl wsts::net::Signable for StacksTransactionSignature {
     fn hash(&self, hasher: &mut sha2::Sha256) {
         hasher.update("SIGNER_STACKS_TRANSACTION_SIGNATURE");
         hasher.update(self.txid);
-        hasher.update(self.signature.to_bytes());
+        hasher.update(self.signature.to_byte_array());
     }
 }
 

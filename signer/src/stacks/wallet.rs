@@ -20,13 +20,14 @@ use blockstack_lib::core::CHAIN_ID_MAINNET;
 use blockstack_lib::core::CHAIN_ID_TESTNET;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::util::secp256k1::Secp256k1PublicKey;
+use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Message;
 
 use crate::config::NetworkKind;
 use crate::error::Error;
 use crate::keys::PublicKey;
-use crate::signatures::MessageDigest as _;
-use crate::signatures::RecoverableSignature;
+use crate::signature::SighashDigest as _;
+use crate::signature::RecoverableEcdsaSignature as _;
 use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::AsTxPayload;
 use crate::stacks::contracts::ContractCall;
@@ -268,7 +269,7 @@ impl MultisigTx {
     /// 2. The signature was given over the correct digest, but we were not
     ///    expecting the associated public key.
     pub fn add_signature(&mut self, signature: RecoverableSignature) -> Result<(), Error> {
-        let public_key: PublicKey = signature.recover(&self.digest)?;
+        let public_key: PublicKey = signature.recover_ecdsa(&self.digest)?;
 
         // Get the entry for the given public key and replace the value
         // with the given signature. If the public key doesn't exist here,
@@ -294,7 +295,7 @@ impl MultisigTx {
         self.signatures
             .into_iter()
             .for_each(|(public_key, maybe_sig)| match maybe_sig {
-                Some(sig) => cond.push_signature(key_encoding, sig.into()),
+                Some(sig) => cond.push_signature(key_encoding, sig.as_stacks_sig()),
                 None => cond.push_public_key(Secp256k1PublicKey::from(&public_key)),
             });
 
@@ -312,7 +313,7 @@ mod tests {
 
     use test_case::test_case;
 
-    use crate::signatures::sign_stacks_tx;
+    use crate::signature::sign_stacks_tx;
 
     use super::*;
 
@@ -383,7 +384,7 @@ mod tests {
         let signatures: Vec<RecoverableSignature> = key_pairs
             .iter()
             .take(submitted_signatures)
-            .map(|kp| sign_stacks_tx(tx, kp.secret_key()))
+            .map(|kp| sign_stacks_tx(tx, &kp.secret_key().into()))
             .collect();
 
         // Now add the signatures to the signing object.

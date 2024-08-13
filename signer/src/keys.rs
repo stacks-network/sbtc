@@ -36,7 +36,6 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::error::Error;
-use crate::signatures::MessageDigest;
 
 /// The public key type for the secp256k1 elliptic curve.
 #[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -316,24 +315,19 @@ impl PrivateKey {
 
     /// Constructs an ECDSA signature for `message` using the global
     /// [`SECP256K1`] context and returns it in "low S" form.
-    pub fn sign_ecdsa<M>(&self, msg: M) -> secp256k1::ecdsa::Signature
-    where
-        M: MessageDigest,
-    {
-        let msg = secp256k1::Message::from_digest(msg.digest());
-        let mut sig = self.0.sign_ecdsa(msg);
+    pub fn sign_ecdsa(&self, msg: &secp256k1::Message) -> secp256k1::ecdsa::Signature {
+        let mut sig = SECP256K1.sign_ecdsa(msg, &self.0);
         sig.normalize_s();
         sig
     }
 
-    /// Constructs an ECDSA signature for `message` using the global
-    /// [`SECP256K1`] context and returns it in "low S" form.
-    pub fn sign_ecdsa_recoverable<M>(&self, msg: M) -> secp256k1::ecdsa::RecoverableSignature
-    where
-        M: MessageDigest,
-    {
-        let msg = secp256k1::Message::from_digest(msg.digest());
-        SECP256K1.sign_ecdsa_recoverable(&msg, &self.0)
+    /// Constructs a recoverable ECDSA signature for `message` using the
+    /// global [`SECP256K1`] context.
+    pub fn sign_ecdsa_recoverable(
+        &self,
+        msg: &secp256k1::Message,
+    ) -> secp256k1::ecdsa::RecoverableSignature {
+        SECP256K1.sign_ecdsa_recoverable(msg, &self.0)
     }
 }
 

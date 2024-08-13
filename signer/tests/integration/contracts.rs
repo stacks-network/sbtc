@@ -5,6 +5,7 @@ use bitvec::array::BitArray;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::types::chainstate::StacksAddress;
+use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Keypair;
 use signer::stacks::api::StacksInteract;
 use signer::stacks::contracts::AcceptWithdrawalV1;
@@ -16,7 +17,6 @@ use signer::stacks::wallet::SignerWallet;
 use tokio::sync::OnceCell;
 
 use signer::config::StacksSettings;
-use signer::signatures::RecoverableSignature;
 use signer::stacks;
 use signer::stacks::api::FeePriority;
 use signer::stacks::api::RejectionReason;
@@ -77,7 +77,7 @@ impl AsContractDeploy for SbtcBootstrapContract {
 
 fn make_signatures(tx: &StacksTransaction, keys: &[Keypair]) -> Vec<RecoverableSignature> {
     keys.iter()
-        .map(|kp| signer::signatures::sign_stacks_tx(tx, kp.secret_key()))
+        .map(|kp| signer::signature::sign_stacks_tx(tx, &kp.secret_key().into()))
         .collect()
 }
 

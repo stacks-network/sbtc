@@ -7,7 +7,9 @@ use blockstack_lib::chainstate::{nakamoto, stacks};
 use fake::faker::time::en::DateTimeAfter;
 use fake::Fake;
 use rand::Rng;
+use secp256k1::ecdsa::RecoverableSignature;
 
+use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
@@ -151,15 +153,14 @@ pub fn stacks_txid<R: rand::RngCore + ?Sized>(
 }
 
 /// Dummy signature
-pub fn signature<R: rand::RngCore + ?Sized>(
-    config: &fake::Faker,
-    rng: &mut R,
-) -> p256k1::ecdsa::Signature {
-    // Represent both the signed message and the signing key.
-    let multipurpose_bytes: [u8; 32] = config.fake_with_rng(rng);
-    let secret_key = p256k1::scalar::Scalar::from(multipurpose_bytes);
-
-    p256k1::ecdsa::Signature::new(&multipurpose_bytes, &secret_key).unwrap()
+pub fn recoverable_signature<R>(config: &fake::Faker, rng: &mut R) -> RecoverableSignature
+where
+    R: rand::RngCore + ?Sized,
+{
+    // Represent the signed message.
+    let digest: [u8; 32] = config.fake_with_rng(rng);
+    let msg = secp256k1::Message::from_digest(digest);
+    PrivateKey::new(rng).sign_ecdsa_recoverable(&msg)
 }
 
 /// Encrypted dummy DKG shares
