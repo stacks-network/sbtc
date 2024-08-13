@@ -36,6 +36,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::error::Error;
+use crate::signatures::MessageDigest;
 
 /// The public key type for the secp256k1 elliptic curve.
 #[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -333,24 +334,6 @@ impl PrivateKey {
     {
         let msg = secp256k1::Message::from_digest(msg.digest());
         SECP256K1.sign_ecdsa_recoverable(&msg, &self.0)
-    }
-}
-
-/// For creating signatures.
-pub trait MessageDigest {
-    /// The digest to sign.
-    fn digest(&self) -> [u8; 32];
-}
-
-impl MessageDigest for secp256k1::Message {
-    fn digest(&self) -> [u8; 32] {
-        *self.as_ref()
-    }
-}
-
-impl MessageDigest for [u8; 32] {
-    fn digest(&self) -> [u8; 32] {
-        *self
     }
 }
 
