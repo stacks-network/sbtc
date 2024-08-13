@@ -465,7 +465,7 @@ where
                     self.context_window,
                     signer_info.signer_private_key,
                     self.signing_threshold,
-                    rand::rngs::OsRng,
+                    rng.clone(),
                 );
 
                 event_loop_harness.start()
