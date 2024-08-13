@@ -8,7 +8,7 @@ use crate::error;
 use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
-use crate::keys::SignerScriptPubKey;
+use crate::keys::SignerScriptPubKey as _;
 use crate::storage;
 use crate::storage::model;
 

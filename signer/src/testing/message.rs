@@ -4,7 +4,8 @@ use bitcoin::hashes::Hash;
 use fake::Fake;
 use rand::seq::SliceRandom;
 
-use crate::keys::{PrivateKey, PublicKey};
+use crate::keys::PrivateKey;
+use crate::keys::PublicKey;
 use crate::message;
 use crate::testing::dummy;
 

@@ -341,8 +341,8 @@ pub fn construct_digest(tx: &StacksTransaction) -> Message {
 /// TransactionSpendingCondition::next_signature function, but we skip a
 /// step of generating the next sighash, since we do not need it.
 pub fn sign_ecdsa(tx: &StacksTransaction, private_key: &PrivateKey) -> RecoverableSignature {
-    let message = construct_digest(tx);
-    private_key.sign_ecdsa_recoverable(message)
+    let msg = construct_digest(tx);
+    private_key.sign_ecdsa_recoverable(msg)
 }
 
 /// Convert a recoverable signature into a Message Signature.

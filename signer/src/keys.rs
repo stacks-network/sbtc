@@ -315,11 +315,11 @@ impl PrivateKey {
 
     /// Constructs an ECDSA signature for `message` using the global
     /// [`SECP256K1`] context and returns it in "low S" form.
-    pub fn sign_ecdsa<M>(&self, message: M) -> secp256k1::ecdsa::Signature
+    pub fn sign_ecdsa<M>(&self, msg: M) -> secp256k1::ecdsa::Signature
     where
         M: MessageDigest,
     {
-        let msg = secp256k1::Message::from_digest(message.digest());
+        let msg = secp256k1::Message::from_digest(msg.digest());
         let mut sig = self.0.sign_ecdsa(msg);
         sig.normalize_s();
         sig
@@ -327,11 +327,11 @@ impl PrivateKey {
 
     /// Constructs an ECDSA signature for `message` using the global
     /// [`SECP256K1`] context and returns it in "low S" form.
-    pub fn sign_ecdsa_recoverable<M>(&self, message: M) -> secp256k1::ecdsa::RecoverableSignature
+    pub fn sign_ecdsa_recoverable<M>(&self, msg: M) -> secp256k1::ecdsa::RecoverableSignature
     where
         M: MessageDigest,
     {
-        let msg = secp256k1::Message::from_digest(message.digest());
+        let msg = secp256k1::Message::from_digest(msg.digest());
         SECP256K1.sign_ecdsa_recoverable(&msg, &self.0)
     }
 }
