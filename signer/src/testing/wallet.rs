@@ -32,7 +32,8 @@ pub fn generate_wallet() -> (SignerWallet, [Keypair; 3], u16) {
     ];
 
     let public_keys = key_pairs.map(|kp| kp.public_key().into());
-    let wallet = SignerWallet::new(&public_keys, signatures_required, NetworkKind::Testnet, 0).unwrap();
+    let wallet =
+        SignerWallet::new(&public_keys, signatures_required, NetworkKind::Testnet, 0).unwrap();
 
     (wallet, key_pairs, signatures_required)
 }
