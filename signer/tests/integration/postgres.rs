@@ -108,29 +108,30 @@ impl AsContractCall for InitiateWithdrawalRequest {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654,
     recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
-    deployer: testing::wallet::generate_wallet().0.address(),
+    deployer: testing::wallet::WALLET.0.address(),
 }); "complete-deposit standard recipient")]
 #[test_case(ContractCall(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654,
     recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y.my-contract-name").unwrap(),
-    deployer: testing::wallet::generate_wallet().0.address(),
+    deployer: testing::wallet::WALLET.0.address(),
 }); "complete-deposit contract recipient")]
 #[test_case(ContractCall(AcceptWithdrawalV1 {
     request_id: 0,
     outpoint: bitcoin::OutPoint::null(),
     tx_fee: 3500,
     signer_bitmap: BitArray::ZERO,
-    deployer: testing::wallet::generate_wallet().0.address(),
+    deployer: testing::wallet::WALLET.0.address(),
 }); "accept-withdrawal")]
 #[test_case(ContractCall(RejectWithdrawalV1 {
     request_id: 0,
     signer_bitmap: BitArray::ZERO,
-    deployer: testing::wallet::generate_wallet().0.address(),
+    deployer: testing::wallet::WALLET.0.address(),
 }); "reject-withdrawal")]
 #[test_case(ContractCall(RotateKeysV1::new(
-    &testing::wallet::generate_wallet().0,
-    testing::wallet::generate_wallet().0.address(),
+    &testing::wallet::WALLET.0,
+    testing::wallet::WALLET.0.address(),
+    testing::wallet::WALLET.2,
 )); "rotate-keys")]
 #[tokio::test]
 async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCall<T>) {
