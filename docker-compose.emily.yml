@@ -11,7 +11,6 @@ services:
     networks:
       - aws-local-vpc
 
-
   # Modifies the CDK template and creates DynamoDB Tables if necessary.
   aws-setup:
     build: devenv/aws-setup
@@ -33,6 +32,8 @@ services:
   # Hosts the SAM CLI
   apigateway:
     build: devenv/apigateway
+    profiles:
+      - apigateway
     depends_on:
       aws-setup:
         condition: service_completed_successfully
@@ -63,20 +64,6 @@ services:
         --warm-containers LAZY
         --env-vars /lambda/env.json
         -t /cdk.out/EmilyStack.devenv.template.json
-    networks:
-      - aws-local-vpc
-
-  service-test:
-    build: devenv/service-test
-    image: "debian:12.5"
-    profiles:
-      - test
-    depends_on:
-      apigateway:
-        condition: service_started
-    volumes:
-      - "./devenv/service-test:/service-test:ro"
-    command: bash /service-test/curl-test.sh apigateway 3000 5
     networks:
       - aws-local-vpc
 

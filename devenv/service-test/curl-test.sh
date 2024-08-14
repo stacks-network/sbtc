@@ -4,7 +4,7 @@
 HOSTNAME="$1"
 PORT="$2"
 
-ENDPOINT="http://$HOSTNAME:$PORT"
+ENDPOINT="http://$HOSTNAME:$PORT/local"
 
 banner() {
     echo

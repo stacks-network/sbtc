@@ -2,11 +2,13 @@
 
 use emily_handler::api::models::{common::Status, withdrawal::WithdrawalParameters};
 
-pub const EMILY_ENDPOINT: &'static str = "http://localhost:3000";
-pub const EMILY_WITHDRAWAL_ENDPOINT: &'static str = "http://localhost:3000/withdrawal";
-pub const EMILY_DEPOSIT_ENDPOINT: &'static str = "http://localhost:3000/deposit";
-pub const EMILY_CHAINSTATE_ENDPOINT: &'static str = "http://localhost:3000/chainstate";
-pub const EMILY_TESTING_ENDPOINT: &'static str = "http://localhost:3000/testing";
+// TODO(273):  Remove the "local" prefix once we figure out why all local
+// testing calls seem to forcibly start with `local`.
+pub const EMILY_ENDPOINT: &'static str = "http://localhost:3031/local";
+pub const EMILY_WITHDRAWAL_ENDPOINT: &'static str = "http://localhost:3031/local/withdrawal";
+pub const EMILY_DEPOSIT_ENDPOINT: &'static str = "http://localhost:3031/local/deposit";
+pub const EMILY_CHAINSTATE_ENDPOINT: &'static str = "http://localhost:3031/local/chainstate";
+pub const EMILY_TESTING_ENDPOINT: &'static str = "http://localhost:3031/local/testing";
 
 pub const TEST_WITHDRAWAL_PARAMETERS: WithdrawalParameters = WithdrawalParameters { max_fee: 1234 };
 
