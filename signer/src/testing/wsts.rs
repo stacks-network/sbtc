@@ -428,6 +428,7 @@ impl SignerSet {
             aggregate_key,
             txid,
             signer_set,
+            signatures_required: self.signers.len() as u16,
         };
 
         storage

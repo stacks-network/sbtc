@@ -304,6 +304,7 @@ pub struct RotateKeysV1 {
     /// The address that deployed the contract.
     deployer: StacksAddress,
     /// The number of signatures required for the multi-sig wallet.
+    #[allow(dead_code)]
     signatures_required: u16,
 }
 
