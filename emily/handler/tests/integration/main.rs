@@ -1,3 +1,5 @@
+/// Database accessor tests.
+pub mod accessors;
 /// Complex tests.
 pub mod complex;
 /// Endpoint tests.

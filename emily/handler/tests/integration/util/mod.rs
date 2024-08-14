@@ -3,19 +3,22 @@
 
 use std::collections::HashMap;
 
-use emily_handler::api::models::{
-    chainstate::Chainstate,
-    common::Status,
-    deposit::{
-        requests::CreateDepositRequestBody,
-        responses::{CreateDepositResponse, GetDepositsResponse},
-        DepositInfo,
+use emily_handler::{
+    api::models::{
+        chainstate::Chainstate,
+        common::Status,
+        deposit::{
+            requests::CreateDepositRequestBody,
+            responses::{CreateDepositResponse, GetDepositsResponse},
+            DepositInfo,
+        },
+        withdrawal::{
+            requests::CreateWithdrawalRequestBody,
+            responses::{CreateWithdrawalResponse, GetWithdrawalsResponse},
+            WithdrawalInfo,
+        },
     },
-    withdrawal::{
-        requests::CreateWithdrawalRequestBody,
-        responses::{CreateWithdrawalResponse, GetWithdrawalsResponse},
-        WithdrawalInfo,
-    },
+    context::EmilyContext,
 };
 use error::TestError;
 use reqwest::{Client, RequestBuilder};
@@ -52,6 +55,23 @@ pub fn test_chainstate(height: u64, fork_id: u32) -> Chainstate {
         stacks_block_hash: format!("stacks-block-{height}-hash-fork-{fork_id}"),
         stacks_block_height: height,
     }
+}
+
+/// Creates a standard test deposit request for uniform creation.
+pub fn test_create_deposit_request(id_num: u64, output_index: u32) -> CreateDepositRequestBody {
+    CreateDepositRequestBody {
+        bitcoin_txid: format!("deposit-txid-{id_num}"),
+        bitcoin_tx_output_index: output_index,
+        reclaim: format!("deposit-txid-{id_num}:{output_index}-reclaim-script"),
+        deposit: format!("deposit-txid-{id_num}:{output_index}-deposit-script"),
+    }
+}
+
+/// Make a test context for Emily.
+pub async fn test_context() -> EmilyContext {
+    EmilyContext::local_test_instance()
+        .await
+        .expect("Failed to setup local test context for Emily integration test.")
 }
 
 /// Test client to make API calls within integration tests. This takes the place of what
@@ -304,7 +324,7 @@ fn base_query_from_status(status: &Status) -> HashMap<String, String> {
 }
 
 /// Creates a serialized status.
-fn serialized_status(status: &Status) -> String {
+pub fn serialized_status(status: &Status) -> String {
     serde_json::to_string(status)
         .expect(&format!(
             "Status param {status:?} impossibly failed serialization."

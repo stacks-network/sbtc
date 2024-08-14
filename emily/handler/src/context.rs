@@ -73,4 +73,66 @@ impl EmilyContext {
             dynamodb_client: Client::new(&config),
         })
     }
+    /// Create a local testing instance.
+    #[cfg(feature = "testing")]
+    pub async fn local_test_instance() -> Result<Self, Error> {
+        use std::collections::HashMap;
+
+        // Get config that always points to the dynamodb table directly
+        // from outside of a docker compose setup.
+        let dynamodb_client = Client::new(
+            &aws_config::load_defaults(BehaviorVersion::latest())
+                .await
+                .into_builder()
+                .endpoint_url("http://localhost:8000")
+                .build(),
+        );
+
+        // Get the names of the existing tables so we can populate from them.
+        let table_names = dynamodb_client
+            .list_tables()
+            // Get at most 20 table names - there should be 3...
+            .limit(20)
+            .send()
+            .await
+            .map_err(|err| {
+                Error::Debug(format!(
+                    "Failed setting up settings from table names - {err:?}"
+                ))
+            })?
+            .table_names
+            .unwrap_or_default();
+
+        // Attempt to get all the tables by searching the output of the
+        // list tables operation.
+        let mut table_name_map: HashMap<&str, String> = HashMap::new();
+        let tables_to_find: Vec<&str> = vec!["Deposit", "Chainstate", "Withdrawal"];
+        for name in table_names {
+            for table_to_find in &tables_to_find {
+                if name.contains(table_to_find) {
+                    table_name_map.insert(table_to_find, name.clone());
+                }
+            }
+        }
+
+        // Make the context using the assumed table names.
+        Ok(EmilyContext {
+            settings: Settings {
+                is_local: true,
+                deposit_table_name: table_name_map
+                    .get("Deposit")
+                    .expect("Couldn't find valid deposit table in existing table list.")
+                    .to_string(),
+                withdrawal_table_name: table_name_map
+                    .get("Withdrawal")
+                    .expect("Couldn't find valid withdrawal table in existing table list.")
+                    .to_string(),
+                chainstate_table_name: table_name_map
+                    .get("Chainstate")
+                    .expect("Couldn't find valid chainstate table in existing table list.")
+                    .to_string(),
+            },
+            dynamodb_client,
+        })
+    }
 }
