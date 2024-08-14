@@ -14,7 +14,7 @@ pub mod network;
 pub mod signature;
 pub mod stacks;
 pub mod storage;
-#[cfg(feature = "testing")]
+#[cfg(any(test, feature = "testing"))]
 pub mod testing;
 pub mod transaction_coordinator;
 pub mod transaction_signer;

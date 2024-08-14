@@ -12,6 +12,7 @@ use rand::SeedableRng as _;
 use secp256k1::Keypair;
 
 use crate::config::NetworkKind;
+use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::AsTxPayload;
 use crate::stacks::contracts::StacksTxPostConditions;
 use crate::stacks::wallet::SignerWallet;
@@ -38,6 +39,42 @@ pub fn generate_wallet() -> (SignerWallet, [Keypair; 3], u16) {
     (wallet, key_pairs, signatures_required)
 }
 
+/// A generic new-type that implements [`AsTxPayload`] for all types that
+/// implement [`AsContractCall`].
+///
+/// # Notes
+///
+/// Although we already have the [`ContractCall`] enum type, there are
+/// other contract calls that are useful for testing purposes, so this
+/// struct is to support that seamlessly. Ideally, every type that
+/// implements [`AsContractCall`] should implement [`AsTxPayload`]
+/// automatically. What we want is to have something like the following:
+///
+/// ```text
+/// impl<T: AsContractCall> AsTxPayload for T { ... }
+/// ```
+///
+/// But that would preclude us from adding something like:
+///
+/// ```text
+/// impl<T: AsSmartContract> AsTxPayload for T { ... }
+/// ```
+///
+/// since doing so is prevented by the compiler because it introduces
+/// ambiguity. One work-around is to use a wrapper type that implements the
+/// trait that we want.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ContractCallWrapper<T>(pub T);
+
+impl<T: AsContractCall> AsTxPayload for ContractCallWrapper<T> {
+    fn tx_payload(&self) -> TransactionPayload {
+        TransactionPayload::ContractCall(self.0.as_contract_call())
+    }
+    fn post_conditions(&self) -> StacksTxPostConditions {
+        self.0.post_conditions()
+    }
+}
+
 /// A trait for deploying the smart contract
 pub trait AsContractDeploy {
     /// The name of the clarity smart contract that relates to this struct.
@@ -55,7 +92,7 @@ pub trait AsContractDeploy {
 
 /// A wrapper type for smart contract deployment that implements
 /// AsTxPayload. This is analogous to the
-/// crate::stacks::contracts::ContractCall struct.
+/// [`ContractCallWrapper`] struct.
 pub struct ContractDeploy<T>(pub T);
 
 impl<T: AsContractDeploy> AsTxPayload for ContractDeploy<T> {

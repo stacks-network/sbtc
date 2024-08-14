@@ -60,6 +60,7 @@ where
                 context_window,
                 wsts_state_machines: HashMap::new(),
                 threshold,
+                network_kind: bitcoin::Network::Regtest,
                 rng,
                 test_observer_tx: Some(test_observer_tx),
             },

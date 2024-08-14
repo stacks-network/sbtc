@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 
 use crate::blocklist_client;
+use crate::config::NetworkKind;
 use crate::ecdsa::SignEcdsa as _;
 use crate::error;
 use crate::error::Error;
@@ -119,6 +120,8 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
     pub threshold: u32,
     /// How many bitcoin blocks back from the chain tip the signer will look for requests.
     pub context_window: usize,
+    /// The network we are working in.
+    pub network_kind: bitcoin::Network,
     /// Random number generator used for encryption
     pub rng: Rng,
     #[cfg(feature = "testing")]
@@ -322,7 +325,7 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
         let is_valid_sign_request = self
-            .is_valid_stackstransaction_sign_request(request)
+            .is_valid_stackstransaction_sign_request(request, bitcoin_chain_tip)
             .await?;
 
         let wallet = self.load_wallet(request, bitcoin_chain_tip).await?;
@@ -331,7 +334,7 @@ where
 
         if is_valid_sign_request {
             let signature =
-                crate::signature::sign_stacks_tx(&request.tx, &self.signer_private_key);
+                crate::signature::sign_stacks_tx(multi_sig.tx(), &self.signer_private_key);
 
             let msg = message::StacksTransactionSignature { txid, signature };
 

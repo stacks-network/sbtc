@@ -1,11 +1,11 @@
 //! Signer message definition for network communication
 
-use blockstack_lib::chainstate::stacks;
 use secp256k1::ecdsa::RecoverableSignature;
 use sha2::Digest;
 
 use crate::keys::PublicKey;
 use crate::signature::RecoverableEcdsaSignature as _;
+use crate::stacks::contracts::ContractCall;
 
 /// Messages exchanged between signers
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -113,8 +113,14 @@ pub struct SignerWithdrawDecision {
 /// Represents a request to sign a Stacks transaction.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StacksTransactionSignRequest {
-    /// The transaction to sign.
-    pub tx: stacks::StacksTransaction,
+    /// The aggregate public key that will sign the transaction.
+    pub aggregate_key: PublicKey,
+    /// The contract call transaction to sign.
+    pub contract_call: ContractCall,
+    /// The nonce to use for the transaction.
+    pub nonce: u64,
+    /// The transaction fee in microSTX.
+    pub tx_fee: u64,
 }
 
 /// Represents a signature of a Stacks transaction.
@@ -209,8 +215,13 @@ impl wsts::net::Signable for BitcoinTransactionSignAck {
 
 impl wsts::net::Signable for StacksTransactionSignRequest {
     fn hash(&self, hasher: &mut sha2::Sha256) {
+        // Fix me.
+        let contract_call_bytes = bincode::serialize(&self.contract_call).unwrap();
         hasher.update("SIGNER_STACKS_TRANSACTION_SIGN_REQUEST");
-        hasher.update(self.tx.txid());
+        hasher.update(self.aggregate_key.serialize());
+        hasher.update(&contract_call_bytes);
+        hasher.update(self.nonce.to_be_bytes());
+        hasher.update(self.tx_fee.to_be_bytes());
     }
 }
 

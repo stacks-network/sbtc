@@ -30,7 +30,6 @@ use crate::signature::RecoverableEcdsaSignature as _;
 use crate::signature::SighashDigest as _;
 use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::AsTxPayload;
-use crate::stacks::contracts::ContractCall;
 use crate::MAX_KEYS;
 
 /// Stacks multisig addresses are Hash160 hashes of bitcoin Scripts (more
@@ -210,7 +209,7 @@ pub struct MultisigTx {
 impl MultisigTx {
     /// Create a new Stacks transaction for a given payload that can be
     /// signed by the signers' multi-sig wallet.
-    pub fn new_tx<T>(payload: T, wallet: &SignerWallet, tx_fee: u64) -> Self
+    pub fn new_tx<T>(payload: &T, wallet: &SignerWallet, tx_fee: u64) -> Self
     where
         T: AsTxPayload,
     {
@@ -247,11 +246,13 @@ impl MultisigTx {
 
     /// Create a new Stacks transaction for a contract call that can be
     /// signed by the signers' multi-sig wallet.
+    #[cfg(any(test, feature = "testing"))]
     pub fn new_contract_call<T>(contract: T, wallet: &SignerWallet, tx_fee: u64) -> Self
     where
         T: AsContractCall,
     {
-        Self::new_tx(ContractCall(contract), wallet, tx_fee)
+        use crate::testing::wallet::ContractCallWrapper;
+        Self::new_tx(&ContractCallWrapper(contract), wallet, tx_fee)
     }
 
     /// Return a reference to the underlying transaction
