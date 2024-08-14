@@ -733,6 +733,7 @@ impl super::DbRead for PgStore {
                 rkt.txid
               , rkt.aggregate_key
               , rkt.signer_set
+              , rkt.signatures_required
             FROM sbtc_signer.rotate_keys_transactions rkt
             JOIN sbtc_signer.stacks_transactions st ON st.txid = rkt.txid
             JOIN stacks_blocks sb on st.block_hash = sb.block_hash
@@ -1224,15 +1225,19 @@ impl super::DbWrite for PgStore {
     ) -> Result<(), Self::Error> {
         sqlx::query(
             r#"
-            INSERT INTO sbtc_signer.rotate_keys_transactions
-                (txid, aggregate_key, signer_set)
+            INSERT INTO sbtc_signer.rotate_keys_transactions (
+                  txid
+                , aggregate_key
+                , signer_set
+                , signatures_required)
             VALUES
-                ($1, $2, $3)
+                ($1, $2, $3, $4)
             "#,
         )
         .bind(&key_rotation.txid)
         .bind(key_rotation.aggregate_key)
         .bind(&key_rotation.signer_set)
+        .bind(key_rotation.signatures_required as i32)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

@@ -113,6 +113,9 @@ CREATE TABLE sbtc_signer.rotate_keys_transactions (
     txid BYTEA PRIMARY KEY,
     aggregate_key BYTEA NOT NULL,
     signer_set BYTEA[] NOT NULL,
+    -- This is one of those fields that might not be required in the future
+    -- when Schnorr signatures are introduced.
+    signatures_required INTEGER NOT NULL, 
     FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE
 );
 
