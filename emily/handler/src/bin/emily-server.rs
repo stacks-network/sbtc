@@ -1,10 +1,10 @@
 //! Emily Warp Service Binary.
 
 use emily_handler::context::EmilyContext;
+use std::net::ToSocketAddrs;
 use tracing::error;
 use tracing::info;
 use warp::Filter;
-use std::net::ToSocketAddrs;
 
 use emily_handler::api;
 use emily_handler::logging;

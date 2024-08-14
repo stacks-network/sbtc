@@ -2,7 +2,9 @@
 
 use aws_sdk_dynamodb::operation::update_item::builders::UpdateItemFluentBuilder;
 use emily_handler::{
-    api::models::deposit::requests::DepositUpdate, context::EmilyContext, database::{accessors, entries::deposit::DepositEntryKey}
+    api::models::deposit::requests::DepositUpdate,
+    context::EmilyContext,
+    database::{accessors, entries::deposit::DepositEntryKey},
 };
 
 use crate::util::{self, TestClient};
