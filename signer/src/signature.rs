@@ -1,4 +1,4 @@
-//! This module features internal types for both ECDSA and Schnorr
+//! This module features internal traits and functions for both ECDSA
 //! signatures.
 //!
 
