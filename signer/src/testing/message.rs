@@ -100,7 +100,7 @@ impl fake::Dummy<fake::Faker> for message::StacksTransactionSignature {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         Self {
             txid: dummy::stacks_txid(config, rng),
-            signature: dummy::signature(config, rng),
+            signature: dummy::recoverable_signature(config, rng),
         }
     }
 }

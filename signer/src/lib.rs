@@ -11,6 +11,7 @@ pub mod error;
 pub mod keys;
 pub mod message;
 pub mod network;
+pub mod signature;
 pub mod stacks;
 pub mod storage;
 #[cfg(feature = "testing")]

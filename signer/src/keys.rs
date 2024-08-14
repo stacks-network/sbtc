@@ -315,42 +315,19 @@ impl PrivateKey {
 
     /// Constructs an ECDSA signature for `message` using the global
     /// [`SECP256K1`] context and returns it in "low S" form.
-    pub fn sign_ecdsa<M>(&self, msg: M) -> secp256k1::ecdsa::Signature
-    where
-        M: MessageDigest,
-    {
-        let msg = secp256k1::Message::from_digest(msg.digest());
-        let mut sig = self.0.sign_ecdsa(msg);
+    pub fn sign_ecdsa(&self, msg: &secp256k1::Message) -> secp256k1::ecdsa::Signature {
+        let mut sig = SECP256K1.sign_ecdsa(msg, &self.0);
         sig.normalize_s();
         sig
     }
 
-    /// Constructs an ECDSA signature for `message` using the global
-    /// [`SECP256K1`] context and returns it in "low S" form.
-    pub fn sign_ecdsa_recoverable<M>(&self, msg: M) -> secp256k1::ecdsa::RecoverableSignature
-    where
-        M: MessageDigest,
-    {
-        let msg = secp256k1::Message::from_digest(msg.digest());
-        SECP256K1.sign_ecdsa_recoverable(&msg, &self.0)
-    }
-}
-
-/// For creating signatures.
-pub trait MessageDigest {
-    /// The digest to sign.
-    fn digest(&self) -> [u8; 32];
-}
-
-impl MessageDigest for secp256k1::Message {
-    fn digest(&self) -> [u8; 32] {
-        *self.as_ref()
-    }
-}
-
-impl MessageDigest for [u8; 32] {
-    fn digest(&self) -> [u8; 32] {
-        *self
+    /// Constructs a recoverable ECDSA signature for `message` using the
+    /// global [`SECP256K1`] context.
+    pub fn sign_ecdsa_recoverable(
+        &self,
+        msg: &secp256k1::Message,
+    ) -> secp256k1::ecdsa::RecoverableSignature {
+        SECP256K1.sign_ecdsa_recoverable(msg, &self.0)
     }
 }
 

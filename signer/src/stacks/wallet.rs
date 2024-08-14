@@ -13,22 +13,21 @@ use blockstack_lib::chainstate::stacks::OrderIndependentMultisigSpendingConditio
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::chainstate::stacks::TransactionAnchorMode;
 use blockstack_lib::chainstate::stacks::TransactionAuth;
-use blockstack_lib::chainstate::stacks::TransactionAuthFlags;
 use blockstack_lib::chainstate::stacks::TransactionPublicKeyEncoding;
 use blockstack_lib::chainstate::stacks::TransactionSpendingCondition;
 use blockstack_lib::chainstate::stacks::TransactionVersion;
 use blockstack_lib::core::CHAIN_ID_MAINNET;
 use blockstack_lib::core::CHAIN_ID_TESTNET;
 use blockstack_lib::types::chainstate::StacksAddress;
-use blockstack_lib::util::secp256k1::MessageSignature;
 use blockstack_lib::util::secp256k1::Secp256k1PublicKey;
 use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Message;
 
 use crate::config::NetworkKind;
 use crate::error::Error;
-use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
+use crate::signature::SighashDigest as _;
+use crate::signature::RecoverableEcdsaSignature as _;
 use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::AsTxPayload;
 use crate::stacks::contracts::ContractCall;
@@ -240,7 +239,7 @@ impl MultisigTx {
             payload: payload.tx_payload(),
         };
 
-        let digest = construct_digest(&tx);
+        let digest = Message::from_digest(tx.digest());
         let signatures = wallet.public_keys.iter().map(|&key| (key, None)).collect();
 
         Self { digest, signatures, tx }
@@ -270,10 +269,7 @@ impl MultisigTx {
     /// 2. The signature was given over the correct digest, but we were not
     ///    expecting the associated public key.
     pub fn add_signature(&mut self, signature: RecoverableSignature) -> Result<(), Error> {
-        let public_key: PublicKey = signature
-            .recover(&self.digest)
-            .map(PublicKey::from)
-            .map_err(|err| Error::InvalidRecoverableSignature(err, self.digest))?;
+        let public_key: PublicKey = signature.recover_ecdsa(&self.digest)?;
 
         // Get the entry for the given public key and replace the value
         // with the given signature. If the public key doesn't exist here,
@@ -299,71 +295,12 @@ impl MultisigTx {
         self.signatures
             .into_iter()
             .for_each(|(public_key, maybe_sig)| match maybe_sig {
-                Some(sig) => {
-                    let signature = from_secp256k1_recoverable(&sig);
-                    cond.push_signature(key_encoding, signature);
-                }
+                Some(sig) => cond.push_signature(key_encoding, sig.as_stacks_sig()),
                 None => cond.push_public_key(Secp256k1PublicKey::from(&public_key)),
             });
 
         self.tx
     }
-}
-
-/// Construct the digest that each signer needs to sign from a given
-/// transaction.
-///
-/// # Note
-///
-/// This function follows the same procedure as the
-/// TransactionSpendingCondition::next_signature function in stacks-core,
-/// except that it stops after the digest is created.
-pub fn construct_digest(tx: &StacksTransaction) -> Message {
-    let mut cleared_tx = tx.clone();
-    cleared_tx.auth = cleared_tx.auth.into_initial_sighash_auth();
-
-    let sighash = cleared_tx.txid();
-    let flags = TransactionAuthFlags::AuthStandard;
-    let tx_fee = tx.get_tx_fee();
-    let nonce = tx.get_origin_nonce();
-
-    let digest =
-        TransactionSpendingCondition::make_sighash_presign(&sighash, &flags, tx_fee, nonce);
-    Message::from_digest(digest.into_bytes())
-}
-
-/// Generate a signature for the transaction using a private key.
-///
-/// # Note
-///
-/// This function constructs a signature for the underlying transaction
-/// using the same process that is done in the
-/// TransactionSpendingCondition::next_signature function, but we skip a
-/// step of generating the next sighash, since we do not need it.
-pub fn sign_ecdsa(tx: &StacksTransaction, private_key: &PrivateKey) -> RecoverableSignature {
-    let msg = construct_digest(tx);
-    private_key.sign_ecdsa_recoverable(msg)
-}
-
-/// Convert a recoverable signature into a Message Signature.
-///
-/// The RecoverableSignature type is a wrapper of a wrapper for [u8; 65].
-/// Unfortunately, the outermost wrapper type does not provide a way to
-/// get at the underlying bytes except through the
-/// RecoverableSignature::serialize_compact function, so we use that
-/// function to just extract them.
-///
-/// This function is basically lifted from stacks-core at:
-/// https://github.com/stacks-network/stacks-core/blob/35d0840c626d258f1e2d72becdcf207a0572ddcd/stacks-common/src/util/secp256k1.rs#L88-L95
-fn from_secp256k1_recoverable(sig: &RecoverableSignature) -> MessageSignature {
-    let (recovery_id, bytes) = sig.serialize_compact();
-    let mut ret_bytes = [0u8; 65];
-    // The recovery ID will be 0, 1, 2, or 3
-    ret_bytes[0] = recovery_id.to_i32() as u8;
-    debug_assert!(recovery_id.to_i32() < 4);
-
-    ret_bytes[1..].copy_from_slice(&bytes[..]);
-    MessageSignature(ret_bytes)
 }
 
 #[cfg(test)]
@@ -375,6 +312,8 @@ mod tests {
     use secp256k1::SECP256K1;
 
     use test_case::test_case;
+
+    use crate::signature::sign_stacks_tx;
 
     use super::*;
 
@@ -445,7 +384,7 @@ mod tests {
         let signatures: Vec<RecoverableSignature> = key_pairs
             .iter()
             .take(submitted_signatures)
-            .map(|kp| sign_ecdsa(tx, &kp.secret_key().into()))
+            .map(|kp| sign_stacks_tx(tx, &kp.secret_key().into()))
             .collect();
 
         // Now add the signatures to the signing object.
@@ -496,7 +435,7 @@ mod tests {
             // This message is unlikely to be the digest of the transaction
             Message::from_digest([1; 32])
         };
-        let signature = SECP256K1.sign_ecdsa_recoverable(&msg, &secret_key);
+        let signature = SECP256K1.sign_ecdsa_recoverable(&msg, &secret_key).into();
 
         // Now let's try to add a bad signature. We skip the case where we
         // have a correct key and the correct digest so this should always
@@ -512,7 +451,7 @@ mod tests {
         // things update correctly.
         let secret_key = key_pairs[0].secret_key();
         let msg = tx_signer.digest;
-        let signature = SECP256K1.sign_ecdsa_recoverable(&msg, &secret_key);
+        let signature = SECP256K1.sign_ecdsa_recoverable(&msg, &secret_key).into();
         tx_signer.add_signature(signature).unwrap();
         assert!(!tx_signer.signatures.values().all(Option::is_none));
     }
