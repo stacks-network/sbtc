@@ -1,8 +1,6 @@
 //! Integration tests for the database accessors
 
-use aws_sdk_dynamodb::operation::update_item::builders::UpdateItemFluentBuilder;
 use emily_handler::{
-    api::models::deposit::requests::DepositUpdate,
     context::EmilyContext,
     database::{accessors, entries::deposit::DepositEntryKey},
 };
@@ -41,9 +39,8 @@ async fn test_update() {
             .await;
     }
     // Make a new deposit.
-    let deposit = client
-        .create_deposit(&util::test_create_deposit_request(5, 0))
-        .await;
+    let create_deposit_request = util::test_create_deposit_request(5, 0);
+    let deposit = client.create_deposit(&create_deposit_request).await;
     // Get the corresponding deposit entry.
     let deposit_entry = accessors::get_deposit_entry(
         &context,
@@ -54,4 +51,13 @@ async fn test_update() {
     )
     .await
     .expect("Get deposit entry for newly created deposit should work.");
+    // Assert.
+    assert_eq!(
+        deposit_entry.key.bitcoin_txid,
+        create_deposit_request.bitcoin_txid
+    );
+    assert_eq!(
+        deposit_entry.key.bitcoin_tx_output_index,
+        create_deposit_request.bitcoin_tx_output_index
+    );
 }

@@ -8,7 +8,6 @@ name = "emily-lambda"
 
 [[bin]]
 name = "emily-server"
-features = ["testing"]
 
 [features]
 default = ["testing"]

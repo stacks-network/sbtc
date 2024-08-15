@@ -80,13 +80,12 @@ impl EmilyContext {
 
         // Get config that always points to the dynamodb table directly
         // from outside of a docker compose setup.
-        let dynamodb_client = Client::new(
-            &aws_config::load_defaults(BehaviorVersion::latest())
-                .await
-                .into_builder()
-                .endpoint_url("http://localhost:8000")
-                .build(),
-        );
+        let sdk_config = aws_config::load_defaults(BehaviorVersion::latest())
+            .await
+            .into_builder()
+            .endpoint_url("http://localhost:8000")
+            .build();
+        let dynamodb_client = Client::new(&sdk_config);
 
         // Get the names of the existing tables so we can populate from them.
         let table_names = dynamodb_client
@@ -95,11 +94,7 @@ impl EmilyContext {
             .limit(20)
             .send()
             .await
-            .map_err(|err| {
-                Error::Debug(format!(
-                    "Failed setting up settings from table names - {err:?}"
-                ))
-            })?
+            .expect("Failed setting up settings from table names")
             .table_names
             .unwrap_or_default();
 

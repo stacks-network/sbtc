@@ -1,8 +1,6 @@
 //! Emily Warp Service Binary.
 
 use emily_handler::context::EmilyContext;
-use std::net::ToSocketAddrs;
-use tracing::error;
 use tracing::info;
 use warp::Filter;
 
@@ -35,13 +33,7 @@ async fn main() {
     let addr_str = format!("{}:{}", host, port);
 
     info!("Server will run locally on {}", addr_str);
-    let addr = match addr_str.to_socket_addrs() {
-        Ok(mut addrs) => addrs.next().expect("No addresses found"),
-        Err(e) => {
-            error!("Failed to resolve address: {}", e);
-            return;
-        }
-    };
+    let addr: std::net::SocketAddr = addr_str.parse().expect("Failed to parse address");
 
     warp::serve(routes).run(addr).await;
 }
