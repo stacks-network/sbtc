@@ -1,7 +1,6 @@
 use crate::config::SETTINGS;
 use reqwest::Client;
-use std::net::ToSocketAddrs;
-use tracing::{error, info};
+use tracing::info;
 use warp::Filter;
 
 mod api;
@@ -22,13 +21,7 @@ async fn main() {
     let addr_str = format!("{}:{}", SETTINGS.server.host, SETTINGS.server.port);
     info!("Server will run on {}", addr_str);
 
-    let addr = match addr_str.to_socket_addrs() {
-        Ok(mut addrs) => addrs.next().expect("No addresses found"),
-        Err(e) => {
-            error!("Failed to resolve address: {}", e);
-            return;
-        }
-    };
+    let addr: std::net::SocketAddr = addr_str.parse().expect("Failed to parse address");
 
     warp::serve(routes).run(addr).await;
 }

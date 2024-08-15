@@ -280,7 +280,7 @@ async fn wipe_withdrawal_table(context: &EmilyContext) -> Result<(), Error> {
 #[cfg(feature = "testing")]
 async fn wipe_chainstate_table(context: &EmilyContext) -> Result<(), Error> {
     delete_entry::<SpecialApiStateIndex>(context, &ApiStateEntry::key()).await?;
-    wipe::<SpecialApiStateIndex>(context).await
+    wipe::<ChainstateTablePrimaryIndex>(context).await
 }
 
 // Generics --------------------------------------------------------------------

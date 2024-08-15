@@ -101,7 +101,7 @@ endif
 # Runs a version of the emily integration environment with a pre-populated database. This is intended
 # to be used for testing the sbtc bridge website, and is not intended to be used for running code that
 # alters the API - though it could be used for that.
-emily-integration-env-up-populated-database: devenv $(EMILY_LAMBDA_BINARY) $(EMILY_CDK_TEMPLATE) $(EMILY_DOCKER_COMPOSE)
+emily-integration-env-up-populated-database: $(EMILY_CDK_TEMPLATE) $(EMILY_DOCKER_COMPOSE) # devenv
 	DYNAMODB_DB_DIR=./devenv/dynamodb/populated \
 		CONTAINER_HOST=$(_CONTAINER_HOST) \
 		docker compose --file $(EMILY_DOCKER_COMPOSE) up --remove-orphans # --detach
@@ -111,7 +111,7 @@ emily-populate-database:
 	@echo "Populating populated database"
 	cargo test --package emily-handler --test integration --features populate -- --test-threads=1 --nocapture
 
-emily-integration-env-up: devenv $(EMILY_LAMBDA_BINARY) $(EMILY_CDK_TEMPLATE) $(EMILY_DOCKER_COMPOSE)
+emily-integration-env-up: $(EMILY_DOCKER_COMPOSE) $(EMILY_CDK_TEMPLATE) $(EMILY_DOCKER_COMPOSE) devenv
 	rm -rf ./devenv/dynamodb/dynamic/shared-local-instance.db
 	DYNAMODB_DB_DIR=./devenv/dynamodb/dynamic \
 		CONTAINER_HOST=$(_CONTAINER_HOST) \
@@ -173,10 +173,12 @@ $(EMILY_LAMBDA_BINARY): $(EMILY_HANDLER_SOURCE_FILES)
 emily-lambda: $(EMILY_LAMBDA_BINARY)
 emily-cdk-synth: $(EMILY_CDK_TEMPLATE)
 emily-openapi-spec: $(EMILY_OPENAPI_SPEC)
-emily-curl-test: $(EMILY_LAMBDA_BINARY)
-	./devenv/service-test/curl-test.sh localhost 3000 0
+emily-curl-test:
+	./devenv/service-test/curl-test.sh localhost 3031 0
+emily-server:
+	cargo run --bin emily-server
 
-.PHONY: emily-lambda emily-cdk-synth emily-openapi-spec emily-curl-test
+.PHONY: emily-lambda emily-cdk-synth emily-openapi-spec emily-curl-test emily-server
 
 # Blocklist Client API
 # ----------------------------------------------------

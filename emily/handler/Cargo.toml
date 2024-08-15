@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "emily-handler"
+name = "emily-lambda"
+
+[[bin]]
+name = "emily-server"
 
 [features]
 default = ["testing"]
