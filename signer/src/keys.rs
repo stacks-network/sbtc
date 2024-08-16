@@ -281,7 +281,7 @@ impl FromStr for PrivateKey {
             panic!("invalid private key: invalid length");
         }
 
-        Ok(PrivateKey::from_slice(&hex::decode(s).unwrap()[0..32])?)
+        PrivateKey::from_slice(&hex::decode(s).unwrap()[0..32])
     }
 }
 

@@ -320,12 +320,7 @@ fn private_key_deserializer<'de, D>(deserializer: D) -> Result<PrivateKey, D::Er
 where
     D: Deserializer<'de>,
 {
-    eprintln!("1");
-    // let tmp = Vec::<String>::deserialize(deserializer)?;
-    // eprintln!("2");
-    let hex = &String::deserialize(deserializer)?;
-    eprintln!("2");
-    Ok(PrivateKey::from_str(&hex).map_err(serde::de::Error::custom)?)
+    PrivateKey::from_str(&String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
 }
 
 #[cfg(test)]
