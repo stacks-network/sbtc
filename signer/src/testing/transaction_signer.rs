@@ -292,9 +292,11 @@ where
 
     /// Assert that the transaction signer will respond to bitcoin transaction sign requests
     /// with an acknowledge message. Errors after 10 seconds.
-    pub async fn assert_should_respond_to_bitcoin_transaction_sign_requests(mut self) {
+    pub async fn assert_should_respond_to_bitcoin_transaction_sign_requests(self) {
         let future = self.assert_should_respond_to_bitcoin_transaction_sign_requests_impl();
-        tokio::time::timeout(Duration::from_secs(10), future).await.unwrap()
+        tokio::time::timeout(Duration::from_secs(10), future)
+            .await
+            .unwrap()
     }
 
     /// Assert that the transaction signer will respond to bitcoin transaction sign requests
