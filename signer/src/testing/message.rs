@@ -93,7 +93,7 @@ impl fake::Dummy<fake::Faker> for message::BitcoinTransactionSignAck {
 }
 
 impl fake::Dummy<fake::Faker> for message::StacksTransactionSignRequest {
-    fn dummy_with_rng<R: rand::RngCore + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let private_key = PrivateKey::new(rng);
         Self {
             contract_call: ContractCall::RejectWithdrawalV1(RejectWithdrawalV1 {
@@ -104,6 +104,7 @@ impl fake::Dummy<fake::Faker> for message::StacksTransactionSignRequest {
             tx_fee: 123,
             nonce: 1,
             aggregate_key: PublicKey::from_private_key(&private_key),
+            digest: config.fake_with_rng(rng),
         }
     }
 }
