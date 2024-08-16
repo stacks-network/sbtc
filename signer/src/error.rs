@@ -92,7 +92,18 @@ pub enum Error {
     #[error("{0}")]
     InvalidPrivateKey(#[source] secp256k1::Error),
 
-    /// This happens when we attempt to convert a [u8; 65] into a
+    /// This occurs when converting a byte slice including a compressed
+    /// byte marker to a [`PrivateKey`](crate::keys::PrivateKey) and when the
+    /// compressed byte marker is invalid.
+    #[error("invalid private key compressed byte marker")]
+    InvalidPrivateKeyCompressedByteMarker,
+
+    /// This occurs when converting a byte slice to a [`PrivateKey`](crate::keys::PrivateKey)
+    /// and the length of the byte slice is not 32.
+    #[error("invalid private key length: {0}")]
+    InvalidPrivateKeyLength(usize),
+
+    /// This happens when we attempt to convert a `[u8; 65]` into a
     /// recoverable EDCSA signature.
     #[error("could not recover the public key from the signature: {0}")]
     InvalidRecoverableSignatureBytes(#[source] secp256k1::Error),

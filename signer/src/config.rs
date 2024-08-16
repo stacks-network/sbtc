@@ -3,9 +3,11 @@
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 use serde::Deserializer;
+use std::str::FromStr;
 use std::sync::LazyLock;
 
 use crate::error::Error;
+use crate::keys::PrivateKey;
 
 /// The default signer network listen-on address.
 pub const DEFAULT_P2P_HOST: &str = "0.0.0.0";
@@ -44,15 +46,18 @@ pub struct Settings {
 pub struct P2PNetworkConfig {
     /// List of seeds for the P2P network. If empty then the signer will
     /// only use peers discovered via StackerDB.
-    pub seeds: Vec<String>,
+    #[serde(deserialize_with = "url_deserializer")]
+    pub seeds: Vec<url::Url>,
     /// The local network interface(s) to listen on. If empty, then
     /// the signer will use [`DEFAULT_NETWORK_HOST`]:[`DEFAULT_NETWORK_PORT] as
     /// the default and listen on both TCP and QUIC protocols.
-    pub listen_on: Vec<String>,
+    #[serde(deserialize_with = "url_deserializer")]
+    pub listen_on: Vec<url::Url>,
     /// Optionally specifies the public endpoints of the signer. If empty, the
     /// signer will attempt to use peers in the network to discover its own
     /// public endpoint(s).
-    pub public_endpoints: Vec<String>,
+    #[serde(deserialize_with = "url_deserializer")]
+    pub public_endpoints: Vec<url::Url>,
 }
 
 impl Validatable for P2PNetworkConfig {
@@ -75,21 +80,15 @@ impl Validatable for P2PNetworkConfig {
 
 impl P2PNetworkConfig {
     /// Validate a network address used by the peering protocol.
-    fn validate_network_peering_addr(&self, section: &str, addr: &str) -> Result<(), ConfigError> {
-        if addr.is_empty() {
-            return Err(ConfigError::Message(format!(
-                "[{section}] Address cannot be empty",
-            )));
-        }
-
-        let url = url::Url::parse(addr).map_err(|e| {
-            ConfigError::Message(format!("[{section}] Error parsing '{addr}': {e}"))
-        })?;
-
+    fn validate_network_peering_addr(
+        &self,
+        section: &str,
+        url: &url::Url,
+    ) -> Result<(), ConfigError> {
         // Host must be present
         if url.host().is_none() {
             return Err(ConfigError::Message(format!(
-                "[{section}] Host cannot be empty: '{addr}'"
+                "[{section}] Host cannot be empty: '{url}'"
             )));
         }
 
@@ -178,7 +177,6 @@ pub struct SignerConfig {
 impl Validatable for SignerConfig {
     fn validate(&self) -> Result<(), ConfigError> {
         self.p2p.validate()?;
-        self.stacks_account.validate()?;
         Ok(())
     }
 }
@@ -187,38 +185,8 @@ impl Validatable for SignerConfig {
 #[derive(Deserialize, Clone, Debug)]
 pub struct StacksAccountConfig {
     /// The private key of the signer
-    pub private_key: String,
-    /// The public key of the signer
-    pub public_key: String,
-    /// The address of the signer.
-    // NOTE: This could be derived from the public key but that code is over
-    // in stacks-core. Would like to see that code extracted into its own
-    // crate for re-use.
-    pub address: String,
-}
-
-impl Validatable for StacksAccountConfig {
-    fn validate(&self) -> Result<(), ConfigError> {
-        if self.private_key.is_empty() {
-            return Err(ConfigError::Message(
-                "[signer.stacks_account] Private key cannot be empty".to_string(),
-            ));
-        }
-
-        if self.public_key.is_empty() {
-            return Err(ConfigError::Message(
-                "[signer.stacks_account] Public key cannot be empty".to_string(),
-            ));
-        }
-
-        if self.address.is_empty() {
-            return Err(ConfigError::Message(
-                "[signer.stacks_account] Address cannot be empty".to_string(),
-            ));
-        }
-
-        Ok(())
-    }
+    #[serde(deserialize_with = "private_key_deserializer")]
+    pub private_key: PrivateKey,
 }
 
 /// Statically configured settings for the signer
@@ -247,18 +215,14 @@ impl Settings {
     ///    │  └ prefix_separator("_")
     ///    └ with_prefix("SIGNER")
     /// ```
-    ///
-    /// In order to parse lists, we need to use a combination of `try_parsing(true)`,
-    /// `list_separator(",")`, and so that regular `String`s are not parsed as lists,
-    /// each list key needs to be specified with `with_list_parse_key(key)` where
-    /// the key is the _rust path_ to the list field.
     pub fn new() -> Result<Self, ConfigError> {
         let env = Environment::with_prefix("SIGNER")
-            .try_parsing(true) // Required to parse lists
             .separator("__")
-            .list_separator(",") // List elements are separated with `,`
+            .list_separator(",")
+            .try_parsing(true)
             .with_list_parse_key("signer.p2p.seeds")
             .with_list_parse_key("signer.p2p.listen_on")
+            .with_list_parse_key("signer.p2p.public_endpoints")
             .prefix_separator("_");
         let cfg = Config::builder()
             .add_source(File::with_name("./src/config/default"))
@@ -280,19 +244,6 @@ impl Settings {
 
         Ok(())
     }
-}
-
-/// A deserializer for the url::Url type.  Guaranteed to deserialize to a non-empty vec, or return an error.
-fn url_deserializer<'de, D>(deserializer: D) -> Result<Vec<url::Url>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let mut v = Vec::new();
-    for s in String::deserialize(deserializer)?.split(",") {
-        let url = s.parse().map_err(serde::de::Error::custom)?;
-        v.push(url);
-    }
-    Ok(v)
 }
 
 /// A struct for the entries in the signers Config.toml (which is currently
@@ -335,7 +286,11 @@ impl StacksSettings {
         let source = File::with_name("./src/config/default");
         let env = Environment::with_prefix("SIGNER")
             .prefix_separator("_")
+            .list_separator(",")
+            .try_parsing(true)
+            .with_list_parse_key("stacks.node.endpoints")
             .separator("_");
+        
 
         let conf = Config::builder()
             .add_source(source)
@@ -348,9 +303,45 @@ impl StacksSettings {
     }
 }
 
+/// A deserializer for the url::Url type. This will return an empty [`Vec`] if
+/// there are no URLs to deserialize.
+fn url_deserializer<'de, D>(deserializer: D) -> Result<Vec<url::Url>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let mut v = Vec::new();
+    for s in Vec::<String>::deserialize(deserializer)? {
+        v.push(s.parse().map_err(serde::de::Error::custom)?);
+    }
+    Ok(v)
+}
+
+/// A deserializer for the PrivateKey type.
+fn private_key_deserializer<'de, D>(deserializer: D) -> Result<PrivateKey, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    eprintln!("1");
+    // let tmp = Vec::<String>::deserialize(deserializer)?;
+    // eprintln!("2");
+    let hex = &String::deserialize(deserializer)?;
+    eprintln!("2");
+    Ok(PrivateKey::from_str(&hex)
+        .map_err(serde::de::Error::custom)?)
+}
+
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
+    use crate::keys::PrivateKey;
+
     use super::*;
+
+    /// Helper function to quickly create a URL from a string in tests.
+    fn url(s: &str) -> url::Url {
+        s.parse().unwrap()
+    }
 
     /// This test checks that the default configuration values are loaded
     /// correctly from the default.toml file. The Stacks settings are excluded
@@ -370,27 +361,15 @@ mod tests {
         assert_eq!(settings.block_notifier.subscribe_interval, 10);
         assert_eq!(
             settings.signer.stacks_account.private_key,
-            "8183dc385a7a1fc8353b9e781ee0859a71e57abea478a5bca679334094f7adb501"
+            PrivateKey::from_str(
+                "8183dc385a7a1fc8353b9e781ee0859a71e57abea478a5bca679334094f7adb501"
+            )
+            .unwrap()
         );
-        assert_eq!(
-            settings.signer.stacks_account.public_key,
-            "02eb658cc30ea3030b6fcd64c76c74e0b205fa0f90e930d36a7da1dab206c67a52"
-        );
-        assert_eq!(
-            settings.signer.stacks_account.address,
-            "ST1F8E58YQB7YBNHJF86CMP85DE6GYZAV7TMAR9Z"
-        );
-        assert_eq!(
-            settings.signer.p2p.seeds,
-            vec![
-                "tcp://well-known-host-1:4122",
-                "tcp://well-known-host-2:4122",
-                "tcp://well-known-host-3:4122"
-            ]
-        );
+        assert_eq!(settings.signer.p2p.seeds, vec![]);
         assert_eq!(
             settings.signer.p2p.listen_on,
-            vec!["tcp://0.0.0.0:4122", "quic-v1://0.0.0.0:4122"]
+            vec![url("tcp://0.0.0.0:4122"), url("quic-v1://0.0.0.0:4122")]
         );
     }
 
@@ -406,22 +385,26 @@ mod tests {
 
         assert_eq!(
             settings.signer.p2p.seeds,
-            vec!["tcp://seed-1:4122", "tcp://seed-2:4122"]
+            vec![url("tcp://seed-1:4122"), url("tcp://seed-2:4122")]
         );
-        assert_eq!(settings.signer.p2p.listen_on, vec!["tcp://1.2.3.4:1234"]);
+        assert_eq!(
+            settings.signer.p2p.listen_on,
+            vec![url("tcp://1.2.3.4:1234")]
+        );
     }
 
     #[test]
     fn default_config_toml_loads_signer_stacks_account_config_with_environment() {
-        std::env::set_var("SIGNER_SIGNER__STACKS_ACCOUNT__PRIVATE_KEY", "private_key");
-        std::env::set_var("SIGNER_SIGNER__STACKS_ACCOUNT__PUBLIC_KEY", "public_key");
-        std::env::set_var("SIGNER_SIGNER__STACKS_ACCOUNT__ADDRESS", "address");
+        let new = "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd01";
+        std::env::set_var("SIGNER_SIGNER__STACKS_ACCOUNT__PRIVATE_KEY", new);
+        eprintln!("new: {}", std::env::var("SIGNER_SIGNER__STACKS_ACCOUNT__PRIVATE_KEY").unwrap());
 
         let settings = Settings::new().unwrap();
 
-        assert_eq!(settings.signer.stacks_account.private_key, "private_key");
-        assert_eq!(settings.signer.stacks_account.public_key, "public_key");
-        assert_eq!(settings.signer.stacks_account.address, "address");
+        assert_eq!(
+            settings.signer.stacks_account.private_key,
+            PrivateKey::from_str(new).unwrap()
+        );
     }
 
     #[test]

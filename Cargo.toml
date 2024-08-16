@@ -66,6 +66,7 @@ url = "2.5"
 warp_lambda = "0.1.4"
 wsts = "9.1.0"
 zeromq = { version = "0.4.0", default-features = false, features = ["tokio-runtime", "all-transport"] }
+hex = "0.4.3"
 
 [workspace.dependencies.tracing-subscriber]
 version = "0.3"
