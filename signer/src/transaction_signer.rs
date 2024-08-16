@@ -348,6 +348,7 @@ where
 
     /// Load the multi-sig wallet corresponding to the signer set defined
     /// in the last key rotation.
+    /// TODO(255): Add a tests
     async fn load_wallet(
         &self,
         request: &StacksTransactionSignRequest,
@@ -378,6 +379,7 @@ where
         request: &message::StacksTransactionSignRequest,
         _bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<bool, Error> {
+        // TODO(255): Finish the implementation
         match &request.contract_call {
             ContractCall::AcceptWithdrawalV1(contract) => contract.validate(&self.storage).await,
             ContractCall::CompleteDepositV1(contract) => contract.validate(&self.storage).await,

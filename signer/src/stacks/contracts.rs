@@ -224,6 +224,7 @@ impl AsContractCall for CompleteDepositV1 {
         S: DbRead + Send + Sync,
         Error: From<<S as DbRead>::Error>,
     {
+        // TODO(255): Add validation implementation
         Ok(false)
     }
 }
@@ -285,6 +286,7 @@ impl AsContractCall for AcceptWithdrawalV1 {
         S: DbRead + Send + Sync,
         Error: From<<S as DbRead>::Error>,
     {
+        // TODO(255): Add validation implementation
         Ok(false)
     }
 }
@@ -331,6 +333,7 @@ impl AsContractCall for RejectWithdrawalV1 {
         S: DbRead + Send + Sync,
         Error: From<<S as DbRead>::Error>,
     {
+        // TODO(255): Add validation implementation
         Ok(false)
     }
 }
@@ -438,6 +441,7 @@ impl AsContractCall for RotateKeysV1 {
         S: DbRead + Send + Sync,
         Error: From<<S as DbRead>::Error>,
     {
+        // TODO(255): Add validation implementation
         Ok(false)
     }
 }
