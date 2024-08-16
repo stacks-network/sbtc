@@ -215,7 +215,7 @@ impl wsts::net::Signable for BitcoinTransactionSignAck {
 
 impl wsts::net::Signable for StacksTransactionSignRequest {
     fn hash(&self, hasher: &mut sha2::Sha256) {
-        // Fix me.
+        // This should be fine, all the time
         let contract_call_bytes = bincode::serialize(&self.contract_call).unwrap();
         hasher.update("SIGNER_STACKS_TRANSACTION_SIGN_REQUEST");
         hasher.update(self.aggregate_key.serialize());

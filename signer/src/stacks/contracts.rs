@@ -17,6 +17,7 @@
 //!   of most sBTC related functions to a new multi-sig wallet.
 
 use std::collections::BTreeSet;
+use std::future::Future;
 use std::sync::OnceLock;
 
 use bitcoin::hashes::Hash as _;
@@ -38,8 +39,10 @@ use blockstack_lib::clarity::vm::ContractName;
 use blockstack_lib::clarity::vm::Value;
 use blockstack_lib::types::chainstate::StacksAddress;
 
+use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::stacks::wallet::SignerWallet;
+use crate::storage::DbRead;
 
 /// A struct describing any transaction post-execution conditions that we'd
 /// like to enforce.
@@ -122,6 +125,13 @@ pub trait AsContractCall {
             post_conditions: Vec::new(),
         }
     }
+    /// Validate that it is okay to sign this contract call transaction,
+    /// because the included data matches what this signer knows from the
+    /// stacks and bitcoin blockchains.
+    fn validate<S>(&self, _: &S) -> impl Future<Output = Result<bool, Error>> + Send
+    where
+        S: DbRead + Send + Sync,
+        Error: From<<S as DbRead>::Error>;
 }
 
 /// Thing
@@ -197,6 +207,25 @@ impl AsContractCall for CompleteDepositV1 {
             Value::Principal(self.recipient.clone()),
         ]
     }
+    /// Validates that the Complete deposit request satisfies the following
+    /// criteria:
+    ///
+    /// 1. That the outpoint exists on the canonical bitcoin blockchain.
+    /// 2. That the outpoint was used as an input into a signer sweep
+    ///    transaction.
+    /// 3. That the signer sweep transaction exists on the canonical
+    ///    bitcoin blockchain.
+    /// 5. That the `amount` matches the amount in the `outpoint` less
+    ///    their portion of fees spent in the sweep transaction.
+    /// 4. That the principal matches the principal embedded in the deposit
+    ///    script locked in the outpoint.
+    async fn validate<S>(&self, _storage: &S) -> Result<bool, Error>
+    where
+        S: DbRead + Send + Sync,
+        Error: From<<S as DbRead>::Error>,
+    {
+        Ok(false)
+    }
 }
 
 /// This struct is used to generate a properly formatted Stacks transaction
@@ -241,6 +270,23 @@ impl AsContractCall for AcceptWithdrawalV1 {
             Value::UInt(self.tx_fee as u128),
         ]
     }
+    /// Validates that the accept-withdrawal-request satisfies the
+    /// following criteria:
+    ///
+    /// 1. That the transaction with the associated request_id is stored as
+    ///    an event on the canonical Stacks blockchain.
+    /// 2. That the transaction associated with the outpoint has been
+    ///    confirmed on the canonical bitcoin blockchain.
+    /// 3. That the signer bitmap matches the signer decisions stored in
+    ///    this signer's database.
+    /// 4. That the `tx_fee` matches the amount spent to the bitcoin miner.
+    async fn validate<S>(&self, _storage: &S) -> Result<bool, Error>
+    where
+        S: DbRead + Send + Sync,
+        Error: From<<S as DbRead>::Error>,
+    {
+        Ok(false)
+    }
 }
 
 /// This struct is used to generate a properly formatted Stacks transaction
@@ -272,6 +318,20 @@ impl AsContractCall for RejectWithdrawalV1 {
             Value::UInt(self.request_id as u128),
             Value::UInt(self.signer_bitmap.load()),
         ]
+    }
+    /// Validates that the reject-withdrawal-request satisfies the
+    /// following criteria:
+    ///
+    /// 1. That the transaction with the associated request_id is stored as
+    ///    an event on the canonical Stacks blockchain.
+    /// 2. That the signer bitmap matches the signer decisions stored in
+    ///    this signer's database.
+    async fn validate<S>(&self, _storage: &S) -> Result<bool, Error>
+    where
+        S: DbRead + Send + Sync,
+        Error: From<<S as DbRead>::Error>,
+    {
+        Ok(false)
     }
 }
 
@@ -361,6 +421,24 @@ impl AsContractCall for RotateKeysV1 {
             Value::Sequence(SequenceData::List(new_keys)),
             Value::Sequence(SequenceData::Buffer(BuffData { data: key.to_vec() })),
         ]
+    }
+    /// Validates that the rotate-keys-wrapper satisfies the following
+    /// criteria:
+    ///
+    /// 1. That the aggregate key matches what is expected from the given
+    ///    public keys.
+    /// 2. That public keys match current known set of signers.
+    /// 3. That the proposed signer set is different from last known signer
+    ///    set, or the proposed signer set is the same and the signatures
+    ///    threshold is different from the last signature threshold.
+    /// 4. That the number of required signatures is strictly greater than
+    ///    `new_keys as f64 / 2.0`.
+    async fn validate<S>(&self, _storage: &S) -> Result<bool, Error>
+    where
+        S: DbRead + Send + Sync,
+        Error: From<<S as DbRead>::Error>,
+    {
+        Ok(false)
     }
 }
 

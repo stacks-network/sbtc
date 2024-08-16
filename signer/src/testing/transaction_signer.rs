@@ -31,7 +31,7 @@ struct EventLoopHarness<S, Rng> {
 
 impl<S, Rng> EventLoopHarness<S, Rng>
 where
-    S: storage::DbRead + storage::DbWrite + Clone + Send + 'static,
+    S: storage::DbRead + storage::DbWrite + Clone + Send + Sync + 'static,
     error::Error: From<<S as storage::DbRead>::Error>,
     error::Error: From<<S as storage::DbWrite>::Error>,
     Rng: rand::RngCore + rand::CryptoRng + Send + 'static,
@@ -150,7 +150,7 @@ pub struct TestEnvironment<C> {
 impl<C, S> TestEnvironment<C>
 where
     C: FnMut() -> S,
-    S: storage::DbRead + storage::DbWrite + Clone + Send + 'static,
+    S: storage::DbRead + storage::DbWrite + Clone + Send + Sync + 'static,
     error::Error: From<<S as storage::DbRead>::Error>,
     error::Error: From<<S as storage::DbWrite>::Error>,
 {

@@ -314,6 +314,7 @@ mod tests {
     use test_case::test_case;
 
     use crate::signature::sign_stacks_tx;
+    use crate::storage::DbRead;
 
     use super::*;
 
@@ -330,6 +331,13 @@ mod tests {
         }
         fn as_contract_args(&self) -> Vec<Value> {
             Vec::new()
+        }
+        async fn validate<S>(&self, _: &S) -> Result<bool, Error>
+        where
+            S: DbRead + Send + Sync,
+            Error: From<<S as DbRead>::Error>,
+        {
+            Ok(true)
         }
     }
 

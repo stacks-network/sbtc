@@ -9,6 +9,7 @@ use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
 use futures::StreamExt;
 
+use signer::error::Error;
 use signer::network;
 use signer::stacks::contracts::AcceptWithdrawalV1;
 use signer::stacks::contracts::AsContractCall;
@@ -96,6 +97,13 @@ impl AsContractCall for InitiateWithdrawalRequest {
     /// The arguments to the clarity function.
     fn as_contract_args(&self) -> Vec<Value> {
         Vec::new()
+    }
+    async fn validate<S>(&self, _: &S) -> Result<bool, Error>
+    where
+        S: DbRead + Send + Sync,
+        Error: From<<S as DbRead>::Error>,
+    {
+        Ok(true)
     }
 }
 
