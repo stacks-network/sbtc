@@ -1,4 +1,4 @@
-# TODO: Add documentation for all configuration parameters.
+# TODO(429): Add documentation for all configuration parameters.
 
 # !! ==============================================================================
 # !! Blocklist Client Configuration
@@ -72,8 +72,8 @@ public_key = "02eb658cc30ea3030b6fcd64c76c74e0b205fa0f90e930d36a7da1dab206c67a52
 #
 # Format: ["<protocol>:<ip>:<port>", "<protocol>:<ip>:<port>", ...]
 # Required: false
-# Environment: STACKS_SIGNER__P2P__SEEDS
-# TODO: Add well-known seed nodes
+# Environment: SIGNER_SIGNER__P2P__SEEDS
+# TODO(429): Add well-known seed nodes
 seeds = [
     "tcp://well-known-host-1:4122",
     "tcp://well-known-host-2:4122",
@@ -104,7 +104,7 @@ seeds = [
 # - If port is omitted then the default port 4122 will be used.
 # Default: ["tcp://0.0.0.0:4122", "quic-v1://0.0.0.0:4122"]
 # Required: false
-# Environment: STACKS_SIGNER__P2P__LISTEN_ON
+# Environment: SIGNER_SIGNER__P2P__LISTEN_ON
 listen_on = ["tcp://0.0.0.0:4122", "quic-v1://0.0.0.0:4122"]
 
 # The publicly accessible network endpoint to advertise to other nodes.
@@ -120,5 +120,5 @@ listen_on = ["tcp://0.0.0.0:4122", "quic-v1://0.0.0.0:4122"]
 # Format: ["<protocol>:<ip>:<port>", ...] (see `listen_on` for protocol options)
 # Default: <none>
 # Required: false
-# Environment: STACKS_SIGNER__P2P__PUBLIC_ENDPOINTS
+# Environment: SIGNER_SIGNER__P2P__PUBLIC_ENDPOINTS
 public_endpoints = []
