@@ -216,6 +216,11 @@ impl Settings {
     ///    └ with_prefix("SIGNER")
     /// ```
     pub fn new() -> Result<Self, ConfigError> {
+        // To properly parse lists from both environment and config files while
+        // using a custom deserializer, we need to specify the list separator,
+        // enable try_parsing and specify the keys which should be parsed as lists.
+        // If the keys aren't specified, the deserializer will try to parse all
+        // Strings as lists which will result in an error.
         let env = Environment::with_prefix("SIGNER")
             .separator("__")
             .list_separator(",")
