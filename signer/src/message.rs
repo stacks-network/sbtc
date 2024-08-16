@@ -222,7 +222,7 @@ impl wsts::net::Signable for StacksTransactionSignRequest {
         // The digest is supposed to be a hash of the contract call data,
         // the nonce, the fee and a few more things.
         hasher.update("SIGNER_STACKS_TRANSACTION_SIGN_REQUEST");
-        hasher.update(&self.digest);
+        hasher.update(self.digest);
         hasher.update(self.aggregate_key.serialize());
         hasher.update(self.nonce.to_be_bytes());
         hasher.update(self.tx_fee.to_be_bytes());
