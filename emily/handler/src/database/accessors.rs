@@ -1,8 +1,10 @@
 //! Accessors.
 
+use tracing::info;
+
 use crate::{
     api::models::{common::BlockHeight, withdrawal::WithdrawalId},
-    common::error::Error,
+    common::error::{Error, Inconsistency},
 };
 
 use crate::{
@@ -19,7 +21,7 @@ use super::entries::{
         DepositTableSecondaryIndex,
     },
     withdrawal::{
-        WithdrawalEntry, WithdrawalEntryKey, WithdrawalInfoEntry, WithdrawalTablePrimaryIndex,
+        WithdrawalEntry, WithdrawalInfoEntry, WithdrawalTablePrimaryIndex,
         WithdrawalTableSecondaryIndex,
     },
     EntryTrait, KeyTrait, TableIndexTrait,
@@ -40,7 +42,12 @@ pub async fn get_deposit_entry(
     context: &EmilyContext,
     key: &DepositEntryKey,
 ) -> Result<DepositEntry, Error> {
-    get_entry::<DepositTablePrimaryIndex>(context, key).await
+    let entry = get_entry::<DepositTablePrimaryIndex>(context, key).await?;
+    info!(
+        "Received deposit entry {}",
+        serde_json::to_string_pretty(&entry)?
+    );
+    Ok(entry)
 }
 
 /// Get deposit entries.
@@ -86,27 +93,33 @@ pub async fn add_withdrawal_entry(
 }
 
 /// Get withdrawal entry.
-pub async fn _get_withdrawal_entry(
+pub async fn get_withdrawal_entry(
     context: &EmilyContext,
-    key: &WithdrawalEntryKey,
+    key: &WithdrawalId,
 ) -> Result<WithdrawalEntry, Error> {
-    get_entry::<WithdrawalTablePrimaryIndex>(context, key).await
-}
-
-/// Get all withdrawal with a given id.
-pub async fn get_withdrawal_entries_for_id(
-    context: &EmilyContext,
-    request_id: &WithdrawalId,
-    maybe_next_token: Option<String>,
-    maybe_page_size: Option<i32>,
-) -> Result<(Vec<WithdrawalEntry>, Option<String>), Error> {
-    query_with_partition_key::<WithdrawalTablePrimaryIndex>(
+    // Get the entries.
+    let num_to_retrieve_if_multiple = 3;
+    let (entries, _) = query_with_partition_key::<WithdrawalTablePrimaryIndex>(
         context,
-        request_id,
-        maybe_next_token,
-        maybe_page_size,
+        key,
+        None,
+        Some(num_to_retrieve_if_multiple),
     )
-    .await
+    .await?;
+    // Return.
+    match entries.as_slice() {
+        [] => Err(Error::NotFound),
+        [withdrawal] => {
+            info!(
+                "Received withdrawal entry {}",
+                serde_json::to_string_pretty(withdrawal)?
+            );
+            Ok(withdrawal.clone())
+        }
+        _ => Err(Error::Debug(format!(
+            "Found too many withdrawals for id {key}: {entries:?}"
+        ))),
+    }
 }
 
 /// Get withdrawal entries.
@@ -139,10 +152,10 @@ pub async fn add_chainstate_entry(
             .await
             .and_then(|existing_entry| {
                 if &existing_entry != entry {
-                    Err(Error::InconsistentState(vec![
+                    Err(Error::InconsistentState(Inconsistency::Chainstate(vec![
                         entry.clone(),
                         existing_entry,
-                    ]))
+                    ])))
                 } else {
                     Ok(())
                 }
@@ -190,7 +203,7 @@ pub async fn add_chainstate_entry(
         // reorg has reset the knowledge of the API maintainer to an earlier time.
         //
         // Worst case this causes an unnecessary reorg.
-        Err(Error::InconsistentState(vec![]))
+        Err(Error::InconsistentState(Inconsistency::Chainstate(vec![])))
     }
 }
 
@@ -208,7 +221,7 @@ pub async fn get_chainstate_entry_at_height(
     match entries.as_slice() {
         [] => Err(Error::NotFound),
         [single_entry] => Ok(single_entry.clone()),
-        [_, ..] => Err(Error::InconsistentState(entries)),
+        [_, ..] => Err(Error::InconsistentState(Inconsistency::Chainstate(entries))),
     }
 }
 

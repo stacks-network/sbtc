@@ -87,6 +87,7 @@ pub enum Status {
     ToSchema,
     ToResponse,
 )]
+#[serde(rename_all = "PascalCase")]
 pub struct Fulfillment {
     /// Bitcoin transaction id of the Bitcoin transaction that fulfilled the operation.
     pub bitcoin_txid: BitcoinTransactionId,

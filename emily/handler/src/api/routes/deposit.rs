@@ -72,7 +72,7 @@ fn update_deposits(
     warp::any()
         .map(move || context.clone())
         .and(warp::path!("deposit"))
-        .and(warp::post())
+        .and(warp::put())
         .and(warp::body::json())
         .then(handlers::deposit::update_deposits)
 }

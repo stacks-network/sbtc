@@ -1,6 +1,10 @@
 //! Entries into the deposit table.
 
+use aws_sdk_dynamodb::{
+    operation::update_item::builders::UpdateItemFluentBuilder, types::AttributeValue,
+};
 use serde::{Deserialize, Serialize};
+use serde_dynamo::Item;
 
 use crate::{
     api::models::{
@@ -8,13 +12,18 @@ use crate::{
             BitcoinScript, BitcoinTransactionId, BitcoinTransactionOutputIndex, BlockHeight,
             Fulfillment, Satoshis, StacksBlockHash, StacksPrinciple, Status,
         },
-        deposit::{Deposit, DepositInfo, DepositParameters},
+        deposit::{
+            requests::{DepositUpdate, UpdateDepositsRequestBody},
+            Deposit, DepositInfo, DepositParameters,
+        },
     },
-    common::error::Error,
+    common::error::{Error, Inconsistency},
+    context::EmilyContext,
 };
 
 use super::{
     EntryTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait, SecondaryIndex, SecondaryIndexTrait,
+    StatusEntry,
 };
 
 // Deposit entry ---------------------------------------------------------------
@@ -57,7 +66,7 @@ pub struct DepositEntry {
     /// then this hash is the Stacks block hash that contains that artifact.
     pub last_update_block_hash: StacksBlockHash,
     /// Data about the fulfillment of the sBTC Operation.
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub fulfillment: Option<Fulfillment>,
     /// History of this deposit transaction.
     pub history: Vec<DepositEvent>,
@@ -122,12 +131,19 @@ impl DepositEntry {
                 format!("last update block height is inconsistent between history and top level data. {stringy_self:?}")
             ));
         }
-        if self.status != latest_event.status {
+        if self.status != (&latest_event.status).into() {
             return Err(Error::Debug(
                 format!("most recent status is inconsistent between history and top level data. {stringy_self:?}")
             ));
         }
         Ok(())
+    }
+
+    /// Gets the latest event.
+    pub fn latest_event(&self) -> &DepositEvent {
+        self.history
+            .last()
+            .expect("Deposit entry must always have at least one event.")
     }
 }
 
@@ -136,11 +152,16 @@ impl TryFrom<DepositEntry> for Deposit {
     fn try_from(deposit_entry: DepositEntry) -> Result<Self, Self::Error> {
         // Ensure entry is valid.
         deposit_entry.validate()?;
-        // Get the latest event.
-        let latest_event: &DepositEvent = deposit_entry
-            .history
-            .last()
-            .expect("Deposit history is invalid but was just validate.");
+
+        // Extract data from the latest event.
+        let latest_event = deposit_entry.latest_event();
+        let status_message = latest_event.message.clone();
+        let status: Status = (&latest_event.status).into();
+        let fulfillment = match &latest_event.status {
+            StatusEntry::Accepted(fulfillment) => Some(fulfillment.clone()),
+            _ => None,
+        };
+
         // Create deposit from table entry.
         Ok(Deposit {
             bitcoin_txid: deposit_entry.key.bitcoin_txid,
@@ -149,14 +170,14 @@ impl TryFrom<DepositEntry> for Deposit {
             amount: deposit_entry.amount,
             last_update_height: deposit_entry.last_update_height,
             last_update_block_hash: deposit_entry.last_update_block_hash,
-            status: deposit_entry.status,
-            status_message: latest_event.message.clone(),
+            status,
+            status_message,
             parameters: DepositParameters {
                 max_fee: deposit_entry.parameters.max_fee,
                 lock_time: deposit_entry.parameters.lock_time,
                 reclaim_script: deposit_entry.parameters.reclaim_script,
             },
-            fulfillment: deposit_entry.fulfillment,
+            fulfillment,
         })
     }
 }
@@ -180,13 +201,36 @@ pub struct DepositParametersEntry {
 pub struct DepositEvent {
     /// Status code.
     #[serde(rename = "OpStatus")]
-    pub status: Status,
+    pub status: StatusEntry,
     /// Status message.
     pub message: String,
     /// Stacks block heigh at the time of this update.
     pub stacks_block_height: BlockHeight,
     /// Stacks block hash associated with the height of this update.
     pub stacks_block_hash: StacksBlockHash,
+}
+
+/// Implementation of deposit event.
+impl DepositEvent {
+    /// Errors if the next event provided could not follow the current one.
+    pub fn ensure_following_event_is_valid(&self, next_event: &DepositEvent) -> Result<(), Error> {
+        // Determine if event is valid.
+        if self.stacks_block_height > next_event.stacks_block_height {
+            return Err(Error::InconsistentState(Inconsistency::ItemUpdate(
+                "Attempting to update a deposit with a block height earlier than it should be."
+                    .into(),
+            )));
+        } else if self.stacks_block_height == next_event.stacks_block_height
+            && self.stacks_block_hash != next_event.stacks_block_hash
+        {
+            return Err(Error::InconsistentState(Inconsistency::ItemUpdate(
+                "Attempting to update a deposit with a block height and hash that conflicts with the current history."
+                    .into(),
+            )));
+        }
+
+        Ok(())
+    }
 }
 
 // Deposit info entry ----------------------------------------------------------
@@ -285,4 +329,151 @@ impl From<DepositInfoEntry> for DepositInfo {
             status: deposit_info_entry.key.status,
         }
     }
+}
+
+/// Validated version of the update deposit request.
+pub struct ValidatedUpdateDepositsRequest {
+    /// Validated deposit update requests.
+    pub deposits: Vec<ValidatedDepositUpdate>,
+}
+
+/// Implement try from for the validated depoit requests.
+impl TryFrom<UpdateDepositsRequestBody> for ValidatedUpdateDepositsRequest {
+    type Error = Error;
+    fn try_from(update_request: UpdateDepositsRequestBody) -> Result<Self, Self::Error> {
+        // Validate all the depoit updates.
+        let deposits = update_request
+            .deposits
+            .into_iter()
+            .map(|i| i.try_into())
+            .collect::<Result<_, Error>>()?;
+        Ok(ValidatedUpdateDepositsRequest { deposits })
+    }
+}
+
+/// Validated deposit update.
+pub struct ValidatedDepositUpdate {
+    /// Key.
+    pub key: DepositEntryKey,
+    /// Deposit event.
+    pub event: DepositEvent,
+}
+
+impl TryFrom<DepositUpdate> for ValidatedDepositUpdate {
+    type Error = Error;
+    fn try_from(update: DepositUpdate) -> Result<Self, Self::Error> {
+        // Make key.
+        let key = DepositEntryKey {
+            bitcoin_tx_output_index: update.bitcoin_tx_output_index,
+            bitcoin_txid: update.bitcoin_txid,
+        };
+        // Make status entry.
+        let status_entry: StatusEntry = match update.status {
+            Status::Accepted => {
+                let fulfillment = update.fulfillment.ok_or(Error::InternalServer)?;
+                StatusEntry::Accepted(fulfillment)
+            }
+            Status::Confirmed => StatusEntry::Confirmed,
+            Status::Pending => StatusEntry::Pending,
+            Status::Reevaluating => StatusEntry::Reevaluating,
+            Status::Failed => StatusEntry::Failed,
+        };
+        // Make the new event.
+        let event = DepositEvent {
+            status: status_entry,
+            message: update.status_message,
+            stacks_block_height: update.last_update_height,
+            stacks_block_hash: update.last_update_block_hash,
+        };
+        // Return the validated update.
+        Ok(ValidatedDepositUpdate { key, event })
+    }
+}
+
+/// Packaged deposit update.
+pub struct DepositUpdatePackage {
+    /// Key.
+    pub key: DepositEntryKey,
+    /// Version.
+    pub version: u64,
+    /// Deposit event.
+    pub event: DepositEvent,
+}
+
+/// Implementation of deposit update package.
+impl DepositUpdatePackage {
+    /// Implements from.
+    pub fn from(entry: &DepositEntry, update: ValidatedDepositUpdate) -> Result<Self, Error> {
+        // Ensure the keys are equal.
+        if update.key != entry.key {
+            return Err(Error::Debug(
+                "Attempted to update deposit txid + output index combo".into(),
+            ));
+        }
+        // Ensure that this event is valid if it follows the current latest event.
+        entry
+            .latest_event()
+            .ensure_following_event_is_valid(&update.event)?;
+        // Create the deposit update package.
+        Ok(DepositUpdatePackage {
+            key: entry.key.clone(),
+            version: entry.version,
+            event: update.event,
+        })
+    }
+}
+
+/// All but sends a packaged deposit update.
+pub fn build_deposit_update(
+    context: &EmilyContext,
+    update: &DepositUpdatePackage,
+) -> Result<UpdateItemFluentBuilder, Error> {
+    // Setup the update procedure.
+    let update_expression: &str = " SET
+        #history = list_append(#history, :new_event),
+        #version = #version + :one,
+        #op_status = :new_op_status,
+        #height = :new_height,
+        #hash = :new_hash
+    ";
+    // Ensure the version field is what we expect it to be.
+    let condition_expression = "attribute_exists(#version) AND #version = :expected_version";
+    // Make the key item.
+    let key_item: Item = serde_dynamo::to_item(&update.key)?;
+    // Get simplified status enum.
+    let status: Status = (&update.event.status).into();
+    // Build the update.
+    let builder = context
+        .dynamodb_client
+        .update_item()
+        .table_name(&context.settings.deposit_table_name)
+        .set_key(Some(key_item.into()))
+        .expression_attribute_names("#history", "History")
+        .expression_attribute_names("#version", "Version")
+        .expression_attribute_names("#op_status", "OpStatus")
+        .expression_attribute_names("#height", "LastUpdateHeight")
+        .expression_attribute_names("#hash", "LastUpdateBlockHash")
+        .expression_attribute_values(":new_op_status", serde_dynamo::to_attribute_value(&status)?)
+        .expression_attribute_values(
+            ":new_height",
+            serde_dynamo::to_attribute_value(update.event.stacks_block_height)?,
+        )
+        .expression_attribute_values(
+            ":new_hash",
+            serde_dynamo::to_attribute_value(&update.event.stacks_block_hash)?,
+        )
+        .expression_attribute_values(
+            ":new_event",
+            serde_dynamo::to_attribute_value(vec![update.event.clone()])?,
+        )
+        .expression_attribute_values(
+            ":expected_version",
+            serde_dynamo::to_attribute_value(update.version)?,
+        )
+        .expression_attribute_values(":one", AttributeValue::N(1.to_string()))
+        .condition_expression(condition_expression)
+        .return_values(aws_sdk_dynamodb::types::ReturnValue::AllNew)
+        .update_expression(update_expression);
+    // Return.
+    Ok(builder)
 }

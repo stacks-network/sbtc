@@ -9,7 +9,7 @@ use emily_handler::logging;
 
 #[tokio::main]
 async fn main() {
-    logging::setup_logging("info,emily-handler=debug", false);
+    logging::setup_logging("info,emily-handler=debug", true);
 
     // TODO(389 + 358): Handle config pickup in a way that will only fail for the relevant call.
     let emily_context: EmilyContext = EmilyContext::local_test_instance()
@@ -20,7 +20,7 @@ async fn main() {
     info!("Emily context setup for Emily local server.");
     let emily_context_string =
         serde_json::to_string_pretty(&emily_context).expect("Context must be serializable.");
-    info!(emily_context_string);
+    info!("emily_context:\n{}", emily_context_string);
 
     let routes = api::routes::routes(emily_context)
         .recover(api::handlers::handle_rejection)
