@@ -268,19 +268,12 @@ impl FromStr for PrivateKey {
     type Err = Error;
 
     /// Attempts to parse a [`PrivateKey`] from the hex representation of a
-    /// Stacks key. Stacks keys use the compressed form of the private key,
-    /// which is 33 bytes long. The first 32 bytes are the private key, and
-    /// the last byte is a marker to indicate that the key is compressed.
+    /// a secp256k1 private key.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let bytes = hex::decode(s).unwrap();
-        if bytes.len() == 33 {
-            if bytes[32] != 0x01 {
-                panic!("invalid private key: invalid compressed byte marker");
-            }
-        } else if bytes.len() != 32 {
-            panic!("invalid private key: invalid length");
+        if bytes.len() != 32 {
+            return Err(Error::InvalidPrivateKeyLength(bytes.len()));
         }
-
         PrivateKey::from_slice(&hex::decode(s).unwrap()[0..32])
     }
 }
@@ -326,11 +319,7 @@ impl PrivateKey {
     }
     /// Creates a private key directly from a slice.
     pub fn from_slice(data: &[u8]) -> Result<Self, Error> {
-        if data.len() == 33 {
-            if data[32] != 0x01 {
-                return Err(Error::InvalidPrivateKeyCompressedByteMarker);
-            }
-        } else if data.len() != 32 {
+        if data.len() != 32 {
             return Err(Error::InvalidPrivateKeyLength(data.len()));
         }
 

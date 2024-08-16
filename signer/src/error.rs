@@ -92,12 +92,6 @@ pub enum Error {
     #[error("{0}")]
     InvalidPrivateKey(#[source] secp256k1::Error),
 
-    /// This occurs when converting a byte slice including a compressed
-    /// byte marker to a [`PrivateKey`](crate::keys::PrivateKey) and when the
-    /// compressed byte marker is invalid.
-    #[error("invalid private key compressed byte marker")]
-    InvalidPrivateKeyCompressedByteMarker,
-
     /// This occurs when converting a byte slice to a [`PrivateKey`](crate::keys::PrivateKey)
     /// and the length of the byte slice is not 32.
     #[error("invalid private key length: {0}")]

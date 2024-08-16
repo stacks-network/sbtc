@@ -360,7 +360,7 @@ mod tests {
         assert_eq!(
             settings.signer.stacks_account.private_key,
             PrivateKey::from_str(
-                "8183dc385a7a1fc8353b9e781ee0859a71e57abea478a5bca679334094f7adb501"
+                "8183dc385a7a1fc8353b9e781ee0859a71e57abea478a5bca679334094f7adb5"
             )
             .unwrap()
         );
@@ -393,12 +393,8 @@ mod tests {
 
     #[test]
     fn default_config_toml_loads_signer_stacks_account_config_with_environment() {
-        let new = "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd01";
+        let new = "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd";
         std::env::set_var("SIGNER_SIGNER__STACKS_ACCOUNT__PRIVATE_KEY", new);
-        eprintln!(
-            "new: {}",
-            std::env::var("SIGNER_SIGNER__STACKS_ACCOUNT__PRIVATE_KEY").unwrap()
-        );
 
         let settings = Settings::new().unwrap();
 
