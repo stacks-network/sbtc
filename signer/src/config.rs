@@ -290,7 +290,6 @@ impl StacksSettings {
             .try_parsing(true)
             .with_list_parse_key("stacks.node.endpoints")
             .separator("_");
-        
 
         let conf = Config::builder()
             .add_source(source)
@@ -326,8 +325,7 @@ where
     // eprintln!("2");
     let hex = &String::deserialize(deserializer)?;
     eprintln!("2");
-    Ok(PrivateKey::from_str(&hex)
-        .map_err(serde::de::Error::custom)?)
+    Ok(PrivateKey::from_str(&hex).map_err(serde::de::Error::custom)?)
 }
 
 #[cfg(test)]
@@ -397,7 +395,10 @@ mod tests {
     fn default_config_toml_loads_signer_stacks_account_config_with_environment() {
         let new = "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd01";
         std::env::set_var("SIGNER_SIGNER__STACKS_ACCOUNT__PRIVATE_KEY", new);
-        eprintln!("new: {}", std::env::var("SIGNER_SIGNER__STACKS_ACCOUNT__PRIVATE_KEY").unwrap());
+        eprintln!(
+            "new: {}",
+            std::env::var("SIGNER_SIGNER__STACKS_ACCOUNT__PRIVATE_KEY").unwrap()
+        );
 
         let settings = Settings::new().unwrap();
 
