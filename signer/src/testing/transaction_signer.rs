@@ -1,6 +1,7 @@
 //! Test utilities for the transaction signer
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use crate::blocklist_client;
 use crate::error;
@@ -290,8 +291,15 @@ where
     }
 
     /// Assert that the transaction signer will respond to bitcoin transaction sign requests
-    /// with an acknowledge message
+    /// with an acknowledge message. Errors after 10 seconds.
     pub async fn assert_should_respond_to_bitcoin_transaction_sign_requests(mut self) {
+        let future = self.assert_should_respond_to_bitcoin_transaction_sign_requests_impl();
+        tokio::time::timeout(Duration::from_secs(10), future).await.unwrap()
+    }
+
+    /// Assert that the transaction signer will respond to bitcoin transaction sign requests
+    /// with an acknowledge message
+    pub async fn assert_should_respond_to_bitcoin_transaction_sign_requests_impl(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
