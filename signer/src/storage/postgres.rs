@@ -737,7 +737,7 @@ impl super::DbRead for PgStore {
             FROM sbtc_signer.rotate_keys_transactions rkt
             JOIN sbtc_signer.stacks_transactions st ON st.txid = rkt.txid
             JOIN stacks_blocks sb on st.block_hash = sb.block_hash
-            ORDER BY sb.block_height DESC, sb.block_hash DESC
+            ORDER BY sb.block_height DESC, sb.block_hash DESC, rkt.txid DESC
             LIMIT 1
             "#,
         )
