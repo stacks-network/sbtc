@@ -9,7 +9,10 @@ use emily_handler::{
         },
     },
     context::EmilyContext,
-    database::{accessors, entries::deposit::DepositEntryKey},
+    database::{
+        accessors,
+        entries::{deposit::{DepositEntryKey, DepositEvent}, StatusEntry},
+    },
 };
 use serde_json::json;
 use std::sync::LazyLock;
@@ -378,7 +381,7 @@ async fn update_deposit() {
 
     // Make some parameters.
     let updated_hash = "UPDATED_HASH".to_string();
-    let mut updated_height: u64 = 12345;
+    let updated_height: u64 = 12345;
     let updated_status: Status = Status::Accepted;
     let updated_message: String = "UPDATED_MESSAGE".to_string();
     let fulfillment: Fulfillment = Fulfillment {
@@ -432,11 +435,10 @@ async fn update_deposit() {
     assert_eq!(updated_deposit.last_update_block_hash, updated_hash);
     assert_eq!(updated_deposit.status, updated_status);
     assert_eq!(updated_deposit.status_message, updated_message);
-    assert_eq!(updated_deposit.fulfillment, Some(fulfillment));
+    assert_eq!(updated_deposit.fulfillment, Some(fulfillment.clone()));
 
     // Update the parameters.
     let updated_status: Status = Status::Reevaluating;
-    updated_height += 1;
     // Make the request.
     let single_update = UpdateDepositsRequestBody {
         deposits: vec![DepositUpdate {
@@ -444,7 +446,7 @@ async fn update_deposit() {
             bitcoin_txid: bitcoin_txid,
             bitcoin_tx_output_index: bitcoin_tx_output_index,
             // New updated height.
-            last_update_height: updated_height,
+            last_update_height: updated_height + 1,
             last_update_block_hash: updated_hash.clone(),
             status: updated_status.clone(),
             status_message: updated_message.clone(),
@@ -455,7 +457,7 @@ async fn update_deposit() {
     assert_eq!(response.deposits.len(), 1);
 
     let updated_deposit = response.deposits.first().unwrap().clone();
-    assert_eq!(updated_deposit.last_update_height, updated_height);
+    assert_eq!(updated_deposit.last_update_height, updated_height + 1);
     assert_eq!(updated_deposit.last_update_block_hash, updated_hash);
     assert_eq!(updated_deposit.status, updated_status);
     assert_eq!(updated_deposit.status_message, updated_message);
@@ -468,7 +470,7 @@ async fn update_deposit() {
     let deposit_entry = accessors::get_deposit_entry(
         &context,
         &DepositEntryKey {
-            bitcoin_txid: updated_deposit.bitcoin_txid,
+            bitcoin_txid: updated_deposit.bitcoin_txid.clone(),
             bitcoin_tx_output_index: updated_deposit.bitcoin_tx_output_index,
         },
     )
@@ -476,7 +478,28 @@ async fn update_deposit() {
     .expect("Getting deposit entry in test must succeed.");
 
     // The history of the deposit should be tracked correctly.
-    assert_eq!(deposit_entry.history.len(), 3);
+    let history: Vec<DepositEvent> = vec![
+        DepositEvent {
+            status: StatusEntry::Pending,
+            message: "Just received deposit".to_string(),
+            stacks_block_height: 0,
+            stacks_block_hash: "DUMMY_HASH".to_string(),
+        },
+        DepositEvent {
+            status: StatusEntry::Accepted(fulfillment.clone()),
+            message: updated_message.clone(),
+            stacks_block_height: updated_height,
+            stacks_block_hash: updated_hash.clone(),
+        },
+        DepositEvent {
+            status: StatusEntry::Reevaluating,
+            message: updated_message.clone(),
+            stacks_block_height: updated_height + 1,
+            stacks_block_hash: updated_hash.clone(),
+        },
+    ];
+    assert_eq!(deposit_entry.history, history);
+
 
     // Assert.
     client.teardown().await;

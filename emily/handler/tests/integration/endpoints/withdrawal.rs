@@ -10,7 +10,7 @@ use emily_handler::{
         },
     },
     context::EmilyContext,
-    database::accessors,
+    database::{accessors, entries::{withdrawal::WithdrawalEvent, StatusEntry}},
 };
 use serde_json::json;
 use std::sync::LazyLock;
@@ -246,7 +246,7 @@ async fn update_withdrawal() {
 
     // Make some parameters.
     let updated_hash = "UPDATED_HASH".to_string();
-    let mut updated_height: u64 = 12345;
+    let updated_height: u64 = 12345;
     let updated_status: Status = Status::Accepted;
     let updated_message: String = "UPDATED_MESSAGE".to_string();
     let fulfillment: Fulfillment = Fulfillment {
@@ -298,18 +298,17 @@ async fn update_withdrawal() {
     assert_eq!(updated_withdrawal.last_update_block_hash, updated_hash);
     assert_eq!(updated_withdrawal.status, updated_status);
     assert_eq!(updated_withdrawal.status_message, updated_message);
-    assert_eq!(updated_withdrawal.fulfillment, Some(fulfillment));
+    assert_eq!(updated_withdrawal.fulfillment, Some(fulfillment.clone()));
 
     // Update the parameters.
     let updated_status: Status = Status::Reevaluating;
-    updated_height += 1;
     // Make the request.
     let single_update = UpdateWithdrawalsRequestBody {
         withdrawals: vec![WithdrawalUpdate {
             // Original fields.
             request_id: request_id_1,
             // New updated height.
-            last_update_height: updated_height,
+            last_update_height: updated_height + 1,
             last_update_block_hash: updated_hash.clone(),
             status: updated_status.clone(),
             status_message: updated_message.clone(),
@@ -320,7 +319,7 @@ async fn update_withdrawal() {
     assert_eq!(response.withdrawals.len(), 1);
 
     let updated_withdrawal = response.withdrawals.first().unwrap().clone();
-    assert_eq!(updated_withdrawal.last_update_height, updated_height);
+    assert_eq!(updated_withdrawal.last_update_height, updated_height + 1);
     assert_eq!(updated_withdrawal.last_update_block_hash, updated_hash);
     assert_eq!(updated_withdrawal.status, updated_status);
     assert_eq!(updated_withdrawal.status_message, updated_message);
@@ -335,7 +334,27 @@ async fn update_withdrawal() {
         .expect("Getting withdrawal entry in test must succeed.");
 
     // The history of the withdrawal should be tracked correctly.
-    assert_eq!(withdrawal_entry.history.len(), 3);
+    let history: Vec<WithdrawalEvent> = vec![
+        WithdrawalEvent {
+            status: StatusEntry::Pending,
+            message: "Just received withdrawal".to_string(),
+            stacks_block_height: 0,
+            stacks_block_hash: "test_stacks_block_hash_5".to_string(),
+        },
+        WithdrawalEvent {
+            status: StatusEntry::Accepted(fulfillment.clone()),
+            message: updated_message.clone(),
+            stacks_block_height: updated_height,
+            stacks_block_hash: updated_hash.clone(),
+        },
+        WithdrawalEvent {
+            status: StatusEntry::Reevaluating,
+            message: updated_message.clone(),
+            stacks_block_height: updated_height + 1,
+            stacks_block_hash: updated_hash.clone(),
+        },
+    ];
+    assert_eq!(withdrawal_entry.history, history);
 
     // Assert.
     client.teardown().await;
