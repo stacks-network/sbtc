@@ -11,7 +11,10 @@ use emily_handler::{
     context::EmilyContext,
     database::{
         accessors,
-        entries::{deposit::{DepositEntryKey, DepositEvent}, StatusEntry},
+        entries::{
+            deposit::{DepositEntryKey, DepositEvent},
+            StatusEntry,
+        },
     },
 };
 use serde_json::json;
@@ -499,7 +502,6 @@ async fn update_deposit() {
         },
     ];
     assert_eq!(deposit_entry.history, history);
-
 
     // Assert.
     client.teardown().await;
