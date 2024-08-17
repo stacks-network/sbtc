@@ -9,10 +9,7 @@ use emily_handler::{
         },
     },
     context::EmilyContext,
-    database::{
-        accessors,
-        entries::deposit::{DepositEntry, DepositEntryKey, DepositInfoEntryKey},
-    },
+    database::{accessors, entries::deposit::DepositEntryKey},
 };
 use serde_json::json;
 use std::sync::LazyLock;

@@ -1,5 +1,7 @@
 //! Accessors.
 
+use aws_sdk_dynamodb::types::AttributeValue;
+use serde_dynamo::Item;
 use tracing::info;
 
 use crate::{
@@ -18,11 +20,11 @@ use super::entries::{
     },
     deposit::{
         DepositEntry, DepositEntryKey, DepositInfoEntry, DepositTablePrimaryIndex,
-        DepositTableSecondaryIndex,
+        DepositTableSecondaryIndex, DepositUpdatePackage,
     },
     withdrawal::{
         WithdrawalEntry, WithdrawalInfoEntry, WithdrawalTablePrimaryIndex,
-        WithdrawalTableSecondaryIndex,
+        WithdrawalTableSecondaryIndex, WithdrawalUpdatePackage,
     },
     EntryTrait, KeyTrait, TableIndexTrait,
 };
@@ -82,6 +84,66 @@ pub async fn get_deposit_entries_for_transaction(
     .await
 }
 
+/// Updates a deposit.
+pub async fn update_deposit(
+    context: &EmilyContext,
+    update: &DepositUpdatePackage,
+) -> Result<DepositEntry, Error> {
+    // Setup the update procedure.
+    let update_expression: &str = " SET
+        #history = list_append(#history, :new_event),
+        #version = #version + :one,
+        #op_status = :new_op_status,
+        #height = :new_height,
+        #hash = :new_hash
+    ";
+    // Ensure the version field is what we expect it to be.
+    let condition_expression = "attribute_exists(#version) AND #version = :expected_version";
+    // Make the key item.
+    let key_item: Item = serde_dynamo::to_item(&update.key)?;
+    // Get simplified status enum.
+    let status: Status = (&update.event.status).into();
+    // Build the update.
+    context
+        .dynamodb_client
+        .update_item()
+        .table_name(&context.settings.deposit_table_name)
+        .set_key(Some(key_item.into()))
+        .expression_attribute_names("#history", "History")
+        .expression_attribute_names("#version", "Version")
+        .expression_attribute_names("#op_status", "OpStatus")
+        .expression_attribute_names("#height", "LastUpdateHeight")
+        .expression_attribute_names("#hash", "LastUpdateBlockHash")
+        .expression_attribute_values(":new_op_status", serde_dynamo::to_attribute_value(&status)?)
+        .expression_attribute_values(
+            ":new_height",
+            serde_dynamo::to_attribute_value(update.event.stacks_block_height)?,
+        )
+        .expression_attribute_values(
+            ":new_hash",
+            serde_dynamo::to_attribute_value(&update.event.stacks_block_hash)?,
+        )
+        .expression_attribute_values(
+            ":new_event",
+            serde_dynamo::to_attribute_value(vec![update.event.clone()])?,
+        )
+        .expression_attribute_values(
+            ":expected_version",
+            serde_dynamo::to_attribute_value(update.version)?,
+        )
+        .expression_attribute_values(":one", AttributeValue::N(1.to_string()))
+        .condition_expression(condition_expression)
+        .return_values(aws_sdk_dynamodb::types::ReturnValue::AllNew)
+        .update_expression(update_expression)
+        .send()
+        .await?
+        .attributes
+        .ok_or(Error::Debug("Failed updating withdrawal".into()))
+        .and_then(|attributes| {
+            serde_dynamo::from_item::<Item, DepositEntry>(attributes.into()).map_err(Error::from)
+        })
+}
+
 // Withdrawal ------------------------------------------------------------------
 
 /// Add withdrawal entry.
@@ -136,6 +198,66 @@ pub async fn get_withdrawal_entries(
         maybe_page_size,
     )
     .await
+}
+
+/// Updates a withdrawal based on the update package.
+pub async fn update_withdrawal(
+    context: &EmilyContext,
+    update: &WithdrawalUpdatePackage,
+) -> Result<WithdrawalEntry, Error> {
+    // Setup the update procedure.
+    let update_expression: &str = " SET
+        #history = list_append(#history, :new_event),
+        #version = #version + :one,
+        #op_status = :new_op_status,
+        #height = :new_height,
+        #hash = :new_hash
+    ";
+    // Ensure the version field is what we expect it to be.
+    let condition_expression = "attribute_exists(#version) AND #version = :expected_version";
+    // Make the key item.
+    let key_item: Item = serde_dynamo::to_item(&update.key)?;
+    // Get simplified status enum.
+    let status: Status = (&update.event.status).into();
+    // Execute the update.
+    context
+        .dynamodb_client
+        .update_item()
+        .table_name(&context.settings.withdrawal_table_name)
+        .set_key(Some(key_item.into()))
+        .expression_attribute_names("#history", "History")
+        .expression_attribute_names("#version", "Version")
+        .expression_attribute_names("#op_status", "OpStatus")
+        .expression_attribute_names("#height", "LastUpdateHeight")
+        .expression_attribute_names("#hash", "LastUpdateBlockHash")
+        .expression_attribute_values(":new_op_status", serde_dynamo::to_attribute_value(&status)?)
+        .expression_attribute_values(
+            ":new_height",
+            serde_dynamo::to_attribute_value(update.event.stacks_block_height)?,
+        )
+        .expression_attribute_values(
+            ":new_hash",
+            serde_dynamo::to_attribute_value(&update.event.stacks_block_hash)?,
+        )
+        .expression_attribute_values(
+            ":new_event",
+            serde_dynamo::to_attribute_value(vec![update.event.clone()])?,
+        )
+        .expression_attribute_values(
+            ":expected_version",
+            serde_dynamo::to_attribute_value(update.version)?,
+        )
+        .expression_attribute_values(":one", AttributeValue::N(1.to_string()))
+        .condition_expression(condition_expression)
+        .return_values(aws_sdk_dynamodb::types::ReturnValue::AllNew)
+        .update_expression(update_expression)
+        .send()
+        .await?
+        .attributes
+        .ok_or(Error::Debug("Failed updating withdrawal".into()))
+        .and_then(|attributes| {
+            serde_dynamo::from_item::<Item, WithdrawalEntry>(attributes.into()).map_err(Error::from)
+        })
 }
 
 // Chainstate ------------------------------------------------------------------

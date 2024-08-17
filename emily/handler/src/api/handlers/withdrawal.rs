@@ -1,5 +1,4 @@
 //! Handlers for withdrawal endpoints.
-use serde_dynamo::Item;
 use warp::reply::{json, with_status, Reply};
 
 use crate::api::models::common::{BlockHeight, Status};
@@ -16,8 +15,8 @@ use crate::common::error::Error;
 use crate::context::EmilyContext;
 use crate::database::accessors;
 use crate::database::entries::withdrawal::{
-    build_withdrawal_update, ValidatedUpdateWithdrawalRequest, WithdrawalEntry, WithdrawalEntryKey,
-    WithdrawalEvent, WithdrawalParametersEntry, WithdrawalUpdatePackage,
+    ValidatedUpdateWithdrawalRequest, WithdrawalEntry, WithdrawalEntryKey, WithdrawalEvent,
+    WithdrawalParametersEntry, WithdrawalUpdatePackage,
 };
 use crate::database::entries::StatusEntry;
 use warp::http::StatusCode;
@@ -226,18 +225,9 @@ pub async fn update_withdrawals(
                 accessors::get_withdrawal_entry(&context, &update.request_id).await?;
             // Make the update package.
             let update_package = WithdrawalUpdatePackage::from(&withdrawal_entry, update)?;
-            let update_output = build_withdrawal_update(&context, &update_package)?
-                .send()
-                .await?;
-            // Get the updated withdrawal.
-            let updated_withdrawal: Withdrawal = update_output
-                .attributes
-                .ok_or(Error::InternalServer)
-                .and_then(|fields| {
-                    serde_dynamo::from_item::<Item, WithdrawalEntry>(fields.into())
-                        .map_err(Error::from)
-                })
-                .and_then(|entry| entry.try_into())?;
+            let updated_withdrawal = accessors::update_withdrawal(&context, &update_package)
+                .await?
+                .try_into()?;
             // Append the updated withdrawal to the list.
             updated_withdrawals.push(updated_withdrawal);
         }

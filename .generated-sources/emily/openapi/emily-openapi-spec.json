@@ -1244,7 +1244,7 @@
       },
       "WithdrawalUpdate": {
         "type": "object",
-        "description": "Withdrawals where only the fields to update are defined.",
+        "description": "A singlular Withdrawal update that contains only the fields pertinent\nto updating the status of a withdrawal. This includes the key related\ndata in addition to status history related data.",
         "required": [
           "requestId",
           "lastUpdateHeight",

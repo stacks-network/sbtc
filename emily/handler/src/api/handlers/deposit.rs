@@ -4,7 +4,6 @@ use crate::api::models::deposit::responses::{
     GetDepositsForTransactionResponse, UpdateDepositsResponse,
 };
 use crate::database::entries::StatusEntry;
-use serde_dynamo::Item;
 use warp::reply::{json, with_status, Reply};
 
 use warp::http::StatusCode;
@@ -22,8 +21,8 @@ use crate::common::error::Error;
 use crate::context::EmilyContext;
 use crate::database::accessors;
 use crate::database::entries::deposit::{
-    build_deposit_update, DepositEntry, DepositEntryKey, DepositEvent, DepositParametersEntry,
-    DepositUpdatePackage, ValidatedUpdateDepositsRequest,
+    DepositEntry, DepositEntryKey, DepositEvent, DepositParametersEntry, DepositUpdatePackage,
+    ValidatedUpdateDepositsRequest,
 };
 
 /// Get deposit handler.
@@ -278,18 +277,9 @@ pub async fn update_deposits(
             let deposit_entry = accessors::get_deposit_entry(&context, &update.key).await?;
             // Make the update package.
             let update_package = DepositUpdatePackage::from(&deposit_entry, update)?;
-            let update_output = build_deposit_update(&context, &update_package)?
-                .send()
-                .await?;
-            // Get the updated deposit.
-            let updated_deposit: Deposit = update_output
-                .attributes
-                .ok_or(Error::InternalServer)
-                .and_then(|fields| {
-                    serde_dynamo::from_item::<Item, DepositEntry>(fields.into())
-                        .map_err(Error::from)
-                })
-                .and_then(|entry| entry.try_into())?;
+            let updated_deposit = accessors::update_deposit(&context, &update_package)
+                .await?
+                .try_into()?;
             // Append the updated deposit to the list.
             updated_deposits.push(updated_deposit);
         }

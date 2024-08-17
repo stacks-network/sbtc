@@ -1,10 +1,6 @@
 //! Entries into the deposit table.
 
-use aws_sdk_dynamodb::{
-    operation::update_item::builders::UpdateItemFluentBuilder, types::AttributeValue,
-};
 use serde::{Deserialize, Serialize};
-use serde_dynamo::Item;
 
 use crate::{
     api::models::{
@@ -18,7 +14,6 @@ use crate::{
         },
     },
     common::error::{Error, Inconsistency},
-    context::EmilyContext,
 };
 
 use super::{
@@ -421,59 +416,4 @@ impl DepositUpdatePackage {
             event: update.event,
         })
     }
-}
-
-/// All but sends a packaged deposit update.
-pub fn build_deposit_update(
-    context: &EmilyContext,
-    update: &DepositUpdatePackage,
-) -> Result<UpdateItemFluentBuilder, Error> {
-    // Setup the update procedure.
-    let update_expression: &str = " SET
-        #history = list_append(#history, :new_event),
-        #version = #version + :one,
-        #op_status = :new_op_status,
-        #height = :new_height,
-        #hash = :new_hash
-    ";
-    // Ensure the version field is what we expect it to be.
-    let condition_expression = "attribute_exists(#version) AND #version = :expected_version";
-    // Make the key item.
-    let key_item: Item = serde_dynamo::to_item(&update.key)?;
-    // Get simplified status enum.
-    let status: Status = (&update.event.status).into();
-    // Build the update.
-    let builder = context
-        .dynamodb_client
-        .update_item()
-        .table_name(&context.settings.deposit_table_name)
-        .set_key(Some(key_item.into()))
-        .expression_attribute_names("#history", "History")
-        .expression_attribute_names("#version", "Version")
-        .expression_attribute_names("#op_status", "OpStatus")
-        .expression_attribute_names("#height", "LastUpdateHeight")
-        .expression_attribute_names("#hash", "LastUpdateBlockHash")
-        .expression_attribute_values(":new_op_status", serde_dynamo::to_attribute_value(&status)?)
-        .expression_attribute_values(
-            ":new_height",
-            serde_dynamo::to_attribute_value(update.event.stacks_block_height)?,
-        )
-        .expression_attribute_values(
-            ":new_hash",
-            serde_dynamo::to_attribute_value(&update.event.stacks_block_hash)?,
-        )
-        .expression_attribute_values(
-            ":new_event",
-            serde_dynamo::to_attribute_value(vec![update.event.clone()])?,
-        )
-        .expression_attribute_values(
-            ":expected_version",
-            serde_dynamo::to_attribute_value(update.version)?,
-        )
-        .expression_attribute_values(":one", AttributeValue::N(1.to_string()))
-        .condition_expression(condition_expression)
-        .return_values(aws_sdk_dynamodb::types::ReturnValue::AllNew)
-        .update_expression(update_expression);
-    // Return.
-    Ok(builder)
 }
