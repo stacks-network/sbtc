@@ -6,6 +6,7 @@
 //! toml and potentially overwrites the fields with environment values.
 
 use std::env;
+use std::fmt;
 
 use aws_config::BehaviorVersion;
 use aws_sdk_dynamodb::Client;
@@ -26,14 +27,26 @@ pub struct Settings {
     pub chainstate_table_name: String,
 }
 
-/// Lambda Context
-#[derive(Clone, Debug, Serialize)]
+/// Emily Context
+#[derive(Clone, Serialize)]
 pub struct EmilyContext {
     /// Lambda settings.
     pub settings: Settings,
     /// DynamoDB Client.
     #[serde(skip_serializing)]
     pub dynamodb_client: Client,
+}
+
+/// Implement debug print for the context struct.
+impl fmt::Debug for EmilyContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            serde_json::to_string_pretty(self)
+                .expect("Failed to serialize Emily Context in debug print.")
+        )
+    }
 }
 
 // Implementations -------------------------------------------------------------
