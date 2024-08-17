@@ -9,6 +9,10 @@ use emily_handler::logging;
 
 #[tokio::main]
 async fn main() {
+    #[cfg(feature = "testing")]
+    logging::setup_logging("info,emily-handler=debug", true);
+
+    #[cfg(not(feature = "testing"))]
     logging::setup_logging("info,emily-handler=debug", false);
 
     // TODO(389 + 358): Handle config pickup in a way that will only fail for the relevant call.

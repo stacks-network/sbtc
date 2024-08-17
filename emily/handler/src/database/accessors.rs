@@ -45,6 +45,7 @@ pub async fn get_deposit_entry(
     key: &DepositEntryKey,
 ) -> Result<DepositEntry, Error> {
     let entry = get_entry::<DepositTablePrimaryIndex>(context, key).await?;
+    #[cfg(feature = "testing")]
     info!(
         "Received deposit entry {}",
         serde_json::to_string_pretty(&entry)?
@@ -172,6 +173,7 @@ pub async fn get_withdrawal_entry(
     match entries.as_slice() {
         [] => Err(Error::NotFound),
         [withdrawal] => {
+            #[cfg(feature = "testing")]
             info!(
                 "Received withdrawal entry {}",
                 serde_json::to_string_pretty(withdrawal)?
