@@ -185,7 +185,7 @@ impl WithdrawalEvent {
     }
 }
 
-/// Implements the key trait for the deposit entry key.
+/// Implements the key trait for the withdrawal entry key.
 impl KeyTrait for WithdrawalEntryKey {
     /// The type of the partition key.
     type PartitionKey = u64;
@@ -197,11 +197,11 @@ impl KeyTrait for WithdrawalEntryKey {
     const _SORT_KEY_NAME: &'static str = "StacksBlockHash";
 }
 
-/// Implements the entry trait for the deposit entry.
+/// Implements the entry trait for the withdrawal entry.
 impl EntryTrait for WithdrawalEntry {
     /// The type of the key for this entry type.
     type Key = WithdrawalEntryKey;
-    /// Extract the key from the deposit entry.
+    /// Extract the key from the withdrawal entry.
     fn key(&self) -> Self::Key {
         WithdrawalEntryKey {
             request_id: self.key.request_id,
@@ -271,7 +271,7 @@ pub struct WithdrawalInfoEntry {
     pub last_update_block_hash: StacksBlockHash,
 }
 
-/// Implements the key trait for the deposit entry key.
+/// Implements the key trait for the withdrawal info entry key.
 impl KeyTrait for WithdrawalInfoEntryKey {
     /// The type of the partition key.
     type PartitionKey = Status;
@@ -283,11 +283,11 @@ impl KeyTrait for WithdrawalInfoEntryKey {
     const _SORT_KEY_NAME: &'static str = "LastUpdateHeight";
 }
 
-/// Implements the entry trait for the deposit entry.
+/// Implements the entry trait for the withdrawal info entry.
 impl EntryTrait for WithdrawalInfoEntry {
     /// The type of the key for this entry type.
     type Key = WithdrawalInfoEntryKey;
-    /// Extract the key from the deposit info entry.
+    /// Extract the key from the withdrawal info entry.
     fn key(&self) -> Self::Key {
         WithdrawalInfoEntryKey {
             status: self.key.status.clone(),
@@ -298,7 +298,7 @@ impl EntryTrait for WithdrawalInfoEntry {
 
 /// Primary index struct.
 pub struct WithdrawalTableSecondaryIndexInner;
-/// Deposit table primary index type.
+/// Withdrawal table primary index type.
 pub type WithdrawalTableSecondaryIndex = SecondaryIndex<WithdrawalTableSecondaryIndexInner>;
 /// Definition of Primary index trait.
 impl SecondaryIndexTrait for WithdrawalTableSecondaryIndexInner {
@@ -323,7 +323,7 @@ impl From<WithdrawalInfoEntry> for WithdrawalInfo {
     }
 }
 
-/// Validated version of the update deposit request.
+/// Validated version of the update withdrawal request.
 pub struct ValidatedUpdateWithdrawalRequest {
     /// Validated withdrawal update requests.
     pub withdrawals: Vec<ValidatedWithdrawalUpdate>,
@@ -343,11 +343,11 @@ impl TryFrom<UpdateWithdrawalsRequestBody> for ValidatedUpdateWithdrawalRequest 
     }
 }
 
-/// Validated deposit update.
+/// Validated withdrawal update.
 pub struct ValidatedWithdrawalUpdate {
     /// Key.
     pub request_id: WithdrawalId,
-    /// Deposit event.
+    /// Withdrawal event.
     pub event: WithdrawalEvent,
 }
 
@@ -390,7 +390,7 @@ pub struct WithdrawalUpdatePackage {
     pub event: WithdrawalEvent,
 }
 
-/// Implementation of deposit update package.
+/// Implementation of withdrawal update package.
 impl WithdrawalUpdatePackage {
     /// Implements from.
     pub fn from(entry: &WithdrawalEntry, update: ValidatedWithdrawalUpdate) -> Result<Self, Error> {
@@ -404,7 +404,7 @@ impl WithdrawalUpdatePackage {
         entry
             .latest_event()
             .ensure_following_event_is_valid(&update.event)?;
-        // Create the deposit update package.
+        // Create the withdrawal update package.
         Ok(WithdrawalUpdatePackage {
             key: entry.key.clone(),
             version: entry.version,
