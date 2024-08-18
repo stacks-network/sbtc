@@ -4,7 +4,7 @@ use bitcoin::hashes::Hash as _;
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::clarity::vm::types::PrincipalData;
-use blockstack_lib::clarity::vm::Value;
+use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
 use futures::StreamExt;
@@ -95,7 +95,7 @@ impl AsContractCall for InitiateWithdrawalRequest {
         StacksAddress::burn_address(false)
     }
     /// The arguments to the clarity function.
-    fn as_contract_args(&self) -> Vec<Value> {
+    fn as_contract_args(&self) -> Vec<ClarityValue> {
         Vec::new()
     }
     async fn validate<S>(&self, _: &S) -> Result<bool, Error>

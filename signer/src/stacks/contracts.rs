@@ -36,7 +36,7 @@ use blockstack_lib::clarity::vm::types::SequenceData;
 use blockstack_lib::clarity::vm::types::BUFF_33;
 use blockstack_lib::clarity::vm::ClarityName;
 use blockstack_lib::clarity::vm::ContractName;
-use blockstack_lib::clarity::vm::Value;
+use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::types::chainstate::StacksAddress;
 
 use crate::error::Error;
@@ -100,7 +100,7 @@ pub trait AsContractCall {
     /// The stacks address that deployed the contract.
     fn deployer_address(&self) -> StacksAddress;
     /// The arguments to the clarity function.
-    fn as_contract_args(&self) -> Vec<Value>;
+    fn as_contract_args(&self) -> Vec<ClarityValue>;
     /// Convert this struct to a Stacks contract call.
     fn as_contract_call(&self) -> TransactionContractCall {
         TransactionContractCall {
@@ -196,15 +196,15 @@ impl AsContractCall for CompleteDepositV1 {
     }
     /// Construct the input arguments to the complete-deposit-wrapper
     /// contract call.
-    fn as_contract_args(&self) -> Vec<Value> {
+    fn as_contract_args(&self) -> Vec<ClarityValue> {
         let txid_data = self.outpoint.txid.to_byte_array().to_vec();
         let txid = BuffData { data: txid_data };
 
         vec![
-            Value::Sequence(SequenceData::Buffer(txid)),
-            Value::UInt(self.outpoint.vout as u128),
-            Value::UInt(self.amount as u128),
-            Value::Principal(self.recipient.clone()),
+            ClarityValue::Sequence(SequenceData::Buffer(txid)),
+            ClarityValue::UInt(self.outpoint.vout as u128),
+            ClarityValue::UInt(self.amount as u128),
+            ClarityValue::Principal(self.recipient.clone()),
         ]
     }
     /// Validates that the Complete deposit request satisfies the following
@@ -259,16 +259,16 @@ impl AsContractCall for AcceptWithdrawalV1 {
     fn deployer_address(&self) -> StacksAddress {
         self.deployer
     }
-    fn as_contract_args(&self) -> Vec<Value> {
+    fn as_contract_args(&self) -> Vec<ClarityValue> {
         let txid_data = self.outpoint.txid.to_byte_array().to_vec();
         let txid = BuffData { data: txid_data };
 
         vec![
-            Value::UInt(self.request_id as u128),
-            Value::Sequence(SequenceData::Buffer(txid)),
-            Value::UInt(self.signer_bitmap.load()),
-            Value::UInt(self.outpoint.vout as u128),
-            Value::UInt(self.tx_fee as u128),
+            ClarityValue::UInt(self.request_id as u128),
+            ClarityValue::Sequence(SequenceData::Buffer(txid)),
+            ClarityValue::UInt(self.signer_bitmap.load()),
+            ClarityValue::UInt(self.outpoint.vout as u128),
+            ClarityValue::UInt(self.tx_fee as u128),
         ]
     }
     /// Validates that the accept-withdrawal-request satisfies the
@@ -315,10 +315,10 @@ impl AsContractCall for RejectWithdrawalV1 {
     fn deployer_address(&self) -> StacksAddress {
         self.deployer
     }
-    fn as_contract_args(&self) -> Vec<Value> {
+    fn as_contract_args(&self) -> Vec<ClarityValue> {
         vec![
-            Value::UInt(self.request_id as u128),
-            Value::UInt(self.signer_bitmap.load()),
+            ClarityValue::UInt(self.request_id as u128),
+            ClarityValue::UInt(self.signer_bitmap.load()),
         ]
     }
     /// Validates that the reject-withdrawal-request satisfies the
@@ -401,13 +401,13 @@ impl AsContractCall for RotateKeysV1 {
     /// The signature to this function is:
     ///
     ///   (new-keys (list 128 (buff 33))) (new-aggregate-pubkey (buff 33))
-    fn as_contract_args(&self) -> Vec<Value> {
-        let new_key_data: Vec<Value> = self
+    fn as_contract_args(&self) -> Vec<ClarityValue> {
+        let new_key_data: Vec<ClarityValue> = self
             .new_keys
             .iter()
             .map(|pk| {
                 let data = pk.serialize().to_vec();
-                Value::Sequence(SequenceData::Buffer(BuffData { data }))
+                ClarityValue::Sequence(SequenceData::Buffer(BuffData { data }))
             })
             .collect();
 
@@ -421,8 +421,8 @@ impl AsContractCall for RotateKeysV1 {
         let key: [u8; 33] = self.aggregate_key.serialize();
 
         vec![
-            Value::Sequence(SequenceData::List(new_keys)),
-            Value::Sequence(SequenceData::Buffer(BuffData { data: key.to_vec() })),
+            ClarityValue::Sequence(SequenceData::List(new_keys)),
+            ClarityValue::Sequence(SequenceData::Buffer(BuffData { data: key.to_vec() })),
         ]
     }
     /// Validates that the rotate-keys-wrapper satisfies the following
