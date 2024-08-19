@@ -139,7 +139,7 @@ pub fn transaction_with_rbf(
     rbf_deposits: usize,
     rbf_withdrawals: usize,
     rbf_fee_rate: f64,
-    failure_threshold: u32,
+    failure_threshold: u16,
 ) {
     // This is not a case that we support; why would we replace a
     // submitted transaction without any peg-in or peg-out inputs and

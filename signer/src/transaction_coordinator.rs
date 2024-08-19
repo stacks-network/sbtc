@@ -100,7 +100,7 @@ pub struct TxCoordinatorEventLoop<Network, Storage, BitcoinClient> {
     /// Private key of the coordinator for network communication.
     pub private_key: PrivateKey,
     /// The threshold for the signer
-    pub threshold: u32,
+    pub threshold: u16,
     /// How many bitcoin blocks back from the chain tip the signer will look for requests.
     pub context_window: usize,
     /// The bitcoin network we're targeting

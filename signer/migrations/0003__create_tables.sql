@@ -47,7 +47,7 @@ CREATE TABLE sbtc_signer.deposit_signers (
 );
 
 CREATE TABLE sbtc_signer.withdraw_requests (
-    request_id INTEGER NOT NULL,
+    request_id BIGINT NOT NULL,
     block_hash BYTEA NOT NULL,
     recipient TEXT NOT NULL,
     amount BIGINT NOT NULL,
@@ -59,7 +59,7 @@ CREATE TABLE sbtc_signer.withdraw_requests (
 );
 
 CREATE TABLE sbtc_signer.withdraw_signers (
-    request_id INTEGER NOT NULL,
+    request_id BIGINT NOT NULL,
     block_hash BYTEA NOT NULL,
     signer_pub_key BYTEA NOT NULL,
     is_accepted BOOL NOT NULL,
@@ -129,5 +129,5 @@ CREATE TABLE sbtc_signer.deposit_responses (
 CREATE TABLE sbtc_signer.withdraw_responses (
     response_txid BYTEA NOT NULL,
     withdraw_txid BYTEA NOT NULL,
-    withdraw_request_id INTEGER NOT NULL
+    withdraw_request_id BIGINT NOT NULL
 );
