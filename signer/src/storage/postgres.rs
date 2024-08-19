@@ -682,7 +682,6 @@ impl super::DbRead for PgStore {
               , script_pubkey
               , encrypted_private_shares
               , public_shares
-              , created_at
             FROM sbtc_signer.dkg_shares
             WHERE aggregate_key = $1;
             "#,
@@ -765,21 +764,20 @@ impl super::DbWrite for PgStore {
     type Error = Error;
 
     async fn write_bitcoin_block(&self, block: &model::BitcoinBlock) -> Result<(), Self::Error> {
-        sqlx::query!(
+        sqlx::query(
             "INSERT INTO sbtc_signer.bitcoin_blocks
               ( block_hash
               , block_height
               , parent_hash
               , confirms
-              , created_at
               )
-            VALUES ($1, $2, $3, $4, $5)",
-            block.block_hash,
-            block.block_height,
-            block.parent_hash,
-            &block.confirms,
-            block.created_at
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT DO NOTHING",
         )
+        .bind(&block.block_hash)
+        .bind(block.block_height)
+        .bind(&block.parent_hash)
+        .bind(&block.confirms)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -788,19 +786,18 @@ impl super::DbWrite for PgStore {
     }
 
     async fn write_stacks_block(&self, block: &model::StacksBlock) -> Result<(), Self::Error> {
-        sqlx::query!(
+        sqlx::query(
             "INSERT INTO sbtc_signer.stacks_blocks
               ( block_hash
               , block_height
               , parent_hash
-              , created_at
               )
-            VALUES ($1, $2, $3, $4)",
-            block.block_hash,
-            block.block_height,
-            block.parent_hash,
-            block.created_at
+            VALUES ($1, $2, $3)
+            ON CONFLICT DO NOTHING",
         )
+        .bind(&block.block_hash)
+        .bind(block.block_height)
+        .bind(&block.parent_hash)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -812,7 +809,7 @@ impl super::DbWrite for PgStore {
         &self,
         deposit_request: &model::DepositRequest,
     ) -> Result<(), Self::Error> {
-        sqlx::query!(
+        sqlx::query(
             "INSERT INTO sbtc_signer.deposit_requests
               ( txid
               , output_index
@@ -822,19 +819,18 @@ impl super::DbWrite for PgStore {
               , amount
               , max_fee
               , sender_addresses
-              , created_at
               )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-            deposit_request.txid,
-            deposit_request.output_index,
-            deposit_request.spend_script,
-            deposit_request.reclaim_script,
-            deposit_request.recipient,
-            deposit_request.amount,
-            deposit_request.max_fee,
-            &deposit_request.sender_addresses,
-            deposit_request.created_at,
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT DO NOTHING",
         )
+        .bind(&deposit_request.txid)
+        .bind(deposit_request.output_index)
+        .bind(&deposit_request.spend_script)
+        .bind(&deposit_request.reclaim_script)
+        .bind(&deposit_request.recipient)
+        .bind(deposit_request.amount)
+        .bind(deposit_request.max_fee)
+        .bind(&deposit_request.sender_addresses)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -894,7 +890,6 @@ impl super::DbWrite for PgStore {
                 , amount
                 , max_fee
                 , sender_addresses
-                , created_at)
             SELECT
                 txid
               , output_index
@@ -904,7 +899,6 @@ impl super::DbWrite for PgStore {
               , amount
               , max_fee
               , regexp_split_to_array(sender_address, ',')
-              , CURRENT_TIMESTAMP
             FROM tx_ids
             JOIN output_index USING (row_number)
             JOIN spend_script USING (row_number)
@@ -934,7 +928,7 @@ impl super::DbWrite for PgStore {
         &self,
         withdraw_request: &model::WithdrawRequest,
     ) -> Result<(), Self::Error> {
-        sqlx::query!(
+        sqlx::query(
             "INSERT INTO sbtc_signer.withdraw_requests
               ( request_id
               , block_hash
@@ -942,17 +936,16 @@ impl super::DbWrite for PgStore {
               , amount
               , max_fee
               , sender_address
-              , created_at
               )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)",
-            withdraw_request.request_id,
-            &withdraw_request.block_hash,
-            &withdraw_request.recipient,
-            withdraw_request.amount,
-            withdraw_request.max_fee,
-            withdraw_request.sender_address,
-            withdraw_request.created_at,
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT DO NOTHING",
         )
+        .bind(withdraw_request.request_id)
+        .bind(&withdraw_request.block_hash)
+        .bind(&withdraw_request.recipient)
+        .bind(withdraw_request.amount)
+        .bind(withdraw_request.max_fee)
+        .bind(&withdraw_request.sender_address)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -971,15 +964,14 @@ impl super::DbWrite for PgStore {
               , output_index
               , signer_pub_key
               , is_accepted
-              , created_at
               )
-            VALUES ($1, $2, $3, $4, $5)",
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT DO NOTHING",
         )
         .bind(&decision.txid)
         .bind(decision.output_index)
         .bind(decision.signer_pub_key)
         .bind(decision.is_accepted)
-        .bind(decision.created_at)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -997,15 +989,14 @@ impl super::DbWrite for PgStore {
               , block_hash
               , signer_pub_key
               , is_accepted
-              , created_at
               )
-            VALUES ($1, $2, $3, $4, $5)",
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT DO NOTHING",
         )
         .bind(decision.request_id)
         .bind(&decision.block_hash)
         .bind(decision.signer_pub_key)
         .bind(decision.is_accepted)
-        .bind(decision.created_at)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1014,18 +1005,18 @@ impl super::DbWrite for PgStore {
     }
 
     async fn write_transaction(&self, transaction: &model::Transaction) -> Result<(), Self::Error> {
-        sqlx::query!(
+        sqlx::query(
             "INSERT INTO sbtc_signer.transactions
               ( txid
               , tx
               , tx_type
-              , created_at
               )
-            VALUES ($1, $2, $3, CURRENT_TIMESTAMP)",
-            transaction.txid,
-            transaction.tx,
-            transaction.tx_type as TransactionType,
+            VALUES ($1, $2, $3)
+            ON CONFLICT DO NOTHING",
         )
+        .bind(&transaction.txid)
+        .bind(&transaction.tx)
+        .bind(transaction.tx_type as TransactionType)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1037,11 +1028,13 @@ impl super::DbWrite for PgStore {
         &self,
         bitcoin_transaction: &model::BitcoinTransaction,
     ) -> Result<(), Self::Error> {
-        sqlx::query!(
-            "INSERT INTO sbtc_signer.bitcoin_transactions (txid, block_hash) VALUES ($1, $2)",
-            bitcoin_transaction.txid,
-            bitcoin_transaction.block_hash,
+        sqlx::query(
+            "INSERT INTO sbtc_signer.bitcoin_transactions (txid, block_hash) 
+            VALUES ($1, $2)
+            ON CONFLICT DO NOTHING",
         )
+        .bind(&bitcoin_transaction.txid)
+        .bind(&bitcoin_transaction.block_hash)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1088,11 +1081,13 @@ impl super::DbWrite for PgStore {
         &self,
         stacks_transaction: &model::StacksTransaction,
     ) -> Result<(), Self::Error> {
-        sqlx::query!(
-            "INSERT INTO sbtc_signer.stacks_transactions (txid, block_hash) VALUES ($1, $2)",
-            stacks_transaction.txid,
-            stacks_transaction.block_hash,
+        sqlx::query(
+            "INSERT INTO sbtc_signer.stacks_transactions (txid, block_hash) 
+            VALUES ($1, $2)
+            ON CONFLICT DO NOTHING",
         )
+        .bind(&stacks_transaction.txid)
+        .bind(&stacks_transaction.block_hash)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1154,7 +1149,7 @@ impl super::DbWrite for PgStore {
             chain_lengths.push(block.block_height);
         }
 
-        sqlx::query!(
+        sqlx::query(
             r#"
             WITH block_ids AS (
                 SELECT ROW_NUMBER() OVER (), block_id
@@ -1168,20 +1163,19 @@ impl super::DbWrite for PgStore {
                 SELECT ROW_NUMBER() OVER (), chain_length
                 FROM UNNEST($3::bigint[]) AS chain_length
             )
-            INSERT INTO sbtc_signer.stacks_blocks (block_hash, block_height, parent_hash, created_at)
+            INSERT INTO sbtc_signer.stacks_blocks (block_hash, block_height, parent_hash)
             SELECT
                 block_id
               , chain_length
               , parent_block_id
-              , CURRENT_TIMESTAMP
             FROM block_ids 
             JOIN parent_block_ids USING (row_number)
             JOIN chain_lengths USING (row_number)
             ON CONFLICT DO NOTHING"#,
-            &block_ids,
-            &parent_block_ids,
-            &chain_lengths,
         )
+        .bind(&block_ids)
+        .bind(&parent_block_ids)
+        .bind(&chain_lengths)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1201,17 +1195,15 @@ impl super::DbWrite for PgStore {
               , encrypted_private_shares
               , public_shares
               , script_pubkey
-              , created_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            "#,
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT DO NOTHING"#,
         )
         .bind(shares.aggregate_key)
         .bind(shares.tweaked_aggregate_key)
         .bind(&shares.encrypted_private_shares)
         .bind(&shares.public_shares)
         .bind(&shares.script_pubkey)
-        .bind(shares.created_at)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1232,7 +1224,7 @@ impl super::DbWrite for PgStore {
                 , signatures_required)
             VALUES
                 ($1, $2, $3, $4)
-            "#,
+            ON CONFLICT DO NOTHING"#,
         )
         .bind(&key_rotation.txid)
         .bind(key_rotation.aggregate_key)

@@ -13,14 +13,14 @@ CREATE TABLE sbtc_signer.bitcoin_blocks (
     block_height BIGINT NOT NULL,
     parent_hash BYTEA NOT NULL,
     confirms BYTEA[] NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 CREATE TABLE sbtc_signer.stacks_blocks (
     block_hash BYTEA PRIMARY KEY,
     block_height BIGINT NOT NULL,
     parent_hash BYTEA NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 CREATE TABLE sbtc_signer.deposit_requests (
@@ -32,7 +32,7 @@ CREATE TABLE sbtc_signer.deposit_requests (
     amount BIGINT NOT NULL,
     max_fee BIGINT NOT NULL,
     sender_addresses TEXT[] NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY (txid, output_index)
 );
 
@@ -41,7 +41,7 @@ CREATE TABLE sbtc_signer.deposit_signers (
     output_index INTEGER NOT NULL,
     signer_pub_key BYTEA NOT NULL,
     is_accepted BOOL NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY (txid, output_index, signer_pub_key),
     FOREIGN KEY (txid, output_index) REFERENCES sbtc_signer.deposit_requests(txid, output_index) ON DELETE CASCADE
 );
@@ -53,7 +53,7 @@ CREATE TABLE sbtc_signer.withdraw_requests (
     amount BIGINT NOT NULL,
     max_fee BIGINT NOT NULL,
     sender_address TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY (request_id, block_hash),
     FOREIGN KEY (block_hash) REFERENCES sbtc_signer.stacks_blocks(block_hash) ON DELETE CASCADE
 );
@@ -63,7 +63,7 @@ CREATE TABLE sbtc_signer.withdraw_signers (
     block_hash BYTEA NOT NULL,
     signer_pub_key BYTEA NOT NULL,
     is_accepted BOOL NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY (request_id, block_hash, signer_pub_key),
     FOREIGN KEY (request_id, block_hash) REFERENCES sbtc_signer.withdraw_requests(request_id, block_hash) ON DELETE CASCADE
 );
@@ -72,7 +72,7 @@ CREATE TABLE sbtc_signer.transactions (
     txid BYTEA PRIMARY KEY,
     tx BYTEA NOT NULL,
     tx_type sbtc_signer.transaction_type NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 CREATE TABLE sbtc_signer.dkg_shares (
@@ -81,7 +81,7 @@ CREATE TABLE sbtc_signer.dkg_shares (
     encrypted_private_shares BYTEA NOT NULL,
     public_shares BYTEA NOT NULL,
     script_pubkey BYTEA NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 CREATE TABLE sbtc_signer.coordinator_broadcasts (
@@ -89,7 +89,7 @@ CREATE TABLE sbtc_signer.coordinator_broadcasts (
     txid BYTEA NOT NULL,
     broadcast_block_height INTEGER NOT NULL,
     market_fee_rate INTEGER NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE
 );
 
