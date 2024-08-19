@@ -94,7 +94,7 @@ pub enum Error {
 
     /// This occurs when converting a byte slice to a [`PrivateKey`](crate::keys::PrivateKey)
     /// and the length of the byte slice is not 32.
-    #[error("invalid private key length: {0}")]
+    #[error("invalid private key length={0}, expected 32.")]
     InvalidPrivateKeyLength(usize),
 
     /// This happens when we attempt to convert a `[u8; 65]` into a
@@ -119,6 +119,10 @@ pub enum Error {
     /// This is thrown when failing to parse a hex string into an integer.
     #[error("could not parse the hex string into an integer")]
     ParseHexInt(#[source] std::num::ParseIntError),
+
+    /// This is thrown when failing to parse a hex string into bytes.
+    #[error("could not decode the hex string into bytes: {0}")]
+    DecodeHexBytes(#[source] hex::FromHexError),
 
     /// Reqwest error
     #[error(transparent)]

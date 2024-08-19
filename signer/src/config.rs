@@ -3,7 +3,6 @@
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 use serde::Deserializer;
-use std::str::FromStr;
 use std::sync::LazyLock;
 
 use crate::error::Error;
@@ -320,17 +319,21 @@ where
     Ok(v)
 }
 
-/// A deserializer for the PrivateKey type.
+/// A deserializer for the [`PrivateKey`] type. Returns an error if the private
+/// key is not valid hex or is not the correct length.
 fn private_key_deserializer<'de, D>(deserializer: D) -> Result<PrivateKey, D::Error>
 where
     D: Deserializer<'de>,
 {
+    use std::str::FromStr as _;
     PrivateKey::from_str(&String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
 }
 
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
+
+    use assert_matches::assert_matches;
 
     use crate::keys::PrivateKey;
 
@@ -439,5 +442,30 @@ mod tests {
         let ip: std::net::Ipv6Addr = "::1".parse().unwrap();
         assert_eq!(settings.node.endpoints[0].host(), Some(url::Host::Ipv6(ip)));
         assert_eq!(settings.node.endpoints[0].port(), Some(9101));
+    }
+
+    #[test]
+    fn invalid_private_key_length_returns_correct_error() {
+        std::env::set_var("SIGNER_SIGNER__STACKS_ACCOUNT__PRIVATE_KEY", "1234");
+
+        let settings = Settings::new();
+        assert!(settings.is_err());
+        assert_matches!(
+            settings.unwrap_err(),
+            ConfigError::Message(msg) if msg == Error::InvalidPrivateKeyLength(2).to_string()
+        );
+    }
+
+    #[test]
+    fn invalid_private_key_hex_returns_correct_error() {
+        std::env::set_var("SIGNER_SIGNER__STACKS_ACCOUNT__PRIVATE_KEY", "zz");
+        let hex_err = hex::decode("zz").unwrap_err();
+
+        let settings = Settings::new();
+        assert!(settings.is_err());
+        assert_matches!(
+            settings.unwrap_err(),
+            ConfigError::Message(msg) if msg == Error::DecodeHexBytes(hex_err).to_string()
+        )
     }
 }

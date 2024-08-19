@@ -64,6 +64,7 @@ features = ["rand-std", "global-context"]
 
 [dev-dependencies]
 bitcoincore-rpc.workspace = true
+assert_matches.workspace = true
 mockito = "1.4.0"
 more-asserts = "0.3"
 test-case = "3.1"
