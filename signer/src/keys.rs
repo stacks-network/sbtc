@@ -403,7 +403,6 @@ impl SignerScriptPubKey for secp256k1::XOnlyPublicKey {
 mod tests {
     use super::*;
 
-    use assert_matches::assert_matches;
     use rand::rngs::OsRng;
     use secp256k1::SecretKey;
     use stacks_common::util::secp256k1::Secp256k1PrivateKey;
@@ -446,17 +445,17 @@ mod tests {
             PrivateKey::from_slice(&bytes).expect("BUG: 32 bytes should be a valid private key");
 
         // Test underflow
-        assert_matches!(
+        assert!(matches!(
             PrivateKey::from_slice(&[0; 31]),
             Err(Error::InvalidPrivateKeyLength(31))
-        );
+        ));
 
         // Test overflow
         let bytes = [0; 33];
-        assert_matches!(
+        assert!(matches!(
             PrivateKey::from_slice(&bytes),
             Err(Error::InvalidPrivateKeyLength(33))
-        );
+        ));
     }
 
     #[test]

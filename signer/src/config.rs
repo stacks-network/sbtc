@@ -333,8 +333,6 @@ where
 mod tests {
     use std::str::FromStr;
 
-    use assert_matches::assert_matches;
-
     use crate::keys::PrivateKey;
 
     use super::*;
@@ -450,10 +448,10 @@ mod tests {
 
         let settings = Settings::new();
         assert!(settings.is_err());
-        assert_matches!(
+        assert!(matches!(
             settings.unwrap_err(),
             ConfigError::Message(msg) if msg == Error::InvalidPrivateKeyLength(2).to_string()
-        );
+        ));
     }
 
     #[test]
@@ -463,9 +461,9 @@ mod tests {
 
         let settings = Settings::new();
         assert!(settings.is_err());
-        assert_matches!(
+        assert!(matches!(
             settings.unwrap_err(),
             ConfigError::Message(msg) if msg == Error::DecodeHexBytes(hex_err).to_string()
-        )
+        ));
     }
 }
