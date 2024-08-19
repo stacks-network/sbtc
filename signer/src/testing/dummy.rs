@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 
 use bitcoin::hashes::Hash as _;
 use blockstack_lib::chainstate::{nakamoto, stacks};
-use fake::faker::time::en::DateTimeAfter;
 use fake::Fake;
 use rand::Rng;
 use secp256k1::ecdsa::RecoverableSignature;
@@ -197,15 +196,12 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         .encode_to_vec()
         .expect("encoding to vec failed");
 
-    let created_at = DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH).fake_with_rng(rng);
-
     model::EncryptedDkgShares {
         aggregate_key: group_key,
         encrypted_private_shares,
         public_shares,
         tweaked_aggregate_key: group_key.signers_tweaked_pubkey().unwrap(),
         script_pubkey: group_key.signers_script_pubkey().into_bytes(),
-        created_at,
     }
 }
 

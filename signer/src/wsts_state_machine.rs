@@ -134,15 +134,12 @@ impl SignerStateMachine {
             wsts::util::encrypt(&self.0.network_private_key.to_bytes(), &encoded, rng)
                 .map_err(|_| error::Error::Encryption)?;
 
-        let created_at = time::OffsetDateTime::now_utc();
-
         Ok(model::EncryptedDkgShares {
             aggregate_key,
             tweaked_aggregate_key: aggregate_key.signers_tweaked_pubkey()?,
             script_pubkey: aggregate_key.signers_script_pubkey().to_bytes(),
             encrypted_private_shares,
             public_shares,
-            created_at,
         })
     }
 }

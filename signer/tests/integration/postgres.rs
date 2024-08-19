@@ -652,7 +652,6 @@ async fn writing_transactions_postgres(pool: sqlx::PgPool) {
         block_height: 15,
         parent_hash: parent_hash.to_byte_array().to_vec(),
         confirms: Vec::new(),
-        created_at: time::OffsetDateTime::now_utc(),
     };
 
     // We start by writing the bitcoin block because of the foreign key

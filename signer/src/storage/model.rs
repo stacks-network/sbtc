@@ -10,11 +10,8 @@ use sbtc::deposits::Deposit;
 
 use crate::keys::PublicKey;
 
-#[cfg(feature = "testing")]
-use fake::faker::time::en::DateTimeAfter;
-
 /// Bitcoin block.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct BitcoinBlock {
     /// Block hash.
@@ -28,16 +25,10 @@ pub struct BitcoinBlock {
     /// Stacks block confirmed by this block.
     #[cfg_attr(feature = "testing", dummy(default))]
     pub confirms: Vec<StacksBlockHash>,
-    /// The time this block entry was created by the signer.
-    #[cfg_attr(
-        feature = "testing",
-        dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")
-    )]
-    pub created_at: time::OffsetDateTime,
 }
 
 /// Stacks block.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct StacksBlock {
     /// Block hash.
@@ -48,16 +39,10 @@ pub struct StacksBlock {
     /// Hash of the parent block.
     #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub parent_hash: StacksBlockHash,
-    /// The time this block entry was created by the signer.
-    #[cfg_attr(
-        feature = "testing",
-        dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")
-    )]
-    pub created_at: time::OffsetDateTime,
 }
 
 /// Deposit request.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct DepositRequest {
     /// Transaction ID of the deposit request transaction.
@@ -81,12 +66,6 @@ pub struct DepositRequest {
     /// The addresses of the input UTXOs funding the deposit request.
     #[cfg_attr(feature = "testing", dummy(faker = "BitcoinAddresses(1..5)"))]
     pub sender_addresses: Vec<BitcoinAddress>,
-    /// The time this block entry was created by the signer.
-    #[cfg_attr(
-        feature = "testing",
-        dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")
-    )]
-    pub created_at: time::OffsetDateTime,
 }
 
 /// Used to for fine-grained control of generating fake testing addresses.
@@ -130,7 +109,6 @@ impl DepositRequest {
             amount: deposit.info.amount as i64,
             max_fee: deposit.info.max_fee as i64,
             sender_addresses: sender_addresses.into_iter().collect(),
-            created_at: time::OffsetDateTime::now_utc(),
         }
     }
 }
@@ -149,16 +127,10 @@ pub struct DepositSigner {
     pub signer_pub_key: PublicKey,
     /// Signals if the signer is prepared to sign for this request.
     pub is_accepted: bool,
-    /// The time this block entry was created by the signer.
-    #[cfg_attr(
-        feature = "testing",
-        dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")
-    )]
-    pub created_at: time::OffsetDateTime,
 }
 
 /// Withdraw request.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct WithdrawRequest {
     /// Request ID of the withdrawal request.
@@ -175,12 +147,6 @@ pub struct WithdrawRequest {
     pub max_fee: i64,
     /// The address that initiated the request.
     pub sender_address: StacksAddress,
-    /// The time this block entry was created by the signer.
-    #[cfg_attr(
-        feature = "testing",
-        dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")
-    )]
-    pub created_at: time::OffsetDateTime,
 }
 
 /// A signer acknowledging a withdrawal request.
@@ -196,16 +162,10 @@ pub struct WithdrawSigner {
     pub signer_pub_key: PublicKey,
     /// Signals if the signer is prepared to sign for this request.
     pub is_accepted: bool,
-    /// The time this block entry was created by the signer.
-    #[cfg_attr(
-        feature = "testing",
-        dummy(faker = "DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH)")
-    )]
-    pub created_at: time::OffsetDateTime,
 }
 
 /// A connection between a bitcoin block and a bitcoin transaction.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 pub struct BitcoinTransaction {
     /// Transaction ID.
     pub txid: BitcoinTxId,
@@ -261,8 +221,6 @@ pub struct EncryptedDkgShares {
     pub encrypted_private_shares: Bytes,
     /// The public DKG shares
     pub public_shares: Bytes,
-    /// The time this entry was created by the signer.
-    pub created_at: time::OffsetDateTime,
 }
 
 /// Persisted public DKG shares from other signers

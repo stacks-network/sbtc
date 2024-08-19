@@ -531,8 +531,6 @@ where
             })
             .await;
 
-        let created_at = time::OffsetDateTime::now_utc();
-
         let msg = message::SignerDepositDecision {
             txid: bitcoin::Txid::from_slice(&deposit_request.txid)
                 .map_err(error::Error::SliceConversion)?,
@@ -548,7 +546,6 @@ where
             output_index: deposit_request.output_index,
             signer_pub_key: self.signer_pub_key(),
             is_accepted,
-            created_at,
         };
 
         self.storage
@@ -571,14 +568,11 @@ where
             .await
             .unwrap_or(false);
 
-        let created_at = time::OffsetDateTime::now_utc();
-
         let signer_decision = model::WithdrawSigner {
             request_id: withdraw_request.request_id,
             block_hash: withdraw_request.block_hash,
             signer_pub_key: self.signer_pub_key(),
             is_accepted,
-            created_at,
         };
 
         self.storage
@@ -600,14 +594,12 @@ where
             .try_into()
             .map_err(|_| error::Error::TypeConversion)?;
         let is_accepted = decision.accepted;
-        let created_at = time::OffsetDateTime::now_utc();
 
         let signer_decision = model::DepositSigner {
             txid,
             output_index,
             signer_pub_key,
             is_accepted,
-            created_at,
         };
 
         self.storage
@@ -637,14 +629,12 @@ where
 
         let block_hash = decision.block_hash.to_vec();
         let is_accepted = decision.accepted;
-        let created_at = time::OffsetDateTime::now_utc();
 
         let signer_decision = model::WithdrawSigner {
             request_id,
             block_hash,
             signer_pub_key,
             is_accepted,
-            created_at,
         };
 
         self.storage
