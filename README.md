@@ -38,7 +38,6 @@ The following are the developer tools that you should install on your local mach
 - **[Make](https://www.gnu.org/software/make/)** - Development task runner; natively present on nearly every system.
 - **[Docker](https://docs.docker.com/manuals/)** - [Installation Guide](https://docs.docker.com/desktop/). This is used for running integration tests.
 - **[protoc](https://github.com/protocolbuffers/protobuf)** - [Installation Guide](https://grpc.io/docs/protoc-installation/). Compiles protobuf files.
-- **[sqlx-cli](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli)** - [Installation Guide](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli#install) - Needed only for developing, and only when modifying queries or adding new ones.
 
 #### Tool Versions
 
