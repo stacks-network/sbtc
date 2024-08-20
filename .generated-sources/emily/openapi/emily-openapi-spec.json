@@ -942,31 +942,21 @@
       },
       "DepositUpdate": {
         "type": "object",
-        "description": "A Deposit where only the fields that need updating are set.",
+        "description": "A singlular Deposit update that contains only the fields pertinent\nto updating the status of a deposit. This includes the key related\ndata in addition to status history related data.",
+        "required": [
+          "bitcoinTxid",
+          "bitcoinTxOutputIndex",
+          "lastUpdateHeight",
+          "lastUpdateBlockHash",
+          "status",
+          "statusMessage"
+        ],
         "properties": {
-          "amount": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Satoshis"
-              }
-            ],
-            "nullable": true
-          },
           "bitcoinTxOutputIndex": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/BitcoinTransactionOutputIndex"
-              }
-            ],
-            "nullable": true
+            "$ref": "#/components/schemas/BitcoinTransactionOutputIndex"
           },
           "bitcoinTxid": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/BitcoinTransactionId"
-              }
-            ],
-            "nullable": true
+            "$ref": "#/components/schemas/BitcoinTransactionId"
           },
           "fulfillment": {
             "allOf": [
@@ -977,49 +967,17 @@
             "nullable": true
           },
           "lastUpdateBlockHash": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/StacksBlockHash"
-              }
-            ],
-            "nullable": true
+            "$ref": "#/components/schemas/StacksBlockHash"
           },
           "lastUpdateHeight": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/BlockHeight"
-              }
-            ],
-            "nullable": true
-          },
-          "parameters": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/super.DepositParameters"
-              }
-            ],
-            "nullable": true
-          },
-          "recipient": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/StacksPrinciple"
-              }
-            ],
-            "nullable": true
+            "$ref": "#/components/schemas/BlockHeight"
           },
           "status": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Status"
-              }
-            ],
-            "nullable": true
+            "$ref": "#/components/schemas/Status"
           },
           "statusMessage": {
             "type": "string",
-            "description": "The status message of the deposit.",
-            "nullable": true
+            "description": "The status message of the deposit."
           }
         }
       },
@@ -1286,32 +1244,15 @@
       },
       "WithdrawalUpdate": {
         "type": "object",
-        "description": "Withdrawals where only the fields to update are defined.",
+        "description": "A singlular Withdrawal update that contains only the fields pertinent\nto updating the status of a withdrawal. This includes the key related\ndata in addition to status history related data.",
+        "required": [
+          "requestId",
+          "lastUpdateHeight",
+          "lastUpdateBlockHash",
+          "status",
+          "statusMessage"
+        ],
         "properties": {
-          "amount": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Satoshis"
-              }
-            ],
-            "nullable": true
-          },
-          "blockHash": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/StacksBlockHash"
-              }
-            ],
-            "nullable": true
-          },
-          "blockHeight": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/BlockHeight"
-              }
-            ],
-            "nullable": true
-          },
           "fulfillment": {
             "allOf": [
               {
@@ -1321,57 +1262,20 @@
             "nullable": true
           },
           "lastUpdateBlockHash": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/StacksBlockHash"
-              }
-            ],
-            "nullable": true
+            "$ref": "#/components/schemas/StacksBlockHash"
           },
           "lastUpdateHeight": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/BlockHeight"
-              }
-            ],
-            "nullable": true
-          },
-          "parameters": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/WithdrawalParameters"
-              }
-            ],
-            "nullable": true
-          },
-          "recipient": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/BitcoinAddress"
-              }
-            ],
-            "nullable": true
+            "$ref": "#/components/schemas/BlockHeight"
           },
           "requestId": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/WithdrawalId"
-              }
-            ],
-            "nullable": true
+            "$ref": "#/components/schemas/WithdrawalId"
           },
           "status": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Status"
-              }
-            ],
-            "nullable": true
+            "$ref": "#/components/schemas/Status"
           },
           "statusMessage": {
             "type": "string",
-            "description": "The status message of the withdrawal.",
-            "nullable": true
+            "description": "The status message of the withdrawal."
           }
         }
       }

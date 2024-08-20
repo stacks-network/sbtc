@@ -1,9 +1,18 @@
-use emily_handler::api::models::{
-    common::Status,
-    withdrawal::{
-        requests::CreateWithdrawalRequestBody,
-        responses::{GetWithdrawalResponse, GetWithdrawalsResponse},
-        Withdrawal, WithdrawalInfo,
+use emily_handler::{
+    api::models::{
+        common::{Fulfillment, Status},
+        withdrawal::{
+            requests::{
+                CreateWithdrawalRequestBody, UpdateWithdrawalsRequestBody, WithdrawalUpdate,
+            },
+            responses::{GetWithdrawalResponse, GetWithdrawalsResponse},
+            Withdrawal, WithdrawalInfo,
+        },
+    },
+    context::EmilyContext,
+    database::{
+        accessors,
+        entries::{withdrawal::WithdrawalEvent, StatusEntry},
     },
 };
 use serde_json::json;
@@ -47,7 +56,7 @@ static TEST_WITHDRAWAL_DATA: LazyLock<Vec<TestWithdrawalData>> = LazyLock::new(|
 
 /// Setup function that wipes the database and populates it with the necessary
 /// withdrawal data.
-async fn setup_deposit_integration_test() -> TestClient {
+async fn setup_withdrawal_integration_test() -> TestClient {
     let client = TestClient::new();
     client.setup_test().await;
     for test_withdrawal_data in TEST_WITHDRAWAL_DATA.iter() {
@@ -105,7 +114,7 @@ fn just_created_withdrawal(
 async fn create_withdrawals() {
     // The setup function runs what was origninally the create tests by creating the
     // resources and then assessing what was created.
-    let client = setup_deposit_integration_test().await;
+    let client = setup_withdrawal_integration_test().await;
     client.teardown().await;
 }
 
@@ -113,7 +122,7 @@ async fn create_withdrawals() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_withdrawal() {
-    let client = setup_deposit_integration_test().await;
+    let client = setup_withdrawal_integration_test().await;
     for test_withdrawal_data in TEST_WITHDRAWAL_DATA.iter() {
         // Arrange.
         let TestWithdrawalData {
@@ -151,7 +160,7 @@ async fn get_withdrawal() {
 #[tokio::test]
 async fn get_withdrawals() {
     // Arrange.
-    let client = setup_deposit_integration_test().await;
+    let client = setup_withdrawal_integration_test().await;
     let page_size: i32 = 1;
 
     let mut aggregate_withdrawals: Vec<WithdrawalInfo> = vec![];
@@ -214,5 +223,148 @@ async fn get_withdrawals() {
     aggregate_withdrawals.sort();
     expected_withdrawal_infos.sort();
     assert_eq!(aggregate_withdrawals, expected_withdrawal_infos);
+    client.teardown().await;
+}
+
+/// Update deposits test.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn update_withdrawal() {
+    // Arrange.
+    let client = setup_withdrawal_integration_test().await;
+
+    // Get a random deposit info and its identifying fields.
+    let withdrawal_ids: Vec<u64> = client
+        .get_all_withdrawals()
+        .await
+        .into_iter()
+        .map(|withdrawal_info| withdrawal_info.request_id)
+        .collect();
+
+    let request_id_1 = withdrawal_ids.get(0).unwrap().clone();
+    let request_id_2 = withdrawal_ids.get(1).unwrap().clone();
+
+    // Get the full deposit.
+    let _original_deposit = client.get_withdrawal(&request_id_1).await;
+
+    // Make some parameters.
+    let updated_hash = "UPDATED_HASH".to_string();
+    let updated_height: u64 = 12345;
+    let updated_status: Status = Status::Accepted;
+    let updated_message: String = "UPDATED_MESSAGE".to_string();
+    let fulfillment: Fulfillment = Fulfillment {
+        bitcoin_txid: "FULFILLMENT_BITCOIN_TXID".to_string(),
+        bitcoin_tx_index: 10,
+        stacks_txid: "FULFILLMENT_STACKS_TXID".to_string(),
+        bitcoin_block_hash: "FULFILLMENT_HASH".to_string(),
+        bitcoin_block_height: 10,
+        btc_fee: 12,
+    };
+
+    // Create and make the request.
+    let update_requests = UpdateWithdrawalsRequestBody {
+        withdrawals: vec![
+            WithdrawalUpdate {
+                // Original fields.
+                request_id: request_id_1,
+                // New updated height.
+                last_update_height: updated_height,
+                last_update_block_hash: updated_hash.clone(),
+                status: updated_status.clone(),
+                status_message: updated_message.clone(),
+                fulfillment: Some(fulfillment.clone()),
+            },
+            WithdrawalUpdate {
+                // Original fields.
+                request_id: request_id_2,
+                // New updated height.
+                last_update_height: updated_height,
+                last_update_block_hash: updated_hash.clone(),
+                status: updated_status.clone(),
+                status_message: updated_message.clone(),
+                fulfillment: Some(fulfillment.clone()),
+            },
+        ],
+    };
+    let response = client.update_withdrawals(&update_requests).await;
+    assert_eq!(
+        response.withdrawals.len(),
+        update_requests.withdrawals.len()
+    );
+
+    let updated_withdrawal = response.withdrawals.get(0).unwrap().clone();
+    assert_eq!(updated_withdrawal.last_update_height, updated_height);
+    assert_eq!(updated_withdrawal.last_update_block_hash, updated_hash);
+    assert_eq!(updated_withdrawal.status, updated_status);
+    assert_eq!(updated_withdrawal.status_message, updated_message);
+    assert_eq!(updated_withdrawal.fulfillment, Some(fulfillment.clone()));
+
+    let updated_withdrawal = response.withdrawals.get(1).unwrap().clone();
+    assert_eq!(updated_withdrawal.last_update_height, updated_height);
+    assert_eq!(updated_withdrawal.last_update_block_hash, updated_hash);
+    assert_eq!(updated_withdrawal.status, updated_status);
+    assert_eq!(updated_withdrawal.status_message, updated_message);
+    assert_eq!(updated_withdrawal.fulfillment, Some(fulfillment.clone()));
+
+    // Update the parameters.
+    let updated_status: Status = Status::Reprocessing;
+    // Make the request.
+    let update_requests = UpdateWithdrawalsRequestBody {
+        withdrawals: vec![WithdrawalUpdate {
+            // Original fields.
+            request_id: request_id_1,
+            // New updated height.
+            last_update_height: updated_height + 1,
+            last_update_block_hash: updated_hash.clone(),
+            status: updated_status.clone(),
+            status_message: updated_message.clone(),
+            fulfillment: None,
+        }],
+    };
+    let response = client.update_withdrawals(&update_requests).await;
+    assert_eq!(
+        response.withdrawals.len(),
+        update_requests.withdrawals.len()
+    );
+
+    let updated_withdrawal = response.withdrawals.first().unwrap().clone();
+    assert_eq!(updated_withdrawal.last_update_height, updated_height + 1);
+    assert_eq!(updated_withdrawal.last_update_block_hash, updated_hash);
+    assert_eq!(updated_withdrawal.status, updated_status);
+    assert_eq!(updated_withdrawal.status_message, updated_message);
+    assert_eq!(updated_withdrawal.fulfillment, None);
+
+    // Now try getting the raw internal entry and ensure that the history is good.
+    let context: EmilyContext = EmilyContext::local_test_instance()
+        .await
+        .expect("Making emily context must succeed in integration test.");
+    let withdrawal_entry = accessors::get_withdrawal_entry(&context, &request_id_1)
+        .await
+        .expect("Getting withdrawal entry in test must succeed.");
+
+    // The history of the withdrawal should be tracked correctly.
+    let history: Vec<WithdrawalEvent> = vec![
+        WithdrawalEvent {
+            status: StatusEntry::Pending,
+            message: "Just received withdrawal".to_string(),
+            stacks_block_height: 0,
+            stacks_block_hash: "test_stacks_block_hash_5".to_string(),
+        },
+        WithdrawalEvent {
+            status: StatusEntry::Accepted(fulfillment.clone()),
+            message: updated_message.clone(),
+            stacks_block_height: updated_height,
+            stacks_block_hash: updated_hash.clone(),
+        },
+        WithdrawalEvent {
+            status: StatusEntry::Reprocessing,
+            message: updated_message.clone(),
+            stacks_block_height: updated_height + 1,
+            stacks_block_hash: updated_hash.clone(),
+        },
+    ];
+    assert_eq!(withdrawal_entry.history, history);
+
+    // Assert.
     client.teardown().await;
 }

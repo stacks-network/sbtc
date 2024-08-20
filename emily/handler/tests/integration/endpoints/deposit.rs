@@ -1,8 +1,21 @@
 use crate::util::{self, constants::EMILY_DEPOSIT_ENDPOINT, TestClient};
-use emily_handler::api::models::deposit::{
-    requests::CreateDepositRequestBody,
-    responses::{GetDepositsForTransactionResponse, GetDepositsResponse},
-    Deposit, DepositInfo, DepositParameters,
+use emily_handler::{
+    api::models::{
+        common::{Fulfillment, Status},
+        deposit::{
+            requests::{CreateDepositRequestBody, DepositUpdate, UpdateDepositsRequestBody},
+            responses::{GetDepositsForTransactionResponse, GetDepositsResponse},
+            Deposit, DepositInfo, DepositParameters,
+        },
+    },
+    context::EmilyContext,
+    database::{
+        accessors,
+        entries::{
+            deposit::{DepositEntryKey, DepositEvent},
+            StatusEntry,
+        },
+    },
 };
 use serde_json::json;
 use std::sync::LazyLock;
@@ -337,5 +350,159 @@ async fn get_failed_deposits() {
 
     // Assert.
     assert_eq!(response.deposits.len(), 0);
+    client.teardown().await;
+}
+
+/// Update deposits test.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn update_deposit() {
+    // Arrange.
+    let client = setup_deposit_integration_test().await;
+
+    // Get a random deposit info and its identifying fields.
+    let deposit_keys: Vec<DepositEntryKey> = client
+        .get_all_deposits()
+        .await
+        .into_iter()
+        .map(|deposit_info| DepositEntryKey {
+            bitcoin_tx_output_index: deposit_info.bitcoin_tx_output_index,
+            bitcoin_txid: deposit_info.bitcoin_txid,
+        })
+        .collect();
+
+    let key1 = deposit_keys.get(0).unwrap().clone();
+    let key2 = deposit_keys.get(1).unwrap().clone();
+
+    let bitcoin_txid = key1.bitcoin_txid.clone();
+    let bitcoin_tx_output_index = key1.bitcoin_tx_output_index;
+
+    // Get the full deposit.
+    let _original_deposit = client
+        .get_deposit(&bitcoin_txid, bitcoin_tx_output_index)
+        .await;
+
+    // Make some parameters.
+    let updated_hash = "UPDATED_HASH".to_string();
+    let updated_height: u64 = 12345;
+    let updated_status: Status = Status::Accepted;
+    let updated_message: String = "UPDATED_MESSAGE".to_string();
+    let fulfillment: Fulfillment = Fulfillment {
+        bitcoin_txid: "FULFILLMENT_BITCOIN_TXID".to_string(),
+        bitcoin_tx_index: 10,
+        stacks_txid: "FULFILLMENT_STACKS_TXID".to_string(),
+        bitcoin_block_hash: "FULFILLMENT_HASH".to_string(),
+        bitcoin_block_height: 10,
+        btc_fee: 12,
+    };
+
+    // Create and make the request.
+    let update_requests = UpdateDepositsRequestBody {
+        deposits: vec![
+            DepositUpdate {
+                // Original fields.
+                bitcoin_txid: key1.bitcoin_txid.clone(),
+                bitcoin_tx_output_index: key1.bitcoin_tx_output_index,
+                // New updated height.
+                last_update_height: updated_height,
+                last_update_block_hash: updated_hash.clone(),
+                status: updated_status.clone(),
+                status_message: updated_message.clone(),
+                fulfillment: Some(fulfillment.clone()),
+            },
+            DepositUpdate {
+                // Original fields.
+                bitcoin_txid: key2.bitcoin_txid.clone(),
+                bitcoin_tx_output_index: key2.bitcoin_tx_output_index,
+                // New updated height.
+                last_update_height: updated_height,
+                last_update_block_hash: updated_hash.clone(),
+                status: updated_status.clone(),
+                status_message: updated_message.clone(),
+                fulfillment: Some(fulfillment.clone()),
+            },
+        ],
+    };
+    let response = client.update_deposits(&update_requests).await;
+    assert_eq!(response.deposits.len(), update_requests.deposits.len());
+
+    let updated_deposit = response.deposits.get(0).unwrap().clone();
+    assert_eq!(updated_deposit.last_update_height, updated_height);
+    assert_eq!(updated_deposit.last_update_block_hash, updated_hash);
+    assert_eq!(updated_deposit.status, updated_status);
+    assert_eq!(updated_deposit.status_message, updated_message);
+    assert_eq!(updated_deposit.fulfillment, Some(fulfillment.clone()));
+
+    let updated_deposit = response.deposits.get(1).unwrap().clone();
+    assert_eq!(updated_deposit.last_update_height, updated_height);
+    assert_eq!(updated_deposit.last_update_block_hash, updated_hash);
+    assert_eq!(updated_deposit.status, updated_status);
+    assert_eq!(updated_deposit.status_message, updated_message);
+    assert_eq!(updated_deposit.fulfillment, Some(fulfillment.clone()));
+
+    // Update the parameters.
+    let updated_status: Status = Status::Reprocessing;
+    // Make the request.
+    let update_requests = UpdateDepositsRequestBody {
+        deposits: vec![DepositUpdate {
+            // Original fields.
+            bitcoin_txid: bitcoin_txid,
+            bitcoin_tx_output_index: bitcoin_tx_output_index,
+            // New updated height.
+            last_update_height: updated_height + 1,
+            last_update_block_hash: updated_hash.clone(),
+            status: updated_status.clone(),
+            status_message: updated_message.clone(),
+            fulfillment: None,
+        }],
+    };
+    let response = client.update_deposits(&update_requests).await;
+    assert_eq!(response.deposits.len(), update_requests.deposits.len());
+
+    let updated_deposit = response.deposits.first().unwrap().clone();
+    assert_eq!(updated_deposit.last_update_height, updated_height + 1);
+    assert_eq!(updated_deposit.last_update_block_hash, updated_hash);
+    assert_eq!(updated_deposit.status, updated_status);
+    assert_eq!(updated_deposit.status_message, updated_message);
+    assert_eq!(updated_deposit.fulfillment, None);
+
+    // Now try getting the raw internal entry.
+    let context: EmilyContext = EmilyContext::local_test_instance()
+        .await
+        .expect("Making emily context must succeed in integration test.");
+    let deposit_entry = accessors::get_deposit_entry(
+        &context,
+        &DepositEntryKey {
+            bitcoin_txid: updated_deposit.bitcoin_txid.clone(),
+            bitcoin_tx_output_index: updated_deposit.bitcoin_tx_output_index,
+        },
+    )
+    .await
+    .expect("Getting deposit entry in test must succeed.");
+
+    // The history of the deposit should be tracked correctly.
+    let history: Vec<DepositEvent> = vec![
+        DepositEvent {
+            status: StatusEntry::Pending,
+            message: "Just received deposit".to_string(),
+            stacks_block_height: 0,
+            stacks_block_hash: "DUMMY_HASH".to_string(),
+        },
+        DepositEvent {
+            status: StatusEntry::Accepted(fulfillment.clone()),
+            message: updated_message.clone(),
+            stacks_block_height: updated_height,
+            stacks_block_hash: updated_hash.clone(),
+        },
+        DepositEvent {
+            status: StatusEntry::Reprocessing,
+            message: updated_message.clone(),
+            stacks_block_height: updated_height + 1,
+            stacks_block_hash: updated_hash.clone(),
+        },
+    ];
+    assert_eq!(deposit_entry.history, history);
+
+    // Assert.
     client.teardown().await;
 }

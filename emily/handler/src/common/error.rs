@@ -7,6 +7,7 @@ use aws_sdk_dynamodb::{
     operation::{
         batch_write_item::BatchWriteItemError, delete_item::DeleteItemError,
         get_item::GetItemError, put_item::PutItemError, query::QueryError, scan::ScanError,
+        update_item::UpdateItemError,
     },
 };
 use reqwest::StatusCode;
@@ -15,6 +16,15 @@ use utoipa::ToSchema;
 use warp::{reject::Reject, reply::Reply};
 
 use crate::database::entries::chainstate::ChainstateEntry;
+
+/// State inconsistency representations.
+#[derive(Debug)]
+pub enum Inconsistency {
+    /// There is a chainstate inconsistency.
+    Chainstate(Vec<ChainstateEntry>),
+    /// There is an inconsistency in the way an item is being updated.
+    ItemUpdate(String),
+}
 
 /// Errors from the internal API logic.
 #[allow(dead_code)]
@@ -78,7 +88,7 @@ pub enum Error {
 
     /// Inconsistent API state detected during request
     #[error("Inconsistent internal state: {0:?}")]
-    InconsistentState(Vec<ChainstateEntry>),
+    InconsistentState(Inconsistency),
 }
 
 /// Error implementation.
@@ -158,6 +168,11 @@ impl From<SdkError<ScanError>> for Error {
 impl From<SdkError<BatchWriteItemError>> for Error {
     fn from(err: SdkError<BatchWriteItemError>) -> Self {
         Error::Debug(format!("SdkError<BatchWriteItemError> - {err:?}"))
+    }
+}
+impl From<SdkError<UpdateItemError>> for Error {
+    fn from(err: SdkError<UpdateItemError>) -> Self {
+        Error::Debug(format!("SdkError<UpdateItemError> - {err:?}"))
     }
 }
 impl From<aws_sdk_dynamodb::error::BuildError> for Error {

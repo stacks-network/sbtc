@@ -1540,6 +1540,7 @@ dependencies = [
  "aws-config",
  "aws-sdk-dynamodb",
  "base64 0.22.1",
+ "clap",
  "config 0.11.0",
  "fake",
  "mockall",

@@ -8,14 +8,16 @@ use emily_handler::{
         chainstate::Chainstate,
         common::Status,
         deposit::{
-            requests::CreateDepositRequestBody,
-            responses::{CreateDepositResponse, GetDepositsResponse},
-            DepositInfo,
+            requests::{CreateDepositRequestBody, UpdateDepositsRequestBody},
+            responses::{CreateDepositResponse, GetDepositsResponse, UpdateDepositsResponse},
+            Deposit, DepositInfo,
         },
         withdrawal::{
-            requests::CreateWithdrawalRequestBody,
-            responses::{CreateWithdrawalResponse, GetWithdrawalsResponse},
-            WithdrawalInfo,
+            requests::{CreateWithdrawalRequestBody, UpdateWithdrawalsRequestBody},
+            responses::{
+                CreateWithdrawalResponse, GetWithdrawalsResponse, UpdateWithdrawalsResponse,
+            },
+            Withdrawal, WithdrawalId, WithdrawalInfo,
         },
     },
     context::EmilyContext,
@@ -121,6 +123,30 @@ impl TestClient {
             .unwrap()
     }
 
+    /// Get a single deposit.
+    pub async fn get_deposit(
+        &self,
+        bitcoin_txid: &String,
+        bitcoin_tx_output_index: u32,
+    ) -> Deposit {
+        get_xyz::<Deposit>(
+            &self.inner,
+            format!("{EMILY_DEPOSIT_ENDPOINT}/{bitcoin_txid}/{bitcoin_tx_output_index}").as_str(),
+        )
+        .await
+        .expect("Get deposit in test failed.")
+    }
+
+    /// Executes an update deposits request.
+    pub async fn update_deposits(
+        &self,
+        request: &UpdateDepositsRequestBody,
+    ) -> UpdateDepositsResponse {
+        update_xyz(&self.inner, &EMILY_DEPOSIT_ENDPOINT, request)
+            .await
+            .expect("Update deposits in test failed.")
+    }
+
     /// Create withdrawal.
     pub async fn create_withdrawal(
         &self,
@@ -129,6 +155,26 @@ impl TestClient {
         create_xyz(&self.inner, EMILY_WITHDRAWAL_ENDPOINT, request)
             .await
             .unwrap()
+    }
+
+    /// Get a single withdrawal.
+    pub async fn get_withdrawal(&self, request_id: &WithdrawalId) -> Withdrawal {
+        get_xyz::<Withdrawal>(
+            &self.inner,
+            format!("{EMILY_WITHDRAWAL_ENDPOINT}/{request_id}").as_str(),
+        )
+        .await
+        .expect("Get withdrawal in test failed.")
+    }
+
+    /// Executes an update withdrawals request.
+    pub async fn update_withdrawals(
+        &self,
+        request: &UpdateWithdrawalsRequestBody,
+    ) -> UpdateWithdrawalsResponse {
+        update_xyz(&self.inner, &EMILY_WITHDRAWAL_ENDPOINT, request)
+            .await
+            .expect("Update withdrawals in test failed.")
     }
 
     /// Create chainstate.

@@ -15,8 +15,10 @@ use crate::common::error::Error;
 use crate::context::EmilyContext;
 use crate::database::accessors;
 use crate::database::entries::withdrawal::{
-    WithdrawalEntry, WithdrawalEntryKey, WithdrawalEvent, WithdrawalParametersEntry,
+    ValidatedUpdateWithdrawalRequest, WithdrawalEntry, WithdrawalEntryKey, WithdrawalEvent,
+    WithdrawalParametersEntry, WithdrawalUpdatePackage,
 };
+use crate::database::entries::StatusEntry;
 use warp::http::StatusCode;
 
 /// Get withdrawal handler.
@@ -46,36 +48,16 @@ pub async fn get_withdrawal(
         context: EmilyContext,
         request_id: WithdrawalId,
     ) -> Result<impl warp::reply::Reply, Error> {
-        // Get withdrawals - hopefully just one.
-        // If there is more than one withdrawal then there is a state inconsistency. This
-        // is potentially okay but the hope then is that the database is actively being
-        // repaired.
-        let num_to_retrieve_if_multiple = 5;
-        let (entries, _) = accessors::get_withdrawal_entries_for_id(
-            &context,
-            &request_id,
-            None,
-            Some(num_to_retrieve_if_multiple),
-        )
-        .await?;
-
-        // Convert data into resource types.
-        let withdrawals: Vec<Withdrawal> = entries
-            .into_iter()
-            .map(|entry| entry.try_into())
-            .collect::<Result<_, _>>()?;
+        // Get withdrawal.
+        let withdrawal: Withdrawal = accessors::get_withdrawal_entry(&context, &request_id)
+            .await?
+            .try_into()?;
 
         // Respond.
-        match &withdrawals[..] {
-            [] => Err(Error::NotFound),
-            [withdrawal] => Ok(with_status(
-                json(withdrawal as &GetWithdrawalResponse),
-                StatusCode::OK,
-            )),
-            _ => Err(Error::Debug(format!(
-                "Found too many withdrawals: {withdrawals:?}"
-            ))),
-        }
+        Ok(with_status(
+            json(&(withdrawal as GetWithdrawalResponse)),
+            StatusCode::OK,
+        ))
     }
     // Handle and respond.
     handler(context, request_id)
@@ -183,7 +165,7 @@ pub async fn create_withdrawal(
             amount,
             parameters: WithdrawalParametersEntry { max_fee: parameters.max_fee },
             history: vec![WithdrawalEvent {
-                status: Status::Pending,
+                status: StatusEntry::Pending,
                 message: "Just received withdrawal".to_string(),
                 stacks_block_hash: stacks_block_hash.clone(),
                 stacks_block_height,
@@ -223,11 +205,41 @@ pub async fn create_withdrawal(
     )
 )]
 pub async fn update_withdrawals(
-    _context: EmilyContext,
-    _body: UpdateWithdrawalsRequestBody,
+    context: EmilyContext,
+    body: UpdateWithdrawalsRequestBody,
 ) -> impl warp::reply::Reply {
-    let response = UpdateWithdrawalsResponse { ..Default::default() };
-    with_status(json(&response), StatusCode::CREATED)
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        body: UpdateWithdrawalsRequestBody,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        // Validate request.
+        let validated_request: ValidatedUpdateWithdrawalRequest = body.try_into()?;
+        // Create aggregator.
+        let mut updated_withdrawals: Vec<Withdrawal> =
+            Vec::with_capacity(validated_request.withdrawals.len());
+        // Loop through all updates and execute.
+        for update in validated_request.withdrawals {
+            // Get original withdrawal entry.
+            let withdrawal_entry =
+                accessors::get_withdrawal_entry(&context, &update.request_id).await?;
+            // Make the update package.
+            let update_package = WithdrawalUpdatePackage::try_from(&withdrawal_entry, update)?;
+            let updated_withdrawal = accessors::update_withdrawal(&context, &update_package)
+                .await?
+                .try_into()?;
+            // Append the updated withdrawal to the list.
+            updated_withdrawals.push(updated_withdrawal);
+        }
+        let response = UpdateWithdrawalsResponse {
+            withdrawals: updated_withdrawals,
+        };
+        Ok(with_status(json(&response), StatusCode::CREATED))
+    }
+    // Handle and respond.
+    handler(context, body)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
 }
 
 // TODO(393): Add handler unit tests.

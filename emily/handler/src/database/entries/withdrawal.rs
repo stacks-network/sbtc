@@ -4,17 +4,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     api::models::{
-        common::{
-            BitcoinAddress, BlockHeight, Fulfillment, Satoshis, StacksBlockHash, StacksPrinciple,
-            Status,
+        common::{BitcoinAddress, BlockHeight, Satoshis, StacksBlockHash, StacksPrinciple, Status},
+        withdrawal::{
+            requests::{UpdateWithdrawalsRequestBody, WithdrawalUpdate},
+            Withdrawal, WithdrawalId, WithdrawalInfo, WithdrawalParameters,
         },
-        withdrawal::{Withdrawal, WithdrawalId, WithdrawalInfo, WithdrawalParameters},
     },
-    common::error::Error,
+    common::error::{Error, Inconsistency},
 };
 
 use super::{
     EntryTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait, SecondaryIndex, SecondaryIndexTrait,
+    StatusEntry,
 };
 
 // Withdrawal entry ---------------------------------------------------------------
@@ -58,9 +59,6 @@ pub struct WithdrawalEntry {
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this hash is the Stacks block hash that contains that artifact.
     pub last_update_block_hash: StacksBlockHash,
-    /// Data about the fulfillment of the sBTC Operation.
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub fulfillment: Option<Fulfillment>,
     /// History of this withdrawal transaction.
     pub history: Vec<WithdrawalEvent>,
 }
@@ -87,12 +85,20 @@ impl WithdrawalEntry {
                 format!("last update block height is inconsistent between history and top level data. {stringy_self:?}")
             ));
         }
-        if self.status != latest_event.status {
+        if self.status != (&latest_event.status).into() {
             return Err(Error::Debug(
                 format!("most recent status is inconsistent between history and top level data. {stringy_self:?}")
             ));
         }
         Ok(())
+    }
+
+    /// Gets the latest event.
+    pub fn latest_event(&self) -> Result<&WithdrawalEvent, Error> {
+        self.history.last().ok_or(Error::Debug(format!(
+            "Withdrawal entry must always have at least one event, but entry with id {:?} did not.",
+            self.key(),
+        )))
     }
 }
 
@@ -101,11 +107,16 @@ impl TryFrom<WithdrawalEntry> for Withdrawal {
     fn try_from(withdrawal_entry: WithdrawalEntry) -> Result<Self, Self::Error> {
         // Ensure entry is valid.
         withdrawal_entry.validate()?;
-        // Get the latest event.
-        let latest_event: &WithdrawalEvent = withdrawal_entry
-            .history
-            .last()
-            .expect("Withdrawal history is invalid but was just validate.");
+
+        // Extract data from the latest event.
+        let latest_event = withdrawal_entry.latest_event()?;
+        let status_message = latest_event.message.clone();
+        let status: Status = (&latest_event.status).into();
+        let fulfillment = match &latest_event.status {
+            StatusEntry::Accepted(fulfillment) => Some(fulfillment.clone()),
+            _ => None,
+        };
+
         // Create withdrawal from table entry.
         Ok(Withdrawal {
             request_id: withdrawal_entry.key.request_id,
@@ -115,12 +126,12 @@ impl TryFrom<WithdrawalEntry> for Withdrawal {
             amount: withdrawal_entry.amount,
             last_update_height: withdrawal_entry.last_update_height,
             last_update_block_hash: withdrawal_entry.last_update_block_hash,
-            status: withdrawal_entry.status,
-            status_message: latest_event.message.clone(),
+            status,
+            status_message,
             parameters: WithdrawalParameters {
                 max_fee: withdrawal_entry.parameters.max_fee,
             },
-            fulfillment: withdrawal_entry.fulfillment,
+            fulfillment,
         })
     }
 }
@@ -140,7 +151,7 @@ pub struct WithdrawalParametersEntry {
 pub struct WithdrawalEvent {
     /// Status code.
     #[serde(rename = "OpStatus")]
-    pub status: Status,
+    pub status: StatusEntry,
     /// Status message.
     pub message: String,
     /// Stacks block heigh at the time of this update.
@@ -149,7 +160,33 @@ pub struct WithdrawalEvent {
     pub stacks_block_hash: StacksBlockHash,
 }
 
-/// Implements the key trait for the deposit entry key.
+/// Implementation of withdrawal event.
+impl WithdrawalEvent {
+    /// Errors if the next event provided could not follow the current one.
+    pub fn ensure_following_event_is_valid(
+        &self,
+        next_event: &WithdrawalEvent,
+    ) -> Result<(), Error> {
+        // Determine if event is valid.
+        if self.stacks_block_height > next_event.stacks_block_height {
+            return Err(Error::InconsistentState(Inconsistency::ItemUpdate(
+                "Attempting to update a withdrawal with a block height earlier than it should be."
+                    .into(),
+            )));
+        } else if self.stacks_block_height == next_event.stacks_block_height
+            && self.stacks_block_hash != next_event.stacks_block_hash
+        {
+            return Err(Error::InconsistentState(Inconsistency::ItemUpdate(
+                "Attempting to update a withdrawal with a block height and hash that conflicts with the current history."
+                    .into(),
+            )));
+        }
+
+        Ok(())
+    }
+}
+
+/// Implements the key trait for the withdrawal entry key.
 impl KeyTrait for WithdrawalEntryKey {
     /// The type of the partition key.
     type PartitionKey = u64;
@@ -161,11 +198,11 @@ impl KeyTrait for WithdrawalEntryKey {
     const _SORT_KEY_NAME: &'static str = "StacksBlockHash";
 }
 
-/// Implements the entry trait for the deposit entry.
+/// Implements the entry trait for the withdrawal entry.
 impl EntryTrait for WithdrawalEntry {
     /// The type of the key for this entry type.
     type Key = WithdrawalEntryKey;
-    /// Extract the key from the deposit entry.
+    /// Extract the key from the withdrawal entry.
     fn key(&self) -> Self::Key {
         WithdrawalEntryKey {
             request_id: self.key.request_id,
@@ -235,7 +272,7 @@ pub struct WithdrawalInfoEntry {
     pub last_update_block_hash: StacksBlockHash,
 }
 
-/// Implements the key trait for the deposit entry key.
+/// Implements the key trait for the withdrawal info entry key.
 impl KeyTrait for WithdrawalInfoEntryKey {
     /// The type of the partition key.
     type PartitionKey = Status;
@@ -247,11 +284,11 @@ impl KeyTrait for WithdrawalInfoEntryKey {
     const _SORT_KEY_NAME: &'static str = "LastUpdateHeight";
 }
 
-/// Implements the entry trait for the deposit entry.
+/// Implements the entry trait for the withdrawal info entry.
 impl EntryTrait for WithdrawalInfoEntry {
     /// The type of the key for this entry type.
     type Key = WithdrawalInfoEntryKey;
-    /// Extract the key from the deposit info entry.
+    /// Extract the key from the withdrawal info entry.
     fn key(&self) -> Self::Key {
         WithdrawalInfoEntryKey {
             status: self.key.status.clone(),
@@ -262,7 +299,7 @@ impl EntryTrait for WithdrawalInfoEntry {
 
 /// Primary index struct.
 pub struct WithdrawalTableSecondaryIndexInner;
-/// Deposit table primary index type.
+/// Withdrawal table primary index type.
 pub type WithdrawalTableSecondaryIndex = SecondaryIndex<WithdrawalTableSecondaryIndexInner>;
 /// Definition of Primary index trait.
 impl SecondaryIndexTrait for WithdrawalTableSecondaryIndexInner {
@@ -284,5 +321,98 @@ impl From<WithdrawalInfoEntry> for WithdrawalInfo {
             last_update_block_hash: withdrawal_info_entry.last_update_block_hash,
             status: withdrawal_info_entry.key.status,
         }
+    }
+}
+
+/// Validated version of the update withdrawal request.
+pub struct ValidatedUpdateWithdrawalRequest {
+    /// Validated withdrawal update requests.
+    pub withdrawals: Vec<ValidatedWithdrawalUpdate>,
+}
+
+/// Implement try from for the validated depoit requests.
+impl TryFrom<UpdateWithdrawalsRequestBody> for ValidatedUpdateWithdrawalRequest {
+    type Error = Error;
+    fn try_from(update_request: UpdateWithdrawalsRequestBody) -> Result<Self, Self::Error> {
+        // Validate all the depoit updates.
+        let withdrawals = update_request
+            .withdrawals
+            .into_iter()
+            .map(|i| i.try_into())
+            .collect::<Result<_, Error>>()?;
+        Ok(ValidatedUpdateWithdrawalRequest { withdrawals })
+    }
+}
+
+/// Validated withdrawal update.
+pub struct ValidatedWithdrawalUpdate {
+    /// Key.
+    pub request_id: WithdrawalId,
+    /// Withdrawal event.
+    pub event: WithdrawalEvent,
+}
+
+impl TryFrom<WithdrawalUpdate> for ValidatedWithdrawalUpdate {
+    type Error = Error;
+    fn try_from(update: WithdrawalUpdate) -> Result<Self, Self::Error> {
+        // Make status entry.
+        let status_entry: StatusEntry = match update.status {
+            Status::Accepted => {
+                let fulfillment = update.fulfillment.ok_or(Error::InternalServer)?;
+                StatusEntry::Accepted(fulfillment)
+            }
+            Status::Confirmed => StatusEntry::Confirmed,
+            Status::Pending => StatusEntry::Pending,
+            Status::Reprocessing => StatusEntry::Reprocessing,
+            Status::Failed => StatusEntry::Failed,
+        };
+        // Make the new event.
+        let event = WithdrawalEvent {
+            status: status_entry,
+            message: update.status_message,
+            stacks_block_height: update.last_update_height,
+            stacks_block_hash: update.last_update_block_hash,
+        };
+        // Return the validated update.
+        Ok(ValidatedWithdrawalUpdate {
+            request_id: update.request_id,
+            event,
+        })
+    }
+}
+
+/// Packaged withdrawal update.
+pub struct WithdrawalUpdatePackage {
+    /// Key.
+    pub key: WithdrawalEntryKey,
+    /// Version.
+    pub version: u64,
+    /// Withdrawal event.
+    pub event: WithdrawalEvent,
+}
+
+/// Implementation of withdrawal update package.
+impl WithdrawalUpdatePackage {
+    /// Implements from.
+    pub fn try_from(
+        entry: &WithdrawalEntry,
+        update: ValidatedWithdrawalUpdate,
+    ) -> Result<Self, Error> {
+        // Ensure the keys are equal.
+        if update.request_id != entry.key.request_id {
+            return Err(Error::Debug(
+                "Attempted to update withdrawal request_id combo.".into(),
+            ));
+        }
+        // Ensure that this event is valid if it follows the current latest event.
+        entry
+            .latest_event()?
+            .ensure_following_event_is_valid(&update.event)?;
+        // Create the withdrawal update package.
+        Ok(WithdrawalUpdatePackage {
+            key: entry.key.clone(),
+            version: entry.version,
+            event: update.event,
+        })
     }
 }

@@ -131,6 +131,14 @@ emily-integration-env-down:
 
 emily-integration-test-full: emily-integration-env-up emily-integration-test emily-integration-env-down
 
+emily-server-watch:
+	cargo watch -d 1.5 -x 'run --bin emily-server -- --pretty-logs'
+
+emily-integration-test-watch:
+	cargo watch -d 3 -x 'test --package emily-handler --test integration --features integration-tests -- \
+		--test-threads=1 \
+		--nocapture'
+
 .PHONY: emily-integration-env-up emily-integration-test emily-integration-env-up emily-integration-test-full
 
 # Builds all dockerfiles that need to be built for the dev environment.

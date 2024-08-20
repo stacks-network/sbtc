@@ -51,7 +51,11 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
 use serde_dynamo::Item;
 
-use crate::{common::error::Error, context::Settings};
+use crate::{
+    api::models::common::{Fulfillment, Status},
+    common::error::Error,
+    context::Settings,
+};
 
 /// Chainstate table entries.
 pub mod chainstate;
@@ -59,6 +63,50 @@ pub mod chainstate;
 pub mod deposit;
 /// Withdrawal table entries.
 pub mod withdrawal;
+
+// Event structure
+// -----------------------------------------------------------------------------
+
+/// Status entry.
+#[derive(Clone, Default, Debug, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
+#[serde(rename_all = "PascalCase")]
+pub enum StatusEntry {
+    /// Transaction hasn't yet been addressed by the sBTC Signers.
+    #[default]
+    Pending,
+    /// Transaction was dealt with by the signers at one point but is now being
+    /// reprocessed. The Signers are aware of the operation request.
+    Reprocessing,
+    /// Transaction has been seen and accepted by the sBTC Signers, but is not
+    /// yet included in any on chain artifact. The transaction can still fail
+    /// at this point if the Signers fail to include the transaciton in an on
+    /// chain artifact.
+    ///
+    /// For example, a deposit or withdrawal that has specified too low of a
+    /// BTC fee may fail after being accepted.
+    Accepted(Fulfillment),
+    /// The articacts that fulill the operation have been observed in a valid fork of
+    /// both the Stacks blockchain and the Bitcoin blockchain by at least one signer.
+    ///
+    /// Note that if the signers detect a conflicting chainstate in which the operation
+    /// is not confirmed this status will be reverted to either ACCEPTED or REEVALUATING
+    /// depending on whether the conflicting chainstate calls the acceptance into question.
+    Confirmed,
+    /// The operation was not fulfilled.
+    Failed,
+}
+
+impl From<&StatusEntry> for Status {
+    fn from(value: &StatusEntry) -> Self {
+        match value {
+            StatusEntry::Pending => Status::Pending,
+            StatusEntry::Reprocessing => Status::Reprocessing,
+            StatusEntry::Accepted(_) => Status::Accepted,
+            StatusEntry::Confirmed => Status::Confirmed,
+            StatusEntry::Failed => Status::Failed,
+        }
+    }
+}
 
 // Structures
 // -----------------------------------------------------------------------------
