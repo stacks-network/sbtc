@@ -4519,6 +4519,7 @@ dependencies = [
  "fake",
  "futures",
  "hashbrown 0.14.5",
+ "hex",
  "mockito 1.4.0",
  "more-asserts",
  "p256k1",

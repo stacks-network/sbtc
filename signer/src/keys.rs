@@ -28,6 +28,8 @@
 //! [^3]: https://github.com/Trust-Machines/p256k1/blob/3ecb941c1af13741d52335ef911693b6d6fda94b/p256k1/src/scalar.rs#L245-L257
 //! [^4]: https://github.com/bitcoin-core/secp256k1/blob/3fdf146bad042a17f6b2f490ef8bd9d8e774cdbd/src/scalar.h#L31-L36
 
+use std::str::FromStr;
+
 use bitcoin::ScriptBuf;
 use bitcoin::TapTweakHash;
 use secp256k1::Parity;
@@ -78,7 +80,7 @@ impl From<&PublicKey> for p256k1::point::Point {
     ///
     /// # Notes
     ///
-    /// An uncompressed serialization of the secp256k1::PublicKey type is
+    /// An uncompressed serialization of the [`secp256k1::PublicKey`] type is
     /// 65 bytes. The first byte denotes that the following slice is an
     /// uncompressed public key on the secp256k1 curve, the next 32 bytes
     /// are for the x-coordinate, and the remaining 32-bytes are for the
@@ -119,7 +121,7 @@ impl From<PublicKey> for p256k1::point::Point {
     }
 }
 
-/// This should only error when the `p256k1::point::Point` is the identity
+/// This should only error when the [`p256k1::point::Point`] is the identity
 /// point (also called the at infinity).
 impl TryFrom<&p256k1::point::Point> for PublicKey {
     type Error = Error;
@@ -259,8 +261,19 @@ impl fake::Dummy<fake::Faker> for PublicKey {
 }
 
 /// A private key type for the secp256k1 elliptic curve.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct PrivateKey(secp256k1::SecretKey);
+
+impl FromStr for PrivateKey {
+    type Err = Error;
+
+    /// Attempts to parse a [`PrivateKey`] from the hex representation of a
+    /// a secp256k1 private key.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let data = hex::decode(s).map_err(Error::DecodeHexBytes)?;
+        PrivateKey::from_slice(&data)
+    }
+}
 
 impl From<secp256k1::SecretKey> for PrivateKey {
     fn from(value: secp256k1::SecretKey) -> Self {
@@ -274,7 +287,7 @@ impl From<PrivateKey> for secp256k1::SecretKey {
     }
 }
 
-/// This should only error when the `p256k1::scalar::Scalar` is zero.
+/// This should only error when the [`p256k1::scalar::Scalar`] is zero.
 impl TryFrom<&p256k1::scalar::Scalar> for PrivateKey {
     type Error = Error;
     fn try_from(value: &p256k1::scalar::Scalar) -> Result<Self, Self::Error> {
@@ -303,6 +316,10 @@ impl PrivateKey {
     }
     /// Creates a private key directly from a slice.
     pub fn from_slice(data: &[u8]) -> Result<Self, Error> {
+        if data.len() != 32 {
+            return Err(Error::InvalidPrivateKeyLength(data.len()));
+        }
+
         secp256k1::SecretKey::from_slice(data)
             .map(Self)
             .map_err(Error::InvalidPrivateKey)
@@ -418,6 +435,27 @@ mod tests {
             let sk = SecretKey::new(rng);
             Key(secp256k1::PublicKey::from_secret_key_global(&sk))
         }
+    }
+
+    #[test]
+    fn invalid_private_key_length_returns_appropriate_error() {
+        // Double-check that 32-bytes works first.
+        let bytes = [1; 32];
+        let _ =
+            PrivateKey::from_slice(&bytes).expect("BUG: 32 bytes should be a valid private key");
+
+        // Test underflow
+        assert!(matches!(
+            PrivateKey::from_slice(&[0; 31]),
+            Err(Error::InvalidPrivateKeyLength(31))
+        ));
+
+        // Test overflow
+        let bytes = [0; 33];
+        assert!(matches!(
+            PrivateKey::from_slice(&bytes),
+            Err(Error::InvalidPrivateKeyLength(33))
+        ));
     }
 
     #[test]
