@@ -276,6 +276,9 @@ pub struct RotateKeysTransaction {
     pub aggregate_key: PublicKey,
     /// The public keys of the signers.
     pub signer_set: Vec<PublicKey>,
+    /// The number of signatures required for the multi-sig wallet.
+    #[sqlx(try_from = "i32")]
+    pub signatures_required: u16,
 }
 
 /// The types of transactions the signer is interested in.

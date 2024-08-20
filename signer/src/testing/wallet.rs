@@ -1,5 +1,7 @@
 //! Helper module for constructing the signers multi-sig wallet.
 
+use std::sync::LazyLock;
+
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::chainstate::stacks::TransactionPostConditionMode;
 use blockstack_lib::chainstate::stacks::TransactionSmartContract;
@@ -14,9 +16,14 @@ use crate::stacks::contracts::AsTxPayload;
 use crate::stacks::contracts::StacksTxPostConditions;
 use crate::stacks::wallet::SignerWallet;
 
+/// A static for a test 2-3 multi-sig wallet. This wallet is loaded with
+/// funds in the local devnet environment.
+pub static WALLET: LazyLock<(SignerWallet, [Keypair; 3], u16)> = LazyLock::new(generate_wallet);
+
 /// Helper function for generating a test 2-3 multi-sig wallet
-pub fn generate_wallet() -> (SignerWallet, [Keypair; 3]) {
+pub fn generate_wallet() -> (SignerWallet, [Keypair; 3], u16) {
     let mut rng = StdRng::seed_from_u64(100);
+    let signatures_required = 2;
 
     let key_pairs = [
         Keypair::new_global(&mut rng),
@@ -25,9 +32,10 @@ pub fn generate_wallet() -> (SignerWallet, [Keypair; 3]) {
     ];
 
     let public_keys = key_pairs.map(|kp| kp.public_key().into());
-    let wallet = SignerWallet::new(&public_keys, 2, NetworkKind::Testnet, 0).unwrap();
+    let wallet =
+        SignerWallet::new(&public_keys, signatures_required, NetworkKind::Testnet, 0).unwrap();
 
-    (wallet, key_pairs)
+    (wallet, key_pairs, signatures_required)
 }
 
 /// A trait for deploying the smart contract
