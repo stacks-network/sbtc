@@ -93,7 +93,7 @@ pub struct SignerDepositDecision {
     /// ID of the transaction containing the deposit request.
     pub txid: bitcoin::Txid,
     /// Index of the deposit request UTXO.
-    pub output_index: usize,
+    pub output_index: u32,
     /// Whether or not the signer has accepted the deposit request.
     pub accepted: bool,
 }

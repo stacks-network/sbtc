@@ -260,7 +260,7 @@ where
             block_hash: block.block_hash().to_byte_array().to_vec(),
             block_height: block
                 .bip34_block_height()
-                .expect("Failed to get block height") as i64,
+                .expect("Failed to get block height"),
             parent_hash: block.header.prev_blockhash.to_byte_array().to_vec(),
             confirms: Vec::new(),
         };

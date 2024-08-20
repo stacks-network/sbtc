@@ -40,7 +40,7 @@ where
     fn create(
         network: network::in_memory::MpmcBroadcaster,
         storage: S,
-        context_window: usize,
+        context_window: u16,
         signer_private_key: PrivateKey,
         threshold: u32,
         rng: Rng,
@@ -108,7 +108,7 @@ impl<S> RunningEventLoopHandle<S> {
     }
 
     /// Wait for N instances of the given event
-    pub async fn wait_for_events(&mut self, msg: transaction_signer::TxSignerEvent, mut n: usize) {
+    pub async fn wait_for_events(&mut self, msg: transaction_signer::TxSignerEvent, mut n: u16) {
         while let Some(event) = self.test_observer_rx.recv().await {
             if event == msg {
                 n -= 1;
@@ -139,7 +139,7 @@ pub struct TestEnvironment<C> {
     /// Function to construct a storage instance
     pub storage_constructor: C,
     /// Bitcoin context window
-    pub context_window: usize,
+    pub context_window: u16,
     /// Num signers
     pub num_signers: usize,
     /// Signing threshold
@@ -264,9 +264,9 @@ where
                 .expect("failed to send notification");
         }
 
-        let num_expected_decisions = (self.num_signers - 1)
+        let num_expected_decisions = (self.num_signers - 1) as u16
             * self.context_window
-            * self.test_model_parameters.num_deposit_requests_per_block;
+            * self.test_model_parameters.num_deposit_requests_per_block as u16;
 
         for handle in event_loop_handles.iter_mut() {
             handle
@@ -552,7 +552,7 @@ where
     }
 
     async fn extract_context_window_block_hashes(
-        context_window: usize,
+        context_window: u16,
         storage: &S,
     ) -> Vec<model::BitcoinBlockHash> {
         let mut context_window_block_hashes = Vec::new();
@@ -574,7 +574,7 @@ where
     }
 
     async fn extract_stacks_context_window_block_hashes(
-        context_window: usize,
+        context_window: u16,
         storage: &S,
     ) -> Vec<model::StacksBlockHash> {
         let canoncial_tip_block_hash = storage
@@ -636,7 +636,7 @@ where
 
     async fn assert_only_deposit_requests_in_context_window_has_decisions(
         storage: &S,
-        context_window: usize,
+        context_window: u16,
         deposit_requests: &[model::DepositRequest],
         num_expected_decisions: usize,
     ) {
@@ -666,7 +666,7 @@ where
 
     async fn assert_only_withdraw_requests_in_context_window_has_decisions(
         storage: &S,
-        context_window: usize,
+        context_window: u16,
         withdraw_requests: &[model::WithdrawRequest],
         num_expected_decisions: usize,
     ) {

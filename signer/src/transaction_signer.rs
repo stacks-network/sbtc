@@ -119,7 +119,7 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
     /// The threshold for the signer
     pub threshold: u32,
     /// How many bitcoin blocks back from the chain tip the signer will look for requests.
-    pub context_window: usize,
+    pub context_window: u16,
     /// The network we are working in.
     pub network_kind: bitcoin::Network,
     /// Random number generator used for encryption
@@ -491,12 +491,7 @@ where
     ) -> Result<Vec<model::DepositRequest>, error::Error> {
         Ok(self
             .storage
-            .get_pending_deposit_requests(
-                chain_tip,
-                self.context_window
-                    .try_into()
-                    .map_err(|_| error::Error::TypeConversion)?,
-            )
+            .get_pending_deposit_requests(chain_tip, self.context_window)
             .await?)
     }
 
@@ -507,12 +502,7 @@ where
     ) -> Result<Vec<model::WithdrawRequest>, error::Error> {
         Ok(self
             .storage
-            .get_pending_withdraw_requests(
-                chain_tip,
-                self.context_window
-                    .try_into()
-                    .map_err(|_| error::Error::TypeConversion)?,
-            )
+            .get_pending_withdraw_requests(chain_tip, self.context_window)
             .await?)
     }
 
@@ -534,10 +524,7 @@ where
         let msg = message::SignerDepositDecision {
             txid: bitcoin::Txid::from_slice(&deposit_request.txid)
                 .map_err(error::Error::SliceConversion)?,
-            output_index: deposit_request
-                .output_index
-                .try_into()
-                .map_err(|_| error::Error::TypeConversion)?,
+            output_index: deposit_request.output_index,
             accepted: is_accepted,
         };
 
@@ -588,18 +575,11 @@ where
         decision: &message::SignerDepositDecision,
         signer_pub_key: PublicKey,
     ) -> Result<(), error::Error> {
-        let txid = decision.txid.to_byte_array().to_vec();
-        let output_index = decision
-            .output_index
-            .try_into()
-            .map_err(|_| error::Error::TypeConversion)?;
-        let is_accepted = decision.accepted;
-
         let signer_decision = model::DepositSigner {
-            txid,
-            output_index,
+            txid: decision.txid.to_byte_array().to_vec(),
+            output_index: decision.output_index,
             signer_pub_key,
-            is_accepted,
+            is_accepted: decision.accepted,
         };
 
         self.storage
@@ -622,19 +602,11 @@ where
         decision: &message::SignerWithdrawDecision,
         signer_pub_key: PublicKey,
     ) -> Result<(), error::Error> {
-        let request_id = decision
-            .request_id
-            .try_into()
-            .map_err(|_| error::Error::TypeConversion)?;
-
-        let block_hash = decision.block_hash.to_vec();
-        let is_accepted = decision.accepted;
-
         let signer_decision = model::WithdrawSigner {
-            request_id,
-            block_hash,
+            request_id: decision.request_id,
+            block_hash: decision.block_hash.to_vec(),
             signer_pub_key,
-            is_accepted,
+            is_accepted: decision.accepted,
         };
 
         self.storage

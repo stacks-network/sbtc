@@ -18,7 +18,8 @@ pub struct BitcoinBlock {
     #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub block_hash: BitcoinBlockHash,
     /// Block height.
-    pub block_height: i64,
+    #[sqlx(try_from = "i64")]
+    pub block_height: u64,
     /// Hash of the parent block.
     #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub parent_hash: BitcoinBlockHash,
@@ -35,7 +36,8 @@ pub struct StacksBlock {
     #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub block_hash: StacksBlockHash,
     /// Block height.
-    pub block_height: i64,
+    #[sqlx(try_from = "i64")]
+    pub block_height: u64,
     /// Hash of the parent block.
     #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub parent_hash: StacksBlockHash,
@@ -50,7 +52,8 @@ pub struct DepositRequest {
     pub txid: BitcoinTxId,
     /// Index of the deposit request UTXO.
     #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
-    pub output_index: i32,
+    #[sqlx(try_from = "i32")]
+    pub output_index: u32,
     /// Script spendable by the sBTC signers.
     pub spend_script: Bytes,
     /// Script spendable by the depositor.
@@ -59,10 +62,14 @@ pub struct DepositRequest {
     /// can be a smart contract address.
     pub recipient: StacksAddress,
     /// The amount deposited.
-    pub amount: i64,
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..i64::MAX as u64"))]
+    pub amount: u64,
     /// The maximum portion of the deposited amount that may
     /// be used to pay for transaction fees.
-    pub max_fee: i64,
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..i64::MAX as u64"))]
+    pub max_fee: u64,
     /// The addresses of the input UTXOs funding the deposit request.
     #[cfg_attr(feature = "testing", dummy(faker = "BitcoinAddresses(1..5)"))]
     pub sender_addresses: Vec<BitcoinAddress>,
@@ -102,12 +109,12 @@ impl DepositRequest {
             .collect();
         Self {
             txid: deposit.info.outpoint.txid.to_byte_array().to_vec(),
-            output_index: deposit.info.outpoint.vout as i32,
+            output_index: deposit.info.outpoint.vout,
             spend_script: deposit.info.deposit_script.to_bytes(),
             reclaim_script: deposit.info.reclaim_script.to_bytes(),
             recipient: deposit.info.recipient.to_string(),
-            amount: deposit.info.amount as i64,
-            max_fee: deposit.info.max_fee as i64,
+            amount: deposit.info.amount,
+            max_fee: deposit.info.max_fee,
             sender_addresses: sender_addresses.into_iter().collect(),
         }
     }
@@ -122,7 +129,8 @@ pub struct DepositSigner {
     pub txid: BitcoinTxId,
     /// Output index of the deposit request.
     #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
-    pub output_index: i32,
+    #[sqlx(try_from = "i32")]
+    pub output_index: u32,
     /// Public key of the signer.
     pub signer_pub_key: PublicKey,
     /// Signals if the signer is prepared to sign for this request.
@@ -134,17 +142,22 @@ pub struct DepositSigner {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct WithdrawRequest {
     /// Request ID of the withdrawal request.
-    pub request_id: i32,
+    #[sqlx(try_from = "i64")]
+    pub request_id: u64,
     /// Stacks block hash of the withdrawal request.
     #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub block_hash: StacksBlockHash,
     /// The address that should receive the BTC withdrawal.
     pub recipient: BitcoinAddress,
     /// The amount to withdraw.
-    pub amount: i64,
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..i64::MAX as u64"))]
+    pub amount: u64,
     /// The maximum portion of the withdrawn amount that may
     /// be used to pay for transaction fees.
-    pub max_fee: i64,
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..i64::MAX as u64"))]
+    pub max_fee: u64,
     /// The address that initiated the request.
     pub sender_address: StacksAddress,
 }
@@ -154,7 +167,8 @@ pub struct WithdrawRequest {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct WithdrawSigner {
     /// Request ID of the withdrawal request.
-    pub request_id: i32,
+    #[sqlx(try_from = "i64")]
+    pub request_id: u64,
     /// Stacks block hash of the withdrawal request.
     #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub block_hash: StacksBlockHash,

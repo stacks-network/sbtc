@@ -16,8 +16,6 @@ RUN mv /tmp/smithy-install/smithy-cli-linux-aarch64/* /tmp/smithy-install/smithy
 RUN /tmp/smithy-install/smithy/install
 RUN rm -rf /tmp/smithy-install
 
-RUN cargo install sqlx-cli
-
 RUN mkdir -p /tmp/node-install
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/node-install/nodesource_setup.sh
 RUN bash /tmp/node-install/nodesource_setup.sh

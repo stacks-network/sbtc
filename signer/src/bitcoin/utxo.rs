@@ -102,9 +102,9 @@ pub struct SbtcRequests {
     /// constructing their next UTXO.
     pub signer_state: SignerBtcState,
     /// The minimum acceptable number of votes for any given request.
-    pub accept_threshold: u32,
+    pub accept_threshold: u16,
     /// The total number of signers.
-    pub num_signers: u32,
+    pub num_signers: u16,
 }
 
 impl SbtcRequests {
@@ -165,7 +165,7 @@ impl SbtcRequests {
     }
 
     fn reject_capacity(&self) -> u32 {
-        self.num_signers.saturating_sub(self.accept_threshold)
+        self.num_signers.saturating_sub(self.accept_threshold) as u32
     }
 
     /// Calculates the minimum fee threshold for servicing a user's
@@ -343,29 +343,15 @@ impl DepositRequest {
         let txid = bitcoin::Txid::from_byte_array(
             request.txid.try_into().map_err(|_| Error::TypeConversion)?,
         );
-
-        let vout = request
-            .output_index
-            .try_into()
-            .map_err(|_| Error::TypeConversion)?;
-
-        let max_fee = request
-            .max_fee
-            .try_into()
-            .map_err(|_| Error::TypeConversion)?;
+        let vout = request.output_index;
 
         let signer_bitmap = BitArray::ZERO; // TODO(326): Populate
 
-        let amount = request
-            .amount
-            .try_into()
-            .map_err(|_| Error::TypeConversion)?;
-
         Ok(Self {
             outpoint: OutPoint { txid, vout },
-            max_fee,
+            max_fee: request.max_fee,
             signer_bitmap,
-            amount,
+            amount: request.amount,
             deposit_script: ScriptBuf::from_bytes(request.spend_script),
             reclaim_script: ScriptBuf::from_bytes(request.reclaim_script),
             signers_public_key,
@@ -407,26 +393,17 @@ impl WithdrawalRequest {
         request: model::WithdrawRequest,
         network: bitcoin::Network,
     ) -> Result<Self, Error> {
-        let amount = request
-            .amount
-            .try_into()
-            .map_err(|_| Error::TypeConversion)?;
-        let max_fee = request
-            .max_fee
-            .try_into()
-            .map_err(|_| Error::TypeConversion)?;
-        let address: Address<NetworkUnchecked> = request
+        let address: Address = request
             .sender_address
-            .parse()
-            .map_err(Error::ParseAddress)?;
-        let address = address
+            .parse::<Address<NetworkUnchecked>>()
+            .map_err(Error::ParseAddress)?
             .require_network(network)
             .map_err(Error::BitcoinAddressParse)?;
         let signer_bitmap = BitArray::ZERO; // TODO(326): Populate
 
         Ok(Self {
-            amount,
-            max_fee,
+            amount: request.amount,
+            max_fee: request.max_fee,
             address,
             signer_bitmap,
         })

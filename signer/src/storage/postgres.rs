@@ -77,15 +77,9 @@ pub struct PgStore(sqlx::PgPool);
 impl TryFrom<&NakamotoBlock> for model::StacksBlock {
     type Error = Error;
     fn try_from(block: &NakamotoBlock) -> Result<Self, Self::Error> {
-        let block_height = block
-            .header
-            .chain_length
-            .try_into()
-            .map_err(|_| Error::TypeConversion)?;
-
         Ok(Self {
             block_hash: block.block_id().to_bytes().to_vec(),
-            block_height,
+            block_height: block.header.chain_length,
             parent_hash: block.header.parent_block_id.to_bytes().to_vec(),
         })
     }
@@ -272,7 +266,7 @@ impl super::DbRead for PgStore {
     async fn get_pending_deposit_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        context_window: i32,
+        context_window: u16,
     ) -> Result<Vec<model::DepositRequest>, Self::Error> {
         sqlx::query_as::<_, model::DepositRequest>(
             r#"
@@ -312,7 +306,7 @@ impl super::DbRead for PgStore {
             "#,
         )
         .bind(chain_tip)
-        .bind(context_window)
+        .bind(context_window as i32)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -321,8 +315,8 @@ impl super::DbRead for PgStore {
     async fn get_pending_accepted_deposit_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        context_window: i32,
-        threshold: i64,
+        context_window: u16,
+        threshold: u16,
     ) -> Result<Vec<model::DepositRequest>, Self::Error> {
         sqlx::query_as::<_, model::DepositRequest>(
             r#"
@@ -370,8 +364,8 @@ impl super::DbRead for PgStore {
             "#,
         )
         .bind(chain_tip)
-        .bind(context_window)
-        .bind(threshold)
+        .bind(context_window as i32)
+        .bind(threshold as i32)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -409,7 +403,7 @@ impl super::DbRead for PgStore {
     async fn get_deposit_signers(
         &self,
         txid: &model::BitcoinTxId,
-        output_index: i32,
+        output_index: u32,
     ) -> Result<Vec<model::DepositSigner>, Self::Error> {
         sqlx::query_as::<_, model::DepositSigner>(
             "SELECT
@@ -422,7 +416,7 @@ impl super::DbRead for PgStore {
             WHERE txid = $1 AND output_index = $2",
         )
         .bind(txid)
-        .bind(output_index)
+        .bind(i32::try_from(output_index).map_err(Error::ConversionDatabaseInt)?)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -430,7 +424,7 @@ impl super::DbRead for PgStore {
 
     async fn get_withdraw_signers(
         &self,
-        request_id: i32,
+        request_id: u64,
         block_hash: &model::StacksBlockHash,
     ) -> Result<Vec<model::WithdrawSigner>, Self::Error> {
         sqlx::query_as::<_, model::WithdrawSigner>(
@@ -443,7 +437,7 @@ impl super::DbRead for PgStore {
             FROM sbtc_signer.withdraw_signers
             WHERE request_id = $1 AND block_hash = $2",
         )
-        .bind(request_id)
+        .bind(i64::try_from(request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(block_hash)
         .fetch_all(&self.0)
         .await
@@ -453,7 +447,7 @@ impl super::DbRead for PgStore {
     async fn get_pending_withdraw_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        context_window: i32,
+        context_window: u16,
     ) -> Result<Vec<model::WithdrawRequest>, Self::Error> {
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
             return Ok(Vec::new());
@@ -522,7 +516,7 @@ impl super::DbRead for PgStore {
         )
         .bind(chain_tip)
         .bind(stacks_chain_tip)
-        .bind(context_window)
+        .bind(context_window as i32)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -531,8 +525,8 @@ impl super::DbRead for PgStore {
     async fn get_pending_accepted_withdraw_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        context_window: i32,
-        threshold: i64,
+        context_window: u16,
+        threshold: u16,
     ) -> Result<Vec<model::WithdrawRequest>, Self::Error> {
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
             return Ok(Vec::new());
@@ -608,8 +602,8 @@ impl super::DbRead for PgStore {
         )
         .bind(chain_tip)
         .bind(stacks_chain_tip)
-        .bind(context_window)
-        .bind(threshold)
+        .bind(context_window as i32)
+        .bind(threshold as i64)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -752,7 +746,7 @@ impl super::DbWrite for PgStore {
             ON CONFLICT DO NOTHING",
         )
         .bind(&block.block_hash)
-        .bind(block.block_height)
+        .bind(i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?)
         .bind(&block.parent_hash)
         .bind(&block.confirms)
         .execute(&self.0)
@@ -773,7 +767,7 @@ impl super::DbWrite for PgStore {
             ON CONFLICT DO NOTHING",
         )
         .bind(&block.block_hash)
-        .bind(block.block_height)
+        .bind(i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?)
         .bind(&block.parent_hash)
         .execute(&self.0)
         .await
@@ -801,12 +795,12 @@ impl super::DbWrite for PgStore {
             ON CONFLICT DO NOTHING",
         )
         .bind(&deposit_request.txid)
-        .bind(deposit_request.output_index)
+        .bind(deposit_request.output_index as i32)
         .bind(&deposit_request.spend_script)
         .bind(&deposit_request.reclaim_script)
         .bind(&deposit_request.recipient)
-        .bind(deposit_request.amount)
-        .bind(deposit_request.max_fee)
+        .bind(i64::try_from(deposit_request.amount).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(deposit_request.max_fee).map_err(Error::ConversionDatabaseInt)?)
         .bind(&deposit_request.sender_addresses)
         .execute(&self.0)
         .await
@@ -834,12 +828,12 @@ impl super::DbWrite for PgStore {
 
         for req in deposit_requests {
             txid.push(req.txid);
-            output_index.push(req.output_index);
+            output_index.push(req.output_index as i32);
             spend_script.push(req.spend_script);
             reclaim_script.push(req.reclaim_script);
             recipient.push(req.recipient);
-            amount.push(req.amount);
-            max_fee.push(req.max_fee);
+            amount.push(i64::try_from(req.amount).map_err(Error::ConversionDatabaseInt)?);
+            max_fee.push(i64::try_from(req.max_fee).map_err(Error::ConversionDatabaseInt)?);
             // We need to join the addresses like this (and later split
             // them), because handling of multidimensional arrays in
             // postgres is tough. The naive approach of doing
@@ -917,11 +911,11 @@ impl super::DbWrite for PgStore {
             VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT DO NOTHING",
         )
-        .bind(withdraw_request.request_id)
+        .bind(i64::try_from(withdraw_request.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(&withdraw_request.block_hash)
         .bind(&withdraw_request.recipient)
-        .bind(withdraw_request.amount)
-        .bind(withdraw_request.max_fee)
+        .bind(i64::try_from(withdraw_request.amount).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(withdraw_request.max_fee).map_err(Error::ConversionDatabaseInt)?)
         .bind(&withdraw_request.sender_address)
         .execute(&self.0)
         .await
@@ -946,7 +940,7 @@ impl super::DbWrite for PgStore {
             ON CONFLICT DO NOTHING",
         )
         .bind(&decision.txid)
-        .bind(decision.output_index)
+        .bind(decision.output_index as i32)
         .bind(decision.signer_pub_key)
         .bind(decision.is_accepted)
         .execute(&self.0)
@@ -970,7 +964,7 @@ impl super::DbWrite for PgStore {
             VALUES ($1, $2, $3, $4)
             ON CONFLICT DO NOTHING",
         )
-        .bind(decision.request_id)
+        .bind(i64::try_from(decision.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(&decision.block_hash)
         .bind(decision.signer_pub_key)
         .bind(decision.is_accepted)
@@ -993,7 +987,7 @@ impl super::DbWrite for PgStore {
         )
         .bind(&transaction.txid)
         .bind(&transaction.tx)
-        .bind(transaction.tx_type as TransactionType)
+        .bind(transaction.tx_type)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1123,7 +1117,9 @@ impl super::DbWrite for PgStore {
         for block in blocks {
             block_ids.push(block.block_hash);
             parent_block_ids.push(block.parent_hash);
-            chain_lengths.push(block.block_height);
+            let block_height =
+                i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?;
+            chain_lengths.push(block_height);
         }
 
         sqlx::query(

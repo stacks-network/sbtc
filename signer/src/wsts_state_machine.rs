@@ -166,7 +166,7 @@ type WstsCoordinator = wsts::state_machine::coordinator::frost::Coordinator<wsts
 
 impl CoordinatorStateMachine {
     /// Create a new state machine
-    pub fn new<I>(signers: I, threshold: u32, message_private_key: PrivateKey) -> Self
+    pub fn new<I>(signers: I, threshold: u16, message_private_key: PrivateKey) -> Self
     where
         I: IntoIterator<Item = PublicKey>,
     {
@@ -188,7 +188,7 @@ impl CoordinatorStateMachine {
         let config = wsts::state_machine::coordinator::Config {
             num_signers,
             num_keys: num_signers,
-            threshold,
+            threshold: threshold as u32,
             dkg_threshold: num_signers,
             message_private_key: message_private_key.into(),
             dkg_public_timeout: None,
@@ -219,7 +219,7 @@ impl CoordinatorStateMachine {
         storage: &mut S,
         aggregate_key: PublicKey,
         signers: I,
-        threshold: u32,
+        threshold: u16,
         message_private_key: PrivateKey,
     ) -> Result<Self, Error>
     where

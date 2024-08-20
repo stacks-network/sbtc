@@ -13,8 +13,8 @@ use crate::storage::model;
 /// A store wrapped in an Arc<Mutex<...>> for interior mutability
 pub type SharedStore = Arc<Mutex<Store>>;
 
-type DepositRequestPk = (model::BitcoinTxId, i32);
-type WithdrawRequestPk = (i32, model::StacksBlockHash);
+type DepositRequestPk = (model::BitcoinTxId, u32);
+type WithdrawRequestPk = (u64, model::StacksBlockHash);
 
 /// In-memory store
 #[derive(Debug, Default)]
@@ -126,7 +126,7 @@ impl super::DbRead for SharedStore {
     async fn get_pending_deposit_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        context_window: i32,
+        context_window: u16,
     ) -> Result<Vec<model::DepositRequest>, Self::Error> {
         let store = self.lock().await;
 
@@ -159,15 +159,15 @@ impl super::DbRead for SharedStore {
     async fn get_pending_accepted_deposit_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        context_window: i32,
-        threshold: i64,
+        context_window: u16,
+        threshold: u16,
     ) -> Result<Vec<model::DepositRequest>, Self::Error> {
         let pending_deposit_requests = self
             .get_pending_deposit_requests(chain_tip, context_window)
             .await?;
         let store = self.lock().await;
 
-        let threshold = threshold.try_into().expect("type conversion failure");
+        let threshold = threshold as usize;
 
         Ok(pending_deposit_requests
             .into_iter()
@@ -210,7 +210,7 @@ impl super::DbRead for SharedStore {
     async fn get_deposit_signers(
         &self,
         txid: &model::BitcoinTxId,
-        output_index: i32,
+        output_index: u32,
     ) -> Result<Vec<model::DepositSigner>, Self::Error> {
         Ok(self
             .lock()
@@ -223,7 +223,7 @@ impl super::DbRead for SharedStore {
 
     async fn get_withdraw_signers(
         &self,
-        request_id: i32,
+        request_id: u64,
         block_hash: &model::StacksBlockHash,
     ) -> Result<Vec<model::WithdrawSigner>, Self::Error> {
         Ok(self
@@ -238,7 +238,7 @@ impl super::DbRead for SharedStore {
     async fn get_pending_withdraw_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        context_window: i32,
+        context_window: u16,
     ) -> Result<Vec<model::WithdrawRequest>, Self::Error> {
         let Some(bitcoin_chain_tip) = self.get_bitcoin_block(chain_tip).await? else {
             return Ok(Vec::new());
@@ -252,7 +252,7 @@ impl super::DbRead for SharedStore {
                     .map(|opt| opt.map(|block| (block.clone(), block.parent_hash)))
             },
         )
-        .skip(context_window.try_into().unwrap_or_default())
+        .skip(context_window as usize)
         .boxed()
         .try_next()
         .await?;
@@ -294,15 +294,15 @@ impl super::DbRead for SharedStore {
     async fn get_pending_accepted_withdraw_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        context_window: i32,
-        threshold: i64,
+        context_window: u16,
+        threshold: u16,
     ) -> Result<Vec<model::WithdrawRequest>, Self::Error> {
         let pending_withdraw_requests = self
             .get_pending_withdraw_requests(chain_tip, context_window)
             .await?;
         let store = self.lock().await;
 
-        let threshold = threshold.try_into().expect("type conversion failure");
+        let threshold = threshold as usize;
 
         Ok(pending_withdraw_requests
             .into_iter()
