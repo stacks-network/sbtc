@@ -1,7 +1,7 @@
 //! Handlers for withdrawal endpoints.
 use warp::reply::{json, with_status, Reply};
 
-use crate::api::models::common::{BlockHeight, Status};
+use crate::api::models::common::Status;
 use crate::api::models::withdrawal::{
     requests::{CreateWithdrawalRequestBody, GetWithdrawalsQuery, UpdateWithdrawalsRequestBody},
     responses::{
@@ -146,12 +146,12 @@ pub async fn create_withdrawal(
         let CreateWithdrawalRequestBody {
             request_id,
             stacks_block_hash,
+            stacks_block_height,
             recipient,
             amount,
             parameters,
         } = body;
 
-        let stacks_block_height: BlockHeight = 0;
         let status = Status::Pending;
 
         // Make table entry.

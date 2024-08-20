@@ -59,6 +59,7 @@ static TEST_WITHDRAWAL_DATA: LazyLock<Vec<TestWithdrawalData>> = LazyLock::new(|
 async fn setup_withdrawal_integration_test() -> TestClient {
     let client = TestClient::new();
     client.setup_test().await;
+    let stacks_block_height: u64 = 0;
     for test_withdrawal_data in TEST_WITHDRAWAL_DATA.iter() {
         // Arrange.
         let TestWithdrawalData {
@@ -69,6 +70,7 @@ async fn setup_withdrawal_integration_test() -> TestClient {
         let request: CreateWithdrawalRequestBody = serde_json::from_value(json!({
           "requestId": request_id,
           "stacksBlockHash": stacks_block_hash,
+          "stacksBlockHeight": stacks_block_height,
           "recipient": recipient,
           "amount": 0,
           "parameters": {
