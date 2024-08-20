@@ -209,7 +209,7 @@ impl KeyTrait for WithdrawalEntryKey {
     /// The table field name of the partition key.
     const PARTITION_KEY_NAME: &'static str = "RequestId";
     /// The table field name of the sort key.
-    const _SORT_KEY_NAME: &'static str = "StacksBlockHash";
+    const SORT_KEY_NAME: &'static str = "StacksBlockHash";
 }
 
 /// Implements the entry trait for the withdrawal entry.
@@ -295,7 +295,7 @@ impl KeyTrait for WithdrawalInfoEntryKey {
     /// The table field name of the partition key.
     const PARTITION_KEY_NAME: &'static str = "OpStatus";
     /// The table field name of the sort key.
-    const _SORT_KEY_NAME: &'static str = "LastUpdateHeight";
+    const SORT_KEY_NAME: &'static str = "LastUpdateHeight";
 }
 
 /// Implements the entry trait for the withdrawal info entry.

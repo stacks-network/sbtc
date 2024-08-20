@@ -63,7 +63,7 @@ impl KeyTrait for ChainstateEntryKey {
     /// The table field name of the partition key.
     const PARTITION_KEY_NAME: &'static str = "Height";
     /// The table field name of the sort key.
-    const _SORT_KEY_NAME: &'static str = "Hash";
+    const SORT_KEY_NAME: &'static str = "Hash";
 }
 
 /// Implements the entry trait for the deposit entry.
@@ -178,7 +178,7 @@ impl KeyTrait for SpecialApiStateKey {
     /// The table field name of the partition key.
     const PARTITION_KEY_NAME: &'static str = "Height";
     /// The table field name of the sort key.
-    const _SORT_KEY_NAME: &'static str = "Hash";
+    const SORT_KEY_NAME: &'static str = "Hash";
 }
 
 /// Implements the entry trait for the deposit entry.

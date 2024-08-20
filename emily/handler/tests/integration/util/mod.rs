@@ -21,6 +21,7 @@ use emily_handler::{
         },
     },
     context::EmilyContext,
+    database::entries::deposit::DepositEntryKey,
 };
 use error::TestError;
 use reqwest::{Client, RequestBuilder};
@@ -74,6 +75,14 @@ pub async fn test_context() -> EmilyContext {
     EmilyContext::local_test_instance()
         .await
         .expect("Failed to setup local test context for Emily integration test.")
+}
+
+/// Gets key from deposit.
+pub fn entry_key_from_deposit(deposit: &Deposit) -> DepositEntryKey {
+    return DepositEntryKey {
+        bitcoin_txid: deposit.bitcoin_txid.clone(),
+        bitcoin_tx_output_index: deposit.bitcoin_tx_output_index,
+    };
 }
 
 /// Test client to make API calls within integration tests. This takes the place of what

@@ -137,7 +137,7 @@ pub trait KeyTrait: serde::Serialize + for<'de> serde::Deserialize<'de> {
     /// Parition key name.
     const PARTITION_KEY_NAME: &'static str;
     /// Sort key name.
-    const _SORT_KEY_NAME: &'static str;
+    const SORT_KEY_NAME: &'static str;
 }
 
 /// Trait that defines a primary index.
@@ -255,6 +255,52 @@ pub(crate) trait TableIndexTrait {
                 <<Self::Entry as EntryTrait>::Key as KeyTrait>::PARTITION_KEY_NAME,
             )
             .expression_attribute_values(":v", serde_dynamo::to_attribute_value(partition_key)?)
+            .scan_index_forward(false)
+            .send()
+            .await?;
+        // Convert data into output format.
+        let entries: Vec<Self::Entry> =
+            serde_dynamo::from_items(query_output.items.unwrap_or_default())?;
+        let next_token = maybe_next_token_from_last_evaluated_key::<Self::SearchToken>(
+            query_output.last_evaluated_key,
+        )?;
+        // Return.
+        Ok((entries, next_token))
+    }
+
+    /// Generic table query for all attributes with a given primary key.
+    async fn query_with_partition_and_sort_key(
+        dynamodb_client: &aws_sdk_dynamodb::Client,
+        settings: &Settings,
+        partition_key: &<<Self::Entry as EntryTrait>::Key as KeyTrait>::PartitionKey,
+        sort_key: &<<Self::Entry as EntryTrait>::Key as KeyTrait>::SortKey,
+        sort_key_operator: &str,
+        maybe_next_token: Option<String>,
+        maybe_page_size: Option<i32>,
+    ) -> Result<(Vec<Self::Entry>, Option<String>), Error> {
+        // Convert inputs into the types needed for querying.
+        let exclusive_start_key =
+            maybe_exclusive_start_key_from_next_token::<Self::SearchToken>(maybe_next_token)?;
+
+        // Query the database.
+        let query_output = dynamodb_client
+            .query()
+            .table_name(Self::table_name(settings))
+            .set_index_name(Self::INDEX_NAME_IF_GSI.map(|s| s.to_string()))
+            .set_exclusive_start_key(exclusive_start_key)
+            .set_limit(maybe_page_size)
+            .key_condition_expression(format!("#pk = :pk AND #sk {sort_key_operator} :sk"))
+            .expression_attribute_names(
+                "#pk",
+                <<Self::Entry as EntryTrait>::Key as KeyTrait>::PARTITION_KEY_NAME,
+            )
+            .expression_attribute_names(
+                "#sk",
+                <<Self::Entry as EntryTrait>::Key as KeyTrait>::SORT_KEY_NAME,
+            )
+            .expression_attribute_values(":pk", serde_dynamo::to_attribute_value(partition_key)?)
+            .expression_attribute_values(":sk", serde_dynamo::to_attribute_value(sort_key)?)
+            .scan_index_forward(false)
             .send()
             .await?;
         // Convert data into output format.

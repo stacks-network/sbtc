@@ -90,7 +90,7 @@ impl KeyTrait for DepositEntryKey {
     /// The table field name of the partition key.
     const PARTITION_KEY_NAME: &'static str = "BitcoinTxid";
     /// The table field name of the sort key.
-    const _SORT_KEY_NAME: &'static str = "BitcoinTxOutputIndex";
+    const SORT_KEY_NAME: &'static str = "BitcoinTxOutputIndex";
 }
 
 /// Implements the entry trait for the deposit entry.
@@ -299,7 +299,7 @@ impl KeyTrait for DepositInfoEntryKey {
     /// The table field name of the partition key.
     const PARTITION_KEY_NAME: &'static str = "OpStatus";
     /// The table field name of the sort key.
-    const _SORT_KEY_NAME: &'static str = "LastUpdateHeight";
+    const SORT_KEY_NAME: &'static str = "LastUpdateHeight";
 }
 
 /// Implements the entry trait for the deposit entry.

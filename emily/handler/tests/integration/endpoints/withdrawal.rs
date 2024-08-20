@@ -350,7 +350,7 @@ async fn update_withdrawal() {
             status: StatusEntry::Pending,
             message: "Just received withdrawal".to_string(),
             stacks_block_height: 0,
-            stacks_block_hash: "test_stacks_block_hash_5".to_string(),
+            stacks_block_hash: "test_stacks_block_hash_1".to_string(),
         },
         WithdrawalEvent {
             status: StatusEntry::Accepted(fulfillment.clone()),
