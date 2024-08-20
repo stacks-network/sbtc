@@ -134,7 +134,7 @@ pub trait AsContractCall {
         Error: From<<S as DbRead>::Error>;
 }
 
-/// Thing
+/// An enum representing all contract calls that the signers can make.
 #[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ContractCall {
     /// Call the `complete-deposit-wrapper` function in the `sbtc-deposit`

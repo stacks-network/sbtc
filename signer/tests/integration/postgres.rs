@@ -465,7 +465,11 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
         num_stacks_blocks_per_bitcoin_block: 3,
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 1,
-        num_signers_per_request: 7,
+        // The signers in these tests vote to reject the request with 50%
+        // probability, so the number of signers needs to be a bit above
+        // the threshold in order for the test to succeed with accepted
+        // requests.
+        num_signers_per_request: 15,
     };
     let threshold = 4;
     let test_data = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
@@ -652,7 +656,6 @@ async fn writing_transactions_postgres(pool: sqlx::PgPool) {
         block_height: 15,
         parent_hash: parent_hash.to_byte_array().to_vec(),
         confirms: Vec::new(),
-        created_at: time::OffsetDateTime::now_utc(),
     };
 
     // We start by writing the bitcoin block because of the foreign key

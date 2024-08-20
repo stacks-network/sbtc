@@ -87,7 +87,6 @@ impl TryFrom<&NakamotoBlock> for model::StacksBlock {
             block_hash: block.block_id().to_bytes().to_vec(),
             block_height,
             parent_hash: block.header.parent_block_id.to_bytes().to_vec(),
-            created_at: time::OffsetDateTime::now_utc(),
         })
     }
 }
@@ -102,14 +101,12 @@ impl PgStore {
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Option<model::StacksBlockHash>, Error> {
-        sqlx::query_as!(
-            model::StacksBlock,
+        sqlx::query_as::<_, model::StacksBlock>(
             r#"
              SELECT
                  stacks_blocks.block_hash
                , stacks_blocks.block_height
                , stacks_blocks.parent_hash
-               , stacks_blocks.created_at
              FROM sbtc_signer.stacks_blocks stacks_blocks
              JOIN sbtc_signer.bitcoin_blocks bitcoin_blocks
                  ON bitcoin_blocks.confirms @> ARRAY[stacks_blocks.block_hash]
@@ -117,8 +114,8 @@ impl PgStore {
             ORDER BY block_height DESC, block_hash DESC
             LIMIT 1;
             "#,
-            bitcoin_chain_tip
         )
+        .bind(bitcoin_chain_tip)
         .fetch_optional(&self.0)
         .await
         .map(|maybe_block| maybe_block.map(|block| block.block_hash))
@@ -148,7 +145,7 @@ impl PgStore {
             block_hashes.push(tx.block_hash)
         }
 
-        sqlx::query!(
+        sqlx::query(
             r#"
             WITH tx_ids AS (
                 SELECT ROW_NUMBER() OVER (), txid
@@ -162,20 +159,19 @@ impl PgStore {
                 SELECT ROW_NUMBER() OVER (), tx_type::sbtc_signer.transaction_type
                 FROM UNNEST($3::VARCHAR[]) AS tx_type
             )
-            INSERT INTO sbtc_signer.transactions (txid, tx, tx_type, created_at)
+            INSERT INTO sbtc_signer.transactions (txid, tx, tx_type)
             SELECT
                 txid
               , tx
               , tx_type
-              , CURRENT_TIMESTAMP
             FROM tx_ids 
             JOIN txs USING (row_number)
             JOIN transaction_types USING (row_number)
             ON CONFLICT DO NOTHING"#,
-            &tx_ids,
-            &txs_bytes,
-            &tx_types,
         )
+        .bind(&tx_ids)
+        .bind(txs_bytes)
+        .bind(tx_types)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -197,18 +193,16 @@ impl super::DbRead for PgStore {
         &self,
         block_hash: &model::BitcoinBlockHash,
     ) -> Result<Option<model::BitcoinBlock>, Self::Error> {
-        sqlx::query_as!(
-            model::BitcoinBlock,
+        sqlx::query_as::<_, model::BitcoinBlock>(
             "SELECT
                 block_hash
               , block_height
               , parent_hash
               , confirms
-              , created_at
             FROM sbtc_signer.bitcoin_blocks
             WHERE block_hash = $1;",
-            &block_hash
         )
+        .bind(block_hash)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -218,17 +212,15 @@ impl super::DbRead for PgStore {
         &self,
         block_hash: &model::StacksBlockHash,
     ) -> Result<Option<model::StacksBlock>, Self::Error> {
-        sqlx::query_as!(
-            model::StacksBlock,
+        sqlx::query_as::<_, model::StacksBlock>(
             "SELECT
                 block_hash
               , block_height
               , parent_hash
-              , created_at
             FROM sbtc_signer.stacks_blocks
             WHERE block_hash = $1;",
-            &block_hash
         )
+        .bind(block_hash)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -237,16 +229,15 @@ impl super::DbRead for PgStore {
     async fn get_bitcoin_canonical_chain_tip(
         &self,
     ) -> Result<Option<model::BitcoinBlockHash>, Self::Error> {
-        sqlx::query_as!(
-            model::BitcoinBlock,
+        sqlx::query_as::<_, model::BitcoinBlock>(
             "SELECT
                 block_hash
               , block_height
               , parent_hash
               , confirms
-              , created_at
              FROM sbtc_signer.bitcoin_blocks
-             ORDER BY block_height DESC, block_hash DESC"
+             ORDER BY block_height DESC, block_hash DESC
+             LIMIT 1",
         )
         .fetch_optional(&self.0)
         .await
@@ -258,14 +249,12 @@ impl super::DbRead for PgStore {
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Option<model::StacksBlock>, Error> {
-        sqlx::query_as!(
-            model::StacksBlock,
+        sqlx::query_as::<_, model::StacksBlock>(
             r#"
              SELECT
                  stacks_blocks.block_hash
                , stacks_blocks.block_height
                , stacks_blocks.parent_hash
-               , stacks_blocks.created_at
              FROM sbtc_signer.stacks_blocks stacks_blocks
              JOIN sbtc_signer.bitcoin_blocks bitcoin_blocks
                  ON bitcoin_blocks.confirms @> ARRAY[stacks_blocks.block_hash]
@@ -273,8 +262,8 @@ impl super::DbRead for PgStore {
             ORDER BY block_height DESC, block_hash DESC
             LIMIT 1;
             "#,
-            bitcoin_chain_tip
         )
+        .bind(bitcoin_chain_tip)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -285,8 +274,7 @@ impl super::DbRead for PgStore {
         chain_tip: &model::BitcoinBlockHash,
         context_window: i32,
     ) -> Result<Vec<model::DepositRequest>, Self::Error> {
-        sqlx::query_as!(
-            model::DepositRequest,
+        sqlx::query_as::<_, model::DepositRequest>(
             r#"
             WITH RECURSIVE context_window AS (
                 -- Anchor member: Initialize the recursion with the chain tip
@@ -318,14 +306,13 @@ impl super::DbRead for PgStore {
               , deposit_requests.amount
               , deposit_requests.max_fee
               , deposit_requests.sender_addresses
-              , deposit_requests.created_at
             FROM transactions_in_window transactions
             JOIN sbtc_signer.deposit_requests deposit_requests ON
                 deposit_requests.txid = transactions.txid
             "#,
-            chain_tip,
-            context_window,
         )
+        .bind(chain_tip)
+        .bind(context_window)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -337,8 +324,7 @@ impl super::DbRead for PgStore {
         context_window: i32,
         threshold: i64,
     ) -> Result<Vec<model::DepositRequest>, Self::Error> {
-        sqlx::query_as!(
-            model::DepositRequest,
+        sqlx::query_as::<_, model::DepositRequest>(
             r#"
             WITH RECURSIVE context_window AS (
                 -- Anchor member: Initialize the recursion with the chain tip
@@ -374,7 +360,6 @@ impl super::DbRead for PgStore {
               , deposit_requests.amount
               , deposit_requests.max_fee
               , deposit_requests.sender_addresses
-              , deposit_requests.created_at
             FROM transactions_in_window transactions
             JOIN sbtc_signer.deposit_requests deposit_requests USING(txid)
             JOIN sbtc_signer.deposit_signers signers USING(txid, output_index)
@@ -383,10 +368,10 @@ impl super::DbRead for PgStore {
             GROUP BY deposit_requests.txid, deposit_requests.output_index
             HAVING COUNT(signers.txid) >= $3
             "#,
-            chain_tip,
-            context_window,
-            threshold,
         )
+        .bind(chain_tip)
+        .bind(context_window)
+        .bind(threshold)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -396,9 +381,7 @@ impl super::DbRead for PgStore {
         &self,
         signer: &PublicKey,
     ) -> Result<Vec<model::DepositRequest>, Self::Error> {
-        let key = signer.serialize();
-        sqlx::query_as!(
-            model::DepositRequest,
+        sqlx::query_as::<_, model::DepositRequest>(
             r#"
             SELECT
                 requests.txid
@@ -409,7 +392,6 @@ impl super::DbRead for PgStore {
               , requests.amount
               , requests.max_fee
               , requests.sender_addresses
-              , requests.created_at
             FROM sbtc_signer.deposit_requests requests
                  JOIN sbtc_signer.deposit_signers signers
                    ON requests.txid = signers.txid
@@ -417,8 +399,8 @@ impl super::DbRead for PgStore {
             WHERE
                 signers.signer_pub_key = $1
             "#,
-            key.as_slice(),
         )
+        .bind(signer.serialize())
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -476,8 +458,7 @@ impl super::DbRead for PgStore {
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
             return Ok(Vec::new());
         };
-        sqlx::query_as!(
-            model::WithdrawRequest,
+        sqlx::query_as::<_, model::WithdrawRequest>(
             r#"
             WITH RECURSIVE extended_context_window AS (
                 SELECT 
@@ -535,14 +516,13 @@ impl super::DbRead for PgStore {
               , wr.amount
               , wr.max_fee
               , wr.sender_address
-              , wr.created_at
             FROM sbtc_signer.withdraw_requests wr
             JOIN stacks_context_window sc ON wr.block_hash = sc.block_hash
             "#,
-            chain_tip,
-            stacks_chain_tip,
-            context_window,
         )
+        .bind(chain_tip)
+        .bind(stacks_chain_tip)
+        .bind(context_window)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -557,8 +537,7 @@ impl super::DbRead for PgStore {
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
             return Ok(Vec::new());
         };
-        sqlx::query_as!(
-            model::WithdrawRequest,
+        sqlx::query_as::<_, model::WithdrawRequest>(
             r#"
             WITH RECURSIVE extended_context_window AS (
                 SELECT 
@@ -616,7 +595,6 @@ impl super::DbRead for PgStore {
               , wr.amount
               , wr.max_fee
               , wr.sender_address
-              , wr.created_at
             FROM sbtc_signer.withdraw_requests wr
             JOIN stacks_context_window sc ON wr.block_hash = sc.block_hash
             JOIN sbtc_signer.withdraw_signers signers ON
@@ -627,11 +605,11 @@ impl super::DbRead for PgStore {
             GROUP BY wr.request_id, wr.block_hash
             HAVING COUNT(wr.request_id) >= $4
             "#,
-            chain_tip,
-            stacks_chain_tip,
-            context_window,
-            threshold,
         )
+        .bind(chain_tip)
+        .bind(stacks_chain_tip)
+        .bind(context_window)
+        .bind(threshold)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -641,11 +619,10 @@ impl super::DbRead for PgStore {
         &self,
         txid: &model::BitcoinTxId,
     ) -> Result<Vec<model::BitcoinBlockHash>, Self::Error> {
-        sqlx::query_as!(
-            model::BitcoinTransaction,
+        sqlx::query_as::<_, model::BitcoinTransaction>(
             "SELECT txid, block_hash FROM sbtc_signer.bitcoin_transactions WHERE txid = $1",
-            txid,
         )
+        .bind(txid)
         .fetch_all(&self.0)
         .await
         .map(|res| {
@@ -657,13 +634,13 @@ impl super::DbRead for PgStore {
     }
 
     async fn stacks_block_exists(&self, block_id: StacksBlockId) -> Result<bool, Self::Error> {
-        sqlx::query!(
+        sqlx::query_scalar::<_, bool>(
             r#"
-            SELECT 1 AS exists
+            SELECT TRUE AS exists
             FROM sbtc_signer.stacks_blocks
             WHERE block_hash = $1;"#,
-            &block_id.0
         )
+        .bind(block_id.0)
         .fetch_optional(&self.0)
         .await
         .map(|row| row.is_some())
@@ -682,7 +659,6 @@ impl super::DbRead for PgStore {
               , script_pubkey
               , encrypted_private_shares
               , public_shares
-              , created_at
             FROM sbtc_signer.dkg_shares
             WHERE aggregate_key = $1;
             "#,
@@ -765,21 +741,20 @@ impl super::DbWrite for PgStore {
     type Error = Error;
 
     async fn write_bitcoin_block(&self, block: &model::BitcoinBlock) -> Result<(), Self::Error> {
-        sqlx::query!(
+        sqlx::query(
             "INSERT INTO sbtc_signer.bitcoin_blocks
               ( block_hash
               , block_height
               , parent_hash
               , confirms
-              , created_at
               )
-            VALUES ($1, $2, $3, $4, $5)",
-            block.block_hash,
-            block.block_height,
-            block.parent_hash,
-            &block.confirms,
-            block.created_at
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT DO NOTHING",
         )
+        .bind(&block.block_hash)
+        .bind(block.block_height)
+        .bind(&block.parent_hash)
+        .bind(&block.confirms)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -788,19 +763,18 @@ impl super::DbWrite for PgStore {
     }
 
     async fn write_stacks_block(&self, block: &model::StacksBlock) -> Result<(), Self::Error> {
-        sqlx::query!(
+        sqlx::query(
             "INSERT INTO sbtc_signer.stacks_blocks
               ( block_hash
               , block_height
               , parent_hash
-              , created_at
               )
-            VALUES ($1, $2, $3, $4)",
-            block.block_hash,
-            block.block_height,
-            block.parent_hash,
-            block.created_at
+            VALUES ($1, $2, $3)
+            ON CONFLICT DO NOTHING",
         )
+        .bind(&block.block_hash)
+        .bind(block.block_height)
+        .bind(&block.parent_hash)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -812,7 +786,7 @@ impl super::DbWrite for PgStore {
         &self,
         deposit_request: &model::DepositRequest,
     ) -> Result<(), Self::Error> {
-        sqlx::query!(
+        sqlx::query(
             "INSERT INTO sbtc_signer.deposit_requests
               ( txid
               , output_index
@@ -822,19 +796,18 @@ impl super::DbWrite for PgStore {
               , amount
               , max_fee
               , sender_addresses
-              , created_at
               )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-            deposit_request.txid,
-            deposit_request.output_index,
-            deposit_request.spend_script,
-            deposit_request.reclaim_script,
-            deposit_request.recipient,
-            deposit_request.amount,
-            deposit_request.max_fee,
-            &deposit_request.sender_addresses,
-            deposit_request.created_at,
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT DO NOTHING",
         )
+        .bind(&deposit_request.txid)
+        .bind(deposit_request.output_index)
+        .bind(&deposit_request.spend_script)
+        .bind(&deposit_request.reclaim_script)
+        .bind(&deposit_request.recipient)
+        .bind(deposit_request.amount)
+        .bind(deposit_request.max_fee)
+        .bind(&deposit_request.sender_addresses)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -893,8 +866,7 @@ impl super::DbWrite for PgStore {
                 , recipient
                 , amount
                 , max_fee
-                , sender_addresses
-                , created_at)
+                , sender_addresses)
             SELECT
                 txid
               , output_index
@@ -904,7 +876,6 @@ impl super::DbWrite for PgStore {
               , amount
               , max_fee
               , regexp_split_to_array(sender_address, ',')
-              , CURRENT_TIMESTAMP
             FROM tx_ids
             JOIN output_index USING (row_number)
             JOIN spend_script USING (row_number)
@@ -934,7 +905,7 @@ impl super::DbWrite for PgStore {
         &self,
         withdraw_request: &model::WithdrawRequest,
     ) -> Result<(), Self::Error> {
-        sqlx::query!(
+        sqlx::query(
             "INSERT INTO sbtc_signer.withdraw_requests
               ( request_id
               , block_hash
@@ -942,17 +913,16 @@ impl super::DbWrite for PgStore {
               , amount
               , max_fee
               , sender_address
-              , created_at
               )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)",
-            withdraw_request.request_id,
-            &withdraw_request.block_hash,
-            &withdraw_request.recipient,
-            withdraw_request.amount,
-            withdraw_request.max_fee,
-            withdraw_request.sender_address,
-            withdraw_request.created_at,
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT DO NOTHING",
         )
+        .bind(withdraw_request.request_id)
+        .bind(&withdraw_request.block_hash)
+        .bind(&withdraw_request.recipient)
+        .bind(withdraw_request.amount)
+        .bind(withdraw_request.max_fee)
+        .bind(&withdraw_request.sender_address)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -971,15 +941,14 @@ impl super::DbWrite for PgStore {
               , output_index
               , signer_pub_key
               , is_accepted
-              , created_at
               )
-            VALUES ($1, $2, $3, $4, $5)",
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT DO NOTHING",
         )
         .bind(&decision.txid)
         .bind(decision.output_index)
         .bind(decision.signer_pub_key)
         .bind(decision.is_accepted)
-        .bind(decision.created_at)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -997,15 +966,14 @@ impl super::DbWrite for PgStore {
               , block_hash
               , signer_pub_key
               , is_accepted
-              , created_at
               )
-            VALUES ($1, $2, $3, $4, $5)",
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT DO NOTHING",
         )
         .bind(decision.request_id)
         .bind(&decision.block_hash)
         .bind(decision.signer_pub_key)
         .bind(decision.is_accepted)
-        .bind(decision.created_at)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1014,18 +982,18 @@ impl super::DbWrite for PgStore {
     }
 
     async fn write_transaction(&self, transaction: &model::Transaction) -> Result<(), Self::Error> {
-        sqlx::query!(
+        sqlx::query(
             "INSERT INTO sbtc_signer.transactions
               ( txid
               , tx
               , tx_type
-              , created_at
               )
-            VALUES ($1, $2, $3, CURRENT_TIMESTAMP)",
-            transaction.txid,
-            transaction.tx,
-            transaction.tx_type as TransactionType,
+            VALUES ($1, $2, $3)
+            ON CONFLICT DO NOTHING",
         )
+        .bind(&transaction.txid)
+        .bind(&transaction.tx)
+        .bind(transaction.tx_type as TransactionType)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1037,11 +1005,13 @@ impl super::DbWrite for PgStore {
         &self,
         bitcoin_transaction: &model::BitcoinTransaction,
     ) -> Result<(), Self::Error> {
-        sqlx::query!(
-            "INSERT INTO sbtc_signer.bitcoin_transactions (txid, block_hash) VALUES ($1, $2)",
-            bitcoin_transaction.txid,
-            bitcoin_transaction.block_hash,
+        sqlx::query(
+            "INSERT INTO sbtc_signer.bitcoin_transactions (txid, block_hash) 
+            VALUES ($1, $2)
+            ON CONFLICT DO NOTHING",
         )
+        .bind(&bitcoin_transaction.txid)
+        .bind(&bitcoin_transaction.block_hash)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1088,11 +1058,13 @@ impl super::DbWrite for PgStore {
         &self,
         stacks_transaction: &model::StacksTransaction,
     ) -> Result<(), Self::Error> {
-        sqlx::query!(
-            "INSERT INTO sbtc_signer.stacks_transactions (txid, block_hash) VALUES ($1, $2)",
-            stacks_transaction.txid,
-            stacks_transaction.block_hash,
+        sqlx::query(
+            "INSERT INTO sbtc_signer.stacks_transactions (txid, block_hash) 
+            VALUES ($1, $2)
+            ON CONFLICT DO NOTHING",
         )
+        .bind(&stacks_transaction.txid)
+        .bind(&stacks_transaction.block_hash)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1154,7 +1126,7 @@ impl super::DbWrite for PgStore {
             chain_lengths.push(block.block_height);
         }
 
-        sqlx::query!(
+        sqlx::query(
             r#"
             WITH block_ids AS (
                 SELECT ROW_NUMBER() OVER (), block_id
@@ -1168,20 +1140,19 @@ impl super::DbWrite for PgStore {
                 SELECT ROW_NUMBER() OVER (), chain_length
                 FROM UNNEST($3::bigint[]) AS chain_length
             )
-            INSERT INTO sbtc_signer.stacks_blocks (block_hash, block_height, parent_hash, created_at)
+            INSERT INTO sbtc_signer.stacks_blocks (block_hash, block_height, parent_hash)
             SELECT
                 block_id
               , chain_length
               , parent_block_id
-              , CURRENT_TIMESTAMP
             FROM block_ids 
             JOIN parent_block_ids USING (row_number)
             JOIN chain_lengths USING (row_number)
             ON CONFLICT DO NOTHING"#,
-            &block_ids,
-            &parent_block_ids,
-            &chain_lengths,
         )
+        .bind(&block_ids)
+        .bind(&parent_block_ids)
+        .bind(&chain_lengths)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1201,17 +1172,15 @@ impl super::DbWrite for PgStore {
               , encrypted_private_shares
               , public_shares
               , script_pubkey
-              , created_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            "#,
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT DO NOTHING"#,
         )
         .bind(shares.aggregate_key)
         .bind(shares.tweaked_aggregate_key)
         .bind(&shares.encrypted_private_shares)
         .bind(&shares.public_shares)
         .bind(&shares.script_pubkey)
-        .bind(shares.created_at)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1232,7 +1201,7 @@ impl super::DbWrite for PgStore {
                 , signatures_required)
             VALUES
                 ($1, $2, $3, $4)
-            "#,
+            ON CONFLICT DO NOTHING"#,
         )
         .bind(&key_rotation.txid)
         .bind(key_rotation.aggregate_key)

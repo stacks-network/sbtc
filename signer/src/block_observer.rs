@@ -263,7 +263,6 @@ where
                 .expect("Failed to get block height") as i64,
             parent_hash: block.header.prev_blockhash.to_byte_array().to_vec(),
             confirms: Vec::new(),
-            created_at: time::OffsetDateTime::now_utc(),
         };
 
         self.storage.write_bitcoin_block(&db_block).await?;
@@ -558,7 +557,6 @@ mod tests {
             aggregate_key,
             tweaked_aggregate_key: aggregate_key.signers_tweaked_pubkey().unwrap(),
             script_pubkey: signers_script_pubkey.clone(),
-            created_at: time::OffsetDateTime::now_utc(),
             encrypted_private_shares: Vec::new(),
             public_shares: Vec::new(),
         };
