@@ -68,7 +68,7 @@ pub struct DepositRequest {
     /// The maximum portion of the deposited amount that may
     /// be used to pay for transaction fees.
     #[sqlx(try_from = "i64")]
-   #[cfg_attr(feature = "testing", dummy(faker = "100..i64::MAX as u64"))] 
+    #[cfg_attr(feature = "testing", dummy(faker = "100..i64::MAX as u64"))]
     pub max_fee: u64,
     /// The addresses of the input UTXOs funding the deposit request.
     #[cfg_attr(feature = "testing", dummy(faker = "BitcoinAddresses(1..5)"))]

@@ -77,15 +77,9 @@ pub struct PgStore(sqlx::PgPool);
 impl TryFrom<&NakamotoBlock> for model::StacksBlock {
     type Error = Error;
     fn try_from(block: &NakamotoBlock) -> Result<Self, Self::Error> {
-        let block_height = block
-            .header
-            .chain_length
-            .try_into()
-            .map_err(|_| Error::TypeConversion)?;
-
         Ok(Self {
             block_hash: block.block_id().to_bytes().to_vec(),
-            block_height,
+            block_height: block.header.chain_length,
             parent_hash: block.header.parent_block_id.to_bytes().to_vec(),
         })
     }

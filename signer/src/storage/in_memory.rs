@@ -167,7 +167,7 @@ impl super::DbRead for SharedStore {
             .await?;
         let store = self.lock().await;
 
-        let threshold = threshold.try_into().expect("type conversion failure");
+        let threshold = threshold as usize;
 
         Ok(pending_deposit_requests
             .into_iter()
@@ -302,7 +302,7 @@ impl super::DbRead for SharedStore {
             .await?;
         let store = self.lock().await;
 
-        let threshold = threshold.try_into().expect("type conversion failure");
+        let threshold = threshold as usize;
 
         Ok(pending_withdraw_requests
             .into_iter()

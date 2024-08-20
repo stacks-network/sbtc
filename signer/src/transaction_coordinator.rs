@@ -290,7 +290,7 @@ where
             .try_into()
             .map_err(|_| error::Error::TypeConversion)?;
 
-        let threshold = self.threshold.into();
+        let threshold = self.threshold;
 
         let pending_deposit_requests = self
             .storage
