@@ -2,7 +2,10 @@
 
 use emily_handler::{
     context::EmilyContext,
-    database::{accessors, entries::deposit::DepositEntryKey},
+    database::{
+        accessors,
+        entries::{chainstate::ApiStateEntry, deposit::DepositEntryKey},
+    },
 };
 
 use crate::util::{self, TestClient};
@@ -60,4 +63,25 @@ async fn test_update() {
         deposit_entry.key.bitcoin_tx_output_index,
         create_deposit_request.bitcoin_tx_output_index
     );
+}
+
+/// Get all deposits for each transaction using a page size large enough to get all entries.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn test_chaintip_update() {
+    // Setup test environment.
+    let TestEnvironment { client, context } = setup_accessor_test().await;
+
+    // Make a bunch of chainstates.
+    let fork_id = 0;
+    for height in 0..10 {
+        client
+            .create_chainstate(&util::test_chainstate(height, fork_id))
+            .await;
+    }
+
+    let api_state: ApiStateEntry = accessors::get_api_state(&context)
+        .await
+        .expect("Should succeed");
+    assert_eq!(api_state.version, 10);
 }

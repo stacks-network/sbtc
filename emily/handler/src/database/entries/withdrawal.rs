@@ -15,7 +15,7 @@ use crate::{
 
 use super::{
     EntryTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait, SecondaryIndex, SecondaryIndexTrait,
-    StatusEntry,
+    StatusEntry, VersionedEntryTrait,
 };
 
 // Withdrawal entry ---------------------------------------------------------------
@@ -61,6 +61,20 @@ pub struct WithdrawalEntry {
     pub last_update_block_hash: StacksBlockHash,
     /// History of this withdrawal transaction.
     pub history: Vec<WithdrawalEvent>,
+}
+
+/// Implements versioned entry trait for the deposit entry.
+impl VersionedEntryTrait for WithdrawalEntry {
+    /// Version field.
+    const VERSION_FIELD: &'static str = "Version";
+    /// Get version.
+    fn get_version(&self) -> u64 {
+        self.version
+    }
+    /// Increment version.
+    fn increment_version(&mut self) {
+        self.version += 1;
+    }
 }
 
 /// Implementation of withdrawal entry.
