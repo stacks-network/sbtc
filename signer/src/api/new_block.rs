@@ -2,6 +2,7 @@
 //! which is for processing new block webhooks from a stacks node.
 //!
 
+use axum::extract::rejection::JsonRejection;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
@@ -9,27 +10,46 @@ use axum::Json;
 use crate::stacks::webhooks::NewBlockEvent;
 use crate::storage::DbWrite;
 
+/// We denote the stacks node payload by this type so that our handler
+/// always gets to handle the request, regardless of if there is a failure
+/// deserializing or not. This is so that we can return a `200 OK` status
+/// code on deserialization errors.
+pub type NewBlockPayload = Result<Json<NewBlockEvent>, JsonRejection>;
+
 /// A handler of `POST /new_block` webhook events.
 ///
 /// # Notes
 ///
 /// The event dispatcher functionality in a stacks node attempts to send
-/// the payload to all interested observers, sequentially one-by-one. If
-/// the node fails to connect to one of the observers, or if the response
-/// from the observer is not a 200-299 response code, then it sleeps for 1
-/// second and tries again[^1]. From the looks of it, the node will not
-/// stop trying to send the webhook until there is a success. Because of
-/// this, unless we encounter an error where retrying in a second might
-/// succeed, we will return a 200 OK status code. Also, we will only return
-/// a Non-success status a maximum of 3 times.
+/// the payload to all interested observers, one-by-one. If the node fails
+/// to connect to one of the observers, or if the response from the
+/// observer is not a 200-299 response code, then it sleeps for 1 second
+/// and tries again[^1]. From the looks of it, the node will not stop
+/// trying to send the webhook until there is a success. Because of this,
+/// unless we encounter an error where retrying in a second might succeed,
+/// we will return a 200 OK status code.
+///
+/// TODO: We will only return a non-success status a maximum of 3 times
+/// when we receive a webhook from a stacks node.
 ///
 /// I need to find out what happens if we continually return 400 for
 /// webhooks.
 ///
-/// [^1]: https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L317-L385
-pub async fn new_block_handler<S>(_state: State<S>, _body: Json<NewBlockEvent>) -> StatusCode
+/// [^1]: <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L317-L385>
+pub async fn new_block_handler<S>(_state: State<S>, body: NewBlockPayload) -> StatusCode
 where
     S: DbWrite,
 {
+    let _event: NewBlockEvent = match body {
+        Ok(event) => event.0,
+        // If we are here, then we failed to deserialize the webhook body
+        // into the expected type. It's unlikely that retying this webhook
+        // will lead to any success, so we log the error and keep things
+        // moving.
+        Err(error) => {
+            tracing::error!("could not deserialize POST /new_block webhook: {error}");
+            return StatusCode::OK;
+        }
+    };
     StatusCode::OK
 }
