@@ -142,6 +142,11 @@ pub enum Error {
     #[error("received an error when attempting to query the database: {0}")]
     SqlxQuery(#[source] sqlx::Error),
 
+    /// An error when attempting to generically decode bytes using the
+    /// trait implementation.
+    #[error("got an error wen attempting to call StacksMessageCodec::consensus_deserialize {0}")]
+    StacksCodec(#[source] blockstack_lib::codec::Error),
+
     /// An error for the case where we cannot create a multi-sig
     /// StacksAddress using given public keys.
     #[error("could not create a StacksAddress from the public keys: threshold {0}, keys {1}")]

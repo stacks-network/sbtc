@@ -14,6 +14,8 @@ fn get_connection_pool() -> sqlx::PgPool {
 
 #[tokio::main]
 async fn main() {
+    sbtc::logging::setup_logging("info,signer=debug", false);
+
     let pool = get_connection_pool();
     let pool_store = PgStore::from(pool);
     // Build the signer API application

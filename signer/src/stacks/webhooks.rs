@@ -31,6 +31,8 @@ use stacks_common::types::chainstate::BlockHeaderHash;
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 use stacks_common::types::chainstate::StacksBlockId;
 
+use crate::error::Error;
+
 /// This struct represents the body of POST /new_block events from a stacks
 /// node.
 ///
@@ -85,23 +87,26 @@ pub struct NewBlockEvent {
 #[derive(Debug, Deserialize)]
 pub struct TransactionReceipt {
     /// The id of this transaction .
-    #[serde(deserialize_with = "deserialize_codec")]
+    #[serde(deserialize_with = "deserialize_webhook_codec")]
     pub txid: Txid,
     /// Can drop, just a sequence
     pub tx_index: u32,
     /// Probably should be an enum
     pub status: String,
     /// These are probably bytes as hex
-    #[serde(rename = "raw_result", deserialize_with = "deserialize_codec")]
+    #[serde(rename = "raw_result", deserialize_with = "deserialize_webhook_codec")]
     pub result: ClarityValue,
-    /// These are bytes as hex
-    #[serde(rename = "raw_tx", deserialize_with = "deserialize_codec")]
-    pub tx: StacksTransaction,
+    /// This is the raw transaction and is always sent. But, this field is
+    /// overloaded. It is a burn chain "operation" whenever this field
+    /// value is "0x00" and is a regular stacks transaction otherwise. We
+    /// replace "0x00" with [`None`] here.
+    #[serde(rename = "raw_tx", deserialize_with = "deserialize_tx")]
+    pub tx: Option<StacksTransaction>,
 }
 
 /// The type of event that occurred within the transaction.
 #[derive(Debug, Deserialize)]
-#[serde(rename = "lower_camel_case")]
+#[serde(rename_all = "snake_case")]
 pub enum TransactionEventType {
     /// A smart contract event
     ContractEvent,
@@ -132,7 +137,7 @@ pub enum TransactionEventType {
 #[derive(Debug, Deserialize)]
 pub struct TransactionEvent {
     /// The id of the transaction that generated the event.
-    #[serde(deserialize_with = "deserialize_codec")]
+    #[serde(deserialize_with = "deserialize_webhook_codec")]
     pub txid: Txid,
     /// can drop, just a sequence
     pub event_index: u64,
@@ -184,29 +189,61 @@ where
     D: serde::Deserializer<'de>,
     T: HexDeser,
 {
-    let hex_str = <&str>::deserialize(deserializer)?;
+    let hex_str = <String>::deserialize(deserializer)?;
     let hex_str = hex_str.trim_start_matches("0x");
     <T as HexDeser>::try_from(hex_str).map_err(serde::de::Error::custom)
 }
 
-/// This is for deserializing fields that were effectively serialized using
-/// [`StacksMessageCodec::consensus_serialize`].
+/// This is for deserializing fields in webhooks that were effectively
+/// serialized using [`StacksMessageCodec::consensus_serialize`].
 ///
 /// # Notes
 ///
 /// Fields deserialized with this function were serialized by "effectively"
 /// calling [`StacksMessageCodec::consensus_serialize`] followed by
 /// [`bytes_to_hex`] on the output and prepending "0x".
-pub fn deserialize_codec<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+pub fn deserialize_webhook_codec<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: serde::Deserializer<'de>,
     T: StacksMessageCodec,
 {
-    let hex_str = <&str>::deserialize(deserializer)?;
+    // Hex encoded binary from stacks-node Webhooks appear to always(?) be
+    // prefixed with "0x". If they aren't then this works too.
+    let hex_str = <String>::deserialize(deserializer)?;
     let hex_str = hex_str.trim_start_matches("0x");
-    let bytes = stacks_common::util::hash::hex_bytes(hex_str).map_err(serde::de::Error::custom)?;
-    let fd = &mut bytes.as_slice();
-    <T as StacksMessageCodec>::consensus_deserialize(fd).map_err(serde::de::Error::custom)
+    deserialize_codec(hex_str).map_err(serde::de::Error::custom)
+}
+
+/// This is for deserializing stacks transactions in the raw_tx field.
+///
+/// # Notes
+///
+/// This returns [`Ok(None)`] whenever the "raw_tx" is "0x00".
+pub fn deserialize_tx<'de, D>(deserializer: D) -> Result<Option<StacksTransaction>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let hex_str = <String>::deserialize(deserializer)?;
+    let hex_str = hex_str.trim_start_matches("0x");
+
+    if hex_str == "00" {
+        return Ok(None);
+    }
+
+    deserialize_codec(hex_str)
+        .map_err(serde::de::Error::custom)
+        .map(Some)
+}
+
+/// This if for deserializing hex encoded strings where the raw bytes were generated using
+/// [`StacksMessageCodec::consensus_serialize`].
+fn deserialize_codec<T>(hex_str: &str) -> Result<T, Error>
+where
+    T: StacksMessageCodec,
+{
+    let bytes = hex::decode(hex_str).map_err(Error::DecodeHexBytes)?;
+    let fd: &mut &[u8] = &mut bytes.as_ref();
+    <T as StacksMessageCodec>::consensus_deserialize(fd).map_err(Error::StacksCodec)
 }
 
 /// The [`QualifiedContractIdentifier::parse`] function inverts the
@@ -217,13 +254,103 @@ pub fn parse_contract_name<'de, D>(des: D) -> Result<QualifiedContractIdentifier
 where
     D: serde::Deserializer<'de>,
 {
-    let literal = <&str>::deserialize(des)?;
-    QualifiedContractIdentifier::parse(literal).map_err(serde::de::Error::custom)
+    let literal = <String>::deserialize(des)?;
+    QualifiedContractIdentifier::parse(&literal).map_err(serde::de::Error::custom)
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
+    /// This was captured using a slightly modified version of the above
+    /// function against a stacks-node running Nakamoto on commit
+    /// cbf0c52fb7a0b8ac55badadcf3773ca0848a25cf from 2024-08-20.
+    const WEBHOOK_PAYLOAD: &str = r#"{
+    "anchored_cost": {
+        "read_count": 0,
+        "read_length": 0,
+        "runtime": 0,
+        "write_count": 0,
+        "write_length": 0
+    },
+    "block_hash": "0xe012ca1ad766b2abe03c1cb661930af72fd29f6d197a7d8e4280b54bf2883dec",
+    "block_height": 449,
+    "burn_block_hash": "0x7d4db9d88dd86c31c75a351e4974940db55f6db77c9d49881dd0028946c661ac",
+    "burn_block_height": 159,
+    "burn_block_time": 1724181975,
+    "confirmed_microblocks_cost": {
+        "read_count": 0,
+        "read_length": 0,
+        "runtime": 0,
+        "write_count": 0,
+        "write_length": 0
+    },
+    "cycle_number": null,
+    "events": [],
+    "index_block_hash": "0x646ebc3118346162ae38cd0973ce4fd6e890a1684c3775c2fe3b0a186c5ad0c8",
+    "matured_miner_rewards": [],
+    "miner_signature": "0x011e8135ba62a248ff78daf9e7ac9c2da2f6b8cf3b28cb1082d259db2f3a9c297816a667e09579065de2820866ca90b8eea4b43a3a2bfc350874cd11d28e251165",
+    "miner_txid": "0x7d53908d95c98e5479582074e4d8eee4e417265610b128c0c603d168ff97cb56",
+    "parent_block_hash": "0x1a02201a746c0ff9abd2c81c40ba31f8a4b22f893007f6931e1aef1d70edcf0b",
+    "parent_burn_block_hash": "0x7d4db9d88dd86c31c75a351e4974940db55f6db77c9d49881dd0028946c661ac",
+    "parent_burn_block_height": 159,
+    "parent_burn_block_timestamp": 1724181975,
+    "parent_index_block_hash": "0x1706c7b20fb661dfb31fd97363e92a05e9865e20dbee764fce5cd51572206b1c",
+    "parent_microblock": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "parent_microblock_sequence": 0,
+    "pox_v1_unlock_height": 104,
+    "pox_v2_unlock_height": 106,
+    "pox_v3_unlock_height": 109,
+    "reward_set": null,
+    "signer_bitvec": "000800000001ff",
+    "signer_signature": [
+        "01555a3544f68a067c7e08392c07c1259cc7176d692250966bf82f828a84a653f8371b51a0922fc50756cad3d50a7f0b26955394294b7deb8e686029dbbdbb5755",
+        "00ee14b183d8614585923e67df44d2fe8db3bde8b8f51b3b8e067ac5d883b68de829bfabb48aebe9a022588c7769250120f28f6a2e3e5918430c434b710f7a86b1"
+    ],
+    "signer_signature_hash": "0xe012ca1ad766b2abe03c1cb661930af72fd29f6d197a7d8e4280b54bf2883dec",
+    "transactions": [
+        {
+            "burnchain_op": null,
+            "contract_abi": null,
+            "execution_cost": {
+                "read_count": 0,
+                "read_length": 0,
+                "runtime": 0,
+                "write_count": 0,
+                "write_length": 0
+            },
+            "microblock_hash": null,
+            "microblock_parent_hash": null,
+            "microblock_sequence": null,
+            "raw_result": "0x0703",
+            "raw_tx": "0x80800000000400ad08341feab8ea788ef8045c343d21dcedc4483e000000000000008a000000000000012c000157158fca569bb7f69bd3e19f08723f1d9fee55dd017c3a8471586d123fe948531d24539ed08fa8498ab0d5ab9d215296c74b2c1896e3fe03c96e51aed66c4f3203020000000000051a62b0e91cc557e583c3d1f9dfe468ace76d2f037400000000000003e800000000000000000000000000000000000000000000000000000000000000000000",
+            "status": "success",
+            "tx_index": 0,
+            "txid": "0xa17854a5c99a99940fbd42df6d964c5ef3afab6b6744f1c4be5912cf90ecd1f9"
+        }
+    ]
+}"#;
+
+    /// Test all deserialization functions.
     #[test]
-    fn test_me() {}
+    fn test_new_block_event_deserialization() {
+        // Does it work?
+        let event: NewBlockEvent = serde_json::from_str(WEBHOOK_PAYLOAD).unwrap();
+
+        // Okay now we take some random fields and "manually" deserialize
+        // them and check that things match up.
+        let expected_block_hash = BlockHeaderHash::from_hex(
+            "e012ca1ad766b2abe03c1cb661930af72fd29f6d197a7d8e4280b54bf2883dec",
+        )
+        .unwrap();
+        let expected_txid = deserialize_codec::<Txid>(
+            "a17854a5c99a99940fbd42df6d964c5ef3afab6b6744f1c4be5912cf90ecd1f9",
+        )
+        .unwrap();
+
+        // We test some fields to make sure that everything is okay.
+        assert_eq!(event.block_height, 449);
+        assert_eq!(event.block_hash, expected_block_hash);
+        assert_eq!(event.transactions.first().unwrap().txid, expected_txid);
+    }
 }

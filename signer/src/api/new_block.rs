@@ -14,7 +14,7 @@ use crate::storage::DbWrite;
 /// always gets to handle the request, regardless of if there is a failure
 /// deserializing or not. This is so that we can return a `200 OK` status
 /// code on deserialization errors.
-pub type NewBlockPayload = Result<Json<NewBlockEvent>, JsonRejection>;
+pub type NewBlockPayload = Result<Json<serde_json::Value>, JsonRejection>;
 
 /// A handler of `POST /new_block` webhook events.
 ///
@@ -25,15 +25,10 @@ pub type NewBlockPayload = Result<Json<NewBlockEvent>, JsonRejection>;
 /// to connect to one of the observers, or if the response from the
 /// observer is not a 200-299 response code, then it sleeps for 1 second
 /// and tries again[^1]. From the looks of it, the node will not stop
-/// trying to send the webhook until there is a success. Because of this,
-/// unless we encounter an error where retrying in a second might succeed,
-/// we will return a 200 OK status code.
-///
-/// TODO: We will only return a non-success status a maximum of 3 times
-/// when we receive a webhook from a stacks node.
-///
-/// I need to find out what happens if we continually return 400 for
-/// webhooks.
+/// trying to send the webhook when there is a success response of if we've
+/// reached the `retry_count` that is configured in the stacks node config.
+/// Because of this, unless we encounter an error where retrying in a
+/// second might succeed, we will return a 200 OK status code.
 ///
 /// [^1]: <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L317-L385>
 pub async fn new_block_handler<S>(_state: State<S>, body: NewBlockPayload) -> StatusCode
@@ -41,15 +36,32 @@ where
     S: DbWrite,
 {
     let _event: NewBlockEvent = match body {
-        Ok(event) => event.0,
+        Ok(Json(value)) => {
+            // We print out the raw string if there are any errors during
+            // deserialization, but only for non-release builds.
+            #[cfg(debug_assertions)]
+            let raw_payload = serde_json::to_string(&value).unwrap();
+
+            match serde_json::from_value(value) {
+                Ok(event) => event,
+                Err(error) => {
+                    tracing::error!("could not deserialize POST /new_block webhook: {error}");
+
+                    #[cfg(debug_assertions)]
+                    println!("raw payload: {raw_payload}");
+                    return StatusCode::OK;
+                }
+            }
+        }
         // If we are here, then we failed to deserialize the webhook body
         // into the expected type. It's unlikely that retying this webhook
         // will lead to any success, so we log the error and keep things
         // moving.
         Err(error) => {
-            tracing::error!("could not deserialize POST /new_block webhook: {error}");
+            tracing::error!("could not deserialize POST /new_block webhook: {error:?}");
             return StatusCode::OK;
         }
     };
+
     StatusCode::OK
 }
