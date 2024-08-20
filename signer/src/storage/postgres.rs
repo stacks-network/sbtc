@@ -987,7 +987,7 @@ impl super::DbWrite for PgStore {
         )
         .bind(&transaction.txid)
         .bind(&transaction.tx)
-        .bind(transaction.tx_type as TransactionType)
+        .bind(transaction.tx_type)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
