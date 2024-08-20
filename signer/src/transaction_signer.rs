@@ -9,15 +9,21 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 
 use crate::blocklist_client;
+use crate::config::NetworkKind;
+use crate::ecdsa::SignEcdsa as _;
 use crate::error;
+use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
+use crate::message::StacksTransactionSignRequest;
 use crate::network;
+use crate::stacks::contracts::AsContractCall;
+use crate::stacks::contracts::ContractCall;
+use crate::stacks::wallet::MultisigTx;
+use crate::stacks::wallet::SignerWallet;
 use crate::storage;
 use crate::storage::model;
-
-use crate::ecdsa::SignEcdsa as _;
 use crate::wsts_state_machine;
 
 use bitcoin::hashes::Hash;
@@ -114,6 +120,8 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
     pub threshold: u32,
     /// How many bitcoin blocks back from the chain tip the signer will look for requests.
     pub context_window: usize,
+    /// The network we are working in.
+    pub network_kind: bitcoin::Network,
     /// Random number generator used for encryption
     pub rng: Rng,
     #[cfg(feature = "testing")]
@@ -135,7 +143,7 @@ where
     N: network::MessageTransfer,
     error::Error: From<N::Error>,
     B: blocklist_client::BlocklistChecker,
-    S: storage::DbRead + storage::DbWrite,
+    S: storage::DbRead + storage::DbWrite + Send + Sync,
     error::Error: From<<S as storage::DbRead>::Error>,
     error::Error: From<<S as storage::DbWrite>::Error>,
     Rng: rand::RngCore + rand::CryptoRng,
@@ -228,7 +236,8 @@ where
                     .await?;
             }
 
-            message::Payload::StacksTransactionSignRequest(_) => {
+            message::Payload::StacksTransactionSignRequest(_request) => {
+
                 //TODO(255): Implement
             }
 
@@ -307,6 +316,76 @@ where
         //    `max_fee` of any request.
 
         Ok(true)
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn handle_stacks_transaction_sign_request(
+        &mut self,
+        request: &message::StacksTransactionSignRequest,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<(), Error> {
+        let is_valid_sign_request = self
+            .is_valid_stackstransaction_sign_request(request, bitcoin_chain_tip)
+            .await?;
+
+        let wallet = self.load_wallet(request, bitcoin_chain_tip).await?;
+        let multi_sig = MultisigTx::new_tx(&request.contract_call, &wallet, request.tx_fee);
+        let txid = multi_sig.tx().txid();
+
+        if is_valid_sign_request {
+            let signature =
+                crate::signature::sign_stacks_tx(multi_sig.tx(), &self.signer_private_key);
+
+            let msg = message::StacksTransactionSignature { txid, signature };
+
+            self.send_message(msg, bitcoin_chain_tip).await?;
+        } else {
+            tracing::warn!(%txid, "received invalid sign request for stacks tx");
+        }
+
+        Ok(())
+    }
+
+    /// Load the multi-sig wallet corresponding to the signer set defined
+    /// in the last key rotation.
+    /// TODO(255): Add a tests
+    async fn load_wallet(
+        &self,
+        request: &StacksTransactionSignRequest,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<SignerWallet, Error> {
+        let last_key_rotation = self
+            .storage
+            .get_last_key_rotation(bitcoin_chain_tip)
+            .await?
+            .ok_or(error::Error::MissingKeyRotation)?;
+
+        let public_keys = last_key_rotation.signer_set.as_slice();
+        let signatures_required = last_key_rotation.signatures_required;
+        let network_kind = match self.network_kind {
+            bitcoin::Network::Bitcoin => NetworkKind::Mainnet,
+            _ => NetworkKind::Testnet,
+        };
+        SignerWallet::new(
+            public_keys,
+            signatures_required,
+            network_kind,
+            request.nonce,
+        )
+    }
+
+    async fn is_valid_stackstransaction_sign_request(
+        &mut self,
+        request: &message::StacksTransactionSignRequest,
+        _bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<bool, Error> {
+        // TODO(255): Finish the implementation
+        match &request.contract_call {
+            ContractCall::AcceptWithdrawalV1(contract) => contract.validate(&self.storage).await,
+            ContractCall::CompleteDepositV1(contract) => contract.validate(&self.storage).await,
+            ContractCall::RejectWithdrawalV1(contract) => contract.validate(&self.storage).await,
+            ContractCall::RotateKeysV1(contract) => contract.validate(&self.storage).await,
+        }
     }
 
     #[tracing::instrument(skip(self))]
@@ -401,6 +480,10 @@ where
         Ok(())
     }
 
+    /// TODO(#380): This function needs to filter deposit requests based on
+    /// time as well. We need to do this because deposit requests are locked
+    /// using OP_CSV, which lock up coins based on block hieght or
+    /// multiples of 512 seconds measure by the median time past.
     #[tracing::instrument(skip(self))]
     async fn get_pending_deposit_requests(
         &mut self,

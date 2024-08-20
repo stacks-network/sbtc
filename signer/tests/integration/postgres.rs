@@ -9,12 +9,12 @@ use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
 use futures::StreamExt;
 
+use signer::error::Error;
 use signer::network;
 use signer::stacks::contracts::AcceptWithdrawalV1;
 use signer::stacks::contracts::AsContractCall;
 use signer::stacks::contracts::AsTxPayload as _;
 use signer::stacks::contracts::CompleteDepositV1;
-use signer::stacks::contracts::ContractCall;
 use signer::stacks::contracts::RejectWithdrawalV1;
 use signer::stacks::contracts::RotateKeysV1;
 use signer::storage;
@@ -23,6 +23,7 @@ use signer::storage::postgres::PgStore;
 use signer::storage::DbRead;
 use signer::storage::DbWrite;
 use signer::testing;
+use signer::testing::wallet::ContractCallWrapper;
 
 use fake::Fake;
 use rand::SeedableRng;
@@ -97,44 +98,51 @@ impl AsContractCall for InitiateWithdrawalRequest {
     fn as_contract_args(&self) -> Vec<Value> {
         Vec::new()
     }
+    async fn validate<S>(&self, _: &S) -> Result<bool, Error>
+    where
+        S: DbRead + Send + Sync,
+        Error: From<<S as DbRead>::Error>,
+    {
+        Ok(true)
+    }
 }
 
 /// Test that the write_stacks_blocks function does what it is supposed to
 /// do, which is store all stacks blocks and store the transactions that we
 /// care about, which, naturally, are sBTC related transactions.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[test_case(ContractCall(InitiateWithdrawalRequest); "initiate-withdrawal")]
-#[test_case(ContractCall(CompleteDepositV1 {
+#[test_case(ContractCallWrapper(InitiateWithdrawalRequest); "initiate-withdrawal")]
+#[test_case(ContractCallWrapper(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654,
     recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
     deployer: testing::wallet::WALLET.0.address(),
 }); "complete-deposit standard recipient")]
-#[test_case(ContractCall(CompleteDepositV1 {
+#[test_case(ContractCallWrapper(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654,
     recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y.my-contract-name").unwrap(),
     deployer: testing::wallet::WALLET.0.address(),
 }); "complete-deposit contract recipient")]
-#[test_case(ContractCall(AcceptWithdrawalV1 {
+#[test_case(ContractCallWrapper(AcceptWithdrawalV1 {
     request_id: 0,
     outpoint: bitcoin::OutPoint::null(),
     tx_fee: 3500,
     signer_bitmap: BitArray::ZERO,
     deployer: testing::wallet::WALLET.0.address(),
 }); "accept-withdrawal")]
-#[test_case(ContractCall(RejectWithdrawalV1 {
+#[test_case(ContractCallWrapper(RejectWithdrawalV1 {
     request_id: 0,
     signer_bitmap: BitArray::ZERO,
     deployer: testing::wallet::WALLET.0.address(),
 }); "reject-withdrawal")]
-#[test_case(ContractCall(RotateKeysV1::new(
+#[test_case(ContractCallWrapper(RotateKeysV1::new(
     &testing::wallet::WALLET.0,
     testing::wallet::WALLET.0.address(),
     testing::wallet::WALLET.2,
 )); "rotate-keys")]
 #[tokio::test]
-async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCall<T>) {
+async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWrapper<T>) {
     let default_pool = get_connection_pool();
     let pool = crate::transaction_signer::new_database(&default_pool).await;
     let store = PgStore::from(pool.clone());

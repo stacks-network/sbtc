@@ -30,7 +30,6 @@ use crate::signature::RecoverableEcdsaSignature as _;
 use crate::signature::SighashDigest as _;
 use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::AsTxPayload;
-use crate::stacks::contracts::ContractCall;
 use crate::MAX_KEYS;
 
 /// Stacks multisig addresses are Hash160 hashes of bitcoin Scripts (more
@@ -82,10 +81,10 @@ impl SignerWallet {
     ///
     /// * The provided slice of public keys is empty.
     /// * The number of elements in the provided slice is greater than
-    ///   `i32::MAX`.
+    ///   [`i32::MAX`].
     ///
     /// But we enforce that the number of public keys is less than
-    /// `MAX_KEYS` and `MAX_KEYS` <= `u16::MAX` < `i32::MAX` and we
+    /// [`MAX_KEYS`] and [`MAX_KEYS`] <= [`u16::MAX`] < [`i32::MAX`] and we
     /// explicitly check for an empty slice already so these cases are
     /// covered.
     ///
@@ -114,11 +113,9 @@ impl SignerWallet {
         }
 
         let public_keys: BTreeSet<PublicKey> = public_keys.iter().copied().collect();
-        // Used for the creating the Stacks address. It should never
-        // actually return a Result::Err.
+        // Used for creating the combined stacks address
         let pubkeys: Vec<Secp256k1PublicKey> =
             public_keys.iter().map(Secp256k1PublicKey::from).collect();
-        // Used for creating the combined public key
 
         let num_sigs = signatures_required as usize;
         let hash_mode = Self::hash_mode().to_address_hash_mode();
@@ -127,13 +124,13 @@ impl SignerWallet {
             NetworkKind::Testnet => C32_ADDRESS_VERSION_TESTNET_MULTISIG,
         };
 
-        // The StacksAddress::from_public_keys call below should never
-        // fail. For the AddressHashMode::SerializeP2SH hash mode -- which
-        // we use since it corresponds to the
-        // OrderIndependentMultisigHashMode::P2SH hash mode-- the
-        // StacksAddress::from_public_keys function will return None if the
-        // threshold is greater than the number of public keys. We enforce
-        // the threshold invariant above in this function.
+        // The [`StacksAddress::from_public_keys`] call below should never
+        // fail. For the [`AddressHashMode::SerializeP2SH`] hash mode --
+        // which we use since it corresponds to the
+        // [`OrderIndependentMultisigHashMode::P2SH`] hash mode -- the
+        // [`StacksAddress::from_public_keys`] function will return None if
+        // the threshold is greater than the number of public keys. We
+        // enforce the threshold invariant above in this function.
         Ok(Self {
             aggregate_key: PublicKey::combine_keys(public_keys.iter())?,
             public_keys,
@@ -193,8 +190,9 @@ impl SignerWallet {
 /// A helper struct for properly signing a transaction for the signers'
 /// multi-sig wallet.
 ///
-/// Only OrderIndependentMultisig auth spending conditions are currently
-/// supported, and this invariant is enforced when the struct is created.
+/// Only [`TransactionSpendingCondition::OrderIndependentMultisig`] auth
+/// spending conditions are currently supported, and this invariant is
+/// enforced when the struct is created.
 #[derive(Debug)]
 pub struct MultisigTx {
     /// The unsigned transaction. Only transactions with a
@@ -210,7 +208,7 @@ pub struct MultisigTx {
 impl MultisigTx {
     /// Create a new Stacks transaction for a given payload that can be
     /// signed by the signers' multi-sig wallet.
-    pub fn new_tx<T>(payload: T, wallet: &SignerWallet, tx_fee: u64) -> Self
+    pub fn new_tx<T>(payload: &T, wallet: &SignerWallet, tx_fee: u64) -> Self
     where
         T: AsTxPayload,
     {
@@ -247,11 +245,13 @@ impl MultisigTx {
 
     /// Create a new Stacks transaction for a contract call that can be
     /// signed by the signers' multi-sig wallet.
+    #[cfg(any(test, feature = "testing"))]
     pub fn new_contract_call<T>(contract: T, wallet: &SignerWallet, tx_fee: u64) -> Self
     where
         T: AsContractCall,
     {
-        Self::new_tx(ContractCall(contract), wallet, tx_fee)
+        use crate::testing::wallet::ContractCallWrapper;
+        Self::new_tx(&ContractCallWrapper(contract), wallet, tx_fee)
     }
 
     /// Return a reference to the underlying transaction
@@ -263,7 +263,7 @@ impl MultisigTx {
     ///
     /// # Notes
     ///
-    /// There are two Result::Err paths that can happen here:
+    /// There are two [`Err`] paths that can happen here:
     /// 1. We cannot recover the public key from the signature. Perhaps the
     ///    signature was given over the wrong digest.
     /// 2. The signature was given over the correct digest, but we were not
@@ -314,6 +314,7 @@ mod tests {
     use test_case::test_case;
 
     use crate::signature::sign_stacks_tx;
+    use crate::storage::DbRead;
 
     use super::*;
 
@@ -330,6 +331,13 @@ mod tests {
         }
         fn as_contract_args(&self) -> Vec<Value> {
             Vec::new()
+        }
+        async fn validate<S>(&self, _: &S) -> Result<bool, Error>
+        where
+            S: DbRead + Send + Sync,
+            Error: From<<S as DbRead>::Error>,
+        {
+            Ok(true)
         }
     }
 

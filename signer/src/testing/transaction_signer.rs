@@ -1,6 +1,7 @@
 //! Test utilities for the transaction signer
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use crate::blocklist_client;
 use crate::error;
@@ -31,7 +32,7 @@ struct EventLoopHarness<S, Rng> {
 
 impl<S, Rng> EventLoopHarness<S, Rng>
 where
-    S: storage::DbRead + storage::DbWrite + Clone + Send + 'static,
+    S: storage::DbRead + storage::DbWrite + Clone + Send + Sync + 'static,
     error::Error: From<<S as storage::DbRead>::Error>,
     error::Error: From<<S as storage::DbWrite>::Error>,
     Rng: rand::RngCore + rand::CryptoRng + Send + 'static,
@@ -60,6 +61,7 @@ where
                 context_window,
                 wsts_state_machines: HashMap::new(),
                 threshold,
+                network_kind: bitcoin::Network::Regtest,
                 rng,
                 test_observer_tx: Some(test_observer_tx),
             },
@@ -149,7 +151,7 @@ pub struct TestEnvironment<C> {
 impl<C, S> TestEnvironment<C>
 where
     C: FnMut() -> S,
-    S: storage::DbRead + storage::DbWrite + Clone + Send + 'static,
+    S: storage::DbRead + storage::DbWrite + Clone + Send + Sync + 'static,
     error::Error: From<<S as storage::DbRead>::Error>,
     error::Error: From<<S as storage::DbWrite>::Error>,
 {
@@ -289,8 +291,17 @@ where
     }
 
     /// Assert that the transaction signer will respond to bitcoin transaction sign requests
+    /// with an acknowledge message. Errors after 10 seconds.
+    pub async fn assert_should_respond_to_bitcoin_transaction_sign_requests(self) {
+        let future = self.assert_should_respond_to_bitcoin_transaction_sign_requests_impl();
+        tokio::time::timeout(Duration::from_secs(10), future)
+            .await
+            .unwrap()
+    }
+
+    /// Assert that the transaction signer will respond to bitcoin transaction sign requests
     /// with an acknowledge message
-    pub async fn assert_should_respond_to_bitcoin_transaction_sign_requests(mut self) {
+    pub async fn assert_should_respond_to_bitcoin_transaction_sign_requests_impl(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);

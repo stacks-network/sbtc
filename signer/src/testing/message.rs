@@ -1,12 +1,16 @@
 //! Test utilities for signer message
 
 use bitcoin::hashes::Hash;
+use bitvec::array::BitArray;
 use fake::Fake;
 use rand::seq::SliceRandom;
+use stacks_common::types::chainstate::StacksAddress;
 
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
+use crate::stacks::contracts::ContractCall;
+use crate::stacks::contracts::RejectWithdrawalV1;
 use crate::testing::dummy;
 
 impl message::SignerMessage {
@@ -90,8 +94,17 @@ impl fake::Dummy<fake::Faker> for message::BitcoinTransactionSignAck {
 
 impl fake::Dummy<fake::Faker> for message::StacksTransactionSignRequest {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let private_key = PrivateKey::new(rng);
         Self {
-            tx: dummy::stacks_tx(config, rng),
+            contract_call: ContractCall::RejectWithdrawalV1(RejectWithdrawalV1 {
+                request_id: 1,
+                signer_bitmap: BitArray::ZERO,
+                deployer: StacksAddress::burn_address(false),
+            }),
+            tx_fee: 123,
+            nonce: 1,
+            aggregate_key: PublicKey::from_private_key(&private_key),
+            digest: config.fake_with_rng(rng),
         }
     }
 }

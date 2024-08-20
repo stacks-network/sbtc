@@ -1,6 +1,7 @@
 //! Test utilities for running a wsts signer and coordinator.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::Duration;
 
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
@@ -153,19 +154,25 @@ impl Coordinator {
 
         let mut responses = 0;
 
-        loop {
-            let msg = self.network.receive().await.expect("network error");
+        let future = async move {
+            loop {
+                let msg = self.network.receive().await.expect("network error");
 
-            let message::Payload::BitcoinTransactionSignAck(_) = msg.inner.payload else {
-                continue;
-            };
+                let message::Payload::BitcoinTransactionSignAck(_) = msg.inner.payload else {
+                    continue;
+                };
 
-            responses += 1;
+                responses += 1;
 
-            if responses >= self.num_signers {
-                break;
+                if responses >= self.num_signers {
+                    break;
+                }
             }
-        }
+        };
+
+        tokio::time::timeout(Duration::from_secs(10), future)
+            .await
+            .unwrap()
     }
 
     /// Run a signing round
@@ -193,32 +200,37 @@ impl Coordinator {
         bitcoin_chain_tip: bitcoin::BlockHash,
         txid: bitcoin::Txid,
     ) -> wsts::state_machine::OperationResult {
-        loop {
-            let msg = self.network.receive().await.expect("network error");
+        let future = async move {
+            loop {
+                let msg = self.network.receive().await.expect("network error");
 
-            let message::Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
-                continue;
-            };
+                let message::Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
+                    continue;
+                };
 
-            let packet = wsts::net::Packet {
-                msg: wsts_msg.inner,
-                sig: Vec::new(),
-            };
+                let packet = wsts::net::Packet {
+                    msg: wsts_msg.inner,
+                    sig: Vec::new(),
+                };
 
-            let (outbound_packet, operation_result) = self
-                .wsts_coordinator
-                .process_message(&packet)
-                .expect("message processing failed");
+                let (outbound_packet, operation_result) = self
+                    .wsts_coordinator
+                    .process_message(&packet)
+                    .expect("message processing failed");
 
-            if let Some(packet) = outbound_packet {
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                self.send_packet(bitcoin_chain_tip, txid, packet).await;
+                if let Some(packet) = outbound_packet {
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    self.send_packet(bitcoin_chain_tip, txid, packet).await;
+                }
+
+                if let Some(result) = operation_result {
+                    return result;
+                }
             }
-
-            if let Some(result) = operation_result {
-                return result;
-            }
-        }
+        };
+        tokio::time::timeout(Duration::from_secs(10), future)
+            .await
+            .unwrap()
     }
 }
 
@@ -252,37 +264,42 @@ impl Signer {
 
     /// Participate in a DKG round and return the result
     pub async fn run_until_dkg_end(mut self) -> Self {
-        loop {
-            let msg = self.network.receive().await.expect("network error");
-            let bitcoin_chain_tip = msg.bitcoin_chain_tip;
+        let future = async move {
+            loop {
+                let msg = self.network.receive().await.expect("network error");
+                let bitcoin_chain_tip = msg.bitcoin_chain_tip;
 
-            let message::Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
-                continue;
-            };
+                let message::Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
+                    continue;
+                };
 
-            let packet = wsts::net::Packet {
-                msg: wsts_msg.inner,
-                sig: Vec::new(),
-            };
+                let packet = wsts::net::Packet {
+                    msg: wsts_msg.inner,
+                    sig: Vec::new(),
+                };
 
-            let outbound_packets = self
-                .wsts_signer
-                .process_inbound_messages(&[packet])
-                .expect("message processing failed");
-
-            for packet in outbound_packets {
-                self.wsts_signer
-                    .process_inbound_messages(&[packet.clone()])
+                let outbound_packets = self
+                    .wsts_signer
+                    .process_inbound_messages(&[packet])
                     .expect("message processing failed");
 
-                self.send_packet(bitcoin_chain_tip, wsts_msg.txid, packet.clone())
-                    .await;
+                for packet in outbound_packets {
+                    self.wsts_signer
+                        .process_inbound_messages(&[packet.clone()])
+                        .expect("message processing failed");
 
-                if let wsts::net::Message::DkgEnd(_) = packet.msg {
-                    return self;
+                    self.send_packet(bitcoin_chain_tip, wsts_msg.txid, packet.clone())
+                        .await;
+
+                    if let wsts::net::Message::DkgEnd(_) = packet.msg {
+                        return self;
+                    }
                 }
             }
-        }
+        };
+        tokio::time::timeout(Duration::from_secs(10), future)
+            .await
+            .unwrap()
     }
 
     fn pub_key(&self) -> PublicKey {
