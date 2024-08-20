@@ -75,8 +75,8 @@ pub enum StatusEntry {
     #[default]
     Pending,
     /// Transaction was dealt with by the signers at one point but is now being
-    /// reevaluated. The Signers are aware of the operation request.
-    Reevaluating,
+    /// reprocessed. The Signers are aware of the operation request.
+    Reprocessing,
     /// Transaction has been seen and accepted by the sBTC Signers, but is not
     /// yet included in any on chain artifact. The transaction can still fail
     /// at this point if the Signers fail to include the transaciton in an on
@@ -100,7 +100,7 @@ impl From<&StatusEntry> for Status {
     fn from(value: &StatusEntry) -> Self {
         match value {
             StatusEntry::Pending => Status::Pending,
-            StatusEntry::Reevaluating => Status::Reevaluating,
+            StatusEntry::Reprocessing => Status::Reprocessing,
             StatusEntry::Accepted(_) => Status::Accepted,
             StatusEntry::Confirmed => Status::Confirmed,
             StatusEntry::Failed => Status::Failed,

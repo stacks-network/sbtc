@@ -135,10 +135,11 @@ impl DepositEntry {
     }
 
     /// Gets the latest event.
-    pub fn latest_event(&self) -> &DepositEvent {
-        self.history
-            .last()
-            .expect("Deposit entry must always have at least one event.")
+    pub fn latest_event(&self) -> Result<&DepositEvent, Error> {
+        self.history.last().ok_or(Error::Debug(format!(
+            "Deposit entry must always have at least one event, but entry with id {:?} did not.",
+            self.key(),
+        )))
     }
 }
 
@@ -149,7 +150,7 @@ impl TryFrom<DepositEntry> for Deposit {
         deposit_entry.validate()?;
 
         // Extract data from the latest event.
-        let latest_event = deposit_entry.latest_event();
+        let latest_event = deposit_entry.latest_event()?;
         let status_message = latest_event.message.clone();
         let status: Status = (&latest_event.status).into();
         let fulfillment = match &latest_event.status {
@@ -370,7 +371,7 @@ impl TryFrom<DepositUpdate> for ValidatedDepositUpdate {
             }
             Status::Confirmed => StatusEntry::Confirmed,
             Status::Pending => StatusEntry::Pending,
-            Status::Reevaluating => StatusEntry::Reevaluating,
+            Status::Reprocessing => StatusEntry::Reprocessing,
             Status::Failed => StatusEntry::Failed,
         };
         // Make the new event.
@@ -398,7 +399,7 @@ pub struct DepositUpdatePackage {
 /// Implementation of deposit update package.
 impl DepositUpdatePackage {
     /// Implements from.
-    pub fn from(entry: &DepositEntry, update: ValidatedDepositUpdate) -> Result<Self, Error> {
+    pub fn try_from(entry: &DepositEntry, update: ValidatedDepositUpdate) -> Result<Self, Error> {
         // Ensure the keys are equal.
         if update.key != entry.key {
             return Err(Error::Debug(
@@ -407,7 +408,7 @@ impl DepositUpdatePackage {
         }
         // Ensure that this event is valid if it follows the current latest event.
         entry
-            .latest_event()
+            .latest_event()?
             .ensure_following_event_is_valid(&update.event)?;
         // Create the deposit update package.
         Ok(DepositUpdatePackage {

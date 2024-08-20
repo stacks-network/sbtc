@@ -22,5 +22,5 @@ pub const ALL_STATUSES: &[Status] = &[
     Status::Confirmed,
     Status::Failed,
     Status::Pending,
-    Status::Reevaluating,
+    Status::Reprocessing,
 ];

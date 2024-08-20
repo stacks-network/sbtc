@@ -276,7 +276,7 @@ pub async fn update_deposits(
             // Get original deposit entry.
             let deposit_entry = accessors::get_deposit_entry(&context, &update.key).await?;
             // Make the update package.
-            let update_package = DepositUpdatePackage::from(&deposit_entry, update)?;
+            let update_package = DepositUpdatePackage::try_from(&deposit_entry, update)?;
             let updated_deposit = accessors::update_deposit(&context, &update_package)
                 .await?
                 .try_into()?;

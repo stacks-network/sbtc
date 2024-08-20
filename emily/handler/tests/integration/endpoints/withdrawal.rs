@@ -262,7 +262,7 @@ async fn update_withdrawal() {
     };
 
     // Create and make the request.
-    let single_update = UpdateWithdrawalsRequestBody {
+    let update_requests = UpdateWithdrawalsRequestBody {
         withdrawals: vec![
             WithdrawalUpdate {
                 // Original fields.
@@ -286,8 +286,11 @@ async fn update_withdrawal() {
             },
         ],
     };
-    let response = client.update_withdrawals(&single_update).await;
-    assert_eq!(response.withdrawals.len(), 2);
+    let response = client.update_withdrawals(&update_requests).await;
+    assert_eq!(
+        response.withdrawals.len(),
+        update_requests.withdrawals.len()
+    );
 
     let updated_withdrawal = response.withdrawals.get(0).unwrap().clone();
     assert_eq!(updated_withdrawal.last_update_height, updated_height);
@@ -304,9 +307,9 @@ async fn update_withdrawal() {
     assert_eq!(updated_withdrawal.fulfillment, Some(fulfillment.clone()));
 
     // Update the parameters.
-    let updated_status: Status = Status::Reevaluating;
+    let updated_status: Status = Status::Reprocessing;
     // Make the request.
-    let single_update = UpdateWithdrawalsRequestBody {
+    let update_requests = UpdateWithdrawalsRequestBody {
         withdrawals: vec![WithdrawalUpdate {
             // Original fields.
             request_id: request_id_1,
@@ -318,8 +321,11 @@ async fn update_withdrawal() {
             fulfillment: None,
         }],
     };
-    let response = client.update_withdrawals(&single_update).await;
-    assert_eq!(response.withdrawals.len(), 1);
+    let response = client.update_withdrawals(&update_requests).await;
+    assert_eq!(
+        response.withdrawals.len(),
+        update_requests.withdrawals.len()
+    );
 
     let updated_withdrawal = response.withdrawals.first().unwrap().clone();
     assert_eq!(updated_withdrawal.last_update_height, updated_height + 1);
@@ -351,7 +357,7 @@ async fn update_withdrawal() {
             stacks_block_hash: updated_hash.clone(),
         },
         WithdrawalEvent {
-            status: StatusEntry::Reevaluating,
+            status: StatusEntry::Reprocessing,
             message: updated_message.clone(),
             stacks_block_height: updated_height + 1,
             stacks_block_hash: updated_hash.clone(),

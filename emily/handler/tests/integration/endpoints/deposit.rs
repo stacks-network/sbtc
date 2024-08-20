@@ -397,7 +397,7 @@ async fn update_deposit() {
     };
 
     // Create and make the request.
-    let single_update = UpdateDepositsRequestBody {
+    let update_requests = UpdateDepositsRequestBody {
         deposits: vec![
             DepositUpdate {
                 // Original fields.
@@ -423,8 +423,8 @@ async fn update_deposit() {
             },
         ],
     };
-    let response = client.update_deposits(&single_update).await;
-    assert_eq!(response.deposits.len(), 2);
+    let response = client.update_deposits(&update_requests).await;
+    assert_eq!(response.deposits.len(), update_requests.deposits.len());
 
     let updated_deposit = response.deposits.get(0).unwrap().clone();
     assert_eq!(updated_deposit.last_update_height, updated_height);
@@ -441,9 +441,9 @@ async fn update_deposit() {
     assert_eq!(updated_deposit.fulfillment, Some(fulfillment.clone()));
 
     // Update the parameters.
-    let updated_status: Status = Status::Reevaluating;
+    let updated_status: Status = Status::Reprocessing;
     // Make the request.
-    let single_update = UpdateDepositsRequestBody {
+    let update_requests = UpdateDepositsRequestBody {
         deposits: vec![DepositUpdate {
             // Original fields.
             bitcoin_txid: bitcoin_txid,
@@ -456,8 +456,8 @@ async fn update_deposit() {
             fulfillment: None,
         }],
     };
-    let response = client.update_deposits(&single_update).await;
-    assert_eq!(response.deposits.len(), 1);
+    let response = client.update_deposits(&update_requests).await;
+    assert_eq!(response.deposits.len(), update_requests.deposits.len());
 
     let updated_deposit = response.deposits.first().unwrap().clone();
     assert_eq!(updated_deposit.last_update_height, updated_height + 1);
@@ -495,7 +495,7 @@ async fn update_deposit() {
             stacks_block_hash: updated_hash.clone(),
         },
         DepositEvent {
-            status: StatusEntry::Reevaluating,
+            status: StatusEntry::Reprocessing,
             message: updated_message.clone(),
             stacks_block_height: updated_height + 1,
             stacks_block_hash: updated_hash.clone(),

@@ -224,7 +224,7 @@ pub async fn update_withdrawals(
             let withdrawal_entry =
                 accessors::get_withdrawal_entry(&context, &update.request_id).await?;
             // Make the update package.
-            let update_package = WithdrawalUpdatePackage::from(&withdrawal_entry, update)?;
+            let update_package = WithdrawalUpdatePackage::try_from(&withdrawal_entry, update)?;
             let updated_withdrawal = accessors::update_withdrawal(&context, &update_package)
                 .await?
                 .try_into()?;

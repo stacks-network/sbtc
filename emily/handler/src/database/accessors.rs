@@ -92,14 +92,14 @@ pub async fn update_deposit(
 ) -> Result<DepositEntry, Error> {
     // Setup the update procedure.
     let update_expression: &str = " SET
-        #history = list_append(#history, :new_event),
-        #version = #version + :one,
-        #op_status = :new_op_status,
-        #height = :new_height,
-        #hash = :new_hash
+        History = list_append(History, :new_event),
+        Version = Version + :one,
+        OpStatus = :new_op_status,
+        LastUpdateHeight = :new_height,
+        LastUpdateBlockHash = :new_hash
     ";
     // Ensure the version field is what we expect it to be.
-    let condition_expression = "attribute_exists(#version) AND #version = :expected_version";
+    let condition_expression = "attribute_exists(Version) AND Version = :expected_version";
     // Make the key item.
     let key_item: Item = serde_dynamo::to_item(&update.key)?;
     // Get simplified status enum.
@@ -110,11 +110,6 @@ pub async fn update_deposit(
         .update_item()
         .table_name(&context.settings.deposit_table_name)
         .set_key(Some(key_item.into()))
-        .expression_attribute_names("#history", "History")
-        .expression_attribute_names("#version", "Version")
-        .expression_attribute_names("#op_status", "OpStatus")
-        .expression_attribute_names("#height", "LastUpdateHeight")
-        .expression_attribute_names("#hash", "LastUpdateBlockHash")
         .expression_attribute_values(":new_op_status", serde_dynamo::to_attribute_value(&status)?)
         .expression_attribute_values(
             ":new_height",
@@ -209,14 +204,14 @@ pub async fn update_withdrawal(
 ) -> Result<WithdrawalEntry, Error> {
     // Setup the update procedure.
     let update_expression: &str = " SET
-        #history = list_append(#history, :new_event),
-        #version = #version + :one,
-        #op_status = :new_op_status,
-        #height = :new_height,
-        #hash = :new_hash
+        History = list_append(History, :new_event),
+        Version = Version + :one,
+        OpStatus = :new_op_status,
+        LastUpdateHeight = :new_height,
+        LastUpdateBlockHash = :new_hash
     ";
     // Ensure the version field is what we expect it to be.
-    let condition_expression = "attribute_exists(#version) AND #version = :expected_version";
+    let condition_expression = "attribute_exists(Version) AND Version = :expected_version";
     // Make the key item.
     let key_item: Item = serde_dynamo::to_item(&update.key)?;
     // Get simplified status enum.
@@ -227,11 +222,6 @@ pub async fn update_withdrawal(
         .update_item()
         .table_name(&context.settings.withdrawal_table_name)
         .set_key(Some(key_item.into()))
-        .expression_attribute_names("#history", "History")
-        .expression_attribute_names("#version", "Version")
-        .expression_attribute_names("#op_status", "OpStatus")
-        .expression_attribute_names("#height", "LastUpdateHeight")
-        .expression_attribute_names("#hash", "LastUpdateBlockHash")
         .expression_attribute_values(":new_op_status", serde_dynamo::to_attribute_value(&status)?)
         .expression_attribute_values(
             ":new_height",

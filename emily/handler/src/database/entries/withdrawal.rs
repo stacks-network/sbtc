@@ -94,10 +94,11 @@ impl WithdrawalEntry {
     }
 
     /// Gets the latest event.
-    pub fn latest_event(&self) -> &WithdrawalEvent {
-        self.history
-            .last()
-            .expect("Withdrawal entry must always have at least one event.")
+    pub fn latest_event(&self) -> Result<&WithdrawalEvent, Error> {
+        self.history.last().ok_or(Error::Debug(format!(
+            "Withdrawal entry must always have at least one event, but entry with id {:?} did not.",
+            self.key(),
+        )))
     }
 }
 
@@ -108,7 +109,7 @@ impl TryFrom<WithdrawalEntry> for Withdrawal {
         withdrawal_entry.validate()?;
 
         // Extract data from the latest event.
-        let latest_event = withdrawal_entry.latest_event();
+        let latest_event = withdrawal_entry.latest_event()?;
         let status_message = latest_event.message.clone();
         let status: Status = (&latest_event.status).into();
         let fulfillment = match &latest_event.status {
@@ -362,7 +363,7 @@ impl TryFrom<WithdrawalUpdate> for ValidatedWithdrawalUpdate {
             }
             Status::Confirmed => StatusEntry::Confirmed,
             Status::Pending => StatusEntry::Pending,
-            Status::Reevaluating => StatusEntry::Reevaluating,
+            Status::Reprocessing => StatusEntry::Reprocessing,
             Status::Failed => StatusEntry::Failed,
         };
         // Make the new event.
@@ -393,7 +394,10 @@ pub struct WithdrawalUpdatePackage {
 /// Implementation of withdrawal update package.
 impl WithdrawalUpdatePackage {
     /// Implements from.
-    pub fn from(entry: &WithdrawalEntry, update: ValidatedWithdrawalUpdate) -> Result<Self, Error> {
+    pub fn try_from(
+        entry: &WithdrawalEntry,
+        update: ValidatedWithdrawalUpdate,
+    ) -> Result<Self, Error> {
         // Ensure the keys are equal.
         if update.request_id != entry.key.request_id {
             return Err(Error::Debug(
@@ -402,7 +406,7 @@ impl WithdrawalUpdatePackage {
         }
         // Ensure that this event is valid if it follows the current latest event.
         entry
-            .latest_event()
+            .latest_event()?
             .ensure_following_event_is_valid(&update.event)?;
         // Create the withdrawal update package.
         Ok(WithdrawalUpdatePackage {
