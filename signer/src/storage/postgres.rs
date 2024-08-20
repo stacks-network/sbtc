@@ -416,7 +416,7 @@ impl super::DbRead for PgStore {
             WHERE txid = $1 AND output_index = $2",
         )
         .bind(txid)
-        .bind(output_index as i32)
+        .bind(i32::try_from(output_index).map_err(Error::ConversionDatabaseInt)?)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -437,7 +437,7 @@ impl super::DbRead for PgStore {
             FROM sbtc_signer.withdraw_signers
             WHERE request_id = $1 AND block_hash = $2",
         )
-        .bind(request_id as i64)
+        .bind(i64::try_from(request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(block_hash)
         .fetch_all(&self.0)
         .await
@@ -746,7 +746,7 @@ impl super::DbWrite for PgStore {
             ON CONFLICT DO NOTHING",
         )
         .bind(&block.block_hash)
-        .bind(block.block_height as i64)
+        .bind(i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?)
         .bind(&block.parent_hash)
         .bind(&block.confirms)
         .execute(&self.0)
@@ -767,7 +767,7 @@ impl super::DbWrite for PgStore {
             ON CONFLICT DO NOTHING",
         )
         .bind(&block.block_hash)
-        .bind(block.block_height as i64)
+        .bind(i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?)
         .bind(&block.parent_hash)
         .execute(&self.0)
         .await
@@ -799,8 +799,8 @@ impl super::DbWrite for PgStore {
         .bind(&deposit_request.spend_script)
         .bind(&deposit_request.reclaim_script)
         .bind(&deposit_request.recipient)
-        .bind(deposit_request.amount as i64)
-        .bind(deposit_request.max_fee as i64)
+        .bind(i64::try_from(deposit_request.amount).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(deposit_request.max_fee).map_err(Error::ConversionDatabaseInt)?)
         .bind(&deposit_request.sender_addresses)
         .execute(&self.0)
         .await
@@ -832,8 +832,8 @@ impl super::DbWrite for PgStore {
             spend_script.push(req.spend_script);
             reclaim_script.push(req.reclaim_script);
             recipient.push(req.recipient);
-            amount.push(req.amount as i64);
-            max_fee.push(req.max_fee as i64);
+            amount.push(i64::try_from(req.amount).map_err(Error::ConversionDatabaseInt)?);
+            max_fee.push(i64::try_from(req.max_fee).map_err(Error::ConversionDatabaseInt)?);
             // We need to join the addresses like this (and later split
             // them), because handling of multidimensional arrays in
             // postgres is tough. The naive approach of doing
@@ -911,11 +911,11 @@ impl super::DbWrite for PgStore {
             VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT DO NOTHING",
         )
-        .bind(withdraw_request.request_id as i64)
+        .bind(i64::try_from(withdraw_request.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(&withdraw_request.block_hash)
         .bind(&withdraw_request.recipient)
-        .bind(withdraw_request.amount as i64)
-        .bind(withdraw_request.max_fee as i64)
+        .bind(i64::try_from(withdraw_request.amount).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(withdraw_request.max_fee).map_err(Error::ConversionDatabaseInt)?)
         .bind(&withdraw_request.sender_address)
         .execute(&self.0)
         .await
@@ -964,7 +964,7 @@ impl super::DbWrite for PgStore {
             VALUES ($1, $2, $3, $4)
             ON CONFLICT DO NOTHING",
         )
-        .bind(decision.request_id as i64)
+        .bind(i64::try_from(decision.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(&decision.block_hash)
         .bind(decision.signer_pub_key)
         .bind(decision.is_accepted)
@@ -1117,7 +1117,9 @@ impl super::DbWrite for PgStore {
         for block in blocks {
             block_ids.push(block.block_hash);
             parent_block_ids.push(block.parent_hash);
-            chain_lengths.push(block.block_height as i64);
+            let block_height =
+                i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?;
+            chain_lengths.push(block_height);
         }
 
         sqlx::query(

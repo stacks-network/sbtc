@@ -47,6 +47,12 @@ pub enum Error {
     #[error("could not parse the Hex string to a StacksBlockId: {0}, original: {1}")]
     ParseStacksBlockId(#[source] blockstack_lib::util::HexError, String),
 
+    /// Thrown when doing [`i64::try_from`] or [`i32::try_from`] before
+    /// inserting a value into the database. This only happens if the value
+    /// is creater than MAX for the signed type.
+    #[error("could not convert integer type to the signed version for storing in postgres {0}")]
+    ConversionDatabaseInt(#[source] std::num::TryFromIntError),
+
     /// Parsing the Hex Error
     #[error("could not decode the bitcoin block: {0}")]
     DecodeBitcoinBlock(#[source] bitcoin::consensus::encode::Error),
