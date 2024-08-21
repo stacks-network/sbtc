@@ -101,12 +101,12 @@ async fn simple_reorg_test_base(scenario: ReorgScenario) {
         };
         let withdrawal_request = CreateWithdrawalRequestBody {
             request_id: stacks_block_height,
-            stacks_block_hash: stacks_block_hash,
+            stacks_block_hash,
+            stacks_block_height,
             recipient: TEST_RECIPIENT.to_string(),
             amount: 1,
             parameters: TEST_WITHDRAWAL_PARAMETERS.clone(),
         };
-
         // Make requests to populate the database.
         client.create_chainstate(&chainstate).await;
         client.create_deposit(&deposit_request).await;

@@ -204,8 +204,9 @@ pub async fn create_deposit(
         body: CreateDepositRequestBody,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Set variables.
-        let stacks_block_hash: StacksBlockHash = "DUMMY_HASH".into();
-        let stacks_block_height: BlockHeight = 0;
+        let api_state = accessors::get_api_state(&context).await?;
+        let stacks_block_hash: StacksBlockHash = api_state.chaintip.key.hash;
+        let stacks_block_height: BlockHeight = api_state.chaintip.key.height;
         let status = Status::Pending;
         // Make table entry.
         let deposit_entry: DepositEntry = DepositEntry {

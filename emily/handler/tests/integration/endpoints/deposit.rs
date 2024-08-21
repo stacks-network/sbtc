@@ -1,6 +1,7 @@
 use crate::util::{self, constants::EMILY_DEPOSIT_ENDPOINT, TestClient};
 use emily_handler::{
     api::models::{
+        chainstate::Chainstate,
         common::{Fulfillment, Status},
         deposit::{
             requests::{CreateDepositRequestBody, DepositUpdate, UpdateDepositsRequestBody},
@@ -23,8 +24,7 @@ use tokio;
 
 use emily_handler::api::models::deposit::responses::GetDepositResponse;
 
-// TODO(392): Use test setup functions to wipe the database before performing these
-// tests instead of relying on circumstantial test execution order.
+const TEST_BLOCK_HEIGHT: u64 = 123;
 
 /// Contains data about a deposit transaction used for testing so that
 /// all the tests have a common understanding of the deposits in the
@@ -66,6 +66,14 @@ struct TestDepositData {
 async fn setup_deposit_integration_test() -> TestClient {
     let client = TestClient::new();
     client.setup_test().await;
+    // Setup first chainstate.
+    client
+        .create_chainstate(&Chainstate {
+            stacks_block_height: TEST_BLOCK_HEIGHT,
+            stacks_block_hash: "DUMMY_HASH".to_string(),
+        })
+        .await;
+    // Make test deposits.
     for test_deposit in all_test_deposit_data() {
         let bitcoin_txid: String = test_deposit.bitcoin_txid;
         let bitcoin_tx_output_index: u32 = test_deposit.bitcoin_tx_output_index;
@@ -109,6 +117,7 @@ fn just_created_deposit(bitcoin_txid: String, bitcoin_tx_output_index: u32) -> D
         bitcoin_txid,
         bitcoin_tx_output_index,
         last_update_block_hash: "DUMMY_HASH".to_string(),
+        last_update_height: TEST_BLOCK_HEIGHT,
         status_message: "Just received deposit".to_string(),
         parameters: DepositParameters {
             reclaim_script: "example_reclaim_script".to_string(),
@@ -485,7 +494,7 @@ async fn update_deposit() {
         DepositEvent {
             status: StatusEntry::Pending,
             message: "Just received deposit".to_string(),
-            stacks_block_height: 0,
+            stacks_block_height: TEST_BLOCK_HEIGHT,
             stacks_block_hash: "DUMMY_HASH".to_string(),
         },
         DepositEvent {

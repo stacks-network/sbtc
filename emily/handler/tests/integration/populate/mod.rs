@@ -49,6 +49,7 @@ async fn create_withdrawals(client: &TestClient) {
         let create_request = CreateWithdrawalRequestBody {
             request_id: i as u64,
             stacks_block_hash: format!("stacks-block-hash-{i}"),
+            stacks_block_height: i as u64,
             recipient: format!("recipient-{i}"),
             amount: rng.gen_range(1000..=1000000) as u64,
             parameters: WithdrawalParameters {

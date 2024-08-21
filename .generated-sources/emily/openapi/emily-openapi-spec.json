@@ -809,6 +809,7 @@
         "required": [
           "requestId",
           "stacksBlockHash",
+          "stacksBlockHeight",
           "recipient",
           "amount",
           "parameters"
@@ -828,6 +829,9 @@
           },
           "stacksBlockHash": {
             "$ref": "#/components/schemas/StacksBlockHash"
+          },
+          "stacksBlockHeight": {
+            "$ref": "#/components/schemas/BlockHeight"
           }
         }
       },

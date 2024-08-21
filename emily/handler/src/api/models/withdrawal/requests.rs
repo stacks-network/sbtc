@@ -28,6 +28,8 @@ pub struct CreateWithdrawalRequestBody {
     pub request_id: WithdrawalId,
     /// The stacks block hash in which this request id was initiated.
     pub stacks_block_hash: StacksBlockHash,
+    /// The stacks block hash in which this request id was initiated.
+    pub stacks_block_height: BlockHeight,
     /// The recipient Bitcoin address.
     pub recipient: BitcoinAddress,
     /// Amount of BTC being withdrawn.
