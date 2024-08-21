@@ -9,7 +9,7 @@ use crate::api::models::{
     common::{BlockHeight, StacksBlockHash},
 };
 
-use super::{EntryTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait};
+use super::{EntryTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait, VersionedEntryTrait};
 
 // Chainstate entry ---------------------------------------------------------------
 
@@ -188,6 +188,20 @@ impl EntryTrait for ApiStateEntry {
     /// Extract the key from the deposit entry.
     fn key(&self) -> Self::Key {
         ApiStateEntry::key()
+    }
+}
+
+/// Implement versioned entry trait for the api state entry.
+impl VersionedEntryTrait for ApiStateEntry {
+    /// Version field.
+    const VERSION_FIELD: &'static str = "Version";
+    /// Get version.
+    fn get_version(&self) -> u64 {
+        self.version
+    }
+    /// Increment version.
+    fn increment_version(&mut self) {
+        self.version += 1;
     }
 }
 

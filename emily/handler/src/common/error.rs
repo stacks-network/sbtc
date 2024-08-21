@@ -89,6 +89,11 @@ pub enum Error {
     /// Inconsistent API state detected during request
     #[error("Inconsistent internal state: {0:?}")]
     InconsistentState(Inconsistency),
+
+    /// An entry update version conflict in a resource update resulted
+    /// in an update not being performed.
+    #[error("Version conflict")]
+    VersionConflict,
 }
 
 /// Error implementation.
@@ -110,6 +115,7 @@ impl Error {
             Error::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             Error::RequestTimeout => StatusCode::REQUEST_TIMEOUT,
             Error::InconsistentState(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::VersionConflict => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
     /// Converts the error into a warp response.
@@ -127,11 +133,15 @@ impl Error {
     /// production ready.
     pub fn into_production_error(self) -> Error {
         match self {
-            Error::Serialization(_) | Error::InvalidApiResponse => Error::NotAcceptable,
+            Error::Serialization(_) | Error::InvalidApiResponse | Error::NotAcceptable => {
+                Error::NotAcceptable
+            }
             Error::NotImplemented
             | Error::Debug(_)
             | Error::Network(_)
-            | Error::ServiceUnavailable => Error::InternalServer,
+            | Error::ServiceUnavailable
+            | Error::VersionConflict
+            | Error::InternalServer => Error::InternalServer,
             err => err,
         }
     }
@@ -147,7 +157,13 @@ impl From<SdkError<GetItemError>> for Error {
 }
 impl From<SdkError<PutItemError>> for Error {
     fn from(err: SdkError<PutItemError>) -> Self {
-        Error::Debug(format!("SdkError<PutItemError> - {err:?}"))
+        match err.into_service_error() {
+            // Note, this assumes that any conditional check that fails fails because
+            // there's a version conflict. This isn't necessarily true but is a good
+            // simplifying assumption.
+            PutItemError::ConditionalCheckFailedException(_) => Error::VersionConflict,
+            service_err => Error::Debug(format!("SdkError<PutItemError> - {service_err:?}")),
+        }
     }
 }
 impl From<SdkError<QueryError>> for Error {
@@ -157,7 +173,13 @@ impl From<SdkError<QueryError>> for Error {
 }
 impl From<SdkError<DeleteItemError>> for Error {
     fn from(err: SdkError<DeleteItemError>) -> Self {
-        Error::Debug(format!("SdkError<DeleteItemError> - {err:?}"))
+        match err.into_service_error() {
+            // Note, this assumes that any conditional check that fails fails because
+            // there's a version conflict. This isn't necessarily true but is a good
+            // simplifying assumption.
+            DeleteItemError::ConditionalCheckFailedException(_) => Error::VersionConflict,
+            service_err => Error::Debug(format!("SdkError<DeleteItemError> - {service_err:?}")),
+        }
     }
 }
 impl From<SdkError<ScanError>> for Error {
@@ -172,7 +194,13 @@ impl From<SdkError<BatchWriteItemError>> for Error {
 }
 impl From<SdkError<UpdateItemError>> for Error {
     fn from(err: SdkError<UpdateItemError>) -> Self {
-        Error::Debug(format!("SdkError<UpdateItemError> - {err:?}"))
+        match err.into_service_error() {
+            // Note, this assumes that any conditional check that fails fails because
+            // there's a version conflict. This isn't necessarily true but is a good
+            // simplifying assumption.
+            UpdateItemError::ConditionalCheckFailedException(_) => Error::VersionConflict,
+            service_err => Error::Debug(format!("SdkError<UpdateItemError> - {service_err:?}")),
+        }
     }
 }
 impl From<aws_sdk_dynamodb::error::BuildError> for Error {

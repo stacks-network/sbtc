@@ -44,7 +44,7 @@
 //! enough to support various data models while maintaining strong type safety and clear separation
 //! of concerns.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Debug};
 
 use aws_sdk_dynamodb::types::{AttributeValue, DeleteRequest, WriteRequest};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
@@ -121,7 +121,7 @@ pub struct SecondaryIndex<T>(pub T);
 // -----------------------------------------------------------------------------
 
 /// Trait common to entries.
-pub trait EntryTrait: serde::Serialize + for<'de> serde::Deserialize<'de> {
+pub trait EntryTrait: serde::Serialize + for<'de> serde::Deserialize<'de> + Debug {
     /// Key type for the entry.
     type Key: KeyTrait;
     /// Retrieves the entry key.
@@ -411,6 +411,65 @@ pub(crate) trait TableIndexTrait {
             }
         }
     }
+}
+
+/// Versioned entry trait.
+pub trait VersionedEntryTrait: EntryTrait {
+    /// Version field.
+    const VERSION_FIELD: &'static str;
+    /// Get version.
+    fn get_version(&self) -> u64;
+    /// Increment version.
+    fn increment_version(&mut self);
+}
+
+/// Index trait for a versioned thing.
+pub(crate) trait VersionedTableIndexTrait: TableIndexTrait
+where
+    Self::Entry: VersionedEntryTrait,
+{
+    /// Put generic table entry but add a version check.
+    async fn put_entry_with_version(
+        dynamodb_client: &aws_sdk_dynamodb::Client,
+        settings: &Settings,
+        entry: &mut Self::Entry,
+    ) -> Result<(), Error> {
+        // Get table name.
+        let table_name = Self::table_name(settings);
+        // Get the expected version.
+        let expected_version: u64 = entry.get_version();
+        // Increment version.
+        entry.increment_version();
+        // Convert Entry into the type needed for querying.
+        let entry_item: Item = serde_dynamo::to_item(entry)?;
+        // Add to the database.
+        dynamodb_client
+            .put_item()
+            .table_name(table_name)
+            .set_item(Some(entry_item.into()))
+            .condition_expression("attribute_exists(#version) AND #version = :expected_version")
+            .expression_attribute_names(
+                "#version",
+                <Self::Entry as VersionedEntryTrait>::VERSION_FIELD,
+            )
+            .expression_attribute_values(
+                ":expected_version",
+                serde_dynamo::to_attribute_value(expected_version)?,
+            )
+            .send()
+            .await?;
+        // Return.
+        Ok(())
+    }
+}
+
+// Implement VersionedTableIndexTrait for all structs that implement TableIndexTrait
+// and where the associated Entry type implements VersionedEntry
+impl<T> VersionedTableIndexTrait for T
+where
+    T: TableIndexTrait,
+    T::Entry: VersionedEntryTrait,
+{
 }
 
 /// Secondary index search token definition.

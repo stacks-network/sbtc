@@ -18,7 +18,7 @@ use crate::{
 
 use super::{
     EntryTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait, SecondaryIndex, SecondaryIndexTrait,
-    StatusEntry,
+    StatusEntry, VersionedEntryTrait,
 };
 
 // Deposit entry ---------------------------------------------------------------
@@ -65,6 +65,20 @@ pub struct DepositEntry {
     pub fulfillment: Option<Fulfillment>,
     /// History of this deposit transaction.
     pub history: Vec<DepositEvent>,
+}
+
+/// Implements versioned entry trait for the deposit entry.
+impl VersionedEntryTrait for DepositEntry {
+    /// Version field.
+    const VERSION_FIELD: &'static str = "Version";
+    /// Get version.
+    fn get_version(&self) -> u64 {
+        self.version
+    }
+    /// Increment version.
+    fn increment_version(&mut self) {
+        self.version += 1;
+    }
 }
 
 /// Implements the key trait for the deposit entry key.

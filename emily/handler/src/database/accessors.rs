@@ -26,7 +26,7 @@ use super::entries::{
         WithdrawalEntry, WithdrawalInfoEntry, WithdrawalTablePrimaryIndex,
         WithdrawalTableSecondaryIndex, WithdrawalUpdatePackage,
     },
-    EntryTrait, KeyTrait, TableIndexTrait,
+    EntryTrait, KeyTrait, TableIndexTrait, VersionedEntryTrait, VersionedTableIndexTrait,
 };
 
 // TODO: have different Table structs for each of the table types instead of
@@ -37,6 +37,14 @@ use super::entries::{
 /// Add deposit entry.
 pub async fn add_deposit_entry(context: &EmilyContext, entry: &DepositEntry) -> Result<(), Error> {
     put_entry::<DepositTablePrimaryIndex>(context, entry).await
+}
+
+/// Sets / updates an existing deposit entry.
+pub async fn set_deposit_entry(
+    context: &EmilyContext,
+    entry: &mut DepositEntry,
+) -> Result<(), Error> {
+    put_entry_with_version::<DepositTablePrimaryIndex>(context, entry).await
 }
 
 /// Get deposit entry.
@@ -148,6 +156,14 @@ pub async fn add_withdrawal_entry(
     entry: &WithdrawalEntry,
 ) -> Result<(), Error> {
     put_entry::<WithdrawalTablePrimaryIndex>(context, entry).await
+}
+
+/// Sets / updates an existing withdrawal entry.
+pub async fn set_withdrawal_entry(
+    context: &EmilyContext,
+    entry: &mut WithdrawalEntry,
+) -> Result<(), Error> {
+    put_entry_with_version::<WithdrawalTablePrimaryIndex>(context, entry).await
 }
 
 /// Get withdrawal entry.
@@ -376,7 +392,7 @@ pub async fn get_api_state(context: &EmilyContext) -> Result<ApiStateEntry, Erro
 /// Sets the API state.
 /// TODO(TBD): Include the relevant logic for updating the entry version.
 pub async fn set_api_state(context: &EmilyContext, api_state: &ApiStateEntry) -> Result<(), Error> {
-    put_entry::<SpecialApiStateIndex>(context, api_state).await
+    put_entry_with_version::<SpecialApiStateIndex>(context, &mut api_state.clone()).await
 }
 
 // Testing ---------------------------------------------------------------------
@@ -424,6 +440,21 @@ async fn put_entry<T: TableIndexTrait>(
     entry: &<T as TableIndexTrait>::Entry,
 ) -> Result<(), Error> {
     <T as TableIndexTrait>::put_entry(&context.dynamodb_client, &context.settings, entry).await
+}
+
+async fn put_entry_with_version<T: VersionedTableIndexTrait>(
+    context: &EmilyContext,
+    entry: &mut <T as TableIndexTrait>::Entry,
+) -> Result<(), Error>
+where
+    <T as TableIndexTrait>::Entry: VersionedEntryTrait,
+{
+    <T as VersionedTableIndexTrait>::put_entry_with_version(
+        &context.dynamodb_client,
+        &context.settings,
+        entry,
+    )
+    .await
 }
 
 async fn delete_entry<T: TableIndexTrait>(
