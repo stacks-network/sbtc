@@ -40,7 +40,7 @@ use crate::error::Error;
 ///
 /// This struct leaves out some of the fields that are included. For the
 /// full payload, see the source here:
-/// https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L644-L687
+/// <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L644-L687>
 #[derive(Debug, Deserialize)]
 pub struct NewBlockEvent {
     /// The hash of the stacks block
@@ -83,7 +83,10 @@ pub struct NewBlockEvent {
     pub parent_burn_block_timestamp: u64,
 }
 
-/// https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L499-L511
+/// This matches the json value that is defined in stacks-core[^1]. It
+/// contains the raw tranaction and the result of the transaction.
+/// 
+/// <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L499-L511>
 #[derive(Debug, Deserialize)]
 pub struct TransactionReceipt {
     /// The id of this transaction .
@@ -132,8 +135,9 @@ pub enum TransactionEventType {
     FtBurnEvent,
 }
 
-/// https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/clarity/src/vm/events.rs#L358-L363
-/// https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/clarity/src/vm/events.rs#L45-L51
+/// An event that was emitted during the execution of the transaction. It
+/// is defined in [^1].
+/// [^1]: <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/clarity/src/vm/events.rs#L45-L51>
 #[derive(Debug, Deserialize)]
 pub struct TransactionEvent {
     /// The id of the transaction that generated the event.
@@ -153,7 +157,9 @@ pub struct TransactionEvent {
 }
 
 /// Smart contracts emit events when they are executed. This represents
-/// such an event.
+/// such an event. The expected type is taken from stackss-core[^1].
+/// 
+/// [^1]: <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/clarity/src/vm/events.rs#L358-L363>
 #[derive(Debug, Deserialize)]
 pub struct SmartContractEvent {
     /// Identifies the smart contract that generated event.
@@ -183,7 +189,7 @@ pub struct SmartContractEvent {
 /// the types that we use here that implement [`HexDeser`] here follow that
 /// same pattern.
 ///
-/// [^1]: https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L645
+/// [^1]: <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L645>
 pub fn deserialize_hex<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: serde::Deserializer<'de>,
