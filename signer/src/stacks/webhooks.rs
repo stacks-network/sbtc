@@ -85,7 +85,7 @@ pub struct NewBlockEvent {
 
 /// This matches the json value that is defined in stacks-core[^1]. It
 /// contains the raw tranaction and the result of the transaction.
-/// 
+///
 /// <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L499-L511>
 #[derive(Debug, Deserialize)]
 pub struct TransactionReceipt {
@@ -137,6 +137,7 @@ pub enum TransactionEventType {
 
 /// An event that was emitted during the execution of the transaction. It
 /// is defined in [^1].
+///
 /// [^1]: <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/clarity/src/vm/events.rs#L45-L51>
 #[derive(Debug, Deserialize)]
 pub struct TransactionEvent {
@@ -158,7 +159,7 @@ pub struct TransactionEvent {
 
 /// Smart contracts emit events when they are executed. This represents
 /// such an event. The expected type is taken from stackss-core[^1].
-/// 
+///
 /// [^1]: <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/clarity/src/vm/events.rs#L358-L363>
 #[derive(Debug, Deserialize)]
 pub struct SmartContractEvent {
@@ -178,16 +179,13 @@ pub struct SmartContractEvent {
 ///
 /// # Notes
 ///
-/// A good example of how why this works is with the `block_hash` field in
-/// the `POST /new_block` webhook[^1]. It's set using the
-/// [`std::fmt::Display`] implementation of a [`BlockHeaderHash`] type. The
-/// [`std::fmt::Display`] implementation is done using the
-/// [`stacks_common::util::macros::impl_byte_array_newtype!`] macro, which
-/// is implemented using the [`BlockHeaderHash::to_hex`] function. That
-/// type also implements [`HexDeser`], with the implementation of
-/// [`HexDeser::try_from`] done using the types `from_hex` function. All
-/// the types that we use here that implement [`HexDeser`] here follow that
-/// same pattern.
+/// A good example of how this works is with the `block_hash` field in the
+/// `POST /new_block` webhook[^1]. It's set using the [`std::fmt::Display`]
+/// implementation of a [`BlockHeaderHash`] type. The [`std::fmt::Display`]
+/// implementation uses the [`BlockHeaderHash::to_hex`] function. That type
+/// also implements [`HexDeser`], where the [`HexDeser::try_from`]
+/// implementation uses the types `from_hex` function. All the types that
+/// we use here that implement [`HexDeser`] follow this same pattern.
 ///
 /// [^1]: <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L645>
 pub fn deserialize_hex<'de, D, T>(deserializer: D) -> Result<T, D::Error>
@@ -224,7 +222,8 @@ where
 ///
 /// # Notes
 ///
-/// This returns [`Ok(None)`] whenever the "raw_tx" is "0x00".
+/// This returns [`Ok(None)`] whenever the "raw_tx" is "0x00", which
+/// corresponds to a burnchain operation.
 pub fn deserialize_tx<'de, D>(deserializer: D) -> Result<Option<StacksTransaction>, D::Error>
 where
     D: serde::Deserializer<'de>,
