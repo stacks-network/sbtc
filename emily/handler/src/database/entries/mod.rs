@@ -428,12 +428,7 @@ pub(crate) trait VersionedTableIndexTrait: TableIndexTrait
 where
     Self::Entry: VersionedEntryTrait,
 {
-    /// Put generic table entry but add version a check.
-    ///
-    /// Note that this assumes that the entry has a version field called "Version"
-    /// and that the entry being emplaced has the "Version" field CURRENTLY set to
-    /// the EXPECTED version of the entry to update. This function will automatically
-    /// increment the version of the entry on PUT.
+    /// Put generic table entry but add a version check.
     async fn put_entry_with_version(
         dynamodb_client: &aws_sdk_dynamodb::Client,
         settings: &Settings,
