@@ -4534,6 +4534,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sqlx",
+ "sqlx-core",
  "stacks-common",
  "stackslib",
  "strum",
