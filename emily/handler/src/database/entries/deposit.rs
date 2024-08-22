@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     api::models::{
+        chainstate::Chainstate,
         common::{
             BitcoinScript, BitcoinTransactionId, BitcoinTransactionOutputIndex, BlockHeight,
             Fulfillment, Satoshis, StacksBlockHash, StacksPrinciple, Status,
@@ -154,6 +155,46 @@ impl DepositEntry {
             "Deposit entry must always have at least one event, but entry with id {:?} did not.",
             self.key(),
         )))
+    }
+
+    /// Reorgs around a given chainstate.
+    /// TODO(TBD): Remove duplicate code around deposits and withdrawals if possible.
+    pub fn reorganize_around(&mut self, chainstate: &Chainstate) -> Result<(), Error> {
+        // Update the history to have the histories wiped after the reorg.
+        self.history.retain(|event| {
+            // The event is younger than the reorg...
+            (chainstate.stacks_block_height > event.stacks_block_height)
+                // Or the event is as old as the reorg but has a different block hash...
+                || ((chainstate.stacks_block_height == event.stacks_block_height)
+                    && (chainstate.stacks_block_hash == event.stacks_block_hash))
+        });
+        // If the history is empty add a reassessing event.
+        if self.history.is_empty() {
+            self.history = vec![DepositEvent {
+                status: StatusEntry::Reprocessing,
+                message: "Reprocessing deposit status after reorg.".to_string(),
+                stacks_block_height: chainstate.stacks_block_height,
+                stacks_block_hash: chainstate.stacks_block_hash.clone(),
+            }]
+        }
+        // Synchronize self with the new history.
+        self.synchronize_with_history()?;
+        // Return.
+        Ok(())
+    }
+
+    /// Synchronize the entry with its history.
+    pub fn synchronize_with_history(&mut self) -> Result<(), Error> {
+        // Get latest event.
+        let latest_event = self.latest_event()?;
+        // Calculate the new values.
+        let new_status: Status = (&latest_event.status).into();
+        let new_last_update_height: u64 = latest_event.stacks_block_height;
+        // Set variables.
+        self.status = new_status;
+        self.last_update_height = new_last_update_height;
+        // Return.
+        Ok(())
     }
 }
 
