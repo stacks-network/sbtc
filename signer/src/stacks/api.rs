@@ -697,22 +697,24 @@ where
 mod tests {
     use crate::config::StacksNodeSettings;
     use crate::storage::in_memory::Store;
-    use crate::storage::postgres::PgStore;
     use crate::storage::DbWrite;
+    use crate::testing::storage::DATABASE_NUM;
 
     use test_case::test_case;
 
     use super::*;
     use std::io::Read;
+    use std::sync::atomic::Ordering;
 
     #[ignore = "This is an integration test that hasn't been setup for CI yet"]
-    #[sqlx::test]
-    async fn fetch_unknown_ancestors_works(pool: sqlx::PgPool) {
+    #[tokio::test]
+    async fn fetch_unknown_ancestors_works() {
+        let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+        let db = crate::testing::storage::new_test_database(db_num).await;
         sbtc::logging::setup_logging("info,signer=debug", false);
 
         let settings = StacksSettings::new_from_config().unwrap();
         let mut client = StacksClient::new(settings);
-        let db = PgStore::from(pool);
 
         let info = client.get_tenure_info().await.unwrap();
         let blocks = fetch_unknown_ancestors(&mut client, &db, info.tip_block_id).await;

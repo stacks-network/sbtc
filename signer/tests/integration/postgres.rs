@@ -31,7 +31,6 @@ use test_case::test_case;
 
 use crate::DATABASE_NUM;
 
-
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_be_able_to_query_bitcoin_blocks() {

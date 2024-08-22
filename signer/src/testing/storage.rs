@@ -1,11 +1,17 @@
 //! Test utilities for the `storage` module
 
+use std::sync::atomic::AtomicU16;
+
 use crate::storage::postgres::PgStore;
 
 pub mod model;
 
 /// The postgres connection string to the test database.
 pub const DATABASE_URL: &str = "postgres://user@localhost:5432/signer";
+
+/// This is needed to make sure that each test has as many isolated
+/// databases as it needs.
+pub static DATABASE_NUM: AtomicU16 = AtomicU16::new(0);
 
 /// It's better to create a new pool for each test since there is some
 /// weird bug in sqlx. The issue that can crop up with pool reuse is
