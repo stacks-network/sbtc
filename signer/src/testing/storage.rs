@@ -36,7 +36,7 @@ fn get_connection_pool(url: &str) -> sqlx::PgPool {
 ///    database in order for the test to work as designed. Tests that check
 ///    that the collection of signers can complete a task don't work well
 ///    with the sqlx::Transaction object, so this approach doesn't work.
-/// 2. Do the above, but have each transaction connect to it's own
+/// 2. Do the above, but have each transaction connect to its own
 ///    database. This actually works, and it's not clear why.
 /// 3. Have each test use a new pool to a new database. This works as well.
 pub async fn new_test_database(db_num: u16) -> PgStore {
