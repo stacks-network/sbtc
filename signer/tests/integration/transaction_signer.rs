@@ -8,7 +8,10 @@ use testing::transaction_signer::TestEnvironment;
 
 use crate::DATABASE_NUM;
 
-async fn test_environment(mut signer_connections: Vec<PgStore>, signing_threshold: u32) -> TestEnvironment<impl FnMut() -> PgStore> {
+async fn test_environment(
+    mut signer_connections: Vec<PgStore>,
+    signing_threshold: u32,
+) -> TestEnvironment<impl FnMut() -> PgStore> {
     let context_window = 3;
 
     let test_model_parameters = testing::storage::model::Params {
@@ -55,7 +58,7 @@ async fn should_store_decisions_for_pending_deposit_requests() {
         .await;
 
     // Now drop all of the databases that we just created.
-    let _: Vec<_> =futures::stream::iter(cloned_connections)
+    let _: Vec<_> = futures::stream::iter(cloned_connections)
         .then(signer::testing::storage::drop_db)
         .collect()
         .await;
@@ -77,8 +80,8 @@ async fn should_store_decisions_for_pending_withdraw_requests() {
         .assert_should_store_decisions_for_pending_withdraw_requests()
         .await;
 
-        // Now drop all of the databases that we just created.
-    let _: Vec<_> =futures::stream::iter(cloned_connections)
+    // Now drop all of the databases that we just created.
+    let _: Vec<_> = futures::stream::iter(cloned_connections)
         .then(signer::testing::storage::drop_db)
         .collect()
         .await;
@@ -100,8 +103,8 @@ async fn should_store_decisions_received_from_other_signers() {
         .assert_should_store_decisions_received_from_other_signers()
         .await;
 
-        // Now drop all of the databases that we just created.
-    let _: Vec<_> =futures::stream::iter(cloned_connections)
+    // Now drop all of the databases that we just created.
+    let _: Vec<_> = futures::stream::iter(cloned_connections)
         .then(signer::testing::storage::drop_db)
         .collect()
         .await;
@@ -123,8 +126,8 @@ async fn should_respond_to_bitcoin_transaction_sign_request() {
         .assert_should_respond_to_bitcoin_transaction_sign_requests()
         .await;
 
-        // Now drop all of the databases that we just created.
-    let _: Vec<_> =futures::stream::iter(cloned_connections)
+    // Now drop all of the databases that we just created.
+    let _: Vec<_> = futures::stream::iter(cloned_connections)
         .then(signer::testing::storage::drop_db)
         .collect()
         .await;
@@ -146,8 +149,8 @@ async fn should_be_able_to_participate_in_signing_round() {
         .assert_should_be_able_to_participate_in_signing_round()
         .await;
 
-        // Now drop all of the databases that we just created.
-    let _: Vec<_> =futures::stream::iter(cloned_connections)
+    // Now drop all of the databases that we just created.
+    let _: Vec<_> = futures::stream::iter(cloned_connections)
         .then(signer::testing::storage::drop_db)
         .collect()
         .await;

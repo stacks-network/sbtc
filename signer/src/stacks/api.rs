@@ -727,6 +727,8 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
         db.write_stacks_block_headers(headers).await.unwrap();
+
+        crate::testing::storage::drop_db(db).await;
     }
 
     /// Test that get_blocks works as expected.

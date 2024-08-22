@@ -87,7 +87,7 @@ pub async fn new_test_database(db_num: u16) -> PgStore {
 /// that were created. This is so that we do not run out of space on the CI
 /// server.
 pub async fn drop_db(store: PgStore) {
-    if let Some(db_name) = store.pool().connect_options().get_database().clone() {
+    if let Some(db_name) = store.pool().connect_options().get_database() {
         // This is not a test database, we should not close it
         if db_name == "signer" {
             return;
