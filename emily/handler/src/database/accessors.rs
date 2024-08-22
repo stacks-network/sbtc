@@ -2,7 +2,7 @@
 
 use aws_sdk_dynamodb::types::AttributeValue;
 use serde_dynamo::Item;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::{
     api::models::{common::BlockHeight, withdrawal::WithdrawalId},
@@ -72,6 +72,55 @@ pub async fn get_deposit_entries(
         context,
         status,
         maybe_next_token,
+        maybe_page_size,
+    )
+    .await
+}
+
+/// Hacky exhasutive list of all statuses that we will iterate over in order to
+/// get every deposit present.
+const ALL_STATUSES: &[Status] = &[
+    Status::Accepted,
+    Status::Confirmed,
+    Status::Failed,
+    Status::Pending,
+    Status::Reprocessing,
+];
+
+/// Gets all deposit entries modified after a given height.
+pub async fn get_all_deposit_entries_modified_after_height(
+    context: &EmilyContext,
+    minimum_height: u64,
+    maybe_page_size: Option<i32>,
+) -> Result<Vec<DepositInfoEntry>, Error> {
+    let mut all = Vec::new();
+    for status in ALL_STATUSES {
+        let mut received = get_all_deposit_entries_modified_after_height_with_status(
+            context,
+            status,
+            minimum_height,
+            maybe_page_size,
+        )
+        .await?;
+        all.append(&mut received);
+    }
+    // Return.
+    Ok(all)
+}
+
+/// Gets all deposit entries modified after a given height.
+pub async fn get_all_deposit_entries_modified_after_height_with_status(
+    context: &EmilyContext,
+    status: &Status,
+    minimum_height: u64,
+    maybe_page_size: Option<i32>,
+) -> Result<Vec<DepositInfoEntry>, Error> {
+    // Make the query.
+    query_all_with_partition_and_sort_key::<DepositTableSecondaryIndex>(
+        context,
+        status,
+        &minimum_height,
+        ">=",
         maybe_page_size,
     )
     .await
@@ -191,9 +240,15 @@ pub async fn get_withdrawal_entry(
             );
             Ok(withdrawal.clone())
         }
-        _ => Err(Error::Debug(format!(
-            "Found too many withdrawals for id {key}: {entries:?}"
-        ))),
+        _ => {
+            warn!(
+                "Found too many withdrawals for id {key}: {}",
+                serde_json::to_string_pretty(&entries)?
+            );
+            Err(Error::Debug(format!(
+                "Found too many withdrawals for id {key}: {entries:?}"
+            )))
+        }
     }
 }
 
@@ -208,6 +263,45 @@ pub async fn get_withdrawal_entries(
         context,
         status,
         maybe_next_token,
+        maybe_page_size,
+    )
+    .await
+}
+
+/// Gets all withdrawal entries modified after a given height.
+pub async fn get_all_withdrawal_entries_modified_after_height(
+    context: &EmilyContext,
+    minimum_height: u64,
+    maybe_page_size: Option<i32>,
+) -> Result<Vec<WithdrawalInfoEntry>, Error> {
+    let mut all = Vec::new();
+    for status in ALL_STATUSES {
+        let mut received = get_all_withdrawal_entries_modified_after_height_with_status(
+            context,
+            status,
+            minimum_height,
+            maybe_page_size,
+        )
+        .await?;
+        all.append(&mut received);
+    }
+    // Return.
+    Ok(all)
+}
+
+/// Gets all withdrawal entries modified after a given height.
+pub async fn get_all_withdrawal_entries_modified_after_height_with_status(
+    context: &EmilyContext,
+    status: &Status,
+    minimum_height: u64,
+    maybe_page_size: Option<i32>,
+) -> Result<Vec<WithdrawalInfoEntry>, Error> {
+    // Make the query.
+    query_all_with_partition_and_sort_key::<WithdrawalTableSecondaryIndex>(
+        context,
+        status,
+        &minimum_height,
+        ">=",
         maybe_page_size,
     )
     .await
@@ -478,6 +572,41 @@ async fn query_with_partition_key<T: TableIndexTrait>(
         maybe_page_size,
     )
     .await
+}
+
+async fn query_all_with_partition_and_sort_key<T: TableIndexTrait>(
+    context: &EmilyContext,
+    parition_key: &<<<T as TableIndexTrait>::Entry as EntryTrait>::Key as KeyTrait>::PartitionKey,
+    sort_key: &<<<T as TableIndexTrait>::Entry as EntryTrait>::Key as KeyTrait>::SortKey,
+    sort_key_operator: &str,
+    maybe_page_size: Option<i32>,
+) -> Result<Vec<<T as TableIndexTrait>::Entry>, Error> {
+    // item aggregator.
+    let mut items: Vec<<T as TableIndexTrait>::Entry> = Vec::new();
+    // Next token.
+    let mut next_token: Option<String> = None;
+    // Loop over all items.
+    loop {
+        let mut new_items: Vec<<T as TableIndexTrait>::Entry>;
+        (new_items, next_token) = <T as TableIndexTrait>::query_with_partition_and_sort_key(
+            &context.dynamodb_client,
+            &context.settings,
+            parition_key,
+            sort_key,
+            sort_key_operator,
+            next_token,
+            maybe_page_size,
+        )
+        .await?;
+        // add new items.
+        items.append(&mut new_items);
+        if next_token.is_none() {
+            // If there are no more entries then end the loop.
+            break;
+        }
+    }
+    // Return the items.
+    Ok(items)
 }
 
 #[cfg(feature = "testing")]

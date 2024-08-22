@@ -1,6 +1,13 @@
 //! Integration tests for the database accessors
 
 use emily_handler::{
+    api::models::{
+        common::Status,
+        deposit::{
+            requests::{DepositUpdate, UpdateDepositsRequestBody},
+            DepositInfo,
+        },
+    },
     context::EmilyContext,
     database::{
         accessors,
@@ -84,4 +91,63 @@ async fn test_chaintip_update() {
         .await
         .expect("Should succeed");
     assert_eq!(api_state.version, 10);
+}
+
+/// Tests getting all deposits that were modified after a given height.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_deposits_modified_after_height() {
+    // Arrange.
+    let TestEnvironment { client, context } = setup_accessor_test().await;
+    let offset = 11232142;
+    let total_created = 10;
+    let status = Status::Failed;
+
+    // Create a bunch of deposits.
+    for i in 0..total_created {
+        // Make a deposit.
+        let deposit = client
+            .create_deposit(&util::test_create_deposit_request(i, 1))
+            .await;
+        // Get the key for the deposit.
+        let key = util::entry_key_from_deposit(&deposit);
+        // Make the request.
+        let single_update = UpdateDepositsRequestBody {
+            deposits: vec![DepositUpdate {
+                // Original fields.
+                bitcoin_txid: key.bitcoin_txid.clone(),
+                bitcoin_tx_output_index: key.bitcoin_tx_output_index,
+                // New updated height.
+                last_update_height: offset + i,
+                last_update_block_hash: "dummy_hash".to_string(),
+                status: status.clone(),
+                status_message: "dummy_message".to_string(),
+                fulfillment: None,
+            }],
+        };
+        client.update_deposits(&single_update).await;
+    }
+    let number_to_get = 4;
+    let minimum_height = offset + total_created - number_to_get;
+
+    // Act.
+    let deposit_infos: Vec<DepositInfo> =
+        accessors::get_all_deposit_entries_modified_after_height_with_status(
+            &context,
+            &status,
+            minimum_height,
+            None,
+        )
+        .await
+        .expect("Query succeeds")
+        .into_iter()
+        .map(|entry| -> DepositInfo { entry.into() })
+        .collect();
+
+    // Assert.
+    assert_eq!(deposit_infos.len(), number_to_get as usize);
+    for deposit_info in deposit_infos {
+        // Assert that all deposits have an acceptable height.
+        assert!(deposit_info.last_update_height >= minimum_height);
+    }
 }
