@@ -1,25 +1,17 @@
 //! Postgres storage implementation.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::OnceLock;
 
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksBlockId;
-use futures::future::BoxFuture;
-use futures::stream::BoxStream;
-use futures::TryStreamExt as _;
-use sqlx_core::ext::async_stream::TryAsyncStream;
-use tokio::sync::Mutex;
 
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::storage::model;
 use crate::storage::model::TransactionType;
-use crate::storage::DbRead;
-use crate::storage::DbWrite;
 
 const CONTRACT_NAMES: [&str; 4] = [
     // The name of the Stacks smart contract used for minting sBTC after a
@@ -78,121 +70,9 @@ pub fn extract_relevant_transactions(blocks: &[NakamotoBlock]) -> Vec<model::Tra
 }
 
 /// A wrapper around a [`sqlx::PgPool`] which implements
-/// [`DbRead`] and [`DbWrite`].
+/// [`crate::storage::DbRead`] and [`crate::storage::DbWrite`].
 #[derive(Debug, Clone)]
-pub enum PgStore {
-    /// A pool of connections to a postgres database.
-    Pool(sqlx::PgPool),
-    /// A [`sqlx::Transaction`] for use in tests. Transactions "execute"
-    /// the query against the database but the changes aren't perminant
-    /// until the changes are committed.
-    ///
-    /// Note that we need the [`Mutex`] because the [`DbRead`] and
-    /// [`DbWrite`] traits take shared references and we need a mutable
-    /// reference, and we need to [`Arc`] because we need the type to
-    /// implement clone.
-    #[cfg(any(test, feature = "testing"))]
-    Transaction(Arc<Mutex<sqlx::Transaction<'static, sqlx::Postgres>>>),
-}
-
-type QueryResult = <sqlx::Postgres as sqlx::Database>::QueryResult;
-type Row = <sqlx::Postgres as sqlx::Database>::Row;
-type Statement<'q> = <sqlx::Postgres as sqlx::database::HasStatement<'q>>::Statement;
-type TypeInfo = <sqlx::Postgres as sqlx::Database>::TypeInfo;
-type Describe = sqlx::Describe<sqlx::Postgres>;
-
-impl<'a, 'b: 'a> sqlx::Executor<'a> for &'a PgStore {
-    type Database = sqlx::Postgres;
-    fn fetch_many<'e, 'q: 'e, E>(
-        self,
-        query: E,
-    ) -> BoxStream<'e, Result<sqlx::Either<QueryResult, Row>, sqlx::Error>>
-    where
-        'a: 'e,
-        E: sqlx::Execute<'q, Self::Database> + 'q,
-    {
-        // This was taken from sqlx. Basically, they implement their
-        // streams using a macro that does this under the hood.
-        Box::pin(TryAsyncStream::new(move |yielder| async move {
-            // Anti-footgun: effectively pins `yielder` to this future to prevent any accidental
-            // move to another task, which could deadlock.
-            let yielder = &yielder;
-
-            match &self {
-                PgStore::Pool(pool) => {
-                    let mut stream = pool.fetch_many(query);
-                    while let Some(v) = stream.try_next().await? {
-                        yielder.r#yield(v).await;
-                    }
-                }
-                #[cfg(any(test, feature = "testing"))]
-                PgStore::Transaction(mutex) => {
-                    let mut tx = mutex.lock().await;
-                    let mut stream = tx.fetch_many(query);
-                    while let Some(v) = stream.try_next().await? {
-                        yielder.r#yield(v).await;
-                    }
-                }
-            };
-
-            Ok(())
-        }))
-    }
-
-    fn fetch_optional<'e, 'q, E>(self, query: E) -> BoxFuture<'e, Result<Option<Row>, sqlx::Error>>
-    where
-        'a: 'e,
-        'q: 'e,
-        E: sqlx::Execute<'q, Self::Database> + 'q,
-    {
-        Box::pin(async move {
-            match &self {
-                PgStore::Pool(pool) => pool.fetch_optional(query).await,
-                #[cfg(any(test, feature = "testing"))]
-                PgStore::Transaction(mutex) => {
-                    let mut tx = mutex.lock().await;
-                    tx.fetch_optional(query).await
-                }
-            }
-        })
-    }
-
-    fn prepare_with<'e, 'q: 'e>(
-        self,
-        sql: &'q str,
-        parameters: &'e [TypeInfo],
-    ) -> BoxFuture<'e, Result<Statement<'q>, sqlx::Error>>
-    where
-        'a: 'e,
-    {
-        Box::pin(async move {
-            match &self {
-                PgStore::Pool(pool) => pool.prepare_with(sql, parameters).await,
-                #[cfg(any(test, feature = "testing"))]
-                PgStore::Transaction(mutex) => {
-                    let mut tx = mutex.lock().await;
-                    tx.prepare_with(sql, parameters).await
-                }
-            }
-        })
-    }
-
-    fn describe<'e, 'q: 'e>(self, sql: &'q str) -> BoxFuture<'e, Result<Describe, sqlx::Error>>
-    where
-        'a: 'e,
-    {
-        Box::pin(async move {
-            match &self {
-                PgStore::Pool(pool) => pool.describe(sql).await,
-                #[cfg(any(test, feature = "testing"))]
-                PgStore::Transaction(mutex) => {
-                    let mut tx = mutex.lock().await;
-                    tx.describe(sql).await
-                }
-            }
-        })
-    }
-}
+pub struct PgStore(sqlx::PgPool);
 
 impl TryFrom<&NakamotoBlock> for model::StacksBlock {
     type Error = Error;
@@ -208,7 +88,7 @@ impl TryFrom<&NakamotoBlock> for model::StacksBlock {
 impl PgStore {
     /// Connect to the Postgres database at `url`.
     pub async fn connect(url: &str) -> Result<Self, sqlx::Error> {
-        Ok(Self::from(sqlx::PgPool::connect(url).await?))
+        Ok(Self(sqlx::PgPool::connect(url).await?))
     }
 
     async fn get_stacks_chain_tip(
@@ -230,7 +110,7 @@ impl PgStore {
             "#,
         )
         .bind(bitcoin_chain_tip)
-        .fetch_optional(self)
+        .fetch_optional(&self.0)
         .await
         .map(|maybe_block| maybe_block.map(|block| block.block_hash))
         .map_err(Error::SqlxQuery)
@@ -286,7 +166,7 @@ impl PgStore {
         .bind(&tx_ids)
         .bind(txs_bytes)
         .bind(tx_types)
-        .execute(self)
+        .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
@@ -296,11 +176,11 @@ impl PgStore {
 
 impl From<sqlx::PgPool> for PgStore {
     fn from(value: sqlx::PgPool) -> Self {
-        Self::Pool(value)
+        Self(value)
     }
 }
 
-impl DbRead for PgStore {
+impl super::DbRead for PgStore {
     type Error = Error;
 
     async fn get_bitcoin_block(
@@ -317,7 +197,7 @@ impl DbRead for PgStore {
             WHERE block_hash = $1;",
         )
         .bind(block_hash)
-        .fetch_optional(self)
+        .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }
@@ -335,7 +215,7 @@ impl DbRead for PgStore {
             WHERE block_hash = $1;",
         )
         .bind(block_hash)
-        .fetch_optional(self)
+        .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }
@@ -353,7 +233,7 @@ impl DbRead for PgStore {
              ORDER BY block_height DESC, block_hash DESC
              LIMIT 1",
         )
-        .fetch_optional(self)
+        .fetch_optional(&self.0)
         .await
         .map(|maybe_block| maybe_block.map(|block| block.block_hash))
         .map_err(Error::SqlxQuery)
@@ -378,7 +258,7 @@ impl DbRead for PgStore {
             "#,
         )
         .bind(bitcoin_chain_tip)
-        .fetch_optional(self)
+        .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }
@@ -427,7 +307,7 @@ impl DbRead for PgStore {
         )
         .bind(chain_tip)
         .bind(context_window as i32)
-        .fetch_all(self)
+        .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }
@@ -486,7 +366,7 @@ impl DbRead for PgStore {
         .bind(chain_tip)
         .bind(context_window as i32)
         .bind(threshold as i32)
-        .fetch_all(self)
+        .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }
@@ -515,7 +395,7 @@ impl DbRead for PgStore {
             "#,
         )
         .bind(signer.serialize())
-        .fetch_all(self)
+        .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }
@@ -537,7 +417,7 @@ impl DbRead for PgStore {
         )
         .bind(txid)
         .bind(i32::try_from(output_index).map_err(Error::ConversionDatabaseInt)?)
-        .fetch_all(self)
+        .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }
@@ -559,7 +439,7 @@ impl DbRead for PgStore {
         )
         .bind(i64::try_from(request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(block_hash)
-        .fetch_all(self)
+        .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }
@@ -637,7 +517,7 @@ impl DbRead for PgStore {
         .bind(chain_tip)
         .bind(stacks_chain_tip)
         .bind(context_window as i32)
-        .fetch_all(self)
+        .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }
@@ -724,7 +604,7 @@ impl DbRead for PgStore {
         .bind(stacks_chain_tip)
         .bind(context_window as i32)
         .bind(threshold as i64)
-        .fetch_all(self)
+        .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }
@@ -737,7 +617,7 @@ impl DbRead for PgStore {
             "SELECT txid, block_hash FROM sbtc_signer.bitcoin_transactions WHERE txid = $1",
         )
         .bind(txid)
-        .fetch_all(self)
+        .fetch_all(&self.0)
         .await
         .map(|res| {
             res.into_iter()
@@ -755,7 +635,7 @@ impl DbRead for PgStore {
             WHERE block_hash = $1;"#,
         )
         .bind(block_id.0)
-        .fetch_optional(self)
+        .fetch_optional(&self.0)
         .await
         .map(|row| row.is_some())
         .map_err(Error::SqlxQuery)
@@ -778,7 +658,7 @@ impl DbRead for PgStore {
             "#,
         )
         .bind(aggregate_key)
-        .fetch_optional(self)
+        .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }
@@ -832,7 +712,7 @@ impl DbRead for PgStore {
             "#,
         )
         .bind(stacks_chain_tip)
-        .fetch_optional(self)
+        .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }
@@ -845,13 +725,13 @@ impl DbRead for PgStore {
             WHERE created_at > CURRENT_TIMESTAMP - INTERVAL '365 DAYS';
             "#,
         )
-        .fetch_all(self)
+        .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }
 }
 
-impl DbWrite for PgStore {
+impl super::DbWrite for PgStore {
     type Error = Error;
 
     async fn write_bitcoin_block(&self, block: &model::BitcoinBlock) -> Result<(), Self::Error> {
@@ -869,7 +749,7 @@ impl DbWrite for PgStore {
         .bind(i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?)
         .bind(&block.parent_hash)
         .bind(&block.confirms)
-        .execute(self)
+        .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
@@ -889,7 +769,7 @@ impl DbWrite for PgStore {
         .bind(&block.block_hash)
         .bind(i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?)
         .bind(&block.parent_hash)
-        .execute(self)
+        .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
@@ -922,7 +802,7 @@ impl DbWrite for PgStore {
         .bind(i64::try_from(deposit_request.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(deposit_request.max_fee).map_err(Error::ConversionDatabaseInt)?)
         .bind(&deposit_request.sender_addresses)
-        .execute(self)
+        .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
@@ -1008,7 +888,7 @@ impl DbWrite for PgStore {
         .bind(amount)
         .bind(max_fee)
         .bind(sender_addresses)
-        .execute(self)
+        .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
@@ -1037,7 +917,7 @@ impl DbWrite for PgStore {
         .bind(i64::try_from(withdraw_request.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(withdraw_request.max_fee).map_err(Error::ConversionDatabaseInt)?)
         .bind(&withdraw_request.sender_address)
-        .execute(self)
+        .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
@@ -1063,7 +943,7 @@ impl DbWrite for PgStore {
         .bind(decision.output_index as i32)
         .bind(decision.signer_pub_key)
         .bind(decision.is_accepted)
-        .execute(self)
+        .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
@@ -1088,7 +968,7 @@ impl DbWrite for PgStore {
         .bind(&decision.block_hash)
         .bind(decision.signer_pub_key)
         .bind(decision.is_accepted)
-        .execute(self)
+        .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
@@ -1108,7 +988,7 @@ impl DbWrite for PgStore {
         .bind(&transaction.txid)
         .bind(&transaction.tx)
         .bind(transaction.tx_type)
-        .execute(self)
+        .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
@@ -1126,7 +1006,7 @@ impl DbWrite for PgStore {
         )
         .bind(&bitcoin_transaction.txid)
         .bind(&bitcoin_transaction.block_hash)
-        .execute(self)
+        .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
@@ -1161,7 +1041,7 @@ impl DbWrite for PgStore {
         )
         .bind(&summary.tx_ids)
         .bind(&summary.block_hashes)
-        .execute(self)
+        .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
@@ -1179,7 +1059,7 @@ impl DbWrite for PgStore {
         )
         .bind(&stacks_transaction.txid)
         .bind(&stacks_transaction.block_hash)
-        .execute(self)
+        .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
@@ -1215,7 +1095,7 @@ impl DbWrite for PgStore {
         )
         .bind(&summary.tx_ids)
         .bind(&summary.block_hashes)
-        .execute(self)
+        .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
@@ -1269,7 +1149,7 @@ impl DbWrite for PgStore {
         .bind(&block_ids)
         .bind(&parent_block_ids)
         .bind(&chain_lengths)
-        .execute(self)
+        .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
@@ -1297,7 +1177,7 @@ impl DbWrite for PgStore {
         .bind(&shares.encrypted_private_shares)
         .bind(&shares.public_shares)
         .bind(&shares.script_pubkey)
-        .execute(self)
+        .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
@@ -1323,7 +1203,7 @@ impl DbWrite for PgStore {
         .bind(key_rotation.aggregate_key)
         .bind(&key_rotation.signer_set)
         .bind(key_rotation.signatures_required as i32)
-        .execute(self)
+        .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
