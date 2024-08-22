@@ -305,7 +305,7 @@ impl MultisigTx {
 
 #[cfg(test)]
 mod tests {
-    use blockstack_lib::clarity::vm::Value;
+    use blockstack_lib::clarity::vm::Value as ClarityValue;
     use rand::rngs::OsRng;
     use rand::seq::SliceRandom;
     use secp256k1::Keypair;
@@ -329,7 +329,7 @@ mod tests {
         fn deployer_address(&self) -> StacksAddress {
             StacksAddress::burn_address(false)
         }
-        fn as_contract_args(&self) -> Vec<Value> {
+        fn as_contract_args(&self) -> Vec<ClarityValue> {
             Vec::new()
         }
         async fn validate<S>(&self, _: &S) -> Result<bool, Error>
