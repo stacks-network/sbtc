@@ -588,8 +588,9 @@ async fn query_all_with_partition_and_sort_key<T: TableIndexTrait>(
     // Loop over all items.
     loop {
         let mut new_items: Vec<<T as TableIndexTrait>::Entry>;
-        (new_items, next_token) = query_with_partition_and_sort_key::<T>(
-            context,
+        (new_items, next_token) = <T as TableIndexTrait>::query_with_partition_and_sort_key(
+            &context.dynamodb_client,
+            &context.settings,
             parition_key,
             sort_key,
             sort_key_operator,
@@ -606,26 +607,6 @@ async fn query_all_with_partition_and_sort_key<T: TableIndexTrait>(
     }
     // Return the items.
     Ok(items)
-}
-
-async fn query_with_partition_and_sort_key<T: TableIndexTrait>(
-    context: &EmilyContext,
-    parition_key: &<<<T as TableIndexTrait>::Entry as EntryTrait>::Key as KeyTrait>::PartitionKey,
-    sort_key: &<<<T as TableIndexTrait>::Entry as EntryTrait>::Key as KeyTrait>::SortKey,
-    sort_key_operator: &str,
-    maybe_next_token: Option<String>,
-    maybe_page_size: Option<i32>,
-) -> Result<(Vec<<T as TableIndexTrait>::Entry>, Option<String>), Error> {
-    <T as TableIndexTrait>::query_with_partition_and_sort_key(
-        &context.dynamodb_client,
-        &context.settings,
-        parition_key,
-        sort_key,
-        sort_key_operator,
-        maybe_next_token,
-        maybe_page_size,
-    )
-    .await
 }
 
 #[cfg(feature = "testing")]
