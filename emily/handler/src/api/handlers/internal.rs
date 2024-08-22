@@ -82,6 +82,11 @@ async fn set_api_state_status(
 
         // Attempt to set the API state.
         match accessors::set_api_state(context, &api_state).await {
+            // We successfully set the API state.
+            Ok(()) => {
+                info!("Successfully set api state: {:?}.", api_state);
+                break;
+            }
             // Retry if there was a version conflict.
             Err(Error::VersionConflict) => {
                 if update_attempts >= MAX_SET_API_STATE_ATTEMPTS_DURING_REORG {
@@ -90,11 +95,6 @@ async fn set_api_state_status(
                 } else {
                     debug!("Failed to update API state - retrying: {:?}", api_state);
                 }
-            }
-            // If it was okay then we successfully control the API.
-            Ok(()) => {
-                info!("Successfully set api state: {:?}.", api_state);
-                break;
             }
             // If some other error occured then return from here; this shouldn't
             // happen and something has actually gone wrong.
@@ -129,8 +129,8 @@ pub async fn execute_reorg_handler(
         }
     };
 
-    // Assume that we have control of the API at this point. For each entry of the deposit
-    // and withdrawal table we'll wipe out all the history after the latest reorg.
+    // We have control of the API at this point. For each entry of the deposit
+    // and withdrawal table we'll wipe out all the history that's no longer relevant.
 
     // Get all deposits that would be impacted by this reorg.
     let all_deposits = accessors::get_all_deposit_entries_modified_after_height(
@@ -165,7 +165,7 @@ pub async fn execute_reorg_handler(
         }
     }
 
-    // Show updated deposits.
+    // Show updated deposits when in debug mode.
     debug!(
         "Reorganized deposits: {}",
         serde_json::to_string_pretty(&debug_modified_deposit_entries)?
@@ -204,7 +204,7 @@ pub async fn execute_reorg_handler(
         }
     }
 
-    // Show updated withdrawals.
+    // Show updated withdrawals when in debug mode.
     debug!(
         "Reorganized withdrawals: {}",
         serde_json::to_string_pretty(&debug_modified_withdrawal_entries)?
