@@ -14,12 +14,12 @@ use futures::TryStreamExt as _;
 use sqlx_core::ext::async_stream::TryAsyncStream;
 use tokio::sync::Mutex;
 
-use crate::storage::DbRead;
-use crate::storage::DbWrite;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::storage::model;
 use crate::storage::model::TransactionType;
+use crate::storage::DbRead;
+use crate::storage::DbWrite;
 
 const CONTRACT_NAMES: [&str; 4] = [
     // The name of the Stacks smart contract used for minting sBTC after a
@@ -80,19 +80,19 @@ pub fn extract_relevant_transactions(blocks: &[NakamotoBlock]) -> Vec<model::Tra
 /// A wrapper around a [`sqlx::PgPool`] which implements
 /// [`DbRead`] and [`DbWrite`].
 #[derive(Debug, Clone)]
-pub enum PgStore<'a> {
+pub enum PgStore {
     /// A pool of connections to a postgres database.
     Pool(sqlx::PgPool),
     /// A [`sqlx::Transaction`] for use in tests. Transactions "execute"
     /// the query against the database but the changes aren't perminant
     /// until the changes are committed.
-    /// 
+    ///
     /// Note that we need the [`Mutex`] because the [`DbRead`] and
     /// [`DbWrite`] traits take shared references and we need a mutable
     /// reference, and we need to [`Arc`] because we need the type to
     /// implement clone.
     #[cfg(any(test, feature = "testing"))]
-    Transaction(Arc<Mutex<&'a mut sqlx::Transaction<'static, sqlx::Postgres>>>),
+    Transaction(Arc<Mutex<sqlx::Transaction<'static, sqlx::Postgres>>>),
 }
 
 type QueryResult = <sqlx::Postgres as sqlx::Database>::QueryResult;
@@ -101,7 +101,7 @@ type Statement<'q> = <sqlx::Postgres as sqlx::database::HasStatement<'q>>::State
 type TypeInfo = <sqlx::Postgres as sqlx::Database>::TypeInfo;
 type Describe = sqlx::Describe<sqlx::Postgres>;
 
-impl<'a, 'b: 'a> sqlx::Executor<'a> for &'a PgStore<'b> {
+impl<'a, 'b: 'a> sqlx::Executor<'a> for &'a PgStore {
     type Database = sqlx::Postgres;
     fn fetch_many<'e, 'q: 'e, E>(
         self,
@@ -205,7 +205,7 @@ impl TryFrom<&NakamotoBlock> for model::StacksBlock {
     }
 }
 
-impl<'a> PgStore<'a> {
+impl PgStore {
     /// Connect to the Postgres database at `url`.
     pub async fn connect(url: &str) -> Result<Self, sqlx::Error> {
         Ok(Self::from(sqlx::PgPool::connect(url).await?))
@@ -294,13 +294,13 @@ impl<'a> PgStore<'a> {
     }
 }
 
-impl<'a> From<sqlx::PgPool> for PgStore<'a> {
+impl From<sqlx::PgPool> for PgStore {
     fn from(value: sqlx::PgPool) -> Self {
         Self::Pool(value)
     }
 }
 
-impl<'a> DbRead for PgStore<'a> {
+impl DbRead for PgStore {
     type Error = Error;
 
     async fn get_bitcoin_block(
@@ -851,7 +851,7 @@ impl<'a> DbRead for PgStore<'a> {
     }
 }
 
-impl<'a> DbWrite for PgStore<'a> {
+impl DbWrite for PgStore {
     type Error = Error;
 
     async fn write_bitcoin_block(&self, block: &model::BitcoinBlock) -> Result<(), Self::Error> {
