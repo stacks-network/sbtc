@@ -686,8 +686,9 @@ where
             tracing::info!("Parent block known in the database");
             break;
         }
-        // There are more blocks to fetch.
-        blocks.extend(stacks.get_tenure(block.header.parent_block_id).await?);
+        // There are more blocks to fetch, so let's get them.
+        let mut tenure_blocks = stacks.get_tenure(block.header.parent_block_id).await?;
+        blocks.append(&mut tenure_blocks);
     }
 
     Ok(blocks)
@@ -739,7 +740,9 @@ mod tests {
     /// 2. After Nakamoto is running, use a dummy test like
     ///    `fetching_last_tenure_blocks_works` to get the blocks for an
     ///    actual tenure. Note the block IDs for the first and last
-    ///    `NakamotoBlock`s in the result.
+    ///    `NakamotoBlock`s in the result. Note that the tenure info only
+    ///    gives you the start block ids, you'll need to get the actual
+    ///    block to get the last block in a tenure.
     /// 3. Use the block IDs from step (2) to make two curl requests:
     ///     * The tenure starting with the end block:
     ///     ```bash
