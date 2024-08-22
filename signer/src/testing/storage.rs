@@ -82,3 +82,26 @@ pub async fn new_test_database(db_num: u16) -> PgStore {
     let pool = get_connection_pool(&test_db_url);
     PgStore::from(pool)
 }
+
+/// When we are done with the test, we need to delete any test databases
+/// that were created. This is so that we do not run out of space on the CI
+/// server.
+pub async fn drop_db(store: PgStore) {
+    if let Some(db_name) = store.pool().connect_options().get_database().clone() {
+        // This is not a test database, we should not close it
+        if db_name == "signer" {
+            return;
+        }
+        // Might as well.
+        store.pool().close().await;
+        let pool = get_connection_pool(DATABASE_URL);
+
+        // FORCE closes all connections to the database if there are any
+        // and then drops the database.
+        let drop_db = format!("DROP DATABASE IF EXISTS \"{db_name}\" WITH (FORCE)");
+        sqlx::query(&drop_db)
+            .execute(&pool)
+            .await
+            .expect("failed to create test database");
+    }
+}

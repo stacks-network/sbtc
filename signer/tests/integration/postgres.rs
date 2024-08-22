@@ -72,6 +72,7 @@ async fn should_be_able_to_query_bitcoin_blocks() {
             .expect("failed_to_execute_query");
         assert!(result.is_none());
     }
+    signer::testing::storage::drop_db(store).await;
 }
 
 struct InitiateWithdrawalRequest;
@@ -218,6 +219,7 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWr
 
     // No more transactions were written
     assert_eq!(stored_transaction_count_again, 1);
+    signer::testing::storage::drop_db(store).await;
 }
 
 /// Here we test that the DbRead::stacks_block_exists function works, while
@@ -261,6 +263,7 @@ async fn checking_stacks_blocks_exists_works() {
         .all(|block| async { store.stacks_block_exists(block.block_id()).await.unwrap() })
         .await;
     assert!(all_exist);
+    signer::testing::storage::drop_db(store).await;
 }
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
@@ -317,6 +320,7 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
     pg_pending_deposit_requests.sort();
 
     assert_eq!(pending_depoist_requests, pg_pending_deposit_requests);
+    signer::testing::storage::drop_db(pg_store).await;
 }
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
@@ -373,6 +377,7 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
     pg_pending_withdraw_requests.sort();
 
     assert_eq!(pending_withdraw_requests, pg_pending_withdraw_requests);
+    signer::testing::storage::drop_db(pg_store).await;
 }
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
@@ -435,6 +440,7 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
         pending_accepted_deposit_requests,
         pg_pending_accepted_deposit_requests
     );
+    signer::testing::storage::drop_db(pg_store).await;
 }
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
@@ -501,6 +507,7 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
         pending_accepted_withdraw_requests,
         pg_pending_accepted_withdraw_requests
     );
+    signer::testing::storage::drop_db(pg_store).await;
 }
 
 /// This ensures that the postgres store and the in memory stores returns
@@ -575,6 +582,7 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
         last_key_rotation_pg.as_ref().unwrap().signer_set,
         last_key_rotation_in_memory.as_ref().unwrap().signer_set
     );
+    signer::testing::storage::drop_db(pg_store).await;
 }
 
 /// Here we test that we can store deposit request model objects. We also
@@ -618,6 +626,7 @@ async fn writing_deposit_requests_postgres() {
 
     // No new records written right?
     assert_eq!(num_rows, count as usize);
+    signer::testing::storage::drop_db(store).await;
 }
 
 /// This is very similar to the above test; we test that we can store
@@ -691,4 +700,5 @@ async fn writing_transactions_postgres() {
 
     // let's see, who knows what will happen!
     assert_eq!(num_rows, count as usize);
+    signer::testing::storage::drop_db(store).await;
 }
