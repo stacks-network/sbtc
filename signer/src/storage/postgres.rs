@@ -91,6 +91,12 @@ impl PgStore {
         Ok(Self(sqlx::PgPool::connect(url).await?))
     }
 
+    /// Get a reference to the underlying pool.
+    #[cfg(any(test, feature = "testing"))]
+    pub fn pool(&self) -> &sqlx::PgPool {
+        &self.0
+    }
+
     async fn get_stacks_chain_tip(
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,

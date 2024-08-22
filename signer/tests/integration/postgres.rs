@@ -171,7 +171,7 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWr
     // First check that all blocks are saved
     let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_blocks";
     let stored_block_count = sqlx::query_scalar::<_, i64>(sql)
-        .fetch_one(&store)
+        .fetch_one(store.pool())
         .await
         .unwrap();
 
@@ -181,7 +181,7 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWr
     // we just created above, was saved.
     let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_transactions";
     let stored_transaction_count = sqlx::query_scalar::<_, i64>(sql)
-        .fetch_one(&store)
+        .fetch_one(store.pool())
         .await
         .unwrap();
 
@@ -203,7 +203,7 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWr
 
     let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_blocks";
     let stored_block_count_again = sqlx::query_scalar::<_, i64>(sql)
-        .fetch_one(&store)
+        .fetch_one(store.pool())
         .await
         .unwrap();
 
@@ -213,7 +213,7 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWr
 
     let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_transactions";
     let stored_transaction_count_again = sqlx::query_scalar::<_, i64>(sql)
-        .fetch_one(&store)
+        .fetch_one(store.pool())
         .await
         .unwrap();
 
@@ -600,7 +600,7 @@ async fn writing_deposit_requests_postgres() {
         .unwrap();
     let count =
         sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.deposit_requests"#)
-            .fetch_one(&store)
+            .fetch_one(store.pool())
             .await
             .unwrap();
     // Were they all written?
@@ -613,7 +613,7 @@ async fn writing_deposit_requests_postgres() {
         .unwrap();
     let count =
         sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.deposit_requests"#)
-            .fetch_one(&store)
+            .fetch_one(store.pool())
             .await
             .unwrap();
 
@@ -659,7 +659,7 @@ async fn writing_transactions_postgres() {
     store.write_bitcoin_transactions(txs.clone()).await.unwrap();
     let count =
         sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.bitcoin_transactions"#)
-            .fetch_one(&store)
+            .fetch_one(store.pool())
             .await
             .unwrap();
     // Were they all written?
@@ -668,7 +668,7 @@ async fn writing_transactions_postgres() {
     // what about the transactions table, the same number of rows should
     // have been written there as well.
     let count = sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.transactions"#)
-        .fetch_one(&store)
+        .fetch_one(store.pool())
         .await
         .unwrap();
 
@@ -677,7 +677,7 @@ async fn writing_transactions_postgres() {
     store.write_bitcoin_transactions(txs).await.unwrap();
     let count =
         sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.bitcoin_transactions"#)
-            .fetch_one(&store)
+            .fetch_one(store.pool())
             .await
             .unwrap();
 
@@ -686,7 +686,7 @@ async fn writing_transactions_postgres() {
 
     // what about duplicates in the transactions table.
     let count = sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.transactions"#)
-        .fetch_one(&store)
+        .fetch_one(store.pool())
         .await
         .unwrap();
 
