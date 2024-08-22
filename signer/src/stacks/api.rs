@@ -759,9 +759,9 @@ mod tests {
         // Here we test that out code will handle the response from a
         // stacks node in the expected way.
         const TENURE_START_BLOCK_ID: &str =
-            "8ff4eb1ed4a2f83faada29f6012b7f86f476eafed9921dff8d2c14cdfa30da94";
+            "5addaf4477a60a9bab28608aa2ec9ea9eb7d68aa038274ecac7a41fdca58e650";
         const TENURE_END_BLOCK_ID: &str =
-            "1ed91e0720129bda5072540ee7283dd5345d0f6de0cf5b982c6de3943b6e3291";
+            "e5fdeb1a51ba6eb297797a1c473e715c27dc81a58ba82c698f6a32eeccee9a5b";
 
         // Okay we need to set up the server to returned what a stacks node
         // would return. We load up a file that contains a response from an

@@ -1234,7 +1234,7 @@ mod tests {
     /// about
     #[test_case("sbtc-withdrawal", "initiate-withdrawal-request"; "initiate withdrawal request")]
     fn extract_transaction_type(contract_name: &str, function_name: &str) {
-        let path = "tests/fixtures/tenure-blocks-0-1ed91e0720129bda5072540ee7283dd5345d0f6de0cf5b982c6de3943b6e3291.bin";
+        let path = "tests/fixtures/tenure-blocks-0-e5fdeb1a51ba6eb297797a1c473e715c27dc81a58ba82c698f6a32eeccee9a5b.bin";
         let mut file = std::fs::File::open(path).unwrap();
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).unwrap();
