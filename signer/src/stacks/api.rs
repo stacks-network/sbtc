@@ -686,8 +686,9 @@ where
             tracing::info!("Parent block known in the database");
             break;
         }
-        // There are more blocks to fetch.
-        blocks.extend(stacks.get_tenure(block.header.parent_block_id).await?);
+        // There are more blocks to fetch, so let's get them.
+        let mut tenure_blocks = stacks.get_tenure(block.header.parent_block_id).await?;
+        blocks.append(&mut tenure_blocks);
     }
 
     Ok(blocks)
@@ -697,22 +698,24 @@ where
 mod tests {
     use crate::config::StacksNodeSettings;
     use crate::storage::in_memory::Store;
-    use crate::storage::postgres::PgStore;
     use crate::storage::DbWrite;
+    use crate::testing::storage::DATABASE_NUM;
 
     use test_case::test_case;
 
     use super::*;
     use std::io::Read;
+    use std::sync::atomic::Ordering;
 
     #[ignore = "This is an integration test that hasn't been setup for CI yet"]
-    #[sqlx::test]
-    async fn fetch_unknown_ancestors_works(pool: sqlx::PgPool) {
+    #[tokio::test]
+    async fn fetch_unknown_ancestors_works() {
+        let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+        let db = crate::testing::storage::new_test_database(db_num).await;
         sbtc::logging::setup_logging("info,signer=debug", false);
 
         let settings = StacksSettings::new_from_config().unwrap();
         let mut client = StacksClient::new(settings);
-        let db = PgStore::from(pool);
 
         let info = client.get_tenure_info().await.unwrap();
         let blocks = fetch_unknown_ancestors(&mut client, &db, info.tip_block_id).await;
@@ -724,6 +727,8 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
         db.write_stacks_block_headers(headers).await.unwrap();
+
+        crate::testing::storage::drop_db(db).await;
     }
 
     /// Test that get_blocks works as expected.
@@ -737,7 +742,9 @@ mod tests {
     /// 2. After Nakamoto is running, use a dummy test like
     ///    `fetching_last_tenure_blocks_works` to get the blocks for an
     ///    actual tenure. Note the block IDs for the first and last
-    ///    `NakamotoBlock`s in the result.
+    ///    `NakamotoBlock`s in the result. Note that the tenure info only
+    ///    gives you the start block ids, you'll need to get the actual
+    ///    block to get the last block in a tenure.
     /// 3. Use the block IDs from step (2) to make two curl requests:
     ///     * The tenure starting with the end block:
     ///     ```bash
@@ -757,9 +764,9 @@ mod tests {
         // Here we test that out code will handle the response from a
         // stacks node in the expected way.
         const TENURE_START_BLOCK_ID: &str =
-            "8ff4eb1ed4a2f83faada29f6012b7f86f476eafed9921dff8d2c14cdfa30da94";
+            "5addaf4477a60a9bab28608aa2ec9ea9eb7d68aa038274ecac7a41fdca58e650";
         const TENURE_END_BLOCK_ID: &str =
-            "1ed91e0720129bda5072540ee7283dd5345d0f6de0cf5b982c6de3943b6e3291";
+            "e5fdeb1a51ba6eb297797a1c473e715c27dc81a58ba82c698f6a32eeccee9a5b";
 
         // Okay we need to set up the server to returned what a stacks node
         // would return. We load up a file that contains a response from an

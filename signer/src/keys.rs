@@ -239,7 +239,10 @@ impl sqlx::Type<sqlx::Postgres> for PublicKey {
 
 /// We write the compressed public key bytes to the database
 impl<'r> sqlx::Encode<'r, sqlx::Postgres> for PublicKey {
-    fn encode_by_ref(&self, buf: &mut sqlx::postgres::PgArgumentBuffer) -> sqlx::encode::IsNull {
+    fn encode_by_ref(
+        &self,
+        buf: &mut sqlx::postgres::PgArgumentBuffer,
+    ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
         let bytes = self.serialize();
         <[u8; 33] as sqlx::Encode<'r, sqlx::Postgres>>::encode_by_ref(&bytes, buf)
     }

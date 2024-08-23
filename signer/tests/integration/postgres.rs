@@ -1,4 +1,5 @@
 use std::io::Read;
+use std::sync::atomic::Ordering;
 
 use bitcoin::hashes::Hash as _;
 use bitvec::array::BitArray;
@@ -19,7 +20,6 @@ use signer::stacks::contracts::RejectWithdrawalV1;
 use signer::stacks::contracts::RotateKeysV1;
 use signer::storage;
 use signer::storage::model;
-use signer::storage::postgres::PgStore;
 use signer::storage::DbRead;
 use signer::storage::DbWrite;
 use signer::testing;
@@ -29,24 +29,13 @@ use fake::Fake;
 use rand::SeedableRng;
 use test_case::test_case;
 
-const DATABASE_URL: &str = "postgres://user:password@localhost:5432/signer";
-
-/// It's better to create a new pool for each test since there is some
-/// weird bug in sqlx. The issue that can crop up with pool reuse is
-/// basically a PoolTimeOut error. This is a known issue:
-/// https://github.com/launchbadge/sqlx/issues/2567
-fn get_connection_pool() -> sqlx::PgPool {
-    sqlx::postgres::PgPoolOptions::new()
-        .max_connections(1)
-        .acquire_timeout(std::time::Duration::from_secs(5))
-        .connect_lazy(DATABASE_URL)
-        .unwrap()
-}
+use crate::DATABASE_NUM;
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[sqlx::test]
-async fn should_be_able_to_query_bitcoin_blocks(pool: sqlx::PgPool) {
-    let mut store = storage::postgres::PgStore::from(pool);
+#[tokio::test]
+async fn should_be_able_to_query_bitcoin_blocks() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let mut store = signer::testing::storage::new_test_database(db_num).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
     let test_model_params = testing::storage::model::Params {
@@ -83,6 +72,7 @@ async fn should_be_able_to_query_bitcoin_blocks(pool: sqlx::PgPool) {
             .expect("failed_to_execute_query");
         assert!(result.is_none());
     }
+    signer::testing::storage::drop_db(store).await;
 }
 
 struct InitiateWithdrawalRequest;
@@ -143,11 +133,10 @@ impl AsContractCall for InitiateWithdrawalRequest {
 )); "rotate-keys")]
 #[tokio::test]
 async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWrapper<T>) {
-    let default_pool = get_connection_pool();
-    let pool = crate::transaction_signer::new_database(&default_pool).await;
-    let store = PgStore::from(pool.clone());
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = signer::testing::storage::new_test_database(db_num).await;
 
-    let path = "tests/fixtures/tenure-blocks-0-1ed91e0720129bda5072540ee7283dd5345d0f6de0cf5b982c6de3943b6e3291.bin";
+    let path = "tests/fixtures/tenure-blocks-0-e5fdeb1a51ba6eb297797a1c473e715c27dc81a58ba82c698f6a32eeccee9a5b.bin";
     let mut file = std::fs::File::open(path).unwrap();
     let mut buf = Vec::new();
     file.read_to_end(&mut buf).unwrap();
@@ -182,7 +171,7 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWr
     // First check that all blocks are saved
     let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_blocks";
     let stored_block_count = sqlx::query_scalar::<_, i64>(sql)
-        .fetch_one(&pool)
+        .fetch_one(store.pool())
         .await
         .unwrap();
 
@@ -192,7 +181,7 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWr
     // we just created above, was saved.
     let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_transactions";
     let stored_transaction_count = sqlx::query_scalar::<_, i64>(sql)
-        .fetch_one(&pool)
+        .fetch_one(store.pool())
         .await
         .unwrap();
 
@@ -214,7 +203,7 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWr
 
     let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_blocks";
     let stored_block_count_again = sqlx::query_scalar::<_, i64>(sql)
-        .fetch_one(&pool)
+        .fetch_one(store.pool())
         .await
         .unwrap();
 
@@ -224,23 +213,25 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWr
 
     let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_transactions";
     let stored_transaction_count_again = sqlx::query_scalar::<_, i64>(sql)
-        .fetch_one(&pool)
+        .fetch_one(store.pool())
         .await
         .unwrap();
 
     // No more transactions were written
     assert_eq!(stored_transaction_count_again, 1);
+    signer::testing::storage::drop_db(store).await;
 }
 
 /// Here we test that the DbRead::stacks_block_exists function works, while
 /// implicitly testing the DbWrite::write_stacks_blocks function for the
 /// PgStore type
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[sqlx::test]
-async fn checking_stacks_blocks_exists_works(pool: sqlx::PgPool) {
-    let store = storage::postgres::PgStore::from(pool);
+#[tokio::test]
+async fn checking_stacks_blocks_exists_works() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = signer::testing::storage::new_test_database(db_num).await;
 
-    let path = "tests/fixtures/tenure-blocks-0-1ed91e0720129bda5072540ee7283dd5345d0f6de0cf5b982c6de3943b6e3291.bin";
+    let path = "tests/fixtures/tenure-blocks-0-e5fdeb1a51ba6eb297797a1c473e715c27dc81a58ba82c698f6a32eeccee9a5b.bin";
     let mut file = std::fs::File::open(path).unwrap();
     let mut buf = Vec::new();
     file.read_to_end(&mut buf).unwrap();
@@ -272,14 +263,16 @@ async fn checking_stacks_blocks_exists_works(pool: sqlx::PgPool) {
         .all(|block| async { store.stacks_block_exists(block.block_id()).await.unwrap() })
         .await;
     assert!(all_exist);
+    signer::testing::storage::drop_db(store).await;
 }
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending deposit requests
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[sqlx::test]
-async fn should_return_the_same_pending_deposit_requests_as_in_memory_store(pool: sqlx::PgPool) {
-    let mut pg_store = storage::postgres::PgStore::from(pool);
+#[tokio::test]
+async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let mut pg_store = signer::testing::storage::new_test_database(db_num).await;
     let mut in_memory_store = storage::in_memory::Store::new_shared();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -327,14 +320,16 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store(pool
     pg_pending_deposit_requests.sort();
 
     assert_eq!(pending_depoist_requests, pg_pending_deposit_requests);
+    signer::testing::storage::drop_db(pg_store).await;
 }
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending withdraw requests
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[sqlx::test]
-async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store(pool: sqlx::PgPool) {
-    let mut pg_store = storage::postgres::PgStore::from(pool);
+#[tokio::test]
+async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let mut pg_store = signer::testing::storage::new_test_database(db_num).await;
     let mut in_memory_store = storage::in_memory::Store::new_shared();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -382,16 +377,16 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store(poo
     pg_pending_withdraw_requests.sort();
 
     assert_eq!(pending_withdraw_requests, pg_pending_withdraw_requests);
+    signer::testing::storage::drop_db(pg_store).await;
 }
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending accepted deposit requests
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[sqlx::test]
-async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_store(
-    pool: sqlx::PgPool,
-) {
-    let mut pg_store = storage::postgres::PgStore::from(pool);
+#[tokio::test]
+async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_store() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let mut pg_store = signer::testing::storage::new_test_database(db_num).await;
     let mut in_memory_store = storage::in_memory::Store::new_shared();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -445,16 +440,16 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
         pending_accepted_deposit_requests,
         pg_pending_accepted_deposit_requests
     );
+    signer::testing::storage::drop_db(pg_store).await;
 }
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending accepted withdraw requests
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[sqlx::test]
-async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_store(
-    pool: sqlx::PgPool,
-) {
-    let mut pg_store = storage::postgres::PgStore::from(pool);
+#[tokio::test]
+async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_store() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let mut pg_store = signer::testing::storage::new_test_database(db_num).await;
     let mut in_memory_store = storage::in_memory::Store::new_shared();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -512,15 +507,17 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
         pending_accepted_withdraw_requests,
         pg_pending_accepted_withdraw_requests
     );
+    signer::testing::storage::drop_db(pg_store).await;
 }
 
 /// This ensures that the postgres store and the in memory stores returns
 /// equivalent results when fetching pending the last key rotation.
 /// TODO(415): Make this robust to multiple key rotations.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[sqlx::test]
-async fn should_return_the_same_last_key_rotation_as_in_memory_store(pool: sqlx::PgPool) {
-    let mut pg_store = storage::postgres::PgStore::from(pool);
+#[tokio::test]
+async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let mut pg_store = signer::testing::storage::new_test_database(db_num).await;
     let mut in_memory_store = storage::in_memory::Store::new_shared();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -585,16 +582,18 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store(pool: sqlx:
         last_key_rotation_pg.as_ref().unwrap().signer_set,
         last_key_rotation_in_memory.as_ref().unwrap().signer_set
     );
+    signer::testing::storage::drop_db(pg_store).await;
 }
 
 /// Here we test that we can store deposit request model objects. We also
 /// test that if we attempt to write another deposit request then we do not
 /// write it and that we do not error.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[sqlx::test]
-async fn writing_deposit_requests_postgres(pool: sqlx::PgPool) {
+#[tokio::test]
+async fn writing_deposit_requests_postgres() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = signer::testing::storage::new_test_database(db_num).await;
     let num_rows = 15;
-    let store = storage::postgres::PgStore::from(pool.clone());
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let deposit_requests: Vec<model::DepositRequest> =
         std::iter::repeat_with(|| fake::Faker.fake_with_rng(&mut rng))
@@ -608,7 +607,7 @@ async fn writing_deposit_requests_postgres(pool: sqlx::PgPool) {
         .unwrap();
     let count =
         sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.deposit_requests"#)
-            .fetch_one(&pool)
+            .fetch_one(store.pool())
             .await
             .unwrap();
     // Were they all written?
@@ -621,12 +620,13 @@ async fn writing_deposit_requests_postgres(pool: sqlx::PgPool) {
         .unwrap();
     let count =
         sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.deposit_requests"#)
-            .fetch_one(&pool)
+            .fetch_one(store.pool())
             .await
             .unwrap();
 
     // No new records written right?
     assert_eq!(num_rows, count as usize);
+    signer::testing::storage::drop_db(store).await;
 }
 
 /// This is very similar to the above test; we test that we can store
@@ -634,10 +634,11 @@ async fn writing_deposit_requests_postgres(pool: sqlx::PgPool) {
 /// duplicate transactions then we do not write it and that we do not
 /// error.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[sqlx::test]
-async fn writing_transactions_postgres(pool: sqlx::PgPool) {
+#[tokio::test]
+async fn writing_transactions_postgres() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = signer::testing::storage::new_test_database(db_num).await;
     let num_rows = 12;
-    let store = storage::postgres::PgStore::from(pool.clone());
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let mut txs: Vec<model::Transaction> =
         std::iter::repeat_with(|| fake::Faker.fake_with_rng(&mut rng))
@@ -666,7 +667,7 @@ async fn writing_transactions_postgres(pool: sqlx::PgPool) {
     store.write_bitcoin_transactions(txs.clone()).await.unwrap();
     let count =
         sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.bitcoin_transactions"#)
-            .fetch_one(&pool)
+            .fetch_one(store.pool())
             .await
             .unwrap();
     // Were they all written?
@@ -675,7 +676,7 @@ async fn writing_transactions_postgres(pool: sqlx::PgPool) {
     // what about the transactions table, the same number of rows should
     // have been written there as well.
     let count = sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.transactions"#)
-        .fetch_one(&pool)
+        .fetch_one(store.pool())
         .await
         .unwrap();
 
@@ -684,7 +685,7 @@ async fn writing_transactions_postgres(pool: sqlx::PgPool) {
     store.write_bitcoin_transactions(txs).await.unwrap();
     let count =
         sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.bitcoin_transactions"#)
-            .fetch_one(&pool)
+            .fetch_one(store.pool())
             .await
             .unwrap();
 
@@ -693,10 +694,11 @@ async fn writing_transactions_postgres(pool: sqlx::PgPool) {
 
     // what about duplicates in the transactions table.
     let count = sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.transactions"#)
-        .fetch_one(&pool)
+        .fetch_one(store.pool())
         .await
         .unwrap();
 
     // let's see, who knows what will happen!
     assert_eq!(num_rows, count as usize);
+    signer::testing::storage::drop_db(store).await;
 }
