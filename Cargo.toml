@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "signer",
   "emily/handler",
+  "emily/client-tests",
   ".generated-sources/emily/openapi",
   "blocklist-client",
   ".generated-sources/blocklist-openapi-gen",

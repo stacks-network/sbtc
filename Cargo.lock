@@ -1612,6 +1612,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "emily-client-tests"
+version = "0.1.0"
+dependencies = [
+ "aws-config",
+ "aws-sdk-dynamodb",
+ "base64 0.22.1",
+ "clap",
+ "config 0.11.0",
+ "emily-client",
+ "fake",
+ "mockall 0.10.2",
+ "mockito 0.28.0",
+ "openssl",
+ "rand 0.8.5",
+ "reqwest 0.11.27",
+ "serde 1.0.203",
+ "serde_dynamo",
+ "serde_json",
+ "test-case",
+ "thiserror",
+ "time 0.3.36",
+ "tokio",
+ "tracing",
+ "tracing-attributes",
+ "tracing-subscriber",
+ "utoipa",
+ "warp",
+ "warp_lambda",
+]
+
+[[package]]
 name = "emily-handler"
 version = "0.1.0"
 dependencies = [
