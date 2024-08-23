@@ -9,15 +9,13 @@ use emily_handler::{
         common::Status,
         deposit::{
             requests::{CreateDepositRequestBody, UpdateDepositsRequestBody},
-            responses::{CreateDepositResponse, GetDepositsResponse, UpdateDepositsResponse},
+            responses::{GetDepositsResponse, UpdateDepositsResponse},
             Deposit, DepositInfo,
         },
         withdrawal::{
             requests::{CreateWithdrawalRequestBody, UpdateWithdrawalsRequestBody},
-            responses::{
-                CreateWithdrawalResponse, GetWithdrawalsResponse, UpdateWithdrawalsResponse,
-            },
-            Withdrawal, WithdrawalId, WithdrawalInfo,
+            responses::{GetWithdrawalsResponse, UpdateWithdrawalsResponse},
+            Withdrawal, WithdrawalInfo,
         },
     },
     context::EmilyContext,
@@ -123,10 +121,7 @@ impl TestClient {
     }
 
     /// Create deposit.
-    pub async fn create_deposit(
-        &self,
-        request: &CreateDepositRequestBody,
-    ) -> CreateDepositResponse {
+    pub async fn create_deposit(&self, request: &CreateDepositRequestBody) -> Deposit {
         create_xyz(&self.inner, EMILY_DEPOSIT_ENDPOINT, request)
             .await
             .unwrap()
@@ -157,17 +152,14 @@ impl TestClient {
     }
 
     /// Create withdrawal.
-    pub async fn create_withdrawal(
-        &self,
-        request: &CreateWithdrawalRequestBody,
-    ) -> CreateWithdrawalResponse {
+    pub async fn create_withdrawal(&self, request: &CreateWithdrawalRequestBody) -> Withdrawal {
         create_xyz(&self.inner, EMILY_WITHDRAWAL_ENDPOINT, request)
             .await
             .unwrap()
     }
 
     /// Get a single withdrawal.
-    pub async fn get_withdrawal(&self, request_id: &WithdrawalId) -> Withdrawal {
+    pub async fn get_withdrawal(&self, request_id: &u64) -> Withdrawal {
         get_xyz::<Withdrawal>(
             &self.inner,
             format!("{EMILY_WITHDRAWAL_ENDPOINT}/{request_id}").as_str(),

@@ -22,8 +22,6 @@ use serde_json::json;
 use std::sync::LazyLock;
 use tokio;
 
-use emily_handler::api::models::deposit::responses::GetDepositResponse;
-
 const TEST_BLOCK_HEIGHT: u64 = 123;
 
 /// Contains data about a deposit transaction used for testing so that
@@ -158,7 +156,7 @@ async fn get_deposit() {
             .expect("Request should succeed");
 
         // Assert.
-        let actual: GetDepositResponse = response
+        let actual: Deposit = response
             .json()
             .await
             .expect("Failed to parse JSON response");

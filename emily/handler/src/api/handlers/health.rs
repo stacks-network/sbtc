@@ -11,10 +11,10 @@ use crate::common::error::Error;
     responses(
         // TODO(271): Add success body.
         (status = 200, description = "Successfully retrieved health data.", body = HealthData),
-        (status = 400, description = "Invalid request body"),
-        (status = 404, description = "Address not found"),
-        (status = 405, description = "Method not allowed"),
-        (status = 500, description = "Internal server error")
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
 pub async fn get_health() -> impl warp::reply::Reply {

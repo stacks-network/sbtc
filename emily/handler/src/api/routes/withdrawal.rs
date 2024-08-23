@@ -1,7 +1,7 @@
 //! Route definitions for the withdrawal endpoint.
 use warp::Filter;
 
-use crate::{api::models::withdrawal::WithdrawalId, context::EmilyContext};
+use crate::context::EmilyContext;
 
 use super::handlers;
 
@@ -21,7 +21,7 @@ fn get_withdrawal(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .map(move || context.clone())
-        .and(warp::path!("withdrawal" / WithdrawalId))
+        .and(warp::path!("withdrawal" / u64))
         .and(warp::get())
         .then(handlers::withdrawal::get_withdrawal)
 }
