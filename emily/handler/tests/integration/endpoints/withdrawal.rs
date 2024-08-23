@@ -5,7 +5,7 @@ use emily_handler::{
             requests::{
                 CreateWithdrawalRequestBody, UpdateWithdrawalsRequestBody, WithdrawalUpdate,
             },
-            responses::{GetWithdrawalResponse, GetWithdrawalsResponse},
+            responses::GetWithdrawalsResponse,
             Withdrawal, WithdrawalInfo,
         },
     },
@@ -142,7 +142,7 @@ async fn get_withdrawal() {
             .expect("Request should succeed");
 
         // Assert.
-        let actual: GetWithdrawalResponse = response
+        let actual: Withdrawal = response
             .json()
             .await
             .expect("Failed to parse JSON response");

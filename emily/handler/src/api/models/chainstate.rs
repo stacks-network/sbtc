@@ -3,13 +3,6 @@
 use serde::{Deserialize, Serialize};
 use utoipa::{ToResponse, ToSchema};
 
-use crate::api::models::common::*;
-
-/// Requests.
-pub mod requests;
-/// Responses.
-pub mod responses;
-
 /// Chainstate.
 #[derive(
     Clone,
@@ -28,7 +21,7 @@ pub mod responses;
 #[serde(rename_all = "camelCase")]
 pub struct Chainstate {
     /// Stacks block height.
-    pub stacks_block_height: BlockHeight,
+    pub stacks_block_height: u64,
     /// Stacks block hash at the height.
-    pub stacks_block_hash: StacksBlockHash,
+    pub stacks_block_hash: String,
 }
