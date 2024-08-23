@@ -38,33 +38,15 @@ async fn set_api_state_status(
     context: &EmilyContext,
     new_status: &ApiStatus,
 ) -> Result<Option<ApiStateEntry>, Error> {
-    let mut update_attempts = 0;
     let mut api_state: ApiStateEntry;
-    loop {
-        update_attempts += 1;
+    for attempt_number in 0..MAX_SET_API_STATE_ATTEMPTS_DURING_REORG {
         let original_api_state = accessors::get_api_state(context).await?;
         api_state = original_api_state.clone();
 
         // Update the api status.
         api_state.api_status = match (new_status, &original_api_state.api_status) {
-            // Handle trying to set the api status to reorganizing.
-            (ApiStatus::Reorg(_), ApiStatus::Stable(_)) => new_status.clone(),
-            (ApiStatus::Reorg(new_reorg_tip), ApiStatus::Reorg(current_reorg_tip)) => {
-                if new_reorg_tip == current_reorg_tip {
-                    return Ok(None);
-                } else {
-                    warn!(
-                        "Trying to reorg with new chaintip {:?} while the api is reorganizing around the chaintip {:?}",
-                        new_reorg_tip,
-                        current_reorg_tip,
-                    );
-                    return Err(Error::InconsistentState(Inconsistency::ItemUpdate(
-                        format!("Trying to reorg with new chaintip {:?} while the api is reorganizing around the chaintip {:?}",
-                        new_reorg_tip,
-                        current_reorg_tip,
-                        ))));
-                }
-            }
+            (ApiStatus::Reorg(_), ApiStatus::Stable(_))
+            | (ApiStatus::Stable(_), ApiStatus::Reorg(_)) => new_status.clone(),
             (ApiStatus::Stable(new_tip), ApiStatus::Stable(old_tip)) => {
                 if new_tip == old_tip {
                     return Ok(None);
@@ -72,37 +54,38 @@ async fn set_api_state_status(
                     new_status.clone()
                 }
             }
-            (ApiStatus::Stable(_), ApiStatus::Reorg(_)) => new_status.clone(),
+            // Handle trying to set the api status to reorganizing.
+            (ApiStatus::Reorg(new_reorg_tip), ApiStatus::Reorg(current_reorg_tip)) => {
+                if new_reorg_tip == current_reorg_tip {
+                    return Ok(None);
+                } else {
+                    let err_msg: String = format!("Trying to reorg with new chaintip {new_reorg_tip:?} while the api is reorganizing around the chaintip {current_reorg_tip:?}");
+                    warn!(err_msg);
+                    return Err(Error::InconsistentState(Inconsistency::ItemUpdate(err_msg)));
+                }
+            }
         };
 
-        debug!(
-            "Changing Api state from [{:?}] to [{:?}]. Attempt {} of maximum {}.",
-            original_api_state, api_state, update_attempts, MAX_SET_API_STATE_ATTEMPTS_DURING_REORG,
-        );
+        debug!("Changing Api state from [{original_api_state:?}] to [{api_state:?}]. Attempt {attempt_number} of maximum {MAX_SET_API_STATE_ATTEMPTS_DURING_REORG}.");
 
         // Attempt to set the API state.
         match accessors::set_api_state(context, &api_state).await {
             // We successfully set the API state.
             Ok(()) => {
                 info!("Successfully set api state: {:?}.", api_state);
-                break;
+                return Ok(Some(api_state));
             }
             // Retry if there was a version conflict.
             Err(Error::VersionConflict) => {
-                if update_attempts >= MAX_SET_API_STATE_ATTEMPTS_DURING_REORG {
-                    debug!("Failed to update API state {:?}", api_state);
-                    return Err(Error::InternalServer);
-                } else {
-                    debug!("Failed to update API state - retrying: {:?}", api_state);
-                }
+                debug!("Failed to update API state - retrying: {api_state:?}")
             }
             // If some other error occured then return from here; this shouldn't
             // happen and something has actually gone wrong.
-            Err(e) => Err(e)?,
+            e @ Err(_) => e?,
         }
     }
     // Return.
-    Ok(Some(api_state))
+    Err(Error::InternalServer)
 }
 
 /// Handler that executes a reorg.
@@ -118,14 +101,11 @@ pub async fn execute_reorg_handler(
     let empty_reply = warp::reply::with_status(warp::reply(), StatusCode::NO_CONTENT);
 
     let new_status = ApiStatus::Reorg(request.canonical_tip.clone().into());
-    match set_api_state_status(context, &new_status).await {
+    match set_api_state_status(context, &new_status).await? {
         // Do nothing if we claimed the api correctly.
-        Ok(Some(_)) => {}
-        Ok(None) => {
+        Some(_) => {}
+        None => {
             return Ok(empty_reply);
-        }
-        Err(e) => {
-            return Err(e);
         }
     };
 
@@ -135,7 +115,7 @@ pub async fn execute_reorg_handler(
     // Get all deposits that would be impacted by this reorg.
     let all_deposits = accessors::get_all_deposit_entries_modified_after_height(
         context,
-        request.canonical_tip.stacks_block_height,
+        request.canonical_tip.stacks_block_height - 1,
         None,
     )
     .await?;
@@ -158,7 +138,7 @@ pub async fn execute_reorg_handler(
                         entry, attempt, ENTRY_UPDATE_RETRIES
                     );
                 }
-                Err(e) => Err(e)?,
+                e @ Err(_) => e?,
             }
             // Add modified deposit entries.
             debug_modified_deposit_entries.push(entry);
@@ -174,7 +154,7 @@ pub async fn execute_reorg_handler(
     // Get all withdrawals that would be impacted by this reorg.
     let all_withdrawals = accessors::get_all_withdrawal_entries_modified_after_height(
         context,
-        request.canonical_tip.stacks_block_height,
+        request.canonical_tip.stacks_block_height - 1,
         None,
     )
     .await?;
@@ -197,7 +177,7 @@ pub async fn execute_reorg_handler(
                         entry, attempt, ENTRY_UPDATE_RETRIES
                     );
                 }
-                Err(e) => Err(e)?,
+                e @ Err(_) => e?,
             }
             // Add modified withdrawal entries.
             debug_modified_withdrawal_entries.push(entry);

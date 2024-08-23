@@ -121,7 +121,7 @@ pub async fn get_all_deposit_entries_modified_after_height_with_status(
         context,
         status,
         &minimum_height,
-        ">=",
+        ">",
         maybe_page_size,
     )
     .await
@@ -302,7 +302,7 @@ pub async fn get_all_withdrawal_entries_modified_after_height_with_status(
         context,
         status,
         &minimum_height,
-        ">=",
+        ">",
         maybe_page_size,
     )
     .await

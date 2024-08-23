@@ -123,11 +123,11 @@ impl WithdrawalEntry {
         self.history.retain(|event| {
             // The event is younger than the reorg...
             (chainstate.stacks_block_height > event.stacks_block_height)
-                // Or the event is as old as the reorg but has a different block hash...
+                // Or the event is as old as the reorg and has the same block hash...
                 || ((chainstate.stacks_block_height == event.stacks_block_height)
                     && (chainstate.stacks_block_hash == event.stacks_block_hash))
         });
-        // If the history is empty add a reassessing event.
+        // If the history is empty add a reprocessing event.
         if self.history.is_empty() {
             self.history = vec![WithdrawalEvent {
                 status: StatusEntry::Reprocessing,
@@ -142,7 +142,19 @@ impl WithdrawalEntry {
         Ok(())
     }
 
-    /// Synchronize the entry with its history.
+    /// Synchronizes the entry with its history.
+    ///
+    /// These entries contain an internal vector of history entries in chronological order.
+    /// The last entry in the history vector is the latest entry, meaning the most up-to-date data.
+    /// Within this last history are some fields that we want to be able to index into the
+    /// table with; at the moment of writing this it's `status` and `last_update_height`.
+    ///
+    /// DynamoDB can only be sorted and indexed by top level fields, so in order to allow the table
+    /// to be searchable by `status` or ordered by `last_update_height` there needs to be a top
+    /// level field for it.
+    ///
+    /// This function takes the entry and then synchronizes the top level fields that should
+    /// reflect the latest data in the history vector with the latest entry in the history vector.
     pub fn synchronize_with_history(&mut self) -> Result<(), Error> {
         // Get latest event.
         let latest_event = self.latest_event()?;

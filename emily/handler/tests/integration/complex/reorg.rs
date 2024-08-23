@@ -75,7 +75,6 @@ pub async fn simple_no_reorg() {
 /// of those chainstates were re-written.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-// #[ignore = "Because reorg is not implemented."]
 pub async fn simple_reorg() {
     // Setup client.
     simple_reorg_test_base(ReorgScenario {
@@ -167,6 +166,7 @@ async fn simple_reorg_test_base(scenario: ReorgScenario) {
         let all_reevaluating_deposits = client
             .get_all_deposits_with_status(&Status::Reprocessing)
             .await;
+
         assert_eq!(
             all_reevaluating_deposits.len(),
             reorganized_chainstates.len(),

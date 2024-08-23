@@ -23,7 +23,7 @@ pub enum Inconsistency {
     /// There is a chainstate inconsistency, and all the chainstates
     /// in the vector are the chainstates that are present in the API
     /// but are not known to be correct. All chainstates in the vector
-    /// are considered equally cannonical.
+    /// are considered equally canonical.
     Chainstate(Vec<Chainstate>),
     /// There is an inconsistency in the way an item is being updated.
     ItemUpdate(String),

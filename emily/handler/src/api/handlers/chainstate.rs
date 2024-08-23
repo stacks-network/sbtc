@@ -193,12 +193,9 @@ async fn add_chainstate_entry_or_reorg(
             // Execute the reorg.
             execute_reorg_handler(context, execute_reorg_request)
                 .await
-                .map_err(|e| {
-                    warn!("Failed executing reorg with error {}", e);
-                    e
-                })?;
+                .inspect_err(|e| warn!("Failed executing reorg with error {}", e))?;
         }
-        Err(e) => Err(e)?,
+        e @ Err(_) => return e,
         _ => {}
     };
     // Return.
