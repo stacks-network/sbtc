@@ -170,7 +170,7 @@
     ;; Mark the withdrawal as completed
     (map-insert withdrawal-status request-id true)
     (print {
-      topic: "accepted-withdrawal",
+      topic: "withdrawal-accept",
       request-id: request-id,
       bitcoin-txid: bitcoin-txid,
       signer-bitmap: signer-bitmap,
@@ -192,7 +192,7 @@
     ;; Mark the withdrawal as completed
     (map-insert withdrawal-status request-id false)
     (print {
-      topic: "rejected-withdrawal",
+      topic: "withdrawal-reject",
       request-id: request-id,
       signer-bitmap: signer-bitmap,
     })
