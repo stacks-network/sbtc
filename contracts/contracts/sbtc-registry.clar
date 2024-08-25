@@ -156,28 +156,45 @@
   )
 )
 
-;; Complete withdrawal request
+;; Complete withdrawal request by noting the acceptance
 ;; #[allow(unchecked_data)]
-(define-public (complete-withdrawal
+(define-public (complete-withdrawal-accept
     (request-id uint) 
-    (status bool)
-    (bitcoin-txid (optional (buff 32))) 
-    (signer-bitmap (optional uint))
-    (output-index (optional uint))
-    (fee (optional uint))
+    (bitcoin-txid (buff 32))
+    (signer-bitmap uint)
+    (output-index uint)
+    (fee uint)
   )
   (begin 
     (try! (is-protocol-caller))
     ;; Mark the withdrawal as completed
-    (map-insert withdrawal-status request-id status)
+    (map-insert withdrawal-status request-id true)
     (print {
-      topic: "completed-withdrawal",
+      topic: "accepted-withdrawal",
       request-id: request-id,
-      request-status: status,
       bitcoin-txid: bitcoin-txid,
       signer-bitmap: signer-bitmap,
       output-index: output-index,
       fee: fee
+    })
+    (ok true)
+  )
+)
+
+;; Complete withdrawal request by noting the rejection
+;; #[allow(unchecked_data)]
+(define-public (complete-withdrawal-reject
+    (request-id uint) 
+    (signer-bitmap uint)
+  )
+  (begin 
+    (try! (is-protocol-caller))
+    ;; Mark the withdrawal as completed
+    (map-insert withdrawal-status request-id false)
+    (print {
+      topic: "rejected-withdrawal",
+      request-id: request-id,
+      signer-bitmap: signer-bitmap,
     })
     (ok true)
   )
