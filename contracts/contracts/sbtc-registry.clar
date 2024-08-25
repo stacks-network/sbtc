@@ -156,7 +156,11 @@
   )
 )
 
-;; Complete withdrawal request by noting the acceptance
+;; Complete withdrawal request by noting the acceptance in the
+;; withdrawal-status state map.
+;;
+;; This function will emit a print event with the topic
+;; "withdrawal-accept".
 ;; #[allow(unchecked_data)]
 (define-public (complete-withdrawal-accept
     (request-id uint) 
@@ -181,7 +185,11 @@
   )
 )
 
-;; Complete withdrawal request by noting the rejection
+;; Complete withdrawal request by noting the rejection in the 
+;; withdrawal-status state map.
+;;
+;; This function will emit a print event with the topic
+;; "withdrawal-reject".
 ;; #[allow(unchecked_data)]
 (define-public (complete-withdrawal-reject
     (request-id uint) 
