@@ -130,7 +130,7 @@ describe("initiating a withdrawal request", () => {
       amount: 1000n,
       maxFee: 10n,
       blockHeight: 2n,
-      topic: "withdrawal-request",
+      topic: "withdrawal-create",
       requestId: 1n,
     });
   });

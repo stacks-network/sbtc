@@ -89,7 +89,7 @@ describe("sBTC registry contract", () => {
         amount: 100n,
         maxFee: 10n,
         blockHeight: request.blockHeight,
-        topic: "withdrawal-request",
+        topic: "withdrawal-create",
         requestId: 1n,
       });
     });

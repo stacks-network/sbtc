@@ -121,7 +121,7 @@
 ;; This function does not handle validation or moving the funds.
 ;; Instead, it is purely for the purpose of storing the request.
 ;; 
-;; The function will emit a print event with the topic "withdrawal-request"
+;; The function will emit a print event with the topic "withdrawal-create"
 ;; and the data of the request.
 (define-public (create-withdrawal-request
     (amount uint)
@@ -144,7 +144,7 @@
       block-height: height,
     })
     (print {
-      topic: "withdrawal-request",
+      topic: "withdrawal-create",
       amount: amount,
       request-id: id,
       sender: sender,
