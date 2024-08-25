@@ -10,6 +10,7 @@
 ;; Variables
 
 (define-data-var last-withdrawal-request-id uint u0)
+(define-data-var current-signature-threshold uint u0)
 (define-data-var current-signer-set (list 128 (buff 33)) (list))
 (define-data-var current-aggregate-pubkey (buff 33) 0x00)
 (define-data-var current-signer-principal principal tx-sender)
@@ -91,7 +92,8 @@
   {
     current-signer-set: (var-get current-signer-set),
     current-aggregate-pubkey: (var-get current-aggregate-pubkey),
-    current-signer-principal: (var-get current-signer-principal)
+    current-signer-principal: (var-get current-signer-principal),
+    current-signature-threshold: (var-get current-signature-threshold),
   }
 )
 
@@ -241,7 +243,12 @@
 ;; Rotate the signer set, multi-sig principal, & aggregate pubkey
 ;; This function can only be called by the bootstrap-signers contract.
 ;; #[allow(unchecked_data)]
-(define-public (rotate-keys (new-keys (list 128 (buff 33))) (new-address principal) (new-aggregate-pubkey (buff 33)))
+(define-public (rotate-keys 
+    (new-keys (list 128 (buff 33)))
+    (new-address principal)
+    (new-aggregate-pubkey (buff 33))
+    (new-signature-threshold uint)
+  )
   (begin
     ;; Check that caller is protocol contract
     (try! (is-protocol-caller))
@@ -253,6 +260,8 @@
     (var-set current-signer-set new-keys)
     ;; Update the current multi-sig address
     (var-set current-signer-principal new-address)
+    ;; Update the current signature threshold
+    (var-set current-signature-threshold new-signature-threshold)
     ;; Update the current aggregate pubkey
     (ok (var-set current-aggregate-pubkey new-aggregate-pubkey))
   )
