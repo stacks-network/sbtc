@@ -127,6 +127,7 @@ describe("sBTC registry contract", () => {
         signers.rotateKeysWrapper({
           newKeys: [new Uint8Array(33).fill(0), new Uint8Array(33).fill(0)],
           newAggregatePubkey: new Uint8Array(33).fill(0),
+          newSignatureThreshold: 2n,
         }),
         deployer
       );
@@ -137,6 +138,7 @@ describe("sBTC registry contract", () => {
         signers.rotateKeysWrapper({
           newKeys: [new Uint8Array(33).fill(0), new Uint8Array(31).fill(0)],
           newAggregatePubkey: new Uint8Array(33).fill(0),
+          newSignatureThreshold: 2n,
         }),
         deployer
       );
@@ -147,6 +149,7 @@ describe("sBTC registry contract", () => {
         signers.rotateKeysWrapper({
           newKeys: [new Uint8Array(33).fill(0), new Uint8Array(33).fill(0)],
           newAggregatePubkey: new Uint8Array(31).fill(0),
+          newSignatureThreshold: 2n,
         }),
         deployer
       );
