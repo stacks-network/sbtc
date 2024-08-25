@@ -86,7 +86,7 @@ describe("sBTC deposit contract", () => {
       }>(print.data.value);
       expect(printData).toStrictEqual({
         topic: "completed-deposit",
-        txid: new Uint8Array(32).fill(0),
+        bitcoinTxid: new Uint8Array(32).fill(0),
         voutIndex: 0n,
         amount: 1000n,
       });

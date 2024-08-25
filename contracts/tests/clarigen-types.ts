@@ -713,7 +713,7 @@ export const contracts = {
           { name: "request-id", type: "uint128" },
           { name: "bitcoin-txid", type: { buffer: { length: 32 } } },
           { name: "signer-bitmap", type: "uint128" },
-          { name: "output-index", type: "uint128" },
+          { name: "vout-index", type: "uint128" },
           { name: "fee", type: "uint128" },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
@@ -722,7 +722,7 @@ export const contracts = {
           requestId: TypedAbiArg<number | bigint, "requestId">,
           bitcoinTxid: TypedAbiArg<Uint8Array, "bitcoinTxid">,
           signerBitmap: TypedAbiArg<number | bigint, "signerBitmap">,
-          outputIndex: TypedAbiArg<number | bigint, "outputIndex">,
+          voutIndex: TypedAbiArg<number | bigint, "voutIndex">,
           fee: TypedAbiArg<number | bigint, "fee">,
         ],
         Response<boolean, bigint>

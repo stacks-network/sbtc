@@ -166,7 +166,7 @@
     (request-id uint) 
     (bitcoin-txid (buff 32))
     (signer-bitmap uint)
-    (output-index uint)
+    (vout-index uint)
     (fee uint)
   )
   (begin 
@@ -178,7 +178,7 @@
       request-id: request-id,
       bitcoin-txid: bitcoin-txid,
       signer-bitmap: signer-bitmap,
-      output-index: output-index,
+      vout-index: vout-index,
       fee: fee
     })
     (ok true)
@@ -230,7 +230,7 @@
     })
     (print {
       topic: "completed-deposit",
-      txid: txid,
+      bitcoin-txid: txid,
       vout-index: vout-index,
       amount: amount
     })
