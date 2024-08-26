@@ -2,12 +2,15 @@
 
 use std::collections::BTreeMap;
 
-use bitcoin::hashes::Hash;
+use bitcoin::hashes::Hash as _;
 use blockstack_lib::chainstate::{nakamoto, stacks};
-use fake::faker::time::en::DateTimeAfter;
 use fake::Fake;
 use rand::Rng;
+use secp256k1::ecdsa::RecoverableSignature;
 
+use crate::keys::PrivateKey;
+use crate::keys::PublicKey;
+use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
 
 use crate::codec::Encode;
@@ -149,15 +152,14 @@ pub fn stacks_txid<R: rand::RngCore + ?Sized>(
 }
 
 /// Dummy signature
-pub fn signature<R: rand::RngCore + ?Sized>(
-    config: &fake::Faker,
-    rng: &mut R,
-) -> p256k1::ecdsa::Signature {
-    // Represent both the signed message and the signing key.
-    let multipurpose_bytes: [u8; 32] = config.fake_with_rng(rng);
-    let secret_key = p256k1::scalar::Scalar::from(multipurpose_bytes);
-
-    p256k1::ecdsa::Signature::new(&multipurpose_bytes, &secret_key).unwrap()
+pub fn recoverable_signature<R>(config: &fake::Faker, rng: &mut R) -> RecoverableSignature
+where
+    R: rand::RngCore + ?Sized,
+{
+    // Represent the signed message.
+    let digest: [u8; 32] = config.fake_with_rng(rng);
+    let msg = secp256k1::Message::from_digest(digest);
+    PrivateKey::new(rng).sign_ecdsa_recoverable(&msg)
 }
 
 /// Encrypted dummy DKG shares
@@ -165,13 +167,8 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
     _config: &fake::Faker,
     rng: &mut R,
     signer_private_key: &[u8; 32],
-    group_key: p256k1::point::Point,
+    group_key: PublicKey,
 ) -> model::EncryptedDkgShares {
-    let aggregate_key = group_key.x().to_bytes().to_vec();
-    let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&group_key, None)
-        .x()
-        .to_bytes()
-        .to_vec();
     let party_state = wsts::traits::PartyState {
         polynomial: None,
         private_keys: vec![],
@@ -184,7 +181,7 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         num_keys: 1,
         num_parties: 1,
         threshold: 1,
-        group_key,
+        group_key: group_key.into(),
         parties: vec![(0, party_state)],
     };
 
@@ -199,14 +196,12 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         .encode_to_vec()
         .expect("encoding to vec failed");
 
-    let created_at = DateTimeAfter(time::OffsetDateTime::UNIX_EPOCH).fake_with_rng(rng);
-
     model::EncryptedDkgShares {
-        aggregate_key,
-        tweaked_aggregate_key,
+        aggregate_key: group_key,
         encrypted_private_shares,
         public_shares,
-        created_at,
+        tweaked_aggregate_key: group_key.signers_tweaked_pubkey().unwrap(),
+        script_pubkey: group_key.signers_script_pubkey().into_bytes(),
     }
 }
 

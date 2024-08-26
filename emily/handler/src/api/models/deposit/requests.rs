@@ -3,15 +3,18 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::api::models::common::*;
+use crate::api::models::common::{Fulfillment, Status};
 
 /// Query structure for the GetDepositsQuery struct.
 #[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetDepositsForTransactionQuery {
-    /// Pagination data.
-    #[serde(flatten)]
-    pagination_data: requests::PaginatedQuery<String>,
+    /// Next token for the search.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_token: Option<String>,
+    /// Maximum number of results to show.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<i32>,
 }
 
 /// Query structure for the GetDepositsQuery struct.
@@ -19,10 +22,13 @@ pub struct GetDepositsForTransactionQuery {
 #[serde(rename_all = "camelCase")]
 pub struct GetDepositsQuery {
     /// Operation status.
-    status: Status,
-    /// Pagination data.
-    #[serde(flatten)]
-    pagination_data: requests::PaginatedQuery<String>,
+    pub status: Status,
+    /// Next token for the search.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_token: Option<String>,
+    /// Maximum number of results to show.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<i32>,
 }
 
 /// Request structure for create deposit request.
@@ -30,53 +36,40 @@ pub struct GetDepositsQuery {
 #[serde(rename_all = "camelCase")]
 pub struct CreateDepositRequestBody {
     /// Bitcoin transaction id.
-    pub bitcoin_txid: BitcoinTransactionId,
+    pub bitcoin_txid: String,
     /// Output index on the bitcoin transaction associated with this specific deposit.
-    pub bitcoin_tx_output_index: BitcoinTransactionOutputIndex,
+    pub bitcoin_tx_output_index: u32,
     /// Reclaim script.
-    pub reclaim: BitcoinScript,
+    pub reclaim: String,
     /// Deposit script.
-    pub deposit: BitcoinScript,
+    pub deposit: String,
 }
 
-/// A Deposit where only the fields that need updating are set.
+/// A singlular Deposit update that contains only the fields pertinent
+/// to updating the status of a deposit. This includes the key related
+/// data in addition to status history related data.
 #[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DepositUpdate {
     /// Bitcoin transaction id.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bitcoin_txid: Option<BitcoinTransactionId>,
+    pub bitcoin_txid: String,
     /// Output index on the bitcoin transaction associated with this specific deposit.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bitcoin_tx_output_index: Option<BitcoinTransactionOutputIndex>,
-    /// Stacks address to received the deposited sBTC.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub recipient: Option<StacksPrinciple>,
-    /// Amount of BTC being deposited.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub amount: Option<Satoshis>,
+    pub bitcoin_tx_output_index: u32,
     /// The most recent Stacks block height the API was aware of when the deposit was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this height is the Stacks block height that contains that artifact.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_update_height: Option<BlockHeight>,
+    pub last_update_height: u64,
     /// The most recent Stacks block hash the API was aware of when the deposit was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this hash is the Stacks block hash that contains that artifact.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_update_block_hash: Option<StacksBlockHash>,
+    pub last_update_block_hash: String,
     /// The status of the deposit.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<Status>,
+    pub status: Status,
     /// The status message of the deposit.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status_message: Option<String>,
-    /// Deposit parameters
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parameters: Option<super::DepositParameters>,
+    pub status_message: String,
     /// Details about the on chain artifacts that fulfilled the deposit.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub fulfillment: Option<Option<Fulfillment>>,
+    pub fulfillment: Option<Fulfillment>,
 }
 
 /// Request structure for update deposit request.

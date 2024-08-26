@@ -5,6 +5,7 @@
 **/node_modules
 **/package-lock.json
 .pnpm-store/**
+.vscode/**
 
 ## Developer Environment
 devenv/**/*.db

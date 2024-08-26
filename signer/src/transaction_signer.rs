@@ -9,31 +9,43 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 
 use crate::blocklist_client;
+use crate::config::NetworkKind;
+use crate::ecdsa::SignEcdsa as _;
 use crate::error;
+use crate::error::Error;
+use crate::keys::PrivateKey;
+use crate::keys::PublicKey;
 use crate::message;
+use crate::message::StacksTransactionSignRequest;
 use crate::network;
+use crate::stacks::contracts::AsContractCall;
+use crate::stacks::contracts::ContractCall;
+use crate::stacks::wallet::MultisigTx;
+use crate::stacks::wallet::SignerWallet;
 use crate::storage;
 use crate::storage::model;
-
-use crate::ecdsa::SignEcdsa as _;
 use crate::wsts_state_machine;
 
 use bitcoin::hashes::Hash;
 use futures::StreamExt;
+use wsts::net::DkgEnd;
+use wsts::net::DkgStatus;
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// # Transaction signer event loop
 ///
-/// This struct contains the implementation of the transaction signer logic.
-/// The event loop subscribes to storage update notifications from the block observer,
-/// and listens to signer messages over the signer network.
+/// This struct contains the implementation of the transaction signer
+/// logic. The event loop subscribes to storage update notifications from
+/// the block observer, and listens to signer messages over the signer
+/// network.
 ///
 /// ## On block observer notification
 ///
-/// When the signer receives a notification from the block observer, indicating that
-/// new blocks have been added to the signer state, it must go over each of the pending
-/// requests and decide whether to accept or reject it. The decision is then persisted
-/// and broadcast to the other signers. The following flowchart illustrates the flow.
+/// When the signer receives a notification from the block observer,
+/// indicating that new blocks have been added to the signer state, it must
+/// go over each of the pending requests and decide whether to accept or
+/// reject it. The decision is then persisted and broadcast to the other
+/// signers. The following flowchart illustrates the flow.
 ///
 /// ```mermaid
 /// flowchart TD
@@ -48,22 +60,26 @@ use futures::StreamExt;
 ///
 /// ## On signer message
 ///
-/// When the signer receives a message from another signer, it needs to do a few different things
-/// depending on the type of the message.
+/// When the signer receives a message from another signer, it needs to do
+/// a few different things depending on the type of the message.
 ///
-/// - **Signer decision**: When receiving a signer decision, the transaction signer
-/// only needs to persist the decision to its database.
-/// - **Stacks sign request**: When receiving a request to sign a stacks transaction,
-/// the signer must verify that it has decided to sign the transaction, and if it has,
-/// send a transaction signature back over the network.
-/// - **Bitcoin sign request**: When receiving a request to sign a bitcoin transaction,
-/// the signer must verify that it has decided to accept all requests that the
-/// transaction fulfills. Once verified, the transaction signer creates a dedicated
-/// WSTS state machine to participate in a signing round for this transaction. Thereafter,
-/// the signer sends a bitcoin transaction sign ack message back over the network to signal
-/// its readiness.
-/// - **WSTS message**: When receiving a WSTS message, the signer will look up the corresponding
-/// state machine and dispatch the WSTS message to it.
+/// - **Signer decision**: When receiving a signer decision, the
+///   transaction signer only needs to persist the decision to its
+///   database.
+/// - **Stacks sign request**: When receiving a request to sign a stacks
+///   transaction, the signer must verify that it has decided to sign the
+///   transaction, and if it has, send a transaction signature back over
+///   the network.
+/// - **Bitcoin sign request**: When receiving a request to sign a bitcoin
+///   transaction, the signer must verify that it has decided to accept all
+///   requests that the transaction fulfills. Once verified, the
+///   transaction signer creates a dedicated WSTS state machine to
+///   participate in a signing round for this transaction. Thereafter, the
+///   signer sends a bitcoin transaction sign ack message back over the
+///   network to signal its readiness.
+/// - **WSTS message**: When receiving a WSTS message, the signer will look
+///   up the corresponding state machine and dispatch the WSTS message to
+///   it.
 ///
 /// The following flowchart illustrates the process.
 ///
@@ -91,7 +107,7 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
     /// Notification receiver from the block observer.
     pub block_observer_notifications: tokio::sync::watch::Receiver<()>,
     /// Private key of the signer for network communication.
-    pub signer_private_key: p256k1::scalar::Scalar,
+    pub signer_private_key: PrivateKey,
     /// WSTS state machines for active signing rounds and DKG rounds
     ///
     /// - For signing rounds, the TxID is the ID of the transaction to be
@@ -103,7 +119,9 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
     /// The threshold for the signer
     pub threshold: u32,
     /// How many bitcoin blocks back from the chain tip the signer will look for requests.
-    pub context_window: usize,
+    pub context_window: u16,
+    /// The network we are working in.
+    pub network_kind: bitcoin::Network,
     /// Random number generator used for encryption
     pub rng: Rng,
     #[cfg(feature = "testing")]
@@ -125,7 +143,7 @@ where
     N: network::MessageTransfer,
     error::Error: From<N::Error>,
     B: blocklist_client::BlocklistChecker,
-    S: storage::DbRead + storage::DbWrite,
+    S: storage::DbRead + storage::DbWrite + Send + Sync,
     error::Error: From<<S as storage::DbRead>::Error>,
     error::Error: From<<S as storage::DbWrite>::Error>,
     Rng: rand::RngCore + rand::CryptoRng,
@@ -209,16 +227,17 @@ where
 
         match &msg.inner.payload {
             message::Payload::SignerDepositDecision(decision) => {
-                self.persist_received_deposit_decision(decision, &msg.signer_pub_key)
+                self.persist_received_deposit_decision(decision, msg.signer_pub_key)
                     .await?;
             }
 
             message::Payload::SignerWithdrawDecision(decision) => {
-                self.persist_received_withdraw_decision(decision, &msg.signer_pub_key)
+                self.persist_received_withdraw_decision(decision, msg.signer_pub_key)
                     .await?;
             }
 
-            message::Payload::StacksTransactionSignRequest(_) => {
+            message::Payload::StacksTransactionSignRequest(_request) => {
+
                 //TODO(255): Implement
             }
 
@@ -282,7 +301,7 @@ where
         &mut self,
         _request: &message::BitcoinTransactionSignRequest,
     ) -> Result<bool, error::Error> {
-        let signer_pub_key = self.signer_pub_key_model()?;
+        let signer_pub_key = self.signer_pub_key();
         let _accepted_deposit_requests = self
             .storage
             .get_accepted_deposit_requests(&signer_pub_key)
@@ -297,6 +316,76 @@ where
         //    `max_fee` of any request.
 
         Ok(true)
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn handle_stacks_transaction_sign_request(
+        &mut self,
+        request: &message::StacksTransactionSignRequest,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<(), Error> {
+        let is_valid_sign_request = self
+            .is_valid_stackstransaction_sign_request(request, bitcoin_chain_tip)
+            .await?;
+
+        let wallet = self.load_wallet(request, bitcoin_chain_tip).await?;
+        let multi_sig = MultisigTx::new_tx(&request.contract_call, &wallet, request.tx_fee);
+        let txid = multi_sig.tx().txid();
+
+        if is_valid_sign_request {
+            let signature =
+                crate::signature::sign_stacks_tx(multi_sig.tx(), &self.signer_private_key);
+
+            let msg = message::StacksTransactionSignature { txid, signature };
+
+            self.send_message(msg, bitcoin_chain_tip).await?;
+        } else {
+            tracing::warn!(%txid, "received invalid sign request for stacks tx");
+        }
+
+        Ok(())
+    }
+
+    /// Load the multi-sig wallet corresponding to the signer set defined
+    /// in the last key rotation.
+    /// TODO(255): Add a tests
+    async fn load_wallet(
+        &self,
+        request: &StacksTransactionSignRequest,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<SignerWallet, Error> {
+        let last_key_rotation = self
+            .storage
+            .get_last_key_rotation(bitcoin_chain_tip)
+            .await?
+            .ok_or(error::Error::MissingKeyRotation)?;
+
+        let public_keys = last_key_rotation.signer_set.as_slice();
+        let signatures_required = last_key_rotation.signatures_required;
+        let network_kind = match self.network_kind {
+            bitcoin::Network::Bitcoin => NetworkKind::Mainnet,
+            _ => NetworkKind::Testnet,
+        };
+        SignerWallet::new(
+            public_keys,
+            signatures_required,
+            network_kind,
+            request.nonce,
+        )
+    }
+
+    async fn is_valid_stackstransaction_sign_request(
+        &mut self,
+        request: &message::StacksTransactionSignRequest,
+        _bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<bool, Error> {
+        // TODO(255): Finish the implementation
+        match &request.contract_call {
+            ContractCall::AcceptWithdrawalV1(contract) => contract.validate(&self.storage).await,
+            ContractCall::CompleteDepositV1(contract) => contract.validate(&self.storage).await,
+            ContractCall::RejectWithdrawalV1(contract) => contract.validate(&self.storage).await,
+            ContractCall::RotateKeysV1(contract) => contract.validate(&self.storage).await,
+        }
     }
 
     #[tracing::instrument(skip(self))]
@@ -340,7 +429,18 @@ where
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
-            _ => {
+            wsts::net::Message::DkgEnd(DkgEnd { status: DkgStatus::Success, .. }) => {
+                tracing::info!("DKG ended in success");
+            }
+            wsts::net::Message::DkgEnd(DkgEnd {
+                status: DkgStatus::Failure(fail),
+                ..
+            }) => {
+                tracing::info!("DKG ended in failure: {fail:?}");
+                // TODO(#414): handle DKG failute
+            }
+            wsts::net::Message::NonceResponse(_)
+            | wsts::net::Message::SignatureShareResponse(_) => {
                 tracing::debug!("ignoring message");
             }
         }
@@ -380,6 +480,10 @@ where
         Ok(())
     }
 
+    /// TODO(#380): This function needs to filter deposit requests based on
+    /// time as well. We need to do this because deposit requests are locked
+    /// using OP_CSV, which lock up coins based on block hieght or
+    /// multiples of 512 seconds measure by the median time past.
     #[tracing::instrument(skip(self))]
     async fn get_pending_deposit_requests(
         &mut self,
@@ -387,12 +491,7 @@ where
     ) -> Result<Vec<model::DepositRequest>, error::Error> {
         Ok(self
             .storage
-            .get_pending_deposit_requests(
-                chain_tip,
-                self.context_window
-                    .try_into()
-                    .map_err(|_| error::Error::TypeConversion)?,
-            )
+            .get_pending_deposit_requests(chain_tip, self.context_window)
             .await?)
     }
 
@@ -403,12 +502,7 @@ where
     ) -> Result<Vec<model::WithdrawRequest>, error::Error> {
         Ok(self
             .storage
-            .get_pending_withdraw_requests(
-                chain_tip,
-                self.context_window
-                    .try_into()
-                    .map_err(|_| error::Error::TypeConversion)?,
-            )
+            .get_pending_withdraw_requests(chain_tip, self.context_window)
             .await?)
     }
 
@@ -427,26 +521,18 @@ where
             })
             .await;
 
-        let signer_pub_key = self.signer_pub_key_model()?;
-
-        let created_at = time::OffsetDateTime::now_utc();
-
         let msg = message::SignerDepositDecision {
             txid: bitcoin::Txid::from_slice(&deposit_request.txid)
                 .map_err(error::Error::SliceConversion)?,
-            output_index: deposit_request
-                .output_index
-                .try_into()
-                .map_err(|_| error::Error::TypeConversion)?,
+            output_index: deposit_request.output_index,
             accepted: is_accepted,
         };
 
         let signer_decision = model::DepositSigner {
             txid: deposit_request.txid,
             output_index: deposit_request.output_index,
-            signer_pub_key,
+            signer_pub_key: self.signer_pub_key(),
             is_accepted,
-            created_at,
         };
 
         self.storage
@@ -469,16 +555,11 @@ where
             .await
             .unwrap_or(false);
 
-        let signer_pub_key = self.signer_pub_key_model()?;
-
-        let created_at = time::OffsetDateTime::now_utc();
-
         let signer_decision = model::WithdrawSigner {
             request_id: withdraw_request.request_id,
             block_hash: withdraw_request.block_hash,
-            signer_pub_key,
+            signer_pub_key: self.signer_pub_key(),
             is_accepted,
-            created_at,
         };
 
         self.storage
@@ -492,23 +573,13 @@ where
     async fn persist_received_deposit_decision(
         &mut self,
         decision: &message::SignerDepositDecision,
-        signer_pub_key: &p256k1::ecdsa::PublicKey,
+        signer_pub_key: PublicKey,
     ) -> Result<(), error::Error> {
-        let txid = decision.txid.to_byte_array().to_vec();
-        let output_index = decision
-            .output_index
-            .try_into()
-            .map_err(|_| error::Error::TypeConversion)?;
-        let signer_pub_key = signer_pub_key.to_bytes().to_vec();
-        let is_accepted = decision.accepted;
-        let created_at = time::OffsetDateTime::now_utc();
-
         let signer_decision = model::DepositSigner {
-            txid,
-            output_index,
+            txid: decision.txid.to_byte_array().to_vec(),
+            output_index: decision.output_index,
             signer_pub_key,
-            is_accepted,
-            created_at,
+            is_accepted: decision.accepted,
         };
 
         self.storage
@@ -529,24 +600,13 @@ where
     async fn persist_received_withdraw_decision(
         &mut self,
         decision: &message::SignerWithdrawDecision,
-        signer_pub_key: &p256k1::ecdsa::PublicKey,
+        signer_pub_key: PublicKey,
     ) -> Result<(), error::Error> {
-        let request_id = decision
-            .request_id
-            .try_into()
-            .map_err(|_| error::Error::TypeConversion)?;
-
-        let block_hash = decision.block_hash.to_vec();
-        let signer_pub_key = signer_pub_key.to_bytes().to_vec();
-        let is_accepted = decision.accepted;
-        let created_at = time::OffsetDateTime::now_utc();
-
         let signer_decision = model::WithdrawSigner {
-            request_id,
-            block_hash,
+            request_id: decision.request_id,
+            block_hash: decision.block_hash.to_vec(),
             signer_pub_key,
-            is_accepted,
-            created_at,
+            is_accepted: decision.accepted,
         };
 
         self.storage
@@ -585,12 +645,11 @@ where
         msg: impl Into<message::Payload>,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), error::Error> {
-        let msg = msg
-            .into()
-            .to_message(
-                bitcoin::BlockHash::from_slice(bitcoin_chain_tip)
-                    .map_err(error::Error::SliceConversion)?,
-            )
+        let bitcoin_chain_tip = bitcoin::BlockHash::from_slice(bitcoin_chain_tip)
+            .map_err(error::Error::SliceConversion)?;
+        let payload: message::Payload = msg.into();
+        let msg = payload
+            .to_message(bitcoin_chain_tip)
             .sign_ecdsa(&self.signer_private_key)?;
 
         self.network.broadcast(msg).await?;
@@ -602,31 +661,20 @@ where
     async fn get_signer_public_keys(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<BTreeSet<p256k1::ecdsa::PublicKey>, error::Error> {
+    ) -> Result<BTreeSet<PublicKey>, error::Error> {
         let last_key_rotation = self
             .storage
             .get_last_key_rotation(bitcoin_chain_tip)
             .await?
             .ok_or(error::Error::MissingKeyRotation)?;
 
-        last_key_rotation
-            .signer_set
-            .into_iter()
-            .map(|bytes| {
-                bytes
-                    .as_slice()
-                    .try_into()
-                    .map_err(|_| error::Error::TypeConversion)
-            })
-            .collect()
+        let signer_set = last_key_rotation.signer_set.into_iter().collect();
+
+        Ok(signer_set)
     }
 
-    fn signer_pub_key_model(&self) -> Result<model::PubKey, error::Error> {
-        Ok(self.signer_pub_key()?.to_bytes().to_vec())
-    }
-
-    fn signer_pub_key(&self) -> Result<p256k1::ecdsa::PublicKey, error::Error> {
-        Ok(p256k1::ecdsa::PublicKey::new(&self.signer_private_key)?)
+    fn signer_pub_key(&self) -> PublicKey {
+        PublicKey::from_private_key(&self.signer_private_key)
     }
 }
 

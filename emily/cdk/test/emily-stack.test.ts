@@ -45,7 +45,7 @@ describe('EmilyStack Test', () => {
 
         // Assert
         template.hasResourceProperties('AWS::Lambda::Function', {
-            // TODO: Add check for properties linking resources created during cdk build.
+            // TODO(TBD): Add check for properties linking resources created during cdk build.
             Handler: "main",
             Runtime: "provided.al2023",
             Architectures: [ "arm64" ],
@@ -56,9 +56,10 @@ describe('EmilyStack Test', () => {
         expect(Object.keys(lambdaResources)).toHaveLength(1);
         Object.keys(lambdaResources).forEach(lambdaLogicalId => {
             const environment = lambdaResources[lambdaLogicalId].Properties.Environment.Variables;
-            expect(environment.DEPOSIT_TABLE_NAME.Ref).toMatch(/^DepositTable/);
-            expect(environment.WITHDRAWAL_TABLE_NAME.Ref).toMatch(/^WithdrawalTable/);
-            expect(environment.CHAINSTATE_TABLE_NAME.Ref).toMatch(/^ChainstateTable/);
+            console.log(environment);
+            expect(environment.DEPOSIT_TABLE_NAME).toMatch(`DepositTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
+            expect(environment.WITHDRAWAL_TABLE_NAME).toMatch(`WithdrawalTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
+            expect(environment.CHAINSTATE_TABLE_NAME).toMatch(`ChainstateTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
             expect(environment.IS_LOCAL).toEqual("false");
         });
     });

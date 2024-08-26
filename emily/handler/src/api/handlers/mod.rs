@@ -12,6 +12,11 @@ pub mod chainstate;
 pub mod deposit;
 /// Health handlers.
 pub mod health;
+/// Internal handlers.
+pub mod internal;
+/// Testing handlers.
+#[cfg(feature = "testing")]
+pub mod testing;
 /// Withdrawal handlers.
 pub mod withdrawal;
 
@@ -20,7 +25,7 @@ pub mod withdrawal;
 pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
     if err.is_not_found() {
         let json = warp::reply::json(&ErrorResponse {
-            message: format!("Not Found {err:?}")
+            message: format!("Not Found {err:?}"),
         });
         return Ok(warp::reply::with_status(json, StatusCode::NOT_FOUND));
     }

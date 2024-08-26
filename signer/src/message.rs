@@ -1,7 +1,11 @@
 //! Signer message definition for network communication
 
-use blockstack_lib::chainstate::stacks;
+use secp256k1::ecdsa::RecoverableSignature;
 use sha2::Digest;
+
+use crate::keys::PublicKey;
+use crate::signature::RecoverableEcdsaSignature as _;
+use crate::stacks::contracts::ContractCall;
 
 /// Messages exchanged between signers
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -89,7 +93,7 @@ pub struct SignerDepositDecision {
     /// ID of the transaction containing the deposit request.
     pub txid: bitcoin::Txid,
     /// Index of the deposit request UTXO.
-    pub output_index: usize,
+    pub output_index: u32,
     /// Whether or not the signer has accepted the deposit request.
     pub accepted: bool,
 }
@@ -109,8 +113,18 @@ pub struct SignerWithdrawDecision {
 /// Represents a request to sign a Stacks transaction.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StacksTransactionSignRequest {
-    /// The transaction to sign.
-    pub tx: stacks::StacksTransaction,
+    /// The aggregate public key that will sign the transaction.
+    pub aggregate_key: PublicKey,
+    /// The contract call transaction to sign.
+    pub contract_call: ContractCall,
+    /// The nonce to use for the transaction.
+    pub nonce: u64,
+    /// The transaction fee in microSTX.
+    pub tx_fee: u64,
+    /// The expected digest of the transaction than needs to be signed.
+    /// It's essentially a hash of the contract call struct, the nonce, the
+    /// tx_fee and a few other things.
+    pub digest: [u8; 32],
 }
 
 /// Represents a signature of a Stacks transaction.
@@ -118,8 +132,9 @@ pub struct StacksTransactionSignRequest {
 pub struct StacksTransactionSignature {
     /// Id of the signed transaction.
     pub txid: blockstack_lib::burnchains::Txid,
-    /// An ECDSA signature over the transaction.
-    pub signature: p256k1::ecdsa::Signature,
+    /// A recoverable ECDSA signature over the transaction.
+    #[serde(with = "crate::signature::serde_utils")]
+    pub signature: RecoverableSignature,
 }
 
 /// Represents a request to sign a Bitcoin transaction.
@@ -128,7 +143,7 @@ pub struct BitcoinTransactionSignRequest {
     /// The transaction.
     pub tx: bitcoin::Transaction,
     /// The aggregate key used to sign the transaction,
-    pub aggregate_key: p256k1::point::Point,
+    pub aggregate_key: PublicKey,
 }
 
 /// Represents an acknowledgment of a signed Bitcoin transaction.
@@ -204,8 +219,13 @@ impl wsts::net::Signable for BitcoinTransactionSignAck {
 
 impl wsts::net::Signable for StacksTransactionSignRequest {
     fn hash(&self, hasher: &mut sha2::Sha256) {
+        // The digest is supposed to be a hash of the contract call data,
+        // the nonce, the fee and a few more things.
         hasher.update("SIGNER_STACKS_TRANSACTION_SIGN_REQUEST");
-        hasher.update(self.tx.txid());
+        hasher.update(self.digest);
+        hasher.update(self.aggregate_key.serialize());
+        hasher.update(self.nonce.to_be_bytes());
+        hasher.update(self.tx_fee.to_be_bytes());
     }
 }
 
@@ -213,7 +233,7 @@ impl wsts::net::Signable for StacksTransactionSignature {
     fn hash(&self, hasher: &mut sha2::Sha256) {
         hasher.update("SIGNER_STACKS_TRANSACTION_SIGNATURE");
         hasher.update(self.txid);
-        hasher.update(self.signature.to_bytes());
+        hasher.update(self.signature.to_byte_array());
     }
 }
 
@@ -233,9 +253,9 @@ mod tests {
     use super::*;
     use crate::codec::{Decode, Encode};
     use crate::ecdsa::{SignEcdsa, Signed};
+    use crate::keys::PrivateKey;
 
-    use p256k1::scalar::Scalar;
-    use rand::{RngCore, SeedableRng};
+    use rand::SeedableRng;
 
     #[test]
     fn signer_messages_should_be_signable() {
@@ -264,7 +284,7 @@ mod tests {
         P: fake::Dummy<fake::Faker> + Into<Payload>,
     {
         let rng = &mut rand::rngs::StdRng::seed_from_u64(1337);
-        let private_key = Scalar::from(rng.next_u32());
+        let private_key = PrivateKey::new(rng);
 
         let signed_message = SignerMessage::random_with_payload_type::<P, _>(rng)
             .sign_ecdsa(&private_key)
@@ -278,7 +298,7 @@ mod tests {
         P: fake::Dummy<fake::Faker> + Into<Payload>,
     {
         let rng = &mut rand::rngs::StdRng::seed_from_u64(42);
-        let private_key = Scalar::from(rng.next_u32());
+        let private_key = PrivateKey::new(rng);
 
         let signed_message = SignerMessage::random_with_payload_type::<P, _>(rng)
             .sign_ecdsa(&private_key)

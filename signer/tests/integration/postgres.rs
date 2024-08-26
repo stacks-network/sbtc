@@ -1,51 +1,41 @@
 use std::io::Read;
+use std::sync::atomic::Ordering;
 
+use bitcoin::hashes::Hash as _;
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
-use blockstack_lib::clarity::vm::Value;
+use blockstack_lib::clarity::vm::types::PrincipalData;
+use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
-use blockstack_lib::types::Address;
+use futures::StreamExt;
 
+use signer::error::Error;
 use signer::network;
 use signer::stacks::contracts::AcceptWithdrawalV1;
 use signer::stacks::contracts::AsContractCall;
 use signer::stacks::contracts::AsTxPayload as _;
 use signer::stacks::contracts::CompleteDepositV1;
-use signer::stacks::contracts::ContractCall;
 use signer::stacks::contracts::RejectWithdrawalV1;
 use signer::stacks::contracts::RotateKeysV1;
 use signer::storage;
 use signer::storage::model;
-use signer::storage::postgres::PgStore;
-use signer::testing;
-
-use test_case::test_case;
-
-use bitcoin::hashes::Hash;
-use futures::StreamExt;
-use rand::SeedableRng;
 use signer::storage::DbRead;
 use signer::storage::DbWrite;
+use signer::testing;
+use signer::testing::wallet::ContractCallWrapper;
 
-const DATABASE_URL: &str = "postgres://user:password@localhost:5432/signer";
+use fake::Fake;
+use rand::SeedableRng;
+use test_case::test_case;
 
-/// It's better to create a new pool for each test since there is some
-/// weird bug in sqlx. The issue that can crop up with pool reuse is
-/// basically a PoolTimeOut error. This is a known issue:
-/// https://github.com/launchbadge/sqlx/issues/2567
-fn get_connection_pool() -> sqlx::PgPool {
-    sqlx::postgres::PgPoolOptions::new()
-        .max_connections(1)
-        .acquire_timeout(std::time::Duration::from_secs(5))
-        .connect_lazy(DATABASE_URL)
-        .unwrap()
-}
+use crate::DATABASE_NUM;
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[sqlx::test]
-async fn should_be_able_to_query_bitcoin_blocks(pool: sqlx::PgPool) {
-    let mut store = storage::postgres::PgStore::from(pool);
+#[tokio::test]
+async fn should_be_able_to_query_bitcoin_blocks() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let mut store = signer::testing::storage::new_test_database(db_num).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
     let test_model_params = testing::storage::model::Params {
@@ -82,6 +72,7 @@ async fn should_be_able_to_query_bitcoin_blocks(pool: sqlx::PgPool) {
             .expect("failed_to_execute_query");
         assert!(result.is_none());
     }
+    signer::testing::storage::drop_db(store).await;
 }
 
 struct InitiateWithdrawalRequest;
@@ -94,44 +85,58 @@ impl AsContractCall for InitiateWithdrawalRequest {
         StacksAddress::burn_address(false)
     }
     /// The arguments to the clarity function.
-    fn as_contract_args(&self) -> Vec<Value> {
+    fn as_contract_args(&self) -> Vec<ClarityValue> {
         Vec::new()
     }
+    async fn validate<S>(&self, _: &S) -> Result<bool, Error>
+    where
+        S: DbRead + Send + Sync,
+        Error: From<<S as DbRead>::Error>,
+    {
+        Ok(true)
+    }
 }
+
 /// Test that the write_stacks_blocks function does what it is supposed to
 /// do, which is store all stacks blocks and store the transactions that we
 /// care about, which, naturally, are sBTC related transactions.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[test_case(ContractCall(InitiateWithdrawalRequest); "initiate-withdrawal")]
-#[test_case(ContractCall(CompleteDepositV1 {
+#[test_case(ContractCallWrapper(InitiateWithdrawalRequest); "initiate-withdrawal")]
+#[test_case(ContractCallWrapper(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654,
-    recipient: StacksAddress::from_string("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
-    deployer: testing::wallet::generate_wallet().0.address(),
-}); "complete-deposit")]
-#[test_case(ContractCall(AcceptWithdrawalV1 {
+    recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
+    deployer: testing::wallet::WALLET.0.address(),
+}); "complete-deposit standard recipient")]
+#[test_case(ContractCallWrapper(CompleteDepositV1 {
+    outpoint: bitcoin::OutPoint::null(),
+    amount: 123654,
+    recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y.my-contract-name").unwrap(),
+    deployer: testing::wallet::WALLET.0.address(),
+}); "complete-deposit contract recipient")]
+#[test_case(ContractCallWrapper(AcceptWithdrawalV1 {
     request_id: 0,
     outpoint: bitcoin::OutPoint::null(),
     tx_fee: 3500,
-    signer_bitmap: BitArray::new([0; 2]),
-    deployer: testing::wallet::generate_wallet().0.address(),
+    signer_bitmap: BitArray::ZERO,
+    deployer: testing::wallet::WALLET.0.address(),
 }); "accept-withdrawal")]
-#[test_case(ContractCall(RejectWithdrawalV1 {
+#[test_case(ContractCallWrapper(RejectWithdrawalV1 {
     request_id: 0,
-    signer_bitmap: BitArray::new([0; 2]),
-    deployer: testing::wallet::generate_wallet().0.address(),
+    signer_bitmap: BitArray::ZERO,
+    deployer: testing::wallet::WALLET.0.address(),
 }); "reject-withdrawal")]
-#[test_case(ContractCall(RotateKeysV1::new(
-    &testing::wallet::generate_wallet().0,
-    testing::wallet::generate_wallet().0.address(),
+#[test_case(ContractCallWrapper(RotateKeysV1::new(
+    &testing::wallet::WALLET.0,
+    testing::wallet::WALLET.0.address(),
+    testing::wallet::WALLET.2,
 )); "rotate-keys")]
 #[tokio::test]
-async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCall<T>) {
-    let default_pool = get_connection_pool();
-    let pool = crate::transaction_signer::new_database(&default_pool).await;
-    let store = PgStore::from(pool.clone());
+async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWrapper<T>) {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = signer::testing::storage::new_test_database(db_num).await;
 
-    let path = "tests/fixtures/tenure-blocks-0-1ed91e0720129bda5072540ee7283dd5345d0f6de0cf5b982c6de3943b6e3291.bin";
+    let path = "tests/fixtures/tenure-blocks-0-e5fdeb1a51ba6eb297797a1c473e715c27dc81a58ba82c698f6a32eeccee9a5b.bin";
     let mut file = std::fs::File::open(path).unwrap();
     let mut buf = Vec::new();
     file.read_to_end(&mut buf).unwrap();
@@ -166,7 +171,7 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCall<T
     // First check that all blocks are saved
     let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_blocks";
     let stored_block_count = sqlx::query_scalar::<_, i64>(sql)
-        .fetch_one(&pool)
+        .fetch_one(store.pool())
         .await
         .unwrap();
 
@@ -176,7 +181,7 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCall<T
     // we just created above, was saved.
     let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_transactions";
     let stored_transaction_count = sqlx::query_scalar::<_, i64>(sql)
-        .fetch_one(&pool)
+        .fetch_one(store.pool())
         .await
         .unwrap();
 
@@ -198,7 +203,7 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCall<T
 
     let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_blocks";
     let stored_block_count_again = sqlx::query_scalar::<_, i64>(sql)
-        .fetch_one(&pool)
+        .fetch_one(store.pool())
         .await
         .unwrap();
 
@@ -208,23 +213,25 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCall<T
 
     let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_transactions";
     let stored_transaction_count_again = sqlx::query_scalar::<_, i64>(sql)
-        .fetch_one(&pool)
+        .fetch_one(store.pool())
         .await
         .unwrap();
 
     // No more transactions were written
     assert_eq!(stored_transaction_count_again, 1);
+    signer::testing::storage::drop_db(store).await;
 }
 
 /// Here we test that the DbRead::stacks_block_exists function works, while
 /// implicitly testing the DbWrite::write_stacks_blocks function for the
 /// PgStore type
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[sqlx::test]
-async fn checking_stacks_blocks_exists_works(pool: sqlx::PgPool) {
-    let store = storage::postgres::PgStore::from(pool);
+#[tokio::test]
+async fn checking_stacks_blocks_exists_works() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = signer::testing::storage::new_test_database(db_num).await;
 
-    let path = "tests/fixtures/tenure-blocks-0-1ed91e0720129bda5072540ee7283dd5345d0f6de0cf5b982c6de3943b6e3291.bin";
+    let path = "tests/fixtures/tenure-blocks-0-e5fdeb1a51ba6eb297797a1c473e715c27dc81a58ba82c698f6a32eeccee9a5b.bin";
     let mut file = std::fs::File::open(path).unwrap();
     let mut buf = Vec::new();
     file.read_to_end(&mut buf).unwrap();
@@ -256,14 +263,16 @@ async fn checking_stacks_blocks_exists_works(pool: sqlx::PgPool) {
         .all(|block| async { store.stacks_block_exists(block.block_id()).await.unwrap() })
         .await;
     assert!(all_exist);
+    signer::testing::storage::drop_db(store).await;
 }
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending deposit requests
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[sqlx::test]
-async fn should_return_the_same_pending_deposit_requests_as_in_memory_store(pool: sqlx::PgPool) {
-    let mut pg_store = storage::postgres::PgStore::from(pool);
+#[tokio::test]
+async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let mut pg_store = signer::testing::storage::new_test_database(db_num).await;
     let mut in_memory_store = storage::in_memory::Store::new_shared();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -311,14 +320,16 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store(pool
     pg_pending_deposit_requests.sort();
 
     assert_eq!(pending_depoist_requests, pg_pending_deposit_requests);
+    signer::testing::storage::drop_db(pg_store).await;
 }
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending withdraw requests
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[sqlx::test]
-async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store(pool: sqlx::PgPool) {
-    let mut pg_store = storage::postgres::PgStore::from(pool);
+#[tokio::test]
+async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let mut pg_store = signer::testing::storage::new_test_database(db_num).await;
     let mut in_memory_store = storage::in_memory::Store::new_shared();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -366,16 +377,16 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store(poo
     pg_pending_withdraw_requests.sort();
 
     assert_eq!(pending_withdraw_requests, pg_pending_withdraw_requests);
+    signer::testing::storage::drop_db(pg_store).await;
 }
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending accepted deposit requests
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[sqlx::test]
-async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_store(
-    pool: sqlx::PgPool,
-) {
-    let mut pg_store = storage::postgres::PgStore::from(pool);
+#[tokio::test]
+async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_store() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let mut pg_store = signer::testing::storage::new_test_database(db_num).await;
     let mut in_memory_store = storage::in_memory::Store::new_shared();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -429,16 +440,16 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
         pending_accepted_deposit_requests,
         pg_pending_accepted_deposit_requests
     );
+    signer::testing::storage::drop_db(pg_store).await;
 }
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending accepted withdraw requests
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[sqlx::test]
-async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_store(
-    pool: sqlx::PgPool,
-) {
-    let mut pg_store = storage::postgres::PgStore::from(pool);
+#[tokio::test]
+async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_store() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let mut pg_store = signer::testing::storage::new_test_database(db_num).await;
     let mut in_memory_store = storage::in_memory::Store::new_shared();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -449,7 +460,11 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
         num_stacks_blocks_per_bitcoin_block: 3,
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 1,
-        num_signers_per_request: 7,
+        // The signers in these tests vote to reject the request with 50%
+        // probability, so the number of signers needs to be a bit above
+        // the threshold in order for the test to succeed with accepted
+        // requests.
+        num_signers_per_request: 15,
     };
     let threshold = 4;
     let test_data = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
@@ -492,14 +507,17 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
         pending_accepted_withdraw_requests,
         pg_pending_accepted_withdraw_requests
     );
+    signer::testing::storage::drop_db(pg_store).await;
 }
 
-/// This ensures that the postgres store and the in memory stores returns equivalent results
-/// when fetching pending the last key rotation
+/// This ensures that the postgres store and the in memory stores returns
+/// equivalent results when fetching pending the last key rotation.
+/// TODO(415): Make this robust to multiple key rotations.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[sqlx::test]
-async fn should_return_the_same_last_key_rotation_as_in_memory_store(pool: sqlx::PgPool) {
-    let mut pg_store = storage::postgres::PgStore::from(pool);
+#[tokio::test]
+async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let mut pg_store = signer::testing::storage::new_test_database(db_num).await;
     let mut in_memory_store = storage::in_memory::Store::new_shared();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -564,4 +582,197 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store(pool: sqlx:
         last_key_rotation_pg.as_ref().unwrap().signer_set,
         last_key_rotation_in_memory.as_ref().unwrap().signer_set
     );
+    signer::testing::storage::drop_db(pg_store).await;
+}
+
+/// Here we test that we can store deposit request model objects. We also
+/// test that if we attempt to write another deposit request then we do not
+/// write it and that we do not error.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn writing_deposit_requests_postgres() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = signer::testing::storage::new_test_database(db_num).await;
+    let num_rows = 15;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let deposit_requests: Vec<model::DepositRequest> =
+        std::iter::repeat_with(|| fake::Faker.fake_with_rng(&mut rng))
+            .take(num_rows)
+            .collect();
+
+    // Let's see if we can write these rows to the database.
+    store
+        .write_deposit_requests(deposit_requests.clone())
+        .await
+        .unwrap();
+    let count =
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.deposit_requests"#)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    // Were they all written?
+    assert_eq!(num_rows, count as usize);
+
+    // Okay now lets test that we do not write duplicates.
+    store
+        .write_deposit_requests(deposit_requests)
+        .await
+        .unwrap();
+    let count =
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.deposit_requests"#)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+
+    // No new records written right?
+    assert_eq!(num_rows, count as usize);
+    signer::testing::storage::drop_db(store).await;
+}
+
+/// This is very similar to the above test; we test that we can store
+/// transaction model objects. We also test that if we attempt to write
+/// duplicate transactions then we do not write it and that we do not
+/// error.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn writing_transactions_postgres() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = signer::testing::storage::new_test_database(db_num).await;
+    let num_rows = 12;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut txs: Vec<model::Transaction> =
+        std::iter::repeat_with(|| fake::Faker.fake_with_rng(&mut rng))
+            .take(num_rows)
+            .collect();
+
+    let parent_hash = bitcoin::BlockHash::from_byte_array([0; 32]);
+    let block_hash = bitcoin::BlockHash::from_byte_array([1; 32]);
+
+    txs.iter_mut().for_each(|tx| {
+        tx.block_hash = block_hash.to_byte_array().to_vec();
+    });
+
+    let db_block = model::BitcoinBlock {
+        block_hash: block_hash.to_byte_array().to_vec(),
+        block_height: 15,
+        parent_hash: parent_hash.to_byte_array().to_vec(),
+        confirms: Vec::new(),
+    };
+
+    // We start by writing the bitcoin block because of the foreign key
+    // constrait
+    store.write_bitcoin_block(&db_block).await.unwrap();
+
+    // Let's see if we can write these transactions to the database.
+    store.write_bitcoin_transactions(txs.clone()).await.unwrap();
+    let count =
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.bitcoin_transactions"#)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    // Were they all written?
+    assert_eq!(num_rows, count as usize);
+
+    // what about the transactions table, the same number of rows should
+    // have been written there as well.
+    let count = sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.transactions"#)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+
+    assert_eq!(num_rows, count as usize);
+    // Okay now lets test that we do not write duplicates.
+    store.write_bitcoin_transactions(txs).await.unwrap();
+    let count =
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.bitcoin_transactions"#)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+
+    // No new records written right?
+    assert_eq!(num_rows, count as usize);
+
+    // what about duplicates in the transactions table.
+    let count = sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM sbtc_signer.transactions"#)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+
+    // let's see, who knows what will happen!
+    assert_eq!(num_rows, count as usize);
+    signer::testing::storage::drop_db(store).await;
+}
+
+/// This ensures that the postgres store and the in memory stores returns equivalent results
+/// when fetching pending the last key rotation
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let mut pg_store = signer::testing::storage::new_test_database(db_num).await;
+    let mut in_memory_store = storage::in_memory::Store::new_shared();
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 20,
+        num_stacks_blocks_per_bitcoin_block: 3,
+        num_deposit_requests_per_block: 5,
+        num_withdraw_requests_per_block: 1,
+        num_signers_per_request: 7,
+    };
+    let num_signers = 7;
+    let threshold = 4;
+    let test_data = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
+
+    test_data.write_to(&mut in_memory_store).await;
+    test_data.write_to(&mut pg_store).await;
+
+    let chain_tip = in_memory_store
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .expect("failed to get canonical chain tip")
+        .expect("no chain tip");
+
+    let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
+
+    let dummy_wsts_network = network::in_memory::Network::new();
+    let mut testing_signer_set =
+        testing::wsts::SignerSet::new(&signer_info, threshold, || dummy_wsts_network.connect());
+    let dkg_txid = testing::dummy::txid(&fake::Faker, &mut rng);
+    let bitcoin_chain_tip = bitcoin::BlockHash::from_byte_array(
+        chain_tip.clone().try_into().expect("conversion failed"),
+    );
+    let (aggregate_key, _) = testing_signer_set
+        .run_dkg(bitcoin_chain_tip, dkg_txid, &mut rng)
+        .await;
+
+    testing_signer_set
+        .write_as_rotate_keys_tx(&mut in_memory_store, &chain_tip, aggregate_key, &mut rng)
+        .await;
+
+    testing_signer_set
+        .write_as_rotate_keys_tx(&mut pg_store, &chain_tip, aggregate_key, &mut rng)
+        .await;
+
+    let last_key_rotation_in_memory = in_memory_store
+        .get_last_key_rotation(&chain_tip)
+        .await
+        .expect("failed to get last key rotation from in memory store");
+
+    let last_key_rotation_pg = pg_store
+        .get_last_key_rotation(&chain_tip)
+        .await
+        .expect("failed to get last key rotation from postgres");
+
+    assert!(last_key_rotation_in_memory.is_some());
+    assert_eq!(
+        last_key_rotation_pg.as_ref().unwrap().aggregate_key,
+        last_key_rotation_in_memory.as_ref().unwrap().aggregate_key
+    );
+    assert_eq!(
+        last_key_rotation_pg.as_ref().unwrap().signer_set,
+        last_key_rotation_in_memory.as_ref().unwrap().signer_set
+    );
+    signer::testing::storage::drop_db(store).await;
 }

@@ -1,9 +1,13 @@
 //! Test utilities for the transaction signer
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use crate::blocklist_client;
 use crate::error;
+use crate::keys::PrivateKey;
+use crate::keys::PublicKey;
+use crate::keys::SignerScriptPubKey as _;
 use crate::message;
 use crate::network;
 use crate::storage;
@@ -17,6 +21,7 @@ use crate::network::MessageTransfer as _;
 use bitcoin::hashes::Hash as _;
 use futures::StreamExt as _;
 use rand::SeedableRng as _;
+use sha2::Digest as _;
 
 struct EventLoopHarness<S, Rng> {
     event_loop: EventLoop<S, Rng>,
@@ -27,7 +32,7 @@ struct EventLoopHarness<S, Rng> {
 
 impl<S, Rng> EventLoopHarness<S, Rng>
 where
-    S: storage::DbRead + storage::DbWrite + Clone + Send + 'static,
+    S: storage::DbRead + storage::DbWrite + Clone + Send + Sync + 'static,
     error::Error: From<<S as storage::DbRead>::Error>,
     error::Error: From<<S as storage::DbWrite>::Error>,
     Rng: rand::RngCore + rand::CryptoRng + Send + 'static,
@@ -35,8 +40,8 @@ where
     fn create(
         network: network::in_memory::MpmcBroadcaster,
         storage: S,
-        context_window: usize,
-        signer_private_key: p256k1::scalar::Scalar,
+        context_window: u16,
+        signer_private_key: PrivateKey,
         threshold: u32,
         rng: Rng,
     ) -> Self {
@@ -56,6 +61,7 @@ where
                 context_window,
                 wsts_state_machines: HashMap::new(),
                 threshold,
+                network_kind: bitcoin::Network::Regtest,
                 rng,
                 test_observer_tx: Some(test_observer_tx),
             },
@@ -102,7 +108,7 @@ impl<S> RunningEventLoopHandle<S> {
     }
 
     /// Wait for N instances of the given event
-    pub async fn wait_for_events(&mut self, msg: transaction_signer::TxSignerEvent, mut n: usize) {
+    pub async fn wait_for_events(&mut self, msg: transaction_signer::TxSignerEvent, mut n: u16) {
         while let Some(event) = self.test_observer_rx.recv().await {
             if event == msg {
                 n -= 1;
@@ -133,7 +139,7 @@ pub struct TestEnvironment<C> {
     /// Function to construct a storage instance
     pub storage_constructor: C,
     /// Bitcoin context window
-    pub context_window: usize,
+    pub context_window: u16,
     /// Num signers
     pub num_signers: usize,
     /// Signing threshold
@@ -145,7 +151,7 @@ pub struct TestEnvironment<C> {
 impl<C, S> TestEnvironment<C>
 where
     C: FnMut() -> S,
-    S: storage::DbRead + storage::DbWrite + Clone + Send + 'static,
+    S: storage::DbRead + storage::DbWrite + Clone + Send + Sync + 'static,
     error::Error: From<<S as storage::DbRead>::Error>,
     error::Error: From<<S as storage::DbWrite>::Error>,
 {
@@ -258,9 +264,9 @@ where
                 .expect("failed to send notification");
         }
 
-        let num_expected_decisions = (self.num_signers - 1)
+        let num_expected_decisions = (self.num_signers - 1) as u16
             * self.context_window
-            * self.test_model_parameters.num_deposit_requests_per_block;
+            * self.test_model_parameters.num_deposit_requests_per_block as u16;
 
         for handle in event_loop_handles.iter_mut() {
             handle
@@ -285,8 +291,17 @@ where
     }
 
     /// Assert that the transaction signer will respond to bitcoin transaction sign requests
+    /// with an acknowledge message. Errors after 10 seconds.
+    pub async fn assert_should_respond_to_bitcoin_transaction_sign_requests(self) {
+        let future = self.assert_should_respond_to_bitcoin_transaction_sign_requests_impl();
+        tokio::time::timeout(Duration::from_secs(10), future)
+            .await
+            .unwrap()
+    }
+
+    /// Assert that the transaction signer will respond to bitcoin transaction sign requests
     /// with an acknowledge message
-    pub async fn assert_should_respond_to_bitcoin_transaction_sign_requests(mut self) {
+    pub async fn assert_should_respond_to_bitcoin_transaction_sign_requests_impl(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
@@ -303,8 +318,7 @@ where
         let mut handle = event_loop_harness.start();
 
         let signer_private_key = signer_info.first().unwrap().signer_private_key.to_bytes();
-        let dummy_aggregate_key =
-            p256k1::point::Point::from(&p256k1::scalar::Scalar::random(&mut rng));
+        let dummy_aggregate_key = PublicKey::from_private_key(&PrivateKey::new(&mut rng));
 
         store_dummy_dkg_shares(
             &mut rng,
@@ -317,7 +331,7 @@ where
         let test_data = self.generate_test_data(&mut rng);
         Self::write_test_data(&test_data, &mut handle.storage).await;
 
-        let coordinator_private_key = p256k1::scalar::Scalar::random(&mut rng);
+        let coordinator_private_key = PrivateKey::new(&mut rng);
 
         let transaction_sign_request = message::BitcoinTransactionSignRequest {
             tx: testing::dummy::tx(&fake::Faker, &mut rng),
@@ -433,12 +447,11 @@ where
             self.signing_threshold,
         );
         let aggregate_key = coordinator.run_dkg(bitcoin_chain_tip, dummy_txid).await;
-        let aggregate_key_bytes = aggregate_key.x().to_bytes().to_vec();
 
         for handle in event_loop_handles.into_iter() {
             let storage = handle.stop_event_loop().await;
             assert!(storage
-                .get_encrypted_dkg_shares(&aggregate_key_bytes)
+                .get_encrypted_dkg_shares(&aggregate_key)
                 .await
                 .expect("storage error")
                 .is_some());
@@ -506,21 +519,32 @@ where
             self.signing_threshold,
         );
         let aggregate_key = coordinator.run_dkg(bitcoin_chain_tip, dummy_txid).await;
-        let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&aggregate_key, None);
 
         let tx = testing::dummy::tx(&fake::Faker, &mut rng);
         let txid = tx.compute_txid();
-        let msg = "sign here please".as_bytes(); // TODO(296): Compute proper sighash from transaction
+
+        let mut hasher = sha2::Sha256::new();
+        hasher.update("sign here please");
+        let msg: [u8; 32] = hasher.finalize().into(); // TODO(296): Compute proper sighash from transaction
 
         coordinator
             .request_sign_transaction(bitcoin_chain_tip, tx, aggregate_key)
             .await;
 
         let signature = coordinator
-            .run_signing_round(bitcoin_chain_tip, txid, msg)
+            .run_signing_round(bitcoin_chain_tip, txid, &msg)
             .await;
 
-        assert!(signature.verify(&tweaked_aggregate_key.x(), msg));
+        // Let's check the signature using the secp256k1 types.
+        let sig = secp256k1::schnorr::Signature::from_slice(&signature.to_bytes()).unwrap();
+        let msg_digest = secp256k1::Message::from_digest(msg);
+        let pk = aggregate_key.signers_tweaked_pubkey().unwrap();
+        let x_only_pk = secp256k1::XOnlyPublicKey::from(&pk);
+        sig.verify(&msg_digest, &x_only_pk).unwrap();
+
+        // Let's check using the p256k1 types
+        let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&aggregate_key.into(), None);
+        assert!(signature.verify(&tweaked_aggregate_key.x(), &msg));
     }
 
     async fn write_test_data(test_data: &testing::storage::model::TestData, storage: &mut S) {
@@ -528,7 +552,7 @@ where
     }
 
     async fn extract_context_window_block_hashes(
-        context_window: usize,
+        context_window: u16,
         storage: &S,
     ) -> Vec<model::BitcoinBlockHash> {
         let mut context_window_block_hashes = Vec::new();
@@ -550,7 +574,7 @@ where
     }
 
     async fn extract_stacks_context_window_block_hashes(
-        context_window: usize,
+        context_window: u16,
         storage: &S,
     ) -> Vec<model::StacksBlockHash> {
         let canoncial_tip_block_hash = storage
@@ -612,7 +636,7 @@ where
 
     async fn assert_only_deposit_requests_in_context_window_has_decisions(
         storage: &S,
-        context_window: usize,
+        context_window: u16,
         deposit_requests: &[model::DepositRequest],
         num_expected_decisions: usize,
     ) {
@@ -642,7 +666,7 @@ where
 
     async fn assert_only_withdraw_requests_in_context_window_has_decisions(
         storage: &S,
-        context_window: usize,
+        context_window: u16,
         withdraw_requests: &[model::WithdrawRequest],
         num_expected_decisions: usize,
     ) {
@@ -676,7 +700,7 @@ async fn store_dummy_dkg_shares<R, S>(
     rng: &mut R,
     signer_private_key: &[u8; 32],
     storage: &mut S,
-    group_key: p256k1::point::Point,
+    group_key: PublicKey,
 ) where
     R: rand::CryptoRng + rand::RngCore,
     S: storage::DbWrite,
@@ -689,20 +713,18 @@ async fn store_dummy_dkg_shares<R, S>(
         .expect("storage error");
 }
 
-/// This function runs a DKG round for the given signers and
-/// stores the result in the provided stores for all signers.
-async fn run_dkg_and_store_results_for_signers<
-    's: 'r,
-    'r,
-    S: storage::DbRead + storage::DbWrite + 's,
-    Rng: rand::CryptoRng + rand::RngCore,
->(
+/// This function runs a DKG round for the given signers and stores the
+/// result in the provided stores for all signers.
+async fn run_dkg_and_store_results_for_signers<'s: 'r, 'r, S, Rng>(
     signer_info: &[testing::wsts::SignerInfo],
     chain_tip: &model::BitcoinBlockHash,
     threshold: u32,
     stores: impl IntoIterator<Item = &'r mut S>,
     rng: &mut Rng,
-) {
+) where
+    S: storage::DbRead + storage::DbWrite + 's,
+    Rng: rand::CryptoRng + rand::RngCore,
+{
     let network = network::in_memory::Network::new();
     let mut testing_signer_set =
         testing::wsts::SignerSet::new(signer_info, threshold, || network.connect());

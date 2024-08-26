@@ -17,6 +17,7 @@
 //!   of most sBTC related functions to a new multi-sig wallet.
 
 use std::collections::BTreeSet;
+use std::future::Future;
 use std::sync::OnceLock;
 
 use bitcoin::hashes::Hash as _;
@@ -32,15 +33,16 @@ use blockstack_lib::clarity::vm::types::ListData;
 use blockstack_lib::clarity::vm::types::ListTypeData;
 use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::types::SequenceData;
-use blockstack_lib::clarity::vm::types::StandardPrincipalData;
 use blockstack_lib::clarity::vm::types::BUFF_33;
 use blockstack_lib::clarity::vm::ClarityName;
 use blockstack_lib::clarity::vm::ContractName;
-use blockstack_lib::clarity::vm::Value;
+use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::types::chainstate::StacksAddress;
-use secp256k1::PublicKey;
 
+use crate::error::Error;
+use crate::keys::PublicKey;
 use crate::stacks::wallet::SignerWallet;
+use crate::storage::DbRead;
 
 /// A struct describing any transaction post-execution conditions that we'd
 /// like to enforce.
@@ -76,6 +78,18 @@ pub trait AsTxPayload {
     fn post_conditions(&self) -> StacksTxPostConditions;
 }
 
+impl AsTxPayload for TransactionPayload {
+    fn tx_payload(&self) -> TransactionPayload {
+        self.clone()
+    }
+    fn post_conditions(&self) -> StacksTxPostConditions {
+        StacksTxPostConditions {
+            post_condition_mode: TransactionPostConditionMode::Allow,
+            post_conditions: Vec::new(),
+        }
+    }
+}
+
 /// A trait to ease construction of a StacksTransaction making sBTC related
 /// contract calls.
 pub trait AsContractCall {
@@ -86,7 +100,7 @@ pub trait AsContractCall {
     /// The stacks address that deployed the contract.
     fn deployer_address(&self) -> StacksAddress;
     /// The arguments to the clarity function.
-    fn as_contract_args(&self) -> Vec<Value>;
+    fn as_contract_args(&self) -> Vec<ClarityValue>;
     /// Convert this struct to a Stacks contract call.
     fn as_contract_call(&self) -> TransactionContractCall {
         TransactionContractCall {
@@ -111,61 +125,56 @@ pub trait AsContractCall {
             post_conditions: Vec::new(),
         }
     }
+    /// Validate that it is okay to sign this contract call transaction,
+    /// because the included data matches what this signer knows from the
+    /// stacks and bitcoin blockchains.
+    fn validate<S>(&self, _: &S) -> impl Future<Output = Result<bool, Error>> + Send
+    where
+        S: DbRead + Send + Sync,
+        Error: From<<S as DbRead>::Error>;
 }
 
-/// A generic new-type that implements AsTxPayload for all types that
-/// implement AsContractCall.
-///
-/// # Notes
-///
-/// Ideally, every type that implements AsContractCall should implement
-/// AsTxPayload automatically. What we want is to have something like the
-/// following:
-///
-/// impl<T: AsContractCall> AsTxPayload for T { ... }
-///
-/// But that would preclude us from adding something like:
-///
-/// impl<T: AsSmartContract> AsTxPayload for T { ... }
-///
-/// since doing so is prevented by the compiler because it introduces
-/// ambiguity. One work-around is to use a wrapper type that implements the
-/// trait that we want.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ContractCall<T>(pub T);
+/// An enum representing all contract calls that the signers can make.
+#[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum ContractCall {
+    /// Call the `complete-deposit-wrapper` function in the `sbtc-deposit`
+    /// smart contract
+    CompleteDepositV1(CompleteDepositV1),
+    /// Call the `accept-withdrawal-request` function in the
+    /// `sbtc-withdrawal` smart contract.
+    AcceptWithdrawalV1(AcceptWithdrawalV1),
+    /// Call the `reject-withdrawal-request` function in the
+    /// `sbtc-withdrawal` smart contract.
+    RejectWithdrawalV1(RejectWithdrawalV1),
+    /// Call the `rotate-keys-wrapper` function in the
+    /// `sbtc-bootstrap-signers` smart contract.
+    RotateKeysV1(RotateKeysV1),
+}
 
-impl<T: AsContractCall> AsTxPayload for ContractCall<T> {
+impl AsTxPayload for ContractCall {
     fn tx_payload(&self) -> TransactionPayload {
-        TransactionPayload::ContractCall(self.0.as_contract_call())
+        let contract_call = match self {
+            ContractCall::AcceptWithdrawalV1(contract) => contract.as_contract_call(),
+            ContractCall::CompleteDepositV1(contract) => contract.as_contract_call(),
+            ContractCall::RejectWithdrawalV1(contract) => contract.as_contract_call(),
+            ContractCall::RotateKeysV1(contract) => contract.as_contract_call(),
+        };
+        TransactionPayload::ContractCall(contract_call)
     }
     fn post_conditions(&self) -> StacksTxPostConditions {
-        self.0.post_conditions()
-    }
-}
-
-impl<T: AsContractCall> From<T> for ContractCall<T> {
-    fn from(value: T) -> Self {
-        ContractCall(value)
-    }
-}
-
-impl<T: AsContractCall> std::ops::Deref for ContractCall<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T: AsContractCall> std::ops::DerefMut for ContractCall<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+        match self {
+            ContractCall::AcceptWithdrawalV1(contract) => contract.post_conditions(),
+            ContractCall::CompleteDepositV1(contract) => contract.post_conditions(),
+            ContractCall::RejectWithdrawalV1(contract) => contract.post_conditions(),
+            ContractCall::RotateKeysV1(contract) => contract.post_conditions(),
+        }
     }
 }
 
 /// This struct is used to generate a properly formatted Stacks transaction
 /// for calling the complete-deposit-wrapper function in the sbtc-deposit
 /// smart contract.
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompleteDepositV1 {
     /// The outpoint of the bitcoin UTXO that was spent as a deposit for
     /// sBTC.
@@ -173,7 +182,7 @@ pub struct CompleteDepositV1 {
     /// The amount of sats associated with the above UTXO.
     pub amount: u64,
     /// The address where the newly minted sBTC will be deposited.
-    pub recipient: StacksAddress,
+    pub recipient: PrincipalData,
     /// The address that deployed the contract.
     pub deployer: StacksAddress,
 }
@@ -187,24 +196,43 @@ impl AsContractCall for CompleteDepositV1 {
     }
     /// Construct the input arguments to the complete-deposit-wrapper
     /// contract call.
-    fn as_contract_args(&self) -> Vec<Value> {
+    fn as_contract_args(&self) -> Vec<ClarityValue> {
         let txid_data = self.outpoint.txid.to_byte_array().to_vec();
         let txid = BuffData { data: txid_data };
-        let principle = StandardPrincipalData::from(self.recipient);
 
         vec![
-            Value::Sequence(SequenceData::Buffer(txid)),
-            Value::UInt(self.outpoint.vout as u128),
-            Value::UInt(self.amount as u128),
-            Value::Principal(PrincipalData::Standard(principle)),
+            ClarityValue::Sequence(SequenceData::Buffer(txid)),
+            ClarityValue::UInt(self.outpoint.vout as u128),
+            ClarityValue::UInt(self.amount as u128),
+            ClarityValue::Principal(self.recipient.clone()),
         ]
+    }
+    /// Validates that the Complete deposit request satisfies the following
+    /// criteria:
+    ///
+    /// 1. That the outpoint exists on the canonical bitcoin blockchain.
+    /// 2. That the outpoint was used as an input into a signer sweep
+    ///    transaction.
+    /// 3. That the signer sweep transaction exists on the canonical
+    ///    bitcoin blockchain.
+    /// 5. That the `amount` matches the amount in the `outpoint` less
+    ///    their portion of fees spent in the sweep transaction.
+    /// 4. That the principal matches the principal embedded in the deposit
+    ///    script locked in the outpoint.
+    async fn validate<S>(&self, _storage: &S) -> Result<bool, Error>
+    where
+        S: DbRead + Send + Sync,
+        Error: From<<S as DbRead>::Error>,
+    {
+        // TODO(255): Add validation implementation
+        Ok(false)
     }
 }
 
 /// This struct is used to generate a properly formatted Stacks transaction
 /// for calling the accept-withdrawal-request function in the
 /// sbtc-withdrawal smart contract.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AcceptWithdrawalV1 {
     /// The ID of the withdrawal request generated by the
     /// initiate-withdrawal-request function in the sbtc-withdrawal smart
@@ -219,7 +247,7 @@ pub struct AcceptWithdrawalV1 {
     /// A bitmap of how the signers voted. This structure supports up to
     /// 128 distinct signers. Here, we assume that a 1 (or true) implies
     /// that the signer voted *against* the transaction.
-    pub signer_bitmap: BitArray<[u64; 2]>,
+    pub signer_bitmap: BitArray<[u8; 16]>,
     /// The address that deployed the contract.
     pub deployer: StacksAddress,
 }
@@ -231,24 +259,42 @@ impl AsContractCall for AcceptWithdrawalV1 {
     fn deployer_address(&self) -> StacksAddress {
         self.deployer
     }
-    fn as_contract_args(&self) -> Vec<Value> {
+    fn as_contract_args(&self) -> Vec<ClarityValue> {
         let txid_data = self.outpoint.txid.to_byte_array().to_vec();
         let txid = BuffData { data: txid_data };
 
         vec![
-            Value::UInt(self.request_id as u128),
-            Value::Sequence(SequenceData::Buffer(txid)),
-            Value::UInt(self.signer_bitmap.load()),
-            Value::UInt(self.outpoint.vout as u128),
-            Value::UInt(self.tx_fee as u128),
+            ClarityValue::UInt(self.request_id as u128),
+            ClarityValue::Sequence(SequenceData::Buffer(txid)),
+            ClarityValue::UInt(self.signer_bitmap.load()),
+            ClarityValue::UInt(self.outpoint.vout as u128),
+            ClarityValue::UInt(self.tx_fee as u128),
         ]
+    }
+    /// Validates that the accept-withdrawal-request satisfies the
+    /// following criteria:
+    ///
+    /// 1. That the transaction with the associated request_id is stored as
+    ///    an event on the canonical Stacks blockchain.
+    /// 2. That the transaction associated with the outpoint has been
+    ///    confirmed on the canonical bitcoin blockchain.
+    /// 3. That the signer bitmap matches the signer decisions stored in
+    ///    this signer's database.
+    /// 4. That the `tx_fee` matches the amount spent to the bitcoin miner.
+    async fn validate<S>(&self, _storage: &S) -> Result<bool, Error>
+    where
+        S: DbRead + Send + Sync,
+        Error: From<<S as DbRead>::Error>,
+    {
+        // TODO(255): Add validation implementation
+        Ok(false)
     }
 }
 
 /// This struct is used to generate a properly formatted Stacks transaction
 /// for calling the reject-withdrawal-request function in the
 /// sbtc-withdrawal smart contract.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RejectWithdrawalV1 {
     /// The ID of the withdrawal request generated by the
     /// initiate-withdrawal-request function in the sbtc-withdrawal smart
@@ -257,7 +303,7 @@ pub struct RejectWithdrawalV1 {
     /// A bitmap of how the signers voted. This structure supports up to
     /// 128 distinct signers. Here, we assume that a 1 (or true) implies
     /// that the signer voted *against* the transaction.
-    pub signer_bitmap: BitArray<[u64; 2]>,
+    pub signer_bitmap: BitArray<[u8; 16]>,
     /// The address that deployed the contract.
     pub deployer: StacksAddress,
 }
@@ -269,18 +315,33 @@ impl AsContractCall for RejectWithdrawalV1 {
     fn deployer_address(&self) -> StacksAddress {
         self.deployer
     }
-    fn as_contract_args(&self) -> Vec<Value> {
+    fn as_contract_args(&self) -> Vec<ClarityValue> {
         vec![
-            Value::UInt(self.request_id as u128),
-            Value::UInt(self.signer_bitmap.load()),
+            ClarityValue::UInt(self.request_id as u128),
+            ClarityValue::UInt(self.signer_bitmap.load()),
         ]
+    }
+    /// Validates that the reject-withdrawal-request satisfies the
+    /// following criteria:
+    ///
+    /// 1. That the transaction with the associated request_id is stored as
+    ///    an event on the canonical Stacks blockchain.
+    /// 2. That the signer bitmap matches the signer decisions stored in
+    ///    this signer's database.
+    async fn validate<S>(&self, _storage: &S) -> Result<bool, Error>
+    where
+        S: DbRead + Send + Sync,
+        Error: From<<S as DbRead>::Error>,
+    {
+        // TODO(255): Add validation implementation
+        Ok(false)
     }
 }
 
 /// This struct is used to generate a properly formatted Stacks transaction
 /// for calling the rotate-keys-wrapper function in the
 /// sbtc-bootstrap-signers smart contract.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RotateKeysV1 {
     /// The new set of public keys for all known signers during this
     /// PoX cycle.
@@ -289,15 +350,19 @@ pub struct RotateKeysV1 {
     aggregate_key: PublicKey,
     /// The address that deployed the contract.
     deployer: StacksAddress,
+    /// The number of signatures required for the multi-sig wallet.
+    #[allow(dead_code)]
+    signatures_required: u16,
 }
 
 impl RotateKeysV1 {
     /// Create a new instance of RotateKeysV1 using the provided wallet.
-    pub fn new(wallet: &SignerWallet, deployer: StacksAddress) -> Self {
+    pub fn new(wallet: &SignerWallet, deployer: StacksAddress, signatures_required: u16) -> Self {
         Self {
             aggregate_key: wallet.aggregate_key(),
-            new_keys: wallet.public_keys().iter().copied().collect(),
+            new_keys: wallet.public_keys().clone(),
             deployer,
+            signatures_required,
         }
     }
 
@@ -336,13 +401,13 @@ impl AsContractCall for RotateKeysV1 {
     /// The signature to this function is:
     ///
     ///   (new-keys (list 128 (buff 33))) (new-aggregate-pubkey (buff 33))
-    fn as_contract_args(&self) -> Vec<Value> {
-        let new_key_data: Vec<Value> = self
+    fn as_contract_args(&self) -> Vec<ClarityValue> {
+        let new_key_data: Vec<ClarityValue> = self
             .new_keys
             .iter()
             .map(|pk| {
                 let data = pk.serialize().to_vec();
-                Value::Sequence(SequenceData::Buffer(BuffData { data }))
+                ClarityValue::Sequence(SequenceData::Buffer(BuffData { data }))
             })
             .collect();
 
@@ -356,9 +421,28 @@ impl AsContractCall for RotateKeysV1 {
         let key: [u8; 33] = self.aggregate_key.serialize();
 
         vec![
-            Value::Sequence(SequenceData::List(new_keys)),
-            Value::Sequence(SequenceData::Buffer(BuffData { data: key.to_vec() })),
+            ClarityValue::Sequence(SequenceData::List(new_keys)),
+            ClarityValue::Sequence(SequenceData::Buffer(BuffData { data: key.to_vec() })),
         ]
+    }
+    /// Validates that the rotate-keys-wrapper satisfies the following
+    /// criteria:
+    ///
+    /// 1. That the aggregate key matches what is expected from the given
+    ///    public keys.
+    /// 2. That public keys match current known set of signers.
+    /// 3. That the proposed signer set is different from last known signer
+    ///    set, or the proposed signer set is the same and the signatures
+    ///    threshold is different from the last signature threshold.
+    /// 4. That the number of required signatures is strictly greater than
+    ///    `new_keys as f64 / 2.0`.
+    async fn validate<S>(&self, _storage: &S) -> Result<bool, Error>
+    where
+        S: DbRead + Send + Sync,
+        Error: From<<S as DbRead>::Error>,
+    {
+        // TODO(255): Add validation implementation
+        Ok(false)
     }
 }
 
@@ -380,7 +464,7 @@ mod tests {
         let call = CompleteDepositV1 {
             outpoint: OutPoint::null(),
             amount: 15000,
-            recipient: StacksAddress::burn_address(true),
+            recipient: PrincipalData::from(StacksAddress::burn_address(true)),
             deployer: StacksAddress::burn_address(false),
         };
 
@@ -395,7 +479,7 @@ mod tests {
             request_id: 42,
             outpoint: OutPoint::null(),
             tx_fee: 125,
-            signer_bitmap: BitArray::new([0; 2]),
+            signer_bitmap: BitArray::ZERO,
             deployer: StacksAddress::burn_address(false),
         };
 
@@ -408,7 +492,7 @@ mod tests {
         // it doesn't panic now, it can never panic at runtime.
         let call = RejectWithdrawalV1 {
             request_id: 42,
-            signer_bitmap: BitArray::new([1; 2]),
+            signer_bitmap: BitArray::new([1; 16]),
             deployer: StacksAddress::burn_address(false),
         };
 
@@ -428,11 +512,11 @@ mod tests {
             SecretKey::new(&mut rng),
             SecretKey::new(&mut rng),
         ];
-        let public_keys = secret_keys.map(|sk| sk.public_key(SECP256K1));
+        let public_keys = secret_keys.map(|sk| sk.public_key(SECP256K1).into());
         let wallet = SignerWallet::new(&public_keys, 2, NetworkKind::Testnet, 0).unwrap();
         let deployer = StacksAddress::burn_address(false);
 
-        let call = RotateKeysV1::new(&wallet, deployer);
+        let call = RotateKeysV1::new(&wallet, deployer, 2);
 
         // This is to check that this function doesn't implicitly panic. If
         // it doesn't panic now, it can never panic at runtime.

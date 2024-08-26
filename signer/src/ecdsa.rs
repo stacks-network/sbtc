@@ -19,6 +19,7 @@
 //! ```
 //! use sha2::Digest;
 //! use signer::ecdsa::SignEcdsa;
+//! use signer::keys::PrivateKey;
 //!
 //! struct SignableStr(&'static str);
 //!
@@ -30,7 +31,7 @@
 //! }
 //!
 //! let msg = SignableStr("Sign me please!");
-//! let private_key = p256k1::scalar::Scalar::from(1337);
+//! let private_key = PrivateKey::try_from(&p256k1::scalar::Scalar::from(1337)).unwrap();
 //!
 //! // Sign the message.
 //! let signed_msg = msg
@@ -40,10 +41,9 @@
 //! // Verify the signed message.
 //! assert!(signed_msg.verify());
 
-use p256k1::ecdsa;
-use p256k1::scalar::Scalar;
-
-use sha2::Digest;
+use crate::keys::PrivateKey;
+use crate::keys::PublicKey;
+use sha2::Digest as _;
 
 /// Wraps an inner type with a public key and a signature,
 /// allowing easy verification of the integrity of the inner data.
@@ -52,7 +52,7 @@ pub struct Signed<T> {
     /// The signed structure.
     pub inner: T,
     /// The public key of the signer.
-    pub signer_pub_key: ecdsa::PublicKey,
+    pub signer_pub_key: PublicKey,
     /// A signature over the hash of the inner structure.
     pub signature: Vec<u8>,
 }
@@ -60,7 +60,8 @@ pub struct Signed<T> {
 impl<T: wsts::net::Signable> Signed<T> {
     /// Verify the signature over the inner data.
     pub fn verify(&self) -> bool {
-        self.inner.verify(&self.signature, &self.signer_pub_key)
+        self.inner
+            .verify(&self.signature, &self.signer_pub_key.into())
     }
 
     /// Unique identifier for the signed message
@@ -91,18 +92,17 @@ impl<T> std::ops::DerefMut for Signed<T> {
 /// Helper trait to provide the ability to construct a `Signed<T>`.
 pub trait SignEcdsa: Sized {
     /// Wrap this type into a [`Signed<Self>`]
-    fn sign_ecdsa(self, private_key: &Scalar) -> Result<Signed<Self>, Error>;
+    fn sign_ecdsa(self, private_key: &PrivateKey) -> Result<Signed<Self>, Error>;
 }
 
 impl<T: wsts::net::Signable> SignEcdsa for T {
     /// Create a `Signed<T>` instance with a signature and public key constructed from `private_key`.
-    fn sign_ecdsa(self, private_key: &Scalar) -> Result<Signed<Self>, Error> {
-        let signer_pub_key = ecdsa::PublicKey::new(private_key)?;
-        let signature = self.sign(private_key)?;
+    fn sign_ecdsa(self, private_key: &PrivateKey) -> Result<Signed<Self>, Error> {
+        let signature = self.sign(&private_key.into())?;
 
         Ok(Signed {
             inner: self,
-            signer_pub_key,
+            signer_pub_key: PublicKey::from_private_key(private_key),
             signature,
         })
     }
@@ -116,21 +116,21 @@ pub enum Error {
     KeyError(#[from] p256k1::keys::Error),
     /// Sign error
     #[error("SignError")]
-    SignError(#[from] ecdsa::Error),
+    SignError(#[from] p256k1::ecdsa::Error),
 }
 
 #[cfg(feature = "testing")]
 impl Signed<crate::message::SignerMessage> {
     /// Generate a random signed message
     pub fn random<R: rand::CryptoRng + rand::Rng>(rng: &mut R) -> Self {
-        let private_key = Scalar::random(rng);
+        let private_key = PrivateKey::new(rng);
         Self::random_with_private_key(rng, &private_key)
     }
 
     /// Generate a random signed message with the given private key
     pub fn random_with_private_key<R: rand::CryptoRng + rand::Rng>(
         rng: &mut R,
-        private_key: &Scalar,
+        private_key: &PrivateKey,
     ) -> Self {
         let inner = crate::message::SignerMessage::random(rng);
         inner
@@ -142,13 +142,14 @@ impl Signed<crate::message::SignerMessage> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use p256k1::scalar::Scalar;
 
     use sha2::Digest;
 
     #[test]
     fn verify_should_return_true_given_properly_signed_data() {
         let msg = SignableStr("I'm Batman");
-        let bruce_wayne_private_key = Scalar::from(1337);
+        let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
 
         let signed_msg = msg
             .sign_ecdsa(&bruce_wayne_private_key)
@@ -161,7 +162,7 @@ mod tests {
     #[test]
     fn verify_should_return_false_given_tampered_data() {
         let msg = SignableStr("I'm Batman");
-        let bruce_wayne_private_key = Scalar::from(1337);
+        let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
 
         let mut signed_msg = msg
             .sign_ecdsa(&bruce_wayne_private_key)
@@ -176,14 +177,14 @@ mod tests {
     #[test]
     fn verify_should_return_false_given_the_wrong_public_key() {
         let msg = SignableStr("I'm Batman");
-        let bruce_wayne_private_key = Scalar::from(1337);
-        let craig_wright_public_key = ecdsa::PublicKey::new(&Scalar::from(1338)).unwrap();
+        let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
+        let craig_wright_public_key = p256k1::ecdsa::PublicKey::new(&Scalar::from(1338)).unwrap();
 
         let mut signed_msg = msg
             .sign_ecdsa(&bruce_wayne_private_key)
             .expect("Failed to sign message");
 
-        signed_msg.signer_pub_key = craig_wright_public_key;
+        signed_msg.signer_pub_key = craig_wright_public_key.into();
 
         // Craig Wright is not Batman.
         assert!(!signed_msg.verify());
@@ -192,7 +193,7 @@ mod tests {
     #[test]
     fn signed_should_deref_to_the_underlying_type() {
         let msg = SignableStr("I'm Batman");
-        let bruce_wayne_private_key = Scalar::from(1337);
+        let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
 
         let signed_msg = msg
             .sign_ecdsa(&bruce_wayne_private_key)

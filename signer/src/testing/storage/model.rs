@@ -388,7 +388,7 @@ pub struct Params {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct BlockSummary {
     block_hash: model::BitcoinBlockHash,
-    block_height: i64,
+    block_height: u64,
 }
 
 impl BlockSummary {
@@ -410,7 +410,7 @@ impl BlockSummary {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct StacksBlockSummary {
     block_hash: model::StacksBlockHash,
-    block_height: i64,
+    block_height: u64,
 }
 
 impl StacksBlockSummary {

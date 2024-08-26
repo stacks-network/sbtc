@@ -3,20 +3,22 @@ use std::sync::OnceLock;
 
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
+use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::types::chainstate::StacksAddress;
-use blockstack_lib::types::Address;
 use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Keypair;
+use signer::stacks::api::StacksInteract;
 use signer::stacks::contracts::AcceptWithdrawalV1;
 use signer::stacks::contracts::AsContractCall;
-use signer::stacks::contracts::ContractCall;
 use signer::stacks::contracts::RejectWithdrawalV1;
 use signer::stacks::contracts::RotateKeysV1;
 use signer::stacks::wallet::SignerWallet;
+use signer::testing::wallet::ContractCallWrapper;
 use tokio::sync::OnceCell;
 
 use signer::config::StacksSettings;
 use signer::stacks;
+use signer::stacks::api::FeePriority;
 use signer::stacks::api::RejectionReason;
 use signer::stacks::api::StacksClient;
 use signer::stacks::api::SubmitTxResponse;
@@ -75,7 +77,7 @@ impl AsContractDeploy for SbtcBootstrapContract {
 
 fn make_signatures(tx: &StacksTransaction, keys: &[Keypair]) -> Vec<RecoverableSignature> {
     keys.iter()
-        .map(|kp| stacks::wallet::sign_ecdsa(tx, &kp.secret_key()))
+        .map(|kp| signer::signature::sign_stacks_tx(tx, &kp.secret_key().into()))
         .collect()
 }
 
@@ -94,7 +96,7 @@ impl SignerStxState {
     where
         T: AsContractDeploy,
     {
-        let mut unsigned = MultisigTx::new_tx(ContractDeploy(deploy), &self.wallet, TX_FEE);
+        let mut unsigned = MultisigTx::new_tx(&ContractDeploy(deploy), &self.wallet, TX_FEE);
 
         for signature in make_signatures(unsigned.tx(), &self.keys) {
             unsigned.add_signature(signature).unwrap();
@@ -113,18 +115,23 @@ impl SignerStxState {
     }
 }
 
+/// Create or return a long-lived stacks client.
+fn stacks_client() -> &'static StacksClient {
+    static STACKS_CLIENT: OnceLock<StacksClient> = OnceLock::new();
+    STACKS_CLIENT.get_or_init(|| {
+        let settings = StacksSettings::new_from_config().unwrap();
+        StacksClient::new(settings)
+    })
+}
+
 /// Deploy all sBTC smart contracts to the stacks node
 pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     static SBTC_DEPLOYMENT: OnceCell<()> = OnceCell::const_new();
-    static STACKS_CLIENT: OnceLock<StacksClient> = OnceLock::new();
     static SIGNER_STATE: OnceCell<SignerStxState> = OnceCell::const_new();
 
-    let (signer_wallet, key_pairs) = testing::wallet::generate_wallet();
+    let (signer_wallet, key_pairs, _) = testing::wallet::generate_wallet();
 
-    let client = STACKS_CLIENT.get_or_init(|| {
-        let settings = StacksSettings::new_from_config().unwrap();
-        StacksClient::new(settings)
-    });
+    let client = stacks_client();
 
     let signer = SIGNER_STATE
         .get_or_init(|| async {
@@ -155,32 +162,39 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
 }
 
 #[ignore]
-#[test_case(ContractCall(CompleteDepositV1 {
+#[test_case(ContractCallWrapper(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654,
-    recipient: StacksAddress::from_string("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
-    deployer: testing::wallet::generate_wallet().0.address(),
-}); "complete-deposit")]
-#[test_case(ContractCall(AcceptWithdrawalV1 {
+    recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
+    deployer: testing::wallet::WALLET.0.address(),
+}); "complete-deposit standard recipient")]
+#[test_case(ContractCallWrapper(CompleteDepositV1 {
+    outpoint: bitcoin::OutPoint::null(),
+    amount: 123654,
+    recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y.my-contract-name").unwrap(),
+    deployer: testing::wallet::WALLET.0.address(),
+}); "complete-deposit contract recipient")]
+#[test_case(ContractCallWrapper(AcceptWithdrawalV1 {
     request_id: 0,
     outpoint: bitcoin::OutPoint::null(),
     tx_fee: 3500,
-    signer_bitmap: BitArray::new([0; 2]),
-    deployer: testing::wallet::generate_wallet().0.address(),
+    signer_bitmap: BitArray::ZERO,
+    deployer: testing::wallet::WALLET.0.address(),
 }); "accept-withdrawal")]
-#[test_case(ContractCall(RejectWithdrawalV1 {
+#[test_case(ContractCallWrapper(RejectWithdrawalV1 {
     request_id: 0,
-    signer_bitmap: BitArray::new([0; 2]),
-    deployer: testing::wallet::generate_wallet().0.address(),
+    signer_bitmap: BitArray::ZERO,
+    deployer: testing::wallet::WALLET.0.address(),
 }); "reject-withdrawal")]
-#[test_case(ContractCall(RotateKeysV1::new(
-    &testing::wallet::generate_wallet().0,
-    testing::wallet::generate_wallet().0.address(),
+#[test_case(ContractCallWrapper(RotateKeysV1::new(
+    &testing::wallet::WALLET.0,
+    testing::wallet::WALLET.0.address(),
+    testing::wallet::WALLET.2,
 )); "rotate-keys")]
 #[tokio::test]
-async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: ContractCall<T>) {
+async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: ContractCallWrapper<T>) {
     let signer = deploy_smart_contracts().await;
-    let mut unsigned = MultisigTx::new_tx(contract, &signer.wallet, TX_FEE);
+    let mut unsigned = MultisigTx::new_tx(&contract, &signer.wallet, TX_FEE);
 
     for signature in make_signatures(unsigned.tx(), &signer.keys) {
         unsigned.add_signature(signature).unwrap();
@@ -204,14 +218,16 @@ async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: Contr
         return;
     }
 
+    let settings = StacksSettings::new_from_config().unwrap();
+    let mut client = StacksClient::new(settings);
+
     // We need a block id
-    let info = signer.stacks_client.get_tenure_info().await.unwrap();
+    let info = client.get_tenure_info().await.unwrap();
     let storage = Store::new_shared();
 
-    let blocks =
-        stacks::api::fetch_unknown_ancestors(signer.stacks_client, &storage, info.tip_block_id)
-            .await
-            .unwrap();
+    let blocks = stacks::api::fetch_unknown_ancestors(&mut client, &storage, info.tip_block_id)
+        .await
+        .unwrap();
 
     let transactions = postgres::extract_relevant_transactions(&blocks);
     assert!(!transactions.is_empty());
@@ -223,4 +239,33 @@ async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: Contr
         .unwrap();
 
     assert!(txids.contains(&tx.txid()));
+}
+
+#[ignore = "This is an integration test that requires a stacks-node to work"]
+#[tokio::test]
+async fn estimate_tx_fees() {
+    sbtc::logging::setup_logging("info", false);
+    let client = stacks_client();
+
+    let contract = SbtcRegistryContract;
+    let payload = ContractDeploy(contract);
+
+    let _ = client.get_fee_estimate(&payload).await.unwrap();
+
+    let contract_call = CompleteDepositV1 {
+        outpoint: bitcoin::OutPoint::null(),
+        amount: 123654,
+        recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
+        deployer: StacksAddress::burn_address(false),
+    };
+    let payload = ContractCallWrapper(contract_call);
+
+    // This should work, but will likely be an estimate for a STX transfer
+    // transaction.
+
+    let fee = client
+        .estimate_fees(&payload, FeePriority::Medium)
+        .await
+        .unwrap();
+    more_asserts::assert_gt!(fee, 0);
 }

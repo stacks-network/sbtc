@@ -1,7 +1,10 @@
 //! Test utilities for running a wsts signer and coordinator.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::Duration;
 
+use crate::keys::PrivateKey;
+use crate::keys::PublicKey;
 use crate::message;
 use crate::network;
 use crate::storage;
@@ -21,9 +24,9 @@ use wsts::state_machine::StateMachine as _;
 #[derive(Debug, Clone)]
 pub struct SignerInfo {
     /// Private key of the signer
-    pub signer_private_key: p256k1::scalar::Scalar,
+    pub signer_private_key: PrivateKey,
     /// Public keys of all signers in the signer set
-    pub signer_public_keys: BTreeSet<p256k1::ecdsa::PublicKey>,
+    pub signer_public_keys: BTreeSet<PublicKey>,
 }
 
 /// Generate a new signer set
@@ -33,9 +36,8 @@ pub fn generate_signer_info<Rng: rand::RngCore + rand::CryptoRng>(
 ) -> Vec<SignerInfo> {
     let signer_keys: BTreeMap<_, _> = (0..num_signers)
         .map(|_| {
-            let private = p256k1::scalar::Scalar::random(rng);
-            let public =
-                p256k1::ecdsa::PublicKey::new(&private).expect("failed to generate public key");
+            let private = PrivateKey::new(rng);
+            let public = PublicKey::from_private_key(&private);
 
             (public, private)
         })
@@ -56,7 +58,7 @@ pub fn generate_signer_info<Rng: rand::RngCore + rand::CryptoRng>(
 pub struct Coordinator {
     network: network::in_memory::MpmcBroadcaster,
     wsts_coordinator: frost::Coordinator<wsts::v2::Aggregator>,
-    private_key: p256k1::scalar::Scalar,
+    private_key: PrivateKey,
     num_signers: u32,
 }
 
@@ -73,14 +75,7 @@ impl Coordinator {
             .signer_public_keys
             .into_iter()
             .enumerate()
-            .map(|(idx, key)| {
-                (
-                    idx.try_into().unwrap(),
-                    (&p256k1::point::Compressed::from(key.to_bytes()))
-                        .try_into()
-                        .expect("failed to convert public key"),
-                )
-            })
+            .map(|(idx, key)| (idx.try_into().unwrap(), p256k1::point::Point::from(&key)))
             .collect();
         let num_keys = num_signers;
         let dkg_threshold = num_keys;
@@ -92,7 +87,7 @@ impl Coordinator {
             num_keys,
             threshold,
             dkg_threshold,
-            message_private_key,
+            message_private_key: signer_info.signer_private_key.into(),
             dkg_public_timeout: None,
             dkg_private_timeout: None,
             dkg_end_timeout: None,
@@ -117,7 +112,7 @@ impl Coordinator {
         &mut self,
         bitcoin_chain_tip: bitcoin::BlockHash,
         txid: bitcoin::Txid,
-    ) -> p256k1::point::Point {
+    ) -> PublicKey {
         self.wsts_coordinator
             .move_to(coordinator::State::DkgPublicDistribute)
             .expect("failed to move state machine");
@@ -130,7 +125,9 @@ impl Coordinator {
         self.send_packet(bitcoin_chain_tip, txid, outbound).await;
 
         match self.loop_until_result(bitcoin_chain_tip, txid).await {
-            wsts::state_machine::OperationResult::Dkg(aggregate_key) => aggregate_key,
+            wsts::state_machine::OperationResult::Dkg(aggregate_key) => {
+                PublicKey::try_from(&aggregate_key).expect("Got the point at infinity")
+            }
             _ => panic!("unexpected operation result"),
         }
     }
@@ -140,7 +137,7 @@ impl Coordinator {
         &mut self,
         bitcoin_chain_tip: bitcoin::BlockHash,
         tx: bitcoin::Transaction,
-        aggregate_key: p256k1::point::Point,
+        aggregate_key: PublicKey,
     ) {
         let payload: message::Payload =
             message::BitcoinTransactionSignRequest { tx, aggregate_key }.into();
@@ -157,19 +154,25 @@ impl Coordinator {
 
         let mut responses = 0;
 
-        loop {
-            let msg = self.network.receive().await.expect("network error");
+        let future = async move {
+            loop {
+                let msg = self.network.receive().await.expect("network error");
 
-            let message::Payload::BitcoinTransactionSignAck(_) = msg.inner.payload else {
-                continue;
-            };
+                let message::Payload::BitcoinTransactionSignAck(_) = msg.inner.payload else {
+                    continue;
+                };
 
-            responses += 1;
+                responses += 1;
 
-            if responses >= self.num_signers {
-                break;
+                if responses >= self.num_signers {
+                    break;
+                }
             }
-        }
+        };
+
+        tokio::time::timeout(Duration::from_secs(10), future)
+            .await
+            .unwrap()
     }
 
     /// Run a signing round
@@ -197,31 +200,37 @@ impl Coordinator {
         bitcoin_chain_tip: bitcoin::BlockHash,
         txid: bitcoin::Txid,
     ) -> wsts::state_machine::OperationResult {
-        loop {
-            let msg = self.network.receive().await.expect("network error");
+        let future = async move {
+            loop {
+                let msg = self.network.receive().await.expect("network error");
 
-            let message::Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
-                continue;
-            };
+                let message::Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
+                    continue;
+                };
 
-            let packet = wsts::net::Packet {
-                msg: wsts_msg.inner,
-                sig: Vec::new(),
-            };
+                let packet = wsts::net::Packet {
+                    msg: wsts_msg.inner,
+                    sig: Vec::new(),
+                };
 
-            let (outbound_packet, operation_result) = self
-                .wsts_coordinator
-                .process_message(&packet)
-                .expect("message processing failed");
+                let (outbound_packet, operation_result) = self
+                    .wsts_coordinator
+                    .process_message(&packet)
+                    .expect("message processing failed");
 
-            if let Some(packet) = outbound_packet {
-                self.send_packet(bitcoin_chain_tip, txid, packet).await;
+                if let Some(packet) = outbound_packet {
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    self.send_packet(bitcoin_chain_tip, txid, packet).await;
+                }
+
+                if let Some(result) = operation_result {
+                    return result;
+                }
             }
-
-            if let Some(result) = operation_result {
-                return result;
-            }
-        }
+        };
+        tokio::time::timeout(Duration::from_secs(10), future)
+            .await
+            .unwrap()
     }
 }
 
@@ -229,7 +238,7 @@ impl Coordinator {
 pub struct Signer {
     network: network::in_memory::MpmcBroadcaster,
     wsts_signer: wsts_state_machine::SignerStateMachine,
-    private_key: p256k1::scalar::Scalar,
+    private_key: PrivateKey,
 }
 
 impl Signer {
@@ -255,82 +264,92 @@ impl Signer {
 
     /// Participate in a DKG round and return the result
     pub async fn run_until_dkg_end(mut self) -> Self {
-        loop {
-            let msg = self.network.receive().await.expect("network error");
-            let bitcoin_chain_tip = msg.bitcoin_chain_tip;
+        let future = async move {
+            loop {
+                let msg = self.network.receive().await.expect("network error");
+                let bitcoin_chain_tip = msg.bitcoin_chain_tip;
 
-            let message::Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
-                continue;
-            };
+                let message::Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
+                    continue;
+                };
 
-            let packet = wsts::net::Packet {
-                msg: wsts_msg.inner,
-                sig: Vec::new(),
-            };
+                let packet = wsts::net::Packet {
+                    msg: wsts_msg.inner,
+                    sig: Vec::new(),
+                };
 
-            let outbound_packets = self
-                .wsts_signer
-                .process_inbound_messages(&[packet])
-                .expect("message processing failed");
-
-            for packet in outbound_packets {
-                self.wsts_signer
-                    .process_inbound_messages(&[packet.clone()])
+                let outbound_packets = self
+                    .wsts_signer
+                    .process_inbound_messages(&[packet])
                     .expect("message processing failed");
 
-                self.send_packet(bitcoin_chain_tip, wsts_msg.txid, packet.clone())
-                    .await;
+                for packet in outbound_packets {
+                    self.wsts_signer
+                        .process_inbound_messages(&[packet.clone()])
+                        .expect("message processing failed");
 
-                if let wsts::net::Message::DkgEnd(_) = packet.msg {
-                    return self;
+                    self.send_packet(bitcoin_chain_tip, wsts_msg.txid, packet.clone())
+                        .await;
+
+                    if let wsts::net::Message::DkgEnd(_) = packet.msg {
+                        return self;
+                    }
                 }
             }
-        }
+        };
+        tokio::time::timeout(Duration::from_secs(10), future)
+            .await
+            .unwrap()
     }
 
     /// Participate in a signing round and return the result
     pub async fn run_until_signature_share_response(mut self) -> Self {
-        loop {
-            let msg = self.network.receive().await.expect("network error");
-            let bitcoin_chain_tip = msg.bitcoin_chain_tip;
+        let future = async move {
+            loop {
+                let msg = self.network.receive().await.expect("network error");
+                let bitcoin_chain_tip = msg.bitcoin_chain_tip;
 
-            let message::Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
-                continue;
-            };
+                let message::Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
+                    continue;
+                };
 
-            let packet = wsts::net::Packet {
-                msg: wsts_msg.inner,
-                sig: Vec::new(),
-            };
+                let packet = wsts::net::Packet {
+                    msg: wsts_msg.inner,
+                    sig: Vec::new(),
+                };
 
-            let outbound_packets = self
-                .wsts_signer
-                .process_inbound_messages(&[packet])
-                .expect("message processing failed");
-
-            for packet in outbound_packets {
-                self.wsts_signer
-                    .process_inbound_messages(&[packet.clone()])
+                let outbound_packets = self
+                    .wsts_signer
+                    .process_inbound_messages(&[packet])
                     .expect("message processing failed");
 
-                self.send_packet(bitcoin_chain_tip, wsts_msg.txid, packet.clone())
-                    .await;
+                for packet in outbound_packets {
+                    self.wsts_signer
+                        .process_inbound_messages(&[packet.clone()])
+                        .expect("message processing failed");
 
-                if let wsts::net::Message::SignatureShareResponse(_) = packet.msg {
-                    return self;
+                    self.send_packet(bitcoin_chain_tip, wsts_msg.txid, packet.clone())
+                        .await;
+
+                    if let wsts::net::Message::SignatureShareResponse(_) = packet.msg {
+                        return self;
+                    }
                 }
             }
-        }
+        };
+        tokio::time::timeout(Duration::from_secs(10), future)
+            .await
+            .unwrap()
     }
 
-    fn pub_key(&self) -> p256k1::ecdsa::PublicKey {
-        p256k1::ecdsa::PublicKey::new(&self.private_key).expect("failed to generate pub key")
+    fn pub_key(&self) -> PublicKey {
+        PublicKey::from_private_key(&self.private_key)
     }
 }
 
 trait WstsEntity {
     fn network(&mut self) -> &mut network::in_memory::MpmcBroadcaster;
-    fn private_key(&self) -> &p256k1::scalar::Scalar;
+    fn private_key(&self) -> &PrivateKey;
 
     async fn send_packet(
         &mut self,
@@ -357,7 +376,7 @@ impl WstsEntity for Coordinator {
         &mut self.network
     }
 
-    fn private_key(&self) -> &p256k1::scalar::Scalar {
+    fn private_key(&self) -> &PrivateKey {
         &self.private_key
     }
 }
@@ -367,7 +386,7 @@ impl WstsEntity for Signer {
         &mut self.network
     }
 
-    fn private_key(&self) -> &p256k1::scalar::Scalar {
+    fn private_key(&self) -> &PrivateKey {
         &self.private_key
     }
 }
@@ -402,7 +421,7 @@ impl SignerSet {
         bitcoin_chain_tip: bitcoin::BlockHash,
         txid: bitcoin::Txid,
         rng: &mut Rng,
-    ) -> (p256k1::point::Point, Vec<model::EncryptedDkgShares>) {
+    ) -> (PublicKey, Vec<model::EncryptedDkgShares>) {
         let mut signer_handles = Vec::new();
         for signer in self.signers.drain(..) {
             let handle = tokio::spawn(async { signer.run_until_dkg_end().await });
@@ -445,22 +464,17 @@ impl SignerSet {
     }
 
     /// Dump the current signer set as a dummy rotate-keys transaction to the given storage
-    pub async fn write_as_rotate_keys_tx<
-        S: storage::DbWrite + storage::DbRead,
-        Rng: rand::RngCore + rand::CryptoRng,
-    >(
+    pub async fn write_as_rotate_keys_tx<S, Rng>(
         &self,
         storage: &mut S,
         chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: p256k1::point::Point,
+        aggregate_key: PublicKey,
         rng: &mut Rng,
-    ) {
-        let aggregate_key = aggregate_key.x().to_bytes().to_vec();
-        let signer_set = self
-            .signers
-            .iter()
-            .map(|signer| signer.pub_key().to_bytes().to_vec())
-            .collect();
+    ) where
+        S: storage::DbWrite + storage::DbRead,
+        Rng: rand::RngCore + rand::CryptoRng,
+    {
+        let signer_set = self.signers.iter().map(|signer| signer.pub_key()).collect();
 
         let stacks_chain_tip = storage
             .get_stacks_chain_tip(chain_tip)
@@ -485,6 +499,7 @@ impl SignerSet {
             aggregate_key,
             txid,
             signer_set,
+            signatures_required: self.signers.len() as u16,
         };
 
         storage

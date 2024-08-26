@@ -1,4 +1,5 @@
-use emily_handler::{api, common};
+use emily_handler::api;
+use emily_handler::common;
 use serde_json::json;
 use std::collections::HashMap;
 use std::fs::File;
@@ -22,18 +23,16 @@ use utoipa::OpenApi;
         api::handlers::withdrawal::create_withdrawal,
         api::handlers::withdrawal::update_withdrawals,
         // Chainstate endpoints.
-        api::handlers::chainstate::get_chainstate,
+        api::handlers::chainstate::get_chain_tip,
+        api::handlers::chainstate::get_chainstate_at_height,
         api::handlers::chainstate::set_chainstate,
         api::handlers::chainstate::update_chainstate,
+        // Testing endpoints.
+        api::handlers::testing::wipe_databases,
     ),
     components(schemas(
         // Chainstate models.
         api::models::chainstate::Chainstate,
-        api::models::chainstate::requests::SetChainstateRequestBody,
-        api::models::chainstate::requests::UpdateChainstateRequestBody,
-        api::models::chainstate::responses::GetChainstateResponse,
-        api::models::chainstate::responses::SetChainstateResponse,
-        api::models::chainstate::responses::UpdateChainstateResponse,
 
         // Deposit models.
         api::models::deposit::Deposit,
@@ -42,8 +41,6 @@ use utoipa::OpenApi;
         api::models::deposit::requests::CreateDepositRequestBody,
         api::models::deposit::requests::DepositUpdate,
         api::models::deposit::requests::UpdateDepositsRequestBody,
-        api::models::deposit::responses::GetDepositResponse,
-        api::models::deposit::responses::CreateDepositResponse,
         api::models::deposit::responses::GetDepositsForTransactionResponse,
         api::models::deposit::responses::GetDepositsResponse,
         api::models::deposit::responses::UpdateDepositsResponse,
@@ -51,32 +48,20 @@ use utoipa::OpenApi;
         // Withdrawal Models.
         api::models::withdrawal::Withdrawal,
         api::models::withdrawal::WithdrawalInfo,
-        // api::models::withdrawal::WithdrawalId, // TODO(283): Add schemas for Aliased types.
         api::models::withdrawal::WithdrawalParameters,
         api::models::withdrawal::requests::CreateWithdrawalRequestBody,
         api::models::withdrawal::requests::WithdrawalUpdate,
         api::models::withdrawal::requests::UpdateWithdrawalsRequestBody,
-        api::models::withdrawal::responses::GetWithdrawalResponse,
-        api::models::withdrawal::responses::CreateWithdrawalResponse,
         api::models::withdrawal::responses::GetWithdrawalsResponse,
         api::models::withdrawal::responses::UpdateWithdrawalsResponse,
 
-        // TODO(283): Add schemas for Aliased types.
-        // API Primitives.
-        // api::models::common::Status,
-        // api::models::common::Fulfillment,
-        // api::models::common::Satoshis,
-        // api::models::common::StacksBlockHash,
-        // api::models::common::BlockHeight,
-        // api::models::common::BitcoinTransactionId,
-        // api::models::common::BitcoinTransactionOutputIndex,
-        // api::models::common::StacksTransactionId,
-        // api::models::common::BitcoinScript,
-        // api::models::common::StacksPrinciple,
-        // api::models::common::BitcoinAddress,
-
         // Health check datatypes.
         api::models::health::responses::HealthData,
+
+        // Common models.
+        api::models::common::Status,
+        api::models::common::Fulfillment,
+
         // Errors.
         common::error::ErrorResponse,
     ))
@@ -84,7 +69,6 @@ use utoipa::OpenApi;
 struct ApiDoc;
 
 fn main() {
-
     // Ensure that we rerun if the API changes or the build script changes.
     println!("cargo:rerun-if-changed=../../../emily/handler/api");
     println!("cargo:rerun-if-changed=build.rs");
@@ -96,12 +80,17 @@ fn main() {
     // alteration.
     //
     // Add AWS extension to openapi specification so AWS CDK can attach the appropriate lambda endpoint.
-    api_doc.paths.paths.iter_mut()
+    api_doc
+        .paths
+        .paths
+        .iter_mut()
         .flat_map(|(_, path_item)| path_item.operations.iter_mut())
-        .for_each(|(_, operation)|
-            operation.extensions
+        .for_each(|(_, operation)| {
+            operation
+                .extensions
                 .get_or_insert(Default::default())
-                .extend(new_extensions.clone()));
+                .extend(new_extensions.clone())
+        });
 
     // Generate string for api doc.
     let spec_json = api_doc
@@ -113,7 +102,6 @@ fn main() {
         File::create("emily-openapi-spec.json").expect("Failed to create OpenAPI spec file");
     file.write_all(spec_json.as_bytes())
         .expect("Failed to write OpenAPI spec file");
-
 }
 
 /// Creates the map of the extensions to be included in each operation.

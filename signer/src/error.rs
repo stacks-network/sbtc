@@ -8,6 +8,29 @@ use crate::{codec, ecdsa, network};
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Error when breaking out the ZeroMQ message into three parts.
+    #[error("bitcoin messages should have a three part layout, received {0} parts")]
+    BitcoinCoreZmqMessageLayout(usize),
+
+    /// Happens when the bitcoin block hash in the ZeroMQ message is not 32
+    /// bytes.
+    #[error("block hashes should be 32 bytes, but we received {0} bytes")]
+    BitcoinCoreZmqBlockHash(usize),
+
+    /// Happens when the ZeroMQ sequence number is not 4 bytes.
+    #[error("sequence numbers should be 4 bytes, but we received {0} bytes")]
+    BitcoinCoreZmqSequenceNumber(usize),
+
+    /// The given message type is unsupported. We attempt to parse what the
+    /// topic is but that might fail as well.
+    #[error("the message topic {0:?} is unsupported")]
+    BitcoinCoreZmqUnsupported(Result<String, std::str::Utf8Error>),
+
+    /// This is for when bitcoin::Transaction::consensus_encode fails. It
+    /// should never happen.
+    #[error("could not serialize bitcoin transaction into bytes.")]
+    BitcoinEncodeTransaction(#[source] bitcoin::io::Error),
+
     /// Invalid amount
     #[error("the change amounts for the transaction is negative: {0}")]
     InvalidAmount(i64),
@@ -23,6 +46,16 @@ pub enum Error {
     /// Parsing the Hex Error
     #[error("could not parse the Hex string to a StacksBlockId: {0}, original: {1}")]
     ParseStacksBlockId(#[source] blockstack_lib::util::HexError, String),
+
+    /// Thrown when doing [`i64::try_from`] or [`i32::try_from`] before
+    /// inserting a value into the database. This only happens if the value
+    /// is creater than MAX for the signed type.
+    #[error("could not convert integer type to the signed version for storing in postgres {0}")]
+    ConversionDatabaseInt(#[source] std::num::TryFromIntError),
+
+    /// Parsing the Hex Error
+    #[error("could not decode the bitcoin block: {0}")]
+    DecodeBitcoinBlock(#[source] bitcoin::consensus::encode::Error),
 
     /// Parsing the Hex Error
     #[error("could not decode the Nakamoto block with ID: {1}; {0}")]
@@ -45,6 +78,36 @@ pub enum Error {
     #[error("{0}")]
     InvalidAggregateKey(#[source] secp256k1::Error),
 
+    /// This occurs when converting a byte slice to our internal public key
+    /// type, which is a thin wrapper around the secp256k1::PublicKey.
+    #[error("{0}")]
+    InvalidPublicKey(#[source] secp256k1::Error),
+
+    /// This happens when we tweak our public key by a scalar, and the
+    /// result is an invalid public key. I think It is very unlikely that
+    /// we will see this one by chance, since the probability that this
+    /// happens is something like: 1 / (2^256 - 2^32^ - 977), where the
+    /// denominator is the order of the secp256k1 curve. This is because
+    /// for a given public key, the there is only one tweak that will lead
+    /// to an invalid public key.
+    #[error("invalid tweak? seriously? {0}")]
+    InvalidPublicKeyTweak(#[source] secp256k1::Error),
+
+    /// This occurs when converting a byte slice to our internal public key
+    /// type, which is a thin wrapper around the secp256k1::SecretKey.
+    #[error("{0}")]
+    InvalidPrivateKey(#[source] secp256k1::Error),
+
+    /// This occurs when converting a byte slice to a [`PrivateKey`](crate::keys::PrivateKey)
+    /// and the length of the byte slice is not 32.
+    #[error("invalid private key length={0}, expected 32.")]
+    InvalidPrivateKeyLength(usize),
+
+    /// This happens when we attempt to convert a `[u8; 65]` into a
+    /// recoverable EDCSA signature.
+    #[error("could not recover the public key from the signature: {0}")]
+    InvalidRecoverableSignatureBytes(#[source] secp256k1::Error),
+
     /// This happens when we attempt to recover a public key from a
     /// recoverable EDCSA signature.
     #[error("could not recover the public key from the signature: {0}, digest: {1}")]
@@ -63,6 +126,10 @@ pub enum Error {
     #[error("could not parse the hex string into an integer")]
     ParseHexInt(#[source] std::num::ParseIntError),
 
+    /// This is thrown when failing to parse a hex string into bytes.
+    #[error("could not decode the hex string into bytes: {0}")]
+    DecodeHexBytes(#[source] hex::FromHexError),
+
     /// Reqwest error
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
@@ -75,6 +142,11 @@ pub enum Error {
     #[error("received an error when attempting to query the database: {0}")]
     SqlxQuery(#[source] sqlx::Error),
 
+    /// An error when attempting to generically decode bytes using the
+    /// trait implementation.
+    #[error("got an error wen attempting to call StacksMessageCodec::consensus_deserialize {0}")]
+    StacksCodec(#[source] blockstack_lib::codec::Error),
+
     /// An error for the case where we cannot create a multi-sig
     /// StacksAddress using given public keys.
     #[error("could not create a StacksAddress from the public keys: threshold {0}, keys {1}")]
@@ -84,15 +156,9 @@ pub enum Error {
     #[error("failed to parse the stacks.api portion of the config: {0}")]
     StacksApiConfig(#[source] config::ConfigError),
 
-    /// This error happens when converting a sepc256k1::PublicKey into a
-    /// blockstack_lib::util::secp256k1::Secp256k1PublicKey. In general, it
-    /// shouldn't happen.
-    #[error("could not transform sepc256k1::PublicKey to stacks variant: {0}")]
-    StacksPublicKey(&'static str),
-
     /// Could not make a successful request to the stacks API.
-    #[error("failed to make a request to the stacks API: {0}")]
-    StacksApiRequest(#[source] reqwest::Error),
+    #[error("received a non success status code response from a stacks node: {0}")]
+    StacksNodeResponse(#[source] reqwest::Error),
 
     /// Could not make a successful request to the Stacks node.
     #[error("failed to make a request to the stacks Node: {0}")]
@@ -177,7 +243,7 @@ pub enum Error {
     /// Thrown when the recoverable signature has a public key that is
     /// unexpected.
     #[error("unexpected public key from signature. key {0}; digest: {1}")]
-    UnknownPublicKey(secp256k1::PublicKey, secp256k1::Message),
+    UnknownPublicKey(crate::keys::PublicKey, secp256k1::Message),
 
     /// WSTS error.
     #[error("WSTS error: {0}")]
@@ -198,6 +264,20 @@ pub enum Error {
     /// Parsing address failed
     #[error("failed to parse address")]
     ParseAddress(#[source] bitcoin::address::ParseError),
+
+    /// Could not connect to bitcoin-core with a zeromq subscription
+    /// socket.
+    #[error("{0}")]
+    ZmqConnect(#[source] zeromq::ZmqError),
+
+    /// Error when receiving a message from to bitcoin-core over zeromq.
+    #[error("{0}")]
+    ZmqReceive(#[source] zeromq::ZmqError),
+
+    /// Could not subscribe to bitcoin-core with a zeromq subscription
+    /// socket.
+    #[error("{0}")]
+    ZmqSubscribe(#[source] zeromq::ZmqError),
 }
 
 impl From<std::convert::Infallible> for Error {

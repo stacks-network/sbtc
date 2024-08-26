@@ -12,20 +12,21 @@ use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi;
 use rand::distributions::Uniform;
 use rand::Rng;
-use signer::utxo::DepositRequest;
-use signer::utxo::Fees;
-use signer::utxo::RequestRef;
-use signer::utxo::SbtcRequests;
-use signer::utxo::SignerBtcState;
-use signer::utxo::SignerUtxo;
-use signer::utxo::UnsignedTransaction;
-use signer::utxo::WithdrawalRequest;
+use signer::bitcoin::utxo::DepositRequest;
+use signer::bitcoin::utxo::Fees;
+use signer::bitcoin::utxo::RequestRef;
+use signer::bitcoin::utxo::SbtcRequests;
+use signer::bitcoin::utxo::SignerBtcState;
+use signer::bitcoin::utxo::SignerUtxo;
+use signer::bitcoin::utxo::UnsignedTransaction;
+use signer::bitcoin::utxo::WithdrawalRequest;
 
-use crate::regtest;
-use crate::regtest::AsUtxo;
-use crate::regtest::Faucet;
+use crate::utxo_construction::generate_withdrawal;
 use crate::utxo_construction::make_deposit_request;
 use regtest::Recipient;
+use sbtc::testing::regtest;
+use sbtc::testing::regtest::AsUtxo;
+use sbtc::testing::regtest::Faucet;
 
 #[derive(Debug, Clone)]
 pub struct FullUtxo {
@@ -138,7 +139,7 @@ pub fn transaction_with_rbf(
     rbf_deposits: usize,
     rbf_withdrawals: usize,
     rbf_fee_rate: f64,
-    failure_threshold: u32,
+    failure_threshold: u16,
 ) {
     // This is not a case that we support; why would we replace a
     // submitted transaction without any peg-in or peg-out inputs and
@@ -169,18 +170,20 @@ pub fn transaction_with_rbf(
     let deposits: Vec<DepositRequest> =
         std::iter::repeat_with(|| generate_depositor(rpc, faucet, &signer))
             .take(ctx.initial_deposits.max(ctx.rbf_deposits))
-            .map(|mut req| {
-                req.signer_bitmap.push(false);
+            .enumerate()
+            .map(|(index, mut req)| {
+                req.signer_bitmap.set(index, true);
                 req
             })
             .collect();
 
     let mut withdrawal_recipients: Vec<Recipient> = Vec::new();
-    let withdrawals: Vec<WithdrawalRequest> = std::iter::repeat_with(regtest::generate_withdrawal)
+    let withdrawals: Vec<WithdrawalRequest> = std::iter::repeat_with(generate_withdrawal)
         .take(ctx.initial_withdrawals.max(ctx.rbf_withdrawals))
-        .map(|(mut req, recipient)| {
+        .enumerate()
+        .map(|(index, (mut req, recipient))| {
             withdrawal_recipients.push(recipient);
-            req.signer_bitmap.push(false);
+            req.signer_bitmap.set(index, true);
             req
         })
         .collect();
@@ -217,6 +220,9 @@ pub fn transaction_with_rbf(
             fee_rate: ctx.initial_fee_rate,
             public_key: signers_public_key,
             last_fees: None,
+            // The value here isn't important, but it matches what happens
+            // in Nakamoto testnet.
+            magic_bytes: [b'T', b'3'],
         },
         accept_threshold: failure_threshold,
         num_signers: 2 * failure_threshold,
@@ -323,7 +329,10 @@ pub fn transaction_with_rbf(
             utx.requests
                 .iter()
                 .filter_map(RequestRef::as_withdrawal)
-                .zip(utx.tx.output.iter().skip(1))
+                // We only care about the outputs that coorrespond to
+                // withdrawals. The first two outputs are the signers' UTXO
+                // and the OP_RETURN output, so we skip them first.
+                .zip(utx.tx.output.iter().skip(2))
                 .map(|(req, tx_out)| (req.address.clone(), req.amount - tx_out.value.to_sat()))
         })
         .collect();

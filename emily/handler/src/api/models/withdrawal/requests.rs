@@ -3,18 +3,21 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::api::models::common::*;
-use super::{WithdrawalId, WithdrawalParameters};
+use crate::api::models::common::{Fulfillment, Status};
+use crate::api::models::withdrawal::WithdrawalParameters;
 
 /// Query structure for the get withdrawals request.
 #[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetWithdrawalsQuery {
     /// Operation status.
-    status: Status,
-    /// Pagination data.
-    #[serde(flatten)]
-    pagination_data: requests::PaginatedQuery<String>,
+    pub status: Status,
+    /// Next token for the search.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_token: Option<String>,
+    /// Maximum number of results to show.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<i32>,
 }
 
 /// Request structure for the create withdrawal request.
@@ -22,60 +25,42 @@ pub struct GetWithdrawalsQuery {
 #[serde(rename_all = "camelCase")]
 pub struct CreateWithdrawalRequestBody {
     /// The id of the Stacks withdrawal request that initiated the sBTC operation.
-    pub request_id: WithdrawalId,
+    pub request_id: u64,
     /// The stacks block hash in which this request id was initiated.
-    pub block_hash: StacksBlockHash,
-    /// The height of the Stacks block in which this request id was initiated.
-    pub block_height: BlockHeight,
+    pub stacks_block_hash: String,
+    /// The stacks block hash in which this request id was initiated.
+    pub stacks_block_height: u64,
     /// The recipient Bitcoin address.
-    pub recipient: BitcoinAddress,
-    /// Amount of BTC being withdrawn.
-    pub amount: Satoshis,
+    pub recipient: String,
+    /// Amount of BTC being withdrawn in satoshis.
+    pub amount: u64,
     /// Withdrawal request parameters.
     pub parameters: WithdrawalParameters,
 }
 
-/// Withdrawals where only the fields to update are defined.
+/// A singlular Withdrawal update that contains only the fields pertinent
+/// to updating the status of a withdrawal. This includes the key related
+/// data in addition to status history related data.
 #[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct WithdrawalUpdate {
     /// The id of the Stacks withdrawal request that initiated the sBTC operation.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub request_id: Option<WithdrawalId>,
-    /// The stacks block hash in which this request id was initiated.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub block_hash: Option<StacksBlockHash>,
-    /// The height of the Stacks block in which this request id was initiated.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub block_height: Option<BlockHeight>,
-    /// The recipient Bitcoin address.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub recipient: Option<BitcoinAddress>,
-    /// Amount of BTC being withdrawn.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub amount: Option<Satoshis>,
+    pub request_id: u64,
     /// The most recent Stacks block height the API was aware of when the withdrawal was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this height is the Stacks block height that contains that artifact.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_update_height: Option<BlockHeight>,
+    pub last_update_height: u64,
     /// The most recent Stacks block hash the API was aware of when the withdrawal was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this hash is the Stacks block hash that contains that artifact.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_update_block_hash: Option<StacksBlockHash>,
+    pub last_update_block_hash: String,
     /// The status of the withdrawal.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<Status>,
+    pub status: Status,
     /// The status message of the withdrawal.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status_message: Option<String>,
-    /// Withdrawal request parameters.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parameters: Option<WithdrawalParameters>,
+    pub status_message: String,
     /// Details about the on chain artifacts that fulfilled the withdrawal.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub fulfillment: Option<Option<Fulfillment>>,
+    pub fulfillment: Option<Fulfillment>,
 }
 
 /// Request structure for the create withdrawal request.
@@ -83,5 +68,5 @@ pub struct WithdrawalUpdate {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateWithdrawalsRequestBody {
     /// Withdrawal updates to execute.
-    withdrawals: Vec<WithdrawalUpdate>
+    pub withdrawals: Vec<WithdrawalUpdate>,
 }

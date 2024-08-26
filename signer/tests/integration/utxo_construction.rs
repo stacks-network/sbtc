@@ -14,15 +14,32 @@ use bitcoin::TxOut;
 use bitcoin::Witness;
 use bitcoin::XOnlyPublicKey;
 use bitcoincore_rpc::RpcApi;
+use bitvec::array::BitArray;
+use rand::distributions::Uniform;
+use rand::Rng as _;
 use secp256k1::SECP256K1;
-use signer::utxo::DepositRequest;
-use signer::utxo::SbtcRequests;
-use signer::utxo::SignerBtcState;
-use signer::utxo::SignerUtxo;
+use signer::bitcoin::utxo::DepositRequest;
+use signer::bitcoin::utxo::SbtcRequests;
+use signer::bitcoin::utxo::SignerBtcState;
+use signer::bitcoin::utxo::SignerUtxo;
+use signer::bitcoin::utxo::WithdrawalRequest;
 
-use crate::regtest;
-use crate::regtest::AsUtxo;
 use regtest::Recipient;
+use sbtc::testing::regtest;
+use sbtc::testing::regtest::AsUtxo;
+
+pub fn generate_withdrawal() -> (WithdrawalRequest, Recipient) {
+    let recipient = Recipient::new(AddressType::P2tr);
+
+    let req = WithdrawalRequest {
+        amount: rand::rngs::OsRng.sample(Uniform::new(100_000, 250_000)),
+        max_fee: 250_000,
+        address: recipient.address.clone(),
+        signer_bitmap: BitArray::ZERO,
+    };
+
+    (req, recipient)
+}
 
 pub fn make_deposit_request<U>(
     depositor: &Recipient,
@@ -43,7 +60,7 @@ where
 
     let node = NodeInfo::combine(leaf1, leaf2).unwrap();
 
-    let unspendable_key = *signer::utxo::unspendable_taproot_key();
+    let unspendable_key = *sbtc::UNSPENDABLE_TAPROOT_KEY;
     let taproot = TaprootSpendInfo::from_node_info(SECP256K1, unspendable_key, node);
     let merkle_root = taproot.merkle_root();
 
@@ -73,7 +90,7 @@ where
     let req = DepositRequest {
         outpoint: OutPoint::new(deposit_tx.compute_txid(), 0),
         max_fee: amount,
-        signer_bitmap: Vec::new(),
+        signer_bitmap: BitArray::ZERO,
         amount,
         deposit_script: deposit_script.clone(),
         reclaim_script: reclaim_script.clone(),
@@ -178,6 +195,7 @@ fn deposits_add_to_controlled_amounts() {
             fee_rate: 10.0,
             public_key: signers_public_key,
             last_fees: None,
+            magic_bytes: [b'T', b'3'],
         },
         accept_threshold: 4,
         num_signers: 7,
@@ -221,7 +239,7 @@ fn withdrawals_reduce_to_signers_amounts() {
 
     // Now lets make a withdrawal request. This recipient shouldn't
     // have any coins to their name.
-    let (withdrawal_request, recipient) = regtest::generate_withdrawal();
+    let (withdrawal_request, recipient) = generate_withdrawal();
     assert_eq!(recipient.get_balance(rpc).to_sat(), 0);
 
     // Okay now we try to peg-out the withdrawal by making a transaction. Let's
@@ -241,6 +259,7 @@ fn withdrawals_reduce_to_signers_amounts() {
             fee_rate: FEE_RATE,
             public_key: signers_public_key,
             last_fees: None,
+            magic_bytes: [b'T', b'3'],
         },
         accept_threshold: 4,
         num_signers: 7,

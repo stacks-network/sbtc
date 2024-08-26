@@ -1,8 +1,6 @@
 use crate::config::SETTINGS;
 use reqwest::Client;
-use sbtc_common::logging::setup_logging;
-use std::net::ToSocketAddrs;
-use tracing::{error, info};
+use tracing::info;
 use warp::Filter;
 
 mod api;
@@ -12,7 +10,7 @@ mod config;
 
 #[tokio::main]
 async fn main() {
-    setup_logging(false);
+    blocklist_client::logging::setup_logging(false);
 
     let client = Client::new();
 
@@ -23,13 +21,7 @@ async fn main() {
     let addr_str = format!("{}:{}", SETTINGS.server.host, SETTINGS.server.port);
     info!("Server will run on {}", addr_str);
 
-    let addr = match addr_str.to_socket_addrs() {
-        Ok(mut addrs) => addrs.next().expect("No addresses found"),
-        Err(e) => {
-            error!("Failed to resolve address: {}", e);
-            return;
-        }
-    };
+    let addr: std::net::SocketAddr = addr_str.parse().expect("Failed to parse address");
 
     warp::serve(routes).run(addr).await;
 }

@@ -7,7 +7,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - "./devenv/dynamodb/data:/home/dynamodblocal/data"
+      - "${DYNAMODB_DB_DIR}:/home/dynamodblocal/data"
     networks:
       - aws-local-vpc
 
@@ -32,6 +32,8 @@ services:
   # Hosts the SAM CLI
   apigateway:
     build: devenv/apigateway
+    profiles:
+      - apigateway
     depends_on:
       aws-setup:
         condition: service_completed_successfully
@@ -62,20 +64,6 @@ services:
         --warm-containers LAZY
         --env-vars /lambda/env.json
         -t /cdk.out/EmilyStack.devenv.template.json
-    networks:
-      - aws-local-vpc
-
-  service-test:
-    build: devenv/service-test
-    image: "debian:12.5"
-    profiles:
-      - test
-    depends_on:
-      apigateway:
-        condition: service_started
-    volumes:
-      - "./devenv/service-test:/service-test:ro"
-    command: bash /service-test/curl-test.sh apigateway 3000 5
     networks:
       - aws-local-vpc
 
