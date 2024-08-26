@@ -33,7 +33,7 @@ pub struct Deposit {
     pub bitcoin_tx_output_index: u32,
     /// Stacks address to received the deposited sBTC.
     pub recipient: String,
-    /// Amount of BTC being deposited.
+    /// Amount of BTC being deposited in satoshis.
     pub amount: u64,
     /// The most recent Stacks block height the API was aware of when the deposit was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
@@ -103,7 +103,7 @@ pub struct DepositInfo {
     pub bitcoin_tx_output_index: u32,
     /// Stacks address to received the deposited sBTC.
     pub recipient: String,
-    /// Amount of BTC being deposited.
+    /// Amount of BTC being deposited in satoshis.
     pub amount: u64,
     /// The most recent Stacks block height the API was aware of when the deposit was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain

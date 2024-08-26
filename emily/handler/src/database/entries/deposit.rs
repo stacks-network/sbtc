@@ -42,7 +42,7 @@ pub struct DepositEntry {
     pub version: u64,
     /// Stacks address to received the deposited sBTC.
     pub recipient: String,
-    /// Amount of BTC being deposited.
+    /// Amount of BTC being deposited in satoshis.
     pub amount: u64,
     /// Deposit parameters.
     #[serde(flatten)]
@@ -332,7 +332,7 @@ pub struct DepositInfoEntry {
     pub primary_index_key: DepositEntryKey,
     /// Stacks address to received the deposited sBTC.
     pub recipient: String,
-    /// Amount of BTC being deposited.
+    /// Amount of BTC being deposited in satoshis.
     pub amount: u64,
     /// The most recent Stacks block hash the API was aware of when the deposit was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain

@@ -35,7 +35,7 @@ pub struct Withdrawal {
     pub stacks_block_height: u64,
     /// The recipient Bitcoin address.
     pub recipient: String,
-    /// Amount of BTC being withdrawn.
+    /// Amount of BTC being withdrawn in satoshis.
     pub amount: u64,
     /// The most recent Stacks block height the API was aware of when the withdrawal was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
@@ -103,7 +103,7 @@ pub struct WithdrawalInfo {
     pub stacks_block_height: u64,
     /// The recipient Bitcoin address.
     pub recipient: String,
-    /// Amount of BTC being withdrawn.
+    /// Amount of BTC being withdrawn in satoshis.
     pub amount: u64,
     /// The most recent Stacks block height the API was aware of when the withdrawal was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain

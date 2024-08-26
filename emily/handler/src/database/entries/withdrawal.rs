@@ -44,7 +44,7 @@ pub struct WithdrawalEntry {
     pub version: u64,
     /// Stacks address to received the withdrawn sBTC.
     pub recipient: String,
-    /// Amount of BTC being withdrawn.
+    /// Amount of BTC being withdrawn in satoshis.
     pub amount: u64,
     /// Withdrawal parameters.
     #[serde(flatten)]
@@ -331,7 +331,7 @@ pub struct WithdrawalInfoEntry {
     pub stacks_block_height: u64,
     /// Stacks address to received the withdrawn sBTC.
     pub recipient: String,
-    /// Amount of BTC being withdrawn.
+    /// Amount of BTC being withdrawn in satoshis.
     pub amount: u64,
     /// The most recent Stacks block hash the API was aware of when the withdrawal was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain

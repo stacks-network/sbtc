@@ -65,7 +65,7 @@ pub async fn get_deposit(
             .try_into()?;
 
         // Respond.
-        Ok(with_status(json(&(deposit as Deposit)), StatusCode::OK))
+        Ok(with_status(json(&deposit), StatusCode::OK))
     }
 
     // Handle and respond.

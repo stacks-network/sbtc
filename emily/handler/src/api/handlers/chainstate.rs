@@ -34,7 +34,7 @@ pub async fn get_chain_tip(context: EmilyContext) -> impl warp::reply::Reply {
         // TODO(390): Handle multiple being in the tip list here.
         let api_state = accessors::get_api_state(&context).await?;
         let chaintip: Chainstate = api_state.chaintip().into();
-        Ok(with_status(json(&(chaintip as Chainstate)), StatusCode::OK))
+        Ok(with_status(json(&chaintip), StatusCode::OK))
     }
     // Handle and respond.
     handler(context)
@@ -72,7 +72,7 @@ pub async fn get_chainstate_at_height(
             .into();
         // Respond.
         Ok(with_status(
-            json(&(chainstate as Chainstate)),
+            json(&chainstate),
             StatusCode::OK,
         ))
     }
@@ -109,7 +109,7 @@ pub async fn set_chainstate(context: EmilyContext, body: Chainstate) -> impl war
         add_chainstate_entry_or_reorg(&context, &chainstate).await?;
         // Respond.
         Ok(with_status(
-            json(&(chainstate as Chainstate)),
+            json(&chainstate),
             StatusCode::CREATED,
         ))
     }
@@ -149,7 +149,7 @@ pub async fn update_chainstate(
         add_chainstate_entry_or_reorg(&context, &chainstate).await?;
         // Respond.
         Ok(with_status(
-            json(&(chainstate as Chainstate)),
+            json(&chainstate),
             StatusCode::CREATED,
         ))
     }

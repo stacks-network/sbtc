@@ -48,7 +48,7 @@ pub async fn get_withdrawal(context: EmilyContext, request_id: u64) -> impl warp
 
         // Respond.
         Ok(with_status(
-            json(&(withdrawal as Withdrawal)),
+            json(&withdrawal),
             StatusCode::OK,
         ))
     }
