@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     api::models::{
+        chainstate::Chainstate,
         common::{BitcoinAddress, BlockHeight, Satoshis, StacksBlockHash, StacksPrinciple, Status},
         withdrawal::{
             requests::{UpdateWithdrawalsRequestBody, WithdrawalUpdate},
@@ -113,6 +114,58 @@ impl WithdrawalEntry {
             "Withdrawal entry must always have at least one event, but entry with id {:?} did not.",
             self.key(),
         )))
+    }
+
+    /// Reorgs around a given chainstate.
+    /// TODO(TBD): Remove duplicate code around deposits and withdrawals if possible.
+    pub fn reorganize_around(&mut self, chainstate: &Chainstate) -> Result<(), Error> {
+        // Update the history to have the histories wiped after the reorg.
+        self.history.retain(|event| {
+            // The event is younger than the reorg...
+            (chainstate.stacks_block_height > event.stacks_block_height)
+                // Or the event is as old as the reorg and has the same block hash...
+                || ((chainstate.stacks_block_height == event.stacks_block_height)
+                    && (chainstate.stacks_block_hash == event.stacks_block_hash))
+        });
+        // If the history is empty add a reprocessing event.
+        if self.history.is_empty() {
+            self.history = vec![WithdrawalEvent {
+                status: StatusEntry::Reprocessing,
+                message: "Reprocessing withdrawal status after reorg.".to_string(),
+                stacks_block_height: chainstate.stacks_block_height,
+                stacks_block_hash: chainstate.stacks_block_hash.clone(),
+            }]
+        }
+        // Synchronize self with the new history.
+        self.synchronize_with_history()?;
+        // Return.
+        Ok(())
+    }
+
+    /// Synchronizes the entry with its history.
+    ///
+    /// These entries contain an internal vector of history entries in chronological order.
+    /// The last entry in the history vector is the latest entry, meaning the most up-to-date data.
+    /// Within this last history are some fields that we want to be able to index into the
+    /// table with; at the moment of writing this it's `status` and `last_update_height`.
+    ///
+    /// DynamoDB can only be sorted and indexed by top level fields, so in order to allow the table
+    /// to be searchable by `status` or ordered by `last_update_height` there needs to be a top
+    /// level field for it.
+    ///
+    /// This function takes the entry and then synchronizes the top level fields that should
+    /// reflect the latest data in the history vector with the latest entry in the history vector.
+    pub fn synchronize_with_history(&mut self) -> Result<(), Error> {
+        // Get latest event.
+        let latest_event = self.latest_event()?;
+        // Calculate the new values.
+        let new_status: Status = (&latest_event.status).into();
+        let new_last_update_height: u64 = latest_event.stacks_block_height;
+        // Set variables.
+        self.status = new_status;
+        self.last_update_height = new_last_update_height;
+        // Return.
+        Ok(())
     }
 }
 

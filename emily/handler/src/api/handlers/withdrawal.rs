@@ -140,8 +140,13 @@ pub async fn create_withdrawal(
         context: EmilyContext,
         body: CreateWithdrawalRequestBody,
     ) -> Result<impl warp::reply::Reply, Error> {
-        // Set variables.
-        // TODO(396): Remove dummy hash; take hash from request.
+        // Get the api state and error if the api state is claimed by a reorg.
+        //
+        // Note: This may not be necessary due to the implied order of events
+        // that the API can receive from stacks nodes, but it's being added here
+        // in order to enforce added stability to the API during a reorg.
+        let api_state = accessors::get_api_state(&context).await?;
+        api_state.error_if_reorganizing()?;
 
         let CreateWithdrawalRequestBody {
             request_id,
@@ -213,6 +218,13 @@ pub async fn update_withdrawals(
         context: EmilyContext,
         body: UpdateWithdrawalsRequestBody,
     ) -> Result<impl warp::reply::Reply, Error> {
+        // Get the api state and error if the api state is claimed by a reorg.
+        //
+        // Note: This may not be necessary due to the implied order of events
+        // that the API can receive from stacks nodes, but it's being added here
+        // in order to enforce added stability to the API during a reorg.
+        let api_state = accessors::get_api_state(&context).await?;
+        api_state.error_if_reorganizing()?;
         // Validate request.
         let validated_request: ValidatedUpdateWithdrawalRequest = body.try_into()?;
         // Create aggregator.

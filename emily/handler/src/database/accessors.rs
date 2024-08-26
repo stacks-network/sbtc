@@ -16,7 +16,8 @@ use crate::{
 
 use super::entries::{
     chainstate::{
-        ApiStateEntry, ChainstateEntry, ChainstateTablePrimaryIndex, SpecialApiStateIndex,
+        ApiStateEntry, ApiStatus, ChainstateEntry, ChainstateTablePrimaryIndex,
+        SpecialApiStateIndex,
     },
     deposit::{
         DepositEntry, DepositEntryKey, DepositInfoEntry, DepositTablePrimaryIndex,
@@ -120,7 +121,7 @@ pub async fn get_all_deposit_entries_modified_after_height_with_status(
         context,
         status,
         &minimum_height,
-        ">=",
+        ">",
         maybe_page_size,
     )
     .await
@@ -301,7 +302,7 @@ pub async fn get_all_withdrawal_entries_modified_after_height_with_status(
         context,
         status,
         &minimum_height,
-        ">=",
+        ">",
         maybe_page_size,
     )
     .await
@@ -369,17 +370,24 @@ pub async fn add_chainstate_entry(
     context: &EmilyContext,
     entry: &ChainstateEntry,
 ) -> Result<(), Error> {
+    // Get the current api state and give up if reorging.
+    let mut api_state = get_api_state(context).await?;
+    if let ApiStatus::Reorg(reorg_chaintip) = &api_state.api_status {
+        if reorg_chaintip != entry {
+            return Err(Error::InconsistentState(Inconsistency::ItemUpdate(
+                "Attempting to update chainstate during a reorg.".to_string(),
+            )));
+        }
+    }
+
     // Get the existing chainstate entry for height. If there's a conflict
     // then propagate it back to the caller.
     let current_chainstate_entry_result =
         get_chainstate_entry_at_height(context, &entry.key.height)
             .await
-            .and_then(|existing_entry| {
+            .and_then(|existing_entry: ChainstateEntry| {
                 if &existing_entry != entry {
-                    Err(Error::InconsistentState(Inconsistency::Chainstate(vec![
-                        entry.clone(),
-                        existing_entry,
-                    ])))
+                    Err(Error::from_inconsistent_chainstate_entry(existing_entry))
                 } else {
                     Ok(())
                 }
@@ -395,16 +403,11 @@ pub async fn add_chainstate_entry(
         }
     };
 
-    // TODO(390): Determine whether the order for these operations is correct
-    // given the eventual consistency guarantees of dynamodb.
-    //
-    // TODO(TBD): Handle api status being "Reorg" during this period.
-    let mut api_state = get_api_state(context).await?;
-    let blocks_higher_than_current_tip =
-        (entry.key.height as i128) - (api_state.chaintip.key.height as i128);
+    let chaintip: ChainstateEntry = api_state.chaintip();
+    let blocks_higher_than_current_tip = (entry.key.height as i128) - (chaintip.key.height as i128);
 
-    if blocks_higher_than_current_tip == 1 || api_state.chaintip.key.height == 0 {
-        api_state.chaintip = entry.clone();
+    if blocks_higher_than_current_tip == 1 || chaintip.key.height == 0 {
+        api_state.api_status = ApiStatus::Stable(entry.clone());
         // Put the chainstate entry into the table. If two lambdas get exactly here at the same time
         // and have different views of the block hash at this height it would result in two hashes
         // for the same height. This will be explicitly handled when the api attempts to retrieve the
@@ -415,7 +418,9 @@ pub async fn add_chainstate_entry(
     } else if blocks_higher_than_current_tip > 1 {
         // Attempting to put an entry into the table that's significantly higher than the current
         // known chain tip.
-        Err(Error::NotAcceptable)
+        Err(Error::InconsistentState(Inconsistency::ItemUpdate("
+            Attempting to put an entry into the table that's significantly higher than the current known chain tip.".to_string(),
+        )))
     } else {
         // Current tip is higher than the entry we attempted to emplace
         // but there is no record of the chainstate at the current height.
@@ -427,7 +432,7 @@ pub async fn add_chainstate_entry(
         // reorg has reset the knowledge of the API maintainer to an earlier time.
         //
         // Worst case this causes an unnecessary reorg.
-        Err(Error::InconsistentState(Inconsistency::Chainstate(vec![])))
+        Err(Error::from_inconsistent_chainstate_entry(chaintip))
     }
 }
 
@@ -445,7 +450,7 @@ pub async fn get_chainstate_entry_at_height(
     match entries.as_slice() {
         [] => Err(Error::NotFound),
         [single_entry] => Ok(single_entry.clone()),
-        [_, ..] => Err(Error::InconsistentState(Inconsistency::Chainstate(entries))),
+        [_, ..] => Err(Error::from_inconsistent_chainstate_entries(entries)),
     }
 }
 

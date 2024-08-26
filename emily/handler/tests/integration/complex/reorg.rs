@@ -1,5 +1,5 @@
 use emily_handler::api::models::{
-    chainstate::Chainstate, deposit::requests::CreateDepositRequestBody,
+    chainstate::Chainstate, common::Status, deposit::requests::CreateDepositRequestBody,
     withdrawal::requests::CreateWithdrawalRequestBody,
 };
 
@@ -19,6 +19,8 @@ struct ReorgScenario {
     initial_chain_length: u64,
     /// The depth of the reorg.
     reorg_depth: u64,
+    /// Whether to do a reorg.
+    do_reorg: bool,
 }
 
 /// Reorg validate implementation.
@@ -53,6 +55,19 @@ impl ReorgScenario {
     }
 }
 
+/// Tests a simple blockchain setup without a reorg.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+pub async fn simple_no_reorg() {
+    // Setup client.
+    simple_reorg_test_base(ReorgScenario {
+        initial_chain_length: 10,
+        reorg_depth: 5,
+        do_reorg: false,
+    })
+    .await;
+}
+
 /// Tests a simple blockchain reorg.
 ///
 /// To test a simple reorg we create a single deposit and withdrawal for a number
@@ -65,6 +80,7 @@ pub async fn simple_reorg() {
     simple_reorg_test_base(ReorgScenario {
         initial_chain_length: 10,
         reorg_depth: 5,
+        do_reorg: true,
     })
     .await;
 }
@@ -76,6 +92,7 @@ async fn simple_reorg_test_base(scenario: ReorgScenario) {
     let ReorgScenario {
         initial_chain_length,
         reorg_depth: _,
+        do_reorg,
     } = scenario;
 
     // Setup the test client and environment.
@@ -83,7 +100,7 @@ async fn simple_reorg_test_base(scenario: ReorgScenario) {
     client.setup_test().await;
 
     // Identifier for the current fork.
-    let fork_id: u32 = 0;
+    let mut fork_id: u32 = 0;
 
     // Step 1: Make an initial fork.
     // -------------------------------------------------------------------------
@@ -128,32 +145,33 @@ async fn simple_reorg_test_base(scenario: ReorgScenario) {
         util::test_chainstate(initial_chain_length - 1, fork_id),
     );
 
-    // // TODO(348): Uncomment once updates are supported.
-    // // Step 2: Create a conflicting fork.
-    // // -------------------------------------------------------------------------
-    // fork_id += 1;
+    // Do the reorg part of the test if specified.
+    if do_reorg {
+        // Step 2: Create a conflicting fork.
+        // -------------------------------------------------------------------------
+        fork_id += 1;
 
-    // // Set a conflicting chainstate for a lower than top depth to initiate an internal reorg.
-    // let reorganized_chainstates = scenario.reorganized_chainstates(fork_id);
-    // let lowest_reorganized_block: Chainstate = reorganized_chainstates.first().unwrap().clone();
-    // client.update_chainstate(&lowest_reorganized_block).await;
+        // Set a conflicting chainstate for a lower than top depth to initiate an internal reorg.
+        let reorganized_chainstates = scenario.reorganized_chainstates(fork_id);
+        let lowest_reorganized_block: Chainstate = reorganized_chainstates.first().unwrap().clone();
+        client.update_chainstate(&lowest_reorganized_block).await;
 
-    // // Verify that the chain tip is updated to be the new reorg height.
-    // let chain_tip: Chainstate = client.get_chaintip().await;
-    // assert_eq!(chain_tip, lowest_reorganized_block);
+        // Verify that the chain tip is updated to be the new reorg height.
+        let chain_tip: Chainstate = client.get_chaintip().await;
+        assert_eq!(chain_tip, lowest_reorganized_block);
 
-    // // Description:
-    // //
-    // // Now that there's a conflicting fork we should see that all the withdrawals created
-    // // within the span of the reorged blocks are effectively "wiped". Because we created one
-    // // withdrawal per block, we should only see as many withdrawals as there were un-reorged
-    // // blocks.
+        let all_deposits = client.get_all_deposits().await;
 
-    // let all_deposits = client.get_all_deposits().await;
-    // let all_withdrawals = client.get_all_withdrawals().await;
+        assert_eq!(all_deposits.len(), initial_chain_length as usize);
+        let all_reevaluating_deposits = client
+            .get_all_deposits_with_status(&Status::Reprocessing)
+            .await;
 
-    // assert_eq!(all_deposits.len(), initial_chain_length as usize);
-    // assert_eq!(all_withdrawals.len(), reorganized_chainstates.len());
+        assert_eq!(
+            all_reevaluating_deposits.len(),
+            reorganized_chainstates.len(),
+        );
+    }
 
     // Setup for the next test.
     client.reset_environment().await;

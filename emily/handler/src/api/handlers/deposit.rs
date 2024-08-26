@@ -205,8 +205,11 @@ pub async fn create_deposit(
     ) -> Result<impl warp::reply::Reply, Error> {
         // Set variables.
         let api_state = accessors::get_api_state(&context).await?;
-        let stacks_block_hash: StacksBlockHash = api_state.chaintip.key.hash;
-        let stacks_block_height: BlockHeight = api_state.chaintip.key.height;
+        api_state.error_if_reorganizing()?;
+
+        let chaintip = api_state.chaintip();
+        let stacks_block_hash: StacksBlockHash = chaintip.key.hash;
+        let stacks_block_height: BlockHeight = chaintip.key.height;
         let status = Status::Pending;
         // Make table entry.
         let deposit_entry: DepositEntry = DepositEntry {
@@ -267,6 +270,13 @@ pub async fn update_deposits(
         context: EmilyContext,
         body: UpdateDepositsRequestBody,
     ) -> Result<impl warp::reply::Reply, Error> {
+        // Get the api state and error if the api state is claimed by a reorg.
+        //
+        // Note: This may not be necessary due to the implied order of events
+        // that the API can receive from stacks nodes, but it's being added here
+        // in order to enforce added stability to the API during a reorg.
+        let api_state = accessors::get_api_state(&context).await?;
+        api_state.error_if_reorganizing()?;
         // Validate request.
         let validated_request: ValidatedUpdateDepositsRequest = body.try_into()?;
         // Create aggregator.

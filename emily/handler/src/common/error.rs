@@ -15,13 +15,16 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use warp::{reject::Reject, reply::Reply};
 
-use crate::database::entries::chainstate::ChainstateEntry;
+use crate::{api::models::chainstate::Chainstate, database::entries::chainstate::ChainstateEntry};
 
 /// State inconsistency representations.
 #[derive(Debug)]
 pub enum Inconsistency {
-    /// There is a chainstate inconsistency.
-    Chainstate(Vec<ChainstateEntry>),
+    /// There is a chainstate inconsistency, and all the chainstates
+    /// in the vector are the chainstates that are present in the API
+    /// but are not known to be correct. All chainstates in the vector
+    /// are considered equally canonical.
+    Chainstate(Vec<Chainstate>),
     /// There is an inconsistency in the way an item is being updated.
     ItemUpdate(String),
 }
@@ -90,6 +93,10 @@ pub enum Error {
     #[error("Inconsistent internal state: {0:?}")]
     InconsistentState(Inconsistency),
 
+    /// API is reorganizing.
+    #[error("Api is reorganizing around new chain tip {0:?}")]
+    Reorganzing(Chainstate),
+
     /// An entry update version conflict in a resource update resulted
     /// in an update not being performed.
     #[error("Version conflict")]
@@ -115,6 +122,7 @@ impl Error {
             Error::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             Error::RequestTimeout => StatusCode::REQUEST_TIMEOUT,
             Error::InconsistentState(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::Reorganzing(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Error::VersionConflict => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -141,9 +149,20 @@ impl Error {
             | Error::Network(_)
             | Error::ServiceUnavailable
             | Error::VersionConflict
+            | Error::Reorganzing(_)
             | Error::InternalServer => Error::InternalServer,
             err => err,
         }
+    }
+    /// Makes an inconsistency error from a vector of chainstate entries.
+    pub fn from_inconsistent_chainstate_entries(entries: Vec<ChainstateEntry>) -> Self {
+        Error::InconsistentState(Inconsistency::Chainstate(
+            entries.into_iter().map(|entry| entry.into()).collect(),
+        ))
+    }
+    /// Makes an inconsistency error from a single chainstate entry.
+    pub fn from_inconsistent_chainstate_entry(entry: ChainstateEntry) -> Self {
+        Error::InconsistentState(Inconsistency::Chainstate(vec![entry.into()]))
     }
 }
 

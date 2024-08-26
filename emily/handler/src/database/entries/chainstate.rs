@@ -4,9 +4,12 @@ use std::hash::Hash;
 
 use serde::{Deserialize, Serialize};
 
-use crate::api::models::{
-    chainstate::Chainstate,
-    common::{BlockHeight, StacksBlockHash},
+use crate::{
+    api::models::{
+        chainstate::Chainstate,
+        common::{BlockHeight, StacksBlockHash},
+    },
+    common::error::Error,
 };
 
 use super::{EntryTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait, VersionedEntryTrait};
@@ -131,15 +134,21 @@ impl Default for SpecialApiStateKey {
 }
 
 /// Api status that indicates the overall state of the API.
-#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum ApiStatus {
     /// The API is currently stable.
-    #[default]
-    Stable,
+    Stable(ChainstateEntry),
     /// The API state is currently being reorganized and should be assumed to
     /// be unsafe to modify.
-    Reorg,
+    Reorg(ChainstateEntry),
+}
+
+/// Implement default for ApiStatus.
+impl Default for ApiStatus {
+    fn default() -> Self {
+        ApiStatus::Stable(ChainstateEntry::default())
+    }
 }
 
 /// API state struct.
@@ -153,18 +162,32 @@ pub struct ApiStateEntry {
     /// Version field to prevent race conditions in updating the entry. If this field
     /// increments once a nanosecond it will overflow in ~ 584.94 years.
     pub version: u64,
-    /// Current chain tip.
-    pub chaintip: ChainstateEntry,
     /// Api Status.
     pub api_status: ApiStatus,
 }
 
+/// Api state entry implementation.
 impl ApiStateEntry {
     /// Get the special key.
     pub fn key() -> SpecialApiStateKey {
         SpecialApiStateKey {
             api_state_token: API_STATE_HASH_TOKEN.to_string(),
             negative_one: API_STATE_HEIGHT_TOKEN,
+        }
+    }
+    /// Gets the current chain tip.
+    pub fn chaintip(&self) -> ChainstateEntry {
+        match &self.api_status {
+            ApiStatus::Stable(chaintip) => chaintip.clone(),
+            ApiStatus::Reorg(chaintip) => chaintip.clone(),
+        }
+    }
+    /// Create the appropriate error if the API is reorganizing.
+    pub fn error_if_reorganizing(&self) -> Result<(), Error> {
+        if let ApiStatus::Reorg(chaintip) = &self.api_status {
+            Err(Error::Reorganzing(chaintip.clone().into()))
+        } else {
+            Ok(())
         }
     }
 }

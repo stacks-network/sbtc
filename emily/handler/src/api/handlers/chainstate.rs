@@ -1,17 +1,21 @@
 //! Handlers for chainstate endpoints.
 use crate::{
-    api::models::{
-        chainstate::{
-            requests::{SetChainstateRequestBody, UpdateChainstateRequestBody},
-            responses::{GetChainstateResponse, SetChainstateResponse},
-            Chainstate,
+    api::{
+        handlers::internal::{execute_reorg_handler, ExecuteReorgRequest},
+        models::{
+            chainstate::{
+                requests::{SetChainstateRequestBody, UpdateChainstateRequestBody},
+                responses::{GetChainstateResponse, SetChainstateResponse},
+                Chainstate,
+            },
+            common::BlockHeight,
         },
-        common::BlockHeight,
     },
-    common::error::Error,
+    common::error::{Error, Inconsistency},
     context::EmilyContext,
     database::{accessors, entries::chainstate::ChainstateEntry},
 };
+use tracing::warn;
 use warp::http::StatusCode;
 use warp::reply::{json, with_status, Reply};
 
@@ -36,7 +40,7 @@ pub async fn get_chain_tip(context: EmilyContext) -> impl warp::reply::Reply {
     async fn handler(context: EmilyContext) -> Result<impl warp::reply::Reply, Error> {
         // TODO(390): Handle multiple being in the tip list here.
         let api_state = accessors::get_api_state(&context).await?;
-        let chaintip: Chainstate = api_state.chaintip.into();
+        let chaintip: Chainstate = api_state.chaintip().into();
         Ok(with_status(
             json(&(chaintip as GetChainstateResponse)),
             StatusCode::OK,
@@ -75,31 +79,15 @@ pub async fn get_chainstate_at_height(
         context: EmilyContext,
         height: BlockHeight,
     ) -> Result<impl warp::reply::Reply, Error> {
-        // Get chainstate at height - hopefully just one.
-        //
-        // If there is more than one then there is a state inconsistency. This is potentially
-        // okay but the hope then is that the database is actively being repaired.
-        let num_to_retrieve_if_multiple = 5;
-        let (entries, _) = accessors::get_chainstate_entries_for_height(
-            &context,
-            &height,
-            None,
-            Some(num_to_retrieve_if_multiple),
-        )
-        .await?;
-        // Convert data into resource types.
-        let chainstates: Vec<Chainstate> = entries.into_iter().map(|entry| entry.into()).collect();
+        // Get chainstate at height.
+        let chainstate: Chainstate = accessors::get_chainstate_entry_at_height(&context, &height)
+            .await?
+            .into();
         // Respond.
-        match &chainstates[..] {
-            [] => Err(Error::NotFound),
-            [chainstate] => Ok(with_status(
-                json(chainstate as &GetChainstateResponse),
-                StatusCode::OK,
-            )),
-            _ => Err(Error::Debug(format!(
-                "Found too many withdrawals: {chainstates:?}"
-            ))),
-        }
+        Ok(with_status(
+            json(&(chainstate as GetChainstateResponse)),
+            StatusCode::OK,
+        ))
     }
     // Handle and respond.
     handler(context, height)
@@ -134,9 +122,7 @@ pub async fn set_chainstate(
     ) -> Result<impl warp::reply::Reply, Error> {
         // Convert body to the correct type.
         let chainstate: Chainstate = body;
-        let chainstate_entry: ChainstateEntry = chainstate.clone().into();
-        // TODO(TBD): handle a conflicting internal state error.
-        accessors::add_chainstate_entry(&context, &chainstate_entry).await?;
+        add_chainstate_entry_or_reorg(&context, &chainstate).await?;
         // Respond.
         Ok(with_status(
             json(&(chainstate as SetChainstateResponse)),
@@ -166,10 +152,54 @@ pub async fn set_chainstate(
     )
 )]
 pub async fn update_chainstate(
-    _context: EmilyContext,
-    _request: UpdateChainstateRequestBody,
+    context: EmilyContext,
+    request: UpdateChainstateRequestBody,
 ) -> impl warp::reply::Reply {
-    Error::NotImplemented
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        body: SetChainstateRequestBody,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        // Convert body to the correct type.
+        let chainstate: Chainstate = body;
+        add_chainstate_entry_or_reorg(&context, &chainstate).await?;
+        // Respond.
+        Ok(with_status(
+            json(&(chainstate as SetChainstateResponse)),
+            StatusCode::CREATED,
+        ))
+    }
+    // Handle and respond.
+    handler(context, request)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
+}
+
+/// Adds the chainstate to the table, and reorganizes the API if there's a
+/// conflict that suggests it needs a reorg in order for this entry to be
+/// consistent.
+async fn add_chainstate_entry_or_reorg(
+    context: &EmilyContext,
+    chainstate: &Chainstate,
+) -> Result<(), Error> {
+    // Get chainstate as entry.
+    let entry: ChainstateEntry = chainstate.clone().into();
+    match accessors::add_chainstate_entry(context, &entry).await {
+        Err(Error::InconsistentState(Inconsistency::Chainstate(conflicting_chainstates))) => {
+            let execute_reorg_request = ExecuteReorgRequest {
+                canonical_tip: chainstate.clone(),
+                conflicting_chainstates,
+            };
+            // Execute the reorg.
+            execute_reorg_handler(context, execute_reorg_request)
+                .await
+                .inspect_err(|e| warn!("Failed executing reorg with error {}", e))?;
+        }
+        e @ Err(_) => return e,
+        _ => {}
+    };
+    // Return.
+    Ok(())
 }
 
 // TODO(393): Add handler unit tests.

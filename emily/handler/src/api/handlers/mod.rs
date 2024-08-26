@@ -12,6 +12,8 @@ pub mod chainstate;
 pub mod deposit;
 /// Health handlers.
 pub mod health;
+/// Internal handlers.
+pub mod internal;
 /// Testing handlers.
 #[cfg(feature = "testing")]
 pub mod testing;

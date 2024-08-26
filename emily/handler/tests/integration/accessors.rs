@@ -135,7 +135,7 @@ async fn get_deposits_modified_after_height() {
         accessors::get_all_deposit_entries_modified_after_height_with_status(
             &context,
             &status,
-            minimum_height,
+            minimum_height - 1,
             None,
         )
         .await
