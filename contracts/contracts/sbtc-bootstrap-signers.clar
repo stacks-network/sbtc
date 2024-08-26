@@ -14,7 +14,7 @@
 ;; The function caller is not the current signer principal
 (define-constant ERR_INVALID_CALLER (err u201))
 ;; The given signature threshold must be greater than 50% and less than or
-;; equal to 100% of the total number signer keys.
+;; equal to 100% of the total number of signer keys.
 (define-constant ERR_SIGNATURE_THRESHOLD (err u202))
 
 ;; data vars
@@ -38,7 +38,7 @@
             (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
             (new-signer-principal (pubkeys-to-principal new-keys new-signature-threshold))
         )
-        ;; Checkc that the signature threshold is valid
+        ;; Check that the signature threshold is valid
         (asserts! (and (> new-signature-threshold (/ (len new-keys) u2))
                        (<= new-signature-threshold (len new-keys))) ERR_SIGNATURE_THRESHOLD)
 
