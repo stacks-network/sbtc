@@ -706,29 +706,39 @@ export const contracts = {
         ],
         Response<boolean, bigint>
       >,
-      completeWithdrawal: {
-        name: "complete-withdrawal",
+      completeWithdrawalAccept: {
+        name: "complete-withdrawal-accept",
         access: "public",
         args: [
           { name: "request-id", type: "uint128" },
-          { name: "status", type: "bool" },
-          {
-            name: "bitcoin-txid",
-            type: { optional: { buffer: { length: 32 } } },
-          },
-          { name: "signer-bitmap", type: { optional: "uint128" } },
-          { name: "output-index", type: { optional: "uint128" } },
-          { name: "fee", type: { optional: "uint128" } },
+          { name: "bitcoin-txid", type: { buffer: { length: 32 } } },
+          { name: "output-index", type: "uint128" },
+          { name: "signer-bitmap", type: "uint128" },
+          { name: "fee", type: "uint128" },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
         [
           requestId: TypedAbiArg<number | bigint, "requestId">,
-          status: TypedAbiArg<boolean, "status">,
-          bitcoinTxid: TypedAbiArg<Uint8Array | null, "bitcoinTxid">,
-          signerBitmap: TypedAbiArg<number | bigint | null, "signerBitmap">,
-          outputIndex: TypedAbiArg<number | bigint | null, "outputIndex">,
-          fee: TypedAbiArg<number | bigint | null, "fee">,
+          bitcoinTxid: TypedAbiArg<Uint8Array, "bitcoinTxid">,
+          outputIndex: TypedAbiArg<number | bigint, "outputIndex">,
+          signerBitmap: TypedAbiArg<number | bigint, "signerBitmap">,
+          fee: TypedAbiArg<number | bigint, "fee">,
+        ],
+        Response<boolean, bigint>
+      >,
+      completeWithdrawalReject: {
+        name: "complete-withdrawal-reject",
+        access: "public",
+        args: [
+          { name: "request-id", type: "uint128" },
+          { name: "signer-bitmap", type: "uint128" },
+        ],
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          requestId: TypedAbiArg<number | bigint, "requestId">,
+          signerBitmap: TypedAbiArg<number | bigint, "signerBitmap">,
         ],
         Response<boolean, bigint>
       >,

@@ -130,7 +130,7 @@ describe("initiating a withdrawal request", () => {
       amount: 1000n,
       maxFee: 10n,
       blockHeight: 2n,
-      topic: "withdrawal-request",
+      topic: "withdrawal-create",
       requestId: 1n,
     });
   });
@@ -398,6 +398,94 @@ describe("Accepting a withdrawal request", () => {
       deployer
     );
     expect(rovOk(token.getBalance(alice))).toEqual(0n);
+  });
+  test("accept withdrawal sets withdrawal-status to true", () => {
+    // Alice initiates withdrawalrequest
+    txOk(
+      deposit.completeDepositWrapper({
+        txid: new Uint8Array(32).fill(0),
+        voutIndex: 0,
+        amount: 1000n,
+        recipient: alice,
+      }),
+      deployer
+    );
+    txOk(
+      withdrawal.initiateWithdrawalRequest({
+        amount: 1000n,
+        recipient: alicePoxAddr,
+        maxFee: 10n,
+      }),
+      alice
+    );
+    txOk(
+      withdrawal.acceptWithdrawalRequest({
+        requestId: 1n,
+        bitcoinTxid: new Uint8Array(32).fill(0),
+        signerBitmap: 0n,
+        outputIndex: 10n,
+        fee: 10n,
+      }),
+      deployer
+    );
+    expect(rovOk(token.getBalance(alice))).toEqual(0n);
+
+    // Check that the request was stored correctly with the correct status
+    const request = rov(registry.getWithdrawalRequest(1n));
+    if (!request) {
+      throw new Error("Request not stored");
+    }
+    expect(request).toStrictEqual({
+      sender: alice,
+      recipient: alicePoxAddr,
+      amount: 1000n,
+      maxFee: 10n,
+      blockHeight: 2n,
+      status: true,
+    });
+  });
+  test("reject withdrawal sets withdrawal-status to false", () => {
+    // Alice initiates withdrawalrequest
+    txOk(
+      deposit.completeDepositWrapper({
+        txid: new Uint8Array(32).fill(0),
+        voutIndex: 0,
+        amount: 1000n,
+        recipient: alice,
+      }),
+      deployer
+    );
+    txOk(
+      withdrawal.initiateWithdrawalRequest({
+        amount: 1000n,
+        recipient: alicePoxAddr,
+        maxFee: 10n,
+      }),
+      alice
+    );
+    txOk(
+      withdrawal.rejectWithdrawalRequest({
+        requestId: 1n,
+        signerBitmap: 0n,
+      }),
+      deployer
+    );
+    // This is the original balance, rejecting the request restores it.
+    expect(rovOk(token.getBalance(alice))).toEqual(1000n);
+
+    // Check that the request was stored correctly with the correct status
+    const request = rov(registry.getWithdrawalRequest(1n));
+    if (!request) {
+      throw new Error("Request not stored");
+    }
+    expect(request).toStrictEqual({
+      sender: alice,
+      recipient: alicePoxAddr,
+      amount: 1000n,
+      maxFee: 10n,
+      blockHeight: 2n,
+      status: false,
+    });
   });
   test("Request is successfully accepted with fee less than max", () => {
     // Alice initiates withdrawalrequest

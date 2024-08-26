@@ -121,7 +121,7 @@
 ;; This function does not handle validation or moving the funds.
 ;; Instead, it is purely for the purpose of storing the request.
 ;; 
-;; The function will emit a print event with the topic "withdrawal-request"
+;; The function will emit a print event with the topic "withdrawal-create"
 ;; and the data of the request.
 (define-public (create-withdrawal-request
     (amount uint)
@@ -144,7 +144,7 @@
       block-height: height,
     })
     (print {
-      topic: "withdrawal-request",
+      topic: "withdrawal-create",
       amount: amount,
       request-id: id,
       sender: sender,
@@ -156,28 +156,53 @@
   )
 )
 
-;; Complete withdrawal request
+;; Complete withdrawal request by noting the acceptance in the
+;; withdrawal-status state map.
+;;
+;; This function will emit a print event with the topic
+;; "withdrawal-accept".
 ;; #[allow(unchecked_data)]
-(define-public (complete-withdrawal
+(define-public (complete-withdrawal-accept
     (request-id uint) 
-    (status bool)
-    (bitcoin-txid (optional (buff 32))) 
-    (signer-bitmap (optional uint))
-    (output-index (optional uint))
-    (fee (optional uint))
+    (bitcoin-txid (buff 32))
+    (output-index uint)
+    (signer-bitmap uint)
+    (fee uint)
   )
   (begin 
     (try! (is-protocol-caller))
     ;; Mark the withdrawal as completed
-    (map-insert withdrawal-status request-id status)
+    (map-insert withdrawal-status request-id true)
     (print {
-      topic: "completed-withdrawal",
+      topic: "withdrawal-accept",
       request-id: request-id,
-      request-status: status,
       bitcoin-txid: bitcoin-txid,
       signer-bitmap: signer-bitmap,
       output-index: output-index,
       fee: fee
+    })
+    (ok true)
+  )
+)
+
+;; Complete withdrawal request by noting the rejection in the 
+;; withdrawal-status state map.
+;;
+;; This function will emit a print event with the topic
+;; "withdrawal-reject".
+;; #[allow(unchecked_data)]
+(define-public (complete-withdrawal-reject
+    (request-id uint) 
+    (signer-bitmap uint)
+  )
+  (begin 
+    (try! (is-protocol-caller))
+    ;; Mark the withdrawal as completed
+    (map-insert withdrawal-status request-id false)
+    (print {
+      topic: "withdrawal-reject",
+      request-id: request-id,
+      signer-bitmap: signer-bitmap,
     })
     (ok true)
   )
@@ -205,8 +230,8 @@
     })
     (print {
       topic: "completed-deposit",
-      txid: txid,
-      vout-index: vout-index,
+      bitcoin-txid: txid,
+      output-index: vout-index,
       amount: amount
     })
     (ok true)

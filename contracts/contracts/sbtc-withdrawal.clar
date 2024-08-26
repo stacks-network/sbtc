@@ -77,7 +77,7 @@
       )
 
       ;; Call into registry to confirm accepted withdrawal
-      (try! (contract-call? .sbtc-registry complete-withdrawal request-id true (some bitcoin-txid) (some signer-bitmap) (some output-index) (some fee)))
+      (try! (contract-call? .sbtc-registry complete-withdrawal-accept request-id bitcoin-txid signer-bitmap output-index fee))
 
       (ok true)
   )
@@ -101,7 +101,7 @@
     (try! (contract-call? .sbtc-token protocol-unlock (get amount withdrawal) (get sender withdrawal)))
 
     ;; Call into registry to confirm accepted withdrawal
-    (try! (contract-call? .sbtc-registry complete-withdrawal request-id false none (some signer-bitmap) none none))
+    (try! (contract-call? .sbtc-registry complete-withdrawal-reject request-id signer-bitmap))
 
     (ok true)
   )
