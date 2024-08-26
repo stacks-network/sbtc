@@ -71,10 +71,7 @@ pub async fn get_chainstate_at_height(
             .await?
             .into();
         // Respond.
-        Ok(with_status(
-            json(&chainstate),
-            StatusCode::OK,
-        ))
+        Ok(with_status(json(&chainstate), StatusCode::OK))
     }
     // Handle and respond.
     handler(context, height)
@@ -108,10 +105,7 @@ pub async fn set_chainstate(context: EmilyContext, body: Chainstate) -> impl war
         let chainstate: Chainstate = body;
         add_chainstate_entry_or_reorg(&context, &chainstate).await?;
         // Respond.
-        Ok(with_status(
-            json(&chainstate),
-            StatusCode::CREATED,
-        ))
+        Ok(with_status(json(&chainstate), StatusCode::CREATED))
     }
     // Handle and respond.
     handler(context, body)
@@ -148,10 +142,7 @@ pub async fn update_chainstate(
         let chainstate: Chainstate = body;
         add_chainstate_entry_or_reorg(&context, &chainstate).await?;
         // Respond.
-        Ok(with_status(
-            json(&chainstate),
-            StatusCode::CREATED,
-        ))
+        Ok(with_status(json(&chainstate), StatusCode::CREATED))
     }
     // Handle and respond.
     handler(context, request)

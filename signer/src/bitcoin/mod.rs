@@ -2,13 +2,15 @@
 
 use std::future::Future;
 
+use crate::keys::PublicKey;
+
 pub mod fees;
 pub mod packaging;
 pub mod utxo;
 pub mod zmq;
 
 /// Represents the ability to interact with the bitcoin blockchain
-#[cfg_attr(feature = "testing", mockall::automock(type Error=crate::error::Error;))]
+#[cfg_attr(any(test, feature = "testing"), mockall::automock(type Error=crate::error::Error;))]
 pub trait BitcoinInteract {
     /// Error type
     type Error;
@@ -28,7 +30,7 @@ pub trait BitcoinInteract {
     /// Get the outstanding signer UTXO
     fn get_signer_utxo(
         &mut self,
-        aggregate_key: p256k1::point::Point,
+        aggregate_key: &PublicKey,
     ) -> impl Future<Output = Result<Option<utxo::SignerUtxo>, Self::Error>> + Send;
 
     /// Get the total fee amount and the fee rate for the last transaction that

@@ -306,7 +306,7 @@ mod tests {
     use crate::stacks::api::SubmitTxResponse;
     use crate::storage;
     use crate::testing::dummy;
-    use crate::utxo;
+    use crate::bitcoin::utxo;
 
     use super::*;
 
@@ -738,7 +738,7 @@ mod tests {
 
         async fn get_signer_utxo(
             &mut self,
-            _point: p256k1::point::Point,
+            _point: &PublicKey,
         ) -> Result<Option<utxo::SignerUtxo>, Self::Error> {
             unimplemented!()
         }

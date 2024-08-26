@@ -1215,28 +1215,6 @@ impl super::DbWrite for PgStore {
 
         Ok(())
     }
-
-    async fn write_rotate_keys_transaction(
-        &self,
-        key_rotation: &model::RotateKeysTransaction,
-    ) -> Result<(), Self::Error> {
-        sqlx::query(
-            r#"
-            INSERT INTO sbtc_signer.rotate_keys_transactions
-                (txid, aggregate_key, signer_set)
-            VALUES
-                ($1, $2, $3)
-            "#,
-        )
-        .bind(key_rotation.txid)
-        .bind(key_rotation.aggregate_key)
-        .bind(&key_rotation.signer_set)
-        .execute(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
-        Ok(())
-    }
 }
 
 #[cfg(test)]

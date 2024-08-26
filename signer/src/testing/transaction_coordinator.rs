@@ -1,11 +1,12 @@
 //! Test utilities for the transaction coordinator
 
 use crate::error;
+use crate::keys::PrivateKey;
 use crate::network;
 use crate::storage;
 use crate::testing;
 use crate::transaction_coordinator;
-use crate::utxo;
+use crate::bitcoin::utxo;
 
 use bitcoin::hashes::Hash as _;
 use rand::SeedableRng as _;
@@ -30,8 +31,8 @@ where
         storage: S,
         bitcoin_client: C,
         context_window: usize,
-        private_key: p256k1::scalar::Scalar,
-        threshold: u32,
+        private_key: PrivateKey,
+        threshold: u16,
     ) -> Self {
         let (block_observer_notification_tx, block_observer_notifications) =
             tokio::sync::watch::channel(());
@@ -98,7 +99,7 @@ pub struct TestEnvironment<C> {
     /// Num signers
     pub num_signers: usize,
     /// Signing threshold
-    pub signing_threshold: u32,
+    pub signing_threshold: u16,
     /// Test model parameters
     pub test_model_parameters: testing::storage::model::Params,
 }
@@ -130,7 +131,7 @@ where
         Self::write_test_data(&test_data, &mut event_loop_harness.storage).await;
 
         let mut testing_signer_set =
-            testing::wsts::SignerSet::new(&signer_info, self.signing_threshold, || {
+            testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
                 network.connect()
             });
 
@@ -168,8 +169,7 @@ where
             .expect("failed to write encrypted shares");
 
         // Mock stuff -----------
-        let public_key = bitcoin::XOnlyPublicKey::from_slice(&aggregate_key.x().to_bytes())
-            .expect("failed to convert pubkey");
+        let public_key = bitcoin::XOnlyPublicKey::from(&aggregate_key);
         let outpoint = bitcoin::OutPoint {
             txid: testing::dummy::txid(&fake::Faker, &mut rng),
             vout: 3,

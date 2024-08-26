@@ -14,6 +14,7 @@ use crate::bitcoin::BitcoinInteract;
 use crate::error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
+use crate::message;
 use crate::network;
 use crate::storage;
 use crate::storage::model;
@@ -21,7 +22,6 @@ use crate::wsts_state_machine;
 
 use crate::ecdsa::SignEcdsa as _;
 use bitcoin::hashes::Hash as _;
-use sha2::Digest as _;
 use wsts::state_machine::coordinator::Coordinator as _;
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
@@ -228,7 +228,7 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
-        transaction: utxo::UnsignedTransaction<'_>,
+        mut transaction: utxo::UnsignedTransaction<'_>,
     ) -> Result<(), error::Error> {
         let mut coordinator_state_machine = wsts_state_machine::CoordinatorStateMachine::load(
             &mut self.storage,
@@ -396,14 +396,12 @@ where
             .get_signer_utxo(aggregate_key)
             .await?
             .ok_or(error::Error::MissingSignerUtxo)?;
-        let public_key = bitcoin::XOnlyPublicKey::from_slice(&aggregate_key.x().to_bytes())
-            .map_err(|_| error::Error::TypeConversion)?;
         let last_fees = self.bitcoin_client.get_last_fee(utxo.outpoint).await?;
 
         Ok(utxo::SignerBtcState {
             fee_rate,
             utxo,
-            public_key,
+            public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
             last_fees,
             magic_bytes: [0, 0],
         })

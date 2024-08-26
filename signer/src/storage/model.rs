@@ -253,19 +253,6 @@ pub struct RotateKeysTransaction {
     pub signatures_required: u16,
 }
 
-/// Persisted public DKG shares from other signers
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub struct RotateKeysTransaction {
-    /// Transaction ID.
-    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
-    pub txid: Bytes,
-    /// The aggregate key for these shares.
-    pub aggregate_key: PubKey,
-    /// The public keys of the signers.
-    pub signer_set: Vec<Bytes>,
-}
-
 /// The types of transactions the signer is interested in.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
 #[sqlx(type_name = "sbtc_signer.transaction_type", rename_all = "snake_case")]

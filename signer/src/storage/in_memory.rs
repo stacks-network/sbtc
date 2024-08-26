@@ -613,16 +613,4 @@ impl super::DbWrite for SharedStore {
 
         Ok(())
     }
-
-    async fn write_rotate_keys_transaction(
-        &self,
-        key_rotation: &model::RotateKeysTransaction,
-    ) -> Result<(), Self::Error> {
-        self.lock()
-            .await
-            .rotate_keys_transactions
-            .insert(key_rotation.txid.clone(), key_rotation.clone());
-
-        Ok(())
-    }
 }
