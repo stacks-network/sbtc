@@ -1,7 +1,7 @@
 //! Route definitions for the deposit endpoint.
 use warp::Filter;
 
-use crate::{api::models::common::*, context::EmilyContext};
+use crate::context::EmilyContext;
 
 use super::handlers;
 
@@ -22,9 +22,7 @@ fn get_deposit(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .map(move || context.clone())
-        .and(warp::path!(
-            "deposit" / BitcoinTransactionId / BitcoinTransactionOutputIndex
-        ))
+        .and(warp::path!("deposit" / String / u32))
         .and(warp::get())
         .then(handlers::deposit::get_deposit)
 }
@@ -35,7 +33,7 @@ fn get_deposits_for_transaction(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .map(move || context.clone())
-        .and(warp::path!("deposit" / BitcoinTransactionId))
+        .and(warp::path!("deposit" / String))
         .and(warp::get())
         .and(warp::query())
         .then(handlers::deposit::get_deposits_for_transaction)

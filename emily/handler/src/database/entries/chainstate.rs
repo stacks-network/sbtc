@@ -4,13 +4,7 @@ use std::hash::Hash;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    api::models::{
-        chainstate::Chainstate,
-        common::{BlockHeight, StacksBlockHash},
-    },
-    common::error::Error,
-};
+use crate::{api::models::chainstate::Chainstate, common::error::Error};
 
 use super::{EntryTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait, VersionedEntryTrait};
 
@@ -21,9 +15,9 @@ use super::{EntryTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait, VersionedEntr
 #[serde(rename_all = "PascalCase")]
 pub struct ChainstateEntryKey {
     /// Output index on the bitcoin transaction associated with this specific deposit.
-    pub hash: StacksBlockHash,
+    pub hash: String,
     /// Bitcoin transaction id.
-    pub height: BlockHeight,
+    pub height: u64,
 }
 
 /// Chainstate table entry key. This is the primary index key.
@@ -60,9 +54,9 @@ impl From<Chainstate> for ChainstateEntry {
 /// Implements the key trait for the deposit entry key.
 impl KeyTrait for ChainstateEntryKey {
     /// The type of the partition key.
-    type PartitionKey = BlockHeight;
+    type PartitionKey = u64;
     /// the type of the sort key.
-    type SortKey = StacksBlockHash;
+    type SortKey = String;
     /// The table field name of the partition key.
     const PARTITION_KEY_NAME: &'static str = "Height";
     /// The table field name of the sort key.

@@ -22,19 +22,40 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GetChainstateResponse"
+                  "$ref": "#/components/schemas/Chainstate"
                 }
               }
             }
           },
           "404": {
-            "description": "Address not found"
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "405": {
-            "description": "Method not allowed"
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "x-amazon-apigateway-integration": {
@@ -55,7 +76,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SetChainstateRequestBody"
+                "$ref": "#/components/schemas/Chainstate"
               }
             }
           },
@@ -67,22 +88,50 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SetChainstateResponse"
+                  "$ref": "#/components/schemas/Chainstate"
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Address not found"
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "405": {
-            "description": "Method not allowed"
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "x-amazon-apigateway-integration": {
@@ -103,7 +152,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateChainstateRequestBody"
+                "$ref": "#/components/schemas/Chainstate"
               }
             }
           },
@@ -115,22 +164,50 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/UpdateChainstateResponse"
+                  "$ref": "#/components/schemas/Chainstate"
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Address not found"
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "405": {
-            "description": "Method not allowed"
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "x-amazon-apigateway-integration": {
@@ -168,22 +245,50 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GetChainstateResponse"
+                  "$ref": "#/components/schemas/Chainstate"
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Address not found"
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "405": {
-            "description": "Method not allowed"
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "x-amazon-apigateway-integration": {
@@ -204,21 +309,33 @@
         "operationId": "getDeposits",
         "parameters": [
           {
+            "name": "status",
+            "in": "query",
+            "description": "the status to search by when getting all deposits.",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Status"
+            }
+          },
+          {
             "name": "nextToken",
             "in": "query",
             "description": "the next token value from the previous return of this api call.",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string"
+              "type": "string",
+              "nullable": true
             }
           },
           {
             "name": "pageSize",
             "in": "query",
             "description": "the maximum number of items in the response list.",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "format": "int32",
+              "nullable": true
             }
           }
         ],
@@ -234,16 +351,44 @@
             }
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Address not found"
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "405": {
-            "description": "Method not allowed"
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "x-amazon-apigateway-integration": {
@@ -276,22 +421,50 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CreateDepositResponse"
+                  "$ref": "#/components/schemas/Deposit"
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Address not found"
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "405": {
-            "description": "Method not allowed"
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "x-amazon-apigateway-integration": {
@@ -330,16 +503,44 @@
             }
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Address not found"
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "405": {
-            "description": "Method not allowed"
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "x-amazon-apigateway-integration": {
@@ -372,18 +573,21 @@
             "name": "nextToken",
             "in": "query",
             "description": "the next token value from the previous return of this api call.",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string"
+              "type": "string",
+              "nullable": true
             }
           },
           {
             "name": "pageSize",
             "in": "query",
             "description": "the maximum number of items in the response list.",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "format": "int32",
+              "nullable": true
             }
           }
         ],
@@ -399,16 +603,44 @@
             }
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Address not found"
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "405": {
-            "description": "Method not allowed"
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "x-amazon-apigateway-integration": {
@@ -453,22 +685,50 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GetDepositResponse"
+                  "$ref": "#/components/schemas/Deposit"
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Address not found"
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "405": {
-            "description": "Method not allowed"
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "x-amazon-apigateway-integration": {
@@ -499,16 +759,44 @@
             }
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Address not found"
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "405": {
-            "description": "Method not allowed"
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "x-amazon-apigateway-integration": {
@@ -562,21 +850,33 @@
         "operationId": "getWithdrawals",
         "parameters": [
           {
+            "name": "status",
+            "in": "query",
+            "description": "the status to search by when getting all deposits.",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Status"
+            }
+          },
+          {
             "name": "nextToken",
             "in": "query",
             "description": "the next token value from the previous return of this api call.",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string"
+              "type": "string",
+              "nullable": true
             }
           },
           {
             "name": "pageSize",
             "in": "query",
             "description": "the maximum number of items in the response list.",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "format": "int32",
+              "nullable": true
             }
           }
         ],
@@ -592,16 +892,44 @@
             }
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Address not found"
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "405": {
-            "description": "Method not allowed"
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "x-amazon-apigateway-integration": {
@@ -634,22 +962,50 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CreateWithdrawalResponse"
+                  "$ref": "#/components/schemas/Withdrawal"
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Address not found"
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "405": {
-            "description": "Method not allowed"
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "x-amazon-apigateway-integration": {
@@ -688,16 +1044,44 @@
             }
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Address not found"
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "405": {
-            "description": "Method not allowed"
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "x-amazon-apigateway-integration": {
@@ -723,7 +1107,9 @@
             "description": "id associated with the Withdrawal",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/WithdrawalId"
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
             }
           }
         ],
@@ -733,22 +1119,50 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GetWithdrawalResponse"
+                  "$ref": "#/components/schemas/Withdrawal"
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Address not found"
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "405": {
-            "description": "Method not allowed"
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "x-amazon-apigateway-integration": {
@@ -772,10 +1186,14 @@
         ],
         "properties": {
           "stacksBlockHash": {
-            "$ref": "#/components/schemas/StacksBlockHash"
+            "type": "string",
+            "description": "Stacks block hash at the height."
           },
           "stacksBlockHeight": {
-            "$ref": "#/components/schemas/BlockHeight"
+            "type": "integer",
+            "format": "int64",
+            "description": "Stacks block height.",
+            "minimum": 0
           }
         }
       },
@@ -790,16 +1208,22 @@
         ],
         "properties": {
           "bitcoinTxOutputIndex": {
-            "$ref": "#/components/schemas/BitcoinTransactionOutputIndex"
+            "type": "integer",
+            "format": "int32",
+            "description": "Output index on the bitcoin transaction associated with this specific deposit.",
+            "minimum": 0
           },
           "bitcoinTxid": {
-            "$ref": "#/components/schemas/BitcoinTransactionId"
+            "type": "string",
+            "description": "Bitcoin transaction id."
           },
           "deposit": {
-            "$ref": "#/components/schemas/BitcoinScript"
+            "type": "string",
+            "description": "Deposit script."
           },
           "reclaim": {
-            "$ref": "#/components/schemas/BitcoinScript"
+            "type": "string",
+            "description": "Reclaim script."
           }
         }
       },
@@ -816,22 +1240,33 @@
         ],
         "properties": {
           "amount": {
-            "$ref": "#/components/schemas/Satoshis"
+            "type": "integer",
+            "format": "int64",
+            "description": "Amount of BTC being withdrawn in satoshis.",
+            "minimum": 0
           },
           "parameters": {
             "$ref": "#/components/schemas/WithdrawalParameters"
           },
           "recipient": {
-            "$ref": "#/components/schemas/BitcoinAddress"
+            "type": "string",
+            "description": "The recipient Bitcoin address."
           },
           "requestId": {
-            "$ref": "#/components/schemas/WithdrawalId"
+            "type": "integer",
+            "format": "int64",
+            "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
+            "minimum": 0
           },
           "stacksBlockHash": {
-            "$ref": "#/components/schemas/StacksBlockHash"
+            "type": "string",
+            "description": "The stacks block hash in which this request id was initiated."
           },
           "stacksBlockHeight": {
-            "$ref": "#/components/schemas/BlockHeight"
+            "type": "integer",
+            "format": "int64",
+            "description": "The stacks block hash in which this request id was initiated.",
+            "minimum": 0
           }
         }
       },
@@ -851,13 +1286,20 @@
         ],
         "properties": {
           "amount": {
-            "$ref": "#/components/schemas/Satoshis"
+            "type": "integer",
+            "format": "int64",
+            "description": "Amount of BTC being deposited in satoshis.",
+            "minimum": 0
           },
           "bitcoinTxOutputIndex": {
-            "$ref": "#/components/schemas/BitcoinTransactionOutputIndex"
+            "type": "integer",
+            "format": "int32",
+            "description": "Output index on the bitcoin transaction associated with this specific deposit.",
+            "minimum": 0
           },
           "bitcoinTxid": {
-            "$ref": "#/components/schemas/BitcoinTransactionId"
+            "type": "string",
+            "description": "Bitcoin transaction id."
           },
           "fulfillment": {
             "allOf": [
@@ -868,16 +1310,21 @@
             "nullable": true
           },
           "lastUpdateBlockHash": {
-            "$ref": "#/components/schemas/StacksBlockHash"
+            "type": "string",
+            "description": "The most recent Stacks block hash the API was aware of when the deposit was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this hash is the Stacks block hash that contains that artifact."
           },
           "lastUpdateHeight": {
-            "$ref": "#/components/schemas/BlockHeight"
+            "type": "integer",
+            "format": "int64",
+            "description": "The most recent Stacks block height the API was aware of when the deposit was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this height is the Stacks block height that contains that artifact.",
+            "minimum": 0
           },
           "parameters": {
             "$ref": "#/components/schemas/DepositParameters"
           },
           "recipient": {
-            "$ref": "#/components/schemas/StacksPrinciple"
+            "type": "string",
+            "description": "Stacks address to received the deposited sBTC."
           },
           "status": {
             "$ref": "#/components/schemas/Status"
@@ -902,22 +1349,34 @@
         ],
         "properties": {
           "amount": {
-            "$ref": "#/components/schemas/Satoshis"
+            "type": "integer",
+            "format": "int64",
+            "description": "Amount of BTC being deposited in satoshis.",
+            "minimum": 0
           },
           "bitcoinTxOutputIndex": {
-            "$ref": "#/components/schemas/BitcoinTransactionOutputIndex"
+            "type": "integer",
+            "format": "int32",
+            "description": "Output index on the bitcoin transaction associated with this specific deposit.",
+            "minimum": 0
           },
           "bitcoinTxid": {
-            "$ref": "#/components/schemas/BitcoinTransactionId"
+            "type": "string",
+            "description": "Bitcoin transaction id."
           },
           "lastUpdateBlockHash": {
-            "$ref": "#/components/schemas/StacksBlockHash"
+            "type": "string",
+            "description": "The most recent Stacks block hash the API was aware of when the deposit was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this hash is the Stacks block hash that contains that artifact."
           },
           "lastUpdateHeight": {
-            "$ref": "#/components/schemas/BlockHeight"
+            "type": "integer",
+            "format": "int64",
+            "description": "The most recent Stacks block height the API was aware of when the deposit was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this height is the Stacks block height that contains that artifact.",
+            "minimum": 0
           },
           "recipient": {
-            "$ref": "#/components/schemas/StacksPrinciple"
+            "type": "string",
+            "description": "Stacks address to received the deposited sBTC."
           },
           "status": {
             "$ref": "#/components/schemas/Status"
@@ -934,13 +1393,20 @@
         ],
         "properties": {
           "lockTime": {
-            "$ref": "#/components/schemas/BlockHeight"
+            "type": "integer",
+            "format": "int64",
+            "description": "Bitcoin block height at which the reclaim script becomes executable.",
+            "minimum": 0
           },
           "maxFee": {
-            "$ref": "#/components/schemas/Satoshis"
+            "type": "integer",
+            "format": "int64",
+            "description": "Maximum fee the signers are allowed to take from the deposit to facilitate\nthe transaction.",
+            "minimum": 0
           },
           "reclaimScript": {
-            "$ref": "#/components/schemas/BitcoinScript"
+            "type": "string",
+            "description": "Raw reclaim script."
           }
         }
       },
@@ -957,10 +1423,14 @@
         ],
         "properties": {
           "bitcoinTxOutputIndex": {
-            "$ref": "#/components/schemas/BitcoinTransactionOutputIndex"
+            "type": "integer",
+            "format": "int32",
+            "description": "Output index on the bitcoin transaction associated with this specific deposit.",
+            "minimum": 0
           },
           "bitcoinTxid": {
-            "$ref": "#/components/schemas/BitcoinTransactionId"
+            "type": "string",
+            "description": "Bitcoin transaction id."
           },
           "fulfillment": {
             "allOf": [
@@ -971,10 +1441,14 @@
             "nullable": true
           },
           "lastUpdateBlockHash": {
-            "$ref": "#/components/schemas/StacksBlockHash"
+            "type": "string",
+            "description": "The most recent Stacks block hash the API was aware of when the deposit was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this hash is the Stacks block hash that contains that artifact."
           },
           "lastUpdateHeight": {
-            "$ref": "#/components/schemas/BlockHeight"
+            "type": "integer",
+            "format": "int64",
+            "description": "The most recent Stacks block height the API was aware of when the deposit was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this height is the Stacks block height that contains that artifact.",
+            "minimum": 0
           },
           "status": {
             "$ref": "#/components/schemas/Status"
@@ -997,6 +1471,50 @@
           }
         }
       },
+      "Fulfillment": {
+        "type": "object",
+        "description": "Data about the fulfillment of an sBTC Operation.",
+        "required": [
+          "BitcoinTxid",
+          "BitcoinTxIndex",
+          "StacksTxid",
+          "BitcoinBlockHash",
+          "BitcoinBlockHeight",
+          "BtcFee"
+        ],
+        "properties": {
+          "BitcoinBlockHash": {
+            "type": "string",
+            "description": "Bitcoin block hash of the block that contains the bitcoin transaction that fulfilled\nthis transaction."
+          },
+          "BitcoinBlockHeight": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bitcoin block height of the block that contains the bitcoin transaction that fulfilled\nthis transaction.",
+            "minimum": 0
+          },
+          "BitcoinTxIndex": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Bitcoin transaction output index of the Bitcoin transaction that fulfilled the\noperation that corresponds to the fulfillment of this specific operation.",
+            "minimum": 0
+          },
+          "BitcoinTxid": {
+            "type": "string",
+            "description": "Bitcoin transaction id of the Bitcoin transaction that fulfilled the operation."
+          },
+          "BtcFee": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Satoshis consumed to fulfill the sBTC operation.",
+            "minimum": 0
+          },
+          "StacksTxid": {
+            "type": "string",
+            "description": "Stacks transaction Id that fulfilled this operation."
+          }
+        }
+      },
       "GetDepositsForTransactionResponse": {
         "type": "object",
         "description": "Response to get deposits for transaction request.",
@@ -1007,7 +1525,7 @@
           "deposits": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/super.Deposit"
+              "$ref": "#/components/schemas/Deposit"
             },
             "description": "Deposits."
           },
@@ -1028,7 +1546,7 @@
           "deposits": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/super.DepositInfo"
+              "$ref": "#/components/schemas/DepositInfo"
             },
             "description": "Deposit infos: deposits with a little less data."
           },
@@ -1054,7 +1572,7 @@
           "withdrawals": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/super.WithdrawalInfo"
+              "$ref": "#/components/schemas/WithdrawalInfo"
             },
             "description": "Withdrawal infos: withdrawals with a little less data."
           }
@@ -1072,6 +1590,17 @@
             "description": "Whether the API is okay."
           }
         }
+      },
+      "Status": {
+        "type": "string",
+        "description": "The status of the in-flight sBTC operation.",
+        "enum": [
+          "pending",
+          "reprocessing",
+          "accepted",
+          "confirmed",
+          "failed"
+        ]
       },
       "UpdateDepositsRequestBody": {
         "type": "object",
@@ -1099,7 +1628,7 @@
           "deposits": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/super.Deposit"
+              "$ref": "#/components/schemas/Deposit"
             },
             "description": "Deposit infos: deposits with a little less data."
           }
@@ -1131,7 +1660,7 @@
           "withdrawals": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/super.Withdrawal"
+              "$ref": "#/components/schemas/Withdrawal"
             },
             "description": "Updated withdrawals."
           }
@@ -1154,7 +1683,10 @@
         ],
         "properties": {
           "amount": {
-            "$ref": "#/components/schemas/Satoshis"
+            "type": "integer",
+            "format": "int64",
+            "description": "Amount of BTC being withdrawn in satoshis.",
+            "minimum": 0
           },
           "fulfillment": {
             "allOf": [
@@ -1165,25 +1697,37 @@
             "nullable": true
           },
           "lastUpdateBlockHash": {
-            "$ref": "#/components/schemas/StacksBlockHash"
+            "type": "string",
+            "description": "The most recent Stacks block hash the API was aware of when the withdrawal was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this hash is the Stacks block hash that contains that artifact."
           },
           "lastUpdateHeight": {
-            "$ref": "#/components/schemas/BlockHeight"
+            "type": "integer",
+            "format": "int64",
+            "description": "The most recent Stacks block height the API was aware of when the withdrawal was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this height is the Stacks block height that contains that artifact.",
+            "minimum": 0
           },
           "parameters": {
             "$ref": "#/components/schemas/WithdrawalParameters"
           },
           "recipient": {
-            "$ref": "#/components/schemas/BitcoinAddress"
+            "type": "string",
+            "description": "The recipient Bitcoin address."
           },
           "requestId": {
-            "$ref": "#/components/schemas/WithdrawalId"
+            "type": "integer",
+            "format": "int64",
+            "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
+            "minimum": 0
           },
           "stacksBlockHash": {
-            "$ref": "#/components/schemas/StacksBlockHash"
+            "type": "string",
+            "description": "The stacks block hash in which this request id was initiated."
           },
           "stacksBlockHeight": {
-            "$ref": "#/components/schemas/BlockHeight"
+            "type": "integer",
+            "format": "int64",
+            "description": "The height of the Stacks block in which this request id was initiated.",
+            "minimum": 0
           },
           "status": {
             "$ref": "#/components/schemas/Status"
@@ -1209,25 +1753,40 @@
         ],
         "properties": {
           "amount": {
-            "$ref": "#/components/schemas/Satoshis"
+            "type": "integer",
+            "format": "int64",
+            "description": "Amount of BTC being withdrawn in satoshis.",
+            "minimum": 0
           },
           "lastUpdateBlockHash": {
-            "$ref": "#/components/schemas/StacksBlockHash"
+            "type": "string",
+            "description": "The most recent Stacks block hash the API was aware of when the withdrawal was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this hash is the Stacks block hash that contains that artifact."
           },
           "lastUpdateHeight": {
-            "$ref": "#/components/schemas/BlockHeight"
+            "type": "integer",
+            "format": "int64",
+            "description": "The most recent Stacks block height the API was aware of when the withdrawal was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this height is the Stacks block height that contains that artifact.",
+            "minimum": 0
           },
           "recipient": {
-            "$ref": "#/components/schemas/BitcoinAddress"
+            "type": "string",
+            "description": "The recipient Bitcoin address."
           },
           "requestId": {
-            "$ref": "#/components/schemas/WithdrawalId"
+            "type": "integer",
+            "format": "int64",
+            "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
+            "minimum": 0
           },
           "stacksBlockHash": {
-            "$ref": "#/components/schemas/StacksBlockHash"
+            "type": "string",
+            "description": "The stacks block hash in which this request id was initiated."
           },
           "stacksBlockHeight": {
-            "$ref": "#/components/schemas/BlockHeight"
+            "type": "integer",
+            "format": "int64",
+            "description": "The height of the Stacks block in which this request id was initiated.",
+            "minimum": 0
           },
           "status": {
             "$ref": "#/components/schemas/Status"
@@ -1242,7 +1801,10 @@
         ],
         "properties": {
           "maxFee": {
-            "$ref": "#/components/schemas/Satoshis"
+            "type": "integer",
+            "format": "int64",
+            "description": "Maximum fee the signers are allowed to take from the withdrawal to facilitate\nthe inclusion of the transaction onto the Bitcoin blockchain.",
+            "minimum": 0
           }
         }
       },
@@ -1266,13 +1828,20 @@
             "nullable": true
           },
           "lastUpdateBlockHash": {
-            "$ref": "#/components/schemas/StacksBlockHash"
+            "type": "string",
+            "description": "The most recent Stacks block hash the API was aware of when the withdrawal was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this hash is the Stacks block hash that contains that artifact."
           },
           "lastUpdateHeight": {
-            "$ref": "#/components/schemas/BlockHeight"
+            "type": "integer",
+            "format": "int64",
+            "description": "The most recent Stacks block height the API was aware of when the withdrawal was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this height is the Stacks block height that contains that artifact.",
+            "minimum": 0
           },
           "requestId": {
-            "$ref": "#/components/schemas/WithdrawalId"
+            "type": "integer",
+            "format": "int64",
+            "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
+            "minimum": 0
           },
           "status": {
             "$ref": "#/components/schemas/Status"

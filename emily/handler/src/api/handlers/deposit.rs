@@ -1,5 +1,5 @@
 //! Handlers for Deposit endpoints.
-use crate::api::models::common::{BlockHeight, StacksBlockHash, Status};
+use crate::api::models::common::Status;
 use crate::api::models::deposit::responses::{
     GetDepositsForTransactionResponse, UpdateDepositsResponse,
 };
@@ -10,12 +10,11 @@ use warp::http::StatusCode;
 
 use crate::api::models::deposit::{Deposit, DepositInfo};
 use crate::api::models::{
-    common::{BitcoinTransactionId, BitcoinTransactionOutputIndex},
     deposit::requests::{
         CreateDepositRequestBody, GetDepositsForTransactionQuery, GetDepositsQuery,
         UpdateDepositsRequestBody,
     },
-    deposit::responses::{CreateDepositResponse, GetDepositResponse, GetDepositsResponse},
+    deposit::responses::GetDepositsResponse,
 };
 use crate::common::error::Error;
 use crate::context::EmilyContext;
@@ -37,23 +36,23 @@ use crate::database::entries::deposit::{
     tag = "deposit",
     responses(
         // TODO(271): Add success body.
-        (status = 200, description = "Deposit retrieved successfully", body = GetDepositResponse),
-        (status = 400, description = "Invalid request body"),
-        (status = 404, description = "Address not found"),
-        (status = 405, description = "Method not allowed"),
-        (status = 500, description = "Internal server error")
+        (status = 200, description = "Deposit retrieved successfully", body = Deposit),
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
 pub async fn get_deposit(
     context: EmilyContext,
-    bitcoin_txid: BitcoinTransactionId,
-    bitcoin_tx_output_index: BitcoinTransactionOutputIndex,
+    bitcoin_txid: String,
+    bitcoin_tx_output_index: u32,
 ) -> impl warp::reply::Reply {
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
-        bitcoin_txid: BitcoinTransactionId,
-        bitcoin_tx_output_index: BitcoinTransactionOutputIndex,
+        bitcoin_txid: String,
+        bitcoin_tx_output_index: u32,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Make key.
         let key = DepositEntryKey {
@@ -66,10 +65,7 @@ pub async fn get_deposit(
             .try_into()?;
 
         // Respond.
-        Ok(with_status(
-            json(&(deposit as GetDepositResponse)),
-            StatusCode::OK,
-        ))
+        Ok(with_status(json(&deposit), StatusCode::OK))
     }
 
     // Handle and respond.
@@ -85,27 +81,27 @@ pub async fn get_deposit(
     path = "/deposit/{txid}",
     params(
         ("txid" = String, Path, description = "txid associated with the Deposit."),
-        ("nextToken" = String, Query, description = "the next token value from the previous return of this api call."),
-        ("pageSize" = String, Query, description = "the maximum number of items in the response list.")
+        ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
+        ("pageSize" = Option<i32>, Query, description = "the maximum number of items in the response list.")
     ),
     tag = "deposit",
     responses(
         (status = 200, description = "Deposits retrieved successfully", body = GetDepositsForTransactionResponse),
-        (status = 400, description = "Invalid request body"),
-        (status = 404, description = "Address not found"),
-        (status = 405, description = "Method not allowed"),
-        (status = 500, description = "Internal server error")
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
 pub async fn get_deposits_for_transaction(
     context: EmilyContext,
-    bitcoin_txid: BitcoinTransactionId,
+    bitcoin_txid: String,
     query: GetDepositsForTransactionQuery,
 ) -> impl warp::reply::Reply {
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
-        bitcoin_txid: BitcoinTransactionId,
+        bitcoin_txid: String,
         query: GetDepositsForTransactionQuery,
     ) -> Result<impl warp::reply::Reply, Error> {
         let (entries, next_token) = accessors::get_deposit_entries_for_transaction(
@@ -137,16 +133,17 @@ pub async fn get_deposits_for_transaction(
     operation_id = "getDeposits",
     path = "/deposit",
     params(
-        ("nextToken" = String, Query, description = "the next token value from the previous return of this api call."),
-        ("pageSize" = String, Query, description = "the maximum number of items in the response list.")
+        ("status" = Status, Query, description = "the status to search by when getting all deposits."),
+        ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
+        ("pageSize" = Option<i32>, Query, description = "the maximum number of items in the response list.")
     ),
     tag = "deposit",
     responses(
         (status = 200, description = "Deposits retrieved successfully", body = GetDepositsResponse),
-        (status = 400, description = "Invalid request body"),
-        (status = 404, description = "Address not found"),
-        (status = 405, description = "Method not allowed"),
-        (status = 500, description = "Internal server error")
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
 pub async fn get_deposits(
@@ -187,11 +184,11 @@ pub async fn get_deposits(
     tag = "deposit",
     request_body = CreateDepositRequestBody,
     responses(
-        (status = 201, description = "Deposit created successfully", body = CreateDepositResponse),
-        (status = 400, description = "Invalid request body"),
-        (status = 404, description = "Address not found"),
-        (status = 405, description = "Method not allowed"),
-        (status = 500, description = "Internal server error")
+        (status = 201, description = "Deposit created successfully", body = Deposit),
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
 pub async fn create_deposit(
@@ -208,8 +205,8 @@ pub async fn create_deposit(
         api_state.error_if_reorganizing()?;
 
         let chaintip = api_state.chaintip();
-        let stacks_block_hash: StacksBlockHash = chaintip.key.hash;
-        let stacks_block_height: BlockHeight = chaintip.key.height;
+        let stacks_block_hash: String = chaintip.key.hash;
+        let stacks_block_height: u64 = chaintip.key.height;
         let status = Status::Pending;
         // Make table entry.
         let deposit_entry: DepositEntry = DepositEntry {
@@ -237,7 +234,7 @@ pub async fn create_deposit(
         // Add entry to the table.
         accessors::add_deposit_entry(&context, &deposit_entry).await?;
         // Respond.
-        let response: CreateDepositResponse = deposit_entry.try_into()?;
+        let response: Deposit = deposit_entry.try_into()?;
         Ok(with_status(json(&response), StatusCode::CREATED))
     }
     // Handle and respond.
@@ -255,10 +252,10 @@ pub async fn create_deposit(
     request_body = UpdateDepositsRequestBody,
     responses(
         (status = 201, description = "Deposits updated successfully", body = UpdateDepositsResponse),
-        (status = 400, description = "Invalid request body"),
-        (status = 404, description = "Address not found"),
-        (status = 405, description = "Method not allowed"),
-        (status = 500, description = "Internal server error")
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
 pub async fn update_deposits(

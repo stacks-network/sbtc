@@ -4,15 +4,9 @@ use aws_sdk_dynamodb::types::AttributeValue;
 use serde_dynamo::Item;
 use tracing::{info, warn};
 
-use crate::{
-    api::models::{common::BlockHeight, withdrawal::WithdrawalId},
-    common::error::{Error, Inconsistency},
-};
+use crate::common::error::{Error, Inconsistency};
 
-use crate::{
-    api::models::common::{BitcoinTransactionId, Status},
-    context::EmilyContext,
-};
+use crate::{api::models::common::Status, context::EmilyContext};
 
 use super::entries::{
     chainstate::{
@@ -128,9 +122,10 @@ pub async fn get_all_deposit_entries_modified_after_height_with_status(
 }
 
 /// Get deposit entries for a given transaction.
+#[allow(clippy::ptr_arg)]
 pub async fn get_deposit_entries_for_transaction(
     context: &EmilyContext,
-    bitcoin_txid: &BitcoinTransactionId,
+    bitcoin_txid: &String,
     maybe_next_token: Option<String>,
     maybe_page_size: Option<i32>,
 ) -> Result<(Vec<DepositEntry>, Option<String>), Error> {
@@ -219,7 +214,7 @@ pub async fn set_withdrawal_entry(
 /// Get withdrawal entry.
 pub async fn get_withdrawal_entry(
     context: &EmilyContext,
-    key: &WithdrawalId,
+    key: &u64,
 ) -> Result<WithdrawalEntry, Error> {
     // Get the entries.
     let num_to_retrieve_if_multiple = 3;
@@ -440,7 +435,7 @@ pub async fn add_chainstate_entry(
 /// if there's a conflict.
 pub async fn get_chainstate_entry_at_height(
     context: &EmilyContext,
-    height: &BlockHeight,
+    height: &u64,
 ) -> Result<ChainstateEntry, Error> {
     let (entries, _) =
         query_with_partition_key::<ChainstateTablePrimaryIndex>(context, height, None, None)
@@ -458,7 +453,7 @@ pub async fn get_chainstate_entry_at_height(
 /// Note that there should only really be one.
 pub async fn get_chainstate_entries_for_height(
     context: &EmilyContext,
-    height: &BlockHeight,
+    height: &u64,
     maybe_next_token: Option<String>,
     maybe_page_size: Option<i32>,
 ) -> Result<(Vec<ChainstateEntry>, Option<String>), Error> {

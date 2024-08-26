@@ -5,10 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     api::models::{
         chainstate::Chainstate,
-        common::{
-            BitcoinScript, BitcoinTransactionId, BitcoinTransactionOutputIndex, BlockHeight,
-            Fulfillment, Satoshis, StacksBlockHash, StacksPrinciple, Status,
-        },
+        common::{Fulfillment, Status},
         deposit::{
             requests::{DepositUpdate, UpdateDepositsRequestBody},
             Deposit, DepositInfo, DepositParameters,
@@ -29,9 +26,9 @@ use super::{
 #[serde(rename_all = "PascalCase")]
 pub struct DepositEntryKey {
     /// Bitcoin transaction id.
-    pub bitcoin_txid: BitcoinTransactionId,
+    pub bitcoin_txid: String,
     /// Output index on the bitcoin transaction associated with this specific deposit.
-    pub bitcoin_tx_output_index: BitcoinTransactionOutputIndex,
+    pub bitcoin_tx_output_index: u32,
 }
 
 /// Deposit table entry.
@@ -44,9 +41,9 @@ pub struct DepositEntry {
     /// Table entry version. Updated on each alteration.
     pub version: u64,
     /// Stacks address to received the deposited sBTC.
-    pub recipient: StacksPrinciple,
-    /// Amount of BTC being deposited.
-    pub amount: Satoshis,
+    pub recipient: String,
+    /// Amount of BTC being deposited in satoshis.
+    pub amount: u64,
     /// Deposit parameters.
     #[serde(flatten)]
     pub parameters: DepositParametersEntry,
@@ -56,11 +53,11 @@ pub struct DepositEntry {
     /// The most recent Stacks block height the API was aware of when the deposit was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this height is the Stacks block height that contains that artifact.
-    pub last_update_height: BlockHeight,
+    pub last_update_height: u64,
     /// The most recent Stacks block hash the API was aware of when the deposit was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this hash is the Stacks block hash that contains that artifact.
-    pub last_update_block_hash: StacksBlockHash,
+    pub last_update_block_hash: String,
     /// Data about the fulfillment of the sBTC Operation.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fulfillment: Option<Fulfillment>,
@@ -85,9 +82,9 @@ impl VersionedEntryTrait for DepositEntry {
 /// Implements the key trait for the deposit entry key.
 impl KeyTrait for DepositEntryKey {
     /// The type of the partition key.
-    type PartitionKey = BitcoinTransactionId;
+    type PartitionKey = String;
     /// the type of the sort key.
-    type SortKey = BitcoinTransactionOutputIndex;
+    type SortKey = u32;
     /// The table field name of the partition key.
     const PARTITION_KEY_NAME: &'static str = "BitcoinTxid";
     /// The table field name of the sort key.
@@ -251,11 +248,11 @@ impl TryFrom<DepositEntry> for Deposit {
 pub struct DepositParametersEntry {
     /// Maximum fee the signers are allowed to take from the deposit to facilitate
     /// the transaction.
-    pub max_fee: Satoshis,
+    pub max_fee: u64,
     /// Bitcoin block height at which the reclaim script becomes executable.
-    pub lock_time: BlockHeight,
+    pub lock_time: u64,
     /// Raw reclaim script.
-    pub reclaim_script: BitcoinScript,
+    pub reclaim_script: String,
 }
 
 /// Event in the history of a deposit.
@@ -268,9 +265,9 @@ pub struct DepositEvent {
     /// Status message.
     pub message: String,
     /// Stacks block heigh at the time of this update.
-    pub stacks_block_height: BlockHeight,
+    pub stacks_block_height: u64,
     /// Stacks block hash associated with the height of this update.
-    pub stacks_block_hash: StacksBlockHash,
+    pub stacks_block_hash: String,
 }
 
 /// Implementation of deposit event.
@@ -320,7 +317,7 @@ pub struct DepositInfoEntryKey {
     /// The most recent Stacks block height the API was aware of when the deposit was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this height is the Stacks block height that contains that artifact.
-    pub last_update_height: BlockHeight,
+    pub last_update_height: u64,
 }
 
 /// Reduced version of the deposit data.
@@ -334,13 +331,13 @@ pub struct DepositInfoEntry {
     #[serde(flatten)]
     pub primary_index_key: DepositEntryKey,
     /// Stacks address to received the deposited sBTC.
-    pub recipient: StacksPrinciple,
-    /// Amount of BTC being deposited.
-    pub amount: Satoshis,
+    pub recipient: String,
+    /// Amount of BTC being deposited in satoshis.
+    pub amount: u64,
     /// The most recent Stacks block hash the API was aware of when the deposit was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this hash is the Stacks block hash that contains that artifact.
-    pub last_update_block_hash: StacksBlockHash,
+    pub last_update_block_hash: String,
 }
 
 /// Implements the key trait for the deposit entry key.
@@ -348,7 +345,7 @@ impl KeyTrait for DepositInfoEntryKey {
     /// The type of the partition key.
     type PartitionKey = Status;
     /// the type of the sort key.
-    type SortKey = BlockHeight;
+    type SortKey = u64;
     /// The table field name of the partition key.
     const PARTITION_KEY_NAME: &'static str = "OpStatus";
     /// The table field name of the sort key.

@@ -3,11 +3,7 @@
 use serde::{Deserialize, Serialize};
 use utoipa::{ToResponse, ToSchema};
 
-/// Response to get deposit request.
-pub type GetDepositResponse = super::Deposit;
-
-/// Response to create deposit request.
-pub type CreateDepositResponse = super::Deposit;
+use crate::api::models::deposit::{Deposit, DepositInfo};
 
 /// Response to get deposits for transaction request.
 #[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
@@ -16,7 +12,7 @@ pub struct GetDepositsForTransactionResponse {
     /// Next token for the search.
     pub next_token: Option<String>,
     /// Deposits.
-    pub deposits: Vec<super::Deposit>,
+    pub deposits: Vec<Deposit>,
 }
 
 /// Response to get deposits request.
@@ -26,7 +22,7 @@ pub struct GetDepositsResponse {
     /// Next token for the search.
     pub next_token: Option<String>,
     /// Deposit infos: deposits with a little less data.
-    pub deposits: Vec<super::DepositInfo>,
+    pub deposits: Vec<DepositInfo>,
 }
 
 /// Response to update deposits request.
@@ -34,5 +30,5 @@ pub struct GetDepositsResponse {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateDepositsResponse {
     /// Deposit infos: deposits with a little less data.
-    pub deposits: Vec<super::Deposit>,
+    pub deposits: Vec<Deposit>,
 }

@@ -2,14 +2,7 @@
 use crate::{
     api::{
         handlers::internal::{execute_reorg_handler, ExecuteReorgRequest},
-        models::{
-            chainstate::{
-                requests::{SetChainstateRequestBody, UpdateChainstateRequestBody},
-                responses::{GetChainstateResponse, SetChainstateResponse},
-                Chainstate,
-            },
-            common::BlockHeight,
-        },
+        models::chainstate::Chainstate,
     },
     common::error::{Error, Inconsistency},
     context::EmilyContext,
@@ -29,10 +22,10 @@ use warp::reply::{json, with_status, Reply};
     tag = "chainstate",
     responses(
         // TODO(271): Add success body.
-        (status = 200, description = "Chain tip retrieved successfully", body = GetChainstateResponse),
-        (status = 404, description = "Address not found"),
-        (status = 405, description = "Method not allowed"),
-        (status = 500, description = "Internal server error")
+        (status = 200, description = "Chain tip retrieved successfully", body = Chainstate),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
 pub async fn get_chain_tip(context: EmilyContext) -> impl warp::reply::Reply {
@@ -41,10 +34,7 @@ pub async fn get_chain_tip(context: EmilyContext) -> impl warp::reply::Reply {
         // TODO(390): Handle multiple being in the tip list here.
         let api_state = accessors::get_api_state(&context).await?;
         let chaintip: Chainstate = api_state.chaintip().into();
-        Ok(with_status(
-            json(&(chaintip as GetChainstateResponse)),
-            StatusCode::OK,
-        ))
+        Ok(with_status(json(&chaintip), StatusCode::OK))
     }
     // Handle and respond.
     handler(context)
@@ -63,29 +53,26 @@ pub async fn get_chain_tip(context: EmilyContext) -> impl warp::reply::Reply {
     tag = "chainstate",
     responses(
         // TODO(271): Add success body.
-        (status = 200, description = "Chainstate retrieved successfully", body = GetChainstateResponse),
-        (status = 400, description = "Invalid request body"),
-        (status = 404, description = "Address not found"),
-        (status = 405, description = "Method not allowed"),
-        (status = 500, description = "Internal server error")
+        (status = 200, description = "Chainstate retrieved successfully", body = Chainstate),
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
 pub async fn get_chainstate_at_height(
     context: EmilyContext,
-    height: BlockHeight,
+    height: u64,
 ) -> impl warp::reply::Reply {
     // Internal handler so `?` can be used correctly while still returning a reply.
-    async fn handler(
-        context: EmilyContext,
-        height: BlockHeight,
-    ) -> Result<impl warp::reply::Reply, Error> {
+    async fn handler(context: EmilyContext, height: u64) -> Result<impl warp::reply::Reply, Error> {
         // Get chainstate at height.
         let chainstate: Chainstate = accessors::get_chainstate_entry_at_height(&context, &height)
             .await?
             .into();
         // Respond.
         Ok(with_status(
-            json(&(chainstate as GetChainstateResponse)),
+            json(&chainstate),
             StatusCode::OK,
         ))
     }
@@ -101,31 +88,28 @@ pub async fn get_chainstate_at_height(
     operation_id = "setChainstate",
     path = "/chainstate",
     tag = "chainstate",
-    request_body = SetChainstateRequestBody,
+    request_body = Chainstate,
     responses(
         // TODO(271): Add success body.
-        (status = 201, description = "Chainstate updated successfully", body = SetChainstateResponse),
-        (status = 400, description = "Invalid request body"),
-        (status = 404, description = "Address not found"),
-        (status = 405, description = "Method not allowed"),
-        (status = 500, description = "Internal server error")
+        (status = 201, description = "Chainstate updated successfully", body = Chainstate),
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
-pub async fn set_chainstate(
-    context: EmilyContext,
-    body: SetChainstateRequestBody,
-) -> impl warp::reply::Reply {
+pub async fn set_chainstate(context: EmilyContext, body: Chainstate) -> impl warp::reply::Reply {
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
-        body: SetChainstateRequestBody,
+        body: Chainstate,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Convert body to the correct type.
         let chainstate: Chainstate = body;
         add_chainstate_entry_or_reorg(&context, &chainstate).await?;
         // Respond.
         Ok(with_status(
-            json(&(chainstate as SetChainstateResponse)),
+            json(&chainstate),
             StatusCode::CREATED,
         ))
     }
@@ -141,31 +125,31 @@ pub async fn set_chainstate(
     operation_id = "updateChainstate",
     path = "/chainstate",
     tag = "chainstate",
-    request_body = UpdateChainstateRequestBody,
+    request_body = Chainstate,
     responses(
         // TODO(271): Add success body.
-        (status = 201, description = "Chainstate updated successfully", body = UpdateChainstateResponse),
-        (status = 400, description = "Invalid request body"),
-        (status = 404, description = "Address not found"),
-        (status = 405, description = "Method not allowed"),
-        (status = 500, description = "Internal server error")
+        (status = 201, description = "Chainstate updated successfully", body = Chainstate),
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
 pub async fn update_chainstate(
     context: EmilyContext,
-    request: UpdateChainstateRequestBody,
+    request: Chainstate,
 ) -> impl warp::reply::Reply {
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
-        body: SetChainstateRequestBody,
+        body: Chainstate,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Convert body to the correct type.
         let chainstate: Chainstate = body;
         add_chainstate_entry_or_reorg(&context, &chainstate).await?;
         // Respond.
         Ok(with_status(
-            json(&(chainstate as SetChainstateResponse)),
+            json(&chainstate),
             StatusCode::CREATED,
         ))
     }

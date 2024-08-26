@@ -5,10 +5,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     api::models::{
         chainstate::Chainstate,
-        common::{BitcoinAddress, BlockHeight, Satoshis, StacksBlockHash, StacksPrinciple, Status},
+        common::Status,
         withdrawal::{
             requests::{UpdateWithdrawalsRequestBody, WithdrawalUpdate},
-            Withdrawal, WithdrawalId, WithdrawalInfo, WithdrawalParameters,
+            Withdrawal, WithdrawalInfo, WithdrawalParameters,
         },
     },
     common::error::{Error, Inconsistency},
@@ -26,9 +26,9 @@ use super::{
 #[serde(rename_all = "PascalCase")]
 pub struct WithdrawalEntryKey {
     /// The request id of the withdrawal.
-    pub request_id: WithdrawalId,
+    pub request_id: u64,
     /// The stacks block hash of the block in which this withdrawal was initiated.
-    pub stacks_block_hash: StacksBlockHash,
+    pub stacks_block_hash: String,
 }
 
 /// Withdrawal table entry.
@@ -39,13 +39,13 @@ pub struct WithdrawalEntry {
     #[serde(flatten)]
     pub key: WithdrawalEntryKey,
     /// The height of the Stacks block in which this request id was initiated.
-    pub stacks_block_height: BlockHeight,
+    pub stacks_block_height: u64,
     /// Table entry version. Updated on each alteration.
     pub version: u64,
     /// Stacks address to received the withdrawn sBTC.
-    pub recipient: BitcoinAddress,
-    /// Amount of BTC being withdrawn.
-    pub amount: Satoshis,
+    pub recipient: String,
+    /// Amount of BTC being withdrawn in satoshis.
+    pub amount: u64,
     /// Withdrawal parameters.
     #[serde(flatten)]
     pub parameters: WithdrawalParametersEntry,
@@ -55,11 +55,11 @@ pub struct WithdrawalEntry {
     /// The most recent Stacks block height the API was aware of when the withdrawal was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this height is the Stacks block height that contains that artifact.
-    pub last_update_height: BlockHeight,
+    pub last_update_height: u64,
     /// The most recent Stacks block hash the API was aware of when the withdrawal was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this hash is the Stacks block hash that contains that artifact.
-    pub last_update_block_hash: StacksBlockHash,
+    pub last_update_block_hash: String,
     /// History of this withdrawal transaction.
     pub history: Vec<WithdrawalEvent>,
 }
@@ -209,7 +209,7 @@ impl TryFrom<WithdrawalEntry> for Withdrawal {
 pub struct WithdrawalParametersEntry {
     /// Maximum fee the signers are allowed to take from the withdrawal to facilitate
     /// the transaction.
-    pub max_fee: Satoshis,
+    pub max_fee: u64,
 }
 
 /// Event in the history of a withdrawal.
@@ -222,9 +222,9 @@ pub struct WithdrawalEvent {
     /// Status message.
     pub message: String,
     /// Stacks block heigh at the time of this update.
-    pub stacks_block_height: BlockHeight,
+    pub stacks_block_height: u64,
     /// Stacks block hash associated with the height of this update.
-    pub stacks_block_hash: StacksBlockHash,
+    pub stacks_block_hash: String,
 }
 
 /// Implementation of withdrawal event.
@@ -258,7 +258,7 @@ impl KeyTrait for WithdrawalEntryKey {
     /// The type of the partition key.
     type PartitionKey = u64;
     /// the type of the sort key.
-    type SortKey = StacksBlockHash;
+    type SortKey = String;
     /// The table field name of the partition key.
     const PARTITION_KEY_NAME: &'static str = "RequestId";
     /// The table field name of the sort key.
@@ -314,7 +314,7 @@ pub struct WithdrawalInfoEntryKey {
     /// The most recent Stacks block height the API was aware of when the withdrawal was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this height is the Stacks block height that contains that artifact.
-    pub last_update_height: BlockHeight,
+    pub last_update_height: u64,
 }
 
 /// Reduced version of the withdrawal data.
@@ -328,15 +328,15 @@ pub struct WithdrawalInfoEntry {
     #[serde(flatten)]
     pub primary_index_key: WithdrawalEntryKey,
     /// The height of the Stacks block in which this request id was initiated.
-    pub stacks_block_height: BlockHeight,
+    pub stacks_block_height: u64,
     /// Stacks address to received the withdrawn sBTC.
-    pub recipient: StacksPrinciple,
-    /// Amount of BTC being withdrawn.
-    pub amount: Satoshis,
+    pub recipient: String,
+    /// Amount of BTC being withdrawn in satoshis.
+    pub amount: u64,
     /// The most recent Stacks block hash the API was aware of when the withdrawal was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this hash is the Stacks block hash that contains that artifact.
-    pub last_update_block_hash: StacksBlockHash,
+    pub last_update_block_hash: String,
 }
 
 /// Implements the key trait for the withdrawal info entry key.
@@ -344,7 +344,7 @@ impl KeyTrait for WithdrawalInfoEntryKey {
     /// The type of the partition key.
     type PartitionKey = Status;
     /// the type of the sort key.
-    type SortKey = BlockHeight;
+    type SortKey = u64;
     /// The table field name of the partition key.
     const PARTITION_KEY_NAME: &'static str = "OpStatus";
     /// The table field name of the sort key.
@@ -414,7 +414,7 @@ impl TryFrom<UpdateWithdrawalsRequestBody> for ValidatedUpdateWithdrawalRequest 
 /// Validated withdrawal update.
 pub struct ValidatedWithdrawalUpdate {
     /// Key.
-    pub request_id: WithdrawalId,
+    pub request_id: u64,
     /// Withdrawal event.
     pub event: WithdrawalEvent,
 }

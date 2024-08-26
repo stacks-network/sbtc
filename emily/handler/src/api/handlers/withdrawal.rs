@@ -4,11 +4,7 @@ use warp::reply::{json, with_status, Reply};
 use crate::api::models::common::Status;
 use crate::api::models::withdrawal::{
     requests::{CreateWithdrawalRequestBody, GetWithdrawalsQuery, UpdateWithdrawalsRequestBody},
-    responses::{
-        CreateWithdrawalResponse, GetWithdrawalResponse, GetWithdrawalsResponse,
-        UpdateWithdrawalsResponse,
-    },
-    WithdrawalId,
+    responses::{GetWithdrawalsResponse, UpdateWithdrawalsResponse},
 };
 use crate::api::models::withdrawal::{Withdrawal, WithdrawalInfo};
 use crate::common::error::Error;
@@ -27,26 +23,23 @@ use warp::http::StatusCode;
     operation_id = "getWithdrawal",
     path = "/withdrawal/{id}",
     params(
-        ("id" = WithdrawalId, Path, description = "id associated with the Withdrawal"),
+        ("id" = u64, Path, description = "id associated with the Withdrawal"),
     ),
     tag = "withdrawal",
     responses(
         // TODO(271): Add success body.
-        (status = 200, description = "Withdrawal retrieved successfully", body = GetWithdrawalResponse),
-        (status = 400, description = "Invalid request body"),
-        (status = 404, description = "Address not found"),
-        (status = 405, description = "Method not allowed"),
-        (status = 500, description = "Internal server error")
+        (status = 200, description = "Withdrawal retrieved successfully", body = Withdrawal),
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
-pub async fn get_withdrawal(
-    context: EmilyContext,
-    request_id: WithdrawalId,
-) -> impl warp::reply::Reply {
+pub async fn get_withdrawal(context: EmilyContext, request_id: u64) -> impl warp::reply::Reply {
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
-        request_id: WithdrawalId,
+        request_id: u64,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Get withdrawal.
         let withdrawal: Withdrawal = accessors::get_withdrawal_entry(&context, &request_id)
@@ -55,7 +48,7 @@ pub async fn get_withdrawal(
 
         // Respond.
         Ok(with_status(
-            json(&(withdrawal as GetWithdrawalResponse)),
+            json(&withdrawal),
             StatusCode::OK,
         ))
     }
@@ -71,17 +64,18 @@ pub async fn get_withdrawal(
     operation_id = "getWithdrawals",
     path = "/withdrawal",
     params(
-        ("nextToken" = String, Query, description = "the next token value from the previous return of this api call."),
-        ("pageSize" = String, Query, description = "the maximum number of items in the response list.")
+        ("status" = Status, Query, description = "the status to search by when getting all deposits."),
+        ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
+        ("pageSize" = Option<i32>, Query, description = "the maximum number of items in the response list.")
     ),
     tag = "withdrawal",
     responses(
         // TODO(271): Add success body.
         (status = 200, description = "Withdrawals retrieved successfully", body = GetWithdrawalsResponse),
-        (status = 400, description = "Invalid request body"),
-        (status = 404, description = "Address not found"),
-        (status = 405, description = "Method not allowed"),
-        (status = 500, description = "Internal server error")
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
 pub async fn get_withdrawals(
@@ -124,11 +118,11 @@ pub async fn get_withdrawals(
     request_body = CreateWithdrawalRequestBody,
     responses(
         // TODO(271): Add success body.
-        (status = 201, description = "Withdrawal created successfully", body = CreateWithdrawalResponse),
-        (status = 400, description = "Invalid request body"),
-        (status = 404, description = "Address not found"),
-        (status = 405, description = "Method not allowed"),
-        (status = 500, description = "Internal server error")
+        (status = 201, description = "Withdrawal created successfully", body = Withdrawal),
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
 pub async fn create_withdrawal(
@@ -185,7 +179,7 @@ pub async fn create_withdrawal(
         // Add entry to the table.
         accessors::add_withdrawal_entry(&context, &withdrawal_entry).await?;
         // Respond.
-        let response: CreateWithdrawalResponse = withdrawal_entry.try_into()?;
+        let response: Withdrawal = withdrawal_entry.try_into()?;
         Ok(with_status(json(&response), StatusCode::CREATED))
     }
     // Handle and respond.
@@ -203,10 +197,10 @@ pub async fn create_withdrawal(
     request_body = UpdateWithdrawalsRequestBody,
     responses(
         (status = 201, description = "Withdrawals updated successfully", body = UpdateWithdrawalsResponse),
-        (status = 400, description = "Invalid request body"),
-        (status = 404, description = "Address not found"),
-        (status = 405, description = "Method not allowed"),
-        (status = 500, description = "Internal server error")
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
 pub async fn update_withdrawals(
