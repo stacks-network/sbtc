@@ -293,7 +293,6 @@ mod tests {
     use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
     use blockstack_lib::types::chainstate::StacksAddress;
     use blockstack_lib::types::chainstate::StacksBlockId;
-    use clarity::vm::{ClarityName, ContractName, Value};
     use fake::Dummy;
     use rand::seq::IteratorRandom;
     use rand::SeedableRng;
@@ -745,12 +744,10 @@ mod tests {
     }
 
     impl StacksInteract for TestHarness {
-        async fn get_data_var(
+        async fn get_current_signer_set(
             &mut self,
             _contract_principal: &StacksAddress,
-            _contract_name: &ContractName,
-            _variable_name: &ClarityName,
-        ) -> Result<Value, Error> {
+        ) -> Result<Vec<PublicKey>, Error> {
             // issue #118
             todo!()
         }

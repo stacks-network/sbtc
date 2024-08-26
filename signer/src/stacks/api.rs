@@ -26,6 +26,7 @@ use serde::{Deserialize, Deserializer};
 
 use crate::config::StacksSettings;
 use crate::error::Error;
+use crate::keys::PublicKey;
 use crate::storage::DbRead;
 
 use super::contracts::AsTxPayload;
@@ -73,13 +74,14 @@ pub enum FeePriority {
 
 /// A trait detailing the interface with the Stacks API and Stacks Nodes.
 pub trait StacksInteract {
-    /// Retrieve a data variable from a contract.
-    fn get_data_var(
+    /// Retrieve the current signer set from the `sbtc-registry` contract.
+    ///
+    /// This is done by making a `GET /v2/data_var/<contract-principal>/sbtc-registry/current-signer-set`
+    /// request.
+    fn get_current_signer_set(
         &mut self,
         contract_principal: &StacksAddress,
-        contract_name: &ContractName,
-        var_name: &ClarityName,
-    ) -> impl Future<Output = Result<Value, Error>>;
+    ) -> impl Future<Output = Result<Vec<PublicKey>, Error>>;
     /// Get the latest account info for the given address.
     fn get_account(
         &mut self,
@@ -648,16 +650,41 @@ fn check_result<T>(client: &mut StacksClient, result: Result<T, Error>) -> Resul
 }
 
 impl StacksInteract for StacksClient {
-    async fn get_data_var(
+    async fn get_current_signer_set(
         &mut self,
         contract_principal: &StacksAddress,
-        contract_name: &ContractName,
-        var_name: &ClarityName,
-    ) -> Result<Value, Error> {
-        check_result(
+    ) -> Result<Vec<PublicKey>, Error> {
+        use clarity::vm::types::{BuffData, ListData, SequenceData, Value};
+
+        let result = check_result(
             self,
-            StacksClient::get_data_var(self, contract_principal, contract_name, var_name).await,
-        )
+            StacksClient::get_data_var(
+                self,
+                contract_principal,
+                &ContractName::from("sbtc-registry"),
+                &ClarityName::from("current-signer-set"),
+            )
+            .await,
+        )?;
+
+        match result {
+            Value::Sequence(SequenceData::List(ListData { data, .. })) => {
+                let mut keys = Vec::new();
+                for item in data {
+                    if let Value::Sequence(SequenceData::Buffer(BuffData { data })) = item {
+                        keys.push(PublicKey::from_slice(&data)?);
+                    } else {
+                        return Err(Error::InvalidStacksResponse(
+                            "expected a buffer but got something else",
+                        ));
+                    }
+                }
+                Ok(keys)
+            }
+            _ => Err(Error::InvalidStacksResponse(
+                "expected a sequence but got something else",
+            )),
+        }
     }
     async fn get_account(&mut self, address: &StacksAddress) -> Result<AccountInfo, Error> {
         check_result(self, StacksClient::get_account(self, address).await)
@@ -966,8 +993,8 @@ mod tests {
     }
 
     /// Helper method for creating a list of public keys as a Clarity [`Value::Sequence`].
-    fn create_clarity_pubkey_list(count: u16) -> Vec<Value> {
-        generate_pubkeys(count)
+    fn create_clarity_pubkey_list(public_keys: &[PublicKey]) -> Vec<Value> {
+        public_keys
             .iter()
             .map(|pk| {
                 Value::Sequence(SequenceData::Buffer(BuffData {
@@ -977,14 +1004,116 @@ mod tests {
             .collect()
     }
 
+    #[tokio::test]
+    async fn get_current_signer_set_fails_when_value_not_a_sequence() {
+        let clarity_value = Value::Int(1234);
+        let raw_json_response = format!(
+            r#"{{"data":"0x{}"}}"#,
+            Value::serialize_to_hex(&clarity_value).expect("failed to serialize value")
+        );
+
+        // Setup our mock server
+        let mut stacks_node_server = mockito::Server::new_async().await;
+        let mock = stacks_node_server
+            .mock("GET", "/v2/data_var/ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM/sbtc-registry/current-signer-set?proof=0")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(&raw_json_response)
+            .expect(1)
+            .create();
+
+        // Setup our Stacks client
+        let settings = StacksSettings {
+            node: StacksNodeSettings {
+                endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
+                nakamoto_start_height: 20,
+            },
+        };
+        let mut client = StacksClient::new(settings);
+
+        // Make the request to the mock server
+        let resp = client
+            .get_current_signer_set(
+                &StacksAddress::from_string("ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM")
+                    .expect("failed to parse stacks address"),
+            )
+            .await;
+
+        assert!(matches!(
+            resp.unwrap_err(),
+            Error::InvalidStacksResponse(s) if s == "expected a sequence but got something else"
+        ));
+        mock.assert();
+    }
+
     #[test_case(0; "empty-list")]
     #[test_case(128; "list-128")]
     #[tokio::test]
-    async fn get_data_var_current_signer_set(list_size: u16) {
+    async fn get_current_signer_set_works(list_size: u16) {
+        // Create our simulated response JSON. This uses the same method to generate
+        // the serialized list of public keys as the actual Stacks node does.
+        let public_keys = generate_pubkeys(list_size);
+        let signer_set = Value::Sequence(SequenceData::List(ListData {
+            data: create_clarity_pubkey_list(&public_keys),
+            type_signature: ListTypeData::new_list(
+                TypeSignature::list_of(
+                    TypeSignature::SequenceType(SequenceSubtype::BufferType(
+                        BufferLength::try_from(33_usize).unwrap(),
+                    )),
+                    33,
+                )
+                .expect("failed to create sequence type signature"),
+                128,
+            )
+            .expect("failed to create list type signature"),
+        }));
+        // The format of the response JSON is `{"data": "0x<serialized-value>"}` (excluding the proof).
+        let raw_json_response = format!(
+            r#"{{"data":"0x{}"}}"#,
+            Value::serialize_to_hex(&signer_set).expect("failed to serialize value")
+        );
+
+        // Setup our mock server
+        let mut stacks_node_server = mockito::Server::new_async().await;
+        let mock = stacks_node_server
+            .mock("GET", "/v2/data_var/ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM/sbtc-registry/current-signer-set?proof=0")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(&raw_json_response)
+            .expect(1)
+            .create();
+
+        // Setup our Stacks client
+        let settings = StacksSettings {
+            node: StacksNodeSettings {
+                endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
+                nakamoto_start_height: 20,
+            },
+        };
+        let mut client = StacksClient::new(settings);
+
+        // Make the request to the mock server
+        let resp = client
+            .get_current_signer_set(
+                &StacksAddress::from_string("ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM")
+                    .expect("failed to parse stacks address"),
+            )
+            .await
+            .unwrap();
+
+        // Assert that the response is what we expect
+        assert_eq!(&resp, &public_keys);
+        mock.assert();
+    }
+
+    #[test_case(0; "empty-list")]
+    #[test_case(128; "list-128")]
+    #[tokio::test]
+    async fn get_data_var_works(list_size: u16) {
         // Create our simulated response JSON. This uses the same method to generate
         // the serialized list of public keys as the actual Stacks node does.
         let signer_set = Value::Sequence(SequenceData::List(ListData {
-            data: create_clarity_pubkey_list(list_size),
+            data: create_clarity_pubkey_list(&generate_pubkeys(list_size)),
             type_signature: ListTypeData::new_list(
                 TypeSignature::list_of(
                     TypeSignature::SequenceType(SequenceSubtype::BufferType(
