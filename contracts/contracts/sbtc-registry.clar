@@ -165,8 +165,8 @@
 (define-public (complete-withdrawal-accept
     (request-id uint) 
     (bitcoin-txid (buff 32))
+    (output-index uint)
     (signer-bitmap uint)
-    (vout-index uint)
     (fee uint)
   )
   (begin 
@@ -178,7 +178,7 @@
       request-id: request-id,
       bitcoin-txid: bitcoin-txid,
       signer-bitmap: signer-bitmap,
-      vout-index: vout-index,
+      output-index: output-index,
       fee: fee
     })
     (ok true)
@@ -231,7 +231,7 @@
     (print {
       topic: "completed-deposit",
       bitcoin-txid: txid,
-      vout-index: vout-index,
+      output-index: vout-index,
       amount: amount
     })
     (ok true)

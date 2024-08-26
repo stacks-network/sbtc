@@ -29,7 +29,7 @@ describe("sBTC token contract", () => {
       expect(printData).toStrictEqual({
         topic: "completed-deposit",
         bitcoinTxid: new Uint8Array(32).fill(0),
-        voutIndex: 0n,
+        outputIndex: 0n,
         amount: 1000n,
       });
       const receipt1 = rov(
@@ -65,7 +65,7 @@ describe("sBTC token contract", () => {
       expect(printData).toStrictEqual({
         topic: "completed-deposit",
         bitcoinTxid: new Uint8Array(32).fill(0),
-        voutIndex: 0n,
+        outputIndex: 0n,
         amount: 1000n,
       });
       const receipt1 = txOk(
