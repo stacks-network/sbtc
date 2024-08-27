@@ -421,7 +421,6 @@ where
         aggregate_key: PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<utxo::SbtcRequests, error::Error> {
-        println!("Context window");
         let context_window = self
             .context_window
             .try_into()
@@ -434,14 +433,10 @@ where
             .get_pending_accepted_deposit_requests(bitcoin_chain_tip, context_window, threshold)
             .await?;
 
-        println!("Pending deposit requests");
-
         let pending_withdraw_requests = self
             .storage
             .get_pending_accepted_withdraw_requests(bitcoin_chain_tip, context_window, threshold)
             .await?;
-
-        println!("Pending withdraw requests");
 
         let signers_public_key = bitcoin::XOnlyPublicKey::from(&aggregate_key);
 
@@ -466,7 +461,6 @@ where
             .len()
             .try_into()
             .map_err(|_| error::Error::TypeConversion)?;
-        println!("Returnoo");
 
         Ok(utxo::SbtcRequests {
             deposits,
