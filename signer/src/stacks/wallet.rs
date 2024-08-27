@@ -121,7 +121,7 @@ impl SignerWallet {
         let hash_mode = Self::hash_mode().to_address_hash_mode();
         let version = match network_kind {
             NetworkKind::Mainnet => C32_ADDRESS_VERSION_MAINNET_MULTISIG,
-            NetworkKind::Testnet => C32_ADDRESS_VERSION_TESTNET_MULTISIG,
+            _ => C32_ADDRESS_VERSION_TESTNET_MULTISIG,
         };
 
         // The [`StacksAddress::from_public_keys`] call below should never
@@ -220,7 +220,7 @@ impl MultisigTx {
         // https://docs.stacks.co/clarity/keywords#chain-id-clarity2:
         let (version, chain_id) = match wallet.network_kind {
             NetworkKind::Mainnet => (TransactionVersion::Mainnet, CHAIN_ID_MAINNET),
-            NetworkKind::Testnet => (TransactionVersion::Testnet, CHAIN_ID_TESTNET),
+            _ => (TransactionVersion::Testnet, CHAIN_ID_TESTNET),
         };
 
         let conditions = payload.post_conditions();
