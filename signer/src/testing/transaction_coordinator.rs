@@ -2,7 +2,9 @@
 
 use crate::bitcoin::utxo;
 use crate::error;
+use crate::keys;
 use crate::keys::PrivateKey;
+use crate::keys::SignerScriptPubKey;
 use crate::network;
 use crate::storage;
 use crate::testing;
@@ -117,13 +119,15 @@ where
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let placeholder_bitcoin_client = crate::bitcoin::MockBitcoinInteract::new();
+        let coordinator_private_key = signer_info.first().cloned().unwrap().signer_private_key;
+        let coordinator_public_key = keys::PublicKey::from_private_key(&coordinator_private_key);
 
         let mut event_loop_harness = EventLoopHarness::create(
             network.connect(),
             (self.storage_constructor)(),
             placeholder_bitcoin_client,
             self.context_window,
-            signer_info.first().cloned().unwrap().signer_private_key,
+            coordinator_private_key,
             self.signing_threshold,
         );
 
@@ -246,9 +250,18 @@ where
         let broadcasted_tx = broadcasted_tx_receiver.recv().await.unwrap();
         println!("Broadcasted tx: {:?}", broadcasted_tx);
 
-        //signers_handle.await.expect("signers crashed");
+        let first_script_pubkey = broadcasted_tx
+            .tx_out(0)
+            .expect("missing tx output")
+            .script_pubkey
+            .clone();
 
         handle.stop_event_loop().await;
+
+        assert_eq!(
+            first_script_pubkey,
+            coordinator_public_key.signers_script_pubkey(),
+        );
     }
 
     async fn write_test_data(test_data: &testing::storage::model::TestData, storage: &mut S) {
