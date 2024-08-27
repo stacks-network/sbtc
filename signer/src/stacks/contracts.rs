@@ -266,7 +266,7 @@ impl AsContractCall for AcceptWithdrawalV1 {
         vec![
             ClarityValue::UInt(self.request_id as u128),
             ClarityValue::Sequence(SequenceData::Buffer(txid)),
-            ClarityValue::UInt(self.signer_bitmap.load()),
+            ClarityValue::UInt(self.signer_bitmap.load_le()),
             ClarityValue::UInt(self.outpoint.vout as u128),
             ClarityValue::UInt(self.tx_fee as u128),
         ]
@@ -318,7 +318,7 @@ impl AsContractCall for RejectWithdrawalV1 {
     fn as_contract_args(&self) -> Vec<ClarityValue> {
         vec![
             ClarityValue::UInt(self.request_id as u128),
-            ClarityValue::UInt(self.signer_bitmap.load()),
+            ClarityValue::UInt(self.signer_bitmap.load_le()),
         ]
     }
     /// Validates that the reject-withdrawal-request satisfies the
