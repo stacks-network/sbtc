@@ -233,6 +233,7 @@ where
         signer_public_keys: &BTreeSet<PublicKey>,
         mut transaction: utxo::UnsignedTransaction<'_>,
     ) -> Result<(), error::Error> {
+        println!("Yooo");
         let mut coordinator_state_machine = wsts_state_machine::CoordinatorStateMachine::load(
             &mut self.storage,
             aggregate_key,
@@ -241,6 +242,8 @@ where
             self.private_key,
         )
         .await?;
+
+        println!("Flooo");
 
         let sighashes = transaction.construct_digests()?;
         let msg = sighashes.signers.to_raw_hash().to_byte_array();
@@ -265,6 +268,7 @@ where
 
         let mut deposit_witness = Vec::new();
 
+        println!("Doing stuff!");
         for (deposit, sighash) in sighashes.deposits.into_iter() {
             let msg = sighash.to_raw_hash().to_byte_array();
 
@@ -291,6 +295,7 @@ where
         let witness_data: Vec<bitcoin::Witness> = std::iter::once(signer_witness)
             .chain(deposit_witness)
             .collect();
+        println!("Hohoo");
 
         transaction
             .tx
@@ -301,6 +306,7 @@ where
                 tx_in.witness = witness;
             });
 
+        println!("Broadcasting transaction");
         self.bitcoin_client
             .broadcast_transaction(&transaction.tx)
             .await?;

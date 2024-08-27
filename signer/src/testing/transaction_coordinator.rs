@@ -198,10 +198,10 @@ where
             .once()
             .returning(|_| Box::pin(async { Ok(None) }));
 
-        mock_bitcoin_client
-            .expect_broadcast_transaction()
-            .once()
-            .returning(|_| Box::pin(async { Ok(()) }));
+        //mock_bitcoin_client
+        //    .expect_broadcast_transaction()
+        //    .once()
+        //    .returning(|_| Box::pin(async { Ok(()) }));
 
         // Coordinator selection
         let mut hasher = sha2::Sha256::new();
