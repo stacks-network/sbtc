@@ -13,6 +13,7 @@ use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::Txid;
 use bitvec::array::BitArray;
+use clarity::vm::types::CharType;
 use clarity::vm::types::PrincipalData;
 use clarity::vm::types::SequenceData;
 use clarity::vm::types::TupleData;
@@ -23,6 +24,7 @@ use crate::config::NetworkKind;
 use crate::error::Error;
 
 /// The print events emitted by the sbtc-registry clarity smart contract.
+#[derive(Debug)]
 pub enum RegistryEvent {
     /// For the `completed-deposit` topic
     CompletedDeposit(CompletedDepositEvent),
@@ -59,6 +61,15 @@ impl RawTupleData {
             _ => Err(Error::TupleEventField(field)),
         }
     }
+    /// Extract the string value from the given field
+    fn remove_string(&mut self, field: &'static str) -> Result<String, Error> {
+        match self.0.remove(field) {
+            Some(ClarityValue::Sequence(SequenceData::String(CharType::ASCII(ascii)))) => {
+                String::from_utf8(ascii.data).map_err(Error::ClarityStringConversion)
+            }
+            _ => Err(Error::TupleEventField(field)),
+        }
+    }
     /// Extract the tuple value from the given field
     fn remove_tuple(&mut self, field: &'static str) -> Result<Self, Error> {
         match self.0.remove(field) {
@@ -70,29 +81,25 @@ impl RawTupleData {
 
 /// Transform the [`ClarityValue`] from the sbtc-registry event into a
 /// proper type.
-pub fn deconstruct(value: ClarityValue, network: NetworkKind) -> Result<RegistryEvent, Error> {
+pub fn transform_value(value: ClarityValue, network: NetworkKind) -> Result<RegistryEvent, Error> {
     match value {
-        ClarityValue::Tuple(TupleData { mut data_map, .. }) => {
+        ClarityValue::Tuple(TupleData { data_map, .. }) => {
+            let mut event_map = RawTupleData(data_map);
             // Lucky for us, each sBTC print event in the sbtc-registry
             // smart contract has a topic. We use that to match on what to
             // expect when decomposing the event from a [`ClarityValue`]
             // into a proper type.
-            let topic = match data_map.remove("topic") {
-                Some(ClarityValue::Sequence(SequenceData::String(val))) => val.to_string(),
-                _ => return Err(Error::TupleEventField("topic")),
-            };
-
-            let event_map = RawTupleData(data_map);
+            let topic = event_map.remove_string("topic")?;
 
             match topic.as_str() {
                 "completed-deposit" => completed_deposit(event_map),
-                "withdrawal-reject" => withdrawal_reject(event_map),
                 "withdrawal-accept" => withdrawal_accept(event_map),
                 "withdrawal-create" => withdrawal_create(event_map, network),
-                _ => Err(Error::TupleEventField("topic")),
+                "withdrawal-reject" => withdrawal_reject(event_map),
+                _ => Err(Error::ClarityUnexpectedEventTopic(topic)),
             }
         }
-        _ => Err(Error::TupleEventField("topic")),
+        value => Err(Error::ClarityUnexpectedValue(value)),
     }
 }
 
@@ -212,7 +219,6 @@ fn recipient_to_address(_map: RawTupleData, network: NetworkKind) -> Result<Addr
     Ok(Address::p2shwsh(&ScriptBuf::new_op_return([1, 2]), network))
 }
 
-
 /// This is the event that is emitted from the `complete-withdrawal-accept`
 /// public function in sbtc-registry smart contract.
 #[derive(Debug)]
@@ -260,7 +266,7 @@ fn withdrawal_accept(mut map: RawTupleData) -> Result<RegistryEvent, Error> {
         // This shouldn't error for the reasons noted in
         // [`withdrawal_create`].
         request_id: u64::try_from(request_id).map_err(Error::ClarityIntConversion)?,
-        signer_bitmap: BitArray::new(bitmap.to_be_bytes()),
+        signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
         outpoint: OutPoint {
             // This shouldn't error, this is set from a proper [`Txid`] in
             // a contract call.
@@ -278,6 +284,7 @@ fn withdrawal_accept(mut map: RawTupleData) -> Result<RegistryEvent, Error> {
 
 /// This is the event that is emitted from the `complete-withdrawal-reject`
 /// public function in sbtc-registry smart contract.
+#[derive(Debug)]
 pub struct WithdrawalRejectEvent {
     /// This is the unique identifier of user created the withdrawal
     /// request.

@@ -36,6 +36,20 @@ pub enum Error {
     #[error("Could not convert an integer in clarity event into the expected integer {0}")]
     ClarityIntConversion(#[source] std::num::TryFromIntError),
 
+    /// This happens when we attempt to create s String from the raw bytes
+    /// returned in a Clarity [`Value`](clarity::vm::Value).
+    #[error("Could not convert ASCII or UTF8 bytes into a String: {0}")]
+    ClarityStringConversion(#[source] std::string::FromUtf8Error),
+
+    /// This happens when we expect one clarity variant but got another.
+    #[error("Got an unexpected clarity value: {0:?}")]
+    ClarityUnexpectedValue(clarity::vm::Value),
+
+    /// This should never happen, but happens when one of the given topics
+    /// is not on the list of expected topics.
+    #[error("Got an unexpected event topic: {0}")]
+    ClarityUnexpectedEventTopic(String),
+
     /// This a programmer error bug that should never be thrown.
     #[error("The field {0} was missing from the print event for topic")]
     TupleEventField(&'static str),
