@@ -18,6 +18,7 @@ use blockstack_lib::net::api::postfeerate::FeeRateEstimateRequestBody;
 use blockstack_lib::net::api::postfeerate::RPCFeeEstimateResponse;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::types::chainstate::StacksBlockId;
+use clarity::vm::types::{BuffData, ListData, SequenceData};
 use clarity::vm::{ClarityName, ContractName, Value};
 use futures::TryFutureExt;
 use reqwest::header::CONTENT_LENGTH;
@@ -632,6 +633,8 @@ impl StacksClient {
     }
 }
 
+/// Checks the result of a Stacks API request and updates the client's
+/// endpoint if the request failed due to a timeout or connection error.
 fn check_result<T>(client: &mut StacksClient, result: Result<T, Error>) -> Result<T, Error> {
     match &result {
         Err(Error::StacksNodeRequest(e)) => {
@@ -654,20 +657,19 @@ impl StacksInteract for StacksClient {
         &mut self,
         contract_principal: &StacksAddress,
     ) -> Result<Vec<PublicKey>, Error> {
-        use clarity::vm::types::{BuffData, ListData, SequenceData, Value};
-
-        let result = check_result(
+        // Make a request to the sbtc-registry contract to get the current
+        // signer set.
+        let result = StacksClient::get_data_var(
             self,
-            StacksClient::get_data_var(
-                self,
-                contract_principal,
-                &ContractName::from("sbtc-registry"),
-                &ClarityName::from("current-signer-set"),
-            )
-            .await,
-        )?;
+            contract_principal,
+            &ContractName::from("sbtc-registry"),
+            &ClarityName::from("current-signer-set"),
+        )
+        .await;
 
-        match result {
+        let checked_result = check_result(self, result)?;
+
+        match checked_result {
             Value::Sequence(SequenceData::List(ListData { data, .. })) => {
                 let mut keys = Vec::new();
                 for item in data {
