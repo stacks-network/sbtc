@@ -198,10 +198,22 @@ where
             .once()
             .returning(|_| Box::pin(async { Ok(None) }));
 
+        let (broadcasted_tx_sender, mut broadcasted_tx_receiver) = tokio::sync::mpsc::channel(1);
+
         mock_bitcoin_client
             .expect_broadcast_transaction()
             .once()
-            .returning(|_| Box::pin(async { Ok(()) }));
+            .returning(move |tx| {
+                let tx = tx.clone();
+                let broadcasted_tx_sender = broadcasted_tx_sender.clone();
+                Box::pin(async move {
+                    broadcasted_tx_sender
+                        .send(tx)
+                        .await
+                        .expect("Failed to send result");
+                    Ok(())
+                })
+            });
 
         // Coordinator selection
         let mut hasher = sha2::Sha256::new();
@@ -220,15 +232,21 @@ where
 
         let handle = event_loop_harness.start();
 
-        let signers_handle =
-            tokio::spawn(async move { testing_signer_set.participate_in_signing_rounds(3).await });
+        let _signers_handle = tokio::spawn(async move {
+            testing_signer_set
+                .participate_in_signing_rounds_forever()
+                .await
+        });
 
         handle
             .block_observer_notification_tx
             .send(())
             .expect("failed to send notification");
 
-        signers_handle.await.expect("signers crashed");
+        let broadcasted_tx = broadcasted_tx_receiver.recv().await.unwrap();
+        println!("Broadcasted tx: {:?}", broadcasted_tx);
+
+        //signers_handle.await.expect("signers crashed");
 
         handle.stop_event_loop().await;
     }

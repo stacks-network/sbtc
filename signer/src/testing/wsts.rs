@@ -337,7 +337,7 @@ impl Signer {
                 }
             }
         };
-        tokio::time::timeout(Duration::from_secs(50), future)
+        tokio::time::timeout(Duration::from_secs(5), future)
             .await
             .unwrap()
     }
@@ -450,8 +450,8 @@ impl SignerSet {
     }
 
     /// Participate in N signing rounds
-    pub async fn participate_in_signing_rounds(&mut self, n: usize) {
-        for _ in 0..n {
+    pub async fn participate_in_signing_rounds_forever(&mut self) {
+        loop {
             self.participate_in_signing_round().await
         }
     }
