@@ -348,4 +348,167 @@ mod tests {
 
         assert_eq!(bitmap.load_le::<u128>(), bitmap_number);
     }
+
+    #[test]
+    fn complete_deposit_event() {
+        let amount = 123654789;
+        let event = [
+            (ClarityName::from("amount"), ClarityValue::UInt(amount)),
+            (
+                ClarityName::from("bitcoin-txid"),
+                ClarityValue::buff_from(vec![1; 32]).unwrap(),
+            ),
+            (ClarityName::from("output-index"), ClarityValue::UInt(3)),
+            (
+                ClarityName::from("topic"),
+                ClarityValue::string_ascii_from_bytes("completed-deposit".as_bytes().to_vec())
+                    .unwrap(),
+            ),
+        ];
+        let tuple_data = TupleData::from_data(event.to_vec()).unwrap();
+        let value = ClarityValue::Tuple(tuple_data);
+
+        // let res = transform_value(value, NetworkKind::Regtest).unwrap();
+        match transform_value(value, NetworkKind::Regtest).unwrap() {
+            RegistryEvent::CompletedDeposit(event) => {
+                assert_eq!(event.amount, amount as u64);
+                assert_eq!(event.outpoint.txid, Txid::from_byte_array([1; 32]));
+                assert_eq!(event.outpoint.vout, 3);
+            }
+            e => panic!("Got the wrong event variant: {e:?}"),
+        };
+    }
+
+    #[test]
+    fn create_withdrawal_event() {
+        let amount = 24681012;
+        let request_id = 1;
+        let sender = PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap();
+        let block_height = 139;
+        let max_fee = 369;
+        let recipient = vec![(ClarityName::from("hi"), ClarityValue::UInt(0))];
+        let event = [
+            (
+                ClarityName::from("request-id"),
+                ClarityValue::UInt(request_id),
+            ),
+            (
+                ClarityName::from("signer-bitmap"),
+                ClarityValue::UInt(13579),
+            ),
+            (ClarityName::from("max-fee"), ClarityValue::UInt(max_fee)),
+            (ClarityName::from("output-index"), ClarityValue::UInt(2)),
+            (ClarityName::from("amount"), ClarityValue::UInt(amount)),
+            (
+                ClarityName::from("block-height"),
+                ClarityValue::UInt(block_height),
+            ),
+            (
+                ClarityName::from("bitcoin-txid"),
+                ClarityValue::buff_from(vec![1; 32]).unwrap(),
+            ),
+            (
+                ClarityName::from("sender"),
+                ClarityValue::Principal(sender.clone()),
+            ),
+            (
+                ClarityName::from("topic"),
+                ClarityValue::string_ascii_from_bytes("withdrawal-create".as_bytes().to_vec())
+                    .unwrap(),
+            ),
+            (
+                ClarityName::from("recipient"),
+                ClarityValue::Tuple(TupleData::from_data(recipient).unwrap()),
+            ),
+        ];
+        let tuple_data = TupleData::from_data(event.to_vec()).unwrap();
+        let value = ClarityValue::Tuple(tuple_data);
+
+        // let res = transform_value(value, NetworkKind::Regtest).unwrap();
+        match transform_value(value, NetworkKind::Regtest).unwrap() {
+            RegistryEvent::WithdrawalCreate(event) => {
+                assert_eq!(event.amount, amount as u64);
+                assert_eq!(event.request_id, request_id as u64);
+                assert_eq!(event.block_height, block_height as u64);
+                assert_eq!(event.max_fee, max_fee as u64);
+                assert_eq!(event.sender, sender);
+            }
+            e => panic!("Got the wrong event variant: {e:?}"),
+        };
+    }
+
+    #[test]
+    fn accept_withdrawal_event() {
+        let request_id = 1;
+        let bitmap = 13579;
+        let fee = 369;
+        let vout = 20;
+        let event = [
+            (
+                ClarityName::from("request-id"),
+                ClarityValue::UInt(request_id),
+            ),
+            (
+                ClarityName::from("signer-bitmap"),
+                ClarityValue::UInt(bitmap),
+            ),
+            (ClarityName::from("fee"), ClarityValue::UInt(fee)),
+            (
+                ClarityName::from("bitcoin-txid"),
+                ClarityValue::buff_from(vec![1; 32]).unwrap(),
+            ),
+            (ClarityName::from("output-index"), ClarityValue::UInt(vout)),
+            (
+                ClarityName::from("topic"),
+                ClarityValue::string_ascii_from_bytes("withdrawal-accept".as_bytes().to_vec())
+                    .unwrap(),
+            ),
+        ];
+        let tuple_data = TupleData::from_data(event.to_vec()).unwrap();
+        let value = ClarityValue::Tuple(tuple_data);
+
+        // let res = transform_value(value, NetworkKind::Regtest).unwrap();
+        match transform_value(value, NetworkKind::Regtest).unwrap() {
+            RegistryEvent::WithdrawalAccept(event) => {
+                assert_eq!(event.request_id, request_id as u64);
+                assert_eq!(event.outpoint.txid, Txid::from_byte_array([1; 32]));
+                assert_eq!(event.outpoint.vout, vout as u32);
+                assert_eq!(event.fee, fee as u64);
+                assert_eq!(event.signer_bitmap, BitArray::<[u8; 16]>::new(bitmap.to_le_bytes()));
+            }
+            e => panic!("Got the wrong event variant: {e:?}"),
+        };
+    }
+
+    #[test]
+    fn reject_withdrawal_event() {
+        let request_id = 1;
+        let bitmap = 13579;
+        let event = [
+            (
+                ClarityName::from("request-id"),
+                ClarityValue::UInt(request_id),
+            ),
+            (
+                ClarityName::from("signer-bitmap"),
+                ClarityValue::UInt(bitmap),
+            ),
+            (
+                ClarityName::from("topic"),
+                ClarityValue::string_ascii_from_bytes("withdrawal-reject".as_bytes().to_vec())
+                    .unwrap(),
+            ),
+        ];
+        let tuple_data = TupleData::from_data(event.to_vec()).unwrap();
+        let value = ClarityValue::Tuple(tuple_data);
+
+        // let res = transform_value(value, NetworkKind::Regtest).unwrap();
+        match transform_value(value, NetworkKind::Regtest).unwrap() {
+            RegistryEvent::WithdrawalReject(event) => {
+                assert_eq!(event.request_id, request_id as u64);
+                assert_eq!(event.signer_bitmap, BitArray::<[u8; 16]>::new(bitmap.to_le_bytes()));
+            }
+            e => panic!("Got the wrong event variant: {e:?}"),
+        };
+    }
 }
