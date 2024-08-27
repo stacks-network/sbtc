@@ -31,6 +31,20 @@ pub enum Error {
     #[error("could not serialize bitcoin transaction into bytes.")]
     BitcoinEncodeTransaction(#[source] bitcoin::io::Error),
 
+    /// This error is thrown when converting a u128 some other smaller
+    /// type. It should never be thrown
+    #[error("Could not convert an integer in clarity event into the expected integer {0}")]
+    ClarityIntConversion(#[source] std::num::TryFromIntError),
+
+    /// This a programmer error bug that should never be thrown.
+    #[error("The field {0} was missing from the print event for topic")]
+    TupleEventField(&'static str),
+
+    /// This can only be thrown when the number of bytes for a txid field
+    /// is not exactly equal to 32. This should never occur.
+    #[error("Could not convert an integer in clarity event into the expected integer {0}")]
+    ClarityTxidConversion(#[source] bitcoin::hashes::FromSliceError),
+
     /// Invalid amount
     #[error("the change amounts for the transaction is negative: {0}")]
     InvalidAmount(i64),
