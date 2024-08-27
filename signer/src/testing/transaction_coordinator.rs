@@ -120,7 +120,6 @@ where
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let placeholder_bitcoin_client = crate::bitcoin::MockBitcoinInteract::new();
         let coordinator_private_key = signer_info.first().cloned().unwrap().signer_private_key;
-        let coordinator_public_key = keys::PublicKey::from_private_key(&coordinator_private_key);
 
         let mut event_loop_harness = EventLoopHarness::create(
             network.connect(),
@@ -248,7 +247,6 @@ where
             .expect("failed to send notification");
 
         let broadcasted_tx = broadcasted_tx_receiver.recv().await.unwrap();
-        println!("Broadcasted tx: {:?}", broadcasted_tx);
 
         let first_script_pubkey = broadcasted_tx
             .tx_out(0)
@@ -258,10 +256,7 @@ where
 
         handle.stop_event_loop().await;
 
-        assert_eq!(
-            first_script_pubkey,
-            coordinator_public_key.signers_script_pubkey(),
-        );
+        assert_eq!(first_script_pubkey, aggregate_key.signers_script_pubkey());
     }
 
     async fn write_test_data(test_data: &testing::storage::model::TestData, storage: &mut S) {
