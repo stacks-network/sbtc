@@ -262,7 +262,6 @@ impl CoordinatorStateMachine {
             let err = wsts::state_machine::coordinator::Error::BadStateChange(msg);
             return Err(coordinator_error(err));
         };
-        println!("Cohere!");
 
         // TODO(338): Replace this for-loop with a simpler method to set
         // the public DKG shares.
@@ -283,8 +282,6 @@ impl CoordinatorStateMachine {
                 .process_message(&packet)
                 .map_err(coordinator_error)?;
         }
-
-        println!("Cothere!");
 
         // Once we've processed all DKG public shares for all participants,
         // WSTS moves the state to `DKG_PRIVATE_GATHER` automatically.

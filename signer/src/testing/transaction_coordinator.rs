@@ -198,10 +198,10 @@ where
             .once()
             .returning(|_| Box::pin(async { Ok(None) }));
 
-        //mock_bitcoin_client
-        //    .expect_broadcast_transaction()
-        //    .once()
-        //    .returning(|_| Box::pin(async { Ok(()) }));
+        mock_bitcoin_client
+            .expect_broadcast_transaction()
+            .once()
+            .returning(|_| Box::pin(async { Ok(()) }));
 
         // Coordinator selection
         let mut hasher = sha2::Sha256::new();
@@ -221,7 +221,7 @@ where
         let handle = event_loop_harness.start();
 
         let signers_handle =
-            tokio::spawn(async move { testing_signer_set.participate_in_signing_round().await });
+            tokio::spawn(async move { testing_signer_set.participate_in_signing_rounds(3).await });
 
         handle
             .block_observer_notification_tx

@@ -233,7 +233,6 @@ where
         signer_public_keys: &BTreeSet<PublicKey>,
         mut transaction: utxo::UnsignedTransaction<'_>,
     ) -> Result<(), error::Error> {
-        println!("Yooo");
         let mut coordinator_state_machine = wsts_state_machine::CoordinatorStateMachine::load(
             &mut self.storage,
             aggregate_key,
@@ -242,8 +241,6 @@ where
             self.private_key,
         )
         .await?;
-
-        println!("Flooo");
 
         let sighashes = transaction.construct_digests()?;
         let msg = sighashes.signers.to_raw_hash().to_byte_array();
@@ -268,7 +265,7 @@ where
 
         let mut deposit_witness = Vec::new();
 
-        println!("Doing stuff!");
+        println!("Doing stuff!: {}", sighashes.deposits.len());
         for (deposit, sighash) in sighashes.deposits.into_iter() {
             let msg = sighash.to_raw_hash().to_byte_array();
 
