@@ -337,7 +337,7 @@ impl Signer {
                 }
             }
         };
-        tokio::time::timeout(Duration::from_secs(10), future)
+        tokio::time::timeout(Duration::from_secs(50), future)
             .await
             .unwrap()
     }

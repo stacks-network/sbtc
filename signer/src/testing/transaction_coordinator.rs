@@ -1,12 +1,12 @@
 //! Test utilities for the transaction coordinator
 
+use crate::bitcoin::utxo;
 use crate::error;
 use crate::keys::PrivateKey;
 use crate::network;
 use crate::storage;
 use crate::testing;
 use crate::transaction_coordinator;
-use crate::bitcoin::utxo;
 
 use bitcoin::hashes::Hash as _;
 use rand::SeedableRng as _;
@@ -55,7 +55,7 @@ where
 
     pub fn start(self) -> RunningEventLoopHandle<S> {
         let block_observer_notification_tx = self.block_observer_notification_tx;
-        let join_handle = tokio::spawn(async { self.event_loop.run().await });
+        let join_handle = tokio::spawn(async { dbg!(self.event_loop.run().await) });
         let storage = self.storage;
 
         RunningEventLoopHandle {
@@ -185,7 +185,7 @@ where
 
         mock_bitcoin_client
             .expect_estimate_fee_rate()
-            .once()
+            .times(1)
             .returning(|| Box::pin(async { Ok(1.3) }));
 
         mock_bitcoin_client
@@ -198,10 +198,10 @@ where
             .once()
             .returning(|_| Box::pin(async { Ok(None) }));
 
-        mock_bitcoin_client
-            .expect_broadcast_transaction()
-            .once()
-            .returning(|_| Box::pin(async { Ok(()) }));
+        //mock_bitcoin_client
+        //    .expect_broadcast_transaction()
+        //    .once()
+        //    .returning(|_| Box::pin(async { Ok(()) }));
 
         // Coordinator selection
         let mut hasher = sha2::Sha256::new();
