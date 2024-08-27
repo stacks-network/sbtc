@@ -179,9 +179,7 @@ where
         aggregate_key: PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<(), error::Error> {
-        let fee_rate = self.bitcoin_client.estimate_fee_rate().await?;
-
-        let signer_btc_state = self.get_btc_state(fee_rate, &aggregate_key).await?;
+        let signer_btc_state = self.get_btc_state(&aggregate_key).await?;
 
         let pending_requests = self
             .get_pending_requests(
@@ -255,7 +253,7 @@ where
 
         let signature = bitcoin::taproot::Signature {
             signature: secp256k1::schnorr::Signature::from_slice(&signature.to_bytes())
-                .expect("TODO"), // TODO: Error handling
+                .map_err(|_| error::Error::TypeConversion)?,
             sighash_type: bitcoin::TapSighashType::Default,
         };
         let signer_witness = bitcoin::Witness::p2tr_key_spend(&signature);
@@ -276,13 +274,13 @@ where
 
             let signature = bitcoin::taproot::Signature {
                 signature: secp256k1::schnorr::Signature::from_slice(&signature.to_bytes())
-                    .expect("TODO"), // TODO: Error handling
+                    .map_err(|_| error::Error::TypeConversion)?,
                 sighash_type: bitcoin::TapSighashType::Default,
             };
 
             let witness = deposit.construct_witness_data(signature);
 
-            deposit_witness.push(witness); // TODO: Make more functional
+            deposit_witness.push(witness);
         }
 
         let witness_data: Vec<bitcoin::Witness> = std::iter::once(signer_witness)
@@ -320,7 +318,21 @@ where
         let msg = message::WstsMessage { txid, inner: outbound.msg };
         self.send_message(msg, bitcoin_chain_tip).await?;
 
-        // TODO: Terminate after timeout
+        self.relay_messages_to_wsts_state_machine_until_signature_created(
+            bitcoin_chain_tip,
+            coordinator_state_machine,
+            txid,
+        )
+        .await
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn relay_messages_to_wsts_state_machine_until_signature_created(
+        &mut self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        coordinator_state_machine: &mut wsts_state_machine::CoordinatorStateMachine,
+        txid: bitcoin::Txid,
+    ) -> Result<wsts::taproot::SchnorrProof, error::Error> {
         loop {
             let msg = self.network.receive().await?;
 
@@ -333,9 +345,14 @@ where
                 sig: Vec::new(),
             };
 
-            let (outbound_packet, operation_result) = coordinator_state_machine
-                .process_message(&packet)
-                .expect("message processing failed");
+            let (outbound_packet, operation_result) =
+                match coordinator_state_machine.process_message(&packet) {
+                    Ok(val) => val,
+                    Err(err) => {
+                        tracing::warn!(packet = ?packet, reason = %err, "ignoring packet");
+                        continue;
+                    }
+                };
 
             if let Some(packet) = outbound_packet {
                 let msg = message::WstsMessage { txid, inner: packet.msg };
@@ -347,7 +364,7 @@ where
                     return Ok(signature)
                 }
                 None => continue,
-                Some(_) => panic!("Oh nooo"), // TODO
+                Some(_) => return Err(error::Error::UnexpectedOperationResult),
             }
         }
     }
@@ -387,7 +404,6 @@ where
     #[tracing::instrument(skip(self))]
     async fn get_btc_state(
         &mut self,
-        fee_rate: f64,
         aggregate_key: &PublicKey,
     ) -> Result<utxo::SignerBtcState, error::Error> {
         let fee_rate = self.bitcoin_client.estimate_fee_rate().await?;
@@ -485,9 +501,6 @@ where
         Ok((aggregate_key, signer_set))
     }
 
-    // Return the public key of self.
-    //
-    // Technically not a fallible operation.
     fn pub_key(&self) -> PublicKey {
         PublicKey::from_private_key(&self.private_key)
     }

@@ -449,6 +449,13 @@ impl SignerSet {
         )
     }
 
+    /// Participate in N signing rounds
+    pub async fn participate_in_signing_rounds_forever(&mut self) {
+        loop {
+            self.participate_in_signing_round().await
+        }
+    }
+
     /// Participate in a signing round coordinated by an external coordinator
     pub async fn participate_in_signing_round(&mut self) {
         let mut signer_handles = Vec::new();
