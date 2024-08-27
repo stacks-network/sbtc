@@ -8,10 +8,15 @@
 use std::collections::BTreeMap;
 
 use bitcoin::hashes::Hash;
+use bitcoin::params::Params;
 use bitcoin::Address;
 use bitcoin::OutPoint;
+use bitcoin::PubkeyHash;
 use bitcoin::ScriptBuf;
+use bitcoin::ScriptHash;
 use bitcoin::Txid;
+use bitcoin::WitnessProgram;
+use bitcoin::WitnessVersion;
 use bitvec::array::BitArray;
 use clarity::vm::types::CharType;
 use clarity::vm::types::PrincipalData;
@@ -215,8 +220,157 @@ fn withdrawal_create(mut map: RawTupleData, network: NetworkKind) -> Result<Regi
     }))
 }
 
-fn recipient_to_address(_map: RawTupleData, network: NetworkKind) -> Result<Address, Error> {
-    Ok(Address::p2shwsh(&ScriptBuf::new_op_return([1, 2]), network))
+/// This function takes in a recipient as a Clarity Value and returns a
+/// bitcoin address, where the clarity value is:
+/// ```clarity
+/// { version: (buff 1), hashbytes: (buff 32) }
+/// ```
+/// 
+/// The permissible values and their meaning closely tracks the meaning of
+/// [`PoxAddress`](blockstack_lib::chainstate::stacks::address::PoxAddress)es
+/// in stacks core. This meaning is basically:
+/// 
+/// ```
+/// version == 0x00 and (len hashbytes) == 20 => P2PKH
+/// version == 0x01 and (len hashbytes) == 20 => P2SH
+/// version == 0x02 and (len hashbytes) == 20 => P2SH-P2WPKH
+/// version == 0x03 and (len hashbytes) == 20 => P2SH-P2WSH
+/// version == 0x04 and (len hashbytes) == 20 => P2WPKH
+/// version == 0x05 and (len hashbytes) == 32 => P2WSH
+/// version == 0x06 and (len hashbytes) == 32 => P2TR
+/// ```
+/// 
+/// Below is a detailed breakdown of bitcoin address types and how they map
+/// to the clarity value. In what follows below, the network used for the
+/// human readable parts is inherited from the network of the underlying
+/// transaction itself.
+///
+/// ## P2PKH
+///
+/// Generally speaking, Pay-to-Public-Key-Hash addresses are formed by
+/// taking the Hash160 of the public key, prefixing it with one byte (0x00
+/// on mainnet and 0x6F on testing) and then base58 encoding the result.
+///
+/// To specify this address type in the `initiate-withdrawal-request`
+/// contract call, the `version` is 0x00 and the `hashbytes` is the Hash160
+/// of the public key.
+///
+///
+/// ## P2SH, P2SH-P2WPKH, and P2SH-P2WSH
+///
+/// Pay-to-script-hash-* addresses are formed by taking the Hash160 of the
+/// locking script, prefixing it with one byte (0x05 on mainnet and 0xC4 on
+/// testnet) and base58 encoding the result. The difference between them
+/// lies with the locking script. For P2SH-P2WPKH addresses, the locking
+/// script is:
+/// ```
+/// 0 || <Hash160 of the compressed public key>
+/// ```
+/// For P2SH-P2WSH addresses, the locking script is:
+/// ```
+/// 0 || <sha256 of the redeem script>
+/// ```
+/// And for P2SH addresses you get to chose the locking script in its
+/// entirety.
+///
+/// Again, after you construct the locking script you take it's Hash160,
+/// prefix it with one byte and base58 encode it to form the address. To
+/// specify these address types in the `initiate-withdrawal-request`
+/// contract call, the `version` is 0x01, 0x02, and 0x03 (for P2SH,
+/// P2SH-P2WPKH, and P2SH-P2WSH respectively) with the `hashbytes` is the
+/// Hash160 of the locking script.
+///
+///
+/// ## P2WPKH
+///
+/// Pay-to-witness-public-key-hash addresses are formed by creating a
+/// witness program comprised entirely of the Hash160 of the compressed
+/// public key.
+///
+/// To specify this address type in the `initiate-withdrawal-request`
+/// contract call, the `version` is 0x04 and the `hashbytes` is the Hash160
+/// of the compressed public key.
+///
+///
+/// ## P2WSH
+///
+/// Pay-to-witness-script-hash addresses are formed by taking a witness
+/// program that is compressed entirely of the SHA256 of the redeem script.
+///
+/// To specify this address type in the `initiate-withdrawal-request`
+/// contract call, the `version` is 0x05 and the `hashbytes` is the SHA256
+/// of the redeem script.
+///
+///
+/// ## P2TR
+///
+/// Pay-to-taproot addresses are formed by "tweaking" the x-coordinate of a
+/// public key with a merkle tree. The result of the tweak is used as the
+/// witness program for the address.
+///
+/// To specify this address type in the `initiate-withdrawal-request`
+/// contract call, the `version` is 0x06 and the `hashbytes` is the
+/// "tweaked" public key.
+fn recipient_to_address(mut map: RawTupleData, network: NetworkKind) -> Result<Address, Error> {
+    let version = map.remove_buff("version")?;
+    let buf = map.remove_buff("hashbytes")?;
+    let hash_bytes = buf.as_slice();
+
+    match <[u8; 1]>::try_from(version.as_slice()) {
+        // version == 0x00 and (len hashbytes) == 20 => P2PKH
+        Ok([0x00]) => {
+            let bytes = <[u8; 20]>::try_from(hash_bytes).map_err(Error::ClaritySliceConversion)?;
+            let pk_hash = PubkeyHash::from_byte_array(bytes);
+            Ok(Address::p2pkh(pk_hash, network))
+        }
+        // ```
+        // version == 0x01 and (len hashbytes) == 20 => P2SH
+        // version == 0x02 and (len hashbytes) == 20 => P2SH-P2WPKH
+        // version == 0x03 and (len hashbytes) == 20 => P2SH-P2WSH
+        // ```
+        //
+        // In this case we assume that the `hashbytes` is the Hash160 of
+        // the redeem script.
+        // 
+        // We'd like to just use [`Address::p2sh_from_hash`] on our given
+        // script hash but that method is private. So instead we create a
+        // full P2SH Script and have [`Address::from_script`] extract the
+        // script hash from the full script.
+        Ok([0x01]) | Ok([0x02]) | Ok([0x03]) => {
+            let bytes = <[u8; 20]>::try_from(hash_bytes).map_err(Error::ClaritySliceConversion)?;
+            let script_hash = ScriptHash::from_byte_array(bytes);
+            let script = ScriptBuf::new_p2sh(&script_hash);
+            let params = match network {
+                NetworkKind::Mainnet => Params::BITCOIN,
+                NetworkKind::Testnet => Params::TESTNET,
+                NetworkKind::Regtest => Params::REGTEST,
+            };
+            Address::from_script(script.as_script(), params).map_err(Error::InvalidScript)
+        }
+        // version == 0x04 and (len hashbytes) == 20 => P2WPKH
+        // version == 0x05 and (len hashbytes) == 32 => P2WSH
+        //
+        // In this case we assume that the hashbytes is the 160-bit hash of
+        // the compressed public key.
+        Ok([0x04]) | Ok([0x05]) => {
+            let program = WitnessProgram::new(WitnessVersion::V0, hash_bytes)
+                .map_err(Error::InvalidWitnessProgram)?;
+            Ok(Address::from_witness_program(program, network))
+        }
+        // version == 0x06 and (len hashbytes) == 32 => P2TR
+        Ok([0x06]) => {
+            let bytes = <[u8; 32]>::try_from(hash_bytes).map_err(Error::ClaritySliceConversion)?;
+            let program = WitnessProgram::new(WitnessVersion::V1, &bytes)
+                .map_err(Error::InvalidWitnessProgram)?;
+            Ok(Address::from_witness_program(program, network))
+        }
+        // We make sure that the version is less than 0x07 in the smart
+        // contract, so this should never happen.
+        Ok([version]) => Err(Error::UnhandledRecipientVersion(version)),
+        // The type is one byte in the clarity contract, so this should
+        // never happen.
+        Err(err) => Err(Error::ClaritySliceConversion(err)),
+    }
 }
 
 /// This is the event that is emitted from the `complete-withdrawal-accept`
@@ -386,7 +540,11 @@ mod tests {
         let sender = PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap();
         let block_height = 139;
         let max_fee = 369;
-        let recipient = vec![(ClarityName::from("hi"), ClarityValue::UInt(0))];
+        let recipient_address = Address::p2pkh(PubkeyHash::from_byte_array([0; 20]), NetworkKind::Regtest);
+        let recipient = vec![
+            (ClarityName::from("version"), ClarityValue::buff_from_byte(0)),
+            (ClarityName::from("hashbytes"), ClarityValue::buff_from(vec![0; 20]).unwrap()),
+        ];
         let event = [
             (
                 ClarityName::from("request-id"),
@@ -432,6 +590,7 @@ mod tests {
                 assert_eq!(event.block_height, block_height as u64);
                 assert_eq!(event.max_fee, max_fee as u64);
                 assert_eq!(event.sender, sender);
+                assert_eq!(event.recipient, recipient_address);
             }
             e => panic!("Got the wrong event variant: {e:?}"),
         };
