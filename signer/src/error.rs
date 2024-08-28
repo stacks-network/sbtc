@@ -168,6 +168,10 @@ pub enum Error {
     #[error("response from stacks node did not conform to the expected schema: {0}")]
     UnexpectedStacksResponse(#[source] reqwest::Error),
 
+    /// The response from the Stacks node was invalid or malformed.
+    #[error("invalid stacks response: {0}")]
+    InvalidStacksResponse(&'static str),
+
     /// Taproot error
     #[error("an error occurred when constructing the taproot signing digest: {0}")]
     Taproot(#[from] bitcoin::sighash::TaprootError),
