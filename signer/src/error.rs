@@ -310,8 +310,8 @@ pub enum Error {
 
     /// This should never happen, we check the version in the smart
     /// contract.
-    #[error("the given address version is unexpected: {0:?}")]
-    UnhandledRecipientVersion(Option<u8>),
+    #[error("the given raw recipient is unexpected. version: {0:?}, hashbytes: {1:?} ")]
+    UnhandledRecipient(Vec<u8>, Vec<u8>),
 
     /// Could not connect to bitcoin-core with a zeromq subscription
     /// socket.

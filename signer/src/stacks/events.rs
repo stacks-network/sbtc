@@ -316,8 +316,8 @@ fn withdrawal_create(mut map: RawTupleData, network: NetworkKind) -> Result<Regi
 /// "tweaked" public key.
 fn recipient_to_address(mut map: RawTupleData, network: NetworkKind) -> Result<Address, Error> {
     let version = map.remove_buff("version")?;
-    let buf = map.remove_buff("hashbytes")?;
-    let hash_bytes = buf.as_slice();
+    let hash_bytes_buf = map.remove_buff("hashbytes")?;
+    let hash_bytes = hash_bytes_buf.as_slice();
 
     match version.as_slice() {
         // version == 0x00 and (len hashbytes) == 20 => P2PKH
@@ -368,12 +368,10 @@ fn recipient_to_address(mut map: RawTupleData, network: NetworkKind) -> Result<A
                 .map_err(Error::InvalidWitnessProgram)?;
             Ok(Address::from_witness_program(program, network))
         }
-        // We make sure that the version is less than 0x07 and is one byte
-        // in the smart contract, so this should never happen.
-        [version] => Err(Error::UnhandledRecipientVersion(Some(*version))),
-        // The type is one byte in the clarity contract, so this should
+        // We make sure that the version and hash byte lengths conform to
+        // the above expectations in the smart contract, so this should
         // never happen.
-        _ => Err(Error::UnhandledRecipientVersion(None)),
+        _ => Err(Error::UnhandledRecipient(version, hash_bytes_buf)),
     }
 }
 
@@ -773,6 +771,8 @@ mod tests {
     #[test_case(0x07, [1; 20]; "incorrect version 1")]
     #[test_case(0x07, [1; 32]; "incorrect version 2")]
     #[test_case(0x05, [1; 20]; "bad p2wsh hash length")]
+    #[test_case(0x00, [1; 32]; "bad p2pkh 1")]
+    #[test_case(0x00, [1; 21]; "bad p2pkh 2")]
     fn bad_recipient_cases<const N: usize>(version: u8, hash: [u8; N]) {
         // For these tests, we show what is unexpected lengths in the
         // hashbytes leads to the `recipient_to_address` returning an
