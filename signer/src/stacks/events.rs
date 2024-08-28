@@ -244,7 +244,9 @@ fn withdrawal_create(mut map: RawTupleData, network: NetworkKind) -> Result<Regi
 /// Below is a detailed breakdown of bitcoin address types and how they map
 /// to the clarity value. In what follows below, the network used for the
 /// human-readable parts is inherited from the network of the underlying
-/// transaction itself.
+/// transaction itself (basically, on stacks mainnet we send to mainnet
+/// bitcoin addresses and similarly on stacks testnet we send to bitcoin
+/// testnet addresses).
 ///
 /// ## P2PKH
 ///
