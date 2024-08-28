@@ -31,8 +31,8 @@ pub enum Error {
     #[error("could not serialize bitcoin transaction into bytes.")]
     BitcoinEncodeTransaction(#[source] bitcoin::io::Error),
 
-    /// This error is thrown when converting a u128 some other smaller
-    /// type. It should never be thrown
+    /// This error is thrown when trying to convert an u128 into some other
+    /// smaller type. It should never be thrown
     #[error("Could not convert an integer in clarity event into the expected integer {0}")]
     ClarityIntConversion(#[source] std::num::TryFromIntError),
 
@@ -77,7 +77,7 @@ pub enum Error {
 
     /// Thrown when doing [`i64::try_from`] or [`i32::try_from`] before
     /// inserting a value into the database. This only happens if the value
-    /// is creater than MAX for the signed type.
+    /// is greater than MAX for the signed type.
     #[error("could not convert integer type to the signed version for storing in postgres {0}")]
     ConversionDatabaseInt(#[source] std::num::TryFromIntError),
 
