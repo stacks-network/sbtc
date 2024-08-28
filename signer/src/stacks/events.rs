@@ -715,21 +715,23 @@ mod tests {
             .script_hash()
     }
 
-    fn to_tuple_data<const N: usize>(version: u8, hash: [u8; N]) -> RawTupleData {
-        let recipient = [
-            (
-                ClarityName::from("version"),
-                ClarityValue::buff_from_byte(version),
-            ),
-            (
-                ClarityName::from("hashbytes"),
-                ClarityValue::buff_from(hash.to_vec()).unwrap(),
-            ),
-        ]
-        .into_iter()
-        .collect();
+    impl RawTupleData {
+        fn new_recipient<const N: usize>(version: u8, hash: [u8; N]) -> Self {
+            let recipient = [
+                (
+                    ClarityName::from("version"),
+                    ClarityValue::buff_from_byte(version),
+                ),
+                (
+                    ClarityName::from("hashbytes"),
+                    ClarityValue::buff_from(hash.to_vec()).unwrap(),
+                ),
+            ]
+            .into_iter()
+            .collect();
 
-        RawTupleData(recipient)
+            RawTupleData(recipient)
+        }
     }
 
     #[test_case(
@@ -763,9 +765,9 @@ mod tests {
     fn recipient_to_btc_address<const N: usize>(version: u8, hash: [u8; N], address: Address) {
         // For these tests, we show what is expected for the hashbytes for
         // each of the address types and check that the result of the
-        // `recipient_to_address` function matches what the corresponding
-        // Address function would return.
-        let map = to_tuple_data(version, hash);
+        // [`RawTupleData::try_into_address`] function matches what the
+        // corresponding Address function would return.
+        let map = RawTupleData::new_recipient(version, hash);
         let actual_address = map.try_into_address(NetworkKind::Regtest).unwrap();
         assert_eq!(actual_address, address);
     }
@@ -779,9 +781,9 @@ mod tests {
     #[test_case(0x00, [1; 21]; "bad p2pkh 2")]
     fn bad_recipient_cases<const N: usize>(version: u8, hash: [u8; N]) {
         // For these tests, we show what is unexpected lengths in the
-        // hashbytes leads to the `recipient_to_address` returning an
-        // error.
-        let map = to_tuple_data(version, hash);
+        // hashbytes leads to the [`RawTupleData::try_into_address`]
+        // returning an error.
+        let map = RawTupleData::new_recipient(version, hash);
         let res = map.try_into_address(NetworkKind::Regtest);
         assert!(res.is_err());
     }
