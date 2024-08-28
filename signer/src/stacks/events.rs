@@ -699,7 +699,7 @@ mod tests {
         CompressedPublicKey(secp256k1::SecretKey::new(&mut OsRng).public_key(SECP256K1))
     });
 
-    // A "tweaked" puiblic key that is used to make the test case
+    // A "tweaked" public key that is used to make the test case
     // definition below a little easier on the eyes.
     static TWEAKED_PUBLIC_KEY: LazyLock<TweakedPublicKey> =
         LazyLock::new(|| TweakedPublicKey::dangerous_assume_tweaked((*PUBLIC_KEY).into()));
