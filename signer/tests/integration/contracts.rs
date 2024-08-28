@@ -30,6 +30,7 @@ use signer::storage::postgres;
 use signer::testing;
 use signer::testing::wallet::AsContractDeploy;
 use signer::testing::wallet::ContractDeploy;
+use signer::testing::wallet::InitiateWithdrawalRequest;
 
 use test_case::test_case;
 
@@ -164,8 +165,8 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
 #[ignore]
 #[test_case(ContractCallWrapper(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
-    amount: 123654,
-    recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
+    amount: 123654789,
+    recipient: PrincipalData::parse("SN2V7WTJ7BHR03MPHZ1C9A9ZR6NZGR4WM8HT4V67Y").unwrap(),
     deployer: testing::wallet::WALLET.0.address(),
 }); "complete-deposit standard recipient")]
 #[test_case(ContractCallWrapper(CompleteDepositV1 {
@@ -181,6 +182,12 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     signer_bitmap: BitArray::ZERO,
     deployer: testing::wallet::WALLET.0.address(),
 }); "accept-withdrawal")]
+#[test_case(ContractCallWrapper(InitiateWithdrawalRequest {
+    amount: 22500,
+    recipient: (0x00, vec![0; 20]),
+    max_fee: 3000,
+    deployer: testing::wallet::WALLET.0.address(),
+}); "create-withdrawal")]
 #[test_case(ContractCallWrapper(RejectWithdrawalV1 {
     request_id: 0,
     signer_bitmap: BitArray::ZERO,
