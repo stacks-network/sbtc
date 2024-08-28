@@ -319,9 +319,9 @@ fn recipient_to_address(mut map: RawTupleData, network: NetworkKind) -> Result<A
     let buf = map.remove_buff("hashbytes")?;
     let hash_bytes = buf.as_slice();
 
-    match <[u8; 1]>::try_from(version.as_slice()) {
+    match version.as_slice() {
         // version == 0x00 and (len hashbytes) == 20 => P2PKH
-        Ok([0x00]) => {
+        [0x00] => {
             let bytes = <[u8; 20]>::try_from(hash_bytes).map_err(Error::ClaritySliceConversion)?;
             let pk_hash = PubkeyHash::from_byte_array(bytes);
             Ok(Address::p2pkh(pk_hash, network))
@@ -339,7 +339,7 @@ fn recipient_to_address(mut map: RawTupleData, network: NetworkKind) -> Result<A
         // script hash but that method is private. So instead we create a
         // full P2SH Script and have [`Address::from_script`] extract the
         // script hash from the full script.
-        Ok([0x01]) | Ok([0x02]) | Ok([0x03]) => {
+        [0x01] | [0x02] | [0x03] => {
             let bytes = <[u8; 20]>::try_from(hash_bytes).map_err(Error::ClaritySliceConversion)?;
             let script_hash = ScriptHash::from_byte_array(bytes);
             let script = ScriptBuf::new_p2sh(&script_hash);
@@ -351,30 +351,29 @@ fn recipient_to_address(mut map: RawTupleData, network: NetworkKind) -> Result<A
             Address::from_script(script.as_script(), params).map_err(Error::InvalidScript)
         }
         // version == 0x04 and (len hashbytes) == 20 => P2WPKH
-        Ok([0x04]) if hash_bytes.len() == 20 => {
+        [0x04] if hash_bytes.len() == 20 => {
             let program = WitnessProgram::new(WitnessVersion::V0, hash_bytes)
                 .map_err(Error::InvalidWitnessProgram)?;
             Ok(Address::from_witness_program(program, network))
         }
         // version == 0x05 and (len hashbytes) == 32 => P2WSH
-        Ok([0x05]) if hash_bytes.len() == 32 => {
+        [0x05] if hash_bytes.len() == 32 => {
             let program = WitnessProgram::new(WitnessVersion::V0, hash_bytes)
                 .map_err(Error::InvalidWitnessProgram)?;
             Ok(Address::from_witness_program(program, network))
         }
         // version == 0x06 and (len hashbytes) == 32 => P2TR
-        Ok([0x06]) if hash_bytes.len() == 32 => {
+        [0x06] if hash_bytes.len() == 32 => {
             let program = WitnessProgram::new(WitnessVersion::V1, hash_bytes)
                 .map_err(Error::InvalidWitnessProgram)?;
             Ok(Address::from_witness_program(program, network))
         }
-        // We make sure that the version is less than 0x07 and that the
-        // lengths are correct in the smart contract, so this should never
-        // happen.
-        Ok([version]) => Err(Error::UnhandledRecipientVersion(version)),
+        // We make sure that the version is less than 0x07 and is one byte
+        // in the smart contract, so this should never happen.
+        [version] => Err(Error::UnhandledRecipientVersion(Some(*version))),
         // The type is one byte in the clarity contract, so this should
         // never happen.
-        Err(err) => Err(Error::ClaritySliceConversion(err)),
+        _ => Err(Error::UnhandledRecipientVersion(None)),
     }
 }
 
