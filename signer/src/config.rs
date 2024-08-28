@@ -27,6 +27,27 @@ pub enum NetworkKind {
     Mainnet,
     /// The testnet network
     Testnet,
+    /// The regtest network.
+    Regtest,
+}
+
+impl From<NetworkKind> for bitcoin::NetworkKind {
+    fn from(value: NetworkKind) -> Self {
+        match value {
+            NetworkKind::Mainnet => bitcoin::NetworkKind::Main,
+            _ => bitcoin::NetworkKind::Test,
+        }
+    }
+}
+
+impl From<NetworkKind> for bitcoin::KnownHrp {
+    fn from(value: NetworkKind) -> Self {
+        match value {
+            NetworkKind::Mainnet => bitcoin::KnownHrp::Mainnet,
+            NetworkKind::Testnet => bitcoin::KnownHrp::Testnets,
+            NetworkKind::Regtest => bitcoin::KnownHrp::Regtest,
+        }
+    }
 }
 
 /// Top-level configuration for the signer

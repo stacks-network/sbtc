@@ -31,6 +31,34 @@ pub enum Error {
     #[error("could not serialize bitcoin transaction into bytes.")]
     BitcoinEncodeTransaction(#[source] bitcoin::io::Error),
 
+    /// This error is thrown when trying to convert an u128 into some other
+    /// smaller type. It should never be thrown
+    #[error("Could not convert an integer in clarity event into the expected integer {0}")]
+    ClarityIntConversion(#[source] std::num::TryFromIntError),
+
+    /// This happens when we attempt to create s String from the raw bytes
+    /// returned in a Clarity [`Value`](clarity::vm::Value).
+    #[error("Could not convert ASCII or UTF8 bytes into a String: {0}")]
+    ClarityStringConversion(#[source] std::string::FromUtf8Error),
+
+    /// This happens when we expect one clarity variant but got another.
+    #[error("Got an unexpected clarity value: {0:?}")]
+    ClarityUnexpectedValue(clarity::vm::Value),
+
+    /// This should never happen, but happens when one of the given topics
+    /// is not on the list of expected topics.
+    #[error("Got an unexpected event topic: {0}")]
+    ClarityUnexpectedEventTopic(String),
+
+    /// This a programmer error bug that should never be thrown.
+    #[error("The field {0} was missing from the print event for topic")]
+    TupleEventField(&'static str),
+
+    /// This can only be thrown when the number of bytes for a txid field
+    /// is not exactly equal to 32. This should never occur.
+    #[error("Could not convert an integer in clarity event into the expected integer {0}")]
+    ClarityTxidConversion(#[source] bitcoin::hashes::FromSliceError),
+
     /// Invalid amount
     #[error("the change amounts for the transaction is negative: {0}")]
     InvalidAmount(i64),
@@ -49,7 +77,7 @@ pub enum Error {
 
     /// Thrown when doing [`i64::try_from`] or [`i32::try_from`] before
     /// inserting a value into the database. This only happens if the value
-    /// is creater than MAX for the signed type.
+    /// is greater than MAX for the signed type.
     #[error("could not convert integer type to the signed version for storing in postgres {0}")]
     ConversionDatabaseInt(#[source] std::num::TryFromIntError),
 
