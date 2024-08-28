@@ -225,12 +225,13 @@ fn withdrawal_create(mut map: RawTupleData, network: NetworkKind) -> Result<Regi
 /// ```clarity
 /// { version: (buff 1), hashbytes: (buff 32) }
 /// ```
-/// 
-/// The permissible values and their meaning closely tracks the meaning of
+/// This function gives a breakdown of the acceptable inputs for the
+/// recipient in the `initiate-withdrawal-request` contract call. The
+/// permissible values and their meaning closely tracks the meaning of
 /// [`PoxAddress`](blockstack_lib::chainstate::stacks::address::PoxAddress)es
-/// in stacks core. This meaning is basically:
-/// 
-/// ```
+/// in stacks core. This meaning is summarized as:
+///
+/// ```text
 /// version == 0x00 and (len hashbytes) == 20 => P2PKH
 /// version == 0x01 and (len hashbytes) == 20 => P2SH
 /// version == 0x02 and (len hashbytes) == 20 => P2SH-P2WPKH
@@ -239,10 +240,10 @@ fn withdrawal_create(mut map: RawTupleData, network: NetworkKind) -> Result<Regi
 /// version == 0x05 and (len hashbytes) == 32 => P2WSH
 /// version == 0x06 and (len hashbytes) == 32 => P2TR
 /// ```
-/// 
+///
 /// Below is a detailed breakdown of bitcoin address types and how they map
 /// to the clarity value. In what follows below, the network used for the
-/// human readable parts is inherited from the network of the underlying
+/// human-readable parts is inherited from the network of the underlying
 /// transaction itself.
 ///
 /// ## P2PKH
@@ -263,17 +264,17 @@ fn withdrawal_create(mut map: RawTupleData, network: NetworkKind) -> Result<Regi
 /// testnet) and base58 encoding the result. The difference between them
 /// lies with the locking script. For P2SH-P2WPKH addresses, the locking
 /// script is:
-/// ```
+/// ```text
 /// 0 || <Hash160 of the compressed public key>
 /// ```
 /// For P2SH-P2WSH addresses, the locking script is:
-/// ```
+/// ```text
 /// 0 || <sha256 of the redeem script>
 /// ```
-/// And for P2SH addresses you get to chose the locking script in its
+/// And for P2SH addresses you get to choose the locking script in its
 /// entirety.
 ///
-/// Again, after you construct the locking script you take it's Hash160,
+/// Again, after you construct the locking script you take its Hash160,
 /// prefix it with one byte and base58 encode it to form the address. To
 /// specify these address types in the `initiate-withdrawal-request`
 /// contract call, the `version` is 0x01, 0x02, and 0x03 (for P2SH,
@@ -284,8 +285,8 @@ fn withdrawal_create(mut map: RawTupleData, network: NetworkKind) -> Result<Regi
 /// ## P2WPKH
 ///
 /// Pay-to-witness-public-key-hash addresses are formed by creating a
-/// witness program comprised entirely of the Hash160 of the compressed
-/// public key.
+/// witness program made entirely of the Hash160 of the compressed public
+/// key.
 ///
 /// To specify this address type in the `initiate-withdrawal-request`
 /// contract call, the `version` is 0x04 and the `hashbytes` is the Hash160
@@ -331,7 +332,7 @@ fn recipient_to_address(mut map: RawTupleData, network: NetworkKind) -> Result<A
         //
         // In this case we assume that the `hashbytes` is the Hash160 of
         // the redeem script.
-        // 
+        //
         // We'd like to just use [`Address::p2sh_from_hash`] on our given
         // script hash but that method is private. So instead we create a
         // full P2SH Script and have [`Address::from_script`] extract the
@@ -348,24 +349,26 @@ fn recipient_to_address(mut map: RawTupleData, network: NetworkKind) -> Result<A
             Address::from_script(script.as_script(), params).map_err(Error::InvalidScript)
         }
         // version == 0x04 and (len hashbytes) == 20 => P2WPKH
+        Ok([0x04]) if hash_bytes.len() == 20 => {
+            let program = WitnessProgram::new(WitnessVersion::V0, hash_bytes)
+                .map_err(Error::InvalidWitnessProgram)?;
+            Ok(Address::from_witness_program(program, network))
+        }
         // version == 0x05 and (len hashbytes) == 32 => P2WSH
-        //
-        // In this case we assume that the hashbytes is the 160-bit hash of
-        // the compressed public key.
-        Ok([0x04]) | Ok([0x05]) => {
+        Ok([0x05]) if hash_bytes.len() == 32 => {
             let program = WitnessProgram::new(WitnessVersion::V0, hash_bytes)
                 .map_err(Error::InvalidWitnessProgram)?;
             Ok(Address::from_witness_program(program, network))
         }
         // version == 0x06 and (len hashbytes) == 32 => P2TR
-        Ok([0x06]) => {
-            let bytes = <[u8; 32]>::try_from(hash_bytes).map_err(Error::ClaritySliceConversion)?;
-            let program = WitnessProgram::new(WitnessVersion::V1, &bytes)
+        Ok([0x06]) if hash_bytes.len() == 32 => {
+            let program = WitnessProgram::new(WitnessVersion::V1, hash_bytes)
                 .map_err(Error::InvalidWitnessProgram)?;
             Ok(Address::from_witness_program(program, network))
         }
-        // We make sure that the version is less than 0x07 in the smart
-        // contract, so this should never happen.
+        // We make sure that the version is less than 0x07 and that the
+        // lengths are correct in the smart contract, so this should never
+        // happen.
         Ok([version]) => Err(Error::UnhandledRecipientVersion(version)),
         // The type is one byte in the clarity contract, so this should
         // never happen.
@@ -481,9 +484,17 @@ fn withdrawal_reject(mut map: RawTupleData) -> Result<RegistryEvent, Error> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::LazyLock;
+
+    use bitcoin::key::CompressedPublicKey;
+    use bitcoin::key::TweakedPublicKey;
     use bitvec::field::BitField as _;
+    use rand::rngs::OsRng;
+    use secp256k1::SECP256K1;
 
     use super::*;
+
+    use test_case::test_case;
 
     #[test]
     fn signer_bitmap_conversion() {
@@ -540,10 +551,17 @@ mod tests {
         let sender = PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap();
         let block_height = 139;
         let max_fee = 369;
-        let recipient_address = Address::p2pkh(PubkeyHash::from_byte_array([0; 20]), NetworkKind::Regtest);
+        let recipient_address =
+            Address::p2pkh(PubkeyHash::from_byte_array([0; 20]), NetworkKind::Regtest);
         let recipient = vec![
-            (ClarityName::from("version"), ClarityValue::buff_from_byte(0)),
-            (ClarityName::from("hashbytes"), ClarityValue::buff_from(vec![0; 20]).unwrap()),
+            (
+                ClarityName::from("version"),
+                ClarityValue::buff_from_byte(0),
+            ),
+            (
+                ClarityName::from("hashbytes"),
+                ClarityValue::buff_from(vec![0; 20]).unwrap(),
+            ),
         ];
         let event = [
             (
@@ -629,11 +647,12 @@ mod tests {
         // let res = transform_value(value, NetworkKind::Regtest).unwrap();
         match transform_value(value, NetworkKind::Regtest).unwrap() {
             RegistryEvent::WithdrawalAccept(event) => {
+                let expected_bitmap = BitArray::<[u8; 16]>::new(bitmap.to_le_bytes());
                 assert_eq!(event.request_id, request_id as u64);
                 assert_eq!(event.outpoint.txid, Txid::from_byte_array([1; 32]));
                 assert_eq!(event.outpoint.vout, vout as u32);
                 assert_eq!(event.fee, fee as u64);
-                assert_eq!(event.signer_bitmap, BitArray::<[u8; 16]>::new(bitmap.to_le_bytes()));
+                assert_eq!(event.signer_bitmap, expected_bitmap);
             }
             e => panic!("Got the wrong event variant: {e:?}"),
         };
@@ -664,10 +683,101 @@ mod tests {
         // let res = transform_value(value, NetworkKind::Regtest).unwrap();
         match transform_value(value, NetworkKind::Regtest).unwrap() {
             RegistryEvent::WithdrawalReject(event) => {
+                let expected_bitmap = BitArray::<[u8; 16]>::new(bitmap.to_le_bytes());
                 assert_eq!(event.request_id, request_id as u64);
-                assert_eq!(event.signer_bitmap, BitArray::<[u8; 16]>::new(bitmap.to_le_bytes()));
+                assert_eq!(event.signer_bitmap, expected_bitmap);
             }
             e => panic!("Got the wrong event variant: {e:?}"),
         };
+    }
+
+    // Just a random public key to make the test case definitions below a
+    // little tidier.
+    static PUBLIC_KEY: LazyLock<CompressedPublicKey> = LazyLock::new(|| {
+        CompressedPublicKey(secp256k1::SecretKey::new(&mut OsRng).public_key(SECP256K1))
+    });
+
+    // A "tweaked" puiblic key that is used to make the test case
+    // definition below a little easier on the eyes.
+    static TWEAKED_PUBLIC_KEY: LazyLock<TweakedPublicKey> =
+        LazyLock::new(|| TweakedPublicKey::dangerous_assume_tweaked((*PUBLIC_KEY).into()));
+
+    // A helper function for creating "P2SH-P2WPKH" and "P2SH-P2WSH" script
+    // hashes.
+    fn new_p2sh_segwit<T: AsRef<bitcoin::script::PushBytes>>(data: T) -> ScriptHash {
+        ScriptBuf::builder()
+            .push_int(0)
+            .push_slice(data)
+            .into_script()
+            .script_hash()
+    }
+
+    fn to_tuple_data<const N: usize>(version: u8, hash: [u8; N]) -> RawTupleData {
+        let recipient = [
+            (
+                ClarityName::from("version"),
+                ClarityValue::buff_from_byte(version),
+            ),
+            (
+                ClarityName::from("hashbytes"),
+                ClarityValue::buff_from(hash.to_vec()).unwrap(),
+            ),
+        ]
+        .into_iter()
+        .collect();
+
+        RawTupleData(recipient)
+    }
+
+    #[test_case(
+        0x00,
+        PubkeyHash::from(*PUBLIC_KEY).to_byte_array(),
+        Address::p2pkh(*PUBLIC_KEY, NetworkKind::Regtest) ; "P2PKH")]
+    #[test_case(
+        0x01,
+        ScriptHash::from(ScriptBuf::new_op_return([1; 5])).to_byte_array(),
+        Address::p2sh(&ScriptBuf::new_op_return([1; 5]), NetworkKind::Regtest).unwrap() ; "P2SH")]
+    #[test_case(
+        0x02,
+        new_p2sh_segwit(PUBLIC_KEY.wpubkey_hash()).to_byte_array(),
+        Address::p2shwpkh(&*PUBLIC_KEY, NetworkKind::Regtest) ; "P2SH-P2WPKH")]
+    #[test_case(
+        0x03,
+        new_p2sh_segwit(ScriptBuf::new_op_return([1; 5]).wscript_hash()).to_byte_array(),
+        Address::p2shwsh(&ScriptBuf::new_op_return([1; 5]), NetworkKind::Regtest) ; "P2SH-P2WSH")]
+    #[test_case(
+        0x04,
+        PubkeyHash::from(*PUBLIC_KEY).to_byte_array(),
+        Address::p2wpkh(&*PUBLIC_KEY, NetworkKind::Regtest) ; "P2WPKH")]
+    #[test_case(
+        0x05,
+        ScriptBuf::new_op_return([1; 5]).wscript_hash().to_byte_array(),
+        Address::p2wsh(&ScriptBuf::new_op_return([1; 5]), NetworkKind::Regtest) ; "P2WSH")]
+    #[test_case(
+        0x06,
+        TWEAKED_PUBLIC_KEY.serialize(),
+        Address::p2tr_tweaked(*TWEAKED_PUBLIC_KEY, NetworkKind::Regtest) ; "P2TR")]
+    fn recipient_to_btc_address<const N: usize>(version: u8, hash: [u8; N], address: Address) {
+        // For these tests, we show what is expected for the hashbytes for
+        // each of the address types and check that the result of the
+        // `recipient_to_address` function matches what the corresponding
+        // Address function would return.
+        let map = to_tuple_data(version, hash);
+        let actual_address = recipient_to_address(map, NetworkKind::Regtest).unwrap();
+        assert_eq!(actual_address, address);
+    }
+
+    #[test_case(0x06, [1; 33]; "hash 33 bytes P2TR")]
+    #[test_case(0x06, [1; 20]; "hash 20 bytes P2TR")]
+    #[test_case(0x07, [1; 20]; "incorrect version 1")]
+    #[test_case(0x07, [1; 32]; "incorrect version 2")]
+    #[test_case(0x05, [1; 20]; "bad p2wsh hash length")]
+    fn bad_recipient_cases<const N: usize>(version: u8, hash: [u8; N]) {
+        // For these tests, we show what is unexpected lengths in the
+        // hashbytes leads to the `recipient_to_address` returning an
+        // error.
+        let map = to_tuple_data(version, hash);
+        let res = recipient_to_address(map, NetworkKind::Regtest);
+        assert!(res.is_err());
     }
 }
