@@ -254,7 +254,7 @@ impl sqlx::postgres::PgHasArrayType for PublicKey {
     }
 }
 
-#[cfg(feature = "testing")]
+#[cfg(any(test, feature = "testing"))]
 impl fake::Dummy<fake::Faker> for PublicKey {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
         Self(secp256k1::PublicKey::from_secret_key_global(
