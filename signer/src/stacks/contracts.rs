@@ -351,7 +351,6 @@ pub struct RotateKeysV1 {
     /// The address that deployed the contract.
     deployer: StacksAddress,
     /// The number of signatures required for the multi-sig wallet.
-    #[allow(dead_code)]
     signatures_required: u16,
 }
 
@@ -423,6 +422,7 @@ impl AsContractCall for RotateKeysV1 {
         vec![
             ClarityValue::Sequence(SequenceData::List(new_keys)),
             ClarityValue::Sequence(SequenceData::Buffer(BuffData { data: key.to_vec() })),
+            ClarityValue::UInt(self.signatures_required as u128),
         ]
     }
     /// Validates that the rotate-keys-wrapper satisfies the following

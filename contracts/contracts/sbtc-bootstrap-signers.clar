@@ -2,8 +2,6 @@
 
 ;; constants
 
-;; The number of signatures required to sign a transaction
-(define-constant signature-threshold u8)
 ;; The required length of public keys
 (define-constant key-size u33)
 
@@ -15,6 +13,9 @@
 (define-constant ERR_KEY_SIZE (err u200))
 ;; The function caller is not the current signer principal
 (define-constant ERR_INVALID_CALLER (err u201))
+;; The given signature threshold must be greater than 50% and less than or
+;; equal to 100% of the total number of signer keys.
+(define-constant ERR_SIGNATURE_THRESHOLD (err u202))
 
 ;; data vars
 ;;
@@ -27,12 +28,20 @@
 ;; Rotate keys
 ;; Used to rotate the keys of the signers. This is called whenever
 ;; the signer set is updated.
-(define-public (rotate-keys-wrapper (new-keys (list 128 (buff 33))) (new-aggregate-pubkey (buff 33)))
+(define-public (rotate-keys-wrapper 
+    (new-keys (list 128 (buff 33)))
+    (new-aggregate-pubkey (buff 33))
+    (new-signature-threshold uint)
+  )
     (let 
         (
             (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
-            (new-signer-principal (pubkeys-to-principal new-keys signature-threshold))
+            (new-signer-principal (pubkeys-to-principal new-keys new-signature-threshold))
         )
+        ;; Check that the signature threshold is valid
+        (asserts! (and (> new-signature-threshold (/ (len new-keys) u2))
+                       (<= new-signature-threshold (len new-keys))) ERR_SIGNATURE_THRESHOLD)
+
         ;; Check that the caller is the current signer principal
         (asserts! (is-eq (get current-signer-principal current-signer-data) tx-sender) ERR_INVALID_CALLER)
 
@@ -43,7 +52,7 @@
         (asserts! (is-eq (len new-aggregate-pubkey) key-size) ERR_KEY_SIZE)
 
         ;; Call into .sbtc-registry to update the keys & address
-        (ok (try! (contract-call? .sbtc-registry rotate-keys new-keys new-signer-principal new-aggregate-pubkey)))
+        (ok (try! (contract-call? .sbtc-registry rotate-keys new-keys new-signer-principal new-aggregate-pubkey new-signature-threshold)))
     )
 )
 

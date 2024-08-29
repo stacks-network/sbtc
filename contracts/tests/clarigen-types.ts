@@ -39,12 +39,17 @@ export const contracts = {
             type: { list: { type: { buffer: { length: 33 } }, length: 128 } },
           },
           { name: "new-aggregate-pubkey", type: { buffer: { length: 33 } } },
+          { name: "new-signature-threshold", type: "uint128" },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
         [
           newKeys: TypedAbiArg<Uint8Array[], "newKeys">,
           newAggregatePubkey: TypedAbiArg<Uint8Array, "newAggregatePubkey">,
+          newSignatureThreshold: TypedAbiArg<
+            number | bigint,
+            "newSignatureThreshold"
+          >,
         ],
         Response<boolean, bigint>
       >,
@@ -188,13 +193,18 @@ export const contracts = {
         type: "uint128",
         access: "constant",
       } as TypedAbiVariable<bigint>,
+      ERR_SIGNATURE_THRESHOLD: {
+        name: "ERR_SIGNATURE_THRESHOLD",
+        type: {
+          response: {
+            ok: "none",
+            error: "uint128",
+          },
+        },
+        access: "constant",
+      } as TypedAbiVariable<Response<null, bigint>>,
       keySize: {
         name: "key-size",
-        type: "uint128",
-        access: "constant",
-      } as TypedAbiVariable<bigint>,
-      signatureThreshold: {
-        name: "signature-threshold",
         type: "uint128",
         access: "constant",
       } as TypedAbiVariable<bigint>,
@@ -467,8 +477,11 @@ export const contracts = {
         value: 200n,
       },
       ERR_KEY_SIZE_PREFIX: 200n,
+      ERR_SIGNATURE_THRESHOLD: {
+        isOk: false,
+        value: 202n,
+      },
       keySize: 33n,
-      signatureThreshold: 8n,
     },
     non_fungible_tokens: [],
     fungible_tokens: [],
@@ -787,6 +800,7 @@ export const contracts = {
           },
           { name: "new-address", type: "principal" },
           { name: "new-aggregate-pubkey", type: { buffer: { length: 33 } } },
+          { name: "new-signature-threshold", type: "uint128" },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
@@ -794,6 +808,10 @@ export const contracts = {
           newKeys: TypedAbiArg<Uint8Array[], "newKeys">,
           newAddress: TypedAbiArg<string, "newAddress">,
           newAggregatePubkey: TypedAbiArg<Uint8Array, "newAggregatePubkey">,
+          newSignatureThreshold: TypedAbiArg<
+            number | bigint,
+            "newSignatureThreshold"
+          >,
         ],
         Response<boolean, bigint>
       >,
@@ -841,6 +859,7 @@ export const contracts = {
                 name: "current-aggregate-pubkey",
                 type: { buffer: { length: 33 } },
               },
+              { name: "current-signature-threshold", type: "uint128" },
               { name: "current-signer-principal", type: "principal" },
               {
                 name: "current-signer-set",
@@ -855,6 +874,7 @@ export const contracts = {
         [],
         {
           currentAggregatePubkey: Uint8Array;
+          currentSignatureThreshold: bigint;
           currentSignerPrincipal: string;
           currentSignerSet: Uint8Array[];
         }
@@ -1058,6 +1078,11 @@ export const contracts = {
         },
         access: "variable",
       } as TypedAbiVariable<Uint8Array>,
+      currentSignatureThreshold: {
+        name: "current-signature-threshold",
+        type: "uint128",
+        access: "variable",
+      } as TypedAbiVariable<bigint>,
       currentSignerPrincipal: {
         name: "current-signer-principal",
         type: "principal",
@@ -1101,6 +1126,7 @@ export const contracts = {
         value: 400n,
       },
       currentAggregatePubkey: Uint8Array.from([0]),
+      currentSignatureThreshold: 0n,
       currentSignerPrincipal: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
       currentSignerSet: [],
       lastWithdrawalRequestId: 0n,

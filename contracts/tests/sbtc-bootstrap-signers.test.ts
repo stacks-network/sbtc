@@ -24,10 +24,12 @@ describe("sBTC bootstrap signers contract", () => {
   describe("Rotate keys tests", () => {
     test("Rotate keys wrapper correctly", () => {
       const newKeys = randomPublicKeys(2);
+      const newSignatureThreshold = 2n;
       const receipt = txOk(
         signers.rotateKeysWrapper({
           newKeys,
           newAggregatePubkey: new Uint8Array(33).fill(0),
+          newSignatureThreshold,
         }),
         deployer
       );
@@ -40,7 +42,7 @@ describe("sBTC bootstrap signers contract", () => {
 
       const expectedPrincipal = constructMultisigAddress(
         newKeys,
-        signers.constants.signatureThreshold
+        newSignatureThreshold,
       );
       expect(currentSignerAddr()).toEqual(expectedPrincipal);
 
@@ -48,14 +50,29 @@ describe("sBTC bootstrap signers contract", () => {
         currentAggregatePubkey: new Uint8Array(33).fill(0),
         currentSignerSet: newKeys,
         currentSignerPrincipal: expectedPrincipal,
+        currentSignatureThreshold: newSignatureThreshold,
       });
     });
 
+    test("Rotate keys wrapper 3-of-5", () => {
+      const receipt = txOk(
+        signers.rotateKeysWrapper({
+          newKeys: randomPublicKeys(5),
+          newAggregatePubkey: new Uint8Array(33).fill(0),
+          newSignatureThreshold: 3n,
+        }),
+        deployer
+      );
+      expect(receipt.value).toEqual(true);
+    });
+
     test("Rotate keys wrapper incorrect signer key size", () => {
+      const newSignatureThreshold = 2n;
       const receipt = txErr(
         signers.rotateKeysWrapper({
           newKeys: [new Uint8Array(33).fill(0), new Uint8Array(31).fill(0)],
           newAggregatePubkey: new Uint8Array(33).fill(0),
+          newSignatureThreshold,
         }),
         currentSignerAddr()
       );
@@ -63,15 +80,41 @@ describe("sBTC bootstrap signers contract", () => {
     });
 
     test("Rotate keys wrapper incorrect aggregate key size", () => {
+      const newSignatureThreshold = 2n;
       const receipt = txErr(
         signers.rotateKeysWrapper({
           newKeys: [new Uint8Array(33).fill(0), new Uint8Array(33).fill(0)],
           newAggregatePubkey: new Uint8Array(31).fill(0),
+          newSignatureThreshold,
         }),
         currentSignerAddr()
       );
       expect(receipt.value).toEqual(errors.signers.ERR_KEY_SIZE);
     });
+  });
+
+  test("Rotate keys wrapper incorrect signature threshold", () => {
+    // You cannot have a threshold greater than the number of keys
+    const receipt1 = txErr(
+      signers.rotateKeysWrapper({
+        newKeys: [new Uint8Array(33).fill(0), new Uint8Array(33).fill(0)],
+        newAggregatePubkey: new Uint8Array(31).fill(0),
+        newSignatureThreshold: 3n,
+      }),
+      currentSignerAddr()
+    );
+    expect(receipt1.value).toEqual(errors.signers.ERR_SIGNATURE_THRESHOLD);
+
+    // The threshold must be greater than 50% of the number of keys
+    const receipt2 = txErr(
+      signers.rotateKeysWrapper({
+        newKeys: [new Uint8Array(33).fill(0), new Uint8Array(33).fill(0)],
+        newAggregatePubkey: new Uint8Array(31).fill(0),
+        newSignatureThreshold: 1n,
+      }),
+      currentSignerAddr()
+    );
+    expect(receipt2.value).toEqual(errors.signers.ERR_SIGNATURE_THRESHOLD);
   });
 
   describe("Constructing a multisig from a list of keys", () => {
