@@ -4,6 +4,7 @@ use std::sync::OnceLock;
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::clarity::vm::types::PrincipalData;
+use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
 use blockstack_lib::types::chainstate::StacksAddress;
 use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Keypair;
@@ -91,14 +92,48 @@ pub struct SignerStxState {
     pub stacks_client: &'static StacksClient,
 }
 
+#[tracing::instrument(skip_all)]
+pub async fn get_contract_source(
+    stacks_client: &StacksClient,
+    contract_address: &StacksAddress,
+    contract_name: &str,
+) -> Result<ContractSrcResponse, reqwest::Error> {
+    let path = format!(
+        "/v2/contracts/source/{}/{}?proof=0",
+        contract_address, contract_name
+    );
+    let base = stacks_client.get_current_endpoint();
+    let url = base.join(&path).unwrap();
+
+    tracing::debug!(%contract_address, %contract_name, "Fetching contract source");
+
+    let response = stacks_client
+        .client
+        .get(url)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await?;
+
+    response.error_for_status()?.json().await
+}
+
 impl SignerStxState {
     /// Deploy an sBTC smart contract to the stacks node
     async fn deploy_smart_contract<T>(&self, deploy: T)
     where
         T: AsContractDeploy,
     {
+        let response = get_contract_source(
+            &self.stacks_client,
+            &self.wallet.address(),
+            T::CONTRACT_NAME,
+        )
+        .await;
+        if response.is_ok() {
+            println!("No need to make the contract deploy, it already exists");
+            return;
+        }
         let mut unsigned = MultisigTx::new_tx(&ContractDeploy(deploy), &self.wallet, TX_FEE);
-
         for signature in make_signatures(unsigned.tx(), &self.keys) {
             unsigned.add_signature(signature).unwrap();
         }
