@@ -18,7 +18,7 @@ pub trait Context {
     /// which can be used to listen for events.
     fn get_signal_receiver(&self) -> tokio::sync::broadcast::Receiver<SignerSignal>;
     /// Send a signal to the application signalling channel.
-    fn signal_send(&self, signal: SignerSignal) -> Result<usize, crate::error::Error>;
+    fn signal(&self, signal: SignerSignal) -> Result<usize, crate::error::Error>;
 }
 
 /// Signer context which is passed to different components within the
@@ -64,7 +64,7 @@ impl Context for SignerContext {
     }
 
     /// Send a signal to the application signalling channel.
-    fn signal_send(&self, signal: SignerSignal) -> Result<usize, Error> {
+    fn signal(&self, signal: SignerSignal) -> Result<usize, Error> {
         self.signal_tx
             .send(signal)
             .map_err(Error::ApplicationSignal)

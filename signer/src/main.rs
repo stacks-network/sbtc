@@ -87,7 +87,7 @@ async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
 
     // Send the shutdown signal to the rest of the application.
     tracing::info!("Sending shutdown signal to the application");
-    ctx.signal_send(SignerSignal::Shutdown)?;
+    ctx.signal(SignerSignal::Shutdown)?;
 
     Ok(())
 }
@@ -133,7 +133,7 @@ async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
     tokio::select! {
         _ = handle => {
             tracing::info!("Stacks event observer server aborted");
-            ctx.signal_send(SignerSignal::Shutdown)?;
+            ctx.signal(SignerSignal::Shutdown)?;
             Err(Error::StacksEventObserverAborted)
         }
         Ok(SignerSignal::Shutdown) = signal.recv() => {
