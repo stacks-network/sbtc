@@ -1,6 +1,6 @@
 //! Context module for the signer binary.
 
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use tokio::sync::broadcast::Sender;
 
@@ -16,18 +16,16 @@ pub trait Context {
     fn config(&self) -> &Settings;
     /// Subscribe to the application signalling channel, returning a receiver
     /// which can be used to listen for events.
-    fn signal_subscribe(&self) -> tokio::sync::broadcast::Receiver<SignerSignal>;
+    fn get_signal_receiver(&self) -> tokio::sync::broadcast::Receiver<SignerSignal>;
     /// Send a signal to the application signalling channel.
     fn signal_send(&self, signal: SignerSignal) -> Result<usize, crate::error::Error>;
-    /// Signal the application to shutdown.
-    fn signal_shutdown(&self) -> Result<usize, Error>;
 }
 
 /// Signer context which is passed to different components within the
 /// signer binary.
 pub struct SignerContext {
     config: Settings,
-    signal_tx: Sender<SignerSignal>,
+    signal_tx: Arc<Sender<SignerSignal>>,
     // Would be used if we wanted to listen for any events in the context,
     // for example if we wanted a subroutine to be able to trigger a config
     // refresh:
@@ -38,7 +36,7 @@ pub struct SignerContext {
 }
 
 /// Signals that can be sent within the signer binary.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum SignerSignal {
     /// Signals to the application to shut down.
     Shutdown,
@@ -51,14 +49,17 @@ impl Context for SignerContext {
 
         let (signal_tx, _) = tokio::sync::broadcast::channel(10);
 
-        Ok(Self { config, signal_tx })
+        Ok(Self {
+            config,
+            signal_tx: Arc::new(signal_tx),
+        })
     }
 
     fn config(&self) -> &Settings {
         &self.config
     }
 
-    fn signal_subscribe(&self) -> tokio::sync::broadcast::Receiver<SignerSignal> {
+    fn get_signal_receiver(&self) -> tokio::sync::broadcast::Receiver<SignerSignal> {
         self.signal_tx.subscribe()
     }
 
@@ -67,10 +68,5 @@ impl Context for SignerContext {
         self.signal_tx
             .send(signal)
             .map_err(Error::ApplicationSignal)
-    }
-
-    /// Signal the application to shutdown.
-    fn signal_shutdown(&self) -> Result<usize, Error> {
-        self.signal_send(SignerSignal::Shutdown)
     }
 }

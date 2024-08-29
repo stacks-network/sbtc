@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use axum::routing::get;
 use axum::routing::post;
 use axum::Router;
+use cfg_if::cfg_if;
 use clap::Parser;
 use signer::api;
 use signer::context::Context;
@@ -10,10 +11,12 @@ use signer::context::SignerContext;
 use signer::context::SignerSignal;
 use signer::error::Error;
 use signer::storage::postgres::PgStore;
+use tokio::signal;
 
 // TODO: This should be read from configuration
 const DATABASE_URL: &str = "postgres://user:password@localhost:5432/signer";
 
+// TODO: Should this be part of the SignerContext?
 fn get_connection_pool() -> sqlx::PgPool {
     sqlx::postgres::PgPoolOptions::new()
         .connect_lazy(DATABASE_URL)
@@ -41,27 +44,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize the signer context.
     let context = SignerContext::init(args.config)?;
 
-    // Run the Stacks event observer and Ctrl-C watcher concurrently.
+    // Run the application components concurrently. We're `join!`ing them
+    // here so that every component can shut itself down gracefully when
+    // the shutdown signal is received.
     let _ = tokio::join!(
         run_stacks_event_observer(&context),
-        run_ctrl_c_watcher(&context),
+        run_shutdown_signal_watcher(&context),
         run_libp2p_swarm(&context),
     );
 
     Ok(())
 }
 
-/// Runs the Ctrl-C watcher.
-async fn run_ctrl_c_watcher(ctx: &impl Context) -> Result<(), Error> {
-    tokio::signal::ctrl_c().await?;
-    ctx.signal_shutdown()?;
+/// Runs the shutdown-signal watcher. On Unix systems, this listens for SIGHUP,
+/// SIGTERM, and SIGINT. On other systems, it listens for Ctrl-C.
+async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
+    cfg_if! {
+        // If we are on a Unix system, we can listen for more signals.
+        if #[cfg(unix)] {
+            let mut terminate = tokio::signal::unix::signal(signal::unix::SignalKind::terminate())?;
+            let mut hangup = tokio::signal::unix::signal(signal::unix::SignalKind::hangup())?;
+            let mut interrupt = tokio::signal::unix::signal(signal::unix::SignalKind::interrupt())?;
+
+            tokio::select! {
+                _ = terminate.recv() => {
+                    tracing::info!("Received SIGTERM");
+                },
+                _ = hangup.recv() => {
+                    tracing::info!("Received SIGHUP");
+                },
+                // Ctrl-C will be received as a SIGINT.
+                _ = interrupt.recv() => {
+                    tracing::info!("Received SIGINT");
+                },
+            }
+        // Otherwise, we'll just listen for Ctrl-C, which is the most portable.
+        } else {
+            tokio::signal::ctrl_c().await?;
+            tracing::info!("Received Ctrl-C");
+        }
+    }
+
+    // Send the shutdown signal to the rest of the application.
+    tracing::info!("Sending shutdown signal to the application");
+    ctx.signal_send(SignerSignal::Shutdown)?;
+
     Ok(())
 }
 
 /// Runs the libp2p swarm.
 async fn run_libp2p_swarm(ctx: &impl Context) -> Result<(), Error> {
     // Subscribe to the signal channel so that we can catch shutdown events.
-    let mut signal = ctx.signal_subscribe();
+    let mut signal = ctx.get_signal_receiver();
 
     // TODO(409): Add libp2p swarm initialization here.
 
@@ -84,10 +118,11 @@ async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
         .with_state(pool_store);
 
     // run our app with hyper
+    // TODO: This should be read from configuration
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8801").await.unwrap();
 
     // Subscribe to the signal channel so that we can catch shutdown events.
-    let mut signal = ctx.signal_subscribe();
+    let mut signal = ctx.get_signal_receiver();
 
     // Start the server in its own task.
     let handle = tokio::spawn(async { axum::serve(listener, app).await });
@@ -98,7 +133,7 @@ async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
     tokio::select! {
         _ = handle => {
             tracing::info!("Stacks event observer server aborted");
-            ctx.signal_shutdown()?;
+            ctx.signal_send(SignerSignal::Shutdown)?;
             Err(Error::StacksEventObserverAborted)
         }
         Ok(SignerSignal::Shutdown) = signal.recv() => {

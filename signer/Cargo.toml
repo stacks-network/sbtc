@@ -55,6 +55,7 @@ url.workspace = true
 wsts.workspace = true
 zeromq.workspace = true
 hex.workspace = true
+cfg-if = "1.0"
 
 # Only for testing
 fake = { version = "2.9.2", features = ["derive", "time"], optional = true }

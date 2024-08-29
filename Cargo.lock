@@ -4522,6 +4522,7 @@ dependencies = [
  "bitcoincore-rpc",
  "bitvec",
  "blocklist-api",
+ "cfg-if 1.0.0",
  "clap",
  "clarity",
  "config 0.14.0",
