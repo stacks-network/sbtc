@@ -68,20 +68,20 @@ async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
 
             tokio::select! {
                 _ = terminate.recv() => {
-                    tracing::info!("received SIGTERM");
+                    tracing::info!(signal = "SIGTERM", "received termination signal");
                 },
                 _ = hangup.recv() => {
-                    tracing::info!("received SIGHUP");
+                    tracing::info!(signal = "SIGHUP", "received termination signal");
                 },
                 // Ctrl-C will be received as a SIGINT.
                 _ = interrupt.recv() => {
-                    tracing::info!("received SIGINT");
+                    tracing::info!(signal = "SIGINT", "received termination signal");
                 },
             }
         // Otherwise, we'll just listen for Ctrl-C, which is the most portable.
         } else {
             tokio::signal::ctrl_c().await?;
-            tracing::info!("received Ctrl-C");
+            tracing::info!(signal = "Ctrl+C", "received termination signal");
         }
     }
 
@@ -136,8 +136,9 @@ async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
             }
         })
         .await
-        .map_err(|e| {
+        .map_err(|error| {
+            tracing::error!(%error, "error running Stacks event observer server");
             let _ = ctx.signal(SignerSignal::Shutdown);
-            e.into()
+            error.into()
         })
 }
