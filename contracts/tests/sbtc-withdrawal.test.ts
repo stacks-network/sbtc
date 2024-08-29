@@ -383,21 +383,46 @@ describe("Accepting a withdrawal request", () => {
       withdrawal.initiateWithdrawalRequest({
         amount: 1000n,
         recipient: alicePoxAddr,
-        maxFee: 10n,
+        maxFee: 20n,
       }),
       alice
     );
-    txOk(
+    const receipt = txOk(
       withdrawal.acceptWithdrawalRequest({
         requestId: 1n,
         bitcoinTxid: new Uint8Array(32).fill(0),
-        signerBitmap: 0n,
+        signerBitmap: 2n,
         outputIndex: 10n,
-        fee: 10n,
+        fee: 20n,
       }),
       deployer
     );
     expect(rovOk(token.getBalance(alice))).toEqual(0n);
+
+    // An event is emitted properly
+    const prints = filterEvents(
+      receipt.events,
+      CoreNodeEventType.ContractEvent
+    );
+    expect(prints.length).toEqual(1);
+    const [print] = prints;
+    const printData = cvToValue<{
+      requestId: bigint;
+      bitcoinTxid: Uint8Array;
+      signerBitmap: bigint;
+      outputIndex: bigint;
+      topic: string;
+      fee: bigint;
+    }>(print.data.value);
+
+    expect(printData).toStrictEqual({
+      requestId: 1n,
+      bitcoinTxid: new Uint8Array(32).fill(0),
+      signerBitmap: 2n,
+      outputIndex : 10n,
+      topic: "withdrawal-accept",
+      fee: 20n,
+    });
   });
   test("accept withdrawal sets withdrawal-status to true", () => {
     // Alice initiates withdrawalrequest
@@ -463,10 +488,10 @@ describe("Accepting a withdrawal request", () => {
       }),
       alice
     );
-    txOk(
+    const receipt = txOk(
       withdrawal.rejectWithdrawalRequest({
         requestId: 1n,
-        signerBitmap: 0n,
+        signerBitmap: 1234567n,
       }),
       deployer
     );
@@ -485,6 +510,28 @@ describe("Accepting a withdrawal request", () => {
       maxFee: 10n,
       blockHeight: 2n,
       status: false,
+    });
+
+    // An event is emitted properly
+    const prints = filterEvents(
+      receipt.events,
+      CoreNodeEventType.ContractEvent
+    );
+    expect(prints.length).toEqual(1);
+    const [print] = prints;
+    const printData = cvToValue<{
+      requestId: bigint;
+      bitcoinTxid: Uint8Array;
+      signerBitmap: bigint;
+      outputIndex: bigint;
+      topic: string;
+      fee: bigint;
+    }>(print.data.value);
+
+    expect(printData).toStrictEqual({
+      requestId: 1n,
+      signerBitmap: 1234567n,
+      topic: "withdrawal-reject",
     });
   });
   test("Request is successfully accepted with fee less than max", () => {
