@@ -1,6 +1,6 @@
 //! Context module for the signer binary.
 
-use std::{path::Path, sync::Arc};
+use std::path::Path;
 
 use tokio::sync::broadcast::Sender;
 
@@ -25,7 +25,7 @@ pub trait Context {
 /// signer binary.
 pub struct SignerContext {
     config: Settings,
-    signal_tx: Arc<Sender<SignerSignal>>,
+    signal_tx: Sender<SignerSignal>,
     // Would be used if we wanted to listen for any events in the context,
     // for example if we wanted a subroutine to be able to trigger a config
     // refresh:
@@ -49,10 +49,7 @@ impl Context for SignerContext {
 
         let (signal_tx, _) = tokio::sync::broadcast::channel(10);
 
-        Ok(Self {
-            config,
-            signal_tx: Arc::new(signal_tx),
-        })
+        Ok(Self { config, signal_tx })
     }
 
     fn config(&self) -> &Settings {
