@@ -34,7 +34,7 @@ use signer::testing::wallet::InitiateWithdrawalRequest;
 
 use test_case::test_case;
 
-const TX_FEE: u64 = 1500000;
+const TX_FEE: u64 = 123000;
 
 pub struct SbtcTokenContract;
 
@@ -176,9 +176,9 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     deployer: testing::wallet::WALLET.0.address(),
 }); "complete-deposit contract recipient")]
 #[test_case(ContractCallWrapper(AcceptWithdrawalV1 {
-    request_id: 0,
+    request_id: 1,
     outpoint: bitcoin::OutPoint::null(),
-    tx_fee: 3500,
+    tx_fee: 2500,
     signer_bitmap: BitArray::ZERO,
     deployer: testing::wallet::WALLET.0.address(),
 }); "accept-withdrawal")]
@@ -189,7 +189,7 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     deployer: testing::wallet::WALLET.0.address(),
 }); "create-withdrawal")]
 #[test_case(ContractCallWrapper(RejectWithdrawalV1 {
-    request_id: 0,
+    request_id: 2,
     signer_bitmap: BitArray::ZERO,
     deployer: testing::wallet::WALLET.0.address(),
 }); "reject-withdrawal")]
