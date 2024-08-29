@@ -114,7 +114,7 @@ async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
     // Build the signer API application
     let app = Router::new()
         .route("/", get(api::status_handler))
-        .route("/new_block", post(api::new_block_handler::<PgStore>))
+        .route("/new_block", post(api::new_block_handler))
         .with_state(pool_store);
 
     // run our app with hyper
