@@ -41,7 +41,8 @@
 ;; version == 0x05 and (len hashbytes) == 32 => P2WSH
 ;; version == 0x06 and (len hashbytes) == 32 => P2TR
 ;; ```
-;;
+;; Also see <https://docs.stacks.co/clarity/functions#get-burn-block-info>
+;; 
 ;; Below is a detailed breakdown of bitcoin address types and how they map
 ;; to the clarity value. In what follows below, the network used for the
 ;; human-readable parts is inherited from the network of the underlying
