@@ -68,25 +68,25 @@ async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
 
             tokio::select! {
                 _ = terminate.recv() => {
-                    tracing::info!("Received SIGTERM");
+                    tracing::info!("received SIGTERM");
                 },
                 _ = hangup.recv() => {
-                    tracing::info!("Received SIGHUP");
+                    tracing::info!("received SIGHUP");
                 },
                 // Ctrl-C will be received as a SIGINT.
                 _ = interrupt.recv() => {
-                    tracing::info!("Received SIGINT");
+                    tracing::info!("received SIGINT");
                 },
             }
         // Otherwise, we'll just listen for Ctrl-C, which is the most portable.
         } else {
             tokio::signal::ctrl_c().await?;
-            tracing::info!("Received Ctrl-C");
+            tracing::info!("received Ctrl-C");
         }
     }
 
     // Send the shutdown signal to the rest of the application.
-    tracing::info!("Sending shutdown signal to the application");
+    tracing::info!("sending shutdown signal to the application");
     ctx.signal(SignerSignal::Shutdown)?;
 
     Ok(())
@@ -101,7 +101,7 @@ async fn run_libp2p_swarm(ctx: &impl Context) -> Result<(), Error> {
 
     tokio::select! {
         Ok(SignerSignal::Shutdown) = signal.recv() => {
-            tracing::info!("Received shutdown signal, stopping libp2p swarm");
+            tracing::info!("stopping the libp2p swarm");
             Ok(())
         }
     }
@@ -124,21 +124,20 @@ async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
     // Subscribe to the signal channel so that we can catch shutdown events.
     let mut signal = ctx.get_signal_receiver();
 
-    // Start the server in its own task.
-    let handle = tokio::spawn(async { axum::serve(listener, app).await });
-
-    // Wait for either the server to stop or a shutdown signal. If the server
-    // stops on its own, this is probably a premature termination of some sort,
-    // so return an error.
-    tokio::select! {
-        _ = handle => {
-            tracing::info!("Stacks event observer server aborted");
-            ctx.signal(SignerSignal::Shutdown)?;
-            Err(Error::StacksEventObserverAborted)
-        }
-        Ok(SignerSignal::Shutdown) = signal.recv() => {
-            tracing::info!("Received shutdown signal, stopping Stacks event observer server");
-            Ok(())
-        }
-    }
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            // Listen for an application shutdown signal. We need to loop here
+            // because we may receive other signals (which we will ignore here).
+            loop {
+                if let Ok(SignerSignal::Shutdown) = signal.recv().await {
+                    tracing::info!("stopping the Stacks event observer server");
+                    break;
+                }
+            }
+        })
+        .await
+        .map_err(|e| {
+            let _ = ctx.signal(SignerSignal::Shutdown);
+            e.into()
+        })
 }
