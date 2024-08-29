@@ -3,7 +3,7 @@
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 use serde::Deserializer;
-use std::sync::LazyLock;
+use std::path::Path;
 
 use crate::error::Error;
 use crate::keys::PrivateKey;
@@ -209,10 +209,6 @@ pub struct StacksAccountConfig {
     pub private_key: PrivateKey,
 }
 
-/// Statically configured settings for the signer
-pub static SETTINGS: LazyLock<Settings> =
-    LazyLock::new(|| Settings::new().expect("Failed to load configuration"));
-
 impl Settings {
     /// Initializing the global config first with default values and then with
     /// provided/overwritten environment variables. The explicit separator with
@@ -235,7 +231,7 @@ impl Settings {
     ///    │  └ prefix_separator("_")
     ///    └ with_prefix("SIGNER")
     /// ```
-    pub fn new() -> Result<Self, ConfigError> {
+    pub fn new(config_path: Option<impl AsRef<Path>>) -> Result<Self, ConfigError> {
         // To properly parse lists from both environment and config files while
         // using a custom deserializer, we need to specify the list separator,
         // enable try_parsing and specify the keys which should be parsed as lists.
@@ -249,10 +245,11 @@ impl Settings {
             .with_list_parse_key("signer.p2p.listen_on")
             .with_list_parse_key("signer.p2p.public_endpoints")
             .prefix_separator("_");
-        let cfg = Config::builder()
-            .add_source(File::with_name("./src/config/default"))
-            .add_source(env)
-            .build()?;
+        let mut cfg_builder = Config::builder();
+        if let Some(path) = config_path {
+            cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
+        }
+        let cfg = cfg_builder.add_source(env).build()?;
 
         let settings: Settings = cfg.try_deserialize()?;
 
@@ -358,6 +355,8 @@ mod tests {
 
     use super::*;
 
+    const DEFAULT_CONFIG_PATH: Option<&str> = Some("./src/config/default");
+
     /// Helper function to quickly create a URL from a string in tests.
     fn url(s: &str) -> url::Url {
         s.parse().unwrap()
@@ -371,7 +370,7 @@ mod tests {
     // !! default.toml file are changed.
     #[test]
     fn default_config_toml_loads() {
-        let settings = Settings::new().unwrap();
+        let settings = Settings::new(DEFAULT_CONFIG_PATH).unwrap();
         assert_eq!(settings.blocklist_client.host, "127.0.0.1");
         assert_eq!(settings.blocklist_client.port, 8080);
         assert_eq!(settings.block_notifier.server, "tcp://localhost:60401");
@@ -401,7 +400,7 @@ mod tests {
         );
         std::env::set_var("SIGNER_SIGNER__P2P__LISTEN_ON", "tcp://1.2.3.4:1234");
 
-        let settings = Settings::new().unwrap();
+        let settings = Settings::new(DEFAULT_CONFIG_PATH).unwrap();
 
         assert_eq!(
             settings.signer.p2p.seeds,
@@ -418,7 +417,7 @@ mod tests {
         let new = "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd";
         std::env::set_var("SIGNER_SIGNER__STACKS_ACCOUNT__PRIVATE_KEY", new);
 
-        let settings = Settings::new().unwrap();
+        let settings = Settings::new(DEFAULT_CONFIG_PATH).unwrap();
 
         assert_eq!(
             settings.signer.stacks_account.private_key,
@@ -467,7 +466,7 @@ mod tests {
     fn invalid_private_key_length_returns_correct_error() {
         std::env::set_var("SIGNER_SIGNER__STACKS_ACCOUNT__PRIVATE_KEY", "1234");
 
-        let settings = Settings::new();
+        let settings = Settings::new(DEFAULT_CONFIG_PATH);
         assert!(settings.is_err());
         assert!(matches!(
             settings.unwrap_err(),
@@ -480,7 +479,7 @@ mod tests {
         std::env::set_var("SIGNER_SIGNER__STACKS_ACCOUNT__PRIVATE_KEY", "zz");
         let hex_err = hex::decode("zz").unwrap_err();
 
-        let settings = Settings::new();
+        let settings = Settings::new(DEFAULT_CONFIG_PATH);
         assert!(settings.is_err());
         assert!(matches!(
             settings.unwrap_err(),

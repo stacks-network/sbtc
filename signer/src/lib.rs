@@ -7,6 +7,7 @@ pub mod block_observer;
 pub mod blocklist_client;
 pub mod codec;
 pub mod config;
+pub mod context;
 pub mod ecdsa;
 pub mod error;
 pub mod keys;

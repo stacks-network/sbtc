@@ -8,6 +8,21 @@ use crate::{codec, ecdsa, network};
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Stacks event observer terminated prematurely.
+    #[error("stacks event observer terminated prematurely")]
+    StacksEventObserverAborted,
+
+    /// I/O Error raised by the Tokio runtime.
+    #[error("tokio i/o error: {0}")]
+    TokioIo(#[from] tokio::io::Error),
+
+    /// Error when attempting to send a signal to the application's signalling
+    /// channel.
+    #[error("failed to send signal to the application: {0}")]
+    ApplicationSignal(
+        #[source] tokio::sync::broadcast::error::SendError<crate::context::SignerSignal>,
+    ),
+
     /// Error when breaking out the ZeroMQ message into three parts.
     #[error("bitcoin messages should have a three part layout, received {0} parts")]
     BitcoinCoreZmqMessageLayout(usize),

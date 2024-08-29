@@ -47,10 +47,7 @@ pub async fn get_withdrawal(context: EmilyContext, request_id: u64) -> impl warp
             .try_into()?;
 
         // Respond.
-        Ok(with_status(
-            json(&withdrawal),
-            StatusCode::OK,
-        ))
+        Ok(with_status(json(&withdrawal), StatusCode::OK))
     }
     // Handle and respond.
     handler(context, request_id)

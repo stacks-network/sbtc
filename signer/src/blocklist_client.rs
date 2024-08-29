@@ -5,12 +5,13 @@
 //! include querying the blocklist API and interpreting the responses to determine if a given
 //! address is blocklisted, along with its associated risk severity.
 
-use crate::config::SETTINGS;
 use blocklist_api::apis::address_api::{check_address, CheckAddressError};
 use blocklist_api::apis::configuration::Configuration;
 use blocklist_api::apis::Error as ClientError;
 use blocklist_api::models::BlocklistStatus;
 use std::future::Future;
+
+use crate::context::Context;
 
 /// A trait for checking if an address is blocklisted.
 pub trait BlocklistChecker {
@@ -40,10 +41,11 @@ impl BlocklistChecker for BlocklistClient {
 
 impl BlocklistClient {
     /// Construct a new [`BlocklistClient`]
-    pub fn new() -> Self {
+    pub fn new(ctx: &impl Context) -> Self {
         let base_url = format!(
             "http://{}:{}",
-            SETTINGS.blocklist_client.host, SETTINGS.blocklist_client.port
+            ctx.config().blocklist_client.host,
+            ctx.config().blocklist_client.port
         );
 
         let config = Configuration {
@@ -62,12 +64,6 @@ impl BlocklistClient {
         };
 
         BlocklistClient { config }
-    }
-}
-
-impl Default for BlocklistClient {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
