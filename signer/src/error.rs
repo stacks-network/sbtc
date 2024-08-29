@@ -51,6 +51,12 @@ pub enum Error {
     #[error("Could not convert an integer in clarity event into the expected integer {0}")]
     ClarityIntConversion(#[source] std::num::TryFromIntError),
 
+    /// This is a slice conversion that happens when generating an address
+    /// from validated user inputs. It shouldn't happen since we validate
+    /// the user's inputs in the contract call.
+    #[error("slice conversion failed: {0}")]
+    ClaritySliceConversion(#[source] std::array::TryFromSliceError),
+
     /// This happens when we attempt to create s String from the raw bytes
     /// returned in a Clarity [`Value`](clarity::vm::Value).
     #[error("Could not convert ASCII or UTF8 bytes into a String: {0}")]
@@ -164,6 +170,15 @@ pub enum Error {
     /// 4. The number of public keys exceeds the MAX_KEYS constant.
     #[error("invalid wallet definition, signatures required: {0}, number of keys: {1}")]
     InvalidWalletDefinition(u16, usize),
+
+    /// This should never happen, since  our witness programs are under the
+    /// maximum length.
+    #[error("tried to create an invalid witness program {0}")]
+    InvalidWitnessProgram(#[source] bitcoin::witness_program::Error),
+
+    /// This should never happen.
+    #[error("tried to create an invalid address from a script {0}")]
+    InvalidScript(#[source] bitcoin::address::FromScriptError),
 
     /// This is thrown when failing to parse a hex string into an integer.
     #[error("could not parse the hex string into an integer")]
@@ -307,6 +322,11 @@ pub enum Error {
     /// Parsing address failed
     #[error("failed to parse address")]
     ParseAddress(#[source] bitcoin::address::ParseError),
+
+    /// This should never happen, we check the version in the smart
+    /// contract.
+    #[error("the given raw recipient is unexpected. version: {0:?}, hashbytes: {1:?} ")]
+    UnhandledRecipient(Vec<u8>, Vec<u8>),
 
     /// Could not connect to bitcoin-core with a zeromq subscription
     /// socket.

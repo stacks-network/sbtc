@@ -30,6 +30,87 @@
 (define-constant DUST_LIMIT u546)
 
 ;; Initiate a new withdrawal request
+;;
+;; This constraints and meaning of the recipient field is summarized as:
+;; ```text
+;; version == 0x00 and (len hashbytes) == 20 => P2PKH
+;; version == 0x01 and (len hashbytes) == 20 => P2SH
+;; version == 0x02 and (len hashbytes) == 20 => P2SH-P2WPKH
+;; version == 0x03 and (len hashbytes) == 20 => P2SH-P2WSH
+;; version == 0x04 and (len hashbytes) == 20 => P2WPKH
+;; version == 0x05 and (len hashbytes) == 32 => P2WSH
+;; version == 0x06 and (len hashbytes) == 32 => P2TR
+;; ```
+;; Also see <https://docs.stacks.co/clarity/functions#get-burn-block-info>
+;; 
+;; Below is a detailed breakdown of bitcoin address types and how they map
+;; to the clarity value. In what follows below, the network used for the
+;; human-readable parts is inherited from the network of the underlying
+;; transaction itself (basically, on stacks mainnet we send to mainnet
+;; bitcoin addresses and similarly on stacks testnet we send to bitcoin
+;; testnet addresses).
+;;
+;; ## P2PKH
+;;
+;; Generally speaking, Pay-to-Public-Key-Hash addresses are formed by
+;; taking the Hash160 of the public key, prefixing it with one byte (0x00
+;; on mainnet and 0x6F on testing) and then base58 encoding the result.
+;;
+;; To specify this address type as the recipient, the `version` is 0x00 and
+;; the `hashbytes` is the Hash160 of the public key.
+;;
+;;
+;; ## P2SH, P2SH-P2WPKH, and P2SH-P2WSH
+;;
+;; Pay-to-script-hash-* addresses are formed by taking the Hash160 of the
+;; locking script, prefixing it with one byte (0x05 on mainnet and 0xC4 on
+;; testnet) and base58 encoding the result. The difference between them
+;; lies with the locking script. For P2SH-P2WPKH addresses, the locking
+;; script is:
+;; ```text
+;; 0 || <Hash160 of the compressed public key>
+;; ```
+;; For P2SH-P2WSH addresses, the locking script is:
+;; ```text
+;; 0 || <sha256 of the redeem script>
+;; ```
+;; And for P2SH addresses you get to choose the locking script in its
+;; entirety.
+;;
+;; Again, after you construct the locking script you take its Hash160,
+;; prefix it with one byte and base58 encode it to form the address. To
+;; specify these address types in the recipient, the `version` is 0x01,
+;; 0x02, and 0x03 (for P2SH, P2SH-P2WPKH, and P2SH-P2WSH respectively) with
+;; the `hashbytes` is the Hash160 of the locking script.
+;;
+;;
+;; ## P2WPKH
+;;
+;; Pay-to-witness-public-key-hash addresses are formed by creating a
+;; witness program made entirely of the Hash160 of the compressed public
+;; key.
+;;
+;; To specify this address type in the recipient, the `version` is 0x04 and
+;; the `hashbytes` is the Hash160 of the compressed public key.
+;;
+;;
+;; ## P2WSH
+;;
+;; Pay-to-witness-script-hash addresses are formed by taking a witness
+;; program that is compressed entirely of the SHA256 of the redeem script.
+;;
+;; To specify this address type in the recipient, the `version` is 0x05 and
+;; the `hashbytes` is the SHA256 of the redeem script.
+;;
+;;
+;; ## P2TR
+;;
+;; Pay-to-taproot addresses are formed by "tweaking" the x-coordinate of a
+;; public key with a merkle tree. The result of the tweak is used as the
+;; witness program for the address.
+;;
+;; To specify this address type in the recipient, the `version` is 0x06 and
+;; the `hashbytes` is the "tweaked" public key.
 (define-public (initiate-withdrawal-request (amount uint)
                                             (recipient { version: (buff 1), hashbytes: (buff 32) })
                                             (max-fee uint)
@@ -165,9 +246,9 @@
 
 ;; Validation methods
 
-;; Validate that a withdrawal's recipient address is well-formed.
-;; The logic here follows the same rules as pox-4.
-;; 
+;; Validate that a withdrawal's recipient address is well-formed. The logic
+;; here follows the same rules as pox-4.
+;;
 ;; At a high-level, the version must be a uint between 0 and 6 (inclusive),
 ;; and the length of the hashbytes must be 20 bytes if the version is <= 4,
 ;; and 32 bytes if the version is 5 or 6.
