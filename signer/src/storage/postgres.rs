@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
+use bitcoin::hashes::Hash as _;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::codec::StacksMessageCodec;
@@ -10,6 +11,10 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::stacks::events::CompletedDepositEvent;
+use crate::stacks::events::WithdrawalAcceptEvent;
+use crate::stacks::events::WithdrawalCreateEvent;
+use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
 use crate::storage::model::TransactionType;
 
@@ -177,6 +182,114 @@ impl PgStore {
         .map_err(Error::SqlxQuery)?;
 
         Ok(model::TransactionIds { tx_ids, block_hashes })
+    }
+
+    /// Write the completed deposit event to the database.
+    pub async fn write_completed_deposit_event(
+        &self,
+        event: &CompletedDepositEvent,
+    ) -> Result<(), Error> {
+        sqlx::query(
+            "
+        INSERT INTO sbtc_signer.completed_deposit_events (
+            amount
+          , txid
+          , output_index
+        )
+        VALUES ($1, $2, $3)
+        ON CONFLICT DO NOTHING",
+        )
+        .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
+        .bind(event.outpoint.txid.to_byte_array())
+        .bind(event.outpoint.vout as i64)
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
+    }
+
+    /// Write the completed deposit event to the database.
+    pub async fn write_withdrawal_create_event(
+        &self,
+        event: &WithdrawalCreateEvent,
+    ) -> Result<(), Error> {
+        sqlx::query(
+            "
+        INSERT INTO sbtc_signer.withdrawal_create_events (
+            request_id
+          , amount
+          , sender
+          , recipient
+          , max_fee
+          , block_height
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT DO NOTHING",
+        )
+        .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
+        .bind(event.sender.to_string())
+        .bind(event.recipient.to_string())
+        .bind(i64::try_from(event.max_fee).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(event.block_height).map_err(Error::ConversionDatabaseInt)?)
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
+    }
+
+    /// Write the completed deposit event to the database.
+    pub async fn write_withdrawal_accept_event(
+        &self,
+        event: &WithdrawalAcceptEvent,
+    ) -> Result<(), Error> {
+        sqlx::query(
+            "
+        INSERT INTO sbtc_signer.withdrawal_accept_events (
+            request_id
+          , signer_bitmap
+          , txid
+          , output_index
+          , fee
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT DO NOTHING",
+        )
+        .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
+        .bind(event.signer_bitmap.into_inner())
+        .bind(event.outpoint.txid.to_byte_array())
+        .bind(event.outpoint.vout as i64)
+        .bind(i64::try_from(event.fee).map_err(Error::ConversionDatabaseInt)?)
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
+    }
+
+    /// Write the completed deposit event to the database.
+    pub async fn write_withdrawal_reject_event(
+        &self,
+        event: &WithdrawalRejectEvent,
+    ) -> Result<(), Error> {
+        sqlx::query(
+            "
+        INSERT INTO sbtc_signer.withdrawal_reject_events (
+            request_id
+          , signer_bitmap
+        )
+        VALUES ($1, $2)
+        ON CONFLICT DO NOTHING",
+        )
+        .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
+        .bind(event.signer_bitmap.into_inner())
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
     }
 }
 
