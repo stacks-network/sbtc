@@ -122,9 +122,9 @@ impl SignerStxState {
     }
 
     /// Get the source of the a deployed smart contract.
-    /// 
+    ///
     /// # Notes
-    /// 
+    ///
     /// This is useful just to know whether a contract has been deployed
     /// already or not. If the smart contract has not been deployed yet,
     /// the stacks node returns a 404 Not Found.
