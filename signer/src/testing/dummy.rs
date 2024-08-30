@@ -1,12 +1,17 @@
 //! Utilities for generating dummy values on external types
 
 use std::collections::BTreeMap;
+use std::ops::Range;
 
 use bitcoin::hashes::Hash as _;
 use blockstack_lib::chainstate::{nakamoto, stacks};
 use fake::Fake;
 use rand::Rng;
 use secp256k1::ecdsa::RecoverableSignature;
+
+use bitcoin::Address;
+use bitcoin::Network;
+use rand::seq::IteratorRandom as _;
 
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
@@ -224,4 +229,23 @@ fn coinbase_tx<R: rand::RngCore + ?Sized>(
     coinbase_tx.input = vec![coinbase_input];
 
     coinbase_tx
+}
+
+/// Used to for fine-grained control of generating fake testing addresses.
+#[cfg(feature = "testing")]
+#[derive(Debug)]
+pub struct BitcoinAddresses(pub Range<usize>);
+
+#[cfg(feature = "testing")]
+impl fake::Dummy<BitcoinAddresses> for Vec<String> {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &BitcoinAddresses, rng: &mut R) -> Self {
+        let num_addresses = config.0.clone().choose(rng).unwrap_or(1);
+        std::iter::repeat_with(|| secp256k1::Keypair::new_global(rng))
+            .take(num_addresses)
+            .map(|kp| {
+                let pk = bitcoin::CompressedPublicKey(kp.public_key());
+                Address::p2wpkh(&pk, Network::Regtest).to_string()
+            })
+            .collect()
+    }
 }
