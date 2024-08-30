@@ -15,6 +15,7 @@ pub trait TryIntoMultiAddrs {
 
 impl TryIntoMultiAddrs for Url {
     fn try_into_multiaddrs(&self) -> Result<Vec<Multiaddr>, SignerSwarmError> {
+        eprintln!("url: {:?}", self);
         let host = self
             .host_str()
             .ok_or(SignerSwarmError::Builder("host cannot be empty"))?;
@@ -35,14 +36,16 @@ impl TryIntoMultiAddrs for Url {
 
         if let Ok(addrs) = format!("{host}:{port}").to_socket_addrs() {
             for addr in addrs {
-                let multiaddr = format!(
+                let multiaddr_str = format!(
                     "/{}/{}/{}/{}",
                     if addr.is_ipv6() { "ip6" } else { "ip4" },
                     addr.ip(),
                     self.scheme(),
                     addr.port()
-                )
-                .parse()?;
+                );
+                eprintln!("multiaddr_str: {:?}", multiaddr_str);
+                let multiaddr = multiaddr_str.parse()?;
+                eprintln!("parsed multiaddr: {:?}", multiaddr);
                 multiaddrs.push(multiaddr);
             }
         }
