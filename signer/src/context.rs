@@ -72,6 +72,9 @@ impl Context for SignerContext {
     fn init(config_path: Option<impl AsRef<Path>>) -> Result<Self, Error> {
         let config = Settings::new(config_path).map_err(Error::SignerConfig)?;
 
+        // TODO: Decide on the channel capacity and how we should handle slow consumers.
+        // NOTE: Ideally consumers which require processing time should pull the relevent
+        // messages into a local VecDequeue and process them in their own time.
         let (signal_tx, _) = tokio::sync::broadcast::channel(10);
 
         Ok(Self { config, signal_tx })
