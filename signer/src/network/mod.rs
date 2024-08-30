@@ -16,6 +16,8 @@ use crate::message;
 
 /// The supported message type of the signer network
 pub type Msg = ecdsa::Signed<message::SignerMessage>;
+/// The unique identifier for a message
+pub type MsgId = [u8; 32];
 
 /// Represents the interaction point between signers and the signer network,
 /// allowing signers to exchange messages with each other.

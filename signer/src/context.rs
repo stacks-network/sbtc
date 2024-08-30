@@ -40,14 +40,31 @@ pub struct SignerContext {
 /// Signals that can be sent within the signer binary.
 #[derive(Debug, Clone)]
 pub enum SignerSignal {
+    /// Send a command to the application.
+    Command(SignerCommand),
+    /// Signal an event to the application.
+    Event(SignerEvent),
+}
+
+/// Commands that can be sent on the signalling channel.
+#[derive(Debug, Clone)]
+pub enum SignerCommand {
     /// Signals to the application to shut down.
     Shutdown,
     /// Signals to the application to publish a message to the P2P network.
     P2PPublish(crate::network::Msg),
+}
+
+/// Events that can be received on the signalling channel.
+#[derive(Debug, Clone)]
+pub enum SignerEvent {
     /// Signals to the application that the P2P publish failed for the given message.
-    P2PPublishFailure(crate::network::Msg),
+    P2PPublishFailure(crate::network::MsgId),
+    /// Signals to the application that the P2P publish for the given message id
+    /// was successful.
+    P2PPublishSuccess(crate::network::MsgId),
     /// Signals to the application that a message was received from the P2P network.
-    P2PMessage(crate::network::Msg),
+    P2PMessageReceived(crate::network::Msg),
 }
 
 impl Context for SignerContext {

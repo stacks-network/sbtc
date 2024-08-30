@@ -7,6 +7,7 @@ use cfg_if::cfg_if;
 use clap::Parser;
 use signer::api;
 use signer::context::Context;
+use signer::context::SignerCommand;
 use signer::context::SignerContext;
 use signer::context::SignerSignal;
 use signer::error::Error;
@@ -89,7 +90,7 @@ async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
 
     // Send the shutdown signal to the rest of the application.
     tracing::info!("sending shutdown signal to the application");
-    ctx.signal(SignerSignal::Shutdown)?;
+    ctx.signal(SignerSignal::Command(SignerCommand::Shutdown))?;
 
     Ok(())
 }
@@ -126,7 +127,7 @@ async fn run_libp2p_swarm(ctx: &impl Context) -> Result<(), Error> {
     // received, or an unrecoverable error has occurred.
     swarm.start(ctx).await.map_err(|error| {
         tracing::error!(%error, "error executing the libp2p swarm");
-        let _ = ctx.signal(SignerSignal::Shutdown);
+        let _ = ctx.signal(SignerSignal::Command(SignerCommand::Shutdown));
         error.into()
     })
 }
@@ -153,7 +154,7 @@ async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
             // Listen for an application shutdown signal. We need to loop here
             // because we may receive other signals (which we will ignore here).
             loop {
-                if let Ok(SignerSignal::Shutdown) = signal.recv().await {
+                if let Ok(SignerSignal::Command(SignerCommand::Shutdown)) = signal.recv().await {
                     tracing::info!("stopping the Stacks event observer server");
                     break;
                 }
@@ -162,7 +163,7 @@ async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
         .await
         .map_err(|error| {
             tracing::error!(%error, "error running Stacks event observer server");
-            let _ = ctx.signal(SignerSignal::Shutdown);
+            let _ = ctx.signal(SignerSignal::Command(SignerCommand::Shutdown));
             error.into()
         })
 }

@@ -7,7 +7,7 @@ use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::Mutex;
 
 use crate::codec::{Decode, Encode};
-use crate::context::SignerSignal;
+use crate::context::{SignerCommand, SignerEvent, SignerSignal};
 use crate::network::Msg;
 
 use super::swarm::{SignerBehavior, SignerBehaviorEvent};
@@ -29,24 +29,42 @@ pub async fn run(
 
     loop {
         tokio::select! {
-            Ok(cmd) = signal_rx.recv() => {
+            // Handle signals from the application
+            Ok(SignerSignal::Command(cmd)) = signal_rx.recv() => {
                 match cmd {
-                    SignerSignal::Shutdown => {
-                        tracing::info!("Shutting down libp2p swarm");
-                        return;
+                    // Handle shutdown signal and stop the loop if received.
+                    SignerCommand::Shutdown => {
+                        tracing::info!("libp2p received a shutdown signal; stopping the libp2p swarm");
+                        break;
                     },
-                    SignerSignal::P2PPublish(payload) => {
+                    // Handle a request to publish a message to the P2P network.
+                    SignerCommand::P2PPublish(payload) => {
                         let encoded_msg = payload.encode_to_vec()
                             .unwrap(); // TODO: handle error
 
-                        swarm.behaviour_mut()
+                        let msg_id = payload.id();
+
+                        let _ = swarm.behaviour_mut()
                             .gossipsub
                             .publish(topic.clone(), encoded_msg)
-                            .unwrap(); // TODO: handle error;
+                            .map_err(|error| {
+                                // An error occurred while attempting to publish.
+                                // Log the error and send a failure signal to the application
+                                // so that it can handle the failure as needed.
+                                tracing::warn!(%error, ?msg_id, "Failed to publish message");
+                                let _ = signal_tx.send(SignerSignal::Event(SignerEvent::P2PPublishFailure(msg_id)));
+                            })
+                            .map(|_| {
+                                // The message was published successfully. Log the success
+                                // and send a success signal to the application so that it can
+                                // handle the success as needed.
+                                tracing::trace!(?msg_id, "Message published successfully");
+                                let _ = signal_tx.send(SignerSignal::Event(SignerEvent::P2PPublishSuccess(msg_id)));
+                            });
                     },
-                    _ => {}
                 }
             },
+            // Handle events from the libp2p swarm
             event = swarm.select_next_some() => {
                 match event {
                     // mDNS autodiscovery events. These are used by the local
@@ -70,7 +88,7 @@ pub async fn run(
                         tracing::info!(%address, "Listener started");
                     },
                     SwarmEvent::ExpiredListenAddr { address, .. } => {
-                        tracing::info!(%address, "Listener expired");
+                        tracing::debug!(%address, "Listener expired");
                     },
                     SwarmEvent::ListenerClosed { addresses, reason, .. } => {
                         tracing::info!(addresses = format!("{:?}", addresses), reason = format!("{:?}", reason), "Listener closed");
@@ -88,10 +106,10 @@ pub async fn run(
                         tracing::info!(%peer_id, cause = format!("{:?}", cause), "Connection closed");
                     },
                     SwarmEvent::IncomingConnection { local_addr, send_back_addr, .. } => {
-                        tracing::info!(%local_addr, %send_back_addr, "Incoming connection");
+                        tracing::debug!(%local_addr, %send_back_addr, "Incoming connection");
                     },
                     SwarmEvent::Behaviour(SignerBehaviorEvent::Ping(ping)) => {
-                        tracing::info!("ping received: {:?}", ping);
+                        tracing::trace!("ping received: {:?}", ping);
                     },
                     SwarmEvent::OutgoingConnectionError { connection_id, error, .. } => {
                         tracing::warn!(%connection_id, %error, "outgoing connection error");
@@ -100,18 +118,20 @@ pub async fn run(
                         tracing::warn!(%local_addr, %send_back_addr, %error, "incoming connection error");
                     },
                     SwarmEvent::NewExternalAddrCandidate { address } => {
-                        tracing::info!(%address, "New external address candidate");
+                        tracing::debug!(%address, "New external address candidate");
                     },
                     SwarmEvent::ExternalAddrConfirmed { address } => {
-                        tracing::info!(%address, "External address confirmed");
+                        tracing::debug!(%address, "External address confirmed");
                     },
                     SwarmEvent::ExternalAddrExpired { address } => {
-                        tracing::info!(%address, "External address expired");
+                        tracing::debug!(%address, "External address expired");
                     },
                     SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
-                        tracing::info!(%peer_id, %address, "New external address of peer");
+                        tracing::debug!(%peer_id, %address, "New external address of peer");
                     },
-                    _ => tracing::warn!("unhandled swarm event"),
+                    // The derived `SwarmEvent` is marked as #[non_exhaustive], so we must have a
+                    // catch-all.
+                    _ => tracing::trace!("unhandled swarm event"),
                 }
             }
         }
@@ -129,7 +149,7 @@ fn handle_autonat_client_event(_: &mut Swarm<SignerBehavior>, event: autonat::v2
             bytes_sent,
             result: Ok(()),
         } => {
-            tracing::info!(%server, %tested_addr, %bytes_sent, "AutoNAT (client) test successful");
+            tracing::trace!(%server, %tested_addr, %bytes_sent, "AutoNAT (client) test successful");
         }
         // Match on failed AutoNAT test event
         Event {
@@ -138,7 +158,7 @@ fn handle_autonat_client_event(_: &mut Swarm<SignerBehavior>, event: autonat::v2
             bytes_sent,
             result: Err(e),
         } => {
-            tracing::warn!(%server, %tested_addr, %bytes_sent, %e, "AutoNAT (client) test failed");
+            tracing::trace!(%server, %tested_addr, %bytes_sent, %e, "AutoNAT (client) test failed");
         }
     }
 }
@@ -154,7 +174,7 @@ fn handle_autonat_server_event(_: &mut Swarm<SignerBehavior>, event: autonat::v2
             data_amount,
             result: Ok(()),
         } => {
-            tracing::info!(
+            tracing::trace!(
                 all_addrs = format!("{:?}", all_addrs), 
                 %client, 
                 %tested_addr, 
@@ -209,7 +229,7 @@ fn handle_identify_event(swarm: &mut Swarm<SignerBehavior>, event: identify::Eve
 
     match event {
         Event::Received { peer_id, info, .. } => {
-            tracing::trace!(%peer_id, "Received identify message from peer; adding to confirmed external addresses");
+            tracing::debug!(%peer_id, "Received identify message from peer; adding to confirmed external addresses");
             swarm.add_external_address(info.observed_addr.clone());
         }
         Event::Pushed { connection_id, peer_id, info } => {
@@ -244,7 +264,9 @@ fn handle_gossipsub_event(
 
             Msg::decode(message.data.as_slice())
                 .map(|msg| {
-                    signal_tx.send(SignerSignal::P2PMessage(msg)).unwrap(); // TODO: handle error
+                    signal_tx
+                        .send(SignerSignal::Event(SignerEvent::P2PMessageReceived(msg)))
+                        .unwrap(); // TODO: handle error
                 })
                 .unwrap_or_else(|error| {
                     tracing::warn!(?peer_id, %error, "Failed to decode message");
