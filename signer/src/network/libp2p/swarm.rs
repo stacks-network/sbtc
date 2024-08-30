@@ -174,35 +174,40 @@ pub struct SignerSwarm {
 }
 
 impl SignerSwarm {
+    /// Retrieves the local peer ID of the swarm.
     pub async fn local_peer_id(&self) -> PeerId {
         *self.swarm.lock().await.local_peer_id()
     }
 
+    /// Start the [`SignerSwarm`] and run the event loop. This function will block until the
+    /// swarm is stopped (either by receiving a shutdown signal or an unrecoverable error).
     pub async fn start(&mut self, ctx: &impl Context) -> Result<(), SignerSwarmError> {
         let local_peer_id = self.local_peer_id().await;
         tracing::info!("Starting SignerSwarm with peer ID: {}", local_peer_id);
 
-        {
-            for addr in self.listen_addrs.iter() {
-                self.swarm
-                    .lock()
-                    .await
-                    .listen_on(addr.clone())
-                    .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
-            }
-
-            for addr in self.seed_addrs.iter() {
-                self.swarm
-                    .lock()
-                    .await
-                    .dial(addr.clone())
-                    .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
-            }
+        // Start listening on the listen addresses.
+        for addr in self.listen_addrs.iter() {
+            self.swarm
+                .lock()
+                .await
+                .listen_on(addr.clone())
+                .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
         }
 
+        // Dial the seed addresses.
+        for addr in self.seed_addrs.iter() {
+            self.swarm
+                .lock()
+                .await
+                .dial(addr.clone())
+                .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
+        }
+
+        // Get our signal channel sender/receiver.
         let signal_tx = ctx.get_signal_sender();
         let signal_rx = ctx.get_signal_receiver();
 
+        // Run the event loop, blocking until its completion.
         event_loop::run(Arc::clone(&self.swarm), signal_tx, signal_rx).await;
 
         Ok(())

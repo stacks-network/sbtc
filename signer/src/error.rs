@@ -3,11 +3,19 @@ use std::borrow::Cow;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
 
-use crate::{codec, ecdsa, network};
+use crate::{codec, context::SignerSignal, ecdsa, network};
 
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Error broadcasting a message to the application channel
+    #[error("Error broadcasting message to application channel: {0}")]
+    BroadcastSendError(#[from] tokio::sync::broadcast::error::SendError<SignerSignal>),
+
+    /// Error receiving a message from the application channel
+    #[error("Error receiving message from application channel: {0}")]
+    BroadcastRecvError(#[from] tokio::sync::broadcast::error::RecvError),
+
     /// Error incurred during the execution of the libp2p swarm.
     #[error("an error occurred running the libp2p swarm: {0}")]
     SignerSwarm(#[from] crate::network::libp2p::SignerSwarmError),
