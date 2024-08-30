@@ -394,7 +394,7 @@ impl WithdrawalRequest {
         network: bitcoin::Network,
     ) -> Result<Self, Error> {
         let address: Address = request
-            .sender_address
+            .recipient
             .parse::<Address<NetworkUnchecked>>()
             .map_err(Error::ParseAddress)?
             .require_network(network)

@@ -258,6 +258,10 @@ pub enum Error {
     #[error("missing key rotation")]
     MissingKeyRotation,
 
+    /// Missing signer utxo
+    #[error("missing signer utxo")]
+    MissingSignerUtxo,
+
     /// Invalid signature
     #[error("invalid signature")]
     InvalidSignature,
@@ -341,6 +345,14 @@ pub enum Error {
     /// socket.
     #[error("{0}")]
     ZmqSubscribe(#[source] zeromq::ZmqError),
+
+    /// Transaction coordinator timed out
+    #[error("coordinator timed out after {0} seconds")]
+    CoordinatorTimeout(u64),
+
+    /// Wsts state machine returned unexpected operation result
+    #[error("unexpected operation result")]
+    UnexpectedOperationResult,
 }
 
 impl From<std::convert::Infallible> for Error {
