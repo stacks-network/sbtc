@@ -40,7 +40,12 @@ struct SignerArgs {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
-    sbtc::logging::setup_logging("info,signer=debug", true);
+    // TODO: The whole logging thing should be revisited. We should support
+    //   enabling different layers, i.e. for pretty console, for opentelem, etc.
+    //sbtc::logging::setup_logging("info,signer=debug", false);
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .try_init();
 
     // Parse the command line arguments.
     let args = SignerArgs::parse();
@@ -51,9 +56,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Run the application components concurrently. We're `join!`ing them
     // here so that every component can shut itself down gracefully when
     // the shutdown signal is received.
+    //
+    // Note that we must use `join` here instead of `select` as `select` would
+    // immediately abort the remaining tasks on the first completion, which
+    // deprives the other tasks of the opportunity to shut down gracefully. This
+    // is the reason we also use the `run_checked` helper method, which will
+    // intercept errors and send a shutdown signal to the other components if an error
+    // does occur, otherwise the `join` will continue running indefinitely.
     let _ = tokio::join!(
+        // Our global termination signal watcher. This does not run using `run_checked`
+        // as it sends its own shutdown signal.
+        run_shutdown_signal_watcher(&context),
+        // The rest of our services which run concurrently, and must all be
+        // running for the signer to be operational.
         run_checked(run_stacks_event_observer, &context),
-        run_checked(run_shutdown_signal_watcher, &context),
         run_checked(run_libp2p_swarm, &context),
     );
 
@@ -81,6 +97,7 @@ where
 
 /// Runs the shutdown-signal watcher. On Unix systems, this listens for SIGHUP,
 /// SIGTERM, and SIGINT. On other systems, it listens for Ctrl-C.
+#[tracing::instrument(skip(ctx))]
 async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
     let mut signal = ctx.get_signal_receiver();
 
@@ -92,16 +109,22 @@ async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
             let mut interrupt = tokio::signal::unix::signal(signal::unix::SignalKind::interrupt())?;
 
             tokio::select! {
+                // If the shutdown signal is received, we'll shut down the signal watcher
+                // by returning early; the rest of the components have already received
+                // the shutdown signal.
                 Ok(SignerSignal::Command(SignerCommand::Shutdown)) = signal.recv() => {
                     tracing::debug!("shutdown signal received, signal watcher is shutting down");
+                    return Ok(());
                 },
+                // SIGTERM (kill -15 "nice")
                 _ = terminate.recv() => {
                     tracing::info!(signal = "SIGTERM", "received termination signal");
                 },
+                // SIGHUP (kill -1)
                 _ = hangup.recv() => {
                     tracing::info!(signal = "SIGHUP", "received termination signal");
                 },
-                // Ctrl-C will be received as a SIGINT.
+                // Ctrl-C will be received as a SIGINT (kill -2)
                 _ = interrupt.recv() => {
                     tracing::info!(signal = "SIGINT", "received termination signal");
                 },
@@ -157,6 +180,7 @@ async fn run_libp2p_swarm(ctx: &impl Context) -> Result<(), Error> {
 }
 
 /// Runs the Stacks event observer server.
+#[tracing::instrument(skip(ctx))]
 async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
     tracing::info!("initializing the Stacks event observer server");
 

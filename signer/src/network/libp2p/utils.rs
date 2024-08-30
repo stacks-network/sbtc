@@ -1,5 +1,6 @@
 use std::net::ToSocketAddrs;
 
+use libp2p::multiaddr::Protocol;
 use libp2p::Multiaddr;
 use url::Url;
 
@@ -36,16 +37,17 @@ impl TryIntoMultiAddrs for Url {
 
         if let Ok(addrs) = format!("{host}:{port}").to_socket_addrs() {
             for addr in addrs {
-                let multiaddr_str = format!(
-                    "/{}/{}/{}/{}",
-                    if addr.is_ipv6() { "ip6" } else { "ip4" },
-                    addr.ip(),
-                    self.scheme(),
-                    addr.port()
-                );
-                eprintln!("multiaddr_str: {:?}", multiaddr_str);
-                let multiaddr = multiaddr_str.parse()?;
-                eprintln!("parsed multiaddr: {:?}", multiaddr);
+                // NOTE: The `.with()` calls are ordered, so the order in which
+                // they are called matters.
+                let mut multiaddr = Multiaddr::empty().with(Protocol::from(addr.ip()));
+
+                if self.scheme() == "quic-v1" {
+                    multiaddr = multiaddr.with(Protocol::Udp(port));
+                    multiaddr = multiaddr.with(Protocol::QuicV1);
+                } else if self.scheme() == "tcp" {
+                    multiaddr = multiaddr.with(Protocol::Tcp(port));
+                }
+
                 multiaddrs.push(multiaddr);
             }
         }
