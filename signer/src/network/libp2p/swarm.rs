@@ -138,8 +138,7 @@ impl<'a> SignerSwarmBuilder<'a> {
 
     /// Build the [`SignerSwarm`], consuming the builder.
     pub fn build(self) -> Result<SignerSwarm, SignerSwarmError> {
-        let keypair = Keypair::ed25519_from_bytes(self.private_key.to_bytes())
-            .expect("failed to read keypair");
+        let keypair = Keypair::ed25519_from_bytes(self.private_key.to_bytes())?;
 
         let behavior = SignerBehavior::new(keypair.clone())?;
 
