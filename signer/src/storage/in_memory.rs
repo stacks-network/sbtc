@@ -1,19 +1,19 @@
 //! In-memory store implementation - useful for tests
 
+use bitcoin::OutPoint;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use futures::StreamExt;
 use futures::TryStreamExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use bitcoin::OutPoint;
 
 use crate::keys::PublicKey;
-use crate::storage::model;
 use crate::stacks::events::CompletedDepositEvent;
 use crate::stacks::events::WithdrawalAcceptEvent;
 use crate::stacks::events::WithdrawalCreateEvent;
 use crate::stacks::events::WithdrawalRejectEvent;
+use crate::storage::model;
 
 /// A store wrapped in an Arc<Mutex<...>> for interior mutability
 pub type SharedStore = Arc<Mutex<Store>>;

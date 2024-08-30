@@ -27,7 +27,7 @@ pub enum NetworkKind {
     Mainnet,
     /// The testnet network
     Testnet,
-    /// The regtest network. This is equivalent to Testnet on when
+    /// The regtest network. This is equivalent to Testnet when
     /// constructing Stacks addresses and transactions.
     Regtest,
 }
