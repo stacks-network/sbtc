@@ -1232,8 +1232,7 @@ impl super::DbWrite for PgStore {
           , txid
           , output_index
         )
-        VALUES ($1, $2, $3)
-        ON CONFLICT DO NOTHING",
+        VALUES ($1, $2, $3)",
         )
         .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.outpoint.txid.to_byte_array())
@@ -1259,8 +1258,7 @@ impl super::DbWrite for PgStore {
           , max_fee
           , block_height
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT DO NOTHING",
+        VALUES ($1, $2, $3, $4, $5, $6)",
         )
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
@@ -1288,8 +1286,7 @@ impl super::DbWrite for PgStore {
           , output_index
           , fee
         )
-        VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT DO NOTHING",
+        VALUES ($1, $2, $3, $4, $5)",
         )
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.signer_bitmap.into_inner())
@@ -1313,8 +1310,7 @@ impl super::DbWrite for PgStore {
             request_id
           , signer_bitmap
         )
-        VALUES ($1, $2)
-        ON CONFLICT DO NOTHING",
+        VALUES ($1, $2)",
         )
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.signer_bitmap.into_inner())
