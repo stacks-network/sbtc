@@ -2,23 +2,14 @@
 //! which is for processing new block webhooks from a stacks node.
 //!
 
-use axum::extract::rejection::JsonRejection;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::Json;
 
 use crate::stacks::events::RegistryEvent;
 use crate::stacks::webhooks::NewBlockEvent;
 use crate::storage::DbWrite;
 
 use super::ApiState;
-
-/// We denote the stacks node payload by this type so that our handler
-/// always gets to handle the request, regardless of whether there is a
-/// failure deserializing or not. This is so that we can return a `200 OK`
-/// status code on deserialization errors, so that the stacks node does not
-/// retry them.
-pub type StacksNodePayload = Result<Json<serde_json::Value>, JsonRejection>;
 
 /// A handler of `POST /new_block` webhook events.
 ///
@@ -88,4 +79,61 @@ where
     }
 
     StatusCode::OK
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use test_case::test_case;
+
+    use crate::config::Settings;
+    use crate::storage::in_memory::Store;
+
+    /// This was generated from an actual stacks node after running the
+    /// "complete-deposit standard recipient" variant of the
+    /// `complete_deposit_wrapper_tx_accepted` integration test.
+    const RAW_COMPLETED_DEPOSIT_WEBHOOK: &str =
+        include_str!("../../tests/fixtures/complete-deposit-event.json");
+
+    const RAW_WITHDRAWAL_ACCEPT_WEBHOOK: &str =
+        include_str!("../../tests/fixtures/withdrawal-accept-event.json");
+
+    const RAW_WITHDRAWAL_CREATE_WEBHOOK: &str =
+        include_str!("../../tests/fixtures/withdrawal-create-event.json");
+
+    const RAW_WITHDRAWAL_REJECT_WEBHOOK: &str =
+        include_str!("../../tests/fixtures/withdrawal-REJECT-event.json");
+
+    #[test_case(RAW_COMPLETED_DEPOSIT_WEBHOOK, |db| db.completed_deposit_events.get(&bitcoin::OutPoint::null()).is_none(); "completed-deposit")]
+    #[test_case(RAW_WITHDRAWAL_CREATE_WEBHOOK, |db| db.withdrawal_create_events.get(&1).is_none(); "withdrawal-create")]
+    #[test_case(RAW_WITHDRAWAL_ACCEPT_WEBHOOK, |db| db.withdrawal_accept_events.get(&1).is_none(); "withdrawal-accept")]
+    #[test_case(RAW_WITHDRAWAL_REJECT_WEBHOOK, |db| db.withdrawal_reject_events.get(&2).is_none(); "withdrawal-reject")]
+    #[tokio::test]
+    async fn test_events<F>(body_str: &str, func: F)
+    where
+        F: Fn(tokio::sync::MutexGuard<'_, Store>) -> bool,
+    {
+        let config_path = Some("./src/config/default");
+        let api = ApiState {
+            db: Store::new_shared(),
+            settings: Settings::new(config_path).unwrap(),
+        };
+
+        {
+            // Hey look, there is nothing here!
+            let db = api.db.lock().await;
+            assert!(func(db));
+        }
+
+        let state = State(api.clone());
+        let body = body_str.to_string();
+
+        let res = new_block_handler(state, body).await;
+        assert_eq!(res, StatusCode::OK);
+
+        // Now there should be something here
+        let db = api.db.lock().await;
+        assert!(!func(db));
+    }
 }

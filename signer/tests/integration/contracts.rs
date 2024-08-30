@@ -100,7 +100,7 @@ impl SignerStxState {
     {
         // If we get an Ok response then we know the contract has been
         // deployed already, and deploying it would probably be harmful (it
-        // appears to stalls subsequent transactions for some reason).
+        // appears to stall subsequent transactions for some reason).
         if self.get_contract_source::<T>().await.is_ok() {
             return;
         }
