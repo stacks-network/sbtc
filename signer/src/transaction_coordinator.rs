@@ -110,6 +110,8 @@ pub struct TxCoordinatorEventLoop<Network, Storage, BitcoinClient> {
     pub context_window: usize,
     /// The bitcoin network we're targeting
     pub bitcoin_network: bitcoin::Network,
+    /// The maximum duration of a signing round before the coordinator will time out and return an error.
+    pub signing_round_max_duration: std::time::Duration,
 }
 
 impl<N, S, B> TxCoordinatorEventLoop<N, S, B>
@@ -318,12 +320,18 @@ where
         let msg = message::WstsMessage { txid, inner: outbound.msg };
         self.send_message(msg, bitcoin_chain_tip).await?;
 
-        self.relay_messages_to_wsts_state_machine_until_signature_created(
+        let max_duration = self.signing_round_max_duration;
+        let run_signing_round = self.relay_messages_to_wsts_state_machine_until_signature_created(
             bitcoin_chain_tip,
             coordinator_state_machine,
             txid,
-        )
-        .await
+        );
+
+        tokio::time::timeout(max_duration, run_signing_round)
+            .await
+            .map_err(|_| {
+                error::Error::CoordinatorTimeout(self.signing_round_max_duration.as_secs())
+            })?
     }
 
     #[tracing::instrument(skip(self))]

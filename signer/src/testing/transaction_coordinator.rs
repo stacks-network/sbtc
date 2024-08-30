@@ -50,6 +50,7 @@ where
                 threshold,
                 bitcoin_client,
                 bitcoin_network: bitcoin::Network::Testnet,
+                signing_round_max_duration: std::time::Duration::from_secs(10),
             },
             block_observer_notification_tx,
             storage,

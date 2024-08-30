@@ -318,7 +318,7 @@ impl std::ops::DerefMut for CoordinatorStateMachine {
     }
 }
 
-/// Convert a coordinator error to a `error::Error`
+/// Convert a coordinator error to an `error::Error`
 pub fn coordinator_error(err: wsts::state_machine::coordinator::Error) -> error::Error {
     error::Error::WstsCoordinator(Box::new(err))
 }
