@@ -67,7 +67,7 @@ pub enum RegistryEvent {
 
 /// This is the event that is emitted from the `create-withdrawal-request`
 /// public function in sbtc-registry smart contract.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CompletedDepositEvent {
     /// This is the amount of sBTC to mint to the intended recipient.
     pub amount: u64,
@@ -77,7 +77,7 @@ pub struct CompletedDepositEvent {
 
 /// This is the event that is emitted from the `create-withdrawal-request`
 /// public function in sbtc-registry smart contract.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WithdrawalCreateEvent {
     /// This is the unique identifier of the withdrawal request.
     pub request_id: u64,
@@ -99,7 +99,7 @@ pub struct WithdrawalCreateEvent {
 
 /// This is the event that is emitted from the `complete-withdrawal-accept`
 /// public function in sbtc-registry smart contract.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WithdrawalAcceptEvent {
     /// This is the unique identifier of the withdrawal request.
     pub request_id: u64,
@@ -117,7 +117,7 @@ pub struct WithdrawalAcceptEvent {
 
 /// This is the event that is emitted from the `complete-withdrawal-reject`
 /// public function in sbtc-registry smart contract.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WithdrawalRejectEvent {
     /// This is the unique identifier of user created the withdrawal
     /// request.
