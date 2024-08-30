@@ -8,6 +8,10 @@ use crate::{codec, ecdsa, network};
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Error incurred during the execution of the libp2p swarm.
+    #[error("an error occurred running the libp2p swarm: {0}")]
+    SignerSwarm(#[from] crate::network::libp2p::SignerSwarmError),
+
     /// Stacks event observer terminated prematurely.
     #[error("stacks event observer terminated prematurely")]
     StacksEventObserverAborted,

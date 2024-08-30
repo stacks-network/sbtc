@@ -10,6 +10,8 @@ use signer::context::Context;
 use signer::context::SignerContext;
 use signer::context::SignerSignal;
 use signer::error::Error;
+use signer::network::libp2p::SignerSwarmBuilder;
+use signer::network::libp2p::TryIntoMultiAddrs as _;
 use signer::storage::postgres::PgStore;
 use tokio::signal;
 
@@ -94,17 +96,39 @@ async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
 
 /// Runs the libp2p swarm.
 async fn run_libp2p_swarm(ctx: &impl Context) -> Result<(), Error> {
-    // Subscribe to the signal channel so that we can catch shutdown events.
-    let mut signal = ctx.get_signal_receiver();
+    // Convert the listen `Url`s from the config into `Multiaddr`s.
+    let listen_addrs = ctx
+        .config()
+        .signer
+        .p2p
+        .listen_on
+        .iter()
+        .flat_map(|addr| addr.try_into_multiaddrs().unwrap())
+        .collect::<Vec<_>>();
 
-    // TODO(409): Add libp2p swarm initialization here.
+    // Convert the seed `Url`s from the config into `Multiaddr`s.
+    let seed_addrs = ctx
+        .config()
+        .signer
+        .p2p
+        .seeds
+        .iter()
+        .flat_map(|addr| addr.try_into_multiaddrs().unwrap())
+        .collect::<Vec<_>>();
 
-    tokio::select! {
-        Ok(SignerSignal::Shutdown) = signal.recv() => {
-            tracing::info!("stopping the libp2p swarm");
-            Ok(())
-        }
-    }
+    // Build the swarm
+    let mut swarm = SignerSwarmBuilder::new(&ctx.config().signer.stacks_account.private_key)
+        .add_listen_endpoints(&listen_addrs)
+        .add_seed_addrs(&seed_addrs)
+        .build()?;
+
+    // Start the libp2p swarm. This will run until either the shutdown signal is
+    // received, or an unrecoverable error has occurred.
+    swarm.start(ctx).await.map_err(|error| {
+        tracing::error!(%error, "error executing the libp2p swarm");
+        let _ = ctx.signal(SignerSignal::Shutdown);
+        error.into()
+    })
 }
 
 /// Runs the Stacks event observer server.

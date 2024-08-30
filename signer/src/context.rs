@@ -17,6 +17,8 @@ pub trait Context {
     /// Subscribe to the application signalling channel, returning a receiver
     /// which can be used to listen for events.
     fn get_signal_receiver(&self) -> tokio::sync::broadcast::Receiver<SignerSignal>;
+    /// Get an owned application signalling channel sender.
+    fn get_signal_sender(&self) -> tokio::sync::broadcast::Sender<SignerSignal>;
     /// Send a signal to the application signalling channel.
     fn signal(&self, signal: SignerSignal) -> Result<usize, crate::error::Error>;
 }
@@ -36,10 +38,16 @@ pub struct SignerContext {
 }
 
 /// Signals that can be sent within the signer binary.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum SignerSignal {
     /// Signals to the application to shut down.
     Shutdown,
+    /// Signals to the application to publish a message to the P2P network.
+    P2PPublish(crate::network::Msg),
+    /// Signals to the application that the P2P publish failed for the given message.
+    P2PPublishFailure(crate::network::Msg),
+    /// Signals to the application that a message was received from the P2P network.
+    P2PMessage(crate::network::Msg),
 }
 
 impl Context for SignerContext {
@@ -58,6 +66,10 @@ impl Context for SignerContext {
 
     fn get_signal_receiver(&self) -> tokio::sync::broadcast::Receiver<SignerSignal> {
         self.signal_tx.subscribe()
+    }
+
+    fn get_signal_sender(&self) -> tokio::sync::broadcast::Sender<SignerSignal> {
+        self.signal_tx.clone()
     }
 
     /// Send a signal to the application signalling channel.

@@ -7,6 +7,8 @@
 pub mod grpc_relay;
 pub mod in_memory;
 
+pub mod libp2p;
+
 use std::future::Future;
 
 use crate::ecdsa;
