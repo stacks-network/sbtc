@@ -269,7 +269,8 @@ impl CoordinatorStateMachine {
         // In this part we are trying to set the party_polynomials of the
         // WstsCoordinator given all of the known public keys that we
         // stored in the database.
-        for msg in public_dkg_shares.values().cloned() {
+        for mut msg in public_dkg_shares.values().cloned() {
+            msg.dkg_id = 1;
             let packet = wsts::net::Packet {
                 msg: wsts::net::Message::DkgPublicShares(msg),
                 sig: Vec::new(),
@@ -283,11 +284,11 @@ impl CoordinatorStateMachine {
         }
 
         // Once we've processed all DKG public shares for all participants,
-        // WSTS moves the state to `DKG_PRIVATE_DISTRIBUTE` automatically.
+        // WSTS moves the state to `DKG_PRIVATE_GATHER` automatically.
         // If this fails then we know that there is a mismatch between the
         // stored public shares and the size of the input `signers`
         // variable.
-        debug_assert_eq!(coordinator.0.state, WstsState::DkgPrivateDistribute);
+        debug_assert_eq!(coordinator.0.state, WstsState::DkgPrivateGather);
 
         // Okay we've already gotten the private keys, and we've set the
         // `party_polynomials` variable in the `WstsCoordinator`. Now we
@@ -317,7 +318,7 @@ impl std::ops::DerefMut for CoordinatorStateMachine {
     }
 }
 
-/// Convert an error
+/// Convert a coordinator error to an `error::Error`
 pub fn coordinator_error(err: wsts::state_machine::coordinator::Error) -> error::Error {
     error::Error::WstsCoordinator(Box::new(err))
 }
