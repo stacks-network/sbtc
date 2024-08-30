@@ -28,30 +28,6 @@ use clarity::vm::Value as ClarityValue;
 use crate::config::NetworkKind;
 use crate::error::Error;
 
-/// Transform the [`ClarityValue`] from the sbtc-registry event into a
-/// proper type.
-pub fn transform_value(value: ClarityValue, network: NetworkKind) -> Result<RegistryEvent, Error> {
-    match value {
-        ClarityValue::Tuple(TupleData { data_map, .. }) => {
-            let mut event_map = RawTupleData(data_map);
-            // Lucky for us, each sBTC print event in the sbtc-registry
-            // smart contract has a topic. We use that to match on what to
-            // expect when decomposing the event from a [`ClarityValue`]
-            // into a proper type.
-            let topic = event_map.remove_string("topic")?;
-
-            match topic.as_str() {
-                "completed-deposit" => event_map.completed_deposit(),
-                "withdrawal-accept" => event_map.withdrawal_accept(),
-                "withdrawal-create" => event_map.withdrawal_create(network),
-                "withdrawal-reject" => event_map.withdrawal_reject(),
-                _ => Err(Error::ClarityUnexpectedEventTopic(topic)),
-            }
-        }
-        value => Err(Error::ClarityUnexpectedValue(value)),
-    }
-}
-
 /// The print events emitted by the sbtc-registry clarity smart contract.
 #[derive(Debug)]
 pub enum RegistryEvent {
@@ -63,6 +39,32 @@ pub enum RegistryEvent {
     WithdrawalReject(WithdrawalRejectEvent),
     /// For the `withdrawal-create` topic
     WithdrawalCreate(WithdrawalCreateEvent),
+}
+
+impl RegistryEvent {
+    /// Transform the [`ClarityValue`] from the sbtc-registry event into a
+    /// proper type.
+    pub fn try_from_value(value: ClarityValue, network: NetworkKind) -> Result<Self, Error> {
+        match value {
+            ClarityValue::Tuple(TupleData { data_map, .. }) => {
+                let mut event_map = RawTupleData(data_map);
+                // Lucky for us, each sBTC print event in the sbtc-registry
+                // smart contract has a topic. We use that to match on what
+                // to expect when decomposing the event from a
+                // [`ClarityValue`] into a proper type.
+                let topic = event_map.remove_string("topic")?;
+
+                match topic.as_str() {
+                    "completed-deposit" => event_map.completed_deposit(),
+                    "withdrawal-accept" => event_map.withdrawal_accept(),
+                    "withdrawal-create" => event_map.withdrawal_create(network),
+                    "withdrawal-reject" => event_map.withdrawal_reject(),
+                    _ => Err(Error::ClarityUnexpectedEventTopic(topic)),
+                }
+            }
+            value => Err(Error::ClarityUnexpectedValue(value)),
+        }
+    }
 }
 
 /// This is the event that is emitted from the `create-withdrawal-request`
@@ -539,7 +541,7 @@ mod tests {
         let value = ClarityValue::Tuple(tuple_data);
 
         // let res = transform_value(value, NetworkKind::Regtest).unwrap();
-        match transform_value(value, NetworkKind::Regtest).unwrap() {
+        match RegistryEvent::try_from_value(value, NetworkKind::Regtest).unwrap() {
             RegistryEvent::CompletedDeposit(event) => {
                 assert_eq!(event.amount, amount as u64);
                 assert_eq!(event.outpoint.txid, Txid::from_byte_array([1; 32]));
@@ -606,7 +608,7 @@ mod tests {
         let value = ClarityValue::Tuple(tuple_data);
 
         // let res = transform_value(value, NetworkKind::Regtest).unwrap();
-        match transform_value(value, NetworkKind::Regtest).unwrap() {
+        match RegistryEvent::try_from_value(value, NetworkKind::Regtest).unwrap() {
             RegistryEvent::WithdrawalCreate(event) => {
                 assert_eq!(event.amount, amount as u64);
                 assert_eq!(event.request_id, request_id as u64);
@@ -650,7 +652,7 @@ mod tests {
         let value = ClarityValue::Tuple(tuple_data);
 
         // let res = transform_value(value, NetworkKind::Regtest).unwrap();
-        match transform_value(value, NetworkKind::Regtest).unwrap() {
+        match RegistryEvent::try_from_value(value, NetworkKind::Regtest).unwrap() {
             RegistryEvent::WithdrawalAccept(event) => {
                 let expected_bitmap = BitArray::<[u8; 16]>::new(bitmap.to_le_bytes());
                 assert_eq!(event.request_id, request_id as u64);
@@ -686,7 +688,7 @@ mod tests {
         let value = ClarityValue::Tuple(tuple_data);
 
         // let res = transform_value(value, NetworkKind::Regtest).unwrap();
-        match transform_value(value, NetworkKind::Regtest).unwrap() {
+        match RegistryEvent::try_from_value(value, NetworkKind::Regtest).unwrap() {
             RegistryEvent::WithdrawalReject(event) => {
                 let expected_bitmap = BitArray::<[u8; 16]>::new(bitmap.to_le_bytes());
                 assert_eq!(event.request_id, request_id as u64);

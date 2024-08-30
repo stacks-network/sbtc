@@ -6,12 +6,12 @@ use axum::extract::rejection::JsonRejection;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
-use blockstack_lib::chainstate::stacks::TransactionPayload;
 
 use crate::stacks::events::RegistryEvent;
 use crate::stacks::webhooks::NewBlockEvent;
-use crate::storage::postgres::PgStore;
-// use crate::storage::DbWrite;
+use crate::storage::DbWrite;
+
+use super::ApiState;
 
 /// We denote the stacks node payload by this type so that our handler
 /// always gets to handle the request, regardless of whether there is a
@@ -35,10 +35,15 @@ pub type StacksNodePayload = Result<Json<serde_json::Value>, JsonRejection>;
 /// second might succeed, we will return a 200 OK status code.
 ///
 /// [^1]: <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L317-L385>
-pub async fn new_block_handler(_state: State<PgStore>, body: String) -> StatusCode {
+pub async fn new_block_handler<S>(state: State<ApiState<S>>, body: String) -> StatusCode
+where
+    S: DbWrite,
+{
     tracing::info!("Received a new block event from stacks-core");
+    let api = state.0;
+    let network = api.settings.signer.network;
 
-    let mut _event: NewBlockEvent = match serde_json::from_str(&body) {
+    let new_block_event: NewBlockEvent = match serde_json::from_str(&body) {
         Ok(value) => value,
         // If we are here, then we failed to deserialize the webhook body
         // into the expected type. It's unlikely that retying this webhook
@@ -50,47 +55,37 @@ pub async fn new_block_handler(_state: State<PgStore>, body: String) -> StatusCo
         }
     };
 
-    if !_event.events.is_empty() {
-        let ans = _event
-            .events
-            .into_iter()
-            .filter_map(|x| x.contract_event)
-            .map(|x| {
-                crate::stacks::events::transform_value(x.value, crate::config::NetworkKind::Regtest)
-            })
-            .collect::<Vec<_>>();
-        _event.transactions.retain(|x| x.tx.is_some());
-        _event.transactions.retain(|x| {
-            matches!(
-                x.tx.as_ref().unwrap().payload,
-                TransactionPayload::ContractCall(_)
-            )
-        });
-        if !_event.transactions.is_empty() {
-            let _ = dbg!(&ans);
-            dbg!(&_event.transactions);
-        }
-        for event in ans.into_iter() {
-            let _res = match event {
-                Ok(RegistryEvent::CompletedDeposit(event)) => {
-                    _state.0.write_completed_deposit_event(&event).await
-                }
-                Ok(RegistryEvent::WithdrawalAccept(event)) => {
-                    _state.0.write_withdrawal_accept_event(&event).await
-                }
-                Ok(RegistryEvent::WithdrawalCreate(event)) => {
-                    _state.0.write_withdrawal_create_event(&event).await
-                }
-                Ok(RegistryEvent::WithdrawalReject(event)) => {
-                    _state.0.write_withdrawal_reject_event(&event).await
-                }
-                Err(err) => {
-                    tracing::error!("{err}");
-                    return StatusCode::OK;
-                }
-            };
-            tracing::info!("{_res:?}");
+    let events = new_block_event
+        .events
+        .into_iter()
+        .filter_map(|x| x.contract_event);
+
+    for ev in events {
+        let res = match RegistryEvent::try_from_value(ev.value, network) {
+            Ok(RegistryEvent::CompletedDeposit(event)) => {
+                api.db.write_completed_deposit_event(&event).await
+            }
+            Ok(RegistryEvent::WithdrawalAccept(event)) => {
+                api.db.write_withdrawal_accept_event(&event).await
+            }
+            Ok(RegistryEvent::WithdrawalCreate(event)) => {
+                api.db.write_withdrawal_create_event(&event).await
+            }
+            Ok(RegistryEvent::WithdrawalReject(event)) => {
+                api.db.write_withdrawal_reject_event(&event).await
+            }
+            Err(err) => {
+                tracing::error!("Got an error when transforming the event ClarityValue: {err}");
+                return StatusCode::OK;
+            }
+        };
+        // If we got an error writing to the database, this might be an
+        // issue that will resolve itself if we try again in a few moments.
+        if let Err(err) = res {
+            tracing::error!("Got an error when writting event to database: {err}");
+            return StatusCode::INTERNAL_SERVER_ERROR;
         }
     }
+
     StatusCode::OK
 }
