@@ -103,7 +103,7 @@ mod tests {
         include_str!("../../tests/fixtures/withdrawal-create-event.json");
 
     const RAW_WITHDRAWAL_REJECT_WEBHOOK: &str =
-        include_str!("../../tests/fixtures/withdrawal-REJECT-event.json");
+        include_str!("../../tests/fixtures/withdrawal-reject-event.json");
 
     #[test_case(RAW_COMPLETED_DEPOSIT_WEBHOOK, |db| db.completed_deposit_events.get(&bitcoin::OutPoint::null()).is_none(); "completed-deposit")]
     #[test_case(RAW_WITHDRAWAL_CREATE_WEBHOOK, |db| db.withdrawal_create_events.get(&1).is_none(); "withdrawal-create")]
