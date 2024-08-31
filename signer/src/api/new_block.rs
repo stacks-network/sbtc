@@ -75,7 +75,7 @@ where
         // So we return a non success status code so that the node retries
         // in a second.
         if let Err(err) = res {
-            tracing::error!("Got an error when writting event to database: {err}");
+            tracing::error!("Got an error when writing event to database: {err}");
             return StatusCode::INTERNAL_SERVER_ERROR;
         }
     }

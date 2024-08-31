@@ -136,7 +136,8 @@ CREATE TABLE sbtc_signer.completed_deposit_events (
     id           BIGSERIAL PRIMARY KEY,
     amount       BIGINT  NOT NULL,
     txid         BYTEA   NOT NULL,
-    output_index BIGINT NOT NULL
+    output_index BIGINT  NOT NULL,
+    created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 CREATE TABLE sbtc_signer.withdrawal_create_events (
@@ -146,7 +147,8 @@ CREATE TABLE sbtc_signer.withdrawal_create_events (
     sender       VARCHAR NOT NULL,
     recipient    VARCHAR NOT NULL,
     max_fee      BIGINT  NOT NULL,
-    block_height BIGINT  NOT NULL
+    block_height BIGINT  NOT NULL,
+    created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 CREATE TABLE sbtc_signer.withdrawal_accept_events (
@@ -154,13 +156,15 @@ CREATE TABLE sbtc_signer.withdrawal_accept_events (
     request_id    BIGINT  NOT NULL,
     signer_bitmap BYTEA   NOT NULL,
     txid          BYTEA   NOT NULL,
-    output_index  BIGINT NOT NULL,
-    fee           BIGINT  NOT NULL
+    output_index  BIGINT  NOT NULL,
+    fee           BIGINT  NOT NULL,
+    created_at    TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 CREATE TABLE sbtc_signer.withdrawal_reject_events (
     id            BIGSERIAL PRIMARY KEY,
     request_id    BIGINT NOT NULL,
-    signer_bitmap BYTEA  NOT NULL
+    signer_bitmap BYTEA  NOT NULL,
+    created_at    TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
