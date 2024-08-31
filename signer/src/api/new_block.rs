@@ -72,6 +72,8 @@ where
         };
         // If we got an error writing to the database, this might be an
         // issue that will resolve itself if we try again in a few moments.
+        // So we return a non success status code so that the node retries
+        // in a second.
         if let Err(err) = res {
             tracing::error!("Got an error when writting event to database: {err}");
             return StatusCode::INTERNAL_SERVER_ERROR;
@@ -85,30 +87,33 @@ where
 mod tests {
     use super::*;
 
+    use bitcoin::OutPoint;
     use test_case::test_case;
 
     use crate::config::Settings;
     use crate::storage::in_memory::Store;
 
-    /// This was generated from an actual stacks node after running the
-    /// "complete-deposit standard recipient" variant of the
-    /// `complete_deposit_wrapper_tx_accepted` integration test.
-    const RAW_COMPLETED_DEPOSIT_WEBHOOK: &str =
+    /// These were generated from a stacks node after running the
+    /// "complete-deposit standard recipient", "accept-withdrawal",
+    /// "create-withdrawal", and "reject-withdrawal" variants,
+    /// respectively, of the `complete_deposit_wrapper_tx_accepted`
+    /// integration test.
+    const COMPLETED_DEPOSIT_WEBHOOK: &str =
         include_str!("../../tests/fixtures/complete-deposit-event.json");
 
-    const RAW_WITHDRAWAL_ACCEPT_WEBHOOK: &str =
+    const WITHDRAWAL_ACCEPT_WEBHOOK: &str =
         include_str!("../../tests/fixtures/withdrawal-accept-event.json");
 
-    const RAW_WITHDRAWAL_CREATE_WEBHOOK: &str =
+    const WITHDRAWAL_CREATE_WEBHOOK: &str =
         include_str!("../../tests/fixtures/withdrawal-create-event.json");
 
-    const RAW_WITHDRAWAL_REJECT_WEBHOOK: &str =
+    const WITHDRAWAL_REJECT_WEBHOOK: &str =
         include_str!("../../tests/fixtures/withdrawal-reject-event.json");
 
-    #[test_case(RAW_COMPLETED_DEPOSIT_WEBHOOK, |db| db.completed_deposit_events.get(&bitcoin::OutPoint::null()).is_none(); "completed-deposit")]
-    #[test_case(RAW_WITHDRAWAL_CREATE_WEBHOOK, |db| db.withdrawal_create_events.get(&1).is_none(); "withdrawal-create")]
-    #[test_case(RAW_WITHDRAWAL_ACCEPT_WEBHOOK, |db| db.withdrawal_accept_events.get(&1).is_none(); "withdrawal-accept")]
-    #[test_case(RAW_WITHDRAWAL_REJECT_WEBHOOK, |db| db.withdrawal_reject_events.get(&2).is_none(); "withdrawal-reject")]
+    #[test_case(COMPLETED_DEPOSIT_WEBHOOK, |db| db.completed_deposit_events.get(&OutPoint::null()).is_none(); "completed-deposit")]
+    #[test_case(WITHDRAWAL_CREATE_WEBHOOK, |db| db.withdrawal_create_events.get(&1).is_none(); "withdrawal-create")]
+    #[test_case(WITHDRAWAL_ACCEPT_WEBHOOK, |db| db.withdrawal_accept_events.get(&1).is_none(); "withdrawal-accept")]
+    #[test_case(WITHDRAWAL_REJECT_WEBHOOK, |db| db.withdrawal_reject_events.get(&2).is_none(); "withdrawal-reject")]
     #[tokio::test]
     async fn test_events<F>(body_str: &str, func: F)
     where
