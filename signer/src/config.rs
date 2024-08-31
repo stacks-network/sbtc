@@ -1,4 +1,5 @@
 //! Configuration management for the signer
+use std::str::FromStr as _;
 
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
@@ -338,19 +339,14 @@ fn private_key_deserializer<'de, D>(deserializer: D) -> Result<PrivateKey, D::Er
 where
     D: Deserializer<'de>,
 {
-    use std::str::FromStr as _;
     PrivateKey::from_str(&String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
-    use crate::keys::PrivateKey;
-
     use super::*;
 
-    const DEFAULT_CONFIG_PATH: Option<&str> = Some("./src/config/default");
+    use crate::testing::DEFAULT_CONFIG_PATH;
 
     /// Helper function to quickly create a URL from a string in tests.
     fn url(s: &str) -> url::Url {

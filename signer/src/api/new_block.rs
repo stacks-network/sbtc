@@ -119,10 +119,9 @@ mod tests {
     where
         F: Fn(tokio::sync::MutexGuard<'_, Store>) -> bool,
     {
-        let config_path = Some("./src/config/default");
         let api = ApiState {
             db: Store::new_shared(),
-            settings: Settings::new(config_path).unwrap(),
+            settings: Settings::new(crate::testing::DEFAULT_CONFIG_PATH).unwrap(),
         };
 
         {

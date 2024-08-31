@@ -55,6 +55,8 @@ private_key = "8183dc385a7a1fc8353b9e781ee0859a71e57abea478a5bca679334094f7adb5"
 # node.
 #
 # Required: true
+# Possible values: mainnet, testnet, regtest
+# Environment: SIGNER_SIGNER__NETWORK
 network = "regtest"
 # !! ==============================================================================
 # !! Signer P2P Networking Configuration
