@@ -13,6 +13,7 @@ use crate::config::NetworkKind;
 use crate::ecdsa::SignEcdsa as _;
 use crate::error;
 use crate::error::Error;
+use crate::keys;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
@@ -222,41 +223,109 @@ where
             return Err(error::Error::InvalidSignature);
         }
 
-        // TODO(297): Validate the chain tip against database
         let bitcoin_chain_tip = msg.bitcoin_chain_tip.to_byte_array().to_vec();
 
-        match &msg.inner.payload {
-            message::Payload::SignerDepositDecision(decision) => {
+        let chain_tip_report = self
+            .inspect_msg_chain_tip(msg.signer_pub_key, &bitcoin_chain_tip)
+            .await?;
+
+        match (
+            &msg.inner.payload,
+            chain_tip_report.sender_is_coordinator,
+            chain_tip_report.chain_tip_status,
+        ) {
+            (message::Payload::SignerDepositDecision(decision), _, _) => {
                 self.persist_received_deposit_decision(decision, msg.signer_pub_key)
                     .await?;
             }
 
-            message::Payload::SignerWithdrawDecision(decision) => {
+            (message::Payload::SignerWithdrawDecision(decision), _, _) => {
                 self.persist_received_withdraw_decision(decision, msg.signer_pub_key)
                     .await?;
             }
 
-            message::Payload::StacksTransactionSignRequest(_request) => {
+            (
+                message::Payload::StacksTransactionSignRequest(_request),
+                true,
+                ChainTipStatus::Canonical,
+            ) => {
 
                 //TODO(255): Implement
             }
 
-            message::Payload::BitcoinTransactionSignRequest(request) => {
+            (
+                message::Payload::BitcoinTransactionSignRequest(request),
+                true,
+                ChainTipStatus::Canonical,
+            ) => {
                 self.handle_bitcoin_transaction_sign_request(request, &bitcoin_chain_tip)
                     .await?;
             }
 
-            message::Payload::WstsMessage(wsts_msg) => {
+            (message::Payload::WstsMessage(wsts_msg), _, _) => {
                 self.handle_wsts_message(wsts_msg, &bitcoin_chain_tip)
                     .await?;
             }
 
             // Message types ignored by the transaction signer
-            message::Payload::StacksTransactionSignature(_)
-            | message::Payload::BitcoinTransactionSignAck(_) => (),
+            (message::Payload::StacksTransactionSignature(_), _, _)
+            | (message::Payload::BitcoinTransactionSignAck(_), _, _) => (),
+
+            // Any other combination should be logged
+            _ => {
+                tracing::warn!(msg = ?msg, chain_tip_report = ?chain_tip_report, "unexpected message");
+            }
         };
 
         Ok(())
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn inspect_msg_chain_tip(
+        &mut self,
+        msg_sender: keys::PublicKey,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<MsgChainTipReport, error::Error> {
+        let is_known = self
+            .storage
+            .get_bitcoin_block(bitcoin_chain_tip)
+            .await?
+            .is_some();
+
+        let is_canonical = self
+            .storage
+            .get_bitcoin_canonical_chain_tip()
+            .await?
+            .map(|canonical_chain_tip| &canonical_chain_tip == bitcoin_chain_tip)
+            .unwrap_or(false);
+
+        let sender_is_coordinator = if let Some(last_key_rotation) = self
+            .storage
+            .get_last_key_rotation(bitcoin_chain_tip)
+            .await?
+        {
+            let signer_set: BTreeSet<PublicKey> =
+                last_key_rotation.signer_set.into_iter().collect();
+
+            crate::transaction_coordinator::given_key_is_coordinator(
+                msg_sender,
+                bitcoin_chain_tip,
+                &signer_set,
+            )?
+        } else {
+            false
+        };
+
+        let chain_tip_status = match (is_known, is_canonical) {
+            (true, true) => ChainTipStatus::Canonical,
+            (true, false) => ChainTipStatus::Known,
+            (false, _) => ChainTipStatus::Unknown,
+        };
+
+        Ok(MsgChainTipReport {
+            sender_is_coordinator,
+            chain_tip_status,
+        })
     }
 
     #[tracing::instrument(skip(self))]
@@ -676,6 +745,19 @@ where
     fn signer_pub_key(&self) -> PublicKey {
         PublicKey::from_private_key(&self.signer_private_key)
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct MsgChainTipReport {
+    sender_is_coordinator: bool,
+    chain_tip_status: ChainTipStatus,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ChainTipStatus {
+    Canonical,
+    Known,
+    Unknown,
 }
 
 #[cfg(test)]
