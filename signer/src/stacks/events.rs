@@ -161,21 +161,21 @@ impl RawTupleData {
     fn remove_u128(&mut self, field: &'static str) -> Result<u128, Error> {
         match self.data_map.remove(field) {
             Some(ClarityValue::UInt(val)) => Ok(val),
-            _ => Err(Error::TupleEventField(field)),
+            _ => Err(Error::TupleEventField(field, self.txid)),
         }
     }
     /// Extract the buff value from the given field
     fn remove_buff(&mut self, field: &'static str) -> Result<Vec<u8>, Error> {
         match self.data_map.remove(field) {
             Some(ClarityValue::Sequence(SequenceData::Buffer(buf))) => Ok(buf.data),
-            _ => Err(Error::TupleEventField(field)),
+            _ => Err(Error::TupleEventField(field, self.txid)),
         }
     }
     /// Extract the principal value from the given field
     fn remove_principal(&mut self, field: &'static str) -> Result<PrincipalData, Error> {
         match self.data_map.remove(field) {
             Some(ClarityValue::Principal(principal)) => Ok(principal),
-            _ => Err(Error::TupleEventField(field)),
+            _ => Err(Error::TupleEventField(field, self.txid)),
         }
     }
     /// Extract the string value from the given field
@@ -184,7 +184,7 @@ impl RawTupleData {
             Some(ClarityValue::Sequence(SequenceData::String(CharType::ASCII(ascii)))) => {
                 String::from_utf8(ascii.data).map_err(Error::ClarityStringConversion)
             }
-            _ => Err(Error::TupleEventField(field)),
+            _ => Err(Error::TupleEventField(field, self.txid)),
         }
     }
     /// Extract the tuple value from the given field
@@ -193,7 +193,7 @@ impl RawTupleData {
             Some(ClarityValue::Tuple(TupleData { data_map, .. })) => {
                 Ok(Self::new(data_map, self.txid))
             }
-            _ => Err(Error::TupleEventField(field)),
+            _ => Err(Error::TupleEventField(field, self.txid)),
         }
     }
 

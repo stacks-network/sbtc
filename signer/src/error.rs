@@ -72,8 +72,8 @@ pub enum Error {
     ClarityUnexpectedEventTopic(String),
 
     /// This a programmer error bug that should never be thrown.
-    #[error("The field {0} was missing from the print event for topic")]
-    TupleEventField(&'static str),
+    #[error("The field {0} was missing from the print event for topic. Txid: {1}")]
+    TupleEventField(&'static str, blockstack_lib::burnchains::Txid),
 
     /// This can only be thrown when the number of bytes for a txid field
     /// is not exactly equal to 32. This should never occur.
