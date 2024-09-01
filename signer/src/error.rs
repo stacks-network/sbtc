@@ -64,7 +64,7 @@ pub enum Error {
 
     /// This happens when we expect one clarity variant but got another.
     #[error("Got an unexpected clarity value: {0:?}")]
-    ClarityUnexpectedValue(clarity::vm::Value),
+    ClarityUnexpectedValue(clarity::vm::Value, blockstack_lib::burnchains::Txid),
 
     /// This should never happen, but happens when one of the given topics
     /// is not on the list of expected topics.

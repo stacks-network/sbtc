@@ -46,13 +46,17 @@ where
         }
     };
 
+    // Although transactions can fail, only successful transactions emit
+    // sBTC print events, since those events are emitted at the very end of
+    // the contract call.
     let events = new_block_event
         .events
         .into_iter()
-        .filter_map(|x| x.contract_event);
+        .filter(|x| x.committed)
+        .filter_map(|x| x.contract_event.map(|ev| (ev, x.txid)));
 
-    for ev in events {
-        let res = match RegistryEvent::try_from_value(ev.value, network) {
+    for (ev, txid) in events {
+        let res = match RegistryEvent::try_new(ev.value, txid, network) {
             Ok(RegistryEvent::CompletedDeposit(event)) => {
                 api.db.write_completed_deposit_event(&event).await
             }

@@ -719,10 +719,11 @@ async fn writing_completed_deposit_requests_postgres() {
 
     // Let's see if we can write these rows to the database.
     store.write_completed_deposit_event(&event).await.unwrap();
-    let mut db_event = sqlx::query_as::<_, (i64, [u8; 32], i64)>(
+    let mut db_event = sqlx::query_as::<_, ([u8; 32], i64, [u8; 32], i64)>(
         r#"
-            SELECT amount
-                 , txid
+            SELECT txid
+                 , amount
+                 , bitcoin_txid
                  , output_index
             FROM sbtc_signer.completed_deposit_events"#,
     )
@@ -732,10 +733,11 @@ async fn writing_completed_deposit_requests_postgres() {
     // Did we only write one row
     assert_eq!(db_event.len(), 1);
 
-    let (amount, txid, vout) = db_event.pop().unwrap();
+    let (txid, amount, bitcoin_txid, vout) = db_event.pop().unwrap();
 
+    assert_eq!(txid, event.txid.0);
     assert_eq!(amount as u64, event.amount);
-    assert_eq!(txid, event.outpoint.txid.to_byte_array());
+    assert_eq!(bitcoin_txid, event.outpoint.txid.to_byte_array());
     assert_eq!(vout as u32, event.outpoint.vout);
 
     signer::testing::storage::drop_db(store).await;
@@ -753,9 +755,10 @@ async fn writing_withdrawal_create_requests_postgres() {
 
     // Let's see if we can write these rows to the database.
     store.write_withdrawal_create_event(&event).await.unwrap();
-    let mut db_event = sqlx::query_as::<_, (i64, i64, String, String, i64, i64)>(
+    let mut db_event = sqlx::query_as::<_, ([u8; 32], i64, i64, String, String, i64, i64)>(
         r#"
-            SELECT request_id
+            SELECT txid
+                 , request_id
                  , amount
                  , sender
                  , recipient
@@ -769,8 +772,10 @@ async fn writing_withdrawal_create_requests_postgres() {
     // Did we only write one row
     assert_eq!(db_event.len(), 1);
 
-    let (request_id, amount, sender, recipient, max_fee, block_height) = db_event.pop().unwrap();
+    let (txid, request_id, amount, sender, recipient, max_fee, block_height) =
+        db_event.pop().unwrap();
 
+    assert_eq!(txid, event.txid.0);
     assert_eq!(request_id as u64, event.request_id);
     assert_eq!(amount as u64, event.amount);
     assert_eq!(sender, event.sender.to_string());
@@ -793,11 +798,12 @@ async fn writing_withdrawal_accept_requests_postgres() {
 
     // Let's see if we can write these rows to the database.
     store.write_withdrawal_accept_event(&event).await.unwrap();
-    let mut db_event = sqlx::query_as::<_, (i64, [u8; 16], [u8; 32], i64, i64)>(
+    let mut db_event = sqlx::query_as::<_, ([u8; 32], i64, [u8; 16], [u8; 32], i64, i64)>(
         r#"
-            SELECT request_id
+            SELECT txid
+                 , request_id
                  , signer_bitmap
-                 , txid
+                 , bitcoin_txid
                  , output_index
                  , fee
             FROM sbtc_signer.withdrawal_accept_events"#,
@@ -808,11 +814,12 @@ async fn writing_withdrawal_accept_requests_postgres() {
     // Did we only write one row
     assert_eq!(db_event.len(), 1);
 
-    let (request_id, bitmap, txid, vout, fee) = db_event.pop().unwrap();
+    let (txid, request_id, bitmap, bitcoin_txid, vout, fee) = db_event.pop().unwrap();
 
+    assert_eq!(txid, event.txid.0);
     assert_eq!(request_id as u64, event.request_id);
     assert_eq!(bitmap, event.signer_bitmap.into_inner());
-    assert_eq!(txid, event.outpoint.txid.to_byte_array());
+    assert_eq!(bitcoin_txid, event.outpoint.txid.to_byte_array());
     assert_eq!(vout as u32, event.outpoint.vout);
     assert_eq!(fee as u64, event.fee);
 
@@ -831,9 +838,10 @@ async fn writing_withdrawal_reject_requests_postgres() {
 
     // Let's see if we can write these rows to the database.
     store.write_withdrawal_reject_event(&event).await.unwrap();
-    let mut db_event = sqlx::query_as::<_, (i64, [u8; 16])>(
+    let mut db_event = sqlx::query_as::<_, ([u8; 32], i64, [u8; 16])>(
         r#"
-            SELECT request_id
+            SELECT txid
+                 , request_id
                  , signer_bitmap
             FROM sbtc_signer.withdrawal_reject_events"#,
     )
@@ -843,8 +851,9 @@ async fn writing_withdrawal_reject_requests_postgres() {
     // Did we only write one row
     assert_eq!(db_event.len(), 1);
 
-    let (request_id, bitmap) = db_event.pop().unwrap();
+    let (txid, request_id, bitmap) = db_event.pop().unwrap();
 
+    assert_eq!(txid, event.txid.0);
     assert_eq!(request_id as u64, event.request_id);
     assert_eq!(bitmap, event.signer_bitmap.into_inner());
 

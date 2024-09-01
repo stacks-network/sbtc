@@ -8,6 +8,7 @@ use bitcoin::Address;
 use bitcoin::Network;
 use bitcoin::OutPoint;
 use bitvec::array::BitArray;
+use blockstack_lib::burnchains::Txid as StacksTxid;
 use blockstack_lib::chainstate::{nakamoto, stacks};
 use fake::Fake;
 use rand::seq::IteratorRandom as _;
@@ -260,6 +261,7 @@ impl<T> fake::Dummy<T> for WithdrawalAcceptEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         let bitmap = rng.next_u64() as u128;
         WithdrawalAcceptEvent {
+            txid: StacksTxid(fake::Faker.fake_with_rng(rng)),
             request_id: rng.next_u32() as u64,
             signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
             outpoint: OutPoint {
@@ -275,6 +277,7 @@ impl<T> fake::Dummy<T> for WithdrawalRejectEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         let bitmap = rng.next_u64() as u128;
         WithdrawalRejectEvent {
+            txid: StacksTxid(fake::Faker.fake_with_rng(rng)),
             request_id: rng.next_u32() as u64,
             signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
         }
@@ -289,6 +292,7 @@ impl<T> fake::Dummy<T> for WithdrawalCreateEvent {
         let pk = bitcoin::CompressedPublicKey(kp.public_key());
 
         WithdrawalCreateEvent {
+            txid: StacksTxid(fake::Faker.fake_with_rng(rng)),
             request_id: rng.next_u32() as u64,
             amount: rng.next_u32() as u64,
             sender: StacksAddress::new(version, Hash160(address_hash)).into(),
@@ -302,6 +306,7 @@ impl<T> fake::Dummy<T> for WithdrawalCreateEvent {
 impl<T> fake::Dummy<T> for CompletedDepositEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         CompletedDepositEvent {
+            txid: StacksTxid(fake::Faker.fake_with_rng(rng)),
             outpoint: OutPoint {
                 txid: txid(&fake::Faker, rng),
                 vout: rng.next_u32(),

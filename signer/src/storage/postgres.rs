@@ -1228,12 +1228,14 @@ impl super::DbWrite for PgStore {
         sqlx::query(
             "
         INSERT INTO sbtc_signer.completed_deposit_events (
-            amount
-          , txid
+            txid
+          , amount
+          , bitcoin_txid
           , output_index
         )
-        VALUES ($1, $2, $3)",
+        VALUES ($1, $2, $3, $4)",
         )
+        .bind(event.txid.0)
         .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.outpoint.txid.to_byte_array())
         .bind(event.outpoint.vout as i64)
@@ -1251,15 +1253,17 @@ impl super::DbWrite for PgStore {
         sqlx::query(
             "
         INSERT INTO sbtc_signer.withdrawal_create_events (
-            request_id
+            txid
+          , request_id
           , amount
           , sender
           , recipient
           , max_fee
           , block_height
         )
-        VALUES ($1, $2, $3, $4, $5, $6)",
+        VALUES ($1, $2, $3, $4, $5, $6, $7)",
         )
+        .bind(event.txid.0)
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.sender.to_string())
@@ -1280,14 +1284,16 @@ impl super::DbWrite for PgStore {
         sqlx::query(
             "
         INSERT INTO sbtc_signer.withdrawal_accept_events (
-            request_id
+            txid
+          , request_id
           , signer_bitmap
-          , txid
+          , bitcoin_txid
           , output_index
           , fee
         )
-        VALUES ($1, $2, $3, $4, $5)",
+        VALUES ($1, $2, $3, $4, $5, $6)",
         )
+        .bind(event.txid.0)
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.signer_bitmap.into_inner())
         .bind(event.outpoint.txid.to_byte_array())
@@ -1307,11 +1313,13 @@ impl super::DbWrite for PgStore {
         sqlx::query(
             "
         INSERT INTO sbtc_signer.withdrawal_reject_events (
-            request_id
+            txid
+          , request_id
           , signer_bitmap
         )
-        VALUES ($1, $2)",
+        VALUES ($1, $2, $3)",
         )
+        .bind(event.txid.0)
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.signer_bitmap.into_inner())
         .execute(&self.0)
