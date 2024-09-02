@@ -257,15 +257,15 @@ impl fake::Dummy<BitcoinAddresses> for Vec<String> {
     }
 }
 
-impl<T> fake::Dummy<T> for WithdrawalAcceptEvent {
-    fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+impl fake::Dummy<fake::Faker> for WithdrawalAcceptEvent {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let bitmap = rng.next_u64() as u128;
         WithdrawalAcceptEvent {
-            txid: StacksTxid(fake::Faker.fake_with_rng(rng)),
+            txid: StacksTxid(config.fake_with_rng(rng)),
             request_id: rng.next_u32() as u64,
             signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
             outpoint: OutPoint {
-                txid: txid(&fake::Faker, rng),
+                txid: txid(config, rng),
                 vout: rng.next_u32(),
             },
             fee: rng.next_u32() as u64,
@@ -273,26 +273,26 @@ impl<T> fake::Dummy<T> for WithdrawalAcceptEvent {
     }
 }
 
-impl<T> fake::Dummy<T> for WithdrawalRejectEvent {
-    fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+impl fake::Dummy<fake::Faker> for WithdrawalRejectEvent {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let bitmap = rng.next_u64() as u128;
         WithdrawalRejectEvent {
-            txid: StacksTxid(fake::Faker.fake_with_rng(rng)),
+            txid: StacksTxid(config.fake_with_rng(rng)),
             request_id: rng.next_u32() as u64,
             signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
         }
     }
 }
 
-impl<T> fake::Dummy<T> for WithdrawalCreateEvent {
-    fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-        let address_hash: [u8; 20] = fake::Faker.fake_with_rng(rng);
+impl fake::Dummy<fake::Faker> for WithdrawalCreateEvent {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let address_hash: [u8; 20] = config.fake_with_rng(rng);
         let version = C32_ADDRESS_VERSION_TESTNET_SINGLESIG;
         let kp = secp256k1::Keypair::new_global(rng);
         let pk = bitcoin::CompressedPublicKey(kp.public_key());
 
         WithdrawalCreateEvent {
-            txid: StacksTxid(fake::Faker.fake_with_rng(rng)),
+            txid: StacksTxid(config.fake_with_rng(rng)),
             request_id: rng.next_u32() as u64,
             amount: rng.next_u32() as u64,
             sender: StacksAddress::new(version, Hash160(address_hash)).into(),
@@ -303,12 +303,12 @@ impl<T> fake::Dummy<T> for WithdrawalCreateEvent {
     }
 }
 
-impl<T> fake::Dummy<T> for CompletedDepositEvent {
-    fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+impl fake::Dummy<fake::Faker> for CompletedDepositEvent {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         CompletedDepositEvent {
-            txid: StacksTxid(fake::Faker.fake_with_rng(rng)),
+            txid: StacksTxid(config.fake_with_rng(rng)),
             outpoint: OutPoint {
-                txid: txid(&fake::Faker, rng),
+                txid: txid(config, rng),
                 vout: rng.next_u32(),
             },
             amount: rng.next_u32() as u64,

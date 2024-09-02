@@ -119,7 +119,7 @@ mod tests {
     #[test_case(WITHDRAWAL_ACCEPT_WEBHOOK, |db| db.withdrawal_accept_events.get(&1).is_none(); "withdrawal-accept")]
     #[test_case(WITHDRAWAL_REJECT_WEBHOOK, |db| db.withdrawal_reject_events.get(&2).is_none(); "withdrawal-reject")]
     #[tokio::test]
-    async fn test_events<F>(body_str: &str, func: F)
+    async fn test_events<F>(body_str: &str, table_is_empty: F)
     where
         F: Fn(tokio::sync::MutexGuard<'_, Store>) -> bool,
     {
@@ -131,7 +131,7 @@ mod tests {
         {
             // Hey look, there is nothing here!
             let db = api.db.lock().await;
-            assert!(func(db));
+            assert!(table_is_empty(db));
         }
 
         let state = State(api.clone());
@@ -142,6 +142,6 @@ mod tests {
 
         // Now there should be something here
         let db = api.db.lock().await;
-        assert!(!func(db));
+        assert!(!table_is_empty(db));
     }
 }
