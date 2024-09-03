@@ -265,9 +265,11 @@ fn handle_gossipsub_event(
 
             Msg::decode(message.data.as_slice())
                 .map(|msg| {
-                    signal_tx
+                    let _ = signal_tx
                         .send(SignerSignal::Event(SignerEvent::P2PMessageReceived(msg)))
-                        .unwrap(); // TODO: handle error
+                        .map_err(|error| {
+                            tracing::debug!(%error, "Failed to send message to application; we are likely shutting down.");
+                        });
                 })
                 .unwrap_or_else(|error| {
                     tracing::warn!(?peer_id, %error, "Failed to decode message");
