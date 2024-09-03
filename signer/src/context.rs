@@ -20,7 +20,7 @@ pub trait Context {
     /// Get an owned application signalling channel sender.
     fn get_signal_sender(&self) -> tokio::sync::broadcast::Sender<SignerSignal>;
     /// Send a signal to the application signalling channel.
-    fn signal(&self, signal: SignerSignal) -> Result<usize, crate::error::Error>;
+    fn signal(&self, signal: SignerSignal) -> Result<(), Error>;
     /// Returns a handle to the application's termination signal.
     fn get_termination_handle(&self) -> TerminationHandle;
 }
@@ -80,6 +80,14 @@ impl TerminationHandle {
     pub fn signal_shutdown(&self) {
         // We ignore the result here, as if all receivers have been dropped,
         // we're on our way down anyway.
+        self.0.send_if_modified(|x| {
+            if !(*x) {
+                *x = true;
+                true
+            } else {
+                false
+            }
+        });
         let _ = self.0.send(true);
     }
     /// Blocks until a shutdown signal is received.
@@ -124,10 +132,17 @@ impl Context for SignerContext {
     }
 
     /// Send a signal to the application signalling channel.
-    fn signal(&self, signal: SignerSignal) -> Result<usize, Error> {
+    fn signal(&self, signal: SignerSignal) -> Result<(), Error> {
         self.signal_tx
             .send(signal)
-            .map_err(Error::BroadcastSendError)
+            .map_err(|_| {
+                // This realistically shouldn't ever happen
+                tracing::warn!("failed to send signal to the application, no receivers present.");
+                // Send a shutdown signal, just in-case.
+                self.get_termination_handle().signal_shutdown();
+                Error::SignerShutdown
+            })
+            .map(|_| ())
     }
 
     fn get_termination_handle(&self) -> TerminationHandle {

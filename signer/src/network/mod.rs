@@ -74,7 +74,7 @@ impl MessageTransfer for P2PNetwork {
     async fn broadcast(&mut self, msg: Msg) -> Result<(), Self::Error> {
         self.signal_tx
             .send(SignerSignal::Command(SignerCommand::P2PPublish(msg)))
-            .map_err(|error| error.into())
+            .map_err(|_| Self::Error::SignerShutdown)
             .map(|_| ())
     }
 
@@ -101,8 +101,8 @@ impl MessageTransfer for P2PNetwork {
                 }
                 // And if we get an error when attempting to read from the
                 // channel.
-                Err(error) => {
-                    return Err(error.into());
+                Err(_) => {
+                    return Err(Self::Error::SignerShutdown);
                 }
                 // Anything else, we ignore.
                 _ => continue,
