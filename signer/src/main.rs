@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use axum::routing::get;
@@ -121,9 +122,12 @@ async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
         .route("/new_block", post(api::new_block_handler))
         .with_state(state);
 
+    let config = ctx.config().signer.event_observer.clone();
+
     // run our app with hyper
     // TODO: This should be read from configuration
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8801").await.unwrap();
+    let bind = SocketAddr::new(config.bind, config.port);
+    let listener = tokio::net::TcpListener::bind(bind).await.unwrap();
 
     // Subscribe to the signal channel so that we can catch shutdown events.
     let mut signal = ctx.get_signal_receiver();
