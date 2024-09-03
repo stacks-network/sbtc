@@ -64,7 +64,7 @@ pub enum Error {
 
     /// This happens when we expect one clarity variant but got another.
     #[error("Got an unexpected clarity value: {0:?}")]
-    ClarityUnexpectedValue(clarity::vm::Value),
+    ClarityUnexpectedValue(clarity::vm::Value, blockstack_lib::burnchains::Txid),
 
     /// This should never happen, but happens when one of the given topics
     /// is not on the list of expected topics.
@@ -72,8 +72,8 @@ pub enum Error {
     ClarityUnexpectedEventTopic(String),
 
     /// This a programmer error bug that should never be thrown.
-    #[error("The field {0} was missing from the print event for topic")]
-    TupleEventField(&'static str),
+    #[error("The field {0} was missing from the print event for topic. Txid: {1}")]
+    TupleEventField(&'static str, blockstack_lib::burnchains::Txid),
 
     /// This can only be thrown when the number of bytes for a txid field
     /// is not exactly equal to 32. This should never occur.

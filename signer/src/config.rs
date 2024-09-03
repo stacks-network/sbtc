@@ -1,4 +1,5 @@
 //! Configuration management for the signer
+use std::str::FromStr as _;
 
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
@@ -21,13 +22,14 @@ trait Validatable {
 
 #[derive(serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-/// The Stacks network to use.
+/// The Stacks and Bitcoin networks to use.
 pub enum NetworkKind {
     /// The mainnet network
     Mainnet,
     /// The testnet network
     Testnet,
-    /// The regtest network.
+    /// The regtest network. This is equivalent to Testnet when
+    /// constructing Stacks addresses and transactions.
     Regtest,
 }
 
@@ -187,11 +189,13 @@ impl Validatable for BlockNotifierConfig {
 /// Signer-specific configuration
 #[derive(Deserialize, Clone, Debug)]
 pub struct SignerConfig {
-    /// Stacks account configuration. This is the account that the signer will
-    /// use to identify itself on the network and sign transactions.
-    pub stacks_account: StacksAccountConfig,
+    /// The private key of the signer
+    #[serde(deserialize_with = "private_key_deserializer")]
+    pub private_key: PrivateKey,
     /// P2P network configuration
     pub p2p: P2PNetworkConfig,
+    /// P2P network configuration
+    pub network: NetworkKind,
 }
 
 impl Validatable for SignerConfig {
@@ -199,14 +203,6 @@ impl Validatable for SignerConfig {
         self.p2p.validate()?;
         Ok(())
     }
-}
-
-/// Keypair configuration
-#[derive(Deserialize, Clone, Debug)]
-pub struct StacksAccountConfig {
-    /// The private key of the signer
-    #[serde(deserialize_with = "private_key_deserializer")]
-    pub private_key: PrivateKey,
 }
 
 impl Settings {
@@ -343,19 +339,14 @@ fn private_key_deserializer<'de, D>(deserializer: D) -> Result<PrivateKey, D::Er
 where
     D: Deserializer<'de>,
 {
-    use std::str::FromStr as _;
     PrivateKey::from_str(&String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
-    use crate::keys::PrivateKey;
-
     use super::*;
 
-    const DEFAULT_CONFIG_PATH: Option<&str> = Some("./src/config/default");
+    use crate::testing::DEFAULT_CONFIG_PATH;
 
     /// Helper function to quickly create a URL from a string in tests.
     fn url(s: &str) -> url::Url {
@@ -379,7 +370,7 @@ mod tests {
         assert_eq!(settings.block_notifier.ping_interval, 60);
         assert_eq!(settings.block_notifier.subscribe_interval, 10);
         assert_eq!(
-            settings.signer.stacks_account.private_key,
+            settings.signer.private_key,
             PrivateKey::from_str(
                 "8183dc385a7a1fc8353b9e781ee0859a71e57abea478a5bca679334094f7adb5"
             )
@@ -390,6 +381,7 @@ mod tests {
             settings.signer.p2p.listen_on,
             vec![url("tcp://0.0.0.0:4122"), url("quic-v1://0.0.0.0:4122")]
         );
+        assert_eq!(settings.signer.network, NetworkKind::Regtest);
     }
 
     #[test]
@@ -413,16 +405,31 @@ mod tests {
     }
 
     #[test]
-    fn default_config_toml_loads_signer_stacks_account_config_with_environment() {
+    fn default_config_toml_loads_signer_private_key_config_with_environment() {
         let new = "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd";
-        std::env::set_var("SIGNER_SIGNER__STACKS_ACCOUNT__PRIVATE_KEY", new);
+        std::env::set_var("SIGNER_SIGNER__PRIVATE_KEY", new);
 
         let settings = Settings::new(DEFAULT_CONFIG_PATH).unwrap();
 
         assert_eq!(
-            settings.signer.stacks_account.private_key,
+            settings.signer.private_key,
             PrivateKey::from_str(new).unwrap()
         );
+    }
+
+    #[test]
+    fn default_config_toml_loads_signer_network_with_environment() {
+        let new = "testnet";
+        std::env::set_var("SIGNER_SIGNER__NETWORK", new);
+
+        let settings = Settings::new(DEFAULT_CONFIG_PATH).unwrap();
+        assert_eq!(settings.signer.network, NetworkKind::Testnet);
+
+        let new = "regtest";
+        std::env::set_var("SIGNER_SIGNER__NETWORK", new);
+
+        let settings = Settings::new(DEFAULT_CONFIG_PATH).unwrap();
+        assert_eq!(settings.signer.network, NetworkKind::Regtest);
     }
 
     #[test]
@@ -464,7 +471,7 @@ mod tests {
 
     #[test]
     fn invalid_private_key_length_returns_correct_error() {
-        std::env::set_var("SIGNER_SIGNER__STACKS_ACCOUNT__PRIVATE_KEY", "1234");
+        std::env::set_var("SIGNER_SIGNER__PRIVATE_KEY", "1234");
 
         let settings = Settings::new(DEFAULT_CONFIG_PATH);
         assert!(settings.is_err());
@@ -476,7 +483,7 @@ mod tests {
 
     #[test]
     fn invalid_private_key_hex_returns_correct_error() {
-        std::env::set_var("SIGNER_SIGNER__STACKS_ACCOUNT__PRIVATE_KEY", "zz");
+        std::env::set_var("SIGNER_SIGNER__PRIVATE_KEY", "zz");
         let hex_err = hex::decode("zz").unwrap_err();
 
         let settings = Settings::new(DEFAULT_CONFIG_PATH);

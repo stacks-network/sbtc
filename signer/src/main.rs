@@ -6,6 +6,7 @@ use axum::Router;
 use cfg_if::cfg_if;
 use clap::Parser;
 use signer::api;
+use signer::api::ApiState;
 use signer::context::Context;
 use signer::context::SignerContext;
 use signer::context::SignerSignal;
@@ -110,12 +111,15 @@ async fn run_libp2p_swarm(ctx: &impl Context) -> Result<(), Error> {
 /// Runs the Stacks event observer server.
 async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
     let pool = get_connection_pool();
-    let pool_store = PgStore::from(pool);
+    let state = ApiState {
+        db: PgStore::from(pool),
+        settings: ctx.config().clone(),
+    };
     // Build the signer API application
     let app = Router::new()
         .route("/", get(api::status_handler))
-        .route("/new_block", post(api::new_block_handler::<PgStore>))
-        .with_state(pool_store);
+        .route("/new_block", post(api::new_block_handler))
+        .with_state(state);
 
     // run our app with hyper
     // TODO: This should be read from configuration

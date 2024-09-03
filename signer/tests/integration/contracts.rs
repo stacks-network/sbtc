@@ -4,6 +4,7 @@ use std::sync::OnceLock;
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::clarity::vm::types::PrincipalData;
+use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
 use blockstack_lib::types::chainstate::StacksAddress;
 use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Keypair;
@@ -34,7 +35,7 @@ use signer::testing::wallet::InitiateWithdrawalRequest;
 
 use test_case::test_case;
 
-const TX_FEE: u64 = 1500000;
+const TX_FEE: u64 = 123000;
 
 pub struct SbtcTokenContract;
 
@@ -97,8 +98,13 @@ impl SignerStxState {
     where
         T: AsContractDeploy,
     {
+        // If we get an Ok response then we know the contract has been
+        // deployed already, and deploying it would probably be harmful (it
+        // appears to stall subsequent transactions for some reason).
+        if self.get_contract_source::<T>().await.is_ok() {
+            return;
+        }
         let mut unsigned = MultisigTx::new_tx(&ContractDeploy(deploy), &self.wallet, TX_FEE);
-
         for signature in make_signatures(unsigned.tx(), &self.keys) {
             unsigned.add_signature(signature).unwrap();
         }
@@ -113,6 +119,36 @@ impl SignerStxState {
             }) => (),
             SubmitTxResponse::Rejection(err) => panic!("{}", serde_json::to_string(&err).unwrap()),
         }
+    }
+
+    /// Get the source of the a deployed smart contract.
+    ///
+    /// # Notes
+    ///
+    /// This is useful just to know whether a contract has been deployed
+    /// already or not. If the smart contract has not been deployed yet,
+    /// the stacks node returns a 404 Not Found.
+    async fn get_contract_source<T>(&self) -> Result<ContractSrcResponse, reqwest::Error>
+    where
+        T: AsContractDeploy,
+    {
+        let path = format!(
+            "/v2/contracts/source/{}/{}?proof=0",
+            self.wallet.address(),
+            T::CONTRACT_NAME
+        );
+        let base = self.stacks_client.get_current_endpoint();
+        let url = base.join(&path).unwrap();
+
+        let response = self
+            .stacks_client
+            .client
+            .get(url)
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await?;
+
+        response.error_for_status()?.json().await
     }
 }
 
@@ -176,9 +212,9 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     deployer: testing::wallet::WALLET.0.address(),
 }); "complete-deposit contract recipient")]
 #[test_case(ContractCallWrapper(AcceptWithdrawalV1 {
-    request_id: 0,
+    request_id: 1,
     outpoint: bitcoin::OutPoint::null(),
-    tx_fee: 3500,
+    tx_fee: 2500,
     signer_bitmap: BitArray::ZERO,
     deployer: testing::wallet::WALLET.0.address(),
 }); "accept-withdrawal")]
@@ -189,7 +225,7 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     deployer: testing::wallet::WALLET.0.address(),
 }); "create-withdrawal")]
 #[test_case(ContractCallWrapper(RejectWithdrawalV1 {
-    request_id: 0,
+    request_id: 2,
     signer_bitmap: BitArray::ZERO,
     deployer: testing::wallet::WALLET.0.address(),
 }); "reject-withdrawal")]

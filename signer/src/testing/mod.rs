@@ -18,6 +18,9 @@ use bitcoin::Witness;
 use bitcoin::XOnlyPublicKey;
 use secp256k1::SECP256K1;
 
+/// The path for the configuration file that we should use during testing.
+pub const DEFAULT_CONFIG_PATH: Option<&str> = Some("./src/config/default");
+
 /// A helper function for correctly setting witness data
 pub fn set_witness_data(unsigned: &mut UnsignedTransaction, keypair: secp256k1::Keypair) {
     let sighash_type = TapSighashType::Default;

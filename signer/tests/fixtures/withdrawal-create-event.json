@@ -1,0 +1,260 @@
+{
+    "anchored_cost": {
+        "read_count": 22,
+        "read_length": 33549,
+        "runtime": 73067,
+        "write_count": 6,
+        "write_length": 216
+    },
+    "block_hash": "0x53fd8cfcd5203274dc960e7f48f9971e5791bda9b51484e3c9635b209901c6cc",
+    "block_height": 253,
+    "burn_block_hash": "0x013b81f12774594243704a9ca20a546813141ee5587c845955e42f588f753316",
+    "burn_block_height": 137,
+    "burn_block_time": 1725050780,
+    "confirmed_microblocks_cost": {
+        "read_count": 0,
+        "read_length": 0,
+        "runtime": 0,
+        "write_count": 0,
+        "write_length": 0
+    },
+    "cycle_number": null,
+    "events": [
+        {
+            "committed": true,
+            "contract_event": {
+                "contract_identifier": "SN2V7WTJ7BHR03MPHZ1C9A9ZR6NZGR4WM8HT4V67Y.sbtc-registry",
+                "raw_value": "0x0c0000000706616d6f756e7401000000000000000000000000000057e40c626c6f636b2d6865696768740100000000000000000000000000000089076d61782d6665650100000000000000000000000000000bb809726563697069656e740c0000000209686173686279746573020000001400000000000000000000000000000000000000000776657273696f6e0200000001000a726571756573742d696401000000000000000000000000000000010673656e6465720515b67e6a475c7001d2d1f8589527f8357f0c13944405746f7069630d000000117769746864726177616c2d637265617465",
+                "topic": "print",
+                "value": {
+                    "Tuple": {
+                        "data_map": {
+                            "amount": {
+                                "UInt": 22500
+                            },
+                            "block-height": {
+                                "UInt": 137
+                            },
+                            "max-fee": {
+                                "UInt": 3000
+                            },
+                            "recipient": {
+                                "Tuple": {
+                                    "data_map": {
+                                        "hashbytes": {
+                                            "Sequence": {
+                                                "Buffer": {
+                                                    "data": [
+                                                        0,
+                                                        0,
+                                                        0,
+                                                        0,
+                                                        0,
+                                                        0,
+                                                        0,
+                                                        0,
+                                                        0,
+                                                        0,
+                                                        0,
+                                                        0,
+                                                        0,
+                                                        0,
+                                                        0,
+                                                        0,
+                                                        0,
+                                                        0,
+                                                        0,
+                                                        0
+                                                    ]
+                                                }
+                                            }
+                                        },
+                                        "version": {
+                                            "Sequence": {
+                                                "Buffer": {
+                                                    "data": [
+                                                        0
+                                                    ]
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "type_signature": {
+                                        "type_map": {
+                                            "hashbytes": {
+                                                "SequenceType": {
+                                                    "BufferType": 32
+                                                }
+                                            },
+                                            "version": {
+                                                "SequenceType": {
+                                                    "BufferType": 1
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "request-id": {
+                                "UInt": 1
+                            },
+                            "sender": {
+                                "Principal": {
+                                    "Standard": [
+                                        21,
+                                        [
+                                            182,
+                                            126,
+                                            106,
+                                            71,
+                                            92,
+                                            112,
+                                            1,
+                                            210,
+                                            209,
+                                            248,
+                                            88,
+                                            149,
+                                            39,
+                                            248,
+                                            53,
+                                            127,
+                                            12,
+                                            19,
+                                            148,
+                                            68
+                                        ]
+                                    ]
+                                }
+                            },
+                            "topic": {
+                                "Sequence": {
+                                    "String": {
+                                        "ASCII": {
+                                            "data": [
+                                                119,
+                                                105,
+                                                116,
+                                                104,
+                                                100,
+                                                114,
+                                                97,
+                                                119,
+                                                97,
+                                                108,
+                                                45,
+                                                99,
+                                                114,
+                                                101,
+                                                97,
+                                                116,
+                                                101
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "type_signature": {
+                            "type_map": {
+                                "amount": "UIntType",
+                                "block-height": "UIntType",
+                                "max-fee": "UIntType",
+                                "recipient": {
+                                    "TupleType": {
+                                        "type_map": {
+                                            "hashbytes": {
+                                                "SequenceType": {
+                                                    "BufferType": 32
+                                                }
+                                            },
+                                            "version": {
+                                                "SequenceType": {
+                                                    "BufferType": 1
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "request-id": "UIntType",
+                                "sender": "PrincipalType",
+                                "topic": {
+                                    "SequenceType": {
+                                        "StringType": {
+                                            "ASCII": 17
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "event_index": 2,
+            "txid": "0x25982fe028733fe0158fa3972b68fe93ade7f242fb51283c3bc18145d0248d9a",
+            "type": "contract_event"
+        }
+    ],
+    "index_block_hash": "0x75b02b9884ec41c05f2cfa6e20823328321518dd0b027e7b609b63d4d1ea7c78",
+    "matured_miner_rewards": [],
+    "miner_signature": "0x00bedd886bbc3b72e4bb3427cfd6acc8466036f20942511d0f0468ed1c8c32614436d0ccca5ac783e344f6c02356e63696c48e55a84e21d9af3539c3568207e734",
+    "miner_txid": "0xbfe53413948e7683414635d3976c851686a5d9d851658ddf85f706c185d82811",
+    "parent_block_hash": "0x992d155d9dcb80e00eec8f2acea43b5d9a054b6295f0da7c9965f438c0eb9e73",
+    "parent_burn_block_hash": "0x013b81f12774594243704a9ca20a546813141ee5587c845955e42f588f753316",
+    "parent_burn_block_height": 137,
+    "parent_burn_block_timestamp": 1725050780,
+    "parent_index_block_hash": "0xbed2058c54b8b9763f9f79e576e5fece4a02d71452b33879c9e5628bc3aa5993",
+    "parent_microblock": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "parent_microblock_sequence": 0,
+    "pox_v1_unlock_height": 104,
+    "pox_v2_unlock_height": 106,
+    "pox_v3_unlock_height": 109,
+    "reward_set": null,
+    "signer_bitvec": "000800000001ff",
+    "signer_signature": [
+        "0092c2fa7aaefaa5206120e04c5d61795af734a824dc8b6d8affabe758928735a97407046f66c6ae9dab300f4701c28f85d68667688ccd47d86431f7fa55e25603",
+        "00a3b00b00ec5d2d5834a4b1465e403a130d4f133fd11ad73909648bc92f012c1a63c222121b76c34b96f126b74be3d3ade874560705ff6d0428f65f50f8d0a25d",
+        "00c986c82e76a6edf5df6214fa759d656a3ff2d4e823f9152e09dd7a731696e1fd0019c26b92dc1c015f60ad22f47114fc81ab2b95d3dd3aa93cb7aa2918c84cb5"
+    ],
+    "signer_signature_hash": "0x53fd8cfcd5203274dc960e7f48f9971e5791bda9b51484e3c9635b209901c6cc",
+    "transactions": [
+        {
+            "burnchain_op": null,
+            "contract_abi": null,
+            "execution_cost": {
+                "read_count": 22,
+                "read_length": 33549,
+                "runtime": 73067,
+                "write_count": 6,
+                "write_length": 216
+            },
+            "microblock_hash": null,
+            "microblock_parent_hash": null,
+            "microblock_sequence": null,
+            "raw_result": "0x070100000000000000000000000000000001",
+            "raw_tx": "0x80800000000405b67e6a475c7001d2d1f8589527f8357f0c1394440000000000000006000000000001e0780000000302016f58f74296efb304398634e681a4300aa93f39155a371ca4406d4aa5dfb76c752a234176a9f1fb636cbd50593b3626a5f5894b06f288e740e9d3aa02d5aec3d1020010afd9f14faa159d31153a821079fdcfd80bfe3662e840eda2383665a113402b66ec622af0ec2c052d8ff5cb508d296fe164dbcc8653ad552625f33947d61944020044e318502c37f69f6e4d0c75825cc47a5f4707d08308288400f4a4f1c434151c24e2a5d10e532bb67e3819babcc4e8d0e5ca4f96dac116349fae44b38d9ba78c00020301000000000215b67e6a475c7001d2d1f8589527f8357f0c1394440f736274632d7769746864726177616c1b696e6974696174652d7769746864726177616c2d726571756573740000000301000000000000000000000000000057e40c0000000209686173686279746573020000001400000000000000000000000000000000000000000776657273696f6e0200000001000100000000000000000000000000000bb8",
+            "status": "success",
+            "tx_index": 0,
+            "txid": "0x25982fe028733fe0158fa3972b68fe93ade7f242fb51283c3bc18145d0248d9a"
+        },
+        {
+            "burnchain_op": null,
+            "contract_abi": null,
+            "execution_cost": {
+                "read_count": 0,
+                "read_length": 0,
+                "runtime": 0,
+                "write_count": 0,
+                "write_length": 0
+            },
+            "microblock_hash": null,
+            "microblock_parent_hash": null,
+            "microblock_sequence": null,
+            "raw_result": "0x0703",
+            "raw_tx": "0x80800000000400ad08341feab8ea788ef8045c343d21dcedc4483e000000000000004a000000000000012c0001b348a285f5dff4de0fafbee44934100167310a0ec0c930a75ba3993c0a2a3e6b1bce06c337d8445cdf65bf41423b187fa42aa4a4e0cd1cbe1095aeafbda8fe8c03020000000000051a62b0e91cc557e583c3d1f9dfe468ace76d2f037400000000000003e800000000000000000000000000000000000000000000000000000000000000000000",
+            "status": "success",
+            "tx_index": 1,
+            "txid": "0x538cb5f2bc1f77892b5b9ef7281c8bdd4c4d6792a80b06fa61fd48c7819b7dfe"
+        }
+    ]
+}
