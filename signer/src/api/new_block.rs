@@ -128,11 +128,9 @@ mod tests {
             settings: Settings::new(crate::testing::DEFAULT_CONFIG_PATH).unwrap(),
         };
 
-        {
-            // Hey look, there is nothing here!
-            let db = api.db.lock().await;
-            assert!(table_is_empty(db));
-        }
+        // Hey look, there is nothing here!
+        let db = api.db.lock().await;
+        assert!(table_is_empty(db));        
 
         let state = State(api.clone());
         let body = body_str.to_string();
