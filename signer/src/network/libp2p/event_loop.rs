@@ -7,13 +7,14 @@ use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::Mutex;
 
 use crate::codec::{Decode, Encode};
-use crate::context::{SignerCommand, SignerEvent, SignerSignal};
+use crate::context::{SignerCommand, SignerEvent, SignerSignal, TerminationHandle};
 use crate::network::Msg;
 
 use super::swarm::{SignerBehavior, SignerBehaviorEvent};
 use super::TOPIC;
 
 pub async fn run(
+    term: &mut TerminationHandle,
     swarm: Arc<Mutex<Swarm<SignerBehavior>>>,
     signal_tx: Sender<SignerSignal>,
     mut signal_rx: Receiver<SignerSignal>,
@@ -29,14 +30,14 @@ pub async fn run(
 
     loop {
         tokio::select! {
+            // Handle termination signals from the application
+            Ok(_) = term.wait_for_shutdown() => {
+                tracing::info!("libp2p received a termination signal; stopping the libp2p swarm");
+                break;
+            },
             // Handle signals from the application
             Ok(SignerSignal::Command(cmd)) = signal_rx.recv() => {
                 match cmd {
-                    // Handle shutdown signal and stop the loop if received.
-                    SignerCommand::Shutdown => {
-                        tracing::info!("libp2p received a shutdown signal; stopping the libp2p swarm");
-                        break;
-                    },
                     // Handle a request to publish a message to the P2P network.
                     SignerCommand::P2PPublish(payload) => {
                         let encoded_msg = payload.encode_to_vec()

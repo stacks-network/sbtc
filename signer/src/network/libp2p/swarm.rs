@@ -205,9 +205,10 @@ impl SignerSwarm {
         // Get our signal channel sender/receiver.
         let signal_tx = ctx.get_signal_sender();
         let signal_rx = ctx.get_signal_receiver();
+        let mut term = ctx.get_termination_handle();
 
         // Run the event loop, blocking until its completion.
-        event_loop::run(Arc::clone(&self.swarm), signal_tx, signal_rx).await;
+        event_loop::run(&mut term, Arc::clone(&self.swarm), signal_tx, signal_rx).await;
 
         Ok(())
     }

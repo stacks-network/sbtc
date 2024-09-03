@@ -16,6 +16,14 @@ pub enum Error {
     #[error("Error receiving message from application channel: {0}")]
     BroadcastRecvError(#[from] tokio::sync::broadcast::error::RecvError),
 
+    /// Error sending a message to the application termination channel
+    #[error("Error sending message to application termination channel: {0}")]
+    TerminationSendError(#[from] tokio::sync::watch::error::SendError<bool>),
+
+    /// Error sending a message to the application termination channel
+    #[error("Error receiving message from application termination channel: {0}")]
+    TerminationRecvError(#[from] tokio::sync::watch::error::RecvError),
+
     /// Error incurred during the execution of the libp2p swarm.
     #[error("an error occurred running the libp2p swarm: {0}")]
     SignerSwarm(#[from] crate::network::libp2p::SignerSwarmError),
@@ -27,13 +35,6 @@ pub enum Error {
     /// I/O Error raised by the Tokio runtime.
     #[error("tokio i/o error: {0}")]
     TokioIo(#[from] tokio::io::Error),
-
-    /// Error when attempting to send a signal to the application's signalling
-    /// channel.
-    #[error("failed to send signal to the application: {0}")]
-    ApplicationSignal(
-        #[source] tokio::sync::broadcast::error::SendError<crate::context::SignerSignal>,
-    ),
 
     /// Error when breaking out the ZeroMQ message into three parts.
     #[error("bitcoin messages should have a three part layout, received {0} parts")]

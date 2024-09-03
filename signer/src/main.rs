@@ -8,9 +8,7 @@ use clap::Parser;
 use libp2p::Multiaddr;
 use signer::api;
 use signer::context::Context;
-use signer::context::SignerCommand;
 use signer::context::SignerContext;
-use signer::context::SignerSignal;
 use signer::error::Error;
 use signer::network::libp2p::SignerSwarmBuilder;
 use signer::network::libp2p::TryIntoMultiAddrs as _;
@@ -88,7 +86,7 @@ where
 {
     if let Err(error) = f(ctx).await {
         tracing::error!(%error, "a fatal error occurred; shutting down the application");
-        let _ = ctx.signal(SignerSignal::Command(SignerCommand::Shutdown));
+        let _ = ctx.get_termination_handle().signal_shutdown();
         return Err(error);
     }
 
@@ -99,7 +97,7 @@ where
 /// SIGTERM, and SIGINT. On other systems, it listens for Ctrl-C.
 #[tracing::instrument(skip(ctx))]
 async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
-    let mut signal = ctx.get_signal_receiver();
+    let mut term = ctx.get_termination_handle();
 
     cfg_if! {
         // If we are on a Unix system, we can listen for more signals.
@@ -112,8 +110,8 @@ async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
                 // If the shutdown signal is received, we'll shut down the signal watcher
                 // by returning early; the rest of the components have already received
                 // the shutdown signal.
-                Ok(SignerSignal::Command(SignerCommand::Shutdown)) = signal.recv() => {
-                    tracing::debug!("shutdown signal received, signal watcher is shutting down");
+                Ok(_) = term.wait_for_shutdown() => {
+                    tracing::info!("termination signal received, signal watcher is shutting down");
                     return Ok(());
                 },
                 // SIGTERM (kill -15 "nice")
@@ -131,14 +129,25 @@ async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
             }
         // Otherwise, we'll just listen for Ctrl-C, which is the most portable.
         } else {
-            tokio::signal::ctrl_c().await?;
-            tracing::info!(signal = "Ctrl+C", "received termination signal");
+            tokio::select! {
+                // If the shutdown signal is received, we'll shut down the signal watcher
+                // by returning early; the rest of the components have already received
+                // the shutdown signal.
+                Ok(_) = ctx.wait_for_shutdown() => {
+                    tracing::info!("termination signal received, signal watcher is shutting down");
+                    return Ok(());
+                },
+                _ = tokio::signal::ctrl_c() => {
+                    tracing::info!(signal = "Ctrl+C", "received termination signal");
+                }
+            }
+
         }
     }
 
     // Send the shutdown signal to the rest of the application.
     tracing::info!("sending shutdown signal to the application");
-    ctx.signal(SignerSignal::Command(SignerCommand::Shutdown))?;
+    term.signal_shutdown()?;
 
     Ok(())
 }
@@ -174,7 +183,7 @@ async fn run_libp2p_swarm(ctx: &impl Context) -> Result<(), Error> {
     tracing::info!("starting the libp2p swarm");
     swarm.start(ctx).await.map_err(|error| {
         tracing::error!(%error, "error executing the libp2p swarm");
-        let _ = ctx.signal(SignerSignal::Command(SignerCommand::Shutdown));
+        let _ = ctx.get_termination_handle().signal_shutdown();
         error.into()
     })
 }
@@ -196,15 +205,16 @@ async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
     // TODO: This should be read from configuration
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8801").await.unwrap();
 
-    // Subscribe to the signal channel so that we can catch shutdown events.
-    let mut signal = ctx.get_signal_receiver();
+    // Get the termination signal handle.
+    let mut term = ctx.get_termination_handle();
 
+    // Start the Stacks event observer server.
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
             // Listen for an application shutdown signal. We need to loop here
             // because we may receive other signals (which we will ignore here).
             loop {
-                if let Ok(SignerSignal::Command(SignerCommand::Shutdown)) = signal.recv().await {
+                if (term.wait_for_shutdown().await).is_ok() {
                     tracing::info!("stopping the Stacks event observer server");
                     break;
                 }
@@ -213,7 +223,7 @@ async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
         .await
         .map_err(|error| {
             tracing::error!(%error, "error running Stacks event observer server");
-            let _ = ctx.signal(SignerSignal::Command(SignerCommand::Shutdown));
+            let _ = ctx.get_termination_handle().signal_shutdown();
             error.into()
         })
 }
