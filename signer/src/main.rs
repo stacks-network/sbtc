@@ -86,7 +86,7 @@ where
 {
     if let Err(error) = f(ctx).await {
         tracing::error!(%error, "a fatal error occurred; shutting down the application");
-        let _ = ctx.get_termination_handle().signal_shutdown();
+        ctx.get_termination_handle().signal_shutdown();
         return Err(error);
     }
 
@@ -110,7 +110,7 @@ async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
                 // If the shutdown signal is received, we'll shut down the signal watcher
                 // by returning early; the rest of the components have already received
                 // the shutdown signal.
-                Ok(_) = term.wait_for_shutdown() => {
+                _ = term.wait_for_shutdown() => {
                     tracing::info!("termination signal received, signal watcher is shutting down");
                     return Ok(());
                 },
@@ -147,7 +147,7 @@ async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
 
     // Send the shutdown signal to the rest of the application.
     tracing::info!("sending shutdown signal to the application");
-    term.signal_shutdown()?;
+    term.signal_shutdown();
 
     Ok(())
 }
@@ -183,7 +183,7 @@ async fn run_libp2p_swarm(ctx: &impl Context) -> Result<(), Error> {
     tracing::info!("starting the libp2p swarm");
     swarm.start(ctx).await.map_err(|error| {
         tracing::error!(%error, "error executing the libp2p swarm");
-        let _ = ctx.get_termination_handle().signal_shutdown();
+        ctx.get_termination_handle().signal_shutdown();
         error.into()
     })
 }
@@ -213,17 +213,13 @@ async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
         .with_graceful_shutdown(async move {
             // Listen for an application shutdown signal. We need to loop here
             // because we may receive other signals (which we will ignore here).
-            loop {
-                if (term.wait_for_shutdown().await).is_ok() {
-                    tracing::info!("stopping the Stacks event observer server");
-                    break;
-                }
-            }
+            term.wait_for_shutdown().await;
+            tracing::info!("stopping the Stacks event observer server");
         })
         .await
         .map_err(|error| {
             tracing::error!(%error, "error running Stacks event observer server");
-            let _ = ctx.get_termination_handle().signal_shutdown();
+            ctx.get_termination_handle().signal_shutdown();
             error.into()
         })
 }

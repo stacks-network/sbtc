@@ -77,18 +77,21 @@ pub struct TerminationHandle(
 
 impl TerminationHandle {
     /// Signal the application to shutdown.
-    pub fn signal_shutdown(&self) -> Result<(), Error> {
-        self.0.send(true).map_err(Error::TerminationSendError)
+    pub fn signal_shutdown(&self) {
+        // We ignore the result here, as if all receivers have been dropped,
+        // we're on our way down anyway.
+        let _ = self.0.send(true);
     }
     /// Blocks until a shutdown signal is received.
-    pub async fn wait_for_shutdown(&mut self) -> Result<(), Error> {
+    pub async fn wait_for_shutdown(&mut self) {
         loop {
-            self.1
-                .changed()
-                .await
-                .map_err(Error::TerminationRecvError)?;
+            // Wait for the termination channel to be updated. If it's updated
+            // and the value is true, we break out of the loop.
+            // We ignore the result here because it's impossible for the sender
+            // to be dropped while this instance is alive (it holds its own sender).
+            let _ = self.1.changed().await;
             if *self.1.borrow_and_update() {
-                return Ok(());
+                break;
             }
         }
     }

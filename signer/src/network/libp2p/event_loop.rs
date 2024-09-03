@@ -31,7 +31,7 @@ pub async fn run(
     loop {
         tokio::select! {
             // Handle termination signals from the application
-            Ok(_) = term.wait_for_shutdown() => {
+            _ = term.wait_for_shutdown() => {
                 tracing::info!("libp2p received a termination signal; stopping the libp2p swarm");
                 break;
             },

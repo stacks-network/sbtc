@@ -16,14 +16,6 @@ pub enum Error {
     #[error("Error receiving message from application channel: {0}")]
     BroadcastRecvError(#[from] tokio::sync::broadcast::error::RecvError),
 
-    /// Error sending a message to the application termination channel
-    #[error("Error sending message to application termination channel: {0}")]
-    TerminationSendError(#[from] tokio::sync::watch::error::SendError<bool>),
-
-    /// Error sending a message to the application termination channel
-    #[error("Error receiving message from application termination channel: {0}")]
-    TerminationRecvError(#[from] tokio::sync::watch::error::RecvError),
-
     /// Error incurred during the execution of the libp2p swarm.
     #[error("an error occurred running the libp2p swarm: {0}")]
     SignerSwarm(#[from] crate::network::libp2p::SignerSwarmError),

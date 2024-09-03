@@ -39,12 +39,12 @@ pub trait MessageTransfer {
 
 /// MessageTransfer interface for the application signalling channel.
 /// TODO: Better name?
-pub struct SignallingNetwork {
+pub struct P2PNetwork {
     signal_tx: Sender<SignerSignal>,
     signal_rx: Receiver<SignerSignal>,
 }
 
-impl SignallingNetwork {
+impl P2PNetwork {
     /// Create a new broadcast channel network instance. This requires an active
     /// [`Context`] and will retrieve its own signalling sender and receiver.
     pub fn new(ctx: &impl Context) -> Self {
@@ -55,7 +55,7 @@ impl SignallingNetwork {
     }
 }
 
-impl MessageTransfer for SignallingNetwork {
+impl MessageTransfer for P2PNetwork {
     type Error = crate::error::Error;
 
     /// This will broadcast the message to the application signalling channel
