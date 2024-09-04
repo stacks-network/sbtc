@@ -210,10 +210,8 @@ impl Validatable for SignerConfig {
 /// Configuration for the Stacks event observer server (hosted within the signer).
 #[derive(Debug, Clone, Deserialize)]
 pub struct EventObserverConfig {
-    /// The address to bind the server to.
-    pub bind: std::net::IpAddr,
-    /// The port to bind the server to.
-    pub port: u16,
+    /// The address and port to bind the server to.
+    pub bind: std::net::SocketAddr,
 }
 
 impl Settings {
@@ -355,7 +353,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::net::IpAddr;
+    use std::net::SocketAddr;
 
     use super::*;
 
@@ -397,9 +395,8 @@ mod tests {
         assert_eq!(settings.signer.network, NetworkKind::Regtest);
         assert_eq!(
             settings.signer.event_observer.bind,
-            "0.0.0.0".parse::<IpAddr>().unwrap()
+            "0.0.0.0:8801".parse::<SocketAddr>().unwrap()
         );
-        assert_eq!(settings.signer.event_observer.port, 8801);
     }
 
     #[test]
