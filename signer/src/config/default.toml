@@ -58,6 +58,25 @@ private_key = "8183dc385a7a1fc8353b9e781ee0859a71e57abea478a5bca679334094f7adb5"
 # Possible values: mainnet, testnet, regtest
 # Environment: SIGNER_SIGNER__NETWORK
 network = "regtest"
+
+# !! ==============================================================================
+# !! Stacks Event Observer Configuration
+# !!
+# !! The event observer listens for events on the Stacks blockchain. The listen 
+# !! address must be reachable by your Stacks node, and must be configured in the 
+# !! node's `event_observer` configuration section.
+# !!
+# !! Note that the event observer endpoint _does not_ support TLS and is served 
+# !! over HTTP.
+# !! ==============================================================================
+[signer.event_observer]
+# The network interface (ip address) and port to bind the event observer server to.
+# 
+# Format: "<ip>:<port>"
+# Required: true
+# Environment: SIGNER_SIGNER__EVENT_OBSERVER__BIND
+bind = "0.0.0.0:8801"
+
 # !! ==============================================================================
 # !! Signer P2P Networking Configuration
 # !! ==============================================================================

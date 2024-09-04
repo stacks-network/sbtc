@@ -68,17 +68,17 @@ pub struct Settings {
 pub struct P2PNetworkConfig {
     /// List of seeds for the P2P network. If empty then the signer will
     /// only use peers discovered via StackerDB.
-    #[serde(deserialize_with = "url_deserializer")]
+    #[serde(deserialize_with = "url_deserializer_vec")]
     pub seeds: Vec<url::Url>,
     /// The local network interface(s) to listen on. If empty, then
     /// the signer will use [`DEFAULT_NETWORK_HOST`]:[`DEFAULT_NETWORK_PORT] as
     /// the default and listen on both TCP and QUIC protocols.
-    #[serde(deserialize_with = "url_deserializer")]
+    #[serde(deserialize_with = "url_deserializer_vec")]
     pub listen_on: Vec<url::Url>,
     /// Optionally specifies the public endpoints of the signer. If empty, the
     /// signer will attempt to use peers in the network to discover its own
     /// public endpoint(s).
-    #[serde(deserialize_with = "url_deserializer")]
+    #[serde(deserialize_with = "url_deserializer_vec")]
     pub public_endpoints: Vec<url::Url>,
 }
 
@@ -196,6 +196,8 @@ pub struct SignerConfig {
     pub p2p: P2PNetworkConfig,
     /// P2P network configuration
     pub network: NetworkKind,
+    /// Event observer server configuration
+    pub event_observer: EventObserverConfig,
 }
 
 impl Validatable for SignerConfig {
@@ -203,6 +205,13 @@ impl Validatable for SignerConfig {
         self.p2p.validate()?;
         Ok(())
     }
+}
+
+/// Configuration for the Stacks event observer server (hosted within the signer).
+#[derive(Debug, Clone, Deserialize)]
+pub struct EventObserverConfig {
+    /// The address and port to bind the server to.
+    pub bind: std::net::SocketAddr,
 }
 
 impl Settings {
@@ -279,7 +288,7 @@ pub struct StacksNodeSettings {
     /// endpoints.
     ///
     /// The endpoint to use when making requests to a stacks node.
-    #[serde(deserialize_with = "url_deserializer")]
+    #[serde(deserialize_with = "url_deserializer_vec")]
     pub endpoints: Vec<url::Url>,
     /// This is the start height of the first EPOCH 3.0 block on the stacks
     /// blockchain.
@@ -322,7 +331,7 @@ impl StacksSettings {
 
 /// A deserializer for the url::Url type. This will return an empty [`Vec`] if
 /// there are no URLs to deserialize.
-fn url_deserializer<'de, D>(deserializer: D) -> Result<Vec<url::Url>, D::Error>
+fn url_deserializer_vec<'de, D>(deserializer: D) -> Result<Vec<url::Url>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -344,6 +353,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::net::SocketAddr;
+
     use super::*;
 
     use crate::testing::DEFAULT_CONFIG_PATH;
@@ -382,6 +393,10 @@ mod tests {
             vec![url("tcp://0.0.0.0:4122"), url("quic-v1://0.0.0.0:4122")]
         );
         assert_eq!(settings.signer.network, NetworkKind::Regtest);
+        assert_eq!(
+            settings.signer.event_observer.bind,
+            "0.0.0.0:8801".parse::<SocketAddr>().unwrap()
+        );
     }
 
     #[test]
