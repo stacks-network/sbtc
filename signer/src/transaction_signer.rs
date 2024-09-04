@@ -27,7 +27,6 @@ use crate::storage;
 use crate::storage::model;
 use crate::wsts_state_machine;
 
-use bitcoin::hashes::Hash;
 use futures::StreamExt;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
@@ -223,7 +222,8 @@ where
             return Err(error::Error::InvalidSignature);
         }
 
-        let bitcoin_chain_tip = msg.bitcoin_chain_tip.to_byte_array().to_vec();
+        // TODO(297): Validate the chain tip against database
+        let bitcoin_chain_tip = model::BitcoinBlockHash(msg.bitcoin_chain_tip);
 
         let chain_tip_report = self
             .inspect_msg_chain_tip(msg.signer_pub_key, &bitcoin_chain_tip)
@@ -592,8 +592,7 @@ where
             .await;
 
         let msg = message::SignerDepositDecision {
-            txid: bitcoin::Txid::from_slice(&deposit_request.txid)
-                .map_err(error::Error::SliceConversion)?,
+            txid: deposit_request.txid.0,
             output_index: deposit_request.output_index,
             accepted: is_accepted,
         };
@@ -646,7 +645,7 @@ where
         signer_pub_key: PublicKey,
     ) -> Result<(), error::Error> {
         let signer_decision = model::DepositSigner {
-            txid: decision.txid.to_byte_array().to_vec(),
+            txid: decision.txid.into(),
             output_index: decision.output_index,
             signer_pub_key,
             is_accepted: decision.accepted,
@@ -674,7 +673,7 @@ where
     ) -> Result<(), error::Error> {
         let signer_decision = model::WithdrawSigner {
             request_id: decision.request_id,
-            block_hash: decision.block_hash.to_vec(),
+            block_hash: decision.block_hash.into(),
             signer_pub_key,
             is_accepted: decision.accepted,
         };
@@ -715,8 +714,7 @@ where
         msg: impl Into<message::Payload>,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), error::Error> {
-        let bitcoin_chain_tip = bitcoin::BlockHash::from_slice(bitcoin_chain_tip)
-            .map_err(error::Error::SliceConversion)?;
+        let bitcoin_chain_tip = bitcoin_chain_tip.0;
         let payload: message::Payload = msg.into();
         let msg = payload
             .to_message(bitcoin_chain_tip)

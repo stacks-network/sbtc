@@ -1,9 +1,12 @@
 //! Database models for the signer.
 
+use std::ops::Deref;
+
 use bitcoin::hashes::Hash as _;
 use bitcoin::Address;
 use bitcoin::Network;
 use sbtc::deposits::Deposit;
+use stacks_common::types::chainstate::StacksBlockId;
 
 use crate::keys::PublicKey;
 
@@ -12,13 +15,11 @@ use crate::keys::PublicKey;
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct BitcoinBlock {
     /// Block hash.
-    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub block_hash: BitcoinBlockHash,
     /// Block height.
     #[sqlx(try_from = "i64")]
     pub block_height: u64,
     /// Hash of the parent block.
-    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub parent_hash: BitcoinBlockHash,
     /// Stacks block confirmed by this block.
     #[cfg_attr(feature = "testing", dummy(default))]
@@ -30,13 +31,11 @@ pub struct BitcoinBlock {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct StacksBlock {
     /// Block hash.
-    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub block_hash: StacksBlockHash,
     /// Block height.
     #[sqlx(try_from = "i64")]
     pub block_height: u64,
     /// Hash of the parent block.
-    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub parent_hash: StacksBlockHash,
 }
 
@@ -45,7 +44,6 @@ pub struct StacksBlock {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct DepositRequest {
     /// Transaction ID of the deposit request transaction.
-    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub txid: BitcoinTxId,
     /// Index of the deposit request UTXO.
     #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
@@ -89,7 +87,7 @@ impl DepositRequest {
             })
             .collect();
         Self {
-            txid: deposit.info.outpoint.txid.to_byte_array().to_vec(),
+            txid: deposit.info.outpoint.txid.into(),
             output_index: deposit.info.outpoint.vout,
             spend_script: deposit.info.deposit_script.to_bytes(),
             reclaim_script: deposit.info.reclaim_script.to_bytes(),
@@ -106,7 +104,6 @@ impl DepositRequest {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct DepositSigner {
     /// TxID of the deposit request.
-    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub txid: BitcoinTxId,
     /// Output index of the deposit request.
     #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
@@ -126,7 +123,6 @@ pub struct WithdrawRequest {
     #[sqlx(try_from = "i64")]
     pub request_id: u64,
     /// Stacks block hash of the withdrawal request.
-    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub block_hash: StacksBlockHash,
     /// The address that should receive the BTC withdrawal.
     pub recipient: BitcoinAddress,
@@ -151,7 +147,6 @@ pub struct WithdrawSigner {
     #[sqlx(try_from = "i64")]
     pub request_id: u64,
     /// Stacks block hash of the withdrawal request.
-    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
     pub block_hash: StacksBlockHash,
     /// Public key of the signer.
     pub signer_pub_key: PublicKey,
@@ -181,9 +176,9 @@ pub struct StacksTransaction {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TransactionIds {
     /// Transaction IDs.
-    pub tx_ids: Vec<Vec<u8>>,
+    pub tx_ids: Vec<[u8; 32]>,
     /// The blocks in which the transactions exist.
-    pub block_hashes: Vec<Vec<u8>>,
+    pub block_hashes: Vec<[u8; 32]>,
 }
 
 /// A raw transaction on either Bitcoin or Stacks.
@@ -191,15 +186,13 @@ pub struct TransactionIds {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct Transaction {
     /// Transaction ID.
-    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
-    pub txid: Bytes,
+    pub txid: [u8; 32],
     /// Encoded transaction.
     pub tx: Bytes,
     /// The type of the transaction.
     pub tx_type: TransactionType,
     /// The block id of the stacks block that includes this transaction
-    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
-    pub block_hash: Bytes,
+    pub block_hash: [u8; 32],
 }
 
 /// Persisted DKG shares
@@ -223,8 +216,7 @@ pub struct EncryptedDkgShares {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct RotateKeysTransaction {
     /// Transaction ID.
-    #[cfg_attr(feature = "testing", dummy(expr = "fake::vec![u8; 32]"))]
-    pub txid: Bytes,
+    pub txid: StacksTxId,
     /// The aggregate key for these shares.
     pub aggregate_key: PublicKey,
     /// The public keys of the signers.
@@ -256,20 +248,100 @@ pub enum TransactionType {
     RotateKeys,
 }
 
-/// A stacks transaction
+/// The bitcoin transaction ID
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BitcoinTxId(pub bitcoin::Txid);
+
+impl Deref for BitcoinTxId {
+    type Target = bitcoin::Txid;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<bitcoin::Txid> for BitcoinTxId {
+    fn from(value: bitcoin::Txid) -> Self {
+        Self(value)
+    }
+}
+
+impl From<[u8; 32]> for BitcoinTxId {
+    fn from(bytes: [u8; 32]) -> Self {
+        Self(bitcoin::Txid::from_byte_array(bytes))
+    }
+}
 
 /// Bitcoin block hash
-pub type BitcoinBlockHash = Vec<u8>;
-/// Stacks block hash
-pub type StacksBlockHash = Vec<u8>;
-/// Bitcoin transaction ID
-pub type BitcoinTxId = Vec<u8>;
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BitcoinBlockHash(pub bitcoin::BlockHash);
+
+impl Deref for BitcoinBlockHash {
+    type Target = bitcoin::BlockHash;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<bitcoin::BlockHash> for BitcoinBlockHash {
+    fn from(value: bitcoin::BlockHash) -> Self {
+        Self(value)
+    }
+}
+
+impl From<[u8; 32]> for BitcoinBlockHash {
+    fn from(bytes: [u8; 32]) -> Self {
+        Self(bitcoin::BlockHash::from_byte_array(bytes))
+    }
+}
+
+/// The stacks block Id. This is different from the block header hash.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct StacksBlockHash(pub StacksBlockId);
+
+impl Deref for StacksBlockHash {
+    type Target = StacksBlockId;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<StacksBlockId> for StacksBlockHash {
+    fn from(value: StacksBlockId) -> Self {
+        Self(value)
+    }
+}
+
+impl From<[u8; 32]> for StacksBlockHash {
+    fn from(bytes: [u8; 32]) -> Self {
+        Self(StacksBlockId(bytes))
+    }
+}
+
 /// Stacks transaction ID
-pub type StacksTxId = Vec<u8>;
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct StacksTxId(pub blockstack_lib::burnchains::Txid);
+
+impl Deref for StacksTxId {
+    type Target = blockstack_lib::burnchains::Txid;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<blockstack_lib::burnchains::Txid> for StacksTxId {
+    fn from(value: blockstack_lib::burnchains::Txid) -> Self {
+        Self(value)
+    }
+}
+
+impl From<[u8; 32]> for StacksTxId {
+    fn from(bytes: [u8; 32]) -> Self {
+        Self(blockstack_lib::burnchains::Txid(bytes))
+    }
+}
+
 /// Arbitrary bytes
 pub type Bytes = Vec<u8>;
-/// Secp256k1 Pubkey in compressed form
-pub type PubKey = Vec<u8>;
 /// Bitcoin address
 pub type BitcoinAddress = String;
 /// Stacks address

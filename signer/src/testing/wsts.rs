@@ -11,6 +11,7 @@ use crate::storage;
 use crate::storage::model;
 use crate::wsts_state_machine;
 
+use fake::Fake;
 use wsts::state_machine::coordinator;
 use wsts::state_machine::coordinator::frost;
 
@@ -490,17 +491,17 @@ impl SignerSet {
             .expect("storage error")
             .expect("no stacks chain tip");
 
-        let txid: model::StacksTxId = (0..32).map(|_| rng.next_u32() as u8).collect();
+        let txid: model::StacksTxId = fake::Faker.fake_with_rng(rng);
         let stacks_transaction = model::StacksTransaction {
-            txid: txid.clone(),
-            block_hash: stacks_chain_tip.block_hash.clone(),
+            txid,
+            block_hash: stacks_chain_tip.block_hash,
         };
 
         let transaction = model::Transaction {
-            txid: txid.clone(),
+            txid: txid.to_bytes(),
             tx: Vec::new(),
             tx_type: model::TransactionType::RotateKeys,
-            block_hash: stacks_chain_tip.block_hash,
+            block_hash: stacks_chain_tip.block_hash.to_bytes(),
         };
 
         let rotate_keys_tx = model::RotateKeysTransaction {

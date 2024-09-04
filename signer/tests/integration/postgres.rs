@@ -552,9 +552,7 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
     let mut testing_signer_set =
         testing::wsts::SignerSet::new(&signer_info, threshold, || dummy_wsts_network.connect());
     let dkg_txid = testing::dummy::txid(&fake::Faker, &mut rng);
-    let bitcoin_chain_tip = bitcoin::BlockHash::from_byte_array(
-        chain_tip.clone().try_into().expect("conversion failed"),
-    );
+    let bitcoin_chain_tip = chain_tip.0;
     let (aggregate_key, _) = testing_signer_set
         .run_dkg(bitcoin_chain_tip, dkg_txid, &mut rng)
         .await;
@@ -653,13 +651,13 @@ async fn writing_transactions_postgres() {
     let block_hash = bitcoin::BlockHash::from_byte_array([1; 32]);
 
     txs.iter_mut().for_each(|tx| {
-        tx.block_hash = block_hash.to_byte_array().to_vec();
+        tx.block_hash = block_hash.to_byte_array();
     });
 
     let db_block = model::BitcoinBlock {
-        block_hash: block_hash.to_byte_array().to_vec(),
+        block_hash: block_hash.into(),
         block_height: 15,
-        parent_hash: parent_hash.to_byte_array().to_vec(),
+        parent_hash: parent_hash.into(),
         confirms: Vec::new(),
     };
 

@@ -514,10 +514,7 @@ where
     ) -> Result<(), error::Error> {
         let msg = msg
             .into()
-            .to_message(
-                bitcoin::BlockHash::from_slice(bitcoin_chain_tip)
-                    .map_err(error::Error::SliceConversion)?,
-            )
+            .to_message(bitcoin_chain_tip.0)
             .sign_ecdsa(&self.private_key)?;
 
         self.network.broadcast(msg).await?;
@@ -545,7 +542,7 @@ pub fn coordinator_public_key(
     signer_public_keys: &BTreeSet<PublicKey>,
 ) -> Result<Option<PublicKey>, error::Error> {
     let mut hasher = sha2::Sha256::new();
-    hasher.update(bitcoin_chain_tip);
+    hasher.update(bitcoin_chain_tip.as_byte_array());
     let digest = hasher.finalize();
     let index = usize::from_be_bytes(*digest.first_chunk().ok_or(error::Error::TypeConversion)?);
 

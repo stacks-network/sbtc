@@ -16,6 +16,7 @@ use rand::Rng;
 use secp256k1::ecdsa::RecoverableSignature;
 use stacks_common::address::C32_ADDRESS_VERSION_TESTNET_SINGLESIG;
 use stacks_common::types::chainstate::StacksAddress;
+use stacks_common::types::chainstate::StacksBlockId;
 use stacks_common::util::hash::Hash160;
 
 use crate::keys::PrivateKey;
@@ -28,6 +29,10 @@ use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
 
 use crate::codec::Encode;
+use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::BitcoinTxId;
+use crate::storage::model::StacksBlockHash;
+use crate::storage::model::StacksTxId;
 
 /// Dummy block
 pub fn block<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> bitcoin::Block {
@@ -261,7 +266,7 @@ impl fake::Dummy<fake::Faker> for WithdrawalAcceptEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let bitmap = rng.next_u64() as u128;
         WithdrawalAcceptEvent {
-            txid: StacksTxid(config.fake_with_rng(rng)),
+            txid: blockstack_lib::burnchains::Txid(config.fake_with_rng(rng)),
             request_id: rng.next_u32() as u64,
             signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
             outpoint: OutPoint {
@@ -277,7 +282,7 @@ impl fake::Dummy<fake::Faker> for WithdrawalRejectEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let bitmap = rng.next_u64() as u128;
         WithdrawalRejectEvent {
-            txid: StacksTxid(config.fake_with_rng(rng)),
+            txid: blockstack_lib::burnchains::Txid(config.fake_with_rng(rng)),
             request_id: rng.next_u32() as u64,
             signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
         }
@@ -306,12 +311,36 @@ impl fake::Dummy<fake::Faker> for WithdrawalCreateEvent {
 impl fake::Dummy<fake::Faker> for CompletedDepositEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         CompletedDepositEvent {
-            txid: StacksTxid(config.fake_with_rng(rng)),
+            txid: blockstack_lib::burnchains::Txid(config.fake_with_rng(rng)),
             outpoint: OutPoint {
                 txid: txid(config, rng),
                 vout: rng.next_u32(),
             },
             amount: rng.next_u32() as u64,
         }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for BitcoinTxId {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        BitcoinTxId(txid(config, rng))
+    }
+}
+
+impl fake::Dummy<fake::Faker> for BitcoinBlockHash {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        BitcoinBlockHash(block_hash(config, rng))
+    }
+}
+
+impl fake::Dummy<fake::Faker> for StacksBlockHash {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        StacksBlockHash(StacksBlockId(config.fake_with_rng(rng)))
+    }
+}
+
+impl fake::Dummy<fake::Faker> for StacksTxId {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        StacksTxId(blockstack_lib::burnchains::Txid(config.fake_with_rng(rng)))
     }
 }
