@@ -103,7 +103,7 @@ mod tests {
     /// respectively, of the `complete_deposit_wrapper_tx_accepted`
     /// integration test.
     const COMPLETED_DEPOSIT_WEBHOOK: &str =
-        include_str!("../../tests/fixtures/complete-deposit-event.json");
+        include_str!("../../tests/fixtures/completed-deposit-event.json");
 
     const WITHDRAWAL_ACCEPT_WEBHOOK: &str =
         include_str!("../../tests/fixtures/withdrawal-accept-event.json");
@@ -130,7 +130,7 @@ mod tests {
 
         // Hey look, there is nothing here!
         let db = api.db.lock().await;
-        assert!(table_is_empty(db));        
+        assert!(table_is_empty(db));
 
         let state = State(api.clone());
         let body = body_str.to_string();
