@@ -10,6 +10,7 @@ pub mod wallet;
 pub mod wsts;
 
 use crate::bitcoin::utxo::UnsignedTransaction;
+use crate::config::Settings;
 use bitcoin::key::TapTweak;
 use bitcoin::opcodes;
 use bitcoin::ScriptBuf;
@@ -20,6 +21,14 @@ use secp256k1::SECP256K1;
 
 /// The path for the configuration file that we should use during testing.
 pub const DEFAULT_CONFIG_PATH: Option<&str> = Some("./src/config/default");
+
+impl Settings {
+    /// Create a new `Settings` instance from the default configuration file.
+    /// This is useful for testing.
+    pub fn new_from_default_config() -> Result<Self, config::ConfigError> {
+        Self::new(DEFAULT_CONFIG_PATH)
+    }
+}
 
 /// A helper function for correctly setting witness data
 pub fn set_witness_data(unsigned: &mut UnsignedTransaction, keypair: secp256k1::Keypair) {

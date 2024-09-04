@@ -73,6 +73,16 @@ pub struct Settings {
     pub block_notifier: BlockNotifierConfig,
     /// Signer-specific configuration
     pub signer: SignerConfig,
+    /// Bitcoin core configuration
+    pub bitcoin: BitcoinConfig,
+}
+
+/// Configuration used for the [`BitcoinCoreClient`](sbtc::rpc::BitcoinCoreClient).
+#[derive(Deserialize, Clone, Debug)]
+pub struct BitcoinConfig {
+    /// Bitcoin RPC endpoints.
+    #[serde(deserialize_with = "url_deserializer_vec")]
+    pub endpoints: Vec<url::Url>,
 }
 
 /// Signer network configuration
@@ -261,12 +271,16 @@ impl Settings {
             .with_list_parse_key("signer.p2p.seeds")
             .with_list_parse_key("signer.p2p.listen_on")
             .with_list_parse_key("signer.p2p.public_endpoints")
+            .with_list_parse_key("bitcoin.endpoints")
             .prefix_separator("_");
+
         let mut cfg_builder = Config::builder();
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
         }
-        let cfg = cfg_builder.add_source(env).build()?;
+        cfg_builder = cfg_builder.add_source(env);
+
+        let cfg = cfg_builder.build()?;
 
         let settings: Settings = cfg.try_deserialize()?;
 
@@ -382,8 +396,6 @@ mod tests {
 
     use super::*;
 
-    use crate::testing::DEFAULT_CONFIG_PATH;
-
     /// Helper function to quickly create a URL from a string in tests.
     fn url(s: &str) -> url::Url {
         s.parse().unwrap()
@@ -397,14 +409,16 @@ mod tests {
     // !! default.toml file are changed.
     #[test]
     fn default_config_toml_loads() {
-        let settings = Settings::new(DEFAULT_CONFIG_PATH).unwrap();
+        let settings = Settings::new_from_default_config().unwrap();
         assert_eq!(settings.blocklist_client.host, "127.0.0.1");
         assert_eq!(settings.blocklist_client.port, 8080);
+
         assert_eq!(settings.block_notifier.server, "tcp://localhost:60401");
         assert_eq!(settings.block_notifier.retry_interval, 10);
         assert_eq!(settings.block_notifier.max_retry_attempts, 5);
         assert_eq!(settings.block_notifier.ping_interval, 60);
         assert_eq!(settings.block_notifier.subscribe_interval, 10);
+
         assert_eq!(
             settings.signer.private_key,
             PrivateKey::from_str(
@@ -412,12 +426,20 @@ mod tests {
             )
             .unwrap()
         );
+        assert_eq!(settings.signer.network, NetworkKind::Regtest);
+
         assert_eq!(settings.signer.p2p.seeds, vec![]);
         assert_eq!(
             settings.signer.p2p.listen_on,
             vec![url("tcp://0.0.0.0:4122"), url("quic-v1://0.0.0.0:4122")]
         );
-        assert_eq!(settings.signer.network, NetworkKind::Regtest);
+
+        assert_eq!(
+            settings.bitcoin.endpoints,
+            vec![url("http://user:pass@localhost:18443")]
+        );
+        assert_eq!(settings.bitcoin.endpoints[0].username(), "user");
+        assert_eq!(settings.bitcoin.endpoints[0].password(), Some("pass"));
         assert_eq!(
             settings.signer.event_observer.bind,
             "0.0.0.0:8801".parse::<SocketAddr>().unwrap()
@@ -432,7 +454,7 @@ mod tests {
         );
         std::env::set_var("SIGNER_SIGNER__P2P__LISTEN_ON", "tcp://1.2.3.4:1234");
 
-        let settings = Settings::new(DEFAULT_CONFIG_PATH).unwrap();
+        let settings = Settings::new_from_default_config().unwrap();
 
         assert_eq!(
             settings.signer.p2p.seeds,
@@ -445,11 +467,32 @@ mod tests {
     }
 
     #[test]
+    fn default_config_toml_loads_bitcoin_config_with_environment() {
+        std::env::set_var(
+            "SIGNER_BITCOIN__ENDPOINTS",
+            "http://user:pass@localhost:1234,http://foo:bar@localhost:5678",
+        );
+
+        let settings = Settings::new_from_default_config().unwrap();
+
+        dbg!(settings.bitcoin.endpoints.clone());
+        assert!(settings.bitcoin.endpoints.len() == 2);
+        assert!(settings
+            .bitcoin
+            .endpoints
+            .contains(&url("http://user:pass@localhost:1234")));
+        assert!(settings
+            .bitcoin
+            .endpoints
+            .contains(&url("http://foo:bar@localhost:5678")));
+    }
+
+    #[test]
     fn default_config_toml_loads_signer_private_key_config_with_environment() {
         let new = "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd";
         std::env::set_var("SIGNER_SIGNER__PRIVATE_KEY", new);
 
-        let settings = Settings::new(DEFAULT_CONFIG_PATH).unwrap();
+        let settings = Settings::new_from_default_config().unwrap();
 
         assert_eq!(
             settings.signer.private_key,
@@ -462,13 +505,13 @@ mod tests {
         let new = "testnet";
         std::env::set_var("SIGNER_SIGNER__NETWORK", new);
 
-        let settings = Settings::new(DEFAULT_CONFIG_PATH).unwrap();
+        let settings = Settings::new_from_default_config().unwrap();
         assert_eq!(settings.signer.network, NetworkKind::Testnet);
 
         let new = "regtest";
         std::env::set_var("SIGNER_SIGNER__NETWORK", new);
 
-        let settings = Settings::new(DEFAULT_CONFIG_PATH).unwrap();
+        let settings = Settings::new_from_default_config().unwrap();
         assert_eq!(settings.signer.network, NetworkKind::Regtest);
     }
 
@@ -513,7 +556,7 @@ mod tests {
     fn invalid_private_key_length_returns_correct_error() {
         std::env::set_var("SIGNER_SIGNER__PRIVATE_KEY", "1234");
 
-        let settings = Settings::new(DEFAULT_CONFIG_PATH);
+        let settings = Settings::new_from_default_config();
         assert!(settings.is_err());
         assert!(matches!(
             settings.unwrap_err(),
@@ -553,7 +596,7 @@ mod tests {
         );
         let hex_err = hex::decode("zz").unwrap_err();
 
-        let settings = Settings::new(DEFAULT_CONFIG_PATH);
+        let settings = Settings::new_from_default_config();
         assert!(settings.is_err());
         assert!(matches!(
             settings.unwrap_err(),
