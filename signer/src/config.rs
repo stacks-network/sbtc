@@ -69,7 +69,7 @@ pub struct Settings {
 #[derive(Deserialize, Clone, Debug)]
 pub struct BitcoinConfig {
     /// Bitcoin RPC endpoints.
-    #[serde(deserialize_with = "url_deserializer")]
+    #[serde(deserialize_with = "url_deserializer_vec")]
     pub endpoints: Vec<url::Url>,
 }
 
