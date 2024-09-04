@@ -14,6 +14,18 @@ pub const DEFAULT_P2P_HOST: &str = "0.0.0.0";
 /// The default signer network listen-on port.
 pub const DEFAULT_P2P_PORT: u16 = 4122;
 
+/// Configuration error variants.
+#[derive(Debug, thiserror::Error)]
+pub enum SignerConfigError {
+    /// Invalid Stacks private key length
+    #[error("The Stacks private key provided is invalid, it must be either 64 or 66 hex characters long, got {0}")]
+    InvalidStacksPrivateKeyLength(usize),
+
+    /// Invalid Stacks private key compression byte marker
+    #[error("The Stacks private key provided contains an invalid compression byte marker: {0}")]
+    InvalidStacksPrivateKeyCompressionByte(String),
+}
+
 /// Trait for validating configuration values.
 trait Validatable {
     /// Validate the configuration values.
@@ -333,14 +345,6 @@ where
     Ok(v)
 }
 
-/// Format an error message for an invalid private key length.
-fn format_invalid_private_key_length_msg(len: usize) -> String {
-    format!(
-        "Invalid Stacks private key length (got {}, expected 64 or 66)",
-        len
-    )
-}
-
 /// A deserializer for the [`PrivateKey`] type. Returns an error if the private
 /// key is not valid hex or is not the correct length.
 fn private_key_deserializer<'de, D>(deserializer: D) -> Result<PrivateKey, D::Error>
@@ -348,12 +352,18 @@ where
     D: Deserializer<'de>,
 {
     let s = String::deserialize(deserializer)?;
-    if [64, 65].contains(&s.len()) {
-        PrivateKey::from_str(&s[..64]).map_err(serde::de::Error::custom)
-    } else {
+    let len = s.len();
+
+    if ![64, 66].contains(&len) {
         Err(serde::de::Error::custom(
-            format_invalid_private_key_length_msg(s.len()),
+            SignerConfigError::InvalidStacksPrivateKeyLength(len),
         ))
+    } else if len == 66 && &s[64..] != "01" {
+        Err(serde::de::Error::custom(
+            SignerConfigError::InvalidStacksPrivateKeyCompressionByte(s[64..].to_string()),
+        ))
+    } else {
+        PrivateKey::from_str(&s[..64]).map_err(serde::de::Error::custom)
     }
 }
 
@@ -492,8 +502,32 @@ mod tests {
         assert!(settings.is_err());
         assert!(matches!(
             settings.unwrap_err(),
-            ConfigError::Message(msg) if msg == format_invalid_private_key_length_msg(4)
+            ConfigError::Message(msg) if msg == SignerConfigError::InvalidStacksPrivateKeyLength(4).to_string()
         ));
+    }
+
+    #[test]
+    fn invalid_private_key_compression_byte_marker_returns_correct_error() {
+        std::env::set_var(
+            "SIGNER_SIGNER__PRIVATE_KEY",
+            "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd02",
+        );
+        let settings = Settings::new(DEFAULT_CONFIG_PATH);
+        assert!(settings.is_err());
+        assert!(matches!(
+            settings.unwrap_err(),
+            ConfigError::Message(msg) if msg == SignerConfigError::InvalidStacksPrivateKeyCompressionByte("02".to_string()).to_string()
+        ));
+    }
+
+    #[test]
+    fn valid_33_byte_private_key_works() {
+        std::env::set_var(
+            "SIGNER_SIGNER__PRIVATE_KEY",
+            "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd01",
+        );
+        let settings = Settings::new(DEFAULT_CONFIG_PATH);
+        assert!(settings.is_ok());
     }
 
     #[test]
