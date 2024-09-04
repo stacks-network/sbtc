@@ -280,6 +280,7 @@ where
         Ok(())
     }
 
+    /// Find out the status of the given chain tip
     #[tracing::instrument(skip(self))]
     async fn inspect_msg_chain_tip(
         &mut self,
@@ -747,16 +748,24 @@ where
     }
 }
 
+/// Relevant information for validating incoming messages
+/// relating to a particular chain tip.
 #[derive(Debug, Clone, Copy)]
 struct MsgChainTipReport {
+    /// Whether the sender of the incoming message is the coordinator for this chain tip.
     sender_is_coordinator: bool,
+    /// The status of the chain tip relative to the signers perspective.
     chain_tip_status: ChainTipStatus,
 }
 
+/// The status of a chain tip relative to the known blocks in the signer database.
 #[derive(Debug, Clone, Copy)]
 enum ChainTipStatus {
+    /// The chain tip is the tip of the canonical fork.
     Canonical,
+    /// The chain tip is for a known block, but is not the canonical chain tip.
     Known,
+    /// The chain tip belongs to a block that hasn't been seen yet.
     Unknown,
 }
 

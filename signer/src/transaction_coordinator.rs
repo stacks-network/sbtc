@@ -345,7 +345,7 @@ where
             let msg = self.network.receive().await?;
 
             if msg.bitcoin_chain_tip.as_byte_array() != bitcoin_chain_tip.as_slice() {
-                tracing::warn!(msg=?msg, "concurrent wsts signing round message observed");
+                tracing::warn!(?msg, "concurrent wsts signing round message observed");
                 continue;
             }
 
@@ -362,7 +362,7 @@ where
                 match coordinator_state_machine.process_message(&packet) {
                     Ok(val) => val,
                     Err(err) => {
-                        tracing::warn!(packet = ?packet, reason = %err, "ignoring packet");
+                        tracing::warn!(?packet, reason = %err, "ignoring packet");
                         continue;
                     }
                 };
