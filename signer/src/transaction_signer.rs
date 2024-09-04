@@ -592,7 +592,7 @@ where
             .await;
 
         let msg = message::SignerDepositDecision {
-            txid: deposit_request.txid.0,
+            txid: deposit_request.txid.into(),
             output_index: deposit_request.output_index,
             accepted: is_accepted,
         };

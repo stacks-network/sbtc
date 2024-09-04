@@ -339,7 +339,7 @@ impl DepositRequest {
         request: model::DepositRequest,
         signers_public_key: XOnlyPublicKey,
     ) -> Result<Self, Error> {
-        let txid = request.txid.0;
+        let txid = request.txid.into();
         let vout = request.output_index;
 
         let signer_bitmap = BitArray::ZERO; // TODO(326): Populate

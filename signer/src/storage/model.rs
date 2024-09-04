@@ -252,72 +252,77 @@ pub enum TransactionType {
 
 /// The bitcoin transaction ID
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BitcoinTxId(pub bitcoin::Txid);
+pub struct BitcoinTxId([u8; 32]);
 
-impl Deref for BitcoinTxId {
-    type Target = bitcoin::Txid;
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl BitcoinTxId {
+    /// Return the inner bytes for the block hash
+    pub fn into_bytes(&self) -> [u8; 32] {
+        self.0
     }
 }
 
 impl From<bitcoin::Txid> for BitcoinTxId {
     fn from(value: bitcoin::Txid) -> Self {
-        Self(value)
+        Self(value.to_byte_array())
+    }
+}
+
+impl From<BitcoinTxId> for bitcoin::Txid {
+    fn from(value: BitcoinTxId) -> Self {
+        bitcoin::Txid::from_byte_array(value.0)
     }
 }
 
 impl From<[u8; 32]> for BitcoinTxId {
     fn from(bytes: [u8; 32]) -> Self {
-        Self(bitcoin::Txid::from_byte_array(bytes))
+        Self(bytes)
     }
 }
 
 /// Bitcoin block hash
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct BitcoinBlockHash(bitcoin::BlockHash);
+pub struct BitcoinBlockHash([u8; 32]);
 
-impl Deref for BitcoinBlockHash {
-    type Target = bitcoin::BlockHash;
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl BitcoinBlockHash {
+    /// Return the inner bytes for the block hash
+    pub fn into_bytes(&self) -> [u8; 32] {
+        self.0
     }
 }
 
 impl AsRef<[u8; 32]> for BitcoinBlockHash {
     fn as_ref(&self) -> &[u8; 32] {
-        self.0.as_ref()   
+        &self.0
     }
 }
 
 impl From<bitcoin::BlockHash> for BitcoinBlockHash {
     fn from(value: bitcoin::BlockHash) -> Self {
-        Self(value)
+        Self(value.to_byte_array())
     }
 }
 
 impl From<&BitcoinBlockHash> for bitcoin::BlockHash {
     fn from(value: &BitcoinBlockHash) -> Self {
-        value.0
+        bitcoin::BlockHash::from_byte_array(value.0)
     }
 }
 
-
 impl From<BitcoinBlockHash> for bitcoin::BlockHash {
     fn from(value: BitcoinBlockHash) -> Self {
-        value.0
+        bitcoin::BlockHash::from_byte_array(value.0)
     }
 }
 
 impl From<[u8; 32]> for BitcoinBlockHash {
     fn from(bytes: [u8; 32]) -> Self {
-        Self(bitcoin::BlockHash::from_byte_array(bytes))
+        Self(bytes)
     }
 }
 
 /// The stacks block Id. This is different from the block header hash.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct StacksBlockHash(pub StacksBlockId);
+pub struct StacksBlockHash(StacksBlockId);
 
 impl Deref for StacksBlockHash {
     type Target = StacksBlockId;
@@ -340,7 +345,7 @@ impl From<[u8; 32]> for StacksBlockHash {
 
 /// Stacks transaction ID
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct StacksTxId(pub blockstack_lib::burnchains::Txid);
+pub struct StacksTxId(blockstack_lib::burnchains::Txid);
 
 impl Deref for StacksTxId {
     type Target = blockstack_lib::burnchains::Txid;

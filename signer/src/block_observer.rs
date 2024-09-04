@@ -522,7 +522,7 @@ mod tests {
             .unwrap();
         let storage = block_observer.storage.lock().await;
         assert_eq!(storage.deposit_requests.len(), 1);
-        let db_outpoint = (BitcoinTxId(tx_setup0.tx.compute_txid()), 0);
+        let db_outpoint = (BitcoinTxId::from(tx_setup0.tx.compute_txid()), 0);
         assert!(storage.deposit_requests.get(&db_outpoint).is_some());
 
         // Now the deposit_requests thing should be empty now, since we stored the things.
@@ -627,7 +627,7 @@ mod tests {
         // Is our one transaction stored? This block hash should now have
         // only one transaction with the expected txid.
         let tx_ids = stored_transactions.unwrap();
-        let expected_tx_id = BitcoinTxId(tx_setup0.tx.compute_txid());
+        let expected_tx_id = BitcoinTxId::from(tx_setup0.tx.compute_txid());
         assert_eq!(tx_ids.len(), 1);
         assert_eq!(tx_ids[0], expected_tx_id);
     }
@@ -750,14 +750,6 @@ mod tests {
             &mut self,
             _tx: &bitcoin::Transaction,
         ) -> Result<(), Self::Error> {
-            unimplemented!()
-        }
-
-        async fn tx_on_active_chain(
-            &self,
-            _: &bitcoin::Txid,
-            _: &[bitcoin::BlockHash],
-        ) -> Result<bool, Self::Error> {
             unimplemented!()
         }
     }

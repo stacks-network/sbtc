@@ -3,11 +3,9 @@
 //!
 //!
 
-use bitcoin::hashes::Hash as _;
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
 use sqlx::postgres::PgArgumentBuffer;
-use stacks_common::types::chainstate::StacksBlockId;
 
 use crate::keys::PublicKey;
 use crate::storage::model::BitcoinBlockHash;
@@ -32,8 +30,8 @@ impl sqlx::Type<sqlx::Postgres> for BitcoinBlockHash {
 
 impl<'r> sqlx::Encode<'r, sqlx::Postgres> for BitcoinBlockHash {
     fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> Result<IsNull, BoxDynError> {
-        let bytes = self.to_byte_array();
-        <[u8; 32] as sqlx::Encode<'r, sqlx::Postgres>>::encode_by_ref(&bytes, buf)
+        let bytes = self.as_ref();
+        <[u8; 32] as sqlx::Encode<'r, sqlx::Postgres>>::encode_by_ref(bytes, buf)
     }
 }
 
@@ -48,7 +46,7 @@ impl sqlx::postgres::PgHasArrayType for BitcoinBlockHash {
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for BitcoinTxId {
     fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
         let bytes = <[u8; 32] as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
-        Ok(BitcoinTxId(bitcoin::Txid::from_byte_array(bytes)))
+        Ok(BitcoinTxId::from(bytes))
     }
 }
 
@@ -60,7 +58,7 @@ impl sqlx::Type<sqlx::Postgres> for BitcoinTxId {
 
 impl<'r> sqlx::Encode<'r, sqlx::Postgres> for BitcoinTxId {
     fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> Result<IsNull, BoxDynError> {
-        let bytes = self.0.to_byte_array();
+        let bytes = self.into_bytes();
         <[u8; 32] as sqlx::Encode<'r, sqlx::Postgres>>::encode_by_ref(&bytes, buf)
     }
 }
@@ -106,7 +104,7 @@ impl sqlx::postgres::PgHasArrayType for PublicKey {
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for StacksBlockHash {
     fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
         let bytes = <[u8; 32] as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
-        Ok(StacksBlockHash(StacksBlockId(bytes)))
+        Ok(StacksBlockHash::from(bytes))
     }
 }
 
@@ -133,7 +131,7 @@ impl sqlx::postgres::PgHasArrayType for StacksBlockHash {
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for StacksTxId {
     fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
         let bytes = <[u8; 32] as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
-        Ok(StacksTxId(blockstack_lib::burnchains::Txid(bytes)))
+        Ok(StacksTxId::from(bytes))
     }
 }
 

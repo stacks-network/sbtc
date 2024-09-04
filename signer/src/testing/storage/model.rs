@@ -277,7 +277,7 @@ impl DepositData {
                 .collect();
 
             let mut raw_transaction: model::Transaction = fake::Faker.fake_with_rng(rng);
-            raw_transaction.txid = deposit_request.txid.to_byte_array();
+            raw_transaction.txid = deposit_request.txid.into_bytes();
             raw_transaction.tx_type = model::TransactionType::DepositRequest;
 
             let bitcoin_transaction = model::BitcoinTransaction {

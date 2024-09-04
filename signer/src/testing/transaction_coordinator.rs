@@ -11,7 +11,6 @@ use crate::storage::model;
 use crate::testing;
 use crate::transaction_coordinator;
 
-use bitcoin::hashes::Hash as _;
 use rand::SeedableRng as _;
 use sha2::Digest as _;
 
@@ -267,7 +266,7 @@ where
         signer_info: &[testing::wsts::SignerInfo],
     ) -> keys::PrivateKey {
         let mut hasher = sha2::Sha256::new();
-        hasher.update(bitcoin_chain_tip.as_byte_array());
+        hasher.update(bitcoin_chain_tip.into_bytes());
         let digest = hasher.finalize();
         let index = usize::from_be_bytes(*digest.first_chunk().expect("unexpected digest size"));
         signer_info
