@@ -225,19 +225,18 @@ where
         let test_data = self.generate_test_data(rng);
         Self::write_test_data(&test_data, storage).await;
 
-        let chain_tip = storage
+        let bitcoin_chain_tip = storage
             .get_bitcoin_canonical_chain_tip()
             .await
             .expect("storage error")
             .expect("no chain tip");
 
         let dkg_txid = testing::dummy::txid(&fake::Faker, rng);
-        let bitcoin_chain_tip = chain_tip.into();
         let (aggregate_key, all_dkg_shares) =
             signer_set.run_dkg(bitcoin_chain_tip, dkg_txid, rng).await;
 
         signer_set
-            .write_as_rotate_keys_tx(storage, &chain_tip, aggregate_key, rng)
+            .write_as_rotate_keys_tx(storage, &bitcoin_chain_tip, aggregate_key, rng)
             .await;
 
         let encrypted_dkg_shares = all_dkg_shares.first().unwrap();
@@ -247,7 +246,7 @@ where
             .await
             .expect("failed to write encrypted shares");
 
-        (aggregate_key, chain_tip)
+        (aggregate_key, bitcoin_chain_tip)
     }
 
     async fn write_test_data(test_data: &testing::storage::model::TestData, storage: &mut S) {

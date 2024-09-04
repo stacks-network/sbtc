@@ -331,7 +331,7 @@ where
         let test_data = self.generate_test_data(&mut rng);
         Self::write_test_data(&test_data, &mut handle.storage).await;
 
-        let chain_tip = handle
+        let bitcoin_chain_tip = handle
             .storage
             .get_bitcoin_canonical_chain_tip()
             .await
@@ -339,7 +339,7 @@ where
             .expect("no chain tip");
 
         let coordinator_public_key = transaction_coordinator::coordinator_public_key(
-            &chain_tip,
+            &bitcoin_chain_tip,
             &signer_info.first().unwrap().signer_public_keys,
         )
         .expect("failed to compute coordinator public key")
@@ -361,7 +361,7 @@ where
 
         run_dkg_and_store_results_for_signers(
             &signer_info,
-            &chain_tip,
+            &bitcoin_chain_tip,
             self.signing_threshold,
             [&mut handle.storage],
             &mut rng,
@@ -375,7 +375,7 @@ where
         network_handle
             .broadcast(
                 transaction_sign_request_payload
-                    .to_message(chain_tip.into())
+                    .to_message(bitcoin_chain_tip)
                     .sign_ecdsa(&coordinator_private_key)
                     .expect("failed to sign"),
             )
@@ -446,8 +446,6 @@ where
             &mut rng,
         )
         .await;
-
-        let bitcoin_chain_tip = bitcoin_chain_tip.into();
 
         let dummy_txid = testing::dummy::txid(&fake::Faker, &mut rng);
 
@@ -532,8 +530,6 @@ where
             })
             .unwrap()
             .clone();
-
-        let bitcoin_chain_tip = bitcoin_chain_tip.into();
 
         let dummy_txid = testing::dummy::txid(&fake::Faker, &mut rng);
 

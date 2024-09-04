@@ -223,10 +223,9 @@ where
         }
 
         // TODO(297): Validate the chain tip against database
-        let bitcoin_chain_tip = model::BitcoinBlockHash::from(msg.bitcoin_chain_tip);
 
         let chain_tip_report = self
-            .inspect_msg_chain_tip(msg.signer_pub_key, &bitcoin_chain_tip)
+            .inspect_msg_chain_tip(msg.signer_pub_key, &msg.bitcoin_chain_tip)
             .await?;
 
         match (
@@ -258,12 +257,12 @@ where
                 true,
                 ChainTipStatus::Canonical,
             ) => {
-                self.handle_bitcoin_transaction_sign_request(request, &bitcoin_chain_tip)
+                self.handle_bitcoin_transaction_sign_request(request, &msg.bitcoin_chain_tip)
                     .await?;
             }
 
             (message::Payload::WstsMessage(wsts_msg), _, _) => {
-                self.handle_wsts_message(wsts_msg, &bitcoin_chain_tip)
+                self.handle_wsts_message(wsts_msg, &msg.bitcoin_chain_tip)
                     .await?;
             }
 
@@ -273,7 +272,7 @@ where
 
             // Any other combination should be logged
             _ => {
-                tracing::warn!(msg = ?msg, chain_tip_report = ?chain_tip_report, "unexpected message");
+                tracing::warn!(?msg, ?chain_tip_report, "unexpected message");
             }
         };
 
