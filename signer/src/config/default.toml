@@ -40,14 +40,24 @@ endpoints = ["http://localhost:20443"]
 nakamoto_start_height = 31
 
 # !! ==============================================================================
-# !! Signer Stacks Account Configuration
+# !! Signer Configuration
 # !! ==============================================================================
-[signer.stacks_account]
-# The private key associated with the provided Stacks address.
+[signer]
+# The private key associated with the signer. This is used to generate the
+# signers associated public key and sign messages to other signers.
 #
 # Required: true
 private_key = "8183dc385a7a1fc8353b9e781ee0859a71e57abea478a5bca679334094f7adb5"
-
+# Specifies which network to use when constructing and sending transactions
+# on stacks and bitcoin. This cooresponds to the `chain` flag in the
+# bitcoin.conf file of the connected bitcoin-core node, and the
+# `burnchain.mode` flag int he config.toml of the connected stacks-core
+# node.
+#
+# Required: true
+# Possible values: mainnet, testnet, regtest
+# Environment: SIGNER_SIGNER__NETWORK
+network = "regtest"
 # !! ==============================================================================
 # !! Signer P2P Networking Configuration
 # !! ==============================================================================

@@ -1,16 +1,30 @@
 //! Utilities for generating dummy values on external types
 
 use std::collections::BTreeMap;
+use std::ops::Range;
 
 use bitcoin::hashes::Hash as _;
+use bitcoin::Address;
+use bitcoin::Network;
+use bitcoin::OutPoint;
+use bitvec::array::BitArray;
+use blockstack_lib::burnchains::Txid as StacksTxid;
 use blockstack_lib::chainstate::{nakamoto, stacks};
 use fake::Fake;
+use rand::seq::IteratorRandom as _;
 use rand::Rng;
 use secp256k1::ecdsa::RecoverableSignature;
+use stacks_common::address::C32_ADDRESS_VERSION_TESTNET_SINGLESIG;
+use stacks_common::types::chainstate::StacksAddress;
+use stacks_common::util::hash::Hash160;
 
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::keys::SignerScriptPubKey as _;
+use crate::stacks::events::CompletedDepositEvent;
+use crate::stacks::events::WithdrawalAcceptEvent;
+use crate::stacks::events::WithdrawalCreateEvent;
+use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
 
 use crate::codec::Encode;
@@ -224,4 +238,80 @@ fn coinbase_tx<R: rand::RngCore + ?Sized>(
     coinbase_tx.input = vec![coinbase_input];
 
     coinbase_tx
+}
+
+/// Used to for fine-grained control of generating fake testing addresses.
+#[derive(Debug)]
+pub struct BitcoinAddresses(pub Range<usize>);
+
+impl fake::Dummy<BitcoinAddresses> for Vec<String> {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &BitcoinAddresses, rng: &mut R) -> Self {
+        let num_addresses = config.0.clone().choose(rng).unwrap_or(1);
+        std::iter::repeat_with(|| secp256k1::Keypair::new_global(rng))
+            .take(num_addresses)
+            .map(|kp| {
+                let pk = bitcoin::CompressedPublicKey(kp.public_key());
+                Address::p2wpkh(&pk, Network::Regtest).to_string()
+            })
+            .collect()
+    }
+}
+
+impl fake::Dummy<fake::Faker> for WithdrawalAcceptEvent {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let bitmap = rng.next_u64() as u128;
+        WithdrawalAcceptEvent {
+            txid: StacksTxid(config.fake_with_rng(rng)),
+            request_id: rng.next_u32() as u64,
+            signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
+            outpoint: OutPoint {
+                txid: txid(config, rng),
+                vout: rng.next_u32(),
+            },
+            fee: rng.next_u32() as u64,
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for WithdrawalRejectEvent {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let bitmap = rng.next_u64() as u128;
+        WithdrawalRejectEvent {
+            txid: StacksTxid(config.fake_with_rng(rng)),
+            request_id: rng.next_u32() as u64,
+            signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for WithdrawalCreateEvent {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let address_hash: [u8; 20] = config.fake_with_rng(rng);
+        let version = C32_ADDRESS_VERSION_TESTNET_SINGLESIG;
+        let kp = secp256k1::Keypair::new_global(rng);
+        let pk = bitcoin::CompressedPublicKey(kp.public_key());
+
+        WithdrawalCreateEvent {
+            txid: StacksTxid(config.fake_with_rng(rng)),
+            request_id: rng.next_u32() as u64,
+            amount: rng.next_u32() as u64,
+            sender: StacksAddress::new(version, Hash160(address_hash)).into(),
+            recipient: Address::p2wpkh(&pk, Network::Regtest),
+            max_fee: rng.next_u32() as u64,
+            block_height: rng.next_u32() as u64,
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for CompletedDepositEvent {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        CompletedDepositEvent {
+            txid: StacksTxid(config.fake_with_rng(rng)),
+            outpoint: OutPoint {
+                txid: txid(config, rng),
+                vout: rng.next_u32(),
+            },
+            amount: rng.next_u32() as u64,
+        }
+    }
 }

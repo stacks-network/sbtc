@@ -18,6 +18,10 @@ use signer::stacks::contracts::AsTxPayload as _;
 use signer::stacks::contracts::CompleteDepositV1;
 use signer::stacks::contracts::RejectWithdrawalV1;
 use signer::stacks::contracts::RotateKeysV1;
+use signer::stacks::events::CompletedDepositEvent;
+use signer::stacks::events::WithdrawalAcceptEvent;
+use signer::stacks::events::WithdrawalCreateEvent;
+use signer::stacks::events::WithdrawalRejectEvent;
 use signer::storage;
 use signer::storage::model;
 use signer::storage::DbRead;
@@ -700,5 +704,158 @@ async fn writing_transactions_postgres() {
 
     // let's see, who knows what will happen!
     assert_eq!(num_rows, count as usize);
+    signer::testing::storage::drop_db(store).await;
+}
+
+/// Here we test that we can store completed deposit events.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn writing_completed_deposit_requests_postgres() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = signer::testing::storage::new_test_database(db_num).await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let event: CompletedDepositEvent = fake::Faker.fake_with_rng(&mut rng);
+
+    // Let's see if we can write these rows to the database.
+    store.write_completed_deposit_event(&event).await.unwrap();
+    let mut db_event = sqlx::query_as::<_, ([u8; 32], i64, [u8; 32], i64)>(
+        r#"
+            SELECT txid
+                 , amount
+                 , bitcoin_txid
+                 , output_index
+            FROM sbtc_signer.completed_deposit_events"#,
+    )
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    // Did we only write one row
+    assert_eq!(db_event.len(), 1);
+
+    let (txid, amount, bitcoin_txid, vout) = db_event.pop().unwrap();
+
+    assert_eq!(txid, event.txid.0);
+    assert_eq!(amount as u64, event.amount);
+    assert_eq!(bitcoin_txid, event.outpoint.txid.to_byte_array());
+    assert_eq!(vout as u32, event.outpoint.vout);
+
+    signer::testing::storage::drop_db(store).await;
+}
+
+/// Here we test that we can store withdrawal-create events.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn writing_withdrawal_create_requests_postgres() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = signer::testing::storage::new_test_database(db_num).await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let event: WithdrawalCreateEvent = fake::Faker.fake_with_rng(&mut rng);
+
+    // Let's see if we can write these rows to the database.
+    store.write_withdrawal_create_event(&event).await.unwrap();
+    let mut db_event = sqlx::query_as::<_, ([u8; 32], i64, i64, String, String, i64, i64)>(
+        r#"
+            SELECT txid
+                 , request_id
+                 , amount
+                 , sender
+                 , recipient
+                 , max_fee
+                 , block_height
+            FROM sbtc_signer.withdrawal_create_events"#,
+    )
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    // Did we only write one row
+    assert_eq!(db_event.len(), 1);
+
+    let (txid, request_id, amount, sender, recipient, max_fee, block_height) =
+        db_event.pop().unwrap();
+
+    assert_eq!(txid, event.txid.0);
+    assert_eq!(request_id as u64, event.request_id);
+    assert_eq!(amount as u64, event.amount);
+    assert_eq!(sender, event.sender.to_string());
+    assert_eq!(recipient, event.recipient.to_string());
+    assert_eq!(max_fee as u64, event.max_fee);
+    assert_eq!(block_height as u64, event.block_height);
+
+    signer::testing::storage::drop_db(store).await;
+}
+
+/// Here we test that we can store withdrawal-accept events.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn writing_withdrawal_accept_requests_postgres() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = signer::testing::storage::new_test_database(db_num).await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let event: WithdrawalAcceptEvent = fake::Faker.fake_with_rng(&mut rng);
+
+    // Let's see if we can write these rows to the database.
+    store.write_withdrawal_accept_event(&event).await.unwrap();
+    let mut db_event = sqlx::query_as::<_, ([u8; 32], i64, [u8; 16], [u8; 32], i64, i64)>(
+        r#"
+            SELECT txid
+                 , request_id
+                 , signer_bitmap
+                 , bitcoin_txid
+                 , output_index
+                 , fee
+            FROM sbtc_signer.withdrawal_accept_events"#,
+    )
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    // Did we only write one row
+    assert_eq!(db_event.len(), 1);
+
+    let (txid, request_id, bitmap, bitcoin_txid, vout, fee) = db_event.pop().unwrap();
+
+    assert_eq!(txid, event.txid.0);
+    assert_eq!(request_id as u64, event.request_id);
+    assert_eq!(bitmap, event.signer_bitmap.into_inner());
+    assert_eq!(bitcoin_txid, event.outpoint.txid.to_byte_array());
+    assert_eq!(vout as u32, event.outpoint.vout);
+    assert_eq!(fee as u64, event.fee);
+
+    signer::testing::storage::drop_db(store).await;
+}
+
+/// Here we test that we can store withdrawal-reject events.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn writing_withdrawal_reject_requests_postgres() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = signer::testing::storage::new_test_database(db_num).await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let event: WithdrawalRejectEvent = fake::Faker.fake_with_rng(&mut rng);
+
+    // Let's see if we can write these rows to the database.
+    store.write_withdrawal_reject_event(&event).await.unwrap();
+    let mut db_event = sqlx::query_as::<_, ([u8; 32], i64, [u8; 16])>(
+        r#"
+            SELECT txid
+                 , request_id
+                 , signer_bitmap
+            FROM sbtc_signer.withdrawal_reject_events"#,
+    )
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    // Did we only write one row
+    assert_eq!(db_event.len(), 1);
+
+    let (txid, request_id, bitmap) = db_event.pop().unwrap();
+
+    assert_eq!(txid, event.txid.0);
+    assert_eq!(request_id as u64, event.request_id);
+    assert_eq!(bitmap, event.signer_bitmap.into_inner());
+
     signer::testing::storage::drop_db(store).await;
 }

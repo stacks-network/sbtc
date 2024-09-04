@@ -1,0 +1,259 @@
+{
+    "anchored_cost": {
+        "read_count": 116,
+        "read_length": 297369,
+        "runtime": 2373429,
+        "write_count": 23,
+        "write_length": 2596
+    },
+    "block_hash": "0x8618f550170be131d4ca877556590ca98e42652c6970f33bcb521ea5786f5efe",
+    "block_height": 301,
+    "burn_block_hash": "0x43031d81b936d345d622ebc6e8c0cb8c9524ef153723fdc3461d1df09b064a5f",
+    "burn_block_height": 140,
+    "burn_block_time": 1725050960,
+    "confirmed_microblocks_cost": {
+        "read_count": 0,
+        "read_length": 0,
+        "runtime": 0,
+        "write_count": 0,
+        "write_length": 0
+    },
+    "cycle_number": null,
+    "events": [
+        {
+            "committed": true,
+            "contract_event": {
+                "contract_identifier": "SN2V7WTJ7BHR03MPHZ1C9A9ZR6NZGR4WM8HT4V67Y.sbtc-registry",
+                "raw_value": "0x0c000000060c626974636f696e2d74786964020000002000000000000000000000000000000000000000000000000000000000000000000366656501000000000000000000000000000009c40c6f75747075742d696e64657801000000000000000000000000ffffffff0a726571756573742d696401000000000000000000000000000000010d7369676e65722d6269746d6170010000000000000000000000000000000005746f7069630d000000117769746864726177616c2d616363657074",
+                "topic": "print",
+                "value": {
+                    "Tuple": {
+                        "data_map": {
+                            "bitcoin-txid": {
+                                "Sequence": {
+                                    "Buffer": {
+                                        "data": [
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                }
+                            },
+                            "fee": {
+                                "UInt": 2500
+                            },
+                            "output-index": {
+                                "UInt": 4294967295
+                            },
+                            "request-id": {
+                                "UInt": 1
+                            },
+                            "signer-bitmap": {
+                                "UInt": 0
+                            },
+                            "topic": {
+                                "Sequence": {
+                                    "String": {
+                                        "ASCII": {
+                                            "data": [
+                                                119,
+                                                105,
+                                                116,
+                                                104,
+                                                100,
+                                                114,
+                                                97,
+                                                119,
+                                                97,
+                                                108,
+                                                45,
+                                                97,
+                                                99,
+                                                99,
+                                                101,
+                                                112,
+                                                116
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "type_signature": {
+                            "type_map": {
+                                "bitcoin-txid": {
+                                    "SequenceType": {
+                                        "BufferType": 32
+                                    }
+                                },
+                                "fee": "UIntType",
+                                "output-index": "UIntType",
+                                "request-id": "UIntType",
+                                "signer-bitmap": "UIntType",
+                                "topic": {
+                                    "SequenceType": {
+                                        "StringType": {
+                                            "ASCII": 17
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "event_index": 2,
+            "txid": "0x95a8cf1ed4aa559a0cd8b380174272c3629942a57eb1a2b9aa8281020c36359f",
+            "type": "contract_event"
+        }
+    ],
+    "index_block_hash": "0x0ce5807894c9da8cddcd7b00d15b916f067b1d53487ecc4cae98bc4b7e8fc253",
+    "matured_miner_rewards": [],
+    "miner_signature": "0x0093afff926e01f9474f0b4ead0584a7361ffbc13c41003759ebc599b50c9bf7cb04dfe085898fd84e09b41a6739b596c0187d91769ee3bb2d01676fc9525b9740",
+    "miner_txid": "0x1fbdea52de289061d9c8a0f67c11cc1f53d425cbbc36431a0e3e3659c8f4e599",
+    "parent_block_hash": "0xaa08e0912b07c67b60189b7ceec84dd87658f636309708af857dfdb27e005eb4",
+    "parent_burn_block_hash": "0x43031d81b936d345d622ebc6e8c0cb8c9524ef153723fdc3461d1df09b064a5f",
+    "parent_burn_block_height": 140,
+    "parent_burn_block_timestamp": 1725050960,
+    "parent_index_block_hash": "0x65ffcd8561039711f13f614863f8c4bb4dff17e4e05b0956a0700ae1ee9de69b",
+    "parent_microblock": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "parent_microblock_sequence": 0,
+    "pox_v1_unlock_height": 104,
+    "pox_v2_unlock_height": 106,
+    "pox_v3_unlock_height": 109,
+    "reward_set": null,
+    "signer_bitvec": "000800000001ff",
+    "signer_signature": [
+        "01b4e92ac4e34799b0c3fbc774dae424bb01595d2cbd148b6b7ae39a4404e406d61400fc1c43ffdfd627fd0a5dd950e4efe649dd4ef4277feebd7733ba9df59e1e",
+        "017b82d1f03d7ffdf99676c484e4029e407a0248f22fd87763e392df968eee74364ac3a3f396bc017d676fb88b8e9c528892d79500bc3b758a31084f4a2b902cc7",
+        "01f0ca5eaca73802ede91e4db6417eda37f7e37073f4c5255e4d3051b1f51190984d6cda9db1d1159071d0843aae19449c4d8f94ab93ac5c45f333c981b1ac2000"
+    ],
+    "signer_signature_hash": "0x8618f550170be131d4ca877556590ca98e42652c6970f33bcb521ea5786f5efe",
+    "transactions": [
+        {
+            "burnchain_op": null,
+            "contract_abi": null,
+            "execution_cost": {
+                "read_count": 38,
+                "read_length": 64075,
+                "runtime": 117077,
+                "write_count": 5,
+                "write_length": 22
+            },
+            "microblock_hash": null,
+            "microblock_parent_hash": null,
+            "microblock_sequence": null,
+            "raw_result": "0x0703",
+            "raw_tx": "0x80800000000405b67e6a475c7001d2d1f8589527f8357f0c1394440000000000000007000000000001e0780000000302019c215bfb9b37d6288b871f262204537105feca2c86cfeb62ebf9d752518379282efb37e8d7cc2e8877db08b0fffc80c9dfe162a0ff88a88a06c499486339cf5f0200ef9aceef6b34dbc1e04373be7e100f021ee613cb043f4b7fd1f38983b8c9cd134591fd90ec156386ccbd16fdf6457dc6f9c5008901b1ec8f2f2b54fa280e4fdd02011f712b16bde7ff16975b81ebb7efddb15e915cc03e3b9fb3cd17cc45de3ec92503881e35ecad84f39a266635445df8f07ed7561e80361b58976ad6a69e7f038b00020301000000000215b67e6a475c7001d2d1f8589527f8357f0c1394440f736274632d7769746864726177616c196163636570742d7769746864726177616c2d7265717565737400000005010000000000000000000000000000000102000000200000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000001000000000000000000000000ffffffff01000000000000000000000000000009c4",
+            "status": "success",
+            "tx_index": 0,
+            "txid": "0x95a8cf1ed4aa559a0cd8b380174272c3629942a57eb1a2b9aa8281020c36359f"
+        },
+        {
+            "burnchain_op": null,
+            "contract_abi": null,
+            "execution_cost": {
+                "read_count": 0,
+                "read_length": 0,
+                "runtime": 0,
+                "write_count": 0,
+                "write_length": 0
+            },
+            "microblock_hash": null,
+            "microblock_parent_hash": null,
+            "microblock_sequence": null,
+            "raw_result": "0x0703",
+            "raw_tx": "0x8080000000040062b0e91cc557e583c3d1f9dfe468ace76d2f03740000000000000059000000000000012c0001418e50f35a9f7c23703e4e87be252600c194bd5c71f019cf9dafc17983940d1315a935a571eee746342e85ee35d31e487c2caa3d05a675490f89ab871a677cf403020000000000051a93b082ee51d78faf5cc3d84a1c1591246c4965b000000000000003e800000000000000000000000000000000000000000000000000000000000000000000",
+            "status": "success",
+            "tx_index": 1,
+            "txid": "0x533338a40b0415af6178d5e1046758ee16184c95b9feddbd99a9d2f0af73af54"
+        },
+        {
+            "burnchain_op": null,
+            "contract_abi": null,
+            "execution_cost": {
+                "read_count": 26,
+                "read_length": 77724,
+                "runtime": 749762,
+                "write_count": 6,
+                "write_length": 858
+            },
+            "microblock_hash": null,
+            "microblock_parent_hash": null,
+            "microblock_sequence": null,
+            "raw_result": "0x070c0000000207737461636b6572051ad540a8a654c4c0f54f910212ff3b119cb2257bb812756e6c6f636b2d6275726e2d68656967687401000000000000000000000000000000b4",
+            "raw_tx": "0x80800000000400d540a8a654c4c0f54f910212ff3b119cb2257bb8000000000000000200000000000003f00001230c0fc3c762ea4b821773fe5fffc8770032a0ada3bd301a7282d1ca54f844b66676584776caf0ae5dde5c55a5890fee8aaa064911350c5d10623e95c1051cef030200000000021a000000000000000000000000000000000000000005706f782d340c737461636b2d657874656e640000000601000000000000000000000000000000010c00000002096861736862797465730200000014d540a8a654c4c0f54f910212ff3b119cb2257bb80776657273696f6e0200000001000a02000000415e2653caa4107d0bccf058aac617ac53895cbb0991ffdcf0d3e30dd772f454da4fc6cfc1d657b68ebbf3f77197fcd6a72f5263ac9e74cd98ebc9c095f3691f3f000200000021028efa20fa5706567008ebaf48f7ae891342eeb944d96392f719c505c89f84ed8d01ffffffffffffffffffffffffffffffff0100000000000000000000bd311381dcf2",
+            "status": "success",
+            "tx_index": 2,
+            "txid": "0xa7d4a0ac8327652bbb202eb2cac50dd893559b5b29ccf88f412022baa9005252"
+        },
+        {
+            "burnchain_op": null,
+            "contract_abi": null,
+            "execution_cost": {
+                "read_count": 26,
+                "read_length": 77785,
+                "runtime": 753295,
+                "write_count": 6,
+                "write_length": 858
+            },
+            "microblock_hash": null,
+            "microblock_parent_hash": null,
+            "microblock_sequence": null,
+            "raw_result": "0x070c0000000207737461636b6572051aecf08f87f8318a104a46ff8dbee72e761988d8eb12756e6c6f636b2d6275726e2d68656967687401000000000000000000000000000000b4",
+            "raw_tx": "0x80800000000400ecf08f87f8318a104a46ff8dbee72e761988d8eb000000000000000200000000000003ef0001072ed11244fa46abc35d767785a3dbc11d646fe0414b91774db1ac663541c0c62d8411dcee0850deaf788d2108cacf9697eaa430670f1ab49904d7fd09bab87f030200000000021a000000000000000000000000000000000000000005706f782d340c737461636b2d657874656e640000000601000000000000000000000000000000010c00000002096861736862797465730200000014ecf08f87f8318a104a46ff8dbee72e761988d8eb0776657273696f6e0200000001000a020000004137d28ab38c1507e63bdf6c98e6c6c5fee240efca183bc6040a9be7cd69340012638c0d205b87fa7ee5d6f1b494ea75927a8759a5fdb3d21c834b65a5fa89c0ad010200000021023f19d77c842b675bd8c858e9ac8b0ca2efa566f17accf8ef9ceb5a992dc6783601ffffffffffffffffffffffffffffffff0100000000000000000000c831e13cb1fc",
+            "status": "success",
+            "tx_index": 3,
+            "txid": "0x6e5f0ee83e5d5271629effdd3bdba9e49040a0b002489a841b7b7f71c1d5d5dd"
+        },
+        {
+            "burnchain_op": null,
+            "contract_abi": null,
+            "execution_cost": {
+                "read_count": 26,
+                "read_length": 77785,
+                "runtime": 753295,
+                "write_count": 6,
+                "write_length": 858
+            },
+            "microblock_hash": null,
+            "microblock_parent_hash": null,
+            "microblock_sequence": null,
+            "raw_result": "0x070c0000000207737461636b6572051aeabc65f3e890fb8bf20d153e95119c72d85765a912756e6c6f636b2d6275726e2d68656967687401000000000000000000000000000000b4",
+            "raw_tx": "0x80800000000400eabc65f3e890fb8bf20d153e95119c72d85765a9000000000000000200000000000003ee00003bb0e8a88e8af714a1e79f10cfcd7adf51cb72475884a5fc2414cdaffa1ca99d063a69b8220f359d0170e7380ff26b9655308e74357eab5e039624a94d0b20bb030200000000021a000000000000000000000000000000000000000005706f782d340c737461636b2d657874656e640000000601000000000000000000000000000000010c00000002096861736862797465730200000014eabc65f3e890fb8bf20d153e95119c72d85765a90776657273696f6e0200000001000a02000000410e73318bbb53a7426b5f8576e1afc63f9e925665d8cc9af35587f7215abb4bcc78c1b18216578003b0d63497f6013b0296b332168532b199d2dac8b7582549d4010200000021029fb154a570a1645af3dd43c3c668a979b59d21a46dd717fd799b13be3b2a0dc701ffffffffffffffffffffffffffffffff01000000000000000000009d24a3105474",
+            "status": "success",
+            "tx_index": 4,
+            "txid": "0x6ddd7e46a1a03ef6b4d78306a1d4c0748892948f5d602770b596794af24e4fb3"
+        }
+    ]
+}

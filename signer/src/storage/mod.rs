@@ -15,6 +15,10 @@ use std::future::Future;
 use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::keys::PublicKey;
+use crate::stacks::events::CompletedDepositEvent;
+use crate::stacks::events::WithdrawalAcceptEvent;
+use crate::stacks::events::WithdrawalCreateEvent;
+use crate::stacks::events::WithdrawalRejectEvent;
 
 /// Represents the ability to read data from the signer storage.
 pub trait DbRead {
@@ -219,5 +223,29 @@ pub trait DbWrite {
     fn write_rotate_keys_transaction(
         &self,
         key_rotation: &model::RotateKeysTransaction,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+
+    /// Write the withdrawal-reject event to the database.
+    fn write_withdrawal_reject_event(
+        &self,
+        event: &WithdrawalRejectEvent,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+
+    /// Write the withdrawal-accept event to the database.
+    fn write_withdrawal_accept_event(
+        &self,
+        event: &WithdrawalAcceptEvent,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+
+    /// Write the withdrawal-create event to the database.
+    fn write_withdrawal_create_event(
+        &self,
+        event: &WithdrawalCreateEvent,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+
+    /// Write the completed deposit event to the database.
+    fn write_completed_deposit_event(
+        &self,
+        event: &CompletedDepositEvent,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }

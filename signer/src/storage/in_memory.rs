@@ -1,5 +1,6 @@
 //! In-memory store implementation - useful for tests
 
+use bitcoin::OutPoint;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use futures::StreamExt;
 use futures::TryStreamExt;
@@ -8,6 +9,10 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::keys::PublicKey;
+use crate::stacks::events::CompletedDepositEvent;
+use crate::stacks::events::WithdrawalAcceptEvent;
+use crate::stacks::events::WithdrawalCreateEvent;
+use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
 
 /// A store wrapped in an Arc<Mutex<...>> for interior mutability
@@ -63,6 +68,26 @@ pub struct Store {
 
     /// Rotate keys transactions
     pub rotate_keys_transactions: HashMap<model::StacksTxId, model::RotateKeysTransaction>,
+
+    /// A mapping between request_ids and withdrawal-create events. Note
+    /// that in prod we can have a single request_id be associated with
+    /// more than one withdrawal-create event because of reorgs.
+    pub withdrawal_create_events: HashMap<u64, WithdrawalCreateEvent>,
+
+    /// A mapping between request_ids and withdrawal-accept events. Note
+    /// that in prod we can have a single request_id be associated with
+    /// more than one withdrawal-accept event because of reorgs.
+    pub withdrawal_accept_events: HashMap<u64, WithdrawalAcceptEvent>,
+
+    /// A mapping between request_ids and withdrawal-reject events. Note
+    /// that in prod we can have a single request_id be associated with
+    /// more than one withdrawal-reject event because of reorgs.
+    pub withdrawal_reject_events: HashMap<u64, WithdrawalRejectEvent>,
+
+    /// A mapping between request_ids and completed-deposit events. Note
+    /// that in prod we can have a single outpoint be associated with
+    /// more than one completed-deposit event because of reorgs.
+    pub completed_deposit_events: HashMap<OutPoint, CompletedDepositEvent>,
 }
 
 impl Store {
@@ -610,6 +635,54 @@ impl super::DbWrite for SharedStore {
             .await
             .rotate_keys_transactions
             .insert(key_rotation.txid.clone(), key_rotation.clone());
+
+        Ok(())
+    }
+
+    async fn write_withdrawal_create_event(
+        &self,
+        event: &WithdrawalCreateEvent,
+    ) -> Result<(), Self::Error> {
+        self.lock()
+            .await
+            .withdrawal_create_events
+            .insert(event.request_id, event.clone());
+
+        Ok(())
+    }
+
+    async fn write_withdrawal_accept_event(
+        &self,
+        event: &WithdrawalAcceptEvent,
+    ) -> Result<(), Self::Error> {
+        self.lock()
+            .await
+            .withdrawal_accept_events
+            .insert(event.request_id, event.clone());
+
+        Ok(())
+    }
+
+    async fn write_withdrawal_reject_event(
+        &self,
+        event: &WithdrawalRejectEvent,
+    ) -> Result<(), Self::Error> {
+        self.lock()
+            .await
+            .withdrawal_reject_events
+            .insert(event.request_id, event.clone());
+
+        Ok(())
+    }
+
+    async fn write_completed_deposit_event(
+        &self,
+        event: &CompletedDepositEvent,
+    ) -> Result<(), Self::Error> {
+        self.lock()
+            .await
+            .completed_deposit_events
+            .insert(event.outpoint, event.clone());
 
         Ok(())
     }

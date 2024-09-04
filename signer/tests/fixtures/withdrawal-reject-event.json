@@ -1,0 +1,149 @@
+{
+    "anchored_cost": {
+        "read_count": 31,
+        "read_length": 51115,
+        "runtime": 92633,
+        "write_count": 5,
+        "write_length": 22
+    },
+    "block_hash": "0x4a4e03eef3326030f42faba09c8bb0177b52f39d9d90c9502de0075c90da2fa6",
+    "block_height": 350,
+    "burn_block_hash": "0x45edc2fdd174ef2949f1370ec67302ccd29c20a6ac58da0895ac77b0783caa04",
+    "burn_block_height": 142,
+    "burn_block_time": 1725051080,
+    "confirmed_microblocks_cost": {
+        "read_count": 0,
+        "read_length": 0,
+        "runtime": 0,
+        "write_count": 0,
+        "write_length": 0
+    },
+    "cycle_number": null,
+    "events": [
+        {
+            "committed": true,
+            "contract_event": {
+                "contract_identifier": "SN2V7WTJ7BHR03MPHZ1C9A9ZR6NZGR4WM8HT4V67Y.sbtc-registry",
+                "raw_value": "0x0c000000030a726571756573742d696401000000000000000000000000000000020d7369676e65722d6269746d6170010000000000000000000000000000000005746f7069630d000000117769746864726177616c2d72656a656374",
+                "topic": "print",
+                "value": {
+                    "Tuple": {
+                        "data_map": {
+                            "request-id": {
+                                "UInt": 2
+                            },
+                            "signer-bitmap": {
+                                "UInt": 0
+                            },
+                            "topic": {
+                                "Sequence": {
+                                    "String": {
+                                        "ASCII": {
+                                            "data": [
+                                                119,
+                                                105,
+                                                116,
+                                                104,
+                                                100,
+                                                114,
+                                                97,
+                                                119,
+                                                97,
+                                                108,
+                                                45,
+                                                114,
+                                                101,
+                                                106,
+                                                101,
+                                                99,
+                                                116
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "type_signature": {
+                            "type_map": {
+                                "request-id": "UIntType",
+                                "signer-bitmap": "UIntType",
+                                "topic": {
+                                    "SequenceType": {
+                                        "StringType": {
+                                            "ASCII": 17
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "event_index": 2,
+            "txid": "0x95e3d38a1a0c001886b3d1d3a4ed376bf9e44cfc2820164457fe4e9a5fa2e450",
+            "type": "contract_event"
+        }
+    ],
+    "index_block_hash": "0xfc1b44b2db9997d9f37ea1c8704318ed8c1bce2f077b6e73fb583deac167ce98",
+    "matured_miner_rewards": [],
+    "miner_signature": "0x008572bf213cbab23671fa186206d7f1292b1d7c83d4b0be59bac4de7bb2dc537c2a273bf61496991515c11ef8f25a951b054e98a9286fe3913972ce1169828f5f",
+    "miner_txid": "0x5be6482d26dcabc102ad7be7010721fd78115df08f3b58cd91e734ab1d3d4871",
+    "parent_block_hash": "0x81d59937124973abb27d07466d47e2e3155f72149f66f2d2830f64426fd05960",
+    "parent_burn_block_hash": "0x45edc2fdd174ef2949f1370ec67302ccd29c20a6ac58da0895ac77b0783caa04",
+    "parent_burn_block_height": 142,
+    "parent_burn_block_timestamp": 1725051080,
+    "parent_index_block_hash": "0x96b3f5a3f19af33ccc66bed0adde0fcf93322fcc9b6ddacd93c3968cbfb248de",
+    "parent_microblock": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "parent_microblock_sequence": 0,
+    "pox_v1_unlock_height": 104,
+    "pox_v2_unlock_height": 106,
+    "pox_v3_unlock_height": 109,
+    "reward_set": null,
+    "signer_bitvec": "000800000001ff",
+    "signer_signature": [
+        "01a05e94db0e82a0a1e6c35851be3cae5bf1dbb30a64bffe014ab6ced36204c14d27ac483b6cfbe73d88ffcd1a596796627b462c156789bae78263f53419e7c5e2",
+        "013731592cf7585654652375443057ef78bd2267a504343a528e41fba2630baa726fc34ccfe8f9ff42a4f81508ff99a904b08d7260c059b9d986b4a9d26af5dbdd",
+        "00b229992c67772f5480f3d5ac1ed17833a824850bc8c36d11369902cdee27cb5d58872086086613200c085e58657b7e6c604d1a87abe62645ba4f9f8f5a6060f6"
+    ],
+    "signer_signature_hash": "0x4a4e03eef3326030f42faba09c8bb0177b52f39d9d90c9502de0075c90da2fa6",
+    "transactions": [
+        {
+            "burnchain_op": null,
+            "contract_abi": null,
+            "execution_cost": {
+                "read_count": 31,
+                "read_length": 51115,
+                "runtime": 92633,
+                "write_count": 5,
+                "write_length": 22
+            },
+            "microblock_hash": null,
+            "microblock_parent_hash": null,
+            "microblock_sequence": null,
+            "raw_result": "0x0703",
+            "raw_tx": "0x80800000000405b67e6a475c7001d2d1f8589527f8357f0c1394440000000000000009000000000001e078000000030201a6f5f94c13e46ca387c8466f3a0523aa613b05e61a311c51cef6464e57de95d640c8545a9c1d26d162604e66b572e107fd8f5bd03edd55676feded60597047f20201e62b36a7c870c182f9484177cd69436d6a06714ded3ab6016ed6551217aafc7c5c67f62a6ce8dec212435dbf4aa5a4d2dc7385210565377b790fbc71ddac82b4020104a0503fe0a76914b9fabc1b467bdfd278be772695d8ab2256bedde47d78db4b0c288644be085cb4f6efd1db68eae4977592c3408bb87da2299677046d943dd000020301000000000215b67e6a475c7001d2d1f8589527f8357f0c1394440f736274632d7769746864726177616c1972656a6563742d7769746864726177616c2d726571756573740000000201000000000000000000000000000000020100000000000000000000000000000000",
+            "status": "success",
+            "tx_index": 0,
+            "txid": "0x95e3d38a1a0c001886b3d1d3a4ed376bf9e44cfc2820164457fe4e9a5fa2e450"
+        },
+        {
+            "burnchain_op": null,
+            "contract_abi": null,
+            "execution_cost": {
+                "read_count": 0,
+                "read_length": 0,
+                "runtime": 0,
+                "write_count": 0,
+                "write_length": 0
+            },
+            "microblock_hash": null,
+            "microblock_parent_hash": null,
+            "microblock_sequence": null,
+            "raw_result": "0x0703",
+            "raw_tx": "0x80800000000400ad08341feab8ea788ef8045c343d21dcedc4483e0000000000000069000000000000012c0001a4721b7dd6b315354d3c8fc35d0c5cb7862cc640ac4116569c5ed8709e1fe6e80b76dadaedcb8be1c1d9299e97296263e6ff0364b1979a705bed3dfa0e123da603020000000000051a62b0e91cc557e583c3d1f9dfe468ace76d2f037400000000000003e800000000000000000000000000000000000000000000000000000000000000000000",
+            "status": "success",
+            "tx_index": 1,
+            "txid": "0xff33ff3a54b1379f9297ff2840afb4ab17e799ec3bf80f430d0e1aa15bd9d5b7"
+        }
+    ]
+}

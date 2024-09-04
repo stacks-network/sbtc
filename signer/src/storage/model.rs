@@ -1,11 +1,8 @@
 //! Database models for the signer.
 
-use std::ops::Range;
-
 use bitcoin::hashes::Hash as _;
 use bitcoin::Address;
 use bitcoin::Network;
-use rand::seq::IteratorRandom as _;
 use sbtc::deposits::Deposit;
 
 use crate::keys::PublicKey;
@@ -71,27 +68,11 @@ pub struct DepositRequest {
     #[cfg_attr(feature = "testing", dummy(faker = "100..i64::MAX as u64"))]
     pub max_fee: u64,
     /// The addresses of the input UTXOs funding the deposit request.
-    #[cfg_attr(feature = "testing", dummy(faker = "BitcoinAddresses(1..5)"))]
+    #[cfg_attr(
+        feature = "testing",
+        dummy(faker = "crate::testing::dummy::BitcoinAddresses(1..5)")
+    )]
     pub sender_addresses: Vec<BitcoinAddress>,
-}
-
-/// Used to for fine-grained control of generating fake testing addresses.
-#[cfg(feature = "testing")]
-#[derive(Debug)]
-pub struct BitcoinAddresses(Range<usize>);
-
-#[cfg(feature = "testing")]
-impl fake::Dummy<BitcoinAddresses> for Vec<String> {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &BitcoinAddresses, rng: &mut R) -> Self {
-        let num_addresses = config.0.clone().choose(rng).unwrap_or(1);
-        std::iter::repeat_with(|| secp256k1::Keypair::new_global(rng))
-            .take(num_addresses)
-            .map(|kp| {
-                let pk = bitcoin::CompressedPublicKey(kp.public_key());
-                Address::p2wpkh(&pk, Network::Regtest).to_string()
-            })
-            .collect()
-    }
 }
 
 impl DepositRequest {
