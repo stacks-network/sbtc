@@ -55,3 +55,40 @@ impl TryIntoMultiAddrs for Url {
         Ok(multiaddrs)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_localhost() {
+        let url = Url::parse("tcp://localhost:1234").unwrap();
+        // NOTE: This only resolves to the local IPv4 address.
+        let multiaddrs = url.try_into_multiaddrs().unwrap();
+        assert!(multiaddrs.len() > 0);
+        assert!(multiaddrs.contains(&"/ip4/127.0.0.1/tcp/1234".parse().unwrap()));
+    }
+
+    /// This test uses example.com, which is a [IANA reserved domain name](https://www.iana.org/help/example-domains).
+    /// Hopefully the IP addresses for example.com will not change anytime soon,
+    /// but if they do, this test will fail.
+    ///
+    /// This test requires an internet connection or that you've added the following to your `/etc/hosts` file:
+    /// ```plaintext
+    /// 127.0.0.1 example.com
+    /// 2606:2800:21f:cb07:6820:80da:af6b:8b2c example.com
+    /// ```
+    #[test]
+    fn test_resolve_example_dot_com() {
+        let url = Url::parse("tcp://example.com:1234").unwrap();
+        let multiaddrs = url.try_into_multiaddrs().unwrap();
+        dbg!(multiaddrs.clone());
+        assert!(multiaddrs.len() > 0);
+        assert!(multiaddrs.contains(&"/ip4/93.184.215.14/tcp/1234".parse().unwrap()));
+        assert!(multiaddrs.contains(
+            &"/ip6/2606:2800:21f:cb07:6820:80da:af6b:8b2c/tcp/1234"
+                .parse()
+                .unwrap()
+        ));
+    }
+}

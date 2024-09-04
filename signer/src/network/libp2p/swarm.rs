@@ -218,3 +218,59 @@ impl SignerSwarm {
         self.swarm.lock().await.connected_peers().count()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{context::SignerContext, testing::DEFAULT_CONFIG_PATH};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_signer_swarm_builder() {
+        let addr: Multiaddr = "/ip4/127.0.0.1/tcp/0".parse().unwrap();
+        let private_key = PrivateKey::new(&mut rand::thread_rng());
+        let keypair = Keypair::ed25519_from_bytes(private_key.to_bytes()).unwrap();
+        let builder = SignerSwarmBuilder::new(&private_key)
+            .add_listen_endpoint(addr.clone())
+            .add_seed_addr(addr.clone());
+        let swarm = builder.build().unwrap();
+
+        assert!(swarm.listen_addrs.contains(&addr));
+        assert!(swarm.seed_addrs.contains(&addr));
+        assert_eq!(
+            swarm.swarm.lock().await.local_peer_id(),
+            &PeerId::from_public_key(&keypair.public())
+        );
+    }
+
+    #[tokio::test]
+    async fn swarm_shuts_down_on_shutdown_signal() {
+        let private_key = PrivateKey::new(&mut rand::thread_rng());
+        let builder = SignerSwarmBuilder::new(&private_key);
+        let mut swarm = builder.build().unwrap();
+
+        let ctx = SignerContext::init(DEFAULT_CONFIG_PATH).unwrap();
+        let term = ctx.get_termination_handle();
+
+        let timeout = tokio::time::timeout(Duration::from_secs(10), async {
+            let swarm_task = tokio::spawn(async move {
+                swarm.start(&ctx).await.unwrap();
+            });
+
+            // A small pause to ensure that the swarm's event loop has started
+            // and that it is awaiting the shutdown signal.
+            tokio::time::sleep(Duration::from_millis(10)).await;
+
+            // Send a termination signal.
+            term.signal_shutdown();
+
+            // Wait for the swarm to shut down.
+            swarm_task.await.unwrap();
+        });
+
+        match timeout.await {
+            Ok(_) => (),
+            Err(_) => panic!("Swarm did not shut down within the timeout"),
+        }
+    }
+}
