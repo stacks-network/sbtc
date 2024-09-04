@@ -89,7 +89,6 @@ impl TerminationHandle {
                 false
             }
         });
-        let _ = self.0.send(true);
     }
     /// Blocks until a shutdown signal is received.
     pub async fn wait_for_shutdown(&mut self) {
