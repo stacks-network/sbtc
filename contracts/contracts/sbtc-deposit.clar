@@ -15,6 +15,7 @@
 (define-constant ERR_DEPOSIT_INDEX_PREFIX (unwrap-err! ERR_DEPOSIT (err true)))
 (define-constant ERR_DEPOSIT (err u303))
 (define-constant ERR_INVALID_CALLER (err u304))
+(define-constant ERR_INVALID_BURN_HASH (err u305))
 
 ;; data vars
 
@@ -54,20 +55,31 @@
     )
 )
 
+(define-read-only (get-burn-header (height uint))
+    ;; (get-burn-block-info? header-hash height)
+    (get-tenure-info? burnchain-header-hash height)
+)
+
 ;; Accept multiple new deposit requests
 ;; Note that this function can only be called by the current
 ;; bootstrap signer set address - it cannot be called by users directly.
 ;; 
 ;; This function handles the validation & minting of sBTC by handling multiple (up to 1000) deposits at a time, 
 ;; it then calls into the sbtc-registry contract to update the state of the protocol. 
-(define-public (complete-deposits-wrapper (deposits (list 650 {txid: (buff 32), vout-index: uint, amount: uint, recipient: principal})))
-    (let 
-        (
-            (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))
-        )
-
+(define-public (complete-deposits-wrapper 
+        (deposits (list 650 {txid: (buff 32), vout-index: uint, amount: uint, recipient: principal}))
+        (burn-height uint)
+        (burn-hash (buff 32))
+    )
+    (begin
         ;; Check that the caller is the current signer principal
-        (asserts! (is-eq (get current-signer-principal current-signer-data) tx-sender) ERR_INVALID_CALLER)
+        (asserts! (is-eq 
+            (contract-call? .sbtc-registry get-current-signer-principal)
+            tx-sender
+        ) ERR_INVALID_CALLER)
+
+        ;; Verify that Bitcoin hasn't forked by comparing the burn hash provided
+        (asserts! (is-eq (some burn-hash) (get-burn-header burn-height)) ERR_INVALID_BURN_HASH)
 
         (fold complete-individual-deposits-helper deposits (ok u0))
     )
