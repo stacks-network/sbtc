@@ -298,6 +298,7 @@ mod tests {
     use rand::SeedableRng;
     use sbtc::rpc::BitcoinClient;
 
+    use crate::bitcoin::utxo;
     use crate::error::Error;
     use crate::keys::PublicKey;
     use crate::keys::SignerScriptPubKey as _;
@@ -306,7 +307,6 @@ mod tests {
     use crate::stacks::api::SubmitTxResponse;
     use crate::storage;
     use crate::testing::dummy;
-    use crate::bitcoin::utxo;
 
     use super::*;
 

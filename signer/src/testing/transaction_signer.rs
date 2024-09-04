@@ -13,6 +13,7 @@ use crate::network;
 use crate::storage;
 use crate::storage::model;
 use crate::testing;
+use crate::transaction_coordinator;
 use crate::transaction_signer;
 
 use crate::ecdsa::SignEcdsa as _;
@@ -331,19 +332,33 @@ where
         let test_data = self.generate_test_data(&mut rng);
         Self::write_test_data(&test_data, &mut handle.storage).await;
 
-        let coordinator_private_key = PrivateKey::new(&mut rng);
-
-        let transaction_sign_request = message::BitcoinTransactionSignRequest {
-            tx: testing::dummy::tx(&fake::Faker, &mut rng),
-            aggregate_key: dummy_aggregate_key,
-        };
-
         let chain_tip = handle
             .storage
             .get_bitcoin_canonical_chain_tip()
             .await
             .expect("storage failure")
             .expect("no chain tip");
+
+        let coordinator_public_key = transaction_coordinator::coordinator_public_key(
+            &chain_tip,
+            &signer_info.first().unwrap().signer_public_keys,
+        )
+        .expect("failed to compute coordinator public key")
+        .unwrap();
+
+        let coordinator_private_key = signer_info
+            .iter()
+            .find(|signer_info| {
+                PublicKey::from_private_key(&signer_info.signer_private_key)
+                    == coordinator_public_key
+            })
+            .unwrap()
+            .signer_private_key;
+
+        let transaction_sign_request = message::BitcoinTransactionSignRequest {
+            tx: testing::dummy::tx(&fake::Faker, &mut rng),
+            aggregate_key: dummy_aggregate_key,
+        };
 
         run_dkg_and_store_results_for_signers(
             &signer_info,
@@ -464,7 +479,6 @@ where
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
-        let coordinator_signer_info = signer_info.first().unwrap().clone();
 
         let mut event_loop_handles: Vec<_> = signer_info
             .clone()
@@ -507,6 +521,22 @@ where
             &mut rng,
         )
         .await;
+
+        let coordinator_public_key = transaction_coordinator::coordinator_public_key(
+            &bitcoin_chain_tip,
+            &signer_info.first().unwrap().signer_public_keys,
+        )
+        .unwrap()
+        .unwrap();
+
+        let coordinator_signer_info = signer_info
+            .iter()
+            .find(|signer_info| {
+                PublicKey::from_private_key(&signer_info.signer_private_key)
+                    == coordinator_public_key
+            })
+            .unwrap()
+            .clone();
 
         let bitcoin_chain_tip =
             bitcoin::BlockHash::from_byte_array(bitcoin_chain_tip.try_into().unwrap());

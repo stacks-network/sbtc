@@ -344,6 +344,11 @@ where
         loop {
             let msg = self.network.receive().await?;
 
+            if msg.bitcoin_chain_tip.as_byte_array() != bitcoin_chain_tip.as_slice() {
+                tracing::warn!(?msg, "concurrent wsts signing round message observed");
+                continue;
+            }
+
             let message::Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
                 continue;
             };
@@ -357,7 +362,7 @@ where
                 match coordinator_state_machine.process_message(&packet) {
                     Ok(val) => val,
                     Err(err) => {
-                        tracing::warn!(packet = ?packet, reason = %err, "ignoring packet");
+                        tracing::warn!(?packet, reason = %err, "ignoring packet");
                         continue;
                     }
                 };
@@ -394,19 +399,7 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<bool, error::Error> {
-        let mut hasher = sha2::Sha256::new();
-        hasher.update(bitcoin_chain_tip);
-        let digest = hasher.finalize();
-        let index =
-            usize::from_be_bytes(*digest.first_chunk().ok_or(error::Error::TypeConversion)?);
-
-        let pub_key = self.pub_key();
-
-        Ok(signer_public_keys
-            .iter()
-            .nth(index % signer_public_keys.len())
-            .map(|coordinator_pub_key| coordinator_pub_key == &pub_key)
-            .unwrap_or(false))
+        given_key_is_coordinator(self.pub_key(), bitcoin_chain_tip, signer_public_keys)
     }
 
     #[tracing::instrument(skip(self))]
@@ -531,6 +524,35 @@ where
 
         Ok(())
     }
+}
+
+/// Check if the provided public key is the coordinator for the provided chain tip
+pub fn given_key_is_coordinator(
+    pub_key: PublicKey,
+    bitcoin_chain_tip: &model::BitcoinBlockHash,
+    signer_public_keys: &BTreeSet<PublicKey>,
+) -> Result<bool, error::Error> {
+    Ok(
+        coordinator_public_key(bitcoin_chain_tip, signer_public_keys)?
+            .map(|coordinator_pub_key| coordinator_pub_key == pub_key)
+            .unwrap_or(false),
+    )
+}
+
+/// Find the coordinator public key
+pub fn coordinator_public_key(
+    bitcoin_chain_tip: &model::BitcoinBlockHash,
+    signer_public_keys: &BTreeSet<PublicKey>,
+) -> Result<Option<PublicKey>, error::Error> {
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(bitcoin_chain_tip);
+    let digest = hasher.finalize();
+    let index = usize::from_be_bytes(*digest.first_chunk().ok_or(error::Error::TypeConversion)?);
+
+    Ok(signer_public_keys
+        .iter()
+        .nth(index % signer_public_keys.len())
+        .copied())
 }
 
 #[cfg(test)]
