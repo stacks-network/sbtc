@@ -40,10 +40,21 @@ pub async fn run(
                 match cmd {
                     // Handle a request to publish a message to the P2P network.
                     SignerCommand::P2PPublish(payload) => {
-                        let encoded_msg = payload.encode_to_vec()
-                            .unwrap(); // TODO: handle error
-
                         let msg_id = payload.id();
+
+                        // Attempt to encode the message payload into bytes
+                        // using the signer codec.
+                        let encoded_msg = match payload.encode_to_vec() {
+                            Ok(msg) => msg,
+                            Err(error) => {
+                                // An error occurred while encoding the message.
+                                // Log the error and send a failure signal to the application
+                                // so that it can handle the failure as needed.
+                                tracing::warn!(%error, "Failed to encode message");
+                                let _ = signal_tx.send(SignerSignal::Event(SignerEvent::P2PPublishFailure(msg_id)));
+                                continue;
+                            }
+                        };
 
                         let _ = swarm.behaviour_mut()
                             .gossipsub

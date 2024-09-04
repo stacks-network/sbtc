@@ -29,14 +29,13 @@ pub trait Context {
 /// signer binary.
 pub struct SignerContext {
     config: Settings,
+    // Handle to the app signalling channel. This keeps the channel alive
+    // for the duration of the program and is used both to send messages
+    // and to hand out new receivers.
     signal_tx: Sender<SignerSignal>,
-    // Would be used if we wanted to listen for any events in the context,
-    // for example if we wanted a subroutine to be able to trigger a config
-    // refresh:
-    // signal_rx: Receiver<SignerSignal>,
-
-    // Example if we wanted to have a database pool in the context:
-    // db_pool: sqlx::PgPool,
+    /// Handle to the app termination channel. This keeps the channel alive
+    /// for the duration of the program and is used to provide new senders
+    /// and receivers for a [`TerminationHandle`].
     term_tx: tokio::sync::watch::Sender<bool>,
 }
 
