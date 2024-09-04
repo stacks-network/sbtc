@@ -333,13 +333,28 @@ where
     Ok(v)
 }
 
+/// Format an error message for an invalid private key length.
+fn format_invalid_private_key_length_msg(len: usize) -> String {
+    format!(
+        "Invalid Stacks private key length (got {}, expected 64 or 66)",
+        len
+    )
+}
+
 /// A deserializer for the [`PrivateKey`] type. Returns an error if the private
 /// key is not valid hex or is not the correct length.
 fn private_key_deserializer<'de, D>(deserializer: D) -> Result<PrivateKey, D::Error>
 where
     D: Deserializer<'de>,
 {
-    PrivateKey::from_str(&String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    let s = String::deserialize(deserializer)?;
+    if [64, 65].contains(&s.len()) {
+        PrivateKey::from_str(&s[..64]).map_err(serde::de::Error::custom)
+    } else {
+        Err(serde::de::Error::custom(
+            format_invalid_private_key_length_msg(s.len()),
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -477,13 +492,16 @@ mod tests {
         assert!(settings.is_err());
         assert!(matches!(
             settings.unwrap_err(),
-            ConfigError::Message(msg) if msg == Error::InvalidPrivateKeyLength(2).to_string()
+            ConfigError::Message(msg) if msg == format_invalid_private_key_length_msg(4)
         ));
     }
 
     #[test]
     fn invalid_private_key_hex_returns_correct_error() {
-        std::env::set_var("SIGNER_SIGNER__PRIVATE_KEY", "zz");
+        std::env::set_var(
+            "SIGNER_SIGNER__PRIVATE_KEY",
+            "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+        );
         let hex_err = hex::decode("zz").unwrap_err();
 
         let settings = Settings::new(DEFAULT_CONFIG_PATH);
