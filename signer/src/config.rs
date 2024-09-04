@@ -14,6 +14,18 @@ pub const DEFAULT_P2P_HOST: &str = "0.0.0.0";
 /// The default signer network listen-on port.
 pub const DEFAULT_P2P_PORT: u16 = 4122;
 
+/// Configuration error variants.
+#[derive(Debug, thiserror::Error)]
+pub enum SignerConfigError {
+    /// Invalid Stacks private key length
+    #[error("The Stacks private key provided is invalid, it must be either 64 or 66 hex characters long, got {0}")]
+    InvalidStacksPrivateKeyLength(usize),
+
+    /// Invalid Stacks private key compression byte marker
+    #[error("The Stacks private key provided contains an invalid compression byte marker: {0}")]
+    InvalidStacksPrivateKeyCompressionByte(String),
+}
+
 /// Trait for validating configuration values.
 trait Validatable {
     /// Validate the configuration values.
@@ -61,6 +73,16 @@ pub struct Settings {
     pub block_notifier: BlockNotifierConfig,
     /// Signer-specific configuration
     pub signer: SignerConfig,
+    /// Bitcoin core configuration
+    pub bitcoin: BitcoinConfig,
+}
+
+/// Configuration used for the [`BitcoinCoreClient`](sbtc::rpc::BitcoinCoreClient).
+#[derive(Deserialize, Clone, Debug)]
+pub struct BitcoinConfig {
+    /// Bitcoin RPC endpoints.
+    #[serde(deserialize_with = "url_deserializer_vec")]
+    pub endpoints: Vec<url::Url>,
 }
 
 /// Signer network configuration
@@ -68,17 +90,17 @@ pub struct Settings {
 pub struct P2PNetworkConfig {
     /// List of seeds for the P2P network. If empty then the signer will
     /// only use peers discovered via StackerDB.
-    #[serde(deserialize_with = "url_deserializer")]
+    #[serde(deserialize_with = "url_deserializer_vec")]
     pub seeds: Vec<url::Url>,
     /// The local network interface(s) to listen on. If empty, then
     /// the signer will use [`DEFAULT_NETWORK_HOST`]:[`DEFAULT_NETWORK_PORT] as
     /// the default and listen on both TCP and QUIC protocols.
-    #[serde(deserialize_with = "url_deserializer")]
+    #[serde(deserialize_with = "url_deserializer_vec")]
     pub listen_on: Vec<url::Url>,
     /// Optionally specifies the public endpoints of the signer. If empty, the
     /// signer will attempt to use peers in the network to discover its own
     /// public endpoint(s).
-    #[serde(deserialize_with = "url_deserializer")]
+    #[serde(deserialize_with = "url_deserializer_vec")]
     pub public_endpoints: Vec<url::Url>,
 }
 
@@ -196,6 +218,8 @@ pub struct SignerConfig {
     pub p2p: P2PNetworkConfig,
     /// P2P network configuration
     pub network: NetworkKind,
+    /// Event observer server configuration
+    pub event_observer: EventObserverConfig,
 }
 
 impl Validatable for SignerConfig {
@@ -203,6 +227,13 @@ impl Validatable for SignerConfig {
         self.p2p.validate()?;
         Ok(())
     }
+}
+
+/// Configuration for the Stacks event observer server (hosted within the signer).
+#[derive(Debug, Clone, Deserialize)]
+pub struct EventObserverConfig {
+    /// The address and port to bind the server to.
+    pub bind: std::net::SocketAddr,
 }
 
 impl Settings {
@@ -240,12 +271,16 @@ impl Settings {
             .with_list_parse_key("signer.p2p.seeds")
             .with_list_parse_key("signer.p2p.listen_on")
             .with_list_parse_key("signer.p2p.public_endpoints")
+            .with_list_parse_key("bitcoin.endpoints")
             .prefix_separator("_");
+
         let mut cfg_builder = Config::builder();
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
         }
-        let cfg = cfg_builder.add_source(env).build()?;
+        cfg_builder = cfg_builder.add_source(env);
+
+        let cfg = cfg_builder.build()?;
 
         let settings: Settings = cfg.try_deserialize()?;
 
@@ -279,7 +314,7 @@ pub struct StacksNodeSettings {
     /// endpoints.
     ///
     /// The endpoint to use when making requests to a stacks node.
-    #[serde(deserialize_with = "url_deserializer")]
+    #[serde(deserialize_with = "url_deserializer_vec")]
     pub endpoints: Vec<url::Url>,
     /// This is the start height of the first EPOCH 3.0 block on the stacks
     /// blockchain.
@@ -322,7 +357,7 @@ impl StacksSettings {
 
 /// A deserializer for the url::Url type. This will return an empty [`Vec`] if
 /// there are no URLs to deserialize.
-fn url_deserializer<'de, D>(deserializer: D) -> Result<Vec<url::Url>, D::Error>
+fn url_deserializer_vec<'de, D>(deserializer: D) -> Result<Vec<url::Url>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -339,14 +374,27 @@ fn private_key_deserializer<'de, D>(deserializer: D) -> Result<PrivateKey, D::Er
 where
     D: Deserializer<'de>,
 {
-    PrivateKey::from_str(&String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    let s = String::deserialize(deserializer)?;
+    let len = s.len();
+
+    if ![64, 66].contains(&len) {
+        Err(serde::de::Error::custom(
+            SignerConfigError::InvalidStacksPrivateKeyLength(len),
+        ))
+    } else if len == 66 && &s[64..] != "01" {
+        Err(serde::de::Error::custom(
+            SignerConfigError::InvalidStacksPrivateKeyCompressionByte(s[64..].to_string()),
+        ))
+    } else {
+        PrivateKey::from_str(&s[..64]).map_err(serde::de::Error::custom)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::net::SocketAddr;
 
-    use crate::testing::DEFAULT_CONFIG_PATH;
+    use super::*;
 
     /// Helper function to quickly create a URL from a string in tests.
     fn url(s: &str) -> url::Url {
@@ -361,14 +409,16 @@ mod tests {
     // !! default.toml file are changed.
     #[test]
     fn default_config_toml_loads() {
-        let settings = Settings::new(DEFAULT_CONFIG_PATH).unwrap();
+        let settings = Settings::new_from_default_config().unwrap();
         assert_eq!(settings.blocklist_client.host, "127.0.0.1");
         assert_eq!(settings.blocklist_client.port, 8080);
+
         assert_eq!(settings.block_notifier.server, "tcp://localhost:60401");
         assert_eq!(settings.block_notifier.retry_interval, 10);
         assert_eq!(settings.block_notifier.max_retry_attempts, 5);
         assert_eq!(settings.block_notifier.ping_interval, 60);
         assert_eq!(settings.block_notifier.subscribe_interval, 10);
+
         assert_eq!(
             settings.signer.private_key,
             PrivateKey::from_str(
@@ -376,12 +426,24 @@ mod tests {
             )
             .unwrap()
         );
+        assert_eq!(settings.signer.network, NetworkKind::Regtest);
+
         assert_eq!(settings.signer.p2p.seeds, vec![]);
         assert_eq!(
             settings.signer.p2p.listen_on,
             vec![url("tcp://0.0.0.0:4122"), url("quic-v1://0.0.0.0:4122")]
         );
-        assert_eq!(settings.signer.network, NetworkKind::Regtest);
+
+        assert_eq!(
+            settings.bitcoin.endpoints,
+            vec![url("http://user:pass@localhost:18443")]
+        );
+        assert_eq!(settings.bitcoin.endpoints[0].username(), "user");
+        assert_eq!(settings.bitcoin.endpoints[0].password(), Some("pass"));
+        assert_eq!(
+            settings.signer.event_observer.bind,
+            "0.0.0.0:8801".parse::<SocketAddr>().unwrap()
+        );
     }
 
     #[test]
@@ -392,7 +454,7 @@ mod tests {
         );
         std::env::set_var("SIGNER_SIGNER__P2P__LISTEN_ON", "tcp://1.2.3.4:1234");
 
-        let settings = Settings::new(DEFAULT_CONFIG_PATH).unwrap();
+        let settings = Settings::new_from_default_config().unwrap();
 
         assert_eq!(
             settings.signer.p2p.seeds,
@@ -405,11 +467,32 @@ mod tests {
     }
 
     #[test]
+    fn default_config_toml_loads_bitcoin_config_with_environment() {
+        std::env::set_var(
+            "SIGNER_BITCOIN__ENDPOINTS",
+            "http://user:pass@localhost:1234,http://foo:bar@localhost:5678",
+        );
+
+        let settings = Settings::new_from_default_config().unwrap();
+
+        dbg!(settings.bitcoin.endpoints.clone());
+        assert!(settings.bitcoin.endpoints.len() == 2);
+        assert!(settings
+            .bitcoin
+            .endpoints
+            .contains(&url("http://user:pass@localhost:1234")));
+        assert!(settings
+            .bitcoin
+            .endpoints
+            .contains(&url("http://foo:bar@localhost:5678")));
+    }
+
+    #[test]
     fn default_config_toml_loads_signer_private_key_config_with_environment() {
         let new = "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd";
         std::env::set_var("SIGNER_SIGNER__PRIVATE_KEY", new);
 
-        let settings = Settings::new(DEFAULT_CONFIG_PATH).unwrap();
+        let settings = Settings::new_from_default_config().unwrap();
 
         assert_eq!(
             settings.signer.private_key,
@@ -422,13 +505,13 @@ mod tests {
         let new = "testnet";
         std::env::set_var("SIGNER_SIGNER__NETWORK", new);
 
-        let settings = Settings::new(DEFAULT_CONFIG_PATH).unwrap();
+        let settings = Settings::new_from_default_config().unwrap();
         assert_eq!(settings.signer.network, NetworkKind::Testnet);
 
         let new = "regtest";
         std::env::set_var("SIGNER_SIGNER__NETWORK", new);
 
-        let settings = Settings::new(DEFAULT_CONFIG_PATH).unwrap();
+        let settings = Settings::new_from_default_config().unwrap();
         assert_eq!(settings.signer.network, NetworkKind::Regtest);
     }
 
@@ -473,20 +556,47 @@ mod tests {
     fn invalid_private_key_length_returns_correct_error() {
         std::env::set_var("SIGNER_SIGNER__PRIVATE_KEY", "1234");
 
-        let settings = Settings::new(DEFAULT_CONFIG_PATH);
+        let settings = Settings::new_from_default_config();
         assert!(settings.is_err());
         assert!(matches!(
             settings.unwrap_err(),
-            ConfigError::Message(msg) if msg == Error::InvalidPrivateKeyLength(2).to_string()
+            ConfigError::Message(msg) if msg == SignerConfigError::InvalidStacksPrivateKeyLength(4).to_string()
         ));
     }
 
     #[test]
+    fn invalid_private_key_compression_byte_marker_returns_correct_error() {
+        std::env::set_var(
+            "SIGNER_SIGNER__PRIVATE_KEY",
+            "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd02",
+        );
+        let settings = Settings::new(DEFAULT_CONFIG_PATH);
+        assert!(settings.is_err());
+        assert!(matches!(
+            settings.unwrap_err(),
+            ConfigError::Message(msg) if msg == SignerConfigError::InvalidStacksPrivateKeyCompressionByte("02".to_string()).to_string()
+        ));
+    }
+
+    #[test]
+    fn valid_33_byte_private_key_works() {
+        std::env::set_var(
+            "SIGNER_SIGNER__PRIVATE_KEY",
+            "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd01",
+        );
+        let settings = Settings::new(DEFAULT_CONFIG_PATH);
+        assert!(settings.is_ok());
+    }
+
+    #[test]
     fn invalid_private_key_hex_returns_correct_error() {
-        std::env::set_var("SIGNER_SIGNER__PRIVATE_KEY", "zz");
+        std::env::set_var(
+            "SIGNER_SIGNER__PRIVATE_KEY",
+            "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+        );
         let hex_err = hex::decode("zz").unwrap_err();
 
-        let settings = Settings::new(DEFAULT_CONFIG_PATH);
+        let settings = Settings::new_from_default_config();
         assert!(settings.is_err());
         assert!(matches!(
             settings.unwrap_err(),

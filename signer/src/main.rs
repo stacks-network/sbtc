@@ -205,14 +205,15 @@ async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
         .route("/new_block", post(api::new_block_handler))
         .with_state(state);
 
-    // run our app with hyper
-    // TODO: This should be read from configuration
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8801").await.unwrap();
+    let config = ctx.config().signer.event_observer.clone();
+
+    // Bind to the configured address and port
+    let listener = tokio::net::TcpListener::bind(config.bind).await.unwrap();
 
     // Get the termination signal handle.
     let mut term = ctx.get_termination_handle();
 
-    // Start the Stacks event observer server.
+    // Run our app with hyper
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
             // Listen for an application shutdown signal. We need to loop here
