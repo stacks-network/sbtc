@@ -38,25 +38,25 @@ plan:
             contract-name: sbtc-registry
             emulated-sender: ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039
             path: contracts/sbtc-registry.clar
-            clarity-version: 2
+            clarity-version: 3
         - emulated-contract-publish:
             contract-name: sbtc-bootstrap-signers
             emulated-sender: ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039
             path: contracts/sbtc-bootstrap-signers.clar
-            clarity-version: 2
+            clarity-version: 3
         - emulated-contract-publish:
             contract-name: sbtc-token
             emulated-sender: ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039
             path: contracts/sbtc-token.clar
-            clarity-version: 2
+            clarity-version: 3
         - emulated-contract-publish:
             contract-name: sbtc-deposit
             emulated-sender: ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039
             path: contracts/sbtc-deposit.clar
-            clarity-version: 2
+            clarity-version: 3
         - emulated-contract-publish:
             contract-name: sbtc-withdrawal
             emulated-sender: ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039
             path: contracts/sbtc-withdrawal.clar
-            clarity-version: 2
-      epoch: "2.5"
+            clarity-version: 3
+      epoch: "3.0"
