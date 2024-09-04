@@ -60,7 +60,7 @@ pub struct DepositRequest {
     pub recipient: StacksAddress,
     /// The amount deposited.
     #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "100..i64::MAX as u64"))]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000_000"))]
     pub amount: u64,
     /// The maximum portion of the deposited amount that may
     /// be used to pay for transaction fees.
@@ -130,7 +130,7 @@ pub struct WithdrawRequest {
     pub recipient: BitcoinAddress,
     /// The amount to withdraw.
     #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "100..10000"))]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000_000"))]
     pub amount: u64,
     /// The maximum portion of the withdrawn amount that may
     /// be used to pay for transaction fees.
