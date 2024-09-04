@@ -245,6 +245,13 @@ fn coinbase_tx<R: rand::RngCore + ?Sized>(
     coinbase_tx
 }
 
+impl fake::Dummy<fake::Faker> for PublicKey {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
+        let sk = secp256k1::SecretKey::new(rng);
+        Self::from(secp256k1::PublicKey::from_secret_key_global(&sk))
+    }
+}
+
 /// Used to for fine-grained control of generating fake testing addresses.
 #[derive(Debug)]
 pub struct BitcoinAddresses(pub Range<usize>);

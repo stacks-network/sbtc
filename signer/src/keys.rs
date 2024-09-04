@@ -223,46 +223,6 @@ impl std::fmt::Display for PublicKey {
     }
 }
 
-/// We expect the compressed public key bytes from the database
-impl<'r> sqlx::Decode<'r, sqlx::Postgres> for PublicKey {
-    fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
-        let bytes = <[u8; 33] as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
-        Ok(PublicKey::from_slice(&bytes)?)
-    }
-}
-
-impl sqlx::Type<sqlx::Postgres> for PublicKey {
-    fn type_info() -> sqlx::postgres::PgTypeInfo {
-        <[u8; 33] as sqlx::Type<sqlx::Postgres>>::type_info()
-    }
-}
-
-/// We write the compressed public key bytes to the database
-impl<'r> sqlx::Encode<'r, sqlx::Postgres> for PublicKey {
-    fn encode_by_ref(
-        &self,
-        buf: &mut sqlx::postgres::PgArgumentBuffer,
-    ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
-        let bytes = self.serialize();
-        <[u8; 33] as sqlx::Encode<'r, sqlx::Postgres>>::encode_by_ref(&bytes, buf)
-    }
-}
-
-impl sqlx::postgres::PgHasArrayType for PublicKey {
-    fn array_type_info() -> sqlx::postgres::PgTypeInfo {
-        <[u8; 33] as sqlx::postgres::PgHasArrayType>::array_type_info()
-    }
-}
-
-#[cfg(any(test, feature = "testing"))]
-impl fake::Dummy<fake::Faker> for PublicKey {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
-        Self(secp256k1::PublicKey::from_secret_key_global(
-            &secp256k1::SecretKey::new(rng),
-        ))
-    }
-}
-
 /// A private key type for the secp256k1 elliptic curve.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct PrivateKey(secp256k1::SecretKey);

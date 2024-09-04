@@ -70,6 +70,37 @@ impl sqlx::postgres::PgHasArrayType for BitcoinTxId {
         <[u8; 32] as sqlx::postgres::PgHasArrayType>::array_type_info()
     }
 }
+
+/// For the [`PublicKey`]
+
+/// We expect the compressed public key bytes from the database
+impl<'r> sqlx::Decode<'r, sqlx::Postgres> for PublicKey {
+    fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
+        let bytes = <[u8; 33] as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
+        Ok(PublicKey::from_slice(&bytes)?)
+    }
+}
+
+impl sqlx::Type<sqlx::Postgres> for PublicKey {
+    fn type_info() -> sqlx::postgres::PgTypeInfo {
+        <[u8; 33] as sqlx::Type<sqlx::Postgres>>::type_info()
+    }
+}
+
+/// We write the compressed public key bytes to the database
+impl<'r> sqlx::Encode<'r, sqlx::Postgres> for PublicKey {
+    fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> Result<IsNull, BoxDynError> {
+        let bytes = self.serialize();
+        <[u8; 33] as sqlx::Encode<'r, sqlx::Postgres>>::encode_by_ref(&bytes, buf)
+    }
+}
+
+impl sqlx::postgres::PgHasArrayType for PublicKey {
+    fn array_type_info() -> sqlx::postgres::PgTypeInfo {
+        <[u8; 33] as sqlx::postgres::PgHasArrayType>::array_type_info()
+    }
+}
+
 /// For the [`StacksBlockHash`]
 
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for StacksBlockHash {
