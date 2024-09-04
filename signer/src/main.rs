@@ -124,14 +124,14 @@ async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
 
     let config = ctx.config().signer.event_observer.clone();
 
-    // run our app with hyper
-    // TODO: This should be read from configuration
+    // Bind to the configured address and port
     let bind = SocketAddr::new(config.bind, config.port);
     let listener = tokio::net::TcpListener::bind(bind).await.unwrap();
 
     // Subscribe to the signal channel so that we can catch shutdown events.
     let mut signal = ctx.get_signal_receiver();
 
+    // Run our app with hyper
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
             // Listen for an application shutdown signal. We need to loop here
