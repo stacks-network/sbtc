@@ -113,9 +113,16 @@ impl MessageTransfer for P2PNetwork {
 
 #[cfg(test)]
 mod tests {
+    use core::panic;
+    use std::env;
+
     use super::*;
 
-    use crate::testing;
+    use crate::{
+        context::SignerContext,
+        keys::PrivateKey,
+        testing::{self, DEFAULT_CONFIG_PATH},
+    };
 
     #[tokio::test]
     async fn two_clients_should_be_able_to_exchange_messages_given_an_in_memory_network() {
@@ -125,5 +132,71 @@ mod tests {
         let client_2 = network.connect();
 
         testing::network::assert_clients_can_exchange_messages(client_1, client_2).await;
+    }
+
+    #[tokio::test]
+    async fn two_clients_should_be_able_to_exchange_messages_given_a_libp2p_network() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .try_init();
+
+        let key1 = PrivateKey::new(&mut rand::thread_rng());
+        let key2 = PrivateKey::new(&mut rand::thread_rng());
+
+        // TODO: I'm not sure why we need to set the env vars here, when you run this test
+        // individually or with `cargo nextest run` it works fine without, but with
+        // `cargo test -- --test-threads 1` and `make test` it fails with a config
+        // error that the private key is only 2 bytes long .oO
+        env::set_var("SIGNER_SIGNER__PRIVATE_KEY", hex::encode(key1.to_bytes()));
+        let context1 = SignerContext::init(DEFAULT_CONFIG_PATH).unwrap();
+        env::set_var("SIGNER_SIGNER__PRIVATE_KEY", hex::encode(key2.to_bytes()));
+        let context2 = SignerContext::init(DEFAULT_CONFIG_PATH).unwrap();
+
+        let term1 = context1.get_termination_handle();
+        let term2 = context2.get_termination_handle();
+
+        let mut swarm1 = libp2p::SignerSwarmBuilder::new(&key1)
+            .add_listen_endpoint("/ip4/0.0.0.0/tcp/0".parse().unwrap())
+            .build()
+            .expect("Failed to build swarm 1");
+
+        let mut swarm2 = libp2p::SignerSwarmBuilder::new(&key2)
+            .add_listen_endpoint("/ip4/0.0.0.0/tcp/0".parse().unwrap())
+            .build()
+            .expect("Failed to build swarm 2");
+
+        let network1 = P2PNetwork::new(&context1);
+        let network2 = P2PNetwork::new(&context2);
+
+        tracing::info!("starting swarms");
+
+        let handle1 = tokio::spawn(async move {
+            swarm1.start(&context1).await.unwrap();
+        });
+
+        let handle2 = tokio::spawn(async move {
+            swarm2.start(&context2).await.unwrap();
+        });
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+        tracing::info!("starting test");
+
+        if let Err(_) = tokio::time::timeout(
+            tokio::time::Duration::from_secs(30),
+            testing::network::assert_clients_can_exchange_messages(network1, network2),
+        )
+        .await
+        {
+            handle1.abort();
+            handle2.abort();
+            panic!(
+                r#"Test timed out, we waited for 30 seconds but this usually takes around 5 seconds. 
+            This is generally due to connectivity issues between the two swarms."#
+            );
+        }
+
+        term1.signal_shutdown();
+        term2.signal_shutdown();
     }
 }

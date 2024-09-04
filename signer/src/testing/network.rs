@@ -45,9 +45,17 @@ fn spawn_client_task(
             client.broadcast(msg).await.expect("Failed to broadcast");
         }
 
-        for msg in should_receive {
+        for _ in 0..should_receive.len() {
             let received = client.receive().await.expect("Failed to receive message");
-            assert_eq!(received, msg);
+            assert!(should_receive.contains(&received));
         }
+
+        // !! This is the original implementation, but it assumes exact ordering of
+        // !! messages, which is not guaranteed in the network (this makes tests
+        // !! using libp2p's gossipsub flakey).
+        // for msg in should_receive {
+        //     let received = client.receive().await.expect("Failed to receive message");
+        //     assert_eq!(received, msg);
+        // }
     })
 }

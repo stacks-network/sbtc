@@ -212,4 +212,9 @@ impl SignerSwarm {
 
         Ok(())
     }
+
+    /// Retrieves the number of connected peers.
+    pub async fn peer_count(&self) -> usize {
+        self.swarm.lock().await.connected_peers().count()
+    }
 }

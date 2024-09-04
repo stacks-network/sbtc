@@ -174,7 +174,7 @@ async fn run_libp2p_swarm(ctx: &impl Context) -> Result<(), Error> {
 
     // Build the swarm.
     tracing::debug!("building the libp2p swarm");
-    let mut swarm = SignerSwarmBuilder::new(&ctx.config().signer.stacks_account.private_key)
+    let mut swarm = SignerSwarmBuilder::new(&ctx.config().signer.private_key)
         .add_listen_endpoints(&listen_addrs)
         .add_seed_addrs(&seed_addrs)
         .build()?;

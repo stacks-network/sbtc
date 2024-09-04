@@ -1,6 +1,6 @@
 //! Context module for the signer binary.
 
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use tokio::sync::broadcast::Sender;
 
@@ -28,15 +28,15 @@ pub trait Context {
 /// Signer context which is passed to different components within the
 /// signer binary.
 pub struct SignerContext {
-    config: Settings,
+    config: Arc<Settings>,
     // Handle to the app signalling channel. This keeps the channel alive
     // for the duration of the program and is used both to send messages
     // and to hand out new receivers.
-    signal_tx: Sender<SignerSignal>,
+    signal_tx: Arc<Sender<SignerSignal>>,
     /// Handle to the app termination channel. This keeps the channel alive
     /// for the duration of the program and is used to provide new senders
     /// and receivers for a [`TerminationHandle`].
-    term_tx: tokio::sync::watch::Sender<bool>,
+    term_tx: Arc<tokio::sync::watch::Sender<bool>>,
 }
 
 /// Signals that can be sent within the signer binary.
@@ -65,6 +65,8 @@ pub enum SignerEvent {
     P2PPublishSuccess(crate::network::MsgId),
     /// Signals to the application that a message was received from the P2P network.
     P2PMessageReceived(crate::network::Msg),
+    /// Signals to the application that a new peer has connected to the P2P network.
+    P2PPeerConnected(libp2p::PeerId),
 }
 
 /// Handle to the termination signal. This can be used to signal the application
@@ -115,7 +117,11 @@ impl Context for SignerContext {
         let (signal_tx, _) = tokio::sync::broadcast::channel(128);
         let (term_tx, _) = tokio::sync::watch::channel(false);
 
-        Ok(Self { config, signal_tx, term_tx })
+        Ok(Self {
+            config: Arc::new(config),
+            signal_tx: Arc::new(signal_tx),
+            term_tx: Arc::new(term_tx),
+        })
     }
 
     fn config(&self) -> &Settings {
@@ -127,7 +133,7 @@ impl Context for SignerContext {
     }
 
     fn get_signal_sender(&self) -> tokio::sync::broadcast::Sender<SignerSignal> {
-        self.signal_tx.clone()
+        (*self.signal_tx).clone()
     }
 
     /// Send a signal to the application signalling channel.
@@ -145,6 +151,6 @@ impl Context for SignerContext {
     }
 
     fn get_termination_handle(&self) -> TerminationHandle {
-        TerminationHandle(self.term_tx.clone(), self.term_tx.subscribe())
+        TerminationHandle((*self.term_tx).clone(), self.term_tx.subscribe())
     }
 }
