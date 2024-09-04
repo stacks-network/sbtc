@@ -485,8 +485,8 @@ export const contracts = {
     },
     non_fungible_tokens: [],
     fungible_tokens: [],
-    epoch: "Epoch25",
-    clarity_version: "Clarity2",
+    epoch: "Epoch30",
+    clarity_version: "Clarity3",
     contractName: "sbtc-bootstrap-signers",
   },
   sbtcDeposit: {
@@ -576,6 +576,8 @@ export const contracts = {
               },
             },
           },
+          { name: "burn-height", type: "uint128" },
+          { name: "burn-hash", type: { buffer: { length: 32 } } },
         ],
         outputs: { type: { response: { ok: "uint128", error: "uint128" } } },
       } as TypedAbiFunction<
@@ -589,8 +591,19 @@ export const contracts = {
             }[],
             "deposits"
           >,
+          burnHeight: TypedAbiArg<number | bigint, "burnHeight">,
+          burnHash: TypedAbiArg<Uint8Array, "burnHash">,
         ],
         Response<bigint, bigint>
+      >,
+      getBurnHeader: {
+        name: "get-burn-header",
+        access: "read_only",
+        args: [{ name: "height", type: "uint128" }],
+        outputs: { type: { optional: { buffer: { length: 32 } } } },
+      } as TypedAbiFunction<
+        [height: TypedAbiArg<number | bigint, "height">],
+        Uint8Array | null
       >,
     },
     maps: {},
@@ -612,6 +625,16 @@ export const contracts = {
       } as TypedAbiVariable<bigint>,
       ERR_DEPOSIT_REPLAY: {
         name: "ERR_DEPOSIT_REPLAY",
+        type: {
+          response: {
+            ok: "none",
+            error: "uint128",
+          },
+        },
+        access: "constant",
+      } as TypedAbiVariable<Response<null, bigint>>,
+      ERR_INVALID_BURN_HASH: {
+        name: "ERR_INVALID_BURN_HASH",
         type: {
           response: {
             ok: "none",
@@ -671,6 +694,10 @@ export const contracts = {
         isOk: false,
         value: 301n,
       },
+      ERR_INVALID_BURN_HASH: {
+        isOk: false,
+        value: 305n,
+      },
       ERR_INVALID_CALLER: {
         isOk: false,
         value: 304n,
@@ -688,8 +715,8 @@ export const contracts = {
     },
     non_fungible_tokens: [],
     fungible_tokens: [],
-    epoch: "Epoch25",
-    clarity_version: "Clarity2",
+    epoch: "Epoch30",
+    clarity_version: "Clarity3",
     contractName: "sbtc-deposit",
   },
   sbtcRegistry: {
@@ -1133,8 +1160,8 @@ export const contracts = {
     },
     non_fungible_tokens: [],
     fungible_tokens: [],
-    epoch: "Epoch25",
-    clarity_version: "Clarity2",
+    epoch: "Epoch30",
+    clarity_version: "Clarity3",
     contractName: "sbtc-registry",
   },
   sbtcToken: {
@@ -1501,8 +1528,8 @@ export const contracts = {
     },
     non_fungible_tokens: [],
     fungible_tokens: [{ name: "sbtc-token" }, { name: "sbtc-token-locked" }],
-    epoch: "Epoch25",
-    clarity_version: "Clarity2",
+    epoch: "Epoch30",
+    clarity_version: "Clarity3",
     contractName: "sbtc-token",
   },
   sbtcWithdrawal: {
@@ -1840,8 +1867,8 @@ export const contracts = {
     },
     non_fungible_tokens: [],
     fungible_tokens: [],
-    epoch: "Epoch25",
-    clarity_version: "Clarity2",
+    epoch: "Epoch30",
+    clarity_version: "Clarity3",
     contractName: "sbtc-withdrawal",
   },
 } as const;
