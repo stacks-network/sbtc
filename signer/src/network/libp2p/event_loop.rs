@@ -19,6 +19,11 @@ pub async fn run(
     signal_tx: Sender<SignerSignal>,
     mut signal_rx: Receiver<SignerSignal>,
 ) {
+    // NOTE: We are locking the swarm here for the life of the event loop.
+    // Right now there's nothing else that needs to access the swarm while
+    // it's running, but if that changes we will need to move the lock into
+    // the loop and implement a timeout within the select! so that other
+    // tasks can access the swarm.
     let mut swarm = swarm.lock().await;
     let topic = TOPIC.clone();
 

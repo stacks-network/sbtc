@@ -142,7 +142,7 @@ impl<'a> SignerSwarmBuilder<'a> {
 
         let behavior = SignerBehavior::new(keypair.clone())?;
 
-        let swarm = SwarmBuilder::with_existing_identity(keypair)
+        let swarm = SwarmBuilder::with_existing_identity(keypair.clone())
             .with_tokio()
             .with_tcp(
                 tcp::Config::default(),
@@ -159,6 +159,7 @@ impl<'a> SignerSwarmBuilder<'a> {
             .build();
 
         Ok(SignerSwarm {
+            keypair,
             swarm: Arc::new(Mutex::new(swarm)),
             listen_addrs: self.listen_on,
             seed_addrs: self.seed_addrs,
@@ -167,21 +168,22 @@ impl<'a> SignerSwarmBuilder<'a> {
 }
 
 pub struct SignerSwarm {
+    keypair: Keypair,
     swarm: Arc<Mutex<Swarm<SignerBehavior>>>,
     listen_addrs: Vec<Multiaddr>,
     seed_addrs: Vec<Multiaddr>,
 }
 
 impl SignerSwarm {
-    /// Retrieves the local peer ID of the swarm.
-    pub async fn local_peer_id(&self) -> PeerId {
-        *self.swarm.lock().await.local_peer_id()
+    /// Get the local peer ID of the signer.
+    pub fn local_peer_id(&self) -> PeerId {
+        PeerId::from_public_key(&self.keypair.public())
     }
 
     /// Start the [`SignerSwarm`] and run the event loop. This function will block until the
     /// swarm is stopped (either by receiving a shutdown signal or an unrecoverable error).
     pub async fn start(&mut self, ctx: &impl Context) -> Result<(), SignerSwarmError> {
-        let local_peer_id = self.local_peer_id().await;
+        let local_peer_id = *self.swarm.lock().await.local_peer_id();
         tracing::info!("Starting SignerSwarm with peer ID: {}", local_peer_id);
 
         // Start listening on the listen addresses.
@@ -211,11 +213,6 @@ impl SignerSwarm {
         event_loop::run(&mut term, Arc::clone(&self.swarm), signal_tx, signal_rx).await;
 
         Ok(())
-    }
-
-    /// Retrieves the number of connected peers.
-    pub async fn peer_count(&self) -> usize {
-        self.swarm.lock().await.connected_peers().count()
     }
 }
 
