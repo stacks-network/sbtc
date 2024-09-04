@@ -223,7 +223,7 @@ where
         }
 
         // TODO(297): Validate the chain tip against database
-        let bitcoin_chain_tip = model::BitcoinBlockHash(msg.bitcoin_chain_tip);
+        let bitcoin_chain_tip = model::BitcoinBlockHash::from(msg.bitcoin_chain_tip);
 
         let chain_tip_report = self
             .inspect_msg_chain_tip(msg.signer_pub_key, &bitcoin_chain_tip)
@@ -714,10 +714,9 @@ where
         msg: impl Into<message::Payload>,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), error::Error> {
-        let bitcoin_chain_tip = bitcoin_chain_tip.0;
         let payload: message::Payload = msg.into();
         let msg = payload
-            .to_message(bitcoin_chain_tip)
+            .to_message(*bitcoin_chain_tip)
             .sign_ecdsa(&self.signer_private_key)?;
 
         self.network.broadcast(msg).await?;

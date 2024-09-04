@@ -6,12 +6,13 @@ use sha2::Digest;
 use crate::keys::PublicKey;
 use crate::signature::RecoverableEcdsaSignature as _;
 use crate::stacks::contracts::ContractCall;
+use crate::storage::model::BitcoinBlockHash;
 
 /// Messages exchanged between signers
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SignerMessage {
     /// The bitcoin chain tip defining the signers view of the blockchain at the time the message was created
-    pub bitcoin_chain_tip: bitcoin::BlockHash,
+    pub bitcoin_chain_tip: BitcoinBlockHash,
     /// The message payload
     pub payload: Payload,
 }
@@ -37,7 +38,7 @@ pub enum Payload {
 
 impl Payload {
     /// Converts the payload into a signer message with the given Bitcoin chain tip
-    pub fn to_message(self, bitcoin_chain_tip: bitcoin::BlockHash) -> SignerMessage {
+    pub fn to_message(self, bitcoin_chain_tip: BitcoinBlockHash) -> SignerMessage {
         SignerMessage {
             bitcoin_chain_tip,
             payload: self,
@@ -166,7 +167,7 @@ pub struct WstsMessage {
 impl wsts::net::Signable for SignerMessage {
     fn hash(&self, hasher: &mut sha2::Sha256) {
         hasher.update("SBTC_SIGNER_MESSAGE");
-        hasher.update(self.bitcoin_chain_tip);
+        hasher.update(self.bitcoin_chain_tip.as_ref());
         self.payload.hash(hasher);
     }
 }

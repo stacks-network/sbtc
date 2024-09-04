@@ -63,8 +63,8 @@ pub fn extract_relevant_transactions(blocks: &[NakamotoBlock]) -> Vec<model::Tra
                 if CONTRACT_NAMES.contains(&x.contract_name.as_str()) =>
             {
                 Some(model::Transaction {
-                    txid: tx.txid().to_bytes(),
-                    block_hash: block_id.to_bytes(),
+                    txid: tx.txid().into_bytes(),
+                    block_hash: block_id.into_bytes(),
                     tx: tx.serialize_to_vec(),
                     tx_type: *transaction_kinds.get(&x.function_name.as_str())?,
                 })

@@ -514,7 +514,7 @@ where
     ) -> Result<(), error::Error> {
         let msg = msg
             .into()
-            .to_message(bitcoin_chain_tip.0)
+            .to_message(*bitcoin_chain_tip)
             .sign_ecdsa(&self.private_key)?;
 
         self.network.broadcast(msg).await?;

@@ -375,7 +375,7 @@ where
         network_handle
             .broadcast(
                 transaction_sign_request_payload
-                    .to_message(chain_tip.0)
+                    .to_message(chain_tip.into())
                     .sign_ecdsa(&coordinator_private_key)
                     .expect("failed to sign"),
             )
@@ -447,7 +447,7 @@ where
         )
         .await;
 
-        let bitcoin_chain_tip = bitcoin_chain_tip.0;
+        let bitcoin_chain_tip = bitcoin_chain_tip.into();
 
         let dummy_txid = testing::dummy::txid(&fake::Faker, &mut rng);
 
@@ -533,7 +533,7 @@ where
             .unwrap()
             .clone();
 
-        let bitcoin_chain_tip = bitcoin_chain_tip.0;
+        let bitcoin_chain_tip = bitcoin_chain_tip.into();
 
         let dummy_txid = testing::dummy::txid(&fake::Faker, &mut rng);
 
@@ -753,7 +753,7 @@ async fn run_dkg_and_store_results_for_signers<'s: 'r, 'r, S, Rng>(
     let mut testing_signer_set =
         testing::wsts::SignerSet::new(signer_info, threshold, || network.connect());
     let dkg_txid = testing::dummy::txid(&fake::Faker, rng);
-    let bitcoin_chain_tip = chain_tip.0;
+    let bitcoin_chain_tip = *chain_tip;
     let (aggregate_key, all_dkg_shares) = testing_signer_set
         .run_dkg(bitcoin_chain_tip, dkg_txid, rng)
         .await;

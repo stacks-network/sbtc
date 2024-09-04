@@ -111,7 +111,7 @@ impl Coordinator {
     /// Run DKG
     pub async fn run_dkg(
         &mut self,
-        bitcoin_chain_tip: bitcoin::BlockHash,
+        bitcoin_chain_tip: model::BitcoinBlockHash,
         txid: bitcoin::Txid,
     ) -> PublicKey {
         self.wsts_coordinator
@@ -136,7 +136,7 @@ impl Coordinator {
     /// Request a transaction to be signed
     pub async fn request_sign_transaction(
         &mut self,
-        bitcoin_chain_tip: bitcoin::BlockHash,
+        bitcoin_chain_tip: model::BitcoinBlockHash,
         tx: bitcoin::Transaction,
         aggregate_key: PublicKey,
     ) {
@@ -179,7 +179,7 @@ impl Coordinator {
     /// Run a signing round
     pub async fn run_signing_round(
         &mut self,
-        bitcoin_chain_tip: bitcoin::BlockHash,
+        bitcoin_chain_tip: model::BitcoinBlockHash,
         txid: bitcoin::Txid,
         msg: &[u8],
     ) -> wsts::taproot::SchnorrProof {
@@ -198,7 +198,7 @@ impl Coordinator {
 
     async fn loop_until_result(
         &mut self,
-        bitcoin_chain_tip: bitcoin::BlockHash,
+        bitcoin_chain_tip: model::BitcoinBlockHash,
         txid: bitcoin::Txid,
     ) -> wsts::state_machine::OperationResult {
         let future = async move {
@@ -354,7 +354,7 @@ trait WstsEntity {
 
     async fn send_packet(
         &mut self,
-        bitcoin_chain_tip: bitcoin::BlockHash,
+        bitcoin_chain_tip: model::BitcoinBlockHash,
         txid: bitcoin::Txid,
         packet: wsts::net::Packet,
     ) {
@@ -419,7 +419,7 @@ impl SignerSet {
     /// for all signers
     pub async fn run_dkg<Rng: rand::RngCore + rand::CryptoRng>(
         &mut self,
-        bitcoin_chain_tip: bitcoin::BlockHash,
+        bitcoin_chain_tip: model::BitcoinBlockHash,
         txid: bitcoin::Txid,
         rng: &mut Rng,
     ) -> (PublicKey, Vec<model::EncryptedDkgShares>) {
@@ -530,6 +530,7 @@ impl SignerSet {
 
 #[cfg(test)]
 mod tests {
+    use model::BitcoinBlockHash;
     use rand::SeedableRng;
 
     use crate::testing::dummy;
@@ -543,7 +544,7 @@ mod tests {
         let num_signers = 7;
         let threshold = 5;
 
-        let bitcoin_chain_tip = dummy::block_hash(&fake::Faker, &mut rng);
+        let bitcoin_chain_tip: BitcoinBlockHash = fake::Faker.fake_with_rng(&mut rng);
         let txid = dummy::txid(&fake::Faker, &mut rng);
 
         let signer_info = generate_signer_info(&mut rng, num_signers);

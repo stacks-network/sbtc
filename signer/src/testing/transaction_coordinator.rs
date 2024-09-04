@@ -11,6 +11,7 @@ use crate::storage::model;
 use crate::testing;
 use crate::transaction_coordinator;
 
+use bitcoin::hashes::Hash as _;
 use rand::SeedableRng as _;
 use sha2::Digest as _;
 
@@ -232,7 +233,7 @@ where
             .expect("no chain tip");
 
         let dkg_txid = testing::dummy::txid(&fake::Faker, rng);
-        let bitcoin_chain_tip = chain_tip.0;
+        let bitcoin_chain_tip = chain_tip.into();
         let (aggregate_key, all_dkg_shares) =
             signer_set.run_dkg(bitcoin_chain_tip, dkg_txid, rng).await;
 
@@ -266,7 +267,7 @@ where
         signer_info: &[testing::wsts::SignerInfo],
     ) -> keys::PrivateKey {
         let mut hasher = sha2::Sha256::new();
-        hasher.update(bitcoin_chain_tip.0);
+        hasher.update(bitcoin_chain_tip.as_byte_array());
         let digest = hasher.finalize();
         let index = usize::from_be_bytes(*digest.first_chunk().expect("unexpected digest size"));
         signer_info

@@ -552,9 +552,8 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
     let mut testing_signer_set =
         testing::wsts::SignerSet::new(&signer_info, threshold, || dummy_wsts_network.connect());
     let dkg_txid = testing::dummy::txid(&fake::Faker, &mut rng);
-    let bitcoin_chain_tip = chain_tip.0;
     let (aggregate_key, _) = testing_signer_set
-        .run_dkg(bitcoin_chain_tip, dkg_txid, &mut rng)
+        .run_dkg(chain_tip, dkg_txid, &mut rng)
         .await;
 
     testing_signer_set

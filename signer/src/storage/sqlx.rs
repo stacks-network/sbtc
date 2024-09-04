@@ -20,7 +20,7 @@ use crate::storage::model::StacksTxId;
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for BitcoinBlockHash {
     fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
         let bytes = <[u8; 32] as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
-        Ok(BitcoinBlockHash(bitcoin::BlockHash::from_byte_array(bytes)))
+        Ok(BitcoinBlockHash::from(bytes))
     }
 }
 

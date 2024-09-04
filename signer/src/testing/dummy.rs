@@ -16,7 +16,6 @@ use rand::Rng;
 use secp256k1::ecdsa::RecoverableSignature;
 use stacks_common::address::C32_ADDRESS_VERSION_TESTNET_SINGLESIG;
 use stacks_common::types::chainstate::StacksAddress;
-use stacks_common::types::chainstate::StacksBlockId;
 use stacks_common::util::hash::Hash160;
 
 use crate::keys::PrivateKey;
@@ -330,24 +329,24 @@ impl fake::Dummy<fake::Faker> for CompletedDepositEvent {
 
 impl fake::Dummy<fake::Faker> for BitcoinTxId {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        BitcoinTxId(txid(config, rng))
+        From::<[u8; 32]>::from(config.fake_with_rng(rng))
     }
 }
 
 impl fake::Dummy<fake::Faker> for BitcoinBlockHash {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        BitcoinBlockHash(block_hash(config, rng))
+        From::<[u8; 32]>::from(config.fake_with_rng(rng))
     }
 }
 
 impl fake::Dummy<fake::Faker> for StacksBlockHash {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        StacksBlockHash(StacksBlockId(config.fake_with_rng(rng)))
+        From::<[u8; 32]>::from(config.fake_with_rng(rng))
     }
 }
 
 impl fake::Dummy<fake::Faker> for StacksTxId {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        StacksTxId(blockstack_lib::burnchains::Txid(config.fake_with_rng(rng)))
+        From::<[u8; 32]>::from(config.fake_with_rng(rng))
     }
 }

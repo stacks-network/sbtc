@@ -6,6 +6,8 @@ use bitcoin::hashes::Hash as _;
 use bitcoin::Address;
 use bitcoin::Network;
 use sbtc::deposits::Deposit;
+use serde::Deserialize;
+use serde::Serialize;
 use stacks_common::types::chainstate::StacksBlockId;
 
 use crate::keys::PublicKey;
@@ -272,8 +274,8 @@ impl From<[u8; 32]> for BitcoinTxId {
 }
 
 /// Bitcoin block hash
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BitcoinBlockHash(pub bitcoin::BlockHash);
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct BitcoinBlockHash(bitcoin::BlockHash);
 
 impl Deref for BitcoinBlockHash {
     type Target = bitcoin::BlockHash;
@@ -282,9 +284,28 @@ impl Deref for BitcoinBlockHash {
     }
 }
 
+impl AsRef<[u8; 32]> for BitcoinBlockHash {
+    fn as_ref(&self) -> &[u8; 32] {
+        self.0.as_ref()   
+    }
+}
+
 impl From<bitcoin::BlockHash> for BitcoinBlockHash {
     fn from(value: bitcoin::BlockHash) -> Self {
         Self(value)
+    }
+}
+
+impl From<&BitcoinBlockHash> for bitcoin::BlockHash {
+    fn from(value: &BitcoinBlockHash) -> Self {
+        value.0
+    }
+}
+
+
+impl From<BitcoinBlockHash> for bitcoin::BlockHash {
+    fn from(value: BitcoinBlockHash) -> Self {
+        value.0
     }
 }
 
