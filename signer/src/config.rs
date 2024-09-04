@@ -570,7 +570,7 @@ mod tests {
             "SIGNER_SIGNER__PRIVATE_KEY",
             "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd02",
         );
-        let settings = Settings::new(DEFAULT_CONFIG_PATH);
+        let settings = Settings::new_from_default_config();
         assert!(settings.is_err());
         assert!(matches!(
             settings.unwrap_err(),
@@ -584,7 +584,7 @@ mod tests {
             "SIGNER_SIGNER__PRIVATE_KEY",
             "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd01",
         );
-        let settings = Settings::new(DEFAULT_CONFIG_PATH);
+        let settings = Settings::new_from_default_config();
         assert!(settings.is_ok());
     }
 
