@@ -224,10 +224,10 @@ where
                 tx.consensus_encode(&mut tx_bytes)?;
 
                 Ok::<_, bitcoin::io::Error>(model::Transaction {
-                    txid: tx.compute_txid().to_byte_array().to_vec(),
+                    txid: tx.compute_txid().to_byte_array(),
                     tx: tx_bytes,
                     tx_type: model::TransactionType::SbtcTransaction,
-                    block_hash: block_hash.to_byte_array().to_vec(),
+                    block_hash: block_hash.to_byte_array(),
                 })
             })
             .collect::<Result<Vec<model::Transaction>, _>>()
@@ -257,11 +257,11 @@ where
     /// transactions that are spend to any of the signers `scriptPubKey`s
     async fn write_bitcoin_block(&mut self, block: &bitcoin::Block) -> Result<(), error::Error> {
         let db_block = model::BitcoinBlock {
-            block_hash: block.block_hash().to_byte_array().to_vec(),
+            block_hash: block.block_hash().into(),
             block_height: block
                 .bip34_block_height()
                 .expect("Failed to get block height"),
-            parent_hash: block.header.prev_blockhash.to_byte_array().to_vec(),
+            parent_hash: block.header.prev_blockhash.into(),
             confirms: Vec::new(),
         };
 
@@ -294,6 +294,7 @@ mod tests {
     use blockstack_lib::types::chainstate::StacksAddress;
     use blockstack_lib::types::chainstate::StacksBlockId;
     use fake::Dummy;
+    use model::BitcoinTxId;
     use rand::seq::IteratorRandom;
     use rand::SeedableRng;
     use sbtc::rpc::BitcoinClient;
@@ -343,12 +344,12 @@ mod tests {
 
         for block in test_harness.bitcoin_blocks {
             let persisted = storage
-                .get_bitcoin_block(&block.block_hash().to_byte_array().to_vec())
+                .get_bitcoin_block(&block.block_hash().into())
                 .await
                 .expect("storage error")
                 .expect("block wasn't persisted");
 
-            assert_eq!(persisted.block_hash, block.block_hash().to_byte_array())
+            assert_eq!(persisted.block_hash, block.block_hash().into())
         }
 
         std::mem::drop(subscriber_rx);
@@ -521,7 +522,7 @@ mod tests {
             .unwrap();
         let storage = block_observer.storage.lock().await;
         assert_eq!(storage.deposit_requests.len(), 1);
-        let db_outpoint = (tx_setup0.tx.compute_txid().to_byte_array().to_vec(), 0);
+        let db_outpoint: (BitcoinTxId, u32) = (tx_setup0.tx.compute_txid().into(), 0);
         assert!(storage.deposit_requests.get(&db_outpoint).is_some());
 
         // Now the deposit_requests thing should be empty now, since we stored the things.
@@ -605,9 +606,7 @@ mod tests {
             let store = block_observer.storage.lock().await;
             // Under the hood, bitcoin transactions get stored in the
             // `bitcoin_block_to_transactions` field, so lets check there
-            let stored_transactions = store
-                .bitcoin_block_to_transactions
-                .get(&block_hash.as_byte_array().to_vec());
+            let stored_transactions = store.bitcoin_block_to_transactions.get(&block_hash.into());
 
             // Nothing should be stored so the map get call should return
             // None.
@@ -623,14 +622,12 @@ mod tests {
             .unwrap();
 
         let store = block_observer.storage.lock().await;
-        let stored_transactions = store
-            .bitcoin_block_to_transactions
-            .get(&block_hash.as_byte_array().to_vec());
+        let stored_transactions = store.bitcoin_block_to_transactions.get(&block_hash.into());
 
         // Is our one transaction stored? This block hash should now have
         // only one transaction with the expected txid.
         let tx_ids = stored_transactions.unwrap();
-        let expected_tx_id = tx_setup0.tx.compute_txid().to_byte_array().to_vec();
+        let expected_tx_id = tx_setup0.tx.compute_txid().into();
         assert_eq!(tx_ids.len(), 1);
         assert_eq!(tx_ids[0], expected_tx_id);
     }

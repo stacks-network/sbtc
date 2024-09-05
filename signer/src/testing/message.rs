@@ -1,6 +1,5 @@
 //! Test utilities for signer message
 
-use bitcoin::hashes::Hash;
 use bitvec::array::BitArray;
 use fake::Fake;
 use rand::seq::SliceRandom;
@@ -11,6 +10,7 @@ use crate::keys::PublicKey;
 use crate::message;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::RejectWithdrawalV1;
+use crate::storage::model::BitcoinBlockHash;
 use crate::testing::dummy;
 
 impl message::SignerMessage {
@@ -37,7 +37,7 @@ impl message::SignerMessage {
     ) -> Self {
         let mut block_hash_data = [0; 32];
         rng.fill_bytes(&mut block_hash_data);
-        let block_hash = bitcoin::BlockHash::from_slice(&block_hash_data).unwrap();
+        let block_hash = BitcoinBlockHash::from(block_hash_data);
 
         payload.to_message(block_hash)
     }

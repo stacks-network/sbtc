@@ -2,7 +2,6 @@
 
 use bitcoin::absolute::LockTime;
 use bitcoin::address::NetworkUnchecked;
-use bitcoin::hashes::Hash;
 use bitcoin::secp256k1::SECP256K1;
 use bitcoin::sighash::Prevouts;
 use bitcoin::sighash::SighashCache;
@@ -340,9 +339,7 @@ impl DepositRequest {
         request: model::DepositRequest,
         signers_public_key: XOnlyPublicKey,
     ) -> Result<Self, Error> {
-        let txid = bitcoin::Txid::from_byte_array(
-            request.txid.try_into().map_err(|_| Error::TypeConversion)?,
-        );
+        let txid = request.txid.into();
         let vout = request.output_index;
 
         let signer_bitmap = BitArray::ZERO; // TODO(326): Populate

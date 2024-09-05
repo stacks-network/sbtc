@@ -9,6 +9,7 @@
 pub mod in_memory;
 pub mod model;
 pub mod postgres;
+pub mod sqlx;
 
 use std::future::Future;
 

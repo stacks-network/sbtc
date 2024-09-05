@@ -69,7 +69,7 @@ impl TestData {
 
         block
             .confirms
-            .push(stacks_blocks.last().unwrap().block_hash.clone());
+            .push(stacks_blocks.last().unwrap().block_hash);
 
         let deposit_data = DepositData::generate(
             rng,
@@ -233,7 +233,7 @@ impl TestData {
             let parent = blocks.last().unwrap(); // Guaranteed to be at least one block
 
             let mut stacks_block: model::StacksBlock = fake::Faker.fake_with_rng(rng);
-            stacks_block.parent_hash = parent.block_hash.clone();
+            stacks_block.parent_hash = parent.block_hash;
             stacks_block.block_height = parent.block_height + 1;
 
             blocks.push(stacks_block);
@@ -270,19 +270,19 @@ impl DepositData {
             let deposit_signers: Vec<_> = (0..num_signers_per_request)
                 .map(|_| {
                     let mut signer: model::DepositSigner = fake::Faker.fake_with_rng(rng);
-                    signer.txid = deposit_request.txid.clone();
+                    signer.txid = deposit_request.txid;
                     signer.output_index = deposit_request.output_index;
                     signer
                 })
                 .collect();
 
             let mut raw_transaction: model::Transaction = fake::Faker.fake_with_rng(rng);
-            raw_transaction.txid = deposit_request.txid.clone();
+            raw_transaction.txid = deposit_request.txid.into_bytes();
             raw_transaction.tx_type = model::TransactionType::DepositRequest;
 
             let bitcoin_transaction = model::BitcoinTransaction {
-                txid: raw_transaction.txid.clone(),
-                block_hash: bitcoin_block.block_hash.clone(),
+                txid: raw_transaction.txid.into(),
+                block_hash: bitcoin_block.block_hash,
             };
 
             deposit_data.bitcoin_transactions.push(bitcoin_transaction);
@@ -326,12 +326,12 @@ impl WithdrawData {
             .fold(
                 (Self::new(), next_withdraw_request_id),
                 |(mut withdraw_requests, next_withdraw_request_id), _| {
-                    let stacks_block_hash = stacks_blocks.choose(rng).unwrap().block_hash.clone(); // Guaranteed to be non-empty
+                    let stacks_block_hash = stacks_blocks.choose(rng).unwrap().block_hash; // Guaranteed to be non-empty
 
                     let mut withdraw_request: model::WithdrawRequest =
                         fake::Faker.fake_with_rng(rng);
 
-                    withdraw_request.block_hash = stacks_block_hash.clone();
+                    withdraw_request.block_hash = stacks_block_hash;
                     withdraw_request.request_id = next_withdraw_request_id;
                     withdraw_request.recipient = bitcoin::Address::p2pkh(
                         bitcoin::PubkeyHash::from_byte_array([0; 20]),
@@ -343,7 +343,7 @@ impl WithdrawData {
                     raw_transaction.tx_type = model::TransactionType::WithdrawRequest;
 
                     let stacks_transaction = model::StacksTransaction {
-                        txid: raw_transaction.txid.clone(),
+                        txid: raw_transaction.txid.into(),
                         block_hash: stacks_block_hash,
                     };
 
@@ -351,7 +351,7 @@ impl WithdrawData {
                         .map(|_| {
                             let mut signer: model::WithdrawSigner = fake::Faker.fake_with_rng(rng);
                             signer.request_id = withdraw_request.request_id;
-                            signer.block_hash = withdraw_request.block_hash.clone();
+                            signer.block_hash = withdraw_request.block_hash;
                             signer
                         })
                         .collect();
@@ -394,14 +394,14 @@ struct BlockSummary {
 impl BlockSummary {
     fn summarize(block: &model::BitcoinBlock) -> Self {
         Self {
-            block_hash: block.block_hash.clone(),
+            block_hash: block.block_hash,
             block_height: block.block_height,
         }
     }
 
     fn hallucinate_parent(block: &model::BitcoinBlock) -> Self {
         Self {
-            block_hash: block.parent_hash.clone(),
+            block_hash: block.parent_hash,
             block_height: 1337, // Arbitrary number
         }
     }
@@ -416,14 +416,14 @@ struct StacksBlockSummary {
 impl StacksBlockSummary {
     fn summarize(block: &model::StacksBlock) -> Self {
         Self {
-            block_hash: block.block_hash.clone(),
+            block_hash: block.block_hash,
             block_height: block.block_height,
         }
     }
 
     fn hallucinate_parent(block: &model::StacksBlock) -> Self {
         Self {
-            block_hash: block.parent_hash.clone(),
+            block_hash: block.parent_hash,
             block_height: 1337, // Arbitrary number
         }
     }

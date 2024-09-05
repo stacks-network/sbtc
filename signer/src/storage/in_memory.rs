@@ -127,8 +127,8 @@ impl super::DbRead for SharedStore {
             .await
             .bitcoin_blocks
             .values()
-            .max_by_key(|block| (block.block_height, block.block_hash.clone()))
-            .map(|block| block.block_hash.clone()))
+            .max_by_key(|block| (block.block_height, block.block_hash))
+            .map(|block| block.block_hash))
     }
 
     async fn get_stacks_chain_tip(
@@ -199,7 +199,7 @@ impl super::DbRead for SharedStore {
             .filter(|deposit_request| {
                 store
                     .deposit_request_to_signers
-                    .get(&(deposit_request.txid.clone(), deposit_request.output_index))
+                    .get(&(deposit_request.txid, deposit_request.output_index))
                     .map(|signers| {
                         signers.iter().filter(|signer| signer.is_accepted).count() >= threshold
                     })
@@ -241,7 +241,7 @@ impl super::DbRead for SharedStore {
             .lock()
             .await
             .deposit_request_to_signers
-            .get(&(txid.clone(), output_index))
+            .get(&(*txid, output_index))
             .cloned()
             .unwrap_or_default())
     }
@@ -255,7 +255,7 @@ impl super::DbRead for SharedStore {
             .lock()
             .await
             .withdraw_request_to_signers
-            .get(&(request_id, block_hash.clone()))
+            .get(&(request_id, *block_hash))
             .cloned()
             .unwrap_or_default())
     }
@@ -269,18 +269,16 @@ impl super::DbRead for SharedStore {
             return Ok(Vec::new());
         };
 
-        let context_window_end_block = futures::stream::try_unfold(
-            bitcoin_chain_tip.block_hash.clone(),
-            |block_hash| async move {
+        let context_window_end_block =
+            futures::stream::try_unfold(bitcoin_chain_tip.block_hash, |block_hash| async move {
                 self.get_bitcoin_block(&block_hash)
                     .await
                     .map(|opt| opt.map(|block| (block.clone(), block.parent_hash)))
-            },
-        )
-        .skip(context_window as usize)
-        .boxed()
-        .try_next()
-        .await?;
+            })
+            .skip(context_window as usize)
+            .boxed()
+            .try_next()
+            .await?;
 
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
             return Ok(Vec::new());
@@ -334,10 +332,7 @@ impl super::DbRead for SharedStore {
             .filter(|withdraw_request| {
                 store
                     .withdraw_request_to_signers
-                    .get(&(
-                        withdraw_request.request_id,
-                        withdraw_request.block_hash.clone(),
-                    ))
+                    .get(&(withdraw_request.request_id, withdraw_request.block_hash))
                     .map(|signers| {
                         signers.iter().filter(|signer| signer.is_accepted).count() >= threshold
                     })
@@ -364,7 +359,7 @@ impl super::DbRead for SharedStore {
             .lock()
             .await
             .stacks_nakamoto_blocks
-            .contains_key(block_id.to_bytes().as_slice()))
+            .contains_key(&block_id.into()))
     }
 
     async fn get_encrypted_dkg_shares(
@@ -423,7 +418,7 @@ impl super::DbWrite for SharedStore {
         self.lock()
             .await
             .bitcoin_blocks
-            .insert(block.block_hash.clone(), block.clone());
+            .insert(block.block_hash, block.clone());
 
         Ok(())
     }
@@ -434,8 +429,8 @@ impl super::DbWrite for SharedStore {
     ) -> Result<(), Self::Error> {
         for tx in txs {
             let bitcoin_transaction = model::BitcoinTransaction {
-                txid: tx.txid,
-                block_hash: tx.block_hash,
+                txid: tx.txid.into(),
+                block_hash: tx.block_hash.into(),
             };
             self.write_bitcoin_transaction(&bitcoin_transaction).await?;
         }
@@ -447,7 +442,7 @@ impl super::DbWrite for SharedStore {
         self.lock()
             .await
             .stacks_blocks
-            .insert(block.block_hash.clone(), block.clone());
+            .insert(block.block_hash, block.clone());
 
         Ok(())
     }
@@ -457,7 +452,7 @@ impl super::DbWrite for SharedStore {
         deposit_request: &model::DepositRequest,
     ) -> Result<(), Self::Error> {
         self.lock().await.deposit_requests.insert(
-            (deposit_request.txid.clone(), deposit_request.output_index),
+            (deposit_request.txid, deposit_request.output_index),
             deposit_request.clone(),
         );
 
@@ -472,7 +467,7 @@ impl super::DbWrite for SharedStore {
         for req in deposit_requests.into_iter() {
             store
                 .deposit_requests
-                .insert((req.txid.clone(), req.output_index), req);
+                .insert((req.txid, req.output_index), req);
         }
         Ok(())
     }
@@ -483,16 +478,13 @@ impl super::DbWrite for SharedStore {
     ) -> Result<(), Self::Error> {
         let mut store = self.lock().await;
 
-        let pk = (
-            withdraw_request.request_id,
-            withdraw_request.block_hash.clone(),
-        );
+        let pk = (withdraw_request.request_id, withdraw_request.block_hash);
 
         store
             .stacks_block_to_withdraw_requests
-            .entry(pk.1.clone())
+            .entry(pk.1)
             .or_default()
-            .push(pk.clone());
+            .push(pk);
 
         store.withdraw_requests.insert(pk, withdraw_request.clone());
 
@@ -505,11 +497,11 @@ impl super::DbWrite for SharedStore {
     ) -> Result<(), Self::Error> {
         let mut store = self.lock().await;
 
-        let deposit_request_pk = (decision.txid.clone(), decision.output_index);
+        let deposit_request_pk = (decision.txid, decision.output_index);
 
         store
             .deposit_request_to_signers
-            .entry(deposit_request_pk.clone())
+            .entry(deposit_request_pk)
             .or_default()
             .push(decision.clone());
 
@@ -529,7 +521,7 @@ impl super::DbWrite for SharedStore {
         self.lock()
             .await
             .withdraw_request_to_signers
-            .entry((decision.request_id, decision.block_hash.clone()))
+            .entry((decision.request_id, decision.block_hash))
             .or_default()
             .push(decision.clone());
 
@@ -552,15 +544,15 @@ impl super::DbWrite for SharedStore {
 
         store
             .bitcoin_block_to_transactions
-            .entry(bitcoin_transaction.block_hash.clone())
+            .entry(bitcoin_transaction.block_hash)
             .or_default()
-            .push(bitcoin_transaction.txid.clone());
+            .push(bitcoin_transaction.txid);
 
         store
             .bitcoin_transactions_to_blocks
-            .entry(bitcoin_transaction.txid.clone())
+            .entry(bitcoin_transaction.txid)
             .or_default()
-            .push(bitcoin_transaction.block_hash.clone());
+            .push(bitcoin_transaction.block_hash);
 
         Ok(())
     }
@@ -573,15 +565,15 @@ impl super::DbWrite for SharedStore {
 
         store
             .stacks_block_to_transactions
-            .entry(stacks_transaction.block_hash.clone())
+            .entry(stacks_transaction.block_hash)
             .or_default()
-            .push(stacks_transaction.txid.clone());
+            .push(stacks_transaction.txid);
 
         store
             .stacks_transactions_to_blocks
-            .entry(stacks_transaction.txid.clone())
+            .entry(stacks_transaction.txid)
             .or_default()
-            .push(stacks_transaction.block_hash.clone());
+            .push(stacks_transaction.block_hash);
 
         Ok(())
     }
@@ -592,8 +584,8 @@ impl super::DbWrite for SharedStore {
     ) -> Result<(), Self::Error> {
         for tx in stacks_transactions {
             let stacks_transaction = model::StacksTransaction {
-                txid: tx.txid,
-                block_hash: tx.block_hash,
+                txid: tx.txid.into(),
+                block_hash: tx.block_hash.into(),
             };
             self.write_stacks_transaction(&stacks_transaction).await?;
         }
@@ -609,7 +601,7 @@ impl super::DbWrite for SharedStore {
         blocks.iter().for_each(|block| {
             store
                 .stacks_nakamoto_blocks
-                .insert(block.block_hash.clone(), block.clone());
+                .insert(block.block_hash, block.clone());
         });
 
         Ok(())
@@ -634,7 +626,7 @@ impl super::DbWrite for SharedStore {
         self.lock()
             .await
             .rotate_keys_transactions
-            .insert(key_rotation.txid.clone(), key_rotation.clone());
+            .insert(key_rotation.txid, key_rotation.clone());
 
         Ok(())
     }

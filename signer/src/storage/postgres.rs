@@ -63,8 +63,8 @@ pub fn extract_relevant_transactions(blocks: &[NakamotoBlock]) -> Vec<model::Tra
                 if CONTRACT_NAMES.contains(&x.contract_name.as_str()) =>
             {
                 Some(model::Transaction {
-                    txid: tx.txid().to_bytes().to_vec(),
-                    block_hash: block_id.to_bytes().to_vec(),
+                    txid: tx.txid().into_bytes(),
+                    block_hash: block_id.into_bytes(),
                     tx: tx.serialize_to_vec(),
                     tx_type: *transaction_kinds.get(&x.function_name.as_str())?,
                 })
@@ -83,9 +83,9 @@ impl TryFrom<&NakamotoBlock> for model::StacksBlock {
     type Error = Error;
     fn try_from(block: &NakamotoBlock) -> Result<Self, Self::Error> {
         Ok(Self {
-            block_hash: block.block_id().to_bytes().to_vec(),
+            block_hash: block.block_id().into(),
             block_height: block.header.chain_length,
-            parent_hash: block.header.parent_block_id.to_bytes().to_vec(),
+            parent_hash: block.header.parent_block_id.into(),
         })
     }
 }
@@ -756,9 +756,9 @@ impl super::DbWrite for PgStore {
             VALUES ($1, $2, $3, $4)
             ON CONFLICT DO NOTHING",
         )
-        .bind(&block.block_hash)
+        .bind(block.block_hash)
         .bind(i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?)
-        .bind(&block.parent_hash)
+        .bind(block.parent_hash)
         .bind(&block.confirms)
         .execute(&self.0)
         .await
@@ -777,9 +777,9 @@ impl super::DbWrite for PgStore {
             VALUES ($1, $2, $3)
             ON CONFLICT DO NOTHING",
         )
-        .bind(&block.block_hash)
+        .bind(block.block_hash)
         .bind(i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?)
-        .bind(&block.parent_hash)
+        .bind(block.parent_hash)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -805,7 +805,7 @@ impl super::DbWrite for PgStore {
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT DO NOTHING",
         )
-        .bind(&deposit_request.txid)
+        .bind(deposit_request.txid)
         .bind(deposit_request.output_index as i32)
         .bind(&deposit_request.spend_script)
         .bind(&deposit_request.reclaim_script)
@@ -923,7 +923,7 @@ impl super::DbWrite for PgStore {
             ON CONFLICT DO NOTHING",
         )
         .bind(i64::try_from(withdraw_request.request_id).map_err(Error::ConversionDatabaseInt)?)
-        .bind(&withdraw_request.block_hash)
+        .bind(withdraw_request.block_hash)
         .bind(&withdraw_request.recipient)
         .bind(i64::try_from(withdraw_request.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(withdraw_request.max_fee).map_err(Error::ConversionDatabaseInt)?)
@@ -950,7 +950,7 @@ impl super::DbWrite for PgStore {
             VALUES ($1, $2, $3, $4)
             ON CONFLICT DO NOTHING",
         )
-        .bind(&decision.txid)
+        .bind(decision.txid)
         .bind(decision.output_index as i32)
         .bind(decision.signer_pub_key)
         .bind(decision.is_accepted)
@@ -976,7 +976,7 @@ impl super::DbWrite for PgStore {
             ON CONFLICT DO NOTHING",
         )
         .bind(i64::try_from(decision.request_id).map_err(Error::ConversionDatabaseInt)?)
-        .bind(&decision.block_hash)
+        .bind(decision.block_hash)
         .bind(decision.signer_pub_key)
         .bind(decision.is_accepted)
         .execute(&self.0)
@@ -996,7 +996,7 @@ impl super::DbWrite for PgStore {
             VALUES ($1, $2, $3)
             ON CONFLICT DO NOTHING",
         )
-        .bind(&transaction.txid)
+        .bind(transaction.txid)
         .bind(&transaction.tx)
         .bind(transaction.tx_type)
         .execute(&self.0)
@@ -1015,8 +1015,8 @@ impl super::DbWrite for PgStore {
             VALUES ($1, $2)
             ON CONFLICT DO NOTHING",
         )
-        .bind(&bitcoin_transaction.txid)
-        .bind(&bitcoin_transaction.block_hash)
+        .bind(bitcoin_transaction.txid)
+        .bind(bitcoin_transaction.block_hash)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1068,8 +1068,8 @@ impl super::DbWrite for PgStore {
             VALUES ($1, $2)
             ON CONFLICT DO NOTHING",
         )
-        .bind(&stacks_transaction.txid)
-        .bind(&stacks_transaction.block_hash)
+        .bind(stacks_transaction.txid)
+        .bind(stacks_transaction.block_hash)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1210,7 +1210,7 @@ impl super::DbWrite for PgStore {
                 ($1, $2, $3, $4)
             ON CONFLICT DO NOTHING"#,
         )
-        .bind(&key_rotation.txid)
+        .bind(key_rotation.txid)
         .bind(key_rotation.aggregate_key)
         .bind(&key_rotation.signer_set)
         .bind(key_rotation.signatures_required as i32)

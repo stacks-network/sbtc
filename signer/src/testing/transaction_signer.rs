@@ -19,7 +19,6 @@ use crate::transaction_signer;
 use crate::ecdsa::SignEcdsa as _;
 use crate::network::MessageTransfer as _;
 
-use bitcoin::hashes::Hash as _;
 use futures::StreamExt as _;
 use rand::SeedableRng as _;
 use sha2::Digest as _;
@@ -332,7 +331,7 @@ where
         let test_data = self.generate_test_data(&mut rng);
         Self::write_test_data(&test_data, &mut handle.storage).await;
 
-        let chain_tip = handle
+        let bitcoin_chain_tip = handle
             .storage
             .get_bitcoin_canonical_chain_tip()
             .await
@@ -340,7 +339,7 @@ where
             .expect("no chain tip");
 
         let coordinator_public_key = transaction_coordinator::coordinator_public_key(
-            &chain_tip,
+            &bitcoin_chain_tip,
             &signer_info.first().unwrap().signer_public_keys,
         )
         .expect("failed to compute coordinator public key")
@@ -362,7 +361,7 @@ where
 
         run_dkg_and_store_results_for_signers(
             &signer_info,
-            &chain_tip,
+            &bitcoin_chain_tip,
             self.signing_threshold,
             [&mut handle.storage],
             &mut rng,
@@ -376,10 +375,7 @@ where
         network_handle
             .broadcast(
                 transaction_sign_request_payload
-                    .to_message(
-                        bitcoin::BlockHash::from_slice(&chain_tip)
-                            .expect("failed to convert to block hash"),
-                    )
+                    .to_message(bitcoin_chain_tip)
                     .sign_ecdsa(&coordinator_private_key)
                     .expect("failed to sign"),
             )
@@ -450,9 +446,6 @@ where
             &mut rng,
         )
         .await;
-
-        let bitcoin_chain_tip =
-            bitcoin::BlockHash::from_byte_array(bitcoin_chain_tip.try_into().unwrap());
 
         let dummy_txid = testing::dummy::txid(&fake::Faker, &mut rng);
 
@@ -538,9 +531,6 @@ where
             .unwrap()
             .clone();
 
-        let bitcoin_chain_tip =
-            bitcoin::BlockHash::from_byte_array(bitcoin_chain_tip.try_into().unwrap());
-
         let dummy_txid = testing::dummy::txid(&fake::Faker, &mut rng);
 
         let mut coordinator = testing::wsts::Coordinator::new(
@@ -593,7 +583,7 @@ where
             .expect("found no canonical chain tip");
 
         for _ in 0..context_window {
-            context_window_block_hashes.push(block_hash.clone());
+            context_window_block_hashes.push(block_hash);
             let Some(block) = storage.get_bitcoin_block(&block_hash).await.unwrap() else {
                 break;
             };
@@ -640,7 +630,7 @@ where
             .await
             .into_iter()
             .flatten()
-            .max_by_key(|block| (block.block_height, block.block_hash.clone()))
+            .max_by_key(|block| (block.block_height, block.block_hash))
             .expect("missing stacks block");
 
         let mut cursor = Some(stacks_chain_tip);
@@ -759,9 +749,7 @@ async fn run_dkg_and_store_results_for_signers<'s: 'r, 'r, S, Rng>(
     let mut testing_signer_set =
         testing::wsts::SignerSet::new(signer_info, threshold, || network.connect());
     let dkg_txid = testing::dummy::txid(&fake::Faker, rng);
-    let bitcoin_chain_tip = bitcoin::BlockHash::from_byte_array(
-        chain_tip.clone().try_into().expect("conversion failed"),
-    );
+    let bitcoin_chain_tip = *chain_tip;
     let (aggregate_key, all_dkg_shares) = testing_signer_set
         .run_dkg(bitcoin_chain_tip, dkg_txid, rng)
         .await;

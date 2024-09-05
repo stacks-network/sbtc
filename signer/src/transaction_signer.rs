@@ -27,7 +27,6 @@ use crate::storage;
 use crate::storage::model;
 use crate::wsts_state_machine;
 
-use bitcoin::hashes::Hash;
 use futures::StreamExt;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
@@ -223,10 +222,8 @@ where
             return Err(error::Error::InvalidSignature);
         }
 
-        let bitcoin_chain_tip = msg.bitcoin_chain_tip.to_byte_array().to_vec();
-
         let chain_tip_report = self
-            .inspect_msg_chain_tip(msg.signer_pub_key, &bitcoin_chain_tip)
+            .inspect_msg_chain_tip(msg.signer_pub_key, &msg.bitcoin_chain_tip)
             .await?;
 
         match (
@@ -258,12 +255,12 @@ where
                 true,
                 ChainTipStatus::Canonical,
             ) => {
-                self.handle_bitcoin_transaction_sign_request(request, &bitcoin_chain_tip)
+                self.handle_bitcoin_transaction_sign_request(request, &msg.bitcoin_chain_tip)
                     .await?;
             }
 
             (message::Payload::WstsMessage(wsts_msg), _, _) => {
-                self.handle_wsts_message(wsts_msg, &bitcoin_chain_tip)
+                self.handle_wsts_message(wsts_msg, &msg.bitcoin_chain_tip)
                     .await?;
             }
 
@@ -273,7 +270,7 @@ where
 
             // Any other combination should be logged
             _ => {
-                tracing::warn!(msg = ?msg, chain_tip_report = ?chain_tip_report, "unexpected message");
+                tracing::warn!(?msg, ?chain_tip_report, "unexpected message");
             }
         };
 
@@ -592,8 +589,7 @@ where
             .await;
 
         let msg = message::SignerDepositDecision {
-            txid: bitcoin::Txid::from_slice(&deposit_request.txid)
-                .map_err(error::Error::SliceConversion)?,
+            txid: deposit_request.txid.into(),
             output_index: deposit_request.output_index,
             accepted: is_accepted,
         };
@@ -621,7 +617,7 @@ where
     ) -> Result<(), error::Error> {
         let is_accepted = self
             .blocklist_checker
-            .can_accept(&withdraw_request.sender_address)
+            .can_accept(&withdraw_request.sender_address.to_string())
             .await
             .unwrap_or(false);
 
@@ -646,7 +642,7 @@ where
         signer_pub_key: PublicKey,
     ) -> Result<(), error::Error> {
         let signer_decision = model::DepositSigner {
-            txid: decision.txid.to_byte_array().to_vec(),
+            txid: decision.txid.into(),
             output_index: decision.output_index,
             signer_pub_key,
             is_accepted: decision.accepted,
@@ -674,7 +670,7 @@ where
     ) -> Result<(), error::Error> {
         let signer_decision = model::WithdrawSigner {
             request_id: decision.request_id,
-            block_hash: decision.block_hash.to_vec(),
+            block_hash: decision.block_hash.into(),
             signer_pub_key,
             is_accepted: decision.accepted,
         };
@@ -715,11 +711,9 @@ where
         msg: impl Into<message::Payload>,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), error::Error> {
-        let bitcoin_chain_tip = bitcoin::BlockHash::from_slice(bitcoin_chain_tip)
-            .map_err(error::Error::SliceConversion)?;
         let payload: message::Payload = msg.into();
         let msg = payload
-            .to_message(bitcoin_chain_tip)
+            .to_message(*bitcoin_chain_tip)
             .sign_ecdsa(&self.signer_private_key)?;
 
         self.network.broadcast(msg).await?;
