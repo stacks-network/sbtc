@@ -28,15 +28,28 @@ pub trait Context {
 /// Signer context which is passed to different components within the
 /// signer binary.
 pub struct SignerContext {
-    config: Arc<Settings>,
+    inner: Arc<InnerSignerContext>,
+}
+
+impl std::ops::Deref for SignerContext {
+    type Target = InnerSignerContext;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+/// Inner signer context which holds the configuration and signalling channels.
+pub struct InnerSignerContext {
+    config: Settings,
     // Handle to the app signalling channel. This keeps the channel alive
     // for the duration of the program and is used both to send messages
     // and to hand out new receivers.
-    signal_tx: Arc<Sender<SignerSignal>>,
+    signal_tx: Sender<SignerSignal>,
     /// Handle to the app termination channel. This keeps the channel alive
     /// for the duration of the program and is used to provide new senders
     /// and receivers for a [`TerminationHandle`].
-    term_tx: Arc<tokio::sync::watch::Sender<bool>>,
+    term_tx: tokio::sync::watch::Sender<bool>,
 }
 
 /// Signals that can be sent within the signer binary.
@@ -117,9 +130,7 @@ impl Context for SignerContext {
         let (term_tx, _) = tokio::sync::watch::channel(false);
 
         Ok(Self {
-            config: Arc::new(config),
-            signal_tx: Arc::new(signal_tx),
-            term_tx: Arc::new(term_tx),
+            inner: Arc::new(InnerSignerContext { config, signal_tx, term_tx }),
         })
     }
 
@@ -132,7 +143,7 @@ impl Context for SignerContext {
     }
 
     fn get_signal_sender(&self) -> tokio::sync::broadcast::Sender<SignerSignal> {
-        (*self.signal_tx).clone()
+        self.inner.signal_tx.clone()
     }
 
     /// Send a signal to the application signalling channel.
@@ -150,6 +161,6 @@ impl Context for SignerContext {
     }
 
     fn get_termination_handle(&self) -> TerminationHandle {
-        TerminationHandle((*self.term_tx).clone(), self.term_tx.subscribe())
+        TerminationHandle(self.term_tx.clone(), self.term_tx.subscribe())
     }
 }
