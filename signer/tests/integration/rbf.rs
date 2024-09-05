@@ -307,15 +307,12 @@ pub fn transaction_with_rbf(
 
     let deposit_amounts: u64 = requests.deposits.iter().map(|req| req.amount).sum();
     let withdrawal_amounts: u64 = requests.withdrawals.iter().map(|req| req.amount).sum();
-    let deposit_fees: u64 = transactions
-        .iter()
-        .map(|unsigned| unsigned.deposit_fees)
-        .sum();
+    let fees: u64 = transactions.iter().map(|unsigned| unsigned.tx_fee).sum();
 
     // The signer's balance should now reflect the deposits and withdrawals
     // less the fees that depositors are supposed to pay.
     let signers_balance = signer.get_balance(rpc);
-    let expected_balance = 100_000_000 + deposit_amounts - withdrawal_amounts - deposit_fees;
+    let expected_balance = 100_000_000 + deposit_amounts - withdrawal_amounts - fees;
     assert_eq!(signers_balance.to_sat(), expected_balance);
 
     // Any unused deposits still have their balances adjusted since their
