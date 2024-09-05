@@ -182,11 +182,7 @@ async fn run_libp2p_swarm(ctx: &impl Context) -> Result<(), Error> {
     // Start the libp2p swarm. This will run until either the shutdown signal is
     // received, or an unrecoverable error has occurred.
     tracing::info!("starting the libp2p swarm");
-    swarm.start(ctx).await.map_err(|error| {
-        tracing::error!(%error, "error executing the libp2p swarm");
-        ctx.get_termination_handle().signal_shutdown();
-        error.into()
-    })
+    swarm.start(ctx).await.map_err(Error::SignerSwarm)
 }
 
 /// Runs the Stacks event observer server.

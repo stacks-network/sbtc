@@ -18,6 +18,7 @@ use crate::context::Context;
 use crate::context::SignerCommand;
 use crate::context::SignerEvent;
 use crate::context::SignerSignal;
+use crate::context::TerminationHandle;
 use crate::ecdsa;
 use crate::message;
 
@@ -42,6 +43,7 @@ pub trait MessageTransfer {
 pub struct P2PNetwork {
     signal_tx: Sender<SignerSignal>,
     signal_rx: Receiver<SignerSignal>,
+    term: TerminationHandle,
 }
 
 impl P2PNetwork {
@@ -51,6 +53,7 @@ impl P2PNetwork {
         Self {
             signal_tx: ctx.get_signal_sender(),
             signal_rx: ctx.get_signal_receiver(),
+            term: ctx.get_termination_handle(),
         }
     }
 }
@@ -94,18 +97,25 @@ impl MessageTransfer for P2PNetwork {
     /// In other words, you should be calling this method as rapidly as possible.
     async fn receive(&mut self) -> Result<Msg, Self::Error> {
         loop {
-            match self.signal_rx.recv().await {
-                // We are only interested in received P2P messages
-                Ok(SignerSignal::Event(SignerEvent::P2PMessageReceived(msg))) => {
-                    return Ok(msg);
-                }
-                // And if we get an error when attempting to read from the
-                // channel.
-                Err(_) => {
+            tokio::select! {
+                _ = self.term.wait_for_shutdown() => {
                     return Err(Self::Error::SignerShutdown);
+                },
+                recv = self.signal_rx.recv() => {
+                    match recv {
+                        Ok(SignerSignal::Event(SignerEvent::P2PMessageReceived(msg))) => {
+                            return Ok(msg);
+                        },
+                        // If we get an error reading from the stream then we're
+                        // shutting down.
+                        Err(_) => {
+                            return Err(Self::Error::SignerShutdown);
+                        },
+                        // We're only interested in the above messages, so we ignore
+                        // the rest.
+                        _ => continue,
+                    }
                 }
-                // Anything else, we ignore.
-                _ => continue,
             }
         }
     }

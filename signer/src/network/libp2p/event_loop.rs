@@ -108,19 +108,19 @@ pub async fn run(
                         tracing::debug!(%address, "Listener expired");
                     },
                     SwarmEvent::ListenerClosed { addresses, reason, .. } => {
-                        tracing::info!(addresses = format!("{:?}", addresses), reason = format!("{:?}", reason), "Listener closed");
+                        tracing::info!(?addresses, ?reason, "Listener closed");
                     },
                     SwarmEvent::ListenerError { listener_id, error } => {
                         tracing::warn!(%listener_id, %error, "Listener error");
                     },
                     SwarmEvent::Dialing { peer_id, connection_id } => {
-                        tracing::info!(peer_id = format!("{:?}", peer_id), %connection_id, "Dialing peer");
+                        tracing::info!(peer_id = ?peer_id, %connection_id, "Dialing peer");
                     },
                     SwarmEvent::ConnectionEstablished { endpoint, peer_id, .. } => {
-                        tracing::info!(%peer_id, endpoint = format!("{:?}", endpoint), "Connected to peer");
+                        tracing::info!(%peer_id, ?endpoint, "Connected to peer");
                     },
                     SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
-                        tracing::info!(%peer_id, cause = format!("{:?}", cause), "Connection closed");
+                        tracing::info!(%peer_id, ?cause, "Connection closed");
                     },
                     SwarmEvent::IncomingConnection { local_addr, send_back_addr, .. } => {
                         tracing::debug!(%local_addr, %send_back_addr, "Incoming connection");
@@ -192,7 +192,7 @@ fn handle_autonat_server_event(_: &mut Swarm<SignerBehavior>, event: autonat::v2
             result: Ok(()),
         } => {
             tracing::trace!(
-                all_addrs = format!("{:?}", all_addrs), 
+                ?all_addrs, 
                 %client, 
                 %tested_addr, 
                 %data_amount, 
@@ -206,7 +206,7 @@ fn handle_autonat_server_event(_: &mut Swarm<SignerBehavior>, event: autonat::v2
             result: Err(error),
         } => {
             tracing::warn!(
-                all_addrs = format!("{:?}", all_addrs), 
+                ?all_addrs, 
                 %client, 
                 %tested_addr, 
                 %data_amount, 
