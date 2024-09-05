@@ -106,11 +106,6 @@ impl MessageTransfer for P2PNetwork {
                         Ok(SignerSignal::Event(SignerEvent::P2PMessageReceived(msg))) => {
                             return Ok(msg);
                         },
-                        // If we get an error reading from the stream then we're
-                        // shutting down.
-                        Err(_) => {
-                            return Err(Self::Error::SignerShutdown);
-                        },
                         // We're only interested in the above messages, so we ignore
                         // the rest.
                         _ => continue,
