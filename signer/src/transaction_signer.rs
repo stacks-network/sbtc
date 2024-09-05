@@ -222,8 +222,6 @@ where
             return Err(error::Error::InvalidSignature);
         }
 
-        // TODO(297): Validate the chain tip against database
-
         let chain_tip_report = self
             .inspect_msg_chain_tip(msg.signer_pub_key, &msg.bitcoin_chain_tip)
             .await?;
