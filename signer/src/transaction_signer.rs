@@ -619,7 +619,7 @@ where
     ) -> Result<(), error::Error> {
         let is_accepted = self
             .blocklist_checker
-            .can_accept(&withdraw_request.sender_address)
+            .can_accept(&withdraw_request.sender_address.to_string())
             .await
             .unwrap_or(false);
 

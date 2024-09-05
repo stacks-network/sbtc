@@ -31,6 +31,7 @@ use crate::codec::Encode;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::StacksBlockHash;
+use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
 
 /// Dummy block
@@ -348,5 +349,14 @@ impl fake::Dummy<fake::Faker> for StacksBlockHash {
 impl fake::Dummy<fake::Faker> for StacksTxId {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         From::<[u8; 32]>::from(config.fake_with_rng(rng))
+    }
+}
+
+impl fake::Dummy<fake::Faker> for StacksPrincipal {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let public_key: PublicKey = config.fake_with_rng(rng);
+        let pubkey = stacks_common::util::secp256k1::Secp256k1PublicKey::from(&public_key);
+        let address = StacksAddress::p2pkh(false, &pubkey);
+        StacksPrincipal::from(clarity::vm::types::PrincipalData::from(address))
     }
 }

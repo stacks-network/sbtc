@@ -96,6 +96,11 @@ pub enum Error {
     #[error("could not parse the Hex string to a StacksBlockId: {0}, original: {1}")]
     ParseStacksBlockId(#[source] blockstack_lib::util::HexError, String),
 
+    /// This happens when parsing a string, usually from the database, into
+    /// a PrincipalData.
+    #[error("Could not parse the string into PrincipalData: {0}")]
+    ParsePrincipalData(#[source] clarity::vm::errors::Error),
+
     /// Thrown when doing [`i64::try_from`] or [`i32::try_from`] before
     /// inserting a value into the database. This only happens if the value
     /// is greater than MAX for the signed type.

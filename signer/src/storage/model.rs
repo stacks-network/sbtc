@@ -5,11 +5,13 @@ use std::ops::Deref;
 use bitcoin::hashes::Hash as _;
 use bitcoin::Address;
 use bitcoin::Network;
+use clarity::vm::types::PrincipalData;
 use sbtc::deposits::Deposit;
 use serde::Deserialize;
 use serde::Serialize;
 use stacks_common::types::chainstate::StacksBlockId;
 
+use crate::error::Error;
 use crate::keys::PublicKey;
 
 /// Bitcoin block.
@@ -57,7 +59,7 @@ pub struct DepositRequest {
     pub reclaim_script: Bytes,
     /// The address of which the sBTC should be minted,
     /// can be a smart contract address.
-    pub recipient: StacksAddress,
+    pub recipient: StacksPrincipal,
     /// The amount deposited.
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000_000"))]
@@ -65,7 +67,7 @@ pub struct DepositRequest {
     /// The maximum portion of the deposited amount that may
     /// be used to pay for transaction fees.
     #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "100..i64::MAX as u64"))]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000_000"))]
     pub max_fee: u64,
     /// The addresses of the input UTXOs funding the deposit request.
     #[cfg_attr(
@@ -93,7 +95,7 @@ impl DepositRequest {
             output_index: deposit.info.outpoint.vout,
             spend_script: deposit.info.deposit_script.to_bytes(),
             reclaim_script: deposit.info.reclaim_script.to_bytes(),
-            recipient: deposit.info.recipient.to_string(),
+            recipient: deposit.info.recipient.clone().into(),
             amount: deposit.info.amount,
             max_fee: deposit.info.max_fee,
             sender_addresses: sender_addresses.into_iter().collect(),
@@ -138,7 +140,7 @@ pub struct WithdrawRequest {
     #[cfg_attr(feature = "testing", dummy(faker = "100..10000"))]
     pub max_fee: u64,
     /// The address that initiated the request.
-    pub sender_address: StacksAddress,
+    pub sender_address: StacksPrincipal,
 }
 
 /// A signer acknowledging a withdrawal request.
@@ -366,9 +368,60 @@ impl From<[u8; 32]> for StacksTxId {
     }
 }
 
+/// A stacks address. It can be either a smart contract address or a
+/// standard address.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StacksPrincipal(PrincipalData);
+
+impl Deref for StacksPrincipal {
+    type Target = PrincipalData;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::str::FromStr for StacksPrincipal {
+    type Err = Error;
+    fn from_str(literal: &str) -> Result<Self, Self::Err> {
+        let principal = PrincipalData::parse(literal).map_err(Error::ParsePrincipalData)?;
+        Ok(Self(principal))
+    }
+}
+
+impl From<PrincipalData> for StacksPrincipal {
+    fn from(value: PrincipalData) -> Self {
+        Self(value)
+    }
+}
+
+impl From<StacksPrincipal> for PrincipalData {
+    fn from(value: StacksPrincipal) -> Self {
+        value.0
+    }
+}
+
+impl Ord for StacksPrincipal {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (&self.0, &other.0) {
+            (PrincipalData::Contract(x), PrincipalData::Contract(y)) => x.cmp(y),
+            (PrincipalData::Standard(x), PrincipalData::Standard(y)) => x.cmp(y),
+            (PrincipalData::Standard(x), PrincipalData::Contract(y)) => {
+                x.cmp(&y.issuer).then(std::cmp::Ordering::Less)
+            }
+            (PrincipalData::Contract(x), PrincipalData::Standard(y)) => {
+                x.issuer.cmp(y).then(std::cmp::Ordering::Greater)
+            }
+        }
+    }
+}
+
+impl PartialOrd for StacksPrincipal {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 /// Arbitrary bytes
 pub type Bytes = Vec<u8>;
 /// Bitcoin address
 pub type BitcoinAddress = String;
-/// Stacks address
-pub type StacksAddress = String;
