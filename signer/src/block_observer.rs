@@ -522,7 +522,7 @@ mod tests {
             .unwrap();
         let storage = block_observer.storage.lock().await;
         assert_eq!(storage.deposit_requests.len(), 1);
-        let db_outpoint = (BitcoinTxId::from(tx_setup0.tx.compute_txid()), 0);
+        let db_outpoint: (BitcoinTxId, u32) = (tx_setup0.tx.compute_txid().into(), 0);
         assert!(storage.deposit_requests.get(&db_outpoint).is_some());
 
         // Now the deposit_requests thing should be empty now, since we stored the things.
