@@ -627,7 +627,7 @@ mod tests {
         // Is our one transaction stored? This block hash should now have
         // only one transaction with the expected txid.
         let tx_ids = stored_transactions.unwrap();
-        let expected_tx_id = BitcoinTxId::from(tx_setup0.tx.compute_txid());
+        let expected_tx_id = tx_setup0.tx.compute_txid().into();
         assert_eq!(tx_ids.len(), 1);
         assert_eq!(tx_ids[0], expected_tx_id);
     }
