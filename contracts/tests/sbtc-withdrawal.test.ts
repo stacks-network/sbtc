@@ -77,7 +77,7 @@ describe("initiating a withdrawal request", () => {
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
-        amount: 1001n,
+        amount: 1011n,
         recipient: alice,
       }),
       deployer
@@ -140,12 +140,12 @@ describe("initiating a withdrawal request", () => {
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
-        amount: 1000n,
+        amount: 1000n + 10n,
         recipient: alice,
       }),
       deployer
     );
-    expect(rovOk(token.getBalance(alice))).toEqual(1000n);
+    expect(rovOk(token.getBalance(alice))).toEqual(1010n);
     const receipt = txOk(
       withdrawal.initiateWithdrawalRequest({
         amount: 1000n,
@@ -155,7 +155,7 @@ describe("initiating a withdrawal request", () => {
       alice
     );
     const lockedBalance = rovOk(token.getBalanceLocked(alice));
-    expect(lockedBalance).toEqual(1000n);
+    expect(lockedBalance).toEqual(1010n);
     const [mintEvent] = filterEvents(
       receipt.events,
       CoreNodeEventType.FtMintEvent
@@ -163,7 +163,7 @@ describe("initiating a withdrawal request", () => {
     expect(mintEvent.data.asset_identifier).toEqual(
       `${token.identifier}::${token.fungible_tokens[1].name}`
     );
-    expect(mintEvent.data.amount).toEqual(1000n.toString());
+    expect(mintEvent.data.amount).toEqual(1010n.toString());
     expect(rovOk(token.getBalanceAvailable(alice))).toEqual(0n);
   });
 
@@ -233,6 +233,32 @@ describe("initiating a withdrawal request", () => {
   });
 });
 
+test("max-fee must be accounted for", () => {
+  txOk(
+    deposit.completeDepositWrapper({
+      txid: new Uint8Array(32).fill(0),
+      voutIndex: 0,
+      amount: 4000n,
+      recipient: alice,
+    }),
+    deployer
+  );
+  const receipt = txErr(
+    withdrawal.initiateWithdrawalRequest({
+      amount: 4000n,
+      recipient: alicePoxAddr,
+      maxFee: 1000000n,
+    }),
+    alice
+  );
+  // Under the hood `initiate-withdrawal-request` attempts `ft-burn?`
+  // amount + max-fee for the `tx-sender`, so if the transaction sender
+  // does not have enough in their account then `(err u1)` is returned in
+  // the response.
+  expect(receipt.value).toEqual(1n);
+});
+
+
 describe("Accepting a withdrawal request", () => {
   test("Fails with non-existant request-id", () => {
     // Alice initiates withdrawalrequest
@@ -240,7 +266,7 @@ describe("Accepting a withdrawal request", () => {
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
-        amount: 1000n,
+        amount: 1000n + 10n,
         recipient: alice,
       }),
       deployer
@@ -271,7 +297,7 @@ describe("Accepting a withdrawal request", () => {
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
-        amount: 1000n,
+        amount: 1000n + 10n,
         recipient: alice,
       }),
       deployer
@@ -302,7 +328,7 @@ describe("Accepting a withdrawal request", () => {
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
-        amount: 1000n,
+        amount: 1000n + 10n,
         recipient: alice,
       }),
       deployer
@@ -343,7 +369,7 @@ describe("Accepting a withdrawal request", () => {
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
-        amount: 1000n,
+        amount: 1000n + 10n,
         recipient: alice,
       }),
       deployer
@@ -374,7 +400,7 @@ describe("Accepting a withdrawal request", () => {
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
-        amount: 1000n,
+        amount: 1000n + 20n,
         recipient: alice,
       }),
       deployer
@@ -430,7 +456,7 @@ describe("Accepting a withdrawal request", () => {
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
-        amount: 1000n,
+        amount: 1000n + 10n,
         recipient: alice,
       }),
       deployer
@@ -475,7 +501,7 @@ describe("Accepting a withdrawal request", () => {
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
-        amount: 1000n,
+        amount: 1000n + 10n,
         recipient: alice,
       }),
       deployer
@@ -496,7 +522,7 @@ describe("Accepting a withdrawal request", () => {
       deployer
     );
     // This is the original balance, rejecting the request restores it.
-    expect(rovOk(token.getBalance(alice))).toEqual(1000n);
+    expect(rovOk(token.getBalance(alice))).toEqual(1010n);
 
     // Check that the request was stored correctly with the correct status
     const request = rov(registry.getWithdrawalRequest(1n));
@@ -540,7 +566,7 @@ describe("Accepting a withdrawal request", () => {
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
-        amount: 1000n,
+        amount: 1000n + 10n,
         recipient: alice,
       }),
       deployer
@@ -574,7 +600,7 @@ describe("Reject a withdrawal request", () => {
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
-        amount: 1000n,
+        amount: 1000n + 10n,
         recipient: alice,
       }),
       deployer
@@ -602,7 +628,7 @@ describe("Reject a withdrawal request", () => {
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
-        amount: 1000n,
+        amount: 1000n + 10n,
         recipient: alice,
       }),
       deployer
@@ -630,7 +656,7 @@ describe("Reject a withdrawal request", () => {
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
-        amount: 1000n,
+        amount: 1000n + 10n,
         recipient: alice,
       }),
       deployer
@@ -668,7 +694,7 @@ describe("Reject a withdrawal request", () => {
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
-        amount: 1000n,
+        amount: 1000n + 10n,
         recipient: alice,
       }),
       deployer
@@ -702,7 +728,7 @@ describe("Complete multiple withdrawals", () => {
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
-        amount: 1000n,
+        amount: 1000n + 10n,
         recipient: alice,
       }),
       deployer
@@ -720,7 +746,7 @@ describe("Complete multiple withdrawals", () => {
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(1),
         voutIndex: 1,
-        amount: 1000n,
+        amount: 1000n + 10n,
         recipient: bob,
       }),
       deployer
@@ -766,6 +792,7 @@ describe("optimization tests for completing withdrawals", () => {
     const totalAmount = 1000000n;
     const runs = 500;
     const perAmount = totalAmount / BigInt(runs);
+    const maxFee = 10n;
     const txids = randomPublicKeys(runs).map((pk) => pk.slice(0, 32));
     for (let index = 0; index < runs; index++) {
       const txid = txids[index];
@@ -773,7 +800,7 @@ describe("optimization tests for completing withdrawals", () => {
         deposit.completeDepositWrapper({
           txid,
           voutIndex: 0,
-          amount: perAmount,
+          amount: perAmount + maxFee,
           recipient: alice,
         }),
         deployer
@@ -782,7 +809,7 @@ describe("optimization tests for completing withdrawals", () => {
         withdrawal.initiateWithdrawalRequest({
           amount: perAmount,
           recipient: alicePoxAddr,
-          maxFee: 10n,
+          maxFee: maxFee,
         }),
         alice
       );
@@ -796,7 +823,7 @@ describe("optimization tests for completing withdrawals", () => {
             signerBitmap: 1n,
             bitcoinTxid: txid,
             outputIndex: 0n,
-            fee: 10n,
+            fee: maxFee,
           };
         })
       ),
