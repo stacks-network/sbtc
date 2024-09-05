@@ -8,6 +8,7 @@ use clap::Parser;
 use libp2p::Multiaddr;
 use signer::api;
 use signer::api::ApiState;
+use signer::config::Settings;
 use signer::context::Context;
 use signer::context::SignerContext;
 use signer::error::Error;
@@ -49,8 +50,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse the command line arguments.
     let args = SignerArgs::parse();
 
+    let settings = Settings::new(args.config)?;
+
     // Initialize the signer context.
-    let context = SignerContext::init(args.config)?;
+    let context = SignerContext::init(settings)?;
 
     // Run the application components concurrently. We're `join!`ing them
     // here so that every component can shut itself down gracefully when

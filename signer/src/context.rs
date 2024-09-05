@@ -1,6 +1,6 @@
 //! Context module for the signer binary.
 
-use std::{path::Path, sync::Arc};
+use std::sync::Arc;
 
 use tokio::sync::broadcast::Sender;
 
@@ -9,7 +9,7 @@ use crate::{config::Settings, error::Error};
 /// Context trait that is implemented by the [`SignerContext`].
 pub trait Context {
     /// Initialize a new signer context.
-    fn init(config_path: Option<impl AsRef<Path>>) -> Result<Self, crate::error::Error>
+    fn init(config: Settings) -> Result<Self, crate::error::Error>
     where
         Self: Sized;
     /// Get the current configuration for the signer.
@@ -120,9 +120,7 @@ impl TerminationHandle {
 
 impl Context for SignerContext {
     /// Create a new signer context.
-    fn init(config_path: Option<impl AsRef<Path>>) -> Result<Self, Error> {
-        let config = Settings::new(config_path).map_err(Error::SignerConfig)?;
-
+    fn init(config: Settings) -> Result<Self, Error> {
         // TODO: Decide on the channel capacity and how we should handle slow consumers.
         // NOTE: Ideally consumers which require processing time should pull the relevent
         // messages into a local VecDequeue and process them in their own time.

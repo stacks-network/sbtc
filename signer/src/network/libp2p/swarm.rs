@@ -218,7 +218,7 @@ impl SignerSwarm {
 
 #[cfg(test)]
 mod tests {
-    use crate::{context::SignerContext, testing::DEFAULT_CONFIG_PATH};
+    use crate::{config::Settings, context::SignerContext};
 
     use super::*;
 
@@ -246,7 +246,8 @@ mod tests {
         let builder = SignerSwarmBuilder::new(&private_key);
         let mut swarm = builder.build().unwrap();
 
-        let ctx = SignerContext::init(DEFAULT_CONFIG_PATH).unwrap();
+        let settings = Settings::new_from_default_config().unwrap();
+        let ctx = SignerContext::init(settings).unwrap();
         let term = ctx.get_termination_handle();
 
         let timeout = tokio::time::timeout(Duration::from_secs(10), async {

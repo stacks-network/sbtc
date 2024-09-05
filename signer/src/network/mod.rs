@@ -119,15 +119,10 @@ impl MessageTransfer for P2PNetwork {
 #[cfg(test)]
 mod tests {
     use core::panic;
-    use std::env;
 
     use super::*;
 
-    use crate::{
-        context::SignerContext,
-        keys::PrivateKey,
-        testing::{self, DEFAULT_CONFIG_PATH},
-    };
+    use crate::{config::Settings, context::SignerContext, keys::PrivateKey, testing};
 
     #[tokio::test]
     async fn two_clients_should_be_able_to_exchange_messages_given_an_in_memory_network() {
@@ -148,14 +143,10 @@ mod tests {
         let key1 = PrivateKey::new(&mut rand::thread_rng());
         let key2 = PrivateKey::new(&mut rand::thread_rng());
 
-        // TODO: I'm not sure why we need to set the env vars here, when you run this test
-        // individually or with `cargo nextest run` it works fine without, but with
-        // `cargo test -- --test-threads 1` and `make test` it fails with a config
-        // error that the private key is only 2 bytes long .oO
-        env::set_var("SIGNER_SIGNER__PRIVATE_KEY", hex::encode(key1.to_bytes()));
-        let context1 = SignerContext::init(DEFAULT_CONFIG_PATH).unwrap();
-        env::set_var("SIGNER_SIGNER__PRIVATE_KEY", hex::encode(key2.to_bytes()));
-        let context2 = SignerContext::init(DEFAULT_CONFIG_PATH).unwrap();
+        let settings = Settings::new_from_default_config().unwrap();
+
+        let context1 = SignerContext::init(settings.clone()).unwrap();
+        let context2 = SignerContext::init(settings).unwrap();
 
         let term1 = context1.get_termination_handle();
         let term2 = context2.get_termination_handle();
