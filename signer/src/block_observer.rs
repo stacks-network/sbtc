@@ -71,8 +71,6 @@ where
     EC: EmilyInteract,
     S: DbWrite + DbRead + Send + Sync,
     BHS: futures::stream::Stream<Item = bitcoin::BlockHash> + Unpin,
-    error::Error: From<<S as DbRead>::Error>,
-    error::Error: From<<S as DbWrite>::Error>,
     error::Error: From<<BC as BitcoinInteract>::Error>,
 {
     /// Run the block observer

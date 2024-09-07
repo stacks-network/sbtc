@@ -154,7 +154,6 @@ impl AsContractCall for InitiateWithdrawalRequest {
     async fn validate<S>(&self, _: &S) -> Result<bool, Error>
     where
         S: crate::storage::DbRead + Send + Sync,
-        Error: From<<S as crate::storage::DbRead>::Error>,
     {
         Ok(true)
     }

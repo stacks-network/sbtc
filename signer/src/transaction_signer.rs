@@ -144,8 +144,6 @@ where
     error::Error: From<N::Error>,
     B: blocklist_client::BlocklistChecker,
     S: storage::DbRead + storage::DbWrite + Send + Sync,
-    error::Error: From<<S as storage::DbRead>::Error>,
-    error::Error: From<<S as storage::DbWrite>::Error>,
     Rng: rand::RngCore + rand::CryptoRng,
 {
     /// Run the signer event loop

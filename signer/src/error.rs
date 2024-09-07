@@ -205,6 +205,14 @@ pub enum Error {
     #[error("received an error when attempting to query the database: {0}")]
     SqlxQuery(#[source] sqlx::Error),
 
+    /// An error occurred while attempting to connect to the database.
+    #[error("received an error when attempting to connect to the database: {0}")]
+    SqlxConnect(#[from] sqlx::Error),
+
+    /// An unsupported database kind was given when trying to connect.
+    #[error("unsupported database: {0}")]
+    SqlxUnsupportedDatabase(String),
+
     /// An error when attempting to generically decode bytes using the
     /// trait implementation.
     #[error("got an error wen attempting to call StacksMessageCodec::consensus_deserialize {0}")]

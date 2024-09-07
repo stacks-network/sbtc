@@ -39,9 +39,9 @@ impl BlocklistChecker for BlocklistClient {
     }
 }
 
-impl BlocklistClient {
+impl<'a> BlocklistClient {
     /// Construct a new [`BlocklistClient`]
-    pub fn new(ctx: &impl Context) -> Self {
+    pub fn new(ctx: &'a impl Context<'a>) -> Self {
         let base_url = format!(
             "http://{}:{}",
             ctx.config().blocklist_client.host,

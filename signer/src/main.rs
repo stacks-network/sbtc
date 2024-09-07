@@ -7,6 +7,7 @@ use cfg_if::cfg_if;
 use clap::Parser;
 use signer::api;
 use signer::api::ApiState;
+use signer::config::Settings;
 use signer::context::Context;
 use signer::context::SignerContext;
 use signer::context::SignerSignal;
@@ -42,8 +43,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse the command line arguments.
     let args = SignerArgs::parse();
 
+    let settings = Settings::new(args.config)?;
+
+    //let db = DbConnection2::connect(DATABASE_URL.parse()?).await?;
+
     // Initialize the signer context.
-    let context = SignerContext::init(args.config)?;
+    let context = SignerContext::init(settings).await?;
 
     // Run the application components concurrently. We're `join!`ing them
     // here so that every component can shut itself down gracefully when
@@ -59,7 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Runs the shutdown-signal watcher. On Unix systems, this listens for SIGHUP,
 /// SIGTERM, and SIGINT. On other systems, it listens for Ctrl-C.
-async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
+async fn run_shutdown_signal_watcher(ctx: &impl Context<'_>) -> Result<(), Error> {
     cfg_if! {
         // If we are on a Unix system, we can listen for more signals.
         if #[cfg(unix)] {
@@ -94,7 +99,7 @@ async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
 }
 
 /// Runs the libp2p swarm.
-async fn run_libp2p_swarm(ctx: &impl Context) -> Result<(), Error> {
+async fn run_libp2p_swarm(ctx: &impl Context<'_>) -> Result<(), Error> {
     // Subscribe to the signal channel so that we can catch shutdown events.
     let mut signal = ctx.get_signal_receiver();
 
@@ -109,7 +114,7 @@ async fn run_libp2p_swarm(ctx: &impl Context) -> Result<(), Error> {
 }
 
 /// Runs the Stacks event observer server.
-async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
+async fn run_stacks_event_observer(ctx: &impl Context<'_>) -> Result<(), Error> {
     let pool = get_connection_pool();
     let state = ApiState {
         db: PgStore::from(pool),
