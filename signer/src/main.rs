@@ -64,7 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Runs the shutdown-signal watcher. On Unix systems, this listens for SIGHUP,
 /// SIGTERM, and SIGINT. On other systems, it listens for Ctrl-C.
-async fn run_shutdown_signal_watcher(ctx: &impl Context<'_>) -> Result<(), Error> {
+async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
     cfg_if! {
         // If we are on a Unix system, we can listen for more signals.
         if #[cfg(unix)] {
@@ -99,7 +99,7 @@ async fn run_shutdown_signal_watcher(ctx: &impl Context<'_>) -> Result<(), Error
 }
 
 /// Runs the libp2p swarm.
-async fn run_libp2p_swarm(ctx: &impl Context<'_>) -> Result<(), Error> {
+async fn run_libp2p_swarm(ctx: &impl Context) -> Result<(), Error> {
     // Subscribe to the signal channel so that we can catch shutdown events.
     let mut signal = ctx.get_signal_receiver();
 
@@ -114,7 +114,7 @@ async fn run_libp2p_swarm(ctx: &impl Context<'_>) -> Result<(), Error> {
 }
 
 /// Runs the Stacks event observer server.
-async fn run_stacks_event_observer(ctx: &impl Context<'_>) -> Result<(), Error> {
+async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
     let pool = get_connection_pool();
     let state = ApiState {
         db: PgStore::from(pool),

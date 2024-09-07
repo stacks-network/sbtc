@@ -6,7 +6,7 @@ use tokio::sync::broadcast::Sender;
 use crate::{config::Settings, error::Error, storage::{in_memory::Store, postgres::PgStore, DbRead, DbReadWrite}};
 
 /// Context trait that is implemented by the [`SignerContext`].
-pub trait Context<'a> {
+pub trait Context {
     /// Get the current configuration for the signer.
     fn config(&self) -> &Settings;
     /// Subscribe to the application signalling channel, returning a receiver
@@ -15,17 +15,17 @@ pub trait Context<'a> {
     /// Send a signal to the application signalling channel.
     fn signal(&self, signal: SignerSignal) -> Result<usize, crate::error::Error>;
     /// Retrieve a read-only storage connection.
-    fn get_storage(&'a self) -> Arc<dyn DbRead + 'static>;
+    fn get_storage(&self) -> Arc<dyn DbRead>;
     /// Retrieve a mutable (read+write) storage connection.
-    fn get_storage_mut(&'a self) -> Arc<dyn DbReadWrite + 'a>;
+    fn get_storage_mut(&self) -> Arc<dyn DbReadWrite>;
 }
 
 /// Signer context which is passed to different components within the
 /// signer binary.
-pub struct SignerContext<'a> {
+pub struct SignerContext {
     config: Settings,
     signal_tx: Sender<SignerSignal>,
-    db: Arc<dyn DbReadWrite + 'a>,
+    db: Arc<dyn DbReadWrite>,
     // Would be used if we wanted to listen for any events in the context,
     // for example if we wanted a subroutine to be able to trigger a config
     // refresh:
@@ -35,7 +35,7 @@ pub struct SignerContext<'a> {
     // db_pool: sqlx::PgPool,
 }
 
-impl SignerContext<'_>
+impl SignerContext
 {
     /// Create a new signer context.
     pub async fn init(
@@ -72,7 +72,7 @@ pub enum SignerSignal {
     Shutdown,
 }
 
-impl<'a> Context<'a> for SignerContext<'a> {
+impl Context for SignerContext {
     fn config(&self) -> &Settings {
         &self.config
     }
@@ -88,11 +88,11 @@ impl<'a> Context<'a> for SignerContext<'a> {
             .map_err(Error::ApplicationSignal)
     }
 
-    fn get_storage(&self) -> Arc<(dyn DbRead + 'static)> {
+    fn get_storage(&self) -> Arc<(dyn DbRead)> {
         Arc::clone(&self.db).as_read()
     }
 
-    fn get_storage_mut(&'a self) -> Arc<dyn DbReadWrite + 'a> {
+    fn get_storage_mut(&self) -> Arc<dyn DbReadWrite> {
         Arc::clone(&self.db)
     }
 }
