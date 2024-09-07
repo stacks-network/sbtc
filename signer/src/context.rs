@@ -3,17 +3,7 @@
 use std::sync::Arc;
 use tokio::sync::broadcast::Sender;
 
-use crate::{config::Settings, error::Error, storage::{postgres::PgStore, DbRead, DbReadWrite}};
-
-// TODO: This should be read from configuration
-const DATABASE_URL: &str = "postgres://user:password@localhost:5432/signer";
-
-// TODO: Should this be part of the SignerContext?
-// fn get_connection_pool() -> sqlx::PgPool {
-//     sqlx::postgres::PgPoolOptions::new()
-//         .connect_lazy(DATABASE_URL)
-//         .unwrap()
-// }
+use crate::{config::Settings, error::Error, storage::{in_memory::Store, postgres::PgStore, DbRead, DbReadWrite}};
 
 /// Context trait that is implemented by the [`SignerContext`].
 pub trait Context<'a> {
@@ -51,9 +41,21 @@ impl SignerContext<'_>
     pub async fn init(
         config: Settings,
     ) -> Result<Self, Error> {
+        // Create a channel for signalling within the application.
         let (signal_tx, _) = tokio::sync::broadcast::channel(128);
 
-        let db: Arc<dyn DbReadWrite> = Arc::new(PgStore::connect(DATABASE_URL).await?);
+        // Create a database connection.
+        let db: Arc<dyn DbReadWrite> = match config.signer.db_endpoint.scheme() {
+            "postgres" => {
+                Arc::new(PgStore::connect(config.signer.db_endpoint.as_str()).await?)
+            }
+            "memory" => {
+                Arc::new(Store::new_shared())
+            }
+            _ => {
+                return Err(Error::SqlxUnsupportedDatabase(config.signer.db_endpoint.scheme().to_string()));
+            }
+        };
 
         Ok(SignerContext {
             config,

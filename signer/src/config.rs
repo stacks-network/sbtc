@@ -13,6 +13,8 @@ use crate::keys::PrivateKey;
 pub const DEFAULT_P2P_HOST: &str = "0.0.0.0";
 /// The default signer network listen-on port.
 pub const DEFAULT_P2P_PORT: u16 = 4122;
+/// The URI scheme for in-memory databases.
+pub const IN_MEMORY_DB_SCHEME: &str = "memory";
 
 /// Configuration error variants.
 #[derive(Debug, thiserror::Error)]
@@ -214,6 +216,9 @@ pub struct SignerConfig {
     /// The private key of the signer
     #[serde(deserialize_with = "private_key_deserializer")]
     pub private_key: PrivateKey,
+    /// The Signer database endpoint
+    #[serde(deserialize_with = "db_endpoint_deserializer")]
+    pub db_endpoint: url::Url,
     /// P2P network configuration
     pub p2p: P2PNetworkConfig,
     /// P2P network configuration
@@ -225,6 +230,17 @@ pub struct SignerConfig {
 impl Validatable for SignerConfig {
     fn validate(&self) -> Result<(), ConfigError> {
         self.p2p.validate()?;
+
+        match (self.network, self.db_endpoint.scheme()) {
+            (NetworkKind::Mainnet, IN_MEMORY_DB_SCHEME) 
+            | (NetworkKind::Testnet, IN_MEMORY_DB_SCHEME) => {
+                return Err(ConfigError::Message(
+                    "In-memory database may only be used in REGTEST.".to_string(),
+                ));
+            }
+            _ => {}
+        }
+
         Ok(())
     }
 }
@@ -368,6 +384,19 @@ where
     Ok(v)
 }
 
+/// A deserializer for the url::Url type.
+fn db_endpoint_deserializer<'de, D>(deserializer: D) -> Result<url::Url, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    if s == IN_MEMORY_DB_SCHEME {
+        return url::Url::parse(&format!("{IN_MEMORY_DB_SCHEME}://"))
+            .map_err(serde::de::Error::custom);
+    }
+    s.parse().map_err(serde::de::Error::custom)
+}
+
 /// A deserializer for the [`PrivateKey`] type. Returns an error if the private
 /// key is not valid hex or is not the correct length.
 fn private_key_deserializer<'de, D>(deserializer: D) -> Result<PrivateKey, D::Error>
@@ -502,6 +531,10 @@ mod tests {
 
     #[test]
     fn default_config_toml_loads_signer_network_with_environment() {
+        // In-memory db (default) can't be used together with testnet/mainnet, 
+        // so we simulate that we're using postgres.
+        std::env::set_var("SIGNER_SIGNER__DB_ENDPOINT", "postgres://");
+        
         let new = "testnet";
         std::env::set_var("SIGNER_SIGNER__NETWORK", new);
 
@@ -602,5 +635,32 @@ mod tests {
             settings.unwrap_err(),
             ConfigError::Message(msg) if msg == Error::DecodeHexBytes(hex_err).to_string()
         ));
+    }
+
+    #[test]
+    fn db_endpoint_postgres_uri_works() {
+        std::env::set_var(
+            "SIGNER_SIGNER__DB_ENDPOINT",
+            "postgres://user:password@localhost:5432/signer",
+        );
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(
+            settings.signer.db_endpoint,
+            url("postgres://user:password@localhost:5432/signer")
+        );
+        assert!(settings.signer.db_endpoint.scheme() == "postgres");
+        assert!(settings.signer.db_endpoint.username() == "user");
+        assert!(settings.signer.db_endpoint.password() == Some("password"));
+        assert!(settings.signer.db_endpoint.host() == Some(url::Host::Domain("localhost")));
+        assert!(settings.signer.db_endpoint.port() == Some(5432));
+        assert!(settings.signer.db_endpoint.path() == "/signer");
+    }
+
+    #[test]
+    fn db_endpoint_inmemory_works() {
+        std::env::set_var("SIGNER_SIGNER__DB_ENDPOINT", "memory");
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(settings.signer.db_endpoint, url("memory://"));
+        assert!(settings.signer.db_endpoint.scheme() == "memory");
     }
 }
