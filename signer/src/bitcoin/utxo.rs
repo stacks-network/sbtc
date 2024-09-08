@@ -5,7 +5,6 @@ use std::collections::BTreeMap;
 use bitcoin::absolute::LockTime;
 use bitcoin::address::NetworkUnchecked;
 use bitcoin::hashes::Hash as _;
-use bitcoin::secp256k1::SECP256K1;
 use bitcoin::sighash::Prevouts;
 use bitcoin::sighash::SighashCache;
 use bitcoin::taproot::LeafVersion;
@@ -30,6 +29,7 @@ use bitvec::array::BitArray;
 use secp256k1::Keypair;
 use secp256k1::Message;
 use secp256k1::XOnlyPublicKey;
+use secp256k1::SECP256K1;
 
 use crate::bitcoin::packaging::compute_optimal_packages;
 use crate::bitcoin::packaging::Weighted;
@@ -422,7 +422,7 @@ impl WithdrawalRequest {
         let mut data = [0u8; 72];
         data[..32].copy_from_slice(&self.block_hash.into_bytes());
         data[32..64].copy_from_slice(&self.txid.into_bytes());
-        data[64..].copy_from_slice(&self.request_id.to_be_bytes());
+        data[64..72].copy_from_slice(&self.request_id.to_be_bytes());
 
         data
     }
@@ -519,7 +519,7 @@ impl<'a> Requests<'a> {
     /// Create a new one
     pub fn new(mut request_refs: Vec<RequestRef<'a>>) -> Self {
         // We sort them so that we are guaranteed to create the same
-        // bitcoin transaction with the same input request.
+        // bitcoin transaction with the same input requests.
         request_refs.sort();
         let signature = UnsignedTransaction::generate_dummy_signature();
         Self { request_refs, signature }
@@ -823,8 +823,8 @@ impl<'a> UnsignedTransaction<'a> {
             None => ScriptBuf::new_op_return(sbtc_data),
         };
 
-        // The minimal amount for OP_RETURN scripts is zero.
-        Some(TxOut::minimal_non_dust(script_pubkey))
+        let value = Amount::ZERO;
+        Some(TxOut { value, script_pubkey })
     }
 
     /// Return the first part of the sbtc related data included in the
