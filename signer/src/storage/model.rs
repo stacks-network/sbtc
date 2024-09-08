@@ -13,6 +13,57 @@ use stacks_common::types::chainstate::StacksBlockId;
 
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::stacks::events;
+
+/// Completed deposit event (from stacks event observer)
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+pub struct CompletedDepositEvent {
+    /// The id of the stacks transaction that generated this event.
+    pub txid: StacksTxId,
+    /// This is the amount of sBTC to mint to the intended recipient.
+    #[sqlx(try_from = "i64")]
+    pub amount: u64,
+    /// This is the outpoint of the original bitcoin deposit transaction.
+    pub bitcoin_txid: BitcoinTxId,
+    #[sqlx(try_from = "i32")]
+    /// This is the output index of the original bitcoin deposit transaction.
+    pub output_index: u32,
+}
+
+/// Withdrawal created event (from stacks event observer)
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+pub struct WithdrawalCreatedEvent {
+    /// The id of the stacks transaction that generated this event.
+    pub txid: StacksTxId,
+    /// The id of the withdrawal request, as reported by the stacks node.
+    #[sqlx(try_from = "i64")]
+    pub request_id: u64,
+    /// The amount of the withdrawal.
+    #[sqlx(try_from = "i64")]
+    pub amount: u64,
+    /// The address which initiated the withdrawal request.
+    pub sender: StacksPrincipal,
+    /// The address which should receive the BTC withdrawal.
+    pub recipient: BitcoinAddress,
+    /// The maximum portion of the withdrawn amount that may be used to pay for 
+    /// transaction fees.
+    #[sqlx(try_from = "i64")]
+    pub max_fee: u64,
+    /// The stacks block height at which the withdrawal request was created.
+    #[sqlx(try_from = "i64")]
+    pub block_height: u64,
+}
+
+impl From<events::CompletedDepositEvent> for CompletedDepositEvent {
+    fn from(event: events::CompletedDepositEvent) -> Self {
+        Self {
+            txid: event.txid.into(),
+            amount: event.amount,
+            bitcoin_txid: event.outpoint.txid.into(),
+            output_index: event.outpoint.vout,
+        }
+    }
+}
 
 /// Bitcoin block.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]

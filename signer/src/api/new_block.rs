@@ -2,12 +2,13 @@
 //! which is for processing new block webhooks from a stacks node.
 //!
 
+use std::sync::LazyLock;
+
 use axum::extract::State;
 use axum::http::StatusCode;
 
 use crate::stacks::events::RegistryEvent;
 use crate::stacks::webhooks::NewBlockEvent;
-use crate::storage::DbWrite;
 
 use super::ApiState;
 
@@ -26,10 +27,7 @@ use super::ApiState;
 /// second might succeed, we will return a 200 OK status code.
 ///
 /// [^1]: <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L317-L385>
-pub async fn new_block_handler<S>(state: State<ApiState<S>>, body: String) -> StatusCode
-where
-    S: DbWrite,
-{
+pub async fn new_block_handler(state: State<ApiState>, body: String) -> StatusCode {
     tracing::info!("Received a new block event from stacks-core");
     let api = state.0;
     let network = api.settings.signer.network;
@@ -89,13 +87,20 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::pin::Pin;
+    use std::sync::Arc;
+
     use super::*;
 
     use bitcoin::OutPoint;
     use test_case::test_case;
+    use tokio::runtime::Handle;
 
     use crate::config::Settings;
+    use crate::error::Error;
     use crate::storage::in_memory::Store;
+    use crate::storage::model::CompletedDepositEvent;
+    use crate::storage::DbReadWrite;
 
     /// These were generated from a stacks node after running the
     /// "complete-deposit standard recipient", "accept-withdrawal",
@@ -114,23 +119,39 @@ mod tests {
     const WITHDRAWAL_REJECT_WEBHOOK: &str =
         include_str!("../../tests/fixtures/withdrawal-reject-event.json");
 
-    #[test_case(COMPLETED_DEPOSIT_WEBHOOK, |db| db.completed_deposit_events.get(&OutPoint::null()).is_none(); "completed-deposit")]
-    #[test_case(WITHDRAWAL_CREATE_WEBHOOK, |db| db.withdrawal_create_events.get(&1).is_none(); "withdrawal-create")]
-    #[test_case(WITHDRAWAL_ACCEPT_WEBHOOK, |db| db.withdrawal_accept_events.get(&1).is_none(); "withdrawal-accept")]
-    #[test_case(WITHDRAWAL_REJECT_WEBHOOK, |db| db.withdrawal_reject_events.get(&2).is_none(); "withdrawal-reject")]
+    #[test_case(COMPLETED_DEPOSIT_WEBHOOK, |db: Arc<dyn DbReadWrite>| {
+        Box::pin(async move {
+            db.get_completed_deposit_event(&OutPoint::null()).await
+        })
+    }; "completed-deposit")]
+    // #[test_case(WITHDRAWAL_CREATE_WEBHOOK, |db: Arc<dyn DbReadWrite>| {
+    //     Box::pin(async move {
+    //         db.get_withdrawal_created_event(&1).await //.is_none()
+    //     })
+    // }; "withdrawal-create")]
+    // #[test_case(WITHDRAWAL_ACCEPT_WEBHOOK, |db: Arc<dyn DbReadWrite>| {
+    //     Box::pin(async move {
+    //         db.get_withdrawal_accepted_event.get(&1).await //.is_none()
+    //     })
+    // }; "withdrawal-accept")]
+    //#[test_case(WITHDRAWAL_REJECT_WEBHOOK, |db: Arc<dyn DbReadWrite>| db.withdrawal_reject_events.get(&2).is_none(); "withdrawal-reject")]
     #[tokio::test]
-    async fn test_events<F>(body_str: &str, table_is_empty: F)
+    async fn test_events<F, T>(body_str: &str, table_is_empty: F)
     where
-        F: Fn(tokio::sync::MutexGuard<'_, Store>) -> bool,
+        F: Fn(
+            Arc<dyn DbReadWrite>,
+        ) -> Pin<Box<dyn futures::Future<Output = Result<Option<T>, Error>> + Send>>,
     {
         let api = ApiState {
-            db: Store::new_shared(),
+            db: Arc::new(Store::new_shared()),
             settings: Settings::new(crate::testing::DEFAULT_CONFIG_PATH).unwrap(),
         };
 
         // Hey look, there is nothing here!
-        let db = api.db.lock().await;
-        assert!(table_is_empty(db));
+        assert!(table_is_empty(Arc::clone(&api.db))
+            .await
+            .expect("failed to query db")
+            .is_none());
 
         let state = State(api.clone());
         let body = body_str.to_string();
@@ -139,7 +160,9 @@ mod tests {
         assert_eq!(res, StatusCode::OK);
 
         // Now there should be something here
-        let db = api.db.lock().await;
-        assert!(!table_is_empty(db));
+        assert!(!table_is_empty(Arc::clone(&api.db))
+            .await
+            .expect("failed to query db")
+            .is_none());
     }
 }

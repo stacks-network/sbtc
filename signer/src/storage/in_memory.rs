@@ -106,7 +106,6 @@ impl Store {
 
 #[async_trait]
 impl super::DbRead for SharedStore {
-
     async fn get_bitcoin_block(
         &self,
         block_hash: &model::BitcoinBlockHash,
@@ -411,6 +410,19 @@ impl super::DbRead for SharedStore {
             .map(|share| share.script_pubkey.clone())
             .collect())
     }
+
+    async fn get_completed_deposit_event(
+        &self,
+        outpoint: &bitcoin::OutPoint,
+    ) -> Result<Option<model::CompletedDepositEvent>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .completed_deposit_events
+            .get(outpoint)
+            .cloned()
+            .map(Into::into))
+    }
 }
 
 #[async_trait]
@@ -424,10 +436,7 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_bitcoin_transactions(
-        &self,
-        txs: Vec<model::Transaction>,
-    ) -> Result<(), Error> {
+    async fn write_bitcoin_transactions(&self, txs: Vec<model::Transaction>) -> Result<(), Error> {
         for tx in txs {
             let bitcoin_transaction = model::BitcoinTransaction {
                 txid: tx.txid.into(),
@@ -529,10 +538,7 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_transaction(
-        &self,
-        _transaction: &model::Transaction,
-    ) -> Result<(), Error> {
+    async fn write_transaction(&self, _transaction: &model::Transaction) -> Result<(), Error> {
         // Currently not needed in-memory since it's not required by any queries
         Ok(())
     }

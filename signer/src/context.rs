@@ -3,7 +3,11 @@
 use std::sync::Arc;
 use tokio::sync::broadcast::Sender;
 
-use crate::{config::Settings, error::Error, storage::{in_memory::Store, postgres::PgStore, DbRead, DbReadWrite}};
+use crate::{
+    config::Settings,
+    error::Error,
+    storage::{in_memory::Store, postgres::PgStore, DbRead, DbReadWrite},
+};
 
 /// Context trait that is implemented by the [`SignerContext`].
 pub trait Context {
@@ -26,42 +30,26 @@ pub struct SignerContext {
     config: Settings,
     signal_tx: Sender<SignerSignal>,
     db: Arc<dyn DbReadWrite>,
-    // Would be used if we wanted to listen for any events in the context,
-    // for example if we wanted a subroutine to be able to trigger a config
-    // refresh:
-    // signal_rx: Receiver<SignerSignal>,
-
-    // Example if we wanted to have a database pool in the context:
-    // db_pool: sqlx::PgPool,
 }
 
-impl SignerContext
-{
+impl SignerContext {
     /// Create a new signer context.
-    pub async fn init(
-        config: Settings,
-    ) -> Result<Self, Error> {
+    pub async fn init(config: Settings) -> Result<Self, Error> {
         // Create a channel for signalling within the application.
         let (signal_tx, _) = tokio::sync::broadcast::channel(128);
 
         // Create a database connection.
         let db: Arc<dyn DbReadWrite> = match config.signer.db_endpoint.scheme() {
-            "postgres" => {
-                Arc::new(PgStore::connect(config.signer.db_endpoint.as_str()).await?)
-            }
-            "memory" => {
-                Arc::new(Store::new_shared())
-            }
+            "postgres" => Arc::new(PgStore::connect(config.signer.db_endpoint.as_str()).await?),
+            "memory" => Arc::new(Store::new_shared()),
             _ => {
-                return Err(Error::SqlxUnsupportedDatabase(config.signer.db_endpoint.scheme().to_string()));
+                return Err(Error::SqlxUnsupportedDatabase(
+                    config.signer.db_endpoint.scheme().to_string(),
+                ));
             }
         };
 
-        Ok(SignerContext {
-            config,
-            signal_tx,
-            db
-        })
+        Ok(SignerContext { config, signal_tx, db })
     }
 }
 

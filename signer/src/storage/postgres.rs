@@ -19,6 +19,8 @@ use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
 use crate::storage::model::TransactionType;
 
+use super::model::BitcoinTxId;
+
 const CONTRACT_NAMES: [&str; 4] = [
     // The name of the Stacks smart contract used for minting sBTC after a
     // successful transaction moving BTC under the signers' control.
@@ -740,6 +742,29 @@ impl super::DbRead for PgStore {
         .await
         .map_err(Error::SqlxQuery)
     }
+
+    async fn get_completed_deposit_event(
+        &self,
+        outpoint: &bitcoin::OutPoint,
+    ) -> Result<Option<model::CompletedDepositEvent>, Error> {
+        sqlx::query_as::<_, model::CompletedDepositEvent>(
+            r#"
+            SELECT
+                txid
+                , amount
+                , bitcoin_txid
+                , output_index
+            FROM sbtc_signer.completed_deposit_events
+            WHERE bitcoin_txid = $1 AND output_index = $2
+            ORDER BY created_at DESC;
+            "#,
+        )
+        .bind(Into::<BitcoinTxId>::into(outpoint.txid))
+        .bind(outpoint.vout as i64)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
 }
 
 #[async_trait]
@@ -1023,10 +1048,7 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn write_bitcoin_transactions(
-        &self,
-        txs: Vec<model::Transaction>,
-    ) -> Result<(), Error> {
+    async fn write_bitcoin_transactions(&self, txs: Vec<model::Transaction>) -> Result<(), Error> {
         let summary = self.write_transactions(txs).await?;
         if summary.tx_ids.is_empty() {
             return Ok(());
@@ -1076,10 +1098,7 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn write_stacks_transactions(
-        &self,
-        txs: Vec<model::Transaction>,
-    ) -> Result<(), Error> {
+    async fn write_stacks_transactions(&self, txs: Vec<model::Transaction>) -> Result<(), Error> {
         let summary = self.write_transactions(txs).await?;
         if summary.tx_ids.is_empty() {
             return Ok(());

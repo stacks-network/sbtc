@@ -232,7 +232,7 @@ impl Validatable for SignerConfig {
         self.p2p.validate()?;
 
         match (self.network, self.db_endpoint.scheme()) {
-            (NetworkKind::Mainnet, IN_MEMORY_DB_SCHEME) 
+            (NetworkKind::Mainnet, IN_MEMORY_DB_SCHEME)
             | (NetworkKind::Testnet, IN_MEMORY_DB_SCHEME) => {
                 return Err(ConfigError::Message(
                     "In-memory database may only be used in REGTEST.".to_string(),
@@ -531,10 +531,10 @@ mod tests {
 
     #[test]
     fn default_config_toml_loads_signer_network_with_environment() {
-        // In-memory db (default) can't be used together with testnet/mainnet, 
+        // In-memory db (default) can't be used together with testnet/mainnet,
         // so we simulate that we're using postgres.
         std::env::set_var("SIGNER_SIGNER__DB_ENDPOINT", "postgres://");
-        
+
         let new = "testnet";
         std::env::set_var("SIGNER_SIGNER__NETWORK", new);
 

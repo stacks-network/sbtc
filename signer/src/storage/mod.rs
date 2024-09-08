@@ -14,7 +14,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use blockstack_lib::types::chainstate::StacksBlockId;
-use in_memory::Store;
 
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -23,56 +22,26 @@ use crate::stacks::events::WithdrawalAcceptEvent;
 use crate::stacks::events::WithdrawalCreateEvent;
 use crate::stacks::events::WithdrawalRejectEvent;
 
-/// Represents a connection to one of the supported databases.
-pub enum DbConnection {
-    /// In-memory database.
-    InMemory(in_memory::SharedStore),
-    /// PostgreSQL database.
-    Postgres(Arc<postgres::PgStore>),
-}
-
 /// Represents a connection to a database that can read and write data.
-pub trait DbReadWrite: DbRead + DbWrite {
+pub trait DbReadWrite: DbRead + DbWrite + Sync + Send {
     /// Convert the connection to a read-only connection.
     fn as_read(self: Arc<Self>) -> Arc<dyn DbRead>;
     /// Convert the connection to a write-only connection.
     fn as_write(self: Arc<Self>) -> Arc<dyn DbWrite>;
 }
 
-impl<T: DbRead + DbWrite + Sized + 'static> DbReadWrite for T {
+impl<T: DbRead + DbWrite + Sync + Send + Sized + 'static> DbReadWrite for T {
     fn as_read(self: Arc<Self>) -> Arc<dyn DbRead> {
         self as Arc<dyn DbRead>
     }
     fn as_write(self: Arc<Self>) -> Arc<dyn DbWrite> {
         self as Arc<dyn DbWrite>
     }
-
-}
-
-impl DbConnection {
-    /// Connect to the database.
-    pub async fn connect(uri: url::Url) -> Result<Self, crate::error::Error> {
-        let kind = uri.scheme();
-        match kind {
-            "memory" => {
-                Ok(DbConnection::InMemory(Store::new_shared()))
-            }
-            "pgsql" => {
-                let db = postgres::PgStore::connect(&uri.to_string())
-                    .await
-                    .map_err(crate::error::Error::SqlxConnect)?;
-                Ok(DbConnection::Postgres(Arc::new(db)))
-            }
-            _ => {
-                Err(crate::error::Error::SqlxUnsupportedDatabase(format!("Unsupported database kind: {}", kind)))
-            }
-        }
-    }
 }
 
 /// Represents the ability to read data from the signer storage.
 #[async_trait]
-pub trait DbRead {
+pub trait DbRead: Sync + Send {
     /// Get the bitcoin block with the given block hash.
     async fn get_bitcoin_block(
         &self,
@@ -154,10 +123,7 @@ pub trait DbRead {
     ) -> Result<Vec<model::BitcoinBlockHash>, Error>;
 
     /// Returns whether the given block ID is stored.
-    async fn stacks_block_exists(
-        &self,
-        block_id: StacksBlockId,
-    ) -> Result<bool, Error>;
+    async fn stacks_block_exists(&self, block_id: StacksBlockId) -> Result<bool, Error>;
 
     /// Return the applicable DKG shares for the
     /// given aggregate key
@@ -173,26 +139,22 @@ pub trait DbRead {
     ) -> Result<Option<model::RotateKeysTransaction>, Error>;
 
     /// Get the last 365 days worth of the signers' `scriptPubkey`s.
-    async fn get_signers_script_pubkeys(
+    async fn get_signers_script_pubkeys(&self) -> Result<Vec<model::Bytes>, Error>;
+    /// Get all completed deposit events.
+    async fn get_completed_deposit_event(
         &self,
-    ) -> Result<Vec<model::Bytes>, Error>;
+        outpoint: &bitcoin::OutPoint,
+    ) -> Result<Option<model::CompletedDepositEvent>, Error>;
 }
 
 /// Represents the ability to write data to the signer storage.
 #[async_trait]
-pub trait DbWrite {
-
+pub trait DbWrite: Sync + Send {
     /// Write a bitcoin block.
-    async fn write_bitcoin_block(
-        &self,
-        block: &model::BitcoinBlock,
-    ) -> Result<(), Error>;
+    async fn write_bitcoin_block(&self, block: &model::BitcoinBlock) -> Result<(), Error>;
 
     /// Write a stacks block.
-    async fn write_stacks_block(
-        &self,
-        block: &model::StacksBlock,
-    ) -> Result<(), Error>;
+    async fn write_stacks_block(&self, block: &model::StacksBlock) -> Result<(), Error>;
 
     /// Write a deposit request.
     async fn write_deposit_request(
@@ -225,10 +187,7 @@ pub trait DbWrite {
     ) -> Result<(), Error>;
 
     /// Write a raw transaction.
-    async fn write_transaction(
-        &self,
-        transaction: &model::Transaction,
-    ) -> Result<(), Error>;
+    async fn write_transaction(&self, transaction: &model::Transaction) -> Result<(), Error>;
 
     /// Write a connection between a bitcoin block and a transaction
     async fn write_bitcoin_transaction(
@@ -237,10 +196,7 @@ pub trait DbWrite {
     ) -> Result<(), Error>;
 
     /// Write the bitcoin transactions to the data store.
-    async fn write_bitcoin_transactions(
-        &self,
-        txs: Vec<model::Transaction>,
-    ) -> Result<(), Error>;
+    async fn write_bitcoin_transactions(&self, txs: Vec<model::Transaction>) -> Result<(), Error>;
 
     /// Write a connection between a stacks block and a transaction
     async fn write_stacks_transaction(
@@ -249,10 +205,7 @@ pub trait DbWrite {
     ) -> Result<(), Error>;
 
     /// Write the stacks transactions to the data store.
-    async fn write_stacks_transactions(
-        &self,
-        txs: Vec<model::Transaction>,
-    ) -> Result<(), Error>;
+    async fn write_stacks_transactions(&self, txs: Vec<model::Transaction>) -> Result<(), Error>;
 
     /// Write the stacks block ids and their parent block ids.
     async fn write_stacks_block_headers(
