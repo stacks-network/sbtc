@@ -765,6 +765,53 @@ impl super::DbRead for PgStore {
         .await
         .map_err(Error::SqlxQuery)
     }
+
+    async fn get_withdrawal_created_event(
+        &self,
+        request_id: u64,
+    ) -> Result<Option<model::WithdrawalCreatedEvent>, Error> {
+        sqlx::query_as::<_, model::WithdrawalCreatedEvent>(
+            r#"
+            SELECT
+                txid
+                , request_id
+                , amount
+                , sender
+                , recipient
+                , max_fee
+                , block_height
+            FROM sbtc_signer.withdrawal_created_events
+            WHERE request_id = $1
+            "#,
+        )
+        .bind(request_id as i64)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_withdrawal_accepted_event(
+        &self,
+        request_id: u64,
+    ) -> Result<Option<model::WithdrawalAcceptedEvent>, Error> {
+        //TODO: Add back signer_bitmap column when we can deserialize it
+        sqlx::query_as::<_, model::WithdrawalAcceptedEvent>(
+            r#"
+            SELECT
+                txid
+                , request_id
+                , bitcoin_txid
+                , output_index
+                , fee
+            FROM sbtc_signer.withdrawal_accept_events
+            WHERE request_id = $1
+            "#,
+        )
+        .bind(request_id as i64)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
 }
 
 #[async_trait]

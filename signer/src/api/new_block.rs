@@ -124,16 +124,16 @@ mod tests {
             db.get_completed_deposit_event(&OutPoint::null()).await
         })
     }; "completed-deposit")]
-    // #[test_case(WITHDRAWAL_CREATE_WEBHOOK, |db: Arc<dyn DbReadWrite>| {
-    //     Box::pin(async move {
-    //         db.get_withdrawal_created_event(&1).await //.is_none()
-    //     })
-    // }; "withdrawal-create")]
-    // #[test_case(WITHDRAWAL_ACCEPT_WEBHOOK, |db: Arc<dyn DbReadWrite>| {
-    //     Box::pin(async move {
-    //         db.get_withdrawal_accepted_event.get(&1).await //.is_none()
-    //     })
-    // }; "withdrawal-accept")]
+    #[test_case(WITHDRAWAL_CREATE_WEBHOOK, |db: Arc<dyn DbReadWrite>| {
+        Box::pin(async move {
+            db.get_withdrawal_created_event(1).await //.is_none()
+        })
+    }; "withdrawal-create")]
+    #[test_case(WITHDRAWAL_ACCEPT_WEBHOOK, |db: Arc<dyn DbReadWrite>| {
+        Box::pin(async move {
+            db.get_withdrawal_accepted_event(1).await //.is_none()
+        })
+    }; "withdrawal-accept")]
     //#[test_case(WITHDRAWAL_REJECT_WEBHOOK, |db: Arc<dyn DbReadWrite>| db.withdrawal_reject_events.get(&2).is_none(); "withdrawal-reject")]
     #[tokio::test]
     async fn test_events<F, T>(body_str: &str, table_is_empty: F)

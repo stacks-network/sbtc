@@ -25,9 +25,20 @@ pub struct CompletedDepositEvent {
     pub amount: u64,
     /// This is the outpoint of the original bitcoin deposit transaction.
     pub bitcoin_txid: BitcoinTxId,
-    #[sqlx(try_from = "i32")]
+    #[sqlx(try_from = "i64")]
     /// This is the output index of the original bitcoin deposit transaction.
     pub output_index: u32,
+}
+
+impl From<events::CompletedDepositEvent> for CompletedDepositEvent {
+    fn from(event: events::CompletedDepositEvent) -> Self {
+        Self {
+            txid: event.txid.into(),
+            amount: event.amount,
+            bitcoin_txid: event.outpoint.txid.into(),
+            output_index: event.outpoint.vout,
+        }
+    }
 }
 
 /// Withdrawal created event (from stacks event observer)
@@ -54,13 +65,48 @@ pub struct WithdrawalCreatedEvent {
     pub block_height: u64,
 }
 
-impl From<events::CompletedDepositEvent> for CompletedDepositEvent {
-    fn from(event: events::CompletedDepositEvent) -> Self {
+impl From<events::WithdrawalCreateEvent> for WithdrawalCreatedEvent {
+    fn from(event: events::WithdrawalCreateEvent) -> Self {
         Self {
             txid: event.txid.into(),
+            request_id: event.request_id,
             amount: event.amount,
+            sender: event.sender.into(),
+            recipient: event.recipient.to_string(),
+            max_fee: event.max_fee,
+            block_height: event.block_height,
+        }
+    }
+}
+/// Withdrawal accepted event (from stacks event observer)
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+pub struct WithdrawalAcceptedEvent {
+    /// The id of the stacks transaction that generated this event.
+    pub txid: StacksTxId,
+    /// The id of the withdrawal request, as reported by the stacks node.
+    #[sqlx(try_from = "i64")]
+    pub request_id: u64,
+    // TODO: sqlx decode
+    //pub signer_bitmap: BitArray<[u8; 16]>,
+    /// The bitcoin transaction ID of the withdrawal.
+    pub bitcoin_txid: BitcoinTxId,
+    #[sqlx(try_from = "i64")]
+    /// The output index of the withdrawal.
+    pub output_index: u32,
+    /// The fee paid for the withdrawal.
+    #[sqlx(try_from = "i64")]
+    pub fee: u64,
+}
+
+impl From<events::WithdrawalAcceptEvent> for WithdrawalAcceptedEvent {
+    fn from(event: events::WithdrawalAcceptEvent) -> Self {
+        Self {
+            txid: event.txid.into(),
+            request_id: event.request_id,
+            //signer_bitmap: event.signer_bitmap,
             bitcoin_txid: event.outpoint.txid.into(),
             output_index: event.outpoint.vout,
+            fee: event.fee,
         }
     }
 }

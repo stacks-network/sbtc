@@ -140,11 +140,21 @@ pub trait DbRead: Sync + Send {
 
     /// Get the last 365 days worth of the signers' `scriptPubkey`s.
     async fn get_signers_script_pubkeys(&self) -> Result<Vec<model::Bytes>, Error>;
-    /// Get all completed deposit events.
+    /// Get the deposit-completed event for the given outpoint (if it exists).
     async fn get_completed_deposit_event(
         &self,
         outpoint: &bitcoin::OutPoint,
     ) -> Result<Option<model::CompletedDepositEvent>, Error>;
+    /// Get the withdrawal-created event for the given outpoint (if it exists).
+    async fn get_withdrawal_created_event(
+        &self,
+        request_id: u64,
+    ) -> Result<Option<model::WithdrawalCreatedEvent>, Error>;
+    /// Get the withdrawal-accepted event for the given outpoint (if it exists).
+    async fn get_withdrawal_accepted_event(
+        &self,
+        request_id: u64,
+    ) -> Result<Option<model::WithdrawalAcceptedEvent>, Error>;
 }
 
 /// Represents the ability to write data to the signer storage.

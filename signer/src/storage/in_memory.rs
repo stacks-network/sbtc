@@ -423,6 +423,32 @@ impl super::DbRead for SharedStore {
             .cloned()
             .map(Into::into))
     }
+
+    async fn get_withdrawal_created_event(
+        &self,
+        request_id: u64,
+    ) -> Result<Option<model::WithdrawalCreatedEvent>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .withdrawal_create_events
+            .get(&request_id)
+            .cloned()
+            .map(Into::into))
+    }
+
+    async fn get_withdrawal_accepted_event(
+        &self,
+        request_id: u64,
+    ) -> Result<Option<model::WithdrawalAcceptedEvent>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .withdrawal_accept_events
+            .get(&request_id)
+            .cloned()
+            .map(Into::into))
+    }
 }
 
 #[async_trait]
