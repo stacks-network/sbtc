@@ -990,7 +990,12 @@ mod tests {
     use rand::distributions::Distribution;
     use rand::distributions::Uniform;
     use rand::rngs::OsRng;
+    use rand::Rng;
+    use rand::SeedableRng as _;
+    use ripemd::Ripemd160;
     use secp256k1::SecretKey;
+    use sha2::Digest as _;
+    use sha2::Sha256;
     use test_case::test_case;
 
     use crate::testing;
@@ -1063,6 +1068,66 @@ mod tests {
             request_id: (0..u32::MAX as u64).fake_with_rng(&mut OsRng),
             block_hash: fake::Faker.fake_with_rng(&mut OsRng),
         }
+    }
+
+    fn random_withdrawal<R: Rng>(rng: &mut R, votes_against: usize) -> WithdrawalRequest {
+        let mut signer_bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
+        signer_bitmap[..votes_against].fill(true);
+
+        WithdrawalRequest {
+            max_fee: rng.next_u32() as u64,
+            signer_bitmap,
+            amount: rng.next_u32() as u64,
+            address: generate_address(),
+            txid: fake::Faker.fake_with_rng(rng),
+            request_id: (0..u32::MAX as u64).fake_with_rng(rng),
+            block_hash: fake::Faker.fake_with_rng(rng),
+        }
+    }
+
+    /// This is a naive implementation of a function that computes a merkle root
+    fn caluclate_merkle_root(reqs: &mut [WithdrawalRequest]) -> Option<[u8; 20]> {
+        // The withdrawals' are sorted before inclusion as a bitcoin
+        // transaction output.
+        reqs.sort();
+        let mut leafs = reqs
+            .iter()
+            .map(|req| {
+                // We use the Hash160 for the hash function, which is
+                // SHA256 followed by RIPEMD160.
+                let sha256_data = Sha256::digest(req.sbtc_data());
+                let rip160_data = Ripemd160::digest(sha256_data);
+                rip160_data.as_slice().try_into().unwrap()
+            })
+            .collect::<Vec<[u8; 20]>>();
+
+        while leafs.len() > 1 {
+            leafs = leafs
+                .chunks(2)
+                .map(|nodes| {
+                    let [leaf1, leaf2] = match nodes {
+                        [leaf1, leaf2] => [leaf1, leaf2],
+                        // If a leaf node does not have a partner, it gets paired with itself.
+                        [leaf] => [leaf, leaf],
+                        // Yeah chunks(2) return slices of size 1 or 2 here.
+                        _ => unreachable!(),
+                    };
+                    // Compute the hash160 of the two leafs
+                    let sha256_data = Sha256::default()
+                        .chain_update(leaf1)
+                        .chain_update(leaf2)
+                        .finalize();
+
+                    Ripemd160::digest(sha256_data)
+                        .as_slice()
+                        .try_into()
+                        .unwrap()
+                })
+                .collect();
+        }
+
+        // There are either 1 or 0 elements in the leafs vector, so lets get it
+        leafs.pop()
     }
 
     #[ignore = "For generating the SOLO_(DEPOSIT|WITHDRAWAL)_SIZE constants"]
@@ -1340,6 +1405,105 @@ mod tests {
         // And the first six bits are all ones followed by all zeros.
         assert!(bitmap[..6].all());
         assert!(!bitmap[6..].any());
+    }
+
+    #[test_case(Vec::new(), vec![create_deposit(123456, 0, 0)]; "no withdrawals, one deposits")]
+    #[test_case([create_withdrawal(1000, 0, 0)], Vec::new(); "one withdrawals")]
+    #[test_case({
+        let mut rng = rand::rngs::StdRng::seed_from_u64(3);
+        std::iter::repeat_with(move || random_withdrawal(&mut rng, 0)).take(2)
+    }, Vec::new(); "two withdrawals")]
+    #[test_case({
+        let mut rng = rand::rngs::StdRng::seed_from_u64(30);
+        std::iter::repeat_with(move || random_withdrawal(&mut rng, 0)).take(3)
+    }, Vec::new(); "three withdrawals")]
+    #[test_case({
+        let mut rng = rand::rngs::StdRng::seed_from_u64(300);
+        std::iter::repeat_with(move || random_withdrawal(&mut rng, 0)).take(5)
+    }, Vec::new(); "five withdrawals")]
+    #[test_case({
+        let mut rng = rand::rngs::StdRng::seed_from_u64(3000);
+        std::iter::repeat_with(move || random_withdrawal(&mut rng, 0)).take(20)
+    }, Vec::new(); "twenty withdrawals")]
+    fn merkle_root_in_op_return<I>(withdrawals: I, deposits: Vec<DepositRequest>)
+    where
+        I: IntoIterator<Item = WithdrawalRequest>,
+    {
+        const OP_RETURN: u8 = bitcoin::opcodes::all::OP_RETURN.to_u8();
+        const OP_PUSHBYTES_21: u8 = bitcoin::opcodes::all::OP_PUSHBYTES_21.to_u8();
+        const OP_PUSHBYTES_41: u8 = bitcoin::opcodes::all::OP_PUSHBYTES_41.to_u8();
+
+        let mut requests = SbtcRequests {
+            deposits,
+            withdrawals: withdrawals.into_iter().collect(),
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: generate_outpoint(500_000_000_000, 0),
+                    amount: 500_000_000_000,
+                    public_key: generate_x_only_public_key(),
+                },
+                fee_rate: 0.0,
+                public_key: generate_x_only_public_key(),
+                last_fees: None,
+                magic_bytes: [b'T', b'3'],
+            },
+            num_signers: 10,
+            accept_threshold: 0,
+        };
+
+        let mut transactions = requests.construct_transactions().unwrap();
+        assert_eq!(transactions.len(), 1);
+
+        let unsigned_tx = transactions.pop().unwrap();
+        // Okay, the let's look at the raw data in our OP_RETURN UTXO
+        let sbtc_data = match unsigned_tx.tx.output[1].script_pubkey.as_bytes() {
+            // The data layout is detailed in the documentation for the
+            // UnsignedTransaction::new_op_return_output function when
+            // there are withdrawal request UTXOs.
+            [OP_RETURN, OP_PUSHBYTES_41, b'T', b'3', OP_RETURN_VERSION, 0, nd, data @ ..]
+                if *nd == requests.deposits.len() as u8 =>
+            {
+                data
+            }
+            // The data layout is detailed in the documentation for the
+            // UnsignedTransaction::new_op_return_output function when
+            // there are no withdrawal request UTXOs.
+            [OP_RETURN, OP_PUSHBYTES_21, b'T', b'3', OP_RETURN_VERSION, 0, nd, data @ ..]
+                if *nd == requests.deposits.len() as u8 =>
+            {
+                data
+            }
+            data => panic!("Invalid OP_RETURN FORMAT {data:?}"),
+        };
+        // If there are no deposits or withdrawals then there is no bitmap
+        // and no merkle root.
+
+        // I appologize for the nested if statements :(.
+        if let Some((_bitmap, actual_merkle_root)) = sbtc_data.split_first_chunk::<16>() {
+            // if we have 16 bytes here then we know that the we have at
+            // least one deposit or withdrawal request.
+            assert!(requests.deposits.is_empty() || requests.withdrawals.is_empty());
+
+            // If we do not have any withdrawal requests then there is no
+            // merkle root for the depositors to pay for.
+            if requests.withdrawals.is_empty() {
+                assert!(actual_merkle_root.is_empty());
+            } else {
+                // If we have a withdrawal then there is a merkle root, and
+                // it's constructed in a standard way.
+                let actual_merkle_root: [u8; 20] = actual_merkle_root.try_into().unwrap();
+                let expected_merkle_root =
+                    caluclate_merkle_root(&mut requests.withdrawals).unwrap();
+
+                assert_eq!(actual_merkle_root, expected_merkle_root);
+            }
+        } else {
+            // If there is isn't 16 bytes here then there is nothing. Note
+            // that this isn't hit in our test cases, it's only ever hit if
+            // there are no deposits and no withdrawals we do not create a
+            // transaction in that case.
+            assert!(sbtc_data.is_empty());
+        }
     }
 
     /// Deposit requests add to the signers' UTXO.
