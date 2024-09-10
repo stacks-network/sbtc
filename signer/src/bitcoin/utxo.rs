@@ -38,6 +38,8 @@ use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
+use crate::storage::model::SignerVote;
+use crate::MAX_KEYS;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
 /// transactions.
@@ -341,16 +343,28 @@ impl DepositRequest {
     }
 
     /// Try convert from a model::DepositRequest with some additional info.
-    pub fn try_from_model(
+    pub fn from_model(
         request: model::DepositRequest,
         signers_public_key: XOnlyPublicKey,
-    ) -> Result<Self, Error> {
+        mut votes: Vec<SignerVote>,
+    ) -> Self {
         let txid = request.txid.into();
         let vout = request.output_index;
 
-        let signer_bitmap = BitArray::ZERO; // TODO(326): Populate
+        let mut signer_bitmap = BitArray::ZERO;
+        votes.sort_by_key(|vote| vote.signer_public_key);
+        votes
+            .into_iter()
+            .enumerate()
+            .take(MAX_KEYS as usize)
+            .for_each(|(index, vote)| {
+                // The BitArray::<[u8; 16]>::set function panics if the
+                // index is out of bounds but that cannot be the case here
+                // because we only take 128 values.
+                signer_bitmap.set(index, vote.is_rejected);
+            });
 
-        Ok(Self {
+        Self {
             outpoint: OutPoint { txid, vout },
             max_fee: request.max_fee,
             signer_bitmap,
@@ -358,7 +372,7 @@ impl DepositRequest {
             deposit_script: ScriptBuf::from_bytes(request.spend_script),
             reclaim_script: ScriptBuf::from_bytes(request.reclaim_script),
             signers_public_key,
-        })
+        }
     }
 }
 
