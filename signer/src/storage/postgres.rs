@@ -391,10 +391,12 @@ impl super::DbRead for PgStore {
         sqlx::query_as::<_, model::SignerVote>(
             r#"
             WITH signer_set_row AS (
-                -- We could have multiple rotate keys transaction with the
-                -- same aggregate key, each of aggragate key is very likely
-                -- to have the same signer set. So we use DISTINCT to
-                -- remove any duplicates.
+                -- Note that we could have multiple rotate keys transaction
+                -- with the same aggregate key, but every time we see the
+                -- same aggragate key it is very likely that it is
+                -- associated with the same set of public keys. So we match
+                -- on the aggregate key, assume we get the same set of
+                -- public keys, and use DISTINCT to remove duplicates.
                 SELECT DISTINCT UNNEST(signer_set) AS signer_public_key
                 FROM sbtc_signer.rotate_keys_transactions
                 WHERE aggregate_key = $1
