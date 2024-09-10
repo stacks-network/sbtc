@@ -155,6 +155,11 @@ pub trait DbRead: Sync + Send {
         &self,
         request_id: u64,
     ) -> Result<Option<model::WithdrawalAcceptedEvent>, Error>;
+    /// Get the withdrawal-rejected event for the given outpoint (if it exists).
+    async fn get_withdrawal_rejected_event(
+        &self,
+        request_id: u64,
+    ) -> Result<Option<model::WithdrawalRejectedEvent>, Error>;
 }
 
 /// Represents the ability to write data to the signer storage.

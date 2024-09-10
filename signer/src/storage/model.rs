@@ -5,6 +5,7 @@ use std::ops::Deref;
 use bitcoin::hashes::Hash as _;
 use bitcoin::Address;
 use bitcoin::Network;
+use bitvec::array::BitArray;
 use clarity::vm::types::PrincipalData;
 use sbtc::deposits::Deposit;
 use serde::Deserialize;
@@ -20,11 +21,14 @@ use crate::stacks::events;
 pub struct CompletedDepositEvent {
     /// The id of the stacks transaction that generated this event.
     pub txid: StacksTxId,
+
     /// This is the amount of sBTC to mint to the intended recipient.
     #[sqlx(try_from = "i64")]
     pub amount: u64,
+
     /// This is the outpoint of the original bitcoin deposit transaction.
     pub bitcoin_txid: BitcoinTxId,
+
     #[sqlx(try_from = "i64")]
     /// This is the output index of the original bitcoin deposit transaction.
     pub output_index: u32,
@@ -46,20 +50,26 @@ impl From<events::CompletedDepositEvent> for CompletedDepositEvent {
 pub struct WithdrawalCreatedEvent {
     /// The id of the stacks transaction that generated this event.
     pub txid: StacksTxId,
+
     /// The id of the withdrawal request, as reported by the stacks node.
     #[sqlx(try_from = "i64")]
     pub request_id: u64,
+
     /// The amount of the withdrawal.
     #[sqlx(try_from = "i64")]
     pub amount: u64,
+
     /// The address which initiated the withdrawal request.
     pub sender: StacksPrincipal,
+
     /// The address which should receive the BTC withdrawal.
     pub recipient: BitcoinAddress,
-    /// The maximum portion of the withdrawn amount that may be used to pay for 
+
+    /// The maximum portion of the withdrawn amount that may be used to pay for
     /// transaction fees.
     #[sqlx(try_from = "i64")]
     pub max_fee: u64,
+
     /// The stacks block height at which the withdrawal request was created.
     #[sqlx(try_from = "i64")]
     pub block_height: u64,
@@ -83,16 +93,22 @@ impl From<events::WithdrawalCreateEvent> for WithdrawalCreatedEvent {
 pub struct WithdrawalAcceptedEvent {
     /// The id of the stacks transaction that generated this event.
     pub txid: StacksTxId,
+
     /// The id of the withdrawal request, as reported by the stacks node.
     #[sqlx(try_from = "i64")]
     pub request_id: u64,
-    // TODO: sqlx decode
-    //pub signer_bitmap: BitArray<[u8; 16]>,
+
+    /// The bitmap of signers which signed this request.
+    #[sqlx(skip)] // TODO: sqlx decode
+    pub signer_bitmap: BitArray<[u8; 16]>,
+
     /// The bitcoin transaction ID of the withdrawal.
     pub bitcoin_txid: BitcoinTxId,
+
     #[sqlx(try_from = "i64")]
     /// The output index of the withdrawal.
     pub output_index: u32,
+
     /// The fee paid for the withdrawal.
     #[sqlx(try_from = "i64")]
     pub fee: u64,
@@ -103,10 +119,35 @@ impl From<events::WithdrawalAcceptEvent> for WithdrawalAcceptedEvent {
         Self {
             txid: event.txid.into(),
             request_id: event.request_id,
-            //signer_bitmap: event.signer_bitmap,
+            signer_bitmap: event.signer_bitmap,
             bitcoin_txid: event.outpoint.txid.into(),
             output_index: event.outpoint.vout,
             fee: event.fee,
+        }
+    }
+}
+
+/// Withdrawal rejected event (from stacks event observer)
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+pub struct WithdrawalRejectedEvent {
+    /// The id of the stacks transaction that generated this event.
+    pub txid: StacksTxId,
+
+    /// The id of the withdrawal request, as reported by the stacks node.
+    #[sqlx(try_from = "i64")]
+    pub request_id: u64,
+
+    /// The bitmap of signers which signed this request.
+    #[sqlx(skip)] // TODO: sqlx decode
+    pub signer_bitmap: BitArray<[u8; 16]>,
+}
+
+impl From<events::WithdrawalRejectEvent> for WithdrawalRejectedEvent {
+    fn from(event: events::WithdrawalRejectEvent) -> Self {
+        Self {
+            txid: event.txid.into(),
+            request_id: event.request_id,
+            signer_bitmap: event.signer_bitmap,
         }
     }
 }

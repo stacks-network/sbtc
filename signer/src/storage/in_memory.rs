@@ -449,6 +449,19 @@ impl super::DbRead for SharedStore {
             .cloned()
             .map(Into::into))
     }
+
+    async fn get_withdrawal_rejected_event(
+        &self,
+        request_id: u64,
+    ) -> Result<Option<model::WithdrawalRejectedEvent>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .withdrawal_reject_events
+            .get(&request_id)
+            .cloned()
+            .map(Into::into))
+    }
 }
 
 #[async_trait]

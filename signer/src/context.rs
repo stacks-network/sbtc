@@ -63,6 +63,7 @@ impl SignerContext {
     pub async fn init(config: Settings) -> Result<Self, Error> {
         // Create a channel for signalling within the application.
         let (signal_tx, _) = tokio::sync::broadcast::channel(128);
+        // Create a channel for termination signalling.
         let (term_tx, _) = tokio::sync::watch::channel(false);
 
         // Create a database connection.

@@ -812,6 +812,29 @@ impl super::DbRead for PgStore {
         .await
         .map_err(Error::SqlxQuery)
     }
+
+    /*txid          BYTEA  NOT NULL,
+    request_id    BIGINT NOT NULL,
+    signer_bitmap BYTEA  NOT NULL, */
+    async fn get_withdrawal_rejected_event(
+        &self,
+        request_id: u64,
+    ) -> Result<Option<model::WithdrawalRejectedEvent>, Error> {
+        //TODO: Add back signer_bitmap column when we can deserialize it
+        sqlx::query_as::<_, model::WithdrawalRejectedEvent>(
+            r#"
+            SELECT
+                txid
+                , request_id
+            FROM sbtc_signer.withdrawal_reject_events
+            WHERE request_id = $1
+            "#,
+        )
+        .bind(request_id as i64)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
 }
 
 #[async_trait]
