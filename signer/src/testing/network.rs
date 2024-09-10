@@ -45,9 +45,12 @@ fn spawn_client_task(
             client.broadcast(msg).await.expect("Failed to broadcast");
         }
 
-        for msg in should_receive {
+        // We use this method to receive messages and check for its existence
+        // in `send_messages` as we cannot guarantee the order of messages
+        // received in the network (particularly when using libp2p's gossipsub).
+        for _ in 0..should_receive.len() {
             let received = client.receive().await.expect("Failed to receive message");
-            assert_eq!(received, msg);
+            assert!(should_receive.contains(&received));
         }
     })
 }

@@ -8,6 +8,15 @@ use crate::{codec, ecdsa, network};
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Error incurred during the execution of the libp2p swarm.
+    #[error("an error occurred running the libp2p swarm: {0}")]
+    SignerSwarm(#[from] crate::network::libp2p::SignerSwarmError),
+
+    /// The requested operation is not allowed in the current state as the
+    /// signer is being shut down.
+    #[error("the signer is shutting down")]
+    SignerShutdown,
+
     /// Stacks event observer terminated prematurely.
     #[error("stacks event observer terminated prematurely")]
     StacksEventObserverAborted,
@@ -15,13 +24,6 @@ pub enum Error {
     /// I/O Error raised by the Tokio runtime.
     #[error("tokio i/o error: {0}")]
     TokioIo(#[from] tokio::io::Error),
-
-    /// Error when attempting to send a signal to the application's signalling
-    /// channel.
-    #[error("failed to send signal to the application: {0}")]
-    ApplicationSignal(
-        #[source] tokio::sync::broadcast::error::SendError<crate::context::SignerSignal>,
-    ),
 
     /// Error when breaking out the ZeroMQ message into three parts.
     #[error("bitcoin messages should have a three part layout, received {0} parts")]

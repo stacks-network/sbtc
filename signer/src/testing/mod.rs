@@ -30,6 +30,20 @@ impl Settings {
     }
 }
 
+/// Clears all signer-specific configuration environment variables. This is needed
+/// for a number of tests which use the `Settings` struct due to the fact that
+/// `cargo test` runs tests in threads, and environment variables are per-process.
+///
+/// If we switched to `cargo nextest` (which runs tests in separate processes),
+/// this would no longer be needed.
+pub fn clear_env() {
+    for var in std::env::vars() {
+        if var.0.starts_with("SIGNER_") {
+            std::env::remove_var(var.0);
+        }
+    }
+}
+
 /// A helper function for correctly setting witness data
 pub fn set_witness_data(unsigned: &mut UnsignedTransaction, keypair: secp256k1::Keypair) {
     let sighash_type = TapSighashType::Default;
