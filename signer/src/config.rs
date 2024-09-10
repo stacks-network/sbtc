@@ -471,6 +471,8 @@ fn try_parse_p2p_multiaddr(s: &str) -> Result<Multiaddr, SignerConfigError> {
 mod tests {
     use std::net::SocketAddr;
 
+    use crate::testing::clear_env;
+
     use super::*;
 
     /// Helper function to quickly create a URL from a string in tests.
@@ -490,6 +492,8 @@ mod tests {
     // !! default.toml file are changed.
     #[test]
     fn default_config_toml_loads() {
+        clear_env();
+
         let settings = Settings::new_from_default_config().unwrap();
         assert_eq!(settings.blocklist_client.host, "127.0.0.1");
         assert_eq!(settings.blocklist_client.port, 8080);
@@ -532,6 +536,8 @@ mod tests {
 
     #[test]
     fn default_config_toml_loads_signer_p2p_config_with_environment() {
+        clear_env();
+
         std::env::set_var(
             "SIGNER_SIGNER__P2P__SEEDS",
             "tcp://seed-1:4122,tcp://seed-2:4122",
@@ -555,6 +561,8 @@ mod tests {
 
     #[test]
     fn default_config_toml_loads_bitcoin_config_with_environment() {
+        clear_env();
+
         std::env::set_var(
             "SIGNER_BITCOIN__ENDPOINTS",
             "http://user:pass@localhost:1234,http://foo:bar@localhost:5678",
@@ -575,6 +583,8 @@ mod tests {
 
     #[test]
     fn default_config_toml_loads_signer_private_key_config_with_environment() {
+        clear_env();
+
         let new = "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd";
         std::env::set_var("SIGNER_SIGNER__PRIVATE_KEY", new);
 
@@ -588,6 +598,8 @@ mod tests {
 
     #[test]
     fn default_config_toml_loads_signer_network_with_environment() {
+        clear_env();
+
         let new = "testnet";
         // We set the p2p seeds here as we'll otherwise fail p2p seed validation
         // when the network is mainnet or testnet.
@@ -608,6 +620,8 @@ mod tests {
 
     #[test]
     fn default_config_toml_loads_with_environment() {
+        clear_env();
+
         // The default toml used here specifies http://localhost:20443
         // as the stacks node endpoint.
         let settings = StacksSettings::new_from_config().unwrap();
@@ -645,6 +659,8 @@ mod tests {
 
     #[test]
     fn invalid_private_key_length_returns_correct_error() {
+        clear_env();
+
         std::env::set_var("SIGNER_SIGNER__PRIVATE_KEY", "1234");
 
         let settings = Settings::new_from_default_config();
@@ -657,6 +673,8 @@ mod tests {
 
     #[test]
     fn invalid_private_key_compression_byte_marker_returns_correct_error() {
+        clear_env();
+
         std::env::set_var(
             "SIGNER_SIGNER__PRIVATE_KEY",
             "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd02",
@@ -671,6 +689,8 @@ mod tests {
 
     #[test]
     fn valid_33_byte_private_key_works() {
+        clear_env();
+
         std::env::set_var(
             "SIGNER_SIGNER__PRIVATE_KEY",
             "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd01",
@@ -681,6 +701,8 @@ mod tests {
 
     #[test]
     fn invalid_private_key_hex_returns_correct_error() {
+        clear_env();
+
         std::env::set_var(
             "SIGNER_SIGNER__PRIVATE_KEY",
             "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
@@ -697,6 +719,8 @@ mod tests {
 
     #[test]
     fn invalid_p2p_uri_scheme_returns_correct_error() {
+        clear_env();
+
         std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "http://seed-1:4122");
         assert!(matches!(
             Settings::new_from_default_config(),
@@ -706,6 +730,8 @@ mod tests {
 
     #[test]
     fn missing_p2p_uri_port_returns_correct_error() {
+        clear_env();
+
         std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "tcp://seed-1");
         assert!(matches!(
             Settings::new_from_default_config(),
@@ -715,6 +741,8 @@ mod tests {
 
     #[test]
     fn missing_p2p_uri_host_returns_correct_error() {
+        clear_env();
+
         std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "tcp://:4122");
         assert!(matches!(
             Settings::new_from_default_config(),
@@ -724,6 +752,8 @@ mod tests {
 
     #[test]
     fn p2p_uri_with_username_returns_correct_error() {
+        clear_env();
+
         std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "tcp://user:@localhost:4122");
         assert!(matches!(
             Settings::new_from_default_config(),
@@ -733,6 +763,8 @@ mod tests {
 
     #[test]
     fn p2p_uri_with_password_returns_correct_error() {
+        clear_env();
+
         std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "tcp://:pass@localhost:4122");
         assert!(matches!(
             Settings::new_from_default_config(),
@@ -742,6 +774,8 @@ mod tests {
 
     #[test]
     fn p2p_uri_with_query_string_returns_correct_error() {
+        clear_env();
+
         std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "tcp://localhost:4122?foo=bar");
         assert!(matches!(
             Settings::new_from_default_config(),
@@ -751,6 +785,8 @@ mod tests {
 
     #[test]
     fn p2p_uri_with_path_returns_correct_error() {
+        clear_env();
+
         std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "tcp://localhost:4122/hello");
         assert!(matches!(
             Settings::new_from_default_config(),

@@ -122,7 +122,12 @@ mod tests {
 
     use super::*;
 
-    use crate::{config::Settings, context::SignerContext, keys::PrivateKey, testing};
+    use crate::{
+        config::Settings,
+        context::SignerContext,
+        keys::PrivateKey,
+        testing::{self, clear_env},
+    };
 
     #[tokio::test]
     async fn two_clients_should_be_able_to_exchange_messages_given_an_in_memory_network() {
@@ -136,6 +141,8 @@ mod tests {
 
     #[tokio::test]
     async fn two_clients_should_be_able_to_exchange_messages_given_a_libp2p_network() {
+        clear_env();
+
         let _ = tracing_subscriber::fmt()
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
             .try_init();
