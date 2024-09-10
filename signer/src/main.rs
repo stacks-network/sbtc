@@ -13,7 +13,6 @@ use signer::context::Context;
 use signer::context::SignerContext;
 use signer::error::Error;
 use signer::network::libp2p::SignerSwarmBuilder;
-use signer::network::libp2p::TryIntoMultiAddrs as _;
 use signer::storage::postgres::PgStore;
 use tokio::signal;
 
@@ -165,14 +164,14 @@ async fn run_libp2p_swarm(ctx: &impl Context) -> Result<(), Error> {
     tracing::debug!("parsing listen addresses");
     let mut listen_addrs: Vec<Multiaddr> = Vec::new();
     for addr in ctx.config().signer.p2p.listen_on.iter() {
-        listen_addrs.extend(addr.try_into_multiaddrs()?);
+        listen_addrs.push(addr.clone());
     }
 
     // Convert the seed `Url`s from the config into `Multiaddr`s.
     tracing::debug!("parsing seed addresses");
     let mut seed_addrs: Vec<Multiaddr> = Vec::new();
     for addr in ctx.config().signer.p2p.seeds.iter() {
-        seed_addrs.extend(addr.try_into_multiaddrs()?);
+        seed_addrs.push(addr.clone());
     }
 
     // Build the swarm.
