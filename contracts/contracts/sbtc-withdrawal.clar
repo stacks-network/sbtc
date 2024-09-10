@@ -184,6 +184,9 @@
      (
       (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
       (withdrawal (unwrap! (contract-call? .sbtc-registry get-withdrawal-request request-id) ERR_INVALID_REQUEST))
+      (requested-max-fee (get max-fee withdrawal))
+      (requested-amount (get amount withdrawal))
+      (requester (get sender withdrawal))
      )
 
     ;; Check that the caller is the current signer principal
@@ -193,7 +196,7 @@
     (asserts! (is-none (get status withdrawal)) ERR_ALREADY_PROCESSED)
 
     ;; Burn sbtc-locked & re-mint sbtc to original requester
-    (try! (contract-call? .sbtc-token protocol-unlock (get amount withdrawal) (get sender withdrawal)))
+    (try! (contract-call? .sbtc-token protocol-unlock (+ requested-amount requested-max-fee) requester))
 
     ;; Call into registry to confirm accepted withdrawal
     (try! (contract-call? .sbtc-registry complete-withdrawal-reject request-id signer-bitmap))

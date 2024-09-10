@@ -424,6 +424,7 @@ describe("Accepting a withdrawal request", () => {
       deployer
     );
     expect(rovOk(token.getBalance(alice))).toEqual(0n);
+    expect(rovOk(token.getBalanceAvailable(alice))).toEqual(0n);
 
     // An event is emitted properly
     const prints = filterEvents(
@@ -480,6 +481,7 @@ describe("Accepting a withdrawal request", () => {
       deployer
     );
     expect(rovOk(token.getBalance(alice))).toEqual(0n);
+    expect(rovOk(token.getBalanceAvailable(alice))).toEqual(0n);
 
     // Check that the request was stored correctly with the correct status
     const request = rov(registry.getWithdrawalRequest(1n));
@@ -496,6 +498,10 @@ describe("Accepting a withdrawal request", () => {
     });
   });
   test("reject withdrawal sets withdrawal-status to false", () => {
+    // We start off with a balance of zero
+    expect(rovOk(token.getBalance(alice))).toEqual(0n);
+    expect(rovOk(token.getBalanceAvailable(alice))).toEqual(0n);
+    expect(rovOk(token.getBalanceLocked(alice))).toEqual(0n);
     // Alice initiates withdrawalrequest
     txOk(
       deposit.completeDepositWrapper({
@@ -506,6 +512,9 @@ describe("Accepting a withdrawal request", () => {
       }),
       deployer
     );
+    expect(rovOk(token.getBalance(alice))).toEqual(1010n);
+    expect(rovOk(token.getBalanceAvailable(alice))).toEqual(1010n);
+    expect(rovOk(token.getBalanceLocked(alice))).toEqual(0n);
     txOk(
       withdrawal.initiateWithdrawalRequest({
         amount: 1000n,
@@ -514,6 +523,11 @@ describe("Accepting a withdrawal request", () => {
       }),
       alice
     );
+    // Initiating a withdrawal request doesn't change the "balance", but
+    // does change how much is available.
+    expect(rovOk(token.getBalance(alice))).toEqual(1010n);
+    expect(rovOk(token.getBalanceAvailable(alice))).toEqual(0n);
+    expect(rovOk(token.getBalanceLocked(alice))).toEqual(1010n);
     const receipt = txOk(
       withdrawal.rejectWithdrawalRequest({
         requestId: 1n,
@@ -523,6 +537,8 @@ describe("Accepting a withdrawal request", () => {
     );
     // This is the original balance, rejecting the request restores it.
     expect(rovOk(token.getBalance(alice))).toEqual(1010n);
+    expect(rovOk(token.getBalanceAvailable(alice))).toEqual(1010n);
+    expect(rovOk(token.getBalanceLocked(alice))).toEqual(0n);
 
     // Check that the request was stored correctly with the correct status
     const request = rov(registry.getWithdrawalRequest(1n));
