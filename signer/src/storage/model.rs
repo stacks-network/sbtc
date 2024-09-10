@@ -234,6 +234,17 @@ pub struct RotateKeysTransaction {
     pub signatures_required: u16,
 }
 
+/// A struct containing how a signer voted for a deposit or withdrawal
+/// request.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct SignerVote {
+    /// The public key of the signer that casted the vote.
+    pub signer_public_key: PublicKey,
+    /// How the signers voted.
+    pub is_rejected: bool,
+}
+
 /// The types of transactions the signer is interested in.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
 #[sqlx(type_name = "sbtc_signer.transaction_type", rename_all = "snake_case")]

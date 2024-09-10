@@ -409,6 +409,15 @@ impl super::DbRead for SharedStore {
             .map(|share| share.script_pubkey.clone())
             .collect())
     }
+
+    async fn get_deposit_request_signer_votes(
+        &self,
+        _txid: &model::BitcoinTxId,
+        _output_index: u32,
+        _aggregate_key: PublicKey,
+    ) -> Result<Vec<model::SignerVote>, Self::Error> {
+        unimplemented!()
+    }
 }
 
 impl super::DbWrite for SharedStore {

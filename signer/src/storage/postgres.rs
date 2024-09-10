@@ -382,6 +382,47 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
+    async fn get_deposit_request_signer_votes(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+        aggregate_key: PublicKey,
+    ) -> Result<Vec<model::SignerVote>, Self::Error> {
+        sqlx::query_as::<_, model::SignerVote>(
+            r#"
+            WITH signer_set_row AS (
+                -- We could have multiple rotate keys transaction with the
+                -- same aggregate key, each of aggragate key is very likely
+                -- to have the same signer set. So we use DISTINCT to
+                -- remove any duplicates.
+                SELECT DISTINCT UNNEST(signer_set) AS signer_public_key
+                FROM sbtc_signer.rotate_keys_transactions
+                WHERE aggregate_key = $1
+            ),
+            deposit_votes AS (
+                SELECT
+                    signer_pub_key AS signer_public_key
+                  , is_accepted
+                FROM sbtc_signer.deposit_signers AS ds
+                WHERE TRUE
+                  AND ds.txid = $2
+                  AND ds.output_index = $3
+            )
+            SELECT
+                signer_public_key
+              , COALESCE(NOT is_accepted, TRUE) AS is_rejected
+            FROM signer_set AS ss
+            LEFT JOIN deposit_votes AS ds USING(signer_public_key)
+            "#,
+        )
+        .bind(aggregate_key)
+        .bind(txid)
+        .bind(output_index as i64)
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
     async fn get_accepted_deposit_requests(
         &self,
         signer: &PublicKey,
