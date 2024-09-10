@@ -2,8 +2,6 @@
 //! which is for processing new block webhooks from a stacks node.
 //!
 
-use std::sync::LazyLock;
-
 use axum::extract::State;
 use axum::http::StatusCode;
 
@@ -94,12 +92,10 @@ mod tests {
 
     use bitcoin::OutPoint;
     use test_case::test_case;
-    use tokio::runtime::Handle;
 
     use crate::config::Settings;
     use crate::error::Error;
     use crate::storage::in_memory::Store;
-    use crate::storage::model::CompletedDepositEvent;
     use crate::storage::DbReadWrite;
 
     /// These were generated from a stacks node after running the
