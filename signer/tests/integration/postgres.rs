@@ -24,9 +24,11 @@ use signer::stacks::events::WithdrawalCreateEvent;
 use signer::stacks::events::WithdrawalRejectEvent;
 use signer::storage;
 use signer::storage::model;
+use signer::storage::model::RotateKeysTransaction;
 use signer::storage::DbRead;
 use signer::storage::DbWrite;
 use signer::testing;
+use signer::testing::dummy::SignerSetConfig;
 use signer::testing::wallet::ContractCallWrapper;
 
 use fake::Fake;
@@ -853,6 +855,29 @@ async fn writing_withdrawal_reject_requests_postgres() {
     assert_eq!(txid, event.txid.0);
     assert_eq!(request_id as u64, event.request_id);
     assert_eq!(bitmap, event.signer_bitmap.into_inner());
+
+    signer::testing::storage::drop_db(store).await;
+}
+
+/// For this test we check that when we get the votes for a deposit request
+/// for a specific aggregate key, that we get a vote for all public keys
+/// for the specific aggregate key. This includes "implicit" votes where we
+/// got no response from a particular signer but so we assume that they
+/// vote to reject the transaction.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn fetching_deposit_request_votes() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = signer::testing::storage::new_test_database(db_num).await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let signer_set_config = SignerSetConfig {
+        num_keys: 7,
+        signatures_required: 4,
+    };
+    let _rotate_keys: RotateKeysTransaction = signer_set_config.fake_with_rng(&mut rng);
+
+    
 
     signer::testing::storage::drop_db(store).await;
 }
