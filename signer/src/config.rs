@@ -2,9 +2,11 @@
 use std::str::FromStr as _;
 
 use config::{Config, ConfigError, Environment, File};
+use libp2p::Multiaddr;
 use serde::Deserialize;
 use serde::Deserializer;
 use std::path::Path;
+use url::Url;
 
 use crate::error::Error;
 use crate::keys::PrivateKey;
@@ -24,12 +26,47 @@ pub enum SignerConfigError {
     /// Invalid Stacks private key compression byte marker
     #[error("The Stacks private key provided contains an invalid compression byte marker: {0}")]
     InvalidStacksPrivateKeyCompressionByte(String),
+
+    /// Invalid P2P URI
+    #[error("Invalid P2P URI: Failed to parse: {0}")]
+    InvalidP2PUri(#[from] url::ParseError),
+
+    /// Invalid P2P URI
+    #[error("Invalid P2P URI: Only schemes 'tcp' and 'quic-v1' are supported; got '{0}'")]
+    InvalidP2PScheme(String),
+
+    /// P2P port is required
+    #[error("Invalid P2P URI: Port is required")]
+    P2PPortRequired,
+
+    /// P2P paths not supported
+    #[error("Invalid P2P URI: Paths are not supported: '{0}'")]
+    P2PPathsNotSupported(String),
+
+    /// Usernames are not supported in P2P URIs
+    #[error("Invalid P2P URI: Usernames are not supported: '{0}'")]
+    P2PUsernameNotSupported(String),
+
+    /// Passwords are not supported in P2P URIs
+    #[error("Invalid P2P URI: Passwords are not supported: '{0}'")]
+    P2PPasswordNotSupported(String),
+
+    /// Query strings are not supported in P2P URIs
+    #[error("Invalid P2P URI: Query strings are not supported: '{0}'")]
+    P2PQueryStringsNotSupported(String),
+
+    /// When the network kind is 'mainnet' or 'testnet', at least one P2P seed peer is required.
+    /// Otherwise, we'll allow mDNS to discover any local peers (for testing).
+    #[error(
+        "At least one P2P seed peer is required when the network kind is 'mainnet' or 'testnet'."
+    )]
+    P2PSeedPeerRequired,
 }
 
 /// Trait for validating configuration values.
 trait Validatable {
     /// Validate the configuration values.
-    fn validate(&self) -> Result<(), ConfigError>;
+    fn validate(&self, cfg: &Settings) -> Result<(), ConfigError>;
 }
 
 #[derive(serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,65 +127,28 @@ pub struct BitcoinConfig {
 pub struct P2PNetworkConfig {
     /// List of seeds for the P2P network. If empty then the signer will
     /// only use peers discovered via StackerDB.
-    #[serde(deserialize_with = "url_deserializer_vec")]
-    pub seeds: Vec<url::Url>,
+    #[serde(deserialize_with = "p2p_multiaddr_deserializer_vec")]
+    pub seeds: Vec<Multiaddr>,
     /// The local network interface(s) to listen on. If empty, then
     /// the signer will use [`DEFAULT_NETWORK_HOST`]:[`DEFAULT_NETWORK_PORT] as
     /// the default and listen on both TCP and QUIC protocols.
-    #[serde(deserialize_with = "url_deserializer_vec")]
-    pub listen_on: Vec<url::Url>,
+    #[serde(deserialize_with = "p2p_multiaddr_deserializer_vec")]
+    pub listen_on: Vec<Multiaddr>,
     /// Optionally specifies the public endpoints of the signer. If empty, the
     /// signer will attempt to use peers in the network to discover its own
     /// public endpoint(s).
-    #[serde(deserialize_with = "url_deserializer_vec")]
-    pub public_endpoints: Vec<url::Url>,
+    #[serde(deserialize_with = "p2p_multiaddr_deserializer_vec")]
+    pub public_endpoints: Vec<Multiaddr>,
 }
 
 impl Validatable for P2PNetworkConfig {
-    fn validate(&self) -> Result<(), ConfigError> {
-        for addr in &self.seeds {
-            self.validate_network_peering_addr("network.seeds", addr)?;
-        }
-
-        for addr in &self.listen_on {
-            self.validate_network_peering_addr("network.listen_on", addr)?;
-        }
-
-        for addr in &self.public_endpoints {
-            self.validate_network_peering_addr("network.public_endpoints", addr)?;
-        }
-
-        Ok(())
-    }
-}
-
-impl P2PNetworkConfig {
-    /// Validate a network address used by the peering protocol.
-    fn validate_network_peering_addr(
-        &self,
-        section: &str,
-        url: &url::Url,
-    ) -> Result<(), ConfigError> {
-        // Host must be present
-        if url.host().is_none() {
-            return Err(ConfigError::Message(format!(
-                "[{section}] Host cannot be empty: '{url}'"
-            )));
-        }
-
-        // We only support TCP and QUIC schemes
-        if !["tcp", "quic-v1"].contains(&url.scheme()) {
-            return Err(ConfigError::Message(format!(
-                "[{section}] Only `tcp` and `quic-v1` schemes are supported"
-            )));
-        }
-
-        // We don't support URL paths
-        if !["/", ""].contains(&url.path()) {
-            return Err(ConfigError::Message(format!(
-                "[{section}] Paths are not supported: '{}'",
-                url.path()
-            )));
+    fn validate(&self, cfg: &Settings) -> Result<(), ConfigError> {
+        if [NetworkKind::Mainnet, NetworkKind::Testnet].contains(&cfg.signer.network)
+            && self.seeds.is_empty()
+        {
+            return Err(ConfigError::Message(
+                SignerConfigError::P2PSeedPeerRequired.to_string(),
+            ));
         }
 
         Ok(())
@@ -165,7 +165,7 @@ pub struct BlocklistClientConfig {
 }
 
 impl Validatable for BlocklistClientConfig {
-    fn validate(&self) -> Result<(), ConfigError> {
+    fn validate(&self, _: &Settings) -> Result<(), ConfigError> {
         if self.host.is_empty() {
             return Err(ConfigError::Message(
                 "[blocklist_client] Host cannot be empty".to_string(),
@@ -197,7 +197,7 @@ pub struct BlockNotifierConfig {
 }
 
 impl Validatable for BlockNotifierConfig {
-    fn validate(&self) -> Result<(), ConfigError> {
+    fn validate(&self, _: &Settings) -> Result<(), ConfigError> {
         if self.server.is_empty() {
             return Err(ConfigError::Message(
                 "[block_notifier] Electrum server cannot be empty".to_string(),
@@ -223,8 +223,8 @@ pub struct SignerConfig {
 }
 
 impl Validatable for SignerConfig {
-    fn validate(&self) -> Result<(), ConfigError> {
-        self.p2p.validate()?;
+    fn validate(&self, cfg: &Settings) -> Result<(), ConfigError> {
+        self.p2p.validate(cfg)?;
         Ok(())
     }
 }
@@ -291,9 +291,9 @@ impl Settings {
 
     /// Perform validation on the configuration.
     fn validate(&self) -> Result<(), ConfigError> {
-        self.blocklist_client.validate()?;
-        self.block_notifier.validate()?;
-        self.signer.validate()?;
+        self.blocklist_client.validate(self)?;
+        self.block_notifier.validate(self)?;
+        self.signer.validate(self)?;
 
         Ok(())
     }
@@ -368,6 +368,22 @@ where
     Ok(v)
 }
 
+fn p2p_multiaddr_deserializer_vec<'de, D>(deserializer: D) -> Result<Vec<Multiaddr>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let mut addrs = Vec::new();
+
+    let items = Vec::<String>::deserialize(deserializer)?;
+
+    for s in items.iter().filter(|s| !s.is_empty()) {
+        let addr = try_parse_p2p_multiaddr(s).map_err(serde::de::Error::custom)?;
+        addrs.push(addr);
+    }
+
+    Ok(addrs)
+}
+
 /// A deserializer for the [`PrivateKey`] type. Returns an error if the private
 /// key is not valid hex or is not the correct length.
 fn private_key_deserializer<'de, D>(deserializer: D) -> Result<PrivateKey, D::Error>
@@ -390,15 +406,82 @@ where
     }
 }
 
+fn try_parse_p2p_multiaddr(s: &str) -> Result<Multiaddr, SignerConfigError> {
+    // Keeping these local here as this is the only place these should need to be used.
+    use libp2p::multiaddr::Protocol;
+    use SignerConfigError::{
+        InvalidP2PScheme, InvalidP2PUri, P2PPasswordNotSupported, P2PPathsNotSupported,
+        P2PPortRequired, P2PQueryStringsNotSupported, P2PUsernameNotSupported,
+    };
+
+    // We parse to a Url first to take advantage of its initial validation
+    // and so that we can more easily work with the URI components below.
+    // Note that this will catch missing host errors.
+    let url: Url = s.parse().map_err(InvalidP2PUri)?;
+
+    if !["/", ""].contains(&url.path()) {
+        return Err(P2PPathsNotSupported(url.path().into()));
+    }
+
+    let port = url.port().ok_or(P2PPortRequired)?;
+
+    // We only support tcp and quic-v1 schemes as these are the only relevant
+    // protocols (quic is a UDP-based protocol).
+    if !["tcp", "quic-v1"].contains(&url.scheme()) {
+        return Err(InvalidP2PScheme(url.scheme().into()));
+    }
+
+    // We don't currently support usernames. The signer pub key is used as the
+    // peer identifier.
+    if !url.username().is_empty() {
+        return Err(P2PUsernameNotSupported(url.username().into()));
+    }
+
+    // We don't currently support passwords.
+    if let Some(pass) = url.password() {
+        return Err(P2PPasswordNotSupported(pass.into()));
+    }
+
+    // We don't currently support query strings. This could be extended in the
+    // future if we need to add additional P2P configuration options.
+    if let Some(query) = url.query() {
+        return Err(P2PQueryStringsNotSupported(query.into()));
+    }
+
+    // Initialize the Multiaddr using the host. We support IPv4, IPv6, and
+    // DNS host types.
+    let mut addr = match url.host() {
+        Some(url::Host::Ipv4(ip)) => Multiaddr::empty().with(Protocol::from(ip)),
+        Some(url::Host::Ipv6(ip)) => Multiaddr::empty().with(Protocol::from(ip)),
+        Some(url::Host::Domain(host)) => Multiaddr::empty().with(Protocol::Dns(host.into())),
+        None => unreachable!("this will have been caught by the Url parsing above"),
+    };
+
+    // Update the Multiaddr with the correct protocol.
+    match url.scheme() {
+        "tcp" => addr = addr.with(Protocol::Tcp(port)),
+        "quic-v1" => addr = addr.with(Protocol::Udp(port)).with(Protocol::QuicV1),
+        s => return Err(InvalidP2PScheme(s.to_string())),
+    };
+
+    Ok(addr)
+}
+
 #[cfg(test)]
 mod tests {
     use std::net::SocketAddr;
+
+    use crate::testing::clear_env;
 
     use super::*;
 
     /// Helper function to quickly create a URL from a string in tests.
     fn url(s: &str) -> url::Url {
         s.parse().unwrap()
+    }
+
+    fn multiaddr(s: &str) -> Multiaddr {
+        try_parse_p2p_multiaddr(s).unwrap()
     }
 
     /// This test checks that the default configuration values are loaded
@@ -409,6 +492,8 @@ mod tests {
     // !! default.toml file are changed.
     #[test]
     fn default_config_toml_loads() {
+        clear_env();
+
         let settings = Settings::new_from_default_config().unwrap();
         assert_eq!(settings.blocklist_client.host, "127.0.0.1");
         assert_eq!(settings.blocklist_client.port, 8080);
@@ -431,7 +516,10 @@ mod tests {
         assert_eq!(settings.signer.p2p.seeds, vec![]);
         assert_eq!(
             settings.signer.p2p.listen_on,
-            vec![url("tcp://0.0.0.0:4122"), url("quic-v1://0.0.0.0:4122")]
+            vec![
+                multiaddr("tcp://0.0.0.0:4122"),
+                multiaddr("quic-v1://0.0.0.0:4122")
+            ]
         );
 
         assert_eq!(
@@ -448,6 +536,8 @@ mod tests {
 
     #[test]
     fn default_config_toml_loads_signer_p2p_config_with_environment() {
+        clear_env();
+
         std::env::set_var(
             "SIGNER_SIGNER__P2P__SEEDS",
             "tcp://seed-1:4122,tcp://seed-2:4122",
@@ -458,16 +548,21 @@ mod tests {
 
         assert_eq!(
             settings.signer.p2p.seeds,
-            vec![url("tcp://seed-1:4122"), url("tcp://seed-2:4122")]
+            vec![
+                multiaddr("tcp://seed-1:4122"),
+                multiaddr("tcp://seed-2:4122")
+            ]
         );
         assert_eq!(
             settings.signer.p2p.listen_on,
-            vec![url("tcp://1.2.3.4:1234")]
+            vec![multiaddr("tcp://1.2.3.4:1234")]
         );
     }
 
     #[test]
     fn default_config_toml_loads_bitcoin_config_with_environment() {
+        clear_env();
+
         std::env::set_var(
             "SIGNER_BITCOIN__ENDPOINTS",
             "http://user:pass@localhost:1234,http://foo:bar@localhost:5678",
@@ -475,7 +570,6 @@ mod tests {
 
         let settings = Settings::new_from_default_config().unwrap();
 
-        dbg!(settings.bitcoin.endpoints.clone());
         assert!(settings.bitcoin.endpoints.len() == 2);
         assert!(settings
             .bitcoin
@@ -489,6 +583,8 @@ mod tests {
 
     #[test]
     fn default_config_toml_loads_signer_private_key_config_with_environment() {
+        clear_env();
+
         let new = "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd";
         std::env::set_var("SIGNER_SIGNER__PRIVATE_KEY", new);
 
@@ -502,12 +598,19 @@ mod tests {
 
     #[test]
     fn default_config_toml_loads_signer_network_with_environment() {
+        clear_env();
+
         let new = "testnet";
+        // We set the p2p seeds here as we'll otherwise fail p2p seed validation
+        // when the network is mainnet or testnet.
+        std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "tcp://seed-1:4122");
         std::env::set_var("SIGNER_SIGNER__NETWORK", new);
 
         let settings = Settings::new_from_default_config().unwrap();
         assert_eq!(settings.signer.network, NetworkKind::Testnet);
 
+        // We unset the p2p seeds here as they're not required for regtest.
+        std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "");
         let new = "regtest";
         std::env::set_var("SIGNER_SIGNER__NETWORK", new);
 
@@ -517,6 +620,8 @@ mod tests {
 
     #[test]
     fn default_config_toml_loads_with_environment() {
+        clear_env();
+
         // The default toml used here specifies http://localhost:20443
         // as the stacks node endpoint.
         let settings = StacksSettings::new_from_config().unwrap();
@@ -554,6 +659,8 @@ mod tests {
 
     #[test]
     fn invalid_private_key_length_returns_correct_error() {
+        clear_env();
+
         std::env::set_var("SIGNER_SIGNER__PRIVATE_KEY", "1234");
 
         let settings = Settings::new_from_default_config();
@@ -566,6 +673,8 @@ mod tests {
 
     #[test]
     fn invalid_private_key_compression_byte_marker_returns_correct_error() {
+        clear_env();
+
         std::env::set_var(
             "SIGNER_SIGNER__PRIVATE_KEY",
             "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd02",
@@ -580,6 +689,8 @@ mod tests {
 
     #[test]
     fn valid_33_byte_private_key_works() {
+        clear_env();
+
         std::env::set_var(
             "SIGNER_SIGNER__PRIVATE_KEY",
             "a1a6fcf2de80dcde3e0e4251eae8c69adf57b88613b2dcb79332cc325fa439bd01",
@@ -590,6 +701,8 @@ mod tests {
 
     #[test]
     fn invalid_private_key_hex_returns_correct_error() {
+        clear_env();
+
         std::env::set_var(
             "SIGNER_SIGNER__PRIVATE_KEY",
             "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
@@ -602,5 +715,82 @@ mod tests {
             settings.unwrap_err(),
             ConfigError::Message(msg) if msg == Error::DecodeHexBytes(hex_err).to_string()
         ));
+    }
+
+    #[test]
+    fn invalid_p2p_uri_scheme_returns_correct_error() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "http://seed-1:4122");
+        assert!(matches!(
+            Settings::new_from_default_config(),
+            Err(ConfigError::Message(msg)) if msg == SignerConfigError::InvalidP2PScheme("http".to_string()).to_string()
+        ))
+    }
+
+    #[test]
+    fn missing_p2p_uri_port_returns_correct_error() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "tcp://seed-1");
+        assert!(matches!(
+            Settings::new_from_default_config(),
+            Err(ConfigError::Message(msg)) if msg == SignerConfigError::P2PPortRequired.to_string()
+        ))
+    }
+
+    #[test]
+    fn missing_p2p_uri_host_returns_correct_error() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "tcp://:4122");
+        assert!(matches!(
+            Settings::new_from_default_config(),
+            Err(ConfigError::Message(msg)) if msg == SignerConfigError::InvalidP2PUri(url::ParseError::EmptyHost).to_string()
+        ))
+    }
+
+    #[test]
+    fn p2p_uri_with_username_returns_correct_error() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "tcp://user:@localhost:4122");
+        assert!(matches!(
+            Settings::new_from_default_config(),
+            Err(ConfigError::Message(msg)) if msg == SignerConfigError::P2PUsernameNotSupported("user".to_string()).to_string()
+        ))
+    }
+
+    #[test]
+    fn p2p_uri_with_password_returns_correct_error() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "tcp://:pass@localhost:4122");
+        assert!(matches!(
+            Settings::new_from_default_config(),
+            Err(ConfigError::Message(msg)) if msg == SignerConfigError::P2PPasswordNotSupported("pass".to_string()).to_string()
+        ))
+    }
+
+    #[test]
+    fn p2p_uri_with_query_string_returns_correct_error() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "tcp://localhost:4122?foo=bar");
+        assert!(matches!(
+            Settings::new_from_default_config(),
+            Err(ConfigError::Message(msg)) if msg == SignerConfigError::P2PQueryStringsNotSupported("foo=bar".to_string()).to_string()
+        ))
+    }
+
+    #[test]
+    fn p2p_uri_with_path_returns_correct_error() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "tcp://localhost:4122/hello");
+        assert!(matches!(
+            Settings::new_from_default_config(),
+            Err(ConfigError::Message(msg)) if msg == SignerConfigError::P2PPathsNotSupported("/hello".to_string()).to_string()
+        ))
     }
 }
