@@ -143,10 +143,6 @@ mod tests {
     async fn two_clients_should_be_able_to_exchange_messages_given_a_libp2p_network() {
         clear_env();
 
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-
         let key1 = PrivateKey::new(&mut rand::thread_rng());
         let key2 = PrivateKey::new(&mut rand::thread_rng());
 

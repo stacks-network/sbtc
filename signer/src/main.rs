@@ -5,7 +5,6 @@ use axum::routing::post;
 use axum::Router;
 use cfg_if::cfg_if;
 use clap::Parser;
-use libp2p::Multiaddr;
 use signer::api;
 use signer::api::ApiState;
 use signer::config::Settings;
@@ -160,25 +159,11 @@ async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
 async fn run_libp2p_swarm(ctx: &impl Context) -> Result<(), Error> {
     tracing::info!("initializing the p2p network");
 
-    // Convert the listen `Url`s from the config into `Multiaddr`s.
-    tracing::debug!("parsing listen addresses");
-    let mut listen_addrs: Vec<Multiaddr> = Vec::new();
-    for addr in ctx.config().signer.p2p.listen_on.iter() {
-        listen_addrs.push(addr.clone());
-    }
-
-    // Convert the seed `Url`s from the config into `Multiaddr`s.
-    tracing::debug!("parsing seed addresses");
-    let mut seed_addrs: Vec<Multiaddr> = Vec::new();
-    for addr in ctx.config().signer.p2p.seeds.iter() {
-        seed_addrs.push(addr.clone());
-    }
-
     // Build the swarm.
     tracing::debug!("building the libp2p swarm");
     let mut swarm = SignerSwarmBuilder::new(&ctx.config().signer.private_key)
-        .add_listen_endpoints(&listen_addrs)
-        .add_seed_addrs(&seed_addrs)
+        .add_listen_endpoints(&ctx.config().signer.p2p.listen_on)
+        .add_seed_addrs(&ctx.config().signer.p2p.seeds)
         .build()?;
 
     // Start the libp2p swarm. This will run until either the shutdown signal is
