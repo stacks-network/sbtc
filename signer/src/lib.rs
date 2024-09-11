@@ -26,6 +26,7 @@ pub mod wsts_state_machine;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// The maximum number of keys in the signers multi-sig wallet on Stacks.
+///
 /// There are a few practical limits on the maximum number of distinct
 /// public keys:
 /// 1. The maximum number of signatures allowed in a stacks transaction is

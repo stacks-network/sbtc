@@ -84,7 +84,7 @@ pub struct NewBlockEvent {
 }
 
 /// This matches the json value that is defined in stacks-core[^1]. It
-/// contains the raw tranaction and the result of the transaction.
+/// contains the raw transaction and the result of the transaction.
 ///
 /// <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L499-L511>
 #[derive(Debug, Deserialize)]
@@ -158,12 +158,12 @@ pub struct TransactionEvent {
 }
 
 /// Smart contracts emit events when they are executed. This represents
-/// such an event. The expected type is taken from stackss-core[^1].
+/// such an event. The expected type is taken from stacks-core[^1].
 ///
 /// [^1]: <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/clarity/src/vm/events.rs#L358-L363>
 #[derive(Debug, Deserialize)]
 pub struct SmartContractEvent {
-    /// Identifies the smart contract that generated event.
+    /// Identifies the smart contract that generated the event.
     #[serde(deserialize_with = "parse_contract_name")]
     pub contract_identifier: QualifiedContractIdentifier,
     /// The specific topic of the event. This is placed in the stacks node
@@ -223,7 +223,7 @@ where
 /// # Notes
 ///
 /// This returns [`Ok(None)`] whenever the "raw_tx" is "0x00", which
-/// corresponds to a burnchain operation.
+/// corresponds to a burn-chain operation.
 pub fn deserialize_tx<'de, D>(deserializer: D) -> Result<Option<StacksTransaction>, D::Error>
 where
     D: serde::Deserializer<'de>,
