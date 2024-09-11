@@ -55,7 +55,7 @@ where
     let registry_address = SBTC_REGISTRY_IDENTIFIER.get_or_init(|| {
         // Although the following line can panic, our unit tests hit this
         // code path so if tests pass then this will work in production.
-        let contract_name = ContractName::try_from("sbtc-registry").unwrap();
+        let contract_name = ContractName::from("sbtc-registry");
         let issuer = StandardPrincipalData::from(api.settings.signer.deployer);
         QualifiedContractIdentifier::new(issuer, contract_name)
     });
