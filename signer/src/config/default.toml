@@ -77,6 +77,11 @@ private_key = "8183dc385a7a1fc8353b9e781ee0859a71e57abea478a5bca679334094f7adb5"
 # Environment: SIGNER_SIGNER__NETWORK
 network = "regtest"
 
+# The address that deployed the sbtc smart contracts.
+#
+# Required: true
+deployer = "SN2V7WTJ7BHR03MPHZ1C9A9ZR6NZGR4WM8HT4V67Y"
+
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration
 # !!

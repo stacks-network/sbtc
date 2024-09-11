@@ -1,10 +1,12 @@
 //! Configuration management for the signer
 use std::str::FromStr as _;
 
+use clarity::vm::types::PrincipalData;
 use config::{Config, ConfigError, Environment, File};
 use libp2p::Multiaddr;
 use serde::Deserialize;
 use serde::Deserializer;
+use stacks_common::types::chainstate::StacksAddress;
 use std::path::Path;
 use url::Url;
 
@@ -220,11 +222,18 @@ pub struct SignerConfig {
     pub network: NetworkKind,
     /// Event observer server configuration
     pub event_observer: EventObserverConfig,
+    /// The address of the deployer of the sBTC smart contracts.
+    #[serde(deserialize_with = "parse_stacks_address")]
+    pub deployer: StacksAddress,
 }
 
 impl Validatable for SignerConfig {
     fn validate(&self, cfg: &Settings) -> Result<(), ConfigError> {
         self.p2p.validate(cfg)?;
+        if self.deployer.is_mainnet() != (self.network == NetworkKind::Mainnet) {
+            let msg = "Network kind must match network of deployer".to_string();
+            return Err(ConfigError::Message(msg));
+        }
         Ok(())
     }
 }
@@ -465,6 +474,23 @@ fn try_parse_p2p_multiaddr(s: &str) -> Result<Multiaddr, SignerConfigError> {
     };
 
     Ok(addr)
+}
+
+/// Parse the string into a StacksAddress.
+///
+/// The [`StacksAddress`] struct does not implement any string parsing or
+/// c32 decoding. However, the [`PrincipalData::parse_standard_principal`]
+/// function does the expected c32 decoding and the validation so we go
+/// through that.
+pub fn parse_stacks_address<'de, D>(des: D) -> Result<StacksAddress, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let literal = <String>::deserialize(des)?;
+
+    PrincipalData::parse_standard_principal(&literal)
+        .map(StacksAddress::from)
+        .map_err(serde::de::Error::custom)
 }
 
 #[cfg(test)]
