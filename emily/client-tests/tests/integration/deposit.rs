@@ -54,6 +54,7 @@ async fn batch_create_deposits(
 // Tests.
 // ------
 
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn create_and_get_deposit_happy_path() {
     let configuration = clean_setup().await;
@@ -111,6 +112,7 @@ async fn create_and_get_deposit_happy_path() {
     assert_eq!(expected_deposit, gotten_deposit);
 }
 
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn wipe_databases_test() {
     let configuration = clean_setup().await;
@@ -154,6 +156,7 @@ async fn wipe_databases_test() {
     assert_eq!(attempted_get.status_code, 404);
 }
 
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_deposits_for_transaction() {
     let configuration = clean_setup().await;
@@ -219,6 +222,7 @@ async fn get_deposits_for_transaction() {
     assert_eq!(expected_deposits, gotten_deposits.deposits);
 }
 
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_deposits() {
     let configuration = clean_setup().await;
@@ -306,6 +310,7 @@ async fn get_deposits() {
     assert_eq!(expected_deposit_infos, gotten_deposit_infos);
 }
 
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn update_deposits() {
     let configuration = clean_setup().await;

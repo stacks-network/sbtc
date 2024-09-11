@@ -102,6 +102,7 @@ endif
 
 # Emily Integration tests.
 # ------------------------------------------------------------------------------
+# TODO(505): Combine these integration tests with the other integration tests.
 
 # Runs a version of the emily integration environment with a pre-populated database. This is intended
 # to be used for testing the sbtc bridge website, and is not intended to be used for running code that
@@ -131,7 +132,6 @@ emily-integration-test:
 		--test integration \
 		--all-features -- \
 		--test-threads=1 --nocapture
-
 
 emily-complex-integration-test:
 	cargo test --package emily-handler --test integration --features integration-tests -- \
