@@ -2,14 +2,21 @@
 //! which is for processing new block webhooks from a stacks node.
 //!
 
+use std::sync::OnceLock;
+
 use axum::extract::State;
 use axum::http::StatusCode;
+use clarity::vm::representations::ContractName;
+use clarity::vm::types::QualifiedContractIdentifier;
+use clarity::vm::types::StandardPrincipalData;
 
 use crate::stacks::events::RegistryEvent;
 use crate::stacks::webhooks::NewBlockEvent;
 use crate::storage::DbWrite;
 
 use super::ApiState;
+
+static SBTC_REGISTRY_IDENTIFIER: OnceLock<QualifiedContractIdentifier> = OnceLock::new();
 
 /// A handler of `POST /new_block` webhook events.
 ///
@@ -30,9 +37,15 @@ pub async fn new_block_handler<S>(state: State<ApiState<S>>, body: String) -> St
 where
     S: DbWrite,
 {
-    tracing::info!("Received a new block event from stacks-core");
+    tracing::debug!("Received a new block event from stacks-core");
     let api = state.0;
     let network = api.settings.signer.network;
+
+    let registry_address = SBTC_REGISTRY_IDENTIFIER.get_or_init(|| {
+        let issuer = StandardPrincipalData::from(api.settings.signer.deployer);
+        let contract_name = ContractName::from("sbtc-registry");
+        QualifiedContractIdentifier::new(issuer, contract_name)
+    });
 
     let new_block_event: NewBlockEvent = match serde_json::from_str(&body) {
         Ok(value) => value,
@@ -53,7 +66,8 @@ where
         .events
         .into_iter()
         .filter(|x| x.committed)
-        .filter_map(|x| x.contract_event.map(|ev| (ev, x.txid)));
+        .filter_map(|x| x.contract_event.map(|ev| (ev, x.txid)))
+        .filter(|(ev, _)| &ev.contract_identifier == registry_address && ev.topic == "print");
 
     for (ev, txid) in events {
         let res = match RegistryEvent::try_new(ev.value, txid, network) {
