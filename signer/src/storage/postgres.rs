@@ -794,13 +794,13 @@ impl super::DbRead for PgStore {
         &self,
         request_id: u64,
     ) -> Result<Option<model::WithdrawalAcceptedEvent>, Error> {
-        //TODO: Add back signer_bitmap column when we can deserialize it
         sqlx::query_as::<_, model::WithdrawalAcceptedEvent>(
             r#"
             SELECT
                 txid
                 , request_id
                 , bitcoin_txid
+                , signer_bitmap
                 , output_index
                 , fee
             FROM sbtc_signer.withdrawal_accept_events
@@ -820,12 +820,12 @@ impl super::DbRead for PgStore {
         &self,
         request_id: u64,
     ) -> Result<Option<model::WithdrawalRejectedEvent>, Error> {
-        //TODO: Add back signer_bitmap column when we can deserialize it
         sqlx::query_as::<_, model::WithdrawalRejectedEvent>(
             r#"
             SELECT
                 txid
                 , request_id
+                , signer_bitmap
             FROM sbtc_signer.withdrawal_reject_events
             WHERE request_id = $1
             "#,

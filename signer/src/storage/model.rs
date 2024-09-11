@@ -99,7 +99,7 @@ pub struct WithdrawalAcceptedEvent {
     pub request_id: u64,
 
     /// The bitmap of signers which signed this request.
-    #[sqlx(skip)] // TODO: sqlx decode
+    #[sqlx(try_from = "[u8; 16]")]
     pub signer_bitmap: BitArray<[u8; 16]>,
 
     /// The bitcoin transaction ID of the withdrawal.
@@ -138,7 +138,7 @@ pub struct WithdrawalRejectedEvent {
     pub request_id: u64,
 
     /// The bitmap of signers which signed this request.
-    #[sqlx(skip)] // TODO: sqlx decode
+    #[sqlx(try_from = "[u8; 16]")]
     pub signer_bitmap: BitArray<[u8; 16]>,
 }
 

@@ -554,10 +554,9 @@ where
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Vec<model::DepositRequest>, error::Error> {
-        Ok(self
-            .storage
+        self.storage
             .get_pending_deposit_requests(chain_tip, self.context_window)
-            .await?)
+            .await
     }
 
     #[tracing::instrument(skip(self))]
@@ -565,10 +564,9 @@ where
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Vec<model::WithdrawRequest>, error::Error> {
-        Ok(self
-            .storage
+        self.storage
             .get_pending_withdraw_requests(chain_tip, self.context_window)
-            .await?)
+            .await
     }
 
     #[tracing::instrument(skip(self))]
