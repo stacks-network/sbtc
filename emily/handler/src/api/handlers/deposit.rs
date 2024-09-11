@@ -104,6 +104,8 @@ pub async fn get_deposits_for_transaction(
         bitcoin_txid: String,
         query: GetDepositsForTransactionQuery,
     ) -> Result<impl warp::reply::Reply, Error> {
+        // TODO(506): Reverse this order of deposits so that the transactions are returned
+        // in ascending index order.
         let (entries, next_token) = accessors::get_deposit_entries_for_transaction(
             &context,
             &bitcoin_txid,

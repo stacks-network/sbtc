@@ -51,9 +51,6 @@ async fn batch_create_deposits(
     created_deposits
 }
 
-// Tests.
-// ------
-
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn create_and_get_deposit_happy_path() {
@@ -92,7 +89,6 @@ async fn create_and_get_deposit_happy_path() {
 
     // Act.
     // ----
-
     let created_deposit = apis::deposit_api::create_deposit(&configuration, request)
         .await
         .expect("Received an error after making a valid create deposit request api call.");
@@ -209,11 +205,11 @@ async fn get_deposits_for_transaction() {
             .expect(
                 "Received an error after making a valid get deposits for transaction api call.",
             );
+
     // Assert.
     // -------
-
     // Expect the deposits to be sorted by output index.
-    // TODO(TBD): Reverse this order of deposits for this specific api call.
+    // TODO(506): Reverse this order of deposits for this specific api call.
     expected_deposits.sort_by(|a, b| {
         b.bitcoin_tx_output_index
             .partial_cmp(&a.bitcoin_tx_output_index)

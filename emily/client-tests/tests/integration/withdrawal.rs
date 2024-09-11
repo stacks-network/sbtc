@@ -58,12 +58,12 @@ async fn batch_create_withdrawals(
 async fn create_and_get_withdrawal_happy_path() {
     let configuration = clean_setup().await;
 
+    // Arrange.
+    // --------
     let amount = 0;
     let parameters = WithdrawalParameters { max_fee: 123 };
     let request_id = 1;
 
-    // Arrange.
-    // --------
     let request = CreateWithdrawalRequestBody {
         amount,
         parameters: Box::new(parameters.clone()),
@@ -89,7 +89,6 @@ async fn create_and_get_withdrawal_happy_path() {
 
     // Act.
     // ----
-
     let created = apis::withdrawal_api::create_withdrawal(&configuration, request)
         .await
         .expect("Received an error after making a valid create withdrawal request api call.");

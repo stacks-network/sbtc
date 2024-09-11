@@ -47,9 +47,9 @@ async fn batch_set_chainstates(
 #[tokio::test]
 async fn create_and_get_chainstate_happy_path(min_height: i64, max_height: i64) {
     let configuration = clean_setup().await;
+
     // Arrange.
     // --------
-
     let mut expected_chainstates: Vec<Chainstate> = (min_height..max_height + 1)
         .map(|height| new_test_chainstate(height, 0))
         .collect();
@@ -97,6 +97,7 @@ async fn create_and_get_chainstate_reorg_happy_path(
     max_height: i64,
 ) {
     let configuration = clean_setup().await;
+
     // Arrange.
     // --------
     let original_chainstates: Vec<Chainstate> = (min_height..max_height + 1)
@@ -129,6 +130,7 @@ async fn create_and_get_chainstate_reorg_happy_path(
 #[tokio::test]
 async fn create_and_replay_does_not_initiate_reorg(min_height: i64, max_height: i64) {
     let configuration = clean_setup().await;
+
     // Arrange.
     // --------
     let mut expected_chainstates: Vec<Chainstate> = (min_height..max_height + 1)
@@ -139,7 +141,6 @@ async fn create_and_replay_does_not_initiate_reorg(min_height: i64, max_height: 
 
     // Act.
     // --------
-
     // Make original chainstates.
     batch_set_chainstates(&configuration, expected_chainstates.clone()).await;
 

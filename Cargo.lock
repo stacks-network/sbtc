@@ -1621,7 +1621,6 @@ dependencies = [
  "clap",
  "config 0.11.0",
  "emily-client",
- "fake",
  "mockall 0.10.2",
  "mockito 0.28.0",
  "openssl",
