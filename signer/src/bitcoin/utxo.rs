@@ -361,7 +361,11 @@ impl DepositRequest {
                 // The BitArray::<[u8; 16]>::set function panics if the
                 // index is out of bounds but that cannot be the case here
                 // because we only take 128 values.
-                signer_bitmap.set(index, vote.is_rejected);
+                //
+                // Note that the signer bitmap here is true for votes
+                // *against*, and a missing vote is an implicit vote
+                // against.
+                signer_bitmap.set(index, !vote.is_accepted.unwrap_or(false));
             });
 
         Self {

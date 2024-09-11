@@ -414,7 +414,7 @@ impl super::DbRead for SharedStore {
         &self,
         _txid: &model::BitcoinTxId,
         _output_index: u32,
-        _aggregate_key: PublicKey,
+        _aggregate_key: &PublicKey,
     ) -> Result<Vec<model::SignerVote>, Self::Error> {
         unimplemented!()
     }

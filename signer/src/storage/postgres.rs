@@ -386,11 +386,11 @@ impl super::DbRead for PgStore {
         &self,
         txid: &model::BitcoinTxId,
         output_index: u32,
-        aggregate_key: PublicKey,
+        aggregate_key: &PublicKey,
     ) -> Result<Vec<model::SignerVote>, Self::Error> {
         sqlx::query_as::<_, model::SignerVote>(
             r#"
-            WITH signer_set_row AS (
+            WITH signer_set_rows AS (
                 -- Note that we could have multiple rotate keys transaction
                 -- with the same aggregate key, but every time we see the
                 -- same aggragate key it is very likely that it is
@@ -412,8 +412,8 @@ impl super::DbRead for PgStore {
             )
             SELECT
                 signer_public_key
-              , COALESCE(NOT is_accepted, TRUE) AS is_rejected
-            FROM signer_set AS ss
+              , is_accepted
+            FROM signer_set_rows AS ss
             LEFT JOIN deposit_votes AS ds USING(signer_public_key)
             "#,
         )

@@ -139,7 +139,7 @@ pub trait DbRead {
         &self,
         txid: &model::BitcoinTxId,
         output_index: u32,
-        aggregate_key: PublicKey,
+        aggregate_key: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::SignerVote>, Self::Error>> + Send;
 }
 

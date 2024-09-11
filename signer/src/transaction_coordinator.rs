@@ -460,7 +460,7 @@ where
         for req in pending_deposit_requests {
             let votes = self
                 .storage
-                .get_deposit_request_signer_votes(&req.txid, req.output_index, aggregate_key)
+                .get_deposit_request_signer_votes(&req.txid, req.output_index, &aggregate_key)
                 .await?;
 
             let deposit = utxo::DepositRequest::from_model(req, signers_public_key, votes);
