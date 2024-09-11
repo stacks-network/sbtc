@@ -18,7 +18,7 @@ use super::ApiState;
 
 /// The address for the sbtc-registry smart contract. This value is
 /// populated using the deployer variable in the config.
-/// 
+///
 /// Although the stacks node is supposed to only send sbtc-registry events,
 /// the node can be misconfigured or have some bug where it sends other
 /// events as well. Accepting such events would be a security issue, so we
@@ -53,8 +53,10 @@ where
     let network = api.settings.signer.network;
 
     let registry_address = SBTC_REGISTRY_IDENTIFIER.get_or_init(|| {
+        // Although the following line can panic, our unit tests hit this
+        // code path so if tests pass then this will work in production.
+        let contract_name = ContractName::try_from("sbtc-registry").unwrap();
         let issuer = StandardPrincipalData::from(api.settings.signer.deployer);
-        let contract_name = ContractName::from("sbtc-registry");
         QualifiedContractIdentifier::new(issuer, contract_name)
     });
 
@@ -117,10 +119,14 @@ mod tests {
     use super::*;
 
     use bitcoin::OutPoint;
+    use clarity::vm::types::PrincipalData;
+    use fake::Fake;
+    use rand::rngs::OsRng;
     use test_case::test_case;
 
     use crate::config::Settings;
     use crate::storage::in_memory::Store;
+    use crate::storage::model::StacksPrincipal;
 
     /// These were generated from a stacks node after running the
     /// "complete-deposit standard recipient", "accept-withdrawal",
@@ -166,5 +172,68 @@ mod tests {
         // Now there should be something here
         let db = api.db.lock().await;
         assert!(!table_is_empty(db));
+    }
+
+    #[test_case(COMPLETED_DEPOSIT_WEBHOOK, |db| db.completed_deposit_events.get(&OutPoint::null()).is_none(); "completed-deposit")]
+    #[test_case(WITHDRAWAL_CREATE_WEBHOOK, |db| db.withdrawal_create_events.get(&1).is_none(); "withdrawal-create")]
+    #[test_case(WITHDRAWAL_ACCEPT_WEBHOOK, |db| db.withdrawal_accept_events.get(&1).is_none(); "withdrawal-accept")]
+    #[test_case(WITHDRAWAL_REJECT_WEBHOOK, |db| db.withdrawal_reject_events.get(&2).is_none(); "withdrawal-reject")]
+    #[tokio::test]
+    async fn test_fishy_events<F>(body_str: &str, table_is_empty: F)
+    where
+        F: Fn(tokio::sync::MutexGuard<'_, Store>) -> bool,
+    {
+        let api = ApiState {
+            db: Store::new_shared(),
+            settings: Settings::new(crate::testing::DEFAULT_CONFIG_PATH).unwrap(),
+        };
+
+        // Hey look, there is nothing here!
+        let db = api.db.lock().await;
+        assert!(table_is_empty(db));
+
+        // Okay, we want to make sure that events that are from an
+        // unexpected contract are filtered out. So we manually switch the
+        // address to some random one and check the output.
+        let issuer = StandardPrincipalData::from(api.settings.signer.deployer);
+        let contract_name = ContractName::from("sbtc-registry");
+        let identifier = QualifiedContractIdentifier::new(issuer, contract_name.clone());
+
+        let fishy_principal: StacksPrincipal = fake::Faker.fake_with_rng(&mut OsRng);
+        let fishy_issuer = match PrincipalData::from(fishy_principal) {
+            PrincipalData::Contract(contract) => contract.issuer,
+            PrincipalData::Standard(standard) => standard,
+        };
+        let fishy_identifier = QualifiedContractIdentifier::new(fishy_issuer, contract_name);
+
+        let body = body_str.replace(&identifier.to_string(), &fishy_identifier.to_string());
+        // Okay let's check that it was actually replaced.
+        assert!(body.contains(&fishy_identifier.to_string()));
+
+        // Let's check that we can still deserialize the JSON string since
+        // the `new_block_handler` function will return early with
+        // StatusCode::OK on failure to deserialize.
+        let new_block_event = serde_json::from_str::<NewBlockEvent>(&body).unwrap();
+        let events: Vec<_> = new_block_event
+            .events
+            .into_iter()
+            .filter_map(|x| x.contract_event)
+            .collect();
+
+        // An extra check that we have events with our fishy identifier.
+        assert!(!events.is_empty());
+        assert!(events
+            .iter()
+            .all(|x| x.contract_identifier == fishy_identifier));
+
+        // Okay now to do the check.
+        let state = State(api.clone());
+        let res = new_block_handler(state, body).await;
+        assert_eq!(res, StatusCode::OK);
+
+        // This event should be filtered out, so the table should still be
+        // empty.
+        let db = api.db.lock().await;
+        assert!(table_is_empty(db));
     }
 }
