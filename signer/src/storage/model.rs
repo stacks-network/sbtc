@@ -375,19 +375,19 @@ pub struct RotateKeysTransaction {
 #[strum(serialize_all = "snake_case")]
 pub enum TransactionType {
     /// An sBTC transaction on Bitcoin.
-    SbtcTransaction,
+    SbtcTransaction = 1,
     /// A deposit request transaction on Bitcoin.
-    DepositRequest,
+    DepositRequest = 2,
     /// A withdrawal request transaction on Stacks.
-    WithdrawRequest,
+    WithdrawRequest = 3,
     /// A deposit accept transaction on Stacks.
-    DepositAccept,
+    DepositAccept = 4,
     /// A withdrawal accept transaction on Stacks.
-    WithdrawAccept,
+    WithdrawAccept = 5,
     /// A withdraw reject transaction on Stacks.
-    WithdrawReject,
+    WithdrawReject = 6,
     /// A rotate keys call on Stacks.
-    RotateKeys,
+    RotateKeys = 7,
 }
 
 /// The bitcoin transaction ID
