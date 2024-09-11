@@ -168,6 +168,7 @@ EMILY_CDK_SOURCE_FILES := $(wildcard $(subst dir, emily/bin/lib, $(FIVE_DIRS_DEE
 
 $(EMILY_CDK_TEMPLATE): $(INSTALL_TARGET) $(EMILY_OPENAPI_SPEC) $(EMILY_CDK_SOURCE_FILES)
 	AWS_STAGE=local \
+	TABLES_ONLY=true \
 	pnpm --filter $(EMILY_CDK_PROJECT_NAME) run synth
 
 # Emily Handler --------------------------------------
