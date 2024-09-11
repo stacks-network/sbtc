@@ -247,13 +247,13 @@ test("max-fee must be accounted for", () => {
   );
   // We're going to try to initate a withdrawal request where amount +
   // maxFee is greater than the available balance in the account (which in
-  // this case os just amount). This should error.
+  // this case is just amount). This should error.
   expect(rovOk(token.getBalanceAvailable(alice))).toEqual(4000n);
   const receipt = txErr(
     withdrawal.initiateWithdrawalRequest({
       amount: 4000n,
       recipient: alicePoxAddr,
-      maxFee: 1000000n,
+      maxFee: 1n,
     }),
     alice
   );
