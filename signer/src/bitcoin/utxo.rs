@@ -454,8 +454,8 @@ impl<'a> Weighted for RequestRef<'a> {
     }
 }
 
-/// A struct for the transaction inputs and outputs associated with the
-/// deposit and withdrawal requests.
+/// A struct for constructing transaction inputs and outputs from deposit
+/// and withdrawal requests.
 #[derive(Debug)]
 pub struct Requests<'a> {
     request_refs: Vec<RequestRef<'a>>,
