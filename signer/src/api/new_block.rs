@@ -16,6 +16,15 @@ use crate::storage::DbWrite;
 
 use super::ApiState;
 
+/// The address for the sbtc-registry smart contract. This value is
+/// populated using the deployer variable in the config.
+/// 
+/// Although the stacks node is supposed to only send sbtc-registry events,
+/// the node can be misconfigured or have some bug where it sends other
+/// events as well. Accepting such events would be a security issue, so we
+/// filter out events that are not from the sbtc-registry.
+///
+/// See https://github.com/stacks-network/sbtc/issues/501.
 static SBTC_REGISTRY_IDENTIFIER: OnceLock<QualifiedContractIdentifier> = OnceLock::new();
 
 /// A handler of `POST /new_block` webhook events.
@@ -26,11 +35,13 @@ static SBTC_REGISTRY_IDENTIFIER: OnceLock<QualifiedContractIdentifier> = OnceLoc
 /// the payload to all interested observers, one-by-one. If the node fails
 /// to connect to one of the observers, or if the response from the
 /// observer is not a 200-299 response code, then it sleeps for 1 second
-/// and tries again[^1]. From the looks of it, the node will stop trying to
-/// send the webhook when it receives a success response or if we've
-/// reached the `retry_count` that is configured in the stacks node config.
-/// Because of this, unless we encounter an error where retrying it a
-/// second might succeed, we will return a 200 OK status code.
+/// and tries again[^1]. From the looks of it, the node will not stop
+/// trying to send the webhook until there is a success. Because of this,
+/// unless we encounter an error where retrying in a second might succeed,
+/// we will return a 200 OK status code.
+///
+/// TODO: We need to be careful to only return a non success status code a
+/// fixed number of times.
 ///
 /// [^1]: <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L317-L385>
 pub async fn new_block_handler<S>(state: State<ApiState<S>>, body: String) -> StatusCode
