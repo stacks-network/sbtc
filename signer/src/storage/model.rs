@@ -244,7 +244,8 @@ pub struct RotateKeysTransaction {
 pub struct SignerVote {
     /// The public key of the signer that casted the vote.
     pub signer_public_key: PublicKey,
-    /// How the signer voted. None is retuend if we do not have a record of how the signer voted
+    /// How the signer voted for a transaction. None is returned if we do
+    /// not have a record of how the signer voted
     pub is_accepted: Option<bool>,
 }
 
