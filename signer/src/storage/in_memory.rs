@@ -412,11 +412,39 @@ impl super::DbRead for SharedStore {
 
     async fn get_deposit_request_signer_votes(
         &self,
-        _txid: &model::BitcoinTxId,
-        _output_index: u32,
-        _aggregate_key: &PublicKey,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+        aggregate_key: &PublicKey,
     ) -> Result<Vec<model::SignerVote>, Self::Error> {
-        unimplemented!()
+        // Let's fetch the votes for the outpoint
+        let signers = self.get_deposit_signers(txid, output_index).await?;
+        let signer_votes: HashMap<PublicKey, bool> = signers
+            .iter()
+            .map(|vote| (vote.signer_pub_key, vote.is_accepted))
+            .collect();
+
+        // Now we might not have votes from every signer, so lets get the
+        // full signer set.
+        let store = self.lock().await;
+        let ans = store
+            .rotate_keys_transactions
+            .iter()
+            .find(|(_, tx)| &tx.aggregate_key == aggregate_key);
+
+        // Let's merge the signer set with the actual votes.
+        if let Some((_, rotate_keys_tx)) = ans {
+            let votes = rotate_keys_tx
+                .signer_set
+                .iter()
+                .map(|public_key| model::SignerVote {
+                    signer_public_key: *public_key,
+                    is_accepted: signer_votes.get(public_key).copied(),
+                })
+                .collect();
+            Ok(votes)
+        } else {
+            Ok(Vec::new())
+        }
     }
 }
 
