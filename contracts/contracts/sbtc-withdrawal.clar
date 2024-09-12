@@ -29,7 +29,20 @@
 ;; The minimum amount of sBTC you can withdraw
 (define-constant DUST_LIMIT u546)
 
-;; Initiate a new withdrawal request
+;; Initiate a new withdrawal request.
+;;
+;; # Notes
+;;
+;; ## Amounts
+;;
+;; This function locks up `amount + max-fee` from the tx-sender's account,
+;; and when the withdrawal request is accepted, the signers will send
+;; `amount` of sats to the recipient and spend an a fee amount to bitcoin
+;; miners where fee less than or equal to max-fee. If fee is less than
+;; max-fee, then the difference will be minted back to the user when
+;; `accept-withdrawal-request` is invoked.
+;;
+;; ## The recipient
 ;;
 ;; This constraints and meaning of the recipient field is summarized as:
 ;; ```text
@@ -42,7 +55,7 @@
 ;; version == 0x06 and (len hashbytes) == 32 => P2TR
 ;; ```
 ;; Also see <https://docs.stacks.co/clarity/functions#get-burn-block-info>
-;; 
+;;
 ;; Below is a detailed breakdown of bitcoin address types and how they map
 ;; to the clarity value. In what follows below, the network used for the
 ;; human-readable parts is inherited from the network of the underlying
@@ -50,7 +63,7 @@
 ;; bitcoin addresses and similarly on stacks testnet we send to bitcoin
 ;; testnet addresses).
 ;;
-;; ## P2PKH
+;; ### P2PKH
 ;;
 ;; Generally speaking, Pay-to-Public-Key-Hash addresses are formed by
 ;; taking the Hash160 of the public key, prefixing it with one byte (0x00
@@ -60,7 +73,7 @@
 ;; the `hashbytes` is the Hash160 of the public key.
 ;;
 ;;
-;; ## P2SH, P2SH-P2WPKH, and P2SH-P2WSH
+;; ### P2SH, P2SH-P2WPKH, and P2SH-P2WSH
 ;;
 ;; Pay-to-script-hash-* addresses are formed by taking the Hash160 of the
 ;; locking script, prefixing it with one byte (0x05 on mainnet and 0xC4 on
@@ -84,7 +97,7 @@
 ;; the `hashbytes` is the Hash160 of the locking script.
 ;;
 ;;
-;; ## P2WPKH
+;; ### P2WPKH
 ;;
 ;; Pay-to-witness-public-key-hash addresses are formed by creating a
 ;; witness program made entirely of the Hash160 of the compressed public
@@ -94,7 +107,7 @@
 ;; the `hashbytes` is the Hash160 of the compressed public key.
 ;;
 ;;
-;; ## P2WSH
+;; ### P2WSH
 ;;
 ;; Pay-to-witness-script-hash addresses are formed by taking a witness
 ;; program that is compressed entirely of the SHA256 of the redeem script.
@@ -103,7 +116,7 @@
 ;; the `hashbytes` is the SHA256 of the redeem script.
 ;;
 ;;
-;; ## P2TR
+;; ### P2TR
 ;;
 ;; Pay-to-taproot addresses are formed by "tweaking" the x-coordinate of a
 ;; public key with a merkle tree. The result of the tweak is used as the
@@ -116,7 +129,7 @@
                                             (max-fee uint)
   )
   (begin
-    (try! (contract-call? .sbtc-token protocol-lock amount tx-sender))
+    (try! (contract-call? .sbtc-token protocol-lock (+ amount max-fee) tx-sender))
     (asserts! (> amount DUST_LIMIT) ERR_DUST_LIMIT)
   
     ;; Validate the recipient address
@@ -137,6 +150,7 @@
       (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
       (request  (unwrap! (contract-call? .sbtc-registry get-withdrawal-request request-id) ERR_INVALID_REQUEST))
       (requested-max-fee (get max-fee request))
+      (requested-amount (get amount request))
       (requester (get sender request))
     )
       ;; Check that the caller is the current signer principal
@@ -149,7 +163,7 @@
       (asserts! (<= fee requested-max-fee) ERR_FEE_TOO_HIGH)
 
       ;; Burn the locked-sbtc
-      (try! (contract-call? .sbtc-token protocol-burn-locked (get amount request) requester))
+      (try! (contract-call? .sbtc-token protocol-burn-locked (+ requested-amount requested-max-fee) requester))
 
       ;; Mint the difference b/w max-fee of the request & fee actually paid back to the user in sBTC
       (if (is-eq (- requested-max-fee fee) u0)
@@ -170,6 +184,9 @@
      (
       (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
       (withdrawal (unwrap! (contract-call? .sbtc-registry get-withdrawal-request request-id) ERR_INVALID_REQUEST))
+      (requested-max-fee (get max-fee withdrawal))
+      (requested-amount (get amount withdrawal))
+      (requester (get sender withdrawal))
      )
 
     ;; Check that the caller is the current signer principal
@@ -179,7 +196,7 @@
     (asserts! (is-none (get status withdrawal)) ERR_ALREADY_PROCESSED)
 
     ;; Burn sbtc-locked & re-mint sbtc to original requester
-    (try! (contract-call? .sbtc-token protocol-unlock (get amount withdrawal) (get sender withdrawal)))
+    (try! (contract-call? .sbtc-token protocol-unlock (+ requested-amount requested-max-fee) requester))
 
     ;; Call into registry to confirm accepted withdrawal
     (try! (contract-call? .sbtc-registry complete-withdrawal-reject request-id signer-bitmap))

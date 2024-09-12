@@ -1,5 +1,7 @@
 //! Utxo management and transaction construction
 
+use std::collections::BTreeMap;
+
 use bitcoin::absolute::LockTime;
 use bitcoin::address::NetworkUnchecked;
 use bitcoin::secp256k1::SECP256K1;
@@ -145,7 +147,8 @@ impl SbtcRequests {
         let items = deposits.chain(withdrawals);
 
         compute_optimal_packages(items, self.reject_capacity())
-            .scan(self.signer_state, |state, requests| {
+            .scan(self.signer_state, |state, request_refs| {
+                let requests = Requests::new(request_refs);
                 let tx = UnsignedTransaction::new(requests, state);
                 if let Ok(tx_ref) = tx.as_ref() {
                     state.utxo = tx_ref.new_signer_utxo();
@@ -223,7 +226,7 @@ fn compute_transaction_fee(tx_vsize: f64, fee_rate: f64, last_fees: Option<Fees>
 /// Deposit requests are assumed to happen via taproot BTC spend where the
 /// key-spend path is assumed to be unspendable since the public key has no
 /// known private key.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DepositRequest {
     /// The UTXO to be spent by the signers.
     pub outpoint: OutPoint,
@@ -357,7 +360,7 @@ impl DepositRequest {
 }
 
 /// An accepted or pending withdraw request.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WithdrawalRequest {
     /// The amount of BTC, in sats, to withdraw.
     pub amount: u64,
@@ -408,7 +411,7 @@ impl WithdrawalRequest {
 }
 
 /// A reference to either a deposit or withdraw request
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RequestRef<'a> {
     /// A reference to a deposit request
     Deposit(&'a DepositRequest),
@@ -448,6 +451,58 @@ impl<'a> Weighted for RequestRef<'a> {
             Self::Deposit(req) => req.votes_against(),
             Self::Withdrawal(req) => req.votes_against(),
         }
+    }
+}
+
+/// A struct for constructing transaction inputs and outputs from deposit
+/// and withdrawal requests.
+#[derive(Debug)]
+pub struct Requests<'a> {
+    request_refs: Vec<RequestRef<'a>>,
+    /// This is a dummy signature here only to simplify the creation of
+    /// TxIns that have the correct weight with a proper signature.
+    signature: Signature,
+}
+
+impl<'a> std::ops::Deref for Requests<'a> {
+    type Target = Vec<RequestRef<'a>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.request_refs
+    }
+}
+
+impl<'a> Requests<'a> {
+    /// Create a new one
+    pub fn new(request_refs: Vec<RequestRef<'a>>) -> Self {
+        let signature = UnsignedTransaction::generate_dummy_signature();
+        Self { request_refs, signature }
+    }
+    /// Return an iterator for the transaction inputs for the deposit
+    /// requests. These transaction inputs include a dummy signature so
+    /// that the transaction inputs have the correct weight.
+    pub fn tx_ins(&'a self) -> impl Iterator<Item = TxIn> + 'a {
+        self.request_refs
+            .iter()
+            .filter_map(|req| Some(req.as_deposit()?.as_tx_input(self.signature)))
+    }
+    /// Return an iterator for the transaction outputs for the withdrawal
+    /// requests.
+    pub fn tx_outs(&'a self) -> impl Iterator<Item = TxOut> + 'a {
+        self.request_refs
+            .iter()
+            .filter_map(|req| Some(req.as_withdrawal()?.as_tx_output()))
+    }
+    /// Construct a mapping between the requests and the weight associated
+    /// with the transaction on the bitcoin blockchain.
+    pub fn tx_weights(&self) -> BTreeMap<RequestRef<'a>, Weight> {
+        self.request_refs
+            .iter()
+            .map(|req| match req {
+                RequestRef::Deposit(dep) => (*req, dep.as_tx_input(self.signature).segwit_weight()),
+                RequestRef::Withdrawal(wit) => (*req, wit.as_tx_output().weight()),
+            })
+            .collect()
     }
 }
 
@@ -507,15 +562,15 @@ impl SignerUtxo {
 #[derive(Debug)]
 pub struct UnsignedTransaction<'a> {
     /// The requests used to construct the transaction.
-    pub requests: Vec<RequestRef<'a>>,
+    pub requests: Requests<'a>,
     /// The BTC transaction that needs to be signed.
     pub tx: Transaction,
     /// The public key used for the public key of the signers' UTXO output.
     pub signer_public_key: XOnlyPublicKey,
     /// The signers' UTXO used as inputs to this transaction.
     pub signer_utxo: SignerBtcState,
-    /// The total amount of fees associated with the deposit requests.
-    pub deposit_fees: u64,
+    /// The total amount of fees associated with the transaction.
+    pub tx_fee: u64,
 }
 
 /// A struct containing Taproot-tagged hashes used for computing taproot
@@ -543,7 +598,7 @@ impl<'a> UnsignedTransaction<'a> {
     ///      is the OP_RETURN data output.
     ///   4. Each input needs a signature in the witness data.
     ///   5. There is no witness data for deposit UTXOs.
-    pub fn new(requests: Vec<RequestRef<'a>>, state: &SignerBtcState) -> Result<Self, Error> {
+    pub fn new(requests: Requests<'a>, state: &SignerBtcState) -> Result<Self, Error> {
         // Construct a transaction base. This transaction's inputs have
         // witness data with dummy signatures so that our virtual size
         // estimates are accurate. Later we will update the fees and
@@ -552,11 +607,12 @@ impl<'a> UnsignedTransaction<'a> {
         // We now compute the total fees for the transaction.
         let tx_vsize = tx.vsize() as f64;
         let tx_fee = compute_transaction_fee(tx_vsize, state.fee_rate, state.last_fees);
-        // Now adjust the deposits and withdrawals by an amount proportional
-        // to their weight.
-        let deposit_fees = Self::adjust_amounts(&mut tx, tx_fee);
+        // Now adjust the amount for the signers UTXO for the transaction
+        // fee.
+        Self::adjust_amounts(&mut tx, tx_fee);
 
-        // Now we can reset the witness data.
+        // Now we can reset the witness data, since this is an unsigned
+        // transaction.
         Self::reset_witness_data(&mut tx);
 
         Ok(Self {
@@ -564,89 +620,7 @@ impl<'a> UnsignedTransaction<'a> {
             requests,
             signer_public_key: state.public_key,
             signer_utxo: *state,
-            deposit_fees,
-        })
-    }
-
-    /// Construct a "stub" BTC transaction from the given requests.
-    ///
-    /// The returned BTC transaction is signed with dummy signatures, so it
-    /// has the same virtual size as a proper transaction. Note that the
-    /// output amounts haven't been adjusted for fees.
-    ///
-    /// An Err is returned if the amounts withdrawn is greater than the sum
-    /// of all the input amounts.
-    fn new_transaction(reqs: &[RequestRef], state: &SignerBtcState) -> Result<Transaction, Error> {
-        let signature = Self::generate_dummy_signature();
-
-        let deposits = reqs
-            .iter()
-            .filter_map(|req| Some(req.as_deposit()?.as_tx_input(signature)));
-        let withdrawals = reqs
-            .iter()
-            .filter_map(|req| Some(req.as_withdrawal()?.as_tx_output()));
-
-        let signer_input = state.utxo.as_tx_input(&signature);
-        let signer_output_sats = Self::compute_signer_amount(reqs, state)?;
-        let signer_output = SignerUtxo::new_tx_output(state.public_key, signer_output_sats);
-
-        Ok(Transaction {
-            version: Version::TWO,
-            lock_time: LockTime::ZERO,
-            input: std::iter::once(signer_input).chain(deposits).collect(),
-            output: std::iter::once(signer_output)
-                .chain(Self::new_op_return_output(reqs, state))
-                .chain(withdrawals)
-                .collect(),
-        })
-    }
-
-    /// Create the new SignerUtxo for this transaction.
-    fn new_signer_utxo(&self) -> SignerUtxo {
-        SignerUtxo {
-            outpoint: OutPoint {
-                txid: self.tx.compute_txid(),
-                vout: 0,
-            },
-            amount: self.tx.output[0].value.to_sat(),
-            public_key: self.signer_public_key,
-        }
-    }
-
-    /// An OP_RETURN output with the bitmap for how the signers voted for
-    /// the package.
-    ///
-    /// None is only returned if there are no requests in the input slice.
-    ///
-    /// The data layout for the OP_RETURN is:
-    ///
-    ///  0      2  3    5                           21
-    ///  |------|--|----|---------------------------|
-    ///   magic  op  N_d       signer bitmap
-    ///
-    /// In the above layout, magic is the UTF-8 encoded string "ST", op is
-    /// the UTF-8 encoded string "B", and N_d is the of deposits in this
-    /// transaction encoded as a big-endian two byte integer.
-    fn new_op_return_output(reqs: &[RequestRef], state: &SignerBtcState) -> Option<TxOut> {
-        let bitmap: BitArray<[u8; 16]> = reqs
-            .iter()
-            .map(RequestRef::signer_bitmap)
-            .reduce(|bm1, bm2| bm1 | bm2)?;
-        let num_deposits = reqs.iter().filter_map(RequestRef::as_deposit).count() as u16;
-
-        let mut data: [u8; 21] = [0; 21];
-        // The magic_bytes is exactly 2 bytes
-        data[0..2].copy_from_slice(&state.magic_bytes);
-        // Yeah, this is one byte.
-        data[2..3].copy_from_slice(&[OP_RETURN_OP]);
-        // The num_deposits variable is an u16, so 2 bytes.
-        data[3..5].copy_from_slice(&num_deposits.to_be_bytes());
-        // The bitmap is 16 bytes so this fits exactly.
-        data[5..].copy_from_slice(&bitmap.into_inner());
-
-        Some(TxOut {
-            value: Amount::ZERO,
-            script_pubkey: ScriptBuf::new_op_return(data),
+            tx_fee,
         })
     }
 
@@ -721,11 +695,86 @@ impl<'a> UnsignedTransaction<'a> {
         self.tx.output.iter().map(|out| out.value.to_sat()).sum()
     }
 
+    /// Construct a "stub" BTC transaction from the given requests.
+    ///
+    /// The returned BTC transaction is signed with dummy signatures, so it
+    /// has the same virtual size as a proper transaction. Note that the
+    /// output amounts haven't been adjusted for fees.
+    ///
+    /// An Err is returned if the amounts withdrawn is greater than the sum
+    /// of all the input amounts.
+    fn new_transaction(reqs: &Requests, state: &SignerBtcState) -> Result<Transaction, Error> {
+        let signature = Self::generate_dummy_signature();
+
+        let signer_input = state.utxo.as_tx_input(&signature);
+        let signer_output_sats = Self::compute_signer_amount(reqs, state)?;
+        let signer_output = SignerUtxo::new_tx_output(state.public_key, signer_output_sats);
+
+        Ok(Transaction {
+            version: Version::TWO,
+            lock_time: LockTime::ZERO,
+            input: std::iter::once(signer_input).chain(reqs.tx_ins()).collect(),
+            output: std::iter::once(signer_output)
+                .chain(Self::new_op_return_output(&reqs.request_refs, state))
+                .chain(reqs.tx_outs())
+                .collect(),
+        })
+    }
+
+    /// Create the new SignerUtxo for this transaction.
+    fn new_signer_utxo(&self) -> SignerUtxo {
+        SignerUtxo {
+            outpoint: OutPoint {
+                txid: self.tx.compute_txid(),
+                vout: 0,
+            },
+            amount: self.tx.output[0].value.to_sat(),
+            public_key: self.signer_public_key,
+        }
+    }
+
+    /// An OP_RETURN output with the bitmap for how the signers voted for
+    /// the package.
+    ///
+    /// None is only returned if there are no requests in the input slice.
+    ///
+    /// The data layout for the OP_RETURN is:
+    ///
+    ///  0      2  3    5                           21
+    ///  |------|--|----|---------------------------|
+    ///   magic  op  N_d       signer bitmap
+    ///
+    /// In the above layout, magic is the UTF-8 encoded string "ST", op is
+    /// the UTF-8 encoded string "B", and N_d is the of deposits in this
+    /// transaction encoded as a big-endian two byte integer.
+    fn new_op_return_output(reqs: &[RequestRef], state: &SignerBtcState) -> Option<TxOut> {
+        let bitmap: BitArray<[u8; 16]> = reqs
+            .iter()
+            .map(RequestRef::signer_bitmap)
+            .reduce(|bm1, bm2| bm1 | bm2)?;
+        let num_deposits = reqs.iter().filter_map(RequestRef::as_deposit).count() as u16;
+
+        let mut data: [u8; 21] = [0; 21];
+        // The magic_bytes is exactly 2 bytes
+        data[0..2].copy_from_slice(&state.magic_bytes);
+        // Yeah, this is one byte.
+        data[2..3].copy_from_slice(&[OP_RETURN_OP]);
+        // The num_deposits variable is an u16, so 2 bytes.
+        data[3..5].copy_from_slice(&num_deposits.to_be_bytes());
+        // The bitmap is 16 bytes so this fits exactly.
+        data[5..].copy_from_slice(&bitmap.into_inner());
+
+        Some(TxOut {
+            value: Amount::ZERO,
+            script_pubkey: ScriptBuf::new_op_return(data),
+        })
+    }
+
     /// Compute the final amount for the signers' UTXO given the current
     /// UTXO amount and the incoming requests.
     ///
     /// This amount does not take into account fees.
-    fn compute_signer_amount(reqs: &[RequestRef], state: &SignerBtcState) -> Result<u64, Error> {
+    fn compute_signer_amount(reqs: &Requests, state: &SignerBtcState) -> Result<u64, Error> {
         let amount = reqs
             .iter()
             .fold(state.utxo.amount as i64, |amount, req| match req {
@@ -744,57 +793,25 @@ impl<'a> UnsignedTransaction<'a> {
 
     /// Adjust the amounts for each output given the transaction fee.
     ///
-    /// This function adjusts each output by an amount that is proportional
-    /// to their weight (but considering only the weight of the requests).
-    /// The signers' UTXOs amount absorbs the fee on-chain that the
-    /// depositors are supposed to pay. This amount must be accounted for
-    /// when minting sBTC.
-    fn adjust_amounts(tx: &mut Transaction, tx_fee: u64) -> u64 {
-        // Since the first input and first output correspond to the signers'
-        // UTXOs, we subtract them when computing the number of requests.
-        let num_requests = (tx.input.len() + tx.output.len()).saturating_sub(2) as u64;
-        // This is a bizarre case that should never happen.
-        if num_requests == 0 {
-            tracing::warn!("No deposit or withdrawal related inputs in the transaction");
-            return 0;
-        }
-        // Fees are assigned proportionally to their weight amongst all
-        // requests in the transaction. So let's get the total request weight.
-        let requests_vsize = Self::request_weight(tx).to_vbytes_ceil();
-        // The sum of all fees paid for each withdrawal UTXO.
-        let mut withdrawal_fees: u64 = 0;
-        // We now update the remaining withdrawal amounts to account for fees.
-        tx.output.iter_mut().skip(2).for_each(|tx_out| {
-            let fee = (tx_out.weight().to_vbytes_ceil() * tx_fee).div_ceil(requests_vsize);
-            withdrawal_fees += fee;
-            tx_out.value = Amount::from_sat(tx_out.value.to_sat().saturating_sub(fee));
-        });
-
-        // The first output is the signer's UTXO. The correct fee amount
-        // for this UTXO is the total transaction fee minus the fees paid
-        // by the other UTXOs in this transaction. This fee is later deducted
-        // in the amount that is minted in sBTC to each depositor.
-        let deposit_fees = tx_fee.saturating_sub(withdrawal_fees);
+    /// The bitcoin mining fees are ultimately paid for by the users during
+    /// deposit and withdrawal sweep transactions. This fees are captured
+    /// on the sBTC side of things:
+    /// * for deposits the minted amount is the deposited amount less any
+    ///   fees.
+    /// * for withdrawals the user locks the amount spent to the desired
+    ///   recipient on plus their max fee.
+    ///
+    /// Since mining fees come out of the new UTXOs, that means the signers
+    /// UTXO appears to pay the fee on chain. Thus, to adjust the output
+    /// amounts, for fees we only need to change the amount associated with
+    /// the signers' UTXO.
+    fn adjust_amounts(tx: &mut Transaction, tx_fee: u64) {
+        // The first output is the signer's UTXO and this UTXO pays for all
+        // on-chain fees.
         if let Some(utxo_out) = tx.output.first_mut() {
-            let signers_amount = utxo_out.value.to_sat().saturating_sub(deposit_fees);
+            let signers_amount = utxo_out.value.to_sat().saturating_sub(tx_fee);
             utxo_out.value = Amount::from_sat(signers_amount);
         }
-
-        deposit_fees
-    }
-
-    /// Computes the total weight of the inputs and the outputs, excluding
-    /// the ones related to the signers' UTXO.
-    fn request_weight(tx: &Transaction) -> Weight {
-        // We skip the first input and output because those are always the
-        // signers' UTXO input and output. We skip the second output
-        // because that is always the OP_RETURN data output.
-        tx.input
-            .iter()
-            .skip(1)
-            .map(|x| x.segwit_weight())
-            .chain(tx.output.iter().skip(2).map(|x| x.weight()))
-            .sum()
     }
 
     /// Helper function for generating dummy Schnorr signatures.
@@ -819,7 +836,6 @@ impl<'a> UnsignedTransaction<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
     use std::collections::BTreeSet;
     use std::str::FromStr;
 
@@ -1083,7 +1099,8 @@ mod tests {
 
         // No requests so the first output should be the signers UTXO and
         // that's it. No OP_RETURN output.
-        let unsigned = UnsignedTransaction::new(Vec::new(), &signer_state).unwrap();
+        let requests = Requests::new(Vec::new());
+        let unsigned = UnsignedTransaction::new(requests, &signer_state).unwrap();
         assert_eq!(unsigned.tx.output.len(), 1);
 
         // There is only one output and it's a P2TR output
@@ -1449,15 +1466,6 @@ mod tests {
             accept_threshold: 8,
         };
 
-        // It's tough to match the outputs to the original request. We do
-        // that here by matching the expected scripts, which are unique for
-        // each public key. Since each public key is unique, this works.
-        let mut withdrawal_amounts: BTreeMap<String, u64> = requests
-            .withdrawals
-            .iter()
-            .map(|req| (req.address.script_pubkey().to_hex_string(), req.amount))
-            .collect();
-
         let mut transactions = requests.construct_transactions().unwrap();
         more_asserts::assert_gt!(transactions.len(), 1);
 
@@ -1473,21 +1481,13 @@ mod tests {
 
             let output_amounts: u64 = utx.output_amounts();
             let input_amounts: u64 = utx.input_amounts();
-            let total_fees = input_amounts - output_amounts;
-
-            let request_vsize = UnsignedTransaction::request_weight(&utx.tx).to_vbytes_ceil();
 
             let reqs = utx.requests.iter().filter_map(RequestRef::as_withdrawal);
             for (output, req) in utx.tx.output.iter().skip(2).zip(reqs) {
-                let expected_fee =
-                    (output.weight().to_vbytes_ceil() * total_fees).div_ceil(request_vsize);
-                let fee = req.amount - output.value.to_sat();
-
-                assert_eq!(fee, expected_fee);
-                let original_amount = withdrawal_amounts
-                    .remove(&output.script_pubkey.to_hex_string())
-                    .unwrap();
-                assert_eq!(original_amount, output.value.to_sat() + fee);
+                // One of the invariants is that the amount spent to the
+                // withdrawal recipient is the amount in the withdrawal
+                // request. The fees are already paid for separately.
+                assert_eq!(req.amount, output.value.to_sat());
             }
 
             more_asserts::assert_gt!(input_amounts, output_amounts);
@@ -1559,20 +1559,7 @@ mod tests {
         // Since there are often both deposits and withdrawal, the
         // following assertion checks that we capture the fees that
         // depositors must pay.
-        let deposit_requests = utx.requests.iter().filter_map(RequestRef::as_withdrawal);
-        let withdrawal_fees: u64 = utx
-            .tx
-            .output
-            .iter()
-            .skip(2)
-            .zip(deposit_requests)
-            .map(|(tx_out, req)| req.amount - tx_out.value.to_sat())
-            .sum();
-
-        assert_eq!(
-            input_amounts,
-            output_amounts + withdrawal_fees + utx.deposit_fees
-        );
+        assert_eq!(input_amounts, output_amounts + utx.tx_fee);
 
         let state = &requests.signer_state;
         let signed_vsize = UnsignedTransaction::new_transaction(&utx.requests, state)

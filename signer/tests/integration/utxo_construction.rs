@@ -282,14 +282,14 @@ fn withdrawals_reduce_to_signers_amounts() {
     // Note that the signer started with 1 BTC.
     let signers_balance = signer.get_balance(rpc).to_sat();
 
-    assert_eq!(signers_balance, 100_000_000 - withdrawal_request.amount);
+    assert_eq!(
+        signers_balance,
+        100_000_000 - withdrawal_request.amount - unsigned.tx_fee
+    );
 
     let withdrawal_fee = unsigned.input_amounts() - unsigned.output_amounts();
     let recipient_balance = recipient.get_balance(rpc).to_sat();
-    assert_eq!(
-        recipient_balance,
-        withdrawal_request.amount - withdrawal_fee
-    );
+    assert_eq!(recipient_balance, withdrawal_request.amount);
 
     // Let's check that we have the right fee rate too.
     let fee_rate = withdrawal_fee as f64 / unsigned.tx.vsize() as f64;
@@ -335,7 +335,7 @@ fn withdrawals_reduce_to_signers_amounts() {
     let recipient_balance = recipient.get_balance(rpc).to_sat();
     assert_eq!(
         recipient_balance,
-        withdrawal_request.amount - withdrawal_fee - 50_000 - fallback_fee
+        withdrawal_request.amount - 50_000 - fallback_fee
     );
 
     // And what about the person that they just sent coins to?
