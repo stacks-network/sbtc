@@ -343,6 +343,9 @@ impl DepositRequest {
     }
 
     /// Try convert from a model::DepositRequest with some additional info.
+    ///
+    /// TODO: derive the signer public key from the public keys in the
+    /// votes.
     pub fn from_model(
         request: model::DepositRequest,
         signers_public_key: XOnlyPublicKey,
