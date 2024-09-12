@@ -1,10 +1,12 @@
 //! Configuration management for the signer
 use std::str::FromStr as _;
 
+use clarity::vm::types::PrincipalData;
 use config::{Config, ConfigError, Environment, File};
 use libp2p::Multiaddr;
 use serde::Deserialize;
 use serde::Deserializer;
+use stacks_common::types::chainstate::StacksAddress;
 use std::path::Path;
 use url::Url;
 
@@ -30,6 +32,11 @@ pub enum SignerConfigError {
     /// Invalid P2P URI
     #[error("Invalid P2P URI: Failed to parse: {0}")]
     InvalidP2PUri(#[from] url::ParseError),
+
+    /// The NetworkKind set in the config must match the network kind of
+    /// the deployer address.
+    #[error("The network set in the config must match the network kind of the deployer address")]
+    NetworkDeployerMismatch,
 
     /// Invalid P2P URI
     #[error("Invalid P2P URI: Only schemes 'tcp' and 'quic-v1' are supported; got '{0}'")]
@@ -70,6 +77,7 @@ trait Validatable {
 }
 
 #[derive(serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(any(test, feature = "testing"), derive(serde::Serialize))]
 #[serde(rename_all = "lowercase")]
 /// The Stacks and Bitcoin networks to use.
 pub enum NetworkKind {
@@ -98,6 +106,13 @@ impl From<NetworkKind> for bitcoin::KnownHrp {
             NetworkKind::Testnet => bitcoin::KnownHrp::Testnets,
             NetworkKind::Regtest => bitcoin::KnownHrp::Regtest,
         }
+    }
+}
+
+impl NetworkKind {
+    /// Returns whether the network variant is Mainnet.
+    pub fn is_mainnet(&self) -> bool {
+        self == &NetworkKind::Mainnet
     }
 }
 
@@ -220,11 +235,18 @@ pub struct SignerConfig {
     pub network: NetworkKind,
     /// Event observer server configuration
     pub event_observer: EventObserverConfig,
+    /// The address of the deployer of the sBTC smart contracts.
+    #[serde(deserialize_with = "parse_stacks_address")]
+    pub deployer: StacksAddress,
 }
 
 impl Validatable for SignerConfig {
     fn validate(&self, cfg: &Settings) -> Result<(), ConfigError> {
         self.p2p.validate(cfg)?;
+        if self.deployer.is_mainnet() != self.network.is_mainnet() {
+            let err = SignerConfigError::NetworkDeployerMismatch;
+            return Err(ConfigError::Message(err.to_string()));
+        }
         Ok(())
     }
 }
@@ -316,7 +338,7 @@ pub struct StacksNodeSettings {
     /// The endpoint to use when making requests to a stacks node.
     #[serde(deserialize_with = "url_deserializer_vec")]
     pub endpoints: Vec<url::Url>,
-    /// This is the start height of the first EPOCH 3.0 block on the stacks
+    /// This is the start height of the first EPOCH 3.0 block on the Stacks
     /// blockchain.
     pub nakamoto_start_height: u64,
 }
@@ -467,6 +489,23 @@ fn try_parse_p2p_multiaddr(s: &str) -> Result<Multiaddr, SignerConfigError> {
     Ok(addr)
 }
 
+/// Parse the string into a StacksAddress.
+///
+/// The [`StacksAddress`] struct does not implement any string parsing or
+/// c32 decoding. However, the [`PrincipalData::parse_standard_principal`]
+/// function does the expected c32 decoding and the validation, so we go
+/// through that.
+pub fn parse_stacks_address<'de, D>(des: D) -> Result<StacksAddress, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let literal = <String>::deserialize(des)?;
+
+    PrincipalData::parse_standard_principal(&literal)
+        .map(StacksAddress::from)
+        .map_err(serde::de::Error::custom)
+}
+
 #[cfg(test)]
 mod tests {
     use std::net::SocketAddr;
@@ -570,7 +609,7 @@ mod tests {
 
         let settings = Settings::new_from_default_config().unwrap();
 
-        assert!(settings.bitcoin.endpoints.len() == 2);
+        assert_eq!(settings.bitcoin.endpoints.len(), 2);
         assert!(settings
             .bitcoin
             .endpoints
@@ -792,5 +831,53 @@ mod tests {
             Settings::new_from_default_config(),
             Err(ConfigError::Message(msg)) if msg == SignerConfigError::P2PPathsNotSupported("/hello".to_string()).to_string()
         ))
+    }
+
+    #[test_case::test_case(NetworkKind::Mainnet; "mainnet network, testnet deployer")]
+    #[test_case::test_case(NetworkKind::Testnet; "testnet network, mainnet deployer")]
+    fn network_mismatch_network_of_deployer(network: NetworkKind) {
+        clear_env();
+
+        let is_mainnet = network == NetworkKind::Mainnet;
+        // The deployer address always has the opposite network kind.
+        let address = StacksAddress::burn_address(!is_mainnet);
+        std::env::set_var("SIGNER_SIGNER__DEPLOYER", address.to_string());
+        // Let's set the network. maybe use strum for this in the future
+        let network = match network {
+            NetworkKind::Mainnet => "mainnet",
+            NetworkKind::Testnet => "testnet",
+            NetworkKind::Regtest => "regtest",
+        };
+        std::env::set_var("SIGNER_SIGNER__NETWORK", network);
+        // We need to set at least one seed when deploying to mainnet.
+        std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "tcp://localhost:4122");
+
+        assert!(matches!(
+            Settings::new_from_default_config(),
+            Err(ConfigError::Message(msg)) if msg == SignerConfigError::NetworkDeployerMismatch.to_string()
+        ));
+    }
+
+    #[test_case::test_case(NetworkKind::Mainnet; "mainnet")]
+    #[test_case::test_case(NetworkKind::Testnet; "testnet")]
+    #[test_case::test_case(NetworkKind::Regtest; "regtest")]
+    fn network_matches_network_of_deployer(network: NetworkKind) {
+        clear_env();
+
+        let is_mainnet = network == NetworkKind::Mainnet;
+        // The deployer address always has the opposite network kind.
+        let address = StacksAddress::burn_address(is_mainnet);
+        std::env::set_var("SIGNER_SIGNER__DEPLOYER", address.to_string());
+        // Let's set the network. maybe use strum for this in the future
+        let network = match network {
+            NetworkKind::Mainnet => "mainnet",
+            NetworkKind::Testnet => "testnet",
+            NetworkKind::Regtest => "regtest",
+        };
+        std::env::set_var("SIGNER_SIGNER__NETWORK", network);
+        // We need to set at least one seed when deploying to mainnet.
+        std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "tcp://localhost:4122");
+
+        assert!(Settings::new_from_default_config().is_ok());
     }
 }
