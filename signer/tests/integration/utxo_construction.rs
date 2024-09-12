@@ -1,3 +1,6 @@
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+
 use bitcoin::absolute::LockTime;
 use bitcoin::taproot::LeafVersion;
 use bitcoin::taproot::NodeInfo;
@@ -15,7 +18,9 @@ use bitcoin::Witness;
 use bitcoin::XOnlyPublicKey;
 use bitcoincore_rpc::RpcApi;
 use bitvec::array::BitArray;
+use fake::Fake;
 use rand::distributions::Uniform;
+use rand::rngs::OsRng;
 use rand::Rng as _;
 use secp256k1::SECP256K1;
 use signer::bitcoin::utxo::DepositRequest;
@@ -28,14 +33,19 @@ use regtest::Recipient;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::AsUtxo;
 
+pub static REQUEST_IDS: AtomicU64 = AtomicU64::new(0);
+
 pub fn generate_withdrawal() -> (WithdrawalRequest, Recipient) {
     let recipient = Recipient::new(AddressType::P2tr);
 
     let req = WithdrawalRequest {
-        amount: rand::rngs::OsRng.sample(Uniform::new(100_000, 250_000)),
+        amount: OsRng.sample(Uniform::new(100_000, 250_000)),
         max_fee: 250_000,
         address: recipient.address.clone(),
         signer_bitmap: BitArray::ZERO,
+        request_id: REQUEST_IDS.fetch_add(1, Ordering::Relaxed),
+        txid: fake::Faker.fake_with_rng(&mut OsRng),
+        block_hash: fake::Faker.fake_with_rng(&mut OsRng),
     };
 
     (req, recipient)

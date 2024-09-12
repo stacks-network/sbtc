@@ -138,7 +138,7 @@ where
 
         let signer_utxo = utxo::SignerUtxo {
             outpoint,
-            amount: 1_337_000_000,
+            amount: 1_337_000_000_000,
             public_key,
         };
 

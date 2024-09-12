@@ -48,6 +48,7 @@ CREATE TABLE sbtc_signer.deposit_signers (
 
 CREATE TABLE sbtc_signer.withdraw_requests (
     request_id BIGINT NOT NULL,
+    txid BYTEA NOT NULL,
     block_hash BYTEA NOT NULL,
     recipient TEXT NOT NULL,
     amount BIGINT NOT NULL,

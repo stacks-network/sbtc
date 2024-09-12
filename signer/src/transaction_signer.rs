@@ -615,6 +615,8 @@ where
         &mut self,
         withdraw_request: model::WithdrawRequest,
     ) -> Result<(), error::Error> {
+        // TODO: Do we want to do this on the sender address of the
+        // recipient address?
         let is_accepted = self
             .blocklist_checker
             .can_accept(&withdraw_request.sender_address.to_string())

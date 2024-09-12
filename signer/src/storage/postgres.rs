@@ -516,6 +516,7 @@ impl super::DbRead for PgStore {
             )
             SELECT
                 wr.request_id
+              , wr.txid
               , wr.block_hash
               , wr.recipient
               , wr.amount
@@ -595,6 +596,7 @@ impl super::DbRead for PgStore {
             )
             SELECT
                 wr.request_id
+              , wr.txid
               , wr.block_hash
               , wr.recipient
               , wr.amount
@@ -913,16 +915,18 @@ impl super::DbWrite for PgStore {
         sqlx::query(
             "INSERT INTO sbtc_signer.withdraw_requests
               ( request_id
+              , txid
               , block_hash
               , recipient
               , amount
               , max_fee
               , sender_address
               )
-            VALUES ($1, $2, $3, $4, $5, $6)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT DO NOTHING",
         )
         .bind(i64::try_from(withdraw_request.request_id).map_err(Error::ConversionDatabaseInt)?)
+        .bind(withdraw_request.txid)
         .bind(withdraw_request.block_hash)
         .bind(&withdraw_request.recipient)
         .bind(i64::try_from(withdraw_request.amount).map_err(Error::ConversionDatabaseInt)?)

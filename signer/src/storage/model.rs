@@ -62,12 +62,12 @@ pub struct DepositRequest {
     pub recipient: StacksPrincipal,
     /// The amount deposited.
     #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000_000"))]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000"))]
     pub amount: u64,
     /// The maximum portion of the deposited amount that may
     /// be used to pay for transaction fees.
     #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000_000"))]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000"))]
     pub max_fee: u64,
     /// The addresses of the input UTXOs funding the deposit request.
     #[cfg_attr(
@@ -126,13 +126,17 @@ pub struct WithdrawRequest {
     /// Request ID of the withdrawal request.
     #[sqlx(try_from = "i64")]
     pub request_id: u64,
-    /// Stacks block hash of the withdrawal request.
+    /// The stacks transaction ID that lead to the creation of the
+    /// withdrawal request.
+    pub txid: StacksTxId,
+    /// Stacks block ID of the block that includes the transaction
+    /// associated with this withdrawal request.
     pub block_hash: StacksBlockHash,
     /// The address that should receive the BTC withdrawal.
     pub recipient: BitcoinAddress,
     /// The amount to withdraw.
     #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000_000"))]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000"))]
     pub amount: u64,
     /// The maximum portion of the withdrawn amount that may
     /// be used to pay for transaction fees.
@@ -322,7 +326,7 @@ impl From<[u8; 32]> for BitcoinBlockHash {
     }
 }
 
-/// The stacks block Id. This is different from the block header hash.
+/// The Stacks block Id. This is different from the block header hash.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StacksBlockHash(StacksBlockId);
 
