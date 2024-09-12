@@ -338,7 +338,7 @@ pub struct StacksNodeSettings {
     /// The endpoint to use when making requests to a stacks node.
     #[serde(deserialize_with = "url_deserializer_vec")]
     pub endpoints: Vec<url::Url>,
-    /// This is the start height of the first EPOCH 3.0 block on the stacks
+    /// This is the start height of the first EPOCH 3.0 block on the Stacks
     /// blockchain.
     pub nakamoto_start_height: u64,
 }
@@ -493,7 +493,7 @@ fn try_parse_p2p_multiaddr(s: &str) -> Result<Multiaddr, SignerConfigError> {
 ///
 /// The [`StacksAddress`] struct does not implement any string parsing or
 /// c32 decoding. However, the [`PrincipalData::parse_standard_principal`]
-/// function does the expected c32 decoding and the validation so we go
+/// function does the expected c32 decoding and the validation, so we go
 /// through that.
 pub fn parse_stacks_address<'de, D>(des: D) -> Result<StacksAddress, D::Error>
 where
@@ -609,7 +609,7 @@ mod tests {
 
         let settings = Settings::new_from_default_config().unwrap();
 
-        assert!(settings.bitcoin.endpoints.len() == 2);
+        assert_eq!(settings.bitcoin.endpoints.len(), 2);
         assert!(settings
             .bitcoin
             .endpoints
