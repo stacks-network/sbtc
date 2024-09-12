@@ -60,8 +60,8 @@ pub struct SignerWallet {
     /// The next nonce for the StacksAddress associated with the address of
     /// the wallet.
     ///
-    /// TODO: remove the nonce, it should be set when the signer creates
-    /// each transaction.
+    /// TODO(510): remove the nonce, it should be set when the signer
+    /// creates each transaction.
     nonce: AtomicU64,
 }
 

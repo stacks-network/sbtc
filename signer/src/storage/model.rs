@@ -227,7 +227,7 @@ pub struct RotateKeysTransaction {
     pub txid: StacksTxId,
     /// The aggregate key for these shares.
     ///
-    /// TODO: maybe make the aggregate key private. Se itt using the
+    /// TODO(511): maybe make the aggregate key private. Set it using the
     /// `signer_set`, ensuring that it cannot drift from the given keys.
     pub aggregate_key: PublicKey,
     /// The public keys of the signers.
