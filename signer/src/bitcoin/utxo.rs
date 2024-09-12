@@ -1019,6 +1019,7 @@ mod tests {
     use sha2::Sha256;
     use test_case::test_case;
 
+    use crate::keys::PublicKey;
     use crate::testing;
 
     const X_ONLY_PUBLIC_KEY1: &'static str =
@@ -2060,5 +2061,46 @@ mod tests {
         // The additional 1 is for the signers' UTXO
         assert_eq!(unsigned.tx.input.len(), 1 + good_deposit_count);
         assert_eq!(unsigned.tx.output.len(), 2 + good_withdrawal_count);
+    }
+
+    /// Check that the signer bitmap is recoded correctly when going from
+    /// the model type to the required type here.
+    #[test]
+    fn creating_deposit_request_from_model_bitmap_is_right() {
+        let mut votes = [
+            SignerVote {
+                signer_public_key: fake::Faker.fake_with_rng(&mut OsRng),
+                is_accepted: Some(true),
+            },
+            SignerVote {
+                signer_public_key: fake::Faker.fake_with_rng(&mut OsRng),
+                is_accepted: Some(false),
+            },
+            SignerVote {
+                signer_public_key: fake::Faker.fake_with_rng(&mut OsRng),
+                is_accepted: Some(true),
+            },
+            SignerVote {
+                signer_public_key: fake::Faker.fake_with_rng(&mut OsRng),
+                is_accepted: Some(true),
+            },
+            SignerVote {
+                signer_public_key: fake::Faker.fake_with_rng(&mut OsRng),
+                is_accepted: None,
+            },
+        ];
+        let request: model::DepositRequest = fake::Faker.fake_with_rng(&mut OsRng);
+        let signers_public_key: PublicKey = fake::Faker.fake_with_rng(&mut OsRng);
+        let deposit_request =
+            DepositRequest::from_model(request, signers_public_key.into(), votes.to_vec());
+
+        // One explicit vote against and one implicit vote against.
+        assert_eq!(deposit_request.votes_against(), 2);
+        // An appropriately named function ...
+        votes.sort_by_key(|x| x.signer_public_key);
+        votes.iter().enumerate().for_each(|(index, vote)| {
+            let vote_against = *deposit_request.signer_bitmap.get(index).unwrap();
+            assert_eq!(vote_against, !vote.is_accepted.unwrap_or(false));
+        })
     }
 }
