@@ -15,6 +15,7 @@ use crate::stacks::webhooks::NewBlockEvent;
 use crate::storage::DbWrite;
 
 use super::ApiState;
+use super::SBTC_REGISTRY_CONTRACT_NAME;
 
 /// The address for the sbtc-registry smart contract. This value is
 /// populated using the deployer variable in the config.
@@ -55,7 +56,7 @@ where
     let registry_address = SBTC_REGISTRY_IDENTIFIER.get_or_init(|| {
         // Although the following line can panic, our unit tests hit this
         // code path so if tests pass then this will work in production.
-        let contract_name = ContractName::from("sbtc-registry");
+        let contract_name = ContractName::from(SBTC_REGISTRY_CONTRACT_NAME);
         let issuer = StandardPrincipalData::from(api.settings.signer.deployer);
         QualifiedContractIdentifier::new(issuer, contract_name)
     });
@@ -185,7 +186,7 @@ mod tests {
     {
         let api = ApiState {
             db: Store::new_shared(),
-            settings: Settings::new(crate::testing::DEFAULT_CONFIG_PATH).unwrap(),
+            settings: Settings::new_from_default_config().unwrap(),
         };
 
         // Hey look, there is nothing here!
@@ -194,9 +195,10 @@ mod tests {
 
         // Okay, we want to make sure that events that are from an
         // unexpected contract are filtered out. So we manually switch the
-        // address to some random one and check the output.
+        // address to some random one and check the output. To do that we
+        // do a string replace for the expected one with the fishy one.
         let issuer = StandardPrincipalData::from(api.settings.signer.deployer);
-        let contract_name = ContractName::from("sbtc-registry");
+        let contract_name = ContractName::from(SBTC_REGISTRY_CONTRACT_NAME);
         let identifier = QualifiedContractIdentifier::new(issuer, contract_name.clone());
 
         let fishy_principal: StacksPrincipal = fake::Faker.fake_with_rng(&mut OsRng);

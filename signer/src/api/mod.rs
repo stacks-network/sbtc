@@ -17,3 +17,6 @@ pub struct ApiState<S> {
     /// The runtime settings of the system.
     pub settings: Settings,
 }
+
+/// The name of the sbtc registry smart contract.
+const SBTC_REGISTRY_CONTRACT_NAME: &str = "sbtc-registry";

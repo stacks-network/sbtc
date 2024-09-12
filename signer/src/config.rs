@@ -35,7 +35,7 @@ pub enum SignerConfigError {
 
     /// The NetworkKind set in the config must match the network kind of
     /// the deployer address.
-    #[error("Network kind must match network of the deployer")]
+    #[error("The network set in the config must match the network kind of the deployer address")]
     NetworkDeployerMismatch,
 
     /// Invalid P2P URI
@@ -106,6 +106,13 @@ impl From<NetworkKind> for bitcoin::KnownHrp {
             NetworkKind::Testnet => bitcoin::KnownHrp::Testnets,
             NetworkKind::Regtest => bitcoin::KnownHrp::Regtest,
         }
+    }
+}
+
+impl NetworkKind {
+    /// Returns whether the network variant is Mainnet.
+    pub fn is_mainnet(&self) -> bool {
+        self == &NetworkKind::Mainnet
     }
 }
 
@@ -236,7 +243,7 @@ pub struct SignerConfig {
 impl Validatable for SignerConfig {
     fn validate(&self, cfg: &Settings) -> Result<(), ConfigError> {
         self.p2p.validate(cfg)?;
-        if self.deployer.is_mainnet() != (self.network == NetworkKind::Mainnet) {
+        if self.deployer.is_mainnet() != self.network.is_mainnet() {
             let err = SignerConfigError::NetworkDeployerMismatch;
             return Err(ConfigError::Message(err.to_string()));
         }
