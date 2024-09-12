@@ -49,15 +49,15 @@ impl From<&secp256k1::PublicKey> for PublicKey {
     }
 }
 
-impl From<&PublicKey> for secp256k1::PublicKey {
-    fn from(value: &PublicKey) -> Self {
-        value.0
-    }
-}
-
 impl From<secp256k1::PublicKey> for PublicKey {
     fn from(value: secp256k1::PublicKey) -> Self {
         Self(value)
+    }
+}
+
+impl From<&PublicKey> for secp256k1::PublicKey {
+    fn from(value: &PublicKey) -> Self {
+        value.0
     }
 }
 
@@ -69,6 +69,12 @@ impl From<PublicKey> for secp256k1::PublicKey {
 
 impl From<&PublicKey> for secp256k1::XOnlyPublicKey {
     fn from(value: &PublicKey) -> Self {
+        value.0.x_only_public_key().0
+    }
+}
+
+impl From<PublicKey> for secp256k1::XOnlyPublicKey {
+    fn from(value: PublicKey) -> Self {
         value.0.x_only_public_key().0
     }
 }
@@ -147,17 +153,17 @@ impl From<&PublicKey> for p256k1::keys::PublicKey {
     }
 }
 
+impl From<PublicKey> for p256k1::keys::PublicKey {
+    fn from(value: PublicKey) -> Self {
+        Self::from(&value)
+    }
+}
+
 impl From<&p256k1::keys::PublicKey> for PublicKey {
     fn from(value: &p256k1::keys::PublicKey) -> Self {
         secp256k1::PublicKey::from_slice(&value.to_bytes())
             .map(Self)
             .expect("BUG: p256k1 public keys should map to rust-secp265k1 public keys")
-    }
-}
-
-impl From<PublicKey> for p256k1::keys::PublicKey {
-    fn from(value: PublicKey) -> Self {
-        Self::from(&value)
     }
 }
 

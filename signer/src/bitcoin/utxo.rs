@@ -38,6 +38,8 @@ use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
+use crate::storage::model::SignerVote;
+use crate::MAX_KEYS;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
 /// transactions.
@@ -341,16 +343,35 @@ impl DepositRequest {
     }
 
     /// Try convert from a model::DepositRequest with some additional info.
-    pub fn try_from_model(
+    ///
+    /// TODO(511): derive the signer public key from the public keys in the
+    /// votes.
+    pub fn from_model(
         request: model::DepositRequest,
         signers_public_key: XOnlyPublicKey,
-    ) -> Result<Self, Error> {
+        mut votes: Vec<SignerVote>,
+    ) -> Self {
         let txid = request.txid.into();
         let vout = request.output_index;
 
-        let signer_bitmap = BitArray::ZERO; // TODO(326): Populate
+        let mut signer_bitmap = BitArray::ZERO;
+        votes.sort_by_key(|vote| vote.signer_public_key);
+        votes
+            .into_iter()
+            .enumerate()
+            .take(MAX_KEYS as usize)
+            .for_each(|(index, vote)| {
+                // The BitArray::<[u8; 16]>::set function panics if the
+                // index is out of bounds but that cannot be the case here
+                // because we only take 128 values.
+                //
+                // Note that the signer bitmap here is true for votes
+                // *against*, and a missing vote is an implicit vote
+                // against.
+                signer_bitmap.set(index, !vote.is_accepted.unwrap_or(false));
+            });
 
-        Ok(Self {
+        Self {
             outpoint: OutPoint { txid, vout },
             max_fee: request.max_fee,
             signer_bitmap,
@@ -358,7 +379,7 @@ impl DepositRequest {
             deposit_script: ScriptBuf::from_bytes(request.spend_script),
             reclaim_script: ScriptBuf::from_bytes(request.reclaim_script),
             signers_public_key,
-        })
+        }
     }
 }
 
@@ -998,6 +1019,7 @@ mod tests {
     use sha2::Sha256;
     use test_case::test_case;
 
+    use crate::keys::PublicKey;
     use crate::testing;
 
     const X_ONLY_PUBLIC_KEY1: &'static str =
@@ -2039,5 +2061,46 @@ mod tests {
         // The additional 1 is for the signers' UTXO
         assert_eq!(unsigned.tx.input.len(), 1 + good_deposit_count);
         assert_eq!(unsigned.tx.output.len(), 2 + good_withdrawal_count);
+    }
+
+    /// Check that the signer bitmap is recoded correctly when going from
+    /// the model type to the required type here.
+    #[test]
+    fn creating_deposit_request_from_model_bitmap_is_right() {
+        let mut votes = [
+            SignerVote {
+                signer_public_key: fake::Faker.fake_with_rng(&mut OsRng),
+                is_accepted: Some(true),
+            },
+            SignerVote {
+                signer_public_key: fake::Faker.fake_with_rng(&mut OsRng),
+                is_accepted: Some(false),
+            },
+            SignerVote {
+                signer_public_key: fake::Faker.fake_with_rng(&mut OsRng),
+                is_accepted: Some(true),
+            },
+            SignerVote {
+                signer_public_key: fake::Faker.fake_with_rng(&mut OsRng),
+                is_accepted: Some(true),
+            },
+            SignerVote {
+                signer_public_key: fake::Faker.fake_with_rng(&mut OsRng),
+                is_accepted: None,
+            },
+        ];
+        let request: model::DepositRequest = fake::Faker.fake_with_rng(&mut OsRng);
+        let signers_public_key: PublicKey = fake::Faker.fake_with_rng(&mut OsRng);
+        let deposit_request =
+            DepositRequest::from_model(request, signers_public_key.into(), votes.to_vec());
+
+        // One explicit vote against and one implicit vote against.
+        assert_eq!(deposit_request.votes_against(), 2);
+        // An appropriately named function ...
+        votes.sort_by_key(|x| x.signer_public_key);
+        votes.iter().enumerate().for_each(|(index, vote)| {
+            let vote_against = *deposit_request.signer_bitmap.get(index).unwrap();
+            assert_eq!(vote_against, !vote.is_accepted.unwrap_or(false));
+        })
     }
 }

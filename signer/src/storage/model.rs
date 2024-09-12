@@ -226,12 +226,27 @@ pub struct RotateKeysTransaction {
     /// Transaction ID.
     pub txid: StacksTxId,
     /// The aggregate key for these shares.
+    ///
+    /// TODO(511): maybe make the aggregate key private. Set it using the
+    /// `signer_set`, ensuring that it cannot drift from the given keys.
     pub aggregate_key: PublicKey,
     /// The public keys of the signers.
     pub signer_set: Vec<PublicKey>,
     /// The number of signatures required for the multi-sig wallet.
     #[sqlx(try_from = "i32")]
     pub signatures_required: u16,
+}
+
+/// A struct containing how a signer voted for a deposit or withdrawal
+/// request.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct SignerVote {
+    /// The public key of the signer that casted the vote.
+    pub signer_public_key: PublicKey,
+    /// How the signer voted for a transaction. None is returned if we do
+    /// not have a record of how the signer voted
+    pub is_accepted: Option<bool>,
 }
 
 /// The types of transactions the signer is interested in.

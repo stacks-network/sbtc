@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::io::Read;
 use std::sync::atomic::Ordering;
 
@@ -11,6 +12,7 @@ use blockstack_lib::types::chainstate::StacksAddress;
 use futures::StreamExt;
 
 use signer::error::Error;
+use signer::keys::PublicKey;
 use signer::network;
 use signer::stacks::contracts::AcceptWithdrawalV1;
 use signer::stacks::contracts::AsContractCall;
@@ -24,9 +26,12 @@ use signer::stacks::events::WithdrawalCreateEvent;
 use signer::stacks::events::WithdrawalRejectEvent;
 use signer::storage;
 use signer::storage::model;
+use signer::storage::model::BitcoinTxId;
+use signer::storage::model::RotateKeysTransaction;
 use signer::storage::DbRead;
 use signer::storage::DbWrite;
 use signer::testing;
+use signer::testing::dummy::SignerSetConfig;
 use signer::testing::wallet::ContractCallWrapper;
 
 use fake::Fake;
@@ -853,6 +858,114 @@ async fn writing_withdrawal_reject_requests_postgres() {
     assert_eq!(txid, event.txid.0);
     assert_eq!(request_id as u64, event.request_id);
     assert_eq!(bitmap, event.signer_bitmap.into_inner());
+
+    signer::testing::storage::drop_db(store).await;
+}
+
+/// For this test we check that when we get the votes for a deposit request
+/// for a specific aggregate key, that we get a vote for all public keys
+/// for the specific aggregate key. This includes "implicit" votes where we
+/// got no response from a particular signer but so we assume that they
+/// vote to reject the transaction.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn fetching_deposit_request_votes() {
+    // So we have 7 signers but we wiill only receive votes from 4 of them.
+    // Three of the votes will be to accept and one explicit reject. The
+    // others will be counted as rejections in the query.
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = signer::testing::storage::new_test_database(db_num).await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let signer_set_config = SignerSetConfig {
+        num_keys: 7,
+        signatures_required: 4,
+    };
+    let rotate_keys: RotateKeysTransaction = signer_set_config.fake_with_rng(&mut rng);
+    // Before we can write the rotate keys into the postgres database, we
+    // need to have a transaction in the trasnactions table.
+    let transaction = model::Transaction {
+        txid: rotate_keys.txid.into_bytes(),
+        tx: Vec::new(),
+        tx_type: model::TransactionType::RotateKeys,
+        block_hash: fake::Faker.fake_with_rng(&mut rng),
+    };
+    store.write_transaction(&transaction).await.unwrap();
+    store
+        .write_rotate_keys_transaction(&rotate_keys)
+        .await
+        .unwrap();
+
+    let txid: BitcoinTxId = fake::Faker.fake_with_rng(&mut rng);
+    let output_index = 2;
+
+    let signer_decisions = [
+        model::DepositSigner {
+            txid,
+            output_index,
+            signer_pub_key: rotate_keys.signer_set[0],
+            is_accepted: true,
+        },
+        model::DepositSigner {
+            txid,
+            output_index,
+            signer_pub_key: rotate_keys.signer_set[1],
+            is_accepted: false,
+        },
+        model::DepositSigner {
+            txid,
+            output_index,
+            signer_pub_key: rotate_keys.signer_set[2],
+            is_accepted: true,
+        },
+        model::DepositSigner {
+            txid,
+            output_index,
+            signer_pub_key: rotate_keys.signer_set[3],
+            is_accepted: true,
+        },
+    ];
+
+    for decision in signer_decisions.clone() {
+        // Before we can write the decision, we need to make sure that the
+        // deposit request is in the database to satisfy the foreign key
+        // constraint.
+        let random_req: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
+        let req = model::DepositRequest {
+            txid,
+            output_index,
+            ..random_req
+        };
+        store.write_deposit_request(&req).await.unwrap();
+        store
+            .write_deposit_signer_decision(&decision)
+            .await
+            .unwrap();
+    }
+
+    // Okay let's test the query and get the votes.
+    let votes = store
+        .get_deposit_request_signer_votes(&txid, output_index, &rotate_keys.aggregate_key)
+        .await
+        .unwrap();
+
+    let mut actual_signer_vote_map: BTreeMap<PublicKey, Option<bool>> = votes
+        .into_iter()
+        .map(|vote| (vote.signer_public_key, vote.is_accepted))
+        .collect();
+
+    // Let's make sure that the votes are what we expected. For the votes
+    // that we've recieved, they should match exactly.
+    for decision in signer_decisions.into_iter() {
+        let actual_vote = actual_signer_vote_map
+            .remove(&decision.signer_pub_key)
+            .unwrap();
+        assert_eq!(actual_vote, Some(decision.is_accepted));
+    }
+
+    // The remianing keys, the ones were we have not received a vote,
+    // should be all None.
+    assert!(actual_signer_vote_map.values().all(Option::is_none));
 
     signer::testing::storage::drop_db(store).await;
 }

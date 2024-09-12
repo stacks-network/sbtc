@@ -455,13 +455,17 @@ where
 
         let signers_public_key = bitcoin::XOnlyPublicKey::from(&aggregate_key);
 
-        let convert_deposit =
-            |request| utxo::DepositRequest::try_from_model(request, signers_public_key);
+        let mut deposits: Vec<utxo::DepositRequest> = Vec::new();
 
-        let deposits: Vec<utxo::DepositRequest> = pending_deposit_requests
-            .into_iter()
-            .map(convert_deposit)
-            .collect::<Result<_, _>>()?;
+        for req in pending_deposit_requests {
+            let votes = self
+                .storage
+                .get_deposit_request_signer_votes(&req.txid, req.output_index, &aggregate_key)
+                .await?;
+
+            let deposit = utxo::DepositRequest::from_model(req, signers_public_key, votes);
+            deposits.push(deposit);
+        }
 
         let convert_withdraw =
             |request| utxo::WithdrawalRequest::try_from_model(request, self.bitcoin_network);

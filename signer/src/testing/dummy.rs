@@ -30,6 +30,7 @@ use crate::storage::model;
 use crate::codec::Encode;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
+use crate::storage::model::RotateKeysTransaction;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
@@ -324,6 +325,31 @@ impl fake::Dummy<fake::Faker> for CompletedDepositEvent {
                 vout: rng.next_u32(),
             },
             amount: rng.next_u32() as u64,
+        }
+    }
+}
+
+/// A struct for configuring the signing set of a randomly generated
+/// [`RotateKeysTransaction`] that has an aggregate key formed from the
+/// randomly generated public keys.
+pub struct SignerSetConfig {
+    /// The number of signers in the signing set.
+    pub num_keys: u16,
+    /// The number of signatures required
+    pub signatures_required: u16,
+}
+
+impl fake::Dummy<SignerSetConfig> for RotateKeysTransaction {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &SignerSetConfig, rng: &mut R) -> Self {
+        let signer_set: Vec<PublicKey> = std::iter::repeat_with(|| fake::Faker.fake_with_rng(rng))
+            .take(config.num_keys as usize)
+            .collect();
+
+        RotateKeysTransaction {
+            txid: fake::Faker.fake_with_rng(rng),
+            aggregate_key: PublicKey::combine_keys(signer_set.iter()).unwrap(),
+            signer_set,
+            signatures_required: config.signatures_required,
         }
     }
 }

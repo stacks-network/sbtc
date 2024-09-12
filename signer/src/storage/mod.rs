@@ -129,6 +129,15 @@ pub trait DbRead {
     fn get_signers_script_pubkeys(
         &self,
     ) -> impl Future<Output = Result<Vec<model::Bytes>, Self::Error>> + Send;
+
+    /// For the given outpoint and aggregate key, get the list all signer
+    /// votes in the signer set.
+    fn get_deposit_request_signer_votes(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+        aggregate_key: &PublicKey,
+    ) -> impl Future<Output = Result<Vec<model::SignerVote>, Self::Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.
