@@ -418,7 +418,7 @@ impl super::DbRead for SharedStore {
     ) -> Result<Vec<model::SignerVote>, Self::Error> {
         // Let's fetch the votes for the outpoint
         let signers = self.get_deposit_signers(txid, output_index).await?;
-        let signer_votes: HashMap<PublicKey, bool> = signers
+        let mut signer_votes: HashMap<PublicKey, bool> = signers
             .iter()
             .map(|vote| (vote.signer_pub_key, vote.is_accepted))
             .collect();
@@ -438,7 +438,7 @@ impl super::DbRead for SharedStore {
                 .iter()
                 .map(|public_key| model::SignerVote {
                     signer_public_key: *public_key,
-                    is_accepted: signer_votes.get(public_key).copied(),
+                    is_accepted: signer_votes.remove(public_key),
                 })
                 .collect();
             Ok(votes)
