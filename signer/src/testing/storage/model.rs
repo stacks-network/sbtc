@@ -347,6 +347,7 @@ impl WithdrawData {
                             let mut signer: model::WithdrawalSigner = fake::Faker.fake_with_rng(rng);
                             signer.request_id = withdraw_request.request_id;
                             signer.block_hash = withdraw_request.block_hash;
+                            signer.txid = withdraw_request.txid;
                             signer
                         })
                         .collect();
