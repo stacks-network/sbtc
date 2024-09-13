@@ -182,7 +182,8 @@ impl CreateDepositRequest {
         debug_assert_eq!(deposit_script, self.deposit_script);
         debug_assert_eq!(reclaim_script, self.reclaim_script);
 
-        let expected_script_pubkey = to_script_pubkey(deposit_script, reclaim_script);
+        let expected_script_pubkey =
+            to_script_pubkey(deposit_script.clone(), reclaim_script.clone());
         // Check that the expected scriptPubkey matches the actual public
         // key of our parsed UTXO.
         if expected_script_pubkey != tx_out.script_pubkey {
@@ -191,8 +192,8 @@ impl CreateDepositRequest {
 
         Ok(DepositInfo {
             max_fee: deposit.max_fee,
-            deposit_script: self.deposit_script.clone(),
-            reclaim_script: self.reclaim_script.clone(),
+            deposit_script,
+            reclaim_script,
             signers_public_key: deposit.signers_public_key,
             recipient: deposit.recipient,
             lock_time: reclaim.lock_time as u64,
