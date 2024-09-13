@@ -7,7 +7,7 @@ use crate::storage::postgres::PgStore;
 pub mod model;
 
 /// The postgres connection string to the test database.
-pub const DATABASE_URL: &str = "postgres://user@localhost:5432/signer";
+pub const DATABASE_URL: &str = "postgres://postgres:postgres@localhost:5432/signer";
 
 /// This is needed to make sure that each test has as many isolated
 /// databases as it needs.

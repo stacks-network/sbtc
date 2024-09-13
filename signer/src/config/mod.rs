@@ -1,74 +1,21 @@
 //! Configuration management for the signer
-use std::str::FromStr as _;
-
-use clarity::vm::types::PrincipalData;
 use config::{Config, ConfigError, Environment, File};
 use libp2p::Multiaddr;
 use serde::Deserialize;
-use serde::Deserializer;
 use stacks_common::types::chainstate::StacksAddress;
 use std::path::Path;
 use url::Url;
 
 use crate::error::Error;
 use crate::keys::PrivateKey;
+use error::SignerConfigError;
+use serialization::{
+    p2p_multiaddr_deserializer_vec, parse_stacks_address, private_key_deserializer,
+    url_deserializer_single, url_deserializer_vec,
+};
 
-/// The default signer network listen-on address.
-pub const DEFAULT_P2P_HOST: &str = "0.0.0.0";
-/// The default signer network listen-on port.
-pub const DEFAULT_P2P_PORT: u16 = 4122;
-
-/// Configuration error variants.
-#[derive(Debug, thiserror::Error)]
-pub enum SignerConfigError {
-    /// Invalid Stacks private key length
-    #[error("The Stacks private key provided is invalid, it must be either 64 or 66 hex characters long, got {0}")]
-    InvalidStacksPrivateKeyLength(usize),
-
-    /// Invalid Stacks private key compression byte marker
-    #[error("The Stacks private key provided contains an invalid compression byte marker: {0}")]
-    InvalidStacksPrivateKeyCompressionByte(String),
-
-    /// Invalid P2P URI
-    #[error("Invalid P2P URI: Failed to parse: {0}")]
-    InvalidP2PUri(#[from] url::ParseError),
-
-    /// The NetworkKind set in the config must match the network kind of
-    /// the deployer address.
-    #[error("The network set in the config must match the network kind of the deployer address")]
-    NetworkDeployerMismatch,
-
-    /// Invalid P2P URI
-    #[error("Invalid P2P URI: Only schemes 'tcp' and 'quic-v1' are supported; got '{0}'")]
-    InvalidP2PScheme(String),
-
-    /// P2P port is required
-    #[error("Invalid P2P URI: Port is required")]
-    P2PPortRequired,
-
-    /// P2P paths not supported
-    #[error("Invalid P2P URI: Paths are not supported: '{0}'")]
-    P2PPathsNotSupported(String),
-
-    /// Usernames are not supported in P2P URIs
-    #[error("Invalid P2P URI: Usernames are not supported: '{0}'")]
-    P2PUsernameNotSupported(String),
-
-    /// Passwords are not supported in P2P URIs
-    #[error("Invalid P2P URI: Passwords are not supported: '{0}'")]
-    P2PPasswordNotSupported(String),
-
-    /// Query strings are not supported in P2P URIs
-    #[error("Invalid P2P URI: Query strings are not supported: '{0}'")]
-    P2PQueryStringsNotSupported(String),
-
-    /// When the network kind is 'mainnet' or 'testnet', at least one P2P seed peer is required.
-    /// Otherwise, we'll allow mDNS to discover any local peers (for testing).
-    #[error(
-        "At least one P2P seed peer is required when the network kind is 'mainnet' or 'testnet'."
-    )]
-    P2PSeedPeerRequired,
-}
+mod error;
+mod serialization;
 
 /// Trait for validating configuration values.
 trait Validatable {
@@ -238,6 +185,9 @@ pub struct SignerConfig {
     /// The address of the deployer of the sBTC smart contracts.
     #[serde(deserialize_with = "parse_stacks_address")]
     pub deployer: StacksAddress,
+    /// The postgres database endpoint
+    #[serde(deserialize_with = "url_deserializer_single")]
+    pub db_endpoint: Url,
 }
 
 impl Validatable for SignerConfig {
@@ -247,6 +197,17 @@ impl Validatable for SignerConfig {
             let err = SignerConfigError::NetworkDeployerMismatch;
             return Err(ConfigError::Message(err.to_string()));
         }
+        // At least perform a simple check to see if the database endpoint is
+        // valid for the supported database drivers. We only support PostgreSQL
+        // for now. The rest of the URI we delegate to the database driver for
+        // validation (which will fail fast on startup).
+        if !["postgres", "postgresql"].contains(&self.db_endpoint.scheme()) {
+            let err =
+                SignerConfigError::UnsupportedDatabaseDriver(self.db_endpoint.scheme().to_string());
+            return Err(ConfigError::Message(err.to_string()));
+        }
+        // db_endpoint note: we don't validate the host because we will never
+        // get here; the URL deserializer will fail if the host is empty.
         Ok(())
     }
 }
@@ -377,138 +338,11 @@ impl StacksSettings {
     }
 }
 
-/// A deserializer for the url::Url type. This will return an empty [`Vec`] if
-/// there are no URLs to deserialize.
-fn url_deserializer_vec<'de, D>(deserializer: D) -> Result<Vec<url::Url>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let mut v = Vec::new();
-    for s in Vec::<String>::deserialize(deserializer)? {
-        v.push(s.parse().map_err(serde::de::Error::custom)?);
-    }
-    Ok(v)
-}
-
-fn p2p_multiaddr_deserializer_vec<'de, D>(deserializer: D) -> Result<Vec<Multiaddr>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let mut addrs = Vec::new();
-
-    let items = Vec::<String>::deserialize(deserializer)?;
-
-    for s in items.iter().filter(|s| !s.is_empty()) {
-        let addr = try_parse_p2p_multiaddr(s).map_err(serde::de::Error::custom)?;
-        addrs.push(addr);
-    }
-
-    Ok(addrs)
-}
-
-/// A deserializer for the [`PrivateKey`] type. Returns an error if the private
-/// key is not valid hex or is not the correct length.
-fn private_key_deserializer<'de, D>(deserializer: D) -> Result<PrivateKey, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s = String::deserialize(deserializer)?;
-    let len = s.len();
-
-    if ![64, 66].contains(&len) {
-        Err(serde::de::Error::custom(
-            SignerConfigError::InvalidStacksPrivateKeyLength(len),
-        ))
-    } else if len == 66 && &s[64..] != "01" {
-        Err(serde::de::Error::custom(
-            SignerConfigError::InvalidStacksPrivateKeyCompressionByte(s[64..].to_string()),
-        ))
-    } else {
-        PrivateKey::from_str(&s[..64]).map_err(serde::de::Error::custom)
-    }
-}
-
-fn try_parse_p2p_multiaddr(s: &str) -> Result<Multiaddr, SignerConfigError> {
-    // Keeping these local here as this is the only place these should need to be used.
-    use libp2p::multiaddr::Protocol;
-    use SignerConfigError::{
-        InvalidP2PScheme, InvalidP2PUri, P2PPasswordNotSupported, P2PPathsNotSupported,
-        P2PPortRequired, P2PQueryStringsNotSupported, P2PUsernameNotSupported,
-    };
-
-    // We parse to a Url first to take advantage of its initial validation
-    // and so that we can more easily work with the URI components below.
-    // Note that this will catch missing host errors.
-    let url: Url = s.parse().map_err(InvalidP2PUri)?;
-
-    if !["/", ""].contains(&url.path()) {
-        return Err(P2PPathsNotSupported(url.path().into()));
-    }
-
-    let port = url.port().ok_or(P2PPortRequired)?;
-
-    // We only support tcp and quic-v1 schemes as these are the only relevant
-    // protocols (quic is a UDP-based protocol).
-    if !["tcp", "quic-v1"].contains(&url.scheme()) {
-        return Err(InvalidP2PScheme(url.scheme().into()));
-    }
-
-    // We don't currently support usernames. The signer pub key is used as the
-    // peer identifier.
-    if !url.username().is_empty() {
-        return Err(P2PUsernameNotSupported(url.username().into()));
-    }
-
-    // We don't currently support passwords.
-    if let Some(pass) = url.password() {
-        return Err(P2PPasswordNotSupported(pass.into()));
-    }
-
-    // We don't currently support query strings. This could be extended in the
-    // future if we need to add additional P2P configuration options.
-    if let Some(query) = url.query() {
-        return Err(P2PQueryStringsNotSupported(query.into()));
-    }
-
-    // Initialize the Multiaddr using the host. We support IPv4, IPv6, and
-    // DNS host types.
-    let mut addr = match url.host() {
-        Some(url::Host::Ipv4(ip)) => Multiaddr::empty().with(Protocol::from(ip)),
-        Some(url::Host::Ipv6(ip)) => Multiaddr::empty().with(Protocol::from(ip)),
-        Some(url::Host::Domain(host)) => Multiaddr::empty().with(Protocol::Dns(host.into())),
-        None => unreachable!("this will have been caught by the Url parsing above"),
-    };
-
-    // Update the Multiaddr with the correct protocol.
-    match url.scheme() {
-        "tcp" => addr = addr.with(Protocol::Tcp(port)),
-        "quic-v1" => addr = addr.with(Protocol::Udp(port)).with(Protocol::QuicV1),
-        s => return Err(InvalidP2PScheme(s.to_string())),
-    };
-
-    Ok(addr)
-}
-
-/// Parse the string into a StacksAddress.
-///
-/// The [`StacksAddress`] struct does not implement any string parsing or
-/// c32 decoding. However, the [`PrincipalData::parse_standard_principal`]
-/// function does the expected c32 decoding and the validation, so we go
-/// through that.
-pub fn parse_stacks_address<'de, D>(des: D) -> Result<StacksAddress, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let literal = <String>::deserialize(des)?;
-
-    PrincipalData::parse_standard_principal(&literal)
-        .map(StacksAddress::from)
-        .map_err(serde::de::Error::custom)
-}
-
 #[cfg(test)]
 mod tests {
-    use std::net::SocketAddr;
+    use std::{net::SocketAddr, str::FromStr};
+
+    use serialization::try_parse_p2p_multiaddr;
 
     use crate::testing::clear_env;
 
@@ -833,6 +667,54 @@ mod tests {
         ))
     }
 
+    #[test]
+    fn p2p_ip4_uri_works() {
+        use libp2p::multiaddr::Protocol;
+
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__P2P__LISTEN_ON", "tcp://0.0.0.0:4122");
+        let settings = Settings::new_from_default_config().expect("failed to load default config");
+
+        let actual = settings
+            .signer
+            .p2p
+            .listen_on
+            .first()
+            .expect("listen_on is empty");
+        let expected = Multiaddr::empty()
+            .with(Protocol::Ip4(
+                "0.0.0.0".parse().expect("failed to parse ipaddr"),
+            ))
+            .with(Protocol::Tcp(4122));
+
+        assert_eq!(*actual, expected);
+    }
+
+    #[test]
+    fn p2p_ip6_uri_works() {
+        use libp2p::multiaddr::Protocol;
+
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__P2P__LISTEN_ON", "tcp://[ff06::c3]:4122");
+        let settings = Settings::new_from_default_config().expect("failed to load default config");
+
+        let actual = settings
+            .signer
+            .p2p
+            .listen_on
+            .first()
+            .expect("listen_on is empty");
+        let expected = Multiaddr::empty()
+            .with(Protocol::Ip6(
+                "ff06::c3".parse().expect("failed to parse ipaddr"),
+            ))
+            .with(Protocol::Tcp(4122));
+
+        assert_eq!(*actual, expected);
+    }
+
     #[test_case::test_case(NetworkKind::Mainnet; "mainnet network, testnet deployer")]
     #[test_case::test_case(NetworkKind::Testnet; "testnet network, mainnet deployer")]
     fn network_mismatch_network_of_deployer(network: NetworkKind) {
@@ -879,5 +761,33 @@ mod tests {
         std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "tcp://localhost:4122");
 
         assert!(Settings::new_from_default_config().is_ok());
+    }
+
+    #[test]
+    fn db_endpoint_postgresql_works() {
+        clear_env();
+
+        let driver = "postgresql";
+        let endpoint = format!("{driver}://user:pass@localhost:1234/abc123");
+
+        std::env::set_var("SIGNER_SIGNER__DB_ENDPOINT", &endpoint);
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(url(&endpoint), settings.signer.db_endpoint);
+    }
+
+    #[test]
+    fn db_endpoint_invalid_driver_returns_correct_error() {
+        clear_env();
+
+        let driver = "somedb";
+        let endpoint = format!("{driver}://user:pass@localhost:1234/abc123");
+
+        std::env::set_var("SIGNER_SIGNER__DB_ENDPOINT", &endpoint);
+        let settings = Settings::new_from_default_config();
+        assert!(settings.is_err());
+        assert!(matches!(
+            settings.unwrap_err(),
+            ConfigError::Message(msg) if msg == SignerConfigError::UnsupportedDatabaseDriver(driver.to_string()).to_string()
+        ));
     }
 }
