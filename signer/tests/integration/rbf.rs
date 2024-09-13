@@ -1,4 +1,3 @@
-use bitcoin::Address;
 use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
@@ -20,6 +19,7 @@ use signer::bitcoin::utxo::SignerBtcState;
 use signer::bitcoin::utxo::SignerUtxo;
 use signer::bitcoin::utxo::UnsignedTransaction;
 use signer::bitcoin::utxo::WithdrawalRequest;
+use signer::storage::model::ScriptPubKey;
 
 use crate::utxo_construction::generate_withdrawal;
 use crate::utxo_construction::make_deposit_request;
@@ -320,7 +320,7 @@ pub fn transaction_with_rbf(
     // withdrawals, the outputs from the requests associated with the
     // RBF transaction should have their balances adjusted while the
     // others should not.
-    let fee_map: std::collections::HashMap<Address, u64> = transactions
+    let fee_map: std::collections::HashMap<ScriptPubKey, u64> = transactions
         .iter()
         .flat_map(|utx| {
             utx.requests
@@ -330,7 +330,12 @@ pub fn transaction_with_rbf(
                 // withdrawals. The first two outputs are the signers' UTXO
                 // and the OP_RETURN output, so we skip them first.
                 .zip(utx.tx.output.iter().skip(2))
-                .map(|(req, tx_out)| (req.address.clone(), req.amount - tx_out.value.to_sat()))
+                .map(|(req, tx_out)| {
+                    (
+                        req.script_pubkey.clone(),
+                        req.amount - tx_out.value.to_sat(),
+                    )
+                })
         })
         .collect();
     let iter = withdrawals
@@ -340,7 +345,7 @@ pub fn transaction_with_rbf(
     for (index, (req, recipient)) in iter {
         let balance = recipient.get_balance(rpc);
         if index < ctx.rbf_withdrawals {
-            let expected_balance = req.amount - fee_map.get(&req.address).unwrap();
+            let expected_balance = req.amount - fee_map.get(&req.script_pubkey).unwrap();
             assert_eq!(balance.to_sat(), expected_balance);
         } else {
             assert_eq!(balance.to_sat(), 0);

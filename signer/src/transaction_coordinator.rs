@@ -450,7 +450,7 @@ where
 
         let pending_withdraw_requests = self
             .storage
-            .get_pending_accepted_withdraw_requests(bitcoin_chain_tip, context_window, threshold)
+            .get_pending_accepted_withdrawal_requests(bitcoin_chain_tip, context_window, threshold)
             .await?;
 
         let signers_public_key = bitcoin::XOnlyPublicKey::from(&aggregate_key);

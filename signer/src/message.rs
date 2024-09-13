@@ -7,6 +7,7 @@ use crate::keys::PublicKey;
 use crate::signature::RecoverableEcdsaSignature as _;
 use crate::stacks::contracts::ContractCall;
 use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::StacksTxId;
 
 /// Messages exchanged between signers
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -107,6 +108,9 @@ pub struct SignerWithdrawDecision {
     pub request_id: u64,
     /// ID of the Stacks block containing the request.
     pub block_hash: StacksBlockHash,
+    /// The stacks transaction ID that lead to the creation of the
+    /// withdrawal request.
+    pub txid: StacksTxId,
     /// Whether or not the signer has accepted the deposit request.
     pub accepted: bool,
 }

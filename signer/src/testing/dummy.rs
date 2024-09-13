@@ -7,6 +7,7 @@ use bitcoin::hashes::Hash as _;
 use bitcoin::Address;
 use bitcoin::Network;
 use bitcoin::OutPoint;
+use bitcoin::ScriptBuf;
 use bitvec::array::BitArray;
 use blockstack_lib::burnchains::Txid as StacksTxid;
 use blockstack_lib::chainstate::{nakamoto, stacks};
@@ -31,6 +32,7 @@ use crate::codec::Encode;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::RotateKeysTransaction;
+use crate::storage::model::ScriptPubKey;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
@@ -257,15 +259,11 @@ impl fake::Dummy<fake::Faker> for PublicKey {
 #[derive(Debug)]
 pub struct BitcoinAddresses(pub Range<usize>);
 
-impl fake::Dummy<BitcoinAddresses> for Vec<String> {
+impl fake::Dummy<BitcoinAddresses> for Vec<ScriptPubKey> {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &BitcoinAddresses, rng: &mut R) -> Self {
         let num_addresses = config.0.clone().choose(rng).unwrap_or(1);
-        std::iter::repeat_with(|| secp256k1::Keypair::new_global(rng))
+        std::iter::repeat_with(|| fake::Faker.fake_with_rng(rng))
             .take(num_addresses)
-            .map(|kp| {
-                let pk = bitcoin::CompressedPublicKey(kp.public_key());
-                Address::p2wpkh(&pk, Network::Regtest).to_string()
-            })
             .collect()
     }
 }
@@ -384,5 +382,14 @@ impl fake::Dummy<fake::Faker> for StacksPrincipal {
         let pubkey = stacks_common::util::secp256k1::Secp256k1PublicKey::from(&public_key);
         let address = StacksAddress::p2pkh(false, &pubkey);
         StacksPrincipal::from(clarity::vm::types::PrincipalData::from(address))
+    }
+}
+
+impl fake::Dummy<fake::Faker> for ScriptPubKey {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let public_key: PublicKey = config.fake_with_rng(rng);
+        let pk = bitcoin::CompressedPublicKey(public_key.into());
+        let script_pubkey = ScriptBuf::new_p2wpkh(&pk.wpubkey_hash());
+        ScriptPubKey::from(script_pubkey)
     }
 }

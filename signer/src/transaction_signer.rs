@@ -566,37 +566,47 @@ where
     async fn get_pending_withdraw_requests(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<Vec<model::WithdrawRequest>, error::Error> {
+    ) -> Result<Vec<model::WithdrawalRequest>, error::Error> {
         Ok(self
             .storage
-            .get_pending_withdraw_requests(chain_tip, self.context_window)
+            .get_pending_withdrawal_requests(chain_tip, self.context_window)
             .await?)
     }
 
     #[tracing::instrument(skip(self))]
     async fn handle_pending_deposit_request(
         &mut self,
-        deposit_request: model::DepositRequest,
+        request: model::DepositRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), error::Error> {
-        let is_accepted = futures::stream::iter(&deposit_request.sender_addresses)
+        let params = self.network_kind.params();
+        let addresses = request
+            .sender_script_pub_keys
+            .iter()
+            .map(|script_pubkey| {
+                bitcoin::Address::from_script(script_pubkey, params)
+                    .map_err(|err| Error::BitcoinAddressFromScript(err, request.outpoint()))
+            })
+            .collect::<Result<Vec<bitcoin::Address>, _>>()?;
+
+        let is_accepted = futures::stream::iter(&addresses)
             .any(|address| async {
                 self.blocklist_checker
-                    .can_accept(address)
+                    .can_accept(&address.to_string())
                     .await
                     .unwrap_or(false)
             })
             .await;
 
         let msg = message::SignerDepositDecision {
-            txid: deposit_request.txid.into(),
-            output_index: deposit_request.output_index,
+            txid: request.txid.into(),
+            output_index: request.output_index,
             accepted: is_accepted,
         };
 
         let signer_decision = model::DepositSigner {
-            txid: deposit_request.txid,
-            output_index: deposit_request.output_index,
+            txid: request.txid,
+            output_index: request.output_index,
             signer_pub_key: self.signer_pub_key(),
             is_accepted,
         };
@@ -613,7 +623,7 @@ where
     #[tracing::instrument(skip(self))]
     async fn handle_pending_withdraw_request(
         &mut self,
-        withdraw_request: model::WithdrawRequest,
+        withdraw_request: model::WithdrawalRequest,
     ) -> Result<(), error::Error> {
         // TODO: Do we want to do this on the sender address of the
         // recipient address?
@@ -623,15 +633,16 @@ where
             .await
             .unwrap_or(false);
 
-        let signer_decision = model::WithdrawSigner {
+        let signer_decision = model::WithdrawalSigner {
             request_id: withdraw_request.request_id,
             block_hash: withdraw_request.block_hash,
             signer_pub_key: self.signer_pub_key(),
             is_accepted,
+            txid: withdraw_request.txid,
         };
 
         self.storage
-            .write_withdraw_signer_decision(&signer_decision)
+            .write_withdrawal_signer_decision(&signer_decision)
             .await?;
 
         Ok(())
@@ -670,15 +681,16 @@ where
         decision: &message::SignerWithdrawDecision,
         signer_pub_key: PublicKey,
     ) -> Result<(), error::Error> {
-        let signer_decision = model::WithdrawSigner {
+        let signer_decision = model::WithdrawalSigner {
             request_id: decision.request_id,
             block_hash: decision.block_hash.into(),
             signer_pub_key,
             is_accepted: decision.accepted,
+            txid: decision.txid,
         };
 
         self.storage
-            .write_withdraw_signer_decision(&signer_decision)
+            .write_withdrawal_signer_decision(&signer_decision)
             .await?;
 
         #[cfg(feature = "testing")]

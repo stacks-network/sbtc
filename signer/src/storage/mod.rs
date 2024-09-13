@@ -79,26 +79,27 @@ pub trait DbRead {
     ) -> impl Future<Output = Result<Vec<model::DepositSigner>, Self::Error>> + Send;
 
     /// Get signer decisions for a withdraw request
-    fn get_withdraw_signers(
+    fn get_withdrawal_signers(
         &self,
         request_id: u64,
         block_hash: &model::StacksBlockHash,
-    ) -> impl Future<Output = Result<Vec<model::WithdrawSigner>, Self::Error>> + Send;
+    ) -> impl Future<Output = Result<Vec<model::WithdrawalSigner>, Self::Error>> + Send;
 
-    /// Get pending withdraw requests
-    fn get_pending_withdraw_requests(
+    /// Get pending withdrawal requests
+    fn get_pending_withdrawal_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
-    ) -> impl Future<Output = Result<Vec<model::WithdrawRequest>, Self::Error>> + Send;
+    ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Self::Error>> + Send;
 
-    /// Get pending withdraw requests that have been accepted by at least `threshold` signers and has no responses
-    fn get_pending_accepted_withdraw_requests(
+    /// Get pending withdrawal requests that have been accepted by at least
+    /// `threshold` signers and has no responses
+    fn get_pending_accepted_withdrawal_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
         threshold: u16,
-    ) -> impl Future<Output = Result<Vec<model::WithdrawRequest>, Self::Error>> + Send;
+    ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Self::Error>> + Send;
 
     /// Get bitcoin blocks that include a particular transaction
     fn get_bitcoin_blocks_with_transaction(
@@ -170,9 +171,9 @@ pub trait DbWrite {
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     /// Write a withdrawal request.
-    fn write_withdraw_request(
+    fn write_withdrawal_request(
         &self,
-        withdraw_request: &model::WithdrawRequest,
+        request: &model::WithdrawalRequest,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     /// Write a signer decision for a deposit request.
@@ -182,9 +183,9 @@ pub trait DbWrite {
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     /// Write a signer decision for a withdrawal request.
-    fn write_withdraw_signer_decision(
+    fn write_withdrawal_signer_decision(
         &self,
-        decision: &model::WithdrawSigner,
+        decision: &model::WithdrawalSigner,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     /// Write a raw transaction.

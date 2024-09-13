@@ -127,6 +127,8 @@ pub struct Recipient {
     pub keypair: secp256k1::Keypair,
     /// The address associated with the above keypair.
     pub address: Address,
+    /// The script pubkey associated with the above keypair.
+    pub script_pubkey: ScriptBuf,
 }
 
 fn descriptor_base(public_key: &PublicKey, kind: AddressType) -> String {
@@ -146,17 +148,24 @@ impl Recipient {
     pub fn new(kind: AddressType) -> Self {
         let keypair = secp256k1::Keypair::new_global(&mut rand::rngs::OsRng);
         let pk = keypair.public_key();
-        let address = match kind {
-            AddressType::P2wpkh => Address::p2wpkh(&CompressedPublicKey(pk), Network::Regtest),
-            AddressType::P2pkh => Address::p2pkh(PublicKey::new(pk), Network::Regtest),
+        let script_pubkey = match kind {
+            AddressType::P2wpkh => ScriptBuf::new_p2wpkh(&CompressedPublicKey(pk).wpubkey_hash()),
+            AddressType::P2pkh => ScriptBuf::new_p2pkh(&PublicKey::new(pk).pubkey_hash()),
             AddressType::P2tr => {
                 let (internal_key, _) = pk.x_only_public_key();
-                Address::p2tr(SECP256K1, internal_key, None, Network::Regtest)
+                ScriptBuf::new_p2tr(SECP256K1, internal_key, None)
             }
             _ => unimplemented!(),
         };
 
-        Recipient { keypair, address }
+        let params = Network::Regtest.params();
+        let address = Address::from_script(&script_pubkey, params).unwrap();
+
+        Recipient {
+            keypair,
+            address,
+            script_pubkey,
+        }
     }
 
     /// Return all UTXOs for this recipient where the amount is greater

@@ -1,6 +1,5 @@
 //! Test data generation utilities
 
-use bitcoin::hashes::Hash;
 use fake::Fake;
 
 use crate::storage::model;
@@ -24,7 +23,7 @@ pub struct TestData {
     pub deposit_requests: Vec<model::DepositRequest>,
 
     /// Deposit requests
-    pub withdraw_requests: Vec<model::WithdrawRequest>,
+    pub withdraw_requests: Vec<model::WithdrawalRequest>,
 
     /// Raw transaction data
     pub transactions: Vec<model::Transaction>,
@@ -39,7 +38,7 @@ pub struct TestData {
     pub deposit_signers: Vec<model::DepositSigner>,
 
     /// Withdraw signers
-    pub withdraw_signers: Vec<model::WithdrawSigner>,
+    pub withdraw_signers: Vec<model::WithdrawalSigner>,
 }
 
 impl TestData {
@@ -157,7 +156,7 @@ impl TestData {
 
         for req in self.withdraw_requests.iter() {
             storage
-                .write_withdraw_request(req)
+                .write_withdrawal_request(req)
                 .await
                 .expect("failed to write withdraw request");
         }
@@ -185,7 +184,7 @@ impl TestData {
 
         for decision in self.withdraw_signers.iter() {
             storage
-                .write_withdraw_signer_decision(decision)
+                .write_withdrawal_signer_decision(decision)
                 .await
                 .expect("failed to write signer decision");
         }
@@ -297,8 +296,8 @@ impl DepositData {
 
 #[derive(Debug, Clone, Default)]
 struct WithdrawData {
-    pub withdraw_requests: Vec<model::WithdrawRequest>,
-    pub withdraw_signers: Vec<model::WithdrawSigner>,
+    pub withdraw_requests: Vec<model::WithdrawalRequest>,
+    pub withdraw_signers: Vec<model::WithdrawalSigner>,
     pub transactions: Vec<model::Transaction>,
     pub stacks_transactions: Vec<model::StacksTransaction>,
 }
@@ -311,7 +310,7 @@ impl WithdrawData {
     fn generate(
         rng: &mut impl rand::RngCore,
         stacks_blocks: &[model::StacksBlock],
-        withdraw_requests: &[model::WithdrawRequest],
+        withdraw_requests: &[model::WithdrawalRequest],
         num_withdraw_requests: usize,
         num_signers_per_request: usize,
     ) -> Self {
@@ -328,16 +327,12 @@ impl WithdrawData {
                 |(mut withdraw_requests, next_withdraw_request_id), _| {
                     let stacks_block_hash = stacks_blocks.choose(rng).unwrap().block_hash; // Guaranteed to be non-empty
 
-                    let mut withdraw_request: model::WithdrawRequest =
+                    let mut withdraw_request: model::WithdrawalRequest =
                         fake::Faker.fake_with_rng(rng);
 
                     withdraw_request.block_hash = stacks_block_hash;
                     withdraw_request.request_id = next_withdraw_request_id;
-                    withdraw_request.recipient = bitcoin::Address::p2pkh(
-                        bitcoin::PubkeyHash::from_byte_array([0; 20]),
-                        bitcoin::Network::Testnet,
-                    )
-                    .to_string();
+                    withdraw_request.recipient = fake::Faker.fake_with_rng(rng);
 
                     let mut raw_transaction: model::Transaction = fake::Faker.fake_with_rng(rng);
                     raw_transaction.tx_type = model::TransactionType::WithdrawRequest;
@@ -349,9 +344,10 @@ impl WithdrawData {
 
                     let withdraw_signers: Vec<_> = (0..num_signers_per_request)
                         .map(|_| {
-                            let mut signer: model::WithdrawSigner = fake::Faker.fake_with_rng(rng);
+                            let mut signer: model::WithdrawalSigner = fake::Faker.fake_with_rng(rng);
                             signer.request_id = withdraw_request.request_id;
                             signer.block_hash = withdraw_request.block_hash;
+                            signer.txid = withdraw_request.txid;
                             signer
                         })
                         .collect();

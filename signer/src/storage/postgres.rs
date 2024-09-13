@@ -310,7 +310,7 @@ impl super::DbRead for PgStore {
               , deposit_requests.recipient
               , deposit_requests.amount
               , deposit_requests.max_fee
-              , deposit_requests.sender_addresses
+              , deposit_requests.sender_script_pub_keys
             FROM transactions_in_window transactions
             JOIN sbtc_signer.deposit_requests deposit_requests ON
                 deposit_requests.txid = transactions.txid
@@ -364,7 +364,7 @@ impl super::DbRead for PgStore {
               , deposit_requests.recipient
               , deposit_requests.amount
               , deposit_requests.max_fee
-              , deposit_requests.sender_addresses
+              , deposit_requests.sender_script_pub_keys
             FROM transactions_in_window transactions
             JOIN sbtc_signer.deposit_requests deposit_requests USING(txid)
             JOIN sbtc_signer.deposit_signers signers USING(txid, output_index)
@@ -439,7 +439,7 @@ impl super::DbRead for PgStore {
               , requests.recipient
               , requests.amount
               , requests.max_fee
-              , requests.sender_addresses
+              , requests.sender_script_pub_keys
             FROM sbtc_signer.deposit_requests requests
                  JOIN sbtc_signer.deposit_signers signers
                    ON requests.txid = signers.txid
@@ -476,19 +476,20 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn get_withdraw_signers(
+    async fn get_withdrawal_signers(
         &self,
         request_id: u64,
         block_hash: &model::StacksBlockHash,
-    ) -> Result<Vec<model::WithdrawSigner>, Self::Error> {
-        sqlx::query_as::<_, model::WithdrawSigner>(
+    ) -> Result<Vec<model::WithdrawalSigner>, Self::Error> {
+        sqlx::query_as::<_, model::WithdrawalSigner>(
             "SELECT
                 request_id
+              , txid
               , block_hash
               , signer_pub_key
               , is_accepted
               , created_at
-            FROM sbtc_signer.withdraw_signers
+            FROM sbtc_signer.withdrawal_signers
             WHERE request_id = $1 AND block_hash = $2",
         )
         .bind(i64::try_from(request_id).map_err(Error::ConversionDatabaseInt)?)
@@ -498,15 +499,15 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn get_pending_withdraw_requests(
+    async fn get_pending_withdrawal_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
-    ) -> Result<Vec<model::WithdrawRequest>, Self::Error> {
+    ) -> Result<Vec<model::WithdrawalRequest>, Self::Error> {
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
             return Ok(Vec::new());
         };
-        sqlx::query_as::<_, model::WithdrawRequest>(
+        sqlx::query_as::<_, model::WithdrawalRequest>(
             r#"
             WITH RECURSIVE extended_context_window AS (
                 SELECT 
@@ -565,7 +566,7 @@ impl super::DbRead for PgStore {
               , wr.amount
               , wr.max_fee
               , wr.sender_address
-            FROM sbtc_signer.withdraw_requests wr
+            FROM sbtc_signer.withdrawal_requests wr
             JOIN stacks_context_window sc ON wr.block_hash = sc.block_hash
             "#,
         )
@@ -577,16 +578,16 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn get_pending_accepted_withdraw_requests(
+    async fn get_pending_accepted_withdrawal_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
         threshold: u16,
-    ) -> Result<Vec<model::WithdrawRequest>, Self::Error> {
+    ) -> Result<Vec<model::WithdrawalRequest>, Self::Error> {
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
             return Ok(Vec::new());
         };
-        sqlx::query_as::<_, model::WithdrawRequest>(
+        sqlx::query_as::<_, model::WithdrawalRequest>(
             r#"
             WITH RECURSIVE extended_context_window AS (
                 SELECT 
@@ -645,14 +646,15 @@ impl super::DbRead for PgStore {
               , wr.amount
               , wr.max_fee
               , wr.sender_address
-            FROM sbtc_signer.withdraw_requests wr
+            FROM sbtc_signer.withdrawal_requests wr
             JOIN stacks_context_window sc ON wr.block_hash = sc.block_hash
-            JOIN sbtc_signer.withdraw_signers signers ON
+            JOIN sbtc_signer.withdrawal_signers signers ON
+                wr.txid = signers.txid AND
                 wr.request_id = signers.request_id AND
                 wr.block_hash = signers.block_hash
             WHERE
                 signers.is_accepted
-            GROUP BY wr.request_id, wr.block_hash
+            GROUP BY wr.request_id, wr.block_hash, wr.txid
             HAVING COUNT(wr.request_id) >= $4
             "#,
         )
@@ -845,7 +847,7 @@ impl super::DbWrite for PgStore {
               , recipient
               , amount
               , max_fee
-              , sender_addresses
+              , sender_script_pub_keys
               )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT DO NOTHING",
@@ -857,7 +859,7 @@ impl super::DbWrite for PgStore {
         .bind(&deposit_request.recipient)
         .bind(i64::try_from(deposit_request.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(deposit_request.max_fee).map_err(Error::ConversionDatabaseInt)?)
-        .bind(&deposit_request.sender_addresses)
+        .bind(&deposit_request.sender_script_pub_keys)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -880,7 +882,7 @@ impl super::DbWrite for PgStore {
         let mut recipient = Vec::with_capacity(deposit_requests.len());
         let mut amount = Vec::with_capacity(deposit_requests.len());
         let mut max_fee = Vec::with_capacity(deposit_requests.len());
-        let mut sender_addresses = Vec::with_capacity(deposit_requests.len());
+        let mut sender_script_pubkeys = Vec::with_capacity(deposit_requests.len());
 
         for req in deposit_requests {
             txid.push(req.txid);
@@ -895,7 +897,12 @@ impl super::DbWrite for PgStore {
             // postgres is tough. The naive approach of doing
             // UNNEST($1::VARCHAR[][]) doesn't work, since that completely
             // flattens the array.
-            sender_addresses.push(req.sender_addresses.join(","));
+            let addresses: Vec<String> = req
+                .sender_script_pub_keys
+                .iter()
+                .map(|x| x.to_hex_string())
+                .collect();
+            sender_script_pubkeys.push(addresses.join(","));
         }
 
         sqlx::query(
@@ -907,7 +914,7 @@ impl super::DbWrite for PgStore {
             , recipient       AS (SELECT ROW_NUMBER() OVER (), recipient FROM UNNEST($5::BYTEA[]) AS recipient)
             , amount          AS (SELECT ROW_NUMBER() OVER (), amount FROM UNNEST($6::BIGINT[]) AS amount)
             , max_fee         AS (SELECT ROW_NUMBER() OVER (), max_fee FROM UNNEST($7::BIGINT[]) AS max_fee)
-            , sender_address  AS (SELECT ROW_NUMBER() OVER (), sender_address FROM UNNEST($8::VARCHAR[]) AS sender_address)
+            , script_pub_keys AS (SELECT ROW_NUMBER() OVER (), senders FROM UNNEST($8::VARCHAR[]) AS senders)
             INSERT INTO sbtc_signer.deposit_requests (
                   txid
                 , output_index
@@ -916,7 +923,7 @@ impl super::DbWrite for PgStore {
                 , recipient
                 , amount
                 , max_fee
-                , sender_addresses)
+                , sender_script_pub_keys)
             SELECT
                 txid
               , output_index
@@ -925,7 +932,7 @@ impl super::DbWrite for PgStore {
               , recipient
               , amount
               , max_fee
-              , regexp_split_to_array(sender_address, ',')
+              , ARRAY(SELECT decode(UNNEST(regexp_split_to_array(senders, ',')), 'hex'))
             FROM tx_ids
             JOIN output_index USING (row_number)
             JOIN spend_script USING (row_number)
@@ -933,7 +940,7 @@ impl super::DbWrite for PgStore {
             JOIN recipient USING (row_number)
             JOIN amount USING (row_number)
             JOIN max_fee USING (row_number)
-            JOIN sender_address USING (row_number)
+            JOIN script_pub_keys USING (row_number)
             ON CONFLICT DO NOTHING"#,
         )
         .bind(txid)
@@ -943,7 +950,7 @@ impl super::DbWrite for PgStore {
         .bind(recipient)
         .bind(amount)
         .bind(max_fee)
-        .bind(sender_addresses)
+        .bind(sender_script_pubkeys)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -951,12 +958,12 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn write_withdraw_request(
+    async fn write_withdrawal_request(
         &self,
-        withdraw_request: &model::WithdrawRequest,
+        request: &model::WithdrawalRequest,
     ) -> Result<(), Self::Error> {
         sqlx::query(
-            "INSERT INTO sbtc_signer.withdraw_requests
+            "INSERT INTO sbtc_signer.withdrawal_requests
               ( request_id
               , txid
               , block_hash
@@ -968,13 +975,13 @@ impl super::DbWrite for PgStore {
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT DO NOTHING",
         )
-        .bind(i64::try_from(withdraw_request.request_id).map_err(Error::ConversionDatabaseInt)?)
-        .bind(withdraw_request.txid)
-        .bind(withdraw_request.block_hash)
-        .bind(&withdraw_request.recipient)
-        .bind(i64::try_from(withdraw_request.amount).map_err(Error::ConversionDatabaseInt)?)
-        .bind(i64::try_from(withdraw_request.max_fee).map_err(Error::ConversionDatabaseInt)?)
-        .bind(&withdraw_request.sender_address)
+        .bind(i64::try_from(request.request_id).map_err(Error::ConversionDatabaseInt)?)
+        .bind(request.txid)
+        .bind(request.block_hash)
+        .bind(&request.recipient)
+        .bind(i64::try_from(request.amount).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(request.max_fee).map_err(Error::ConversionDatabaseInt)?)
+        .bind(&request.sender_address)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1008,21 +1015,23 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn write_withdraw_signer_decision(
+    async fn write_withdrawal_signer_decision(
         &self,
-        decision: &model::WithdrawSigner,
+        decision: &model::WithdrawalSigner,
     ) -> Result<(), Self::Error> {
         sqlx::query(
-            "INSERT INTO sbtc_signer.withdraw_signers
+            "INSERT INTO sbtc_signer.withdrawal_signers
               ( request_id
+              , txid
               , block_hash
               , signer_pub_key
               , is_accepted
               )
-            VALUES ($1, $2, $3, $4)
+            VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT DO NOTHING",
         )
         .bind(i64::try_from(decision.request_id).map_err(Error::ConversionDatabaseInt)?)
+        .bind(decision.txid)
         .bind(decision.block_hash)
         .bind(decision.signer_pub_key)
         .bind(decision.is_accepted)

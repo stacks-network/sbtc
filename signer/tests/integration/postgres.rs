@@ -372,14 +372,14 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
     );
 
     let mut pending_withdraw_requests = in_memory_store
-        .get_pending_withdraw_requests(&chain_tip, context_window)
+        .get_pending_withdrawal_requests(&chain_tip, context_window)
         .await
         .expect("failed to get pending deposit requests");
 
     pending_withdraw_requests.sort();
 
     let mut pg_pending_withdraw_requests = pg_store
-        .get_pending_withdraw_requests(&chain_tip, context_window)
+        .get_pending_withdrawal_requests(&chain_tip, context_window)
         .await
         .expect("failed to get pending deposit requests");
 
@@ -497,7 +497,7 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
     );
 
     let mut pending_accepted_withdraw_requests = in_memory_store
-        .get_pending_accepted_withdraw_requests(&chain_tip, context_window, threshold)
+        .get_pending_accepted_withdrawal_requests(&chain_tip, context_window, threshold)
         .await
         .expect("failed to get pending_accepted deposit requests");
 
@@ -506,7 +506,7 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
     assert!(!pending_accepted_withdraw_requests.is_empty());
 
     let mut pg_pending_accepted_withdraw_requests = pg_store
-        .get_pending_accepted_withdraw_requests(&chain_tip, context_window, threshold)
+        .get_pending_accepted_withdrawal_requests(&chain_tip, context_window, threshold)
         .await
         .expect("failed to get pending_accepted deposit requests");
 
