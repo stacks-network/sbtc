@@ -28,10 +28,16 @@ use signer::storage;
 use signer::storage::model;
 use signer::storage::model::BitcoinTxId;
 use signer::storage::model::RotateKeysTransaction;
+use signer::storage::model::StacksBlock;
+use signer::storage::model::StacksBlockHash;
+use signer::storage::model::StacksTxId;
+use signer::storage::model::WithdrawalRequestId;
+use signer::storage::model::WithdrawalSigner;
 use signer::storage::DbRead;
 use signer::storage::DbWrite;
 use signer::testing;
 use signer::testing::dummy::SignerSetConfig;
+use signer::testing::storage::model::TestData;
 use signer::testing::wallet::ContractCallWrapper;
 
 use fake::Fake;
@@ -55,9 +61,16 @@ async fn should_be_able_to_query_bitcoin_blocks() {
         num_signers_per_request: 0,
     };
 
-    let persisted_model = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
-    let not_persisted_model =
-        testing::storage::model::TestData::generate(&mut rng, &test_model_params);
+    let signer_info = testing::wsts::generate_signer_info(&mut rng, 7);
+    let coordinator_signer_info = signer_info.first().cloned().unwrap();
+    let signer_set: Vec<_> = coordinator_signer_info
+        .signer_public_keys
+        .iter()
+        .copied()
+        .collect();
+
+    let persisted_model = TestData::generate(&mut rng, &signer_set, &test_model_params);
+    let not_persisted_model = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     // Write all blocks for the persisted model to the database
     persisted_model.write_to(&mut store).await;
@@ -286,6 +299,7 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
+    let num_signers = 7;
     let context_window = 9;
     let test_model_params = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
@@ -294,7 +308,15 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: 0,
     };
-    let test_data = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
+    let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
+    let coordinator_signer_info = signer_info.first().cloned().unwrap();
+    let signer_set: Vec<_> = coordinator_signer_info
+        .signer_public_keys
+        .iter()
+        .copied()
+        .collect();
+
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
     test_data.write_to(&mut pg_store).await;
@@ -343,6 +365,7 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
+    let num_signers = 7;
     let context_window = 3;
     let test_model_params = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
@@ -351,7 +374,15 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
         num_withdraw_requests_per_block: 1,
         num_signers_per_request: 0,
     };
-    let test_data = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
+
+    let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
+    let coordinator_signer_info = signer_info.first().cloned().unwrap();
+    let signer_set: Vec<_> = coordinator_signer_info
+        .signer_public_keys
+        .iter()
+        .copied()
+        .collect();
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
     test_data.write_to(&mut pg_store).await;
@@ -400,16 +431,25 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
+    let num_signers = 7;
     let context_window = 9;
     let test_model_params = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
         num_stacks_blocks_per_bitcoin_block: 3,
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
-        num_signers_per_request: 7,
+        num_signers_per_request: num_signers,
     };
     let threshold = 4;
-    let test_data = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
+
+    let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
+    let coordinator_signer_info = signer_info.first().cloned().unwrap();
+    let signer_set: Vec<_> = coordinator_signer_info
+        .signer_public_keys
+        .iter()
+        .copied()
+        .collect();
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
     test_data.write_to(&mut pg_store).await;
@@ -463,6 +503,7 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
+    let num_signers = 15;
     let context_window = 3;
     let test_model_params = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
@@ -473,10 +514,17 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
         // probability, so the number of signers needs to be a bit above
         // the threshold in order for the test to succeed with accepted
         // requests.
-        num_signers_per_request: 15,
+        num_signers_per_request: num_signers,
     };
     let threshold = 4;
-    let test_data = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
+    let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
+    let coordinator_signer_info = signer_info.first().cloned().unwrap();
+    let signer_set: Vec<_> = coordinator_signer_info
+        .signer_public_keys
+        .iter()
+        .copied()
+        .collect();
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
     test_data.write_to(&mut pg_store).await;
@@ -540,7 +588,14 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
     };
     let num_signers = 7;
     let threshold = 4;
-    let test_data = testing::storage::model::TestData::generate(&mut rng, &test_model_params);
+    let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
+    let coordinator_signer_info = signer_info.first().cloned().unwrap();
+    let signer_set: Vec<_> = coordinator_signer_info
+        .signer_public_keys
+        .iter()
+        .copied()
+        .collect();
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
     test_data.write_to(&mut pg_store).await;
@@ -946,6 +1001,129 @@ async fn fetching_deposit_request_votes() {
     // Okay let's test the query and get the votes.
     let votes = store
         .get_deposit_request_signer_votes(&txid, output_index, &rotate_keys.aggregate_key)
+        .await
+        .unwrap();
+
+    let mut actual_signer_vote_map: BTreeMap<PublicKey, Option<bool>> = votes
+        .into_iter()
+        .map(|vote| (vote.signer_public_key, vote.is_accepted))
+        .collect();
+
+    // Let's make sure that the votes are what we expected. For the votes
+    // that we've recieved, they should match exactly.
+    for decision in signer_decisions.into_iter() {
+        let actual_vote = actual_signer_vote_map
+            .remove(&decision.signer_pub_key)
+            .unwrap();
+        assert_eq!(actual_vote, Some(decision.is_accepted));
+    }
+
+    // The remianing keys, the ones were we have not received a vote,
+    // should be all None.
+    assert!(actual_signer_vote_map.values().all(Option::is_none));
+
+    signer::testing::storage::drop_db(store).await;
+}
+
+/// For this test we check that when we get the votes for a withdrawal
+/// request for a specific aggregate key, that we get a vote for all public
+/// keys for the specific aggregate key. This includes "implicit" votes
+/// where we got no response from a particular signer but so we assume that
+/// they vote to reject the transaction.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn fetching_withdrawal_request_votes() {
+    // So we have 7 signers but we wiill only receive votes from 4 of them.
+    // Three of the votes will be to accept and one explicit reject. The
+    // others will be counted as rejections in the query.
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = signer::testing::storage::new_test_database(db_num).await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let signer_set_config = SignerSetConfig {
+        num_keys: 7,
+        signatures_required: 4,
+    };
+    let rotate_keys: RotateKeysTransaction = signer_set_config.fake_with_rng(&mut rng);
+    // Before we can write the rotate keys into the postgres database, we
+    // need to have a transaction in the trasnactions table.
+    let transaction = model::Transaction {
+        txid: rotate_keys.txid.into_bytes(),
+        tx: Vec::new(),
+        tx_type: model::TransactionType::RotateKeys,
+        block_hash: fake::Faker.fake_with_rng(&mut rng),
+    };
+    store.write_transaction(&transaction).await.unwrap();
+    store
+        .write_rotate_keys_transaction(&rotate_keys)
+        .await
+        .unwrap();
+
+    let txid: StacksTxId = fake::Faker.fake_with_rng(&mut rng);
+    let block_hash: StacksBlockHash = fake::Faker.fake_with_rng(&mut rng);
+    let request_id = 17;
+
+    let signer_decisions = [
+        WithdrawalSigner {
+            txid,
+            block_hash,
+            request_id,
+            signer_pub_key: rotate_keys.signer_set[0],
+            is_accepted: true,
+        },
+        WithdrawalSigner {
+            txid,
+            block_hash,
+            request_id,
+            signer_pub_key: rotate_keys.signer_set[1],
+            is_accepted: false,
+        },
+        WithdrawalSigner {
+            txid,
+            block_hash,
+            request_id,
+            signer_pub_key: rotate_keys.signer_set[2],
+            is_accepted: true,
+        },
+        WithdrawalSigner {
+            txid,
+            block_hash,
+            request_id,
+            signer_pub_key: rotate_keys.signer_set[3],
+            is_accepted: true,
+        },
+    ];
+
+    for decision in signer_decisions.clone() {
+        // Before we can write the decision, we need to make sure that the
+        // withdrawal request and stacks block are in the database to
+        // satisfy the foreign key constraints.
+        let block = StacksBlock {
+            block_hash,
+            ..fake::Faker.fake_with_rng::<StacksBlock, _>(&mut rng)
+        };
+        let req = model::WithdrawalRequest {
+            txid,
+            block_hash,
+            request_id,
+            ..fake::Faker.fake_with_rng::<model::WithdrawalRequest, _>(&mut rng)
+        };
+
+        store.write_stacks_block(&block).await.unwrap();
+        store.write_withdrawal_request(&req).await.unwrap();
+        store
+            .write_withdrawal_signer_decision(&decision)
+            .await
+            .unwrap();
+    }
+
+    let id = WithdrawalRequestId { txid, block_hash, request_id };
+    // Let's make sure the identifiers match, doesn't hurt too.
+    assert_eq!(id, signer_decisions[0].request_identifier());
+
+    // Okay let's test the query and get the votes.
+    let votes = store
+        .get_withdrawal_request_signer_votes(&id, &rotate_keys.aggregate_key)
         .await
         .unwrap();
 

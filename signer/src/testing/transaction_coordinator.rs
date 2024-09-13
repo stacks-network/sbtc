@@ -1,14 +1,19 @@
 //! Test utilities for the transaction coordinator
 
+use std::time::Duration;
+
 use crate::bitcoin::utxo;
 use crate::error;
 use crate::keys;
 use crate::keys::PrivateKey;
+use crate::keys::PublicKey;
 use crate::keys::SignerScriptPubKey;
 use crate::network;
 use crate::storage;
 use crate::storage::model;
 use crate::testing;
+use crate::testing::storage::model::TestData;
+use crate::testing::wsts::SignerSet;
 use crate::transaction_coordinator;
 
 use rand::SeedableRng as _;
@@ -49,7 +54,7 @@ where
                 threshold,
                 bitcoin_client,
                 bitcoin_network: bitcoin::Network::Testnet,
-                signing_round_max_duration: std::time::Duration::from_secs(10),
+                signing_round_max_duration: Duration::from_secs(10),
             },
             block_observer_notification_tx,
             storage,
@@ -84,8 +89,9 @@ impl<S> RunningEventLoopHandle<S> {
         // While this explicit drop isn't strictly necessary, it serves to clarify our intention.
         drop(self.block_observer_notification_tx);
 
-        self.join_handle
+        tokio::time::timeout(Duration::from_secs(10), self.join_handle)
             .await
+            .unwrap()
             .expect("joining event loop failed")
             .expect("event loop returned error");
 
@@ -159,11 +165,13 @@ where
             .once()
             .returning(|_| Box::pin(async { Ok(None) }));
 
-        let (broadcasted_tx_sender, mut broadcasted_tx_receiver) = tokio::sync::mpsc::channel(1);
+        // TODO: multiple transactions can be generated and keeping this
+        // too low will cause issues. Figure out why.
+        let (broadcasted_tx_sender, mut broadcasted_tx_receiver) = tokio::sync::mpsc::channel(100);
 
         mock_bitcoin_client
             .expect_broadcast_transaction()
-            .once()
+            .times(1..)
             .returning(move |tx| {
                 let tx = tx.clone();
                 let broadcasted_tx_sender = broadcasted_tx_sender.clone();
@@ -200,7 +208,11 @@ where
             .send(())
             .expect("failed to send notification");
 
-        let broadcasted_tx = broadcasted_tx_receiver.recv().await.unwrap();
+        let future = broadcasted_tx_receiver.recv();
+        let broadcasted_tx = tokio::time::timeout(Duration::from_secs(10), future)
+            .await
+            .unwrap()
+            .unwrap();
 
         let first_script_pubkey = broadcasted_tx
             .tx_out(0)
@@ -217,12 +229,13 @@ where
         &mut self,
         storage: &mut S,
         rng: &mut Rng,
-        signer_set: &mut testing::wsts::SignerSet,
+        signer_set: &mut SignerSet,
     ) -> (keys::PublicKey, model::BitcoinBlockHash)
     where
         Rng: rand::CryptoRng + rand::RngCore,
     {
-        let test_data = self.generate_test_data(rng);
+        let signer_keys = signer_set.signer_keys();
+        let test_data = self.generate_test_data(rng, signer_keys);
         Self::write_test_data(&test_data, storage).await;
 
         let bitcoin_chain_tip = storage
@@ -249,15 +262,15 @@ where
         (aggregate_key, bitcoin_chain_tip)
     }
 
-    async fn write_test_data(test_data: &testing::storage::model::TestData, storage: &mut S) {
+    async fn write_test_data(test_data: &TestData, storage: &mut S) {
         test_data.write_to(storage).await;
     }
 
-    fn generate_test_data(
-        &self,
-        rng: &mut impl rand::RngCore,
-    ) -> testing::storage::model::TestData {
-        testing::storage::model::TestData::generate(rng, &self.test_model_parameters)
+    fn generate_test_data<R>(&self, rng: &mut R, signer_keys: Vec<PublicKey>) -> TestData
+    where
+        R: rand::RngCore,
+    {
+        TestData::generate(rng, &signer_keys, &self.test_model_parameters)
     }
 
     fn select_coordinator(
