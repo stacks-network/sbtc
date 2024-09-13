@@ -43,16 +43,14 @@ ping_interval = 60
 subscribe_interval = 10
 
 # !! ==============================================================================
-# !! Stacks RPC-API Configuration
-# !! ==============================================================================
-[stacks.api]
-endpoint = "http://localhost:3999"
-
-# !! ==============================================================================
 # !! Stacks Node Configuration
 # !! ==============================================================================
 [stacks.node]
+# The RPC URL(s) of the Stacks node(s) to connect to. At least one must be
+# provided. If multiple nodes are provided they will be tried in order when
+# making requests.
 endpoints = ["http://localhost:20443"]
+
 # This is the start height of the first EPOCH 3.0 block on the stacks
 # blockchain.
 nakamoto_start_height = 31
@@ -64,8 +62,16 @@ nakamoto_start_height = 31
 # The private key associated with the signer. This is used to generate the
 # signers associated public key and sign messages to other signers.
 #
+# This may be either in 32- or 33-byte format. If you generated the key using
+# `stacks-cli` or other ecosystem tools, it is likely that the key is in 33-byte
+# format which includes a stacks-proprietary suffix byte. The sBTC signer doesn't
+# make use of this byte and it will be trimmed automatically if provided.
+#
+# Format: "<hex-encoded-private-key>" (64 or 66 hex-characters)
 # Required: true
+# Environment: SIGNER_SIGNER__PRIVATE_KEY
 private_key = "8183dc385a7a1fc8353b9e781ee0859a71e57abea478a5bca679334094f7adb5"
+
 # Specifies which network to use when constructing and sending transactions
 # on stacks and bitcoin. This cooresponds to the `chain` flag in the
 # bitcoin.conf file of the connected bitcoin-core node, and the
@@ -81,6 +87,12 @@ network = "regtest"
 #
 # Required: true
 deployer = "SN2V7WTJ7BHR03MPHZ1C9A9ZR6NZGR4WM8HT4V67Y"
+
+# The signer database endpoint (pgsql connection string)
+#
+# Required: true
+# Environment: SIGNER_SIGNER__DB_ENDPOINT
+db_endpoint = "postgresql://postgres:postgres@localhost:5432/signer"
 
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration

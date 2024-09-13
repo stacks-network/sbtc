@@ -15,13 +15,10 @@ use signer::network::libp2p::SignerSwarmBuilder;
 use signer::storage::postgres::PgStore;
 use tokio::signal;
 
-// TODO: This should be read from configuration
-const DATABASE_URL: &str = "postgres://user:password@localhost:5432/signer";
-
 // TODO: Should this be part of the SignerContext?
-fn get_connection_pool() -> sqlx::PgPool {
+fn get_connection_pool(uri: &url::Url) -> sqlx::PgPool {
     sqlx::postgres::PgPoolOptions::new()
-        .connect_lazy(DATABASE_URL)
+        .connect_lazy(uri.as_str())
         .unwrap()
 }
 
@@ -177,7 +174,8 @@ async fn run_libp2p_swarm(ctx: &impl Context) -> Result<(), Error> {
 async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
     tracing::info!("initializing the Stacks event observer server");
 
-    let pool = get_connection_pool();
+    let pool = get_connection_pool(&ctx.config().signer.db_endpoint);
+
     let state = ApiState {
         db: PgStore::from(pool),
         settings: ctx.config().clone(),
