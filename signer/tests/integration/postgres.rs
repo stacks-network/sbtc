@@ -46,6 +46,21 @@ use test_case::test_case;
 
 use crate::DATABASE_NUM;
 
+fn generate_signer_set<R>(rng: &mut R, num_signers: usize) -> Vec<PublicKey>
+where
+    R: rand::RngCore + rand::CryptoRng,
+{
+    // Generate the signer set. Each SignerInfo object returned from the
+    // `testing::wsts::generate_signer_info` function the public keys of
+    // other signers, so we take one of them and get the signing set from
+    // that one.
+    testing::wsts::generate_signer_info(rng, num_signers)
+        .into_iter()
+        .take(1)
+        .flat_map(|signer_info| signer_info.signer_public_keys.into_iter())
+        .collect()
+}
+
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_be_able_to_query_bitcoin_blocks() {
@@ -61,13 +76,7 @@ async fn should_be_able_to_query_bitcoin_blocks() {
         num_signers_per_request: 0,
     };
 
-    let signer_info = testing::wsts::generate_signer_info(&mut rng, 7);
-    let coordinator_signer_info = signer_info.first().cloned().unwrap();
-    let signer_set: Vec<_> = coordinator_signer_info
-        .signer_public_keys
-        .iter()
-        .copied()
-        .collect();
+    let signer_set = generate_signer_set(&mut rng, 7);
 
     let persisted_model = TestData::generate(&mut rng, &signer_set, &test_model_params);
     let not_persisted_model = TestData::generate(&mut rng, &signer_set, &test_model_params);
@@ -308,14 +317,7 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: 0,
     };
-    let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
-    let coordinator_signer_info = signer_info.first().cloned().unwrap();
-    let signer_set: Vec<_> = coordinator_signer_info
-        .signer_public_keys
-        .iter()
-        .copied()
-        .collect();
-
+    let signer_set = generate_signer_set(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -375,13 +377,7 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
         num_signers_per_request: 0,
     };
 
-    let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
-    let coordinator_signer_info = signer_info.first().cloned().unwrap();
-    let signer_set: Vec<_> = coordinator_signer_info
-        .signer_public_keys
-        .iter()
-        .copied()
-        .collect();
+    let signer_set = generate_signer_set(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -442,13 +438,7 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
     };
     let threshold = 4;
 
-    let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
-    let coordinator_signer_info = signer_info.first().cloned().unwrap();
-    let signer_set: Vec<_> = coordinator_signer_info
-        .signer_public_keys
-        .iter()
-        .copied()
-        .collect();
+    let signer_set = generate_signer_set(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -517,13 +507,7 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
         num_signers_per_request: num_signers,
     };
     let threshold = 4;
-    let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
-    let coordinator_signer_info = signer_info.first().cloned().unwrap();
-    let signer_set: Vec<_> = coordinator_signer_info
-        .signer_public_keys
-        .iter()
-        .copied()
-        .collect();
+    let signer_set = generate_signer_set(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -588,13 +572,7 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
     };
     let num_signers = 7;
     let threshold = 4;
-    let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
-    let coordinator_signer_info = signer_info.first().cloned().unwrap();
-    let signer_set: Vec<_> = coordinator_signer_info
-        .signer_public_keys
-        .iter()
-        .copied()
-        .collect();
+    let signer_set = generate_signer_set(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
