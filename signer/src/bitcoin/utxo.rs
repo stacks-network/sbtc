@@ -1016,7 +1016,6 @@ mod tests {
     use rand::distributions::Uniform;
     use rand::rngs::OsRng;
     use rand::Rng;
-    use rand::SeedableRng as _;
     use ripemd::Ripemd160;
     use secp256k1::SecretKey;
     use sha2::Digest as _;

@@ -133,9 +133,9 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum TxSignerEvent {
     /// Received a deposit decision
-    ReceviedDepositDecision,
-    /// Received a withdraw decision
-    ReceivedWithdrawDecision,
+    ReceivedDepositDecision,
+    /// Received a withdrawal decision
+    ReceivedWithdrawalDecision,
 }
 
 impl<N, S, B, Rng> TxSignerEventLoop<N, S, B, Rng>

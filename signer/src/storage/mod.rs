@@ -78,7 +78,7 @@ pub trait DbRead {
         output_index: u32,
     ) -> impl Future<Output = Result<Vec<model::DepositSigner>, Self::Error>> + Send;
 
-    /// Get signer decisions for a withdraw request
+    /// Get signer decisions for a withdrawal request
     fn get_withdrawal_signers(
         &self,
         request_id: u64,

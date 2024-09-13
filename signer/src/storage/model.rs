@@ -276,7 +276,7 @@ pub struct RotateKeysTransaction {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct SignerVote {
-    /// The public key of the signer that casted the vote.
+    /// The public key of the signer that cast the vote.
     pub signer_public_key: PublicKey,
     /// How the signer voted for a transaction. None is returned if we do
     /// not have a record of how the signer voted
@@ -315,7 +315,7 @@ pub enum TransactionType {
 /// generate more than one withdrawal request, so we need the request-id.
 ///
 /// A request-id and a Stacks Block ID is enough to uniquely identify the
-/// request but we add in the transaction ID for completeness.
+/// request, but we add in the transaction ID for completeness.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WithdrawalRequestId {
     /// The Stacks block ID that includes the transaction that generated
@@ -398,7 +398,7 @@ impl From<[u8; 32]> for BitcoinBlockHash {
     }
 }
 
-/// The Stacks block Id. This is different from the block header hash.
+/// The Stacks block ID. This is different from the block header hash.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StacksBlockHash(StacksBlockId);
 
