@@ -139,6 +139,14 @@ pub trait DbRead {
         output_index: u32,
         aggregate_key: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::SignerVote>, Self::Error>> + Send;
+
+    /// For the given withdrawal request identifier, and aggregate key, get
+    /// the list for how the signers voted against the request.
+    fn get_withdrawal_request_signer_votes(
+        &self,
+        id: &model::WithdrawalRequestId,
+        aggregate_key: &PublicKey,
+    ) -> impl Future<Output = Result<Vec<model::SignerVote>, Self::Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.
