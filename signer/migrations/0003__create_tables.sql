@@ -55,7 +55,7 @@ CREATE TABLE sbtc_signer.withdrawal_requests (
     max_fee BIGINT NOT NULL,
     sender_address TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    PRIMARY KEY (request_id, txid, block_hash),
+    PRIMARY KEY (request_id, block_hash),
     FOREIGN KEY (block_hash) REFERENCES sbtc_signer.stacks_blocks(block_hash) ON DELETE CASCADE
 );
 
@@ -66,8 +66,8 @@ CREATE TABLE sbtc_signer.withdrawal_signers (
     signer_pub_key BYTEA NOT NULL,
     is_accepted BOOL NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    PRIMARY KEY (request_id, txid, block_hash, signer_pub_key),
-    FOREIGN KEY (request_id, txid, block_hash) REFERENCES sbtc_signer.withdrawal_requests(request_id, txid, block_hash) ON DELETE CASCADE
+    PRIMARY KEY (request_id, block_hash, signer_pub_key),
+    FOREIGN KEY (request_id, block_hash) REFERENCES sbtc_signer.withdrawal_requests(request_id, block_hash) ON DELETE CASCADE
 );
 
 CREATE TABLE sbtc_signer.transactions (
