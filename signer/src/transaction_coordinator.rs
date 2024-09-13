@@ -1,7 +1,7 @@
 //! # Transaction coordinator
 //!
 //! This module contains the transaction coordinator, which is the component of the sBTC signer
-//! responsible for consctructing transactions and coordinating signing rounds.
+//! responsible for constructing transactions and coordinating signing rounds.
 //!
 //! For more details, see the [`TxCoordinatorEventLoop`] documentation.
 
@@ -382,7 +382,7 @@ where
         }
     }
 
-    // Determine if the current coordinator is the coordinator
+    // Determine if the current coordinator is the coordinator.
     //
     // The coordinator is decided using the hash of the bitcoin
     // chain tip. We don't use the chain tip directly because
@@ -426,7 +426,7 @@ where
 
     /// TODO(#380): This function needs to filter deposit requests based on
     /// time as well. We need to do this because deposit requests are locked
-    /// using OP_CSV, which lock up coins based on block hieght or
+    /// using OP_CSV, which lock up coins based on block height or
     /// multiples of 512 seconds measure by the median time past.
     #[tracing::instrument(skip(self))]
     async fn get_pending_requests(
@@ -467,13 +467,17 @@ where
             deposits.push(deposit);
         }
 
-        let convert_withdraw =
-            |request| utxo::WithdrawalRequest::try_from_model(request, self.bitcoin_network);
+        let mut withdrawals: Vec<utxo::WithdrawalRequest> = Vec::new();
 
-        let withdrawals = pending_withdraw_requests
-            .into_iter()
-            .map(convert_withdraw)
-            .collect::<Result<_, _>>()?;
+        for req in pending_withdraw_requests {
+            let votes = self
+                .storage
+                .get_withdrawal_request_signer_votes(&req.qualified_id(), &aggregate_key)
+                .await?;
+
+            let withdrawal = utxo::WithdrawalRequest::from_model(req, votes);
+            withdrawals.push(withdrawal);
+        }
 
         let accept_threshold = self.threshold;
         let num_signers = signer_public_keys

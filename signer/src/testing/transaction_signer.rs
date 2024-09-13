@@ -1,5 +1,6 @@
 //! Test utilities for the transaction signer
 
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -13,6 +14,7 @@ use crate::network;
 use crate::storage;
 use crate::storage::model;
 use crate::testing;
+use crate::testing::storage::model::TestData;
 use crate::transaction_coordinator;
 use crate::transaction_signer;
 
@@ -161,19 +163,21 @@ where
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+        let coordinator_signer_info = &signer_info.first().cloned().unwrap();
 
         let event_loop_harness = EventLoopHarness::create(
             network.connect(),
             (self.storage_constructor)(),
             self.context_window,
-            signer_info.first().cloned().unwrap().signer_private_key,
+            coordinator_signer_info.signer_private_key,
             self.signing_threshold,
             rng.clone(),
         );
 
         let mut handle = event_loop_harness.start();
 
-        let test_data = self.generate_test_data(&mut rng);
+        let signer_set = &coordinator_signer_info.signer_public_keys;
+        let test_data = self.generate_test_data(&mut rng, signer_set);
         Self::write_test_data(&test_data, &mut handle.storage).await;
 
         handle
@@ -198,19 +202,21 @@ where
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+        let coordinator_signer_info = signer_info.first().cloned().unwrap();
 
         let event_loop_harness = EventLoopHarness::create(
             network.connect(),
             (self.storage_constructor)(),
             self.context_window,
-            signer_info.first().cloned().unwrap().signer_private_key,
+            coordinator_signer_info.signer_private_key,
             self.signing_threshold,
             rng.clone(),
         );
 
         let mut handle = event_loop_harness.start();
 
-        let test_data = self.generate_test_data(&mut rng);
+        let signer_set = &coordinator_signer_info.signer_public_keys;
+        let test_data = self.generate_test_data(&mut rng, signer_set);
         Self::write_test_data(&test_data, &mut handle.storage).await;
 
         handle
@@ -235,6 +241,7 @@ where
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+        let coordinator_signer_info = signer_info.first().cloned().unwrap();
 
         let mut event_loop_handles: Vec<_> = signer_info
             .into_iter()
@@ -252,7 +259,8 @@ where
             })
             .collect();
 
-        let test_data = self.generate_test_data(&mut rng);
+        let signer_set = &coordinator_signer_info.signer_public_keys;
+        let test_data = self.generate_test_data(&mut rng, signer_set);
         for handle in event_loop_handles.iter_mut() {
             Self::write_test_data(&test_data, &mut handle.storage).await;
         }
@@ -271,7 +279,7 @@ where
         for handle in event_loop_handles.iter_mut() {
             handle
                 .wait_for_events(
-                    transaction_signer::TxSignerEvent::ReceviedDepositDecision,
+                    transaction_signer::TxSignerEvent::ReceivedDepositDecision,
                     num_expected_decisions,
                 )
                 .await
@@ -305,12 +313,13 @@ where
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+        let coordinator_signer_info = &signer_info.first().cloned().unwrap();
 
         let event_loop_harness = EventLoopHarness::create(
             network.connect(),
             (self.storage_constructor)(),
             self.context_window,
-            signer_info.first().cloned().unwrap().signer_private_key,
+            coordinator_signer_info.signer_private_key,
             self.signing_threshold,
             rng.clone(),
         );
@@ -328,7 +337,8 @@ where
         )
         .await;
 
-        let test_data = self.generate_test_data(&mut rng);
+        let signer_set = &coordinator_signer_info.signer_public_keys;
+        let test_data = self.generate_test_data(&mut rng, signer_set);
         Self::write_test_data(&test_data, &mut handle.storage).await;
 
         let bitcoin_chain_tip = handle
@@ -422,7 +432,8 @@ where
             })
             .collect();
 
-        let test_data = self.generate_test_data(&mut rng);
+        let signer_set = &coordinator_signer_info.signer_public_keys;
+        let test_data = self.generate_test_data(&mut rng, signer_set);
         for handle in event_loop_handles.iter_mut() {
             Self::write_test_data(&test_data, &mut handle.storage).await;
         }
@@ -472,6 +483,7 @@ where
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+        let coordinator_signer_info = signer_info.first().unwrap().clone();
 
         let mut event_loop_handles: Vec<_> = signer_info
             .clone()
@@ -490,7 +502,8 @@ where
             })
             .collect();
 
-        let test_data = self.generate_test_data(&mut rng);
+        let signer_set = &coordinator_signer_info.signer_public_keys;
+        let test_data = self.generate_test_data(&mut rng, signer_set);
         for handle in event_loop_handles.iter_mut() {
             Self::write_test_data(&test_data, &mut handle.storage).await;
         }
@@ -567,7 +580,7 @@ where
         assert!(signature.verify(&tweaked_aggregate_key.x(), &msg));
     }
 
-    async fn write_test_data(test_data: &testing::storage::model::TestData, storage: &mut S) {
+    async fn write_test_data(test_data: &TestData, storage: &mut S) {
         test_data.write_to(storage).await;
     }
 
@@ -708,11 +721,12 @@ where
         }
     }
 
-    fn generate_test_data(
-        &self,
-        rng: &mut impl rand::RngCore,
-    ) -> testing::storage::model::TestData {
-        testing::storage::model::TestData::generate(rng, &self.test_model_parameters)
+    fn generate_test_data<R>(&self, rng: &mut R, signer_set: &BTreeSet<PublicKey>) -> TestData
+    where
+        R: rand::RngCore,
+    {
+        let signer_keys: Vec<_> = signer_set.iter().copied().collect();
+        TestData::generate(rng, &signer_keys, &self.test_model_parameters)
     }
 }
 

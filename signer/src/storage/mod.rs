@@ -78,7 +78,7 @@ pub trait DbRead {
         output_index: u32,
     ) -> impl Future<Output = Result<Vec<model::DepositSigner>, Self::Error>> + Send;
 
-    /// Get signer decisions for a withdraw request
+    /// Get signer decisions for a withdrawal request
     fn get_withdrawal_signers(
         &self,
         request_id: u64,
@@ -137,6 +137,14 @@ pub trait DbRead {
         &self,
         txid: &model::BitcoinTxId,
         output_index: u32,
+        aggregate_key: &PublicKey,
+    ) -> impl Future<Output = Result<Vec<model::SignerVote>, Self::Error>> + Send;
+
+    /// For the given withdrawal request identifier, and aggregate key, get
+    /// the list for how the signers voted against the request.
+    fn get_withdrawal_request_signer_votes(
+        &self,
+        id: &model::QualifiedRequestId,
         aggregate_key: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::SignerVote>, Self::Error>> + Send;
 }

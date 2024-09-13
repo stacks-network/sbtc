@@ -425,6 +425,45 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
+    async fn get_withdrawal_request_signer_votes(
+        &self,
+        id: &model::QualifiedRequestId,
+        aggregate_key: &PublicKey,
+    ) -> Result<Vec<model::SignerVote>, Self::Error> {
+        sqlx::query_as::<_, model::SignerVote>(
+            r#"
+            WITH signer_set_rows AS (
+                -- See the note in Self::get_deposit_request_signer_votes
+                SELECT DISTINCT UNNEST(signer_set) AS signer_public_key
+                FROM sbtc_signer.rotate_keys_transactions
+                WHERE aggregate_key = $1
+            ),
+            withdrawal_votes AS (
+                SELECT
+                    signer_pub_key AS signer_public_key
+                  , is_accepted
+                FROM sbtc_signer.withdrawal_signers AS ws
+                WHERE TRUE
+                  AND ws.txid = $2
+                  AND ws.block_hash = $3
+                  AND ws.request_id = $4
+            )
+            SELECT
+                signer_public_key
+              , is_accepted
+            FROM signer_set_rows AS ss
+            LEFT JOIN withdrawal_votes AS wv USING(signer_public_key)
+            "#,
+        )
+        .bind(aggregate_key)
+        .bind(id.txid)
+        .bind(id.block_hash)
+        .bind(i64::try_from(id.request_id).map_err(Error::ConversionDatabaseInt)?)
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
     async fn get_accepted_deposit_requests(
         &self,
         signer: &PublicKey,

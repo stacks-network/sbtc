@@ -133,9 +133,9 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum TxSignerEvent {
     /// Received a deposit decision
-    ReceviedDepositDecision,
-    /// Received a withdraw decision
-    ReceivedWithdrawDecision,
+    ReceivedDepositDecision,
+    /// Received a withdrawal decision
+    ReceivedWithdrawalDecision,
 }
 
 impl<N, S, B, Rng> TxSignerEventLoop<N, S, B, Rng>
@@ -667,7 +667,7 @@ where
 
         #[cfg(feature = "testing")]
         if let Some(ref tx) = self.test_observer_tx {
-            tx.send(TxSignerEvent::ReceviedDepositDecision)
+            tx.send(TxSignerEvent::ReceivedDepositDecision)
                 .await
                 .map_err(|_| error::Error::ObserverDropped)?;
         }
@@ -695,7 +695,7 @@ where
 
         #[cfg(feature = "testing")]
         if let Some(ref tx) = self.test_observer_tx {
-            tx.send(TxSignerEvent::ReceivedWithdrawDecision)
+            tx.send(TxSignerEvent::ReceivedWithdrawalDecision)
                 .await
                 .map_err(|_| error::Error::ObserverDropped)?;
         }

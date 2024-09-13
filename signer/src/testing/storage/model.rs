@@ -2,6 +2,7 @@
 
 use fake::Fake;
 
+use crate::keys::PublicKey;
 use crate::storage::model;
 use crate::storage::DbWrite;
 
@@ -47,11 +48,14 @@ impl TestData {
     }
 
     /// Generate random test data with the given parameters.
-    pub fn generate(rng: &mut impl rand::RngCore, params: &Params) -> Self {
+    pub fn generate<R>(rng: &mut R, signer_keys: &[PublicKey], params: &Params) -> Self
+    where
+        R: rand::RngCore,
+    {
         let mut test_data = Self::new();
 
         for _ in 0..params.num_bitcoin_blocks {
-            let next_chunk = test_data.new_block(rng, params);
+            let next_chunk = test_data.new_block(rng, signer_keys, params);
             test_data.push(next_chunk);
         }
 
@@ -60,7 +64,10 @@ impl TestData {
 
     /// Generate a new bitcoin block with associated data on top of
     /// the current model.
-    pub fn new_block(&self, rng: &mut impl rand::RngCore, params: &Params) -> Self {
+    pub fn new_block<R>(&self, rng: &mut R, signer_keys: &[PublicKey], params: &Params) -> Self
+    where
+        R: rand::RngCore,
+    {
         let mut block = self.generate_bitcoin_block(rng);
 
         let stacks_blocks =
@@ -72,6 +79,7 @@ impl TestData {
 
         let deposit_data = DepositData::generate(
             rng,
+            signer_keys,
             &block,
             params.num_deposit_requests_per_block,
             params.num_signers_per_request,
@@ -79,6 +87,7 @@ impl TestData {
 
         let withdraw_data = WithdrawData::generate(
             rng,
+            signer_keys,
             &stacks_blocks,
             &self.withdraw_requests,
             params.num_withdraw_requests_per_block,
@@ -259,6 +268,7 @@ impl DepositData {
 
     fn generate(
         rng: &mut impl rand::RngCore,
+        signer_keys: &[PublicKey],
         bitcoin_block: &model::BitcoinBlock,
         num_deposit_requests: usize,
         num_signers_per_request: usize,
@@ -266,12 +276,15 @@ impl DepositData {
         (0..num_deposit_requests).fold(Self::new(), |mut deposit_data, _| {
             let deposit_request: model::DepositRequest = fake::Faker.fake_with_rng(rng);
 
-            let deposit_signers: Vec<_> = (0..num_signers_per_request)
-                .map(|_| {
-                    let mut signer: model::DepositSigner = fake::Faker.fake_with_rng(rng);
-                    signer.txid = deposit_request.txid;
-                    signer.output_index = deposit_request.output_index;
-                    signer
+            let deposit_signers: Vec<_> = signer_keys
+                .iter()
+                .take(num_signers_per_request)
+                .copied()
+                .map(|signer_pub_key| model::DepositSigner {
+                    txid: deposit_request.txid,
+                    output_index: deposit_request.output_index,
+                    signer_pub_key,
+                    is_accepted: fake::Faker.fake_with_rng(rng),
                 })
                 .collect();
 
@@ -309,6 +322,7 @@ impl WithdrawData {
 
     fn generate(
         rng: &mut impl rand::RngCore,
+        signer_keys: &[PublicKey],
         stacks_blocks: &[model::StacksBlock],
         withdraw_requests: &[model::WithdrawalRequest],
         num_withdraw_requests: usize,
@@ -342,13 +356,16 @@ impl WithdrawData {
                         block_hash: stacks_block_hash,
                     };
 
-                    let withdraw_signers: Vec<_> = (0..num_signers_per_request)
-                        .map(|_| {
-                            let mut signer: model::WithdrawalSigner = fake::Faker.fake_with_rng(rng);
-                            signer.request_id = withdraw_request.request_id;
-                            signer.block_hash = withdraw_request.block_hash;
-                            signer.txid = withdraw_request.txid;
-                            signer
+                    let withdraw_signers: Vec<_> = signer_keys
+                        .iter()
+                        .take(num_signers_per_request)
+                        .copied()
+                        .map(|signer_pub_key| model::WithdrawalSigner {
+                            request_id: withdraw_request.request_id,
+                            block_hash: withdraw_request.block_hash,
+                            txid: withdraw_request.txid,
+                            signer_pub_key,
+                            ..fake::Faker.fake_with_rng(rng)
                         })
                         .collect();
 

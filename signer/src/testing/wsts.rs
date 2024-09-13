@@ -343,7 +343,8 @@ impl Signer {
             .unwrap()
     }
 
-    fn pub_key(&self) -> PublicKey {
+    /// The public key for this signer.
+    pub fn public_key(&self) -> PublicKey {
         PublicKey::from_private_key(&self.private_key)
     }
 }
@@ -483,8 +484,6 @@ impl SignerSet {
         S: storage::DbWrite + storage::DbRead,
         Rng: rand::RngCore + rand::CryptoRng,
     {
-        let signer_set = self.signers.iter().map(|signer| signer.pub_key()).collect();
-
         let stacks_chain_tip = storage
             .get_stacks_chain_tip(chain_tip)
             .await
@@ -507,7 +506,7 @@ impl SignerSet {
         let rotate_keys_tx = model::RotateKeysTransaction {
             aggregate_key,
             txid,
-            signer_set,
+            signer_set: self.signer_keys(),
             signatures_required: self.signers.len() as u16,
         };
 
@@ -525,6 +524,14 @@ impl SignerSet {
             .write_rotate_keys_transaction(&rotate_keys_tx)
             .await
             .expect("failed to write key rotation");
+    }
+
+    /// The public keys in the signer set
+    pub fn signer_keys(&self) -> Vec<PublicKey> {
+        self.signers
+            .iter()
+            .map(|signer| signer.public_key())
+            .collect()
     }
 }
 
