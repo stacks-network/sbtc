@@ -358,7 +358,7 @@ impl DepositRequest {
         votes
             .into_iter()
             .enumerate()
-            .take(MAX_KEYS as usize)
+            .take(signer_bitmap.len().min(MAX_KEYS as usize))
             .for_each(|(index, vote)| {
                 // The BitArray::<[u8; 16]>::set function panics if the
                 // index is out of bounds but that cannot be the case here
@@ -448,13 +448,25 @@ impl WithdrawalRequest {
     }
 
     /// Try convert from a model::DepositRequest with some additional info.
-    pub fn try_from_model(
-        request: model::WithdrawalRequest,
-        _network: bitcoin::Network,
-    ) -> Result<Self, Error> {
-        let signer_bitmap = BitArray::ZERO; // TODO(326): Populate
+    pub fn from_model(request: model::WithdrawalRequest, mut votes: Vec<SignerVote>) -> Self {
+        let mut signer_bitmap = BitArray::ZERO;
+        votes.sort_by_key(|vote| vote.signer_public_key);
+        votes
+            .into_iter()
+            .enumerate()
+            .take(signer_bitmap.len().min(MAX_KEYS as usize))
+            .for_each(|(index, vote)| {
+                // The BitArray::<[u8; 16]>::set function panics if the
+                // index is out of bounds but that cannot be the case here
+                // because we only take 128 values.
+                //
+                // Note that the signer bitmap here is true for votes
+                // *against*, and a missing vote is an implicit vote
+                // against.
+                signer_bitmap.set(index, !vote.is_accepted.unwrap_or(false));
+            });
 
-        Ok(Self {
+        Self {
             amount: request.amount,
             max_fee: request.max_fee,
             script_pubkey: request.recipient,
@@ -462,7 +474,7 @@ impl WithdrawalRequest {
             request_id: request.request_id,
             txid: request.txid,
             block_hash: request.block_hash,
-        })
+        }
     }
 }
 
@@ -2092,6 +2104,49 @@ mod tests {
         votes.sort_by_key(|x| x.signer_public_key);
         votes.iter().enumerate().for_each(|(index, vote)| {
             let vote_against = *deposit_request.signer_bitmap.get(index).unwrap();
+            assert_eq!(vote_against, !vote.is_accepted.unwrap_or(false));
+        })
+    }
+
+    /// Check that the signer bitmap is recoded correctly when going from
+    /// the model type to the required type here.
+    #[test]
+    fn creating_withdrawal_request_from_model_bitmap_is_right() {
+        let mut votes = [
+            SignerVote {
+                signer_public_key: fake::Faker.fake_with_rng(&mut OsRng),
+                is_accepted: Some(true),
+            },
+            SignerVote {
+                signer_public_key: fake::Faker.fake_with_rng(&mut OsRng),
+                is_accepted: None,
+            },
+            SignerVote {
+                signer_public_key: fake::Faker.fake_with_rng(&mut OsRng),
+                is_accepted: Some(false),
+            },
+            SignerVote {
+                signer_public_key: fake::Faker.fake_with_rng(&mut OsRng),
+                is_accepted: Some(true),
+            },
+            SignerVote {
+                signer_public_key: fake::Faker.fake_with_rng(&mut OsRng),
+                is_accepted: Some(true),
+            },
+            SignerVote {
+                signer_public_key: fake::Faker.fake_with_rng(&mut OsRng),
+                is_accepted: None,
+            },
+        ];
+        let request: model::WithdrawalRequest = fake::Faker.fake_with_rng(&mut OsRng);
+        let withdrawal_request = WithdrawalRequest::from_model(request, votes.to_vec());
+
+        // One explicit vote against and one implicit vote against.
+        assert_eq!(withdrawal_request.votes_against(), 3);
+        // An appropriately named function ...
+        votes.sort_by_key(|x| x.signer_public_key);
+        votes.iter().enumerate().for_each(|(index, vote)| {
+            let vote_against = *withdrawal_request.signer_bitmap.get(index).unwrap();
             assert_eq!(vote_against, !vote.is_accepted.unwrap_or(false));
         })
     }

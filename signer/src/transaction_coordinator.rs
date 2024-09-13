@@ -467,13 +467,17 @@ where
             deposits.push(deposit);
         }
 
-        let convert_withdraw =
-            |request| utxo::WithdrawalRequest::try_from_model(request, self.bitcoin_network);
+        let mut withdrawals: Vec<utxo::WithdrawalRequest> = Vec::new();
 
-        let withdrawals = pending_withdraw_requests
-            .into_iter()
-            .map(convert_withdraw)
-            .collect::<Result<_, _>>()?;
+        for req in pending_withdraw_requests {
+            let votes = self
+                .storage
+                .get_withdrawal_request_signer_votes(&req.request_identifier(), &aggregate_key)
+                .await?;
+
+            let withdrawal = utxo::WithdrawalRequest::from_model(req, votes);
+            withdrawals.push(withdrawal);
+        }
 
         let accept_threshold = self.threshold;
         let num_signers = signer_public_keys
