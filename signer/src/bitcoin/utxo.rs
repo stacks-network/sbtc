@@ -3,7 +3,6 @@
 use std::collections::BTreeMap;
 
 use bitcoin::absolute::LockTime;
-use bitcoin::address::NetworkUnchecked;
 use bitcoin::hashes::Hash as _;
 use bitcoin::sighash::Prevouts;
 use bitcoin::sighash::SighashCache;
@@ -12,7 +11,6 @@ use bitcoin::taproot::NodeInfo;
 use bitcoin::taproot::Signature;
 use bitcoin::taproot::TaprootSpendInfo;
 use bitcoin::transaction::Version;
-use bitcoin::Address;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
@@ -36,6 +34,7 @@ use crate::bitcoin::packaging::Weighted;
 use crate::error::Error;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
+use crate::storage::model::ScriptPubKey;
 use crate::storage::model::SignerVote;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
@@ -133,7 +132,7 @@ impl SbtcRequests {
             .filter(|req| {
                 // This is the size for a BTC transaction servicing
                 // a single withdrawal.
-                let tx_vsize = BASE_WITHDRAWAL_TX_VSIZE + req.address.script_pubkey().len() as f64;
+                let tx_vsize = BASE_WITHDRAWAL_TX_VSIZE + req.script_pubkey.len() as f64;
                 req.max_fee >= self.compute_minimum_fee(tx_vsize)
             })
             .map(RequestRef::Withdrawal);
@@ -390,8 +389,8 @@ pub struct WithdrawalRequest {
     pub amount: u64,
     /// The max fee amount to use for the sBTC deposit transaction.
     pub max_fee: u64,
-    /// The address to spend the output.
-    pub address: Address,
+    /// The script_pubkey of the output.
+    pub script_pubkey: ScriptPubKey,
     /// A bitmap of how the signers voted. This structure supports up to
     /// 128 distinct signers. Here, we assume that a 1 (or true) implies
     /// that the signer voted *against* the transaction.
@@ -417,7 +416,7 @@ impl WithdrawalRequest {
     fn as_tx_output(&self) -> TxOut {
         TxOut {
             value: Amount::from_sat(self.amount),
-            script_pubkey: self.address.script_pubkey(),
+            script_pubkey: self.script_pubkey.clone().into(),
         }
     }
 
@@ -450,21 +449,15 @@ impl WithdrawalRequest {
 
     /// Try convert from a model::DepositRequest with some additional info.
     pub fn try_from_model(
-        request: model::WithdrawRequest,
-        network: bitcoin::Network,
+        request: model::WithdrawalRequest,
+        _network: bitcoin::Network,
     ) -> Result<Self, Error> {
-        let address: Address = request
-            .recipient
-            .parse::<Address<NetworkUnchecked>>()
-            .map_err(Error::ParseAddress)?
-            .require_network(network)
-            .map_err(Error::BitcoinAddressParse)?;
         let signer_bitmap = BitArray::ZERO; // TODO(326): Populate
 
         Ok(Self {
             amount: request.amount,
             max_fee: request.max_fee,
-            address,
+            script_pubkey: request.recipient,
             signer_bitmap,
             request_id: request.request_id,
             txid: request.txid,
@@ -1005,7 +998,6 @@ mod tests {
 
     use super::*;
     use bitcoin::CompressedPublicKey;
-    use bitcoin::KnownHrp;
     use bitcoin::Txid;
     use fake::Fake as _;
     use rand::distributions::Distribution;
@@ -1030,11 +1022,11 @@ mod tests {
         secret_key.x_only_public_key(SECP256K1).0
     }
 
-    fn generate_address() -> Address {
+    fn generate_address() -> ScriptPubKey {
         let secret_key = SecretKey::new(&mut OsRng);
         let pk = CompressedPublicKey(secret_key.public_key(SECP256K1));
 
-        Address::p2wpkh(&pk, KnownHrp::Regtest)
+        ScriptBuf::new_p2wpkh(&pk.wpubkey_hash()).into()
     }
 
     fn generate_outpoint(amount: u64, vout: u32) -> OutPoint {
@@ -1085,7 +1077,7 @@ mod tests {
             max_fee,
             signer_bitmap,
             amount,
-            address: generate_address(),
+            script_pubkey: generate_address(),
             txid: fake::Faker.fake_with_rng(&mut OsRng),
             request_id: (0..u32::MAX as u64).fake_with_rng(&mut OsRng),
             block_hash: fake::Faker.fake_with_rng(&mut OsRng),
@@ -1100,7 +1092,7 @@ mod tests {
             max_fee: rng.next_u32() as u64,
             signer_bitmap,
             amount: rng.next_u32() as u64,
-            address: generate_address(),
+            script_pubkey: generate_address(),
             txid: fake::Faker.fake_with_rng(rng),
             request_id: (0..u32::MAX as u64).fake_with_rng(rng),
             block_hash: fake::Faker.fake_with_rng(rng),
@@ -1717,7 +1709,7 @@ mod tests {
         let mut output_scripts: BTreeSet<String> = requests
             .withdrawals
             .iter()
-            .map(|req| req.address.script_pubkey().to_hex_string())
+            .map(|req| req.script_pubkey.to_hex_string())
             .collect();
 
         // Now we check that the counts of the withdrawals and deposits

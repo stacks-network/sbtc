@@ -177,7 +177,7 @@ where
             .iter()
             .filter_map(|tx| self.deposit_requests.remove(&tx.compute_txid()))
             .flatten()
-            .map(|deposit| model::DepositRequest::from_deposit(&deposit, self.network))
+            .map(model::DepositRequest::from)
             .collect();
 
         self.storage.write_deposit_requests(deposit_request).await?;

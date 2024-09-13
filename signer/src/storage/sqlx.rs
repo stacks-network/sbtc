@@ -3,8 +3,10 @@
 //!
 //!
 
+use std::ops::Deref;
 use std::str::FromStr as _;
 
+use bitcoin::ScriptBuf;
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
 use sqlx::postgres::PgArgumentBuffer;
@@ -12,9 +14,38 @@ use sqlx::postgres::PgArgumentBuffer;
 use crate::keys::PublicKey;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
+use crate::storage::model::ScriptPubKey;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
+
+/// For the [`ScriptPubKey`]
+
+impl<'r> sqlx::Decode<'r, sqlx::Postgres> for ScriptPubKey {
+    fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
+        let bytes = <Vec<u8> as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
+        Ok(ScriptPubKey::from(ScriptBuf::from_bytes(bytes)))
+    }
+}
+
+impl sqlx::Type<sqlx::Postgres> for ScriptPubKey {
+    fn type_info() -> sqlx::postgres::PgTypeInfo {
+        <Vec<u8> as sqlx::Type<sqlx::Postgres>>::type_info()
+    }
+}
+
+impl<'r> sqlx::Encode<'r, sqlx::Postgres> for ScriptPubKey {
+    fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> Result<IsNull, BoxDynError> {
+        let bytes = self.deref().to_bytes();
+        <Vec<u8> as sqlx::Encode<'r, sqlx::Postgres>>::encode_by_ref(&bytes, buf)
+    }
+}
+
+impl sqlx::postgres::PgHasArrayType for ScriptPubKey {
+    fn array_type_info() -> sqlx::postgres::PgTypeInfo {
+        <Vec<u8> as sqlx::postgres::PgHasArrayType>::array_type_info()
+    }
+}
 
 /// For the [`BitcoinBlockHash`]
 

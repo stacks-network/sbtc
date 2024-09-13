@@ -24,7 +24,7 @@ pub struct TestData {
     pub deposit_requests: Vec<model::DepositRequest>,
 
     /// Deposit requests
-    pub withdraw_requests: Vec<model::WithdrawRequest>,
+    pub withdraw_requests: Vec<model::WithdrawalRequest>,
 
     /// Raw transaction data
     pub transactions: Vec<model::Transaction>,
@@ -39,7 +39,7 @@ pub struct TestData {
     pub deposit_signers: Vec<model::DepositSigner>,
 
     /// Withdraw signers
-    pub withdraw_signers: Vec<model::WithdrawSigner>,
+    pub withdraw_signers: Vec<model::WithdrawalSigner>,
 }
 
 impl TestData {
@@ -157,7 +157,7 @@ impl TestData {
 
         for req in self.withdraw_requests.iter() {
             storage
-                .write_withdraw_request(req)
+                .write_withdrawal_request(req)
                 .await
                 .expect("failed to write withdraw request");
         }
@@ -185,7 +185,7 @@ impl TestData {
 
         for decision in self.withdraw_signers.iter() {
             storage
-                .write_withdraw_signer_decision(decision)
+                .write_withdrawal_signer_decision(decision)
                 .await
                 .expect("failed to write signer decision");
         }
@@ -297,8 +297,8 @@ impl DepositData {
 
 #[derive(Debug, Clone, Default)]
 struct WithdrawData {
-    pub withdraw_requests: Vec<model::WithdrawRequest>,
-    pub withdraw_signers: Vec<model::WithdrawSigner>,
+    pub withdraw_requests: Vec<model::WithdrawalRequest>,
+    pub withdraw_signers: Vec<model::WithdrawalSigner>,
     pub transactions: Vec<model::Transaction>,
     pub stacks_transactions: Vec<model::StacksTransaction>,
 }
@@ -349,7 +349,7 @@ impl WithdrawData {
 
                     let withdraw_signers: Vec<_> = (0..num_signers_per_request)
                         .map(|_| {
-                            let mut signer: model::WithdrawSigner = fake::Faker.fake_with_rng(rng);
+                            let mut signer: model::WithdrawalSigner = fake::Faker.fake_with_rng(rng);
                             signer.request_id = withdraw_request.request_id;
                             signer.block_hash = withdraw_request.block_hash;
                             signer

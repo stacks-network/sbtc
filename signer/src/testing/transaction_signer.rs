@@ -687,7 +687,7 @@ where
     async fn assert_only_withdraw_requests_in_context_window_has_decisions(
         storage: &S,
         context_window: u16,
-        withdraw_requests: &[model::WithdrawRequest],
+        withdraw_requests: &[model::WithdrawalRequest],
         num_expected_decisions: usize,
     ) {
         let context_window_block_hashes =
@@ -695,7 +695,7 @@ where
 
         for withdraw_request in withdraw_requests {
             let signer_decisions = storage
-                .get_withdraw_signers(withdraw_request.request_id, &withdraw_request.block_hash)
+                .get_withdrawal_signers(withdraw_request.request_id, &withdraw_request.block_hash)
                 .await
                 .unwrap();
 

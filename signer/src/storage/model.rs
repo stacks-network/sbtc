@@ -3,8 +3,6 @@
 use std::ops::Deref;
 
 use bitcoin::hashes::Hash as _;
-use bitcoin::Address;
-use bitcoin::Network;
 use clarity::vm::types::PrincipalData;
 use sbtc::deposits::Deposit;
 use serde::Deserialize;
@@ -22,6 +20,7 @@ pub struct BitcoinBlock {
     pub block_hash: BitcoinBlockHash,
     /// Block height.
     #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
     pub block_height: u64,
     /// Hash of the parent block.
     pub parent_hash: BitcoinBlockHash,
@@ -38,6 +37,7 @@ pub struct StacksBlock {
     pub block_hash: StacksBlockHash,
     /// Block height.
     #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
     pub block_height: u64,
     /// Hash of the parent block.
     pub parent_hash: StacksBlockHash,
@@ -74,31 +74,36 @@ pub struct DepositRequest {
         feature = "testing",
         dummy(faker = "crate::testing::dummy::BitcoinAddresses(1..5)")
     )]
-    pub sender_addresses: Vec<BitcoinAddress>,
+    pub sender_script_pub_keys: Vec<ScriptPubKey>,
 }
 
-impl DepositRequest {
-    /// Create me from a full deposit.
-    pub fn from_deposit(deposit: &Deposit, network: Network) -> Self {
-        let tx_input_iter = deposit.tx.input.iter();
-        // It's most likely the case that each of the inputs "come" from
+impl From<Deposit> for DepositRequest {
+    fn from(deposit: Deposit) -> Self {
+        let tx_input_iter = deposit.tx.input.into_iter();
+        // It's most likely the case that each of the inputs "came" from
         // the same Address, so we filter out duplicates.
-        let sender_addresses: std::collections::HashSet<String> = tx_input_iter
-            .flat_map(|tx_in| {
-                Address::from_script(&tx_in.script_sig, network)
-                    .inspect_err(|err| tracing::warn!("could not create address: {err}"))
-                    .map(|address| address.to_string())
-            })
-            .collect();
+        let sender_script_pub_keys: BTreeSet<ScriptPubKey> =
+            tx_input_iter.map(|tx_in| tx_in.script_sig.into()).collect();
+
         Self {
             txid: deposit.info.outpoint.txid.into(),
             output_index: deposit.info.outpoint.vout,
             spend_script: deposit.info.deposit_script.to_bytes(),
             reclaim_script: deposit.info.reclaim_script.to_bytes(),
-            recipient: deposit.info.recipient.clone().into(),
+            recipient: deposit.info.recipient.into(),
             amount: deposit.info.amount,
             max_fee: deposit.info.max_fee,
-            sender_addresses: sender_addresses.into_iter().collect(),
+            sender_script_pub_keys: sender_script_pub_keys.into_iter().collect(),
+        }
+    }
+}
+
+impl DepositRequest {
+    /// Return the outpoint associated with the deposit request.
+    pub fn outpoint(&self) -> bitcoin::OutPoint {
+        bitcoin::OutPoint {
+            txid: self.txid.into(),
+            vout: self.output_index,
         }
     }
 }
@@ -136,7 +141,7 @@ pub struct WithdrawalRequest {
     /// associated with this withdrawal request.
     pub block_hash: StacksBlockHash,
     /// The address that should receive the BTC withdrawal.
-    pub recipient: BitcoinAddress,
+    pub recipient: ScriptPubKey,
     /// The amount to withdraw.
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000"))]
@@ -371,7 +376,7 @@ impl From<[u8; 32]> for StacksBlockHash {
 }
 
 /// Stacks transaction ID
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct StacksTxId(blockstack_lib::burnchains::Txid);
 
 impl Deref for StacksTxId {
@@ -446,7 +451,28 @@ impl PartialOrd for StacksPrincipal {
     }
 }
 
+/// A ScriptPubkey of a UTXO.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ScriptPubKey(bitcoin::ScriptBuf);
+
+impl Deref for ScriptPubKey {
+    type Target = bitcoin::ScriptBuf;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<bitcoin::ScriptBuf> for ScriptPubKey {
+    fn from(value: bitcoin::ScriptBuf) -> Self {
+        Self(value)
+    }
+}
+
+impl From<ScriptPubKey> for bitcoin::ScriptBuf {
+    fn from(value: ScriptPubKey) -> Self {
+        value.0
+    }
+}
+
 /// Arbitrary bytes
 pub type Bytes = Vec<u8>;
-/// Bitcoin address
-pub type BitcoinAddress = String;

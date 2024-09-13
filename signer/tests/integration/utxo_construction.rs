@@ -41,7 +41,7 @@ pub fn generate_withdrawal() -> (WithdrawalRequest, Recipient) {
     let req = WithdrawalRequest {
         amount: OsRng.sample(Uniform::new(100_000, 250_000)),
         max_fee: 250_000,
-        address: recipient.address.clone(),
+        script_pubkey: recipient.script_pubkey.clone().into(),
         signer_bitmap: BitArray::ZERO,
         request_id: REQUEST_IDS.fetch_add(1, Ordering::Relaxed),
         txid: fake::Faker.fake_with_rng(&mut OsRng),

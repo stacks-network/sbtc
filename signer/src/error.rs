@@ -330,6 +330,14 @@ pub enum Error {
     #[error("bitcoin address parse error")]
     BitcoinAddressParse(#[source] bitcoin::address::ParseError),
 
+    /// Bitcoin error when attempting to construct an address from a
+    /// scriptPubKey.
+    #[error("bitcoin address parse error")]
+    BitcoinAddressFromScript(
+        #[source] bitcoin::address::FromScriptError,
+        bitcoin::OutPoint,
+    ),
+
     /// Parsing address failed
     #[error("failed to parse address")]
     ParseAddress(#[source] bitcoin::address::ParseError),
