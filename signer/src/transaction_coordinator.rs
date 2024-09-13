@@ -472,7 +472,7 @@ where
         for req in pending_withdraw_requests {
             let votes = self
                 .storage
-                .get_withdrawal_request_signer_votes(&req.request_identifier(), &aggregate_key)
+                .get_withdrawal_request_signer_votes(&req.qualified_id(), &aggregate_key)
                 .await?;
 
             let withdrawal = utxo::WithdrawalRequest::from_model(req, votes);

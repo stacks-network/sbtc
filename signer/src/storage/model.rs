@@ -158,8 +158,8 @@ pub struct WithdrawalRequest {
 
 impl WithdrawalRequest {
     /// Return the identifier for the withdrawal request.
-    pub fn request_identifier(&self) -> WithdrawalRequestId {
-        WithdrawalRequestId {
+    pub fn qualified_id(&self) -> QualifiedRequestId {
+        QualifiedRequestId {
             request_id: self.request_id,
             txid: self.txid,
             block_hash: self.block_hash,
@@ -187,8 +187,8 @@ pub struct WithdrawalSigner {
 
 impl WithdrawalSigner {
     /// Return the identifier for the withdrawal request.
-    pub fn request_identifier(&self) -> WithdrawalRequestId {
-        WithdrawalRequestId {
+    pub fn qualified_id(&self) -> QualifiedRequestId {
+        QualifiedRequestId {
             request_id: self.request_id,
             txid: self.txid,
             block_hash: self.block_hash,
@@ -317,7 +317,7 @@ pub enum TransactionType {
 /// A request-id and a Stacks Block ID is enough to uniquely identify the
 /// request, but we add in the transaction ID for completeness.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct WithdrawalRequestId {
+pub struct QualifiedRequestId {
     /// The Stacks block ID that includes the transaction that generated
     /// the request.
     pub block_hash: StacksBlockHash,

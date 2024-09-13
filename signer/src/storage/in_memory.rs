@@ -449,7 +449,7 @@ impl super::DbRead for SharedStore {
 
     async fn get_withdrawal_request_signer_votes(
         &self,
-        id: &model::WithdrawalRequestId,
+        id: &model::QualifiedRequestId,
         aggregate_key: &PublicKey,
     ) -> Result<Vec<model::SignerVote>, Self::Error> {
         // Let's fetch the votes for the outpoint

@@ -144,7 +144,7 @@ pub trait DbRead {
     /// the list for how the signers voted against the request.
     fn get_withdrawal_request_signer_votes(
         &self,
-        id: &model::WithdrawalRequestId,
+        id: &model::QualifiedRequestId,
         aggregate_key: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::SignerVote>, Self::Error>> + Send;
 }

@@ -427,7 +427,7 @@ impl super::DbRead for PgStore {
 
     async fn get_withdrawal_request_signer_votes(
         &self,
-        id: &model::WithdrawalRequestId,
+        id: &model::QualifiedRequestId,
         aggregate_key: &PublicKey,
     ) -> Result<Vec<model::SignerVote>, Self::Error> {
         sqlx::query_as::<_, model::SignerVote>(

@@ -31,7 +31,7 @@ use signer::storage::model::RotateKeysTransaction;
 use signer::storage::model::StacksBlock;
 use signer::storage::model::StacksBlockHash;
 use signer::storage::model::StacksTxId;
-use signer::storage::model::WithdrawalRequestId;
+use signer::storage::model::QualifiedRequestId;
 use signer::storage::model::WithdrawalSigner;
 use signer::storage::DbRead;
 use signer::storage::DbWrite;
@@ -1095,9 +1095,9 @@ async fn fetching_withdrawal_request_votes() {
             .unwrap();
     }
 
-    let id = WithdrawalRequestId { txid, block_hash, request_id };
+    let id = QualifiedRequestId { txid, block_hash, request_id };
     // Let's make sure the identifiers match, doesn't hurt too.
-    assert_eq!(id, signer_decisions[0].request_identifier());
+    assert_eq!(id, signer_decisions[0].qualified_id());
 
     // Okay let's test the query and get the votes.
     let votes = store
