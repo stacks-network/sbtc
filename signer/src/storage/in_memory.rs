@@ -34,7 +34,7 @@ pub struct Store {
     pub deposit_requests: HashMap<DepositRequestPk, model::DepositRequest>,
 
     /// Deposit requests
-    pub withdraw_requests: HashMap<WithdrawRequestPk, model::WithdrawRequest>,
+    pub withdraw_requests: HashMap<WithdrawRequestPk, model::WithdrawalRequest>,
 
     /// Deposit request to signers
     pub deposit_request_to_signers: HashMap<DepositRequestPk, Vec<model::DepositSigner>>,
@@ -43,7 +43,7 @@ pub struct Store {
     pub signer_to_deposit_request: HashMap<PublicKey, Vec<DepositRequestPk>>,
 
     /// Withdraw signers
-    pub withdraw_request_to_signers: HashMap<WithdrawRequestPk, Vec<model::WithdrawSigner>>,
+    pub withdraw_request_to_signers: HashMap<WithdrawRequestPk, Vec<model::WithdrawalSigner>>,
 
     /// Bitcoin blocks to transactions
     pub bitcoin_block_to_transactions: HashMap<model::BitcoinBlockHash, Vec<model::BitcoinTxId>>,
@@ -246,11 +246,11 @@ impl super::DbRead for SharedStore {
             .unwrap_or_default())
     }
 
-    async fn get_withdraw_signers(
+    async fn get_withdrawal_signers(
         &self,
         request_id: u64,
         block_hash: &model::StacksBlockHash,
-    ) -> Result<Vec<model::WithdrawSigner>, Self::Error> {
+    ) -> Result<Vec<model::WithdrawalSigner>, Self::Error> {
         Ok(self
             .lock()
             .await
@@ -264,7 +264,7 @@ impl super::DbRead for SharedStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
-    ) -> Result<Vec<model::WithdrawRequest>, Self::Error> {
+    ) -> Result<Vec<model::WithdrawalRequest>, Self::Error> {
         let Some(bitcoin_chain_tip) = self.get_bitcoin_block(chain_tip).await? else {
             return Ok(Vec::new());
         };
@@ -319,7 +319,7 @@ impl super::DbRead for SharedStore {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
         threshold: u16,
-    ) -> Result<Vec<model::WithdrawRequest>, Self::Error> {
+    ) -> Result<Vec<model::WithdrawalRequest>, Self::Error> {
         let pending_withdraw_requests = self
             .get_pending_withdraw_requests(chain_tip, context_window)
             .await?;
@@ -509,9 +509,9 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_withdraw_request(
+    async fn write_withdrawal_request(
         &self,
-        withdraw_request: &model::WithdrawRequest,
+        withdraw_request: &model::WithdrawalRequest,
     ) -> Result<(), Self::Error> {
         let mut store = self.lock().await;
 
@@ -551,9 +551,9 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_withdraw_signer_decision(
+    async fn write_withdrawal_signer_decision(
         &self,
-        decision: &model::WithdrawSigner,
+        decision: &model::WithdrawalSigner,
     ) -> Result<(), Self::Error> {
         self.lock()
             .await

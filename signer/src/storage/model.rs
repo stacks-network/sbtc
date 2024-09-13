@@ -122,8 +122,11 @@ pub struct DepositSigner {
 /// Withdraw request.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub struct WithdrawRequest {
-    /// Request ID of the withdrawal request.
+pub struct WithdrawalRequest {
+    /// Request ID of the withdrawal request. These are supposed to be
+    /// unique, but there can be duplicates if there is a reorg that
+    /// affects a transaction that calls the initiate-withdrawal-request
+    /// public function.
     #[sqlx(try_from = "i64")]
     pub request_id: u64,
     /// The stacks transaction ID that lead to the creation of the
@@ -150,10 +153,13 @@ pub struct WithdrawRequest {
 /// A signer acknowledging a withdrawal request.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub struct WithdrawSigner {
+pub struct WithdrawalSigner {
     /// Request ID of the withdrawal request.
     #[sqlx(try_from = "i64")]
     pub request_id: u64,
+    /// The stacks transaction ID that lead to the creation of the
+    /// withdrawal request.
+    pub txid: StacksTxId,
     /// Stacks block hash of the withdrawal request.
     pub block_hash: StacksBlockHash,
     /// Public key of the signer.
