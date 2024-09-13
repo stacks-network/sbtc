@@ -36,9 +36,9 @@ use crate::bitcoin::packaging::Weighted;
 use crate::error::Error;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
+use crate::storage::model::SignerVote;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
-use crate::storage::model::SignerVote;
 use crate::MAX_KEYS;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
