@@ -667,7 +667,7 @@ where
 
         #[cfg(feature = "testing")]
         if let Some(ref tx) = self.test_observer_tx {
-            tx.send(TxSignerEvent::ReceviedDepositDecision)
+            tx.send(TxSignerEvent::ReceivedDepositDecision)
                 .await
                 .map_err(|_| error::Error::ObserverDropped)?;
         }
@@ -695,7 +695,7 @@ where
 
         #[cfg(feature = "testing")]
         if let Some(ref tx) = self.test_observer_tx {
-            tx.send(TxSignerEvent::ReceivedWithdrawDecision)
+            tx.send(TxSignerEvent::ReceivedWithdrawalDecision)
                 .await
                 .map_err(|_| error::Error::ObserverDropped)?;
         }

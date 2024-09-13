@@ -279,7 +279,7 @@ where
         for handle in event_loop_handles.iter_mut() {
             handle
                 .wait_for_events(
-                    transaction_signer::TxSignerEvent::ReceviedDepositDecision,
+                    transaction_signer::TxSignerEvent::ReceivedDepositDecision,
                     num_expected_decisions,
                 )
                 .await
