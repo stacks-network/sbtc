@@ -29,7 +29,8 @@ services:
     image: postgres:16.3
     container_name: postgres
     environment:
-      POSTGRES_USER: user
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: signer
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:

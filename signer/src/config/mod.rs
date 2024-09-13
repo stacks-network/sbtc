@@ -201,7 +201,7 @@ impl Validatable for SignerConfig {
         // valid for the supported database drivers. We only support PostgreSQL
         // for now. The rest of the URI we delegate to the database driver for
         // validation (which will fail fast on startup).
-        if self.db_endpoint.scheme() != "postgresql" {
+        if !["postgres", "postgresql"].contains(&self.db_endpoint.scheme()) {
             let err =
                 SignerConfigError::UnsupportedDatabaseDriver(self.db_endpoint.scheme().to_string());
             return Err(ConfigError::Message(err.to_string()));

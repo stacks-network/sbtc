@@ -75,8 +75,9 @@ pub fn try_parse_p2p_multiaddr(s: &str) -> Result<Multiaddr, SignerConfigError> 
     // Keeping these local here as this is the only place these should need to be used.
     use libp2p::multiaddr::Protocol;
     use SignerConfigError::{
-        InvalidP2PScheme, InvalidP2PUri, P2PPasswordNotSupported, P2PPathsNotSupported,
-        P2PPortRequired, P2PQueryStringsNotSupported, P2PUsernameNotSupported,
+        InvalidP2PScheme, InvalidP2PUri, P2PHostRequired, P2PPasswordNotSupported,
+        P2PPathsNotSupported, P2PPortRequired, P2PQueryStringsNotSupported,
+        P2PUsernameNotSupported,
     };
 
     // We parse to a Url first to take advantage of its initial validation
@@ -120,8 +121,9 @@ pub fn try_parse_p2p_multiaddr(s: &str) -> Result<Multiaddr, SignerConfigError> 
     // host string directly.
     let host_str = url
         .host_str()
-        .unwrap() // this will have been caught by the Url parsing above
+        .ok_or(P2PHostRequired)?
         .trim_matches(&['[', ']']); // `Url` includes brackets for IPv6 addresses
+
     let mut addr = if let Ok(addr) = IpAddr::from_str(host_str) {
         Multiaddr::empty().with(Protocol::from(addr))
     } else {

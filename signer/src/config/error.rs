@@ -42,6 +42,10 @@ pub enum SignerConfigError {
     #[error("Invalid P2P URI: Query strings are not supported: '{0}'")]
     P2PQueryStringsNotSupported(String),
 
+    /// P2P host is required
+    #[error("Invalid P2P URI: Host is required")]
+    P2PHostRequired,
+
     /// When the network kind is 'mainnet' or 'testnet', at least one P2P seed peer is required.
     /// Otherwise, we'll allow mDNS to discover any local peers (for testing).
     #[error(
