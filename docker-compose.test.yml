@@ -46,6 +46,7 @@ services:
     command: >-
       -url=jdbc:postgresql://postgres:5432/signer
       -user=postgres
+      -password=postgres
       -sqlMigrationPrefix=""
       -connectRetries=60
       migrate
