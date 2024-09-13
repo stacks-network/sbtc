@@ -128,13 +128,6 @@ pub fn try_parse_p2p_multiaddr(s: &str) -> Result<Multiaddr, SignerConfigError> 
         Multiaddr::empty().with(Protocol::Dns(url.host_str().unwrap().into()))
     };
 
-    // let mut addr = match url.host() {
-    //     Some(url::Host::Ipv4(ip)) => Multiaddr::empty().with(Protocol::from(ip)),
-    //     Some(url::Host::Ipv6(ip)) => Multiaddr::empty().with(Protocol::from(ip)),
-    //     Some(url::Host::Domain(host)) => Multiaddr::empty().with(Protocol::Dnsaddr(host.into())),
-    //     None => unreachable!("this will have been caught by the Url parsing above"),
-    // };
-
     // Update the Multiaddr with the correct protocol.
     match url.scheme() {
         "tcp" => addr = addr.with(Protocol::Tcp(port)),
