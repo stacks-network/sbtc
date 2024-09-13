@@ -1,5 +1,6 @@
 //! Database models for the signer.
 
+use std::collections::BTreeSet;
 use std::ops::Deref;
 
 use bitcoin::hashes::Hash as _;
