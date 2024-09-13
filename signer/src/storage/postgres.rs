@@ -499,7 +499,7 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn get_pending_withdraw_requests(
+    async fn get_pending_withdrawal_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
@@ -578,7 +578,7 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn get_pending_accepted_withdraw_requests(
+    async fn get_pending_accepted_withdrawal_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
@@ -960,7 +960,7 @@ impl super::DbWrite for PgStore {
 
     async fn write_withdrawal_request(
         &self,
-        withdraw_request: &model::WithdrawalRequest,
+        request: &model::WithdrawalRequest,
     ) -> Result<(), Self::Error> {
         sqlx::query(
             "INSERT INTO sbtc_signer.withdrawal_requests
@@ -975,13 +975,13 @@ impl super::DbWrite for PgStore {
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT DO NOTHING",
         )
-        .bind(i64::try_from(withdraw_request.request_id).map_err(Error::ConversionDatabaseInt)?)
-        .bind(withdraw_request.txid)
-        .bind(withdraw_request.block_hash)
-        .bind(&withdraw_request.recipient)
-        .bind(i64::try_from(withdraw_request.amount).map_err(Error::ConversionDatabaseInt)?)
-        .bind(i64::try_from(withdraw_request.max_fee).map_err(Error::ConversionDatabaseInt)?)
-        .bind(&withdraw_request.sender_address)
+        .bind(i64::try_from(request.request_id).map_err(Error::ConversionDatabaseInt)?)
+        .bind(request.txid)
+        .bind(request.block_hash)
+        .bind(&request.recipient)
+        .bind(i64::try_from(request.amount).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(request.max_fee).map_err(Error::ConversionDatabaseInt)?)
+        .bind(&request.sender_address)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

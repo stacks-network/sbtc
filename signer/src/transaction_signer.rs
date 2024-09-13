@@ -569,7 +569,7 @@ where
     ) -> Result<Vec<model::WithdrawalRequest>, error::Error> {
         Ok(self
             .storage
-            .get_pending_withdraw_requests(chain_tip, self.context_window)
+            .get_pending_withdrawal_requests(chain_tip, self.context_window)
             .await?)
     }
 

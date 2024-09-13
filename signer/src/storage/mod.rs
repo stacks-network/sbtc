@@ -85,15 +85,16 @@ pub trait DbRead {
         block_hash: &model::StacksBlockHash,
     ) -> impl Future<Output = Result<Vec<model::WithdrawalSigner>, Self::Error>> + Send;
 
-    /// Get pending withdraw requests
-    fn get_pending_withdraw_requests(
+    /// Get pending withdrawal requests
+    fn get_pending_withdrawal_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Self::Error>> + Send;
 
-    /// Get pending withdraw requests that have been accepted by at least `threshold` signers and has no responses
-    fn get_pending_accepted_withdraw_requests(
+    /// Get pending withdrawal requests that have been accepted by at least
+    /// `threshold` signers and has no responses
+    fn get_pending_accepted_withdrawal_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
@@ -172,7 +173,7 @@ pub trait DbWrite {
     /// Write a withdrawal request.
     fn write_withdrawal_request(
         &self,
-        withdraw_request: &model::WithdrawalRequest,
+        request: &model::WithdrawalRequest,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     /// Write a signer decision for a deposit request.
