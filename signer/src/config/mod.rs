@@ -692,13 +692,12 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // TODO(513): Problem parsing ipv6 addresses
     fn p2p_ip6_uri_works() {
         use libp2p::multiaddr::Protocol;
 
         clear_env();
 
-        std::env::set_var("SIGNER_SIGNER__P2P__LISTEN_ON", "tcp://ff06::c3:4122");
+        std::env::set_var("SIGNER_SIGNER__P2P__LISTEN_ON", "tcp://[ff06::c3]:4122");
         let settings = Settings::new_from_default_config().expect("failed to load default config");
 
         let actual = settings
