@@ -57,7 +57,7 @@ pub struct NewBlockEvent {
     /// the `burn_header_timestamp` field in the
     /// [`blockstack_lib::chainstate::stacks::db::StacksHeaderInfo`]
     pub burn_block_time: u64,
-    /// The timestamp in the header of the burn block. This corresponds to
+    /// The block ID of the block for this event. This corresponds to the
     /// [`blockstack_lib::chainstate::stacks::db::StacksHeaderInfo::index_block_hash`]
     /// function.
     #[serde(deserialize_with = "deserialize_hex")]

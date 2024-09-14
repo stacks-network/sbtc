@@ -1324,13 +1324,15 @@ impl super::DbWrite for PgStore {
             "
         INSERT INTO sbtc_signer.completed_deposit_events (
             txid
+          , block_hash
           , amount
           , bitcoin_txid
           , output_index
         )
-        VALUES ($1, $2, $3, $4)",
+        VALUES ($1, $2, $3, $4, $5)",
         )
         .bind(event.txid.0)
+        .bind(event.block_id.0)
         .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.outpoint.txid.to_byte_array())
         .bind(event.outpoint.vout as i64)
@@ -1349,6 +1351,7 @@ impl super::DbWrite for PgStore {
             "
         INSERT INTO sbtc_signer.withdrawal_create_events (
             txid
+          , block_hash
           , request_id
           , amount
           , sender
@@ -1356,13 +1359,14 @@ impl super::DbWrite for PgStore {
           , max_fee
           , block_height
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         )
         .bind(event.txid.0)
+        .bind(event.block_id.0)
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.sender.to_string())
-        .bind(event.recipient.to_string())
+        .bind(event.recipient.as_bytes())
         .bind(i64::try_from(event.max_fee).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(event.block_height).map_err(Error::ConversionDatabaseInt)?)
         .execute(&self.0)
@@ -1380,15 +1384,17 @@ impl super::DbWrite for PgStore {
             "
         INSERT INTO sbtc_signer.withdrawal_accept_events (
             txid
+          , block_hash 
           , request_id
           , signer_bitmap
           , bitcoin_txid
           , output_index
           , fee
         )
-        VALUES ($1, $2, $3, $4, $5, $6)",
+        VALUES ($1, $2, $3, $4, $5, $6, $7)",
         )
         .bind(event.txid.0)
+        .bind(event.block_id.0)
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.signer_bitmap.into_inner())
         .bind(event.outpoint.txid.to_byte_array())
@@ -1409,12 +1415,14 @@ impl super::DbWrite for PgStore {
             "
         INSERT INTO sbtc_signer.withdrawal_reject_events (
             txid
+          , block_hash
           , request_id
           , signer_bitmap
         )
-        VALUES ($1, $2, $3)",
+        VALUES ($1, $2, $3, $4)",
         )
         .bind(event.txid.0)
+        .bind(event.block_id.0)
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.signer_bitmap.into_inner())
         .execute(&self.0)

@@ -137,6 +137,7 @@ CREATE TABLE sbtc_signer.withdrawal_responses (
 CREATE TABLE sbtc_signer.completed_deposit_events (
     id           BIGSERIAL PRIMARY KEY,
     txid         BYTEA   NOT NULL,
+    block_hash   BYTEA   NOT NULL,
     amount       BIGINT  NOT NULL,
     bitcoin_txid BYTEA   NOT NULL,
     output_index BIGINT  NOT NULL,
@@ -146,10 +147,11 @@ CREATE TABLE sbtc_signer.completed_deposit_events (
 CREATE TABLE sbtc_signer.withdrawal_create_events (
     id           BIGSERIAL PRIMARY KEY,
     txid         BYTEA   NOT NULL,
+    block_hash   BYTEA   NOT NULL,
     request_id   BIGINT  NOT NULL,
     amount       BIGINT  NOT NULL,
     sender       VARCHAR NOT NULL,
-    recipient    VARCHAR NOT NULL,
+    recipient    BYTEA   NOT NULL,
     max_fee      BIGINT  NOT NULL,
     block_height BIGINT  NOT NULL,
     created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
@@ -158,6 +160,7 @@ CREATE TABLE sbtc_signer.withdrawal_create_events (
 CREATE TABLE sbtc_signer.withdrawal_accept_events (
     id            BIGSERIAL PRIMARY KEY,
     txid          BYTEA   NOT NULL,
+    block_hash    BYTEA   NOT NULL,
     request_id    BIGINT  NOT NULL,
     signer_bitmap BYTEA   NOT NULL,
     bitcoin_txid  BYTEA   NOT NULL,
@@ -169,6 +172,7 @@ CREATE TABLE sbtc_signer.withdrawal_accept_events (
 CREATE TABLE sbtc_signer.withdrawal_reject_events (
     id            BIGSERIAL PRIMARY KEY,
     txid          BYTEA  NOT NULL,
+    block_hash    BYTEA  NOT NULL,
     request_id    BIGINT NOT NULL,
     signer_bitmap BYTEA  NOT NULL,
     created_at    TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
