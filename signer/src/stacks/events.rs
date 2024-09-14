@@ -6,8 +6,7 @@
 //! deconstruct the tuple data based on the topic.
 //!
 //! This module attempts to use only types that are found in the
-//! stacks-core repository crates, the rust-bitcoin crate, and the bitvec
-//! crate.
+//! stacks-core crates, the rust-bitcoin crate, and the bitvec crate.
 
 use std::collections::BTreeMap;
 
@@ -633,7 +632,6 @@ mod tests {
         let tuple_data = TupleData::from_data(event.to_vec()).unwrap();
         let value = ClarityValue::Tuple(tuple_data);
 
-        // let res = transform_value(value, NetworkKind::Regtest).unwrap();
         match RegistryEvent::try_new(value, TX_INFO).unwrap() {
             RegistryEvent::CompletedDeposit(event) => {
                 assert_eq!(event.amount, amount as u64);
