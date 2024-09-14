@@ -51,7 +51,6 @@ where
 {
     tracing::debug!("Received a new block event from stacks-core");
     let api = state.0;
-    let network = api.settings.signer.network;
 
     let registry_address = SBTC_REGISTRY_IDENTIFIER.get_or_init(|| {
         // Although the following line can panic, our unit tests hit this
@@ -84,7 +83,7 @@ where
         .filter(|(ev, _)| &ev.contract_identifier == registry_address && ev.topic == "print");
 
     for (ev, txid) in events {
-        let res = match RegistryEvent::try_new(ev.value, txid, network) {
+        let res = match RegistryEvent::try_new(ev.value, txid) {
             Ok(RegistryEvent::CompletedDeposit(event)) => {
                 api.db.write_completed_deposit_event(&event).await
             }

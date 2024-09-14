@@ -149,7 +149,7 @@ CREATE TABLE sbtc_signer.withdrawal_create_events (
     request_id   BIGINT  NOT NULL,
     amount       BIGINT  NOT NULL,
     sender       VARCHAR NOT NULL,
-    recipient    VARCHAR NOT NULL,
+    recipient    BYTEA   NOT NULL,
     max_fee      BIGINT  NOT NULL,
     block_height BIGINT  NOT NULL,
     created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL

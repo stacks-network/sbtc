@@ -1362,7 +1362,7 @@ impl super::DbWrite for PgStore {
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.sender.to_string())
-        .bind(event.recipient.to_string())
+        .bind(event.recipient.as_bytes())
         .bind(i64::try_from(event.max_fee).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(event.block_height).map_err(Error::ConversionDatabaseInt)?)
         .execute(&self.0)

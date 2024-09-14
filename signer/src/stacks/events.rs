@@ -8,8 +8,6 @@
 use std::collections::BTreeMap;
 
 use bitcoin::hashes::Hash;
-use bitcoin::params::Params;
-use bitcoin::Address;
 use bitcoin::OutPoint;
 use bitcoin::PubkeyHash;
 use bitcoin::ScriptBuf;
@@ -26,7 +24,6 @@ use clarity::vm::types::TupleData;
 use clarity::vm::ClarityName;
 use clarity::vm::Value as ClarityValue;
 
-use crate::config::NetworkKind;
 use crate::error::Error;
 
 /// The print events emitted by the sbtc-registry clarity smart contract.
@@ -45,11 +42,7 @@ pub enum RegistryEvent {
 impl RegistryEvent {
     /// Transform the [`ClarityValue`] from the sbtc-registry event into a
     /// proper type.
-    pub fn try_new(
-        value: ClarityValue,
-        txid: StacksTxid,
-        network: NetworkKind,
-    ) -> Result<Self, Error> {
+    pub fn try_new(value: ClarityValue, txid: StacksTxid) -> Result<Self, Error> {
         match value {
             ClarityValue::Tuple(TupleData { data_map, .. }) => {
                 let mut event_map = RawTupleData::new(data_map, txid);
@@ -62,7 +55,7 @@ impl RegistryEvent {
                 match topic.as_str() {
                     "completed-deposit" => event_map.completed_deposit(),
                     "withdrawal-accept" => event_map.withdrawal_accept(),
-                    "withdrawal-create" => event_map.withdrawal_create(network),
+                    "withdrawal-create" => event_map.withdrawal_create(),
                     "withdrawal-reject" => event_map.withdrawal_reject(),
                     _ => Err(Error::ClarityUnexpectedEventTopic(topic)),
                 }
@@ -101,7 +94,7 @@ pub struct WithdrawalCreateEvent {
     pub sender: PrincipalData,
     /// This is the address to send the BTC to when fulfilling the
     /// withdrawal request.
-    pub recipient: Address,
+    pub recipient: ScriptBuf,
     /// This is the maximum amount of BTC "spent" to the miners for the
     /// transaction fee.
     pub max_fee: u64,
@@ -256,7 +249,7 @@ impl RawTupleData {
     ///   max-fee: uint,
     /// })
     /// ```
-    fn withdrawal_create(mut self, network: NetworkKind) -> Result<RegistryEvent, Error> {
+    fn withdrawal_create(mut self) -> Result<RegistryEvent, Error> {
         let request_id = self.remove_u128("request-id")?;
         let amount = self.remove_u128("amount")?;
         let max_fee = self.remove_u128("max-fee")?;
@@ -274,7 +267,7 @@ impl RawTupleData {
             amount: u64::try_from(amount).map_err(Error::ClarityIntConversion)?,
             max_fee: u64::try_from(max_fee).map_err(Error::ClarityIntConversion)?,
             block_height: u64::try_from(block_height).map_err(Error::ClarityIntConversion)?,
-            recipient: recipient.try_into_address(network)?,
+            recipient: recipient.try_into_script_pub_key()?,
             sender,
         }))
     }
@@ -377,7 +370,7 @@ impl RawTupleData {
     /// To specify this address type in the `initiate-withdrawal-request`
     /// contract call, the `version` is 0x06 and the `hashbytes` is the
     /// "tweaked" public key.
-    fn try_into_address(mut self, network: NetworkKind) -> Result<Address, Error> {
+    fn try_into_script_pub_key(mut self) -> Result<ScriptBuf, Error> {
         let version = self.remove_buff("version")?;
         let hash_bytes_buf = self.remove_buff("hashbytes")?;
         let hash_bytes = hash_bytes_buf.as_slice();
@@ -387,8 +380,8 @@ impl RawTupleData {
             [0x00] => {
                 let bytes =
                     <[u8; 20]>::try_from(hash_bytes).map_err(Error::ClaritySliceConversion)?;
-                let pk_hash = PubkeyHash::from_byte_array(bytes);
-                Ok(Address::p2pkh(pk_hash, network))
+                let pubkey_hash = PubkeyHash::from_byte_array(bytes);
+                Ok(ScriptBuf::new_p2pkh(&pubkey_hash))
             }
             // ```
             // version == 0x01 and (len hashbytes) == 20 => P2SH
@@ -407,31 +400,25 @@ impl RawTupleData {
                 let bytes =
                     <[u8; 20]>::try_from(hash_bytes).map_err(Error::ClaritySliceConversion)?;
                 let script_hash = ScriptHash::from_byte_array(bytes);
-                let script = ScriptBuf::new_p2sh(&script_hash);
-                let params = match network {
-                    NetworkKind::Mainnet => Params::BITCOIN,
-                    NetworkKind::Testnet => Params::TESTNET,
-                    NetworkKind::Regtest => Params::REGTEST,
-                };
-                Address::from_script(script.as_script(), params).map_err(Error::InvalidScript)
+                Ok(ScriptBuf::new_p2sh(&script_hash))
             }
             // version == 0x04 and (len hashbytes) == 20 => P2WPKH
             [0x04] if hash_bytes.len() == 20 => {
                 let program = WitnessProgram::new(WitnessVersion::V0, hash_bytes)
                     .map_err(Error::InvalidWitnessProgram)?;
-                Ok(Address::from_witness_program(program, network))
+                Ok(ScriptBuf::new_witness_program(&program))
             }
             // version == 0x05 and (len hashbytes) == 32 => P2WSH
             [0x05] if hash_bytes.len() == 32 => {
                 let program = WitnessProgram::new(WitnessVersion::V0, hash_bytes)
                     .map_err(Error::InvalidWitnessProgram)?;
-                Ok(Address::from_witness_program(program, network))
+                Ok(ScriptBuf::new_witness_program(&program))
             }
             // version == 0x06 and (len hashbytes) == 32 => P2TR
             [0x06] if hash_bytes.len() == 32 => {
                 let program = WitnessProgram::new(WitnessVersion::V1, hash_bytes)
                     .map_err(Error::InvalidWitnessProgram)?;
-                Ok(Address::from_witness_program(program, network))
+                Ok(ScriptBuf::new_witness_program(&program))
             }
             // We make sure that the version and hash byte lengths conform
             // to the above expectations in the smart contract, so this
@@ -572,7 +559,7 @@ mod tests {
         let value = ClarityValue::Tuple(tuple_data);
 
         // let res = transform_value(value, NetworkKind::Regtest).unwrap();
-        match RegistryEvent::try_new(value, TXID, NetworkKind::Regtest).unwrap() {
+        match RegistryEvent::try_new(value, TXID).unwrap() {
             RegistryEvent::CompletedDeposit(event) => {
                 assert_eq!(event.amount, amount as u64);
                 assert_eq!(event.outpoint.txid, BitcoinTxid::from_byte_array([1; 32]));
@@ -589,8 +576,7 @@ mod tests {
         let sender = PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap();
         let block_height = 139;
         let max_fee = 369;
-        let recipient_address =
-            Address::p2pkh(PubkeyHash::from_byte_array([0; 20]), NetworkKind::Regtest);
+        let recipient_address = ScriptBuf::new_p2pkh(&PubkeyHash::from_byte_array([0; 20]));
         let recipient = vec![
             (
                 ClarityName::from("version"),
@@ -639,13 +625,13 @@ mod tests {
         let value = ClarityValue::Tuple(tuple_data);
 
         // let res = transform_value(value, NetworkKind::Regtest).unwrap();
-        match RegistryEvent::try_new(value, TXID, NetworkKind::Regtest).unwrap() {
+        match RegistryEvent::try_new(value, TXID).unwrap() {
             RegistryEvent::WithdrawalCreate(event) => {
                 assert_eq!(event.amount, amount as u64);
                 assert_eq!(event.request_id, request_id as u64);
                 assert_eq!(event.block_height, block_height as u64);
                 assert_eq!(event.max_fee, max_fee as u64);
-                assert_eq!(event.sender, sender);
+                assert_eq!(event.sender, sender.into());
                 assert_eq!(event.recipient, recipient_address);
             }
             e => panic!("Got the wrong event variant: {e:?}"),
@@ -683,7 +669,7 @@ mod tests {
         let value = ClarityValue::Tuple(tuple_data);
 
         // let res = transform_value(value, NetworkKind::Regtest).unwrap();
-        match RegistryEvent::try_new(value, TXID, NetworkKind::Regtest).unwrap() {
+        match RegistryEvent::try_new(value, TXID).unwrap() {
             RegistryEvent::WithdrawalAccept(event) => {
                 let expected_bitmap = BitArray::<[u8; 16]>::new(bitmap.to_le_bytes());
                 assert_eq!(event.request_id, request_id as u64);
@@ -719,7 +705,7 @@ mod tests {
         let value = ClarityValue::Tuple(tuple_data);
 
         // let res = transform_value(value, NetworkKind::Regtest).unwrap();
-        match RegistryEvent::try_new(value, TXID, NetworkKind::Regtest).unwrap() {
+        match RegistryEvent::try_new(value, TXID).unwrap() {
             RegistryEvent::WithdrawalReject(event) => {
                 let expected_bitmap = BitArray::<[u8; 16]>::new(bitmap.to_le_bytes());
                 assert_eq!(event.request_id, request_id as u64);
@@ -772,39 +758,49 @@ mod tests {
     #[test_case(
         0x00,
         PubkeyHash::from(*PUBLIC_KEY).to_byte_array(),
-        Address::p2pkh(*PUBLIC_KEY, NetworkKind::Regtest) ; "P2PKH")]
+        ScriptBuf::new_p2pkh(&PUBLIC_KEY.pubkey_hash());
+    "P2PKH")]
     #[test_case(
         0x01,
         ScriptHash::from(ScriptBuf::new_op_return([1; 5])).to_byte_array(),
-        Address::p2sh(&ScriptBuf::new_op_return([1; 5]), NetworkKind::Regtest).unwrap() ; "P2SH")]
+        ScriptBuf::new_p2sh(&ScriptBuf::new_op_return([1; 5]).script_hash());
+    "P2SH")]
     #[test_case(
         0x02,
         new_p2sh_segwit(PUBLIC_KEY.wpubkey_hash()).to_byte_array(),
-        Address::p2shwpkh(&*PUBLIC_KEY, NetworkKind::Regtest) ; "P2SH-P2WPKH")]
+        ScriptBuf::new_p2sh(&new_p2sh_segwit(PUBLIC_KEY.wpubkey_hash()));
+    "P2SH-P2WPKH")]
     #[test_case(
         0x03,
         new_p2sh_segwit(ScriptBuf::new_op_return([1; 5]).wscript_hash()).to_byte_array(),
-        Address::p2shwsh(&ScriptBuf::new_op_return([1; 5]), NetworkKind::Regtest) ; "P2SH-P2WSH")]
+        ScriptBuf::new_p2sh(&new_p2sh_segwit(ScriptBuf::new_op_return([1; 5]).wscript_hash()));
+    "P2SH-P2WSH")]
     #[test_case(
         0x04,
         PubkeyHash::from(*PUBLIC_KEY).to_byte_array(),
-        Address::p2wpkh(&*PUBLIC_KEY, NetworkKind::Regtest) ; "P2WPKH")]
+        ScriptBuf::new_p2wpkh(&PUBLIC_KEY.wpubkey_hash());
+    "P2WPKH")]
     #[test_case(
         0x05,
         ScriptBuf::new_op_return([1; 5]).wscript_hash().to_byte_array(),
-        Address::p2wsh(&ScriptBuf::new_op_return([1; 5]), NetworkKind::Regtest) ; "P2WSH")]
+        ScriptBuf::new_p2wsh(&ScriptBuf::new_op_return([1; 5]).wscript_hash());
+    "P2WSH")]
     #[test_case(
         0x06,
         TWEAKED_PUBLIC_KEY.serialize(),
-        Address::p2tr_tweaked(*TWEAKED_PUBLIC_KEY, NetworkKind::Regtest) ; "P2TR")]
-    fn recipient_to_btc_address<const N: usize>(version: u8, hash: [u8; N], address: Address) {
+        ScriptBuf::new_p2tr_tweaked(*TWEAKED_PUBLIC_KEY);
+    "P2TR")]
+    fn recipient_to_script_pub_key<const N: usize>(version: u8, hash: [u8; N], script: ScriptBuf) {
         // For these tests, we show what is expected for the hashbytes for
         // each of the address types and check that the result of the
-        // [`RawTupleData::try_into_address`] function matches what the
-        // corresponding Address function would return.
+        // `RawTupleData::try_into_script_pub_key` function matches what
+        // the corresponding ScriptBuf function would return.
+        //
+        // First make a clarity tuple from the input data.
         let map = RawTupleData::new_recipient(version, hash);
-        let actual_address = map.try_into_address(NetworkKind::Regtest).unwrap();
-        assert_eq!(actual_address, address);
+        // Now test the function output matches what we expect.
+        let actual_script_pub_key = map.try_into_script_pub_key().unwrap();
+        assert_eq!(actual_script_pub_key, script);
     }
 
     #[test_case(0x06, [1; 33]; "hash 33 bytes P2TR")]
@@ -816,10 +812,10 @@ mod tests {
     #[test_case(0x00, [1; 21]; "bad p2pkh 2")]
     fn bad_recipient_cases<const N: usize>(version: u8, hash: [u8; N]) {
         // For these tests, we show what is unexpected lengths in the
-        // hashbytes leads to the [`RawTupleData::try_into_address`]
+        // hashbytes leads to the `RawTupleData::try_into_script_pub_key`
         // returning an error.
         let map = RawTupleData::new_recipient(version, hash);
-        let res = map.try_into_address(NetworkKind::Regtest);
+        let res = map.try_into_script_pub_key();
         assert!(res.is_err());
     }
 }
