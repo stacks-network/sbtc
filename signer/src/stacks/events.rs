@@ -60,7 +60,7 @@ pub enum EventError {
     #[error("tried to create an invalid witness program {0}")]
     InvalidWitnessProgram(#[source] bitcoin::witness_program::Error),
     /// This a programmer error bug that should never be thrown.
-    #[error("The field {0} was missing from the print event for topic. tx info: {1}")]
+    #[error("The field {0} was missing from the print event for topic; {1}")]
     TupleEventField(&'static str, TxInfo),
     /// This should never happen, we check the version in the smart
     /// contract.
@@ -457,13 +457,8 @@ impl RawTupleData {
             // version == 0x03 and (len hashbytes) == 20 => P2SH-P2WSH
             // ```
             //
-            // In this case we assume that the `hashbytes` is the Hash160
-            // of the redeem script.
-            //
-            // We'd like to just use [`Address::p2sh_from_hash`] on our
-            // given script hash but that method is private. So instead we
-            // create a full P2SH Script and have [`Address::from_script`]
-            // extract the script hash from the full script.
+            // In these cases we assume the `hashbytes` is the Hash160 of
+            // the redeem script.
             [0x01] | [0x02] | [0x03] => {
                 let bytes =
                     <[u8; 20]>::try_from(hash_bytes).map_err(EventError::ClaritySliceConversion)?;
