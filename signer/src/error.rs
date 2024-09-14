@@ -17,10 +17,6 @@ pub enum Error {
     #[error("the signer is shutting down")]
     SignerShutdown,
 
-    /// Stacks event observer terminated prematurely.
-    #[error("stacks event observer terminated prematurely")]
-    StacksEventObserverAborted,
-
     /// I/O Error raised by the Tokio runtime.
     #[error("tokio i/o error: {0}")]
     TokioIo(#[from] tokio::io::Error),
@@ -48,40 +44,6 @@ pub enum Error {
     #[error("could not serialize bitcoin transaction into bytes.")]
     BitcoinEncodeTransaction(#[source] bitcoin::io::Error),
 
-    /// This error is thrown when trying to convert an u128 into some other
-    /// smaller type. It should never be thrown
-    #[error("Could not convert an integer in clarity event into the expected integer {0}")]
-    ClarityIntConversion(#[source] std::num::TryFromIntError),
-
-    /// This is a slice conversion that happens when generating an address
-    /// from validated user inputs. It shouldn't happen since we validate
-    /// the user's inputs in the contract call.
-    #[error("slice conversion failed: {0}")]
-    ClaritySliceConversion(#[source] std::array::TryFromSliceError),
-
-    /// This happens when we attempt to create s String from the raw bytes
-    /// returned in a Clarity [`Value`](clarity::vm::Value).
-    #[error("Could not convert ASCII or UTF8 bytes into a String: {0}")]
-    ClarityStringConversion(#[source] std::string::FromUtf8Error),
-
-    /// This happens when we expect one clarity variant but got another.
-    #[error("Got an unexpected clarity value: {0:?}")]
-    ClarityUnexpectedValue(clarity::vm::Value, blockstack_lib::burnchains::Txid),
-
-    /// This should never happen, but happens when one of the given topics
-    /// is not on the list of expected topics.
-    #[error("Got an unexpected event topic: {0}")]
-    ClarityUnexpectedEventTopic(String),
-
-    /// This a programmer error bug that should never be thrown.
-    #[error("The field {0} was missing from the print event for topic. Txid: {1}")]
-    TupleEventField(&'static str, blockstack_lib::burnchains::Txid),
-
-    /// This can only be thrown when the number of bytes for a txid field
-    /// is not exactly equal to 32. This should never occur.
-    #[error("Could not convert an integer in clarity event into the expected integer {0}")]
-    ClarityTxidConversion(#[source] bitcoin::hashes::FromSliceError),
-
     /// Invalid amount
     #[error("the change amounts for the transaction is negative: {0}")]
     InvalidAmount(i64),
@@ -93,10 +55,6 @@ pub enum Error {
     /// No good fee estimate
     #[error("failed to get fee estimates from all fee estimate sources")]
     NoGoodFeeEstimates,
-
-    /// Parsing the Hex Error
-    #[error("could not parse the Hex string to a StacksBlockId: {0}, original: {1}")]
-    ParseStacksBlockId(#[source] blockstack_lib::util::HexError, String),
 
     /// This happens when parsing a string, usually from the database, into
     /// a PrincipalData.
@@ -177,15 +135,6 @@ pub enum Error {
     /// 4. The number of public keys exceeds the MAX_KEYS constant.
     #[error("invalid wallet definition, signatures required: {0}, number of keys: {1}")]
     InvalidWalletDefinition(u16, usize),
-
-    /// This should never happen, since  our witness programs are under the
-    /// maximum length.
-    #[error("tried to create an invalid witness program {0}")]
-    InvalidWitnessProgram(#[source] bitcoin::witness_program::Error),
-
-    /// This should never happen.
-    #[error("tried to create an invalid address from a script {0}")]
-    InvalidScript(#[source] bitcoin::address::FromScriptError),
 
     /// This is thrown when failing to parse a hex string into an integer.
     #[error("could not parse the hex string into an integer")]
@@ -273,10 +222,6 @@ pub enum Error {
     #[error("invalid signature")]
     InvalidSignature,
 
-    /// Slice conversion error
-    #[error("slice conversion failed: {0}")]
-    SliceConversion(#[source] bitcoin::hashes::FromSliceError),
-
     /// ECDSA error
     #[error("ECDSA error: {0}")]
     Ecdsa(#[from] ecdsa::Error),
@@ -326,10 +271,6 @@ pub enum Error {
     #[error("no bitcoin chain tip")]
     NoChainTip,
 
-    /// Bitcoin address parse error
-    #[error("bitcoin address parse error")]
-    BitcoinAddressParse(#[source] bitcoin::address::ParseError),
-
     /// Bitcoin error when attempting to construct an address from a
     /// scriptPubKey.
     #[error("bitcoin address parse error")]
@@ -337,15 +278,6 @@ pub enum Error {
         #[source] bitcoin::address::FromScriptError,
         bitcoin::OutPoint,
     ),
-
-    /// Parsing address failed
-    #[error("failed to parse address")]
-    ParseAddress(#[source] bitcoin::address::ParseError),
-
-    /// This should never happen, we check the version in the smart
-    /// contract.
-    #[error("the given raw recipient is unexpected. version: {0:?}, hashbytes: {1:?} ")]
-    UnhandledRecipient(Vec<u8>, Vec<u8>),
 
     /// Could not connect to bitcoin-core with a zeromq subscription
     /// socket.
