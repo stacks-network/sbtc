@@ -27,6 +27,7 @@ use clarity::vm::types::SequenceData;
 use clarity::vm::types::TupleData;
 use clarity::vm::ClarityName;
 use clarity::vm::Value as ClarityValue;
+use stacks_common::types::chainstate::StacksBlockId;
 
 /// An error when trying to parse an sBTC event into a concrete type.
 #[derive(Debug, thiserror::Error)]
@@ -53,15 +54,15 @@ pub enum EventError {
     #[error("Got an unexpected event topic: {0}")]
     ClarityUnexpectedEventTopic(String),
     /// This happens when we expect one clarity variant but got another.
-    #[error("Got an unexpected clarity value: {0:?}")]
-    ClarityUnexpectedValue(ClarityValue, StacksTxid),
+    #[error("Got an unexpected clarity value: {0:?}; {1}")]
+    ClarityUnexpectedValue(ClarityValue, TxInfo),
     /// This should never happen, since  our witness programs are under the
     /// maximum length.
     #[error("tried to create an invalid witness program {0}")]
     InvalidWitnessProgram(#[source] bitcoin::witness_program::Error),
     /// This a programmer error bug that should never be thrown.
-    #[error("The field {0} was missing from the print event for topic. Txid: {1}")]
-    TupleEventField(&'static str, blockstack_lib::burnchains::Txid),
+    #[error("The field {0} was missing from the print event for topic. tx info: {1}")]
+    TupleEventField(&'static str, TxInfo),
     /// This should never happen, we check the version in the smart
     /// contract.
     #[error("the given raw recipient is unexpected. version: {0:?}, hashbytes: {1:?} ")]
@@ -81,13 +82,28 @@ pub enum RegistryEvent {
     WithdrawalCreate(WithdrawalCreateEvent),
 }
 
+/// A type that points to a transaction in a stacks block.
+#[derive(Debug, Copy, Clone)]
+pub struct TxInfo {
+    /// The transaction ID
+    pub txid: StacksTxid,
+    /// The globally unique stacks block identifier.
+    pub block_id: StacksBlockId,
+}
+
+impl std::fmt::Display for TxInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "txid: {}, block_id: {}", self.txid, self.block_id)
+    }
+}
+
 impl RegistryEvent {
     /// Transform the [`ClarityValue`] from the sbtc-registry event into a
     /// proper type.
-    pub fn try_new(value: ClarityValue, txid: StacksTxid) -> Result<Self, EventError> {
+    pub fn try_new(value: ClarityValue, tx_info: TxInfo) -> Result<Self, EventError> {
         match value {
             ClarityValue::Tuple(TupleData { data_map, .. }) => {
-                let mut event_map = RawTupleData::new(data_map, txid);
+                let mut event_map = RawTupleData::new(data_map, tx_info);
                 // Lucky for us, each sBTC print event in the sbtc-registry
                 // smart contract has a topic. We use that to match on what
                 // to expect when decomposing the event from a
@@ -102,7 +118,7 @@ impl RegistryEvent {
                     _ => Err(EventError::ClarityUnexpectedEventTopic(topic)),
                 }
             }
-            value => Err(EventError::ClarityUnexpectedValue(value, txid)),
+            value => Err(EventError::ClarityUnexpectedValue(value, tx_info)),
         }
     }
 }
@@ -114,6 +130,8 @@ pub struct CompletedDepositEvent {
     /// The transaction id of the stacks transaction that generated this
     /// event.
     pub txid: StacksTxid,
+    /// The block ID of the block for this event.
+    pub block_id: StacksBlockId,
     /// This is the amount of sBTC to mint to the intended recipient.
     pub amount: u64,
     /// This is the outpoint of the original bitcoin deposit transaction.
@@ -127,6 +145,8 @@ pub struct WithdrawalCreateEvent {
     /// The transaction id of the stacks transaction that generated this
     /// event.
     pub txid: StacksTxid,
+    /// The block ID of the block for this event.
+    pub block_id: StacksBlockId,
     /// This is the unique identifier of the withdrawal request.
     pub request_id: u64,
     /// This is the amount of sBTC that is locked and requested to be
@@ -152,6 +172,8 @@ pub struct WithdrawalAcceptEvent {
     /// The transaction id of the stacks transaction that generated this
     /// event.
     pub txid: StacksTxid,
+    /// The block ID of the block for this event.
+    pub block_id: StacksBlockId,
     /// This is the unique identifier of the withdrawal request.
     pub request_id: u64,
     /// The bitmap of how the signers voted for the withdrawal request.
@@ -173,6 +195,8 @@ pub struct WithdrawalRejectEvent {
     /// The transaction id of the stacks transaction that generated this
     /// event.
     pub txid: StacksTxid,
+    /// The block ID of the block for this event.
+    pub block_id: StacksBlockId,
     /// This is the unique identifier of user created the withdrawal
     /// request.
     pub request_id: u64,
@@ -185,33 +209,32 @@ pub struct WithdrawalRejectEvent {
 #[derive(Debug)]
 struct RawTupleData {
     data_map: BTreeMap<ClarityName, ClarityValue>,
-    txid: StacksTxid,
-    // block_id: StacksBlockId,
+    tx_info: TxInfo,
 }
 
 impl RawTupleData {
-    fn new(data_map: BTreeMap<ClarityName, ClarityValue>, txid: StacksTxid) -> Self {
-        Self { data_map, txid }
+    fn new(data_map: BTreeMap<ClarityName, ClarityValue>, tx_info: TxInfo) -> Self {
+        Self { data_map, tx_info }
     }
     /// Extract the u128 value from the given field
     fn remove_u128(&mut self, field: &'static str) -> Result<u128, EventError> {
         match self.data_map.remove(field) {
             Some(ClarityValue::UInt(val)) => Ok(val),
-            _ => Err(EventError::TupleEventField(field, self.txid)),
+            _ => Err(EventError::TupleEventField(field, self.tx_info)),
         }
     }
     /// Extract the buff value from the given field
     fn remove_buff(&mut self, field: &'static str) -> Result<Vec<u8>, EventError> {
         match self.data_map.remove(field) {
             Some(ClarityValue::Sequence(SequenceData::Buffer(buf))) => Ok(buf.data),
-            _ => Err(EventError::TupleEventField(field, self.txid)),
+            _ => Err(EventError::TupleEventField(field, self.tx_info)),
         }
     }
     /// Extract the principal value from the given field
     fn remove_principal(&mut self, field: &'static str) -> Result<PrincipalData, EventError> {
         match self.data_map.remove(field) {
             Some(ClarityValue::Principal(principal)) => Ok(principal),
-            _ => Err(EventError::TupleEventField(field, self.txid)),
+            _ => Err(EventError::TupleEventField(field, self.tx_info)),
         }
     }
     /// Extract the string value from the given field
@@ -220,16 +243,16 @@ impl RawTupleData {
             Some(ClarityValue::Sequence(SequenceData::String(CharType::ASCII(ascii)))) => {
                 String::from_utf8(ascii.data).map_err(EventError::ClarityStringConversion)
             }
-            _ => Err(EventError::TupleEventField(field, self.txid)),
+            _ => Err(EventError::TupleEventField(field, self.tx_info)),
         }
     }
     /// Extract the tuple value from the given field
     fn remove_tuple(&mut self, field: &'static str) -> Result<Self, EventError> {
         match self.data_map.remove(field) {
             Some(ClarityValue::Tuple(TupleData { data_map, .. })) => {
-                Ok(Self::new(data_map, self.txid))
+                Ok(Self::new(data_map, self.tx_info))
             }
-            _ => Err(EventError::TupleEventField(field, self.txid)),
+            _ => Err(EventError::TupleEventField(field, self.tx_info)),
         }
     }
 
@@ -257,7 +280,8 @@ impl RawTupleData {
         let txid_bytes = self.remove_buff("bitcoin-txid")?;
 
         Ok(RegistryEvent::CompletedDeposit(CompletedDepositEvent {
-            txid: self.txid,
+            txid: self.tx_info.txid,
+            block_id: self.tx_info.block_id,
             // This shouldn't error, since this amount is set from the u64
             // amount of sats by us.
             amount: u64::try_from(amount).map_err(EventError::ClarityIntConversion)?,
@@ -302,7 +326,8 @@ impl RawTupleData {
         let recipient = self.remove_tuple("recipient")?;
 
         Ok(RegistryEvent::WithdrawalCreate(WithdrawalCreateEvent {
-            txid: self.txid,
+            txid: self.tx_info.txid,
+            block_id: self.tx_info.block_id,
             // This shouldn't error, practically speaking. Each withdrawal
             // request increments the integer by one, so we'd have to do many
             // orders of magnitude more requests than there are bitcoin
@@ -497,7 +522,8 @@ impl RawTupleData {
         let txid_bytes = self.remove_buff("bitcoin-txid")?;
 
         Ok(RegistryEvent::WithdrawalAccept(WithdrawalAcceptEvent {
-            txid: self.txid,
+            txid: self.tx_info.txid,
+            block_id: self.tx_info.block_id,
             // This shouldn't error for the reasons noted in
             // [`withdrawal_create`].
             request_id: u64::try_from(request_id).map_err(EventError::ClarityIntConversion)?,
@@ -541,7 +567,8 @@ impl RawTupleData {
         let bitmap = self.remove_u128("signer-bitmap")?;
 
         Ok(RegistryEvent::WithdrawalReject(WithdrawalRejectEvent {
-            txid: self.txid,
+            txid: self.tx_info.txid,
+            block_id: self.tx_info.block_id,
             // This shouldn't error for the reasons noted in
             // [`withdrawal_create`].
             request_id: u64::try_from(request_id).map_err(EventError::ClarityIntConversion)?,
@@ -564,7 +591,10 @@ mod tests {
 
     use test_case::test_case;
 
-    const TXID: StacksTxid = StacksTxid([0; 32]);
+    const TX_INFO: TxInfo = TxInfo {
+        txid: StacksTxid([0; 32]),
+        block_id: StacksBlockId([0; 32]),
+    };
 
     #[test]
     fn signer_bitmap_conversion() {
@@ -604,7 +634,7 @@ mod tests {
         let value = ClarityValue::Tuple(tuple_data);
 
         // let res = transform_value(value, NetworkKind::Regtest).unwrap();
-        match RegistryEvent::try_new(value, TXID).unwrap() {
+        match RegistryEvent::try_new(value, TX_INFO).unwrap() {
             RegistryEvent::CompletedDeposit(event) => {
                 assert_eq!(event.amount, amount as u64);
                 assert_eq!(event.outpoint.txid, BitcoinTxid::from_byte_array([1; 32]));
@@ -670,7 +700,7 @@ mod tests {
         let value = ClarityValue::Tuple(tuple_data);
 
         // let res = transform_value(value, NetworkKind::Regtest).unwrap();
-        match RegistryEvent::try_new(value, TXID).unwrap() {
+        match RegistryEvent::try_new(value, TX_INFO).unwrap() {
             RegistryEvent::WithdrawalCreate(event) => {
                 assert_eq!(event.amount, amount as u64);
                 assert_eq!(event.request_id, request_id as u64);
@@ -714,7 +744,7 @@ mod tests {
         let value = ClarityValue::Tuple(tuple_data);
 
         // let res = transform_value(value, NetworkKind::Regtest).unwrap();
-        match RegistryEvent::try_new(value, TXID).unwrap() {
+        match RegistryEvent::try_new(value, TX_INFO).unwrap() {
             RegistryEvent::WithdrawalAccept(event) => {
                 let expected_bitmap = BitArray::<[u8; 16]>::new(bitmap.to_le_bytes());
                 assert_eq!(event.request_id, request_id as u64);
@@ -750,7 +780,7 @@ mod tests {
         let value = ClarityValue::Tuple(tuple_data);
 
         // let res = transform_value(value, NetworkKind::Regtest).unwrap();
-        match RegistryEvent::try_new(value, TXID).unwrap() {
+        match RegistryEvent::try_new(value, TX_INFO).unwrap() {
             RegistryEvent::WithdrawalReject(event) => {
                 let expected_bitmap = BitArray::<[u8; 16]>::new(bitmap.to_le_bytes());
                 assert_eq!(event.request_id, request_id as u64);
@@ -796,7 +826,7 @@ mod tests {
             .into_iter()
             .collect();
 
-            RawTupleData::new(recipient, TXID)
+            RawTupleData::new(recipient, TX_INFO)
         }
     }
 

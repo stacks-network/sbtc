@@ -11,6 +11,7 @@ use clarity::vm::types::QualifiedContractIdentifier;
 use clarity::vm::types::StandardPrincipalData;
 
 use crate::stacks::events::RegistryEvent;
+use crate::stacks::events::TxInfo;
 use crate::stacks::webhooks::NewBlockEvent;
 use crate::storage::DbWrite;
 
@@ -82,8 +83,11 @@ where
         .filter_map(|x| x.contract_event.map(|ev| (ev, x.txid)))
         .filter(|(ev, _)| &ev.contract_identifier == registry_address && ev.topic == "print");
 
+    let block_id = new_block_event.index_block_hash;
+
     for (ev, txid) in events {
-        let res = match RegistryEvent::try_new(ev.value, txid) {
+        let tx_info = TxInfo { txid, block_id };
+        let res = match RegistryEvent::try_new(ev.value, tx_info) {
             Ok(RegistryEvent::CompletedDeposit(event)) => {
                 api.db.write_completed_deposit_event(&event).await
             }

@@ -269,6 +269,7 @@ impl fake::Dummy<fake::Faker> for WithdrawalAcceptEvent {
         let bitmap = rng.next_u64() as u128;
         WithdrawalAcceptEvent {
             txid: blockstack_lib::burnchains::Txid(config.fake_with_rng(rng)),
+            block_id: stacks_common::types::chainstate::StacksBlockId(config.fake_with_rng(rng)),
             request_id: rng.next_u32() as u64,
             signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
             outpoint: OutPoint {
@@ -285,6 +286,7 @@ impl fake::Dummy<fake::Faker> for WithdrawalRejectEvent {
         let bitmap = rng.next_u64() as u128;
         WithdrawalRejectEvent {
             txid: blockstack_lib::burnchains::Txid(config.fake_with_rng(rng)),
+            block_id: stacks_common::types::chainstate::StacksBlockId(config.fake_with_rng(rng)),
             request_id: rng.next_u32() as u64,
             signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
         }
@@ -295,6 +297,7 @@ impl fake::Dummy<fake::Faker> for WithdrawalCreateEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         WithdrawalCreateEvent {
             txid: StacksTxid(config.fake_with_rng(rng)),
+            block_id: stacks_common::types::chainstate::StacksBlockId(config.fake_with_rng(rng)),
             request_id: rng.next_u32() as u64,
             amount: rng.next_u32() as u64,
             sender: config.fake_with_rng::<StacksPrincipal, _>(rng).into(),
@@ -309,6 +312,7 @@ impl fake::Dummy<fake::Faker> for CompletedDepositEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         CompletedDepositEvent {
             txid: blockstack_lib::burnchains::Txid(config.fake_with_rng(rng)),
+            block_id: stacks_common::types::chainstate::StacksBlockId(config.fake_with_rng(rng)),
             outpoint: OutPoint {
                 txid: txid(config, rng),
                 vout: rng.next_u32(),
