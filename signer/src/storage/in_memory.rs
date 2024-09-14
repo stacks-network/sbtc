@@ -58,7 +58,8 @@ pub struct Store {
     pub stacks_transactions_to_blocks: HashMap<model::StacksTxId, Vec<model::StacksBlockHash>>,
 
     /// Stacks blocks to withdraw requests
-    pub stacks_block_to_withdraw_requests: HashMap<model::StacksBlockHash, Vec<WithdrawalRequestPk>>,
+    pub stacks_block_to_withdrawal_requests:
+        HashMap<model::StacksBlockHash, Vec<WithdrawalRequestPk>>,
 
     /// Stacks blocks under nakamoto
     pub stacks_nakamoto_blocks: HashMap<model::StacksBlockHash, model::StacksBlock>,
@@ -297,7 +298,7 @@ impl super::DbRead for SharedStore {
             })
             .flat_map(|stacks_block| {
                 store
-                    .stacks_block_to_withdraw_requests
+                    .stacks_block_to_withdrawal_requests
                     .get(&stacks_block.block_hash)
                     .cloned()
                     .unwrap_or_default()
@@ -556,12 +557,14 @@ impl super::DbWrite for SharedStore {
         let pk = (withdraw_request.request_id, withdraw_request.block_hash);
 
         store
-            .stacks_block_to_withdraw_requests
+            .stacks_block_to_withdrawal_requests
             .entry(pk.1)
             .or_default()
             .push(pk);
 
-        store.withdrawal_requests.insert(pk, withdraw_request.clone());
+        store
+            .withdrawal_requests
+            .insert(pk, withdraw_request.clone());
 
         Ok(())
     }
