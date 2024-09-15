@@ -620,10 +620,18 @@ mod tests {
         let secret_key = SecretKey::new(&mut OsRng);
         let public_key = secret_key.x_only_public_key(SECP256K1).0;
 
-        let data = [0; 50];
+        let recipient = PrincipalData::parse(CONTRACT_ADDRESS).unwrap();
+        let max_fee: u64 = 15000;
+
+        let mut deposit_data = [0; 44];
+        deposit_data[..8].copy_from_slice(&max_fee.to_be_bytes());
+        deposit_data[8..].copy_from_slice(&recipient.serialize_to_vec());
+
+        // This is non-standard script, because it does not follow the
+        // minimal push rule.
         let deposit_script = ScriptBuf::builder()
             .push_opcode(opcodes::OP_PUSHDATA1)
-            .push_slice(data)
+            .push_slice(deposit_data)
             .push_opcode(opcodes::OP_DROP)
             .push_slice(public_key.serialize())
             .push_opcode(opcodes::OP_CHECKSIG)
