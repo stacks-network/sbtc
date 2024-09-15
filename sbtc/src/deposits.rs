@@ -319,7 +319,7 @@ impl DepositScriptInputs {
 
         // Valid deposit scripts cannot be less than this length.
         if script.len() < STANDARD_SCRIPT_LENGTH {
-            return Err(Error::InvalidDepositScript);
+            return Err(Error::InvalidDepositScriptLength);
         }
         // This cannot panic because of the above check and the fact that
         // DEPOSIT_SCRIPT_FIXED_LENGTH < STANDARD_SCRIPT_LENGTH.
@@ -328,7 +328,7 @@ impl DepositScriptInputs {
         // because of how `slice::split_at` works, so we know the
         // public_key variable has length 32.
         let [OP_DROP, 32, public_key @ .., OP_CHECKSIG] = check else {
-            return Err(Error::InvalidDepositScript);
+            return Err(Error::InvalidDepositCheckSigPart);
         };
         // In bitcoin script, the code for pushing N bytes onto the stack
         // is OP_PUSHBYTES_N where N is between 1 and 75 inclusive. The
@@ -341,8 +341,19 @@ impl DepositScriptInputs {
         // can have a size of up to 151 bytes. Note that the data slice
         // here starts with the 8 byte max fee.
         let deposit_data = match params {
-            // This branch represents a contract address.
-            [OP_PUSHDATA1, n, data @ ..] if data.len() == *n as usize && *n < 160 => data,
+            // This branch represents a contract address. We reject scripts
+            // that use OP_PUSHDATA1 to push less than 75 bytes of data
+            // because those scripts, while valid and do not break
+            // consensus rules, are non-standard. Accepting them would make
+            // it very difficult for the signers to accept the deposit
+            // since bitcoin-core nodes do not relay non-standard
+            // transactions.
+            [OP_PUSHDATA1, n, data @ ..] if data.len() == *n as usize && 75 < *n && *n < 160 => {
+                data
+            }
+            [OP_PUSHDATA1, n, data @ ..] if data.len() == *n as usize && *n < 76 => {
+                return Err(Error::NonMinimalPushDepositScript)
+            }
             // This branch can be a standard (non-contract) Stacks
             // addresses when n == 30 (8 byte max fee + 22 byte address)
             // and is a contract address otherwise.
@@ -602,6 +613,24 @@ mod tests {
         assert_eq!(extracts.recipient, recipient);
         assert_eq!(extracts.max_fee, max_fee);
         assert_eq!(extracts.deposit_script(), script);
+    }
+
+    #[test]
+    fn non_standard_deposit_scripts() {
+        let secret_key = SecretKey::new(&mut OsRng);
+        let public_key = secret_key.x_only_public_key(SECP256K1).0;
+
+        let data = [0; 50];
+        let deposit_script = ScriptBuf::builder()
+            .push_opcode(opcodes::OP_PUSHDATA1)
+            .push_slice(data)
+            .push_opcode(opcodes::OP_DROP)
+            .push_slice(public_key.serialize())
+            .push_opcode(opcodes::OP_CHECKSIG)
+            .into_script();
+
+        let extracts = DepositScriptInputs::parse(&deposit_script);
+        assert!(matches!(extracts, Err(Error::NonMinimalPushDepositScript)));
     }
 
     /// Check that `DepositScript::deposit_script` and the
