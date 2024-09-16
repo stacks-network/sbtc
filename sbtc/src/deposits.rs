@@ -419,7 +419,7 @@ impl ReclaimScriptInputs {
         }
 
         // OP_CSV checks can be disabled if the lock-time has the disabled
-        // lock-time bit flag set. So we disallow such lock times to ensure
+        // lock-time bit set to 1. So we disallow such lock times to ensure
         // that the OP_CSV check is always enabled.
         //
         // <https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L560-L592>
@@ -643,11 +643,15 @@ mod tests {
         assert_eq!(extracts.deposit_script(), script);
     }
 
+    /// Construct a parsable deposit stript that is non-standard and check
+    /// that it errors.
     #[test]
     fn non_standard_deposit_scripts() {
         let secret_key = SecretKey::new(&mut OsRng);
         let public_key = secret_key.x_only_public_key(SECP256K1).0;
 
+        // We construct valid deposit data so that we know that the issue
+        // doesn't lie there.
         let recipient = PrincipalData::parse(CONTRACT_ADDRESS).unwrap();
         let max_fee: u64 = 15000;
 
@@ -655,8 +659,9 @@ mod tests {
         deposit_data[..8].copy_from_slice(&max_fee.to_be_bytes());
         deposit_data[8..].copy_from_slice(&recipient.serialize_to_vec());
 
-        // This is non-standard script, because it does not follow the
-        // minimal push rule.
+        // This is non-standard script because it does not follow the
+        // minimal push rule. We use the OP_PUSHDATA1 when we can use
+        // fewer bytes for the same outcome in the script.
         let deposit_script = ScriptBuf::builder()
             .push_opcode(opcodes::OP_PUSHDATA1)
             .push_slice(deposit_data)
