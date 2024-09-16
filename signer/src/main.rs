@@ -74,8 +74,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_shutdown_signal_watcher(context.clone()),
         // The rest of our services which run concurrently, and must all be
         // running for the signer to be operational.
-        run_checked(run_stacks_event_observer, &context, &db),
-        run_checked(run_libp2p_swarm, &context, &db),
+        run_checked(run_stacks_event_observer, &context),
+        run_checked(run_libp2p_swarm, &context),
     );
 
     Ok(())
