@@ -35,7 +35,7 @@ async fn create_signer_databases(num_signers: usize) -> Vec<PgStore> {
     let get_next_num = || DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
 
     futures::stream::repeat_with(get_next_num)
-        .then(signer::testing::storage::new_test_database)
+        .then(|i| signer::testing::storage::new_test_database(i, true))
         .take(num_signers)
         .collect()
         .await

@@ -57,6 +57,7 @@ zeromq.workspace = true
 hex.workspace = true
 cfg-if = "1.0"
 libp2p.workspace = true
+include_dir = "0.7.4"
 
 # Only for testing
 fake = { version = "2.9.2", features = ["derive", "time"], optional = true }
@@ -72,6 +73,7 @@ mockito = "1.4.0"
 more-asserts = "0.3"
 ripemd = "0.1.3"
 test-case = "3.1"
+
 
 [build-dependencies]
 tonic-build.workspace = true

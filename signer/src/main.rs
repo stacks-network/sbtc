@@ -15,13 +15,6 @@ use signer::network::libp2p::SignerSwarmBuilder;
 use signer::storage::postgres::PgStore;
 use tokio::signal;
 
-// TODO: Should this be part of the SignerContext?
-fn get_connection_pool(uri: &url::Url) -> sqlx::PgPool {
-    sqlx::postgres::PgPoolOptions::new()
-        .connect_lazy(uri.as_str())
-        .unwrap()
-}
-
 /// Command line arguments for the signer.
 #[derive(Debug, Parser)]
 #[clap(name = "sBTC Signer")]
@@ -30,6 +23,12 @@ struct SignerArgs {
     /// that all parameters are provided via environment variables.
     #[clap(short = 'c', long, required = false)]
     config: Option<PathBuf>,
+
+    /// If this flag is set, the signer will attempt to automatically apply any
+    /// pending migrations to the database on startup.
+    #[clap(long)]
+    migrate_db: bool,
+    // TODO(532): Add db-migrations subcommand to print out all/pending db migrations sql
 }
 
 #[tokio::main]
@@ -46,6 +45,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = SignerArgs::parse();
 
     let settings = Settings::new(args.config)?;
+
+    // Open a connection to the signer db.
+    let db = PgStore::connect(settings.signer.db_endpoint.as_str()).await?;
+
+    // Apply any pending migrations if automatic migrations are enabled.
+    if args.migrate_db {
+        db.apply_migrations().await?;
+    }
 
     // Initialize the signer context.
     let context = SignerContext::init(settings)?;
@@ -66,8 +73,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_shutdown_signal_watcher(&context),
         // The rest of our services which run concurrently, and must all be
         // running for the signer to be operational.
-        run_checked(run_stacks_event_observer, &context),
-        run_checked(run_libp2p_swarm, &context),
+        run_checked(run_stacks_event_observer, &context, &db),
+        run_checked(run_libp2p_swarm, &context, &db),
     );
 
     Ok(())
@@ -77,13 +84,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// shutdown signal to the application if an error is encountered. This is needed
 /// as otherwise the application would continue running indefinitely (since no
 /// shutdown signal is sent automatically on error).
-async fn run_checked<'a, F, Fut, C>(f: F, ctx: &'a C) -> Result<(), Error>
+// TODO: Remove `db` from the signature once the db is on the context (PR coming).
+async fn run_checked<'a, F, Fut, C>(f: F, ctx: &'a C, db: &PgStore) -> Result<(), Error>
 where
     C: Context + 'a,
-    F: FnOnce(&'a C) -> Fut,
+    F: FnOnce(&'a C, PgStore) -> Fut,
     Fut: std::future::Future<Output = Result<(), Error>> + 'a,
 {
-    if let Err(error) = f(ctx).await {
+    if let Err(error) = f(ctx, db.clone()).await {
         tracing::error!(%error, "a fatal error occurred; shutting down the application");
         ctx.get_termination_handle().signal_shutdown();
         return Err(error);
@@ -153,7 +161,7 @@ async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
 
 /// Runs the libp2p swarm.
 #[tracing::instrument(skip(ctx))]
-async fn run_libp2p_swarm(ctx: &impl Context) -> Result<(), Error> {
+async fn run_libp2p_swarm(ctx: &impl Context, db: PgStore) -> Result<(), Error> {
     tracing::info!("initializing the p2p network");
 
     // Build the swarm.
@@ -171,13 +179,11 @@ async fn run_libp2p_swarm(ctx: &impl Context) -> Result<(), Error> {
 
 /// Runs the Stacks event observer server.
 #[tracing::instrument(skip(ctx))]
-async fn run_stacks_event_observer(ctx: &impl Context) -> Result<(), Error> {
+async fn run_stacks_event_observer(ctx: &impl Context, db: PgStore) -> Result<(), Error> {
     tracing::info!("initializing the Stacks event observer server");
 
-    let pool = get_connection_pool(&ctx.config().signer.db_endpoint);
-
     let state = ApiState {
-        db: PgStore::from(pool),
+        db,
         settings: ctx.config().clone(),
     };
     // Build the signer API application

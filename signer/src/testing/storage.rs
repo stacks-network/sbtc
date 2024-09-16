@@ -1,6 +1,6 @@
 //! Test utilities for the `storage` module
 
-use std::sync::atomic::AtomicU16;
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 
 use crate::storage::postgres::PgStore;
 
@@ -12,6 +12,7 @@ pub const DATABASE_URL: &str = "postgres://postgres:postgres@localhost:5432/sign
 /// This is needed to make sure that each test has as many isolated
 /// databases as it needs.
 pub static DATABASE_NUM: AtomicU16 = AtomicU16::new(0);
+static INITIAL_MIGRATIONS_APPLIED: AtomicBool = AtomicBool::new(false);
 
 /// It's better to create a new pool for each test since there is some
 /// weird bug in sqlx. The issue that can crop up with pool reuse is
@@ -39,7 +40,7 @@ fn get_connection_pool(url: &str) -> sqlx::PgPool {
 /// 2. Do the above, but have each transaction connect to its own
 ///    database. This actually works, and it's not clear why.
 /// 3. Have each test use a new pool to a new database. This works as well.
-pub async fn new_test_database(db_num: u16) -> PgStore {
+pub async fn new_test_database(db_num: u16, apply_migrations: bool) -> PgStore {
     let db_name = format!("test_db_{db_num}");
 
     // We create a new connection to the default database each time this
@@ -47,9 +48,22 @@ pub async fn new_test_database(db_num: u16) -> PgStore {
     // database being closed before it begins.
     let pool = get_connection_pool(DATABASE_URL);
 
+    // We only need to apply the initial migrations to the `signer` database
+    // once. This is because the `signer` database is the template for all
+    // other databases.
+    if !INITIAL_MIGRATIONS_APPLIED.load(Ordering::SeqCst) {
+        PgStore::connect(DATABASE_URL)
+            .await
+            .expect("failed to apply initial migrations")
+            .apply_migrations()
+            .await
+            .expect("failed to apply db migrations");
+        INITIAL_MIGRATIONS_APPLIED.store(true, Ordering::SeqCst);
+    }
+
     // We need to manually check if it exists and drop it if it does.
     let db_exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS (SELECT TRUE FROM pg_database WHERE datname = $1)",
+        "SELECT EXISTS (SELECT TRUE FROM pg_database WHERE datname = $1);",
     )
     .bind(&db_name)
     .fetch_one(&pool)
@@ -59,13 +73,13 @@ pub async fn new_test_database(db_num: u16) -> PgStore {
     if db_exists {
         // FORCE closes all connections to the database if there are any
         // and then drops the database.
-        let drop_db = format!("DROP DATABASE \"{db_name}\" WITH (FORCE)");
+        let drop_db = format!("DROP DATABASE \"{db_name}\" WITH (FORCE);");
         sqlx::query(&drop_db)
             .execute(&pool)
             .await
             .expect("failed to create test database");
     }
-    let create_db = format!("CREATE DATABASE \"{db_name}\" TEMPLATE signer");
+    let create_db = format!("CREATE DATABASE \"{db_name}\" TEMPLATE signer;");
 
     sqlx::query(&create_db)
         .execute(&pool)
@@ -79,8 +93,14 @@ pub async fn new_test_database(db_num: u16) -> PgStore {
     // <https://www.postgresql.org/docs/16/sql-createdatabase.html>
     pool.close().await;
 
-    let pool = get_connection_pool(&test_db_url);
-    PgStore::from(pool)
+    let store = PgStore::connect(&test_db_url).await.unwrap();
+    if apply_migrations {
+        store
+            .apply_migrations()
+            .await
+            .expect("failed to apply db migrations");
+    }
+    store
 }
 
 /// When we are done with the test, we need to delete any test databases
