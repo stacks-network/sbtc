@@ -44,6 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse the command line arguments.
     let args = SignerArgs::parse();
 
+    // Load the configuration file and/or environment variables.
     let settings = Settings::new(args.config)?;
 
     // Open a connection to the signer db.
@@ -55,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Initialize the signer context.
-    let context = SignerContext::init(settings)?;
+    let context = SignerContext::init(settings, db)?;
 
     // Run the application components concurrently. We're `join!`ing them
     // here so that every component can shut itself down gracefully when
@@ -70,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = tokio::join!(
         // Our global termination signal watcher. This does not run using `run_checked`
         // as it sends its own shutdown signal.
-        run_shutdown_signal_watcher(&context),
+        run_shutdown_signal_watcher(context.clone()),
         // The rest of our services which run concurrently, and must all be
         // running for the signer to be operational.
         run_checked(run_stacks_event_observer, &context, &db),
@@ -84,14 +85,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// shutdown signal to the application if an error is encountered. This is needed
 /// as otherwise the application would continue running indefinitely (since no
 /// shutdown signal is sent automatically on error).
-// TODO: Remove `db` from the signature once the db is on the context (PR coming).
-async fn run_checked<'a, F, Fut, C>(f: F, ctx: &'a C, db: &PgStore) -> Result<(), Error>
+async fn run_checked<F, Fut, C>(f: F, ctx: &C) -> Result<(), Error>
 where
-    C: Context + 'a,
-    F: FnOnce(&'a C, PgStore) -> Fut,
-    Fut: std::future::Future<Output = Result<(), Error>> + 'a,
+    C: Context,
+    F: FnOnce(C) -> Fut,
+    Fut: std::future::Future<Output = Result<(), Error>>,
 {
-    if let Err(error) = f(ctx, db.clone()).await {
+    if let Err(error) = f(ctx.clone()).await {
         tracing::error!(%error, "a fatal error occurred; shutting down the application");
         ctx.get_termination_handle().signal_shutdown();
         return Err(error);
@@ -103,7 +103,7 @@ where
 /// Runs the shutdown-signal watcher. On Unix systems, this listens for SIGHUP,
 /// SIGTERM, and SIGINT. On other systems, it listens for Ctrl-C.
 #[tracing::instrument(skip(ctx))]
-async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
+async fn run_shutdown_signal_watcher(ctx: impl Context) -> Result<(), Error> {
     let mut term = ctx.get_termination_handle();
 
     cfg_if! {
@@ -161,7 +161,7 @@ async fn run_shutdown_signal_watcher(ctx: &impl Context) -> Result<(), Error> {
 
 /// Runs the libp2p swarm.
 #[tracing::instrument(skip(ctx))]
-async fn run_libp2p_swarm(ctx: &impl Context, db: PgStore) -> Result<(), Error> {
+async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
     tracing::info!("initializing the p2p network");
 
     // Build the swarm.
@@ -174,28 +174,26 @@ async fn run_libp2p_swarm(ctx: &impl Context, db: PgStore) -> Result<(), Error> 
     // Start the libp2p swarm. This will run until either the shutdown signal is
     // received, or an unrecoverable error has occurred.
     tracing::info!("starting the libp2p swarm");
-    swarm.start(ctx).await.map_err(Error::SignerSwarm)
+    swarm.start(&ctx).await.map_err(Error::SignerSwarm)
 }
 
 /// Runs the Stacks event observer server.
 #[tracing::instrument(skip(ctx))]
-async fn run_stacks_event_observer(ctx: &impl Context, db: PgStore) -> Result<(), Error> {
+async fn run_stacks_event_observer(ctx: impl Context + 'static) -> Result<(), Error> {
     tracing::info!("initializing the Stacks event observer server");
 
-    let state = ApiState {
-        db,
-        settings: ctx.config().clone(),
-    };
+    let state = ApiState { ctx: ctx.clone() };
+
     // Build the signer API application
     let app = Router::new()
         .route("/", get(api::status_handler))
         .route("/new_block", post(api::new_block_handler))
         .with_state(state);
 
-    let config = ctx.config().signer.event_observer.clone();
-
     // Bind to the configured address and port
-    let listener = tokio::net::TcpListener::bind(config.bind).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(ctx.config().signer.event_observer.bind)
+        .await
+        .expect("failed to retrieve event observer bind address from config");
 
     // Get the termination signal handle.
     let mut term = ctx.get_termination_handle();

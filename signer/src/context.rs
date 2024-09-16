@@ -4,14 +4,14 @@ use std::sync::Arc;
 
 use tokio::sync::broadcast::Sender;
 
-use crate::{config::Settings, error::Error};
+use crate::{
+    config::Settings,
+    error::Error,
+    storage::{DbRead, DbWrite},
+};
 
 /// Context trait that is implemented by the [`SignerContext`].
-pub trait Context {
-    /// Initialize a new signer context.
-    fn init(config: Settings) -> Result<Self, crate::error::Error>
-    where
-        Self: Sized;
+pub trait Context: Clone + Sync + Send {
     /// Get the current configuration for the signer.
     fn config(&self) -> &Settings;
     /// Subscribe to the application signalling channel, returning a receiver
@@ -23,16 +23,21 @@ pub trait Context {
     fn signal(&self, signal: SignerSignal) -> Result<(), Error>;
     /// Returns a handle to the application's termination signal.
     fn get_termination_handle(&self) -> TerminationHandle;
+    /// Get a read-only handle to the signer storage.
+    fn get_storage(&self) -> impl DbRead + Clone + Sync + Send;
+    /// Get a read-write handle to the signer storage.
+    fn get_storage_mut(&self) -> impl DbRead + DbWrite + Clone + Sync + Send;
 }
 
 /// Signer context which is passed to different components within the
 /// signer binary.
-pub struct SignerContext {
-    inner: Arc<InnerSignerContext>,
+#[derive(Clone)]
+pub struct SignerContext<S> {
+    inner: Arc<InnerSignerContext<S>>,
 }
 
-impl std::ops::Deref for SignerContext {
-    type Target = InnerSignerContext;
+impl<S> std::ops::Deref for SignerContext<S> {
+    type Target = InnerSignerContext<S>;
 
     fn deref(&self) -> &Self::Target {
         &self.inner
@@ -40,7 +45,7 @@ impl std::ops::Deref for SignerContext {
 }
 
 /// Inner signer context which holds the configuration and signalling channels.
-pub struct InnerSignerContext {
+pub struct InnerSignerContext<S> {
     config: Settings,
     // Handle to the app signalling channel. This keeps the channel alive
     // for the duration of the program and is used both to send messages
@@ -50,6 +55,8 @@ pub struct InnerSignerContext {
     /// for the duration of the program and is used to provide new senders
     /// and receivers for a [`TerminationHandle`].
     term_tx: tokio::sync::watch::Sender<bool>,
+    /// Handle to the signer storage.
+    storage: S,
 }
 
 /// Signals that can be sent within the signer binary.
@@ -118,9 +125,12 @@ impl TerminationHandle {
     }
 }
 
-impl Context for SignerContext {
+impl<S> SignerContext<S>
+where
+    S: DbRead + DbWrite + Clone + Sync + Send,
+{
     /// Create a new signer context.
-    fn init(config: Settings) -> Result<Self, Error> {
+    pub fn init(config: Settings, db: S) -> Result<Self, Error> {
         // TODO: Decide on the channel capacity and how we should handle slow consumers.
         // NOTE: Ideally consumers which require processing time should pull the relevent
         // messages into a local VecDequeue and process them in their own time.
@@ -128,10 +138,20 @@ impl Context for SignerContext {
         let (term_tx, _) = tokio::sync::watch::channel(false);
 
         Ok(Self {
-            inner: Arc::new(InnerSignerContext { config, signal_tx, term_tx }),
+            inner: Arc::new(InnerSignerContext {
+                config,
+                signal_tx,
+                term_tx,
+                storage: db,
+            }),
         })
     }
+}
 
+impl<S> Context for SignerContext<S>
+where
+    S: DbRead + DbWrite + Clone + Sync + Send,
+{
     fn config(&self) -> &Settings {
         &self.config
     }
@@ -160,5 +180,13 @@ impl Context for SignerContext {
 
     fn get_termination_handle(&self) -> TerminationHandle {
         TerminationHandle(self.term_tx.clone(), self.term_tx.subscribe())
+    }
+
+    fn get_storage(&self) -> impl DbRead + Clone + Sync + Send {
+        self.storage.clone()
+    }
+
+    fn get_storage_mut(&self) -> impl DbRead + DbWrite + Clone + Sync + Send {
+        self.storage.clone()
     }
 }

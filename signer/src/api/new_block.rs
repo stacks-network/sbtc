@@ -10,6 +10,7 @@ use clarity::vm::representations::ContractName;
 use clarity::vm::types::QualifiedContractIdentifier;
 use clarity::vm::types::StandardPrincipalData;
 
+use crate::context::Context;
 use crate::stacks::events::RegistryEvent;
 use crate::stacks::events::TxInfo;
 use crate::stacks::webhooks::NewBlockEvent;
@@ -46,10 +47,7 @@ static SBTC_REGISTRY_IDENTIFIER: OnceLock<QualifiedContractIdentifier> = OnceLoc
 /// fixed number of times.
 ///
 /// [^1]: <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L317-L385>
-pub async fn new_block_handler<S>(state: State<ApiState<S>>, body: String) -> StatusCode
-where
-    S: DbWrite,
-{
+pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: String) -> StatusCode {
     tracing::debug!("Received a new block event from stacks-core");
     let api = state.0;
 
@@ -57,7 +55,7 @@ where
         // Although the following line can panic, our unit tests hit this
         // code path so if tests pass then this will work in production.
         let contract_name = ContractName::from(SBTC_REGISTRY_CONTRACT_NAME);
-        let issuer = StandardPrincipalData::from(api.settings.signer.deployer);
+        let issuer = StandardPrincipalData::from(api.ctx.config().signer.deployer);
         QualifiedContractIdentifier::new(issuer, contract_name)
     });
 
@@ -68,7 +66,7 @@ where
         // will lead to success, so we log the error and return `200 OK` so
         // that the node does not retry the webhook.
         Err(error) => {
-            tracing::error!("could not deserialize POST /new_block webhook: {body}, error {error}");
+            tracing::error!(%body, %error, "could not deserialize POST /new_block webhook:");
             return StatusCode::OK;
         }
     };
@@ -83,25 +81,27 @@ where
         .filter_map(|x| x.contract_event.map(|ev| (ev, x.txid)))
         .filter(|(ev, _)| &ev.contract_identifier == registry_address && ev.topic == "print");
 
+    let db = api.ctx.get_storage_mut();
+
     let block_id = new_block_event.index_block_hash;
 
     for (ev, txid) in events {
         let tx_info = TxInfo { txid, block_id };
         let res = match RegistryEvent::try_new(ev.value, tx_info) {
             Ok(RegistryEvent::CompletedDeposit(event)) => {
-                api.db.write_completed_deposit_event(&event).await
+                db.write_completed_deposit_event(&event).await
             }
             Ok(RegistryEvent::WithdrawalAccept(event)) => {
-                api.db.write_withdrawal_accept_event(&event).await
+                db.write_withdrawal_accept_event(&event).await
             }
             Ok(RegistryEvent::WithdrawalCreate(event)) => {
-                api.db.write_withdrawal_create_event(&event).await
+                db.write_withdrawal_create_event(&event).await
             }
             Ok(RegistryEvent::WithdrawalReject(event)) => {
-                api.db.write_withdrawal_reject_event(&event).await
+                db.write_withdrawal_reject_event(&event).await
             }
-            Err(err) => {
-                tracing::error!("Got an error when transforming the event ClarityValue: {err}");
+            Err(error) => {
+                tracing::error!(%error, "Got an error when transforming the event ClarityValue");
                 return StatusCode::OK;
             }
         };
@@ -109,8 +109,8 @@ where
         // issue that will resolve itself if we try again in a few moments.
         // So we return a non success status code so that the node retries
         // in a second.
-        if let Err(err) = res {
-            tracing::error!("Got an error when writing event to database: {err}");
+        if let Err(error) = res {
+            tracing::error!(%error, "Got an error when writing event to database");
             return StatusCode::INTERNAL_SERVER_ERROR;
         }
     }
@@ -129,6 +129,7 @@ mod tests {
     use test_case::test_case;
 
     use crate::config::Settings;
+    use crate::context::SignerContext;
     use crate::storage::in_memory::Store;
     use crate::storage::model::StacksPrincipal;
 
@@ -158,24 +159,24 @@ mod tests {
     where
         F: Fn(tokio::sync::MutexGuard<'_, Store>) -> bool,
     {
-        let api = ApiState {
-            db: Store::new_shared(),
-            settings: Settings::new(crate::testing::DEFAULT_CONFIG_PATH).unwrap(),
-        };
+        let db = Store::new_shared();
+
+        let ctx = SignerContext::init(Settings::new_from_default_config().unwrap(), db.clone())
+            .expect("failed to init context");
+
+        let api = ApiState { ctx: ctx.clone() };
 
         // Hey look, there is nothing here!
-        let db = api.db.lock().await;
-        assert!(table_is_empty(db));
+        assert!(table_is_empty(db.lock().await));
 
-        let state = State(api.clone());
+        let state = State(api);
         let body = body_str.to_string();
 
         let res = new_block_handler(state, body).await;
         assert_eq!(res, StatusCode::OK);
 
         // Now there should be something here
-        let db = api.db.lock().await;
-        assert!(!table_is_empty(db));
+        assert!(!table_is_empty(db.lock().await));
     }
 
     #[test_case(COMPLETED_DEPOSIT_WEBHOOK, |db| db.completed_deposit_events.get(&OutPoint::null()).is_none(); "completed-deposit")]
@@ -187,20 +188,21 @@ mod tests {
     where
         F: Fn(tokio::sync::MutexGuard<'_, Store>) -> bool,
     {
-        let api = ApiState {
-            db: Store::new_shared(),
-            settings: Settings::new_from_default_config().unwrap(),
-        };
+        let db = Store::new_shared();
+
+        let ctx = SignerContext::init(Settings::new_from_default_config().unwrap(), db.clone())
+            .expect("failed to init context");
+
+        let api = ApiState { ctx: ctx.clone() };
 
         // Hey look, there is nothing here!
-        let db = api.db.lock().await;
-        assert!(table_is_empty(db));
+        assert!(table_is_empty(db.lock().await));
 
         // Okay, we want to make sure that events that are from an
         // unexpected contract are filtered out. So we manually switch the
         // address to some random one and check the output. To do that we
         // do a string replace for the expected one with the fishy one.
-        let issuer = StandardPrincipalData::from(api.settings.signer.deployer);
+        let issuer = StandardPrincipalData::from(ctx.config().signer.deployer);
         let contract_name = ContractName::from(SBTC_REGISTRY_CONTRACT_NAME);
         let identifier = QualifiedContractIdentifier::new(issuer, contract_name.clone());
 
@@ -238,7 +240,6 @@ mod tests {
 
         // This event should be filtered out, so the table should still be
         // empty.
-        let db = api.db.lock().await;
-        assert!(table_is_empty(db));
+        assert!(table_is_empty(db.lock().await));
     }
 }

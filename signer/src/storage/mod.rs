@@ -11,6 +11,7 @@ pub mod model;
 pub mod postgres;
 pub mod sqlx;
 
+use std::fmt::Display;
 use std::future::Future;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
@@ -24,7 +25,7 @@ use crate::stacks::events::WithdrawalRejectEvent;
 /// Represents the ability to read data from the signer storage.
 pub trait DbRead {
     /// Read error.
-    type Error: std::error::Error;
+    type Error: std::error::Error + Display;
 
     /// Get the bitcoin block with the given block hash.
     fn get_bitcoin_block(
@@ -152,7 +153,7 @@ pub trait DbRead {
 /// Represents the ability to write data to the signer storage.
 pub trait DbWrite {
     /// Write error.
-    type Error: std::error::Error;
+    type Error: std::error::Error + Display;
 
     /// Write a bitcoin block.
     fn write_bitcoin_block(
