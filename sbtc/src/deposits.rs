@@ -901,7 +901,7 @@ mod tests {
         };
 
         let error = request.validate_tx(&setup.tx).unwrap_err();
-        assert!(matches!(error, Error::InvalidDepositScript));
+        assert!(matches!(error, Error::InvalidDepositScriptLength));
 
         let request = CreateDepositRequest {
             outpoint: OutPoint::new(setup.tx.compute_txid(), 0),
