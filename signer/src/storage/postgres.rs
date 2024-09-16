@@ -108,6 +108,7 @@ impl PgStore {
     /// Apply the migrations to the database.
     pub async fn apply_migrations(&self) -> Result<(), Error> {
         // Related to https://github.com/stacks-network/sbtc/issues/411
+        // TODO(537) - Revisit this prior to public launch
         //
         // Note 1: This could be generalized and moved up to the `storage` module, but
         // left that for a future exercise if we need to support other databases.
