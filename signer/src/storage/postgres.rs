@@ -106,18 +106,17 @@ impl PgStore {
     }
 
     /// Apply the migrations to the database.
-    //
-    // Related to https://github.com/stacks-network/sbtc/issues/411
-    //
-    // Note 1: This could be generalized and moved up to the `storage` module, but
-    // left that for a future exercise if we need to support other databases.
-    //
-    // Note 2: The `sqlx` "migration" feature results in dependency conflicts
-    // with sqlite from the clarity crate.
-    //
-    // Note 3: The migration code paths have no explicit integration tests, but are
-    // implicitly tested by all integration tests using `new_test_database()`.
     pub async fn apply_migrations(&self) -> Result<(), Error> {
+        // Related to https://github.com/stacks-network/sbtc/issues/411
+        //
+        // Note 1: This could be generalized and moved up to the `storage` module, but
+        // left that for a future exercise if we need to support other databases.
+        //
+        // Note 2: The `sqlx` "migration" feature results in dependency conflicts
+        // with sqlite from the clarity crate.
+        //
+        // Note 3: The migration code paths have no explicit integration tests, but are
+        // implicitly tested by all integration tests using `new_test_database()`.
         tracing::info!("Preparing to run database migrations");
 
         sqlx::raw_sql(
