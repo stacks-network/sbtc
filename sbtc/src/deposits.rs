@@ -41,6 +41,23 @@ const DEPOSIT_SCRIPT_FIXED_LENGTH: usize = 35;
 const STANDARD_SCRIPT_LENGTH: usize =
     1 + 1 + 8 + STACKS_ADDRESS_ENCODED_SIZE as usize + DEPOSIT_SCRIPT_FIXED_LENGTH;
 
+/// This flag, from bitcoin-core, determines the following:
+/// * If the input to OP_CSV has this bit set, then OP_CSV is treated as a
+///   NOP, effectively disabling the opcode when executing the script [^1].
+/// * It fails OP_CSV/CheckSequence() for any input that has it set (BIP
+///   112) [^2]. Note: Transaction inputs have an nSequence field that is
+///   different from the one referenced in the above bullet point.
+/// * If this flag is set, CTxIn::nSequence is NOT interpreted as a
+///   relative lock-time.
+/// * It skips SequenceLocks() for any input that has it set (BIP 68).
+///
+/// The last two bullets were taken from [^3].
+///
+/// [^1]: <https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L560-L592>
+/// [^2]: <https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L1737-L1782>
+/// [^3]: <https://github.com/bitcoin/bitcoin/blob/v27.1/src/primitives/transaction.h#L89-L98>
+const SEQUENCE_LOCKTIME_DISABLE_FLAG: i64 = 1 << 31;
+
 /// Script opcodes as the bytes in bitcoin Script.
 ///
 /// Drops the top stack item
@@ -383,7 +400,9 @@ impl DepositScriptInputs {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReclaimScriptInputs {
     /// This is the lock time used for the OP_CSV opcode in the reclaim
-    /// script.
+    /// script. It is not allowed to exceed the bounds expected for a
+    /// 5-byte lock-time in bitcoin-core. It is also not allowed to have
+    /// the [`SEQUENCE_LOCKTIME_DISABLE_FLAG`] bit set.
     lock_time: i64,
     /// The reclaim script after the <locked-time> OP_CSV part of the script
     script: ScriptBuf,
@@ -396,6 +415,15 @@ impl ReclaimScriptInputs {
         // integer, which has a max of 2**39 - 1. Negative numbers might be
         // considered non-standard, so we reject them as well.
         if lock_time > i64::pow(2, 39) - 1 || lock_time < 0 {
+            return Err(Error::InvalidReclaimScriptLockTime(lock_time));
+        }
+
+        // OP_CSV checks can be disabled if the lock-time has the disabled
+        // lock-time bit flag set. So we disallow such lock times to ensure
+        // that the OP_CSV check is always enabled.
+        //
+        // <https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L560-L592>
+        if lock_time & SEQUENCE_LOCKTIME_DISABLE_FLAG != 0 {
             return Err(Error::InvalidReclaimScriptLockTime(lock_time));
         }
 
@@ -703,7 +731,7 @@ mod tests {
     #[test_case(0x000000ffff; "2 bytes non-minimal")]
     #[test_case(0x0000ffffff; "3 bytes non-minimal")]
     #[test_case(0x005f000000; "4 bytes non-minimal")]
-    #[test_case(0x7fffffffff; "5 bytes non-minimal 2**39 - 1")]
+    #[test_case(0x7f0fffffff; "5 bytes non-minimal with locking enabled")]
     fn reclaim_script_lock_time(lock_time: i64) {
         let reclaim_script = reclaim_p2pk(lock_time);
 
@@ -773,10 +801,31 @@ mod tests {
         .push_int(150)
         .push_opcode(opcodes::OP_CSV)
         .into_script() ; "start with 0")]
+    #[test_case(ScriptBuf::builder()
+        .push_int(1 << 31 + 15)
+        .push_opcode(opcodes::OP_CSV)
+        .into_script() ; "is a lock-disabling number")]
+    #[test_case(ScriptBuf::builder()
+        .push_int(-4)
+        .push_opcode(opcodes::OP_CSV)
+        .into_script() ; "is a negative number")]
     fn invalid_script_start(reclaim_script: ScriptBuf) {
         // The script must start with `<lock-time> OP_CSV` or we get an
         // error.
         assert!(ReclaimScriptInputs::parse(&reclaim_script).is_err());
+    }
+
+    #[test]
+    fn set_disabled_flag() {
+        // Another check that having the specific bit set in the lock time
+        // will lead to a failure to create a ReclaimScriptInputs struct.
+        let lock_time = 56 | SEQUENCE_LOCKTIME_DISABLE_FLAG;
+        let reclaim = ReclaimScriptInputs::try_new(lock_time, ScriptBuf::new());
+        assert!(reclaim.is_err());
+
+        let lock_time = 56;
+        let reclaim = ReclaimScriptInputs::try_new(lock_time, ScriptBuf::new());
+        assert!(reclaim.is_ok());
     }
 
     #[test_case(true ; "use client")]

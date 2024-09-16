@@ -40,7 +40,9 @@ pub enum Error {
     /// Length of the deposit script is necessarily too short.
     #[error("script is invalid, it is too short")]
     InvalidDepositScriptLength,
-    /// The lock time included in the reclaim script was invalid.
+    /// The lock time included in the reclaim script was invalid. This
+    /// could be because the number is out of range for an acceptable lock
+    /// time, or because the 32nd bit has been set.
     #[error("the lock time included in the reclaim script was invalid: {0}")]
     InvalidReclaimScriptLockTime(i64),
     /// The reclaim script was invalid.
