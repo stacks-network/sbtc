@@ -149,12 +149,8 @@ mod tests {
 
         let settings = Settings::new_from_default_config().unwrap();
 
-        let context1 = SignerContext::init(settings.clone(), Store::new_shared())
-            .await
-            .unwrap();
-        let context2 = SignerContext::init(settings, Store::new_shared())
-            .await
-            .unwrap();
+        let context1 = SignerContext::init(settings.clone(), Store::new_shared()).unwrap();
+        let context2 = SignerContext::init(settings, Store::new_shared()).unwrap();
 
         let term1 = context1.get_termination_handle();
         let term2 = context2.get_termination_handle();

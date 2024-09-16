@@ -7,11 +7,9 @@ pub mod status;
 pub use new_block::new_block_handler;
 pub use status::status_handler;
 
-use crate::context::Context;
-
 /// A struct with state data necessary for runtime operation.
 #[derive(Debug, Clone)]
-pub struct ApiState<C: Context> {
+pub struct ApiState<C> {
     /// For writing to the database.
     pub ctx: C,
 }

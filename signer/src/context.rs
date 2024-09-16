@@ -130,7 +130,7 @@ where
     S: DbRead + DbWrite + Clone + Sync + Send,
 {
     /// Create a new signer context.
-    pub async fn init(config: Settings, db: S) -> Result<Self, Error> {
+    pub fn init(config: Settings, db: S) -> Result<Self, Error> {
         // TODO: Decide on the channel capacity and how we should handle slow consumers.
         // NOTE: Ideally consumers which require processing time should pull the relevent
         // messages into a local VecDequeue and process them in their own time.

@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = PgStore::connect(settings.signer.db_endpoint.as_str()).await?;
 
     // Initialize the signer context.
-    let context = SignerContext::init(settings, db).await?;
+    let context = SignerContext::init(settings, db)?;
 
     // Run the application components concurrently. We're `join!`ing them
     // here so that every component can shut itself down gracefully when
