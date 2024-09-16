@@ -23,6 +23,12 @@ struct SignerArgs {
     /// that all parameters are provided via environment variables.
     #[clap(short = 'c', long, required = false)]
     config: Option<PathBuf>,
+
+    /// If this flag is set, the signer will attempt to automatically apply any
+    /// pending migrations to the database on startup.
+    #[clap(long)]
+    migrate_db: bool,
+    // TODO(532): Add db-migrations subcommand to print out all/pending db migrations sql
 }
 
 #[tokio::main]
@@ -43,6 +49,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Open a connection to the signer db.
     let db = PgStore::connect(settings.signer.db_endpoint.as_str()).await?;
+
+    // Apply any pending migrations if automatic migrations are enabled.
+    if args.migrate_db {
+        db.apply_migrations().await?;
+    }
 
     // Initialize the signer context.
     let context = SignerContext::init(settings, db)?;

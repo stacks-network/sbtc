@@ -160,6 +160,30 @@ pub enum Error {
     #[error("received an error when attempting to connect to the database: {0}")]
     SqlxConnect(#[source] sqlx::Error),
 
+    /// An error occurred while attempting to run sqlx migrations.
+    #[error("encountered an error while running sqlx migrations: {0}")]
+    SqlxMigrate(#[source] sqlx::Error),
+
+    /// An error occurred while attempting to begin an sqlx transaction.
+    #[error("encountered an error while beginning an sqlx transaction: {0}")]
+    SqlxBeginTransaction(#[source] sqlx::Error),
+
+    /// An error occurred while attempting to commit an sqlx transaction.
+    #[error("encountered an error while committing an sqlx transaction: {0}")]
+    SqlxCommitTransaction(#[source] sqlx::Error),
+
+    /// An error occurred while attempting to rollback an sqlx transaction.
+    #[error("encountered an error while rolling back an sqlx transaction: {0}")]
+    SqlxRollbackTransaction(#[source] sqlx::Error),
+
+    /// An error when attempting to read a migration script.
+    #[error("failed to read migration script: {0}")]
+    ReadSqlMigration(Cow<'static, str>),
+
+    /// Could not retrieve the current database name.
+    #[error("could not retrieve the current database name")]
+    CurrentDatabaseName,
+
     /// An error when attempting to generically decode bytes using the
     /// trait implementation.
     #[error("got an error wen attempting to call StacksMessageCodec::consensus_deserialize {0}")]

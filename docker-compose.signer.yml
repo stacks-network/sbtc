@@ -1,7 +1,37 @@
+# This file is used for running the dependencies of the sBTC signer.
+#
+# It is intended to become a template for the absolute minimum required
+# dependencies to run the signer and used to adapt the devenv later. 
+# See # TODO(536)
+
 services:
 
+  signer:
+    container_name: sbtc-signer
+    build:
+      context: .
+      dockerfile: Dockerfile.signer
+    volumes:
+      - .:/data
+    networks:
+      - sbtc_signer
+    working_dir: /data
+    command: 
+      - /bin/bash
+      - -c 
+      - . /root/.cargo/env && cargo run --target x86_64-unknown-linux-gnu --bin signer -- -c /data/signer/src/config/default.toml --migrate-db
+    environment:
+      RUST_BACKTRACE: 1
+      RUST_LOG: info
+      SIGNER_SIGNER__DB_ENDPOINT: postgres://postgres:postgres@sbtc-postgres/signer
+    depends_on:
+      postgres:
+        condition: service_healthy
+      bitcoind:
+        condition: service_healthy
+
   bitcoind:
-    container_name: bitcoind
+    container_name: sbtc-bitcoind
     image: lncm/bitcoind:v27.0
     volumes:
       - ./signer/tests/service-configs/bitcoin.conf:/data/.bitcoin/bitcoin.conf:ro
@@ -19,6 +49,8 @@ services:
       - 18444:18444
       - 28332:28332
       - 28333:28333
+    networks:
+      - sbtc_signer
     healthcheck:
       test: ["CMD-SHELL", "bitcoin-cli getblockcount"]
       interval: 3s
@@ -27,33 +59,22 @@ services:
 
   postgres:
     image: postgres:16.3
-    container_name: postgres
+    container_name: sbtc-postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: signer
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
-      - "5432:5432"
+      - ":5432"
+    networks:
+      - sbtc_signer
     healthcheck:
       test: ["CMD-SHELL", "pg_isready --username=postgres --dbname=signer"]
       interval: 2s
       timeout: 1s
       retries: 5
 
-  flyway:
-    image: flyway/flyway:10.13.0
-    command: >-
-      -url=jdbc:postgresql://postgres:5432/signer
-      -user=postgres
-      -password=postgres
-      -sqlMigrationPrefix=""
-      -connectRetries=60
-      migrate
-    volumes:
-      - ./signer/migrations:/flyway/sql
-    depends_on:
-      postgres:
-        condition: service_healthy
-    profiles:
-      - manual_start
+networks:
+  sbtc_signer:
+    driver: bridge
