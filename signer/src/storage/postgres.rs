@@ -117,7 +117,7 @@ impl PgStore {
 
         sqlx::raw_sql(
             r#"
-                CREATE TABLE IF NOT EXISTS public.__db_migrations (
+                CREATE TABLE IF NOT EXISTS public.__sbtc_migrations (
                     key TEXT PRIMARY KEY
                 );
             "#,
@@ -199,7 +199,7 @@ impl PgStore {
         let result = sqlx::query_scalar::<_, i64>(
             // Note: db_name + key are PK so we can only get max 1 row.
             r#"
-            SELECT COUNT(*) FROM public.__db_migrations
+            SELECT COUNT(*) FROM public.__sbtc_migrations
                 WHERE 
                     key = $1
             ;
@@ -217,7 +217,7 @@ impl PgStore {
     async fn insert_migration(&self, key: &str) -> Result<(), Error> {
         sqlx::query(
             r#"
-            INSERT INTO public.__db_migrations (key)
+            INSERT INTO public.__sbtc_migrations (key)
                 VALUES ($1)
             "#,
         )
