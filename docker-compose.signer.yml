@@ -1,3 +1,9 @@
+# This file is used for running the dependencies of the sBTC signer.
+#
+# It is intended to become a template for the absolute minimum required
+# dependencies to run the signer and used to adapt the devenv later. 
+# See # TODO(536)
+
 services:
 
   signer:
