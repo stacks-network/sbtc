@@ -485,6 +485,32 @@ impl super::DbRead for SharedStore {
             Ok(Vec::new())
         }
     }
+
+    async fn in_canonical_bitcoin_blockchain(
+        &self,
+        chain_tip: &model::BitcoinBlockRef,
+        block_ref: &model::BitcoinBlockRef,
+    ) -> Result<bool, Self::Error> {
+        let store = self.lock().await;
+        let bitcoin_blocks = &store.bitcoin_blocks;
+        let first = bitcoin_blocks.get(&chain_tip.block_hash);
+
+        let num_matches =
+            std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
+                .map(model::BitcoinBlockRef::from)
+                .skip_while(|block| block != block_ref)
+                .count();
+
+        Ok(num_matches > 0)
+    }
+
+    async fn get_bitcoin_tx(
+        &self,
+        _txid: &model::BitcoinTxId,
+        _block_hash: &model::BitcoinBlockHash,
+    ) -> Result<Option<model::BitcoinTx>, Self::Error> {
+        unimplemented!()
+    }
 }
 
 impl super::DbWrite for SharedStore {
