@@ -17,6 +17,7 @@ use crate::testing;
 use crate::testing::storage::model::TestData;
 use crate::transaction_coordinator;
 use crate::transaction_signer;
+use crate::transaction_signer::TxSignerEvent;
 
 use crate::ecdsa::SignEcdsa as _;
 use crate::network::MessageTransfer as _;
@@ -101,8 +102,10 @@ impl<S> RunningEventLoopHandle<S> {
         // While this explicit drop isn't strictly necessary, it serves to clarify our intention.
         drop(self.block_observer_notification_tx);
 
-        self.join_handle
+        let future = self.join_handle;
+        tokio::time::timeout(Duration::from_secs(10), future)
             .await
+            .unwrap()
             .expect("joining event loop failed")
             .expect("event loop returned error");
 
@@ -277,12 +280,11 @@ where
             * self.test_model_parameters.num_deposit_requests_per_block as u16;
 
         for handle in event_loop_handles.iter_mut() {
-            handle
-                .wait_for_events(
-                    transaction_signer::TxSignerEvent::ReceivedDepositDecision,
-                    num_expected_decisions,
-                )
+            let msg = TxSignerEvent::ReceivedDepositDecision;
+            let future = handle.wait_for_events(msg, num_expected_decisions);
+            tokio::time::timeout(Duration::from_secs(10), future)
                 .await
+                .unwrap();
         }
 
         for handle in event_loop_handles {
