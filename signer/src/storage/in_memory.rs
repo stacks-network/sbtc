@@ -51,6 +51,10 @@ pub struct Store {
     /// Bitcoin transactions to blocks
     pub bitcoin_transactions_to_blocks: HashMap<model::BitcoinTxId, Vec<model::BitcoinBlockHash>>,
 
+    /// Bitcoin transactions to blocks
+    pub bitcoin_transactions:
+        HashMap<(model::BitcoinTxId, model::BitcoinBlockHash), model::BitcoinTx>,
+
     /// Stacks blocks to transactions
     pub stacks_block_to_transactions: HashMap<model::StacksBlockHash, Vec<model::StacksTxId>>,
 
@@ -506,10 +510,16 @@ impl super::DbRead for SharedStore {
 
     async fn get_bitcoin_tx(
         &self,
-        _txid: &model::BitcoinTxId,
-        _block_hash: &model::BitcoinBlockHash,
+        txid: &model::BitcoinTxId,
+        block_hash: &model::BitcoinBlockHash,
     ) -> Result<Option<model::BitcoinTx>, Self::Error> {
-        unimplemented!()
+        let store = self.lock().await;
+        let maybe_tx = store
+            .bitcoin_transactions
+            .get(&(*txid, *block_hash))
+            .cloned();
+
+        Ok(maybe_tx)
     }
 }
 
