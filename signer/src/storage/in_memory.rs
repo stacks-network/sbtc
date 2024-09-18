@@ -8,13 +8,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::stacks::events::CompletedDepositEvent;
 use crate::stacks::events::WithdrawalAcceptEvent;
 use crate::stacks::events::WithdrawalCreateEvent;
 use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
-use crate::error::Error;
 
 /// A store wrapped in an Arc<Mutex<...>> for interior mutability
 pub type SharedStore = Arc<Mutex<Store>>;
@@ -532,10 +532,7 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_bitcoin_transactions(
-        &self,
-        txs: Vec<model::Transaction>,
-    ) -> Result<(), Error> {
+    async fn write_bitcoin_transactions(&self, txs: Vec<model::Transaction>) -> Result<(), Error> {
         for tx in txs {
             let bitcoin_transaction = model::BitcoinTransaction {
                 txid: tx.txid.into(),
@@ -639,10 +636,7 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_transaction(
-        &self,
-        _transaction: &model::Transaction,
-    ) -> Result<(), Error> {
+    async fn write_transaction(&self, _transaction: &model::Transaction) -> Result<(), Error> {
         // Currently not needed in-memory since it's not required by any queries
         Ok(())
     }

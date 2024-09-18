@@ -741,10 +741,7 @@ mod tests {
             unimplemented!()
         }
 
-        async fn broadcast_transaction(
-            &mut self,
-            _tx: &bitcoin::Transaction,
-        ) -> Result<(), Error> {
+        async fn broadcast_transaction(&mut self, _tx: &bitcoin::Transaction) -> Result<(), Error> {
             unimplemented!()
         }
     }
@@ -774,10 +771,7 @@ mod tests {
             todo!()
         }
 
-        async fn get_block(
-            &mut self,
-            block_id: StacksBlockId,
-        ) -> Result<NakamotoBlock, Error> {
+        async fn get_block(&mut self, block_id: StacksBlockId) -> Result<NakamotoBlock, Error> {
             self.stacks_blocks
                 .iter()
                 .skip_while(|(id, _, _)| &block_id != id)

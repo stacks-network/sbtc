@@ -21,6 +21,10 @@ pub enum Error {
     #[error("tokio i/o error: {0}")]
     TokioIo(#[from] tokio::io::Error),
 
+    /// The error used in the [`Encode`] and [`Decode`] trait.
+    #[error("error serializing type: {0}")]
+    Bincode(#[source] bincode::Error),
+
     /// Error when breaking out the ZeroMQ message into three parts.
     #[error("bitcoin messages should have a three part layout, received {0} parts")]
     BitcoinCoreZmqMessageLayout(usize),
@@ -257,10 +261,6 @@ pub enum Error {
     /// Codec error
     #[error("codec error: {0}")]
     Codec(#[source] codec::Error),
-
-    /// In-memory network error
-    #[error("in-memory network error: {0}")]
-    InMemoryNetwork(#[from] network::in_memory::Error),
 
     /// GRPC relay network error
     #[error("GRPC relay network error: {0}")]

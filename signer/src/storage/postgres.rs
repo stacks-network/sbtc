@@ -1324,10 +1324,7 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn write_bitcoin_transactions(
-        &self,
-        txs: Vec<model::Transaction>,
-    ) -> Result<(), Error> {
+    async fn write_bitcoin_transactions(&self, txs: Vec<model::Transaction>) -> Result<(), Error> {
         let summary = self.write_transactions(txs).await?;
         if summary.tx_ids.is_empty() {
             return Ok(());
@@ -1377,10 +1374,7 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn write_stacks_transactions(
-        &self,
-        txs: Vec<model::Transaction>,
-    ) -> Result<(), Error> {
+    async fn write_stacks_transactions(&self, txs: Vec<model::Transaction>) -> Result<(), Error> {
         let summary = self.write_transactions(txs).await?;
         if summary.tx_ids.is_empty() {
             return Ok(());
