@@ -20,6 +20,7 @@ use signer::stacks::contracts::AsContractCall;
 use signer::stacks::contracts::AsTxPayload as _;
 use signer::stacks::contracts::CompleteDepositV1;
 use signer::stacks::contracts::RejectWithdrawalV1;
+use signer::stacks::contracts::ReqContext;
 use signer::stacks::contracts::RotateKeysV1;
 use signer::stacks::events::CompletedDepositEvent;
 use signer::stacks::events::WithdrawalAcceptEvent;
@@ -48,21 +49,6 @@ use test_case::test_case;
 
 use crate::DATABASE_NUM;
 
-fn generate_signer_set<R>(rng: &mut R, num_signers: usize) -> Vec<PublicKey>
-where
-    R: rand::RngCore + rand::CryptoRng,
-{
-    // Generate the signer set. Each SignerInfo object returned from the
-    // `testing::wsts::generate_signer_info` function the public keys of
-    // other signers, so we take one of them and get the signing set from
-    // that one.
-    testing::wsts::generate_signer_info(rng, num_signers)
-        .into_iter()
-        .take(1)
-        .flat_map(|signer_info| signer_info.signer_public_keys.into_iter())
-        .collect()
-}
-
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_be_able_to_query_bitcoin_blocks() {
@@ -78,7 +64,7 @@ async fn should_be_able_to_query_bitcoin_blocks() {
         num_signers_per_request: 0,
     };
 
-    let signer_set = generate_signer_set(&mut rng, 7);
+    let signer_set = testing::wsts::generate_signer_set(&mut rng, 7);
 
     let persisted_model = TestData::generate(&mut rng, &signer_set, &test_model_params);
     let not_persisted_model = TestData::generate(&mut rng, &signer_set, &test_model_params);
@@ -121,12 +107,12 @@ impl AsContractCall for InitiateWithdrawalRequest {
     fn as_contract_args(&self) -> Vec<ClarityValue> {
         Vec::new()
     }
-    async fn validate<S>(&self, _: &S) -> Result<bool, Error>
+    async fn validate<S>(&self, _db: &S, _ctx: &ReqContext) -> Result<(), Error>
     where
         S: DbRead + Send + Sync,
         Error: From<<S as DbRead>::Error>,
     {
-        Ok(true)
+        Ok(())
     }
 }
 
@@ -140,12 +126,18 @@ impl AsContractCall for InitiateWithdrawalRequest {
     amount: 123654,
     recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
     deployer: testing::wallet::WALLET.0.address(),
+    sweep_txid: BitcoinTxId::from([0; 32]),
+    sweep_block_hash: BitcoinBlockHash::from([0; 32]),
+    sweep_block_height: 7,
 }); "complete-deposit standard recipient")]
 #[test_case(ContractCallWrapper(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654,
     recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y.my-contract-name").unwrap(),
     deployer: testing::wallet::WALLET.0.address(),
+    sweep_txid: BitcoinTxId::from([0; 32]),
+    sweep_block_hash: BitcoinBlockHash::from([0; 32]),
+    sweep_block_height: 7,
 }); "complete-deposit contract recipient")]
 #[test_case(ContractCallWrapper(AcceptWithdrawalV1 {
     request_id: 0,
@@ -319,7 +311,7 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: 0,
     };
-    let signer_set = generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -379,7 +371,7 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
         num_signers_per_request: 0,
     };
 
-    let signer_set = generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -440,7 +432,7 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
     };
     let threshold = 4;
 
-    let signer_set = generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -509,7 +501,7 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
         num_signers_per_request: num_signers,
     };
     let threshold = 4;
-    let signer_set = generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -574,7 +566,7 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
     };
     let num_signers = 7;
     let threshold = 4;
-    let signer_set = generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -1145,7 +1137,7 @@ async fn fetching_withdrawal_request_votes() {
 #[tokio::test]
 async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = signer::testing::storage::new_test_database(db_num).await;
+    let pg_store = signer::testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
     // This is just a sql test, where we use the `TestData` struct to help
@@ -1160,7 +1152,7 @@ async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
         num_signers_per_request: num_signers,
     };
 
-    let signer_set = generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
     // Okay now we generate one blockchain and get its chain tip
     let test_data1 = TestData::generate(&mut rng, &signer_set, &test_model_params);
     // And we generate another blockchain and get its chain tip
@@ -1220,7 +1212,7 @@ async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
 #[tokio::test]
 async fn we_can_fetch_bitcoin_txs_from_db() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = signer::testing::storage::new_test_database(db_num).await;
+    let pg_store = signer::testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
     // This is just a sql test, where we use the `TestData` struct to help
@@ -1235,7 +1227,7 @@ async fn we_can_fetch_bitcoin_txs_from_db() {
         num_signers_per_request: num_signers,
     };
 
-    let signer_set = generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
     test_data.write_to(&pg_store).await;
 

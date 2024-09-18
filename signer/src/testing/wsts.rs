@@ -30,6 +30,22 @@ pub struct SignerInfo {
     pub signer_public_keys: BTreeSet<PublicKey>,
 }
 
+/// Generate a set of public keys for a group of signers
+pub fn generate_signer_set<R>(rng: &mut R, num_signers: usize) -> Vec<PublicKey>
+where
+    R: rand::RngCore + rand::CryptoRng,
+{
+    // Generate the signer set. Each SignerInfo object returned from the
+    // `generate_signer_info` function the public keys of
+    // other signers, so we take one of them and get the signing set from
+    // that one.
+    generate_signer_info(rng, num_signers)
+        .into_iter()
+        .take(1)
+        .flat_map(|signer_info| signer_info.signer_public_keys.into_iter())
+        .collect()
+}
+
 /// Generate a new signer set
 pub fn generate_signer_info<Rng: rand::RngCore + rand::CryptoRng>(
     rng: &mut Rng,

@@ -19,8 +19,10 @@ use crate::config::NetworkKind;
 use crate::error::Error;
 use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::AsTxPayload;
+use crate::stacks::contracts::ReqContext;
 use crate::stacks::contracts::StacksTxPostConditions;
 use crate::stacks::wallet::SignerWallet;
+use crate::storage::DbRead;
 
 /// A static for a test 2-3 multi-sig wallet. This wallet is loaded with
 /// funds in the local devnet environment.
@@ -151,11 +153,11 @@ impl AsContractCall for InitiateWithdrawalRequest {
             ClarityValue::UInt(self.max_fee as u128),
         ]
     }
-    async fn validate<S>(&self, _: &S) -> Result<bool, Error>
+    async fn validate<S>(&self, _db: &S, _ctx: &ReqContext) -> Result<(), Error>
     where
-        S: crate::storage::DbRead + Send + Sync,
-        Error: From<<S as crate::storage::DbRead>::Error>,
+        S: DbRead + Send + Sync,
+        Error: From<<S as DbRead>::Error>,
     {
-        Ok(true)
+        Ok(())
     }
 }
