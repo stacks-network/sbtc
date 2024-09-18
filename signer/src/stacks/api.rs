@@ -764,7 +764,6 @@ pub async fn fetch_unknown_ancestors<S, D>(
 where
     S: StacksInteract,
     D: DbRead + Send + Sync,
-    Error: From<<D as DbRead>::Error>,
 {
     let mut blocks = vec![stacks.get_block(block_id).await?];
 

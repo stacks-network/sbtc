@@ -19,6 +19,7 @@ use crate::network;
 use crate::storage;
 use crate::storage::model;
 use crate::wsts_state_machine;
+use crate::error::Error;
 
 use crate::ecdsa::SignEcdsa as _;
 use bitcoin::hashes::Hash as _;
@@ -119,10 +120,8 @@ where
     N: network::MessageTransfer,
     S: storage::DbRead + storage::DbWrite,
     B: BitcoinInteract,
-    error::Error: From<N::Error>,
-    error::Error: From<<S as storage::DbRead>::Error>,
-    error::Error: From<<S as storage::DbWrite>::Error>,
-    error::Error: From<B::Error>,
+    Error: From<N::Error>,
+    Error: From<B::Error>,
 {
     /// Run the coordinator event loop
     #[tracing::instrument(skip(self))]

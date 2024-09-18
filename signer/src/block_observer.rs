@@ -20,7 +20,6 @@
 use std::collections::HashMap;
 
 use crate::bitcoin::BitcoinInteract;
-use crate::error;
 use crate::error::Error;
 use crate::stacks::api::StacksInteract;
 use crate::storage;
@@ -71,13 +70,11 @@ where
     EC: EmilyInteract,
     S: DbWrite + DbRead + Send + Sync,
     BHS: futures::stream::Stream<Item = bitcoin::BlockHash> + Unpin,
-    error::Error: From<<S as DbRead>::Error>,
-    error::Error: From<<S as DbWrite>::Error>,
-    error::Error: From<<BC as BitcoinInteract>::Error>,
+    Error: From<<BC as BitcoinInteract>::Error>,
 {
     /// Run the block observer
     #[tracing::instrument(skip(self))]
-    pub async fn run(mut self) -> Result<(), error::Error> {
+    pub async fn run(mut self) -> Result<(), Error> {
         while let Some(new_block_hash) = self.bitcoin_blocks.next().await {
             self.load_latest_deposit_requests().await;
 
@@ -119,7 +116,7 @@ where
     async fn next_blocks_to_process(
         &mut self,
         mut block_hash: bitcoin::BlockHash,
-    ) -> Result<Vec<bitcoin::Block>, error::Error> {
+    ) -> Result<Vec<bitcoin::Block>, Error> {
         let mut blocks = Vec::new();
 
         for _ in 0..self.horizon {
@@ -131,7 +128,7 @@ where
                 .bitcoin_client
                 .get_block(&block_hash)
                 .await?
-                .ok_or(error::Error::MissingBlock)?;
+                .ok_or(Error::MissingBlock)?;
 
             block_hash = block.header.prev_blockhash;
             blocks.push(block);
@@ -146,7 +143,7 @@ where
     async fn have_already_processed_block(
         &mut self,
         block_hash: bitcoin::BlockHash,
-    ) -> Result<bool, error::Error> {
+    ) -> Result<bool, Error> {
         Ok(self
             .storage
             .get_bitcoin_block(&block_hash.to_byte_array().into())
@@ -155,7 +152,7 @@ where
     }
 
     #[tracing::instrument(skip(self))]
-    async fn process_bitcoin_block(&mut self, block: bitcoin::Block) -> Result<(), error::Error> {
+    async fn process_bitcoin_block(&mut self, block: bitcoin::Block) -> Result<(), Error> {
         let info = self.stacks_client.get_tenure_info().await?;
         let stacks_blocks = crate::stacks::api::fetch_unknown_ancestors(
             &mut self.stacks_client,
@@ -241,7 +238,7 @@ where
     async fn write_stacks_blocks(
         &mut self,
         blocks: &[nakamoto::NakamotoBlock],
-    ) -> Result<(), error::Error> {
+    ) -> Result<(), Error> {
         let txs = storage::postgres::extract_relevant_transactions(blocks);
         let headers = blocks
             .iter()
@@ -255,7 +252,7 @@ where
 
     /// Write the bitcoin block to the database. We also write any
     /// transactions that are spend to any of the signers `scriptPubKey`s
-    async fn write_bitcoin_block(&mut self, block: &bitcoin::Block) -> Result<(), error::Error> {
+    async fn write_bitcoin_block(&mut self, block: &bitcoin::Block) -> Result<(), Error> {
         let db_block = model::BitcoinBlock {
             block_hash: block.block_hash().into(),
             block_height: block
@@ -717,7 +714,7 @@ mod tests {
     }
 
     impl BitcoinInteract for TestHarness {
-        type Error = error::Error;
+        type Error = Error;
         async fn get_block(
             &mut self,
             block_hash: &bitcoin::BlockHash,
@@ -782,25 +779,25 @@ mod tests {
         async fn get_block(
             &mut self,
             block_id: StacksBlockId,
-        ) -> Result<NakamotoBlock, error::Error> {
+        ) -> Result<NakamotoBlock, Error> {
             self.stacks_blocks
                 .iter()
                 .skip_while(|(id, _, _)| &block_id != id)
                 .map(|(_, block, _)| block)
                 .next()
                 .cloned()
-                .ok_or(error::Error::MissingBlock)
+                .ok_or(Error::MissingBlock)
         }
         async fn get_tenure(
             &mut self,
             block_id: StacksBlockId,
-        ) -> Result<Vec<NakamotoBlock>, error::Error> {
+        ) -> Result<Vec<NakamotoBlock>, Error> {
             let (stx_block_id, stx_block, btc_block_id) = self
                 .stacks_blocks
                 .iter()
                 .skip_while(|(id, _, _)| &block_id != id)
                 .next()
-                .ok_or(error::Error::MissingBlock)?;
+                .ok_or(Error::MissingBlock)?;
 
             let blocks: Vec<NakamotoBlock> = self
                 .stacks_blocks
@@ -814,7 +811,7 @@ mod tests {
 
             Ok(blocks)
         }
-        async fn get_tenure_info(&mut self) -> Result<RPCGetTenureInfo, error::Error> {
+        async fn get_tenure_info(&mut self) -> Result<RPCGetTenureInfo, Error> {
             let (_, _, btc_block_id) = self.stacks_blocks.last().unwrap();
 
             Ok(RPCGetTenureInfo {
@@ -844,7 +841,7 @@ mod tests {
                 .map(|(_, block, _)| block.header.chain_length)
                 .unwrap_or_default()
         }
-        async fn estimate_fees<T>(&self, _: &T, _: FeePriority) -> Result<u64, error::Error>
+        async fn estimate_fees<T>(&self, _: &T, _: FeePriority) -> Result<u64, Error>
         where
             T: crate::stacks::contracts::AsTxPayload,
         {

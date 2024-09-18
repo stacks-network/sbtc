@@ -130,8 +130,7 @@ pub trait AsContractCall {
     /// stacks and bitcoin blockchains.
     fn validate<S>(&self, _: &S) -> impl Future<Output = Result<bool, Error>> + Send
     where
-        S: DbRead + Send + Sync,
-        Error: From<<S as DbRead>::Error>;
+        S: DbRead + Send + Sync;
 }
 
 /// An enum representing all contract calls that the signers can make.
@@ -222,7 +221,6 @@ impl AsContractCall for CompleteDepositV1 {
     async fn validate<S>(&self, _storage: &S) -> Result<bool, Error>
     where
         S: DbRead + Send + Sync,
-        Error: From<<S as DbRead>::Error>,
     {
         // TODO(255): Add validation implementation
         Ok(false)
@@ -284,7 +282,6 @@ impl AsContractCall for AcceptWithdrawalV1 {
     async fn validate<S>(&self, _storage: &S) -> Result<bool, Error>
     where
         S: DbRead + Send + Sync,
-        Error: From<<S as DbRead>::Error>,
     {
         // TODO(255): Add validation implementation
         Ok(false)
@@ -331,7 +328,6 @@ impl AsContractCall for RejectWithdrawalV1 {
     async fn validate<S>(&self, _storage: &S) -> Result<bool, Error>
     where
         S: DbRead + Send + Sync,
-        Error: From<<S as DbRead>::Error>,
     {
         // TODO(255): Add validation implementation
         Ok(false)
@@ -439,7 +435,6 @@ impl AsContractCall for RotateKeysV1 {
     async fn validate<S>(&self, _storage: &S) -> Result<bool, Error>
     where
         S: DbRead + Send + Sync,
-        Error: From<<S as DbRead>::Error>,
     {
         // TODO(255): Add validation implementation
         Ok(false)

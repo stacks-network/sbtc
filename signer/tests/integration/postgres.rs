@@ -124,7 +124,6 @@ impl AsContractCall for InitiateWithdrawalRequest {
     async fn validate<S>(&self, _: &S) -> Result<bool, Error>
     where
         S: DbRead + Send + Sync,
-        Error: From<<S as DbRead>::Error>,
     {
         Ok(true)
     }
@@ -1145,7 +1144,7 @@ async fn fetching_withdrawal_request_votes() {
 #[tokio::test]
 async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = signer::testing::storage::new_test_database(db_num).await;
+    let pg_store = signer::testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
     // This is just a sql test, where we use the `TestData` struct to help
@@ -1220,7 +1219,7 @@ async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
 #[tokio::test]
 async fn we_can_fetch_bitcoin_txs_from_db() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = signer::testing::storage::new_test_database(db_num).await;
+    let pg_store = signer::testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
     // This is just a sql test, where we use the `TestData` struct to help
