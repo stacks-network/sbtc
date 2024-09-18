@@ -329,9 +329,9 @@ impl super::DbRead for PgStore {
         context_window: u16,
         threshold: u16,
     ) -> Result<Vec<model::DepositRequest>, Self::Error> {
-        // TODO: Make sure we get only pending deposits, don't include ones
-        // where we have a completed-deposit event on the canonical stacks
-        // blockchain.
+        // TODO(543): Make sure we get only pending deposits, don't include
+        // ones where we have a completed-deposit event on the canonical
+        // stacks blockchain.
         sqlx::query_as::<_, model::DepositRequest>(
             r#"
             WITH RECURSIVE context_window AS (

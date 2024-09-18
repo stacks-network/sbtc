@@ -1199,10 +1199,10 @@ async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
     // Okay, now let's get a block that we know is in the blockchain.
     let block_ref = {
         let tmp = test_data1
-            .get_parent_bitcoin_block(&chain_tip1.parent_hash)
+            .get_bitcoin_block(&chain_tip1.parent_hash)
             .unwrap();
         test_data1
-            .get_parent_bitcoin_block(&tmp.parent_hash)
+            .get_bitcoin_block(&tmp.parent_hash)
             .unwrap()
     };
 

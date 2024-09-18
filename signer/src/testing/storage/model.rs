@@ -257,10 +257,10 @@ impl TestData {
     }
 
     /// Fetch the parent block given the hash.
-    pub fn get_parent_bitcoin_block(&self, parent: &BitcoinBlockHash) -> Option<BitcoinBlock> {
+    pub fn get_bitcoin_block(&self, block_hash: &BitcoinBlockHash) -> Option<BitcoinBlock> {
         self.bitcoin_blocks
             .iter()
-            .find(|x| &x.block_hash == parent)
+            .find(|x| &x.block_hash == block_hash)
             .cloned()
     }
 }
