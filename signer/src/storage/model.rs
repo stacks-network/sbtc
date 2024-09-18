@@ -352,7 +352,8 @@ impl From<BitcoinTx> for bitcoin::Transaction {
 }
 
 /// The bitcoin transaction ID
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct BitcoinTxId(bitcoin::Txid);
 
 impl BitcoinTxId {
@@ -382,6 +383,7 @@ impl From<[u8; 32]> for BitcoinTxId {
 
 /// Bitcoin block hash
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct BitcoinBlockHash(bitcoin::BlockHash);
 
 impl BitcoinBlockHash {
@@ -471,6 +473,7 @@ impl From<[u8; 32]> for StacksBlockHash {
 
 /// Stacks transaction ID
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct StacksTxId(blockstack_lib::burnchains::Txid);
 
 impl Deref for StacksTxId {
@@ -547,6 +550,7 @@ impl PartialOrd for StacksPrincipal {
 
 /// A ScriptPubkey of a UTXO.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct ScriptPubKey(bitcoin::ScriptBuf);
 
 impl Deref for ScriptPubKey {

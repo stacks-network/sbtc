@@ -41,6 +41,7 @@ use crate::error::Error;
 
 /// The public key type for the secp256k1 elliptic curve.
 #[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct PublicKey(secp256k1::PublicKey);
 
 impl From<&secp256k1::PublicKey> for PublicKey {
@@ -231,6 +232,7 @@ impl std::fmt::Display for PublicKey {
 
 /// A private key type for the secp256k1 elliptic curve.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(transparent)]
 pub struct PrivateKey(secp256k1::SecretKey);
 
 impl FromStr for PrivateKey {
