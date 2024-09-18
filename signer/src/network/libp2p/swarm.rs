@@ -218,6 +218,8 @@ impl SignerSwarm {
 
 #[cfg(test)]
 mod tests {
+    use sbtc::rpc::BitcoinCoreClient;
+
     use crate::{config::Settings, context::SignerContext, storage::in_memory::Store};
 
     use super::*;
@@ -247,7 +249,7 @@ mod tests {
         let mut swarm = builder.build().unwrap();
 
         let settings = Settings::new_from_default_config().unwrap();
-        let ctx = SignerContext::init(settings, Store::new_shared()).unwrap();
+        let ctx = SignerContext::<_, BitcoinCoreClient>::init(settings, Store::new_shared()).unwrap();
         let term = ctx.get_termination_handle();
 
         let timeout = tokio::time::timeout(Duration::from_secs(10), async {

@@ -5,6 +5,7 @@ use axum::routing::post;
 use axum::Router;
 use cfg_if::cfg_if;
 use clap::Parser;
+use sbtc::rpc::BitcoinCoreClient;
 use signer::api;
 use signer::api::ApiState;
 use signer::config::Settings;
@@ -56,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Initialize the signer context.
-    let context = SignerContext::init(settings, db)?;
+    let context = SignerContext::<_, BitcoinCoreClient>::init(settings, db)?;
 
     // Run the application components concurrently. We're `join!`ing them
     // here so that every component can shut itself down gracefully when

@@ -2,13 +2,15 @@
 
 use std::sync::Arc;
 
+use sbtc::rpc::{BitcoinClient, BitcoinCoreClient};
 use tokio::sync::broadcast::Sender;
 
 use crate::{
-    config::Settings,
-    error::Error,
-    storage::{DbRead, DbWrite},
+    bitcoin::BitcoinInteract, config::Settings, error::Error, storage::{DbRead, DbWrite}, util::{ApiFallbackClient, TryFromUrl}
 };
+
+/// Default signer context type which uses the [`PgStore`] and [`BitcoinCoreClient`].
+pub type DefaultSignerContext<S> = SignerContext<S, BitcoinCoreClient>;
 
 /// Context trait that is implemented by the [`SignerContext`].
 pub trait Context: Clone + Sync + Send {
@@ -27,17 +29,28 @@ pub trait Context: Clone + Sync + Send {
     fn get_storage(&self) -> impl DbRead + Clone + Sync + Send;
     /// Get a read-write handle to the signer storage.
     fn get_storage_mut(&self) -> impl DbRead + DbWrite + Clone + Sync + Send;
+    /// Get a handle to a Bitcoin client.
+    fn get_bitcoin_client(&self) -> &ApiFallbackClient<impl BitcoinClient + BitcoinInteract>;
 }
 
 /// Signer context which is passed to different components within the
 /// signer binary.
-#[derive(Clone)]
-pub struct SignerContext<S> {
-    inner: Arc<InnerSignerContext<S>>,
+pub struct SignerContext<S, B> {
+    inner: Arc<InnerSignerContext<S, B>>,
 }
 
-impl<S> std::ops::Deref for SignerContext<S> {
-    type Target = InnerSignerContext<S>;
+/// We implement [`Clone`] manually to avoid the derive macro adding additional
+/// bounds on the generic types.
+impl<S, B> Clone for SignerContext<S, B> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: Arc::clone(&self.inner),
+        }
+    }
+}
+
+impl<S, B> std::ops::Deref for SignerContext<S, B> {
+    type Target = InnerSignerContext<S, B>;
 
     fn deref(&self) -> &Self::Target {
         &self.inner
@@ -45,7 +58,7 @@ impl<S> std::ops::Deref for SignerContext<S> {
 }
 
 /// Inner signer context which holds the configuration and signalling channels.
-pub struct InnerSignerContext<S> {
+pub struct InnerSignerContext<S, B> {
     config: Settings,
     // Handle to the app signalling channel. This keeps the channel alive
     // for the duration of the program and is used both to send messages
@@ -57,6 +70,7 @@ pub struct InnerSignerContext<S> {
     term_tx: tokio::sync::watch::Sender<bool>,
     /// Handle to the signer storage.
     storage: S,
+    bitcoin_client: ApiFallbackClient<B>
 }
 
 /// Signals that can be sent within the signer binary.
@@ -125,9 +139,10 @@ impl TerminationHandle {
     }
 }
 
-impl<S> SignerContext<S>
+impl<S, B> SignerContext<S, B>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
+    B: TryFromUrl + BitcoinClient + BitcoinInteract + Sync + Send,
 {
     /// Create a new signer context.
     pub fn init(config: Settings, db: S) -> Result<Self, Error> {
@@ -137,20 +152,24 @@ where
         let (signal_tx, _) = tokio::sync::broadcast::channel(128);
         let (term_tx, _) = tokio::sync::watch::channel(false);
 
+        let bitcoin_client = ApiFallbackClient::<B>::new(&config.bitcoin.endpoints)?;
+
         Ok(Self {
             inner: Arc::new(InnerSignerContext {
                 config,
                 signal_tx,
                 term_tx,
                 storage: db,
+                bitcoin_client,
             }),
         })
     }
 }
 
-impl<S> Context for SignerContext<S>
+impl<S, B> Context for SignerContext<S, B>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
+    B: BitcoinClient + BitcoinInteract + Sync + Send,
 {
     fn config(&self) -> &Settings {
         &self.config
@@ -188,5 +207,9 @@ where
 
     fn get_storage_mut(&self) -> impl DbRead + DbWrite + Clone + Sync + Send {
         self.storage.clone()
+    }
+
+    fn get_bitcoin_client(&self) -> &ApiFallbackClient<impl BitcoinClient + BitcoinInteract> {
+        &self.bitcoin_client
     }
 }

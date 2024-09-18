@@ -719,7 +719,7 @@ mod tests {
     impl BitcoinInteract for TestHarness {
         type Error = error::Error;
         async fn get_block(
-            &mut self,
+            &self,
             block_hash: &bitcoin::BlockHash,
         ) -> Result<Option<bitcoin::Block>, Self::Error> {
             Ok(self
@@ -729,25 +729,25 @@ mod tests {
                 .cloned())
         }
 
-        async fn estimate_fee_rate(&mut self) -> Result<f64, Self::Error> {
+        async fn estimate_fee_rate(&self) -> Result<f64, Self::Error> {
             unimplemented!()
         }
 
         async fn get_signer_utxo(
-            &mut self,
+            &self,
             _point: &PublicKey,
         ) -> Result<Option<utxo::SignerUtxo>, Self::Error> {
             unimplemented!()
         }
         async fn get_last_fee(
-            &mut self,
+            &self,
             _utxo: bitcoin::OutPoint,
         ) -> Result<Option<utxo::Fees>, Self::Error> {
             unimplemented!()
         }
 
         async fn broadcast_transaction(
-            &mut self,
+            &self,
             _tx: &bitcoin::Transaction,
         ) -> Result<(), Self::Error> {
             unimplemented!()

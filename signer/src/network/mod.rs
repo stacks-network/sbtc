@@ -120,6 +120,8 @@ impl MessageTransfer for P2PNetwork {
 mod tests {
     use core::panic;
 
+    use sbtc::rpc::BitcoinCoreClient;
+
     use super::*;
 
     use crate::{
@@ -149,8 +151,8 @@ mod tests {
 
         let settings = Settings::new_from_default_config().unwrap();
 
-        let context1 = SignerContext::init(settings.clone(), Store::new_shared()).unwrap();
-        let context2 = SignerContext::init(settings, Store::new_shared()).unwrap();
+        let context1 = SignerContext::<_, BitcoinCoreClient>::init(settings.clone(), Store::new_shared()).unwrap();
+        let context2 = SignerContext::<_, BitcoinCoreClient>::init(settings, Store::new_shared()).unwrap();
 
         let term1 = context1.get_termination_handle();
         let term2 = context2.get_termination_handle();

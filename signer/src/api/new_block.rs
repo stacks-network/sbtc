@@ -129,7 +129,7 @@ mod tests {
     use test_case::test_case;
 
     use crate::config::Settings;
-    use crate::context::SignerContext;
+    use crate::context::DefaultSignerContext;
     use crate::storage::in_memory::Store;
     use crate::storage::model::StacksPrincipal;
 
@@ -161,7 +161,7 @@ mod tests {
     {
         let db = Store::new_shared();
 
-        let ctx = SignerContext::init(Settings::new_from_default_config().unwrap(), db.clone())
+        let ctx = DefaultSignerContext::init(Settings::new_from_default_config().unwrap(), db.clone())
             .expect("failed to init context");
 
         let api = ApiState { ctx: ctx.clone() };
@@ -190,7 +190,7 @@ mod tests {
     {
         let db = Store::new_shared();
 
-        let ctx = SignerContext::init(Settings::new_from_default_config().unwrap(), db.clone())
+        let ctx = DefaultSignerContext::init(Settings::new_from_default_config().unwrap(), db.clone())
             .expect("failed to init context");
 
         let api = ApiState { ctx: ctx.clone() };

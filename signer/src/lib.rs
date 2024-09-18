@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![deny(missing_docs)]
 
+mod util;
 pub mod api;
 pub mod bitcoin;
 pub mod block_observer;

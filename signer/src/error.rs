@@ -21,6 +21,11 @@ pub enum Error {
     #[error("tokio i/o error: {0}")]
     TokioIo(#[from] tokio::io::Error),
 
+    /// Error occurred when constructing a BitcoinCoreClient. This takes a String
+    /// as [`sbtc::error::Error`] is not [`Sync`] + [`Send`].
+    #[error("failed to construct a BitcoinCoreClient: {0}")]
+    BitcoinCoreClient(String),
+
     /// Error when breaking out the ZeroMQ message into three parts.
     #[error("bitcoin messages should have a three part layout, received {0} parts")]
     BitcoinCoreZmqMessageLayout(usize),
