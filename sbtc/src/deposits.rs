@@ -143,7 +143,7 @@ impl CreateDepositRequest {
     /// Validate this deposit request from the transaction.
     ///
     /// This function fetches the transaction using the given client and
-    /// checks that the transaction has been confirmed. The transaction
+    /// checks that the transaction has been submitted. The transaction
     /// need not be confirmed.
     pub fn validate<C>(&self, client: &C) -> Result<Deposit, Error>
     where
@@ -359,7 +359,7 @@ impl DepositScriptInputs {
         // here starts with the 8 byte max fee.
         let deposit_data = match params {
             // This branch represents a contract address. We reject scripts
-            // that use OP_PUSHDATA1 to push less than 75 bytes of data
+            // that use OP_PUSHDATA1 to push less than 76 bytes of data
             // because those scripts, while valid and do not break
             // consensus rules, are non-standard. Accepting them would make
             // it very difficult for the signers to accept the deposit
