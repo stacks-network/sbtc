@@ -51,15 +51,14 @@ use crate::storage::DbRead;
 /// This struct is used as supplemental data to help validate a request to
 /// sign a contract call transaction.
 ///
-/// With the exception of the origin, this data is not fetched from the
-/// signer that sent the request, but is instead internal to the current
-/// signer.
+/// Except for the origin, this data is not fetched from the signer that
+/// sent the request, but is instead internal to the current signer.
 #[derive(Debug, Clone, Copy)]
 pub struct ReqContext {
-    /// This signers current view of the chain tip of the canonical bitcoin
-    /// blockchain. It is the block hash and height of the block on the
-    /// bitcoin blockchain with the greatest height. On ties, we sort by
-    /// the block hash descending and take the first one.
+    /// This signer's current view of the chain tip of the canonical
+    /// bitcoin blockchain. It is the block hash and height of the block on
+    /// the bitcoin blockchain with the greatest height. On ties, we sort
+    /// by the block hash descending and take the first one.
     pub chain_tip: BitcoinBlockRef,
     /// How many bitcoin blocks back from the chain tip the signer will
     /// look for requests.
@@ -293,8 +292,8 @@ impl AsContractCall for CompleteDepositV1 {
 }
 
 impl CompleteDepositV1 {
-    /// Validate the the variables in this transaction match the input in
-    /// the deposit request.
+    /// Validate the variables in this transaction match the input in the
+    /// deposit request.
     ///
     /// Specifically, this function checks:
     /// 1. That the smart contract deployer matches the deployer in our
@@ -403,8 +402,7 @@ impl CompleteDepositV1 {
     }
 }
 
-/// A struct for a validation error containing all of the necessary
-/// context.
+/// A struct for a validation error containing all the necessary context.
 #[derive(Debug)]
 pub struct DepositValidationError {
     /// The specific error that happened during validation.

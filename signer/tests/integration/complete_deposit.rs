@@ -80,12 +80,12 @@ fn make_complete_deposit(
 
 /// Generate a signer set, deposit requests and store them into the
 /// database.
-async fn depossit_setup<R>(rng: &mut R, pg_store: &PgStore) -> Vec<PublicKey>
+async fn deposit_setup<R>(rng: &mut R, pg_store: &PgStore) -> Vec<PublicKey>
 where
     R: rand::RngCore + rand::CryptoRng,
 {
     // This is just a sql test, where we use the `TestData` struct to help
-    // populate the database with test data. We set all of the other
+    // populate the database with test data. We set all the other
     // unnecessary parameters to zero.
     let num_signers = 7;
     let test_model_params = testing::storage::model::Params {
@@ -107,8 +107,8 @@ where
 /// Get the full block
 async fn get_bitcoin_canonical_chain_tip_block(
     store: &PgStore,
-) -> Result<Option<model::BitcoinBlock>, Error> {
-    sqlx::query_as::<_, model::BitcoinBlock>(
+) -> Result<Option<BitcoinBlock>, Error> {
+    sqlx::query_as::<_, BitcoinBlock>(
         "SELECT
             block_hash
             , block_height
@@ -131,11 +131,11 @@ async fn complete_deposit_validation_happy_path() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = signer::testing::storage::new_test_database(db_num, true).await;
+    let pg_store = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let signatures_required = 3;
 
-    let signer_set = depossit_setup(&mut rng, &pg_store).await;
+    let signer_set = deposit_setup(&mut rng, &pg_store).await;
     // Get the chain tip.
     let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
         .await
@@ -179,7 +179,7 @@ async fn complete_deposit_validation_happy_path() {
     // This should not return an Err.
     complete_deposit_tx.validate(&pg_store, &ctx).await.unwrap();
 
-    signer::testing::storage::drop_db(pg_store).await;
+    testing::storage::drop_db(pg_store).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -191,11 +191,11 @@ async fn complete_deposit_validation_deployer_mismatch() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = signer::testing::storage::new_test_database(db_num, true).await;
+    let pg_store = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let signatures_required = 3;
 
-    let signer_set = depossit_setup(&mut rng, &pg_store).await;
+    let signer_set = deposit_setup(&mut rng, &pg_store).await;
 
     // Get the chain tip
     let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
@@ -249,7 +249,7 @@ async fn complete_deposit_validation_deployer_mismatch() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    signer::testing::storage::drop_db(pg_store).await;
+    testing::storage::drop_db(pg_store).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -262,10 +262,10 @@ async fn complete_deposit_validation_missing_deposit_request() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = signer::testing::storage::new_test_database(db_num, true).await;
+    let pg_store = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    let signer_set = depossit_setup(&mut rng, &pg_store).await;
+    let signer_set = deposit_setup(&mut rng, &pg_store).await;
 
     // Normal: Get the chain tip and any pending deposit request in the blockchain
     // identified by the chain tip.
@@ -309,7 +309,7 @@ async fn complete_deposit_validation_missing_deposit_request() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    signer::testing::storage::drop_db(pg_store).await;
+    testing::storage::drop_db(pg_store).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -322,11 +322,11 @@ async fn complete_deposit_validation_recipient_mismatch() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = signer::testing::storage::new_test_database(db_num, true).await;
+    let pg_store = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let signatures_required = 3;
 
-    let signer_set = depossit_setup(&mut rng, &pg_store).await;
+    let signer_set = deposit_setup(&mut rng, &pg_store).await;
 
     // Get the chain tip.
     let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
@@ -380,7 +380,7 @@ async fn complete_deposit_validation_recipient_mismatch() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    signer::testing::storage::drop_db(pg_store).await;
+    testing::storage::drop_db(pg_store).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -393,11 +393,11 @@ async fn complete_deposit_validation_invalid_mint_amount() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = signer::testing::storage::new_test_database(db_num, true).await;
+    let pg_store = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let signatures_required = 3;
 
-    let signer_set = depossit_setup(&mut rng, &pg_store).await;
+    let signer_set = deposit_setup(&mut rng, &pg_store).await;
 
     // Get the chain tip.
     let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
@@ -450,7 +450,7 @@ async fn complete_deposit_validation_invalid_mint_amount() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    signer::testing::storage::drop_db(pg_store).await;
+    testing::storage::drop_db(pg_store).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -463,11 +463,11 @@ async fn complete_deposit_validation_invalid_fee() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = signer::testing::storage::new_test_database(db_num, true).await;
+    let pg_store = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let signatures_required = 3;
 
-    let signer_set = depossit_setup(&mut rng, &pg_store).await;
+    let signer_set = deposit_setup(&mut rng, &pg_store).await;
 
     // Get the chain tip.
     let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
@@ -520,7 +520,7 @@ async fn complete_deposit_validation_invalid_fee() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    signer::testing::storage::drop_db(pg_store).await;
+    testing::storage::drop_db(pg_store).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -533,11 +533,11 @@ async fn complete_deposit_validation_sweep_tx_missing() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = signer::testing::storage::new_test_database(db_num, true).await;
+    let pg_store = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let signatures_required = 3;
 
-    let signer_set = depossit_setup(&mut rng, &pg_store).await;
+    let signer_set = deposit_setup(&mut rng, &pg_store).await;
 
     // Get the chain tip.
     let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
@@ -579,7 +579,7 @@ async fn complete_deposit_validation_sweep_tx_missing() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    signer::testing::storage::drop_db(pg_store).await;
+    testing::storage::drop_db(pg_store).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -592,11 +592,11 @@ async fn complete_deposit_validation_sweep_reorged() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = signer::testing::storage::new_test_database(db_num, true).await;
+    let pg_store = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let signatures_required = 3;
 
-    let signer_set = depossit_setup(&mut rng, &pg_store).await;
+    let signer_set = deposit_setup(&mut rng, &pg_store).await;
     // Get the chain tip.
     let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
         .await
@@ -623,7 +623,7 @@ async fn complete_deposit_validation_sweep_reorged() {
     // confirmed, but on a bitcoin blockchain that is not the canonical
     // one. We generate a new blockchain and put it there.
     //
-    // Note that this blockchain might actually be have a greater height,
+    // Note that this blockchain might actually have a greater height,
     // but we get to say which one is the canonical one in our context so
     // that fact doesn't matter in this test.
     let test_model_params = testing::storage::model::Params {
@@ -666,7 +666,7 @@ async fn complete_deposit_validation_sweep_reorged() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    signer::testing::storage::drop_db(pg_store).await;
+    testing::storage::drop_db(pg_store).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -680,11 +680,11 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = signer::testing::storage::new_test_database(db_num, true).await;
+    let pg_store = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let signatures_required = 3;
 
-    let signer_set = depossit_setup(&mut rng, &pg_store).await;
+    let signer_set = deposit_setup(&mut rng, &pg_store).await;
 
     // Get the chain tip.
     let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
@@ -738,5 +738,5 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    signer::testing::storage::drop_db(pg_store).await;
+    testing::storage::drop_db(pg_store).await;
 }
