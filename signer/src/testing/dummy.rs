@@ -517,9 +517,7 @@ impl fake::Dummy<SweepTxConfig> for model::Transaction {
         let mut tx = Vec::new();
 
         let bitcoin_tx: BitcoinTx = config.fake_with_rng(rng);
-        bitcoin_tx
-            .consensus_encode(&mut tx)
-            .expect("In-memory writers never fail");
+        bitcoin_tx.consensus_encode(&mut tx).unwrap();
 
         model::Transaction {
             tx,

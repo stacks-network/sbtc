@@ -336,10 +336,6 @@ impl CompleteDepositV1 {
         // 5. Check that the recipients in the transaction matches that of
         //    the deposit request.
         if &self.recipient != deposit_request.recipient.deref() {
-            // Whoa, how is the outpoint right but the recipient is wrong?.
-            // TODO: serialize this struct and the deposit request to a
-            // JSON and put it in the logs. Or store.
-            tracing::warn!("Recipient in transaction does not match deposit request");
             return Err(DepositValidationMsg::RecipientMismatch.into_error(ctx, self));
         }
         // 6. Check that the amount to mint does not exceed the deposit
@@ -424,7 +420,7 @@ pub struct DepositValidationError {
 
 impl std::fmt::Display for DepositValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // TODO: Add the other variables to the error message.
+        // TODO(191): Add the other variables to the error message.
         self.error.fmt(f)
     }
 }
