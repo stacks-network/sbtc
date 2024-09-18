@@ -28,10 +28,7 @@ struct EventLoopHarness<S, C> {
 impl<S, C> EventLoopHarness<S, C>
 where
     S: storage::DbRead + storage::DbWrite + Clone + Send + 'static,
-    error::Error: From<<S as storage::DbRead>::Error>,
-    error::Error: From<<S as storage::DbWrite>::Error>,
     C: crate::bitcoin::BitcoinInteract + Send + 'static,
-    error::Error: From<C::Error>,
 {
     fn create(
         network: network::in_memory::MpmcBroadcaster,
@@ -117,8 +114,6 @@ impl<C, S> TestEnvironment<C>
 where
     C: FnMut() -> S,
     S: storage::DbRead + storage::DbWrite + Clone + Send + 'static,
-    error::Error: From<<S as storage::DbRead>::Error>,
-    error::Error: From<<S as storage::DbWrite>::Error>,
 {
     /// Assert that a coordinator should be able to coordiante a signing round
     pub async fn assert_should_be_able_to_coordinate_signing_rounds(mut self) {

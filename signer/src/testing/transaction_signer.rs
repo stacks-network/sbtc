@@ -36,8 +36,6 @@ struct EventLoopHarness<S, Rng> {
 impl<S, Rng> EventLoopHarness<S, Rng>
 where
     S: storage::DbRead + storage::DbWrite + Clone + Send + Sync + 'static,
-    error::Error: From<<S as storage::DbRead>::Error>,
-    error::Error: From<<S as storage::DbWrite>::Error>,
     Rng: rand::RngCore + rand::CryptoRng + Send + 'static,
 {
     fn create(
@@ -157,8 +155,6 @@ impl<C, S> TestEnvironment<C>
 where
     C: FnMut() -> S,
     S: storage::DbRead + storage::DbWrite + Clone + Send + Sync + 'static,
-    error::Error: From<<S as storage::DbRead>::Error>,
-    error::Error: From<<S as storage::DbWrite>::Error>,
 {
     /// Assert that the transaction signer will make and store decisions
     /// for pending deposit requests.

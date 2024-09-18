@@ -11,7 +11,6 @@ use std::collections::HashMap;
 use crate::blocklist_client;
 use crate::config::NetworkKind;
 use crate::ecdsa::SignEcdsa as _;
-use crate::error;
 use crate::error::Error;
 use crate::keys;
 use crate::keys::PrivateKey;
@@ -141,16 +140,13 @@ pub enum TxSignerEvent {
 impl<N, S, B, Rng> TxSignerEventLoop<N, S, B, Rng>
 where
     N: network::MessageTransfer,
-    error::Error: From<N::Error>,
     B: blocklist_client::BlocklistChecker,
     S: storage::DbRead + storage::DbWrite + Send + Sync,
-    error::Error: From<<S as storage::DbRead>::Error>,
-    error::Error: From<<S as storage::DbWrite>::Error>,
     Rng: rand::RngCore + rand::CryptoRng,
 {
     /// Run the signer event loop
     #[tracing::instrument(skip(self))]
-    pub async fn run(mut self) -> Result<(), error::Error> {
+    pub async fn run(mut self) -> Result<(), Error> {
         loop {
             tokio::select! {
                 result = self.block_observer_notifications.changed() => {
@@ -169,7 +165,7 @@ where
                             let res = self.handle_signer_message(&msg).await;
                             match res {
                                 Ok(()) => (),
-                                Err(error::Error::InvalidSignature) => (),
+                                Err(Error::InvalidSignature) => (),
                                 Err(error) => {
                                     tracing::error!(%error, "fatal signer error");
                                     return Err(error)}
@@ -189,12 +185,12 @@ where
     }
 
     #[tracing::instrument(skip(self))]
-    async fn handle_new_requests(&mut self) -> Result<(), error::Error> {
+    async fn handle_new_requests(&mut self) -> Result<(), Error> {
         let bitcoin_chain_tip = self
             .storage
             .get_bitcoin_canonical_chain_tip()
             .await?
-            .ok_or(error::Error::NoChainTip)?;
+            .ok_or(Error::NoChainTip)?;
 
         for deposit_request in self
             .get_pending_deposit_requests(&bitcoin_chain_tip)
@@ -216,10 +212,10 @@ where
     }
 
     #[tracing::instrument(skip(self))]
-    async fn handle_signer_message(&mut self, msg: &network::Msg) -> Result<(), error::Error> {
+    async fn handle_signer_message(&mut self, msg: &network::Msg) -> Result<(), Error> {
         if !msg.verify() {
             tracing::warn!("unable to verify message");
-            return Err(error::Error::InvalidSignature);
+            return Err(Error::InvalidSignature);
         }
 
         let chain_tip_report = self
@@ -283,7 +279,7 @@ where
         &mut self,
         msg_sender: keys::PublicKey,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<MsgChainTipReport, error::Error> {
+    ) -> Result<MsgChainTipReport, Error> {
         let is_known = self
             .storage
             .get_bitcoin_block(bitcoin_chain_tip)
@@ -331,7 +327,7 @@ where
         &mut self,
         request: &message::BitcoinTransactionSignRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<(), error::Error> {
+    ) -> Result<(), Error> {
         let is_valid_sign_request = self
             .is_valid_bitcoin_transaction_sign_request(request)
             .await?;
@@ -367,7 +363,7 @@ where
     async fn is_valid_bitcoin_transaction_sign_request(
         &mut self,
         _request: &message::BitcoinTransactionSignRequest,
-    ) -> Result<bool, error::Error> {
+    ) -> Result<bool, Error> {
         let signer_pub_key = self.signer_pub_key();
         let _accepted_deposit_requests = self
             .storage
@@ -425,7 +421,7 @@ where
             .storage
             .get_last_key_rotation(bitcoin_chain_tip)
             .await?
-            .ok_or(error::Error::MissingKeyRotation)?;
+            .ok_or(Error::MissingKeyRotation)?;
 
         let public_keys = last_key_rotation.signer_set.as_slice();
         let signatures_required = last_key_rotation.signatures_required;
@@ -460,7 +456,7 @@ where
         &mut self,
         msg: &message::WstsMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<(), error::Error> {
+    ) -> Result<(), Error> {
         tracing::info!("handling message");
         match &msg.inner {
             wsts::net::Message::DkgBegin(_) => {
@@ -521,19 +517,19 @@ where
         txid: bitcoin::Txid,
         msg: &wsts::net::Message,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<(), error::Error> {
+    ) -> Result<(), Error> {
         let Some(state_machine) = self.wsts_state_machines.get_mut(&txid) else {
             tracing::warn!("missing signing round");
             return Ok(());
         };
 
-        let outbound_messages = state_machine.process(msg).map_err(error::Error::Wsts)?;
+        let outbound_messages = state_machine.process(msg).map_err(Error::Wsts)?;
 
         for outbound_message in outbound_messages.iter() {
             // The WSTS state machine assume we read our own messages
             state_machine
                 .process(outbound_message)
-                .map_err(error::Error::Wsts)?;
+                .map_err(Error::Wsts)?;
         }
 
         for outbound_message in outbound_messages {
@@ -555,22 +551,20 @@ where
     async fn get_pending_deposit_requests(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<Vec<model::DepositRequest>, error::Error> {
-        Ok(self
-            .storage
+    ) -> Result<Vec<model::DepositRequest>, Error> {
+        self.storage
             .get_pending_deposit_requests(chain_tip, self.context_window)
-            .await?)
+            .await
     }
 
     #[tracing::instrument(skip(self))]
     async fn get_pending_withdraw_requests(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<Vec<model::WithdrawalRequest>, error::Error> {
-        Ok(self
-            .storage
+    ) -> Result<Vec<model::WithdrawalRequest>, Error> {
+        self.storage
             .get_pending_withdrawal_requests(chain_tip, self.context_window)
-            .await?)
+            .await
     }
 
     #[tracing::instrument(skip(self))]
@@ -578,7 +572,7 @@ where
         &mut self,
         request: model::DepositRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<(), error::Error> {
+    ) -> Result<(), Error> {
         let params = self.network_kind.params();
         let addresses = request
             .sender_script_pub_keys
@@ -624,7 +618,7 @@ where
     async fn handle_pending_withdraw_request(
         &mut self,
         withdraw_request: model::WithdrawalRequest,
-    ) -> Result<(), error::Error> {
+    ) -> Result<(), Error> {
         // TODO: Do we want to do this on the sender address of the
         // recipient address?
         let is_accepted = self
@@ -653,7 +647,7 @@ where
         &mut self,
         decision: &message::SignerDepositDecision,
         signer_pub_key: PublicKey,
-    ) -> Result<(), error::Error> {
+    ) -> Result<(), Error> {
         let signer_decision = model::DepositSigner {
             txid: decision.txid.into(),
             output_index: decision.output_index,
@@ -669,7 +663,7 @@ where
         if let Some(ref tx) = self.test_observer_tx {
             tx.send(TxSignerEvent::ReceivedDepositDecision)
                 .await
-                .map_err(|_| error::Error::ObserverDropped)?;
+                .map_err(|_| Error::ObserverDropped)?;
         }
 
         Ok(())
@@ -680,7 +674,7 @@ where
         &mut self,
         decision: &message::SignerWithdrawDecision,
         signer_pub_key: PublicKey,
-    ) -> Result<(), error::Error> {
+    ) -> Result<(), Error> {
         let signer_decision = model::WithdrawalSigner {
             request_id: decision.request_id,
             block_hash: decision.block_hash.into(),
@@ -697,18 +691,18 @@ where
         if let Some(ref tx) = self.test_observer_tx {
             tx.send(TxSignerEvent::ReceivedWithdrawalDecision)
                 .await
-                .map_err(|_| error::Error::ObserverDropped)?;
+                .map_err(|_| Error::ObserverDropped)?;
         }
 
         Ok(())
     }
 
     #[tracing::instrument(skip(self))]
-    async fn store_dkg_shares(&mut self, txid: &bitcoin::Txid) -> Result<(), error::Error> {
+    async fn store_dkg_shares(&mut self, txid: &bitcoin::Txid) -> Result<(), Error> {
         let state_machine = self
             .wsts_state_machines
             .get(txid)
-            .ok_or(error::Error::MissingStateMachine)?;
+            .ok_or(Error::MissingStateMachine)?;
 
         let encrypted_dkg_shares = state_machine.get_encrypted_dkg_shares(&mut self.rng)?;
 
@@ -724,7 +718,7 @@ where
         &mut self,
         msg: impl Into<message::Payload>,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<(), error::Error> {
+    ) -> Result<(), Error> {
         let payload: message::Payload = msg.into();
         let msg = payload
             .to_message(*bitcoin_chain_tip)
@@ -739,12 +733,12 @@ where
     async fn get_signer_public_keys(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<BTreeSet<PublicKey>, error::Error> {
+    ) -> Result<BTreeSet<PublicKey>, Error> {
         let last_key_rotation = self
             .storage
             .get_last_key_rotation(bitcoin_chain_tip)
             .await?
-            .ok_or(error::Error::MissingKeyRotation)?;
+            .ok_or(Error::MissingKeyRotation)?;
 
         let signer_set = last_key_rotation.signer_set.into_iter().collect();
 

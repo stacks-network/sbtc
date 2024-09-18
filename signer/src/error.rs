@@ -21,6 +21,10 @@ pub enum Error {
     #[error("tokio i/o error: {0}")]
     TokioIo(#[from] tokio::io::Error),
 
+    /// The error used in the [`Encode`] and [`Decode`] trait.
+    #[error("error serializing type: {0}")]
+    Bincode(#[source] bincode::Error),
+
     /// Error when breaking out the ZeroMQ message into three parts.
     #[error("bitcoin messages should have a three part layout, received {0} parts")]
     BitcoinCoreZmqMessageLayout(usize),
@@ -60,6 +64,14 @@ pub enum Error {
     /// a PrincipalData.
     #[error("Could not parse the string into PrincipalData: {0}")]
     ParsePrincipalData(#[source] clarity::vm::errors::Error),
+
+    /// Could not send a message
+    #[error("Could not send a message from the in-memory MessageTransfer broadcast function")]
+    SendMessage,
+
+    /// Could not receive a message from the channel.
+    #[error("{0}")]
+    ChannelReceive(#[source] tokio::sync::broadcast::error::RecvError),
 
     /// Thrown when doing [`i64::try_from`] or [`i32::try_from`] before
     /// inserting a value into the database. This only happens if the value
@@ -257,10 +269,6 @@ pub enum Error {
     /// Codec error
     #[error("codec error: {0}")]
     Codec(#[source] codec::Error),
-
-    /// In-memory network error
-    #[error("in-memory network error: {0}")]
-    InMemoryNetwork(#[from] network::in_memory::Error),
 
     /// GRPC relay network error
     #[error("GRPC relay network error: {0}")]

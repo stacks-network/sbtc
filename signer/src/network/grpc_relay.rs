@@ -37,6 +37,7 @@ use tokio_stream::StreamExt;
 use crate::codec;
 use crate::codec::Decode;
 use crate::codec::Encode;
+use crate::error::Error;
 
 const CHANNEL_CAPACITY: usize = 10_000;
 
@@ -192,13 +193,13 @@ impl RelayClient {
 }
 
 impl super::MessageTransfer for RelayClient {
-    type Error = RelayError;
-
     #[tracing::instrument(skip(self))]
-    async fn broadcast(&mut self, msg: Msg) -> Result<(), Self::Error> {
+    async fn broadcast(&mut self, msg: Msg) -> Result<(), Error> {
         let msg_id = msg.id();
 
-        let proto_msg = proto::Message { message: msg.encode_to_vec()? };
+        let proto_msg = proto::Message {
+            message: msg.encode_to_vec().map_err(Error::Bincode)?,
+        };
 
         self.sender
             .send(proto_msg)
@@ -213,7 +214,7 @@ impl super::MessageTransfer for RelayClient {
     }
 
     #[tracing::instrument(skip(self))]
-    async fn receive(&mut self) -> Result<Msg, Self::Error> {
+    async fn receive(&mut self) -> Result<Msg, Error> {
         let mut msg = self.receive_next().await?;
 
         while Some(&msg.id()) == self.recently_sent.front() {
