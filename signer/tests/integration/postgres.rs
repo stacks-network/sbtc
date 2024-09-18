@@ -1201,9 +1201,7 @@ async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
         let tmp = test_data1
             .get_bitcoin_block(&chain_tip1.parent_hash)
             .unwrap();
-        test_data1
-            .get_bitcoin_block(&tmp.parent_hash)
-            .unwrap()
+        test_data1.get_bitcoin_block(&tmp.parent_hash).unwrap()
     };
 
     let is_in_chain = pg_store
