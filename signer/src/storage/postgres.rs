@@ -1304,10 +1304,7 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn write_bitcoin_transaction(
-        &self,
-        tx_ref: &model::BitcoinTxRef,
-    ) -> Result<(), Error> {
+    async fn write_bitcoin_transaction(&self, tx_ref: &model::BitcoinTxRef) -> Result<(), Error> {
         sqlx::query(
             "INSERT INTO sbtc_signer.bitcoin_transactions (txid, block_hash) 
             VALUES ($1, $2)
