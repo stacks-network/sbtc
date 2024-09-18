@@ -1,8 +1,7 @@
 //! General utilities for the signer.
 
-use std::{cmp::min, future::Future, ops::Deref, sync::{atomic::{AtomicUsize, Ordering}, Arc}};
+use std::{cmp::min, future::Future, ops::Deref, sync::{atomic::{AtomicU8, AtomicUsize, Ordering}, Arc}};
 
-use std::sync::RwLock;
 use url::Url;
 
 use crate::error::Error;
@@ -30,16 +29,12 @@ impl<T> Deref for ApiFallbackClient<T> {
 pub struct InnerApiFallbackClient<T> {
     inner_clients: Vec<T>,
     last_client_index: AtomicUsize,
-    retry_count: RwLock<u8>
+    retry_count: AtomicU8
 }
 
 impl<T> InnerApiFallbackClient<T> {
-    pub fn with_retry_count(&self, retry_count: u8) -> Result<(), Error> {
-        let mut inner = self.retry_count.write();
-        inner.
-        *inner = retry_count;
-        drop(inner);
-        self
+    pub fn set_retry_count(&self, retry_count: u8) {
+        self.retry_count.store(retry_count, Ordering::Relaxed);
     }
 
     /// Get a reference to the current inner API client.
@@ -53,7 +48,7 @@ impl<T> InnerApiFallbackClient<T> {
         Error: From<E>,
         F: Future<Output = Result<R, E>> + 'a
     {
-        let retry_count = *self.retry_count.read();
+        let retry_count = self.retry_count.load(Ordering::Relaxed);
         for _ in 0..retry_count {
             let client_index = self.last_client_index.load(Ordering::Relaxed);
             let result = f(&self.inner_clients[client_index]).await;
@@ -85,7 +80,7 @@ where
         let inner = InnerApiFallbackClient {
             inner_clients: clients,
             last_client_index: AtomicUsize::new(0),
-            retry_count: RwLock::new(retry_count as u8)
+            retry_count: AtomicU8::new(retry_count as u8)
         };
 
         Ok(Self { 
@@ -208,6 +203,7 @@ mod tests {
             &[
                 Url::parse("http://fail/1").unwrap(), Url::parse("http://fail/2").unwrap()]
         ).unwrap();
+        client.set_retry_count(4);
 
         // We'll use this to count how many times the closure is called
         let call_count = AtomicUsize::new(0);
