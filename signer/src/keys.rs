@@ -183,6 +183,12 @@ impl From<&PublicKey> for stacks_common::util::secp256k1::Secp256k1PublicKey {
     }
 }
 
+impl From<PublicKey> for stacks_common::util::secp256k1::Secp256k1PublicKey {
+    fn from(value: PublicKey) -> Self {
+        Self::from(&value)
+    }
+}
+
 impl From<&stacks_common::util::secp256k1::Secp256k1PublicKey> for PublicKey {
     fn from(value: &stacks_common::util::secp256k1::Secp256k1PublicKey) -> Self {
         let key = secp256k1::PublicKey::from_slice(&value.to_bytes_compressed())
