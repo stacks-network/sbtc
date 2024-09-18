@@ -110,7 +110,6 @@ impl AsContractCall for InitiateWithdrawalRequest {
     async fn validate<S>(&self, _db: &S, _ctx: &ReqContext) -> Result<(), Error>
     where
         S: DbRead + Send + Sync,
-        Error: From<<S as DbRead>::Error>,
     {
         Ok(())
     }

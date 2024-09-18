@@ -11,7 +11,7 @@ use sha2::Digest;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
-use crate::error;
+use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
@@ -119,14 +119,10 @@ where
     N: network::MessageTransfer,
     S: storage::DbRead + storage::DbWrite,
     B: BitcoinInteract,
-    error::Error: From<N::Error>,
-    error::Error: From<<S as storage::DbRead>::Error>,
-    error::Error: From<<S as storage::DbWrite>::Error>,
-    error::Error: From<B::Error>,
 {
     /// Run the coordinator event loop
     #[tracing::instrument(skip(self))]
-    pub async fn run(mut self) -> Result<(), error::Error> {
+    pub async fn run(mut self) -> Result<(), Error> {
         loop {
             match self.block_observer_notifications.changed().await {
                 Ok(()) => self.process_new_blocks().await?,
@@ -142,12 +138,12 @@ where
     }
 
     #[tracing::instrument(skip(self))]
-    async fn process_new_blocks(&mut self) -> Result<(), error::Error> {
+    async fn process_new_blocks(&mut self) -> Result<(), Error> {
         let bitcoin_chain_tip = self
             .storage
             .get_bitcoin_canonical_chain_tip()
             .await?
-            .ok_or(error::Error::NoChainTip)?;
+            .ok_or(Error::NoChainTip)?;
 
         let (aggregate_key, signer_public_keys) = self
             .get_signer_public_keys_and_aggregate_key(&bitcoin_chain_tip)
@@ -180,7 +176,7 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
-    ) -> Result<(), error::Error> {
+    ) -> Result<(), Error> {
         let signer_btc_state = self.get_btc_state(&aggregate_key).await?;
 
         let pending_requests = self
@@ -215,7 +211,7 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
-    ) -> Result<(), error::Error> {
+    ) -> Result<(), Error> {
         // TODO(320): Implement
         Ok(())
     }
@@ -229,7 +225,7 @@ where
         aggregate_key: PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
         mut transaction: utxo::UnsignedTransaction<'_>,
-    ) -> Result<(), error::Error> {
+    ) -> Result<(), Error> {
         let mut coordinator_state_machine = wsts_state_machine::CoordinatorStateMachine::load(
             &mut self.storage,
             aggregate_key,
@@ -255,7 +251,7 @@ where
 
         let signature = bitcoin::taproot::Signature {
             signature: secp256k1::schnorr::Signature::from_slice(&signature.to_bytes())
-                .map_err(|_| error::Error::TypeConversion)?,
+                .map_err(|_| Error::TypeConversion)?,
             sighash_type: bitcoin::TapSighashType::Default,
         };
         let signer_witness = bitcoin::Witness::p2tr_key_spend(&signature);
@@ -276,7 +272,7 @@ where
 
             let signature = bitcoin::taproot::Signature {
                 signature: secp256k1::schnorr::Signature::from_slice(&signature.to_bytes())
-                    .map_err(|_| error::Error::TypeConversion)?,
+                    .map_err(|_| Error::TypeConversion)?,
                 sighash_type: bitcoin::TapSighashType::Default,
             };
 
@@ -312,7 +308,7 @@ where
         coordinator_state_machine: &mut wsts_state_machine::CoordinatorStateMachine,
         txid: bitcoin::Txid,
         msg: &[u8],
-    ) -> Result<wsts::taproot::SchnorrProof, error::Error> {
+    ) -> Result<wsts::taproot::SchnorrProof, Error> {
         let outbound = coordinator_state_machine
             .start_signing_round(msg, true, None)
             .map_err(wsts_state_machine::coordinator_error)?;
@@ -329,9 +325,7 @@ where
 
         tokio::time::timeout(max_duration, run_signing_round)
             .await
-            .map_err(|_| {
-                error::Error::CoordinatorTimeout(self.signing_round_max_duration.as_secs())
-            })?
+            .map_err(|_| Error::CoordinatorTimeout(self.signing_round_max_duration.as_secs()))?
     }
 
     #[tracing::instrument(skip(self))]
@@ -340,7 +334,7 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         coordinator_state_machine: &mut wsts_state_machine::CoordinatorStateMachine,
         txid: bitcoin::Txid,
-    ) -> Result<wsts::taproot::SchnorrProof, error::Error> {
+    ) -> Result<wsts::taproot::SchnorrProof, Error> {
         loop {
             let msg = self.network.receive().await?;
 
@@ -377,7 +371,7 @@ where
                     return Ok(signature)
                 }
                 None => continue,
-                Some(_) => return Err(error::Error::UnexpectedOperationResult),
+                Some(_) => return Err(Error::UnexpectedOperationResult),
             }
         }
     }
@@ -398,7 +392,7 @@ where
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         signer_public_keys: &BTreeSet<PublicKey>,
-    ) -> Result<bool, error::Error> {
+    ) -> Result<bool, Error> {
         given_key_is_coordinator(self.pub_key(), bitcoin_chain_tip, signer_public_keys)
     }
 
@@ -406,13 +400,13 @@ where
     async fn get_btc_state(
         &mut self,
         aggregate_key: &PublicKey,
-    ) -> Result<utxo::SignerBtcState, error::Error> {
+    ) -> Result<utxo::SignerBtcState, Error> {
         let fee_rate = self.bitcoin_client.estimate_fee_rate().await?;
         let utxo = self
             .bitcoin_client
             .get_signer_utxo(aggregate_key)
             .await?
-            .ok_or(error::Error::MissingSignerUtxo)?;
+            .ok_or(Error::MissingSignerUtxo)?;
         let last_fees = self.bitcoin_client.get_last_fee(utxo.outpoint).await?;
 
         Ok(utxo::SignerBtcState {
@@ -435,11 +429,11 @@ where
         signer_btc_state: utxo::SignerBtcState,
         aggregate_key: PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
-    ) -> Result<utxo::SbtcRequests, error::Error> {
+    ) -> Result<utxo::SbtcRequests, Error> {
         let context_window = self
             .context_window
             .try_into()
-            .map_err(|_| error::Error::TypeConversion)?;
+            .map_err(|_| Error::TypeConversion)?;
 
         let threshold = self.threshold;
 
@@ -483,7 +477,7 @@ where
         let num_signers = signer_public_keys
             .len()
             .try_into()
-            .map_err(|_| error::Error::TypeConversion)?;
+            .map_err(|_| Error::TypeConversion)?;
 
         Ok(utxo::SbtcRequests {
             deposits,
@@ -498,12 +492,12 @@ where
     async fn get_signer_public_keys_and_aggregate_key(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<(PublicKey, BTreeSet<PublicKey>), error::Error> {
+    ) -> Result<(PublicKey, BTreeSet<PublicKey>), Error> {
         let last_key_rotation = self
             .storage
             .get_last_key_rotation(bitcoin_chain_tip)
             .await?
-            .ok_or(error::Error::MissingKeyRotation)?;
+            .ok_or(Error::MissingKeyRotation)?;
 
         let aggregate_key = last_key_rotation.aggregate_key;
         let signer_set = last_key_rotation.signer_set.into_iter().collect();
@@ -519,7 +513,7 @@ where
         &mut self,
         msg: impl Into<message::Payload>,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<(), error::Error> {
+    ) -> Result<(), Error> {
         let msg = msg
             .into()
             .to_message(*bitcoin_chain_tip)
@@ -536,7 +530,7 @@ pub fn given_key_is_coordinator(
     pub_key: PublicKey,
     bitcoin_chain_tip: &model::BitcoinBlockHash,
     signer_public_keys: &BTreeSet<PublicKey>,
-) -> Result<bool, error::Error> {
+) -> Result<bool, Error> {
     Ok(
         coordinator_public_key(bitcoin_chain_tip, signer_public_keys)?
             .map(|coordinator_pub_key| coordinator_pub_key == pub_key)
@@ -548,11 +542,11 @@ pub fn given_key_is_coordinator(
 pub fn coordinator_public_key(
     bitcoin_chain_tip: &model::BitcoinBlockHash,
     signer_public_keys: &BTreeSet<PublicKey>,
-) -> Result<Option<PublicKey>, error::Error> {
+) -> Result<Option<PublicKey>, Error> {
     let mut hasher = sha2::Sha256::new();
     hasher.update(bitcoin_chain_tip.into_bytes());
     let digest = hasher.finalize();
-    let index = usize::from_be_bytes(*digest.first_chunk().ok_or(error::Error::TypeConversion)?);
+    let index = usize::from_be_bytes(*digest.first_chunk().ok_or(Error::TypeConversion)?);
 
     Ok(signer_public_keys
         .iter()

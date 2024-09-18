@@ -164,8 +164,7 @@ pub trait AsContractCall {
         ctx: &ReqContext,
     ) -> impl Future<Output = Result<(), Error>> + Send
     where
-        S: DbRead + Send + Sync,
-        Error: From<<S as DbRead>::Error>;
+        S: DbRead + Send + Sync;
 }
 
 /// An enum representing all contract calls that the signers can make.
@@ -284,7 +283,6 @@ impl AsContractCall for CompleteDepositV1 {
     async fn validate<S>(&self, db: &S, ctx: &ReqContext) -> Result<(), Error>
     where
         S: DbRead + Send + Sync,
-        Error: From<<S as DbRead>::Error>,
     {
         self.validate_sweep_tx(db, ctx).await?;
         self.validate_deposit_vars(db, ctx).await
@@ -307,7 +305,6 @@ impl CompleteDepositV1 {
     async fn validate_deposit_vars<S>(&self, db: &S, ctx: &ReqContext) -> Result<(), Error>
     where
         S: DbRead + Send + Sync,
-        Error: From<<S as DbRead>::Error>,
     {
         // 1. That the smart contract deployer matches the deployer in our
         //    context.
@@ -363,7 +360,6 @@ impl CompleteDepositV1 {
     async fn validate_sweep_tx<S>(&self, db: &S, ctx: &ReqContext) -> Result<(), Error>
     where
         S: DbRead + Send + Sync,
-        Error: From<<S as DbRead>::Error>,
     {
         // First we check that we have a record of the transaction.
         let sweep_tx = db
@@ -530,7 +526,6 @@ impl AsContractCall for AcceptWithdrawalV1 {
     async fn validate<S>(&self, _db: &S, _ctx: &ReqContext) -> Result<(), Error>
     where
         S: DbRead + Send + Sync,
-        Error: From<<S as DbRead>::Error>,
     {
         // TODO(255): Add validation implementation
         Ok(())
@@ -577,7 +572,6 @@ impl AsContractCall for RejectWithdrawalV1 {
     async fn validate<S>(&self, _db: &S, _ctx: &ReqContext) -> Result<(), Error>
     where
         S: DbRead + Send + Sync,
-        Error: From<<S as DbRead>::Error>,
     {
         // TODO(255): Add validation implementation
         Ok(())
@@ -685,7 +679,6 @@ impl AsContractCall for RotateKeysV1 {
     async fn validate<S>(&self, _db: &S, _ctx: &ReqContext) -> Result<(), Error>
     where
         S: DbRead + Send + Sync,
-        Error: From<<S as DbRead>::Error>,
     {
         // TODO(255): Add validation implementation
         Ok(())
