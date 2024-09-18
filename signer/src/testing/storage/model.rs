@@ -34,7 +34,7 @@ pub struct TestData {
     pub transactions: Vec<model::Transaction>,
 
     /// Connection between bitcoin blocks and transactions
-    pub bitcoin_transactions: Vec<model::BitcoinTransaction>,
+    pub bitcoin_transactions: Vec<model::BitcoinTxRef>,
 
     /// Connection between bitcoin blocks and transactions
     pub stacks_transactions: Vec<model::StacksTransaction>,
@@ -270,7 +270,7 @@ struct DepositData {
     pub deposit_requests: Vec<model::DepositRequest>,
     pub deposit_signers: Vec<model::DepositSigner>,
     pub transactions: Vec<model::Transaction>,
-    pub bitcoin_transactions: Vec<model::BitcoinTransaction>,
+    pub bitcoin_transactions: Vec<model::BitcoinTxRef>,
 }
 
 impl DepositData {
@@ -310,7 +310,7 @@ impl DepositData {
                 })
                 .collect();
 
-            let bitcoin_transaction = model::BitcoinTransaction {
+            let bitcoin_transaction = model::BitcoinTxRef {
                 txid: raw_transaction.txid.into(),
                 block_hash: bitcoin_block.block_hash,
             };
