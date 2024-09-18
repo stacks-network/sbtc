@@ -59,19 +59,18 @@ impl Default for Network {
 impl super::MessageTransfer for MpmcBroadcaster {
     async fn broadcast(&mut self, msg: super::Msg) -> Result<(), Error> {
         self.recently_sent.push_back(msg.id());
-        self.sender.send(msg).unwrap();
+        self.sender.send(msg).map_err(|_| Error::SendMessage)?;
         Ok(())
     }
 
     async fn receive(&mut self) -> Result<super::Msg, Error> {
-        let mut msg = self.receiver.recv().await.unwrap();
+        let mut msg = self.receiver.recv().await.map_err(Error::ChannelReceive)?;
 
         while Some(&msg.id()) == self.recently_sent.front() {
             self.recently_sent.pop_front();
-            msg = self.receiver.recv().await.unwrap();
+            msg = self.receiver.recv().await.map_err(Error::ChannelReceive)?;
         }
 
         Ok(msg)
     }
 }
-
