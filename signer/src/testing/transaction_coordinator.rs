@@ -29,7 +29,6 @@ impl<S, C> EventLoopHarness<S, C>
 where
     S: storage::DbRead + storage::DbWrite + Clone + Send + 'static,
     C: crate::bitcoin::BitcoinInteract + Send + 'static,
-    error::Error: From<C::Error>,
 {
     fn create(
         network: network::in_memory::MpmcBroadcaster,

@@ -121,7 +121,6 @@ where
     S: storage::DbRead + storage::DbWrite,
     B: BitcoinInteract,
     Error: From<N::Error>,
-    Error: From<B::Error>,
 {
     /// Run the coordinator event loop
     #[tracing::instrument(skip(self))]
