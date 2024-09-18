@@ -58,12 +58,13 @@ pub trait DbRead {
         context_window: u16,
     ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Self::Error>> + Send;
 
-    /// Get pending deposit requests that have been accepted by at least `threshold` signers and has no responses
+    /// Get pending deposit requests that have been accepted by at least
+    /// `signatures_required` signers and has no responses
     fn get_pending_accepted_deposit_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
-        threshold: u16,
+        signatures_required: u16,
     ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Self::Error>> + Send;
 
     /// Get the deposit requests that the signer has accepted to sign
@@ -148,6 +149,23 @@ pub trait DbRead {
         id: &model::QualifiedRequestId,
         aggregate_key: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::SignerVote>, Self::Error>> + Send;
+
+    /// Check that the given block hash is included in the canonical
+    /// bitcoin blockchain, where the canonical blockchain is identified by
+    /// the given `chain_tip`.
+    fn in_canonical_bitcoin_blockchain(
+        &self,
+        chain_tip: &model::BitcoinBlockRef,
+        block_ref: &model::BitcoinBlockRef,
+    ) -> impl Future<Output = Result<bool, Self::Error>> + Send;
+
+    /// Fetch the bitcoin transaction that is included in the block
+    /// identified by the block hash.
+    fn get_bitcoin_tx(
+        &self,
+        txid: &model::BitcoinTxId,
+        block_hash: &model::BitcoinBlockHash,
+    ) -> impl Future<Output = Result<Option<model::BitcoinTx>, Self::Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.

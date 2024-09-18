@@ -467,6 +467,9 @@ impl super::DbRead for PgStore {
         context_window: u16,
         threshold: u16,
     ) -> Result<Vec<model::DepositRequest>, Self::Error> {
+        // TODO(543): Make sure we get only pending deposits, don't include
+        // ones where we have a completed-deposit event on the canonical
+        // stacks blockchain.
         sqlx::query_as::<_, model::DepositRequest>(
             r#"
             WITH RECURSIVE context_window AS (
@@ -961,6 +964,74 @@ impl super::DbRead for PgStore {
             "#,
         )
         .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn in_canonical_bitcoin_blockchain(
+        &self,
+        chain_tip: &model::BitcoinBlockRef,
+        block_ref: &model::BitcoinBlockRef,
+    ) -> Result<bool, Error> {
+        let heigh_diff = chain_tip
+            .block_height
+            .saturating_sub(block_ref.block_height);
+
+        sqlx::query_scalar::<_, bool>(
+            r#"
+            WITH RECURSIVE tx_block_chain AS (
+                SELECT 
+                    block_hash
+                  , block_height
+                  , parent_hash
+                  , 0 AS counter
+                FROM sbtc_signer.bitcoin_blocks
+                WHERE block_hash = $2
+
+                UNION ALL
+
+                SELECT
+                    child.block_hash
+                  , child.block_height
+                  , child.parent_hash
+                  , parent.counter + 1
+                FROM sbtc_signer.bitcoin_blocks AS child
+                JOIN tx_block_chain AS parent
+                  ON child.parent_hash = parent.block_hash
+                WHERE parent.counter <= $3
+            )
+            SELECT EXISTS (
+                SELECT TRUE
+                FROM tx_block_chain AS tbc
+                WHERE tbc.block_hash = $1
+            );
+        "#,
+        )
+        .bind(chain_tip.block_hash)
+        .bind(block_ref.block_hash)
+        .bind(heigh_diff as i64)
+        .fetch_one(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_bitcoin_tx(
+        &self,
+        txid: &model::BitcoinTxId,
+        block_hash: &model::BitcoinBlockHash,
+    ) -> Result<Option<model::BitcoinTx>, Error> {
+        sqlx::query_scalar::<_, model::BitcoinTx>(
+            r#"
+            SELECT txs.tx
+            FROM sbtc_signer.bitcoin_transactions AS bt
+            JOIN sbtc_signer.transactions AS txs USING (txid)
+            WHERE bt.block_hash = $1
+              AND bt.txid = $2
+        "#,
+        )
+        .bind(block_hash)
+        .bind(txid)
+        .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }

@@ -51,6 +51,10 @@ pub struct Store {
     /// Bitcoin transactions to blocks
     pub bitcoin_transactions_to_blocks: HashMap<model::BitcoinTxId, Vec<model::BitcoinBlockHash>>,
 
+    /// Bitcoin transactions to blocks
+    pub bitcoin_transactions:
+        HashMap<(model::BitcoinTxId, model::BitcoinBlockHash), model::BitcoinTx>,
+
     /// Stacks blocks to transactions
     pub stacks_block_to_transactions: HashMap<model::StacksBlockHash, Vec<model::StacksTxId>>,
 
@@ -484,6 +488,38 @@ impl super::DbRead for SharedStore {
         } else {
             Ok(Vec::new())
         }
+    }
+
+    async fn in_canonical_bitcoin_blockchain(
+        &self,
+        chain_tip: &model::BitcoinBlockRef,
+        block_ref: &model::BitcoinBlockRef,
+    ) -> Result<bool, Self::Error> {
+        let store = self.lock().await;
+        let bitcoin_blocks = &store.bitcoin_blocks;
+        let first = bitcoin_blocks.get(&chain_tip.block_hash);
+
+        let num_matches =
+            std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
+                .map(model::BitcoinBlockRef::from)
+                .skip_while(|block| block != block_ref)
+                .count();
+
+        Ok(num_matches > 0)
+    }
+
+    async fn get_bitcoin_tx(
+        &self,
+        txid: &model::BitcoinTxId,
+        block_hash: &model::BitcoinBlockHash,
+    ) -> Result<Option<model::BitcoinTx>, Self::Error> {
+        let store = self.lock().await;
+        let maybe_tx = store
+            .bitcoin_transactions
+            .get(&(*txid, *block_hash))
+            .cloned();
+
+        Ok(maybe_tx)
     }
 }
 

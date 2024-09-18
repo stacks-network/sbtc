@@ -61,7 +61,7 @@ pub struct DepositRequest {
     /// The address of which the sBTC should be minted,
     /// can be a smart contract address.
     pub recipient: StacksPrincipal,
-    /// The amount deposited.
+    /// The amount in the deposit UTXO.
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000"))]
     pub amount: u64,
@@ -328,6 +328,29 @@ pub struct QualifiedRequestId {
     pub request_id: u64,
 }
 
+/// A bitcoin transaction
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BitcoinTx(bitcoin::Transaction);
+
+impl Deref for BitcoinTx {
+    type Target = bitcoin::Transaction;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<bitcoin::Transaction> for BitcoinTx {
+    fn from(value: bitcoin::Transaction) -> Self {
+        Self(value)
+    }
+}
+
+impl From<BitcoinTx> for bitcoin::Transaction {
+    fn from(value: BitcoinTx) -> Self {
+        value.0
+    }
+}
+
 /// The bitcoin transaction ID
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BitcoinTxId(bitcoin::Txid);
@@ -395,6 +418,31 @@ impl From<BitcoinBlockHash> for bitcoin::BlockHash {
 impl From<[u8; 32]> for BitcoinBlockHash {
     fn from(bytes: [u8; 32]) -> Self {
         Self(bitcoin::BlockHash::from_byte_array(bytes))
+    }
+}
+
+/// A struct that references a specific bitcoin block is identifier and its
+/// position in the blockchain.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BitcoinBlockRef {
+    /// The height of the block in the bitcoin blockchain.
+    pub block_height: u64,
+    /// Bitcoin block hash. It uniquely identifies the bitcoin block.
+    pub block_hash: BitcoinBlockHash,
+}
+
+impl From<BitcoinBlock> for BitcoinBlockRef {
+    fn from(value: BitcoinBlock) -> Self {
+        Self::from(&value)
+    }
+}
+
+impl From<&BitcoinBlock> for BitcoinBlockRef {
+    fn from(value: &BitcoinBlock) -> Self {
+        Self {
+            block_hash: value.block_hash,
+            block_height: value.block_height,
+        }
     }
 }
 

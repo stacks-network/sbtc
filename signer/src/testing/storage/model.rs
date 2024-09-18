@@ -4,7 +4,11 @@ use fake::Fake;
 
 use crate::keys::PublicKey;
 use crate::storage::model;
+use crate::storage::model::BitcoinBlock;
+use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::BitcoinBlockRef;
 use crate::storage::DbWrite;
+use crate::testing::dummy::DepositTxConfig;
 
 use rand::seq::SliceRandom;
 
@@ -131,7 +135,7 @@ impl TestData {
     }
 
     /// Write the test data to the given store.
-    pub async fn write_to<Db>(&self, storage: &mut Db)
+    pub async fn write_to<Db>(&self, storage: &Db)
     where
         Db: DbWrite,
     {
@@ -204,8 +208,8 @@ impl TestData {
         let parent_block_summary = self
             .bitcoin_blocks
             .choose(rng)
-            .map(BlockSummary::summarize)
-            .unwrap_or_else(|| BlockSummary::hallucinate_parent(&block));
+            .map(BitcoinBlockRef::summarize)
+            .unwrap_or_else(|| BitcoinBlockRef::hallucinate_parent(&block));
 
         block.parent_hash = parent_block_summary.block_hash;
         block.block_height = parent_block_summary.block_height + 1;
@@ -251,6 +255,14 @@ impl TestData {
 
         stacks_blocks
     }
+
+    /// Fetch the parent block given the hash.
+    pub fn get_bitcoin_block(&self, block_hash: &BitcoinBlockHash) -> Option<BitcoinBlock> {
+        self.bitcoin_blocks
+            .iter()
+            .find(|x| &x.block_hash == block_hash)
+            .cloned()
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -274,7 +286,17 @@ impl DepositData {
         num_signers_per_request: usize,
     ) -> Self {
         (0..num_deposit_requests).fold(Self::new(), |mut deposit_data, _| {
-            let deposit_request: model::DepositRequest = fake::Faker.fake_with_rng(rng);
+            let mut deposit_request: model::DepositRequest = fake::Faker.fake_with_rng(rng);
+
+            let deposit_config = DepositTxConfig {
+                signer_public_key: PublicKey::combine_keys(signer_keys)
+                    .unwrap_or_else(|_| fake::Faker.fake_with_rng(rng)),
+                ..fake::Faker.fake_with_rng(rng)
+            };
+
+            let mut raw_transaction: model::Transaction = deposit_config.fake_with_rng(rng);
+            raw_transaction.block_hash = *bitcoin_block.block_hash.as_ref();
+            deposit_request.txid = raw_transaction.txid.into();
 
             let deposit_signers: Vec<_> = signer_keys
                 .iter()
@@ -287,10 +309,6 @@ impl DepositData {
                     is_accepted: fake::Faker.fake_with_rng(rng),
                 })
                 .collect();
-
-            let mut raw_transaction: model::Transaction = fake::Faker.fake_with_rng(rng);
-            raw_transaction.txid = deposit_request.txid.into_bytes();
-            raw_transaction.tx_type = model::TransactionType::DepositRequest;
 
             let bitcoin_transaction = model::BitcoinTransaction {
                 txid: raw_transaction.txid.into(),
@@ -398,13 +416,7 @@ pub struct Params {
     pub num_signers_per_request: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct BlockSummary {
-    block_hash: model::BitcoinBlockHash,
-    block_height: u64,
-}
-
-impl BlockSummary {
+impl BitcoinBlockRef {
     fn summarize(block: &model::BitcoinBlock) -> Self {
         Self {
             block_hash: block.block_hash,

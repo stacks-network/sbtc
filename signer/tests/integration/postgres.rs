@@ -10,6 +10,7 @@ use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
 use futures::StreamExt;
+use rand::seq::SliceRandom;
 
 use signer::error::Error;
 use signer::keys::PublicKey;
@@ -26,6 +27,7 @@ use signer::stacks::events::WithdrawalCreateEvent;
 use signer::stacks::events::WithdrawalRejectEvent;
 use signer::storage;
 use signer::storage::model;
+use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
 use signer::storage::model::QualifiedRequestId;
 use signer::storage::model::RotateKeysTransaction;
@@ -1134,4 +1136,138 @@ async fn fetching_withdrawal_request_votes() {
     assert!(actual_signer_vote_map.values().all(Option::is_none));
 
     signer::testing::storage::drop_db(store).await;
+}
+
+/// For this test we check that the `block_in_canonical_bitcoin_blockchain`
+/// function returns false when the input block is not in the canonical
+/// bitcoin blockchain.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let pg_store = signer::testing::storage::new_test_database(db_num).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // This is just a sql test, where we use the `TestData` struct to help
+    // populate the database with test data. We set all of the other
+    // unnecessary parameters to zero.
+    let num_signers = 0;
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 50,
+        num_stacks_blocks_per_bitcoin_block: 0,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+    };
+
+    let signer_set = generate_signer_set(&mut rng, num_signers);
+    // Okay now we generate one blockchain and get its chain tip
+    let test_data1 = TestData::generate(&mut rng, &signer_set, &test_model_params);
+    // And we generate another blockchain and get its chain tip
+    let test_data2 = TestData::generate(&mut rng, &signer_set, &test_model_params);
+
+    test_data1.write_to(&pg_store).await;
+    test_data2.write_to(&pg_store).await;
+
+    let chain_tip1 = test_data1
+        .bitcoin_blocks
+        .iter()
+        .max_by_key(|x| (x.block_height, x.block_hash))
+        .unwrap();
+    let chain_tip2 = test_data2
+        .bitcoin_blocks
+        .iter()
+        .max_by_key(|x| (x.block_height, x.block_hash))
+        .unwrap();
+
+    // These shouldn't be equal
+    assert_ne!(chain_tip1, chain_tip2);
+
+    // Now for the moment of truth, these chains should have nothing to do
+    // with one another.
+    let is_in_chain = pg_store
+        .in_canonical_bitcoin_blockchain(&chain_tip2.into(), &chain_tip1.into())
+        .await
+        .unwrap();
+    assert!(!is_in_chain);
+    let is_in_chain = pg_store
+        .in_canonical_bitcoin_blockchain(&chain_tip1.into(), &chain_tip2.into())
+        .await
+        .unwrap();
+    assert!(!is_in_chain);
+
+    // Okay, now let's get a block that we know is in the blockchain.
+    let block_ref = {
+        let tmp = test_data1
+            .get_bitcoin_block(&chain_tip1.parent_hash)
+            .unwrap();
+        test_data1.get_bitcoin_block(&tmp.parent_hash).unwrap()
+    };
+
+    let is_in_chain = pg_store
+        .in_canonical_bitcoin_blockchain(&chain_tip1.into(), &block_ref.into())
+        .await
+        .unwrap();
+    assert!(is_in_chain);
+
+    signer::testing::storage::drop_db(pg_store).await;
+}
+
+/// For this test we check that the `get_bitcoin_tx` function returns a
+/// transaction when the transaction exists in the block, and returns None
+/// otherwise.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn we_can_fetch_bitcoin_txs_from_db() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let pg_store = signer::testing::storage::new_test_database(db_num).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // This is just a sql test, where we use the `TestData` struct to help
+    // populate the database with test data. We set all of the other
+    // unnecessary parameters to zero.
+    let num_signers = 0;
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 10,
+        num_stacks_blocks_per_bitcoin_block: 0,
+        num_deposit_requests_per_block: 2,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+    };
+
+    let signer_set = generate_signer_set(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
+    test_data.write_to(&pg_store).await;
+
+    let tx = test_data.bitcoin_transactions.choose(&mut rng).unwrap();
+
+    // Now let's try fecthing this transaction
+    let btc_tx = pg_store
+        .get_bitcoin_tx(&tx.txid, &tx.block_hash)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(btc_tx.compute_txid(), tx.txid.into());
+
+    // Now let's try fecthing this transaction when we know it is missing.
+    let txid: BitcoinTxId = fake::Faker.fake_with_rng(&mut rng);
+    let block_hash: BitcoinBlockHash = fake::Faker.fake_with_rng(&mut rng);
+    // Actual block but missing txid
+    let btc_tx = pg_store
+        .get_bitcoin_tx(&txid, &tx.block_hash)
+        .await
+        .unwrap();
+    assert!(btc_tx.is_none());
+    // Actual txid but missing block
+    let btc_tx = pg_store
+        .get_bitcoin_tx(&tx.txid, &block_hash)
+        .await
+        .unwrap();
+    assert!(btc_tx.is_none());
+    // Now everything is missing
+    let btc_tx = pg_store.get_bitcoin_tx(&txid, &block_hash).await.unwrap();
+    assert!(btc_tx.is_none());
+
+    signer::testing::storage::drop_db(pg_store).await;
 }
