@@ -1,5 +1,6 @@
 //! Bitcoin Core RPC client implementations
 
+use bitcoincore_rpc::RpcApi;
 use sbtc::rpc::BitcoinCoreClient;
 use url::Url;
 
@@ -22,45 +23,28 @@ impl TryFromUrl for BitcoinCoreClient {
 }
 
 impl BitcoinInteract for BitcoinCoreClient {
-    type Error = Error;
 
-    async fn get_block(&self, _block_hash: &bitcoin::BlockHash) -> Result<Option<bitcoin::Block>, Self::Error> {
+    async fn get_block(&self, _block_hash: &bitcoin::BlockHash) -> Result<Option<bitcoin::Block>, Error> {
         todo!()
     }
 
-    async fn estimate_fee_rate(&self) -> Result<f64, Self::Error> {
+    async fn estimate_fee_rate(&self) -> Result<f64, Error> {
+        self.estimate_fee_rate(1)
+            .map(|rate| rate.sats_per_vbyte)
+            .map_err(|e| Error::BitcoinCoreClient(e.to_string()))
+    }
+
+    async fn get_signer_utxo(&self, _aggregate_key: &PublicKey) -> Result<Option<SignerUtxo>, Error>{
         todo!()
     }
 
-    async fn get_signer_utxo(&self, _aggregate_key: &PublicKey) -> Result<Option<SignerUtxo>, Self::Error>{
+    async fn get_last_fee(&self, _utxo: bitcoin::OutPoint) -> Result<Option<utxo::Fees>, Error> {
         todo!()
     }
 
-    async fn get_last_fee(&self, _utxo: bitcoin::OutPoint) -> Result<Option<utxo::Fees>, Self::Error> {
-        todo!()
-    }
-
-    async fn broadcast_transaction(&self, _tx: &bitcoin::Transaction) -> Result<(), Self::Error> {
-        todo!()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{bitcoin::BitcoinInteract as _, config::Settings, context::{Context as _, DefaultSignerContext}, storage::in_memory::Store};
-
-    #[tokio::test]
-    async fn estimate_fee_rate() {
-        let ctx = DefaultSignerContext::init(
-            Settings::new_from_default_config().unwrap(), 
-            Store::new_shared()
-        ).unwrap();
-
-        let client = ctx.get_bitcoin_client();
-
-        client.exec(|client| 
-            client.estimate_fee_rate()
-        ).await;
-
+    async fn broadcast_transaction(&self, tx: &bitcoin::Transaction) -> Result<(), Error> {
+        self.inner_client().send_raw_transaction(tx)
+            .map_err(|e| Error::BitcoinCoreClient(e.to_string()))
+            .map(|_| ())
     }
 }

@@ -31,7 +31,6 @@ where
     error::Error: From<<S as storage::DbRead>::Error>,
     error::Error: From<<S as storage::DbWrite>::Error>,
     C: crate::bitcoin::BitcoinInteract + Send + 'static,
-    error::Error: From<C::Error>,
 {
     fn create(
         network: network::in_memory::MpmcBroadcaster,

@@ -76,6 +76,12 @@ impl BitcoinCoreClient {
 
         Ok(Self { inner: client })
     }
+
+    /// Return a reference to the inner bitcoin-core RPC client.
+    pub fn inner_client(&self) -> &bitcoincore_rpc::Client {
+        &self.inner
+    }
+    
     /// Fetch and decode raw transaction from bitcoin-core using the
     /// getrawtransaction RPC.
     ///

@@ -122,7 +122,6 @@ where
     error::Error: From<N::Error>,
     error::Error: From<<S as storage::DbRead>::Error>,
     error::Error: From<<S as storage::DbWrite>::Error>,
-    error::Error: From<B::Error>,
 {
     /// Run the coordinator event loop
     #[tracing::instrument(skip(self))]

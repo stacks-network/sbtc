@@ -8,6 +8,10 @@ use crate::{codec, ecdsa, network};
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// All failover clients failed
+    #[error("all failover clients failed to execute the request within the allotted number of retries")]
+    AllFailoverClientsFailed,
+    
     /// Error incurred during the execution of the libp2p swarm.
     #[error("an error occurred running the libp2p swarm: {0}")]
     SignerSwarm(#[from] crate::network::libp2p::SignerSwarmError),

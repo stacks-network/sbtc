@@ -73,7 +73,6 @@ where
     BHS: futures::stream::Stream<Item = bitcoin::BlockHash> + Unpin,
     error::Error: From<<S as DbRead>::Error>,
     error::Error: From<<S as DbWrite>::Error>,
-    error::Error: From<<BC as BitcoinInteract>::Error>,
 {
     /// Run the block observer
     #[tracing::instrument(skip(self))]
@@ -717,11 +716,10 @@ mod tests {
     }
 
     impl BitcoinInteract for TestHarness {
-        type Error = error::Error;
         async fn get_block(
             &self,
             block_hash: &bitcoin::BlockHash,
-        ) -> Result<Option<bitcoin::Block>, Self::Error> {
+        ) -> Result<Option<bitcoin::Block>, Error> {
             Ok(self
                 .bitcoin_blocks
                 .iter()
@@ -729,27 +727,27 @@ mod tests {
                 .cloned())
         }
 
-        async fn estimate_fee_rate(&self) -> Result<f64, Self::Error> {
+        async fn estimate_fee_rate(&self) -> Result<f64, Error> {
             unimplemented!()
         }
 
         async fn get_signer_utxo(
             &self,
             _point: &PublicKey,
-        ) -> Result<Option<utxo::SignerUtxo>, Self::Error> {
+        ) -> Result<Option<utxo::SignerUtxo>, Error> {
             unimplemented!()
         }
         async fn get_last_fee(
             &self,
             _utxo: bitcoin::OutPoint,
-        ) -> Result<Option<utxo::Fees>, Self::Error> {
+        ) -> Result<Option<utxo::Fees>, Error> {
             unimplemented!()
         }
 
         async fn broadcast_transaction(
             &self,
             _tx: &bitcoin::Transaction,
-        ) -> Result<(), Self::Error> {
+        ) -> Result<(), Error> {
             unimplemented!()
         }
     }
