@@ -1,10 +1,10 @@
 use std::sync::atomic::AtomicU16;
 
+mod complete_deposit;
 mod contracts;
 mod postgres;
 mod rbf;
 mod transaction_signer;
-mod complete_deposit;
 mod utxo_construction;
 mod zmq;
 

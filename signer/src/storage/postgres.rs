@@ -321,26 +321,6 @@ impl PgStore {
 
         Ok(model::TransactionIds { tx_ids, block_hashes })
     }
-
-    /// Get the full block
-    #[cfg(any(test, feature = "testing"))]
-    pub async fn get_bitcoin_canonical_chain_tip_block(
-        &self,
-    ) -> Result<Option<model::BitcoinBlock>, Error> {
-        sqlx::query_as::<_, model::BitcoinBlock>(
-            "SELECT
-                block_hash
-              , block_height
-              , parent_hash
-              , confirms
-             FROM sbtc_signer.bitcoin_blocks
-             ORDER BY block_height DESC, block_hash DESC
-             LIMIT 1",
-        )
-        .fetch_optional(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)
-    }
 }
 
 impl From<sqlx::PgPool> for PgStore {

@@ -104,6 +104,25 @@ where
     signer_set
 }
 
+/// Get the full block
+async fn get_bitcoin_canonical_chain_tip_block(
+    store: &PgStore,
+) -> Result<Option<model::BitcoinBlock>, Error> {
+    sqlx::query_as::<_, model::BitcoinBlock>(
+        "SELECT
+            block_hash
+            , block_height
+            , parent_hash
+            , confirms
+            FROM sbtc_signer.bitcoin_blocks
+            ORDER BY block_height DESC, block_hash DESC
+            LIMIT 1",
+    )
+    .fetch_optional(store.pool())
+    .await
+    .map_err(Error::SqlxQuery)
+}
+
 /// For this test we check that the `CompleteDepositV1::validate` function
 /// returns okay when everything matches the way that it is supposed to.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -118,8 +137,7 @@ async fn complete_deposit_validation_happy_path() {
 
     let signer_set = depossit_setup(&mut rng, &pg_store).await;
     // Get the chain tip.
-    let chain_tip = pg_store
-        .get_bitcoin_canonical_chain_tip_block()
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
         .await
         .unwrap()
         .unwrap();
@@ -180,8 +198,7 @@ async fn complete_deposit_validation_deployer_mismatch() {
     let signer_set = depossit_setup(&mut rng, &pg_store).await;
 
     // Get the chain tip
-    let chain_tip = pg_store
-        .get_bitcoin_canonical_chain_tip_block()
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
         .await
         .unwrap()
         .unwrap();
@@ -252,8 +269,7 @@ async fn complete_deposit_validation_missing_deposit_request() {
 
     // Normal: Get the chain tip and any pending deposit request in the blockchain
     // identified by the chain tip.
-    let chain_tip = pg_store
-        .get_bitcoin_canonical_chain_tip_block()
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
         .await
         .unwrap()
         .unwrap();
@@ -313,8 +329,7 @@ async fn complete_deposit_validation_recipient_mismatch() {
     let signer_set = depossit_setup(&mut rng, &pg_store).await;
 
     // Get the chain tip.
-    let chain_tip = pg_store
-        .get_bitcoin_canonical_chain_tip_block()
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
         .await
         .unwrap()
         .unwrap();
@@ -385,8 +400,7 @@ async fn complete_deposit_validation_invalid_mint_amount() {
     let signer_set = depossit_setup(&mut rng, &pg_store).await;
 
     // Get the chain tip.
-    let chain_tip = pg_store
-        .get_bitcoin_canonical_chain_tip_block()
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
         .await
         .unwrap()
         .unwrap();
@@ -456,8 +470,7 @@ async fn complete_deposit_validation_invalid_fee() {
     let signer_set = depossit_setup(&mut rng, &pg_store).await;
 
     // Get the chain tip.
-    let chain_tip = pg_store
-        .get_bitcoin_canonical_chain_tip_block()
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
         .await
         .unwrap()
         .unwrap();
@@ -527,8 +540,7 @@ async fn complete_deposit_validation_sweep_tx_missing() {
     let signer_set = depossit_setup(&mut rng, &pg_store).await;
 
     // Get the chain tip.
-    let chain_tip = pg_store
-        .get_bitcoin_canonical_chain_tip_block()
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
         .await
         .unwrap()
         .unwrap();
@@ -586,8 +598,7 @@ async fn complete_deposit_validation_sweep_reorged() {
 
     let signer_set = depossit_setup(&mut rng, &pg_store).await;
     // Get the chain tip.
-    let chain_tip = pg_store
-        .get_bitcoin_canonical_chain_tip_block()
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
         .await
         .unwrap()
         .unwrap();
@@ -676,8 +687,7 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
     let signer_set = depossit_setup(&mut rng, &pg_store).await;
 
     // Get the chain tip.
-    let chain_tip = pg_store
-        .get_bitcoin_canonical_chain_tip_block()
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
         .await
         .unwrap()
         .unwrap();
