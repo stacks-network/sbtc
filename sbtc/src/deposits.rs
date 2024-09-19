@@ -130,7 +130,7 @@ impl CreateDepositRequest {
     /// need not be confirmed.
     pub fn validate<C>(&self, client: &C) -> Result<Deposit, Error>
     where
-        C: BitcoinClient
+        C: BitcoinClient,
     {
         // Fetch the transaction from either a block or from the mempool
         let response = client

@@ -8,6 +8,7 @@ use clap::Parser;
 use sbtc::rpc::BitcoinCoreClient;
 use signer::api;
 use signer::api::ApiState;
+use signer::block_observer::BlockObserver;
 use signer::config::Settings;
 use signer::context::Context;
 use signer::context::SignerContext;
@@ -213,4 +214,8 @@ async fn run_stacks_event_observer(ctx: impl Context + 'static) -> Result<(), Er
             ctx.get_termination_handle().signal_shutdown();
             error.into()
         })
+}
+
+async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
+    todo!()
 }

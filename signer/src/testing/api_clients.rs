@@ -5,7 +5,10 @@ use std::cell::LazyCell;
 use sbtc::rpc::BitcoinClient;
 use url::Url;
 
-use crate::{bitcoin::BitcoinInteract, block_observer::EmilyInteract, blocklist_client::BlocklistChecker, error::Error, stacks::api::StacksInteract, util::ApiFallbackClient};
+use crate::{
+    bitcoin::BitcoinInteract, block_observer::EmilyInteract, blocklist_client::BlocklistChecker,
+    error::Error, stacks::api::StacksInteract, util::ApiFallbackClient,
+};
 
 /// A no-op API client that implements the BitcoinClient trait. It will panic
 /// if you attempt to use it, but can be useful for fillers in testing.
@@ -103,7 +106,9 @@ impl StacksInteract for NoopApiClient {
         unimplemented!()
     }
 
-    async fn get_tenure_info(&mut self) -> Result<blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo, Error> {
+    async fn get_tenure_info(
+        &mut self,
+    ) -> Result<blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo, Error> {
         unimplemented!()
     }
 
@@ -113,7 +118,8 @@ impl StacksInteract for NoopApiClient {
         _priority: crate::stacks::api::FeePriority,
     ) -> Result<u64, Error>
     where
-        T: crate::stacks::contracts::AsTxPayload + Send + Sync {
+        T: crate::stacks::contracts::AsTxPayload + Send + Sync,
+    {
         unimplemented!()
     }
 
@@ -134,7 +140,8 @@ impl BlocklistChecker for NoopApiClient {
     async fn can_accept(
         &self,
         _address: &str,
-    ) -> Result<bool, blocklist_api::apis::Error<blocklist_api::apis::address_api::CheckAddressError>> {
+    ) -> Result<bool, blocklist_api::apis::Error<blocklist_api::apis::address_api::CheckAddressError>>
+    {
         todo!()
     }
 }

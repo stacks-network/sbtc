@@ -93,19 +93,23 @@ where
     async fn load_latest_deposit_requests(&mut self, ctx: &impl Context) {
         let deposit_requests = self.emily_client.get_deposits().await;
 
-        deposit_requests
-            .into_iter()
-            .flat_map(|request| {
-                request
-                    .validate(ctx.get_bitcoin_client().get_client())
-                    .inspect_err(|err| tracing::warn!("could not validate deposit request: {err}"))
-            })
-            .for_each(|deposit| {
+        for request in deposit_requests {
+            let deposit = ctx
+                .get_bitcoin_client()
+                .exec(|client| async {
+                    request.validate(client).inspect_err(
+                        |error| tracing::warn!(%error, "could not validate deposit request"),
+                    )
+                })
+                .await;
+
+            if let Ok(deposit) = deposit {
                 self.deposit_requests
                     .entry(deposit.info.outpoint.txid)
                     .or_default()
-                    .push(deposit)
-            });
+                    .push(deposit);
+            }
+        }
     }
 
     #[tracing::instrument(skip(self, ctx))]
