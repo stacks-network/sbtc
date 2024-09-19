@@ -20,6 +20,7 @@ use crate::context::SignerEvent;
 use crate::context::SignerSignal;
 use crate::context::TerminationHandle;
 use crate::ecdsa;
+use crate::error::Error;
 use crate::message;
 
 /// The supported message type of the signer network
@@ -30,12 +31,10 @@ pub type MsgId = [u8; 32];
 /// Represents the interaction point between signers and the signer network,
 /// allowing signers to exchange messages with each other.
 pub trait MessageTransfer {
-    /// Errors occuring during either [`MessageTransfer::broadcast`] or [`MessageTransfer::receive`]
-    type Error: std::error::Error;
     /// Send `msg` to all other signers
-    fn broadcast(&mut self, msg: Msg) -> impl Future<Output = Result<(), Self::Error>> + Send;
+    fn broadcast(&mut self, msg: Msg) -> impl Future<Output = Result<(), Error>> + Send;
     /// Receive a message from the network
-    fn receive(&mut self) -> impl Future<Output = Result<Msg, Self::Error>> + Send;
+    fn receive(&mut self) -> impl Future<Output = Result<Msg, Error>> + Send;
 }
 
 /// MessageTransfer interface for the application signalling channel.
@@ -59,8 +58,6 @@ impl P2PNetwork {
 }
 
 impl MessageTransfer for P2PNetwork {
-    type Error = crate::error::Error;
-
     /// This will broadcast the message to the application signalling channel
     /// using a [`SignerCommand::P2PPublish`] command. This implementation does
     /// not actually send the message to the P2P network, but rather signals
@@ -74,10 +71,10 @@ impl MessageTransfer for P2PNetwork {
     /// [`SignerEvent::P2PPublishFailure`] and [`SignerEvent::P2PPublishSuccess`]
     /// events, which will provide you with the [`MsgId`] to match against your
     /// in-flight requests.
-    async fn broadcast(&mut self, msg: Msg) -> Result<(), Self::Error> {
+    async fn broadcast(&mut self, msg: Msg) -> Result<(), Error> {
         self.signal_tx
             .send(SignerSignal::Command(SignerCommand::P2PPublish(msg)))
-            .map_err(|_| Self::Error::SignerShutdown)
+            .map_err(|_| Error::SignerShutdown)
             .map(|_| ())
     }
 
@@ -95,11 +92,11 @@ impl MessageTransfer for P2PNetwork {
     /// of the receiver being dropped, thus missing messages.
     ///
     /// In other words, you should be calling this method as rapidly as possible.
-    async fn receive(&mut self) -> Result<Msg, Self::Error> {
+    async fn receive(&mut self) -> Result<Msg, Error> {
         loop {
             tokio::select! {
                 _ = self.term.wait_for_shutdown() => {
-                    return Err(Self::Error::SignerShutdown);
+                    return Err(Error::SignerShutdown);
                 },
                 recv = self.signal_rx.recv() => {
                     match recv {

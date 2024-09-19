@@ -87,8 +87,6 @@ impl SignerStateMachine {
     ) -> Result<Self, error::Error>
     where
         S: storage::DbRead + storage::DbWrite,
-        error::Error: From<<S as storage::DbRead>::Error>,
-        error::Error: From<<S as storage::DbWrite>::Error>,
     {
         let encrypted_shares = storage
             .get_encrypted_dkg_shares(&aggregate_key)
@@ -225,8 +223,6 @@ impl CoordinatorStateMachine {
     where
         I: IntoIterator<Item = PublicKey>,
         S: storage::DbRead + storage::DbWrite,
-        Error: From<<S as storage::DbRead>::Error>,
-        Error: From<<S as storage::DbWrite>::Error>,
     {
         let encrypted_shares = storage
             .get_encrypted_dkg_shares(&aggregate_key)

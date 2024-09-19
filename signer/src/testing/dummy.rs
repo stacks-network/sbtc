@@ -3,15 +3,21 @@
 use std::collections::BTreeMap;
 use std::ops::Range;
 
+use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
+use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
+use bitcoin::TxIn;
+use bitcoin::TxOut;
 use bitvec::array::BitArray;
 use blockstack_lib::burnchains::Txid as StacksTxid;
 use blockstack_lib::chainstate::{nakamoto, stacks};
 use fake::Fake;
 use rand::seq::IteratorRandom as _;
 use rand::Rng;
+use sbtc::deposits::DepositScriptInputs;
+use sbtc::deposits::ReclaimScriptInputs;
 use secp256k1::ecdsa::RecoverableSignature;
 use stacks_common::types::chainstate::StacksAddress;
 
@@ -26,6 +32,7 @@ use crate::storage::model;
 
 use crate::codec::Encode;
 use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::RotateKeysTransaction;
 use crate::storage::model::ScriptPubKey;
@@ -386,5 +393,80 @@ impl fake::Dummy<fake::Faker> for ScriptPubKey {
         let pk = bitcoin::CompressedPublicKey(public_key.into());
         let script_pubkey = ScriptBuf::new_p2wpkh(&pk.wpubkey_hash());
         ScriptPubKey::from(script_pubkey)
+    }
+}
+
+/// A struct to aid in the generation of bitcoin deposit transactions.
+///
+/// BitcoinTx is created with this config, then it will have a UTXO that is
+/// locked with a valid deposit scriptPubKey
+#[derive(Debug, Clone, Copy, fake::Dummy)]
+pub struct DepositTxConfig {
+    /// The public key of the signer.
+    pub signer_public_key: PublicKey,
+    /// The amount of the deposit
+    #[dummy(faker = "2000..1_000_000_000")]
+    pub amount: u64,
+    /// The max fee of the deposit
+    #[dummy(faker = "1000..1_000_000_000")]
+    pub max_fee: u64,
+    /// The lock-time of the deposit. The value here cannot have the 32nd
+    /// bit set to 1 or the else the [`ReclaimScriptInputs::try_new`]
+    /// function will return an error.
+    #[dummy(faker = "2..250")]
+    pub lock_time: i64,
+}
+
+impl fake::Dummy<DepositTxConfig> for BitcoinTx {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &DepositTxConfig, rng: &mut R) -> Self {
+        let deposit = DepositScriptInputs {
+            signers_public_key: config.signer_public_key.into(),
+            recipient: fake::Faker.fake_with_rng::<StacksPrincipal, _>(rng).into(),
+            max_fee: config.max_fee,
+        };
+        let deposit_script = deposit.deposit_script();
+        // This is the part of the reclaim script that the user controls.
+        let reclaim_script = ScriptBuf::builder()
+            .push_opcode(bitcoin::opcodes::all::OP_DROP)
+            .push_opcode(bitcoin::opcodes::OP_TRUE)
+            .into_script();
+
+        let reclaim = ReclaimScriptInputs::try_new(config.lock_time, reclaim_script).unwrap();
+        let reclaim_script = reclaim.reclaim_script();
+
+        let deposit_tx = bitcoin::Transaction {
+            version: bitcoin::transaction::Version::TWO,
+            lock_time: bitcoin::absolute::LockTime::ZERO,
+            input: vec![TxIn {
+                previous_output: OutPoint::null(),
+                sequence: bitcoin::Sequence::ZERO,
+                script_sig: ScriptBuf::new(),
+                witness: bitcoin::Witness::new(),
+            }],
+            output: vec![TxOut {
+                value: Amount::from_sat(config.amount),
+                script_pubkey: sbtc::deposits::to_script_pubkey(deposit_script, reclaim_script),
+            }],
+        };
+
+        Self::from(deposit_tx)
+    }
+}
+
+impl fake::Dummy<DepositTxConfig> for model::Transaction {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &DepositTxConfig, rng: &mut R) -> Self {
+        let mut tx = Vec::new();
+
+        let bitcoin_tx: BitcoinTx = config.fake_with_rng(rng);
+        bitcoin_tx
+            .consensus_encode(&mut tx)
+            .expect("In-memory writers never fail");
+
+        model::Transaction {
+            tx,
+            txid: bitcoin_tx.compute_txid().to_byte_array(),
+            tx_type: model::TransactionType::DepositRequest,
+            block_hash: fake::Faker.fake_with_rng(rng),
+        }
     }
 }

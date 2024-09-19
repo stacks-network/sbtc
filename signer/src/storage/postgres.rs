@@ -86,7 +86,7 @@ pub struct PgStore(sqlx::PgPool);
 
 impl TryFrom<&NakamotoBlock> for model::StacksBlock {
     type Error = Error;
-    fn try_from(block: &NakamotoBlock) -> Result<Self, Self::Error> {
+    fn try_from(block: &NakamotoBlock) -> Result<Self, Error> {
         Ok(Self {
             block_hash: block.block_id().into(),
             block_height: block.header.chain_length,
@@ -330,12 +330,10 @@ impl From<sqlx::PgPool> for PgStore {
 }
 
 impl super::DbRead for PgStore {
-    type Error = Error;
-
     async fn get_bitcoin_block(
         &self,
         block_hash: &model::BitcoinBlockHash,
-    ) -> Result<Option<model::BitcoinBlock>, Self::Error> {
+    ) -> Result<Option<model::BitcoinBlock>, Error> {
         sqlx::query_as::<_, model::BitcoinBlock>(
             "SELECT
                 block_hash
@@ -354,7 +352,7 @@ impl super::DbRead for PgStore {
     async fn get_stacks_block(
         &self,
         block_hash: &model::StacksBlockHash,
-    ) -> Result<Option<model::StacksBlock>, Self::Error> {
+    ) -> Result<Option<model::StacksBlock>, Error> {
         sqlx::query_as::<_, model::StacksBlock>(
             "SELECT
                 block_hash
@@ -371,7 +369,7 @@ impl super::DbRead for PgStore {
 
     async fn get_bitcoin_canonical_chain_tip(
         &self,
-    ) -> Result<Option<model::BitcoinBlockHash>, Self::Error> {
+    ) -> Result<Option<model::BitcoinBlockHash>, Error> {
         sqlx::query_as::<_, model::BitcoinBlock>(
             "SELECT
                 block_hash
@@ -416,7 +414,7 @@ impl super::DbRead for PgStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
-    ) -> Result<Vec<model::DepositRequest>, Self::Error> {
+    ) -> Result<Vec<model::DepositRequest>, Error> {
         sqlx::query_as::<_, model::DepositRequest>(
             r#"
             WITH RECURSIVE context_window AS (
@@ -466,7 +464,10 @@ impl super::DbRead for PgStore {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
         threshold: u16,
-    ) -> Result<Vec<model::DepositRequest>, Self::Error> {
+    ) -> Result<Vec<model::DepositRequest>, Error> {
+        // TODO(543): Make sure we get only pending deposits, don't include
+        // ones where we have a completed-deposit event on the canonical
+        // stacks blockchain.
         sqlx::query_as::<_, model::DepositRequest>(
             r#"
             WITH RECURSIVE context_window AS (
@@ -525,7 +526,7 @@ impl super::DbRead for PgStore {
         txid: &model::BitcoinTxId,
         output_index: u32,
         aggregate_key: &PublicKey,
-    ) -> Result<Vec<model::SignerVote>, Self::Error> {
+    ) -> Result<Vec<model::SignerVote>, Error> {
         sqlx::query_as::<_, model::SignerVote>(
             r#"
             WITH signer_set_rows AS (
@@ -567,7 +568,7 @@ impl super::DbRead for PgStore {
         &self,
         id: &model::QualifiedRequestId,
         aggregate_key: &PublicKey,
-    ) -> Result<Vec<model::SignerVote>, Self::Error> {
+    ) -> Result<Vec<model::SignerVote>, Error> {
         sqlx::query_as::<_, model::SignerVote>(
             r#"
             WITH signer_set_rows AS (
@@ -605,7 +606,7 @@ impl super::DbRead for PgStore {
     async fn get_accepted_deposit_requests(
         &self,
         signer: &PublicKey,
-    ) -> Result<Vec<model::DepositRequest>, Self::Error> {
+    ) -> Result<Vec<model::DepositRequest>, Error> {
         sqlx::query_as::<_, model::DepositRequest>(
             r#"
             SELECT
@@ -635,7 +636,7 @@ impl super::DbRead for PgStore {
         &self,
         txid: &model::BitcoinTxId,
         output_index: u32,
-    ) -> Result<Vec<model::DepositSigner>, Self::Error> {
+    ) -> Result<Vec<model::DepositSigner>, Error> {
         sqlx::query_as::<_, model::DepositSigner>(
             "SELECT
                 txid
@@ -657,7 +658,7 @@ impl super::DbRead for PgStore {
         &self,
         request_id: u64,
         block_hash: &model::StacksBlockHash,
-    ) -> Result<Vec<model::WithdrawalSigner>, Self::Error> {
+    ) -> Result<Vec<model::WithdrawalSigner>, Error> {
         sqlx::query_as::<_, model::WithdrawalSigner>(
             "SELECT
                 request_id
@@ -680,7 +681,7 @@ impl super::DbRead for PgStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
-    ) -> Result<Vec<model::WithdrawalRequest>, Self::Error> {
+    ) -> Result<Vec<model::WithdrawalRequest>, Error> {
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
             return Ok(Vec::new());
         };
@@ -760,7 +761,7 @@ impl super::DbRead for PgStore {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
         threshold: u16,
-    ) -> Result<Vec<model::WithdrawalRequest>, Self::Error> {
+    ) -> Result<Vec<model::WithdrawalRequest>, Error> {
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
             return Ok(Vec::new());
         };
@@ -847,7 +848,7 @@ impl super::DbRead for PgStore {
     async fn get_bitcoin_blocks_with_transaction(
         &self,
         txid: &model::BitcoinTxId,
-    ) -> Result<Vec<model::BitcoinBlockHash>, Self::Error> {
+    ) -> Result<Vec<model::BitcoinBlockHash>, Error> {
         sqlx::query_as::<_, model::BitcoinTransaction>(
             "SELECT txid, block_hash FROM sbtc_signer.bitcoin_transactions WHERE txid = $1",
         )
@@ -862,7 +863,7 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn stacks_block_exists(&self, block_id: StacksBlockId) -> Result<bool, Self::Error> {
+    async fn stacks_block_exists(&self, block_id: StacksBlockId) -> Result<bool, Error> {
         sqlx::query_scalar::<_, bool>(
             r#"
             SELECT TRUE AS exists
@@ -879,7 +880,7 @@ impl super::DbRead for PgStore {
     async fn get_encrypted_dkg_shares(
         &self,
         aggregate_key: &PublicKey,
-    ) -> Result<Option<model::EncryptedDkgShares>, Self::Error> {
+    ) -> Result<Option<model::EncryptedDkgShares>, Error> {
         sqlx::query_as::<_, model::EncryptedDkgShares>(
             r#"
             SELECT
@@ -908,7 +909,7 @@ impl super::DbRead for PgStore {
     async fn get_last_key_rotation(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<Option<model::RotateKeysTransaction>, Self::Error> {
+    ) -> Result<Option<model::RotateKeysTransaction>, Error> {
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
             return Ok(None);
         };
@@ -952,7 +953,7 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn get_signers_script_pubkeys(&self) -> Result<Vec<model::Bytes>, Self::Error> {
+    async fn get_signers_script_pubkeys(&self) -> Result<Vec<model::Bytes>, Error> {
         sqlx::query_scalar::<_, model::Bytes>(
             r#"
             SELECT script_pubkey
@@ -964,12 +965,78 @@ impl super::DbRead for PgStore {
         .await
         .map_err(Error::SqlxQuery)
     }
+
+    async fn in_canonical_bitcoin_blockchain(
+        &self,
+        chain_tip: &model::BitcoinBlockRef,
+        block_ref: &model::BitcoinBlockRef,
+    ) -> Result<bool, Error> {
+        let heigh_diff = chain_tip
+            .block_height
+            .saturating_sub(block_ref.block_height);
+
+        sqlx::query_scalar::<_, bool>(
+            r#"
+            WITH RECURSIVE tx_block_chain AS (
+                SELECT 
+                    block_hash
+                  , block_height
+                  , parent_hash
+                  , 0 AS counter
+                FROM sbtc_signer.bitcoin_blocks
+                WHERE block_hash = $2
+
+                UNION ALL
+
+                SELECT
+                    child.block_hash
+                  , child.block_height
+                  , child.parent_hash
+                  , parent.counter + 1
+                FROM sbtc_signer.bitcoin_blocks AS child
+                JOIN tx_block_chain AS parent
+                  ON child.parent_hash = parent.block_hash
+                WHERE parent.counter <= $3
+            )
+            SELECT EXISTS (
+                SELECT TRUE
+                FROM tx_block_chain AS tbc
+                WHERE tbc.block_hash = $1
+            );
+        "#,
+        )
+        .bind(chain_tip.block_hash)
+        .bind(block_ref.block_hash)
+        .bind(heigh_diff as i64)
+        .fetch_one(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_bitcoin_tx(
+        &self,
+        txid: &model::BitcoinTxId,
+        block_hash: &model::BitcoinBlockHash,
+    ) -> Result<Option<model::BitcoinTx>, Error> {
+        sqlx::query_scalar::<_, model::BitcoinTx>(
+            r#"
+            SELECT txs.tx
+            FROM sbtc_signer.bitcoin_transactions AS bt
+            JOIN sbtc_signer.transactions AS txs USING (txid)
+            WHERE bt.block_hash = $1
+              AND bt.txid = $2
+        "#,
+        )
+        .bind(block_hash)
+        .bind(txid)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
 }
 
 impl super::DbWrite for PgStore {
-    type Error = Error;
-
-    async fn write_bitcoin_block(&self, block: &model::BitcoinBlock) -> Result<(), Self::Error> {
+    async fn write_bitcoin_block(&self, block: &model::BitcoinBlock) -> Result<(), Error> {
         sqlx::query(
             "INSERT INTO sbtc_signer.bitcoin_blocks
               ( block_hash
@@ -991,7 +1058,7 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn write_stacks_block(&self, block: &model::StacksBlock) -> Result<(), Self::Error> {
+    async fn write_stacks_block(&self, block: &model::StacksBlock) -> Result<(), Error> {
         sqlx::query(
             "INSERT INTO sbtc_signer.stacks_blocks
               ( block_hash
@@ -1014,7 +1081,7 @@ impl super::DbWrite for PgStore {
     async fn write_deposit_request(
         &self,
         deposit_request: &model::DepositRequest,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         sqlx::query(
             "INSERT INTO sbtc_signer.deposit_requests
               ( txid
@@ -1047,7 +1114,7 @@ impl super::DbWrite for PgStore {
     async fn write_deposit_requests(
         &self,
         deposit_requests: Vec<model::DepositRequest>,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         if deposit_requests.is_empty() {
             return Ok(());
         }
@@ -1138,7 +1205,7 @@ impl super::DbWrite for PgStore {
     async fn write_withdrawal_request(
         &self,
         request: &model::WithdrawalRequest,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         sqlx::query(
             "INSERT INTO sbtc_signer.withdrawal_requests
               ( request_id
@@ -1170,7 +1237,7 @@ impl super::DbWrite for PgStore {
     async fn write_deposit_signer_decision(
         &self,
         decision: &model::DepositSigner,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         sqlx::query(
             "INSERT INTO sbtc_signer.deposit_signers
               ( txid
@@ -1195,7 +1262,7 @@ impl super::DbWrite for PgStore {
     async fn write_withdrawal_signer_decision(
         &self,
         decision: &model::WithdrawalSigner,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         sqlx::query(
             "INSERT INTO sbtc_signer.withdrawal_signers
               ( request_id
@@ -1219,7 +1286,7 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn write_transaction(&self, transaction: &model::Transaction) -> Result<(), Self::Error> {
+    async fn write_transaction(&self, transaction: &model::Transaction) -> Result<(), Error> {
         sqlx::query(
             "INSERT INTO sbtc_signer.transactions
               ( txid
@@ -1242,7 +1309,7 @@ impl super::DbWrite for PgStore {
     async fn write_bitcoin_transaction(
         &self,
         bitcoin_transaction: &model::BitcoinTransaction,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         sqlx::query(
             "INSERT INTO sbtc_signer.bitcoin_transactions (txid, block_hash) 
             VALUES ($1, $2)
@@ -1257,10 +1324,7 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn write_bitcoin_transactions(
-        &self,
-        txs: Vec<model::Transaction>,
-    ) -> Result<(), Self::Error> {
+    async fn write_bitcoin_transactions(&self, txs: Vec<model::Transaction>) -> Result<(), Error> {
         let summary = self.write_transactions(txs).await?;
         if summary.tx_ids.is_empty() {
             return Ok(());
@@ -1295,7 +1359,7 @@ impl super::DbWrite for PgStore {
     async fn write_stacks_transaction(
         &self,
         stacks_transaction: &model::StacksTransaction,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         sqlx::query(
             "INSERT INTO sbtc_signer.stacks_transactions (txid, block_hash) 
             VALUES ($1, $2)
@@ -1310,10 +1374,7 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn write_stacks_transactions(
-        &self,
-        txs: Vec<model::Transaction>,
-    ) -> Result<(), Self::Error> {
+    async fn write_stacks_transactions(&self, txs: Vec<model::Transaction>) -> Result<(), Error> {
         let summary = self.write_transactions(txs).await?;
         if summary.tx_ids.is_empty() {
             return Ok(());
@@ -1349,7 +1410,7 @@ impl super::DbWrite for PgStore {
     async fn write_stacks_block_headers(
         &self,
         blocks: Vec<model::StacksBlock>,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         if blocks.is_empty() {
             return Ok(());
         }
@@ -1403,7 +1464,7 @@ impl super::DbWrite for PgStore {
     async fn write_encrypted_dkg_shares(
         &self,
         shares: &model::EncryptedDkgShares,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         sqlx::query(
             r#"
             INSERT INTO sbtc_signer.dkg_shares (
@@ -1431,7 +1492,7 @@ impl super::DbWrite for PgStore {
     async fn write_rotate_keys_transaction(
         &self,
         key_rotation: &model::RotateKeysTransaction,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         sqlx::query(
             r#"
             INSERT INTO sbtc_signer.rotate_keys_transactions (

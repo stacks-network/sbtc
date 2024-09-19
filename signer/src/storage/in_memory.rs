@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::stacks::events::CompletedDepositEvent;
 use crate::stacks::events::WithdrawalAcceptEvent;
@@ -50,6 +51,10 @@ pub struct Store {
 
     /// Bitcoin transactions to blocks
     pub bitcoin_transactions_to_blocks: HashMap<model::BitcoinTxId, Vec<model::BitcoinBlockHash>>,
+
+    /// Bitcoin transactions to blocks
+    pub bitcoin_transactions:
+        HashMap<(model::BitcoinTxId, model::BitcoinBlockHash), model::BitcoinTx>,
 
     /// Stacks blocks to transactions
     pub stacks_block_to_transactions: HashMap<model::StacksBlockHash, Vec<model::StacksTxId>>,
@@ -104,25 +109,23 @@ impl Store {
 }
 
 impl super::DbRead for SharedStore {
-    type Error = std::convert::Infallible;
-
     async fn get_bitcoin_block(
         &self,
         block_hash: &model::BitcoinBlockHash,
-    ) -> Result<Option<model::BitcoinBlock>, Self::Error> {
+    ) -> Result<Option<model::BitcoinBlock>, Error> {
         Ok(self.lock().await.bitcoin_blocks.get(block_hash).cloned())
     }
 
     async fn get_stacks_block(
         &self,
         block_hash: &model::StacksBlockHash,
-    ) -> Result<Option<model::StacksBlock>, Self::Error> {
+    ) -> Result<Option<model::StacksBlock>, Error> {
         Ok(self.lock().await.stacks_blocks.get(block_hash).cloned())
     }
 
     async fn get_bitcoin_canonical_chain_tip(
         &self,
-    ) -> Result<Option<model::BitcoinBlockHash>, Self::Error> {
+    ) -> Result<Option<model::BitcoinBlockHash>, Error> {
         Ok(self
             .lock()
             .await
@@ -135,7 +138,7 @@ impl super::DbRead for SharedStore {
     async fn get_stacks_chain_tip(
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<Option<model::StacksBlock>, Self::Error> {
+    ) -> Result<Option<model::StacksBlock>, Error> {
         let store = self.lock().await;
         let Some(bitcoin_chain_tip) = store.bitcoin_blocks.get(bitcoin_chain_tip) else {
             return Ok(None);
@@ -153,7 +156,7 @@ impl super::DbRead for SharedStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
-    ) -> Result<Vec<model::DepositRequest>, Self::Error> {
+    ) -> Result<Vec<model::DepositRequest>, Error> {
         let store = self.lock().await;
 
         Ok((0..context_window)
@@ -187,7 +190,7 @@ impl super::DbRead for SharedStore {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
         threshold: u16,
-    ) -> Result<Vec<model::DepositRequest>, Self::Error> {
+    ) -> Result<Vec<model::DepositRequest>, Error> {
         let pending_deposit_requests = self
             .get_pending_deposit_requests(chain_tip, context_window)
             .await?;
@@ -212,7 +215,7 @@ impl super::DbRead for SharedStore {
     async fn get_accepted_deposit_requests(
         &self,
         signer: &PublicKey,
-    ) -> Result<Vec<model::DepositRequest>, Self::Error> {
+    ) -> Result<Vec<model::DepositRequest>, Error> {
         let store = self.lock().await;
 
         let accepted_deposit_pks = store
@@ -237,7 +240,7 @@ impl super::DbRead for SharedStore {
         &self,
         txid: &model::BitcoinTxId,
         output_index: u32,
-    ) -> Result<Vec<model::DepositSigner>, Self::Error> {
+    ) -> Result<Vec<model::DepositSigner>, Error> {
         Ok(self
             .lock()
             .await
@@ -251,7 +254,7 @@ impl super::DbRead for SharedStore {
         &self,
         request_id: u64,
         block_hash: &model::StacksBlockHash,
-    ) -> Result<Vec<model::WithdrawalSigner>, Self::Error> {
+    ) -> Result<Vec<model::WithdrawalSigner>, Error> {
         Ok(self
             .lock()
             .await
@@ -265,7 +268,7 @@ impl super::DbRead for SharedStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
-    ) -> Result<Vec<model::WithdrawalRequest>, Self::Error> {
+    ) -> Result<Vec<model::WithdrawalRequest>, Error> {
         let Some(bitcoin_chain_tip) = self.get_bitcoin_block(chain_tip).await? else {
             return Ok(Vec::new());
         };
@@ -320,7 +323,7 @@ impl super::DbRead for SharedStore {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
         threshold: u16,
-    ) -> Result<Vec<model::WithdrawalRequest>, Self::Error> {
+    ) -> Result<Vec<model::WithdrawalRequest>, Error> {
         let pending_withdraw_requests = self
             .get_pending_withdrawal_requests(chain_tip, context_window)
             .await?;
@@ -345,7 +348,7 @@ impl super::DbRead for SharedStore {
     async fn get_bitcoin_blocks_with_transaction(
         &self,
         txid: &model::BitcoinTxId,
-    ) -> Result<Vec<model::BitcoinBlockHash>, Self::Error> {
+    ) -> Result<Vec<model::BitcoinBlockHash>, Error> {
         Ok(self
             .lock()
             .await
@@ -355,7 +358,7 @@ impl super::DbRead for SharedStore {
             .unwrap_or_else(Vec::new))
     }
 
-    async fn stacks_block_exists(&self, block_id: StacksBlockId) -> Result<bool, Self::Error> {
+    async fn stacks_block_exists(&self, block_id: StacksBlockId) -> Result<bool, Error> {
         Ok(self
             .lock()
             .await
@@ -366,7 +369,7 @@ impl super::DbRead for SharedStore {
     async fn get_encrypted_dkg_shares(
         &self,
         aggregate_key: &PublicKey,
-    ) -> Result<Option<model::EncryptedDkgShares>, Self::Error> {
+    ) -> Result<Option<model::EncryptedDkgShares>, Error> {
         Ok(self
             .lock()
             .await
@@ -378,7 +381,7 @@ impl super::DbRead for SharedStore {
     async fn get_last_key_rotation(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<Option<model::RotateKeysTransaction>, Self::Error> {
+    ) -> Result<Option<model::RotateKeysTransaction>, Error> {
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
             return Ok(None);
         };
@@ -401,7 +404,7 @@ impl super::DbRead for SharedStore {
         )
     }
 
-    async fn get_signers_script_pubkeys(&self) -> Result<Vec<model::Bytes>, Self::Error> {
+    async fn get_signers_script_pubkeys(&self) -> Result<Vec<model::Bytes>, Error> {
         Ok(self
             .lock()
             .await
@@ -416,7 +419,7 @@ impl super::DbRead for SharedStore {
         txid: &model::BitcoinTxId,
         output_index: u32,
         aggregate_key: &PublicKey,
-    ) -> Result<Vec<model::SignerVote>, Self::Error> {
+    ) -> Result<Vec<model::SignerVote>, Error> {
         // Let's fetch the votes for the outpoint
         let signers = self.get_deposit_signers(txid, output_index).await?;
         let mut signer_votes: HashMap<PublicKey, bool> = signers
@@ -452,7 +455,7 @@ impl super::DbRead for SharedStore {
         &self,
         id: &model::QualifiedRequestId,
         aggregate_key: &PublicKey,
-    ) -> Result<Vec<model::SignerVote>, Self::Error> {
+    ) -> Result<Vec<model::SignerVote>, Error> {
         // Let's fetch the votes for the outpoint
         let signers = self
             .get_withdrawal_signers(id.request_id, &id.block_hash)
@@ -485,12 +488,42 @@ impl super::DbRead for SharedStore {
             Ok(Vec::new())
         }
     }
+
+    async fn in_canonical_bitcoin_blockchain(
+        &self,
+        chain_tip: &model::BitcoinBlockRef,
+        block_ref: &model::BitcoinBlockRef,
+    ) -> Result<bool, Error> {
+        let store = self.lock().await;
+        let bitcoin_blocks = &store.bitcoin_blocks;
+        let first = bitcoin_blocks.get(&chain_tip.block_hash);
+
+        let num_matches =
+            std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
+                .map(model::BitcoinBlockRef::from)
+                .skip_while(|block| block != block_ref)
+                .count();
+
+        Ok(num_matches > 0)
+    }
+
+    async fn get_bitcoin_tx(
+        &self,
+        txid: &model::BitcoinTxId,
+        block_hash: &model::BitcoinBlockHash,
+    ) -> Result<Option<model::BitcoinTx>, Error> {
+        let store = self.lock().await;
+        let maybe_tx = store
+            .bitcoin_transactions
+            .get(&(*txid, *block_hash))
+            .cloned();
+
+        Ok(maybe_tx)
+    }
 }
 
 impl super::DbWrite for SharedStore {
-    type Error = std::convert::Infallible;
-
-    async fn write_bitcoin_block(&self, block: &model::BitcoinBlock) -> Result<(), Self::Error> {
+    async fn write_bitcoin_block(&self, block: &model::BitcoinBlock) -> Result<(), Error> {
         self.lock()
             .await
             .bitcoin_blocks
@@ -499,10 +532,7 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_bitcoin_transactions(
-        &self,
-        txs: Vec<model::Transaction>,
-    ) -> Result<(), Self::Error> {
+    async fn write_bitcoin_transactions(&self, txs: Vec<model::Transaction>) -> Result<(), Error> {
         for tx in txs {
             let bitcoin_transaction = model::BitcoinTransaction {
                 txid: tx.txid.into(),
@@ -514,7 +544,7 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_stacks_block(&self, block: &model::StacksBlock) -> Result<(), Self::Error> {
+    async fn write_stacks_block(&self, block: &model::StacksBlock) -> Result<(), Error> {
         self.lock()
             .await
             .stacks_blocks
@@ -526,7 +556,7 @@ impl super::DbWrite for SharedStore {
     async fn write_deposit_request(
         &self,
         deposit_request: &model::DepositRequest,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         self.lock().await.deposit_requests.insert(
             (deposit_request.txid, deposit_request.output_index),
             deposit_request.clone(),
@@ -538,7 +568,7 @@ impl super::DbWrite for SharedStore {
     async fn write_deposit_requests(
         &self,
         deposit_requests: Vec<model::DepositRequest>,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         let mut store = self.lock().await;
         for req in deposit_requests.into_iter() {
             store
@@ -551,7 +581,7 @@ impl super::DbWrite for SharedStore {
     async fn write_withdrawal_request(
         &self,
         withdraw_request: &model::WithdrawalRequest,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         let mut store = self.lock().await;
 
         let pk = (withdraw_request.request_id, withdraw_request.block_hash);
@@ -572,7 +602,7 @@ impl super::DbWrite for SharedStore {
     async fn write_deposit_signer_decision(
         &self,
         decision: &model::DepositSigner,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         let mut store = self.lock().await;
 
         let deposit_request_pk = (decision.txid, decision.output_index);
@@ -595,7 +625,7 @@ impl super::DbWrite for SharedStore {
     async fn write_withdrawal_signer_decision(
         &self,
         decision: &model::WithdrawalSigner,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         self.lock()
             .await
             .withdrawal_request_to_signers
@@ -606,10 +636,7 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_transaction(
-        &self,
-        _transaction: &model::Transaction,
-    ) -> Result<(), Self::Error> {
+    async fn write_transaction(&self, _transaction: &model::Transaction) -> Result<(), Error> {
         // Currently not needed in-memory since it's not required by any queries
         Ok(())
     }
@@ -617,7 +644,7 @@ impl super::DbWrite for SharedStore {
     async fn write_bitcoin_transaction(
         &self,
         bitcoin_transaction: &model::BitcoinTransaction,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         let mut store = self.lock().await;
 
         store
@@ -638,7 +665,7 @@ impl super::DbWrite for SharedStore {
     async fn write_stacks_transaction(
         &self,
         stacks_transaction: &model::StacksTransaction,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         let mut store = self.lock().await;
 
         store
@@ -659,7 +686,7 @@ impl super::DbWrite for SharedStore {
     async fn write_stacks_transactions(
         &self,
         stacks_transactions: Vec<model::Transaction>,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         for tx in stacks_transactions {
             let stacks_transaction = model::StacksTransaction {
                 txid: tx.txid.into(),
@@ -674,7 +701,7 @@ impl super::DbWrite for SharedStore {
     async fn write_stacks_block_headers(
         &self,
         blocks: Vec<model::StacksBlock>,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         let mut store = self.lock().await;
         blocks.iter().for_each(|block| {
             store
@@ -688,7 +715,7 @@ impl super::DbWrite for SharedStore {
     async fn write_encrypted_dkg_shares(
         &self,
         shares: &model::EncryptedDkgShares,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         self.lock()
             .await
             .encrypted_dkg_shares
@@ -700,7 +727,7 @@ impl super::DbWrite for SharedStore {
     async fn write_rotate_keys_transaction(
         &self,
         key_rotation: &model::RotateKeysTransaction,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         self.lock()
             .await
             .rotate_keys_transactions
@@ -712,7 +739,7 @@ impl super::DbWrite for SharedStore {
     async fn write_withdrawal_create_event(
         &self,
         event: &WithdrawalCreateEvent,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         self.lock()
             .await
             .withdrawal_create_events
@@ -724,7 +751,7 @@ impl super::DbWrite for SharedStore {
     async fn write_withdrawal_accept_event(
         &self,
         event: &WithdrawalAcceptEvent,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         self.lock()
             .await
             .withdrawal_accept_events
@@ -736,7 +763,7 @@ impl super::DbWrite for SharedStore {
     async fn write_withdrawal_reject_event(
         &self,
         event: &WithdrawalRejectEvent,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         self.lock()
             .await
             .withdrawal_reject_events
@@ -748,7 +775,7 @@ impl super::DbWrite for SharedStore {
     async fn write_completed_deposit_event(
         &self,
         event: &CompletedDepositEvent,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         self.lock()
             .await
             .completed_deposit_events

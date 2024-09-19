@@ -8,6 +8,8 @@ use std::collections::VecDeque;
 
 use tokio::sync::broadcast;
 
+use crate::error::Error;
+
 const BROADCAST_CHANNEL_CAPACITY: usize = 10_000;
 
 type MsgId = [u8; 32];
@@ -55,32 +57,20 @@ impl Default for Network {
 }
 
 impl super::MessageTransfer for MpmcBroadcaster {
-    type Error = Error;
-    async fn broadcast(&mut self, msg: super::Msg) -> Result<(), Self::Error> {
+    async fn broadcast(&mut self, msg: super::Msg) -> Result<(), Error> {
         self.recently_sent.push_back(msg.id());
-        self.sender.send(msg).map_err(|_| Error::Send)?;
+        self.sender.send(msg).map_err(|_| Error::SendMessage)?;
         Ok(())
     }
 
-    async fn receive(&mut self) -> Result<super::Msg, Self::Error> {
-        let mut msg = self.receiver.recv().await?;
+    async fn receive(&mut self) -> Result<super::Msg, Error> {
+        let mut msg = self.receiver.recv().await.map_err(Error::ChannelReceive)?;
 
         while Some(&msg.id()) == self.recently_sent.front() {
             self.recently_sent.pop_front();
-            msg = self.receiver.recv().await?;
+            msg = self.receiver.recv().await.map_err(Error::ChannelReceive)?;
         }
 
         Ok(msg)
     }
-}
-
-/// In memory network error
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    /// Send error
-    #[error("send error")]
-    Send,
-    #[error("receive error")]
-    /// Receive error
-    Recv(#[from] broadcast::error::RecvError),
 }

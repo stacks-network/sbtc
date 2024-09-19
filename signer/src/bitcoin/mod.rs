@@ -2,7 +2,8 @@
 
 use std::future::Future;
 
-use crate::{error::Error, keys::PublicKey};
+use crate::error::Error;
+use crate::keys::PublicKey;
 
 pub mod client;
 pub mod fees;
@@ -21,7 +22,9 @@ pub trait BitcoinInteract {
 
     /// Estimate fee rate
     // This should be implemented with the help of the `fees::EstimateFees` trait
-    fn estimate_fee_rate(&self) -> impl std::future::Future<Output = Result<f64, Error>> + Send;
+    fn estimate_fee_rate(
+        &self,
+    ) -> impl std::future::Future<Output = Result<f64, Error>> + Send;
 
     /// Get the outstanding signer UTXO
     fn get_signer_utxo(
