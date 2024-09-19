@@ -53,11 +53,12 @@ impl<T> InnerApiFallbackClient<T> {
         F: Future<Output = Result<R, E>> + 'a,
     {
         let retry_count = self.retry_count.load(Ordering::Relaxed);
-        for _ in 0..retry_count {
+        for i in 0..retry_count {
             let client_index = self.last_client_index.load(Ordering::Relaxed);
             let result = f(&self.inner_clients[client_index]).await;
 
-            if result.is_err() {
+            if let Err(error) = result {
+                tracing::warn!(%error, retry_num=i, max_retries=retry_count, "failover client call failed");
                 self.last_client_index.store(
                     (client_index + 1) % self.inner_clients.len(),
                     Ordering::Relaxed,
