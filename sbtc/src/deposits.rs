@@ -56,7 +56,7 @@ const STANDARD_SCRIPT_LENGTH: usize =
 /// [^1]: <https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L560-L592>
 /// [^2]: <https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L1737-L1782>
 /// [^3]: <https://github.com/bitcoin/bitcoin/blob/v27.1/src/primitives/transaction.h#L89-L98>
-const SEQUENCE_LOCKTIME_DISABLE_FLAG: i64 = 1 << 31;
+pub const SEQUENCE_LOCKTIME_DISABLE_FLAG: i64 = 1 << 31;
 
 /// Script opcodes as the bytes in bitcoin Script.
 ///
