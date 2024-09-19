@@ -325,11 +325,10 @@ mod tests {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let storage = storage::in_memory::Store::new_shared();
         let test_harness = TestHarness::generate(&mut rng, 20, 0..5);
-        let bitcoin_client = ApiFallbackClient::new(vec![test_harness.clone()]);
-        let ctx = SignerContext::init(
+        let ctx = SignerContext::new(
             Settings::new_from_default_config().unwrap(),
             storage.clone(),
-            bitcoin_client,
+            test_harness.clone().into(),
         )
         .unwrap();
         let block_hash_stream = test_harness.spawn_block_hash_stream();
@@ -435,11 +434,10 @@ mod tests {
         let storage = storage::in_memory::Store::new_shared();
         let block_hash_stream = test_harness.spawn_block_hash_stream();
         let (subscribers, _subscriber_rx) = tokio::sync::watch::channel(());
-        let bitcoin_client = ApiFallbackClient::new(vec![test_harness.clone()]);
-        let ctx = SignerContext::init(
+        let ctx = SignerContext::new(
             Settings::new_from_default_config().unwrap(),
             storage.clone(),
-            bitcoin_client,
+            test_harness.clone().into(),
         )
         .unwrap();
 
@@ -514,11 +512,10 @@ mod tests {
         let storage = storage::in_memory::Store::new_shared();
         let block_hash_stream = test_harness.spawn_block_hash_stream();
         let (subscribers, _subscriber_rx) = tokio::sync::watch::channel(());
-        let bitcoin_client = ApiFallbackClient::new(vec![test_harness.clone()]);
-        let ctx = SignerContext::init(
+        let ctx = SignerContext::new(
             Settings::new_from_default_config().unwrap(),
             storage.clone(),
-            bitcoin_client,
+            test_harness.clone().into(),
         )
         .unwrap();
 
@@ -734,48 +731,11 @@ mod tests {
 
             rx.into()
         }
-
-        fn bitcoin_client(&self) -> TestBitcoinClient {
-            TestBitcoinClient { inner: self }
-        }
     }
 
-    pub struct TestBitcoinClient<'a> {
-        inner: &'a TestHarness,
-    }
-
-    impl BitcoinInteract for TestBitcoinClient<'_> {
-        async fn get_block(
-            &self,
-            block_hash: &bitcoin::BlockHash,
-        ) -> Result<Option<bitcoin::Block>, Error> {
-            Ok(self
-                .inner
-                .bitcoin_blocks
-                .iter()
-                .find(|block| &block.block_hash() == block_hash)
-                .cloned())
-        }
-
-        async fn estimate_fee_rate(&self) -> Result<f64, Error> {
-            unimplemented!()
-        }
-
-        async fn get_signer_utxo(
-            &self,
-            _point: &PublicKey,
-        ) -> Result<Option<utxo::SignerUtxo>, Error> {
-            unimplemented!()
-        }
-        async fn get_last_fee(
-            &self,
-            _utxo: bitcoin::OutPoint,
-        ) -> Result<Option<utxo::Fees>, Error> {
-            unimplemented!()
-        }
-
-        async fn broadcast_transaction(&self, _tx: &bitcoin::Transaction) -> Result<(), Error> {
-            unimplemented!()
+    impl From<TestHarness> for ApiFallbackClient<TestHarness> {
+        fn from(value: TestHarness) -> Self {
+            ApiFallbackClient::new(vec![value])
         }
     }
 

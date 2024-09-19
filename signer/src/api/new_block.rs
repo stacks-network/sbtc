@@ -132,7 +132,8 @@ mod tests {
     use crate::context::SignerContext;
     use crate::storage::in_memory::Store;
     use crate::storage::model::StacksPrincipal;
-    use crate::testing::api_clients::NOOP_API_CLIENT;
+    use crate::testing::api_clients::NoopApiClient;
+    use crate::testing::NoopSignerContext;
 
     /// These were generated from a stacks node after running the
     /// "complete-deposit standard recipient", "accept-withdrawal",
@@ -162,10 +163,9 @@ mod tests {
     {
         let db = Store::new_shared();
 
-        let ctx = SignerContext::init(
+        let ctx = NoopSignerContext::init(
             Settings::new_from_default_config().unwrap(),
             db.clone(),
-            NOOP_API_CLIENT.clone(),
         )
         .expect("failed to init context");
 
@@ -195,10 +195,9 @@ mod tests {
     {
         let db = Store::new_shared();
 
-        let ctx = SignerContext::init(
+        let ctx = SignerContext::<_, NoopApiClient>::init(
             Settings::new_from_default_config().unwrap(),
             db.clone(),
-            NOOP_API_CLIENT.clone(),
         )
         .expect("failed to init context");
 

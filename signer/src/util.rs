@@ -72,7 +72,7 @@ impl<T> InnerApiFallbackClient<T> {
     }
 }
 
-impl<'a, T> ApiFallbackClient<T>
+impl<T> ApiFallbackClient<T>
 where
     T: Sync + Send,
 {
@@ -88,24 +88,6 @@ where
 
         Self { inner: Arc::new(inner) }
     }
-    // /// Create a new fallback client from a list of URLs.
-    // pub fn new(endpoints: &'a [Url]) -> Result<Self, Error> {
-    //     let clients = endpoints.iter()
-    //         .map(T::try_from_url)
-    //         .collect::<Result<Vec<_>, _>>()?;
-
-    //     let retry_count = min(3, clients.len());
-
-    //     let inner = InnerApiFallbackClient {
-    //         inner_clients: clients,
-    //         last_client_index: AtomicUsize::new(0),
-    //         retry_count: AtomicU8::new(retry_count as u8)
-    //     };
-
-    //     Ok(Self {
-    //         inner: Arc::new(inner)
-    //     })
-    // }
 }
 
 #[cfg(test)]

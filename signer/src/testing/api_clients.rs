@@ -3,11 +3,13 @@
 use std::cell::LazyCell;
 
 use sbtc::rpc::BitcoinClient;
+use url::Url;
 
 use crate::{bitcoin::BitcoinInteract, error::Error, util::ApiFallbackClient};
 
 /// A no-op API client that implements the BitcoinClient trait. It will panic
 /// if you attempt to use it, but can be useful for fillers in testing.
+#[allow(clippy::declare_interior_mutable_const)]
 pub const NOOP_API_CLIENT: LazyCell<ApiFallbackClient<NoopApiClient>> =
     LazyCell::new(|| ApiFallbackClient::new(vec![NoopApiClient]));
 
@@ -15,6 +17,13 @@ pub const NOOP_API_CLIENT: LazyCell<ApiFallbackClient<NoopApiClient>> =
 /// attempt to use it, but can be useful for fillers in testing.
 #[derive(Clone)]
 pub struct NoopApiClient;
+
+impl TryFrom<Url> for NoopApiClient {
+    type Error = Error;
+    fn try_from(_value: Url) -> Result<Self, Self::Error> {
+        Ok(NoopApiClient)
+    }
+}
 
 impl BitcoinClient for NoopApiClient {
     type Error = Error;

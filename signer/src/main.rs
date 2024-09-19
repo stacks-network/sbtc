@@ -57,11 +57,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         db.apply_migrations().await?;
     }
 
-    let bitcoin_client =
-        ApiFallbackClient::<BitcoinCoreClient>::try_from(settings.bitcoin.endpoints.as_slice())?;
-
     // Initialize the signer context.
-    let context = SignerContext::init(settings, db, bitcoin_client)?;
+    let context = SignerContext::<_, BitcoinCoreClient>::init(settings, db)?;
 
     // Run the application components concurrently. We're `join!`ing them
     // here so that every component can shut itself down gracefully when

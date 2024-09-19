@@ -141,10 +141,34 @@ impl TerminationHandle {
 impl<S, B> SignerContext<S, B>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
+    B: TryFrom<url::Url> + BitcoinClient + BitcoinInteract + Sync + Send,
+    Error: From<<B as std::convert::TryFrom<url::Url>>::Error>
+{
+    /// Initializes a new [`SignerContext`], automatically creating clients
+    /// based on the provided types.
+    pub fn init(
+        config: Settings,
+        db: S
+    ) -> Result<Self, Error> {
+        let bitcoin_clients = config.bitcoin.endpoints
+            .iter()
+            .cloned()
+            .map(|url| B::try_from(url))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let bitcoin_client = ApiFallbackClient::new(bitcoin_clients);
+
+        Self::new(config, db, bitcoin_client)
+    }
+}
+
+impl<S, B> SignerContext<S, B>
+where
+    S: DbRead + DbWrite + Clone + Sync + Send,
     B: BitcoinClient + BitcoinInteract + Sync + Send,
 {
     /// Create a new signer context.
-    pub fn init(
+    pub fn new(
         config: Settings,
         db: S,
         bitcoin_client: ApiFallbackClient<B>,
