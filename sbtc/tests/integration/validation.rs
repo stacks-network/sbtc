@@ -122,7 +122,7 @@ fn op_csv_disabled() {
         .push_opcode(bitcoin::opcodes::OP_TRUE)
         .into_script();
 
-    let mut tx = Transaction {
+    let mut tx0 = Transaction {
         version: Version::ONE,
         lock_time: LockTime::ZERO,
         input: vec![TxIn {
@@ -143,8 +143,8 @@ fn op_csv_disabled() {
         ],
     };
 
-    regtest::p2tr_sign_transaction(&mut tx, 0, &[utxo], &depositor.keypair);
-    rpc.send_raw_transaction(&tx).unwrap();
+    regtest::p2tr_sign_transaction(&mut tx0, 0, &[utxo], &depositor.keypair);
+    rpc.send_raw_transaction(&tx0).unwrap();
 
     // 2. Confirm the transaction and spend it immediately, proving that
     //    OP_CSV was disabled.
@@ -158,11 +158,11 @@ fn op_csv_disabled() {
         .push_slice(locking_script)
         .into_script();
 
-    let tx2 = Transaction {
+    let tx1 = Transaction {
         version: Version::TWO,
         lock_time: LockTime::ZERO,
         input: vec![TxIn {
-            previous_output: OutPoint::new(tx.compute_txid(), 0),
+            previous_output: OutPoint::new(tx0.compute_txid(), 0),
             sequence: Sequence::ZERO,
             script_sig,
             witness: Witness::new(),
@@ -173,7 +173,7 @@ fn op_csv_disabled() {
         }],
     };
 
-    rpc.send_raw_transaction(&tx2).unwrap();
+    rpc.send_raw_transaction(&tx1).unwrap();
     faucet.generate_blocks(1);
 
     // Note that the above script_sig is equivalent to this one, which
@@ -192,6 +192,9 @@ fn op_csv_disabled() {
         .push_opcode(bitcoin::opcodes::all::OP_DROP)
         .push_opcode(bitcoin::opcodes::OP_TRUE)
         .into_script();
+    // The ReclaimScriptInputs::try_new function just checks that the
+    // lock_time is not disabled, positive and within bitcoin-core's
+    // bounds.
     let script_pubkey = ReclaimScriptInputs::try_new(lock_time, reclaim)
         .unwrap()
         .reclaim_script();
@@ -205,11 +208,12 @@ fn op_csv_disabled() {
         .into_script();
     assert_eq!(script_pubkey, script_pubkey2);
 
+    // Get all UTXOs where their amounts are greater than 10_000_000.
     let utxos = depositor.get_utxos(rpc, Some(10_000_000));
     let utxo = utxos.first().cloned().unwrap();
     let amount = 8_000_000;
 
-    let mut tx = Transaction {
+    let mut tx2 = Transaction {
         version: Version::ONE,
         lock_time: LockTime::ZERO,
         input: vec![TxIn {
@@ -230,8 +234,8 @@ fn op_csv_disabled() {
         ],
     };
 
-    regtest::p2tr_sign_transaction(&mut tx, 0, &[utxo], &depositor.keypair);
-    rpc.send_raw_transaction(&tx).unwrap();
+    regtest::p2tr_sign_transaction(&mut tx2, 0, &[utxo], &depositor.keypair);
+    rpc.send_raw_transaction(&tx2).unwrap();
 
     // 4. Confirm that transaction and try to spend it immediately. The
     //    transaction that tries to spend the transaction from (3) should be
@@ -243,11 +247,11 @@ fn op_csv_disabled() {
         .push_slice(&locking_script)
         .into_script();
 
-    let tx2 = Transaction {
+    let tx3 = Transaction {
         version: Version::TWO,
         lock_time: LockTime::ZERO,
         input: vec![TxIn {
-            previous_output: OutPoint::new(tx.compute_txid(), 0),
+            previous_output: OutPoint::new(tx2.compute_txid(), 0),
             sequence: Sequence::ZERO,
             script_sig,
             witness: Witness::new(),
@@ -258,7 +262,7 @@ fn op_csv_disabled() {
         }],
     };
 
-    match rpc.send_raw_transaction(&tx2).unwrap_err() {
+    match rpc.send_raw_transaction(&tx3).unwrap_err() {
         BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -26, message, .. })) => {
             let expected_message =
                 "mandatory-script-verify-flag-failed (Locktime requirement not satisfied)";
