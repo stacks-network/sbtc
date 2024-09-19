@@ -51,8 +51,9 @@ pub struct FeeEstimate {
 
 /// Trait for interacting with bitcoin-core
 pub trait BitcoinClient {
-    /// The error type returned for RPC calls.
-    type Error: std::error::Error + 'static;
+    /// The error to return
+    type Error: std::error::Error + 'static + Sync + Send;
+
     /// Return the transaction if the transaction is in the mempool or in
     /// any block.
     fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Self::Error>;

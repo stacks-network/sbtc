@@ -142,7 +142,7 @@ impl<S, B> SignerContext<S, B>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
     B: TryFrom<url::Url> + BitcoinClient + BitcoinInteract + Sync + Send,
-    Error: From<<B as std::convert::TryFrom<url::Url>>::Error>
+    Error: From<<B as std::convert::TryFrom<url::Url>>::Error>,
 {
     /// Initializes a new [`SignerContext`], automatically creating clients
     /// based on the provided types.

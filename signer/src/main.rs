@@ -14,7 +14,6 @@ use signer::context::SignerContext;
 use signer::error::Error;
 use signer::network::libp2p::SignerSwarmBuilder;
 use signer::storage::postgres::PgStore;
-use signer::util::ApiFallbackClient;
 use tokio::signal;
 
 /// Command line arguments for the signer.

@@ -769,14 +769,14 @@ mod tests {
         async fn broadcast_transaction(
             &self,
             _tx: &bitcoin::Transaction,
-        ) -> Result<(), Self::Error> {
+        ) -> Result<(), Error> {
             unimplemented!()
         }
     }
 
     impl BitcoinClient for TestHarness {
         type Error = Error;
-        fn get_tx(&self, txid: &Txid) -> Result<sbtc::rpc::GetTxResponse, Self::Error> {
+        fn get_tx(&self, txid: &Txid) -> Result<sbtc::rpc::GetTxResponse, Error> {
             self.deposits.get(txid).cloned().ok_or(Error::Encryption)
         }
     }

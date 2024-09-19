@@ -8,6 +8,10 @@ use crate::{codec, ecdsa, network};
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// An error propogated from the sBTC library.
+    #[error("sBTC lib error: {0}")]
+    SbtcLib(#[from] sbtc::error::Error),
+    
     /// All failover clients failed
     #[error(
         "all failover clients failed to execute the request within the allotted number of retries"

@@ -131,11 +131,12 @@ impl CreateDepositRequest {
     pub fn validate<C>(&self, client: &C) -> Result<Deposit, Error>
     where
         C: BitcoinClient,
+        //Error: From<<C as BitcoinClient>::Error>
     {
         // Fetch the transaction from either a block or from the mempool
         let response = client
             .get_tx(&self.outpoint.txid)
-            .map_err(|err| Error::BitcoinClient(Box::new(err)))?;
+            .map_err(|_| Error::GetBitcoinTx(self.outpoint))?;
 
         Ok(Deposit {
             info: self.validate_tx(&response.tx)?,
@@ -548,11 +549,11 @@ mod tests {
 
     impl BitcoinClient for DummyClient {
         type Error = Error;
-        fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
+        fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Self::Error> {
             let tx = self.0.get(txid).cloned();
 
             Ok(GetTxResponse {
-                tx: tx.ok_or(Error::BitcoinClient(Box::new(Error::InvalidDepositScript)))?,
+                tx: tx.ok_or(Error::InvalidDepositScript)?,
                 block_hash: None,
                 confirmations: None,
                 block_time: None,
