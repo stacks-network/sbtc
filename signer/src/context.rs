@@ -4,13 +4,13 @@ use std::sync::Arc;
 
 use sbtc::rpc::BitcoinClient;
 use tokio::sync::broadcast::Sender;
+use url::Url;
 
 use crate::{
     bitcoin::BitcoinInteract,
     config::Settings,
     error::Error,
     storage::{DbRead, DbWrite},
-    util::ApiFallbackClient,
 };
 
 /// Context trait that is implemented by the [`SignerContext`].
@@ -31,7 +31,7 @@ pub trait Context: Clone + Sync + Send {
     /// Get a read-write handle to the signer storage.
     fn get_storage_mut(&self) -> impl DbRead + DbWrite + Clone + Sync + Send;
     /// Get a handle to a Bitcoin client.
-    fn get_bitcoin_client(&self) -> &ApiFallbackClient<impl BitcoinClient + BitcoinInteract>;
+    fn get_bitcoin_client(&self) -> &(impl BitcoinClient + BitcoinInteract);
 }
 
 /// Signer context which is passed to different components within the
@@ -70,7 +70,7 @@ pub struct InnerSignerContext<S, BC> {
     /// Handle to the signer storage.
     storage: S,
     /// Handle to a Bitcoin-RPC fallback-client.
-    bitcoin_client: ApiFallbackClient<BC>,
+    bitcoin_client: BC,
     // TODO: Additional clients to be added in future PRs. We may want
     // to break the clients out into a separate struct to keep the field
     // count down.
@@ -148,26 +148,18 @@ impl TerminationHandle {
     }
 }
 
-impl<S, BC> SignerContext<S, BC>
+impl<'a, S, BC> SignerContext<S, BC>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
-    BC: TryFrom<url::Url> + BitcoinClient + BitcoinInteract + Sync + Send,
-    Error: From<<BC as std::convert::TryFrom<url::Url>>::Error>,
+    BC: TryFrom<&'a [Url]> + BitcoinClient + BitcoinInteract + Sync + Send,
+    Error: From<<BC as std::convert::TryFrom<&'a [Url]>>::Error>,
 {
     /// Initializes a new [`SignerContext`], automatically creating clients
     /// based on the provided types.
-    pub fn init(config: Settings, db: S) -> Result<Self, Error> {
-        let bitcoin_clients = config
-            .bitcoin
-            .endpoints
-            .iter()
-            .cloned()
-            .map(|url| BC::try_from(url))
-            .collect::<Result<Vec<_>, _>>()?;
+    pub fn init(config: &'a Settings, db: S) -> Result<Self, Error> {
+        let bc = BC::try_from(&config.bitcoin.endpoints)?;
 
-        let bitcoin_client = ApiFallbackClient::new(bitcoin_clients);
-
-        Self::new(config, db, bitcoin_client)
+        Self::new(config, db, bc)
     }
 }
 
@@ -177,11 +169,7 @@ where
     BC: BitcoinClient + BitcoinInteract + Sync + Send,
 {
     /// Create a new signer context.
-    pub fn new(
-        config: Settings,
-        db: S,
-        bitcoin_client: ApiFallbackClient<BC>,
-    ) -> Result<Self, Error> {
+    pub fn new(config: &Settings, db: S, bitcoin_client: BC) -> Result<Self, Error> {
         // TODO: Decide on the channel capacity and how we should handle slow consumers.
         // NOTE: Ideally consumers which require processing time should pull the relevent
         // messages into a local VecDequeue and process them in their own time.
@@ -190,7 +178,7 @@ where
 
         Ok(Self {
             inner: Arc::new(InnerSignerContext {
-                config,
+                config: config.clone(),
                 signal_tx,
                 term_tx,
                 storage: db,
@@ -243,7 +231,7 @@ where
         self.storage.clone()
     }
 
-    fn get_bitcoin_client(&self) -> &ApiFallbackClient<impl BitcoinClient + BitcoinInteract> {
+    fn get_bitcoin_client(&self) -> &(impl BitcoinClient + BitcoinInteract) {
         &self.bitcoin_client
     }
 }

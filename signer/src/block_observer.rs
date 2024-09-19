@@ -94,14 +94,10 @@ where
         let deposit_requests = self.emily_client.get_deposits().await;
 
         for request in deposit_requests {
-            let deposit = ctx
-                .get_bitcoin_client()
-                .exec(|client| async {
-                    request.validate(client).inspect_err(
-                        |error| tracing::warn!(%error, "could not validate deposit request"),
-                    )
-                })
-                .await;
+            let deposit = request
+                .validate(ctx.get_bitcoin_client())
+                .await
+                .inspect_err(|error| tracing::warn!(%error, "could not validate deposit request"));
 
             if let Ok(deposit) = deposit {
                 self.deposit_requests
@@ -127,7 +123,7 @@ where
 
             let block = ctx
                 .get_bitcoin_client()
-                .exec(|client| client.get_block(&block_hash))
+                .get_block(&block_hash)
                 .await?
                 .ok_or(Error::MissingBlock)?;
 
@@ -327,9 +323,9 @@ mod tests {
         let storage = storage::in_memory::Store::new_shared();
         let test_harness = TestHarness::generate(&mut rng, 20, 0..5);
         let ctx = SignerContext::new(
-            Settings::new_from_default_config().unwrap(),
+            &Settings::new_from_default_config().unwrap(),
             storage.clone(),
-            test_harness.clone().into(),
+            test_harness.clone(),
         )
         .unwrap();
         let block_hash_stream = test_harness.spawn_block_hash_stream();
@@ -436,9 +432,9 @@ mod tests {
         let block_hash_stream = test_harness.spawn_block_hash_stream();
         let (subscribers, _subscriber_rx) = tokio::sync::watch::channel(());
         let ctx = SignerContext::new(
-            Settings::new_from_default_config().unwrap(),
+            &Settings::new_from_default_config().unwrap(),
             storage.clone(),
-            test_harness.clone().into(),
+            test_harness.clone(),
         )
         .unwrap();
 
@@ -514,9 +510,9 @@ mod tests {
         let block_hash_stream = test_harness.spawn_block_hash_stream();
         let (subscribers, _subscriber_rx) = tokio::sync::watch::channel(());
         let ctx = SignerContext::new(
-            Settings::new_from_default_config().unwrap(),
+            &Settings::new_from_default_config().unwrap(),
             storage.clone(),
-            test_harness.clone().into(),
+            test_harness.clone(),
         )
         .unwrap();
 
@@ -776,7 +772,7 @@ mod tests {
 
     impl BitcoinClient for TestHarness {
         type Error = Error;
-        fn get_tx(&self, txid: &Txid) -> Result<sbtc::rpc::GetTxResponse, Error> {
+        async fn get_tx(&self, txid: &Txid) -> Result<sbtc::rpc::GetTxResponse, Error> {
             self.deposits.get(txid).cloned().ok_or(Error::Encryption)
         }
     }

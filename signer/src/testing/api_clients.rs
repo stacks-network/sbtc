@@ -21,9 +21,9 @@ pub const NOOP_API_CLIENT: LazyCell<ApiFallbackClient<NoopApiClient>> =
 #[derive(Clone)]
 pub struct NoopApiClient;
 
-impl TryFrom<Url> for NoopApiClient {
+impl TryFrom<&[Url]> for NoopApiClient {
     type Error = Error;
-    fn try_from(_value: Url) -> Result<Self, Self::Error> {
+    fn try_from(_value: &[Url]) -> Result<Self, Self::Error> {
         Ok(NoopApiClient)
     }
 }
@@ -32,7 +32,7 @@ impl TryFrom<Url> for NoopApiClient {
 impl BitcoinClient for NoopApiClient {
     type Error = Error;
 
-    fn get_tx(&self, _txid: &bitcoin::Txid) -> Result<sbtc::rpc::GetTxResponse, Self::Error> {
+    async fn get_tx(&self, _txid: &bitcoin::Txid) -> Result<sbtc::rpc::GetTxResponse, Self::Error> {
         unimplemented!()
     }
 }

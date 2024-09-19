@@ -8,6 +8,10 @@ use crate::{codec, ecdsa, network};
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Error from the Bitcoin RPC client.
+    #[error("bitcoin RPC error: {0}")]
+    BitcoinCoreRpc(#[from] bitcoincore_rpc::Error),
+
     /// An error propogated from the sBTC library.
     #[error("sBTC lib error: {0}")]
     SbtcLib(#[from] sbtc::error::Error),

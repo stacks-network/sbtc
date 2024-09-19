@@ -1,5 +1,7 @@
 //! Contains client wrappers for bitcoin core and electrum.
 
+use std::future::Future;
+
 use bitcoin::consensus;
 use bitcoin::consensus::Decodable as _;
 use bitcoin::BlockHash;
@@ -56,7 +58,7 @@ pub trait BitcoinClient {
 
     /// Return the transaction if the transaction is in the mempool or in
     /// any block.
-    fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Self::Error>;
+    fn get_tx(&self, txid: &Txid) -> impl Future<Output = Result<GetTxResponse, Self::Error>>;
 }
 
 /// A client for interacting with bitcoin-core
@@ -167,7 +169,7 @@ impl BitcoinCoreClient {
 
 impl BitcoinClient for BitcoinCoreClient {
     type Error = Error;
-    fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
+    async fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
         self.get_tx(txid)
     }
 }
