@@ -36,20 +36,20 @@ pub trait Context: Clone + Sync + Send {
 
 /// Signer context which is passed to different components within the
 /// signer binary.
-pub struct SignerContext<S, B> {
-    inner: Arc<InnerSignerContext<S, B>>,
+pub struct SignerContext<S, BC> {
+    inner: Arc<InnerSignerContext<S, BC>>,
 }
 
 /// We implement [`Clone`] manually to avoid the derive macro adding additional
 /// bounds on the generic types.
-impl<S, B> Clone for SignerContext<S, B> {
+impl<S, BC> Clone for SignerContext<S, BC> {
     fn clone(&self) -> Self {
         Self { inner: Arc::clone(&self.inner) }
     }
 }
 
-impl<S, B> std::ops::Deref for SignerContext<S, B> {
-    type Target = InnerSignerContext<S, B>;
+impl<S, BC> std::ops::Deref for SignerContext<S, BC> {
+    type Target = InnerSignerContext<S, BC>;
 
     fn deref(&self) -> &Self::Target {
         &self.inner
@@ -57,7 +57,7 @@ impl<S, B> std::ops::Deref for SignerContext<S, B> {
 }
 
 /// Inner signer context which holds the configuration and signalling channels.
-pub struct InnerSignerContext<S, B> {
+pub struct InnerSignerContext<S, BC> {
     config: Settings,
     // Handle to the app signalling channel. This keeps the channel alive
     // for the duration of the program and is used both to send messages
@@ -69,7 +69,15 @@ pub struct InnerSignerContext<S, B> {
     term_tx: tokio::sync::watch::Sender<bool>,
     /// Handle to the signer storage.
     storage: S,
-    bitcoin_client: ApiFallbackClient<B>,
+    /// Handle to a Bitcoin-RPC fallback-client.
+    bitcoin_client: ApiFallbackClient<BC>,
+    // TODO: Add more clients here.
+    // /// Handle to a Stacks-RPC fallback-client.
+    //stacks_client: ApiFallbackClient<ST>,
+    // /// Handle to a Emily-API fallback-client.
+    //emily_client: ApiFallbackClient<EM>,
+    // /// Handle to a Blocklist-API fallback-client.
+    //blocklist_client: ApiFallbackClient<BL>,
 }
 
 /// Signals that can be sent within the signer binary.
@@ -138,22 +146,21 @@ impl TerminationHandle {
     }
 }
 
-impl<S, B> SignerContext<S, B>
+impl<S, BC> SignerContext<S, BC>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
-    B: TryFrom<url::Url> + BitcoinClient + BitcoinInteract + Sync + Send,
-    Error: From<<B as std::convert::TryFrom<url::Url>>::Error>,
+    BC: TryFrom<url::Url> + BitcoinClient + BitcoinInteract + Sync + Send,
+    Error: From<<BC as std::convert::TryFrom<url::Url>>::Error>,
 {
     /// Initializes a new [`SignerContext`], automatically creating clients
     /// based on the provided types.
-    pub fn init(
-        config: Settings,
-        db: S
-    ) -> Result<Self, Error> {
-        let bitcoin_clients = config.bitcoin.endpoints
+    pub fn init(config: Settings, db: S) -> Result<Self, Error> {
+        let bitcoin_clients = config
+            .bitcoin
+            .endpoints
             .iter()
             .cloned()
-            .map(|url| B::try_from(url))
+            .map(|url| BC::try_from(url))
             .collect::<Result<Vec<_>, _>>()?;
 
         let bitcoin_client = ApiFallbackClient::new(bitcoin_clients);
@@ -162,16 +169,16 @@ where
     }
 }
 
-impl<S, B> SignerContext<S, B>
+impl<S, BC> SignerContext<S, BC>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
-    B: BitcoinClient + BitcoinInteract + Sync + Send,
+    BC: BitcoinClient + BitcoinInteract + Sync + Send,
 {
     /// Create a new signer context.
     pub fn new(
         config: Settings,
         db: S,
-        bitcoin_client: ApiFallbackClient<B>,
+        bitcoin_client: ApiFallbackClient<BC>,
     ) -> Result<Self, Error> {
         // TODO: Decide on the channel capacity and how we should handle slow consumers.
         // NOTE: Ideally consumers which require processing time should pull the relevent
@@ -191,10 +198,10 @@ where
     }
 }
 
-impl<S, B> Context for SignerContext<S, B>
+impl<S, BC> Context for SignerContext<S, BC>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
-    B: BitcoinClient + BitcoinInteract + Sync + Send,
+    BC: BitcoinClient + BitcoinInteract + Sync + Send,
 {
     fn config(&self) -> &Settings {
         &self.config

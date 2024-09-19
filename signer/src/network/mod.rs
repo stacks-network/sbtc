@@ -146,11 +146,8 @@ mod tests {
 
         let settings = Settings::new_from_default_config().unwrap();
 
-        let context1 = SignerContext::<_, NoopApiClient>::init(
-            settings.clone(),
-            Store::new_shared()
-        )
-        .unwrap();
+        let context1 =
+            SignerContext::<_, NoopApiClient>::init(settings.clone(), Store::new_shared()).unwrap();
         let context2 =
             SignerContext::<_, NoopApiClient>::init(settings, Store::new_shared()).unwrap();
 

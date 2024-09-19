@@ -21,7 +21,6 @@ use std::collections::HashMap;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
-use crate::error;
 use crate::error::Error;
 use crate::stacks::api::StacksInteract;
 use crate::storage;
@@ -766,10 +765,7 @@ mod tests {
             unimplemented!()
         }
 
-        async fn broadcast_transaction(
-            &self,
-            _tx: &bitcoin::Transaction,
-        ) -> Result<(), Error> {
+        async fn broadcast_transaction(&self, _tx: &bitcoin::Transaction) -> Result<(), Error> {
             unimplemented!()
         }
     }

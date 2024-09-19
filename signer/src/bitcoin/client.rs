@@ -34,7 +34,7 @@ impl BitcoinInteract for BitcoinCoreClient {
     async fn estimate_fee_rate(&self) -> Result<f64, Error> {
         self.estimate_fee_rate(1)
             .map(|rate| rate.sats_per_vbyte)
-            .map_err(|e| Error::BitcoinCoreClient(e.to_string()))
+            .map_err(Error::SbtcLib)
     }
 
     async fn get_signer_utxo(
