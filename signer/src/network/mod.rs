@@ -129,7 +129,7 @@ mod tests {
         context::SignerContext,
         keys::PrivateKey,
         storage::in_memory::Store,
-        testing::{self, clear_env},
+        testing::{self, api_clients::NOOP_API_CLIENT, clear_env},
     };
 
     #[tokio::test]
@@ -151,8 +151,14 @@ mod tests {
 
         let settings = Settings::new_from_default_config().unwrap();
 
-        let context1 = SignerContext::<_, BitcoinCoreClient>::init(settings.clone(), Store::new_shared()).unwrap();
-        let context2 = SignerContext::<_, BitcoinCoreClient>::init(settings, Store::new_shared()).unwrap();
+        let context1 = SignerContext::init(
+            settings.clone(),
+            Store::new_shared(),
+            NOOP_API_CLIENT.clone(),
+        )
+        .unwrap();
+        let context2 =
+            SignerContext::init(settings, Store::new_shared(), NOOP_API_CLIENT.clone()).unwrap();
 
         let term1 = context1.get_termination_handle();
         let term2 = context2.get_termination_handle();

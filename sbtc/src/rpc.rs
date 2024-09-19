@@ -10,6 +10,7 @@ use bitcoincore_rpc::json::EstimateMode;
 use bitcoincore_rpc::Auth;
 use bitcoincore_rpc::RpcApi as _;
 use serde::Deserialize;
+use url::Url;
 
 use crate::error::Error;
 
@@ -63,6 +64,21 @@ pub struct BitcoinCoreClient {
     inner: bitcoincore_rpc::Client,
 }
 
+impl TryFrom<Url> for BitcoinCoreClient {
+    type Error = Error;
+
+    fn try_from(url: Url) -> Result<Self, Self::Error> {
+        let username = url.username().to_string();
+        let password = url.password().unwrap_or_default().to_string();
+        let host = url.host_str().unwrap();
+        let port = url.port().unwrap_or(8332);
+
+        let endpoint = format!("http://{}:{}", host, port);
+
+        Self::new(&endpoint, username, password)
+    }
+}
+
 impl BitcoinCoreClient {
     /// Return a bitcoin-core RPC client. Will error if the URL is an invalid URL.
     ///
@@ -81,7 +97,7 @@ impl BitcoinCoreClient {
     pub fn inner_client(&self) -> &bitcoincore_rpc::Client {
         &self.inner
     }
-    
+
     /// Fetch and decode raw transaction from bitcoin-core using the
     /// getrawtransaction RPC.
     ///

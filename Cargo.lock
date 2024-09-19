@@ -5476,6 +5476,7 @@ dependencies = [
  "tracing",
  "tracing-attributes",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]

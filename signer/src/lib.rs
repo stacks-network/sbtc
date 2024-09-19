@@ -1,7 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![deny(missing_docs)]
 
-mod util;
 pub mod api;
 pub mod bitcoin;
 pub mod block_observer;
@@ -21,6 +20,7 @@ pub mod storage;
 pub mod testing;
 pub mod transaction_coordinator;
 pub mod transaction_signer;
+pub mod util;
 pub mod wsts_state_machine;
 
 /// Package version

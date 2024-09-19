@@ -2,15 +2,16 @@
 
 use std::sync::Arc;
 
-use sbtc::rpc::{BitcoinClient, BitcoinCoreClient};
+use sbtc::rpc::BitcoinClient;
 use tokio::sync::broadcast::Sender;
 
 use crate::{
-    bitcoin::BitcoinInteract, config::Settings, error::Error, storage::{DbRead, DbWrite}, util::{ApiFallbackClient, TryFromUrl}
+    bitcoin::BitcoinInteract,
+    config::Settings,
+    error::Error,
+    storage::{DbRead, DbWrite},
+    util::ApiFallbackClient,
 };
-
-/// Default signer context type which uses the [`PgStore`] and [`BitcoinCoreClient`].
-pub type DefaultSignerContext<S> = SignerContext<S, BitcoinCoreClient>;
 
 /// Context trait that is implemented by the [`SignerContext`].
 pub trait Context: Clone + Sync + Send {
@@ -43,9 +44,7 @@ pub struct SignerContext<S, B> {
 /// bounds on the generic types.
 impl<S, B> Clone for SignerContext<S, B> {
     fn clone(&self) -> Self {
-        Self {
-            inner: Arc::clone(&self.inner),
-        }
+        Self { inner: Arc::clone(&self.inner) }
     }
 }
 
@@ -70,7 +69,7 @@ pub struct InnerSignerContext<S, B> {
     term_tx: tokio::sync::watch::Sender<bool>,
     /// Handle to the signer storage.
     storage: S,
-    bitcoin_client: ApiFallbackClient<B>
+    bitcoin_client: ApiFallbackClient<B>,
 }
 
 /// Signals that can be sent within the signer binary.
@@ -142,17 +141,19 @@ impl TerminationHandle {
 impl<S, B> SignerContext<S, B>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
-    B: TryFromUrl + BitcoinClient + BitcoinInteract + Sync + Send,
+    B: BitcoinClient + BitcoinInteract + Sync + Send,
 {
     /// Create a new signer context.
-    pub fn init(config: Settings, db: S) -> Result<Self, Error> {
+    pub fn init(
+        config: Settings,
+        db: S,
+        bitcoin_client: ApiFallbackClient<B>,
+    ) -> Result<Self, Error> {
         // TODO: Decide on the channel capacity and how we should handle slow consumers.
         // NOTE: Ideally consumers which require processing time should pull the relevent
         // messages into a local VecDequeue and process them in their own time.
         let (signal_tx, _) = tokio::sync::broadcast::channel(128);
         let (term_tx, _) = tokio::sync::watch::channel(false);
-
-        let bitcoin_client = ApiFallbackClient::<B>::new(&config.bitcoin.endpoints)?;
 
         Ok(Self {
             inner: Arc::new(InnerSignerContext {

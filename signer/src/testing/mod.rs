@@ -1,5 +1,6 @@
 //! Module with testing utility functions.
 
+pub mod api_clients;
 pub mod dummy;
 pub mod message;
 pub mod network;

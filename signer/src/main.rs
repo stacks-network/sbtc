@@ -14,6 +14,7 @@ use signer::context::SignerContext;
 use signer::error::Error;
 use signer::network::libp2p::SignerSwarmBuilder;
 use signer::storage::postgres::PgStore;
+use signer::util::ApiFallbackClient;
 use tokio::signal;
 
 /// Command line arguments for the signer.
@@ -56,8 +57,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         db.apply_migrations().await?;
     }
 
+    let bitcoin_client =
+        ApiFallbackClient::<BitcoinCoreClient>::try_from(settings.bitcoin.endpoints.as_slice())?;
+
     // Initialize the signer context.
-    let context = SignerContext::<_, BitcoinCoreClient>::init(settings, db)?;
+    let context = SignerContext::init(settings, db, bitcoin_client)?;
 
     // Run the application components concurrently. We're `join!`ing them
     // here so that every component can shut itself down gracefully when
