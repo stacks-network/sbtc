@@ -9,7 +9,7 @@ use signer::error::Error;
 use signer::keys::PublicKey;
 use signer::stacks::contracts::AsContractCall as _;
 use signer::stacks::contracts::CompleteDepositV1;
-use signer::stacks::contracts::DepositValidationMsg;
+use signer::stacks::contracts::DepositErrorMsg;
 use signer::stacks::contracts::ReqContext;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlock;
@@ -244,7 +244,7 @@ async fn complete_deposit_validation_deployer_mismatch() {
     let validate_future = complete_deposit_tx.validate(&pg_store, &ctx);
     match validate_future.await.unwrap_err() {
         Error::DepositValidation(ref err) => {
-            assert_eq!(err.error, DepositValidationMsg::DeployerMismatch)
+            assert_eq!(err.error, DepositErrorMsg::DeployerMismatch)
         }
         err => panic!("unexpected error during validation {err}"),
     }
@@ -304,7 +304,7 @@ async fn complete_deposit_validation_missing_deposit_request() {
     let validation_result = complete_deposit_tx.validate(&pg_store, &ctx).await;
     match validation_result.unwrap_err() {
         Error::DepositValidation(ref err) => {
-            assert_eq!(err.error, DepositValidationMsg::DepositRequestMissing)
+            assert_eq!(err.error, DepositErrorMsg::RequestMissing)
         }
         err => panic!("unexpected error during validation {err}"),
     }
@@ -375,7 +375,7 @@ async fn complete_deposit_validation_recipient_mismatch() {
     let validate_future = complete_deposit_tx.validate(&pg_store, &ctx);
     match validate_future.await.unwrap_err() {
         Error::DepositValidation(ref err) => {
-            assert_eq!(err.error, DepositValidationMsg::RecipientMismatch)
+            assert_eq!(err.error, DepositErrorMsg::RecipientMismatch)
         }
         err => panic!("unexpected error during validation {err}"),
     }
@@ -445,7 +445,7 @@ async fn complete_deposit_validation_invalid_mint_amount() {
     let validate_future = complete_deposit_tx.validate(&pg_store, &ctx);
     match validate_future.await.unwrap_err() {
         Error::DepositValidation(ref err) => {
-            assert_eq!(err.error, DepositValidationMsg::InvalidMintAmount)
+            assert_eq!(err.error, DepositErrorMsg::InvalidMintAmount)
         }
         err => panic!("unexpected error during validation {err}"),
     }
@@ -515,7 +515,7 @@ async fn complete_deposit_validation_invalid_fee() {
     let validate_future = complete_deposit_tx.validate(&pg_store, &ctx);
     match validate_future.await.unwrap_err() {
         Error::DepositValidation(ref err) => {
-            assert_eq!(err.error, DepositValidationMsg::InvalidFee)
+            assert_eq!(err.error, DepositErrorMsg::InvalidFee)
         }
         err => panic!("unexpected error during validation {err}"),
     }
@@ -574,7 +574,7 @@ async fn complete_deposit_validation_sweep_tx_missing() {
     let validation_result = complete_deposit_tx.validate(&pg_store, &ctx).await;
     match validation_result.unwrap_err() {
         Error::DepositValidation(ref err) => {
-            assert_eq!(err.error, DepositValidationMsg::SweepTransactionMissing)
+            assert_eq!(err.error, DepositErrorMsg::SweepTransactionMissing)
         }
         err => panic!("unexpected error during validation {err}"),
     }
@@ -661,7 +661,7 @@ async fn complete_deposit_validation_sweep_reorged() {
     let validation_result = complete_deposit_tx.validate(&pg_store, &ctx).await;
     match validation_result.unwrap_err() {
         Error::DepositValidation(ref err) => {
-            assert_eq!(err.error, DepositValidationMsg::SweepTransactionReorged)
+            assert_eq!(err.error, DepositErrorMsg::SweepTransactionReorged)
         }
         err => panic!("unexpected error during validation {err}"),
     }
@@ -733,7 +733,7 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
     let validation_result = complete_deposit_tx.validate(&pg_store, &ctx).await;
     match validation_result.unwrap_err() {
         Error::DepositValidation(ref err) => {
-            assert_eq!(err.error, DepositValidationMsg::DepositMissingFromSweep)
+            assert_eq!(err.error, DepositErrorMsg::MissingFromSweep)
         }
         err => panic!("unexpected error during validation {err}"),
     }

@@ -269,7 +269,7 @@ impl AsContractCall for CompleteDepositV1 {
     /// 5. That the recipients in the transaction matches that of the
     ///    deposit request.
     /// 6. That the amount to mint does not exceed the deposit amount.
-    /// 7. That the max-fee is less than the desired max-fee.
+    /// 7. That the fee is less than the desired max-fee.
     ///
     /// # Notes
     ///
@@ -309,7 +309,7 @@ impl CompleteDepositV1 {
         // 1. That the smart contract deployer matches the deployer in our
         //    context.
         if self.deployer != ctx.deployer {
-            return Err(DepositValidationMsg::DeployerMismatch.into_error(ctx, self));
+            return Err(DepositErrorMsg::DeployerMismatch.into_error(ctx, self));
         }
         // 2. Check that the signer has a record of the deposit request
         //    from our list of pending and accepted deposit requests.
@@ -327,24 +327,23 @@ impl CompleteDepositV1 {
         let deposit_request = deposit_requests
             .into_iter()
             .find(|req| req.outpoint() == self.outpoint)
-            .ok_or_else(|| DepositValidationMsg::DepositRequestMissing.into_error(ctx, self))?;
+            .ok_or_else(|| DepositErrorMsg::RequestMissing.into_error(ctx, self))?;
 
         // 5. Check that the recipients in the transaction matches that of
         //    the deposit request.
         if &self.recipient != deposit_request.recipient.deref() {
-            return Err(DepositValidationMsg::RecipientMismatch.into_error(ctx, self));
+            return Err(DepositErrorMsg::RecipientMismatch.into_error(ctx, self));
         }
         // 6. Check that the amount to mint does not exceed the deposit
         //    amount.
         if self.amount > deposit_request.amount {
-            return Err(DepositValidationMsg::InvalidMintAmount.into_error(ctx, self));
+            return Err(DepositErrorMsg::InvalidMintAmount.into_error(ctx, self));
         }
-        // 7. Check that the max-fee is less than the desired max-fee.
+        // 7. Check that the fee is less than the desired max-fee.
         //
-        // The smart contract cannot check if we exceed the max fee, so we
-        // do a check ourselves.
+        // The smart contract cannot check if we exceed the max fee.
         if deposit_request.amount - self.amount > deposit_request.max_fee {
-            return Err(DepositValidationMsg::InvalidFee.into_error(ctx, self));
+            return Err(DepositErrorMsg::InvalidFee.into_error(ctx, self));
         }
 
         Ok(())
@@ -365,7 +364,7 @@ impl CompleteDepositV1 {
         let sweep_tx = db
             .get_bitcoin_tx(&self.sweep_txid, &self.sweep_block_hash)
             .await?
-            .ok_or_else(|| DepositValidationMsg::SweepTransactionMissing.into_error(ctx, self))?;
+            .ok_or_else(|| DepositErrorMsg::SweepTransactionMissing.into_error(ctx, self))?;
         // 3. Check that the signer sweep transaction is on the canonical
         //    bitcoin blockchain.
         //
@@ -381,7 +380,7 @@ impl CompleteDepositV1 {
             .in_canonical_bitcoin_blockchain(&ctx.chain_tip, &block_ref)
             .await?;
         if !in_canonical_bitcoin_blockchain {
-            return Err(DepositValidationMsg::SweepTransactionReorged.into_error(ctx, self));
+            return Err(DepositErrorMsg::SweepTransactionReorged.into_error(ctx, self));
         }
         // 4. Check that the sweep transaction uses the indicated deposit
         //    outpoint as an input.
@@ -391,7 +390,7 @@ impl CompleteDepositV1 {
         // of the transaction inputs.
         let mut tx_inputs = sweep_tx.input.iter();
         if !tx_inputs.any(|tx_in| tx_in.previous_output == self.outpoint) {
-            return Err(DepositValidationMsg::DepositMissingFromSweep.into_error(ctx, self));
+            return Err(DepositErrorMsg::MissingFromSweep.into_error(ctx, self));
         }
 
         Ok(())
@@ -402,7 +401,7 @@ impl CompleteDepositV1 {
 #[derive(Debug)]
 pub struct DepositValidationError {
     /// The specific error that happened during validation.
-    pub error: DepositValidationMsg,
+    pub error: DepositErrorMsg,
     /// The additional information that was used when trying to
     /// validate the complete-deposit contract call. This includes the
     /// public key of the signer that was attempting to generate the
@@ -428,18 +427,10 @@ impl std::error::Error for DepositValidationError {
 /// The responses for validation of a complete-deposit smart contract call
 /// transactions.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
-pub enum DepositValidationMsg {
+pub enum DepositErrorMsg {
     /// The smart contract deployer is fixed, so this should always match.
     #[error("The deployer in the transaction does not match the expected deployer")]
     DeployerMismatch,
-    /// The deposit outpoint is missing from the indicated sweep
-    /// transaction.
-    #[error("deposit outpoint is missing from the indicated sweep transaction")]
-    DepositMissingFromSweep,
-    /// We do not have a record of the deposit request in our list of
-    /// pending and accepted deposit requests.
-    #[error("no record of deposit request in pending and accepted deposit requests")]
-    DepositRequestMissing,
     /// The fee paid to the bitcoin miners exceeded the max fee.
     #[error("fee paid to the bitcoin miners exceeded the max fee")]
     InvalidFee,
@@ -447,10 +438,18 @@ pub enum DepositValidationMsg {
     /// request.
     #[error("amount to mint exceeded the amount in the deposit request")]
     InvalidMintAmount,
+    /// The deposit outpoint is missing from the indicated sweep
+    /// transaction.
+    #[error("deposit outpoint is missing from the indicated sweep transaction")]
+    MissingFromSweep,
     /// The recipient did not match the recipient in our deposit request
     /// records.
     #[error("recipient did not match the recipient in our deposit request")]
     RecipientMismatch,
+    /// We do not have a record of the deposit request in our list of
+    /// pending and accepted deposit requests.
+    #[error("no record of deposit request in pending and accepted deposit requests")]
+    RequestMissing,
     /// The sweep transaction that included the deposit request is missing
     /// from our records.
     #[error("sweep transaction not found")]
@@ -461,7 +460,7 @@ pub enum DepositValidationMsg {
     SweepTransactionReorged,
 }
 
-impl DepositValidationMsg {
+impl DepositErrorMsg {
     fn into_error(self, ctx: &ReqContext, tx: &CompleteDepositV1) -> Error {
         Error::DepositValidation(Box::new(DepositValidationError {
             error: self,
