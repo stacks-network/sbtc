@@ -49,7 +49,7 @@ impl<T> InnerApiFallbackClient<T> {
     pub async fn exec<'a, R, E, F>(&'a self, f: impl Fn(&'a T) -> F) -> Result<R, Error>
     where
         E: std::error::Error + std::fmt::Debug,
-        Error: From<E>,
+        E: Into<Error>,
         F: Future<Output = Result<R, E>> + 'a,
     {
         let retry_count = self.retry_count.load(Ordering::Relaxed);
@@ -65,15 +65,14 @@ impl<T> InnerApiFallbackClient<T> {
                 continue;
             }
 
-            return result.map_err(Error::from);
+            return result.map_err(Into::into);
         }
 
         Err(Error::AllFailoverClientsFailed)
     }
 }
 
-impl<T> ApiFallbackClient<T>
-{
+impl<T> ApiFallbackClient<T> {
     /// Create a new fallback client from a list of clients.
     pub fn new(clients: Vec<T>) -> Self {
         let retry_count = min(3, clients.len());
