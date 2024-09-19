@@ -73,8 +73,6 @@ impl<T> InnerApiFallbackClient<T> {
 }
 
 impl<T> ApiFallbackClient<T>
-where
-    T: Sync + Send,
 {
     /// Create a new fallback client from a list of clients.
     pub fn new(clients: Vec<T>) -> Self {
