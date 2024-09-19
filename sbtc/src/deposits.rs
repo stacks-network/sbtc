@@ -130,13 +130,12 @@ impl CreateDepositRequest {
     /// need not be confirmed.
     pub fn validate<C>(&self, client: &C) -> Result<Deposit, Error>
     where
-        C: BitcoinClient,
-        //Error: From<<C as BitcoinClient>::Error>
+        C: BitcoinClient
     {
         // Fetch the transaction from either a block or from the mempool
         let response = client
             .get_tx(&self.outpoint.txid)
-            .map_err(|_| Error::GetBitcoinTx(self.outpoint))?;
+            .map_err(|_| Error::GetBitcoinTx(self.outpoint.txid))?;
 
         Ok(Deposit {
             info: self.validate_tx(&response.tx)?,

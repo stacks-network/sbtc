@@ -71,7 +71,9 @@ pub struct InnerSignerContext<S, BC> {
     storage: S,
     /// Handle to a Bitcoin-RPC fallback-client.
     bitcoin_client: ApiFallbackClient<BC>,
-    // TODO: Add more clients here.
+    // TODO: Additional clients to be added in future PRs. We may want
+    // to break the clients out into a separate struct to keep the field
+    // count down.
     // /// Handle to a Stacks-RPC fallback-client.
     //stacks_client: ApiFallbackClient<ST>,
     // /// Handle to a Emily-API fallback-client.

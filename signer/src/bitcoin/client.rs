@@ -11,6 +11,8 @@ use super::{
     BitcoinInteract,
 };
 
+/// Implement the [`TryFrom`] trait for a slice of [`Url`]s to allow for a
+/// [`ApiFallbackClient`] to be implicitly created from a list of URLs.
 impl TryFrom<&[Url]> for ApiFallbackClient<BitcoinCoreClient> {
     type Error = Error;
     fn try_from(urls: &[Url]) -> Result<Self, Self::Error> {
