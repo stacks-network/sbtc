@@ -129,10 +129,8 @@ mod tests {
     use test_case::test_case;
 
     use crate::config::Settings;
-    use crate::context::SignerContext;
     use crate::storage::in_memory::Store;
     use crate::storage::model::StacksPrincipal;
-    use crate::testing::api_clients::NoopApiClient;
     use crate::testing::NoopSignerContext;
 
     /// These were generated from a stacks node after running the
@@ -192,7 +190,7 @@ mod tests {
     {
         let db = Store::new_shared();
 
-        let ctx = SignerContext::<_, NoopApiClient>::init(
+        let ctx = NoopSignerContext::init(
             Settings::new_from_default_config().unwrap(),
             db.clone(),
         )
