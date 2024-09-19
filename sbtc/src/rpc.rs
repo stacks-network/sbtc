@@ -65,6 +65,8 @@ pub struct BitcoinCoreClient {
     inner: bitcoincore_rpc::Client,
 }
 
+/// Implement TryFrom for Url to allow for easy conversion from a URL to a
+/// BitcoinCoreClient.
 impl TryFrom<Url> for BitcoinCoreClient {
     type Error = Error;
 
