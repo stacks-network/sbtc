@@ -8,7 +8,6 @@ use clap::Parser;
 use sbtc::rpc::BitcoinCoreClient;
 use signer::api;
 use signer::api::ApiState;
-use signer::block_observer::BlockObserver;
 use signer::config::Settings;
 use signer::context::Context;
 use signer::context::SignerContext;
@@ -216,6 +215,17 @@ async fn run_stacks_event_observer(ctx: impl Context + 'static) -> Result<(), Er
         })
 }
 
-async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
+#[allow(dead_code)] // Remove when implemented
+async fn run_block_observer(_ctx: impl Context) -> Result<(), Error> {
+    todo!() //TODO(548)
+}
+
+#[allow(dead_code)] // Remove when implemented
+async fn run_transaction_signer(_ctx: impl Context) -> Result<(), Error> {
+    todo!()
+}
+
+#[allow(dead_code)] // Remove when implemented
+async fn run_transaction_coordinator(_ctx: impl Context) -> Result<(), Error> {
     todo!()
 }
