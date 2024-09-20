@@ -41,6 +41,23 @@ const DEPOSIT_SCRIPT_FIXED_LENGTH: usize = 35;
 const STANDARD_SCRIPT_LENGTH: usize =
     1 + 1 + 8 + STACKS_ADDRESS_ENCODED_SIZE as usize + DEPOSIT_SCRIPT_FIXED_LENGTH;
 
+/// This flag, from bitcoin-core, determines the following:
+/// * If the input to OP_CSV has this bit set, then OP_CSV is treated as a
+///   NOP, effectively disabling the opcode when executing the script [^1].
+/// * It fails OP_CSV/CheckSequence() for any input that has it set (BIP
+///   112) [^2]. Note: Transaction inputs have an nSequence field that is
+///   different from the one referenced in the above bullet point.
+/// * If this flag is set, CTxIn::nSequence is NOT interpreted as a
+///   relative lock-time.
+/// * It skips SequenceLocks() for any input that has it set (BIP 68).
+///
+/// The last two bullets were taken from [^3].
+///
+/// [^1]: <https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L560-L592>
+/// [^2]: <https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L1737-L1782>
+/// [^3]: <https://github.com/bitcoin/bitcoin/blob/v27.1/src/primitives/transaction.h#L89-L98>
+pub const SEQUENCE_LOCKTIME_DISABLE_FLAG: i64 = 1 << 31;
+
 /// Script opcodes as the bytes in bitcoin Script.
 ///
 /// Drops the top stack item
@@ -126,7 +143,7 @@ impl CreateDepositRequest {
     /// Validate this deposit request from the transaction.
     ///
     /// This function fetches the transaction using the given client and
-    /// checks that the transaction has been confirmed. The transaction
+    /// checks that the transaction has been submitted. The transaction
     /// need not be confirmed.
     pub fn validate<C>(&self, client: &C) -> Result<Deposit, Error>
     where
@@ -319,7 +336,7 @@ impl DepositScriptInputs {
 
         // Valid deposit scripts cannot be less than this length.
         if script.len() < STANDARD_SCRIPT_LENGTH {
-            return Err(Error::InvalidDepositScript);
+            return Err(Error::InvalidDepositScriptLength);
         }
         // This cannot panic because of the above check and the fact that
         // DEPOSIT_SCRIPT_FIXED_LENGTH < STANDARD_SCRIPT_LENGTH.
@@ -328,7 +345,7 @@ impl DepositScriptInputs {
         // because of how `slice::split_at` works, so we know the
         // public_key variable has length 32.
         let [OP_DROP, 32, public_key @ .., OP_CHECKSIG] = check else {
-            return Err(Error::InvalidDepositScript);
+            return Err(Error::InvalidDepositCheckSigPart);
         };
         // In bitcoin script, the code for pushing N bytes onto the stack
         // is OP_PUSHBYTES_N where N is between 1 and 75 inclusive. The
@@ -341,8 +358,19 @@ impl DepositScriptInputs {
         // can have a size of up to 151 bytes. Note that the data slice
         // here starts with the 8 byte max fee.
         let deposit_data = match params {
-            // This branch represents a contract address.
-            [OP_PUSHDATA1, n, data @ ..] if data.len() == *n as usize && *n < 160 => data,
+            // This branch represents a contract address. We reject scripts
+            // that use OP_PUSHDATA1 to push less than 76 bytes of data
+            // because those scripts, while valid and do not break
+            // consensus rules, are non-standard. Accepting them would make
+            // it very difficult for the signers to accept the deposit
+            // since bitcoin-core nodes do not relay non-standard
+            // transactions.
+            [OP_PUSHDATA1, n, data @ ..] if data.len() == *n as usize && 75 < *n && *n < 160 => {
+                data
+            }
+            [OP_PUSHDATA1, n, data @ ..] if data.len() == *n as usize && *n < 76 => {
+                return Err(Error::NonMinimalPushDepositScript)
+            }
             // This branch can be a standard (non-contract) Stacks
             // addresses when n == 30 (8 byte max fee + 22 byte address)
             // and is a contract address otherwise.
@@ -372,7 +400,9 @@ impl DepositScriptInputs {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReclaimScriptInputs {
     /// This is the lock time used for the OP_CSV opcode in the reclaim
-    /// script.
+    /// script. It is not allowed to exceed the bounds expected for a
+    /// 5-byte lock-time in bitcoin-core. It is also not allowed to have
+    /// the [`SEQUENCE_LOCKTIME_DISABLE_FLAG`] bit set.
     lock_time: i64,
     /// The reclaim script after the <locked-time> OP_CSV part of the script
     script: ScriptBuf,
@@ -385,6 +415,15 @@ impl ReclaimScriptInputs {
         // integer, which has a max of 2**39 - 1. Negative numbers might be
         // considered non-standard, so we reject them as well.
         if lock_time > i64::pow(2, 39) - 1 || lock_time < 0 {
+            return Err(Error::InvalidReclaimScriptLockTime(lock_time));
+        }
+
+        // OP_CSV checks can be disabled if the lock-time has the disabled
+        // lock-time bit set to 1. So we disallow such lock times to ensure
+        // that the OP_CSV check is always enabled.
+        //
+        // <https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L560-L592>
+        if lock_time & SEQUENCE_LOCKTIME_DISABLE_FLAG != 0 {
             return Err(Error::InvalidReclaimScriptLockTime(lock_time));
         }
 
@@ -604,6 +643,37 @@ mod tests {
         assert_eq!(extracts.deposit_script(), script);
     }
 
+    /// Construct a parsable deposit stript that is non-standard and check
+    /// that it errors.
+    #[test]
+    fn non_standard_deposit_scripts() {
+        let secret_key = SecretKey::new(&mut OsRng);
+        let public_key = secret_key.x_only_public_key(SECP256K1).0;
+
+        // We construct valid deposit data so that we know that the issue
+        // doesn't lie there.
+        let recipient = PrincipalData::parse(CONTRACT_ADDRESS).unwrap();
+        let max_fee: u64 = 15000;
+
+        let mut deposit_data = [0; 44];
+        deposit_data[..8].copy_from_slice(&max_fee.to_be_bytes());
+        deposit_data[8..].copy_from_slice(&recipient.serialize_to_vec());
+
+        // This is non-standard script because it does not follow the
+        // minimal push rule. We use the OP_PUSHDATA1 when we can use
+        // fewer bytes for the same outcome in the script.
+        let deposit_script = ScriptBuf::builder()
+            .push_opcode(opcodes::OP_PUSHDATA1)
+            .push_slice(deposit_data)
+            .push_opcode(opcodes::OP_DROP)
+            .push_slice(public_key.serialize())
+            .push_opcode(opcodes::OP_CHECKSIG)
+            .into_script();
+
+        let extracts = DepositScriptInputs::parse(&deposit_script);
+        assert!(matches!(extracts, Err(Error::NonMinimalPushDepositScript)));
+    }
+
     /// Check that `DepositScript::deposit_script` and the
     /// `parse_deposit_script` function are inverses of one another.
     #[test_case(PrincipalData::from(StacksAddress::burn_address(false)) ; "standard address")]
@@ -666,7 +736,7 @@ mod tests {
     #[test_case(0x000000ffff; "2 bytes non-minimal")]
     #[test_case(0x0000ffffff; "3 bytes non-minimal")]
     #[test_case(0x005f000000; "4 bytes non-minimal")]
-    #[test_case(0x7fffffffff; "5 bytes non-minimal 2**39 - 1")]
+    #[test_case(0x7f0fffffff; "5 bytes non-minimal with locking enabled")]
     fn reclaim_script_lock_time(lock_time: i64) {
         let reclaim_script = reclaim_p2pk(lock_time);
 
@@ -736,10 +806,31 @@ mod tests {
         .push_int(150)
         .push_opcode(opcodes::OP_CSV)
         .into_script() ; "start with 0")]
+    #[test_case(ScriptBuf::builder()
+        .push_int(1 << 31 + 15)
+        .push_opcode(opcodes::OP_CSV)
+        .into_script() ; "is a lock-disabling number")]
+    #[test_case(ScriptBuf::builder()
+        .push_int(-4)
+        .push_opcode(opcodes::OP_CSV)
+        .into_script() ; "is a negative number")]
     fn invalid_script_start(reclaim_script: ScriptBuf) {
         // The script must start with `<lock-time> OP_CSV` or we get an
         // error.
         assert!(ReclaimScriptInputs::parse(&reclaim_script).is_err());
+    }
+
+    #[test]
+    fn set_disabled_flag() {
+        // Another check that having the specific bit set in the lock time
+        // will lead to a failure to create a ReclaimScriptInputs struct.
+        let lock_time = 56 | SEQUENCE_LOCKTIME_DISABLE_FLAG;
+        let reclaim = ReclaimScriptInputs::try_new(lock_time, ScriptBuf::new());
+        assert!(reclaim.is_err());
+
+        let lock_time = 56;
+        let reclaim = ReclaimScriptInputs::try_new(lock_time, ScriptBuf::new());
+        assert!(reclaim.is_ok());
     }
 
     #[test_case(true ; "use client")]
@@ -864,7 +955,7 @@ mod tests {
         };
 
         let error = request.validate_tx(&setup.tx).unwrap_err();
-        assert!(matches!(error, Error::InvalidDepositScript));
+        assert!(matches!(error, Error::InvalidDepositScriptLength));
 
         let request = CreateDepositRequest {
             outpoint: OutPoint::new(setup.tx.compute_txid(), 0),

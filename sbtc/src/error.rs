@@ -30,10 +30,19 @@ pub enum Error {
     /// Received an error in response to getrawtransaction RPC call
     #[error("failed to retrieve the raw transaction for txid {1} from bitcoin-core. {0}")]
     GetTransactionBitcoinCore(#[source] bitcoincore_rpc::Error, Txid),
+    /// The end of the deposit script has a fixed format that is very
+    /// similar to a P2PK check_sig script, the script violated that format
+    #[error("script is CHECKSIG part of script")]
+    InvalidDepositCheckSigPart,
     /// The deposit script was invalid
     #[error("invalid deposit script")]
     InvalidDepositScript,
-    /// The lock time included in the reclaim script was invalid.
+    /// Length of the deposit script is necessarily too short.
+    #[error("script is invalid, it is too short")]
+    InvalidDepositScriptLength,
+    /// The lock time included in the reclaim script was invalid. This
+    /// could be because the number is out of range for an acceptable lock
+    /// time, or because the 32nd bit has been set.
     #[error("the lock time included in the reclaim script was invalid: {0}")]
     InvalidReclaimScriptLockTime(i64),
     /// The reclaim script was invalid.
@@ -49,6 +58,10 @@ pub enum Error {
     /// The X-only public key was invalid
     #[error("the x-only public key in the script was invalid: {0}")]
     InvalidXOnlyPublicKey(#[source] secp256k1::Error),
+    /// The deposit script was non-standard because it did not follow the
+    /// minimal push rule.
+    #[error("deposit script did not follow the minimal push rule")]
+    NonMinimalPushDepositScript,
     /// Could not parse the Stacks principal address.
     #[error("could not parse the stacks principal address: {0}")]
     ParseStacksAddress(#[source] stacks_common::codec::Error),
