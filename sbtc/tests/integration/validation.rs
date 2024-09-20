@@ -178,9 +178,8 @@ fn minimal_push_check() {
         }],
     };
     // We just created a transaction that spends the P2SH UTXO where we
-    // spend a deposit that did not adhere to the non-minimal push rule.
-    // When bicoin-core attempts to validate the transaction it should
-    // fail.
+    // spend a deposit that did not adhere to the minimal push rule. When
+    // bicoin-core attempts to validate the transaction it should fail.
     match rpc.send_raw_transaction(&tx1).unwrap_err() {
         BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -26, message, .. })) => {
             let expected_message =
