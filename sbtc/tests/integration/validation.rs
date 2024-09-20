@@ -1,6 +1,7 @@
 //! Test deposit validation against bitcoin-core
 
 use bitcoin::absolute::LockTime;
+use bitcoin::script::PushBytes;
 use bitcoin::transaction::Version;
 use bitcoin::AddressType;
 use bitcoin::Amount;
@@ -156,10 +157,10 @@ fn op_csv_disabled() {
     //    OP_CSV was disabled.
     faucet.generate_blocks(1);
 
-    // The Builder::push_slice function takes mainly fixed size arrays, so
-    // we convert the locking script to an array first.
-    let locking_script: [u8; 9] = script_pubkey.as_bytes().try_into().unwrap();
-
+    // The Builder::push_slice wants to make sure that the length of the
+    // pushed data is within the limits, hence the conversion into this
+    // PushBytes thing.
+    let locking_script: &PushBytes = script_pubkey.as_bytes().try_into().unwrap();
     let script_sig = ScriptBuf::builder()
         .push_slice(locking_script)
         .into_script();
@@ -250,9 +251,9 @@ fn op_csv_disabled() {
     //    be rejected.
     faucet.generate_blocks(1);
 
-    // Remember, Builder::push_slice likes fixed sized arrays, so we have
-    // to do this dance.
-    let locking_script: [u8; 5] = script_pubkey.as_bytes().try_into().unwrap();
+    // Remember, Builder::push_slice wants to make sure that the length of
+    // the pushed data is within the limits, so we have to do this dance.
+    let locking_script: &PushBytes = script_pubkey.as_bytes().try_into().unwrap();
     let script_sig = ScriptBuf::builder()
         .push_slice(&locking_script)
         .into_script();
