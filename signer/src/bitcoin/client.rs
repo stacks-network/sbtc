@@ -29,12 +29,8 @@ impl BitcoinClient for ApiFallbackClient<BitcoinCoreClient> {
     type Error = Error;
 
     async fn get_tx(&self, _txid: &bitcoin::Txid) -> Result<sbtc::rpc::GetTxResponse, Self::Error> {
-        self.exec(|client| async {
-            client
-                .get_tx(_txid)
-                .map_err(Error::SbtcLib)
-        })
-        .await
+        self.exec(|client| async { client.get_tx(_txid).map_err(Error::SbtcLib) })
+            .await
     }
 }
 

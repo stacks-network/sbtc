@@ -136,7 +136,7 @@ impl CreateDepositRequest {
         let response = client
             .get_tx(&self.outpoint.txid)
             .await
-            .map_err(|_| Error::GetBitcoinTx(self.outpoint.txid))?;
+            .map_err(|e| Error::BitcoinClient(Box::new(e)))?;
 
         Ok(Deposit {
             info: self.validate_tx(&response.tx)?,
