@@ -18,11 +18,6 @@
 //! - `examples/relay-client.rs` is an an example of how to concurrently
 //!   send messages to and receive messages from the server.
 
-#[allow(missing_docs)]
-pub mod proto {
-    tonic::include_proto!("stacks.signer");
-}
-
 use std::collections::VecDeque;
 use std::net::ToSocketAddrs;
 use std::pin::Pin;
@@ -38,6 +33,7 @@ use crate::codec;
 use crate::codec::Decode;
 use crate::codec::Encode;
 use crate::error::Error;
+use crate::proto;
 
 const CHANNEL_CAPACITY: usize = 10_000;
 

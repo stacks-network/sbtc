@@ -13,8 +13,8 @@ pub fn compile_protos() {
 
     // Compile protocol buffers
     tonic_build::configure()
-        .build_server(false)
-        .build_client(false)
+        .build_server(true)
+        .build_client(true)
         .out_dir(workingdir.join("signer/src/proto/generated/"))
         .include_file("mod.rs")
         .compile(&protos, &[workingdir.join("protobufs")])
