@@ -95,7 +95,7 @@ where
 
         for request in deposit_requests {
             let deposit = request
-                .validate(ctx.get_bitcoin_client())
+                .validate(&ctx.get_bitcoin_client())
                 .await
                 .inspect_err(|error| tracing::warn!(%error, "could not validate deposit request"));
 

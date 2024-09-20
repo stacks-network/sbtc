@@ -13,7 +13,6 @@ use std::{
 use crate::error::Error;
 
 /// A fallback-wrapper that can failover to other clients if the current client fails.
-#[derive(Clone)]
 pub struct ApiFallbackClient<T> {
     inner: Arc<InnerApiFallbackClient<T>>,
 }
@@ -23,6 +22,12 @@ impl<T> Deref for ApiFallbackClient<T> {
 
     fn deref(&self) -> &Self::Target {
         &self.inner
+    }
+}
+
+impl<T> Clone for ApiFallbackClient<T> {
+    fn clone(&self) -> Self {
+        Self { inner: Arc::clone(&self.inner) }
     }
 }
 
