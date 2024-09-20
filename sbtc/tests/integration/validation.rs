@@ -80,12 +80,15 @@ fn tx_validation_from_mempool() {
     assert_eq!(parsed.recipient, setup.deposit.recipient);
 }
 
-/// This validates that a user can disable OP_CSV checks if we allow then
-/// to submit any lock-time that they want. It doesn't test much of the code in this crate, just that the
+/// This validates that a user can disable OP_CSV checks if we allow them
+/// to submit any lock-time. It doesn't test much of the code in this
+/// crate, just that bitcoin-core will treat OP_CSV like a no-op if the
+/// [`sbtc::deposits::SEQUENCE_LOCKTIME_DISABLE_FLAG`] bit is set to 1 in
+/// the input `lock_time`.
 ///
-/// The test proceeds as follows.
+/// The test proceeds as follows:
 /// 1. Create and submit a transaction where the lock script uses a
-///    lock-time that disables OP_CSV.
+///    lock-time at least 50 blocks in the future but also disables OP_CSV.
 /// 2. Confirm the transaction and spend it immediately, proving that
 ///    OP_CSV was disabled.
 /// 3. Create and submit another transaction where the lock script uses a
@@ -111,10 +114,13 @@ fn op_csv_disabled() {
     let amount = 30_000_000;
 
     // 1. Create and submit a transaction where the lock script uses a
-    //    lock-time that disables OP_CSV.
+    //    lock-time at least 50 blocks in the future but also disables
+    //    OP_CSV.
     let lock_time = 50 | sbtc::deposits::SEQUENCE_LOCKTIME_DISABLE_FLAG;
     assert!(lock_time > 50);
 
+    // We're going to create a P2SH UTXO with this script. Anyone can spend
+    // this script immediately, since the lock-time disables OP_CSV.
     let script_pubkey = ScriptBuf::builder()
         .push_int(lock_time)
         .push_opcode(bitcoin::opcodes::all::OP_CSV)
@@ -150,8 +156,8 @@ fn op_csv_disabled() {
     //    OP_CSV was disabled.
     faucet.generate_blocks(1);
 
-    // rust-bitcoin takes mainly fixed size arrays here, so we convert the
-    // locking script to an array first.
+    // The Builder::push_slice function takes mainly fixed size arrays, so
+    // we convert the locking script to an array first.
     let locking_script: [u8; 9] = script_pubkey.as_bytes().try_into().unwrap();
 
     let script_sig = ScriptBuf::builder()
@@ -172,20 +178,22 @@ fn op_csv_disabled() {
             script_pubkey: depositor.address.script_pubkey(),
         }],
     };
-
+    // We just created a transaction that spends the P2SH UTXO where we
+    // disabled OP_CSV. When bitcoin-core attempts to validate the
+    // transaction it should pass, proving OP_CSV was disabled.
     rpc.send_raw_transaction(&tx1).unwrap();
     faucet.generate_blocks(1);
 
-    // Note that the above script_sig is equivalent to this one, which
-    // would be rejected as a reclaim script.
+    // Note that the above script_sig is equivalent to this one, which is
+    // rejected as a reclaim script.
     let reclaim = ScriptBuf::builder()
         .push_opcode(bitcoin::opcodes::all::OP_DROP)
         .push_opcode(bitcoin::opcodes::OP_TRUE)
         .into_script();
     assert!(ReclaimScriptInputs::try_new(lock_time, reclaim).is_err());
 
-    // 3. Create and submit another transaction where the lock script uses a
-    //    lock-time where OP_CSV is not disabled.
+    // 3. Create and submit another transaction where the lock script uses
+    //    a lock-time where OP_CSV is not disabled.
     let lock_time = 50;
 
     let reclaim = ScriptBuf::builder()
@@ -193,13 +201,13 @@ fn op_csv_disabled() {
         .push_opcode(bitcoin::opcodes::OP_TRUE)
         .into_script();
     // The ReclaimScriptInputs::try_new function just checks that the
-    // lock_time is not disabled, positive and within bitcoin-core's
-    // bounds.
+    // lock_time does not disable OP_CSV, is positive, and is within
+    // bitcoin-core's bounds for an acceptable value.
     let script_pubkey = ReclaimScriptInputs::try_new(lock_time, reclaim)
         .unwrap()
         .reclaim_script();
-    // The reclaim script function above is quite simple, it should produce
-    // this:
+    // The script_pubkey script function above is quite simple, it should
+    // produce this:
     let script_pubkey2 = ScriptBuf::builder()
         .push_int(lock_time)
         .push_opcode(bitcoin::opcodes::all::OP_CSV)
@@ -238,10 +246,12 @@ fn op_csv_disabled() {
     rpc.send_raw_transaction(&tx2).unwrap();
 
     // 4. Confirm that transaction and try to spend it immediately. The
-    //    transaction that tries to spend the transaction from (3) should be
-    //    rejected.
+    //    transaction that tries to spend the transaction from (3) should
+    //    be rejected.
     faucet.generate_blocks(1);
 
+    // Remember, Builder::push_slice likes fixed sized arrays, so we have
+    // to do this dance.
     let locking_script: [u8; 5] = script_pubkey.as_bytes().try_into().unwrap();
     let script_sig = ScriptBuf::builder()
         .push_slice(&locking_script)
