@@ -342,7 +342,7 @@ impl CompleteDepositV1 {
         // 7. Check that the fee is less than the desired max-fee.
         //
         // The smart contract cannot check if we exceed the max fee.
-        // 
+        //
         // TODO(552): The better check is to compute what the fee should be
         // and verify that it matches.
         if deposit_request.amount - self.amount > deposit_request.max_fee {
