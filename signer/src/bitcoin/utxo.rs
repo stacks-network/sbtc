@@ -1011,6 +1011,7 @@ mod tests {
     use super::*;
     use bitcoin::CompressedPublicKey;
     use bitcoin::Txid;
+    use clarity::vm::types::PrincipalData;
     use fake::Fake as _;
     use rand::distributions::Distribution;
     use rand::distributions::Uniform;
@@ -1018,9 +1019,11 @@ mod tests {
     use rand::Rng;
     use rand::SeedableRng as _;
     use ripemd::Ripemd160;
+    use sbtc::deposits::DepositScriptInputs;
     use secp256k1::SecretKey;
     use sha2::Digest as _;
     use sha2::Sha256;
+    use stacks_common::types::chainstate::StacksAddress;
     use test_case::test_case;
 
     use crate::keys::PublicKey;
@@ -1069,12 +1072,18 @@ mod tests {
         let mut signer_bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
         signer_bitmap[..votes_against].fill(true);
 
+        let deposit_inputs = DepositScriptInputs {
+            signers_public_key,
+            max_fee: 10000,
+            recipient: PrincipalData::from(StacksAddress::burn_address(false)),
+        };
+
         DepositRequest {
             outpoint: generate_outpoint(amount, 1),
             max_fee,
             signer_bitmap,
             amount,
-            deposit_script: testing::peg_in_deposit_script(&signers_public_key),
+            deposit_script: deposit_inputs.deposit_script(),
             reclaim_script: ScriptBuf::new(),
             signers_public_key,
         }
