@@ -75,7 +75,9 @@ impl TryFrom<Url> for BitcoinCoreClient {
     fn try_from(url: Url) -> Result<Self, Self::Error> {
         let username = url.username().to_string();
         let password = url.password().unwrap_or_default().to_string();
-        let host = url.host_str().unwrap();
+        let host = url
+            .host_str()
+            .ok_or(Error::InvalidUrl(url::ParseError::EmptyHost))?;
         let port = url.port().unwrap_or(8332);
 
         let endpoint = format!("http://{}:{}", host, port);
@@ -93,7 +95,7 @@ impl BitcoinCoreClient {
     pub fn new(url: &str, username: String, password: String) -> Result<Self, Error> {
         let auth = Auth::UserPass(username, password);
         let client = bitcoincore_rpc::Client::new(url, auth)
-            .map_err(|err| Error::BitcoinCoreRpcClient(err, url.to_string()))?;
+            .map_err(|err| Error::BitcoinClient(Box::new(err)))?;
 
         Ok(Self { inner: client })
     }
