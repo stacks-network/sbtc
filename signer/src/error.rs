@@ -35,11 +35,6 @@ pub enum Error {
     #[error("tokio i/o error: {0}")]
     TokioIo(#[from] tokio::io::Error),
 
-    /// Error occurred when constructing a BitcoinCoreClient. This takes a String
-    /// as [`sbtc::error::Error`] is not [`Sync`] + [`Send`].
-    #[error("failed to construct a BitcoinCoreClient: {0}")]
-    BitcoinCoreClient(String),
-
     /// The error used in the [`Encode`] and [`Decode`] trait.
     #[error("error serializing type: {0}")]
     Bincode(#[source] bincode::Error),

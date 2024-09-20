@@ -32,7 +32,7 @@ impl BitcoinClient for ApiFallbackClient<BitcoinCoreClient> {
         self.exec(|client| async {
             client
                 .get_tx(_txid)
-                .map_err(|error| Error::BitcoinCoreClient(error.to_string()))
+                .map_err(Error::SbtcLib)
         })
         .await
     }
@@ -80,7 +80,7 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
             client
                 .inner_client()
                 .send_raw_transaction(tx)
-                .map_err(|e| Error::BitcoinCoreClient(e.to_string()))
+                .map_err(Error::BitcoinCoreRpc)
                 .map(|_| ())
         })
         .await
