@@ -404,7 +404,7 @@ impl fake::Dummy<fake::Faker> for ScriptPubKey {
 #[derive(Debug, Clone, Copy, fake::Dummy)]
 pub struct DepositTxConfig {
     /// The public key of the signer.
-    pub signer_public_key: PublicKey,
+    pub aggregate_key: PublicKey,
     /// The amount of the deposit
     #[dummy(faker = "2000..1_000_000_000")]
     pub amount: u64,
@@ -421,7 +421,7 @@ pub struct DepositTxConfig {
 impl fake::Dummy<DepositTxConfig> for BitcoinTx {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &DepositTxConfig, rng: &mut R) -> Self {
         let deposit = DepositScriptInputs {
-            signers_public_key: config.signer_public_key.into(),
+            signers_public_key: config.aggregate_key.into(),
             recipient: fake::Faker.fake_with_rng::<StacksPrincipal, _>(rng).into(),
             max_fee: config.max_fee,
         };
@@ -478,20 +478,40 @@ impl fake::Dummy<DepositTxConfig> for model::Transaction {
 /// locked with a valid scriptPubKey that the signers can spend.
 #[derive(Debug, Clone)]
 pub struct SweepTxConfig {
-    /// The public key of the signer.
-    pub signer_public_key: PublicKey,
+    /// The public key of the signers.
+    pub aggregate_key: PublicKey,
     /// The amount of the signers UTXO afterwards.
     pub amounts: std::ops::Range<u64>,
     /// The outpoints to use as inputs.
     pub inputs: Vec<OutPoint>,
+    /// The outputs to include as withdrawals.
+    pub outputs: Vec<(u64, ScriptPubKey)>,
 }
 
 impl fake::Dummy<SweepTxConfig> for BitcoinTx {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &SweepTxConfig, rng: &mut R) -> Self {
-        let internal_key = config.signer_public_key.into();
+        let internal_key = config.aggregate_key.into();
         let outpoints = config.inputs.iter().copied();
 
-        let deposit_tx = bitcoin::Transaction {
+        let first_output = TxOut {
+            value: Amount::from_sat(config.amounts.clone().choose(rng).unwrap_or_default()),
+            script_pubkey: ScriptBuf::new_p2tr(SECP256K1, internal_key, None),
+        };
+        let script_pubkey = if config.outputs.is_empty() {
+            ScriptBuf::new_op_return([0; 21])
+        } else {
+            ScriptBuf::new_op_return([0; 41])
+        };
+        let second_output = TxOut {
+            value: Amount::ZERO,
+            script_pubkey,
+        };
+        let outputs = config.outputs.iter().map(|(amount, script_pub_key)| TxOut {
+            value: Amount::from_sat(*amount),
+            script_pubkey: script_pub_key.clone().into(),
+        });
+
+        let sweep_tx = bitcoin::Transaction {
             version: bitcoin::transaction::Version::TWO,
             lock_time: bitcoin::absolute::LockTime::ZERO,
             input: outpoints
@@ -502,13 +522,13 @@ impl fake::Dummy<SweepTxConfig> for BitcoinTx {
                     witness: bitcoin::Witness::new(),
                 })
                 .collect(),
-            output: vec![TxOut {
-                value: Amount::from_sat(config.amounts.clone().choose(rng).unwrap_or_default()),
-                script_pubkey: ScriptBuf::new_p2tr(SECP256K1, internal_key, None),
-            }],
+            output: std::iter::once(first_output)
+                .chain([second_output])
+                .chain(outputs)
+                .collect(),
         };
 
-        Self::from(deposit_tx)
+        Self::from(sweep_tx)
     }
 }
 
@@ -522,7 +542,7 @@ impl fake::Dummy<SweepTxConfig> for model::Transaction {
         model::Transaction {
             tx,
             txid: bitcoin_tx.compute_txid().to_byte_array(),
-            tx_type: model::TransactionType::DepositRequest,
+            tx_type: model::TransactionType::SbtcTransaction,
             block_hash: fake::Faker.fake_with_rng(rng),
         }
     }

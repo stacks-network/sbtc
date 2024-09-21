@@ -39,11 +39,14 @@ where
     // `generate_signer_info` function the public keys of
     // other signers, so we take one of them and get the signing set from
     // that one.
-    generate_signer_info(rng, num_signers)
+    let mut signer_set: Vec<PublicKey> = generate_signer_info(rng, num_signers)
         .into_iter()
         .take(1)
         .flat_map(|signer_info| signer_info.signer_public_keys.into_iter())
-        .collect()
+        .collect();
+
+    signer_set.sort();
+    signer_set
 }
 
 /// Generate a new signer set
