@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::stacks::contracts::DepositValidationError;
+use crate::stacks::contracts::WithdrawalAcceptValidationError;
 use crate::{codec, ecdsa, network};
 
 /// Top-level signer error
@@ -299,6 +300,11 @@ pub enum Error {
     /// unexpected.
     #[error("unexpected public key from signature. key {0}; digest: {1}")]
     UnknownPublicKey(crate::keys::PublicKey, secp256k1::Message),
+
+    /// The error for when the request to sign a withdrawal-accept
+    /// transaction fails at the validation step.
+    #[error("{0}")]
+    WithdrawalAcceptValidation(#[source] Box<WithdrawalAcceptValidationError>),
 
     /// WSTS error.
     #[error("WSTS error: {0}")]
