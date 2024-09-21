@@ -419,7 +419,7 @@ impl super::DbRead for SharedStore {
         txid: &model::BitcoinTxId,
         output_index: u32,
         aggregate_key: &PublicKey,
-    ) -> Result<Vec<model::SignerVote>, Error> {
+    ) -> Result<model::SignerVotes, Error> {
         // Let's fetch the votes for the outpoint
         let signers = self.get_deposit_signers(txid, output_index).await?;
         let mut signer_votes: HashMap<PublicKey, bool> = signers
@@ -437,7 +437,7 @@ impl super::DbRead for SharedStore {
 
         // Let's merge the signer set with the actual votes.
         if let Some((_, rotate_keys_tx)) = ans {
-            let votes = rotate_keys_tx
+            let votes: Vec<model::SignerVote> = rotate_keys_tx
                 .signer_set
                 .iter()
                 .map(|public_key| model::SignerVote {
@@ -445,9 +445,9 @@ impl super::DbRead for SharedStore {
                     is_accepted: signer_votes.remove(public_key),
                 })
                 .collect();
-            Ok(votes)
+            Ok(model::SignerVotes::from(votes))
         } else {
-            Ok(Vec::new())
+            Ok(model::SignerVotes::from(Vec::new()))
         }
     }
 
@@ -455,7 +455,7 @@ impl super::DbRead for SharedStore {
         &self,
         id: &model::QualifiedRequestId,
         aggregate_key: &PublicKey,
-    ) -> Result<Vec<model::SignerVote>, Error> {
+    ) -> Result<model::SignerVotes, Error> {
         // Let's fetch the votes for the outpoint
         let signers = self
             .get_withdrawal_signers(id.request_id, &id.block_hash)
@@ -475,7 +475,7 @@ impl super::DbRead for SharedStore {
 
         // Let's merge the signer set with the actual votes.
         if let Some((_, rotate_keys_tx)) = ans {
-            let votes = rotate_keys_tx
+            let votes: Vec<model::SignerVote> = rotate_keys_tx
                 .signer_set
                 .iter()
                 .map(|public_key| model::SignerVote {
@@ -483,9 +483,9 @@ impl super::DbRead for SharedStore {
                     is_accepted: signer_votes.get(public_key).copied(),
                 })
                 .collect();
-            Ok(votes)
+            Ok(model::SignerVotes::from(votes))
         } else {
-            Ok(Vec::new())
+            Ok(model::SignerVotes::from(Vec::new()))
         }
     }
 

@@ -986,7 +986,7 @@ async fn fetching_deposit_request_votes() {
         .unwrap();
 
     let mut actual_signer_vote_map: BTreeMap<PublicKey, Option<bool>> = votes
-        .into_iter()
+        .iter()
         .map(|vote| (vote.signer_public_key, vote.is_accepted))
         .collect();
 
@@ -1109,7 +1109,7 @@ async fn fetching_withdrawal_request_votes() {
         .unwrap();
 
     let mut actual_signer_vote_map: BTreeMap<PublicKey, Option<bool>> = votes
-        .into_iter()
+        .iter()
         .map(|vote| (vote.signer_public_key, vote.is_accepted))
         .collect();
 

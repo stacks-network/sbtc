@@ -137,7 +137,7 @@ pub trait DbRead {
         txid: &model::BitcoinTxId,
         output_index: u32,
         aggregate_key: &PublicKey,
-    ) -> impl Future<Output = Result<Vec<model::SignerVote>, Error>> + Send;
+    ) -> impl Future<Output = Result<model::SignerVotes, Error>> + Send;
 
     /// For the given withdrawal request identifier, and aggregate key, get
     /// the list for how the signers voted against the request.
@@ -145,7 +145,7 @@ pub trait DbRead {
         &self,
         id: &model::QualifiedRequestId,
         aggregate_key: &PublicKey,
-    ) -> impl Future<Output = Result<Vec<model::SignerVote>, Error>> + Send;
+    ) -> impl Future<Output = Result<model::SignerVotes, Error>> + Send;
 
     /// Check that the given block hash is included in the canonical
     /// bitcoin blockchain, where the canonical blockchain is identified by

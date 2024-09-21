@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 use std::ops::Deref;
 
 use bitcoin::hashes::Hash as _;
+use bitvec::array::BitArray;
 use clarity::vm::types::PrincipalData;
 use sbtc::deposits::Deposit;
 use serde::Deserialize;
@@ -281,6 +282,46 @@ pub struct SignerVote {
     /// How the signer voted for a transaction. None is returned if we do
     /// not have a record of how the signer voted
     pub is_accepted: Option<bool>,
+}
+
+/// How the signers voted on a thing.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct SignerVotes(Vec<SignerVote>);
+
+impl Deref for SignerVotes {
+    type Target = [SignerVote];
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<Vec<SignerVote>> for SignerVotes {
+    fn from(mut votes: Vec<SignerVote>) -> Self {
+        votes.sort_by_key(|vote| vote.signer_public_key);
+        SignerVotes(votes)
+    }
+}
+
+impl From<SignerVotes> for BitArray<[u8; 16]> {
+    fn from(votes: SignerVotes) -> BitArray<[u8; 16]> {
+        let mut signer_bitmap = BitArray::ZERO;
+        votes
+            .iter()
+            .enumerate()
+            .take(signer_bitmap.len().min(crate::MAX_KEYS as usize))
+            .for_each(|(index, vote)| {
+                // The BitArray::<[u8; 16]>::set function panics if the
+                // index is out of bounds but that cannot be the case here
+                // because we only take 128 values.
+                //
+                // Note that the signer bitmap here is true for votes
+                // *against*, and a missing vote is an implicit vote
+                // against.
+                signer_bitmap.set(index, !vote.is_accepted.unwrap_or(false));
+            });
+
+        signer_bitmap
+    }
 }
 
 /// The types of transactions the signer is interested in.
