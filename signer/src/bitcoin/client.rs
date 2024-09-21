@@ -51,13 +51,7 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
     }
 
     async fn estimate_fee_rate(&self) -> Result<f64, Error> {
-        self.exec(|client| async {
-            client
-                .estimate_fee_rate(1)
-                .map(|rate| rate.sats_per_vbyte)
-                .map_err(Error::SbtcLib)
-        })
-        .await
+        todo!() // TODO(542)
     }
 
     async fn get_signer_utxo(
