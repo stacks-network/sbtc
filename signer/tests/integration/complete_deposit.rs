@@ -67,6 +67,8 @@ fn make_complete_deposit(
         context_window: 10,
         // The value here doesn't matter.
         origin: fake::Faker.fake_with_rng(&mut OsRng),
+        // The value here doesn't matter either.
+        aggregate_key: fake::Faker.fake_with_rng(&mut OsRng),
         // This value affects how many deposit transactions are consider
         // accepted.
         signatures_required: 2,

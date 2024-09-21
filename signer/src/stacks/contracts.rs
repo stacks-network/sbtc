@@ -68,6 +68,9 @@ pub struct ReqContext {
     /// [`AsContractCall::validate`] function, but is here for logging and
     /// tracking purposes.
     pub origin: PublicKey,
+    /// The combined public key of all the signers in the current
+    /// signing set.
+    pub aggregate_key: PublicKey,
     /// The number of signatures required for an accepted deposit request.
     pub signatures_required: u16,
     /// The expected deployer of the sBTC smart contract.

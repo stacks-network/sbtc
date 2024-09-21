@@ -449,6 +449,8 @@ where
             context_window: self.context_window,
             // This is wrong
             origin: self.signer_pub_key(),
+            // This is wrong
+            aggregate_key: self.signer_pub_key(),
             signatures_required: self.threshold as u16,
             // This is wrong
             deployer: StacksAddress::burn_address(false),
