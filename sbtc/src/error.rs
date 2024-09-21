@@ -7,6 +7,9 @@ use bitcoin::Txid;
 /// Errors
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Error when the port is not provided
+    #[error("a port must be specified")]
+    PortRequired,
     /// Error when parsing a URL
     #[error("could not parse the provided URL: {0}")]
     InvalidUrl(#[source] url::ParseError),

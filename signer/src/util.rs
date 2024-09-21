@@ -10,7 +10,29 @@ use std::{
     },
 };
 
+use thiserror::Error;
+
 use crate::error::Error;
+
+const DEFAULT_MINIMUM_RETRY_COUNT: usize = 3;
+
+/// Error variants for the fallback client.
+#[derive(Debug, Error)]
+pub enum FallbackClientError {
+    /// All failover clients failed within the retry limit
+    #[error(
+        "all fallback clients failed to execute the request within the allotted number of retries"
+    )]
+    AllClientsFailed,
+
+    /// No endpoints were provided
+    #[error("no endpoints were provided")]
+    NoEndpoints,
+
+    /// Retry count must be greater than zero
+    #[error("retry count must be greater than zero")]
+    RetryCountZero,
+}
 
 /// A fallback-wrapper that can failover to other clients if the current client fails.
 pub struct ApiFallbackClient<T> {
@@ -40,8 +62,14 @@ pub struct InnerApiFallbackClient<T> {
 
 impl<T> InnerApiFallbackClient<T> {
     /// Set the number of retries to perform before giving up.
-    pub fn set_retry_count(&self, retry_count: u8) {
+    pub fn set_retry_count(&self, retry_count: u8) -> Result<(), FallbackClientError> {
+        if retry_count == 0 {
+            return Err(FallbackClientError::RetryCountZero);
+        }
+
         self.retry_count.store(retry_count, Ordering::Relaxed);
+
+        Ok(())
     }
 
     /// Get a reference to the current inner API client.
@@ -74,14 +102,18 @@ impl<T> InnerApiFallbackClient<T> {
             return result.map_err(Into::into);
         }
 
-        Err(Error::AllFailoverClientsFailed)
+        Err(FallbackClientError::AllClientsFailed.into())
     }
 }
 
 impl<T> ApiFallbackClient<T> {
     /// Create a new fallback client from a list of clients.
-    pub fn new(clients: Vec<T>) -> Self {
-        let retry_count = min(3, clients.len());
+    pub fn new(clients: Vec<T>) -> Result<Self, FallbackClientError> {
+        if clients.is_empty() {
+            return Err(FallbackClientError::NoEndpoints);
+        }
+
+        let retry_count = min(DEFAULT_MINIMUM_RETRY_COUNT, clients.len());
 
         let inner = InnerApiFallbackClient {
             inner_clients: clients,
@@ -89,7 +121,7 @@ impl<T> ApiFallbackClient<T> {
             retry_count: AtomicU8::new(retry_count as u8),
         };
 
-        Self { inner: Arc::new(inner) }
+        Ok(Self { inner: Arc::new(inner) })
     }
 }
 
@@ -133,7 +165,7 @@ mod tests {
                 .map(|url| MockClient::from(url.clone()))
                 .collect::<Vec<_>>();
 
-            Self::new(clients)
+            Self::new(clients).unwrap()
         }
     }
 
@@ -235,7 +267,7 @@ mod tests {
                 Url::parse("http://fail/2").unwrap(),
             ][..],
         );
-        client.set_retry_count(4);
+        client.set_retry_count(4).unwrap();
 
         // We'll use this to count how many times the closure is called
         let call_count = AtomicUsize::new(0);
@@ -252,7 +284,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            Error::AllFailoverClientsFailed
+            Error::FallbackClient(FallbackClientError::AllClientsFailed)
         ));
     }
 }

@@ -1,20 +1,12 @@
 //! Testing helpers for api clients
 
-use std::cell::LazyCell;
-
 use sbtc::rpc::BitcoinClient;
 use url::Url;
 
 use crate::{
     bitcoin::BitcoinInteract, block_observer::EmilyInteract, blocklist_client::BlocklistChecker,
-    error::Error, stacks::api::StacksInteract, util::ApiFallbackClient,
+    error::Error, stacks::api::StacksInteract,
 };
-
-/// A no-op API client that implements the BitcoinClient trait. It will panic
-/// if you attempt to use it, but can be useful for fillers in testing.
-#[allow(clippy::declare_interior_mutable_const)]
-pub const NOOP_API_CLIENT: LazyCell<ApiFallbackClient<NoopApiClient>> =
-    LazyCell::new(|| ApiFallbackClient::new(vec![NoopApiClient]));
 
 /// A no-op API client that doesn't do anything. It will panic if you
 /// attempt to use it, but can be useful for fillers in testing.

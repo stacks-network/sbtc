@@ -8,6 +8,10 @@ use crate::{codec, ecdsa, network};
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Error from the fallback client.
+    #[error("fallback client error: {0}")]
+    FallbackClient(#[from] crate::util::FallbackClientError),
+
     /// Error from the Bitcoin RPC client.
     #[error("bitcoin RPC error: {0}")]
     BitcoinCoreRpc(#[from] bitcoincore_rpc::Error),
@@ -15,12 +19,6 @@ pub enum Error {
     /// An error propogated from the sBTC library.
     #[error("sBTC lib error: {0}")]
     SbtcLib(#[from] sbtc::error::Error),
-
-    /// All failover clients failed
-    #[error(
-        "all failover clients failed to execute the request within the allotted number of retries"
-    )]
-    AllFailoverClientsFailed,
 
     /// Error incurred during the execution of the libp2p swarm.
     #[error("an error occurred running the libp2p swarm: {0}")]

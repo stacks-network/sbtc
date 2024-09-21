@@ -18,10 +18,10 @@ impl TryFrom<&[Url]> for ApiFallbackClient<BitcoinCoreClient> {
     fn try_from(urls: &[Url]) -> Result<Self, Self::Error> {
         let clients = urls
             .iter()
-            .map(|url| BitcoinCoreClient::try_from(url.clone()).unwrap())
-            .collect::<Vec<_>>();
+            .map(|url| BitcoinCoreClient::try_from(url.clone()))
+            .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(Self::new(clients))
+        Self::new(clients).map_err(Into::into)
     }
 }
 

@@ -730,9 +730,10 @@ mod tests {
         }
     }
 
-    impl From<TestHarness> for ApiFallbackClient<TestHarness> {
-        fn from(value: TestHarness) -> Self {
-            ApiFallbackClient::new(vec![value])
+    impl TryFrom<TestHarness> for ApiFallbackClient<TestHarness> {
+        type Error = Error;
+        fn try_from(value: TestHarness) -> Result<Self, Error> {
+            ApiFallbackClient::new(vec![value]).map_err(Error::FallbackClient)
         }
     }
 
