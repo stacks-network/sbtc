@@ -210,7 +210,9 @@ impl AsTxPayload for ContractCall {
 #[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompleteDepositV1 {
     /// The outpoint of the bitcoin UTXO that was spent as a deposit for
-    /// sBTC.
+    /// sBTC. This is used to identify the deposit transaction when doing
+    /// validation, as well as in the clarity contract call to avoid double
+    /// minting.
     pub outpoint: OutPoint,
     /// The amount of sats swept in by the signers when they moved in the
     /// above UTXO. This amount is less than the amount associated with the
@@ -284,7 +286,9 @@ impl AsContractCall for CompleteDepositV1 {
     where
         S: DbRead + Send + Sync,
     {
+        // Covers points 1-2 & 5-7
         self.validate_sweep_tx(db, ctx).await?;
+        // Covers points 3 & 4
         self.validate_deposit_vars(db, ctx).await
     }
 }
@@ -293,7 +297,8 @@ impl CompleteDepositV1 {
     /// Validate the variables in this transaction match the input in the
     /// deposit request.
     ///
-    /// Specifically, this function checks:
+    /// Specifically, this function checks the following points (from the
+    /// docs of [`CompleteDepositV1::validate`]):
     /// 1. That the smart contract deployer matches the deployer in our
     ///    context.
     /// 2. That the signer has a record of the deposit request in its list

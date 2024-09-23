@@ -40,7 +40,7 @@ fn make_complete_deposit(
     // Okay now we get ready to create the transaction using the
     // `CompleteDepositV1` type.
     let complete_deposit_tx = CompleteDepositV1 {
-        // This outpoint points to the deposit UTXO.
+        // This OutPoint points to the deposit UTXO.
         outpoint: req.outpoint(),
         // This amount must not exceed the amount in the deposit request.
         amount: req.amount,
@@ -80,7 +80,7 @@ fn make_complete_deposit(
 
 /// Generate a signer set, deposit requests and store them into the
 /// database.
-async fn deposit_setup<R>(rng: &mut R, pg_store: &PgStore) -> Vec<PublicKey>
+async fn deposit_setup<R>(rng: &mut R, db: &PgStore) -> Vec<PublicKey>
 where
     R: rand::RngCore + rand::CryptoRng,
 {
@@ -100,14 +100,12 @@ where
     // transactions in each bitcoin block.
     let signer_set = testing::wsts::generate_signer_set(rng, num_signers);
     let test_data = TestData::generate(rng, &signer_set, &test_model_params);
-    test_data.write_to(pg_store).await;
+    test_data.write_to(db).await;
     signer_set
 }
 
 /// Get the full block
-async fn get_bitcoin_canonical_chain_tip_block(
-    store: &PgStore,
-) -> Result<Option<BitcoinBlock>, Error> {
+async fn get_bitcoin_canonical_chain_tip_block(db: &PgStore) -> BitcoinBlock {
     sqlx::query_as::<_, BitcoinBlock>(
         "SELECT
             block_hash
@@ -118,9 +116,33 @@ async fn get_bitcoin_canonical_chain_tip_block(
             ORDER BY block_height DESC, block_hash DESC
             LIMIT 1",
     )
-    .fetch_optional(store.pool())
+    .fetch_optional(db.pool())
     .await
-    .map_err(Error::SqlxQuery)
+    .unwrap()
+    .unwrap()
+}
+
+/// Get an existing deposit request that has been confirmed on the
+/// canonical bitcoin blockchain.
+///
+/// The signatures required field affects which deposit requests are
+/// eligible for being accepted. In these tests, we just need any old
+/// deposit request so this value doesn't matter so long as we get one
+/// deposit request that meets these requirements.
+async fn get_pending_accepted_deposit_requests(
+    db: &PgStore,
+    chain_tip: &BitcoinBlock,
+    signatures_required: u16,
+) -> DepositRequest {
+    // The context window limits how far back we look in the blockchain for
+    // accepted and pending deposit requests. For these tests, this value
+    // is fine.
+    db.get_pending_accepted_deposit_requests(&chain_tip.block_hash, 20, signatures_required)
+        .await
+        .unwrap()
+        .last()
+        .cloned()
+        .unwrap()
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -131,25 +153,17 @@ async fn complete_deposit_validation_happy_path() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let signatures_required = 3;
+    let signatures_required = 2;
 
-    let signer_set = deposit_setup(&mut rng, &pg_store).await;
+    let signer_set = deposit_setup(&mut rng, &db).await;
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing deposit request on the canonical bitcoin
     // blockchain.
-    let deposit_req = pg_store
-        .get_pending_accepted_deposit_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let deposit_req =
+        get_pending_accepted_deposit_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
@@ -167,19 +181,16 @@ async fn complete_deposit_validation_happy_path() {
         txid: sweep_tx.txid.into(),
         block_hash: sweep_tx.block_hash.into(),
     };
-    pg_store.write_transaction(&sweep_tx).await.unwrap();
-    pg_store
-        .write_bitcoin_transaction(&bitcoin_tx_ref)
-        .await
-        .unwrap();
+    db.write_transaction(&sweep_tx).await.unwrap();
+    db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Generate the transaction and corresponding request context.
     let (complete_deposit_tx, ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
 
     // This should not return an Err.
-    complete_deposit_tx.validate(&pg_store, &ctx).await.unwrap();
+    complete_deposit_tx.validate(&db, &ctx).await.unwrap();
 
-    testing::storage::drop_db(pg_store).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -191,26 +202,18 @@ async fn complete_deposit_validation_deployer_mismatch() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let signatures_required = 3;
+    let signatures_required = 2;
 
-    let signer_set = deposit_setup(&mut rng, &pg_store).await;
+    let signer_set = deposit_setup(&mut rng, &db).await;
 
     // Get the chain tip
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing deposit request on the canonical bitcoin
     // blockchain.
-    let deposit_req = pg_store
-        .get_pending_accepted_deposit_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let deposit_req =
+        get_pending_accepted_deposit_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
@@ -228,11 +231,8 @@ async fn complete_deposit_validation_deployer_mismatch() {
         txid: sweep_tx.txid.into(),
         block_hash: sweep_tx.block_hash.into(),
     };
-    pg_store.write_transaction(&sweep_tx).await.unwrap();
-    pg_store
-        .write_bitcoin_transaction(&bitcoin_tx_ref)
-        .await
-        .unwrap();
+    db.write_transaction(&sweep_tx).await.unwrap();
+    db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Generate the transaction and corresponding request context.
     let (mut complete_deposit_tx, mut ctx) =
@@ -241,7 +241,7 @@ async fn complete_deposit_validation_deployer_mismatch() {
     complete_deposit_tx.deployer = StacksAddress::p2pkh(false, &signer_set[0].into());
     ctx.deployer = StacksAddress::p2pkh(false, &signer_set[1].into());
 
-    let validate_future = complete_deposit_tx.validate(&pg_store, &ctx);
+    let validate_future = complete_deposit_tx.validate(&db, &ctx);
     match validate_future.await.unwrap_err() {
         Error::DepositValidation(ref err) => {
             assert_eq!(err.error, DepositErrorMsg::DeployerMismatch)
@@ -249,7 +249,7 @@ async fn complete_deposit_validation_deployer_mismatch() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(pg_store).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -262,17 +262,14 @@ async fn complete_deposit_validation_missing_deposit_request() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    let signer_set = deposit_setup(&mut rng, &pg_store).await;
+    let signer_set = deposit_setup(&mut rng, &db).await;
 
     // Normal: Get the chain tip and any pending deposit request in the blockchain
     // identified by the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Different: Let's use a random deposit request instead of one that
     // exists in the database.
     let deposit_req: DepositRequest = fake::Faker.fake_with_rng(&mut rng);
@@ -293,15 +290,12 @@ async fn complete_deposit_validation_missing_deposit_request() {
         txid: sweep_tx.txid.into(),
         block_hash: sweep_tx.block_hash.into(),
     };
-    pg_store.write_transaction(&sweep_tx).await.unwrap();
-    pg_store
-        .write_bitcoin_transaction(&bitcoin_tx_ref)
-        .await
-        .unwrap();
+    db.write_transaction(&sweep_tx).await.unwrap();
+    db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     let (complete_deposit_tx, ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
 
-    let validation_result = complete_deposit_tx.validate(&pg_store, &ctx).await;
+    let validation_result = complete_deposit_tx.validate(&db, &ctx).await;
     match validation_result.unwrap_err() {
         Error::DepositValidation(ref err) => {
             assert_eq!(err.error, DepositErrorMsg::RequestMissing)
@@ -309,7 +303,7 @@ async fn complete_deposit_validation_missing_deposit_request() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(pg_store).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -322,26 +316,18 @@ async fn complete_deposit_validation_recipient_mismatch() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let signatures_required = 3;
+    let signatures_required = 2;
 
-    let signer_set = deposit_setup(&mut rng, &pg_store).await;
+    let signer_set = deposit_setup(&mut rng, &db).await;
 
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing deposit request on the canonical bitcoin
     // blockchain.
-    let deposit_req = pg_store
-        .get_pending_accepted_deposit_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let deposit_req =
+        get_pending_accepted_deposit_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
@@ -359,11 +345,8 @@ async fn complete_deposit_validation_recipient_mismatch() {
         txid: sweep_tx.txid.into(),
         block_hash: sweep_tx.block_hash.into(),
     };
-    pg_store.write_transaction(&sweep_tx).await.unwrap();
-    pg_store
-        .write_bitcoin_transaction(&bitcoin_tx_ref)
-        .await
-        .unwrap();
+    db.write_transaction(&sweep_tx).await.unwrap();
+    db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Generate the transaction and corresponding request context.
     let (mut complete_deposit_tx, ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
@@ -372,7 +355,7 @@ async fn complete_deposit_validation_recipient_mismatch() {
         .fake_with_rng::<StacksPrincipal, _>(&mut rng)
         .into();
 
-    let validate_future = complete_deposit_tx.validate(&pg_store, &ctx);
+    let validate_future = complete_deposit_tx.validate(&db, &ctx);
     match validate_future.await.unwrap_err() {
         Error::DepositValidation(ref err) => {
             assert_eq!(err.error, DepositErrorMsg::RecipientMismatch)
@@ -380,7 +363,7 @@ async fn complete_deposit_validation_recipient_mismatch() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(pg_store).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -393,26 +376,18 @@ async fn complete_deposit_validation_invalid_mint_amount() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let signatures_required = 3;
+    let signatures_required = 2;
 
-    let signer_set = deposit_setup(&mut rng, &pg_store).await;
+    let signer_set = deposit_setup(&mut rng, &db).await;
 
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing deposit request on the canonical bitcoin
     // blockchain.
-    let deposit_req = pg_store
-        .get_pending_accepted_deposit_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let deposit_req =
+        get_pending_accepted_deposit_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
@@ -430,11 +405,8 @@ async fn complete_deposit_validation_invalid_mint_amount() {
         txid: sweep_tx.txid.into(),
         block_hash: sweep_tx.block_hash.into(),
     };
-    pg_store.write_transaction(&sweep_tx).await.unwrap();
-    pg_store
-        .write_bitcoin_transaction(&bitcoin_tx_ref)
-        .await
-        .unwrap();
+    db.write_transaction(&sweep_tx).await.unwrap();
+    db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Generate the transaction and corresponding request context.
     let (mut complete_deposit_tx, ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
@@ -442,7 +414,7 @@ async fn complete_deposit_validation_invalid_mint_amount() {
     // request.
     complete_deposit_tx.amount = deposit_req.amount + 1000;
 
-    let validate_future = complete_deposit_tx.validate(&pg_store, &ctx);
+    let validate_future = complete_deposit_tx.validate(&db, &ctx);
     match validate_future.await.unwrap_err() {
         Error::DepositValidation(ref err) => {
             assert_eq!(err.error, DepositErrorMsg::InvalidMintAmount)
@@ -450,7 +422,7 @@ async fn complete_deposit_validation_invalid_mint_amount() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(pg_store).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -463,26 +435,18 @@ async fn complete_deposit_validation_invalid_fee() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let signatures_required = 3;
+    let signatures_required = 2;
 
-    let signer_set = deposit_setup(&mut rng, &pg_store).await;
+    let signer_set = deposit_setup(&mut rng, &db).await;
 
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing deposit request on the canonical bitcoin
     // blockchain.
-    let deposit_req = pg_store
-        .get_pending_accepted_deposit_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let deposit_req =
+        get_pending_accepted_deposit_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
@@ -500,11 +464,8 @@ async fn complete_deposit_validation_invalid_fee() {
         txid: sweep_tx.txid.into(),
         block_hash: sweep_tx.block_hash.into(),
     };
-    pg_store.write_transaction(&sweep_tx).await.unwrap();
-    pg_store
-        .write_bitcoin_transaction(&bitcoin_tx_ref)
-        .await
-        .unwrap();
+    db.write_transaction(&sweep_tx).await.unwrap();
+    db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Generate the transaction and corresponding request context.
     let (mut complete_deposit_tx, ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
@@ -512,7 +473,7 @@ async fn complete_deposit_validation_invalid_fee() {
     // the max-fee.
     complete_deposit_tx.amount = deposit_req.amount - deposit_req.max_fee - 1;
 
-    let validate_future = complete_deposit_tx.validate(&pg_store, &ctx);
+    let validate_future = complete_deposit_tx.validate(&db, &ctx);
     match validate_future.await.unwrap_err() {
         Error::DepositValidation(ref err) => {
             assert_eq!(err.error, DepositErrorMsg::InvalidFee)
@@ -520,7 +481,7 @@ async fn complete_deposit_validation_invalid_fee() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(pg_store).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -533,26 +494,18 @@ async fn complete_deposit_validation_sweep_tx_missing() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let signatures_required = 3;
+    let signatures_required = 2;
 
-    let signer_set = deposit_setup(&mut rng, &pg_store).await;
+    let signer_set = deposit_setup(&mut rng, &db).await;
 
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing deposit request on the canonical bitcoin
     // blockchain.
-    let deposit_req = pg_store
-        .get_pending_accepted_deposit_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let deposit_req =
+        get_pending_accepted_deposit_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
@@ -571,7 +524,7 @@ async fn complete_deposit_validation_sweep_tx_missing() {
     // Generate the transaction and corresponding request context.
     let (complete_deposit_tx, ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
 
-    let validation_result = complete_deposit_tx.validate(&pg_store, &ctx).await;
+    let validation_result = complete_deposit_tx.validate(&db, &ctx).await;
     match validation_result.unwrap_err() {
         Error::DepositValidation(ref err) => {
             assert_eq!(err.error, DepositErrorMsg::SweepTransactionMissing)
@@ -579,7 +532,7 @@ async fn complete_deposit_validation_sweep_tx_missing() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(pg_store).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -592,25 +545,17 @@ async fn complete_deposit_validation_sweep_reorged() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let signatures_required = 3;
+    let signatures_required = 2;
 
-    let signer_set = deposit_setup(&mut rng, &pg_store).await;
+    let signer_set = deposit_setup(&mut rng, &db).await;
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing deposit request on the canonical bitcoin
     // blockchain.
-    let deposit_req = pg_store
-        .get_pending_accepted_deposit_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let deposit_req =
+        get_pending_accepted_deposit_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
@@ -634,7 +579,7 @@ async fn complete_deposit_validation_sweep_reorged() {
         num_signers_per_request: 0,
     };
     let test_data2 = TestData::generate(&mut rng, &signer_set, &test_model_params);
-    test_data2.write_to(&pg_store).await;
+    test_data2.write_to(&db).await;
     let chain_tip2 = test_data2
         .bitcoin_blocks
         .iter()
@@ -647,18 +592,15 @@ async fn complete_deposit_validation_sweep_reorged() {
         txid: sweep_tx.txid.into(),
         block_hash: sweep_tx.block_hash.into(),
     };
-    pg_store.write_transaction(&sweep_tx).await.unwrap();
-    pg_store
-        .write_bitcoin_transaction(&bitcoin_tx_ref)
-        .await
-        .unwrap();
+    db.write_transaction(&sweep_tx).await.unwrap();
+    db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Generate the transaction and corresponding request context.
     let (complete_deposit_tx, mut ctx) =
         make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip2);
     ctx.chain_tip = chain_tip.into();
 
-    let validation_result = complete_deposit_tx.validate(&pg_store, &ctx).await;
+    let validation_result = complete_deposit_tx.validate(&db, &ctx).await;
     match validation_result.unwrap_err() {
         Error::DepositValidation(ref err) => {
             assert_eq!(err.error, DepositErrorMsg::SweepTransactionReorged)
@@ -666,7 +608,7 @@ async fn complete_deposit_validation_sweep_reorged() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(pg_store).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -680,26 +622,18 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let signatures_required = 3;
+    let signatures_required = 2;
 
-    let signer_set = deposit_setup(&mut rng, &pg_store).await;
+    let signer_set = deposit_setup(&mut rng, &db).await;
 
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&pg_store)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing deposit request on the canonical bitcoin
     // blockchain.
-    let deposit_req = pg_store
-        .get_pending_accepted_deposit_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let deposit_req =
+        get_pending_accepted_deposit_requests(&db, &chain_tip, signatures_required).await;
 
     // Different: The sweep transaction does not include the deposit
     // request UTXO as an input.
@@ -721,16 +655,13 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
         txid: sweep_tx.txid.into(),
         block_hash: sweep_tx.block_hash.into(),
     };
-    pg_store.write_transaction(&sweep_tx).await.unwrap();
-    pg_store
-        .write_bitcoin_transaction(&bitcoin_tx_ref)
-        .await
-        .unwrap();
+    db.write_transaction(&sweep_tx).await.unwrap();
+    db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Generate the transaction and corresponding request context.
     let (complete_deposit_tx, ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
 
-    let validation_result = complete_deposit_tx.validate(&pg_store, &ctx).await;
+    let validation_result = complete_deposit_tx.validate(&db, &ctx).await;
     match validation_result.unwrap_err() {
         Error::DepositValidation(ref err) => {
             assert_eq!(err.error, DepositErrorMsg::MissingFromSweep)
@@ -738,5 +669,5 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(pg_store).await;
+    testing::storage::drop_db(db).await;
 }
