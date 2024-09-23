@@ -596,7 +596,6 @@ mod tests {
                 block_hash: None,
                 confirmations: None,
                 block_time: None,
-                in_active_chain: None,
             })
         }
     }

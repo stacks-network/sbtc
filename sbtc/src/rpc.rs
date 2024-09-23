@@ -2,8 +2,6 @@
 
 use std::future::Future;
 
-use bitcoin::consensus;
-use bitcoin::consensus::Decodable as _;
 use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::Denomination;
@@ -27,11 +25,11 @@ use crate::error::Error;
 /// getrawtransaction RPC.
 ///
 /// The docs for the getrawtransaction RPC call can be found here:
-/// https://bitcoincore.org/en/doc/27.0.0/rpc/rawtransactions/getrawtransaction/.
+/// https://bitcoincore.org/en/doc/25.0.0/rpc/rawtransactions/getrawtransaction/.
 #[derive(Debug, Clone, Deserialize)]
 pub struct GetTxResponse {
     /// The raw bitcoin transaction.
-    #[serde(with = "consensus::serde::With::<consensus::serde::Hex>")]
+    #[serde(with = "bitcoin::consensus::serde::With::<bitcoin::consensus::serde::Hex>")]
     #[serde(rename = "hex")]
     pub tx: Transaction,
     /// The block hash of the Bitcoin block that includes this transaction.
@@ -44,10 +42,6 @@ pub struct GetTxResponse {
     /// timestamp as recorded by the miner of the block.
     #[serde(rename = "blocktime")]
     pub block_time: Option<u64>,
-    /// Whether the specified block (in the getrawtransaction RPC) is in
-    /// the active chain or not. It is only present when the "blockhash"
-    /// argument is present in the RPC.
-    pub in_active_chain: Option<bool>,
 }
 
 /// A struct containing the response from bitcoin-core for a
@@ -272,7 +266,7 @@ impl BitcoinCoreClient {
     pub fn new(url: &str, username: String, password: String) -> Result<Self, Error> {
         let auth = Auth::UserPass(username, password);
         let client = bitcoincore_rpc::Client::new(url, auth)
-            .map_err(|err| Error::BitcoinClient(Box::new(err)))?;
+            .map_err(|err| Error::BitcoinCoreRpcClient(err, url.to_string()))?;
 
         Ok(Self { inner: client })
     }
@@ -283,7 +277,7 @@ impl BitcoinCoreClient {
     }
 
     /// Fetch and decode raw transaction from bitcoin-core using the
-    /// getrawtransaction RPC.
+    /// getrawtransaction RPC with a verbosity of 1.
     ///
     /// # Notes
     ///
@@ -292,22 +286,18 @@ impl BitcoinCoreClient {
     /// argument is passed, it will return the transaction if it is in the
     /// mempool or any block.
     pub fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
-        let response = self
-            .inner
-            .get_raw_transaction_info(txid, None)
-            .map_err(|err| Error::GetTransactionBitcoinCore(err, *txid))?;
-        let tx = Transaction::consensus_decode(&mut response.hex.as_slice())
-            .map_err(|err| Error::DecodeTx(err, *txid))?;
+        let args = [
+            serde_json::to_value(txid).map_err(Error::JsonSerialize)?,
+            // This is the verbosity level. The acceptable values are 0, 1,
+            // and 2, and we want the 1 for some additional information
+            // over just the raw transaction.
+            serde_json::Value::Number(serde_json::value::Number::from(1u32)),
+            serde_json::Value::Null,
+        ];
 
-        debug_assert_eq!(txid, &response.txid);
-
-        Ok(GetTxResponse {
-            tx,
-            block_hash: response.blockhash,
-            confirmations: response.confirmations,
-            block_time: response.blocktime.map(|time| time as u64),
-            in_active_chain: response.in_active_chain,
-        })
+        self.inner
+            .call("getrawtransaction", &args)
+            .map_err(|err| Error::GetTransactionBitcoinCore(err, *txid))
     }
 
     /// Fetch and decode raw transaction from bitcoin-core using the

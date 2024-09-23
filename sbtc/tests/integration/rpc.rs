@@ -37,7 +37,6 @@ fn btc_client_gets_transactions() {
     assert!(response.block_hash.is_none());
     assert!(response.block_time.is_none());
     assert!(response.confirmations.is_none());
-    assert!(response.in_active_chain.is_none());
 
     // Now let's confirm it and try again
     faucet.generate_blocks(1);
@@ -50,16 +49,6 @@ fn btc_client_gets_transactions() {
     assert!(response.block_hash.is_some());
     assert!(response.block_time.is_some());
     assert_eq!(response.confirmations, Some(1));
-    // The `in_active_chain` field is tricky, it needs more confirmations
-    // before it is set. Moreover, it only gets set with the electrum
-    // client. Under the hood, electrum looks up the blockhash of the given
-    // txid and makes a getrawtransaction call to bitcoin-core with this
-    // optional blockhash input, and bitcoin-core will only set the
-    // `in_active_chain` field in the response if it has the blockhash
-    // input in the request. So we stop here and just check that it is
-    // still None. If this was the ElectrumClient then after one more
-    // `faucet.generate_blocks(1)` call it would be set to `Some(true)`.
-    assert!(response.in_active_chain.is_none());
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
