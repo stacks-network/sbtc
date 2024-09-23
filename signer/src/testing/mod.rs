@@ -1,5 +1,8 @@
 //! Module with testing utility functions.
 
+#![allow(clippy::unwrap_in_result, clippy::unwrap_used, clippy::expect_used)]
+
+pub mod api_clients;
 pub mod dummy;
 pub mod message;
 pub mod network;
@@ -9,10 +12,15 @@ pub mod transaction_signer;
 pub mod wallet;
 pub mod wsts;
 
+use crate::context::SignerContext;
+use api_clients::NoopApiClient;
 use bitcoin::key::TapTweak;
 use bitcoin::TapSighashType;
 use bitcoin::Witness;
 use secp256k1::SECP256K1;
+
+/// A [`SignerContext`] which uses [`NoopApiClient`]s.
+pub type NoopSignerContext<S> = SignerContext<S, NoopApiClient>;
 
 use crate::bitcoin::utxo::UnsignedTransaction;
 use crate::config::Settings;

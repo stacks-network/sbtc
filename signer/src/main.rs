@@ -5,6 +5,7 @@ use axum::routing::post;
 use axum::Router;
 use cfg_if::cfg_if;
 use clap::Parser;
+use sbtc::rpc::BitcoinCoreClient;
 use signer::api;
 use signer::api::ApiState;
 use signer::config::Settings;
@@ -13,6 +14,7 @@ use signer::context::SignerContext;
 use signer::error::Error;
 use signer::network::libp2p::SignerSwarmBuilder;
 use signer::storage::postgres::PgStore;
+use signer::util::ApiFallbackClient;
 use tokio::signal;
 
 /// Command line arguments for the signer.
@@ -56,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Initialize the signer context.
-    let context = SignerContext::init(settings, db)?;
+    let context = SignerContext::<_, ApiFallbackClient<BitcoinCoreClient>>::init(&settings, db)?;
 
     // Run the application components concurrently. We're `join!`ing them
     // here so that every component can shut itself down gracefully when
@@ -212,4 +214,19 @@ async fn run_stacks_event_observer(ctx: impl Context + 'static) -> Result<(), Er
             ctx.get_termination_handle().signal_shutdown();
             error.into()
         })
+}
+
+#[allow(dead_code)] // Remove when implemented
+async fn run_block_observer(_ctx: impl Context) -> Result<(), Error> {
+    todo!() //TODO(548)
+}
+
+#[allow(dead_code)] // Remove when implemented
+async fn run_transaction_signer(_ctx: impl Context) -> Result<(), Error> {
+    todo!()
+}
+
+#[allow(dead_code)] // Remove when implemented
+async fn run_transaction_coordinator(_ctx: impl Context) -> Result<(), Error> {
+    todo!()
 }

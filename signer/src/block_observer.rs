@@ -20,6 +20,7 @@
 use std::collections::HashMap;
 
 use crate::bitcoin::BitcoinInteract;
+use crate::context::Context;
 use crate::error::Error;
 use crate::stacks::api::StacksInteract;
 use crate::storage;
@@ -36,14 +37,11 @@ use blockstack_lib::chainstate::nakamoto;
 use futures::stream::StreamExt;
 use sbtc::deposits::CreateDepositRequest;
 use sbtc::deposits::Deposit;
-use sbtc::rpc::BitcoinClient;
 use std::collections::HashSet;
 
 /// Block observer
 #[derive(Debug)]
-pub struct BlockObserver<BitcoinClient, StacksClient, EmilyClient, BlockHashStream, Storage> {
-    /// Bitcoin client
-    pub bitcoin_client: BitcoinClient,
+pub struct BlockObserver<StacksClient, EmilyClient, BlockHashStream, Storage> {
     /// Stacks client
     pub stacks_client: StacksClient,
     /// Emily client
@@ -63,21 +61,20 @@ pub struct BlockObserver<BitcoinClient, StacksClient, EmilyClient, BlockHashStre
     pub network: bitcoin::Network,
 }
 
-impl<BC, SC, EC, BHS, S> BlockObserver<BC, SC, EC, BHS, S>
+impl<SC, EC, BHS, S> BlockObserver<SC, EC, BHS, S>
 where
-    BC: BitcoinInteract + BitcoinClient,
     SC: StacksInteract,
     EC: EmilyInteract,
     S: DbWrite + DbRead + Send + Sync,
     BHS: futures::stream::Stream<Item = bitcoin::BlockHash> + Unpin,
 {
     /// Run the block observer
-    #[tracing::instrument(skip(self))]
-    pub async fn run(mut self) -> Result<(), Error> {
+    #[tracing::instrument(skip(self, ctx))]
+    pub async fn run(mut self, ctx: impl Context) -> Result<(), Error> {
         while let Some(new_block_hash) = self.bitcoin_blocks.next().await {
-            self.load_latest_deposit_requests().await;
+            self.load_latest_deposit_requests(&ctx).await;
 
-            for block in self.next_blocks_to_process(new_block_hash).await? {
+            for block in self.next_blocks_to_process(&ctx, new_block_hash).await? {
                 self.process_bitcoin_block(block).await?;
             }
 
@@ -92,28 +89,29 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
-    async fn load_latest_deposit_requests(&mut self) {
+    #[tracing::instrument(skip(self, ctx))]
+    async fn load_latest_deposit_requests(&mut self, ctx: &impl Context) {
         let deposit_requests = self.emily_client.get_deposits().await;
 
-        deposit_requests
-            .into_iter()
-            .flat_map(|request| {
-                request
-                    .validate(&self.bitcoin_client)
-                    .inspect_err(|err| tracing::warn!("could not validate deposit request: {err}"))
-            })
-            .for_each(|deposit| {
+        for request in deposit_requests {
+            let deposit = request
+                .validate(&ctx.get_bitcoin_client())
+                .await
+                .inspect_err(|error| tracing::warn!(%error, "could not validate deposit request"));
+
+            if let Ok(deposit) = deposit {
                 self.deposit_requests
                     .entry(deposit.info.outpoint.txid)
                     .or_default()
-                    .push(deposit)
-            });
+                    .push(deposit);
+            }
+        }
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, ctx))]
     async fn next_blocks_to_process(
         &mut self,
+        ctx: &impl Context,
         mut block_hash: bitcoin::BlockHash,
     ) -> Result<Vec<bitcoin::Block>, Error> {
         let mut blocks = Vec::new();
@@ -123,8 +121,8 @@ where
                 break;
             }
 
-            let block = self
-                .bitcoin_client
+            let block = ctx
+                .get_bitcoin_client()
                 .get_block(&block_hash)
                 .await?
                 .ok_or(Error::MissingBlock)?;
@@ -296,6 +294,8 @@ mod tests {
     use sbtc::rpc::BitcoinClient;
 
     use crate::bitcoin::utxo;
+    use crate::config::Settings;
+    use crate::context::SignerContext;
     use crate::error::Error;
     use crate::keys::PublicKey;
     use crate::keys::SignerScriptPubKey as _;
@@ -304,6 +304,7 @@ mod tests {
     use crate::stacks::api::SubmitTxResponse;
     use crate::storage;
     use crate::testing::dummy;
+    use crate::util::ApiFallbackClient;
 
     use super::*;
 
@@ -321,11 +322,16 @@ mod tests {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let storage = storage::in_memory::Store::new_shared();
         let test_harness = TestHarness::generate(&mut rng, 20, 0..5);
+        let ctx = SignerContext::new(
+            &Settings::new_from_default_config().unwrap(),
+            storage.clone(),
+            test_harness.clone(),
+        )
+        .unwrap();
         let block_hash_stream = test_harness.spawn_block_hash_stream();
         let (subscribers, subscriber_rx) = tokio::sync::watch::channel(());
 
         let block_observer = BlockObserver {
-            bitcoin_client: test_harness.clone(),
             stacks_client: test_harness.clone(),
             emily_client: (),
             bitcoin_blocks: block_hash_stream,
@@ -336,7 +342,10 @@ mod tests {
             network: bitcoin::Network::Regtest,
         };
 
-        block_observer.run().await.expect("block observer failed");
+        block_observer
+            .run(ctx)
+            .await
+            .expect("block observer failed");
 
         for block in test_harness.bitcoin_blocks {
             let persisted = storage
@@ -422,9 +431,14 @@ mod tests {
         let storage = storage::in_memory::Store::new_shared();
         let block_hash_stream = test_harness.spawn_block_hash_stream();
         let (subscribers, _subscriber_rx) = tokio::sync::watch::channel(());
+        let ctx = SignerContext::new(
+            &Settings::new_from_default_config().unwrap(),
+            storage.clone(),
+            test_harness.clone(),
+        )
+        .unwrap();
 
         let mut block_observer = BlockObserver {
-            bitcoin_client: test_harness.clone(),
             stacks_client: test_harness.clone(),
             emily_client: DummyEmily(vec![deposit_request0, deposit_request1]),
             bitcoin_blocks: block_hash_stream,
@@ -435,7 +449,7 @@ mod tests {
             network: bitcoin::Network::Regtest,
         };
 
-        block_observer.load_latest_deposit_requests().await;
+        block_observer.load_latest_deposit_requests(&ctx).await;
         // Only the transaction from tx_setup0 was valid.
         assert_eq!(block_observer.deposit_requests.len(), 1);
 
@@ -495,9 +509,14 @@ mod tests {
         let storage = storage::in_memory::Store::new_shared();
         let block_hash_stream = test_harness.spawn_block_hash_stream();
         let (subscribers, _subscriber_rx) = tokio::sync::watch::channel(());
+        let ctx = SignerContext::new(
+            &Settings::new_from_default_config().unwrap(),
+            storage.clone(),
+            test_harness.clone(),
+        )
+        .unwrap();
 
         let mut block_observer = BlockObserver {
-            bitcoin_client: test_harness.clone(),
             stacks_client: test_harness.clone(),
             emily_client: DummyEmily(vec![deposit_request0]),
             bitcoin_blocks: block_hash_stream,
@@ -508,7 +527,7 @@ mod tests {
             network: bitcoin::Network::Regtest,
         };
 
-        block_observer.load_latest_deposit_requests().await;
+        block_observer.load_latest_deposit_requests(&ctx).await;
         // The transaction from tx_setup0 was valid.
         assert_eq!(block_observer.deposit_requests.len(), 1);
 
@@ -578,7 +597,6 @@ mod tests {
         let (subscribers, _) = tokio::sync::watch::channel(());
 
         let block_observer = BlockObserver {
-            bitcoin_client: test_harness.clone(),
             stacks_client: test_harness.clone(),
             emily_client: (),
             bitcoin_blocks: test_harness.spawn_block_hash_stream(),
@@ -712,9 +730,16 @@ mod tests {
         }
     }
 
+    impl TryFrom<TestHarness> for ApiFallbackClient<TestHarness> {
+        type Error = Error;
+        fn try_from(value: TestHarness) -> Result<Self, Error> {
+            ApiFallbackClient::new(vec![value]).map_err(Error::FallbackClient)
+        }
+    }
+
     impl BitcoinInteract for TestHarness {
         async fn get_block(
-            &mut self,
+            &self,
             block_hash: &bitcoin::BlockHash,
         ) -> Result<Option<bitcoin::Block>, Error> {
             Ok(self
@@ -724,31 +749,31 @@ mod tests {
                 .cloned())
         }
 
-        async fn estimate_fee_rate(&mut self) -> Result<f64, Error> {
+        async fn estimate_fee_rate(&self) -> Result<f64, Error> {
             unimplemented!()
         }
 
         async fn get_signer_utxo(
-            &mut self,
+            &self,
             _point: &PublicKey,
         ) -> Result<Option<utxo::SignerUtxo>, Error> {
             unimplemented!()
         }
         async fn get_last_fee(
-            &mut self,
+            &self,
             _utxo: bitcoin::OutPoint,
         ) -> Result<Option<utxo::Fees>, Error> {
             unimplemented!()
         }
 
-        async fn broadcast_transaction(&mut self, _tx: &bitcoin::Transaction) -> Result<(), Error> {
+        async fn broadcast_transaction(&self, _tx: &bitcoin::Transaction) -> Result<(), Error> {
             unimplemented!()
         }
     }
 
     impl BitcoinClient for TestHarness {
         type Error = Error;
-        fn get_tx(&self, txid: &Txid) -> Result<sbtc::rpc::GetTxResponse, Self::Error> {
+        async fn get_tx(&self, txid: &Txid) -> Result<sbtc::rpc::GetTxResponse, Error> {
             self.deposits.get(txid).cloned().ok_or(Error::Encryption)
         }
     }

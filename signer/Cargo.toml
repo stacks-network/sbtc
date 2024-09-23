@@ -58,6 +58,7 @@ hex.workspace = true
 cfg-if = "1.0"
 libp2p.workspace = true
 include_dir = "0.7.4"
+bitcoincore-rpc.workspace = true
 
 # Only for testing
 fake = { version = "2.9.2", features = ["derive", "time"], optional = true }

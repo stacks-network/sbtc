@@ -30,8 +30,8 @@ use sbtc::testing::regtest::Recipient;
 /// We check that we can validate a transaction in the mempool using the
 /// electrum and bitcoin-core clients
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[test]
-fn tx_validation_from_mempool() {
+#[tokio::test]
+async fn tx_validation_from_mempool() {
     let client = BitcoinCoreClient::new(
         "http://localhost:18443",
         regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
@@ -70,7 +70,7 @@ fn tx_validation_from_mempool() {
     regtest::p2tr_sign_transaction(&mut setup.tx, 0, &utxos, &depositor.keypair);
     rpc.send_raw_transaction(&setup.tx).unwrap();
 
-    let parsed = request.validate(&client).unwrap().info;
+    let parsed = request.validate(&client).await.unwrap().info;
 
     assert_eq!(parsed.outpoint, request.outpoint);
     assert_eq!(parsed.deposit_script, request.deposit_script);

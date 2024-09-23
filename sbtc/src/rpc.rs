@@ -1,5 +1,7 @@
 //! Contains client wrappers for bitcoin core and electrum.
 
+use std::future::Future;
+
 use bitcoin::consensus;
 use bitcoin::consensus::Decodable as _;
 use bitcoin::BlockHash;
@@ -10,6 +12,7 @@ use bitcoincore_rpc::json::EstimateMode;
 use bitcoincore_rpc::Auth;
 use bitcoincore_rpc::RpcApi as _;
 use serde::Deserialize;
+use url::Url;
 
 use crate::error::Error;
 
@@ -51,16 +54,36 @@ pub struct FeeEstimate {
 /// Trait for interacting with bitcoin-core
 pub trait BitcoinClient {
     /// The error type returned for RPC calls.
-    type Error: std::error::Error + 'static;
+    type Error: std::error::Error + Sync + Send + 'static;
+
     /// Return the transaction if the transaction is in the mempool or in
     /// any block.
-    fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Self::Error>;
+    fn get_tx(&self, txid: &Txid) -> impl Future<Output = Result<GetTxResponse, Self::Error>>;
 }
 
 /// A client for interacting with bitcoin-core
 pub struct BitcoinCoreClient {
     /// The underlying bitcoin-core client
     inner: bitcoincore_rpc::Client,
+}
+
+/// Implement TryFrom for Url to allow for easy conversion from a URL to a
+/// BitcoinCoreClient.
+impl TryFrom<Url> for BitcoinCoreClient {
+    type Error = Error;
+
+    fn try_from(url: Url) -> Result<Self, Self::Error> {
+        let username = url.username().to_string();
+        let password = url.password().unwrap_or_default().to_string();
+        let host = url
+            .host_str()
+            .ok_or(Error::InvalidUrl(url::ParseError::EmptyHost))?;
+        let port = url.port().ok_or(Error::PortRequired)?;
+
+        let endpoint = format!("http://{}:{}", host, port);
+
+        Self::new(&endpoint, username, password)
+    }
 }
 
 impl BitcoinCoreClient {
@@ -72,10 +95,16 @@ impl BitcoinCoreClient {
     pub fn new(url: &str, username: String, password: String) -> Result<Self, Error> {
         let auth = Auth::UserPass(username, password);
         let client = bitcoincore_rpc::Client::new(url, auth)
-            .map_err(|err| Error::BitcoinCoreRpcClient(err, url.to_string()))?;
+            .map_err(|err| Error::BitcoinClient(Box::new(err)))?;
 
         Ok(Self { inner: client })
     }
+
+    /// Return a reference to the inner bitcoin-core RPC client.
+    pub fn inner_client(&self) -> &bitcoincore_rpc::Client {
+        &self.inner
+    }
+
     /// Fetch and decode raw transaction from bitcoin-core using the
     /// getrawtransaction RPC.
     ///
@@ -142,7 +171,7 @@ impl BitcoinCoreClient {
 
 impl BitcoinClient for BitcoinCoreClient {
     type Error = Error;
-    fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
+    async fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
         self.get_tx(txid)
     }
 }

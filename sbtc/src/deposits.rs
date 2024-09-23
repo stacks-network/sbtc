@@ -145,14 +145,15 @@ impl CreateDepositRequest {
     /// This function fetches the transaction using the given client and
     /// checks that the transaction has been submitted. The transaction
     /// need not be confirmed.
-    pub fn validate<C>(&self, client: &C) -> Result<Deposit, Error>
+    pub async fn validate<C>(&self, client: &C) -> Result<Deposit, Error>
     where
         C: BitcoinClient,
     {
         // Fetch the transaction from either a block or from the mempool
         let response = client
             .get_tx(&self.outpoint.txid)
-            .map_err(|err| Error::BitcoinClient(Box::new(err)))?;
+            .await
+            .map_err(|e| Error::BitcoinClient(Box::new(e)))?;
 
         Ok(Deposit {
             info: self.validate_tx(&response.tx)?,
@@ -587,11 +588,11 @@ mod tests {
 
     impl BitcoinClient for DummyClient {
         type Error = Error;
-        fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
+        async fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Self::Error> {
             let tx = self.0.get(txid).cloned();
 
             Ok(GetTxResponse {
-                tx: tx.ok_or(Error::BitcoinClient(Box::new(Error::InvalidDepositScript)))?,
+                tx: tx.ok_or(Error::InvalidDepositScript)?,
                 block_hash: None,
                 confirmations: None,
                 block_time: None,
@@ -835,7 +836,8 @@ mod tests {
 
     #[test_case(true ; "use client")]
     #[test_case(false ; "no client")]
-    fn happy_path_tx_validation(use_client: bool) {
+    #[tokio::test]
+    async fn happy_path_tx_validation(use_client: bool) {
         let max_fee: u64 = 15000;
         let amount_sats = 500_000;
         let lock_time = 150;
@@ -850,7 +852,7 @@ mod tests {
 
         let parsed = if use_client {
             let client = DummyClient::new_from_tx(&setup.tx);
-            request.validate(&client).unwrap().info
+            request.validate(&client).await.unwrap().info
         } else {
             request.validate_tx(&setup.tx).unwrap()
         };

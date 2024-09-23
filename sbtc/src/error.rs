@@ -7,12 +7,18 @@ use bitcoin::Txid;
 /// Errors
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// Error when creating an RPC client to bitcoin-core
-    #[error("could not create RPC client to {1}; {0}")]
-    BitcoinCoreRpcClient(#[source] bitcoincore_rpc::Error, String),
+    /// Error when the port is not provided
+    #[error("a port must be specified")]
+    PortRequired,
+    /// Error when parsing a URL
+    #[error("could not parse the provided URL: {0}")]
+    InvalidUrl(#[source] url::ParseError),
     /// Error when using a BitcoinClient trait function
     #[error("could not execute bitcoin client RPC call {0}")]
-    BitcoinClient(#[source] Box<dyn std::error::Error>),
+    BitcoinClient(#[source] Box<dyn std::error::Error + Sync + Send + 'static>),
+    // /// Error when creating an RPC client to bitcoin-core
+    // #[error("could not create RPC client to {1}: {0}")]
+    // BitcoinCoreRpcClient(#[source] bitcoincore_rpc::Error, String),
     /// Returned when we could not decode the hex into a
     /// bitcoin::Transaction.
     #[error("failed to decode the provided hex into a transaction. txid: {1}. {0}")]
