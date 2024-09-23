@@ -286,9 +286,9 @@ impl AsContractCall for CompleteDepositV1 {
     where
         S: DbRead + Send + Sync,
     {
-        // Covers points 1-2 & 5-7
-        self.validate_sweep_tx(db, ctx).await?;
         // Covers points 3 & 4
+        self.validate_sweep_tx(db, ctx).await?;
+        // Covers points 1-2 & 5-7
         self.validate_deposit_vars(db, ctx).await
     }
 }
@@ -359,7 +359,8 @@ impl CompleteDepositV1 {
 
     /// This function validates the sweep transaction.
     ///
-    /// Specifically, this function:
+    /// Specifically, this function checks the following points (from the
+    /// docs of [`CompleteDepositV1::validate`]):
     /// 3. Check that the signer sweep transaction is on the canonical
     ///    bitcoin blockchain.
     /// 4. Check that the sweep transaction uses the indicated deposit
