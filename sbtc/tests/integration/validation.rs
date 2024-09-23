@@ -180,12 +180,10 @@ fn minimal_push_check() {
     // We just created a transaction that spends the P2SH UTXO where we
     // spend a deposit that did not adhere to the minimal push rule. When
     // bicoin-core attempts to validate the transaction it should fail.
+    let expected = "non-mandatory-script-verify-flag (Data push larger than necessary)";
     match rpc.send_raw_transaction(&tx1).unwrap_err() {
-        BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -26, message, .. })) => {
-            let expected_message =
-                "non-mandatory-script-verify-flag (Data push larger than necessary)";
-            assert_eq!(message, expected_message);
-        }
+        BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -26, message, .. }))
+            if message == expected => {}
         err => panic!("{err}"),
     };
 }
@@ -382,12 +380,10 @@ fn op_csv_disabled() {
         }],
     };
 
+    let expected = "mandatory-script-verify-flag-failed (Locktime requirement not satisfied)";
     match rpc.send_raw_transaction(&tx3).unwrap_err() {
-        BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -26, message, .. })) => {
-            let expected_message =
-                "mandatory-script-verify-flag-failed (Locktime requirement not satisfied)";
-            assert_eq!(message, expected_message);
-        }
+        BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -26, message, .. }))
+            if message == expected => {}
         err => panic!("{err}"),
     };
 }
