@@ -549,7 +549,9 @@ impl AsContractCall for AcceptWithdrawalV1 {
     where
         S: DbRead + Send + Sync,
     {
+        // Covers points 3 & 4
         let tx_out = self.validate_sweep(db, ctx).await?;
+        // Covers points 1-2 & 5-8
         self.validate_utxo(db, ctx, tx_out).await
     }
 }
@@ -559,7 +561,8 @@ impl AcceptWithdrawalV1 {
     /// withdrawal request and the actual bitcoin transaction that swept
     /// out the users funds.
     ///
-    /// Specifically, this function checks:
+    /// Specifically, this function checks the following points (from the
+    /// docs of [`AcceptWithdrawalV1::validate`]):
     /// 1. That the smart contract deployer matches the deployer in our
     ///    context.
     /// 2. That the signer has a record of the withdrawal request in its
@@ -630,7 +633,8 @@ impl AcceptWithdrawalV1 {
     }
     /// This function validates the sweep transaction.
     ///
-    /// Specifically, this function:
+    /// Specifically, this function checks the following points (from the
+    /// docs of [`AcceptWithdrawalV1::validate`]):
     /// 3. That the signer bitcoin transaction sweeping out the users'
     ///    funds is on the canonical bitcoin blockchain.
     /// 4. That the sweep transaction has the UTXO indicated by the
