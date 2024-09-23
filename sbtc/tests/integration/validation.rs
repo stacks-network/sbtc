@@ -380,10 +380,14 @@ fn op_csv_disabled() {
         }],
     };
 
-    let expected = "mandatory-script-verify-flag-failed (Locktime requirement not satisfied)";
+    // In bitcoin-core v25 the message is "non-mandatory-script-verify-flag
+    // (Locktime requirement not satisfied)", but in bitcoin-core v27 the
+    // message is "mandatory-script-verify-flag-failed (Locktime
+    // requirement not satisfied)". We match on the part that is probably
+    // consistent across versions.
     match rpc.send_raw_transaction(&tx3).unwrap_err() {
         BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -26, message, .. }))
-            if message == expected => {}
+            if message.ends_with("(Locktime requirement not satisfied)") => {}
         err => panic!("{err}"),
     };
 }
