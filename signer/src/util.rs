@@ -14,7 +14,11 @@ use thiserror::Error;
 
 use crate::error::Error;
 
-const DEFAULT_MINIMUM_RETRY_COUNT: usize = 3;
+/// This is the default minimum number of _retries_ that the fallback client
+/// will attempt. A retry count of 2 means that the client will attempt to
+/// execute the closure _3 times_ before giving up (i.e. the initial attempt,
+/// plus two retries).
+const DEFAULT_MINIMUM_RETRY_COUNT: usize = 2;
 
 /// Error variants for the fallback client.
 #[derive(Debug, Error)]
@@ -28,10 +32,6 @@ pub enum FallbackClientError {
     /// No endpoints were provided
     #[error("no endpoints were provided")]
     NoEndpoints,
-
-    /// Retry count must be greater than zero
-    #[error("retry count must be greater than zero")]
-    RetryCountZero,
 }
 
 /// A fallback-wrapper that can failover to other clients if the current client fails.
@@ -62,14 +62,13 @@ pub struct InnerApiFallbackClient<T> {
 
 impl<T> InnerApiFallbackClient<T> {
     /// Set the number of retries to perform before giving up.
-    pub fn set_retry_count(&self, retry_count: u8) -> Result<(), FallbackClientError> {
-        if retry_count == 0 {
-            return Err(FallbackClientError::RetryCountZero);
-        }
-
+    ///
+    /// **Note:** the actual number of attempts will be one more than the retry
+    /// count, i.e. _initial attempt(1) + retry count(2) = 3 attempts_.
+    ///
+    /// The default minimum retry count is defined in [`DEFAULT_MINIMUM_RETRY_COUNT`].
+    pub fn set_retry_count(&self, retry_count: u8) {
         self.retry_count.store(retry_count, Ordering::Relaxed);
-
-        Ok(())
     }
 
     /// Get a reference to the current inner API client.
@@ -79,6 +78,8 @@ impl<T> InnerApiFallbackClient<T> {
 
     /// Execute a closure on the current client, falling back to remaining clients
     /// if the closure returns an error.
+    ///
+    /// For more information on the number of attempts made, see [`Self::set_retry_count`].
     pub async fn exec<'a, R, E, F>(&'a self, f: impl Fn(&'a T) -> F) -> Result<R, Error>
     where
         E: std::error::Error + std::fmt::Debug,
@@ -86,7 +87,7 @@ impl<T> InnerApiFallbackClient<T> {
         F: Future<Output = Result<R, E>> + 'a,
     {
         let retry_count = self.retry_count.load(Ordering::Relaxed);
-        for i in 0..retry_count {
+        for i in 0..=retry_count {
             let client_index = self.last_client_index.load(Ordering::Relaxed);
             let result = f(&self.inner_clients[client_index]).await;
 
@@ -260,6 +261,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn retry_count_0_tries_exactly_once() {
+        let client = ApiFallbackClient::<MockClient>::from(
+            &[
+                Url::parse("http://fail/1").unwrap(),
+                Url::parse("http://fail/2").unwrap(),
+            ][..],
+        );
+        client.set_retry_count(0);
+
+        // We'll use this to count how many times the closure is called
+        let call_count = AtomicUsize::new(0);
+
+        let _ = client
+            .exec(|client| {
+                call_count.fetch_add(1, Ordering::Relaxed);
+                client.call()
+            })
+            .await;
+
+        assert_eq!(call_count.load(Ordering::Relaxed), 1);
+    }
+
+    #[tokio::test]
     async fn returns_err_when_retries_exhausted_and_no_success() {
         let client = ApiFallbackClient::<MockClient>::from(
             &[
@@ -267,7 +291,7 @@ mod tests {
                 Url::parse("http://fail/2").unwrap(),
             ][..],
         );
-        client.set_retry_count(4).unwrap();
+        client.set_retry_count(4);
 
         // We'll use this to count how many times the closure is called
         let call_count = AtomicUsize::new(0);
@@ -279,7 +303,7 @@ mod tests {
             })
             .await;
 
-        assert_eq!(call_count.load(Ordering::Relaxed), 4);
+        assert_eq!(call_count.load(Ordering::Relaxed), 5);
 
         assert!(result.is_err());
         assert!(matches!(
