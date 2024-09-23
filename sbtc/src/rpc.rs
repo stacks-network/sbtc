@@ -7,8 +7,10 @@ use bitcoin::consensus::Decodable as _;
 use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::Denomination;
+use bitcoin::OutPoint;
 use bitcoin::Transaction;
 use bitcoin::Txid;
+use bitcoin::Weight;
 use bitcoin::Wtxid;
 use bitcoincore_rpc::json::EstimateMode;
 use bitcoincore_rpc::Auth;
@@ -107,6 +109,78 @@ pub struct BitcoinTxInfo {
     /// timestamp as recorded by the miner of the block.
     #[serde(rename = "blocktime")]
     pub block_time: u64,
+}
+
+impl BitcoinTxInfo {
+    /// Assess how much of the bitcoin miner fee should be apportioned to
+    /// the input associated with the given `outpoint`.
+    ///
+    /// # Notes
+    ///
+    /// Each input and output is assessed a fee that is proportional to
+    /// their weight amount all of the requests serviced by this
+    /// transaction.
+    ///
+    /// This function assumes that this transaction is an sBTC transaction,
+    /// which implies that the first input and the first two outputs are
+    /// always the signers'. So `None` is returned if there is no input,
+    /// after the first input, with the given `outpoint`.
+    pub fn assess_input_fee(&self, outpoint: OutPoint) -> Option<Amount> {
+        let request_weight_vbytes = self.request_weight().to_vbytes_ceil();
+        // We skip the first input because that is always the signers'
+        // input UTXO.
+        let input_weight_vbytes = self
+            .tx
+            .input
+            .iter()
+            .find(|tx_in| tx_in.previous_output == outpoint)?
+            .segwit_weight()
+            .to_vbytes_ceil();
+
+        let fee_sats = (input_weight_vbytes * self.fee.to_sat()).div_ceil(request_weight_vbytes);
+        Some(Amount::from_sat(fee_sats))
+    }
+
+    /// Assess how much of the bitcoin miner fee should be apportioned to
+    /// the output at the given output index `vout`.
+    ///
+    /// # Notes
+    ///
+    /// Each input and output is assessed a fee that is proportional to
+    /// their weight amount all of the requests serviced by this
+    /// transaction.
+    ///
+    /// This function assumes that this transaction is an sBTC transaction,
+    /// which implies that the first input and the first two outputs are
+    /// always the signers'. So `None` is returned if the given `vout` is 0
+    /// or 1 or if there is no output in the transaction at `vout`.
+    pub fn assess_output_fee(&self, vout: usize) -> Option<Amount> {
+        // We skip the first input because that is always the signers'
+        // input UTXO.
+        if vout < 2 {
+            return None;
+        }
+        let request_weight_vbytes = self.request_weight().to_vbytes_ceil();
+        let input_weight_vbytes = self.tx.output.get(vout)?.weight().to_vbytes_ceil();
+
+        let fee_sats = (input_weight_vbytes * self.fee.to_sat()).div_ceil(request_weight_vbytes);
+        Some(Amount::from_sat(fee_sats))
+    }
+
+    /// Computes the total weight of the inputs and the outputs, excluding
+    /// the ones related to the signers.
+    fn request_weight(&self) -> Weight {
+        // We skip the first input and output because those are always the
+        // signers' UTXO input and output. We skip the second output
+        // because that is always the OP_RETURN output for sBTC data.
+        self.tx
+            .input
+            .iter()
+            .skip(1)
+            .map(|x| x.segwit_weight())
+            .chain(self.tx.output.iter().skip(2).map(|x| x.weight()))
+            .sum()
+    }
 }
 
 /// A description of an input into a transaction.
