@@ -14,8 +14,8 @@ use bitcoincore_rpc::json::EstimateMode;
 use bitcoincore_rpc::Auth;
 use bitcoincore_rpc::RpcApi as _;
 use bitcoincore_rpc_json::GetRawTransactionResultVin;
-use bitcoincore_rpc_json::GetRawTransactionResultVout as GetRawTxResponseVout;
-use bitcoincore_rpc_json::GetRawTransactionResultVoutScriptPubKey as GetRawTxResponseScriptPubKey;
+use bitcoincore_rpc_json::GetRawTransactionResultVout as BitcoinTxInfoVout;
+use bitcoincore_rpc_json::GetRawTransactionResultVoutScriptPubKey as BitcoinTxInfoScriptPubKey;
 use serde::Deserialize;
 use url::Url;
 
@@ -50,17 +50,17 @@ pub struct GetTxResponse {
 
 /// A description of an input into a transaction.
 #[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
-pub struct GetRawTxResponseVin {
+pub struct BitcoinTxInfoVin {
     /// Most of the details to the input into the transaction
     #[serde(flatten)]
-    pub vin: GetRawTransactionResultVin,
+    pub details: GetRawTransactionResultVin,
     /// The previous output, omitted if block undo data is not available.
-    pub prevout: Option<GetRawTxResponseVinPrevout>,
+    pub prevout: Option<BitcoinTxInfoVinPrevout>,
 }
 
 /// The previous output, omitted if block undo data is not available.
 #[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
-pub struct GetRawTxResponseVinPrevout {
+pub struct BitcoinTxInfoVinPrevout {
     /// Whether this is a Coinbase or not.
     pub generated: bool,
     /// The height of the prevout.
@@ -70,35 +70,39 @@ pub struct GetRawTxResponseVinPrevout {
     pub value: Amount,
     /// The scriptPubKey of the prevout.
     #[serde(rename = "scriptPubKey")]
-    pub script_pub_key: GetRawTxResponseScriptPubKey,
+    pub script_pub_key: BitcoinTxInfoScriptPubKey,
 }
 
 /// A struct containing the response from bitcoin-core for a
-/// getrawtransaction RPC where verbose is set to 2.
+/// `getrawtransaction` RPC where verbose is set to 2 where the block hash
+/// is supplied as an RPC argument.
 ///
 /// # Notes
 ///
-/// Although there is
-/// [`GetRawTransactionResult`](bitcoincore_rpc_json::GetRawTransactionResult)
-/// type, that type is missing some information that we want. It is
-/// populated with a `getrawtransaction` RPC where verbose is set to 1, and
-/// it seems the follow the developer.bitcoin.org docs [^1] instead of the
-/// bitcoincore.org docs.
-///
-/// The docs here are taken from the bitcoin-core docs, which can be found
-/// here:
-/// <https://bitcoincore.org/en/doc/27.0.0/rpc/rawtransactions/getrawtransaction/>
-///
-/// [^1]: <https://developer.bitcoin.org/reference/rpc/getrawtransaction.html>
+/// * This struct is a slightly modified version of the
+///   [`GetRawTransactionResult`](bitcoincore_rpc_json::GetRawTransactionResult)
+///   type, which is what the bitcoincore-rpc crate returns for the
+///   `getrawtransaction` RPC with verbosity set to 1. That type is missing
+///   some information that we may want.
+/// * The `block_hash`, `block_time`, `confirmations`, `fee`, and
+///   `is_active_chain` fields are always populated from bitcoin-core for a
+///   `getrawtransaction` RPC with verbosity 2 when the `block_hash` is
+///   supplied. That is why they are not `Option`s here.
+/// * This struct omits some fields returned from bitcoin-core, most
+///   notably the `vin.prevout.script_pub_key.desc` field.
+/// * Since we require bitcoin-core v25 or later these docs were taken from
+///   <https://bitcoincore.org/en/doc/25.0.0/rpc/rawtransactions/getrawtransaction/>
+///   and not from the more generic bitcoin.org docs
+///   <https://developer.bitcoin.org/reference/rpc/getrawtransaction.html>
 #[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
-pub struct GetRawTxResponse {
+pub struct BitcoinTxInfo {
     /// Whether the specified block (in the getrawtransaction RPC) is in
     /// the active chain or not. It is only present when the "blockhash"
     /// argument is present in the RPC.
-    pub in_active_chain: Option<bool>,
+    pub in_active_chain: bool,
     /// The transaction fee paid to the bitcoin miners.
-    #[serde(default, with = "bitcoin::amount::serde::as_btc::opt")]
-    pub fee: Option<Amount>,
+    #[serde(default, with = "bitcoin::amount::serde::as_btc")]
+    pub fee: Amount,
     /// The raw bitcoin transaction.
     #[serde(with = "bitcoin::consensus::serde::With::<bitcoin::consensus::serde::Hex>")]
     #[serde(rename = "hex")]
@@ -108,31 +112,26 @@ pub struct GetRawTxResponse {
     /// The transaction hash (differs from txid for witness transactions).
     pub hash: Wtxid,
     /// The serialized transaction size.
-    pub size: usize,
+    pub size: u64,
     /// The virtual transaction size (differs from size for witness
     /// transactions).
-    pub vsize: usize,
-    /// The version.
-    pub version: u32,
-    /// The transaction lock time.
-    #[serde(rename = "locktime")]
-    pub lock_time: u32,
+    pub vsize: u64,
     /// The inputs into the transaction.
-    pub vin: Vec<GetRawTxResponseVin>,
+    pub vin: Vec<BitcoinTxInfoVin>,
     /// A description of the transactions outputs. This object is missing
     /// the `desc` field in the `scriptPubKey` object. That field is the
     /// "Inferred descriptor for the output".
-    pub vout: Vec<GetRawTxResponseVout>,
+    pub vout: Vec<BitcoinTxInfoVout>,
     /// The block hash of the Bitcoin block that includes this transaction.
     #[serde(rename = "blockhash")]
-    pub block_hash: Option<BlockHash>,
+    pub block_hash: BlockHash,
     /// The number of confirmations deep from that chain tip of the bitcoin
     /// block that includes this transaction.
-    pub confirmations: Option<u32>,
+    pub confirmations: u32,
     /// The Unix epoch time when the block was mined. It reflects the
     /// timestamp as recorded by the miner of the block.
     #[serde(rename = "blocktime")]
-    pub block_time: Option<u64>,
+    pub block_time: u64,
 }
 
 /// A struct representing the recommended fee, in sats per vbyte, from a
@@ -225,20 +224,18 @@ impl BitcoinCoreClient {
         })
     }
     /// Fetch and decode raw transaction from bitcoin-core using the
-    /// getrawtransaction RPC with a verbosity of 2.
+    /// `getrawtransaction` RPC with a verbosity of 2.
     ///
     /// # Notes
     ///
-    /// By default, this call only returns a transaction if it is in the
-    /// mempool. If -txindex is enabled on bitcoin-core and no blockhash
-    /// argument is passed, it will return the transaction if it is in the
-    /// mempool or any block.
-    pub fn get_raw_tx(&self, txid: &Txid, block_hash: Option<&BlockHash>) -> Result<GetRawTxResponse, Error> {
+    /// We require bitcoin-core v25 or later. For bitcoin-core v24 and
+    /// earlier, this function will return an error.
+    pub fn get_tx_info(&self, txid: &Txid, block_hash: &BlockHash) -> Result<BitcoinTxInfo, Error> {
         let args = [
             serde_json::to_value(txid).map_err(Error::JsonSerialize)?,
             // This is the verbosity level. The acceptable values are 0, 1,
-            // and 2, and we want the 2 because it will include the fee
-            // information.
+            // and 2, and we want the 2 because it will include all of the
+            // required fields of the type.
             serde_json::Value::Number(serde_json::value::Number::from(2u32)),
             serde_json::to_value(block_hash).map_err(Error::JsonSerialize)?,
         ];
