@@ -1,6 +1,20 @@
 //! Bitcoin Core RPC client implementations
+//!
+//! Here's some info about the Bitcoin Core RPC client errors:
+//!
+//! - Example when the node is not running/unreachable:
+//!   JsonRpc(Transport(SocketError(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" })))
+//!
+//! - Example when authentication fails:
+//!   JsonRpc(Transport(HttpErrorCode(401)))
+//!
+//! - Example when trying to estimate fees but the node doesn't have enough data:
+//!   EstimateSmartFeeResponse(Some(["Insufficient data or no feerate found"]), 1)
+//!
+//! - Example when trying to get a block that doesn't exist:
+//!   JsonRpc(Rpc(RpcError { code: -5, message: "Block not found", data: None }))
 
-use bitcoincore_rpc::RpcApi;
+use bitcoincore_rpc::{jsonrpc::error::RpcError, RpcApi};
 use sbtc::rpc::{BitcoinClient, BitcoinCoreClient};
 use url::Url;
 
@@ -42,8 +56,9 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
         self.exec(|client| async {
             match client.inner_client().get_block(block_hash) {
                 Ok(block) => Ok(Some(block)),
-                // TODO: Double check what the error is from bitcoin-core when no block is found
-                Err(bitcoincore_rpc::Error::JsonRpc(_)) => Ok(None),
+                Err(bitcoincore_rpc::Error::JsonRpc(bitcoincore_rpc::jsonrpc::Error::Rpc(
+                    RpcError { code: -5, .. },
+                ))) => Ok(None),
                 Err(error) => Err(Error::BitcoinCoreRpc(error)),
             }
         })
