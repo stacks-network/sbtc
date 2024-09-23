@@ -97,7 +97,7 @@ pub struct GetRawTxResponse {
     /// argument is present in the RPC.
     pub in_active_chain: Option<bool>,
     /// The transaction fee paid to the bitcoin miners.
-    #[serde(with = "bitcoin::amount::serde::as_btc::opt")]
+    #[serde(default, with = "bitcoin::amount::serde::as_btc::opt")]
     pub fee: Option<Amount>,
     /// The raw bitcoin transaction.
     #[serde(with = "bitcoin::consensus::serde::With::<bitcoin::consensus::serde::Hex>")]
@@ -224,7 +224,29 @@ impl BitcoinCoreClient {
             in_active_chain: response.in_active_chain,
         })
     }
+    /// Fetch and decode raw transaction from bitcoin-core using the
+    /// getrawtransaction RPC with a verbosity of 2.
+    ///
+    /// # Notes
+    ///
+    /// By default, this call only returns a transaction if it is in the
+    /// mempool. If -txindex is enabled on bitcoin-core and no blockhash
+    /// argument is passed, it will return the transaction if it is in the
+    /// mempool or any block.
+    pub fn get_raw_tx(&self, txid: &Txid, block_hash: Option<&BlockHash>) -> Result<GetRawTxResponse, Error> {
+        let args = [
+            serde_json::to_value(txid).map_err(Error::JsonSerialize)?,
+            // This is the verbosity level. The acceptable values are 0, 1,
+            // and 2, and we want the 2 because it will include the fee
+            // information.
+            serde_json::Value::Number(serde_json::value::Number::from(2u32)),
+            serde_json::to_value(block_hash).map_err(Error::JsonSerialize)?,
+        ];
 
+        self.inner
+            .call("getrawtransaction", &args)
+            .map_err(|err| Error::GetTransactionBitcoinCore(err, *txid))
+    }
     /// Estimates the approximate fee in sats per vbyte needed for a
     /// transaction to be confirmed within `num_blocks`.
     ///

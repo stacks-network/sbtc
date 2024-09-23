@@ -54,6 +54,9 @@ pub enum Error {
     /// The reclaim script was invalid.
     #[error("the reclaim script format was invalid")]
     InvalidReclaimScript,
+    /// This should never happen.
+    #[error("could not serialize the type into JSON")]
+    JsonSerialize(#[source] serde_json::Error),
     /// Failed to convert response into an Amount, which is unsigned and
     /// bounded.
     #[error("Could not convert float {1} into bitcoin::Amount: {0}")]
