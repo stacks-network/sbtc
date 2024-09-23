@@ -48,31 +48,6 @@ pub struct GetTxResponse {
     pub in_active_chain: Option<bool>,
 }
 
-/// A description of an input into a transaction.
-#[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
-pub struct BitcoinTxInfoVin {
-    /// Most of the details to the input into the transaction
-    #[serde(flatten)]
-    pub details: GetRawTransactionResultVin,
-    /// The previous output, omitted if block undo data is not available.
-    pub prevout: Option<BitcoinTxInfoVinPrevout>,
-}
-
-/// The previous output, omitted if block undo data is not available.
-#[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
-pub struct BitcoinTxInfoVinPrevout {
-    /// Whether this is a Coinbase or not.
-    pub generated: bool,
-    /// The height of the prevout.
-    pub height: u64,
-    /// The value of the prevout in BTC.
-    #[serde(with = "bitcoin::amount::serde::as_btc")]
-    pub value: Amount,
-    /// The scriptPubKey of the prevout.
-    #[serde(rename = "scriptPubKey")]
-    pub script_pub_key: BitcoinTxInfoScriptPubKey,
-}
-
 /// A struct containing the response from bitcoin-core for a
 /// `getrawtransaction` RPC where verbose is set to 2 where the block hash
 /// is supplied as an RPC argument.
@@ -132,6 +107,31 @@ pub struct BitcoinTxInfo {
     /// timestamp as recorded by the miner of the block.
     #[serde(rename = "blocktime")]
     pub block_time: u64,
+}
+
+/// A description of an input into a transaction.
+#[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
+pub struct BitcoinTxInfoVin {
+    /// Most of the details to the input into the transaction
+    #[serde(flatten)]
+    pub details: GetRawTransactionResultVin,
+    /// The previous output, omitted if block undo data is not available.
+    pub prevout: Option<BitcoinTxInfoVinPrevout>,
+}
+
+/// The previous output, omitted if block undo data is not available.
+#[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
+pub struct BitcoinTxInfoVinPrevout {
+    /// Whether this is a Coinbase or not.
+    pub generated: bool,
+    /// The height of the prevout.
+    pub height: u64,
+    /// The value of the prevout in BTC.
+    #[serde(with = "bitcoin::amount::serde::as_btc")]
+    pub value: Amount,
+    /// The scriptPubKey of the prevout.
+    #[serde(rename = "scriptPubKey")]
+    pub script_pub_key: BitcoinTxInfoScriptPubKey,
 }
 
 /// A struct representing the recommended fee, in sats per vbyte, from a
