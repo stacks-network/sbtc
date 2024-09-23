@@ -2,9 +2,6 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
 use bitcoin::absolute::LockTime;
-use bitcoin::taproot::LeafVersion;
-use bitcoin::taproot::NodeInfo;
-use bitcoin::taproot::TaprootSpendInfo;
 use bitcoin::transaction::Version;
 use bitcoin::AddressType;
 use bitcoin::Amount;
@@ -18,16 +15,20 @@ use bitcoin::Witness;
 use bitcoin::XOnlyPublicKey;
 use bitcoincore_rpc::RpcApi;
 use bitvec::array::BitArray;
+use clarity::vm::types::PrincipalData;
 use fake::Fake;
 use rand::distributions::Uniform;
 use rand::rngs::OsRng;
 use rand::Rng as _;
-use secp256k1::SECP256K1;
+use sbtc::deposits::CreateDepositRequest;
+use sbtc::deposits::DepositScriptInputs;
+use sbtc::deposits::ReclaimScriptInputs;
 use signer::bitcoin::utxo::DepositRequest;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
 use signer::bitcoin::utxo::SignerUtxo;
 use signer::bitcoin::utxo::WithdrawalRequest;
+use stacks_common::types::chainstate::StacksAddress;
 
 use regtest::Recipient;
 use sbtc::testing::regtest;
@@ -61,18 +62,15 @@ where
     U: AsUtxo,
 {
     let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
-    let deposit_script = signer::testing::peg_in_deposit_script(&signers_public_key);
+    let deposit_inputs = DepositScriptInputs {
+        signers_public_key,
+        max_fee: amount,
+        recipient: PrincipalData::from(StacksAddress::burn_address(false)),
+    };
+    let reclaim_inputs = ReclaimScriptInputs::try_new(50, ScriptBuf::new()).unwrap();
 
-    let reclaim_script = ScriptBuf::new_op_return([0u8, 1, 2, 3]);
-    let ver = LeafVersion::TapScript;
-    let leaf1 = NodeInfo::new_leaf_with_ver(deposit_script.clone(), ver);
-    let leaf2 = NodeInfo::new_leaf_with_ver(reclaim_script.clone(), ver);
-
-    let node = NodeInfo::combine(leaf1, leaf2).unwrap();
-
-    let unspendable_key = *sbtc::UNSPENDABLE_TAPROOT_KEY;
-    let taproot = TaprootSpendInfo::from_node_info(SECP256K1, unspendable_key, node);
-    let merkle_root = taproot.merkle_root();
+    let deposit_script = deposit_inputs.deposit_script();
+    let reclaim_script = reclaim_inputs.reclaim_script();
 
     let mut deposit_tx = Transaction {
         version: Version::ONE,
@@ -86,7 +84,10 @@ where
         output: vec![
             TxOut {
                 value: Amount::from_sat(amount),
-                script_pubkey: ScriptBuf::new_p2tr(SECP256K1, unspendable_key, merkle_root),
+                script_pubkey: sbtc::deposits::to_script_pubkey(
+                    deposit_script.clone(),
+                    reclaim_script.clone(),
+                ),
             },
             TxOut {
                 value: utxo.amount() - Amount::from_sat(amount + fee),
@@ -97,14 +98,22 @@ where
 
     regtest::p2tr_sign_transaction(&mut deposit_tx, 0, &[utxo], &depositor.keypair);
 
-    let req = DepositRequest {
+    let create_req = CreateDepositRequest {
         outpoint: OutPoint::new(deposit_tx.compute_txid(), 0),
-        max_fee: amount,
+        deposit_script,
+        reclaim_script,
+    };
+
+    let dep = create_req.validate_tx(&deposit_tx).unwrap();
+
+    let req = DepositRequest {
+        outpoint: dep.outpoint,
+        max_fee: dep.max_fee,
         signer_bitmap: BitArray::ZERO,
-        amount,
-        deposit_script: deposit_script.clone(),
-        reclaim_script: reclaim_script.clone(),
-        signers_public_key,
+        amount: dep.amount,
+        deposit_script: dep.deposit_script,
+        reclaim_script: dep.reclaim_script,
+        signers_public_key: dep.signers_public_key,
     };
     (deposit_tx, req)
 }

@@ -240,31 +240,6 @@ impl PgStore {
         &self.0
     }
 
-    async fn get_stacks_chain_tip(
-        &self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<Option<model::StacksBlockHash>, Error> {
-        sqlx::query_as::<_, model::StacksBlock>(
-            r#"
-             SELECT
-                 stacks_blocks.block_hash
-               , stacks_blocks.block_height
-               , stacks_blocks.parent_hash
-             FROM sbtc_signer.stacks_blocks stacks_blocks
-             JOIN sbtc_signer.bitcoin_blocks bitcoin_blocks
-                 ON bitcoin_blocks.confirms @> ARRAY[stacks_blocks.block_hash]
-             WHERE bitcoin_blocks.block_hash = $1
-            ORDER BY block_height DESC, block_hash DESC
-            LIMIT 1;
-            "#,
-        )
-        .bind(bitcoin_chain_tip)
-        .fetch_optional(&self.0)
-        .await
-        .map(|maybe_block| maybe_block.map(|block| block.block_hash))
-        .map_err(Error::SqlxQuery)
-    }
-
     async fn write_transactions(
         &self,
         txs: Vec<model::Transaction>,
@@ -749,7 +724,7 @@ impl super::DbRead for PgStore {
             "#,
         )
         .bind(chain_tip)
-        .bind(stacks_chain_tip)
+        .bind(stacks_chain_tip.block_hash)
         .bind(context_window as i32)
         .fetch_all(&self.0)
         .await
@@ -837,7 +812,7 @@ impl super::DbRead for PgStore {
             "#,
         )
         .bind(chain_tip)
-        .bind(stacks_chain_tip)
+        .bind(stacks_chain_tip.block_hash)
         .bind(context_window as i32)
         .bind(threshold as i64)
         .fetch_all(&self.0)
@@ -947,7 +922,7 @@ impl super::DbRead for PgStore {
             LIMIT 1
             "#,
         )
-        .bind(stacks_chain_tip)
+        .bind(stacks_chain_tip.block_hash)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)

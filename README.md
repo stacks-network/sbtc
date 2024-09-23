@@ -50,7 +50,7 @@ echo "\n--- sBTC tool versions ---" \
     && cargo lambda --version \
     && echo "pnpm $(pnpm --version)" \
     && echo "smithy $(smithy --version)" \
-    && make --version | head -n 1 \
+    && make --version | head -n 1
 ```
 
 Below is the output on a machine that is able to build and run all the sources and tests.
