@@ -81,6 +81,113 @@ fn tx_validation_from_mempool() {
     assert_eq!(parsed.recipient, setup.deposit.recipient);
 }
 
+/// This validates that we need to reject deposit scripts that do not
+/// follow the minimal push rule in their deposit scripts.
+///
+/// The test proceeds as follows:
+/// 1. Create and submit a transaction where the lock script has a
+///    non-minimal push for the deposit.
+/// 2. Confirm the transaction and try spend it immediately. The
+///    transaction spending the "deposit" should be rejected.
+///
+/// We do not attempt to create an actual P2TR deposit, but an
+/// (unsupported) P2SH deposit.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[test]
+fn minimal_push_check() {
+    let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
+
+    let (rpc, faucet) = regtest::initialize_blockchain();
+    let depositor = Recipient::new(AddressType::P2tr);
+
+    // Start off with some initial UTXOs to work with.
+    let _ = faucet.send_to(50_000_000, &depositor.address);
+    faucet.generate_blocks(1);
+
+    // There is only one UTXO under the depositor's name, so let's get it
+    let utxos = depositor.get_utxos(rpc, None);
+    let utxo = utxos.first().cloned().unwrap();
+    let amount = 30_000_000;
+
+    // 1. Create and submit a transaction where the lock script has a
+    //    non-minimal push for the deposit.
+    //
+    // We're going to create a P2SH UTXO with a script that has a
+    // non-minimal push of data. Anyone can spend this script immediately.
+    let deposit_data = [0; 44];
+
+    // This is non-standard script because it does not follow the minimal
+    // push rule. We use the OP_PUSHDATA1 when we can use fewer bytes for
+    // the same outcome in the script by removing the OP_PUSHDATA1 opcode
+    // from the script.
+    let script_pubkey = ScriptBuf::builder()
+        .push_opcode(bitcoin::opcodes::all::OP_PUSHDATA1)
+        .push_slice(deposit_data)
+        .push_opcode(bitcoin::opcodes::all::OP_DROP)
+        .push_opcode(bitcoin::opcodes::OP_TRUE)
+        .into_script();
+
+    let mut tx0 = Transaction {
+        version: Version::ONE,
+        lock_time: LockTime::ZERO,
+        input: vec![TxIn {
+            previous_output: utxo.outpoint(),
+            sequence: Sequence::ZERO,
+            script_sig: ScriptBuf::new(),
+            witness: Witness::new(),
+        }],
+        output: vec![
+            TxOut {
+                value: Amount::from_sat(amount),
+                script_pubkey: ScriptBuf::new_p2sh(&script_pubkey.script_hash()),
+            },
+            TxOut {
+                value: utxo.amount() - Amount::from_sat(amount + fee),
+                script_pubkey: depositor.address.script_pubkey(),
+            },
+        ],
+    };
+
+    regtest::p2tr_sign_transaction(&mut tx0, 0, &[utxo], &depositor.keypair);
+    rpc.send_raw_transaction(&tx0).unwrap();
+
+    // 2. Confirm the transaction and try spend it immediately. The
+    //    transaction spending the "deposit" should be rejected.
+    faucet.generate_blocks(1);
+
+    // The Builder::push_slice wants to make sure that the length of the
+    // pushed data is within the limits, hence the conversion into this
+    // PushBytes thing.
+    let locking_script: &PushBytes = script_pubkey.as_bytes().try_into().unwrap();
+    let script_sig = ScriptBuf::builder()
+        .push_slice(locking_script)
+        .into_script();
+
+    let tx1 = Transaction {
+        version: Version::TWO,
+        lock_time: LockTime::ZERO,
+        input: vec![TxIn {
+            previous_output: OutPoint::new(tx0.compute_txid(), 0),
+            sequence: Sequence::ZERO,
+            script_sig,
+            witness: Witness::new(),
+        }],
+        output: vec![TxOut {
+            value: Amount::from_sat(amount - fee),
+            script_pubkey: depositor.address.script_pubkey(),
+        }],
+    };
+    // We just created a transaction that spends the P2SH UTXO where we
+    // spend a deposit that did not adhere to the minimal push rule. When
+    // bicoin-core attempts to validate the transaction it should fail.
+    let expected = "non-mandatory-script-verify-flag (Data push larger than necessary)";
+    match rpc.send_raw_transaction(&tx1).unwrap_err() {
+        BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -26, message, .. }))
+            if message == expected => {}
+        err => panic!("{err}"),
+    };
+}
+
 /// This validates that a user can disable OP_CSV checks if we allow them
 /// to submit any lock-time. It doesn't test much of the code in this
 /// crate, just that bitcoin-core will treat OP_CSV like a no-op if the
@@ -273,12 +380,10 @@ fn op_csv_disabled() {
         }],
     };
 
+    let expected = "mandatory-script-verify-flag-failed (Locktime requirement not satisfied)";
     match rpc.send_raw_transaction(&tx3).unwrap_err() {
-        BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -26, message, .. })) => {
-            let expected_message =
-                "mandatory-script-verify-flag-failed (Locktime requirement not satisfied)";
-            assert_eq!(message, expected_message);
-        }
+        BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -26, message, .. }))
+            if message == expected => {}
         err => panic!("{err}"),
     };
 }

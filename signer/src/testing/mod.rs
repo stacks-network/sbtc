@@ -9,15 +9,13 @@ pub mod transaction_signer;
 pub mod wallet;
 pub mod wsts;
 
-use crate::bitcoin::utxo::UnsignedTransaction;
-use crate::config::Settings;
 use bitcoin::key::TapTweak;
-use bitcoin::opcodes;
-use bitcoin::ScriptBuf;
 use bitcoin::TapSighashType;
 use bitcoin::Witness;
-use bitcoin::XOnlyPublicKey;
 use secp256k1::SECP256K1;
+
+use crate::bitcoin::utxo::UnsignedTransaction;
+use crate::config::Settings;
 
 /// The path for the configuration file that we should use during testing.
 pub const DEFAULT_CONFIG_PATH: Option<&str> = Some("./src/config/default");
@@ -74,20 +72,4 @@ pub fn set_witness_data(unsigned: &mut UnsignedTransaction, keypair: secp256k1::
         .for_each(|(tx_in, witness)| {
             tx_in.witness = witness;
         });
-}
-
-/// Create a dummy deposit script assuming the signer's public key is the
-/// input.
-pub fn peg_in_deposit_script(signers_public_key: &XOnlyPublicKey) -> ScriptBuf {
-    ScriptBuf::builder()
-        // Just some dummy data representing the stacks address the user
-        // wants the sBTC deposited to and their max fee. We encoded
-        // standard stacks addresses as 22 bytes, following the principal
-        // encoding detailed in SIP-05, and the max fee is an 8 byte
-        // unsigned integer. So the total is a 30 byte long data slice.
-        .push_slice([0u8; 30])
-        .push_opcode(opcodes::all::OP_DROP)
-        .push_slice(signers_public_key.serialize())
-        .push_opcode(opcodes::all::OP_CHECKSIG)
-        .into_script()
 }
