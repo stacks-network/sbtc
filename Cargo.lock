@@ -5465,6 +5465,7 @@ version = "0.1.0"
 dependencies = [
  "bitcoin",
  "bitcoincore-rpc",
+ "bitcoincore-rpc-json",
  "clarity",
  "rand 0.8.5",
  "secp256k1 0.29.0",

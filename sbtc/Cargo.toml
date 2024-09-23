@@ -13,6 +13,7 @@ testing = []
 [dependencies]
 bitcoin = { workspace = true, features = ["rand-std"] }
 bitcoincore-rpc.workspace = true
+bitcoincore-rpc-json.workspace = true
 clarity.workspace = true
 rand.workspace = true
 serde.workspace = true
