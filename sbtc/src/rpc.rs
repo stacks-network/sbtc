@@ -78,6 +78,18 @@ pub struct BitcoinTxInfo {
     /// argument is present in the RPC.
     pub in_active_chain: bool,
     /// The transaction fee paid to the bitcoin miners.
+    /// 
+    /// This field is returned whenever the "block undo data" is present
+    /// for a block. The block undo data is always present for validated
+    /// blocks, and block validation is always done for blocks on the
+    /// currently active chain [1]. So if this field is missing then this
+    /// block has not been validated and so is not on the active
+    /// blockchain.
+    /// 
+    /// [1]: https://bitcoincore.reviews/23319#l-133,
+    ///     https://bitcoincore.reviews/23319#l-141,
+    ///     https://bitcoincore.reviews/23319#l-147,
+    ///     https://bitcoincore.reviews/23319#l-153
     #[serde(default, with = "bitcoin::amount::serde::as_btc")]
     pub fee: Amount,
     /// The raw bitcoin transaction.
@@ -297,6 +309,7 @@ impl BitcoinCoreClient {
             in_active_chain: response.in_active_chain,
         })
     }
+
     /// Fetch and decode raw transaction from bitcoin-core using the
     /// `getrawtransaction` RPC with a verbosity of 2.
     ///
@@ -318,6 +331,7 @@ impl BitcoinCoreClient {
             .call("getrawtransaction", &args)
             .map_err(|err| Error::GetTransactionBitcoinCore(err, *txid))
     }
+
     /// Estimates the approximate fee in sats per vbyte needed for a
     /// transaction to be confirmed within `num_blocks`.
     ///
