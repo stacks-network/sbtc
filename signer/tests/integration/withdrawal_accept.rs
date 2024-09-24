@@ -593,7 +593,10 @@ async fn accept_withdrawal_validation_invalid_fee() {
     // Generate the transaction and corresponding request context.
     let (mut accept_withdrawal_tx, ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
-    // Different: The fee cannot exceed the max fee
+    // Different: The fee cannot exceed the max fee. Setting the `tx_fee`
+    // to `max_fee + 1` here will result in the validation validating
+    // `req.value - (req.max_fee + 1)`, which will then be less than
+    // `req.value - req.max_fee` and thus invalid.
     accept_withdrawal_tx.tx_fee = req.max_fee + 1;
 
     let validate_future = accept_withdrawal_tx.validate(&db, &ctx);
@@ -740,6 +743,10 @@ async fn accept_withdrawal_validation_sweep_reorged() {
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, mut ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip2, bitmap);
+    // Different: We already created the BTC transaction that swept out the
+    // users funds and confirmed it on a bitcoin blockchain identified by
+    // `chain_tip2`. Here we set the canonical chain tip on the context to
+    // be `chain_tip1`.
     ctx.chain_tip = chain_tip.into();
 
     let validation_result = accept_withdrawal_tx.validate(&db, &ctx).await;
@@ -754,7 +761,7 @@ async fn accept_withdrawal_validation_sweep_reorged() {
 }
 
 /// For this test we check that the `AcceptWithdrawalV1::validate` function
-/// returns a withdrawal validation error with a DepositMissingFromSweep
+/// returns a withdrawal validation error with a UtxoMissingFromSweep
 /// message when the sweep transaction is in our records, is on what the
 /// signer thinks is the canonical bitcoin blockchain, but it does not have
 /// an input that that matches the withdrawal request outpoint.
@@ -814,6 +821,7 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
     // Normal: get the signer bitmap for how they voted.
     let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
     // Generate the transaction and corresponding request context.
+    // Different: using the "invalid" `sweep_outpoint` we created above.
     let (accept_withdrawal_tx, ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
 
@@ -829,7 +837,9 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
 }
 
 /// For this test we check that the `AcceptWithdrawalV1::validate` function
-/// returns okay when everything matches the way that it is supposed to.
+/// returns a withdrawal validation error with a BitmapMismatch message
+/// when bitmap in the transaction does not match what our records would
+/// create for the bitmap.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn accept_withdrawal_validation_bitmap_mismatch() {
