@@ -254,7 +254,7 @@ impl TryFrom<Url> for BitcoinCoreClient {
             .ok_or(Error::InvalidUrl(url::ParseError::EmptyHost))?;
         let port = url.port().ok_or(Error::PortRequired)?;
 
-        let endpoint = format!("http://{}:{}",  host, port);
+        let endpoint = format!("{}://{host}:{port}", url.scheme());
 
         Self::new(&endpoint, username, password)
     }
