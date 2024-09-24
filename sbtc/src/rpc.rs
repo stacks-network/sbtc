@@ -124,7 +124,7 @@ impl BitcoinTxInfo {
     /// # Notes
     ///
     /// Each input and output is assessed a fee that is proportional to
-    /// their weight amount all of the requests serviced by this
+    /// their weight amount all the requests serviced by this
     /// transaction.
     ///
     /// This function assumes that this transaction is an sBTC transaction,
@@ -133,7 +133,7 @@ impl BitcoinTxInfo {
     /// after the first input, with the given `outpoint`.
     pub fn assess_input_fee(&self, outpoint: OutPoint) -> Option<Amount> {
         // The Weight::to_wu function just returns the inner weight units
-        // as a u64, so this is really just the weight.
+        // as an u64, so this is really just the weight.
         let request_weight = self.request_weight().to_wu();
         // We skip the first input because that is always the signers'
         // input UTXO.
@@ -156,7 +156,7 @@ impl BitcoinTxInfo {
     /// # Notes
     ///
     /// Each input and output is assessed a fee that is proportional to
-    /// their weight amount all of the requests serviced by this
+    /// their weight amount all the requests serviced by this
     /// transaction.
     ///
     /// This function assumes that this transaction is an sBTC transaction,
@@ -169,10 +169,10 @@ impl BitcoinTxInfo {
         if vout < 2 {
             return None;
         }
-        let request_weight_vbytes = self.request_weight().to_wu();
-        let input_weight_vbytes = self.tx.output.get(vout)?.weight().to_wu();
+        let request_weight = self.request_weight().to_wu();
+        let input_weight = self.tx.output.get(vout)?.weight().to_wu();
 
-        let fee_sats = (input_weight_vbytes * self.fee.to_sat()).div_ceil(request_weight_vbytes);
+        let fee_sats = (input_weight * self.fee.to_sat()).div_ceil(request_weight);
         Some(Amount::from_sat(fee_sats))
     }
 
@@ -254,7 +254,7 @@ impl TryFrom<Url> for BitcoinCoreClient {
             .ok_or(Error::InvalidUrl(url::ParseError::EmptyHost))?;
         let port = url.port().ok_or(Error::PortRequired)?;
 
-        let endpoint = format!("http://{}:{}", host, port);
+        let endpoint = format!("http://{}:{}",  host, port);
 
         Self::new(&endpoint, username, password)
     }
@@ -314,7 +314,7 @@ impl BitcoinCoreClient {
         let args = [
             serde_json::to_value(txid).map_err(Error::JsonSerialize)?,
             // This is the verbosity level. The acceptable values are 0, 1,
-            // and 2, and we want the 2 because it will include all of the
+            // and 2, and we want the 2 because it will include all the
             // required fields of the type.
             serde_json::Value::Number(serde_json::value::Number::from(2u32)),
             serde_json::to_value(block_hash).map_err(Error::JsonSerialize)?,
@@ -394,8 +394,8 @@ mod tests {
         }
     }
 
-    /// Return a transaction that is kinda like the signers' transaction
-    /// but it does not service any requests and it does not have any
+    /// Return a transaction that is kinda like the signers' transaction,
+    /// but it does not service any requests, and it does not have any
     /// signatures.
     fn base_signer_transaction() -> Transaction {
         Transaction {
@@ -476,8 +476,8 @@ mod tests {
 
     #[test]
     fn two_deposits_same_weight_split_the_fee() {
-        // These deposit inputs are essentially idential by weight. Since
-        // they are the only requests serviced by this trasnaction, they
+        // These deposit inputs are essentially identical by weight. Since
+        // they are the only requests serviced by this transaction, they
         // will have equal weight.
         let deposit_outpoint1 = OutPoint::new(Txid::from_byte_array([1; 32]), 0);
         let deposit_outpoint2 = OutPoint::new(Txid::from_byte_array([2; 32]), 0);
