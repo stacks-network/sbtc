@@ -121,10 +121,9 @@ mod tests {
 
     use crate::{
         config::Settings,
-        context::SignerContext,
         keys::PrivateKey,
         storage::in_memory::Store,
-        testing::{self, clear_env},
+        testing::{self, clear_env, NoopSignerContext},
     };
 
     #[tokio::test]
@@ -146,8 +145,8 @@ mod tests {
 
         let settings = Settings::new_from_default_config().unwrap();
 
-        let context1 = SignerContext::init(settings.clone(), Store::new_shared()).unwrap();
-        let context2 = SignerContext::init(settings, Store::new_shared()).unwrap();
+        let context1 = NoopSignerContext::init(&settings, Store::new_shared()).unwrap();
+        let context2 = NoopSignerContext::init(&settings, Store::new_shared()).unwrap();
 
         let term1 = context1.get_termination_handle();
         let term2 = context2.get_termination_handle();

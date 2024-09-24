@@ -2,9 +2,12 @@
 
 use std::sync::Arc;
 
+use sbtc::rpc::BitcoinClient;
 use tokio::sync::broadcast::Sender;
+use url::Url;
 
 use crate::{
+    bitcoin::BitcoinInteract,
     config::Settings,
     error::Error,
     storage::{DbRead, DbWrite},
@@ -27,17 +30,26 @@ pub trait Context: Clone + Sync + Send {
     fn get_storage(&self) -> impl DbRead + Clone + Sync + Send;
     /// Get a read-write handle to the signer storage.
     fn get_storage_mut(&self) -> impl DbRead + DbWrite + Clone + Sync + Send;
+    /// Get a handle to a Bitcoin client.
+    fn get_bitcoin_client(&self) -> impl BitcoinClient + BitcoinInteract + Clone;
 }
 
 /// Signer context which is passed to different components within the
 /// signer binary.
-#[derive(Clone)]
-pub struct SignerContext<S> {
-    inner: Arc<InnerSignerContext<S>>,
+pub struct SignerContext<S, BC> {
+    inner: Arc<InnerSignerContext<S, BC>>,
 }
 
-impl<S> std::ops::Deref for SignerContext<S> {
-    type Target = InnerSignerContext<S>;
+/// We implement [`Clone`] manually to avoid the derive macro adding additional
+/// bounds on the generic types.
+impl<S, BC> Clone for SignerContext<S, BC> {
+    fn clone(&self) -> Self {
+        Self { inner: Arc::clone(&self.inner) }
+    }
+}
+
+impl<S, BC> std::ops::Deref for SignerContext<S, BC> {
+    type Target = InnerSignerContext<S, BC>;
 
     fn deref(&self) -> &Self::Target {
         &self.inner
@@ -45,7 +57,7 @@ impl<S> std::ops::Deref for SignerContext<S> {
 }
 
 /// Inner signer context which holds the configuration and signalling channels.
-pub struct InnerSignerContext<S> {
+pub struct InnerSignerContext<S, BC> {
     config: Settings,
     // Handle to the app signalling channel. This keeps the channel alive
     // for the duration of the program and is used both to send messages
@@ -57,6 +69,17 @@ pub struct InnerSignerContext<S> {
     term_tx: tokio::sync::watch::Sender<bool>,
     /// Handle to the signer storage.
     storage: S,
+    /// Handle to a Bitcoin-RPC fallback-client.
+    bitcoin_client: BC,
+    // TODO: Additional clients to be added in future PRs. We may want
+    // to break the clients out into a separate struct to keep the field
+    // count down.
+    // /// Handle to a Stacks-RPC fallback-client.
+    //stacks_client: ApiFallbackClient<ST>,
+    // /// Handle to a Emily-API fallback-client.
+    //emily_client: ApiFallbackClient<EM>,
+    // /// Handle to a Blocklist-API fallback-client.
+    //blocklist_client: ApiFallbackClient<BL>,
 }
 
 /// Signals that can be sent within the signer binary.
@@ -125,12 +148,28 @@ impl TerminationHandle {
     }
 }
 
-impl<S> SignerContext<S>
+impl<'a, S, BC> SignerContext<S, BC>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
+    BC: TryFrom<&'a [Url]> + BitcoinClient + BitcoinInteract + Clone + Sync + Send,
+    Error: From<<BC as std::convert::TryFrom<&'a [Url]>>::Error>,
+{
+    /// Initializes a new [`SignerContext`], automatically creating clients
+    /// based on the provided types.
+    pub fn init(config: &'a Settings, db: S) -> Result<Self, Error> {
+        let bc = BC::try_from(&config.bitcoin.endpoints)?;
+
+        Self::new(config, db, bc)
+    }
+}
+
+impl<S, BC> SignerContext<S, BC>
+where
+    S: DbRead + DbWrite + Clone + Sync + Send,
+    BC: BitcoinClient + BitcoinInteract + Clone + Sync + Send,
 {
     /// Create a new signer context.
-    pub fn init(config: Settings, db: S) -> Result<Self, Error> {
+    pub fn new(config: &Settings, db: S, bitcoin_client: BC) -> Result<Self, Error> {
         // TODO: Decide on the channel capacity and how we should handle slow consumers.
         // NOTE: Ideally consumers which require processing time should pull the relevent
         // messages into a local VecDequeue and process them in their own time.
@@ -139,18 +178,20 @@ where
 
         Ok(Self {
             inner: Arc::new(InnerSignerContext {
-                config,
+                config: config.clone(),
                 signal_tx,
                 term_tx,
                 storage: db,
+                bitcoin_client,
             }),
         })
     }
 }
 
-impl<S> Context for SignerContext<S>
+impl<S, BC> Context for SignerContext<S, BC>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
+    BC: BitcoinClient + BitcoinInteract + Clone + Sync + Send,
 {
     fn config(&self) -> &Settings {
         &self.config
@@ -188,5 +229,9 @@ where
 
     fn get_storage_mut(&self) -> impl DbRead + DbWrite + Clone + Sync + Send {
         self.storage.clone()
+    }
+
+    fn get_bitcoin_client(&self) -> impl BitcoinClient + BitcoinInteract + Clone {
+        self.bitcoin_client.clone()
     }
 }

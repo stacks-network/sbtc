@@ -316,6 +316,10 @@ pub trait AsUtxo {
             script_pubkey: self.script_pubkey().clone(),
         }
     }
+    /// The outpoint of this UTXO
+    fn outpoint(&self) -> OutPoint {
+        OutPoint::new(self.txid(), self.vout())
+    }
 }
 
 impl AsUtxo for Utxo {
