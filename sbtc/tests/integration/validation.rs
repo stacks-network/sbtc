@@ -29,8 +29,8 @@ use sbtc::testing::regtest::Recipient;
 /// We check that we can validate a transaction in the mempool using the
 /// electrum and bitcoin-core clients
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[tokio::test]
-async fn tx_validation_from_mempool() {
+#[test]
+fn tx_validation_from_mempool() {
     let max_fee: u64 = 15000;
     let amount_sats = 49_900_000;
     let lock_time = 150;

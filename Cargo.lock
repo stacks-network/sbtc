@@ -5474,7 +5474,6 @@ dependencies = [
  "stacks-common",
  "test-case",
  "thiserror",
- "tokio",
 ]
 
 [[package]]

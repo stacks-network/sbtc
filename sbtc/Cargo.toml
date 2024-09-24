@@ -27,4 +27,3 @@ features = ["rand-std", "global-context"]
 
 [dev-dependencies]
 test-case = "3.1"
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
