@@ -3,8 +3,9 @@ use std::borrow::Cow;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
 
+use crate::codec;
+use crate::ecdsa;
 use crate::stacks::contracts::DepositValidationError;
-use crate::{codec, ecdsa, network};
 
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
@@ -286,10 +287,6 @@ pub enum Error {
     /// Codec error
     #[error("codec error: {0}")]
     Codec(#[source] codec::Error),
-
-    /// GRPC relay network error
-    #[error("GRPC relay network error: {0}")]
-    GrpcRelayNetworkError(#[from] network::grpc_relay::RelayError),
 
     /// Type conversion error
     #[error("type conversion error")]
