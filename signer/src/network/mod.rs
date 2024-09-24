@@ -14,6 +14,7 @@ use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::Sender;
 
 use crate::context::Context;
+use crate::context::P2PEvent;
 use crate::context::SignerCommand;
 use crate::context::SignerEvent;
 use crate::context::SignerSignal;
@@ -99,7 +100,7 @@ impl MessageTransfer for P2PNetwork {
                 },
                 recv = self.signal_rx.recv() => {
                     match recv {
-                        Ok(SignerSignal::Event(SignerEvent::P2PMessageReceived(msg))) => {
+                        Ok(SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(msg)))) => {
                             return Ok(msg);
                         },
                         // We're only interested in the above messages, so we ignore
