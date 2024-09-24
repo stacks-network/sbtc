@@ -31,7 +31,7 @@ pub struct SignerInfo {
 }
 
 /// Generate a set of public keys for a group of signers
-pub fn generate_signer_set<R>(rng: &mut R, num_signers: usize) -> Vec<PublicKey>
+pub fn generate_signer_set_public_keys<R>(rng: &mut R, num_signers: usize) -> Vec<PublicKey>
 where
     R: rand::RngCore + rand::CryptoRng,
 {

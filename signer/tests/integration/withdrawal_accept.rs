@@ -111,7 +111,7 @@ where
 
     // Normal: this generates the blockchain as well as withdrawal request
     // transactions in each bitcoin block.
-    let signer_set = testing::wsts::generate_signer_set(rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set_public_keys(rng, num_signers);
     let test_data = TestData::generate(rng, &signer_set, &test_model_params);
     test_data.write_to(db).await;
 
