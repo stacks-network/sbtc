@@ -37,7 +37,7 @@ pub trait Context: Clone + Sync + Send {
     /// Get a read-write handle to the signer storage.
     fn get_storage_mut(&self) -> impl DbRead + DbWrite + Clone + Sync + Send;
     /// Get a handle to a Bitcoin client.
-    fn get_bitcoin_client(&self) -> impl BitcoinClient + BitcoinInteract + Clone + Sync + Send;
+    fn get_bitcoin_client(&self) -> impl BitcoinClient + BitcoinInteract + Clone;
 }
 
 /// Signer context which is passed to different components within the
