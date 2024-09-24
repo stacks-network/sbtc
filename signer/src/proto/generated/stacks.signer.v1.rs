@@ -29,7 +29,7 @@ pub struct SignerWithdrawDecision {
     /// withdrawal request.
     #[prost(message, optional, tag = "3")]
     pub txid: ::core::option::Option<StacksTxid>,
-    /// / Whether or not the signer has accepted the withdrawal request.
+    /// Whether or not the signer has accepted the withdrawal request.
     #[prost(bool, tag = "4")]
     pub accepted: bool,
 }

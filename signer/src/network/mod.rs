@@ -4,7 +4,6 @@
 //! will rely on for inter-signer communication, along with an in-memory
 //! implementation of this trait for testing purposes.
 
-pub mod grpc_relay;
 pub mod in_memory;
 
 pub mod libp2p;

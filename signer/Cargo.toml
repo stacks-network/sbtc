@@ -4,12 +4,6 @@ name = "signer"
 version = "0.1.0"
 edition = "2021"
 
-[[bin]]
-name = "relay-server"
-
-[[example]]
-name = "relay-client"
-
 [features]
 default = ["testing"]
 integration-tests = ["testing", "sbtc/testing"]
