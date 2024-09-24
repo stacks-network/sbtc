@@ -6,8 +6,8 @@ edition = "2021"
 
 [features]
 default = ["testing"]
-integration-tests = ["testing", "sbtc/testing"]
-testing = ["fake", "mockall"]
+integration-tests = ["testing"]
+testing = ["fake", "mockall", "sbtc/testing"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -31,7 +31,7 @@ p256k1.workspace = true
 prost.workspace = true
 rand.workspace = true
 reqwest.workspace = true
-sbtc = { path = "../sbtc" }
+sbtc = { path = "../sbtc", default-features = false }
 serde.workspace = true
 serde_bytes.workspace = true
 serde_json.workspace = true
@@ -68,6 +68,7 @@ bitcoincore-rpc.workspace = true
 mockito = "1.4.0"
 more-asserts = "0.3"
 ripemd = "0.1.3"
+sbtc = { path = "../sbtc", default-features = false, features = ["testing"] }
 test-case = "3.1"
 
 
