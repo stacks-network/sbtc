@@ -1,5 +1,7 @@
 //! Test data generation utilities
 
+use bitcoin::consensus::Encodable as _;
+use bitcoin::hashes::Hash as _;
 use fake::Fake;
 
 use crate::keys::PublicKey;
@@ -132,6 +134,50 @@ impl TestData {
         self.stacks_transactions
             .extend(new_data.stacks_transactions);
         self.transactions.extend(new_data.transactions);
+    }
+
+    /// Append a bitcoin block containing sbtc txs
+    pub fn add_bitcoin_block(
+        &mut self,
+        rng: &mut impl rand::RngCore,
+        parent: &BitcoinBlock,
+        sbtc_txs: Vec<bitcoin::Transaction>,
+    ) -> BitcoinBlock {
+        let mut block: model::BitcoinBlock = fake::Faker.fake_with_rng(rng);
+        block.parent_hash = parent.block_hash;
+        block.block_height = parent.block_height + 1;
+
+        let mut bitcoin_transactions = vec![];
+        let mut transactions = vec![];
+
+        for tx in sbtc_txs {
+            let mut tx_bytes = Vec::new();
+            tx.consensus_encode(&mut tx_bytes).unwrap();
+
+            let tx = model::Transaction {
+                txid: tx.compute_txid().to_byte_array(),
+                tx: tx_bytes,
+                tx_type: model::TransactionType::SbtcTransaction,
+                block_hash: block.block_hash.into_bytes(),
+            };
+
+            let bitcoin_transaction = model::BitcoinTxRef {
+                txid: tx.txid.into(),
+                block_hash: block.block_hash,
+            };
+
+            transactions.push(tx);
+            bitcoin_transactions.push(bitcoin_transaction);
+        }
+
+        self.push(Self {
+            bitcoin_blocks: vec![block.clone()],
+            bitcoin_transactions,
+            transactions,
+            ..Self::default()
+        });
+
+        block
     }
 
     /// Write the test data to the given store.

@@ -403,7 +403,7 @@ where
     ) -> Result<utxo::SignerBtcState, Error> {
         let fee_rate = self.bitcoin_client.estimate_fee_rate().await?;
         let utxo = self
-            .bitcoin_client
+            .storage
             .get_signer_utxo(aggregate_key)
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
@@ -556,8 +556,20 @@ pub fn coordinator_public_key(
 
 #[cfg(test)]
 mod tests {
+    use bitcoin::ScriptBuf;
+    use bitcoin::XOnlyPublicKey;
+
+    use crate::bitcoin::utxo::SignerUtxo;
+    use crate::keys::SignerScriptPubKey as _;
     use crate::storage;
     use crate::testing;
+
+    const EMPTY_BITCOIN_TX: bitcoin::Transaction = bitcoin::Transaction {
+        version: bitcoin::transaction::Version::ONE,
+        lock_time: bitcoin::absolute::LockTime::ZERO,
+        input: vec![],
+        output: vec![],
+    };
 
     fn test_environment(
     ) -> testing::transaction_coordinator::TestEnvironment<fn() -> storage::in_memory::SharedStore>
@@ -583,6 +595,131 @@ mod tests {
     async fn should_be_able_to_coordinate_signing_rounds() {
         test_environment()
             .assert_should_be_able_to_coordinate_signing_rounds()
+            .await;
+    }
+
+    #[tokio::test]
+    async fn should_get_signer_utxo_simple() {
+        test_environment()
+            .assert_get_signer_utxo(|rng, aggregate_key, bitcoin_chain_tip_block, test_data| {
+                let tx = bitcoin::Transaction {
+                    output: vec![
+                        bitcoin::TxOut {
+                            value: bitcoin::Amount::from_sat(42),
+                            script_pubkey: aggregate_key.signers_script_pubkey(),
+                        },
+                        bitcoin::TxOut {
+                            value: bitcoin::Amount::from_sat(123),
+                            script_pubkey: ScriptBuf::new(),
+                        },
+                    ],
+                    ..EMPTY_BITCOIN_TX
+                };
+                test_data.add_bitcoin_block(rng, &bitcoin_chain_tip_block, vec![tx.clone()]);
+
+                SignerUtxo {
+                    outpoint: bitcoin::OutPoint::new(tx.compute_txid(), 0),
+                    amount: 42,
+                    public_key: XOnlyPublicKey::from(aggregate_key),
+                }
+            })
+            .await;
+    }
+
+    #[tokio::test]
+    async fn should_get_signer_utxo_highest() {
+        test_environment()
+            .assert_get_signer_utxo(|rng, aggregate_key, bitcoin_chain_tip_block, test_data| {
+                let tx_1 = bitcoin::Transaction {
+                    output: vec![bitcoin::TxOut {
+                        value: bitcoin::Amount::from_sat(1),
+                        script_pubkey: aggregate_key.signers_script_pubkey(),
+                    }],
+                    ..EMPTY_BITCOIN_TX
+                };
+                let block_1 =
+                    test_data.add_bitcoin_block(rng, &bitcoin_chain_tip_block, vec![tx_1.clone()]);
+
+                let tx_2 = bitcoin::Transaction {
+                    output: vec![bitcoin::TxOut {
+                        value: bitcoin::Amount::from_sat(2),
+                        script_pubkey: aggregate_key.signers_script_pubkey(),
+                    }],
+                    ..EMPTY_BITCOIN_TX
+                };
+                test_data.add_bitcoin_block(rng, &block_1, vec![tx_2.clone()]);
+
+                let tx_3 = bitcoin::Transaction {
+                    output: vec![bitcoin::TxOut {
+                        value: bitcoin::Amount::from_sat(3),
+                        script_pubkey: aggregate_key.signers_script_pubkey(),
+                    }],
+                    ..EMPTY_BITCOIN_TX
+                };
+                test_data.add_bitcoin_block(rng, &bitcoin_chain_tip_block, vec![tx_3.clone()]);
+
+                SignerUtxo {
+                    outpoint: bitcoin::OutPoint::new(tx_2.compute_txid(), 0),
+                    amount: 2,
+                    public_key: XOnlyPublicKey::from(aggregate_key),
+                }
+            })
+            .await;
+    }
+
+    #[tokio::test]
+    async fn should_get_signer_utxo_unspent() {
+        test_environment()
+            .assert_get_signer_utxo(|rng, aggregate_key, bitcoin_chain_tip_block, test_data| {
+                let tx_1 = bitcoin::Transaction {
+                    output: vec![bitcoin::TxOut {
+                        value: bitcoin::Amount::from_sat(1),
+                        script_pubkey: aggregate_key.signers_script_pubkey(),
+                    }],
+                    ..EMPTY_BITCOIN_TX
+                };
+                let tx_2 = bitcoin::Transaction {
+                    output: vec![bitcoin::TxOut {
+                        value: bitcoin::Amount::from_sat(2),
+                        script_pubkey: aggregate_key.signers_script_pubkey(),
+                    }],
+                    ..EMPTY_BITCOIN_TX
+                };
+                let tx_3 = bitcoin::Transaction {
+                    input: vec![
+                        bitcoin::TxIn {
+                            previous_output: bitcoin::OutPoint {
+                                txid: tx_1.compute_txid(),
+                                vout: 0,
+                            },
+                            ..Default::default()
+                        },
+                        bitcoin::TxIn {
+                            previous_output: bitcoin::OutPoint {
+                                txid: tx_2.compute_txid(),
+                                vout: 0,
+                            },
+                            ..Default::default()
+                        },
+                    ],
+                    output: vec![bitcoin::TxOut {
+                        value: bitcoin::Amount::from_sat(3),
+                        script_pubkey: aggregate_key.signers_script_pubkey(),
+                    }],
+                    ..EMPTY_BITCOIN_TX
+                };
+                test_data.add_bitcoin_block(
+                    rng,
+                    &bitcoin_chain_tip_block,
+                    vec![tx_1.clone(), tx_3.clone(), tx_2.clone()],
+                );
+
+                SignerUtxo {
+                    outpoint: bitcoin::OutPoint::new(tx_3.compute_txid(), 0),
+                    amount: 3,
+                    public_key: XOnlyPublicKey::from(aggregate_key),
+                }
+            })
             .await;
     }
 }

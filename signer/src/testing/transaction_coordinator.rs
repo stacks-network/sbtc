@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::bitcoin::utxo;
+use crate::bitcoin::utxo::SignerUtxo;
 use crate::error;
 use crate::keys;
 use crate::keys::PrivateKey;
@@ -11,11 +11,14 @@ use crate::keys::SignerScriptPubKey;
 use crate::network;
 use crate::storage;
 use crate::storage::model;
+use crate::storage::model::BitcoinBlock;
 use crate::testing;
 use crate::testing::storage::model::TestData;
 use crate::testing::wsts::SignerSet;
 use crate::transaction_coordinator;
 
+use bitcoin::consensus::Encodable as _;
+use bitcoin::hashes::Hash as _;
 use rand::SeedableRng as _;
 use sha2::Digest as _;
 
@@ -131,17 +134,41 @@ where
             .prepare_database_and_run_dkg(&mut storage, &mut rng, &mut testing_signer_set)
             .await;
 
-        let public_key = bitcoin::XOnlyPublicKey::from(&aggregate_key);
-        let outpoint = bitcoin::OutPoint {
-            txid: testing::dummy::txid(&fake::Faker, &mut rng),
-            vout: 3,
+        let tx = bitcoin::Transaction {
+            version: bitcoin::transaction::Version::ONE,
+            lock_time: bitcoin::absolute::LockTime::ZERO,
+            input: vec![],
+            output: vec![
+                bitcoin::TxOut {
+                    value: bitcoin::Amount::from_sat(42),
+                    script_pubkey: aggregate_key.signers_script_pubkey(),
+                },
+                bitcoin::TxOut {
+                    value: bitcoin::Amount::from_sat(123),
+                    script_pubkey: bitcoin::ScriptBuf::new(),
+                },
+            ],
+        };
+        let mut tx_bytes = Vec::new();
+        tx.consensus_encode(&mut tx_bytes).unwrap();
+
+        let tx = model::Transaction {
+            txid: tx.compute_txid().to_byte_array(),
+            tx: tx_bytes,
+            tx_type: model::TransactionType::SbtcTransaction,
+            block_hash: bitcoin_chain_tip.into_bytes(),
         };
 
-        let signer_utxo = utxo::SignerUtxo {
-            outpoint,
-            amount: 1_337_000_000_000,
-            public_key,
+        let bitcoin_transaction = model::BitcoinTxRef {
+            txid: tx.txid.into(),
+            block_hash: bitcoin_chain_tip,
         };
+
+        storage
+            .write_bitcoin_transaction(&bitcoin_transaction)
+            .await
+            .unwrap();
+        storage.write_transaction(&tx).await.unwrap();
 
         let mut mock_bitcoin_client = crate::bitcoin::MockBitcoinInteract::new();
 
@@ -149,11 +176,6 @@ where
             .expect_estimate_fee_rate()
             .times(1)
             .returning(|| Box::pin(async { Ok(1.3) }));
-
-        mock_bitcoin_client
-            .expect_get_signer_utxo()
-            .once()
-            .returning(move |_| Box::pin(async move { Ok(Some(signer_utxo)) }));
 
         mock_bitcoin_client
             .expect_get_last_fee()
@@ -218,6 +240,52 @@ where
         handle.stop_event_loop().await;
 
         assert_eq!(first_script_pubkey, aggregate_key.signers_script_pubkey());
+    }
+
+    /// Given a closure populating test data and returning the expected SignerUtxo,
+    /// asserts that it matches the actual SignerUtxo
+    pub async fn assert_get_signer_utxo<
+        F: Fn(&mut rand::rngs::StdRng, &PublicKey, BitcoinBlock, &mut TestData) -> SignerUtxo,
+    >(
+        mut self,
+        test_fn: F,
+    ) {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let network = network::in_memory::Network::new();
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+        let mut storage = (self.storage_constructor)();
+
+        let mut testing_signer_set =
+            testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
+                network.connect()
+            });
+
+        let (aggregate_key, bitcoin_chain_tip) = self
+            .prepare_database_and_run_dkg(&mut storage, &mut rng, &mut testing_signer_set)
+            .await;
+
+        let bitcoin_chain_tip_block = storage
+            .get_bitcoin_block(&bitcoin_chain_tip)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let mut test_data = TestData::default();
+        let expected = test_fn(
+            &mut rng,
+            &aggregate_key,
+            bitcoin_chain_tip_block,
+            &mut test_data,
+        );
+        Self::write_test_data(&test_data, &mut storage).await;
+
+        let signer_utxo = storage
+            .get_signer_utxo(&aggregate_key)
+            .await
+            .unwrap()
+            .expect("no signer utxo");
+
+        assert_eq!(signer_utxo, expected);
     }
 
     async fn prepare_database_and_run_dkg<Rng>(

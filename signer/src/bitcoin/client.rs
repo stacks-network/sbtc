@@ -18,12 +18,9 @@ use bitcoincore_rpc::{jsonrpc::error::RpcError, RpcApi};
 use sbtc::rpc::{BitcoinClient, BitcoinCoreClient};
 use url::Url;
 
-use crate::{error::Error, keys::PublicKey, util::ApiFallbackClient};
+use crate::{error::Error, util::ApiFallbackClient};
 
-use super::{
-    utxo::{self, SignerUtxo},
-    BitcoinInteract,
-};
+use super::{utxo, BitcoinInteract};
 
 /// Implement the [`TryFrom`] trait for a slice of [`Url`]s to allow for a
 /// [`ApiFallbackClient`] to be implicitly created from a list of URLs.
@@ -67,13 +64,6 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
 
     async fn estimate_fee_rate(&self) -> Result<f64, Error> {
         todo!() // TODO(542)
-    }
-
-    async fn get_signer_utxo(
-        &self,
-        _aggregate_key: &PublicKey,
-    ) -> Result<Option<SignerUtxo>, Error> {
-        todo!() // TODO(538)
     }
 
     async fn get_last_fee(&self, _utxo: bitcoin::OutPoint) -> Result<Option<utxo::Fees>, Error> {

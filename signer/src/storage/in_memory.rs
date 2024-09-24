@@ -1,15 +1,20 @@
 //! In-memory store implementation - useful for tests
 
+use bitcoin::consensus::Decodable;
 use bitcoin::OutPoint;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use futures::StreamExt;
 use futures::TryStreamExt;
+use secp256k1::XOnlyPublicKey;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::bitcoin::utxo::SignerUtxo;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::keys::SignerScriptPubKey as _;
 use crate::stacks::events::CompletedDepositEvent;
 use crate::stacks::events::WithdrawalAcceptEvent;
 use crate::stacks::events::WithdrawalCreateEvent;
@@ -45,6 +50,9 @@ pub struct Store {
 
     /// Withdraw signers
     pub withdrawal_request_to_signers: HashMap<WithdrawalRequestPk, Vec<model::WithdrawalSigner>>,
+
+    /// Raw transaction data
+    pub raw_transactions: HashMap<[u8; 32], model::Transaction>,
 
     /// Bitcoin blocks to transactions
     pub bitcoin_block_to_transactions: HashMap<model::BitcoinBlockHash, Vec<model::BitcoinTxId>>,
@@ -414,6 +422,97 @@ impl super::DbRead for SharedStore {
             .collect())
     }
 
+    async fn get_signer_utxo(
+        &self,
+        aggregate_key: &PublicKey,
+    ) -> Result<Option<SignerUtxo>, Error> {
+        let Some(chain_tip) = self.get_bitcoin_canonical_chain_tip().await? else {
+            return Err(Error::NoChainTip);
+        };
+
+        let script_pubkey = aggregate_key.signers_script_pubkey();
+        let store = self.lock().await;
+        let bitcoin_blocks = &store.bitcoin_blocks;
+        let first = bitcoin_blocks.get(&chain_tip);
+
+        // Traverse the canonical chain backwards and find the first block containing relevant sbtc tx(s)
+        let sbtc_txs = std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
+            .filter_map(|block| {
+                store
+                    .bitcoin_block_to_transactions
+                    .get(&block.block_hash)
+                    .and_then(|txs| {
+                        let mut sbtc_txs = txs
+                            .iter()
+                            .filter_map(|tx| store.raw_transactions.get(&tx.into_bytes()))
+                            .filter(|sbtc_tx| {
+                                sbtc_tx.tx_type == model::TransactionType::SbtcTransaction
+                            })
+                            .map(|tx| {
+                                bitcoin::Transaction::consensus_decode(
+                                    &mut tx.tx.clone().as_slice(),
+                                )
+                                .unwrap()
+                            })
+                            .filter(|tx| {
+                                tx.output
+                                    .first()
+                                    .is_some_and(|out| out.script_pubkey == script_pubkey)
+                            })
+                            .peekable();
+                        if sbtc_txs.peek().is_some() {
+                            Some(sbtc_txs.collect::<Vec<_>>())
+                        } else {
+                            None
+                        }
+                    })
+            })
+            .next();
+
+        if sbtc_txs.is_none() {
+            return Ok(None);
+        }
+        // `sbtc_txs` contains all the txs in the highest canonical block where the first
+        // output is spendable by script_pubkey
+        let sbtc_txs = sbtc_txs.unwrap();
+
+        let spent: HashSet<OutPoint> = sbtc_txs
+            .iter()
+            .flat_map(|tx| tx.input.iter().map(|txin| txin.previous_output))
+            .collect();
+
+        let candidates = sbtc_txs
+            .iter()
+            .flat_map(|tx| {
+                let txid = tx.compute_txid();
+                let spent = &spent;
+                tx.output
+                    .first() // we only care about the first output
+                    .and_then(move |tx_out| {
+                        let outpoint = OutPoint::new(txid, 0);
+                        if spent.contains(&outpoint) {
+                            None
+                        } else {
+                            Some(SignerUtxo {
+                                outpoint,
+                                amount: tx_out.value.to_sat(),
+                                // TODO: given we filter the txs by script_pubkey, is this right?
+                                public_key: XOnlyPublicKey::from(aggregate_key),
+                            })
+                        }
+                    })
+            })
+            .collect::<Vec<_>>();
+
+        if candidates.is_empty() {
+            Ok(None)
+        } else if candidates.len() == 1 {
+            Ok(candidates.first().copied())
+        } else {
+            Err(Error::TooManySignerUtxo)
+        }
+    }
+
     async fn get_deposit_request_signer_votes(
         &self,
         txid: &model::BitcoinTxId,
@@ -636,8 +735,12 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_transaction(&self, _transaction: &model::Transaction) -> Result<(), Error> {
-        // Currently not needed in-memory since it's not required by any queries
+    async fn write_transaction(&self, transaction: &model::Transaction) -> Result<(), Error> {
+        self.lock()
+            .await
+            .raw_transactions
+            .insert(transaction.txid, transaction.clone());
+
         Ok(())
     }
 

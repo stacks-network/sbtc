@@ -15,6 +15,7 @@ use std::future::Future;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
 
+use crate::bitcoin::utxo::SignerUtxo;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::stacks::events::CompletedDepositEvent;
@@ -129,6 +130,12 @@ pub trait DbRead {
     fn get_signers_script_pubkeys(
         &self,
     ) -> impl Future<Output = Result<Vec<model::Bytes>, Error>> + Send;
+
+    /// Get the outstanding signer UTXO
+    fn get_signer_utxo(
+        &self,
+        aggregate_key: &crate::keys::PublicKey,
+    ) -> impl Future<Output = Result<Option<SignerUtxo>, Error>> + Send;
 
     /// For the given outpoint and aggregate key, get the list all signer
     /// votes in the signer set.
