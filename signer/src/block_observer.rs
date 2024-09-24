@@ -329,7 +329,7 @@ mod tests {
     use model::BitcoinTxId;
     use rand::seq::IteratorRandom;
     use rand::SeedableRng;
-    
+
     use crate::bitcoin::rpc::GetTxResponse;
     use crate::bitcoin::utxo;
     use crate::config::Settings;
