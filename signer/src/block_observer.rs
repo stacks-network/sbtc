@@ -329,8 +329,7 @@ mod tests {
     use model::BitcoinTxId;
     use rand::seq::IteratorRandom;
     use rand::SeedableRng;
-    use sbtc::rpc::BitcoinClient;
-
+    
     use crate::bitcoin::rpc::GetTxResponse;
     use crate::bitcoin::utxo;
     use crate::config::Settings;
@@ -428,7 +427,7 @@ mod tests {
         // When we validate the deposit request, we fetch the transaction
         // from bitcoin-core's mempool or blockchain. The stubs out that
         // response.
-        let get_tx_resp0 = sbtc::rpc::GetTxResponse {
+        let get_tx_resp0 = GetTxResponse {
             tx: tx_setup0.tx.clone(),
             block_hash: None,
             confirmations: None,
@@ -448,7 +447,7 @@ mod tests {
         };
         // The transaction is also in the mempool, even though it is an
         // invalid deposit.
-        let get_tx_resp1 = sbtc::rpc::GetTxResponse {
+        let get_tx_resp1 = GetTxResponse {
             tx: tx_setup1.tx.clone(),
             block_hash: None,
             confirmations: None,
@@ -528,7 +527,7 @@ mod tests {
         // When we validate the deposit request, we fetch the transaction
         // from bitcoin-core's mempool or blockchain. The stubs out that
         // response.
-        let get_tx_resp0 = sbtc::rpc::GetTxResponse {
+        let get_tx_resp0 = GetTxResponse {
             tx: tx_setup0.tx.clone(),
             block_hash: None,
             confirmations: None,
@@ -690,7 +689,7 @@ mod tests {
         /// have the same bitcoin::BlockHash occur within the same tenure.
         stacks_blocks: Vec<(StacksBlockId, NakamotoBlock, BlockHash)>,
         /// This represents deposit transactions
-        deposits: HashMap<Txid, sbtc::rpc::GetTxResponse>,
+        deposits: HashMap<Txid, GetTxResponse>,
     }
 
     impl TestHarness {
@@ -807,13 +806,6 @@ mod tests {
 
         async fn broadcast_transaction(&self, _tx: &bitcoin::Transaction) -> Result<(), Error> {
             unimplemented!()
-        }
-    }
-
-    impl BitcoinClient for TestHarness {
-        type Error = Error;
-        async fn get_tx(&self, txid: &Txid) -> Result<sbtc::rpc::GetTxResponse, Error> {
-            self.deposits.get(txid).cloned().ok_or(Error::Encryption)
         }
     }
 

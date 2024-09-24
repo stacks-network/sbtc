@@ -1,7 +1,5 @@
 //! Contains client wrappers for bitcoin core and electrum.
 
-use std::future::Future;
-
 use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::Denomination;
@@ -236,16 +234,6 @@ pub struct FeeEstimate {
     pub sats_per_vbyte: f64,
 }
 
-/// Trait for interacting with bitcoin-core
-pub trait BitcoinClient {
-    /// The error type returned for RPC calls.
-    type Error: std::error::Error + Sync + Send + 'static;
-
-    /// Return the transaction if the transaction is in the mempool or in
-    /// any block.
-    fn get_tx(&self, txid: &Txid) -> impl Future<Output = Result<GetTxResponse, Self::Error>>;
-}
-
 /// A client for interacting with bitcoin-core
 pub struct BitcoinCoreClient {
     /// The underlying bitcoin-core client
@@ -372,12 +360,6 @@ impl BitcoinCoreClient {
     }
 }
 
-impl BitcoinClient for BitcoinCoreClient {
-    type Error = Error;
-    async fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
-        self.get_tx(txid)
-    }
-}
 
 #[cfg(test)]
 mod tests {

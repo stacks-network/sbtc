@@ -3,9 +3,9 @@
 use std::future::Future;
 use std::time::Duration;
 
-use sbtc::rpc::FeeEstimate;
 use serde::Deserialize;
 
+use crate::bitcoin::rpc::FeeEstimate;
 use crate::error::Error;
 
 const FIVE_MINUTES_SECONDS: i64 = 300;
