@@ -1,0 +1,23 @@
+name: Buf CI
+on: [push]
+
+jobs:
+  buf:
+    name: Run protobuf lints
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bufbuild/buf-action@v1
+        with:
+          version: 1.42.0
+          setup_only: true
+
+      - name: Check for lints
+        run: |
+          cd protobufs
+          buf lint
+
+      - name: Check the format
+        run: | 
+          cd protobufs
+          buf format --diff --exit-code

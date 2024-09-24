@@ -67,8 +67,6 @@ fn make_complete_deposit(
         context_window: 10,
         // The value here doesn't matter.
         origin: fake::Faker.fake_with_rng(&mut OsRng),
-        // The value here doesn't matter either.
-        aggregate_key: fake::Faker.fake_with_rng(&mut OsRng),
         // This value affects how many deposit transactions are consider
         // accepted.
         signatures_required: 2,
@@ -107,9 +105,7 @@ where
 }
 
 /// Get the full block
-async fn get_bitcoin_canonical_chain_tip_block(
-    store: &PgStore,
-) -> Result<Option<BitcoinBlock>, Error> {
+async fn get_bitcoin_canonical_chain_tip_block(db: &PgStore) -> BitcoinBlock {
     sqlx::query_as::<_, BitcoinBlock>(
         "SELECT
             block_hash
@@ -120,9 +116,33 @@ async fn get_bitcoin_canonical_chain_tip_block(
             ORDER BY block_height DESC, block_hash DESC
             LIMIT 1",
     )
-    .fetch_optional(store.pool())
+    .fetch_optional(db.pool())
     .await
-    .map_err(Error::SqlxQuery)
+    .unwrap()
+    .unwrap()
+}
+
+/// Get an existing deposit request that has been confirmed on the
+/// canonical bitcoin blockchain.
+///
+/// The signatures required field affects which deposit requests are
+/// eligible for being accepted. In these tests, we just need any old
+/// deposit request so this value doesn't matter so long as we get one
+/// deposit request that meets these requirements.
+async fn get_pending_accepted_deposit_requests(
+    db: &PgStore,
+    chain_tip: &BitcoinBlock,
+    signatures_required: u16,
+) -> DepositRequest {
+    // The context window limits how far back we look in the blockchain for
+    // accepted and pending deposit requests. For these tests, this value
+    // is fine.
+    db.get_pending_accepted_deposit_requests(&chain_tip.block_hash, 20, signatures_required)
+        .await
+        .unwrap()
+        .last()
+        .cloned()
+        .unwrap()
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -135,30 +155,21 @@ async fn complete_deposit_validation_happy_path() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let signatures_required = 3;
+    let signatures_required = 2;
 
     let signer_set = deposit_setup(&mut rng, &db).await;
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing deposit request on the canonical bitcoin
     // blockchain.
-    let deposit_req = db
-        .get_pending_accepted_deposit_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let deposit_req =
+        get_pending_accepted_deposit_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
-        aggregate_key: PublicKey::combine_keys(&signer_set).unwrap(),
+        signer_public_key: PublicKey::combine_keys(&signer_set).unwrap(),
         amounts: 3000..1_000_000_000,
         inputs: vec![deposit_req.outpoint()],
-        outputs: Vec::new(),
     };
     let mut sweep_tx: model::Transaction = sweep_config.fake_with_rng(&mut rng);
     // Normal: make sure the sweep transaction is on the canonical bitcoin
@@ -193,31 +204,22 @@ async fn complete_deposit_validation_deployer_mismatch() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let signatures_required = 3;
+    let signatures_required = 2;
 
     let signer_set = deposit_setup(&mut rng, &db).await;
 
     // Get the chain tip
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing deposit request on the canonical bitcoin
     // blockchain.
-    let deposit_req = db
-        .get_pending_accepted_deposit_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let deposit_req =
+        get_pending_accepted_deposit_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
-        aggregate_key: PublicKey::combine_keys(&signer_set).unwrap(),
+        signer_public_key: PublicKey::combine_keys(&signer_set).unwrap(),
         amounts: 3000..1_000_000_000,
         inputs: vec![deposit_req.outpoint()],
-        outputs: Vec::new(),
     };
     let mut sweep_tx: model::Transaction = sweep_config.fake_with_rng(&mut rng);
     // Normal: make sure the sweep transaction is on the canonical bitcoin
@@ -235,7 +237,7 @@ async fn complete_deposit_validation_deployer_mismatch() {
     // Generate the transaction and corresponding request context.
     let (mut complete_deposit_tx, mut ctx) =
         make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
-    // Different: Okay, let's make sure the deployers do not match.
+    // Different: Okay, let's make sure we get the deployers do not match.
     complete_deposit_tx.deployer = StacksAddress::p2pkh(false, &signer_set[0].into());
     ctx.deployer = StacksAddress::p2pkh(false, &signer_set[1].into());
 
@@ -251,9 +253,9 @@ async fn complete_deposit_validation_deployer_mismatch() {
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
-/// returns a deposit validation error with a RequestMissing message when
-/// the signer does not have a record of the deposit request doesn't match
-/// but everything else is okay.
+/// returns a deposit validation error with a DepositRequestMissing message
+/// when the signer does not have a record of the deposit request doesn't
+/// match but everything else is okay.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn complete_deposit_validation_missing_deposit_request() {
@@ -267,20 +269,16 @@ async fn complete_deposit_validation_missing_deposit_request() {
 
     // Normal: Get the chain tip and any pending deposit request in the blockchain
     // identified by the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Different: Let's use a random deposit request instead of one that
     // exists in the database.
     let deposit_req: DepositRequest = fake::Faker.fake_with_rng(&mut rng);
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
-        aggregate_key: PublicKey::combine_keys(&signer_set).unwrap(),
+        signer_public_key: PublicKey::combine_keys(&signer_set).unwrap(),
         amounts: 3000..1_000_000_000,
         inputs: vec![deposit_req.outpoint()],
-        outputs: Vec::new(),
     };
     let mut sweep_tx: model::Transaction = sweep_config.fake_with_rng(&mut rng);
     // Normal: make sure the sweep transaction is on the canonical bitcoin
@@ -320,31 +318,22 @@ async fn complete_deposit_validation_recipient_mismatch() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let signatures_required = 3;
+    let signatures_required = 2;
 
     let signer_set = deposit_setup(&mut rng, &db).await;
 
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing deposit request on the canonical bitcoin
     // blockchain.
-    let deposit_req = db
-        .get_pending_accepted_deposit_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let deposit_req =
+        get_pending_accepted_deposit_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
-        aggregate_key: PublicKey::combine_keys(&signer_set).unwrap(),
+        signer_public_key: PublicKey::combine_keys(&signer_set).unwrap(),
         amounts: 3000..1_000_000_000,
         inputs: vec![deposit_req.outpoint()],
-        outputs: Vec::new(),
     };
     let mut sweep_tx: model::Transaction = sweep_config.fake_with_rng(&mut rng);
     // Normal: make sure the sweep transaction is on the canonical bitcoin
@@ -361,8 +350,7 @@ async fn complete_deposit_validation_recipient_mismatch() {
 
     // Generate the transaction and corresponding request context.
     let (mut complete_deposit_tx, ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
-    // Different: Okay, let's make sure the recipient does not match our
-    // records.
+    // Different: Okay, let's make sure we the recipients do not match.
     complete_deposit_tx.recipient = fake::Faker
         .fake_with_rng::<StacksPrincipal, _>(&mut rng)
         .into();
@@ -390,31 +378,22 @@ async fn complete_deposit_validation_invalid_mint_amount() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let signatures_required = 3;
+    let signatures_required = 2;
 
     let signer_set = deposit_setup(&mut rng, &db).await;
 
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing deposit request on the canonical bitcoin
     // blockchain.
-    let deposit_req = db
-        .get_pending_accepted_deposit_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let deposit_req =
+        get_pending_accepted_deposit_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
-        aggregate_key: PublicKey::combine_keys(&signer_set).unwrap(),
+        signer_public_key: PublicKey::combine_keys(&signer_set).unwrap(),
         amounts: 3000..1_000_000_000,
         inputs: vec![deposit_req.outpoint()],
-        outputs: Vec::new(),
     };
     let mut sweep_tx: model::Transaction = sweep_config.fake_with_rng(&mut rng);
     // Normal: make sure the sweep transaction is on the canonical bitcoin
@@ -433,7 +412,7 @@ async fn complete_deposit_validation_invalid_mint_amount() {
     let (mut complete_deposit_tx, ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
     // Different: The amount cannot exceed the amount in the deposit
     // request.
-    complete_deposit_tx.amount = deposit_req.amount + 1000;
+    complete_deposit_tx.amount = deposit_req.amount + 1;
 
     let validate_future = complete_deposit_tx.validate(&db, &ctx);
     match validate_future.await.unwrap_err() {
@@ -458,31 +437,22 @@ async fn complete_deposit_validation_invalid_fee() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let signatures_required = 3;
+    let signatures_required = 2;
 
     let signer_set = deposit_setup(&mut rng, &db).await;
 
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing deposit request on the canonical bitcoin
     // blockchain.
-    let deposit_req = db
-        .get_pending_accepted_deposit_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let deposit_req =
+        get_pending_accepted_deposit_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
-        aggregate_key: PublicKey::combine_keys(&signer_set).unwrap(),
+        signer_public_key: PublicKey::combine_keys(&signer_set).unwrap(),
         amounts: 3000..1_000_000_000,
         inputs: vec![deposit_req.outpoint()],
-        outputs: Vec::new(),
     };
     let mut sweep_tx: model::Transaction = sweep_config.fake_with_rng(&mut rng);
     // Normal: make sure the sweep transaction is on the canonical bitcoin
@@ -526,31 +496,22 @@ async fn complete_deposit_validation_sweep_tx_missing() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let signatures_required = 3;
+    let signatures_required = 2;
 
     let signer_set = deposit_setup(&mut rng, &db).await;
 
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing deposit request on the canonical bitcoin
     // blockchain.
-    let deposit_req = db
-        .get_pending_accepted_deposit_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let deposit_req =
+        get_pending_accepted_deposit_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
-        aggregate_key: PublicKey::combine_keys(&signer_set).unwrap(),
+        signer_public_key: PublicKey::combine_keys(&signer_set).unwrap(),
         amounts: 3000..1_000_000_000,
         inputs: vec![deposit_req.outpoint()],
-        outputs: Vec::new(),
     };
     let mut sweep_tx: model::Transaction = sweep_config.fake_with_rng(&mut rng);
     // Normal: make sure the sweep transaction is on the canonical bitcoin
@@ -586,30 +547,21 @@ async fn complete_deposit_validation_sweep_reorged() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let signatures_required = 3;
+    let signatures_required = 2;
 
     let signer_set = deposit_setup(&mut rng, &db).await;
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing deposit request on the canonical bitcoin
     // blockchain.
-    let deposit_req = db
-        .get_pending_accepted_deposit_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let deposit_req =
+        get_pending_accepted_deposit_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
-        aggregate_key: PublicKey::combine_keys(&signer_set).unwrap(),
+        signer_public_key: PublicKey::combine_keys(&signer_set).unwrap(),
         amounts: 3000..1_000_000_000,
         inputs: vec![deposit_req.outpoint()],
-        outputs: Vec::new(),
     };
     let mut sweep_tx: model::Transaction = sweep_config.fake_with_rng(&mut rng);
     // Different: the transaction that sweeps in the deposit gets
@@ -672,35 +624,26 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let signatures_required = 3;
+    let signatures_required = 2;
 
     let signer_set = deposit_setup(&mut rng, &db).await;
 
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing deposit request on the canonical bitcoin
     // blockchain.
-    let deposit_req = db
-        .get_pending_accepted_deposit_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let deposit_req =
+        get_pending_accepted_deposit_requests(&db, &chain_tip, signatures_required).await;
 
     // Different: The sweep transaction does not include the deposit
     // request UTXO as an input.
     let sweep_config = SweepTxConfig {
-        aggregate_key: PublicKey::combine_keys(&signer_set).unwrap(),
+        signer_public_key: PublicKey::combine_keys(&signer_set).unwrap(),
         amounts: 3000..1_000_000_000,
         inputs: vec![OutPoint {
             txid: bitcoin::Txid::from_byte_array(fake::Faker.fake_with_rng(&mut rng)),
             vout: 0,
         }],
-        outputs: Vec::new(),
     };
     let mut sweep_tx: model::Transaction = sweep_config.fake_with_rng(&mut rng);
     // Normal: make sure the sweep transaction is on the canonical bitcoin

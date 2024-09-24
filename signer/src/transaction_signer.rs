@@ -390,7 +390,7 @@ where
         request: &message::StacksTransactionSignRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
-        self.is_valid_stackstransaction_sign_request(request, bitcoin_chain_tip)
+        self.assert_valid_stackstransaction_sign_request(request, bitcoin_chain_tip)
             .await?;
 
         let wallet = self.load_wallet(request, bitcoin_chain_tip).await?;
@@ -434,7 +434,7 @@ where
         )
     }
 
-    async fn is_valid_stackstransaction_sign_request(
+    async fn assert_valid_stackstransaction_sign_request(
         &mut self,
         request: &message::StacksTransactionSignRequest,
         chain_tip: &model::BitcoinBlockHash,

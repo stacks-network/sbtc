@@ -127,7 +127,7 @@ pub fn try_parse_p2p_multiaddr(s: &str) -> Result<Multiaddr, SignerConfigError> 
     let mut addr = if let Ok(addr) = IpAddr::from_str(host_str) {
         Multiaddr::empty().with(Protocol::from(addr))
     } else {
-        Multiaddr::empty().with(Protocol::Dns(url.host_str().unwrap().into()))
+        Multiaddr::empty().with(Protocol::Dns(url.host_str().unwrap_or_default().into()))
     };
 
     // Update the Multiaddr with the correct protocol.
