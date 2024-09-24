@@ -5859,6 +5859,7 @@ dependencies = [
  "bincode",
  "bitcoin",
  "bitcoincore-rpc",
+ "bitcoincore-rpc-json",
  "bitvec",
  "blocklist-api",
  "cfg-if 1.0.0",

@@ -6,11 +6,11 @@ use std::ops::Deref;
 use bitcoin::hashes::Hash as _;
 use bitvec::array::BitArray;
 use clarity::vm::types::PrincipalData;
-use sbtc::deposits::Deposit;
 use serde::Deserialize;
 use serde::Serialize;
 use stacks_common::types::chainstate::StacksBlockId;
 
+use crate::block_observer::Deposit;
 use crate::error::Error;
 use crate::keys::PublicKey;
 

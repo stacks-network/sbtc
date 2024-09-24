@@ -1,15 +1,12 @@
 //! This is the transaction analysis module
 //!
 
-use std::marker::PhantomData;
-
 use bitcoin::opcodes::all as opcodes;
 use bitcoin::script::PushBytesBuf;
 use bitcoin::taproot::LeafVersion;
 use bitcoin::taproot::NodeInfo;
 use bitcoin::taproot::TaprootSpendInfo;
 use bitcoin::Address;
-use bitcoin::BlockHash;
 use bitcoin::Network;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
@@ -21,7 +18,6 @@ use secp256k1::SECP256K1;
 use stacks_common::types::chainstate::STACKS_ADDRESS_ENCODED_SIZE;
 
 use crate::error::Error;
-use crate::rpc::BitcoinClient;
 
 /// This is the length of the fixed portion of the deposit script, which
 /// is:
@@ -114,55 +110,7 @@ pub struct DepositInfo {
     pub lock_time: u64,
 }
 
-/// A full "deposit", containing the bitcoin transaction and a fully
-/// extracted and verified `scriptPubKey` from one of the transaction's
-/// UTXOs.
-#[derive(Debug, Clone)]
-pub struct Deposit {
-    /// The transaction spent to the signers as a deposit for sBTC.
-    pub tx: Transaction,
-    /// The deposit information included in one of the output
-    /// `scriptPubKey`s of the above transaction.
-    pub info: DepositInfo,
-    /// The block hash of the block that includes this transaction. If this
-    /// is `None` then this transaction is in the mempool. TODO(384): In
-    /// the case of a reorg, it's not clear what happens if this was
-    /// confirmed.
-    pub block_hash: Option<BlockHash>,
-    /// The number of confirmations deep from that chain tip of the bitcoin
-    /// block that includes this transaction. If `None` then this is in the
-    /// mempool. TODO(384): In the case of a reorg, it's not clear what
-    /// happens if this was confirmed.
-    pub confirmations: Option<u32>,
-    /// This is to make sure that this struct cannot be created without the
-    /// above invariants being upheld.
-    _phantom: PhantomData<()>,
-}
-
 impl CreateDepositRequest {
-    /// Validate this deposit request from the transaction.
-    ///
-    /// This function fetches the transaction using the given client and
-    /// checks that the transaction has been submitted. The transaction
-    /// need not be confirmed.
-    pub async fn validate<C>(&self, client: &C) -> Result<Deposit, Error>
-    where
-        C: BitcoinClient,
-    {
-        // Fetch the transaction from either a block or from the mempool
-        let response = client
-            .get_tx(&self.outpoint.txid)
-            .await
-            .map_err(|e| Error::BitcoinClient(Box::new(e)))?;
-
-        Ok(Deposit {
-            info: self.validate_tx(&response.tx)?,
-            tx: response.tx,
-            block_hash: response.block_hash,
-            confirmations: response.confirmations,
-            _phantom: PhantomData,
-        })
-    }
     /// Validate this deposit request.
     ///
     /// This function checks the following
@@ -557,8 +505,6 @@ fn scriptint_parse(v: &[u8]) -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use bitcoin::hashes::Hash as _;
     use bitcoin::AddressType;
     use bitcoin::Txid;
@@ -568,37 +514,12 @@ mod tests {
     use stacks_common::types::chainstate::StacksAddress;
 
     use super::*;
-    use crate::rpc::GetTxResponse;
     use crate::testing;
     use crate::testing::deposits::TxSetup;
 
     use test_case::test_case;
 
     const CONTRACT_ADDRESS: &str = "ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y.contract-name";
-
-    struct DummyClient(pub HashMap<Txid, Transaction>);
-
-    impl DummyClient {
-        fn new_from_tx(tx: &Transaction) -> Self {
-            let mut map = HashMap::new();
-            map.insert(tx.compute_txid(), tx.clone());
-            Self(map)
-        }
-    }
-
-    impl BitcoinClient for DummyClient {
-        type Error = Error;
-        async fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Self::Error> {
-            let tx = self.0.get(txid).cloned();
-
-            Ok(GetTxResponse {
-                tx: tx.ok_or(Error::InvalidDepositScript)?,
-                block_hash: None,
-                confirmations: None,
-                block_time: None,
-            })
-        }
-    }
 
     /// A full reclaim script with a p2pk script at the end.
     fn reclaim_p2pk(lock_time: i64) -> ScriptBuf {
@@ -833,10 +754,8 @@ mod tests {
         assert!(reclaim.is_ok());
     }
 
-    #[test_case(true ; "use client")]
-    #[test_case(false ; "no client")]
-    #[tokio::test]
-    async fn happy_path_tx_validation(use_client: bool) {
+    #[test]
+    fn happy_path_tx_validation() {
         let max_fee: u64 = 15000;
         let amount_sats = 500_000;
         let lock_time = 150;
@@ -849,12 +768,7 @@ mod tests {
             deposit_script: setup.deposit.deposit_script(),
         };
 
-        let parsed = if use_client {
-            let client = DummyClient::new_from_tx(&setup.tx);
-            request.validate(&client).await.unwrap().info
-        } else {
-            request.validate_tx(&setup.tx).unwrap()
-        };
+        let parsed = request.validate_tx(&setup.tx).unwrap();
 
         assert_eq!(parsed.outpoint, request.outpoint);
         assert_eq!(parsed.deposit_script, request.deposit_script);

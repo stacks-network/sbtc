@@ -17,6 +17,8 @@ axum.workspace = true
 backoff.workspace = true
 bincode.workspace = true
 bitcoin = { workspace = true, features = ["rand-std"] }
+bitcoincore-rpc.workspace = true
+bitcoincore-rpc-json.workspace = true
 bitvec = { workspace = true, default-features = false, features = ["std"] }
 blocklist-api = { path = "../.generated-sources/blocklist-api" }
 clap.workspace = true
@@ -24,6 +26,7 @@ clarity.workspace = true
 config = "0.14"
 futures.workspace = true
 hashbrown.workspace = true
+libp2p.workspace = true
 p256k1.workspace = true
 prost.workspace = true
 rand.workspace = true
@@ -50,13 +53,11 @@ wsts.workspace = true
 zeromq.workspace = true
 hex.workspace = true
 cfg-if = "1.0"
-libp2p.workspace = true
 include_dir = "0.7.4"
-bitcoincore-rpc.workspace = true
 
 # Only for testing
-fake = { version = "2.9.2", features = ["derive", "time"], optional = true }
 mockall = { version = "0.12.1", optional = true }
+fake = { version = "2.9.2", features = ["derive", "time"], optional = true }
 
 [dependencies.secp256k1]
 version = "*"
