@@ -16,6 +16,7 @@ pub mod context;
 pub mod ecdsa;
 pub mod error;
 pub mod keys;
+pub mod logging;
 pub mod message;
 pub mod network;
 pub mod proto;

@@ -297,7 +297,7 @@ async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: Contr
 #[ignore = "This is an integration test that requires a stacks-node to work"]
 #[tokio::test]
 async fn estimate_tx_fees() {
-    sbtc::logging::setup_logging("info", false);
+    signer::logging::setup_logging("info", false);
     let client = stacks_client();
 
     let contract = SbtcRegistryContract;

@@ -5475,10 +5475,6 @@ dependencies = [
  "test-case",
  "thiserror",
  "tokio",
- "tracing",
- "tracing-attributes",
- "tracing-subscriber",
- "url",
 ]
 
 [[package]]
