@@ -501,7 +501,7 @@ impl super::DbRead for PgStore {
         txid: &model::BitcoinTxId,
         output_index: u32,
         aggregate_key: &PublicKey,
-    ) -> Result<Vec<model::SignerVote>, Error> {
+    ) -> Result<model::SignerVotes, Error> {
         sqlx::query_as::<_, model::SignerVote>(
             r#"
             WITH signer_set_rows AS (
@@ -536,6 +536,7 @@ impl super::DbRead for PgStore {
         .bind(output_index as i64)
         .fetch_all(&self.0)
         .await
+        .map(model::SignerVotes::from)
         .map_err(Error::SqlxQuery)
     }
 
@@ -543,7 +544,7 @@ impl super::DbRead for PgStore {
         &self,
         id: &model::QualifiedRequestId,
         aggregate_key: &PublicKey,
-    ) -> Result<Vec<model::SignerVote>, Error> {
+    ) -> Result<model::SignerVotes, Error> {
         sqlx::query_as::<_, model::SignerVote>(
             r#"
             WITH signer_set_rows AS (
@@ -575,6 +576,7 @@ impl super::DbRead for PgStore {
         .bind(i64::try_from(id.request_id).map_err(Error::ConversionDatabaseInt)?)
         .fetch_all(&self.0)
         .await
+        .map(model::SignerVotes::from)
         .map_err(Error::SqlxQuery)
     }
 

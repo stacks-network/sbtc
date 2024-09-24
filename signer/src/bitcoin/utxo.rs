@@ -35,10 +35,9 @@ use crate::error::Error;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
 use crate::storage::model::ScriptPubKey;
-use crate::storage::model::SignerVote;
+use crate::storage::model::SignerVotes;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
-use crate::MAX_KEYS;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
 /// transactions.
@@ -348,32 +347,12 @@ impl DepositRequest {
     pub fn from_model(
         request: model::DepositRequest,
         signers_public_key: XOnlyPublicKey,
-        mut votes: Vec<SignerVote>,
+        votes: SignerVotes,
     ) -> Self {
-        let txid = request.txid.into();
-        let vout = request.output_index;
-
-        let mut signer_bitmap = BitArray::ZERO;
-        votes.sort_by_key(|vote| vote.signer_public_key);
-        votes
-            .into_iter()
-            .enumerate()
-            .take(signer_bitmap.len().min(MAX_KEYS as usize))
-            .for_each(|(index, vote)| {
-                // The BitArray::<[u8; 16]>::set function panics if the
-                // index is out of bounds but that cannot be the case here
-                // because we only take 128 values.
-                //
-                // Note that the signer bitmap here is true for votes
-                // *against*, and a missing vote is an implicit vote
-                // against.
-                signer_bitmap.set(index, !vote.is_accepted.unwrap_or(false));
-            });
-
         Self {
-            outpoint: OutPoint { txid, vout },
+            outpoint: request.outpoint(),
             max_fee: request.max_fee,
-            signer_bitmap,
+            signer_bitmap: votes.into(),
             amount: request.amount,
             deposit_script: ScriptBuf::from_bytes(request.spend_script),
             reclaim_script: ScriptBuf::from_bytes(request.reclaim_script),
@@ -448,29 +427,12 @@ impl WithdrawalRequest {
     }
 
     /// Try convert from a model::DepositRequest with some additional info.
-    pub fn from_model(request: model::WithdrawalRequest, mut votes: Vec<SignerVote>) -> Self {
-        let mut signer_bitmap = BitArray::ZERO;
-        votes.sort_by_key(|vote| vote.signer_public_key);
-        votes
-            .into_iter()
-            .enumerate()
-            .take(signer_bitmap.len().min(MAX_KEYS as usize))
-            .for_each(|(index, vote)| {
-                // The BitArray::<[u8; 16]>::set function panics if the
-                // index is out of bounds but that cannot be the case here
-                // because we only take 128 values.
-                //
-                // Note that the signer bitmap here is true for votes
-                // *against*, and a missing vote is an implicit vote
-                // against.
-                signer_bitmap.set(index, !vote.is_accepted.unwrap_or(false));
-            });
-
+    pub fn from_model(request: model::WithdrawalRequest, votes: SignerVotes) -> Self {
         Self {
             amount: request.amount,
             max_fee: request.max_fee,
             script_pubkey: request.recipient,
-            signer_bitmap,
+            signer_bitmap: votes.into(),
             request_id: request.request_id,
             txid: request.txid,
             block_hash: request.block_hash,
@@ -1013,6 +975,7 @@ mod tests {
     use bitcoin::Txid;
     use clarity::vm::types::PrincipalData;
     use fake::Fake as _;
+    use model::SignerVote;
     use rand::distributions::Distribution;
     use rand::distributions::Uniform;
     use rand::rngs::OsRng;
@@ -2080,7 +2043,7 @@ mod tests {
     /// the model type to the required type here.
     #[test]
     fn creating_deposit_request_from_model_bitmap_is_right() {
-        let mut votes = [
+        let signer_votes = [
             SignerVote {
                 signer_public_key: fake::Faker.fake_with_rng(&mut OsRng),
                 is_accepted: Some(true),
@@ -2102,15 +2065,15 @@ mod tests {
                 is_accepted: None,
             },
         ];
+        let votes = SignerVotes::from(signer_votes.to_vec());
         let request: model::DepositRequest = fake::Faker.fake_with_rng(&mut OsRng);
         let signers_public_key: PublicKey = fake::Faker.fake_with_rng(&mut OsRng);
         let deposit_request =
-            DepositRequest::from_model(request, signers_public_key.into(), votes.to_vec());
+            DepositRequest::from_model(request, signers_public_key.into(), votes.clone());
 
         // One explicit vote against and one implicit vote against.
         assert_eq!(deposit_request.votes_against(), 2);
         // An appropriately named function ...
-        votes.sort_by_key(|x| x.signer_public_key);
         votes.iter().enumerate().for_each(|(index, vote)| {
             let vote_against = *deposit_request.signer_bitmap.get(index).unwrap();
             assert_eq!(vote_against, !vote.is_accepted.unwrap_or(false));
@@ -2121,7 +2084,7 @@ mod tests {
     /// the model type to the required type here.
     #[test]
     fn creating_withdrawal_request_from_model_bitmap_is_right() {
-        let mut votes = [
+        let signer_votes = [
             SignerVote {
                 signer_public_key: fake::Faker.fake_with_rng(&mut OsRng),
                 is_accepted: Some(true),
@@ -2147,13 +2110,13 @@ mod tests {
                 is_accepted: None,
             },
         ];
+        let votes = SignerVotes::from(signer_votes.to_vec());
         let request: model::WithdrawalRequest = fake::Faker.fake_with_rng(&mut OsRng);
-        let withdrawal_request = WithdrawalRequest::from_model(request, votes.to_vec());
+        let withdrawal_request = WithdrawalRequest::from_model(request, votes.clone());
 
         // One explicit vote against and one implicit vote against.
         assert_eq!(withdrawal_request.votes_against(), 3);
         // An appropriately named function ...
-        votes.sort_by_key(|x| x.signer_public_key);
         votes.iter().enumerate().for_each(|(index, vote)| {
             let vote_against = *withdrawal_request.signer_bitmap.get(index).unwrap();
             assert_eq!(vote_against, !vote.is_accepted.unwrap_or(false));

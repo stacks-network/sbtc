@@ -225,6 +225,8 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     tx_fee: 2500,
     signer_bitmap: BitArray::ZERO,
     deployer: testing::wallet::WALLET.0.address(),
+    sweep_block_hash: BitcoinBlockHash::from([0; 32]),
+    sweep_block_height: 7,
 }); "accept-withdrawal")]
 #[test_case(ContractCallWrapper(InitiateWithdrawalRequest {
     amount: 22500,

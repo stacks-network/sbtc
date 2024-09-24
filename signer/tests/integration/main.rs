@@ -7,6 +7,7 @@ mod postgres;
 mod rbf;
 mod transaction_signer;
 mod utxo_construction;
+mod withdrawal_accept;
 mod zmq;
 
 /// This is needed to make sure that each test has as many isolated

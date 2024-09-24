@@ -67,6 +67,8 @@ fn make_complete_deposit(
         context_window: 10,
         // The value here doesn't matter.
         origin: fake::Faker.fake_with_rng(&mut OsRng),
+        // This value doesn't matter here.
+        aggregate_key: fake::Faker.fake_with_rng(&mut OsRng),
         // This value affects how many deposit transactions are consider
         // accepted.
         signatures_required: 2,
@@ -98,7 +100,7 @@ where
 
     // Normal: this generates the blockchain as well as deposit request
     // transactions in each bitcoin block.
-    let signer_set = testing::wsts::generate_signer_set(rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set_public_keys(rng, num_signers);
     let test_data = TestData::generate(rng, &signer_set, &test_model_params);
     test_data.write_to(db).await;
     signer_set
@@ -167,9 +169,10 @@ async fn complete_deposit_validation_happy_path() {
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
-        signer_public_key: PublicKey::combine_keys(&signer_set).unwrap(),
+        aggregate_key: PublicKey::combine_keys(&signer_set).unwrap(),
         amounts: 3000..1_000_000_000,
         inputs: vec![deposit_req.outpoint()],
+        outputs: Vec::new(),
     };
     let mut sweep_tx: model::Transaction = sweep_config.fake_with_rng(&mut rng);
     // Normal: make sure the sweep transaction is on the canonical bitcoin
@@ -217,9 +220,10 @@ async fn complete_deposit_validation_deployer_mismatch() {
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
-        signer_public_key: PublicKey::combine_keys(&signer_set).unwrap(),
+        aggregate_key: PublicKey::combine_keys(&signer_set).unwrap(),
         amounts: 3000..1_000_000_000,
         inputs: vec![deposit_req.outpoint()],
+        outputs: Vec::new(),
     };
     let mut sweep_tx: model::Transaction = sweep_config.fake_with_rng(&mut rng);
     // Normal: make sure the sweep transaction is on the canonical bitcoin
@@ -276,9 +280,10 @@ async fn complete_deposit_validation_missing_deposit_request() {
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
-        signer_public_key: PublicKey::combine_keys(&signer_set).unwrap(),
+        aggregate_key: PublicKey::combine_keys(&signer_set).unwrap(),
         amounts: 3000..1_000_000_000,
         inputs: vec![deposit_req.outpoint()],
+        outputs: Vec::new(),
     };
     let mut sweep_tx: model::Transaction = sweep_config.fake_with_rng(&mut rng);
     // Normal: make sure the sweep transaction is on the canonical bitcoin
@@ -331,9 +336,10 @@ async fn complete_deposit_validation_recipient_mismatch() {
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
-        signer_public_key: PublicKey::combine_keys(&signer_set).unwrap(),
+        aggregate_key: PublicKey::combine_keys(&signer_set).unwrap(),
         amounts: 3000..1_000_000_000,
         inputs: vec![deposit_req.outpoint()],
+        outputs: Vec::new(),
     };
     let mut sweep_tx: model::Transaction = sweep_config.fake_with_rng(&mut rng);
     // Normal: make sure the sweep transaction is on the canonical bitcoin
@@ -391,9 +397,10 @@ async fn complete_deposit_validation_invalid_mint_amount() {
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
-        signer_public_key: PublicKey::combine_keys(&signer_set).unwrap(),
+        aggregate_key: PublicKey::combine_keys(&signer_set).unwrap(),
         amounts: 3000..1_000_000_000,
         inputs: vec![deposit_req.outpoint()],
+        outputs: Vec::new(),
     };
     let mut sweep_tx: model::Transaction = sweep_config.fake_with_rng(&mut rng);
     // Normal: make sure the sweep transaction is on the canonical bitcoin
@@ -450,9 +457,10 @@ async fn complete_deposit_validation_invalid_fee() {
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
-        signer_public_key: PublicKey::combine_keys(&signer_set).unwrap(),
+        aggregate_key: PublicKey::combine_keys(&signer_set).unwrap(),
         amounts: 3000..1_000_000_000,
         inputs: vec![deposit_req.outpoint()],
+        outputs: Vec::new(),
     };
     let mut sweep_tx: model::Transaction = sweep_config.fake_with_rng(&mut rng);
     // Normal: make sure the sweep transaction is on the canonical bitcoin
@@ -509,9 +517,10 @@ async fn complete_deposit_validation_sweep_tx_missing() {
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
-        signer_public_key: PublicKey::combine_keys(&signer_set).unwrap(),
+        aggregate_key: PublicKey::combine_keys(&signer_set).unwrap(),
         amounts: 3000..1_000_000_000,
         inputs: vec![deposit_req.outpoint()],
+        outputs: Vec::new(),
     };
     let mut sweep_tx: model::Transaction = sweep_config.fake_with_rng(&mut rng);
     // Normal: make sure the sweep transaction is on the canonical bitcoin
@@ -559,9 +568,10 @@ async fn complete_deposit_validation_sweep_reorged() {
 
     // Normal: we generate a transaction that sweeps in the deposit.
     let sweep_config = SweepTxConfig {
-        signer_public_key: PublicKey::combine_keys(&signer_set).unwrap(),
+        aggregate_key: PublicKey::combine_keys(&signer_set).unwrap(),
         amounts: 3000..1_000_000_000,
         inputs: vec![deposit_req.outpoint()],
+        outputs: Vec::new(),
     };
     let mut sweep_tx: model::Transaction = sweep_config.fake_with_rng(&mut rng);
     // Different: the transaction that sweeps in the deposit gets
@@ -638,12 +648,13 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
     // Different: The sweep transaction does not include the deposit
     // request UTXO as an input.
     let sweep_config = SweepTxConfig {
-        signer_public_key: PublicKey::combine_keys(&signer_set).unwrap(),
+        aggregate_key: PublicKey::combine_keys(&signer_set).unwrap(),
         amounts: 3000..1_000_000_000,
         inputs: vec![OutPoint {
             txid: bitcoin::Txid::from_byte_array(fake::Faker.fake_with_rng(&mut rng)),
             vout: 0,
         }],
+        outputs: Vec::new(),
     };
     let mut sweep_tx: model::Transaction = sweep_config.fake_with_rng(&mut rng);
     // Normal: make sure the sweep transaction is on the canonical bitcoin

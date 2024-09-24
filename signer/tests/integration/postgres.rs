@@ -64,7 +64,7 @@ async fn should_be_able_to_query_bitcoin_blocks() {
         num_signers_per_request: 0,
     };
 
-    let signer_set = testing::wsts::generate_signer_set(&mut rng, 7);
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, 7);
 
     let persisted_model = TestData::generate(&mut rng, &signer_set, &test_model_params);
     let not_persisted_model = TestData::generate(&mut rng, &signer_set, &test_model_params);
@@ -144,6 +144,8 @@ impl AsContractCall for InitiateWithdrawalRequest {
     tx_fee: 3500,
     signer_bitmap: BitArray::ZERO,
     deployer: testing::wallet::WALLET.0.address(),
+    sweep_block_hash: BitcoinBlockHash::from([0; 32]),
+    sweep_block_height: 7,
 }); "accept-withdrawal")]
 #[test_case(ContractCallWrapper(RejectWithdrawalV1 {
     request_id: 0,
@@ -310,7 +312,7 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: 0,
     };
-    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -370,7 +372,7 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
         num_signers_per_request: 0,
     };
 
-    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -431,7 +433,7 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
     };
     let threshold = 4;
 
-    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -500,7 +502,7 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
         num_signers_per_request: num_signers,
     };
     let threshold = 4;
-    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -565,7 +567,7 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
     };
     let num_signers = 7;
     let threshold = 4;
-    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -986,7 +988,7 @@ async fn fetching_deposit_request_votes() {
         .unwrap();
 
     let mut actual_signer_vote_map: BTreeMap<PublicKey, Option<bool>> = votes
-        .into_iter()
+        .iter()
         .map(|vote| (vote.signer_public_key, vote.is_accepted))
         .collect();
 
@@ -1109,7 +1111,7 @@ async fn fetching_withdrawal_request_votes() {
         .unwrap();
 
     let mut actual_signer_vote_map: BTreeMap<PublicKey, Option<bool>> = votes
-        .into_iter()
+        .iter()
         .map(|vote| (vote.signer_public_key, vote.is_accepted))
         .collect();
 
@@ -1151,7 +1153,7 @@ async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
         num_signers_per_request: num_signers,
     };
 
-    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
     // Okay now we generate one blockchain and get its chain tip
     let test_data1 = TestData::generate(&mut rng, &signer_set, &test_model_params);
     // And we generate another blockchain and get its chain tip
@@ -1226,7 +1228,7 @@ async fn we_can_fetch_bitcoin_txs_from_db() {
         num_signers_per_request: num_signers,
     };
 
-    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
     test_data.write_to(&pg_store).await;
 

@@ -6,6 +6,7 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 use crate::codec;
 use crate::ecdsa;
 use crate::stacks::contracts::DepositValidationError;
+use crate::stacks::contracts::WithdrawalAcceptValidationError;
 
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
@@ -308,6 +309,11 @@ pub enum Error {
     /// unexpected.
     #[error("unexpected public key from signature. key {0}; digest: {1}")]
     UnknownPublicKey(crate::keys::PublicKey, secp256k1::Message),
+
+    /// The error for when the request to sign a withdrawal-accept
+    /// transaction fails at the validation step.
+    #[error("{0}")]
+    WithdrawalAcceptValidation(#[source] Box<WithdrawalAcceptValidationError>),
 
     /// WSTS error.
     #[error("WSTS error: {0}")]

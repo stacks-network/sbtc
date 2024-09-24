@@ -289,7 +289,7 @@ impl DepositData {
             let mut deposit_request: model::DepositRequest = fake::Faker.fake_with_rng(rng);
 
             let deposit_config = DepositTxConfig {
-                signer_public_key: PublicKey::combine_keys(signer_keys)
+                aggregate_key: PublicKey::combine_keys(signer_keys)
                     .unwrap_or_else(|_| fake::Faker.fake_with_rng(rng)),
                 ..fake::Faker.fake_with_rng(rng)
             };
@@ -383,7 +383,7 @@ impl WithdrawData {
                             block_hash: withdraw_request.block_hash,
                             txid: withdraw_request.txid,
                             signer_pub_key,
-                            ..fake::Faker.fake_with_rng(rng)
+                            is_accepted: fake::Faker.fake_with_rng(rng),
                         })
                         .collect();
 
