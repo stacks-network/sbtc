@@ -1,10 +1,16 @@
 //! Context module for the signer binary.
 
+pub mod messaging;
+pub mod termination;
+
 use std::sync::Arc;
 
 use sbtc::rpc::BitcoinClient;
 use tokio::sync::broadcast::Sender;
 use url::Url;
+
+pub use messaging::*;
+pub use termination::*;
 
 use crate::{
     bitcoin::BitcoinInteract,
@@ -82,72 +88,6 @@ pub struct InnerSignerContext<S, BC> {
     //blocklist_client: ApiFallbackClient<BL>,
 }
 
-/// Signals that can be sent within the signer binary.
-#[derive(Debug, Clone)]
-pub enum SignerSignal {
-    /// Send a command to the application.
-    Command(SignerCommand),
-    /// Signal an event to the application.
-    Event(SignerEvent),
-}
-
-/// Commands that can be sent on the signalling channel.
-#[derive(Debug, Clone)]
-pub enum SignerCommand {
-    /// Signals to the application to publish a message to the P2P network.
-    P2PPublish(crate::network::Msg),
-}
-
-/// Events that can be received on the signalling channel.
-#[derive(Debug, Clone)]
-pub enum SignerEvent {
-    /// Signals to the application that the P2P publish failed for the given message.
-    P2PPublishFailure(crate::network::MsgId),
-    /// Signals to the application that the P2P publish for the given message id
-    /// was successful.
-    P2PPublishSuccess(crate::network::MsgId),
-    /// Signals to the application that a message was received from the P2P network.
-    P2PMessageReceived(crate::network::Msg),
-    /// Signals to the application that a new peer has connected to the P2P network.
-    P2PPeerConnected(libp2p::PeerId),
-}
-
-/// Handle to the termination signal. This can be used to signal the application
-/// to shutdown or to wait for a shutdown signal.
-pub struct TerminationHandle(
-    tokio::sync::watch::Sender<bool>,
-    tokio::sync::watch::Receiver<bool>,
-);
-
-impl TerminationHandle {
-    /// Signal the application to shutdown.
-    pub fn signal_shutdown(&self) {
-        // We ignore the result here, as if all receivers have been dropped,
-        // we're on our way down anyway.
-        self.0.send_if_modified(|x| {
-            if !(*x) {
-                *x = true;
-                true
-            } else {
-                false
-            }
-        });
-    }
-    /// Blocks until a shutdown signal is received.
-    pub async fn wait_for_shutdown(&mut self) {
-        loop {
-            // Wait for the termination channel to be updated. If it's updated
-            // and the value is true, we break out of the loop.
-            // We ignore the result here because it's impossible for the sender
-            // to be dropped while this instance is alive (it holds its own sender).
-            let _ = self.1.changed().await;
-            if *self.1.borrow_and_update() {
-                break;
-            }
-        }
-    }
-}
-
 impl<'a, S, BC> SignerContext<S, BC>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
@@ -220,7 +160,7 @@ where
     }
 
     fn get_termination_handle(&self) -> TerminationHandle {
-        TerminationHandle(self.term_tx.clone(), self.term_tx.subscribe())
+        TerminationHandle::new(self.term_tx.clone(), self.term_tx.subscribe())
     }
 
     fn get_storage(&self) -> impl DbRead + Clone + Sync + Send {
