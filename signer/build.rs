@@ -21,6 +21,7 @@ pub fn compile_protos() {
         .build_client(true)
         .out_dir(workingdir.join("signer/src/proto/generated/"))
         .include_file("mod.rs")
+        .type_attribute("stacks.Uint256", "#[derive(Copy)]")
         .compile(&protos, &[workingdir.join("protobufs")])
         .expect("Unable to compile protocol buffers");
 }
