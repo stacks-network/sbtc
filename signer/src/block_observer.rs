@@ -88,7 +88,8 @@ impl DepositRequestValidator for CreateDepositRequest {
     }
 }
 
-///
+/// A trait to add validation functionality to the [`CreateDepositRequest`]
+/// type.
 pub trait DepositRequestValidator {
     /// Validate this deposit request from the transaction.
     ///
@@ -773,8 +774,8 @@ mod tests {
     }
 
     impl BitcoinInteract for TestHarness {
-        fn get_tx(&self, _: &bitcoin::Txid) -> Result<GetTxResponse, Error> {
-            unimplemented!()
+        fn get_tx(&self, txid: &bitcoin::Txid) -> Result<GetTxResponse, Error> {
+            self.deposits.get(txid).cloned().ok_or(Error::Encryption)
         }
         async fn get_block(
             &self,
