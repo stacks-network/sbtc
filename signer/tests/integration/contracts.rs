@@ -14,6 +14,8 @@ use signer::stacks::contracts::AsContractCall;
 use signer::stacks::contracts::RejectWithdrawalV1;
 use signer::stacks::contracts::RotateKeysV1;
 use signer::stacks::wallet::SignerWallet;
+use signer::storage::model::BitcoinBlockHash;
+use signer::storage::model::BitcoinTxId;
 use signer::testing::wallet::ContractCallWrapper;
 use tokio::sync::OnceCell;
 
@@ -204,12 +206,18 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     amount: 123654789,
     recipient: PrincipalData::parse("SN2V7WTJ7BHR03MPHZ1C9A9ZR6NZGR4WM8HT4V67Y").unwrap(),
     deployer: testing::wallet::WALLET.0.address(),
+    sweep_txid: BitcoinTxId::from([0; 32]),
+    sweep_block_hash: BitcoinBlockHash::from([0; 32]),
+    sweep_block_height: 7,
 }); "complete-deposit standard recipient")]
 #[test_case(ContractCallWrapper(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654,
     recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y.my-contract-name").unwrap(),
     deployer: testing::wallet::WALLET.0.address(),
+    sweep_txid: BitcoinTxId::from([0; 32]),
+    sweep_block_hash: BitcoinBlockHash::from([0; 32]),
+    sweep_block_height: 7,
 }); "complete-deposit contract recipient")]
 #[test_case(ContractCallWrapper(AcceptWithdrawalV1 {
     request_id: 1,
@@ -300,6 +308,9 @@ async fn estimate_tx_fees() {
         amount: 123654,
         recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
         deployer: StacksAddress::burn_address(false),
+        sweep_txid: BitcoinTxId::from([0; 32]),
+        sweep_block_hash: BitcoinBlockHash::from([0; 32]),
+        sweep_block_height: 7,
     };
     let payload = ContractCallWrapper(contract_call);
 

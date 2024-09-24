@@ -20,6 +20,7 @@ use signer::stacks::contracts::AsContractCall;
 use signer::stacks::contracts::AsTxPayload as _;
 use signer::stacks::contracts::CompleteDepositV1;
 use signer::stacks::contracts::RejectWithdrawalV1;
+use signer::stacks::contracts::ReqContext;
 use signer::stacks::contracts::RotateKeysV1;
 use signer::stacks::events::CompletedDepositEvent;
 use signer::stacks::events::WithdrawalAcceptEvent;
@@ -48,26 +49,11 @@ use test_case::test_case;
 
 use crate::DATABASE_NUM;
 
-fn generate_signer_set<R>(rng: &mut R, num_signers: usize) -> Vec<PublicKey>
-where
-    R: rand::RngCore + rand::CryptoRng,
-{
-    // Generate the signer set. Each SignerInfo object returned from the
-    // `testing::wsts::generate_signer_info` function the public keys of
-    // other signers, so we take one of them and get the signing set from
-    // that one.
-    testing::wsts::generate_signer_info(rng, num_signers)
-        .into_iter()
-        .take(1)
-        .flat_map(|signer_info| signer_info.signer_public_keys.into_iter())
-        .collect()
-}
-
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_be_able_to_query_bitcoin_blocks() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let mut store = signer::testing::storage::new_test_database(db_num, true).await;
+    let mut store = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
     let test_model_params = testing::storage::model::Params {
@@ -78,7 +64,7 @@ async fn should_be_able_to_query_bitcoin_blocks() {
         num_signers_per_request: 0,
     };
 
-    let signer_set = generate_signer_set(&mut rng, 7);
+    let signer_set = testing::wsts::generate_signer_set(&mut rng, 7);
 
     let persisted_model = TestData::generate(&mut rng, &signer_set, &test_model_params);
     let not_persisted_model = TestData::generate(&mut rng, &signer_set, &test_model_params);
@@ -121,11 +107,11 @@ impl AsContractCall for InitiateWithdrawalRequest {
     fn as_contract_args(&self) -> Vec<ClarityValue> {
         Vec::new()
     }
-    async fn validate<S>(&self, _: &S) -> Result<bool, Error>
+    async fn validate<S>(&self, _db: &S, _ctx: &ReqContext) -> Result<(), Error>
     where
         S: DbRead + Send + Sync,
     {
-        Ok(true)
+        Ok(())
     }
 }
 
@@ -139,12 +125,18 @@ impl AsContractCall for InitiateWithdrawalRequest {
     amount: 123654,
     recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
     deployer: testing::wallet::WALLET.0.address(),
+    sweep_txid: BitcoinTxId::from([0; 32]),
+    sweep_block_hash: BitcoinBlockHash::from([0; 32]),
+    sweep_block_height: 7,
 }); "complete-deposit standard recipient")]
 #[test_case(ContractCallWrapper(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654,
     recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y.my-contract-name").unwrap(),
     deployer: testing::wallet::WALLET.0.address(),
+    sweep_txid: BitcoinTxId::from([0; 32]),
+    sweep_block_hash: BitcoinBlockHash::from([0; 32]),
+    sweep_block_height: 7,
 }); "complete-deposit contract recipient")]
 #[test_case(ContractCallWrapper(AcceptWithdrawalV1 {
     request_id: 0,
@@ -166,7 +158,7 @@ impl AsContractCall for InitiateWithdrawalRequest {
 #[tokio::test]
 async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWrapper<T>) {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let store = signer::testing::storage::new_test_database(db_num, true).await;
+    let store = testing::storage::new_test_database(db_num, true).await;
 
     let path = "tests/fixtures/tenure-blocks-0-e5fdeb1a51ba6eb297797a1c473e715c27dc81a58ba82c698f6a32eeccee9a5b.bin";
     let mut file = std::fs::File::open(path).unwrap();
@@ -261,7 +253,7 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWr
 #[tokio::test]
 async fn checking_stacks_blocks_exists_works() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let store = signer::testing::storage::new_test_database(db_num, true).await;
+    let store = testing::storage::new_test_database(db_num, true).await;
 
     let path = "tests/fixtures/tenure-blocks-0-e5fdeb1a51ba6eb297797a1c473e715c27dc81a58ba82c698f6a32eeccee9a5b.bin";
     let mut file = std::fs::File::open(path).unwrap();
@@ -304,7 +296,7 @@ async fn checking_stacks_blocks_exists_works() {
 #[tokio::test]
 async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let mut pg_store = signer::testing::storage::new_test_database(db_num, true).await;
+    let mut pg_store = testing::storage::new_test_database(db_num, true).await;
     let mut in_memory_store = storage::in_memory::Store::new_shared();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -318,7 +310,7 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: 0,
     };
-    let signer_set = generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -339,12 +331,12 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
         chain_tip
     );
 
-    let mut pending_depoist_requests = in_memory_store
+    let mut pending_deposit_requests = in_memory_store
         .get_pending_deposit_requests(&chain_tip, context_window)
         .await
         .expect("failed to get pending deposit requests");
 
-    pending_depoist_requests.sort();
+    pending_deposit_requests.sort();
 
     let mut pg_pending_deposit_requests = pg_store
         .get_pending_deposit_requests(&chain_tip, context_window)
@@ -353,7 +345,7 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
 
     pg_pending_deposit_requests.sort();
 
-    assert_eq!(pending_depoist_requests, pg_pending_deposit_requests);
+    assert_eq!(pending_deposit_requests, pg_pending_deposit_requests);
     signer::testing::storage::drop_db(pg_store).await;
 }
 
@@ -363,7 +355,7 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
 #[tokio::test]
 async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let mut pg_store = signer::testing::storage::new_test_database(db_num, true).await;
+    let mut pg_store = testing::storage::new_test_database(db_num, true).await;
     let mut in_memory_store = storage::in_memory::Store::new_shared();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -378,7 +370,7 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
         num_signers_per_request: 0,
     };
 
-    let signer_set = generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -423,7 +415,7 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
 #[tokio::test]
 async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_store() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let mut pg_store = signer::testing::storage::new_test_database(db_num, true).await;
+    let mut pg_store = testing::storage::new_test_database(db_num, true).await;
     let mut in_memory_store = storage::in_memory::Store::new_shared();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -439,7 +431,7 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
     };
     let threshold = 4;
 
-    let signer_set = generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -489,7 +481,7 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
 #[tokio::test]
 async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_store() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let mut pg_store = signer::testing::storage::new_test_database(db_num, true).await;
+    let mut pg_store = testing::storage::new_test_database(db_num, true).await;
     let mut in_memory_store = storage::in_memory::Store::new_shared();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -508,7 +500,7 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
         num_signers_per_request: num_signers,
     };
     let threshold = 4;
-    let signer_set = generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -559,7 +551,7 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
 #[tokio::test]
 async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let mut pg_store = signer::testing::storage::new_test_database(db_num, true).await;
+    let mut pg_store = testing::storage::new_test_database(db_num, true).await;
     let mut in_memory_store = storage::in_memory::Store::new_shared();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -573,7 +565,7 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
     };
     let num_signers = 7;
     let threshold = 4;
-    let signer_set = generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut in_memory_store).await;
@@ -632,7 +624,7 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
 #[tokio::test]
 async fn writing_deposit_requests_postgres() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let store = signer::testing::storage::new_test_database(db_num, true).await;
+    let store = testing::storage::new_test_database(db_num, true).await;
     let num_rows = 15;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let deposit_requests: Vec<model::DepositRequest> =
@@ -677,7 +669,7 @@ async fn writing_deposit_requests_postgres() {
 #[tokio::test]
 async fn writing_transactions_postgres() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let store = signer::testing::storage::new_test_database(db_num, true).await;
+    let store = testing::storage::new_test_database(db_num, true).await;
     let num_rows = 12;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let mut txs: Vec<model::Transaction> =
@@ -700,7 +692,7 @@ async fn writing_transactions_postgres() {
     };
 
     // We start by writing the bitcoin block because of the foreign key
-    // constrait
+    // constraint
     store.write_bitcoin_block(&db_block).await.unwrap();
 
     // Let's see if we can write these transactions to the database.
@@ -748,7 +740,7 @@ async fn writing_transactions_postgres() {
 #[tokio::test]
 async fn writing_completed_deposit_requests_postgres() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let store = signer::testing::storage::new_test_database(db_num, true).await;
+    let store = testing::storage::new_test_database(db_num, true).await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let event: CompletedDepositEvent = fake::Faker.fake_with_rng(&mut rng);
@@ -786,7 +778,7 @@ async fn writing_completed_deposit_requests_postgres() {
 #[tokio::test]
 async fn writing_withdrawal_create_requests_postgres() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let store = signer::testing::storage::new_test_database(db_num, true).await;
+    let store = testing::storage::new_test_database(db_num, true).await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let event: WithdrawalCreateEvent = fake::Faker.fake_with_rng(&mut rng);
@@ -832,7 +824,7 @@ async fn writing_withdrawal_create_requests_postgres() {
 #[tokio::test]
 async fn writing_withdrawal_accept_requests_postgres() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let store = signer::testing::storage::new_test_database(db_num, true).await;
+    let store = testing::storage::new_test_database(db_num, true).await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let event: WithdrawalAcceptEvent = fake::Faker.fake_with_rng(&mut rng);
@@ -875,7 +867,7 @@ async fn writing_withdrawal_accept_requests_postgres() {
 #[tokio::test]
 async fn writing_withdrawal_reject_requests_postgres() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let store = signer::testing::storage::new_test_database(db_num, true).await;
+    let store = testing::storage::new_test_database(db_num, true).await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let event: WithdrawalRejectEvent = fake::Faker.fake_with_rng(&mut rng);
@@ -914,11 +906,11 @@ async fn writing_withdrawal_reject_requests_postgres() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn fetching_deposit_request_votes() {
-    // So we have 7 signers but we wiill only receive votes from 4 of them.
+    // So we have 7 signers, but we will only receive votes from 4 of them.
     // Three of the votes will be to accept and one explicit reject. The
     // others will be counted as rejections in the query.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let store = signer::testing::storage::new_test_database(db_num, true).await;
+    let store = testing::storage::new_test_database(db_num, true).await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let signer_set_config = SignerSetConfig {
@@ -927,7 +919,7 @@ async fn fetching_deposit_request_votes() {
     };
     let rotate_keys: RotateKeysTransaction = signer_set_config.fake_with_rng(&mut rng);
     // Before we can write the rotate keys into the postgres database, we
-    // need to have a transaction in the trasnactions table.
+    // need to have a transaction in the transactions table.
     let transaction = model::Transaction {
         txid: rotate_keys.txid.into_bytes(),
         tx: Vec::new(),
@@ -999,7 +991,7 @@ async fn fetching_deposit_request_votes() {
         .collect();
 
     // Let's make sure that the votes are what we expected. For the votes
-    // that we've recieved, they should match exactly.
+    // that we've received, they should match exactly.
     for decision in signer_decisions.into_iter() {
         let actual_vote = actual_signer_vote_map
             .remove(&decision.signer_pub_key)
@@ -1007,7 +999,7 @@ async fn fetching_deposit_request_votes() {
         assert_eq!(actual_vote, Some(decision.is_accepted));
     }
 
-    // The remianing keys, the ones were we have not received a vote,
+    // The remaining keys, the ones were we have not received a vote,
     // should be all None.
     assert!(actual_signer_vote_map.values().all(Option::is_none));
 
@@ -1022,11 +1014,11 @@ async fn fetching_deposit_request_votes() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn fetching_withdrawal_request_votes() {
-    // So we have 7 signers but we wiill only receive votes from 4 of them.
+    // So we have 7 signers, but we will only receive votes from 4 of them.
     // Three of the votes will be to accept and one explicit reject. The
     // others will be counted as rejections in the query.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let store = signer::testing::storage::new_test_database(db_num, true).await;
+    let store = testing::storage::new_test_database(db_num, true).await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let signer_set_config = SignerSetConfig {
@@ -1035,7 +1027,7 @@ async fn fetching_withdrawal_request_votes() {
     };
     let rotate_keys: RotateKeysTransaction = signer_set_config.fake_with_rng(&mut rng);
     // Before we can write the rotate keys into the postgres database, we
-    // need to have a transaction in the trasnactions table.
+    // need to have a transaction in the transactions table.
     let transaction = model::Transaction {
         txid: rotate_keys.txid.into_bytes(),
         tx: Vec::new(),
@@ -1122,7 +1114,7 @@ async fn fetching_withdrawal_request_votes() {
         .collect();
 
     // Let's make sure that the votes are what we expected. For the votes
-    // that we've recieved, they should match exactly.
+    // that we've received, they should match exactly.
     for decision in signer_decisions.into_iter() {
         let actual_vote = actual_signer_vote_map
             .remove(&decision.signer_pub_key)
@@ -1130,7 +1122,7 @@ async fn fetching_withdrawal_request_votes() {
         assert_eq!(actual_vote, Some(decision.is_accepted));
     }
 
-    // The remianing keys, the ones were we have not received a vote,
+    // The remaining keys, the ones were we have not received a vote,
     // should be all None.
     assert!(actual_signer_vote_map.values().all(Option::is_none));
 
@@ -1144,11 +1136,11 @@ async fn fetching_withdrawal_request_votes() {
 #[tokio::test]
 async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = signer::testing::storage::new_test_database(db_num, true).await;
+    let pg_store = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
     // This is just a sql test, where we use the `TestData` struct to help
-    // populate the database with test data. We set all of the other
+    // populate the database with test data. We set all the other
     // unnecessary parameters to zero.
     let num_signers = 0;
     let test_model_params = testing::storage::model::Params {
@@ -1159,7 +1151,7 @@ async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
         num_signers_per_request: num_signers,
     };
 
-    let signer_set = generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
     // Okay now we generate one blockchain and get its chain tip
     let test_data1 = TestData::generate(&mut rng, &signer_set, &test_model_params);
     // And we generate another blockchain and get its chain tip
@@ -1219,11 +1211,11 @@ async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
 #[tokio::test]
 async fn we_can_fetch_bitcoin_txs_from_db() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let pg_store = signer::testing::storage::new_test_database(db_num, true).await;
+    let pg_store = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
     // This is just a sql test, where we use the `TestData` struct to help
-    // populate the database with test data. We set all of the other
+    // populate the database with test data. We set all the other
     // unnecessary parameters to zero.
     let num_signers = 0;
     let test_model_params = testing::storage::model::Params {
@@ -1234,13 +1226,13 @@ async fn we_can_fetch_bitcoin_txs_from_db() {
         num_signers_per_request: num_signers,
     };
 
-    let signer_set = generate_signer_set(&mut rng, num_signers);
+    let signer_set = testing::wsts::generate_signer_set(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
     test_data.write_to(&pg_store).await;
 
     let tx = test_data.bitcoin_transactions.choose(&mut rng).unwrap();
 
-    // Now let's try fecthing this transaction
+    // Now let's try fetching this transaction
     let btc_tx = pg_store
         .get_bitcoin_tx(&tx.txid, &tx.block_hash)
         .await
@@ -1249,7 +1241,7 @@ async fn we_can_fetch_bitcoin_txs_from_db() {
 
     assert_eq!(btc_tx.compute_txid(), tx.txid.into());
 
-    // Now let's try fecthing this transaction when we know it is missing.
+    // Now let's try fetching this transaction when we know it is missing.
     let txid: BitcoinTxId = fake::Faker.fake_with_rng(&mut rng);
     let block_hash: BitcoinBlockHash = fake::Faker.fake_with_rng(&mut rng);
     // Actual block but missing txid

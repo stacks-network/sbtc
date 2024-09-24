@@ -824,7 +824,7 @@ impl super::DbRead for PgStore {
         &self,
         txid: &model::BitcoinTxId,
     ) -> Result<Vec<model::BitcoinBlockHash>, Error> {
-        sqlx::query_as::<_, model::BitcoinTransaction>(
+        sqlx::query_as::<_, model::BitcoinTxRef>(
             "SELECT txid, block_hash FROM sbtc_signer.bitcoin_transactions WHERE txid = $1",
         )
         .bind(txid)
@@ -955,7 +955,6 @@ impl super::DbRead for PgStore {
             WITH RECURSIVE tx_block_chain AS (
                 SELECT 
                     block_hash
-                  , block_height
                   , parent_hash
                   , 0 AS counter
                 FROM sbtc_signer.bitcoin_blocks
@@ -965,7 +964,6 @@ impl super::DbRead for PgStore {
 
                 SELECT
                     child.block_hash
-                  , child.block_height
                   , child.parent_hash
                   , parent.counter + 1
                 FROM sbtc_signer.bitcoin_blocks AS child
@@ -1281,17 +1279,14 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn write_bitcoin_transaction(
-        &self,
-        bitcoin_transaction: &model::BitcoinTransaction,
-    ) -> Result<(), Error> {
+    async fn write_bitcoin_transaction(&self, tx_ref: &model::BitcoinTxRef) -> Result<(), Error> {
         sqlx::query(
             "INSERT INTO sbtc_signer.bitcoin_transactions (txid, block_hash) 
             VALUES ($1, $2)
             ON CONFLICT DO NOTHING",
         )
-        .bind(bitcoin_transaction.txid)
-        .bind(bitcoin_transaction.block_hash)
+        .bind(tx_ref.txid)
+        .bind(tx_ref.block_hash)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

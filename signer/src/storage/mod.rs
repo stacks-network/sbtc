@@ -218,7 +218,7 @@ pub trait DbWrite {
     /// Write a connection between a bitcoin block and a transaction
     fn write_bitcoin_transaction(
         &self,
-        bitcoin_transaction: &model::BitcoinTransaction,
+        bitcoin_transaction: &model::BitcoinTxRef,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 
     /// Write the bitcoin transactions to the data store.

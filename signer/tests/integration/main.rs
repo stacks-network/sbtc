@@ -1,5 +1,6 @@
 use std::sync::atomic::AtomicU16;
 
+mod complete_deposit;
 mod bitcoin_client;
 mod contracts;
 mod postgres;

@@ -3,6 +3,7 @@ use std::borrow::Cow;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
 
+use crate::stacks::contracts::DepositValidationError;
 use crate::{codec, ecdsa, network};
 
 /// Top-level signer error
@@ -102,6 +103,10 @@ pub enum Error {
     /// Thrown when parsing a Nakamoto block within a given tenure.
     #[error("could not decode Nakamoto block from tenure with block: {1}; {0}")]
     DecodeNakamotoTenure(#[source] blockstack_lib::codec::Error, StacksBlockId),
+
+    /// Failed to validate the complete-deposit contract call transaction.
+    #[error("{0}")]
+    DepositValidation(#[from] Box<DepositValidationError>),
 
     /// An error when serializing an object to JSON
     #[error("{0}")]
