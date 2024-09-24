@@ -3,10 +3,10 @@ use std::borrow::Cow;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
 
-use crate::stacks::contracts::DepositValidationError;
-use crate::stacks::contracts::WithdrawalAcceptValidationError;
 use crate::codec;
 use crate::ecdsa;
+use crate::stacks::contracts::DepositValidationError;
+use crate::stacks::contracts::WithdrawalAcceptValidationError;
 
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
