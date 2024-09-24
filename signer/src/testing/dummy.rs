@@ -19,6 +19,7 @@ use rand::Rng;
 use sbtc::deposits::DepositScriptInputs;
 use sbtc::deposits::ReclaimScriptInputs;
 use secp256k1::ecdsa::RecoverableSignature;
+use secp256k1::SECP256K1;
 use stacks_common::types::chainstate::StacksAddress;
 
 use crate::keys::PrivateKey;
@@ -461,6 +462,62 @@ impl fake::Dummy<DepositTxConfig> for model::Transaction {
         bitcoin_tx
             .consensus_encode(&mut tx)
             .expect("In-memory writers never fail");
+
+        model::Transaction {
+            tx,
+            txid: bitcoin_tx.compute_txid().to_byte_array(),
+            tx_type: model::TransactionType::DepositRequest,
+            block_hash: fake::Faker.fake_with_rng(rng),
+        }
+    }
+}
+
+/// A struct to aid in the generation of bitcoin sweep transactions.
+///
+/// BitcoinTx is created with this config, then it will have a UTXO that is
+/// locked with a valid scriptPubKey that the signers can spend.
+#[derive(Debug, Clone)]
+pub struct SweepTxConfig {
+    /// The public key of the signer.
+    pub signer_public_key: PublicKey,
+    /// The amount of the signers UTXO afterwards.
+    pub amounts: std::ops::Range<u64>,
+    /// The outpoints to use as inputs.
+    pub inputs: Vec<OutPoint>,
+}
+
+impl fake::Dummy<SweepTxConfig> for BitcoinTx {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &SweepTxConfig, rng: &mut R) -> Self {
+        let internal_key = config.signer_public_key.into();
+        let outpoints = config.inputs.iter().copied();
+
+        let deposit_tx = bitcoin::Transaction {
+            version: bitcoin::transaction::Version::TWO,
+            lock_time: bitcoin::absolute::LockTime::ZERO,
+            input: outpoints
+                .map(|previous_output| TxIn {
+                    previous_output,
+                    sequence: bitcoin::Sequence::ZERO,
+                    script_sig: ScriptBuf::new(),
+                    witness: bitcoin::Witness::new(),
+                })
+                .collect(),
+            output: vec![TxOut {
+                value: Amount::from_sat(config.amounts.clone().choose(rng).unwrap_or_default()),
+                script_pubkey: ScriptBuf::new_p2tr(SECP256K1, internal_key, None),
+            }],
+        };
+
+        Self::from(deposit_tx)
+    }
+}
+
+impl fake::Dummy<SweepTxConfig> for model::Transaction {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &SweepTxConfig, rng: &mut R) -> Self {
+        let mut tx = Vec::new();
+
+        let bitcoin_tx: BitcoinTx = config.fake_with_rng(rng);
+        bitcoin_tx.consensus_encode(&mut tx).unwrap();
 
         model::Transaction {
             tx,

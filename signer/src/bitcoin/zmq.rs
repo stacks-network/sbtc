@@ -131,7 +131,8 @@ pub fn parse_bitcoin_core_message(message: ZmqMessage) -> Result<BitcoinCoreMess
         }
         // We do not implement parsing for any other message types but if
         // we're here, then we probably have a valid message from
-        // bitcoin-core. Let's try to note the topic for easier debugging.
+        // bitcoin-core (we know `data` has three parts). Let's try to note
+        // the topic for easier debugging.
         _ => {
             let topic = core::str::from_utf8(data[0]).map(ToString::to_string);
             Err(Error::BitcoinCoreZmqUnsupported(topic))

@@ -63,12 +63,12 @@ pub struct DepositRequest {
     pub recipient: StacksPrincipal,
     /// The amount in the deposit UTXO.
     #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000"))]
+    #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
     pub amount: u64,
     /// The maximum portion of the deposited amount that may
     /// be used to pay for transaction fees.
     #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000"))]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..100_000"))]
     pub max_fee: u64,
     /// The addresses of the input UTXOs funding the deposit request.
     #[cfg_attr(
@@ -198,7 +198,7 @@ impl WithdrawalSigner {
 
 /// A connection between a bitcoin block and a bitcoin transaction.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
-pub struct BitcoinTransaction {
+pub struct BitcoinTxRef {
     /// Transaction ID.
     pub txid: BitcoinTxId,
     /// The block in which the transaction exists.
@@ -352,7 +352,8 @@ impl From<BitcoinTx> for bitcoin::Transaction {
 }
 
 /// The bitcoin transaction ID
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct BitcoinTxId(bitcoin::Txid);
 
 impl BitcoinTxId {
@@ -382,6 +383,7 @@ impl From<[u8; 32]> for BitcoinTxId {
 
 /// Bitcoin block hash
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct BitcoinBlockHash(bitcoin::BlockHash);
 
 impl BitcoinBlockHash {
@@ -471,6 +473,7 @@ impl From<[u8; 32]> for StacksBlockHash {
 
 /// Stacks transaction ID
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct StacksTxId(blockstack_lib::burnchains::Txid);
 
 impl Deref for StacksTxId {
@@ -547,6 +550,7 @@ impl PartialOrd for StacksPrincipal {
 
 /// A ScriptPubkey of a UTXO.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct ScriptPubKey(bitcoin::ScriptBuf);
 
 impl Deref for ScriptPubKey {

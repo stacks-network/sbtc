@@ -20,12 +20,15 @@ use crate::message::StacksTransactionSignRequest;
 use crate::network;
 use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::ContractCall;
+use crate::stacks::contracts::ReqContext;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage;
 use crate::storage::model;
+use crate::storage::model::BitcoinBlockRef;
 use crate::wsts_state_machine;
 
+use clarity::types::chainstate::StacksAddress;
 use futures::StreamExt;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
@@ -387,24 +390,18 @@ where
         request: &message::StacksTransactionSignRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
-        let is_valid_sign_request = self
-            .is_valid_stackstransaction_sign_request(request, bitcoin_chain_tip)
+        self.assert_valid_stackstransaction_sign_request(request, bitcoin_chain_tip)
             .await?;
 
         let wallet = self.load_wallet(request, bitcoin_chain_tip).await?;
         let multi_sig = MultisigTx::new_tx(&request.contract_call, &wallet, request.tx_fee);
         let txid = multi_sig.tx().txid();
 
-        if is_valid_sign_request {
-            let signature =
-                crate::signature::sign_stacks_tx(multi_sig.tx(), &self.signer_private_key);
+        let signature = crate::signature::sign_stacks_tx(multi_sig.tx(), &self.signer_private_key);
 
-            let msg = message::StacksTransactionSignature { txid, signature };
+        let msg = message::StacksTransactionSignature { txid, signature };
 
-            self.send_message(msg, bitcoin_chain_tip).await?;
-        } else {
-            tracing::warn!(%txid, "received invalid sign request for stacks tx");
-        }
+        self.send_message(msg, bitcoin_chain_tip).await?;
 
         Ok(())
     }
@@ -437,17 +434,36 @@ where
         )
     }
 
-    async fn is_valid_stackstransaction_sign_request(
+    async fn assert_valid_stackstransaction_sign_request(
         &mut self,
         request: &message::StacksTransactionSignRequest,
-        _bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<bool, Error> {
+        chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<(), Error> {
         // TODO(255): Finish the implementation
+        let ctx = ReqContext {
+            chain_tip: BitcoinBlockRef {
+                block_hash: *chain_tip,
+                // This is wrong
+                block_height: 0,
+            },
+            context_window: self.context_window,
+            // This is wrong
+            origin: self.signer_pub_key(),
+            signatures_required: self.threshold as u16,
+            // This is wrong
+            deployer: StacksAddress::burn_address(false),
+        };
         match &request.contract_call {
-            ContractCall::AcceptWithdrawalV1(contract) => contract.validate(&self.storage).await,
-            ContractCall::CompleteDepositV1(contract) => contract.validate(&self.storage).await,
-            ContractCall::RejectWithdrawalV1(contract) => contract.validate(&self.storage).await,
-            ContractCall::RotateKeysV1(contract) => contract.validate(&self.storage).await,
+            ContractCall::AcceptWithdrawalV1(contract) => {
+                contract.validate(&self.storage, &ctx).await
+            }
+            ContractCall::CompleteDepositV1(contract) => {
+                contract.validate(&self.storage, &ctx).await
+            }
+            ContractCall::RejectWithdrawalV1(contract) => {
+                contract.validate(&self.storage, &ctx).await
+            }
+            ContractCall::RotateKeysV1(contract) => contract.validate(&self.storage, &ctx).await,
         }
     }
 

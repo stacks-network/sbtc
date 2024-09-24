@@ -18,6 +18,7 @@
 
 use std::collections::BTreeSet;
 use std::future::Future;
+use std::ops::Deref;
 use std::sync::OnceLock;
 
 use bitcoin::hashes::Hash as _;
@@ -42,7 +43,36 @@ use blockstack_lib::types::chainstate::StacksAddress;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::stacks::wallet::SignerWallet;
+use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::BitcoinBlockRef;
+use crate::storage::model::BitcoinTxId;
 use crate::storage::DbRead;
+
+/// This struct is used as supplemental data to help validate a request to
+/// sign a contract call transaction.
+///
+/// Except for the origin, this data is not fetched from the signer that
+/// sent the request, but is instead internal to the current signer.
+#[derive(Debug, Clone, Copy)]
+pub struct ReqContext {
+    /// This signer's current view of the chain tip of the canonical
+    /// bitcoin blockchain. It is the block hash and height of the block on
+    /// the bitcoin blockchain with the greatest height. On ties, we sort
+    /// by the block hash descending and take the first one.
+    pub chain_tip: BitcoinBlockRef,
+    /// How many bitcoin blocks back from the chain tip the signer will
+    /// look for requests.
+    pub context_window: u16,
+    /// The public key of the signer that created the deposit request
+    /// transaction. This is very unlikely to ever be used in the
+    /// [`AsContractCall::validate`] function, but is here for logging and
+    /// tracking purposes.
+    pub origin: PublicKey,
+    /// The number of signatures required for an accepted deposit request.
+    pub signatures_required: u16,
+    /// The expected deployer of the sBTC smart contract.
+    pub deployer: StacksAddress,
+}
 
 /// A struct describing any transaction post-execution conditions that we'd
 /// like to enforce.
@@ -128,7 +158,11 @@ pub trait AsContractCall {
     /// Validate that it is okay to sign this contract call transaction,
     /// because the included data matches what this signer knows from the
     /// stacks and bitcoin blockchains.
-    fn validate<S>(&self, _: &S) -> impl Future<Output = Result<bool, Error>> + Send
+    fn validate<S>(
+        &self,
+        db: &S,
+        ctx: &ReqContext,
+    ) -> impl Future<Output = Result<(), Error>> + Send
     where
         S: DbRead + Send + Sync;
 }
@@ -176,14 +210,31 @@ impl AsTxPayload for ContractCall {
 #[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompleteDepositV1 {
     /// The outpoint of the bitcoin UTXO that was spent as a deposit for
-    /// sBTC.
+    /// sBTC. This is used to identify the deposit transaction when doing
+    /// validation, as well as in the clarity contract call to avoid double
+    /// minting.
     pub outpoint: OutPoint,
-    /// The amount of sats associated with the above UTXO.
+    /// The amount of sats swept in by the signers when they moved in the
+    /// above UTXO. This amount is less than the amount associated with the
+    /// above UTXO because of bitcoin mining fees.
     pub amount: u64,
     /// The address where the newly minted sBTC will be deposited.
     pub recipient: PrincipalData,
     /// The address that deployed the contract.
     pub deployer: StacksAddress,
+    /// The transaction ID for the sweep transaction that moved the deposit
+    /// UTXO into the signers' UTXO. One of the inputs to this transaction
+    /// must be the above `outpoint`.
+    pub sweep_txid: BitcoinTxId,
+    /// The block hash of the bitcoin block that contains a sweep
+    /// transaction with the above `outpoint` as one of its inputs. This
+    /// field, with the `sweep_block_height` field, is used by the
+    /// `complete-deposit-wrapper` clarity function to ensure that we do
+    /// not mint in case a bitcoin reorg affects the sweep transaction
+    /// that is included in this block.
+    pub sweep_block_hash: BitcoinBlockHash,
+    /// The block height associated with the above bitcoin block hash.
+    pub sweep_block_height: u64,
 }
 
 impl AsContractCall for CompleteDepositV1 {
@@ -209,21 +260,222 @@ impl AsContractCall for CompleteDepositV1 {
     /// Validates that the Complete deposit request satisfies the following
     /// criteria:
     ///
-    /// 1. That the outpoint exists on the canonical bitcoin blockchain.
-    /// 2. That the outpoint was used as an input into a signer sweep
-    ///    transaction.
-    /// 3. That the signer sweep transaction exists on the canonical
-    ///    bitcoin blockchain.
-    /// 5. That the `amount` matches the amount in the `outpoint` less
-    ///    their portion of fees spent in the sweep transaction.
-    /// 4. That the principal matches the principal embedded in the deposit
-    ///    script locked in the outpoint.
-    async fn validate<S>(&self, _storage: &S) -> Result<bool, Error>
+    /// 1. That the smart contract deployer matches the deployer in our
+    ///    context.
+    /// 2. That the signer has a record of the deposit request in its list
+    ///    of pending and accepted deposit requests.
+    /// 3. That the signer sweep transaction is on the canonical bitcoin
+    ///    blockchain.
+    /// 4. That the sweep transaction uses the indicated deposit outpoint
+    ///    as an input.
+    /// 5. That the recipients in the transaction matches that of the
+    ///    deposit request.
+    /// 6. That the amount to mint does not exceed the deposit amount.
+    /// 7. That the fee is less than the desired max-fee.
+    ///
+    /// # Notes
+    ///
+    /// The `complete-deposit-wrapper` public function will not mint to the
+    /// user again if we mistakenly submit two transactions for the same
+    /// deposit outpoint. This means we do not need to do a check for
+    /// existence of a similar transaction in the stacks mempool. This is
+    /// fortunate, because even if we wanted to, the only view into the
+    /// stacks-core mempool is through the `POST /new_mempool_tx` webhooks,
+    /// which we do not currently ingest.
+    async fn validate<S>(&self, db: &S, ctx: &ReqContext) -> Result<(), Error>
     where
         S: DbRead + Send + Sync,
     {
-        // TODO(255): Add validation implementation
-        Ok(false)
+        // Covers points 3 & 4
+        self.validate_sweep_tx(db, ctx).await?;
+        // Covers points 1-2 & 5-7
+        self.validate_deposit_vars(db, ctx).await
+    }
+}
+
+impl CompleteDepositV1 {
+    /// Validate the variables in this transaction match the input in the
+    /// deposit request.
+    ///
+    /// Specifically, this function checks the following points (from the
+    /// docs of [`CompleteDepositV1::validate`]):
+    /// 1. That the smart contract deployer matches the deployer in our
+    ///    context.
+    /// 2. That the signer has a record of the deposit request in its list
+    ///    of pending and accepted deposit requests.
+    /// 5. That the recipients in the transaction matches that of the
+    ///    deposit request.
+    /// 6. That the amount to mint does not exceed the deposit amount.
+    /// 7. That the max-fee is less than the desired max-fee.
+    async fn validate_deposit_vars<S>(&self, db: &S, ctx: &ReqContext) -> Result<(), Error>
+    where
+        S: DbRead + Send + Sync,
+    {
+        // 1. That the smart contract deployer matches the deployer in our
+        //    context.
+        if self.deployer != ctx.deployer {
+            return Err(DepositErrorMsg::DeployerMismatch.into_error(ctx, self));
+        }
+        // 2. Check that the signer has a record of the deposit request
+        //    from our list of pending and accepted deposit requests.
+        //
+        // Check that this is actually a pending and accepted deposit
+        // request.
+        let deposit_requests = db
+            .get_pending_accepted_deposit_requests(
+                &ctx.chain_tip.block_hash,
+                ctx.context_window,
+                ctx.signatures_required,
+            )
+            .await?;
+
+        let deposit_request = deposit_requests
+            .into_iter()
+            .find(|req| req.outpoint() == self.outpoint)
+            .ok_or_else(|| DepositErrorMsg::RequestMissing.into_error(ctx, self))?;
+
+        // 5. Check that the recipients in the transaction matches that of
+        //    the deposit request.
+        if &self.recipient != deposit_request.recipient.deref() {
+            return Err(DepositErrorMsg::RecipientMismatch.into_error(ctx, self));
+        }
+        // 6. Check that the amount to mint does not exceed the deposit
+        //    amount.
+        if self.amount > deposit_request.amount {
+            return Err(DepositErrorMsg::InvalidMintAmount.into_error(ctx, self));
+        }
+        // 7. Check that the fee is less than the desired max-fee.
+        //
+        // The smart contract cannot check if we exceed the max fee.
+        //
+        // TODO(552): The better check is to compute what the fee should be
+        // and verify that it matches.
+        if deposit_request.amount - self.amount > deposit_request.max_fee {
+            return Err(DepositErrorMsg::InvalidFee.into_error(ctx, self));
+        }
+
+        Ok(())
+    }
+
+    /// This function validates the sweep transaction.
+    ///
+    /// Specifically, this function checks the following points (from the
+    /// docs of [`CompleteDepositV1::validate`]):
+    /// 3. Check that the signer sweep transaction is on the canonical
+    ///    bitcoin blockchain.
+    /// 4. Check that the sweep transaction uses the indicated deposit
+    ///    outpoint as an input.
+    async fn validate_sweep_tx<S>(&self, db: &S, ctx: &ReqContext) -> Result<(), Error>
+    where
+        S: DbRead + Send + Sync,
+    {
+        // First we check that we have a record of the transaction.
+        let sweep_tx = db
+            .get_bitcoin_tx(&self.sweep_txid, &self.sweep_block_hash)
+            .await?
+            .ok_or_else(|| DepositErrorMsg::SweepTransactionMissing.into_error(ctx, self))?;
+        // 3. Check that the signer sweep transaction is on the canonical
+        //    bitcoin blockchain.
+        //
+        // From the above, we know that the sweep transaction is in the
+        // `sweep_block_hash`. Now we just need to check that this block is
+        // on the canonical bitcoin blockchain.
+        let block_ref = BitcoinBlockRef {
+            block_hash: self.sweep_block_hash,
+            block_height: self.sweep_block_height,
+        };
+
+        let in_canonical_bitcoin_blockchain = db
+            .in_canonical_bitcoin_blockchain(&ctx.chain_tip, &block_ref)
+            .await?;
+        if !in_canonical_bitcoin_blockchain {
+            return Err(DepositErrorMsg::SweepTransactionReorged.into_error(ctx, self));
+        }
+        // 4. Check that the sweep transaction uses the indicated deposit
+        //    outpoint as an input.
+        //
+        // Okay great, we know that the sweep transaction exists on the
+        // canonical bitcoin blockchain, we just need to do a simple check
+        // of the transaction inputs.
+        let mut tx_inputs = sweep_tx.input.iter();
+        if !tx_inputs.any(|tx_in| tx_in.previous_output == self.outpoint) {
+            return Err(DepositErrorMsg::MissingFromSweep.into_error(ctx, self));
+        }
+
+        Ok(())
+    }
+}
+
+/// A struct for a validation error containing all the necessary context.
+#[derive(Debug)]
+pub struct DepositValidationError {
+    /// The specific error that happened during validation.
+    pub error: DepositErrorMsg,
+    /// The additional information that was used when trying to
+    /// validate the complete-deposit contract call. This includes the
+    /// public key of the signer that was attempting to generate the
+    /// `complete-deposit` transaction.
+    pub context: ReqContext,
+    /// The specific transaction that was being validated.
+    pub tx: CompleteDepositV1,
+}
+
+impl std::fmt::Display for DepositValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // TODO(191): Add the other variables to the error message.
+        self.error.fmt(f)
+    }
+}
+
+impl std::error::Error for DepositValidationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
+
+/// The responses for validation of a complete-deposit smart contract call
+/// transactions.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum DepositErrorMsg {
+    /// The smart contract deployer is fixed, so this should always match.
+    #[error("The deployer in the transaction does not match the expected deployer")]
+    DeployerMismatch,
+    /// The fee paid to the bitcoin miners exceeded the max fee.
+    #[error("fee paid to the bitcoin miners exceeded the max fee")]
+    InvalidFee,
+    /// The amount to mint must not exceed the amount in the deposit
+    /// request.
+    #[error("amount to mint exceeded the amount in the deposit request")]
+    InvalidMintAmount,
+    /// The deposit outpoint is missing from the indicated sweep
+    /// transaction.
+    #[error("deposit outpoint is missing from the indicated sweep transaction")]
+    MissingFromSweep,
+    /// The recipient did not match the recipient in our deposit request
+    /// records.
+    #[error("recipient did not match the recipient in our deposit request")]
+    RecipientMismatch,
+    /// We do not have a record of the deposit request in our list of
+    /// pending and accepted deposit requests.
+    #[error("no record of deposit request in pending and accepted deposit requests")]
+    RequestMissing,
+    /// The sweep transaction that included the deposit request is missing
+    /// from our records.
+    #[error("sweep transaction not found")]
+    SweepTransactionMissing,
+    /// The sweep transaction has been affected by a reorg. Submitting this
+    /// transaction now will likely lead to a failed stacks transaction.
+    #[error("sweep transaction has been affected by a reorg")]
+    SweepTransactionReorged,
+}
+
+impl DepositErrorMsg {
+    fn into_error(self, ctx: &ReqContext, tx: &CompleteDepositV1) -> Error {
+        Error::DepositValidation(Box::new(DepositValidationError {
+            error: self,
+            context: *ctx,
+            tx: tx.clone(),
+        }))
     }
 }
 
@@ -279,12 +531,12 @@ impl AsContractCall for AcceptWithdrawalV1 {
     /// 3. That the signer bitmap matches the signer decisions stored in
     ///    this signer's database.
     /// 4. That the `tx_fee` matches the amount spent to the bitcoin miner.
-    async fn validate<S>(&self, _storage: &S) -> Result<bool, Error>
+    async fn validate<S>(&self, _db: &S, _ctx: &ReqContext) -> Result<(), Error>
     where
         S: DbRead + Send + Sync,
     {
         // TODO(255): Add validation implementation
-        Ok(false)
+        Ok(())
     }
 }
 
@@ -325,12 +577,12 @@ impl AsContractCall for RejectWithdrawalV1 {
     ///    an event on the canonical Stacks blockchain.
     /// 2. That the signer bitmap matches the signer decisions stored in
     ///    this signer's database.
-    async fn validate<S>(&self, _storage: &S) -> Result<bool, Error>
+    async fn validate<S>(&self, _db: &S, _ctx: &ReqContext) -> Result<(), Error>
     where
         S: DbRead + Send + Sync,
     {
         // TODO(255): Add validation implementation
-        Ok(false)
+        Ok(())
     }
 }
 
@@ -432,12 +684,12 @@ impl AsContractCall for RotateKeysV1 {
     ///    threshold is different from the last signature threshold.
     /// 4. That the number of required signatures is strictly greater than
     ///    `new_keys as f64 / 2.0`.
-    async fn validate<S>(&self, _storage: &S) -> Result<bool, Error>
+    async fn validate<S>(&self, _db: &S, _ctx: &ReqContext) -> Result<(), Error>
     where
         S: DbRead + Send + Sync,
     {
         // TODO(255): Add validation implementation
-        Ok(false)
+        Ok(())
     }
 }
 
@@ -461,6 +713,9 @@ mod tests {
             amount: 15000,
             recipient: PrincipalData::from(StacksAddress::burn_address(true)),
             deployer: StacksAddress::burn_address(false),
+            sweep_txid: BitcoinTxId::from([0; 32]),
+            sweep_block_hash: BitcoinBlockHash::from([0; 32]),
+            sweep_block_height: 7,
         };
 
         let _ = call.as_contract_call();

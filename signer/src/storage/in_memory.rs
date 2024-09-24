@@ -534,7 +534,7 @@ impl super::DbWrite for SharedStore {
 
     async fn write_bitcoin_transactions(&self, txs: Vec<model::Transaction>) -> Result<(), Error> {
         for tx in txs {
-            let bitcoin_transaction = model::BitcoinTransaction {
+            let bitcoin_transaction = model::BitcoinTxRef {
                 txid: tx.txid.into(),
                 block_hash: tx.block_hash.into(),
             };
@@ -643,7 +643,7 @@ impl super::DbWrite for SharedStore {
 
     async fn write_bitcoin_transaction(
         &self,
-        bitcoin_transaction: &model::BitcoinTransaction,
+        bitcoin_transaction: &model::BitcoinTxRef,
     ) -> Result<(), Error> {
         let mut store = self.lock().await;
 
