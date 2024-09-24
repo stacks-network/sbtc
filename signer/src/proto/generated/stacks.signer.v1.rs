@@ -33,41 +33,24 @@ pub struct SignerWithdrawDecision {
     #[prost(bool, tag = "4")]
     pub accepted: bool,
 }
-/// / A type representing a 256-bit integer.
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Uint256 {
-    /// These are the 64 bits of the 256-bit integer from bits 0-63.
-    #[prost(fixed64, tag = "1")]
-    pub bits_part0: u64,
-    /// These are the 64 bits of the 256-bit integer from bits 64-127.
-    #[prost(fixed64, tag = "2")]
-    pub bits_part1: u64,
-    /// These are the 64 bits of the 256-bit integer from bits 128-191.
-    #[prost(fixed64, tag = "3")]
-    pub bits_part2: u64,
-    /// These are the 64 bits of the 256-bit integer from bits 192-255.
-    #[prost(fixed64, tag = "4")]
-    pub bits_part3: u64,
-}
 /// The id for a transaction on the stacks blockchain.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StacksTxid {
     #[prost(message, optional, tag = "1")]
-    pub txid: ::core::option::Option<Uint256>,
+    pub txid: ::core::option::Option<super::super::Uint256>,
 }
 /// The id for a transaction on the bitcoin blockchain.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BitcoinTxid {
     #[prost(message, optional, tag = "1")]
-    pub txid: ::core::option::Option<Uint256>,
+    pub txid: ::core::option::Option<super::super::Uint256>,
 }
 /// This type maps to the StacksBlockId in the stackslib Rust crate.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StacksBlockId {
     #[prost(message, optional, tag = "1")]
-    pub block_id: ::core::option::Option<Uint256>,
+    pub block_id: ::core::option::Option<super::super::Uint256>,
 }

@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package stacks.signer.v1;
 
+import "stacks/common.proto";
+
 // Represents a decision to accept or reject a deposit request.
 message SignerDepositDecision {
   // The bitcoin transaction ID of the transaction containing the deposit
@@ -27,29 +29,17 @@ message SignerWithdrawDecision {
   bool accepted = 4;
 }
 
-/// A type representing a 256-bit integer.
-message Uint256 {
-  // These are the 64 bits of the 256-bit integer from bits 0-63.
-  fixed64 bits_part0 = 1;
-  // These are the 64 bits of the 256-bit integer from bits 64-127.
-  fixed64 bits_part1 = 2;
-  // These are the 64 bits of the 256-bit integer from bits 128-191.
-  fixed64 bits_part2 = 3;
-  // These are the 64 bits of the 256-bit integer from bits 192-255.
-  fixed64 bits_part3 = 4;
-}
-
 // The id for a transaction on the stacks blockchain.
 message StacksTxid {
-  Uint256 txid = 1;
+  stacks.Uint256 txid = 1;
 }
 
 // The id for a transaction on the bitcoin blockchain.
 message BitcoinTxid {
-  Uint256 txid = 1;
+  stacks.Uint256 txid = 1;
 }
 
 // This type maps to the StacksBlockId in the stackslib Rust crate.
 message StacksBlockId {
-  Uint256 block_id = 1;
+  stacks.Uint256 block_id = 1;
 }

@@ -8,7 +8,7 @@ pub fn compile_protos() {
         .unwrap();
 
     let protos = [
-        // "protobufs/stacks/signer/message_relay.proto",
+        "protobufs/stacks/common.proto",
         "protobufs/stacks/signer/v1/decisions.proto",
     ]
     .map(|path| workingdir.join(path));
