@@ -350,7 +350,7 @@ async fn complete_deposit_validation_recipient_mismatch() {
 
     // Generate the transaction and corresponding request context.
     let (mut complete_deposit_tx, ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
-    // Different: Okay, let's make sure we get the deployers do not match.
+    // Different: Okay, let's make sure we the recipients do not match.
     complete_deposit_tx.recipient = fake::Faker
         .fake_with_rng::<StacksPrincipal, _>(&mut rng)
         .into();
@@ -412,7 +412,7 @@ async fn complete_deposit_validation_invalid_mint_amount() {
     let (mut complete_deposit_tx, ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
     // Different: The amount cannot exceed the amount in the deposit
     // request.
-    complete_deposit_tx.amount = deposit_req.amount + 1000;
+    complete_deposit_tx.amount = deposit_req.amount + 1;
 
     let validate_future = complete_deposit_tx.validate(&db, &ctx);
     match validate_future.await.unwrap_err() {
