@@ -139,9 +139,7 @@ where
 }
 
 /// Get the full block
-async fn get_bitcoin_canonical_chain_tip_block(
-    store: &PgStore,
-) -> Result<Option<BitcoinBlock>, Error> {
+async fn get_bitcoin_canonical_chain_tip_block(store: &PgStore) -> BitcoinBlock {
     sqlx::query_as::<_, BitcoinBlock>(
         "SELECT
             block_hash
@@ -152,9 +150,43 @@ async fn get_bitcoin_canonical_chain_tip_block(
             ORDER BY block_height DESC, block_hash DESC
             LIMIT 1",
     )
-    .fetch_optional(store.pool())
+    .fetch_one(store.pool())
     .await
-    .map_err(Error::SqlxQuery)
+    .unwrap()
+}
+
+/// Get an existing pending and accepted withdrawal request that has been
+/// confirmed on the canonical bitcoin blockchain.
+///
+/// The signatures required field affects which deposit requests are
+/// eligible for being accepted. In these tests, we just need any old
+/// deposit request so this value doesn't matter so long as we get one
+/// deposit request that meets these requirements.
+async fn get_pending_accepted_withdrawal_requests(
+    db: &PgStore,
+    chain_tip: &BitcoinBlock,
+    signatures_required: u16,
+) -> WithdrawalRequest {
+    // The context window limits how far back we look in the blockchain for
+    // accepted and pending deposit requests. For these tests, this value
+    // is fine.
+    db.get_pending_accepted_withdrawal_requests(&chain_tip.block_hash, 20, signatures_required)
+        .await
+        .unwrap()
+        .pop()
+        .unwrap()
+}
+
+/// Get how the signers voted for a particular withdrawal request
+async fn get_withdrawal_request_signer_votes(
+    db: &PgStore,
+    req: &WithdrawalRequest,
+    aggregate_key: &PublicKey,
+) -> BitArray<[u8; 16]> {
+    db.get_withdrawal_request_signer_votes(&req.qualified_id(), &aggregate_key)
+        .await
+        .map(BitArray::<[u8; 16]>::from)
+        .unwrap()
 }
 
 /// For this test we check that the `AcceptWithdrawalV1::validate` function
@@ -171,19 +203,10 @@ async fn accept_withdrawal_validation_happy_path() {
 
     let (aggregate_key, signer_set) = withdrawal_setup(&mut rng, &db, signatures_required).await;
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing withdrawal request on the canonical bitcoin
     // blockchain.
-    let req = db
-        .get_pending_accepted_withdrawal_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let req = get_pending_accepted_withdrawal_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps out the withdrawal.
     let sweep_config = SweepTxConfig {
@@ -218,11 +241,7 @@ async fn accept_withdrawal_validation_happy_path() {
     db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Normal: get the signer bitmap for how they voted.
-    let bitmap = db
-        .get_withdrawal_request_signer_votes(&req.qualified_id(), &aggregate_key)
-        .await
-        .map(BitArray::<[u8; 16]>::from)
-        .unwrap();
+    let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
@@ -249,19 +268,10 @@ async fn accept_withdrawal_validation_deployer_mismatch() {
     let (aggregate_key, signer_set) = withdrawal_setup(&mut rng, &db, signatures_required).await;
 
     // Get the chain tip
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing withdrawal request on the canonical bitcoin
     // blockchain.
-    let req = db
-        .get_pending_accepted_withdrawal_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let req = get_pending_accepted_withdrawal_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps out the withdrawal.
     let sweep_config = SweepTxConfig {
@@ -295,11 +305,7 @@ async fn accept_withdrawal_validation_deployer_mismatch() {
     db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Normal: get the signer bitmap for how they voted.
-    let bitmap = db
-        .get_withdrawal_request_signer_votes(&req.qualified_id(), &aggregate_key)
-        .await
-        .map(BitArray::<[u8; 16]>::from)
-        .unwrap();
+    let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
     // Generate the transaction and corresponding request context.
     let (mut accept_withdrawal_tx, mut ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
@@ -335,10 +341,7 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
 
     // Normal: Get the chain tip and any pending withdrawal request in the blockchain
     // identified by the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Different: Let's use a random withdrawal request instead of one that
     // exists in the database.
     let req: WithdrawalRequest = fake::Faker.fake_with_rng(&mut rng);
@@ -374,11 +377,7 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
     db.write_transaction(&sweep_tx).await.unwrap();
     db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
-    let bitmap = db
-        .get_withdrawal_request_signer_votes(&req.qualified_id(), &aggregate_key)
-        .await
-        .map(BitArray::<[u8; 16]>::from)
-        .unwrap();
+    let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
     let (accept_withdrawal_tx, ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
 
@@ -410,19 +409,10 @@ async fn accept_withdrawal_validation_recipient_mismatch() {
     let (aggregate_key, signer_set) = withdrawal_setup(&mut rng, &db, signatures_required).await;
 
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing withdrawal request on the canonical bitcoin
     // blockchain.
-    let req = db
-        .get_pending_accepted_withdrawal_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let req = get_pending_accepted_withdrawal_requests(&db, &chain_tip, signatures_required).await;
 
     // Different: we generate a transaction that sweeps out the withdrawal,
     // but the recipient of the funds does not match.
@@ -457,11 +447,7 @@ async fn accept_withdrawal_validation_recipient_mismatch() {
     db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Normal: get the signer bitmap for how they voted.
-    let bitmap = db
-        .get_withdrawal_request_signer_votes(&req.qualified_id(), &aggregate_key)
-        .await
-        .map(BitArray::<[u8; 16]>::from)
-        .unwrap();
+    let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
@@ -494,19 +480,10 @@ async fn accept_withdrawal_validation_invalid_mint_amount() {
     let (aggregate_key, signer_set) = withdrawal_setup(&mut rng, &db, signatures_required).await;
 
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing withdrawal request on the canonical bitcoin
     // blockchain.
-    let req = db
-        .get_pending_accepted_withdrawal_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let req = get_pending_accepted_withdrawal_requests(&db, &chain_tip, signatures_required).await;
 
     // Different: we generate a transaction that sweeps out the withdrawal,
     // but the amount is off.
@@ -541,11 +518,7 @@ async fn accept_withdrawal_validation_invalid_mint_amount() {
     db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Normal: get the signer bitmap for how they voted.
-    let bitmap = db
-        .get_withdrawal_request_signer_votes(&req.qualified_id(), &aggregate_key)
-        .await
-        .map(BitArray::<[u8; 16]>::from)
-        .unwrap();
+    let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
@@ -578,19 +551,10 @@ async fn accept_withdrawal_validation_invalid_fee() {
     let (aggregate_key, signer_set) = withdrawal_setup(&mut rng, &db, signatures_required).await;
 
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing withdrawal request on the canonical bitcoin
     // blockchain.
-    let req = db
-        .get_pending_accepted_withdrawal_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let req = get_pending_accepted_withdrawal_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps out the withdrawal.
     let sweep_config = SweepTxConfig {
@@ -625,11 +589,7 @@ async fn accept_withdrawal_validation_invalid_fee() {
     db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Normal: get the signer bitmap for how they voted.
-    let bitmap = db
-        .get_withdrawal_request_signer_votes(&req.qualified_id(), &aggregate_key)
-        .await
-        .map(BitArray::<[u8; 16]>::from)
-        .unwrap();
+    let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
     // Generate the transaction and corresponding request context.
     let (mut accept_withdrawal_tx, ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
@@ -664,19 +624,10 @@ async fn accept_withdrawal_validation_sweep_tx_missing() {
     let (aggregate_key, signer_set) = withdrawal_setup(&mut rng, &db, signatures_required).await;
 
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing withdrawal request on the canonical bitcoin
     // blockchain.
-    let req = db
-        .get_pending_accepted_withdrawal_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let req = get_pending_accepted_withdrawal_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps out the withdrawal.
     let sweep_config = SweepTxConfig {
@@ -697,11 +648,7 @@ async fn accept_withdrawal_validation_sweep_tx_missing() {
     // sweep transaction.
 
     // Normal: get the signer bitmap for how they voted.
-    let bitmap = db
-        .get_withdrawal_request_signer_votes(&req.qualified_id(), &aggregate_key)
-        .await
-        .map(BitArray::<[u8; 16]>::from)
-        .unwrap();
+    let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
@@ -733,19 +680,10 @@ async fn accept_withdrawal_validation_sweep_reorged() {
 
     let (aggregate_key, signer_set) = withdrawal_setup(&mut rng, &db, signatures_required).await;
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing withdrawal request on the canonical bitcoin
     // blockchain.
-    let req = db
-        .get_pending_accepted_withdrawal_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let req = get_pending_accepted_withdrawal_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps out the withdrawal.
     let sweep_config = SweepTxConfig {
@@ -798,11 +736,7 @@ async fn accept_withdrawal_validation_sweep_reorged() {
     db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Normal: get the signer bitmap for how they voted.
-    let bitmap = db
-        .get_withdrawal_request_signer_votes(&req.qualified_id(), &aggregate_key)
-        .await
-        .map(BitArray::<[u8; 16]>::from)
-        .unwrap();
+    let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, mut ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip2, bitmap);
@@ -837,19 +771,10 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
     let (aggregate_key, signer_set) = withdrawal_setup(&mut rng, &db, signatures_required).await;
 
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing withdrawal request on the canonical bitcoin
     // blockchain.
-    let req = db
-        .get_pending_accepted_withdrawal_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let req = get_pending_accepted_withdrawal_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps out the withdrawal.
     let sweep_config = SweepTxConfig {
@@ -887,11 +812,7 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
     db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Normal: get the signer bitmap for how they voted.
-    let bitmap = db
-        .get_withdrawal_request_signer_votes(&req.qualified_id(), &aggregate_key)
-        .await
-        .map(BitArray::<[u8; 16]>::from)
-        .unwrap();
+    let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
@@ -921,19 +842,10 @@ async fn accept_withdrawal_validation_bitmap_mismatch() {
 
     let (aggregate_key, signer_set) = withdrawal_setup(&mut rng, &db, signatures_required).await;
     // Get the chain tip.
-    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let chain_tip = get_bitcoin_canonical_chain_tip_block(&db).await;
     // Normal: Get an existing withdrawal request on the canonical bitcoin
     // blockchain.
-    let req = db
-        .get_pending_accepted_withdrawal_requests(&chain_tip.block_hash, 20, signatures_required)
-        .await
-        .unwrap()
-        .last()
-        .cloned()
-        .unwrap();
+    let req = get_pending_accepted_withdrawal_requests(&db, &chain_tip, signatures_required).await;
 
     // Normal: we generate a transaction that sweeps out the withdrawal.
     let sweep_config = SweepTxConfig {
