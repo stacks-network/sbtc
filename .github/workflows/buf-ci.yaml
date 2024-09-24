@@ -3,7 +3,7 @@ on: [push]
 
 jobs:
   buf:
-    name: Run Unit Tests
+    name: Run protobuf lints
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
@@ -12,12 +12,12 @@ jobs:
           version: 1.42.0
           setup_only: true
 
-      - name: Check for Lints
+      - name: Check for lints
         run: |
           cd protobufs
           buf lint
 
-      - name: Check the Format
+      - name: Check the format
         run: | 
           cd protobufs
           buf format --diff --exit-code
