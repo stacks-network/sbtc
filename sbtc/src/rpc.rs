@@ -25,7 +25,7 @@ use crate::error::Error;
 /// getrawtransaction RPC.
 ///
 /// The docs for the getrawtransaction RPC call can be found here:
-/// https://bitcoincore.org/en/doc/25.0.0/rpc/rawtransactions/getrawtransaction/.
+/// <https://bitcoincore.org/en/doc/25.0.0/rpc/rawtransactions/getrawtransaction/>.
 #[derive(Debug, Clone, Deserialize)]
 pub struct GetTxResponse {
     /// The raw bitcoin transaction.
@@ -72,18 +72,18 @@ pub struct BitcoinTxInfo {
     /// argument is present in the RPC.
     pub in_active_chain: bool,
     /// The transaction fee paid to the bitcoin miners.
-    /// 
+    ///
     /// This field is returned whenever the "block undo data" is present
     /// for a block. The block undo data is always present for validated
     /// blocks, and block validation is always done for blocks on the
-    /// currently active chain [1]. So if this field is missing then this
+    /// currently active chain [1-4]. So if this field is missing then this
     /// block has not been validated and so is not on the active
     /// blockchain.
-    /// 
-    /// [1]: https://bitcoincore.reviews/23319#l-133,
-    ///     https://bitcoincore.reviews/23319#l-141,
-    ///     https://bitcoincore.reviews/23319#l-147,
-    ///     https://bitcoincore.reviews/23319#l-153
+    ///
+    /// [1]: <https://bitcoincore.reviews/23319#l-133>
+    /// [2]: <https://bitcoincore.reviews/23319#l-141>
+    /// [3]: <https://bitcoincore.reviews/23319#l-147>
+    /// [4]: <https://bitcoincore.reviews/23319#l-153>
     #[serde(default, with = "bitcoin::amount::serde::as_btc")]
     pub fee: Amount,
     /// The raw bitcoin transaction.
@@ -132,18 +132,21 @@ impl BitcoinTxInfo {
     /// always the signers'. So `None` is returned if there is no input,
     /// after the first input, with the given `outpoint`.
     pub fn assess_input_fee(&self, outpoint: OutPoint) -> Option<Amount> {
-        let request_weight_vbytes = self.request_weight().to_vbytes_ceil();
+        // The Weight::to_wu function just returns the inner weight units
+        // as a u64, so this is really just the weight.
+        let request_weight = self.request_weight().to_wu();
         // We skip the first input because that is always the signers'
         // input UTXO.
-        let input_weight_vbytes = self
+        let input_weight = self
             .tx
             .input
             .iter()
+            .skip(1)
             .find(|tx_in| tx_in.previous_output == outpoint)?
             .segwit_weight()
-            .to_vbytes_ceil();
+            .to_wu();
 
-        let fee_sats = (input_weight_vbytes * self.fee.to_sat()).div_ceil(request_weight_vbytes);
+        let fee_sats = (input_weight * self.fee.to_sat()).div_ceil(request_weight);
         Some(Amount::from_sat(fee_sats))
     }
 
@@ -166,8 +169,8 @@ impl BitcoinTxInfo {
         if vout < 2 {
             return None;
         }
-        let request_weight_vbytes = self.request_weight().to_vbytes_ceil();
-        let input_weight_vbytes = self.tx.output.get(vout)?.weight().to_vbytes_ceil();
+        let request_weight_vbytes = self.request_weight().to_wu();
+        let input_weight_vbytes = self.tx.output.get(vout)?.weight().to_wu();
 
         let fee_sats = (input_weight_vbytes * self.fee.to_sat()).div_ceil(request_weight_vbytes);
         Some(Amount::from_sat(fee_sats))
