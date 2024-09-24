@@ -2,5 +2,8 @@
 pub mod stacks {
     pub mod signer {
         include!("stacks.signer.rs");
+        pub mod v1 {
+            include!("stacks.signer.v1.rs");
+        }
     }
 }

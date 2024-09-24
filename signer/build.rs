@@ -7,7 +7,10 @@ pub fn compile_protos() {
         .parent()
         .unwrap();
 
-    let protos = ["protobufs/stacks/signer/message_relay.proto"].map(|path| workingdir.join(path));
+    let protos = [
+        "protobufs/stacks/signer/message_relay.proto",
+        "protobufs/stacks/signer/v1/decisions.proto",
+    ].map(|path| workingdir.join(path));
 
     println!("cargo:rerun-if-changed=protobufs/stacks/signer/");
 
