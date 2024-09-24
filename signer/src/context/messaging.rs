@@ -22,10 +22,6 @@ pub enum SignerCommand {
 pub enum SignerEvent {
     /// Signals that a P2P event has occurred.
     P2P(P2PEvent),
-    /// Signals that the block observer database has been updated.
-    BlockObserverDbUpdated,
-    /// Signals that a transaction signer event has occurred.
-    TxSigner(TxSignerEvent),
 }
 
 /// Events that can be triggered from the P2P network.
@@ -49,12 +45,6 @@ pub enum TxSignerEvent {
     ReceivedDepositDecision,
     /// Received a withdrawal decision
     ReceivedWithdrawalDecision,
-}
-
-impl From<TxSignerEvent> for SignerSignal {
-    fn from(event: TxSignerEvent) -> Self {
-        SignerSignal::Event(SignerEvent::TxSigner(event))
-    }
 }
 
 impl From<SignerEvent> for SignerSignal {
