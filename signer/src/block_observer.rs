@@ -394,7 +394,6 @@ mod tests {
             block_hash: None,
             confirmations: None,
             block_time: None,
-            in_active_chain: None,
         };
 
         let tx_setup1 = sbtc::testing::deposits::tx_setup(300, 2000, amount);
@@ -415,7 +414,6 @@ mod tests {
             block_hash: None,
             confirmations: None,
             block_time: None,
-            in_active_chain: None,
         };
 
         // Let's add the "responses" to the field that feeds the
@@ -496,7 +494,6 @@ mod tests {
             block_hash: None,
             confirmations: None,
             block_time: None,
-            in_active_chain: None,
         };
 
         // Let's add the "responses" to the field that feeds the

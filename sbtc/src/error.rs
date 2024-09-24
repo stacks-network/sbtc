@@ -16,9 +16,9 @@ pub enum Error {
     /// Error when using a BitcoinClient trait function
     #[error("could not execute bitcoin client RPC call {0}")]
     BitcoinClient(#[source] Box<dyn std::error::Error + Sync + Send + 'static>),
-    // /// Error when creating an RPC client to bitcoin-core
-    // #[error("could not create RPC client to {1}: {0}")]
-    // BitcoinCoreRpcClient(#[source] bitcoincore_rpc::Error, String),
+    /// Error when creating an RPC client to bitcoin-core
+    #[error("could not create RPC client to {1}: {0}")]
+    BitcoinCoreRpcClient(#[source] bitcoincore_rpc::Error, String),
     /// Returned when we could not decode the hex into a
     /// bitcoin::Transaction.
     #[error("failed to decode the provided hex into a transaction. txid: {1}. {0}")]
@@ -54,6 +54,9 @@ pub enum Error {
     /// The reclaim script was invalid.
     #[error("the reclaim script format was invalid")]
     InvalidReclaimScript,
+    /// This should never happen.
+    #[error("could not serialize the type into JSON")]
+    JsonSerialize(#[source] serde_json::Error),
     /// Failed to convert response into an Amount, which is unsigned and
     /// bounded.
     #[error("Could not convert float {1} into bitcoin::Amount: {0}")]
