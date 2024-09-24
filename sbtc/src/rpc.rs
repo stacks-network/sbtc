@@ -124,13 +124,15 @@ impl BitcoinTxInfo {
     /// # Notes
     ///
     /// Each input and output is assessed a fee that is proportional to
-    /// their weight amount all the requests serviced by this
-    /// transaction.
+    /// their weight amount all the requests serviced by this transaction.
     ///
     /// This function assumes that this transaction is an sBTC transaction,
     /// which implies that the first input and the first two outputs are
     /// always the signers'. So `None` is returned if there is no input,
     /// after the first input, with the given `outpoint`.
+    ///
+    /// The logic for the fee assessment is from
+    /// <https://github.com/stacks-network/sbtc/issues/182>.
     pub fn assess_input_fee(&self, outpoint: OutPoint) -> Option<Amount> {
         // The Weight::to_wu function just returns the inner weight units
         // as an u64, so this is really just the weight.
@@ -146,6 +148,8 @@ impl BitcoinTxInfo {
             .segwit_weight()
             .to_wu();
 
+        // This computation follows the logic laid out in
+        // <https://github.com/stacks-network/sbtc/issues/182>.
         let fee_sats = (input_weight * self.fee.to_sat()).div_ceil(request_weight);
         Some(Amount::from_sat(fee_sats))
     }
@@ -156,13 +160,15 @@ impl BitcoinTxInfo {
     /// # Notes
     ///
     /// Each input and output is assessed a fee that is proportional to
-    /// their weight amount all the requests serviced by this
-    /// transaction.
+    /// their weight amount all the requests serviced by this transaction.
     ///
     /// This function assumes that this transaction is an sBTC transaction,
     /// which implies that the first input and the first two outputs are
     /// always the signers'. So `None` is returned if the given `vout` is 0
     /// or 1 or if there is no output in the transaction at `vout`.
+    ///
+    /// The logic for the fee assessment is from
+    /// <https://github.com/stacks-network/sbtc/issues/182>.
     pub fn assess_output_fee(&self, vout: usize) -> Option<Amount> {
         // We skip the first input because that is always the signers'
         // input UTXO.
@@ -172,6 +178,8 @@ impl BitcoinTxInfo {
         let request_weight = self.request_weight().to_wu();
         let input_weight = self.tx.output.get(vout)?.weight().to_wu();
 
+        // This computation follows the logic laid out in
+        // <https://github.com/stacks-network/sbtc/issues/182>.
         let fee_sats = (input_weight * self.fee.to_sat()).div_ceil(request_weight);
         Some(Amount::from_sat(fee_sats))
     }
@@ -179,9 +187,8 @@ impl BitcoinTxInfo {
     /// Computes the total weight of the inputs and the outputs, excluding
     /// the ones related to the signers.
     fn request_weight(&self) -> Weight {
-        // We skip the first input and output because those are always the
-        // signers' UTXO input and output. We skip the second output
-        // because that is always the OP_RETURN output for sBTC data.
+        // We skip the first input and first two outputs because those are
+        // always the signers' UTXO input and outputs.
         self.tx
             .input
             .iter()
@@ -373,6 +380,8 @@ mod tests {
     use bitcoin::hashes::Hash as _;
     use bitcoin::ScriptBuf;
 
+    use test_case::test_case;
+
     use super::*;
 
     impl BitcoinTxInfo {
@@ -470,7 +479,10 @@ mod tests {
         let tx_info = BitcoinTxInfo::from_tx(tx, fee);
         assert!(tx_info.assess_output_fee(0).is_none());
         assert!(tx_info.assess_output_fee(1).is_none());
-
+        // Since we always skip the first input, and
+        // `base_signer_transaction()` only adds one input, the search for
+        // the given input when `assess_input_fee` executes will always
+        // fail, simulating that the specified outpoint wasn't found.
         assert!(tx_info.assess_input_fee(OutPoint::null()).is_none());
     }
 
@@ -528,8 +540,11 @@ mod tests {
         assert_eq!(assessed_fee2, fee / 2);
     }
 
-    #[test]
-    fn one_deposit_two_withdrawals_fees_add() {
+    #[test_case(500_000; "fee 500_000")]
+    #[test_case(123_456; "fee 123_456")]
+    #[test_case(1_234_567; "fee 1_234_567")]
+    #[test_case(10_007; "fee 10_007")]
+    fn one_deposit_two_withdrawals_fees_add(fee_sats: u64) {
         // We're just testing that a "regular" bitcoin transaction,
         // servicing a deposit and two withdrawals, will assess the fees in
         // a normal way. Here we test that the fee is
@@ -552,7 +567,7 @@ mod tests {
         tx.output.push(withdrawal.clone());
         tx.output.push(withdrawal);
 
-        let fee = Amount::from_sat(500_000);
+        let fee = Amount::from_sat(fee_sats);
 
         let tx_info = BitcoinTxInfo::from_tx(tx, fee);
         let input_assessed_fee = tx_info.assess_input_fee(deposit_outpoint).unwrap();
