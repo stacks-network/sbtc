@@ -15,7 +15,7 @@ pub enum Error {
     /// This is not triggered if the block is missing.
     #[error("bitcoin-core getblock RPC error for hash {1}: {0}")]
     BitcoinCoreGetBlock(#[source] bitcoincore_rpc::Error, bitcoin::BlockHash),
-    
+
     /// Received an error in response to getrawtransaction RPC call
     #[error("failed to retrieve the raw transaction for txid {1} from bitcoin-core. {0}")]
     BitcoinCoreGetTransaction(#[source] bitcoincore_rpc::Error, bitcoin::Txid),
