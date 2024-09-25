@@ -11,7 +11,10 @@ use bitcoin::Transaction;
 use bitcoin::Txid;
 use bitcoin::Wtxid;
 use bitcoincore_rpc::json::EstimateMode;
+use bitcoincore_rpc::jsonrpc::error::Error as JsonRpcError;
+use bitcoincore_rpc::jsonrpc::error::RpcError;
 use bitcoincore_rpc::Auth;
+use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi as _;
 use bitcoincore_rpc_json::GetRawTransactionResultVin;
 use bitcoincore_rpc_json::GetRawTransactionResultVout as BitcoinTxInfoVout;
@@ -233,7 +236,11 @@ impl BitcoinCoreClient {
     ///
     /// We require bitcoin-core v25 or later. For bitcoin-core v24 and
     /// earlier, this function will return an error.
-    pub fn get_tx_info(&self, txid: &Txid, block_hash: &BlockHash) -> Result<BitcoinTxInfo, Error> {
+    pub fn get_tx_info(
+        &self,
+        txid: &Txid,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BitcoinTxInfo>, Error> {
         let args = [
             serde_json::to_value(txid).map_err(Error::JsonSerialize)?,
             // This is the verbosity level. The acceptable values are 0, 1,
@@ -243,9 +250,16 @@ impl BitcoinCoreClient {
             serde_json::to_value(block_hash).map_err(Error::JsonSerialize)?,
         ];
 
-        self.inner
-            .call("getrawtransaction", &args)
-            .map_err(|err| Error::GetTransactionBitcoinCore(err, *txid))
+        match self.inner.call::<BitcoinTxInfo>("getrawtransaction", &args) {
+            Ok(tx_info) => Ok(Some(tx_info)),
+            // If the `block_hash` is not found then the message is "Block
+            // hash not found", while if the transaction is not found in an
+            // actual block then the message is "No such transaction found
+            // in the provided block. Use gettransaction for wallet
+            // transactions." In both cases the code is the same.
+            Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
+            Err(err) => Err(Error::GetTransactionBitcoinCore(err, *txid)),
+        }
     }
 
     /// Estimates the approximate fee in sats per vbyte needed for a
@@ -300,7 +314,7 @@ impl BitcoinInteract for BitcoinCoreClient {
     }
 
     #[doc = " get tx info"]
-    fn get_tx_info(&self, _: &Txid, _: &BlockHash) -> Result<BitcoinTxInfo, Error> {
+    fn get_tx_info(&self, _: &Txid, _: &BlockHash) -> Result<Option<BitcoinTxInfo>, Error> {
         todo!()
     }
 

@@ -31,7 +31,11 @@ pub trait BitcoinInteract {
     fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error>;
 
     /// get tx info
-    fn get_tx_info(&self, txid: &Txid, block_hash: &BlockHash) -> Result<BitcoinTxInfo, Error>;
+    fn get_tx_info(
+        &self,
+        txid: &Txid,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BitcoinTxInfo>, Error>;
 
     /// Estimate fee rate
     // This should be implemented with the help of the `fees::EstimateFees` trait

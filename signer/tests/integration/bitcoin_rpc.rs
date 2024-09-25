@@ -2,10 +2,14 @@
 
 use bitcoin::hashes::Hash;
 use bitcoin::AddressType;
+use fake::{Fake, Faker};
+use rand::rngs::OsRng;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::Recipient;
 use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::error::Error;
+use signer::storage::model::BitcoinBlockHash;
+use signer::storage::model::BitcoinTxId;
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test]
@@ -85,10 +89,54 @@ fn btc_client_gets_transaction_info() {
     // Now let's confirm it and try again
     let block_hash = faucet.generate_blocks(1).pop().unwrap();
 
-    let response = client.get_tx_info(&outpoint.txid, &block_hash).unwrap();
+    let response = client
+        .get_tx_info(&outpoint.txid, &block_hash)
+        .unwrap()
+        .unwrap();
     // Let's make sure we got the right transaction
     assert_eq!(response.tx.compute_txid(), outpoint.txid);
     assert_eq!(response.tx.output[vout].value.to_sat(), 500_000);
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[test]
+fn btc_client_gets_transaction_info_missing_tx() {
+    let client = BitcoinCoreClient::new(
+        "http://localhost:18443",
+        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
+        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
+    )
+    .unwrap();
+    let (rpc, faucet) = regtest::initialize_blockchain();
+    let signer = Recipient::new(AddressType::P2tr);
+
+    // Newly created "recipients" do not have any UTXOs associated with
+    // their address.
+    let balance = signer.get_balance(rpc);
+    assert_eq!(balance.to_sat(), 0);
+
+    // Okay now we send coins to an address from the one address that
+    // coins have been mined to.
+    let outpoint = faucet.send_to(500_000, &signer.address);
+    //
+    let _ = client.get_tx(&outpoint.txid).unwrap();
+
+    // Now let's confirm it and try again
+    let block_hash = faucet.generate_blocks(1).pop().unwrap();
+
+    let fake_block_hash: BitcoinBlockHash = Faker.fake_with_rng(&mut OsRng);
+
+    let response = client
+        .get_tx_info(&outpoint.txid, &fake_block_hash)
+        .unwrap();
+
+    assert!(response.is_none());
+
+    let fake_txid: BitcoinTxId = Faker.fake_with_rng(&mut OsRng);
+
+    let response = client.get_tx_info(&fake_txid, &block_hash).unwrap();
+
+    assert!(response.is_none());
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]

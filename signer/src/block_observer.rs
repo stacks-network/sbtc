@@ -776,7 +776,7 @@ mod tests {
             self.deposits.get(txid).cloned().ok_or(Error::Encryption)
         }
 
-        fn get_tx_info(&self, _: &Txid, _: &BlockHash) -> Result<BitcoinTxInfo, Error> {
+        fn get_tx_info(&self, _: &Txid, _: &BlockHash) -> Result<Option<BitcoinTxInfo>, Error> {
             unimplemented!()
         }
 

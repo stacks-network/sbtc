@@ -31,7 +31,7 @@ impl BitcoinInteract for NoopApiClient {
         &self,
         _: &bitcoin::Txid,
         _: &bitcoin::BlockHash,
-    ) -> Result<BitcoinTxInfo, Error> {
+    ) -> Result<Option<BitcoinTxInfo>, Error> {
         unimplemented!()
     }
 
