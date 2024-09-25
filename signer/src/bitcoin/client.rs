@@ -14,6 +14,8 @@
 //! - Example when trying to get a block that doesn't exist:
 //!   JsonRpc(Rpc(RpcError { code: -5, message: "Block not found", data: None }))
 
+use bitcoin::BlockHash;
+use bitcoin::Txid;
 use bitcoincore_rpc::jsonrpc::error::RpcError;
 use bitcoincore_rpc::RpcApi as _;
 use url::Url;
@@ -26,6 +28,7 @@ use crate::keys::PublicKey;
 use crate::util::ApiFallbackClient;
 
 use super::rpc::BitcoinCoreClient;
+use super::rpc::BitcoinTxInfo;
 use super::rpc::GetTxResponse;
 
 /// Implement the [`TryFrom`] trait for a slice of [`Url`]s to allow for a
@@ -59,8 +62,12 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
         .await
     }
 
-    fn get_tx(&self, txid: &bitcoin::Txid) -> Result<GetTxResponse, Error> {
+    fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
         self.get_client().get_tx(txid)
+    }
+
+    fn get_tx_info(&self, txid: &Txid, block_hash: &BlockHash) -> Result<BitcoinTxInfo, Error> {
+        self.get_client().get_tx_info(txid, &block_hash)
     }
 
     async fn estimate_fee_rate(&self) -> Result<f64, Error> {

@@ -331,6 +331,7 @@ mod tests {
     use rand::seq::IteratorRandom;
     use rand::SeedableRng;
 
+    use crate::bitcoin::rpc::BitcoinTxInfo;
     use crate::bitcoin::rpc::GetTxResponse;
     use crate::bitcoin::utxo;
     use crate::config::Settings;
@@ -777,6 +778,11 @@ mod tests {
         fn get_tx(&self, txid: &bitcoin::Txid) -> Result<GetTxResponse, Error> {
             self.deposits.get(txid).cloned().ok_or(Error::Encryption)
         }
+
+        fn get_tx_info(&self, _: &Txid, _: &BlockHash) -> Result<BitcoinTxInfo, Error> {
+            unimplemented!()
+        }
+
         async fn get_block(
             &self,
             block_hash: &bitcoin::BlockHash,

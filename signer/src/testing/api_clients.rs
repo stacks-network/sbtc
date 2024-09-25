@@ -2,6 +2,7 @@
 
 use url::Url;
 
+use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::BitcoinInteract;
 use crate::block_observer::EmilyInteract;
@@ -24,6 +25,13 @@ impl TryFrom<&[Url]> for NoopApiClient {
 /// Noop implementation of the BitcoinInteract trait.
 impl BitcoinInteract for NoopApiClient {
     fn get_tx(&self, _: &bitcoin::Txid) -> Result<GetTxResponse, Error> {
+        unimplemented!()
+    }
+    fn get_tx_info(
+        &self,
+        _: &bitcoin::Txid,
+        _: &bitcoin::BlockHash,
+    ) -> Result<BitcoinTxInfo, Error> {
         unimplemented!()
     }
 
