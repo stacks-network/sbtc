@@ -438,78 +438,64 @@ impl super::DbRead for SharedStore {
         // Traverse the canonical chain backwards and find the first block containing relevant sbtc tx(s)
         let sbtc_txs = std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
             .filter_map(|block| {
-                store
-                    .bitcoin_block_to_transactions
-                    .get(&block.block_hash)
-                    .and_then(|txs| {
-                        let mut sbtc_txs = txs
-                            .iter()
-                            .filter_map(|tx| store.raw_transactions.get(&tx.into_bytes()))
-                            .filter(|sbtc_tx| {
-                                sbtc_tx.tx_type == model::TransactionType::SbtcTransaction
-                            })
-                            .map(|tx| {
-                                bitcoin::Transaction::consensus_decode(
-                                    &mut tx.tx.clone().as_slice(),
-                                )
-                                .unwrap()
-                            })
-                            .filter(|tx| {
-                                tx.output
-                                    .first()
-                                    .is_some_and(|out| out.script_pubkey == script_pubkey)
-                            })
-                            .peekable();
-                        if sbtc_txs.peek().is_some() {
-                            Some(sbtc_txs.collect::<Vec<_>>())
-                        } else {
-                            None
-                        }
+                let txs = store.bitcoin_block_to_transactions.get(&block.block_hash)?;
+
+                let mut sbtc_txs = txs
+                    .iter()
+                    .filter_map(|tx| store.raw_transactions.get(&tx.into_bytes()))
+                    .filter(|sbtc_tx| sbtc_tx.tx_type == model::TransactionType::SbtcTransaction)
+                    .filter_map(|tx| {
+                        bitcoin::Transaction::consensus_decode(&mut tx.tx.as_slice()).ok()
                     })
+                    .filter(|tx| {
+                        tx.output
+                            .first()
+                            .is_some_and(|out| out.script_pubkey == script_pubkey)
+                    })
+                    .peekable();
+
+                if sbtc_txs.peek().is_some() {
+                    Some(sbtc_txs.collect::<Vec<_>>())
+                } else {
+                    None
+                }
             })
             .next();
 
-        if sbtc_txs.is_none() {
-            return Ok(None);
-        }
         // `sbtc_txs` contains all the txs in the highest canonical block where the first
         // output is spendable by script_pubkey
-        let sbtc_txs = sbtc_txs.unwrap();
+        let Some(sbtc_txs) = sbtc_txs else {
+            return Ok(None);
+        };
 
         let spent: HashSet<OutPoint> = sbtc_txs
             .iter()
             .flat_map(|tx| tx.input.iter().map(|txin| txin.previous_output))
             .collect();
 
-        let candidates = sbtc_txs
+        let utxos = sbtc_txs
             .iter()
             .flat_map(|tx| {
-                let txid = tx.compute_txid();
-                let spent = &spent;
-                tx.output
-                    .first() // we only care about the first output
-                    .and_then(move |tx_out| {
-                        let outpoint = OutPoint::new(txid, 0);
-                        if spent.contains(&outpoint) {
-                            None
-                        } else {
-                            Some(SignerUtxo {
-                                outpoint,
-                                amount: tx_out.value.to_sat(),
-                                // TODO: given we filter the txs by script_pubkey, is this right?
-                                public_key: XOnlyPublicKey::from(aggregate_key),
-                            })
-                        }
-                    })
+                if let Some(tx_out) = tx.output.first() {
+                    let outpoint = OutPoint::new(tx.compute_txid(), 0);
+                    if !spent.contains(&outpoint) {
+                        return Some(SignerUtxo {
+                            outpoint,
+                            amount: tx_out.value.to_sat(),
+                            // TODO: given we filter the txs by script_pubkey, is this right?
+                            public_key: XOnlyPublicKey::from(aggregate_key),
+                        });
+                    }
+                }
+
+                None
             })
             .collect::<Vec<_>>();
 
-        if candidates.is_empty() {
-            Ok(None)
-        } else if candidates.len() == 1 {
-            Ok(candidates.first().copied())
-        } else {
-            Err(Error::TooManySignerUtxo)
+        match utxos[..] {
+            [] => Ok(None),
+            [utxo] => Ok(Some(utxo)),
+            _ => Err(Error::TooManySignerUtxos),
         }
     }
 

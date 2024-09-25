@@ -279,7 +279,7 @@ pub enum Error {
 
     /// Too many signer utxo
     #[error("too many signer utxo")]
-    TooManySignerUtxo,
+    TooManySignerUtxos,
 
     /// Invalid signature
     #[error("invalid signature")]

@@ -948,7 +948,7 @@ impl super::DbRead for PgStore {
         &self,
         _aggregate_key: &PublicKey,
     ) -> Result<Option<SignerUtxo>, Error> {
-        unimplemented!()
+        unimplemented!() // TODO(538)
     }
 
     async fn in_canonical_bitcoin_blockchain(
