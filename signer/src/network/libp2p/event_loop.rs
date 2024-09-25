@@ -7,7 +7,7 @@ use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::Mutex;
 
 use crate::codec::{Decode, Encode};
-use crate::context::{SignerCommand, SignerEvent, SignerSignal, TerminationHandle};
+use crate::context::{P2PEvent, SignerCommand, SignerSignal, TerminationHandle};
 use crate::network::Msg;
 
 use super::swarm::{SignerBehavior, SignerBehaviorEvent};
@@ -56,7 +56,7 @@ pub async fn run(
                                 // Log the error and send a failure signal to the application
                                 // so that it can handle the failure as needed.
                                 tracing::warn!(%error, "Failed to encode message");
-                                let _ = signal_tx.send(SignerSignal::Event(SignerEvent::P2PPublishFailure(msg_id)));
+                                let _ = signal_tx.send(P2PEvent::PublishFailure(msg_id).into());
                                 continue;
                             }
                         };
@@ -69,14 +69,14 @@ pub async fn run(
                                 // Log the error and send a failure signal to the application
                                 // so that it can handle the failure as needed.
                                 tracing::warn!(%error, ?msg_id, "Failed to publish message");
-                                let _ = signal_tx.send(SignerSignal::Event(SignerEvent::P2PPublishFailure(msg_id)));
+                                let _ = signal_tx.send(P2PEvent::PublishFailure(msg_id).into());
                             })
                             .map(|_| {
                                 // The message was published successfully. Log the success
                                 // and send a success signal to the application so that it can
                                 // handle the success as needed.
                                 tracing::trace!(?msg_id, "Message published successfully");
-                                let _ = signal_tx.send(SignerSignal::Event(SignerEvent::P2PPublishSuccess(msg_id)));
+                                let _ = signal_tx.send(P2PEvent::PublishSuccess(msg_id).into());
                             });
                     },
                 }
@@ -282,7 +282,7 @@ fn handle_gossipsub_event(
             Msg::decode(message.data.as_slice())
                 .map(|msg| {
                     let _ = signal_tx
-                        .send(SignerSignal::Event(SignerEvent::P2PMessageReceived(msg)))
+                        .send(P2PEvent::MessageReceived(msg).into())
                         .map_err(|error| {
                             tracing::debug!(%error, "Failed to send message to application; we are likely shutting down.");
                         });
