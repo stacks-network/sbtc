@@ -11,6 +11,15 @@ use crate::stacks::contracts::WithdrawalAcceptValidationError;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Attemmpt to fetch a bitcoin blockhash ended in an unexpected error.
+    /// This is not triggered if the block is missing.
+    #[error("bitcoin-core getblock RPC error for hash {1}: {0}")]
+    BitcoinCoreGetBlock(#[source] bitcoincore_rpc::Error, bitcoin::BlockHash),
+    
+    /// Received an error in response to getrawtransaction RPC call
+    #[error("failed to retrieve the raw transaction for txid {1} from bitcoin-core. {0}")]
+    BitcoinCoreGetTransaction(#[source] bitcoincore_rpc::Error, bitcoin::Txid),
+
     /// Error when creating an RPC client to bitcoin-core
     #[error("could not create RPC client to {1}: {0}")]
     BitcoinCoreRpcClient(#[source] bitcoincore_rpc::Error, String),
@@ -28,10 +37,6 @@ pub enum Error {
     /// Received an error in response to estimatesmartfee RPC call
     #[error("failed to get fee estimate from bitcoin-core for target {1}. {0:?}")]
     EstimateSmartFeeResponse(Option<Vec<String>>, u16),
-
-    /// Received an error in response to getrawtransaction RPC call
-    #[error("failed to retrieve the raw transaction for txid {1} from bitcoin-core. {0}")]
-    GetTransactionBitcoinCore(#[source] bitcoincore_rpc::Error, bitcoin::Txid),
 
     /// Error from the fallback client.
     #[error("fallback client error: {0}")]

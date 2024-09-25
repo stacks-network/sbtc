@@ -16,7 +16,6 @@
 
 use bitcoin::BlockHash;
 use bitcoin::Txid;
-use bitcoincore_rpc::jsonrpc::error::RpcError;
 use bitcoincore_rpc::RpcApi as _;
 use url::Url;
 
@@ -50,16 +49,8 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
         &self,
         block_hash: &bitcoin::BlockHash,
     ) -> Result<Option<bitcoin::Block>, Error> {
-        self.exec(|client| async {
-            match client.inner_client().get_block(block_hash) {
-                Ok(block) => Ok(Some(block)),
-                Err(bitcoincore_rpc::Error::JsonRpc(bitcoincore_rpc::jsonrpc::Error::Rpc(
-                    RpcError { code: -5, .. },
-                ))) => Ok(None),
-                Err(error) => Err(Error::BitcoinCoreRpc(error)),
-            }
-        })
-        .await
+        self.exec(|client| async { client.get_block(block_hash) })
+            .await
     }
 
     fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error> {

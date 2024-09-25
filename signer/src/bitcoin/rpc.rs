@@ -205,6 +205,15 @@ impl BitcoinCoreClient {
         &self.inner
     }
 
+    /// Fetch the block identified by the given block hash.
+    pub fn get_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, Error> {
+        match self.inner.get_block(block_hash) {
+            Ok(block) => Ok(Some(block)),
+            Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
+            Err(error) => Err(Error::BitcoinCoreGetBlock(error, *block_hash)),
+        }
+    }
+
     /// Fetch and decode raw transaction from bitcoin-core using the
     /// getrawtransaction RPC with a verbosity of 1.
     ///
@@ -231,7 +240,7 @@ impl BitcoinCoreClient {
             // in the provided block. Use gettransaction for wallet
             // transactions." In both cases the code is the same.
             Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
-            Err(err) => Err(Error::GetTransactionBitcoinCore(err, *txid)),
+            Err(err) => Err(Error::BitcoinCoreGetTransaction(err, *txid)),
         }
     }
 
@@ -264,7 +273,7 @@ impl BitcoinCoreClient {
             // in the provided block. Use gettransaction for wallet
             // transactions." In both cases the code is the same.
             Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
-            Err(err) => Err(Error::GetTransactionBitcoinCore(err, *txid)),
+            Err(err) => Err(Error::BitcoinCoreGetTransaction(err, *txid)),
         }
     }
 
@@ -309,25 +318,26 @@ impl BitcoinInteract for BitcoinCoreClient {
         unimplemented!()
     }
 
-    #[doc = " Get block"]
-    async fn get_block(&self, _: &BlockHash) -> Result<Option<Block>, Error> {
-        unimplemented!()
+    async fn get_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, Error> {
+        self.get_block(block_hash)
     }
 
     fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error> {
         self.get_tx(txid)
     }
 
-    fn get_tx_info(&self, txid: &Txid, block_hash: &BlockHash) -> Result<Option<BitcoinTxInfo>, Error> {
+    fn get_tx_info(
+        &self,
+        txid: &Txid,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BitcoinTxInfo>, Error> {
         self.get_tx_info(txid, block_hash)
     }
 
-    #[doc = " Estimate fee rate"]
     async fn estimate_fee_rate(&self) -> Result<f64, Error> {
         todo!()
     }
 
-    #[doc = " Get the outstanding signer UTXO"]
     async fn get_signer_utxo(
         &self,
         _: &PublicKey,
@@ -335,8 +345,6 @@ impl BitcoinInteract for BitcoinCoreClient {
         todo!()
     }
 
-    #[doc = " Get the total fee amount and the fee rate for the last transaction that"]
-    #[doc = " used the given UTXO as an input."]
     async fn get_last_fee(&self, _: OutPoint) -> Result<Option<super::utxo::Fees>, Error> {
         todo!()
     }

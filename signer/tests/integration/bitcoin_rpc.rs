@@ -152,7 +152,7 @@ fn btc_client_unsubmitted_tx() {
     let txid = bitcoin::Txid::all_zeros();
 
     match client.get_tx(&txid).unwrap_err() {
-        Error::GetTransactionBitcoinCore(_, txid1) if txid1 == txid => {}
+        Error::BitcoinCoreGetTransaction(_, txid1) if txid1 == txid => {}
         _ => panic!("Incorrect error variants returned"),
     }
 }
