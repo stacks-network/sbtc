@@ -145,7 +145,7 @@ mod tests {
             } else {
                 // Just picked a random error here (which isn't
                 // a AllFailoverClientsFailed)
-                Err(Error::CurrentDatabaseName)
+                Err(Error::Encryption)
             }
         }
     }
