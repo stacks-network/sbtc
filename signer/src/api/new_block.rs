@@ -161,9 +161,8 @@ mod tests {
     {
         let db = Store::new_shared();
 
-        let ctx =
-            NoopSignerContext::init(&Settings::new_from_default_config().unwrap(), db.clone())
-                .expect("failed to init context");
+        let ctx = NoopSignerContext::init(Settings::new_from_default_config().unwrap(), db.clone())
+            .expect("failed to init context");
 
         let api = ApiState { ctx: ctx.clone() };
 
@@ -191,9 +190,8 @@ mod tests {
     {
         let db = Store::new_shared();
 
-        let ctx =
-            NoopSignerContext::init(&Settings::new_from_default_config().unwrap(), db.clone())
-                .expect("failed to init context");
+        let ctx = NoopSignerContext::init(Settings::new_from_default_config().unwrap(), db.clone())
+            .expect("failed to init context");
 
         let api = ApiState { ctx: ctx.clone() };
 

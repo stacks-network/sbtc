@@ -12,7 +12,7 @@ use url::Url;
 #[tokio::test]
 async fn test_get_block_not_found() {
     let url: Url = "http://devnet:devnet@localhost:18443".parse().unwrap();
-    let client = BitcoinCoreClient::try_from(url).unwrap();
+    let client = BitcoinCoreClient::try_from(&url).unwrap();
     let result = client.inner_client().get_block(&BlockHash::all_zeros());
 
     // This will return: JsonRpc(Rpc(RpcError { code: -5, message: "Block not found", data: None }))
@@ -35,7 +35,7 @@ async fn test_get_block_works() {
 
     let client =
         ApiFallbackClient::<BitcoinCoreClient>::new(vec![
-            BitcoinCoreClient::try_from(url.clone()).unwrap()
+            BitcoinCoreClient::try_from(&url).unwrap()
         ])
         .unwrap();
 

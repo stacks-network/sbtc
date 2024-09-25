@@ -247,7 +247,7 @@ mod tests {
         let mut swarm = builder.build().unwrap();
 
         let settings = Settings::new_from_default_config().unwrap();
-        let ctx = NoopSignerContext::init(&settings, Store::new_shared()).unwrap();
+        let ctx = NoopSignerContext::init(settings, Store::new_shared()).unwrap();
         let term = ctx.get_termination_handle();
 
         let timeout = tokio::time::timeout(Duration::from_secs(10), async {

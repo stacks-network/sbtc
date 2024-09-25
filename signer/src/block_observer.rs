@@ -363,11 +363,10 @@ mod tests {
         let storage = storage::in_memory::Store::new_shared();
         let test_harness = TestHarness::generate(&mut rng, 20, 0..5);
         let ctx = SignerContext::new(
-            &Settings::new_from_default_config().unwrap(),
+            Settings::new_from_default_config().unwrap(),
             storage.clone(),
             test_harness.clone(),
-        )
-        .unwrap();
+        );
         let block_hash_stream = test_harness.spawn_block_hash_stream();
         let (subscribers, subscriber_rx) = tokio::sync::watch::channel(());
 
@@ -470,11 +469,10 @@ mod tests {
         let block_hash_stream = test_harness.spawn_block_hash_stream();
         let (subscribers, _subscriber_rx) = tokio::sync::watch::channel(());
         let ctx = SignerContext::new(
-            &Settings::new_from_default_config().unwrap(),
+            Settings::new_from_default_config().unwrap(),
             storage.clone(),
             test_harness.clone(),
-        )
-        .unwrap();
+        );
 
         let mut block_observer = BlockObserver {
             stacks_client: test_harness.clone(),
@@ -547,11 +545,10 @@ mod tests {
         let block_hash_stream = test_harness.spawn_block_hash_stream();
         let (subscribers, _subscriber_rx) = tokio::sync::watch::channel(());
         let ctx = SignerContext::new(
-            &Settings::new_from_default_config().unwrap(),
+            Settings::new_from_default_config().unwrap(),
             storage.clone(),
             test_harness.clone(),
-        )
-        .unwrap();
+        );
 
         let mut block_observer = BlockObserver {
             stacks_client: test_harness.clone(),

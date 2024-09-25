@@ -1,5 +1,7 @@
 //! Contains client wrappers for bitcoin core and electrum.
 
+use std::sync::Arc;
+
 use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::Denomination;
@@ -15,7 +17,9 @@ use bitcoincore_rpc_json::GetRawTransactionResultVoutScriptPubKey as BitcoinTxIn
 use serde::Deserialize;
 use url::Url;
 
+use crate::bitcoin::BitcoinInteract;
 use crate::error::Error;
+use crate::keys::PublicKey;
 
 /// A slimmed down type representing a response from bitcoin-core's
 /// getrawtransaction RPC.
@@ -151,17 +155,18 @@ pub struct FeeEstimate {
 }
 
 /// A client for interacting with bitcoin-core
+#[derive(Debug, Clone)]
 pub struct BitcoinCoreClient {
     /// The underlying bitcoin-core client
-    inner: bitcoincore_rpc::Client,
+    inner: Arc<bitcoincore_rpc::Client>,
 }
 
 /// Implement TryFrom for Url to allow for easy conversion from a URL to a
 /// BitcoinCoreClient.
-impl TryFrom<Url> for BitcoinCoreClient {
+impl TryFrom<&Url> for BitcoinCoreClient {
     type Error = Error;
 
-    fn try_from(url: Url) -> Result<Self, Self::Error> {
+    fn try_from(url: &Url) -> Result<Self, Self::Error> {
         let username = url.username().to_string();
         let password = url.password().unwrap_or_default().to_string();
         let host = url
@@ -184,6 +189,7 @@ impl BitcoinCoreClient {
     pub fn new(url: &str, username: String, password: String) -> Result<Self, Error> {
         let auth = Auth::UserPass(username, password);
         let client = bitcoincore_rpc::Client::new(url, auth)
+            .map(Arc::new)
             .map_err(|err| Error::BitcoinCoreRpcClient(err, url.to_string()))?;
 
         Ok(Self { inner: client })
