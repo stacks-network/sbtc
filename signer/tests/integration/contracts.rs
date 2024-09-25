@@ -8,6 +8,7 @@ use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
 use blockstack_lib::types::chainstate::StacksAddress;
 use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Keypair;
+use signer::config::Settings;
 use signer::stacks::api::StacksInteract;
 use signer::stacks::contracts::AcceptWithdrawalV1;
 use signer::stacks::contracts::AsContractCall;
@@ -17,9 +18,9 @@ use signer::stacks::wallet::SignerWallet;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
 use signer::testing::wallet::ContractCallWrapper;
+use signer::util::ApiFallbackClient;
 use tokio::sync::OnceCell;
 
-use signer::config::StacksSettings;
 use signer::stacks;
 use signer::stacks::api::FeePriority;
 use signer::stacks::api::RejectionReason;
@@ -91,7 +92,7 @@ pub struct SignerStxState {
     /// These are the private keys to public keys in the above wallet.
     pub keys: [Keypair; 3],
     /// A stacks client built using the src/config/default.toml config.
-    pub stacks_client: &'static StacksClient,
+    pub stacks_client: ApiFallbackClient<StacksClient>,
 }
 
 impl SignerStxState {
@@ -139,11 +140,11 @@ impl SignerStxState {
             self.wallet.address(),
             T::CONTRACT_NAME
         );
-        let base = self.stacks_client.get_current_endpoint();
-        let url = base.join(&path).unwrap();
 
-        let response = self
-            .stacks_client
+        let client = self.stacks_client.get_client();
+        let url = client.endpoint.join(&path).unwrap();
+
+        let response = client
             .client
             .get(url)
             .timeout(std::time::Duration::from_secs(10))
@@ -155,12 +156,14 @@ impl SignerStxState {
 }
 
 /// Create or return a long-lived stacks client.
-fn stacks_client() -> &'static StacksClient {
-    static STACKS_CLIENT: OnceLock<StacksClient> = OnceLock::new();
-    STACKS_CLIENT.get_or_init(|| {
-        let settings = StacksSettings::new_from_config().unwrap();
-        StacksClient::new(settings)
-    })
+fn stacks_client() -> ApiFallbackClient<StacksClient> {
+    static STACKS_CLIENT: OnceLock<ApiFallbackClient<StacksClient>> = OnceLock::new();
+    STACKS_CLIENT
+        .get_or_init(|| {
+            let settings = Settings::new_from_default_config().unwrap();
+            TryFrom::try_from(&settings).unwrap()
+        })
+        .clone()
 }
 
 /// Deploy all sBTC smart contracts to the stacks node
@@ -271,14 +274,13 @@ async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: Contr
         return;
     }
 
-    let settings = StacksSettings::new_from_config().unwrap();
-    let mut client = StacksClient::new(settings);
+    let client = stacks_client();
 
     // We need a block id
     let info = client.get_tenure_info().await.unwrap();
     let storage = Store::new_shared();
 
-    let blocks = stacks::api::fetch_unknown_ancestors(&mut client, &storage, info.tip_block_id)
+    let blocks = stacks::api::fetch_unknown_ancestors(&client, &storage, info.tip_block_id)
         .await
         .unwrap();
 
@@ -303,7 +305,11 @@ async fn estimate_tx_fees() {
     let contract = SbtcRegistryContract;
     let payload = ContractDeploy(contract);
 
-    let _ = client.get_fee_estimate(&payload).await.unwrap();
+    let _ = client
+        .get_client()
+        .get_fee_estimate(&payload)
+        .await
+        .unwrap();
 
     let contract_call = CompleteDepositV1 {
         outpoint: bitcoin::OutPoint::null(),

@@ -5,7 +5,7 @@ use std::{
     future::Future,
     ops::Deref,
     sync::{
-        atomic::{AtomicU8, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
         Arc,
     },
 };
@@ -60,6 +60,59 @@ pub struct InnerApiFallbackClient<T> {
     retry_count: AtomicU8,
 }
 
+/// A context that provides information about the current retry attempt and
+/// allows the caller to abort the retry loop.
+#[derive(Debug, Clone)]
+pub struct RetryContext {
+    inner: Arc<InnerRetryContext>,
+}
+
+/// Inner implementation of the retry context.
+#[derive(Debug)]
+pub struct InnerRetryContext {
+    total_retries: u8,
+    current_retry: u8,
+    abort: AtomicBool,
+}
+
+impl InnerRetryContext {
+    fn new(total_retries: u8, current_retry: u8) -> Self {
+        Self {
+            total_retries,
+            current_retry,
+            abort: AtomicBool::new(false),
+        }
+    }
+}
+
+impl RetryContext {
+    fn new(total_retries: u8, current_retry: u8) -> Self {
+        Self {
+            inner: Arc::new(InnerRetryContext::new(total_retries, current_retry)),
+        }
+    }
+
+    /// Gets the total number of attempts that will be made.
+    pub fn total_attempts(&self) -> u8 {
+        self.inner.total_retries + 1
+    }
+
+    /// Gets the current attempt number.
+    pub fn current_attempt(&self) -> u8 {
+        self.inner.current_retry + 1
+    }
+
+    /// If a client call fails, this method can be used to abort the retry loop
+    /// and return the current error immediately.
+    pub fn abort(&self) {
+        self.inner.abort.store(true, Ordering::SeqCst);
+    }
+
+    fn is_aborted(&self) -> bool {
+        self.inner.abort.load(Ordering::SeqCst)
+    }
+}
+
 impl<T> InnerApiFallbackClient<T> {
     /// Set the number of retries to perform before giving up.
     ///
@@ -80,7 +133,10 @@ impl<T> InnerApiFallbackClient<T> {
     /// if the closure returns an error.
     ///
     /// For more information on the number of attempts made, see [`Self::set_retry_count`].
-    pub async fn exec<'a, R, E, F>(&'a self, f: impl Fn(&'a T) -> F) -> Result<R, Error>
+    pub async fn exec<'a, R, E, F>(
+        &'a self,
+        f: impl Fn(&'a T, RetryContext) -> F,
+    ) -> Result<R, Error>
     where
         E: std::error::Error + std::fmt::Debug,
         E: Into<Error>,
@@ -88,15 +144,22 @@ impl<T> InnerApiFallbackClient<T> {
     {
         let retry_count = self.retry_count.load(Ordering::Relaxed);
         for i in 0..=retry_count {
+            let retry_ctx = RetryContext::new(retry_count, i);
             let client_index = self.last_client_index.load(Ordering::Relaxed);
-            let result = f(&self.inner_clients[client_index]).await;
+            let result = f(&self.inner_clients[client_index], retry_ctx.clone()).await;
 
             if let Err(error) = result {
                 tracing::warn!(%error, retry_num=i, max_retries=retry_count, "failover client call failed");
+
+                if retry_ctx.is_aborted() {
+                    return Err(error.into());
+                }
+
                 self.last_client_index.store(
                     (client_index + 1) % self.inner_clients.len(),
                     Ordering::Relaxed,
                 );
+
                 continue;
             }
 
@@ -184,7 +247,7 @@ mod tests {
         assert_eq!(client.last_client_index.load(Ordering::Relaxed), 0);
 
         let result = client
-            .exec(|client| {
+            .exec(|client, _| {
                 assert_eq!(client1, client);
                 client.call()
             })
@@ -194,7 +257,7 @@ mod tests {
         assert_eq!(client.last_client_index.load(Ordering::Relaxed), 0);
 
         let result = client
-            .exec(|client| {
+            .exec(|client, _| {
                 assert_eq!(client1, client);
                 client.call()
             })
@@ -226,7 +289,7 @@ mod tests {
         // Call the client. The first one should fail, triggering a failover,
         // and the second one should succeed.
         let result = client
-            .exec(|client| {
+            .exec(|client, _| {
                 call_count.fetch_add(1, Ordering::Relaxed);
 
                 // Ensure that we've been given the client we're expecting.
@@ -250,7 +313,7 @@ mod tests {
         // Now that the second (success) client is selected, we should be able
         // to call it without failover.
         let result = client
-            .exec(|client| {
+            .exec(|client, _| {
                 assert_eq!(client2, client);
                 client.call()
             })
@@ -274,7 +337,7 @@ mod tests {
         let call_count = AtomicUsize::new(0);
 
         let _ = client
-            .exec(|client| {
+            .exec(|client, _| {
                 call_count.fetch_add(1, Ordering::Relaxed);
                 client.call()
             })
@@ -297,7 +360,7 @@ mod tests {
         let call_count = AtomicUsize::new(0);
 
         let result = client
-            .exec(|client| {
+            .exec(|client, _| {
                 call_count.fetch_add(1, Ordering::Relaxed);
                 client.call()
             })

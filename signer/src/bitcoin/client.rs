@@ -47,7 +47,7 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
         &self,
         block_hash: &bitcoin::BlockHash,
     ) -> Result<Option<bitcoin::Block>, Error> {
-        self.exec(|client| async {
+        self.exec(|client, _| async {
             match client.inner_client().get_block(block_hash) {
                 Ok(block) => Ok(Some(block)),
                 Err(bitcoincore_rpc::Error::JsonRpc(bitcoincore_rpc::jsonrpc::Error::Rpc(
@@ -79,7 +79,7 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
     }
 
     async fn broadcast_transaction(&self, tx: &bitcoin::Transaction) -> Result<(), Error> {
-        self.exec(|client| async {
+        self.exec(|client, _| async {
             client
                 .inner_client()
                 .send_raw_transaction(tx)

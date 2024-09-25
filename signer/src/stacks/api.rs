@@ -24,11 +24,13 @@ use futures::TryFutureExt;
 use reqwest::header::CONTENT_LENGTH;
 use reqwest::header::CONTENT_TYPE;
 use serde::{Deserialize, Deserializer};
+use url::Url;
 
-use crate::config::StacksSettings;
+use crate::config::Settings;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::storage::DbRead;
+use crate::util::ApiFallbackClient;
 
 use super::contracts::AsTxPayload;
 
@@ -80,25 +82,25 @@ pub trait StacksInteract {
     /// This is done by making a `GET /v2/data_var/<contract-principal>/sbtc-registry/current-signer-set`
     /// request.
     fn get_current_signer_set(
-        &mut self,
+        &self,
         contract_principal: &StacksAddress,
     ) -> impl Future<Output = Result<Vec<PublicKey>, Error>>;
     /// Get the latest account info for the given address.
     fn get_account(
-        &mut self,
+        &self,
         address: &StacksAddress,
     ) -> impl Future<Output = Result<AccountInfo, Error>>;
 
     /// Submit a transaction to a Stacks node.
     fn submit_tx(
-        &mut self,
+        &self,
         tx: &StacksTransaction,
     ) -> impl Future<Output = Result<SubmitTxResponse, Error>>;
 
     /// Fetch the raw stacks nakamoto block from a Stacks node given the
     /// Stacks block ID.
     fn get_block(
-        &mut self,
+        &self,
         block_id: StacksBlockId,
     ) -> impl Future<Output = Result<NakamotoBlock, Error>> + Send;
     /// Fetch all Nakamoto ancestor blocks within the same tenure as the
@@ -111,14 +113,14 @@ pub trait StacksInteract {
     /// capped at ~16 MB. This function returns all blocks, regardless of
     /// the size of the blocks within the tenure.
     fn get_tenure(
-        &mut self,
+        &self,
         block_id: StacksBlockId,
     ) -> impl Future<Output = Result<Vec<NakamotoBlock>, Error>> + Send;
     /// Get information about the current tenure.
     ///
     /// This function is analogous to the GET /v3/tenures/info stacks node
     /// endpoint for retrieving tenure information.
-    fn get_tenure_info(&mut self) -> impl Future<Output = Result<RPCGetTenureInfo, Error>> + Send;
+    fn get_tenure_info(&self) -> impl Future<Output = Result<RPCGetTenureInfo, Error>> + Send;
     /// Estimate the priority transaction fees for the input transaction
     /// for the current state of the mempool. The result should be and
     /// estimated total fee in microSTX.
@@ -280,12 +282,8 @@ impl TryFrom<AccountEntryResponse> for AccountInfo {
 
 /// A client for interacting with Stacks nodes and the Stacks API
 pub struct StacksClient {
-    /// The base URL (with the port) that will be used when making requests
-    /// for to a Stacks node.
-    node_endpoints: Vec<url::Url>,
-    /// The current index into the endpoints list
-    /// Increment this on network failure
-    endpoint_index: usize,
+    /// The base url for the Stacks node's RPC API.
+    pub endpoint: Url,
     /// The client used to make the request.
     pub client: reqwest::Client,
     /// The start height of the first EPOCH 3.0 block on the Stacks
@@ -296,23 +294,16 @@ pub struct StacksClient {
 impl StacksClient {
     /// Create a new instance of the Stacks client using the given
     /// StacksSettings.
-    pub fn new(settings: StacksSettings) -> Self {
-        Self {
-            node_endpoints: settings.node.endpoints,
-            endpoint_index: 0,
-            nakamoto_start_height: settings.node.nakamoto_start_height,
-            client: reqwest::Client::new(),
-        }
-    }
+    pub fn new(url: Url, nakamoto_start_height: u64) -> Result<Self, Error> {
+        let client = reqwest::Client::builder()
+            .timeout(REQUEST_TIMEOUT)
+            .build()?;
 
-    /// iterate the stored endpoint index, wrapping
-    pub fn next_endpoint(&mut self) {
-        self.endpoint_index = (self.endpoint_index + 1) % self.node_endpoints.len();
-    }
-
-    /// get the current endpoint
-    pub fn get_current_endpoint(&self) -> url::Url {
-        self.node_endpoints[self.endpoint_index].clone()
+        Ok(Self {
+            endpoint: url,
+            client,
+            nakamoto_start_height,
+        })
     }
 
     /// Retrieve the latest value of a data variable from the specified contract.
@@ -332,10 +323,11 @@ impl StacksClient {
             "/v2/data_var/{}/{}/{}?proof=0",
             contract_principal, contract_name, var_name
         );
-        let base = self.get_current_endpoint();
-        let url = base
+
+        let url = self
+            .endpoint
             .join(&path)
-            .map_err(|err| Error::PathJoin(err, base, Cow::Owned(path)))?;
+            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
 
         tracing::debug!(%contract_principal, %contract_name, %var_name, "Fetching contract data variable");
 
@@ -364,10 +356,10 @@ impl StacksClient {
     #[tracing::instrument(skip_all)]
     pub async fn get_account(&self, address: &StacksAddress) -> Result<AccountInfo, Error> {
         let path = format!("/v2/accounts/{}?proof=0", address);
-        let base = self.get_current_endpoint();
-        let url = base
+        let url = self
+            .endpoint
             .join(&path)
-            .map_err(|err| Error::PathJoin(err, base, Cow::Owned(path)))?;
+            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
 
         tracing::debug!(%address, "Fetching the latest account information");
 
@@ -397,10 +389,10 @@ impl StacksClient {
     #[tracing::instrument(skip_all)]
     pub async fn submit_tx(&self, tx: &StacksTransaction) -> Result<SubmitTxResponse, Error> {
         let path = "/v2/transactions";
-        let base = self.get_current_endpoint();
-        let url = base
+        let url = self
+            .endpoint
             .join(path)
-            .map_err(|err| Error::PathJoin(err, base, Cow::Borrowed(path)))?;
+            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Borrowed(path)))?;
 
         tracing::debug!(txid = %tx.txid(), "Submitting transaction to the stacks node");
         let body = tx.serialize_to_vec();
@@ -439,10 +431,10 @@ impl StacksClient {
         T: AsTxPayload + Send,
     {
         let path = "/v2/fees/transaction";
-        let base = self.get_current_endpoint();
-        let url = base
+        let url = self
+            .endpoint
             .join(path)
-            .map_err(|err| Error::PathJoin(err, base, Cow::Borrowed(path)))?;
+            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Borrowed(path)))?;
 
         let tx_payload = payload.tx_payload().serialize_to_vec();
         let request_body = FeeRateEstimateRequestBody {
@@ -483,10 +475,10 @@ impl StacksClient {
     #[tracing::instrument(skip(self))]
     async fn get_block(&self, block_id: StacksBlockId) -> Result<NakamotoBlock, Error> {
         let path = format!("/v3/blocks/{}", block_id.to_hex());
-        let base = self.get_current_endpoint();
-        let url = base
+        let url = self
+            .endpoint
             .join(&path)
-            .map_err(|err| Error::PathJoin(err, base, Cow::Owned(path)))?;
+            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
 
         tracing::debug!("Making request to the stacks node for the raw nakamoto block");
 
@@ -563,11 +555,11 @@ impl StacksClient {
     ///   non-Nakamoto block then a Result::Err is returned.
     #[tracing::instrument(skip(self))]
     async fn get_tenure_raw(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
-        let base = self.get_current_endpoint();
         let path = format!("/v3/tenures/{}", block_id.to_hex());
-        let url = base
+        let url = self
+            .endpoint
             .join(&path)
-            .map_err(|err| Error::PathJoin(err, base, Cow::Owned(path)))?;
+            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
 
         tracing::debug!("Making request to the stacks node for the raw nakamoto block");
 
@@ -609,11 +601,11 @@ impl StacksClient {
     /// tenure information.
     #[tracing::instrument(skip(self))]
     pub async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
-        let base = self.get_current_endpoint();
         let path = "/v3/tenures/info";
-        let url = base
+        let url = self
+            .endpoint
             .join(path)
-            .map_err(|err| Error::PathJoin(err, base, Cow::Borrowed(path)))?;
+            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Borrowed(path)))?;
 
         tracing::debug!("Making request to the stacks node for the current tenure info");
         let response = self
@@ -633,131 +625,10 @@ impl StacksClient {
     }
 }
 
-/// Checks the result of a Stacks API request and updates the client's
-/// endpoint if the request failed due to a timeout or connection error.
-fn check_result<T>(client: &mut StacksClient, result: Result<T, Error>) -> Result<T, Error> {
-    match &result {
-        Err(Error::StacksNodeRequest(e)) => {
-            if e.is_timeout() || e.is_connect() {
-                client.next_endpoint();
-            }
-        }
-        Err(Error::StacksNodeResponse(e)) => {
-            if e.is_timeout() || e.is_connect() {
-                client.next_endpoint();
-            }
-        }
-        _ => (),
-    }
-    result
-}
-
-impl StacksInteract for StacksClient {
-    async fn get_current_signer_set(
-        &mut self,
-        contract_principal: &StacksAddress,
-    ) -> Result<Vec<PublicKey>, Error> {
-        // Make a request to the sbtc-registry contract to get the current
-        // signer set.
-        let result = StacksClient::get_data_var(
-            self,
-            contract_principal,
-            &ContractName::from("sbtc-registry"),
-            &ClarityName::from("current-signer-set"),
-        )
-        .await;
-
-        let checked_result = check_result(self, result)?;
-
-        match checked_result {
-            Value::Sequence(SequenceData::List(ListData { data, .. })) => {
-                let mut keys = Vec::new();
-                for item in data {
-                    if let Value::Sequence(SequenceData::Buffer(BuffData { data })) = item {
-                        keys.push(PublicKey::from_slice(&data)?);
-                    } else {
-                        return Err(Error::InvalidStacksResponse(
-                            "expected a buffer but got something else",
-                        ));
-                    }
-                }
-                Ok(keys)
-            }
-            _ => Err(Error::InvalidStacksResponse(
-                "expected a sequence but got something else",
-            )),
-        }
-    }
-    async fn get_account(&mut self, address: &StacksAddress) -> Result<AccountInfo, Error> {
-        check_result(self, StacksClient::get_account(self, address).await)
-    }
-    async fn submit_tx(&mut self, tx: &StacksTransaction) -> Result<SubmitTxResponse, Error> {
-        check_result(self, StacksClient::submit_tx(self, tx).await)
-    }
-    async fn get_block(&mut self, block_id: StacksBlockId) -> Result<NakamotoBlock, Error> {
-        check_result(self, StacksClient::get_block(self, block_id).await)
-    }
-    async fn get_tenure(&mut self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
-        check_result(self, StacksClient::get_tenure(self, block_id).await)
-    }
-    async fn get_tenure_info(&mut self) -> Result<RPCGetTenureInfo, Error> {
-        check_result(self, StacksClient::get_tenure_info(self).await)
-    }
-    /// Estimate the high priority transaction fee for the input
-    /// transaction call given the current state of the mempool.
-    ///
-    /// This function attempts to use the POST /v2/fees/transaction
-    /// endpoint on a stacks node to estimate the current high priority
-    /// transaction fee for a given transaction. If the node does not
-    /// have enough information to provide an estimate, we then get the
-    /// current high priority fee for an STX transfer and use that as an
-    /// estimate for the transaction fee.
-    async fn estimate_fees<T>(&self, payload: &T, priority: FeePriority) -> Result<u64, Error>
-    where
-        T: AsTxPayload + Send + Sync,
-    {
-        // If we cannot get an estimate for the transaction, try the
-        // generic STX transfer since we should always be able to get the
-        // STX transfer fee estimate. If that fails then we bail, maybe we
-        // should try another node.
-        let mut resp = self
-            .get_fee_estimate(payload)
-            .or_else(|err| async move {
-                tracing::warn!("could not estimate contract call fees: {err}");
-                // Estimating STX transfers is simple since the estimate
-                // doesn't depend on the recipient, amount, or memo. So a
-                // dummy transfer payload will do.
-                self.get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD).await
-            })
-            .await?;
-
-        // As of this writing the RPC response includes exactly 3 estimates
-        // (the low, medium, and high priority estimates). It's note worthy
-        // if this changes so we log it but the code here is robust to such
-        // a change.
-        let num_estimates = resp.estimations.len();
-        if num_estimates != 3 {
-            tracing::info!("Unexpected number of fee estimates: {num_estimates}");
-        }
-        // Now we sort them and take the low, middle, and high fees
-        resp.estimations.sort_by_key(|estimate| estimate.fee);
-        let fee_estimate = match priority {
-            FeePriority::Low => resp.estimations.first().map(|est| est.fee),
-            FeePriority::Medium => resp.estimations.get(num_estimates / 2).map(|est| est.fee),
-            FeePriority::High => resp.estimations.last().map(|est| est.fee),
-        };
-
-        Ok(fee_estimate.unwrap_or(DEFAULT_TX_FEE).min(MAX_TX_FEE))
-    }
-    fn nakamoto_start_height(&self) -> u64 {
-        self.nakamoto_start_height
-    }
-}
-
 /// Fetch all Nakamoto blocks that are not already stored in the
 /// datastore.
 pub async fn fetch_unknown_ancestors<S, D>(
-    stacks: &mut S,
+    stacks: &S,
     db: &D,
     block_id: StacksBlockId,
 ) -> Result<Vec<NakamotoBlock>, Error>
@@ -801,9 +672,148 @@ where
         .map_err(serde::de::Error::custom)
 }
 
+impl StacksInteract for ApiFallbackClient<StacksClient> {
+    async fn get_current_signer_set(
+        &self,
+        contract_principal: &StacksAddress,
+    ) -> Result<Vec<PublicKey>, Error> {
+        self.exec(|client, retry| async move {
+            // Make a request to the sbtc-registry contract to get the current
+            // signer set.
+            let result = StacksClient::get_data_var(
+                client,
+                contract_principal,
+                &ContractName::from("sbtc-registry"),
+                &ClarityName::from("current-signer-set"),
+            )
+            .await?;
+
+            match result {
+                Value::Sequence(SequenceData::List(ListData { data, .. })) => {
+                    let mut keys = Vec::new();
+                    for item in data {
+                        if let Value::Sequence(SequenceData::Buffer(BuffData { data })) = item {
+                            keys.push(PublicKey::from_slice(&data)?);
+                        } else {
+                            retry.abort();
+                            return Err(Error::InvalidStacksResponse(
+                                "expected a buffer but got something else",
+                            ));
+                        }
+                    }
+                    Ok(keys)
+                }
+                _ => {
+                    retry.abort();
+                    Err(Error::InvalidStacksResponse(
+                        "expected a sequence but got something else",
+                    ))
+                }
+            }
+        })
+        .await
+    }
+
+    async fn get_account(&self, address: &StacksAddress) -> Result<AccountInfo, Error> {
+        self.exec(|client, _| async { StacksClient::get_account(client, address).await })
+            .await
+    }
+
+    async fn submit_tx(&self, tx: &StacksTransaction) -> Result<SubmitTxResponse, Error> {
+        self.exec(|client, _| async { StacksClient::submit_tx(client, tx).await })
+            .await
+    }
+
+    async fn get_block(&self, block_id: StacksBlockId) -> Result<NakamotoBlock, Error> {
+        self.exec(|client, _| async { StacksClient::get_block(client, block_id).await })
+            .await
+    }
+
+    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+        self.exec(|client, _| async { StacksClient::get_tenure(client, block_id).await })
+            .await
+    }
+
+    async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
+        self.exec(|client, _| async { StacksClient::get_tenure_info(client).await })
+            .await
+    }
+
+    /// Estimate the high priority transaction fee for the input
+    /// transaction call given the current state of the mempool.
+    ///
+    /// This function attempts to use the POST /v2/fees/transaction
+    /// endpoint on a stacks node to estimate the current high priority
+    /// transaction fee for a given transaction. If the node does not
+    /// have enough information to provide an estimate, we then get the
+    /// current high priority fee for an STX transfer and use that as an
+    /// estimate for the transaction fee.
+    async fn estimate_fees<T>(&self, payload: &T, priority: FeePriority) -> Result<u64, Error>
+    where
+        T: AsTxPayload + Send + Sync,
+    {
+        // If we cannot get an estimate for the transaction, try the
+        // generic STX transfer since we should always be able to get the
+        // STX transfer fee estimate. If that fails then we bail, maybe we
+        // should try another node.
+        let mut resp = self
+            .exec(|client, _| async move {
+                client
+                    .get_fee_estimate(payload)
+                    .or_else(|err| async move {
+                        tracing::warn!("could not estimate contract call fees: {err}");
+                        // Estimating STX transfers is simple since the estimate
+                        // doesn't depend on the recipient, amount, or memo. So a
+                        // dummy transfer payload will do.
+                        client.get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD).await
+                    })
+                    .await
+            })
+            .await?;
+
+        // As of this writing the RPC response includes exactly 3 estimates
+        // (the low, medium, and high priority estimates). It's note worthy
+        // if this changes so we log it but the code here is robust to such
+        // a change.
+        let num_estimates = resp.estimations.len();
+        if num_estimates != 3 {
+            tracing::info!("Unexpected number of fee estimates: {num_estimates}");
+        }
+        // Now we sort them and take the low, middle, and high fees
+        resp.estimations.sort_by_key(|estimate| estimate.fee);
+        let fee_estimate = match priority {
+            FeePriority::Low => resp.estimations.first().map(|est| est.fee),
+            FeePriority::Medium => resp.estimations.get(num_estimates / 2).map(|est| est.fee),
+            FeePriority::High => resp.estimations.last().map(|est| est.fee),
+        };
+
+        Ok(fee_estimate.unwrap_or(DEFAULT_TX_FEE).min(MAX_TX_FEE))
+    }
+
+    fn nakamoto_start_height(&self) -> u64 {
+        self.get_client().nakamoto_start_height
+    }
+}
+
+impl TryFrom<&Settings> for ApiFallbackClient<StacksClient> {
+    type Error = Error;
+
+    fn try_from(settings: &Settings) -> Result<Self, Self::Error> {
+        let naka_start_height = settings.stacks.nakamoto_start_height;
+        let clients = settings
+            .stacks
+            .endpoints
+            .iter()
+            .map(|url| StacksClient::new(url.clone(), naka_start_height))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        ApiFallbackClient::new(clients).map_err(Error::FallbackClient)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::config::StacksNodeSettings;
+    use crate::config::StacksConfig;
     use crate::keys::{PrivateKey, PublicKey};
     use crate::storage::in_memory::Store;
     use crate::storage::DbWrite;
@@ -826,11 +836,11 @@ mod tests {
         let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
         let db = crate::testing::storage::new_test_database(db_num, true).await;
 
-        let settings = StacksSettings::new_from_config().unwrap();
-        let mut client = StacksClient::new(settings);
+        let settings = Settings::new_from_default_config().unwrap();
+        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
 
         let info = client.get_tenure_info().await.unwrap();
-        let blocks = fetch_unknown_ancestors(&mut client, &db, info.tip_block_id).await;
+        let blocks = fetch_unknown_ancestors(&client, &db, info.tip_block_id).await;
 
         let blocks = blocks.unwrap();
         let headers = blocks
@@ -925,14 +935,14 @@ mod tests {
             .expect(1)
             .create();
 
-        let settings = StacksSettings {
-            node: StacksNodeSettings {
-                endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
-                nakamoto_start_height: 20,
-            },
+        let mut settings = Settings::new_from_default_config().unwrap();
+        settings.stacks = StacksConfig {
+            endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
+            nakamoto_start_height: 20,
         };
 
-        let client = StacksClient::new(settings);
+        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
+
         let block_id = StacksBlockId::from_hex(TENURE_END_BLOCK_ID).unwrap();
         // The moment of truth, do the requests succeed?
         let blocks = client.get_tenure(block_id).await.unwrap();
@@ -977,14 +987,13 @@ mod tests {
             .expect(1)
             .create();
 
-        let settings = StacksSettings {
-            node: StacksNodeSettings {
-                endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
-                nakamoto_start_height: 20,
-            },
+        let mut settings = Settings::new_from_default_config().unwrap();
+        settings.stacks = StacksConfig {
+            endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
+            nakamoto_start_height: 20,
         };
 
-        let client = StacksClient::new(settings);
+        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
         let resp = client.get_tenure_info().await.unwrap();
         let expected: RPCGetTenureInfo = serde_json::from_str(raw_json_response).unwrap();
 
@@ -1030,13 +1039,13 @@ mod tests {
             .create();
 
         // Setup our Stacks client
-        let settings = StacksSettings {
-            node: StacksNodeSettings {
-                endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
-                nakamoto_start_height: 20,
-            },
+        let mut settings = Settings::new_from_default_config().unwrap();
+        settings.stacks = StacksConfig {
+            endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
+            nakamoto_start_height: 20,
         };
-        let mut client = StacksClient::new(settings);
+
+        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
 
         // Make the request to the mock server
         let resp = client
@@ -1046,8 +1055,10 @@ mod tests {
             )
             .await;
 
+        let err = resp.unwrap_err();
+        dbg!(&err);
         assert!(matches!(
-            resp.unwrap_err(),
+            err,
             Error::InvalidStacksResponse(s) if s == "expected a sequence but got something else"
         ));
         mock.assert();
@@ -1091,13 +1102,13 @@ mod tests {
             .create();
 
         // Setup our Stacks client
-        let settings = StacksSettings {
-            node: StacksNodeSettings {
-                endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
-                nakamoto_start_height: 20,
-            },
+        let mut settings = Settings::new_from_default_config().unwrap();
+        settings.stacks = StacksConfig {
+            endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
+            nakamoto_start_height: 20,
         };
-        let mut client = StacksClient::new(settings);
+
+        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
 
         // Make the request to the mock server
         let resp = client
@@ -1150,16 +1161,17 @@ mod tests {
             .create();
 
         // Setup our Stacks client
-        let settings = StacksSettings {
-            node: StacksNodeSettings {
-                endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
-                nakamoto_start_height: 20,
-            },
+        let mut settings = Settings::new_from_default_config().unwrap();
+        settings.stacks = StacksConfig {
+            endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
+            nakamoto_start_height: 20,
         };
-        let client = StacksClient::new(settings);
+
+        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
 
         // Make the request to the mock server
         let resp = client
+            .get_client()
             .get_data_var(
                 &StacksAddress::from_string("ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM")
                     .expect("failed to parse stacks address"),
@@ -1206,15 +1218,15 @@ mod tests {
             .expect(4)
             .create();
 
-        let settings = StacksSettings {
-            node: StacksNodeSettings {
-                endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
-                nakamoto_start_height: 20,
-            },
+        let mut settings = Settings::new_from_default_config().unwrap();
+        settings.stacks = StacksConfig {
+            endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
+            nakamoto_start_height: 20,
         };
 
-        let client = StacksClient::new(settings);
+        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
         let resp = client
+            .get_client()
             .get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD)
             .await
             .unwrap();
@@ -1248,13 +1260,12 @@ mod tests {
     #[tokio::test]
     #[ignore = "This is an integration test that hasn't been setup for CI yet"]
     async fn fetching_last_tenure_blocks_works() {
-        let settings = StacksSettings::new_from_config().unwrap();
-        let mut client = StacksClient::new(settings);
-
+        let settings = Settings::new_from_default_config().unwrap();
+        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
         let storage = Store::new_shared();
 
         let info = client.get_tenure_info().await.unwrap();
-        let blocks = fetch_unknown_ancestors(&mut client, &storage, info.tenure_start_block_id)
+        let blocks = fetch_unknown_ancestors(&client, &storage, info.tenure_start_block_id)
             .await
             .unwrap();
         assert!(!blocks.is_empty());
@@ -1280,8 +1291,8 @@ mod tests {
     #[tokio::test]
     #[ignore = "This is an integration test that hasn't been setup for CI yet"]
     async fn fetching_account_information_works() {
-        let settings = StacksSettings::new_from_config().unwrap();
-        let client = StacksClient::new(settings);
+        let settings = Settings::new_from_default_config().unwrap();
+        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
 
         let address = StacksAddress::burn_address(false);
         let account = client.get_account(&address).await.unwrap();
