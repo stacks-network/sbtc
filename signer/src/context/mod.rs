@@ -118,8 +118,8 @@ where
 
     /// Drop the context and retyur
     #[cfg(any(test, feature = "testing"))]
-    pub fn into_inner(self) -> InnerSignerContext<S, BC> {
-        self.inner
+    pub fn into_db(self) -> S {
+        self.inner.storage
     }
 }
 

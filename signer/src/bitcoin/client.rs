@@ -67,7 +67,7 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
     }
 
     fn get_tx_info(&self, txid: &Txid, block_hash: &BlockHash) -> Result<BitcoinTxInfo, Error> {
-        self.get_client().get_tx_info(txid, &block_hash)
+        self.get_client().get_tx_info(txid, block_hash)
     }
 
     async fn estimate_fee_rate(&self) -> Result<f64, Error> {

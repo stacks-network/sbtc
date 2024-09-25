@@ -3,8 +3,10 @@
 use std::sync::Arc;
 
 use bitcoin::Amount;
+use bitcoin::Block;
 use bitcoin::BlockHash;
 use bitcoin::Denomination;
+use bitcoin::OutPoint;
 use bitcoin::Transaction;
 use bitcoin::Txid;
 use bitcoin::Wtxid;
@@ -279,5 +281,45 @@ impl BitcoinCoreClient {
         };
 
         Ok(FeeEstimate { sats_per_vbyte })
+    }
+}
+
+impl BitcoinInteract for BitcoinCoreClient {
+    async fn broadcast_transaction(&self, _: &Transaction) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    #[doc = " Get block"]
+    async fn get_block(&self, _: &BlockHash) -> Result<Option<Block>, Error> {
+        unimplemented!()
+    }
+
+    #[doc = " get tx"]
+    fn get_tx(&self, _: &Txid) -> Result<GetTxResponse, Error> {
+        todo!()
+    }
+
+    #[doc = " get tx info"]
+    fn get_tx_info(&self, _: &Txid, _: &BlockHash) -> Result<BitcoinTxInfo, Error> {
+        todo!()
+    }
+
+    #[doc = " Estimate fee rate"]
+    async fn estimate_fee_rate(&self) -> Result<f64, Error> {
+        todo!()
+    }
+
+    #[doc = " Get the outstanding signer UTXO"]
+    async fn get_signer_utxo(
+        &self,
+        _: &PublicKey,
+    ) -> Result<Option<super::utxo::SignerUtxo>, Error> {
+        todo!()
+    }
+
+    #[doc = " Get the total fee amount and the fee rate for the last transaction that"]
+    #[doc = " used the given UTXO as an input."]
+    async fn get_last_fee(&self, _: OutPoint) -> Result<Option<super::utxo::Fees>, Error> {
+        todo!()
     }
 }
