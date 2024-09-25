@@ -7,7 +7,6 @@ use rand::rngs::OsRng;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::Recipient;
 use signer::bitcoin::rpc::BitcoinCoreClient;
-use signer::error::Error;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
 
@@ -151,10 +150,7 @@ fn btc_client_unsubmitted_tx() {
     let _ = regtest::initialize_blockchain();
     let txid = bitcoin::Txid::all_zeros();
 
-    match client.get_tx(&txid).unwrap_err() {
-        Error::BitcoinCoreGetTransaction(_, txid1) if txid1 == txid => {}
-        _ => panic!("Incorrect error variants returned"),
-    }
+    assert!(client.get_tx(&txid).unwrap().is_none());
 }
 
 /// bitcoin-core will return a fee rate estimate if there are enough
