@@ -7,35 +7,6 @@ use bitcoin::Txid;
 /// Errors
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// Error when the port is not provided
-    #[error("a port must be specified")]
-    PortRequired,
-    /// Error when parsing a URL
-    #[error("could not parse the provided URL: {0}")]
-    InvalidUrl(#[source] url::ParseError),
-    /// Error when using a BitcoinClient trait function
-    #[error("could not execute bitcoin client RPC call {0}")]
-    BitcoinClient(#[source] Box<dyn std::error::Error + Sync + Send + 'static>),
-    /// Error when creating an RPC client to bitcoin-core
-    #[error("could not create RPC client to {1}: {0}")]
-    BitcoinCoreRpcClient(#[source] bitcoincore_rpc::Error, String),
-    /// Returned when we could not decode the hex into a
-    /// bitcoin::Transaction.
-    #[error("failed to decode the provided hex into a transaction. txid: {1}. {0}")]
-    DecodeTx(#[source] bitcoin::consensus::encode::Error, Txid),
-    /// Could not deserialize the "blockchain.transaction.get" response
-    /// into a GetTxResponse.
-    #[error("failed to deserialize the blockchain.transaction.get response. txid: {1}. {0}")]
-    DeserializeGetTransaction(#[source] serde_json::Error, Txid),
-    /// Received an error in call to estimatesmartfee RPC call
-    #[error("failed to get fee estimate from bitcoin-core for target {1}. {0}")]
-    EstimateSmartFee(#[source] bitcoincore_rpc::Error, u16),
-    /// Received an error in response to estimatesmartfee RPC call
-    #[error("failed to get fee estimate from bitcoin-core for target {1}. {0:?}")]
-    EstimateSmartFeeResponse(Option<Vec<String>>, u16),
-    /// Received an error in response to getrawtransaction RPC call
-    #[error("failed to retrieve the raw transaction for txid {1} from bitcoin-core. {0}")]
-    GetTransactionBitcoinCore(#[source] bitcoincore_rpc::Error, Txid),
     /// The end of the deposit script has a fixed format that is very
     /// similar to a P2PK check_sig script, the script violated that format
     #[error("script is CHECKSIG part of script")]
@@ -54,13 +25,6 @@ pub enum Error {
     /// The reclaim script was invalid.
     #[error("the reclaim script format was invalid")]
     InvalidReclaimScript,
-    /// This should never happen.
-    #[error("could not serialize the type into JSON")]
-    JsonSerialize(#[source] serde_json::Error),
-    /// Failed to convert response into an Amount, which is unsigned and
-    /// bounded.
-    #[error("Could not convert float {1} into bitcoin::Amount: {0}")]
-    ParseAmount(#[source] bitcoin::amount::ParseAmountError, f64),
     /// The reclaim script lock time was invalid
     #[error("reclaim script lock time was either too large or non-minimal: {0}")]
     ScriptNum(#[source] bitcoin::script::Error),

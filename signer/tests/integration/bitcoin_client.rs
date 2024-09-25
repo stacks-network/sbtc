@@ -1,7 +1,12 @@
-use bitcoin::{absolute::LockTime, hashes::Hash as _, transaction::Version, BlockHash};
+use bitcoin::absolute::LockTime;
+use bitcoin::hashes::Hash as _;
+use bitcoin::transaction::Version;
+use bitcoin::BlockHash;
 use bitcoincore_rpc::RpcApi as _;
-use sbtc::{rpc::BitcoinCoreClient, testing::regtest};
-use signer::{bitcoin::BitcoinInteract, util::ApiFallbackClient};
+use sbtc::testing::regtest;
+use signer::bitcoin::rpc::BitcoinCoreClient;
+use signer::bitcoin::BitcoinInteract;
+use signer::util::ApiFallbackClient;
 use url::Url;
 
 #[tokio::test]

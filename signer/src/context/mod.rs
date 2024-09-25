@@ -5,19 +5,16 @@ pub mod termination;
 
 use std::sync::Arc;
 
-use sbtc::rpc::BitcoinClient;
 use tokio::sync::broadcast::Sender;
 use url::Url;
 
+use crate::bitcoin::BitcoinInteract;
+use crate::config::Settings;
+use crate::error::Error;
+use crate::storage::DbRead;
+use crate::storage::DbWrite;
 pub use messaging::*;
 pub use termination::*;
-
-use crate::{
-    bitcoin::BitcoinInteract,
-    config::Settings,
-    error::Error,
-    storage::{DbRead, DbWrite},
-};
 
 /// Context trait that is implemented by the [`SignerContext`].
 pub trait Context: Clone + Sync + Send {
@@ -37,7 +34,7 @@ pub trait Context: Clone + Sync + Send {
     /// Get a read-write handle to the signer storage.
     fn get_storage_mut(&self) -> impl DbRead + DbWrite + Clone + Sync + Send;
     /// Get a handle to a Bitcoin client.
-    fn get_bitcoin_client(&self) -> impl BitcoinClient + BitcoinInteract + Clone;
+    fn get_bitcoin_client(&self) -> impl BitcoinInteract + Clone;
 }
 
 /// Signer context which is passed to different components within the
@@ -91,7 +88,7 @@ pub struct InnerSignerContext<S, BC> {
 impl<'a, S, BC> SignerContext<S, BC>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
-    BC: TryFrom<&'a [Url]> + BitcoinClient + BitcoinInteract + Clone + Sync + Send,
+    BC: TryFrom<&'a [Url]> + BitcoinInteract + Clone + Sync + Send,
     Error: From<<BC as std::convert::TryFrom<&'a [Url]>>::Error>,
 {
     /// Initializes a new [`SignerContext`], automatically creating clients
@@ -106,7 +103,7 @@ where
 impl<S, BC> SignerContext<S, BC>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
-    BC: BitcoinClient + BitcoinInteract + Clone + Sync + Send,
+    BC: BitcoinInteract + Clone + Sync + Send,
 {
     /// Create a new signer context.
     pub fn new(config: &Settings, db: S, bitcoin_client: BC) -> Result<Self, Error> {
@@ -131,7 +128,7 @@ where
 impl<S, BC> Context for SignerContext<S, BC>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
-    BC: BitcoinClient + BitcoinInteract + Clone + Sync + Send,
+    BC: BitcoinInteract + Clone + Sync + Send,
 {
     fn config(&self) -> &Settings {
         &self.config
@@ -171,7 +168,7 @@ where
         self.storage.clone()
     }
 
-    fn get_bitcoin_client(&self) -> impl BitcoinClient + BitcoinInteract + Clone {
+    fn get_bitcoin_client(&self) -> impl BitcoinInteract + Clone {
         self.bitcoin_client.clone()
     }
 }

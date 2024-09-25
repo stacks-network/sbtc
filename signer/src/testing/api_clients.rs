@@ -1,12 +1,13 @@
 //! Testing helpers for api clients
 
-use sbtc::rpc::BitcoinClient;
 use url::Url;
 
-use crate::{
-    bitcoin::BitcoinInteract, block_observer::EmilyInteract, blocklist_client::BlocklistChecker,
-    error::Error, stacks::api::StacksInteract,
-};
+use crate::bitcoin::rpc::GetTxResponse;
+use crate::bitcoin::BitcoinInteract;
+use crate::block_observer::EmilyInteract;
+use crate::blocklist_client::BlocklistChecker;
+use crate::error::Error;
+use crate::stacks::api::StacksInteract;
 
 /// A no-op API client that doesn't do anything. It will panic if you
 /// attempt to use it, but can be useful for fillers in testing.
@@ -20,17 +21,12 @@ impl TryFrom<&[Url]> for NoopApiClient {
     }
 }
 
-/// Noop implementation of the BitcoinClient trait.
-impl BitcoinClient for NoopApiClient {
-    type Error = Error;
-
-    async fn get_tx(&self, _txid: &bitcoin::Txid) -> Result<sbtc::rpc::GetTxResponse, Self::Error> {
-        unimplemented!()
-    }
-}
-
 /// Noop implementation of the BitcoinInteract trait.
 impl BitcoinInteract for NoopApiClient {
+    fn get_tx(&self, _: &bitcoin::Txid) -> Result<GetTxResponse, Error> {
+        unimplemented!()
+    }
+
     async fn get_block(
         &self,
         _block_hash: &bitcoin::BlockHash,

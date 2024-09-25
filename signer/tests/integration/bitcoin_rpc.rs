@@ -2,10 +2,10 @@
 
 use bitcoin::hashes::Hash;
 use bitcoin::AddressType;
-use sbtc::error::Error;
-use sbtc::rpc::BitcoinCoreClient;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::Recipient;
+use signer::bitcoin::rpc::BitcoinCoreClient;
+use signer::error::Error;
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test]

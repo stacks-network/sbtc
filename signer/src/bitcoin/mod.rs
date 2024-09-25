@@ -2,12 +2,15 @@
 
 use std::future::Future;
 
+use rpc::GetTxResponse;
+
 use crate::error::Error;
 use crate::keys::PublicKey;
 
 pub mod client;
 pub mod fees;
 pub mod packaging;
+pub mod rpc;
 pub mod utxo;
 pub mod zmq;
 
@@ -19,6 +22,9 @@ pub trait BitcoinInteract {
         &self,
         block_hash: &bitcoin::BlockHash,
     ) -> impl Future<Output = Result<Option<bitcoin::Block>, Error>> + Send;
+
+    /// get tx
+    fn get_tx(&self, txid: &bitcoin::Txid) -> Result<GetTxResponse, Error>;
 
     /// Estimate fee rate
     // This should be implemented with the help of the `fees::EstimateFees` trait

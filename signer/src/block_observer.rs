@@ -36,7 +36,7 @@ use bitcoin::Txid;
 use blockstack_lib::chainstate::nakamoto;
 use futures::stream::StreamExt;
 use sbtc::deposits::CreateDepositRequest;
-use sbtc::deposits::Deposit;
+use sbtc::deposits::DepositInfo;
 use std::collections::HashSet;
 
 /// Block observer
@@ -59,6 +59,46 @@ pub struct BlockObserver<StacksClient, EmilyClient, BlockHashStream, Storage> {
     pub deposit_requests: HashMap<Txid, Vec<Deposit>>,
     /// The bitcoin network
     pub network: bitcoin::Network,
+}
+
+/// A full "deposit", containing the bitcoin transaction and a fully
+/// extracted and verified `scriptPubKey` from one of the transaction's
+/// UTXOs.
+#[derive(Debug, Clone)]
+pub struct Deposit {
+    /// The transaction spent to the signers as a deposit for sBTC.
+    pub tx: Transaction,
+    /// The deposit information included in one of the output
+    /// `scriptPubKey`s of the above transaction.
+    pub info: DepositInfo,
+}
+
+impl DepositRequestValidator for CreateDepositRequest {
+    fn validate<C>(&self, client: &C) -> Result<Deposit, Error>
+    where
+        C: BitcoinInteract,
+    {
+        // Fetch the transaction from either a block or from the mempool
+        let response = client.get_tx(&self.outpoint.txid)?;
+
+        Ok(Deposit {
+            info: self.validate_tx(&response.tx)?,
+            tx: response.tx,
+        })
+    }
+}
+
+/// A trait to add validation functionality to the [`CreateDepositRequest`]
+/// type.
+pub trait DepositRequestValidator {
+    /// Validate this deposit request from the transaction.
+    ///
+    /// This function fetches the transaction using the given client and
+    /// checks that the transaction has been submitted. The transaction
+    /// need not be confirmed.
+    fn validate<C>(&self, client: &C) -> Result<Deposit, Error>
+    where
+        C: BitcoinInteract;
 }
 
 impl<SC, EC, BHS, S> BlockObserver<SC, EC, BHS, S>
@@ -96,7 +136,6 @@ where
         for request in deposit_requests {
             let deposit = request
                 .validate(&ctx.get_bitcoin_client())
-                .await
                 .inspect_err(|error| tracing::warn!(%error, "could not validate deposit request"));
 
             if let Ok(deposit) = deposit {
@@ -291,8 +330,8 @@ mod tests {
     use model::BitcoinTxId;
     use rand::seq::IteratorRandom;
     use rand::SeedableRng;
-    use sbtc::rpc::BitcoinClient;
 
+    use crate::bitcoin::rpc::GetTxResponse;
     use crate::bitcoin::utxo;
     use crate::config::Settings;
     use crate::context::SignerContext;
@@ -389,7 +428,7 @@ mod tests {
         // When we validate the deposit request, we fetch the transaction
         // from bitcoin-core's mempool or blockchain. The stubs out that
         // response.
-        let get_tx_resp0 = sbtc::rpc::GetTxResponse {
+        let get_tx_resp0 = GetTxResponse {
             tx: tx_setup0.tx.clone(),
             block_hash: None,
             confirmations: None,
@@ -409,7 +448,7 @@ mod tests {
         };
         // The transaction is also in the mempool, even though it is an
         // invalid deposit.
-        let get_tx_resp1 = sbtc::rpc::GetTxResponse {
+        let get_tx_resp1 = GetTxResponse {
             tx: tx_setup1.tx.clone(),
             block_hash: None,
             confirmations: None,
@@ -489,7 +528,7 @@ mod tests {
         // When we validate the deposit request, we fetch the transaction
         // from bitcoin-core's mempool or blockchain. The stubs out that
         // response.
-        let get_tx_resp0 = sbtc::rpc::GetTxResponse {
+        let get_tx_resp0 = GetTxResponse {
             tx: tx_setup0.tx.clone(),
             block_hash: None,
             confirmations: None,
@@ -651,7 +690,7 @@ mod tests {
         /// have the same bitcoin::BlockHash occur within the same tenure.
         stacks_blocks: Vec<(StacksBlockId, NakamotoBlock, BlockHash)>,
         /// This represents deposit transactions
-        deposits: HashMap<Txid, sbtc::rpc::GetTxResponse>,
+        deposits: HashMap<Txid, GetTxResponse>,
     }
 
     impl TestHarness {
@@ -735,6 +774,9 @@ mod tests {
     }
 
     impl BitcoinInteract for TestHarness {
+        fn get_tx(&self, txid: &bitcoin::Txid) -> Result<GetTxResponse, Error> {
+            self.deposits.get(txid).cloned().ok_or(Error::Encryption)
+        }
         async fn get_block(
             &self,
             block_hash: &bitcoin::BlockHash,
@@ -765,13 +807,6 @@ mod tests {
 
         async fn broadcast_transaction(&self, _tx: &bitcoin::Transaction) -> Result<(), Error> {
             unimplemented!()
-        }
-    }
-
-    impl BitcoinClient for TestHarness {
-        type Error = Error;
-        async fn get_tx(&self, txid: &Txid) -> Result<sbtc::rpc::GetTxResponse, Error> {
-            self.deposits.get(txid).cloned().ok_or(Error::Encryption)
         }
     }
 

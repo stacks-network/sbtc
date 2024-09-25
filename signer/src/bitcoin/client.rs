@@ -14,16 +14,19 @@
 //! - Example when trying to get a block that doesn't exist:
 //!   JsonRpc(Rpc(RpcError { code: -5, message: "Block not found", data: None }))
 
-use bitcoincore_rpc::{jsonrpc::error::RpcError, RpcApi};
-use sbtc::rpc::{BitcoinClient, BitcoinCoreClient};
+use bitcoincore_rpc::jsonrpc::error::RpcError;
+use bitcoincore_rpc::RpcApi as _;
 use url::Url;
 
-use crate::{error::Error, keys::PublicKey, util::ApiFallbackClient};
+use crate::bitcoin::utxo;
+use crate::bitcoin::utxo::SignerUtxo;
+use crate::bitcoin::BitcoinInteract;
+use crate::error::Error;
+use crate::keys::PublicKey;
+use crate::util::ApiFallbackClient;
 
-use super::{
-    utxo::{self, SignerUtxo},
-    BitcoinInteract,
-};
+use super::rpc::BitcoinCoreClient;
+use super::rpc::GetTxResponse;
 
 /// Implement the [`TryFrom`] trait for a slice of [`Url`]s to allow for a
 /// [`ApiFallbackClient`] to be implicitly created from a list of URLs.
@@ -36,15 +39,6 @@ impl TryFrom<&[Url]> for ApiFallbackClient<BitcoinCoreClient> {
             .collect::<Result<Vec<_>, _>>()?;
 
         Self::new(clients).map_err(Into::into)
-    }
-}
-
-impl BitcoinClient for ApiFallbackClient<BitcoinCoreClient> {
-    type Error = Error;
-
-    async fn get_tx(&self, _txid: &bitcoin::Txid) -> Result<sbtc::rpc::GetTxResponse, Self::Error> {
-        self.exec(|client| async { client.get_tx(_txid).map_err(Error::SbtcLib) })
-            .await
     }
 }
 
@@ -63,6 +57,10 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
             }
         })
         .await
+    }
+
+    fn get_tx(&self, txid: &bitcoin::Txid) -> Result<GetTxResponse, Error> {
+        self.get_client().get_tx(txid)
     }
 
     async fn estimate_fee_rate(&self) -> Result<f64, Error> {
