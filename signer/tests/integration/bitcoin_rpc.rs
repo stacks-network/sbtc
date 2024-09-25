@@ -33,7 +33,7 @@ fn btc_client_getstransaction() {
     let outpoint = faucet.send_to(500_000, &signer.address);
     let vout = outpoint.vout as usize;
 
-    let response = client.get_tx(&outpoint.txid).unwrap();
+    let response = client.get_tx(&outpoint.txid).unwrap().unwrap();
     // Let's make sure we got the right transaction
     assert_eq!(response.tx.compute_txid(), outpoint.txid);
     assert_eq!(response.tx.output[vout].value.to_sat(), 500_000);
@@ -45,7 +45,7 @@ fn btc_client_getstransaction() {
     // Now let's confirm it and try again
     faucet.generate_blocks(1);
 
-    let response = client.get_tx(&outpoint.txid).unwrap();
+    let response = client.get_tx(&outpoint.txid).unwrap().unwrap();
     // Let's make sure we got the right transaction
     assert_eq!(response.tx.compute_txid(), outpoint.txid);
     assert_eq!(response.tx.output[vout].value.to_sat(), 500_000);
@@ -77,7 +77,7 @@ fn btc_client_gets_transaction_info() {
     let outpoint = faucet.send_to(500_000, &signer.address);
     let vout = outpoint.vout as usize;
 
-    let response = client.get_tx(&outpoint.txid).unwrap();
+    let response = client.get_tx(&outpoint.txid).unwrap().unwrap();
     // Let's make sure we got the right transaction
     assert_eq!(response.tx.compute_txid(), outpoint.txid);
     assert_eq!(response.tx.output[vout].value.to_sat(), 500_000);

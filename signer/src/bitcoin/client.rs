@@ -62,7 +62,7 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
         .await
     }
 
-    fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
+    fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error> {
         self.get_client().get_tx(txid)
     }
 

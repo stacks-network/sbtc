@@ -24,7 +24,7 @@ impl TryFrom<&[Url]> for NoopApiClient {
 
 /// Noop implementation of the BitcoinInteract trait.
 impl BitcoinInteract for NoopApiClient {
-    fn get_tx(&self, _: &bitcoin::Txid) -> Result<GetTxResponse, Error> {
+    fn get_tx(&self, _: &bitcoin::Txid) -> Result<Option<GetTxResponse>, Error> {
         unimplemented!()
     }
     fn get_tx_info(

@@ -214,7 +214,7 @@ impl BitcoinCoreClient {
     /// mempool. If -txindex is enabled on bitcoin-core and no blockhash
     /// argument is passed, it will return the transaction if it is in the
     /// mempool or any block.
-    pub fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
+    pub fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error> {
         let args = [
             serde_json::to_value(txid).map_err(Error::JsonSerialize)?,
             // This is the verbosity level. The acceptable values are 0, 1,
@@ -224,9 +224,15 @@ impl BitcoinCoreClient {
             serde_json::Value::Null,
         ];
 
-        self.inner
-            .call("getrawtransaction", &args)
-            .map_err(|err| Error::GetTransactionBitcoinCore(err, *txid))
+        match self.inner.call::<GetTxResponse>("getrawtransaction", &args) {
+            Ok(tx_info) => Ok(Some(tx_info)),
+            // If the transaction is not found in an
+            // actual block then the message is "No such transaction found
+            // in the provided block. Use gettransaction for wallet
+            // transactions." In both cases the code is the same.
+            Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
+            Err(err) => Err(Error::GetTransactionBitcoinCore(err, *txid)),
+        }
     }
 
     /// Fetch and decode raw transaction from bitcoin-core using the
@@ -308,14 +314,12 @@ impl BitcoinInteract for BitcoinCoreClient {
         unimplemented!()
     }
 
-    #[doc = " get tx"]
-    fn get_tx(&self, _: &Txid) -> Result<GetTxResponse, Error> {
-        todo!()
+    fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error> {
+        self.get_tx(txid)
     }
 
-    #[doc = " get tx info"]
-    fn get_tx_info(&self, _: &Txid, _: &BlockHash) -> Result<Option<BitcoinTxInfo>, Error> {
-        todo!()
+    fn get_tx_info(&self, txid: &Txid, block_hash: &BlockHash) -> Result<Option<BitcoinTxInfo>, Error> {
+        self.get_tx_info(txid, block_hash)
     }
 
     #[doc = " Estimate fee rate"]

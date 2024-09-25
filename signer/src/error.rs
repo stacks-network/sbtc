@@ -15,6 +15,12 @@ pub enum Error {
     #[error("could not create RPC client to {1}: {0}")]
     BitcoinCoreRpcClient(#[source] bitcoincore_rpc::Error, String),
 
+    /// The bitcoin tranaction was not found in the mempool or on the
+    /// bitcoin blockchain. This is thrown when we expect the transaction
+    /// to exist in bitcoin core but it does not.
+    #[error("Transaction is missing from mempool")]
+    BitcoinTxMissing(bitcoin::Txid),
+
     /// Returned when we could not decode the hex into a
     /// bitcoin::Transaction.
     #[error("failed to decode the provided hex into a transaction. txid: {1}. {0}")]

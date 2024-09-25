@@ -28,7 +28,7 @@ pub trait BitcoinInteract {
     ) -> impl Future<Output = Result<Option<bitcoin::Block>, Error>> + Send;
 
     /// get tx
-    fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error>;
+    fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error>;
 
     /// get tx info
     fn get_tx_info(

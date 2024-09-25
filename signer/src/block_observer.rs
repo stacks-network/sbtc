@@ -79,7 +79,9 @@ impl DepositRequestValidator for CreateDepositRequest {
         C: BitcoinInteract,
     {
         // Fetch the transaction from either a block or from the mempool
-        let response = client.get_tx(&self.outpoint.txid)?;
+        let Some(response) = client.get_tx(&self.outpoint.txid)? else {
+            return Err(Error::BitcoinTxMissing(self.outpoint.txid));
+        };
 
         Ok(Deposit {
             info: self.validate_tx(&response.tx)?,
@@ -772,8 +774,8 @@ mod tests {
     }
 
     impl BitcoinInteract for TestHarness {
-        fn get_tx(&self, txid: &bitcoin::Txid) -> Result<GetTxResponse, Error> {
-            self.deposits.get(txid).cloned().ok_or(Error::Encryption)
+        fn get_tx(&self, txid: &bitcoin::Txid) -> Result<Option<GetTxResponse>, Error> {
+            Ok(self.deposits.get(txid).cloned())
         }
 
         fn get_tx_info(&self, _: &Txid, _: &BlockHash) -> Result<Option<BitcoinTxInfo>, Error> {
