@@ -103,9 +103,17 @@ impl RetryContext {
     }
 
     /// If a client call fails, this method can be used to abort the retry loop
-    /// and return the current error immediately.
+    /// and return the current result immediately.
     pub fn abort(&self) {
         self.inner.abort.store(true, Ordering::SeqCst);
+    }
+
+    /// If the closure returns `true`, this method can be used to abort the retry
+    /// loop and return the current result immediately.
+    pub fn abort_if(&self, f: impl FnOnce() -> bool) {
+        if f() {
+            self.inner.abort.store(true, Ordering::SeqCst);
+        }
     }
 
     fn is_aborted(&self) -> bool {
@@ -373,5 +381,35 @@ mod tests {
             result.unwrap_err(),
             Error::FallbackClient(FallbackClientError::AllClientsFailed)
         ));
+    }
+
+    #[tokio::test]
+    async fn returns_err_early_when_abort_called() {
+        let client = ApiFallbackClient::<MockClient>::from(
+            &[
+                Url::parse("http://fail/1").unwrap(),
+                Url::parse("http://fail/2").unwrap(),
+            ][..],
+        );
+        client.set_retry_count(4);
+
+        // We'll use this to count how many times the closure is called
+        let call_count = AtomicUsize::new(0);
+
+        let result = client
+            .exec(|client, retry| {
+                call_count.fetch_add(1, Ordering::Relaxed);
+                retry.abort_if(|| call_count.load(Ordering::Relaxed) == 2);
+                client.call()
+            })
+            .await;
+
+        assert_eq!(call_count.load(Ordering::Relaxed), 2);
+
+        assert!(result.is_err());
+
+        // Assert that the error is the error that the mock client returns
+        // (which was just randomly chosen, it has no significance)
+        assert!(matches!(result.unwrap_err(), Error::CurrentDatabaseName));
     }
 }
