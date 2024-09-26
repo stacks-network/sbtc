@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package stacks.signer.v1;
 
+import "crypto/common.proto";
 import "stacks/common.proto";
 
 // Represents a decision to accept or reject a deposit request.
@@ -31,14 +32,14 @@ message SignerWithdrawDecision {
 
 // Represents an acknowledgment of a signed Bitcoin transaction.
 message BitcoinTransactionSignAck {
-    // The ID of the acknowledged transaction.
-    stacks.BitcoinTxid txid = 1;
+  // The ID of the acknowledged transaction.
+  stacks.BitcoinTxid txid = 1;
 }
 
 // Represents a signature of a Stacks transaction.
 message StacksTransactionSignature {
-    /// Id of the signed transaction.
-    stacks.StacksTxid txid = 1;
-    /// A recoverable ECDSA signature over the transaction.
-    stacks.RecoverableSignature signature = 2;
+  // Id of the signed transaction.
+  stacks.StacksTxid txid = 1;
+  // A recoverable ECDSA signature over the transaction.
+  crypto.RecoverableSignature signature = 2;
 }
