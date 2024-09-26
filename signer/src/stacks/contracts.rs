@@ -287,14 +287,14 @@ impl AsContractCall for CompleteDepositV1 {
     /// fortunate, because even if we wanted to, the only view into the
     /// stacks-core mempool is through the `POST /new_mempool_tx` webhooks,
     /// which we do not currently ingest.
-    async fn validate<S>(&self, db: &S, req_ctx: &ReqContext) -> Result<(), Error>
+    async fn validate<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
     where
-        S: Context + Send + Sync,
+        C: Context + Send + Sync,
     {
         // Covers points 3 & 4
-        self.validate_sweep_tx(db, req_ctx).await?;
+        self.validate_sweep_tx(ctx, req_ctx).await?;
         // Covers points 1-2 & 5-7
-        self.validate_deposit_vars(db, req_ctx).await
+        self.validate_deposit_vars(ctx, req_ctx).await
     }
 }
 
