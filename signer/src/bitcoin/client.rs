@@ -14,7 +14,8 @@
 //! - Example when trying to get a block that doesn't exist:
 //!   JsonRpc(Rpc(RpcError { code: -5, message: "Block not found", data: None }))
 
-use bitcoincore_rpc::jsonrpc::error::RpcError;
+use bitcoin::BlockHash;
+use bitcoin::Txid;
 use bitcoincore_rpc::RpcApi as _;
 use url::Url;
 
@@ -26,6 +27,7 @@ use crate::keys::PublicKey;
 use crate::util::ApiFallbackClient;
 
 use super::rpc::BitcoinCoreClient;
+use super::rpc::BitcoinTxInfo;
 use super::rpc::GetTxResponse;
 
 /// Implement the [`TryFrom`] trait for a slice of [`Url`]s to allow for a
@@ -35,7 +37,7 @@ impl TryFrom<&[Url]> for ApiFallbackClient<BitcoinCoreClient> {
     fn try_from(urls: &[Url]) -> Result<Self, Self::Error> {
         let clients = urls
             .iter()
-            .map(|url| BitcoinCoreClient::try_from(url.clone()))
+            .map(BitcoinCoreClient::try_from)
             .collect::<Result<Vec<_>, _>>()?;
 
         Self::new(clients).map_err(Into::into)
@@ -47,20 +49,20 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
         &self,
         block_hash: &bitcoin::BlockHash,
     ) -> Result<Option<bitcoin::Block>, Error> {
-        self.exec(|client| async {
-            match client.inner_client().get_block(block_hash) {
-                Ok(block) => Ok(Some(block)),
-                Err(bitcoincore_rpc::Error::JsonRpc(bitcoincore_rpc::jsonrpc::Error::Rpc(
-                    RpcError { code: -5, .. },
-                ))) => Ok(None),
-                Err(error) => Err(Error::BitcoinCoreRpc(error)),
-            }
-        })
-        .await
+        self.exec(|client| async { client.get_block(block_hash) })
+            .await
     }
 
-    fn get_tx(&self, txid: &bitcoin::Txid) -> Result<GetTxResponse, Error> {
+    fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error> {
         self.get_client().get_tx(txid)
+    }
+
+    fn get_tx_info(
+        &self,
+        txid: &Txid,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BitcoinTxInfo>, Error> {
+        self.get_client().get_tx_info(txid, block_hash)
     }
 
     async fn estimate_fee_rate(&self) -> Result<f64, Error> {

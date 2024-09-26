@@ -79,7 +79,9 @@ impl DepositRequestValidator for CreateDepositRequest {
         C: BitcoinInteract,
     {
         // Fetch the transaction from either a block or from the mempool
-        let response = client.get_tx(&self.outpoint.txid)?;
+        let Some(response) = client.get_tx(&self.outpoint.txid)? else {
+            return Err(Error::BitcoinTxMissing(self.outpoint.txid));
+        };
 
         Ok(Deposit {
             info: self.validate_tx(&response.tx)?,
@@ -331,6 +333,7 @@ mod tests {
     use rand::seq::IteratorRandom;
     use rand::SeedableRng;
 
+    use crate::bitcoin::rpc::BitcoinTxInfo;
     use crate::bitcoin::rpc::GetTxResponse;
     use crate::bitcoin::utxo;
     use crate::config::Settings;
@@ -362,11 +365,10 @@ mod tests {
         let storage = storage::in_memory::Store::new_shared();
         let test_harness = TestHarness::generate(&mut rng, 20, 0..5);
         let ctx = SignerContext::new(
-            &Settings::new_from_default_config().unwrap(),
+            Settings::new_from_default_config().unwrap(),
             storage.clone(),
             test_harness.clone(),
-        )
-        .unwrap();
+        );
         let block_hash_stream = test_harness.spawn_block_hash_stream();
         let (subscribers, subscriber_rx) = tokio::sync::watch::channel(());
 
@@ -469,11 +471,10 @@ mod tests {
         let block_hash_stream = test_harness.spawn_block_hash_stream();
         let (subscribers, _subscriber_rx) = tokio::sync::watch::channel(());
         let ctx = SignerContext::new(
-            &Settings::new_from_default_config().unwrap(),
+            Settings::new_from_default_config().unwrap(),
             storage.clone(),
             test_harness.clone(),
-        )
-        .unwrap();
+        );
 
         let mut block_observer = BlockObserver {
             stacks_client: test_harness.clone(),
@@ -546,11 +547,10 @@ mod tests {
         let block_hash_stream = test_harness.spawn_block_hash_stream();
         let (subscribers, _subscriber_rx) = tokio::sync::watch::channel(());
         let ctx = SignerContext::new(
-            &Settings::new_from_default_config().unwrap(),
+            Settings::new_from_default_config().unwrap(),
             storage.clone(),
             test_harness.clone(),
-        )
-        .unwrap();
+        );
 
         let mut block_observer = BlockObserver {
             stacks_client: test_harness.clone(),
@@ -774,9 +774,14 @@ mod tests {
     }
 
     impl BitcoinInteract for TestHarness {
-        fn get_tx(&self, txid: &bitcoin::Txid) -> Result<GetTxResponse, Error> {
-            self.deposits.get(txid).cloned().ok_or(Error::Encryption)
+        fn get_tx(&self, txid: &bitcoin::Txid) -> Result<Option<GetTxResponse>, Error> {
+            Ok(self.deposits.get(txid).cloned())
         }
+
+        fn get_tx_info(&self, _: &Txid, _: &BlockHash) -> Result<Option<BitcoinTxInfo>, Error> {
+            unimplemented!()
+        }
+
         async fn get_block(
             &self,
             block_hash: &bitcoin::BlockHash,

@@ -279,6 +279,7 @@ impl TryFrom<AccountEntryResponse> for AccountInfo {
 }
 
 /// A client for interacting with Stacks nodes and the Stacks API
+#[derive(Debug, Clone)]
 pub struct StacksClient {
     /// The base URL (with the port) that will be used when making requests
     /// for to a Stacks node.

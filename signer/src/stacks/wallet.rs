@@ -316,9 +316,9 @@ mod tests {
 
     use test_case::test_case;
 
+    use crate::context::Context;
     use crate::signature::sign_stacks_tx;
     use crate::stacks::contracts::ReqContext;
-    use crate::storage::DbRead;
 
     use super::*;
 
@@ -336,9 +336,9 @@ mod tests {
         fn as_contract_args(&self) -> Vec<ClarityValue> {
             Vec::new()
         }
-        async fn validate<S>(&self, _db: &S, _ctx: &ReqContext) -> Result<(), Error>
+        async fn validate<C>(&self, _db: &C, _ctx: &ReqContext) -> Result<(), Error>
         where
-            S: DbRead + Send + Sync,
+            C: Context + Send + Sync,
         {
             Ok(())
         }

@@ -3,8 +3,6 @@
 pub mod messaging;
 pub mod termination;
 
-use std::sync::Arc;
-
 use tokio::sync::broadcast::Sender;
 use url::Url;
 
@@ -39,28 +37,8 @@ pub trait Context: Clone + Sync + Send {
 
 /// Signer context which is passed to different components within the
 /// signer binary.
+#[derive(Debug, Clone)]
 pub struct SignerContext<S, BC> {
-    inner: Arc<InnerSignerContext<S, BC>>,
-}
-
-/// We implement [`Clone`] manually to avoid the derive macro adding additional
-/// bounds on the generic types.
-impl<S, BC> Clone for SignerContext<S, BC> {
-    fn clone(&self) -> Self {
-        Self { inner: Arc::clone(&self.inner) }
-    }
-}
-
-impl<S, BC> std::ops::Deref for SignerContext<S, BC> {
-    type Target = InnerSignerContext<S, BC>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-/// Inner signer context which holds the configuration and signalling channels.
-pub struct InnerSignerContext<S, BC> {
     config: Settings,
     // Handle to the app signalling channel. This keeps the channel alive
     // for the duration of the program and is used both to send messages
@@ -85,18 +63,18 @@ pub struct InnerSignerContext<S, BC> {
     //blocklist_client: ApiFallbackClient<BL>,
 }
 
-impl<'a, S, BC> SignerContext<S, BC>
+impl<S, BC> SignerContext<S, BC>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
-    BC: TryFrom<&'a [Url]> + BitcoinInteract + Clone + Sync + Send,
-    Error: From<<BC as std::convert::TryFrom<&'a [Url]>>::Error>,
+    BC: for<'a> TryFrom<&'a [Url]> + BitcoinInteract + Clone + Sync + Send + 'static,
+    Error: for<'a> From<<BC as TryFrom<&'a [Url]>>::Error>,
 {
     /// Initializes a new [`SignerContext`], automatically creating clients
     /// based on the provided types.
-    pub fn init(config: &'a Settings, db: S) -> Result<Self, Error> {
+    pub fn init(config: Settings, db: S) -> Result<Self, Error> {
         let bc = BC::try_from(&config.bitcoin.endpoints)?;
 
-        Self::new(config, db, bc)
+        Ok(Self::new(config, db, bc))
     }
 }
 
@@ -106,22 +84,20 @@ where
     BC: BitcoinInteract + Clone + Sync + Send,
 {
     /// Create a new signer context.
-    pub fn new(config: &Settings, db: S, bitcoin_client: BC) -> Result<Self, Error> {
+    pub fn new(config: Settings, db: S, bitcoin_client: BC) -> Self {
         // TODO: Decide on the channel capacity and how we should handle slow consumers.
         // NOTE: Ideally consumers which require processing time should pull the relevent
         // messages into a local VecDequeue and process them in their own time.
         let (signal_tx, _) = tokio::sync::broadcast::channel(128);
         let (term_tx, _) = tokio::sync::watch::channel(false);
 
-        Ok(Self {
-            inner: Arc::new(InnerSignerContext {
-                config: config.clone(),
-                signal_tx,
-                term_tx,
-                storage: db,
-                bitcoin_client,
-            }),
-        })
+        Self {
+            config,
+            signal_tx,
+            term_tx,
+            storage: db,
+            bitcoin_client,
+        }
     }
 }
 
@@ -139,7 +115,7 @@ where
     }
 
     fn get_signal_sender(&self) -> tokio::sync::broadcast::Sender<SignerSignal> {
-        self.inner.signal_tx.clone()
+        self.signal_tx.clone()
     }
 
     /// Send a signal to the application signalling channel.

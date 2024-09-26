@@ -41,6 +41,7 @@ use blockstack_lib::clarity::vm::ContractName;
 use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::types::chainstate::StacksAddress;
 
+use crate::context::Context;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::stacks::wallet::SignerWallet;
@@ -162,13 +163,13 @@ pub trait AsContractCall {
     /// Validate that it is okay to sign this contract call transaction,
     /// because the included data matches what this signer knows from the
     /// stacks and bitcoin blockchains.
-    fn validate<S>(
+    fn validate<C>(
         &self,
-        db: &S,
-        ctx: &ReqContext,
+        ctx: &C,
+        req_ctx: &ReqContext,
     ) -> impl Future<Output = Result<(), Error>> + Send
     where
-        S: DbRead + Send + Sync;
+        C: Context + Send + Sync;
 }
 
 /// An enum representing all contract calls that the signers can make.
@@ -286,14 +287,14 @@ impl AsContractCall for CompleteDepositV1 {
     /// fortunate, because even if we wanted to, the only view into the
     /// stacks-core mempool is through the `POST /new_mempool_tx` webhooks,
     /// which we do not currently ingest.
-    async fn validate<S>(&self, db: &S, ctx: &ReqContext) -> Result<(), Error>
+    async fn validate<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
     where
-        S: DbRead + Send + Sync,
+        C: Context + Send + Sync,
     {
         // Covers points 3 & 4
-        self.validate_sweep_tx(db, ctx).await?;
+        self.validate_sweep_tx(ctx, req_ctx).await?;
         // Covers points 1-2 & 5-7
-        self.validate_deposit_vars(db, ctx).await
+        self.validate_deposit_vars(ctx, req_ctx).await
     }
 }
 
@@ -311,14 +312,15 @@ impl CompleteDepositV1 {
     ///    deposit request.
     /// 6. That the amount to mint does not exceed the deposit amount.
     /// 7. That the max-fee is less than the desired max-fee.
-    async fn validate_deposit_vars<S>(&self, db: &S, ctx: &ReqContext) -> Result<(), Error>
+    async fn validate_deposit_vars<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
     where
-        S: DbRead + Send + Sync,
+        C: Context + Send + Sync,
     {
+        let db = ctx.get_storage();
         // 1. That the smart contract deployer matches the deployer in our
         //    context.
-        if self.deployer != ctx.deployer {
-            return Err(DepositErrorMsg::DeployerMismatch.into_error(ctx, self));
+        if self.deployer != req_ctx.deployer {
+            return Err(DepositErrorMsg::DeployerMismatch.into_error(req_ctx, self));
         }
         // 2. Check that the signer has a record of the deposit request
         //    from our list of pending and accepted deposit requests.
@@ -327,26 +329,26 @@ impl CompleteDepositV1 {
         // request.
         let deposit_requests = db
             .get_pending_accepted_deposit_requests(
-                &ctx.chain_tip.block_hash,
-                ctx.context_window,
-                ctx.signatures_required,
+                &req_ctx.chain_tip.block_hash,
+                req_ctx.context_window,
+                req_ctx.signatures_required,
             )
             .await?;
 
         let deposit_request = deposit_requests
             .into_iter()
             .find(|req| req.outpoint() == self.outpoint)
-            .ok_or_else(|| DepositErrorMsg::RequestMissing.into_error(ctx, self))?;
+            .ok_or_else(|| DepositErrorMsg::RequestMissing.into_error(req_ctx, self))?;
 
         // 5. Check that the recipients in the transaction matches that of
         //    the deposit request.
         if &self.recipient != deposit_request.recipient.deref() {
-            return Err(DepositErrorMsg::RecipientMismatch.into_error(ctx, self));
+            return Err(DepositErrorMsg::RecipientMismatch.into_error(req_ctx, self));
         }
         // 6. Check that the amount to mint does not exceed the deposit
         //    amount.
         if self.amount > deposit_request.amount {
-            return Err(DepositErrorMsg::InvalidMintAmount.into_error(ctx, self));
+            return Err(DepositErrorMsg::InvalidMintAmount.into_error(req_ctx, self));
         }
         // 7. Check that the fee is less than the desired max-fee.
         //
@@ -355,7 +357,7 @@ impl CompleteDepositV1 {
         // TODO(552): The better check is to compute what the fee should be
         // and verify that it matches.
         if deposit_request.amount - self.amount > deposit_request.max_fee {
-            return Err(DepositErrorMsg::InvalidFee.into_error(ctx, self));
+            return Err(DepositErrorMsg::InvalidFee.into_error(req_ctx, self));
         }
 
         Ok(())
@@ -369,15 +371,16 @@ impl CompleteDepositV1 {
     ///    bitcoin blockchain.
     /// 4. Check that the sweep transaction uses the indicated deposit
     ///    outpoint as an input.
-    async fn validate_sweep_tx<S>(&self, db: &S, ctx: &ReqContext) -> Result<(), Error>
+    async fn validate_sweep_tx<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
     where
-        S: DbRead + Send + Sync,
+        C: Context + Send + Sync,
     {
+        let db = ctx.get_storage();
         // First we check that we have a record of the transaction.
         let sweep_tx = db
             .get_bitcoin_tx(&self.sweep_txid, &self.sweep_block_hash)
             .await?
-            .ok_or_else(|| DepositErrorMsg::SweepTransactionMissing.into_error(ctx, self))?;
+            .ok_or_else(|| DepositErrorMsg::SweepTransactionMissing.into_error(req_ctx, self))?;
         // 3. Check that the signer sweep transaction is on the canonical
         //    bitcoin blockchain.
         //
@@ -390,10 +393,10 @@ impl CompleteDepositV1 {
         };
 
         let in_canonical_bitcoin_blockchain = db
-            .in_canonical_bitcoin_blockchain(&ctx.chain_tip, &block_ref)
+            .in_canonical_bitcoin_blockchain(&req_ctx.chain_tip, &block_ref)
             .await?;
         if !in_canonical_bitcoin_blockchain {
-            return Err(DepositErrorMsg::SweepTransactionReorged.into_error(ctx, self));
+            return Err(DepositErrorMsg::SweepTransactionReorged.into_error(req_ctx, self));
         }
         // 4. Check that the sweep transaction uses the indicated deposit
         //    outpoint as an input.
@@ -403,7 +406,7 @@ impl CompleteDepositV1 {
         // of the transaction inputs.
         let mut tx_inputs = sweep_tx.input.iter();
         if !tx_inputs.any(|tx_in| tx_in.previous_output == self.outpoint) {
-            return Err(DepositErrorMsg::MissingFromSweep.into_error(ctx, self));
+            return Err(DepositErrorMsg::MissingFromSweep.into_error(req_ctx, self));
         }
 
         Ok(())
@@ -551,14 +554,14 @@ impl AsContractCall for AcceptWithdrawalV1 {
     ///    request.
     /// 7. That the fee is less than the desired max-fee.
     /// 8. That the signer bitmap matches the bitmap from our records.
-    async fn validate<S>(&self, db: &S, ctx: &ReqContext) -> Result<(), Error>
+    async fn validate<C>(&self, db: &C, req_ctx: &ReqContext) -> Result<(), Error>
     where
-        S: DbRead + Send + Sync,
+        C: Context + Send + Sync,
     {
         // Covers points 3 & 4
-        let tx_out = self.validate_sweep(db, ctx).await?;
+        let tx_out = self.validate_sweep(db, req_ctx).await?;
         // Covers points 1-2 & 5-8
-        self.validate_utxo(db, ctx, tx_out).await
+        self.validate_utxo(db, req_ctx, tx_out).await
     }
 }
 
@@ -579,14 +582,20 @@ impl AcceptWithdrawalV1 {
     ///    request.
     /// 7. That the fee is less than the desired max-fee.
     /// 8. That the signer bitmap matches the bitmap from our records.
-    async fn validate_utxo<S>(&self, db: &S, ctx: &ReqContext, tx_out: TxOut) -> Result<(), Error>
+    async fn validate_utxo<C>(
+        &self,
+        ctx: &C,
+        req_ctx: &ReqContext,
+        tx_out: TxOut,
+    ) -> Result<(), Error>
     where
-        S: DbRead + Send + Sync,
+        C: Context + Send + Sync,
     {
+        let db = ctx.get_storage();
         // 1. That the smart contract deployer matches the deployer in our
         //    context.
-        if self.deployer != ctx.deployer {
-            return Err(WithdrawalErrorMsg::DeployerMismatch.into_error(ctx, self));
+        if self.deployer != req_ctx.deployer {
+            return Err(WithdrawalErrorMsg::DeployerMismatch.into_error(req_ctx, self));
         }
         // 2. That the signer has a record of the withdrawal request in its
         //    list of pending and accepted withdrawal requests.
@@ -595,26 +604,26 @@ impl AcceptWithdrawalV1 {
         // request.
         let withdrawal_requests = db
             .get_pending_accepted_withdrawal_requests(
-                &ctx.chain_tip.block_hash,
-                ctx.context_window,
-                ctx.signatures_required,
+                &req_ctx.chain_tip.block_hash,
+                req_ctx.context_window,
+                req_ctx.signatures_required,
             )
             .await?;
 
         let request = withdrawal_requests
             .into_iter()
             .find(|req| req.request_id == self.request_id)
-            .ok_or_else(|| WithdrawalErrorMsg::RequestMissing.into_error(ctx, self))?;
+            .ok_or_else(|| WithdrawalErrorMsg::RequestMissing.into_error(req_ctx, self))?;
 
         // 5. The `scriptPubKey` of the UTXO matches the one in the withdrawal
         //    request.
         if &tx_out.script_pubkey != request.recipient.deref() {
-            return Err(WithdrawalErrorMsg::RecipientMismatch.into_error(ctx, self));
+            return Err(WithdrawalErrorMsg::RecipientMismatch.into_error(req_ctx, self));
         }
         // 6. The `amount` of the UTXO matches the one in the withdrawal
         //    request.
         if tx_out.value.to_sat() != request.amount {
-            return Err(WithdrawalErrorMsg::InvalidAmount.into_error(ctx, self));
+            return Err(WithdrawalErrorMsg::InvalidAmount.into_error(req_ctx, self));
         }
         // 7. Check that the fee is less than the desired max-fee.
         //
@@ -624,15 +633,15 @@ impl AcceptWithdrawalV1 {
         // TODO(552): The better check is to compute what the fee should be
         // and verify that it matches.
         if self.tx_fee > request.max_fee {
-            return Err(WithdrawalErrorMsg::InvalidFee.into_error(ctx, self));
+            return Err(WithdrawalErrorMsg::InvalidFee.into_error(req_ctx, self));
         }
         // 8. That the signer bitmap matches the bitmap formed from our
         //    records.
         let votes = db
-            .get_withdrawal_request_signer_votes(&request.qualified_id(), &ctx.aggregate_key)
+            .get_withdrawal_request_signer_votes(&request.qualified_id(), &req_ctx.aggregate_key)
             .await?;
         if self.signer_bitmap != BitArray::from(votes) {
-            return Err(WithdrawalErrorMsg::BitmapMismatch.into_error(ctx, self));
+            return Err(WithdrawalErrorMsg::BitmapMismatch.into_error(req_ctx, self));
         }
 
         Ok(())
@@ -645,16 +654,17 @@ impl AcceptWithdrawalV1 {
     ///    funds is on the canonical bitcoin blockchain.
     /// 4. That the sweep transaction has the UTXO indicated by the
     ///    outpoint.
-    async fn validate_sweep<S>(&self, db: &S, ctx: &ReqContext) -> Result<TxOut, Error>
+    async fn validate_sweep<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<TxOut, Error>
     where
-        S: DbRead + Send + Sync,
+        C: Context + Send + Sync,
     {
+        let db = ctx.get_storage();
         // First we check that we have a record of the transaction.
         let txid = self.outpoint.txid.into();
         let sweep_tx = db
             .get_bitcoin_tx(&txid, &self.sweep_block_hash)
             .await?
-            .ok_or_else(|| WithdrawalErrorMsg::SweepTransactionMissing.into_error(ctx, self))?;
+            .ok_or_else(|| WithdrawalErrorMsg::SweepTransactionMissing.into_error(req_ctx, self))?;
         // 3. That the signer bitcoin transaction sweeping out the users'
         //    funds is on the canonical bitcoin blockchain.
         //
@@ -667,10 +677,10 @@ impl AcceptWithdrawalV1 {
         };
 
         let in_canonical_bitcoin_blockchain = db
-            .in_canonical_bitcoin_blockchain(&ctx.chain_tip, &block_ref)
+            .in_canonical_bitcoin_blockchain(&req_ctx.chain_tip, &block_ref)
             .await?;
         if !in_canonical_bitcoin_blockchain {
-            return Err(WithdrawalErrorMsg::SweepTransactionReorged.into_error(ctx, self));
+            return Err(WithdrawalErrorMsg::SweepTransactionReorged.into_error(req_ctx, self));
         }
         // 4. That the sweep transaction has the UTXO indicated by the
         //    outpoint.
@@ -682,7 +692,7 @@ impl AcceptWithdrawalV1 {
             .output
             .get(self.outpoint.vout as usize)
             .cloned()
-            .ok_or_else(|| WithdrawalErrorMsg::UtxoMissingFromSweep.into_error(ctx, self))
+            .ok_or_else(|| WithdrawalErrorMsg::UtxoMissingFromSweep.into_error(req_ctx, self))
     }
 }
 
@@ -800,9 +810,9 @@ impl AsContractCall for RejectWithdrawalV1 {
     ///    an event on the canonical Stacks blockchain.
     /// 2. That the signer bitmap matches the signer decisions stored in
     ///    this signer's database.
-    async fn validate<S>(&self, _db: &S, _ctx: &ReqContext) -> Result<(), Error>
+    async fn validate<C>(&self, _ctx: &C, _req_ctx: &ReqContext) -> Result<(), Error>
     where
-        S: DbRead + Send + Sync,
+        C: Context + Send + Sync,
     {
         // TODO(255): Add validation implementation
         Ok(())
@@ -907,9 +917,9 @@ impl AsContractCall for RotateKeysV1 {
     ///    threshold is different from the last signature threshold.
     /// 4. That the number of required signatures is strictly greater than
     ///    `new_keys as f64 / 2.0`.
-    async fn validate<S>(&self, _db: &S, _ctx: &ReqContext) -> Result<(), Error>
+    async fn validate<C>(&self, _ctx: &C, _req_ctx: &ReqContext) -> Result<(), Error>
     where
-        S: DbRead + Send + Sync,
+        C: Context + Send + Sync,
     {
         // TODO(255): Add validation implementation
         Ok(())
