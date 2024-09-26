@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 mod generated;
 
+pub use generated::crypto::*;
 pub use generated::stacks::signer::v1::*;
 pub use generated::stacks::signer::*;
 pub use generated::stacks::*;

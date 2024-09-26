@@ -8,8 +8,10 @@ pub fn compile_protos() {
         .unwrap();
 
     let protos = [
+        "protobufs/crypto/common.proto",
         "protobufs/stacks/common.proto",
         "protobufs/stacks/signer/v1/decisions.proto",
+        "protobufs/stacks/signer/v1/requests.proto",
     ]
     .map(|path| workingdir.join(path));
 
@@ -21,7 +23,7 @@ pub fn compile_protos() {
         .build_client(true)
         .out_dir(workingdir.join("signer/src/proto/generated/"))
         .include_file("mod.rs")
-        .type_attribute("stacks.Uint256", "#[derive(Copy)]")
+        .type_attribute("crypto.Uint256", "#[derive(Copy)]")
         .compile(&protos, &[workingdir.join("protobufs")])
         .expect("Unable to compile protocol buffers");
 }
