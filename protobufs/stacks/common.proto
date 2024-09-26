@@ -22,3 +22,57 @@ message PublicKey {
   // odd, while false means the parity is even.
   bool parity_is_odd = 2;
 }
+
+// This is a recoverable signature representation. It is nonstandard and
+// defined by the libsecp256k1 library.
+message RecoverableSignature {
+  // These are the first 256-bits of the 64 byte signature part, so bits 0-255.
+  Uint256 lower_bits = 1;
+  // These are the last 256-bits of the 64 byte signature part, so bits 256-511.
+  Uint256 upper_bits = 2;
+  // A tag used for recovering the public key from a compact signature. It
+  // must be one of the values 0-3.
+  int32 recovery_id = 3;
+}
+
+// The id for a transaction on the stacks blockchain.
+message StacksTxid {
+  Uint256 txid = 1;
+}
+
+// The id for a transaction on the bitcoin blockchain.
+message BitcoinTxid {
+  Uint256 txid = 1;
+}
+
+// This type maps to the StacksBlockId in the stackslib Rust crate.
+message StacksBlockId {
+  Uint256 block_id = 1;
+}
+
+message OutPoint {
+  BitcoinTxid txid = 1;
+  uint32 vout = 2;
+}
+
+// A bitcoin block hash.
+message BitcoinBlockHash {
+  Uint256 block_hash = 1;
+}
+
+// Represents a standard address on the Stacks blockchain
+message StacksAddress {
+  // The consensus serialized bytes of the Stacks address defined in
+  // SIP-005.
+  bytes address = 1;
+}
+
+// The protobuf representation of the clarity::vm::types::PrincipalData
+// type. It represents either a standard Stacks Address or a contract
+// address.
+message StacksPrincipal {
+  // The consensus serialized bytes of the Stacks PrincipalData.
+  bytes data = 1;
+}
+
+
