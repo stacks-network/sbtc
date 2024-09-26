@@ -39,20 +39,6 @@ pub trait Context: Clone + Sync + Send {
 /// signer binary.
 #[derive(Debug, Clone)]
 pub struct SignerContext<S, BC> {
-    inner: InnerSignerContext<S, BC>,
-}
-
-impl<S, BC> std::ops::Deref for SignerContext<S, BC> {
-    type Target = InnerSignerContext<S, BC>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-/// Inner signer context which holds the configuration and signalling channels.
-#[derive(Debug, Clone)]
-pub struct InnerSignerContext<S, BC> {
     config: Settings,
     // Handle to the app signalling channel. This keeps the channel alive
     // for the duration of the program and is used both to send messages
@@ -106,13 +92,11 @@ where
         let (term_tx, _) = tokio::sync::watch::channel(false);
 
         Self {
-            inner: InnerSignerContext {
-                config,
-                signal_tx,
-                term_tx,
-                storage: db,
-                bitcoin_client,
-            },
+            config,
+            signal_tx,
+            term_tx,
+            storage: db,
+            bitcoin_client,
         }
     }
 }
@@ -131,7 +115,7 @@ where
     }
 
     fn get_signal_sender(&self) -> tokio::sync::broadcast::Sender<SignerSignal> {
-        self.inner.signal_tx.clone()
+        self.signal_tx.clone()
     }
 
     /// Send a signal to the application signalling channel.
