@@ -2,23 +2,29 @@ syntax = "proto3";
 
 package stacks;
 
-/// A type representing a 256-bit integer.
-message Uint256 {
-  // These are the 64 bits of the 256-bit integer from bits 0-63.
-  fixed64 bits_part0 = 1;
-  // These are the 64 bits of the 256-bit integer from bits 64-127.
-  fixed64 bits_part1 = 2;
-  // These are the 64 bits of the 256-bit integer from bits 128-191.
-  fixed64 bits_part2 = 3;
-  // These are the 64 bits of the 256-bit integer from bits 192-255.
-  fixed64 bits_part3 = 4;
+import "crypto/common.proto";
+
+// Represents a standard address on the Stacks blockchain
+message StacksAddress {
+  // The consensus serialized bytes of the Stacks address defined in
+  // SIP-005.
+  bytes address = 1;
 }
 
-/// Represents a public key type for the secp256k1 elliptic curve.
-message PublicKey {
-  // The x-coordinate of the public key.
-  Uint256 x_only_public_key = 1;
-  // Represents the parity bit of the public key. True means the parity is
-  // odd, while false means the parity is even.
-  bool parity_is_odd = 2;
+// This type maps to the StacksBlockId in the stackslib Rust crate.
+message StacksBlockId {
+  crypto.Uint256 block_id = 1;
+}
+
+// The protobuf representation of the clarity::vm::types::PrincipalData
+// type. It represents either a standard Stacks Address or a contract
+// address.
+message StacksPrincipal {
+  // The consensus serialized bytes of the Stacks PrincipalData.
+  bytes data = 1;
+}
+
+// The id for a transaction on the stacks blockchain.
+message StacksTxid {
+  crypto.Uint256 txid = 1;
 }
