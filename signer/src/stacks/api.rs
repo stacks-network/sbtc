@@ -715,27 +715,27 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
     }
 
     async fn get_account(&self, address: &StacksAddress) -> Result<AccountInfo, Error> {
-        self.exec(|client, _| async { StacksClient::get_account(client, address).await })
+        self.exec(|client, _| StacksClient::get_account(client, address))
             .await
     }
 
     async fn submit_tx(&self, tx: &StacksTransaction) -> Result<SubmitTxResponse, Error> {
-        self.exec(|client, _| async { StacksClient::submit_tx(client, tx).await })
+        self.exec(|client, _| StacksClient::submit_tx(client, tx))
             .await
     }
 
     async fn get_block(&self, block_id: StacksBlockId) -> Result<NakamotoBlock, Error> {
-        self.exec(|client, _| async { StacksClient::get_block(client, block_id).await })
+        self.exec(|client, _| StacksClient::get_block(client, block_id))
             .await
     }
 
     async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
-        self.exec(|client, _| async { StacksClient::get_tenure(client, block_id).await })
+        self.exec(|client, _| StacksClient::get_tenure(client, block_id))
             .await
     }
 
     async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
-        self.exec(|client, _| async { StacksClient::get_tenure_info(client).await })
+        self.exec(|client, _| StacksClient::get_tenure_info(client))
             .await
     }
 
