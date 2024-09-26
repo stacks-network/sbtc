@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package stacks.signer.v1;
 
+import "bitcoin/bitcoin.proto";
 import "crypto/common.proto";
 import "stacks/common.proto";
 
@@ -9,7 +10,7 @@ import "stacks/common.proto";
 message SignerDepositDecision {
   // The bitcoin transaction ID of the transaction containing the deposit
   // request. It must be 32 bytes.
-  stacks.BitcoinTxid txid = 1;
+  bitcoin.BitcoinTxid txid = 1;
   // Index of the deposit request UTXO.
   uint32 output_index = 2;
   // Whether or not the signer has accepted the deposit request.
@@ -33,7 +34,7 @@ message SignerWithdrawDecision {
 // Represents an acknowledgment of a signed Bitcoin transaction.
 message BitcoinTransactionSignAck {
   // The ID of the acknowledged transaction.
-  stacks.BitcoinTxid txid = 1;
+  bitcoin.BitcoinTxid txid = 1;
 }
 
 // Represents a signature of a Stacks transaction.

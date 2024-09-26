@@ -8,6 +8,7 @@ pub fn compile_protos() {
         .unwrap();
 
     let protos = [
+        "protobufs/bitcoin/bitcoin.proto",
         "protobufs/crypto/common.proto",
         "protobufs/stacks/common.proto",
         "protobufs/stacks/signer/v1/decisions.proto",

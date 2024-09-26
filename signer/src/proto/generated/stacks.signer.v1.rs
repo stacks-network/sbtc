@@ -6,7 +6,7 @@ pub struct SignerDepositDecision {
     /// The bitcoin transaction ID of the transaction containing the deposit
     /// request. It must be 32 bytes.
     #[prost(message, optional, tag = "1")]
-    pub txid: ::core::option::Option<super::super::BitcoinTxid>,
+    pub txid: ::core::option::Option<super::super::super::bitcoin::BitcoinTxid>,
     /// Index of the deposit request UTXO.
     #[prost(uint32, tag = "2")]
     pub output_index: u32,
@@ -39,7 +39,7 @@ pub struct SignerWithdrawDecision {
 pub struct BitcoinTransactionSignAck {
     /// The ID of the acknowledged transaction.
     #[prost(message, optional, tag = "1")]
-    pub txid: ::core::option::Option<super::super::BitcoinTxid>,
+    pub txid: ::core::option::Option<super::super::super::bitcoin::BitcoinTxid>,
 }
 /// Represents a signature of a Stacks transaction.
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -93,7 +93,7 @@ pub struct CompleteDeposit {
     /// The outpoint of the bitcoin UTXO that was spent as a deposit for
     /// sBTC.
     #[prost(message, optional, tag = "1")]
-    pub outpoint: ::core::option::Option<super::super::OutPoint>,
+    pub outpoint: ::core::option::Option<super::super::super::bitcoin::OutPoint>,
     /// The amount of sats swept in by the signers when they moved in the
     /// above UTXO.
     #[prost(uint64, tag = "2")]
@@ -109,11 +109,13 @@ pub struct CompleteDeposit {
     /// UTXO into the signers' UTXO. One of the inputs to the sweep
     /// transaction must be the above `outpoint`.
     #[prost(message, optional, tag = "5")]
-    pub sweep_txid: ::core::option::Option<super::super::BitcoinTxid>,
+    pub sweep_txid: ::core::option::Option<super::super::super::bitcoin::BitcoinTxid>,
     /// The block hash of the bitcoin block that contains a sweep
     /// transaction with the above `outpoint` as one of its inputs.
     #[prost(message, optional, tag = "6")]
-    pub sweep_block_hash: ::core::option::Option<super::super::BitcoinBlockHash>,
+    pub sweep_block_hash: ::core::option::Option<
+        super::super::super::bitcoin::BitcoinBlockHash,
+    >,
     /// The block height associated with the above bitcoin block hash.
     #[prost(uint64, tag = "7")]
     pub sweep_block_height: u64,
@@ -130,7 +132,7 @@ pub struct AcceptWithdrawal {
     /// The outpoint of the bitcoin UTXO that was spent to fulfill the
     /// withdrawal request.
     #[prost(message, optional, tag = "2")]
-    pub outpoint: ::core::option::Option<super::super::OutPoint>,
+    pub outpoint: ::core::option::Option<super::super::super::bitcoin::OutPoint>,
     /// The fee that was spent to the bitcoin miner when fulfilling the
     /// withdrawal request.
     #[prost(uint64, tag = "3")]
@@ -146,7 +148,9 @@ pub struct AcceptWithdrawal {
     /// The block hash of the bitcoin block that contains a sweep
     /// transaction with the above `outpoint` as one of its outputs.
     #[prost(message, optional, tag = "6")]
-    pub sweep_block_hash: ::core::option::Option<super::super::BitcoinBlockHash>,
+    pub sweep_block_hash: ::core::option::Option<
+        super::super::super::bitcoin::BitcoinBlockHash,
+    >,
     /// The block height associated with the above bitcoin block hash.
     #[prost(uint64, tag = "7")]
     pub sweep_block_height: u64,

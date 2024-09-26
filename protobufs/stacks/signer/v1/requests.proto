@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package stacks.signer.v1;
 
+import "bitcoin/bitcoin.proto";
 import "crypto/common.proto";
 import "stacks/common.proto";
 
@@ -33,7 +34,7 @@ message StacksTransactionSignRequest {
 message CompleteDeposit {
   // The outpoint of the bitcoin UTXO that was spent as a deposit for
   // sBTC.
-  stacks.OutPoint outpoint = 1;
+  bitcoin.OutPoint outpoint = 1;
   // The amount of sats swept in by the signers when they moved in the
   // above UTXO.
   uint64 amount = 2;
@@ -45,10 +46,10 @@ message CompleteDeposit {
   // The transaction ID for the sweep transaction that moved the deposit
   // UTXO into the signers' UTXO. One of the inputs to the sweep
   // transaction must be the above `outpoint`.
-  stacks.BitcoinTxid sweep_txid = 5;
+  bitcoin.BitcoinTxid sweep_txid = 5;
   // The block hash of the bitcoin block that contains a sweep
   // transaction with the above `outpoint` as one of its inputs.
-  stacks.BitcoinBlockHash sweep_block_hash = 6;
+  bitcoin.BitcoinBlockHash sweep_block_hash = 6;
   // The block height associated with the above bitcoin block hash.
   uint64 sweep_block_height = 7;
 }
@@ -61,7 +62,7 @@ message AcceptWithdrawal {
   uint64 request_id = 1;
   // The outpoint of the bitcoin UTXO that was spent to fulfill the
   // withdrawal request.
-  stacks.OutPoint outpoint = 2;
+  bitcoin.OutPoint outpoint = 2;
   // The fee that was spent to the bitcoin miner when fulfilling the
   // withdrawal request.
   uint64 tx_fee = 3;
@@ -73,7 +74,7 @@ message AcceptWithdrawal {
   stacks.StacksAddress deployer = 5;
   // The block hash of the bitcoin block that contains a sweep
   // transaction with the above `outpoint` as one of its outputs.
-  stacks.BitcoinBlockHash sweep_block_hash = 6;
+  bitcoin.BitcoinBlockHash sweep_block_hash = 6;
   // The block height associated with the above bitcoin block hash.
   uint64 sweep_block_height = 7;
 }
