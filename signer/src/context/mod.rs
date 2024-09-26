@@ -115,12 +115,6 @@ where
             },
         }
     }
-
-    /// Drop the context and retyur
-    #[cfg(any(test, feature = "testing"))]
-    pub fn into_db(self) -> S {
-        self.inner.storage
-    }
 }
 
 impl<S, BC> Context for SignerContext<S, BC>

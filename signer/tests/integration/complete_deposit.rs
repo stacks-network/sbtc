@@ -192,11 +192,11 @@ async fn complete_deposit_validation_happy_path() {
     let (complete_deposit_tx, req_ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
 
     // This should not return an Err.
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
 
     complete_deposit_tx.validate(&ctx, &req_ctx).await.unwrap();
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -247,7 +247,7 @@ async fn complete_deposit_validation_deployer_mismatch() {
     // Different: Okay, let's make sure we get the deployers do not match.
     complete_deposit_tx.deployer = StacksAddress::p2pkh(false, &signer_set[0].into());
     req_ctx.deployer = StacksAddress::p2pkh(false, &signer_set[1].into());
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
 
     let validate_future = complete_deposit_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
@@ -257,7 +257,7 @@ async fn complete_deposit_validation_deployer_mismatch() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -303,7 +303,7 @@ async fn complete_deposit_validation_missing_deposit_request() {
     db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     let (complete_deposit_tx, req_ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
 
     let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -313,7 +313,7 @@ async fn complete_deposit_validation_missing_deposit_request() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -366,7 +366,7 @@ async fn complete_deposit_validation_recipient_mismatch() {
     complete_deposit_tx.recipient = fake::Faker
         .fake_with_rng::<StacksPrincipal, _>(&mut rng)
         .into();
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
 
     let validate_future = complete_deposit_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
@@ -376,7 +376,7 @@ async fn complete_deposit_validation_recipient_mismatch() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -428,7 +428,7 @@ async fn complete_deposit_validation_invalid_mint_amount() {
     // Different: The amount cannot exceed the amount in the deposit
     // request.
     complete_deposit_tx.amount = deposit_req.amount + 1;
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
 
     let validate_future = complete_deposit_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
@@ -438,7 +438,7 @@ async fn complete_deposit_validation_invalid_mint_amount() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -490,7 +490,7 @@ async fn complete_deposit_validation_invalid_fee() {
     // Different: The amount cannot be less than the deposit amount less
     // the max-fee.
     complete_deposit_tx.amount = deposit_req.amount - deposit_req.max_fee - 1;
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
 
     let validate_future = complete_deposit_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
@@ -500,7 +500,7 @@ async fn complete_deposit_validation_invalid_fee() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -543,7 +543,7 @@ async fn complete_deposit_validation_sweep_tx_missing() {
 
     // Generate the transaction and corresponding request context.
     let (complete_deposit_tx, req_ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
 
     let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -553,7 +553,7 @@ async fn complete_deposit_validation_sweep_tx_missing() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -621,7 +621,7 @@ async fn complete_deposit_validation_sweep_reorged() {
     let (complete_deposit_tx, mut req_ctx) =
         make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip2);
     req_ctx.chain_tip = chain_tip.into();
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
 
     let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -631,7 +631,7 @@ async fn complete_deposit_validation_sweep_reorged() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
@@ -684,7 +684,7 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
 
     // Generate the transaction and corresponding request context.
     let (complete_deposit_tx, req_ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
 
     let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -694,5 +694,5 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }

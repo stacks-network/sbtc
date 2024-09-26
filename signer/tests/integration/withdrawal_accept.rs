@@ -248,10 +248,10 @@ async fn accept_withdrawal_validation_happy_path() {
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
 
     // This should not return an Err.
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
     accept_withdrawal_tx.validate(&ctx, &req_ctx).await.unwrap();
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `AcceptWithdrawalV1::validate` function
@@ -315,7 +315,7 @@ async fn accept_withdrawal_validation_deployer_mismatch() {
     accept_withdrawal_tx.deployer = StacksAddress::p2pkh(false, &signer_set[0].into());
     req_ctx.deployer = StacksAddress::p2pkh(false, &signer_set[1].into());
 
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
     let validate_future = accept_withdrawal_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -324,7 +324,7 @@ async fn accept_withdrawal_validation_deployer_mismatch() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `AcceptWithdrawalV1::validate` function
@@ -384,7 +384,7 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
     let (accept_withdrawal_tx, req_ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
 
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -393,7 +393,7 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `AcceptWithdrawalV1::validate` function
@@ -456,7 +456,7 @@ async fn accept_withdrawal_validation_recipient_mismatch() {
     let (accept_withdrawal_tx, req_ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
 
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -465,7 +465,7 @@ async fn accept_withdrawal_validation_recipient_mismatch() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `AcceptWithdrawalV1::validate` function
@@ -528,7 +528,7 @@ async fn accept_withdrawal_validation_invalid_mint_amount() {
     let (accept_withdrawal_tx, req_ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
 
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -537,7 +537,7 @@ async fn accept_withdrawal_validation_invalid_mint_amount() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `AcceptWithdrawalV1::validate` function
@@ -605,7 +605,7 @@ async fn accept_withdrawal_validation_invalid_fee() {
     // `req.value - req.max_fee` and thus invalid.
     accept_withdrawal_tx.tx_fee = req.max_fee + 1;
 
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
     let validate_future = accept_withdrawal_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -614,7 +614,7 @@ async fn accept_withdrawal_validation_invalid_fee() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `AcceptWithdrawalV1::validate` function
@@ -663,7 +663,7 @@ async fn accept_withdrawal_validation_sweep_tx_missing() {
     let (accept_withdrawal_tx, req_ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
 
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -672,7 +672,7 @@ async fn accept_withdrawal_validation_sweep_tx_missing() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `AcceptWithdrawalV1::validate` function
@@ -757,7 +757,7 @@ async fn accept_withdrawal_validation_sweep_reorged() {
     // be `chain_tip1`.
     req_ctx.chain_tip = chain_tip.into();
 
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -766,7 +766,7 @@ async fn accept_withdrawal_validation_sweep_reorged() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `AcceptWithdrawalV1::validate` function
@@ -834,7 +834,7 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
     let (accept_withdrawal_tx, req_ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
 
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -843,7 +843,7 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }
 
 /// For this test we check that the `AcceptWithdrawalV1::validate` function
@@ -912,7 +912,7 @@ async fn accept_withdrawal_validation_bitmap_mismatch() {
     let (accept_withdrawal_tx, req_ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
 
-    let ctx = TestSignerContext::from_db(db);
+    let ctx = TestSignerContext::from_db(db.clone());
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -921,5 +921,5 @@ async fn accept_withdrawal_validation_bitmap_mismatch() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    testing::storage::drop_db(ctx.into_db()).await;
+    testing::storage::drop_db(db).await;
 }
