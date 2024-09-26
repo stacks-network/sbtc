@@ -70,25 +70,33 @@ pub struct RetryContext {
 /// Inner implementation of the retry context.
 #[derive(Debug)]
 pub struct InnerRetryContext {
+    /// The total number of _retries_ that will be attempted. Note that this
+    /// is one less than the total number of attempts, as the first attempt
+    /// is implicit.
     total_retries: u8,
+    /// The current _retry attempt_. Note that this is zero-indexed, so the
+    /// first retry attempt is `0` which represents the initial (implicit)
+    /// attempt.
     current_retry: u8,
+    /// If set to true, the current retry loop will be aborted.
     abort: AtomicBool,
 }
 
-impl InnerRetryContext {
-    fn new(total_retries: u8, current_retry: u8) -> Self {
-        Self {
-            total_retries,
-            current_retry,
-            abort: AtomicBool::new(false),
-        }
-    }
-}
-
 impl RetryContext {
+    /// Create a new retry context.
+    ///
+    /// The `total_retries` parameter is the total number of **retries** that will
+    /// be attempted, _excluding_ the initial attempt.
+    ///
+    /// The `current_retry` parameter is the current retry attempt, starting at `0`
+    /// which represents the initial (implicit) attempt.
     fn new(total_retries: u8, current_retry: u8) -> Self {
         Self {
-            inner: Arc::new(InnerRetryContext::new(total_retries, current_retry)),
+            inner: Arc::new(InnerRetryContext {
+                total_retries,
+                current_retry,
+                abort: AtomicBool::new(false),
+            }),
         }
     }
 
@@ -116,6 +124,7 @@ impl RetryContext {
         }
     }
 
+    /// Returns `true` if the retry loop has been aborted.
     fn is_aborted(&self) -> bool {
         self.inner.abort.load(Ordering::SeqCst)
     }
