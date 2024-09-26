@@ -15,7 +15,7 @@ pub fn compile_protos() {
     ]
     .map(|path| workingdir.join(path));
 
-    println!("cargo:rerun-if-changed=protobufs/stacks/signer/");
+    println!("cargo:rerun-if-changed=protobufs/");
 
     // Compile protocol buffers
     tonic_build::configure()
