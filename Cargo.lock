@@ -5474,11 +5474,6 @@ dependencies = [
  "stacks-common",
  "test-case",
  "thiserror",
- "tokio",
- "tracing",
- "tracing-attributes",
- "tracing-subscriber",
- "url",
 ]
 
 [[package]]
@@ -5859,6 +5854,7 @@ dependencies = [
  "bincode",
  "bitcoin",
  "bitcoincore-rpc",
+ "bitcoincore-rpc-json",
  "bitvec",
  "blocklist-api",
  "cfg-if 1.0.0",

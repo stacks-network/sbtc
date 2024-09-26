@@ -9,10 +9,8 @@ use bitcoin::XOnlyPublicKey;
 
 pub mod deposits;
 pub mod error;
-pub mod logging;
-pub mod rpc;
 
-#[cfg(feature = "testing")]
+#[cfg(any(test, feature = "testing"))]
 pub mod testing;
 
 /// The x-coordinate public key with no known discrete logarithm.

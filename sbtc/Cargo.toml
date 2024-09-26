@@ -6,24 +6,20 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["testing"]
+default = []
 integration-tests = ["testing"]
-testing = []
+testing = ["dep:bitcoincore-rpc", "dep:bitcoincore-rpc-json"]
 
 [dependencies]
 bitcoin = { workspace = true, features = ["rand-std"] }
-bitcoincore-rpc.workspace = true
-bitcoincore-rpc-json.workspace = true
+bitcoincore-rpc = { workspace = true, optional = true }
+bitcoincore-rpc-json = { workspace = true, optional = true }
 clarity.workspace = true
 rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 stacks-common.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
-tracing-attributes.workspace = true
-tracing-subscriber.workspace = true
-url.workspace = true
 
 [dependencies.secp256k1]
 version = "0.29.0"
@@ -31,4 +27,3 @@ features = ["rand-std", "global-context"]
 
 [dev-dependencies]
 test-case = "3.1"
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

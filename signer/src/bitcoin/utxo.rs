@@ -1,7 +1,5 @@
 //! Utxo management and transaction construction
 
-use std::collections::BTreeMap;
-
 use bitcoin::absolute::LockTime;
 use bitcoin::hashes::Hash as _;
 use bitcoin::sighash::Prevouts;
@@ -31,6 +29,7 @@ use secp256k1::SECP256K1;
 
 use crate::bitcoin::packaging::compute_optimal_packages;
 use crate::bitcoin::packaging::Weighted;
+use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::error::Error;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
@@ -512,6 +511,7 @@ impl<'a> Requests<'a> {
         let signature = UnsignedTransaction::generate_dummy_signature();
         Self { request_refs, signature }
     }
+
     /// Return an iterator for the transaction inputs for the deposit
     /// requests. These transaction inputs include a dummy signature so
     /// that the transaction inputs have the correct weight.
@@ -520,23 +520,13 @@ impl<'a> Requests<'a> {
             .iter()
             .filter_map(|req| Some(req.as_deposit()?.as_tx_input(self.signature)))
     }
+
     /// Return an iterator for the transaction outputs for the withdrawal
     /// requests.
     pub fn tx_outs(&'a self) -> impl Iterator<Item = TxOut> + 'a {
         self.request_refs
             .iter()
             .filter_map(|req| Some(req.as_withdrawal()?.as_tx_output()))
-    }
-    /// Construct a mapping between the requests and the weight associated
-    /// with the transaction on the bitcoin blockchain.
-    pub fn tx_weights(&self) -> BTreeMap<RequestRef<'a>, Weight> {
-        self.request_refs
-            .iter()
-            .map(|req| match req {
-                RequestRef::Deposit(dep) => (*req, dep.as_tx_input(self.signature).segwit_weight()),
-                RequestRef::Withdrawal(wit) => (*req, wit.as_tx_output().weight()),
-            })
-            .collect()
     }
 }
 
@@ -942,6 +932,93 @@ impl<'a> UnsignedTransaction<'a> {
     }
 }
 
+/// This implementation here includes functions for apportioning fees to a
+/// bitcoin transaction that has already been confirmed. This
+/// implementation is located in this module because it the assumptions for
+/// how the transaction is organized follows the logic in
+/// [`UnsignedTransaction::new`].
+impl BitcoinTxInfo {
+    /// Assess how much of the bitcoin miner fee should be apportioned to
+    /// the input associated with the given `outpoint`.
+    ///
+    /// # Notes
+    ///
+    /// Each input and output is assessed a fee that is proportional to
+    /// their weight amount all the requests serviced by this transaction.
+    ///
+    /// This function assumes that this transaction is an sBTC transaction,
+    /// which implies that the first input and the first two outputs are
+    /// always the signers'. So `None` is returned if there is no input,
+    /// after the first input, with the given `outpoint`.
+    ///
+    /// The logic for the fee assessment is from
+    /// <https://github.com/stacks-network/sbtc/issues/182>.
+    pub fn assess_input_fee(&self, outpoint: OutPoint) -> Option<Amount> {
+        // The Weight::to_wu function just returns the inner weight units
+        // as an u64, so this is really just the weight.
+        let request_weight = self.request_weight().to_wu();
+        // We skip the first input because that is always the signers'
+        // input UTXO.
+        let input_weight = self
+            .tx
+            .input
+            .iter()
+            .skip(1)
+            .find(|tx_in| tx_in.previous_output == outpoint)?
+            .segwit_weight()
+            .to_wu();
+
+        // This computation follows the logic laid out in
+        // <https://github.com/stacks-network/sbtc/issues/182>.
+        let fee_sats = (input_weight * self.fee.to_sat()).div_ceil(request_weight);
+        Some(Amount::from_sat(fee_sats))
+    }
+
+    /// Assess how much of the bitcoin miner fee should be apportioned to
+    /// the output at the given output index `vout`.
+    ///
+    /// # Notes
+    ///
+    /// Each input and output is assessed a fee that is proportional to
+    /// their weight amount all the requests serviced by this transaction.
+    ///
+    /// This function assumes that this transaction is an sBTC transaction,
+    /// which implies that the first input and the first two outputs are
+    /// always the signers'. So `None` is returned if the given `vout` is 0
+    /// or 1 or if there is no output in the transaction at `vout`.
+    ///
+    /// The logic for the fee assessment is from
+    /// <https://github.com/stacks-network/sbtc/issues/182>.
+    pub fn assess_output_fee(&self, vout: usize) -> Option<Amount> {
+        // We skip the first input because that is always the signers'
+        // input UTXO.
+        if vout < 2 {
+            return None;
+        }
+        let request_weight = self.request_weight().to_wu();
+        let input_weight = self.tx.output.get(vout)?.weight().to_wu();
+
+        // This computation follows the logic laid out in
+        // <https://github.com/stacks-network/sbtc/issues/182>.
+        let fee_sats = (input_weight * self.fee.to_sat()).div_ceil(request_weight);
+        Some(Amount::from_sat(fee_sats))
+    }
+
+    /// Computes the total weight of the inputs and the outputs, excluding
+    /// the ones related to the signers.
+    fn request_weight(&self) -> Weight {
+        // We skip the first input and first two outputs because those are
+        // always the signers' UTXO input and outputs.
+        self.tx
+            .input
+            .iter()
+            .skip(1)
+            .map(|x| x.segwit_weight())
+            .chain(self.tx.output.iter().skip(2).map(|x| x.weight()))
+            .sum()
+    }
+}
+
 bitcoin::hashes::hash_newtype! {
     /// For some reason, the rust-bitcoin folks do not implement both
     /// [`bitcoin::consensus::Encodable`] and [`bitcoin::hashes::Hash`] for
@@ -971,6 +1048,7 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
+    use bitcoin::BlockHash;
     use bitcoin::CompressedPublicKey;
     use bitcoin::Txid;
     use clarity::vm::types::PrincipalData;
@@ -1126,6 +1204,57 @@ mod tests {
 
         // There are either 1 or 0 elements in the leafs vector, so lets get it
         leafs.pop()
+    }
+
+    impl BitcoinTxInfo {
+        fn from_tx(tx: Transaction, fee: Amount) -> BitcoinTxInfo {
+            BitcoinTxInfo {
+                in_active_chain: true,
+                fee,
+                txid: tx.compute_txid(),
+                hash: tx.compute_wtxid(),
+                size: tx.base_size() as u64,
+                vsize: tx.vsize() as u64,
+                tx,
+                vin: Vec::new(),
+                vout: Vec::new(),
+                block_hash: BlockHash::from_byte_array([0; 32]),
+                confirmations: 1,
+                block_time: 0,
+            }
+        }
+    }
+
+    /// Return a transaction that is kinda like the signers' transaction,
+    /// but it does not service any requests, and it does not have any
+    /// signatures.
+    fn base_signer_transaction() -> Transaction {
+        Transaction {
+            version: bitcoin::transaction::Version::TWO,
+            lock_time: bitcoin::locktime::absolute::LockTime::ZERO,
+            input: vec![
+                // This is the signers' previous UTXO
+                bitcoin::TxIn {
+                    previous_output: OutPoint::null(),
+                    script_sig: ScriptBuf::new(),
+                    sequence: bitcoin::Sequence::ZERO,
+                    witness: bitcoin::Witness::new(),
+                },
+            ],
+            output: vec![
+                // This represents the signers' new UTXO.
+                bitcoin::TxOut {
+                    value: Amount::ONE_BTC,
+                    script_pubkey: ScriptBuf::new(),
+                },
+                // This represents the OP_RETURN sBTC UTXO for a
+                // transaction with no withdrawals.
+                bitcoin::TxOut {
+                    value: Amount::ZERO,
+                    script_pubkey: ScriptBuf::new_op_return([0; 21]),
+                },
+            ],
+        }
     }
 
     #[ignore = "For generating the SOLO_(DEPOSIT|WITHDRAWAL)_SIZE constants"]
@@ -2121,5 +2250,156 @@ mod tests {
             let vote_against = *withdrawal_request.signer_bitmap.get(index).unwrap();
             assert_eq!(vote_against, !vote.is_accepted.unwrap_or(false));
         })
+    }
+
+    #[test]
+    fn sole_deposit_gets_entire_fee() {
+        let deposit_outpoint = OutPoint::new(Txid::from_byte_array([1; 32]), 0);
+        let mut tx = base_signer_transaction();
+        let deposit = bitcoin::TxIn {
+            previous_output: deposit_outpoint,
+            script_sig: ScriptBuf::new(),
+            sequence: bitcoin::Sequence::ZERO,
+            witness: bitcoin::Witness::new(),
+        };
+        tx.input.push(deposit);
+
+        let fee = Amount::from_sat(500_000);
+
+        let tx_info = BitcoinTxInfo::from_tx(tx, fee);
+        let assessed_fee = tx_info.assess_input_fee(deposit_outpoint).unwrap();
+        assert_eq!(assessed_fee, fee);
+    }
+
+    #[test]
+    fn sole_withdrawal_gets_entire_fee() {
+        let mut tx = base_signer_transaction();
+        let locking_script = ScriptBuf::new_op_return([0; 10]);
+        // This represents the signers' new UTXO.
+        let withdrawal = bitcoin::TxOut {
+            value: Amount::from_sat(250_000),
+            script_pubkey: ScriptBuf::new_p2sh(&locking_script.script_hash()),
+        };
+        tx.output.push(withdrawal);
+        let fee = Amount::from_sat(500_000);
+
+        let tx_info = BitcoinTxInfo::from_tx(tx, fee);
+        let assessed_fee = tx_info.assess_output_fee(2).unwrap();
+        assert_eq!(assessed_fee, fee);
+    }
+
+    #[test]
+    fn first_input_and_first_two_outputs_return_none() {
+        let tx = base_signer_transaction();
+        let fee = Amount::from_sat(500_000);
+
+        let tx_info = BitcoinTxInfo::from_tx(tx, fee);
+        assert!(tx_info.assess_output_fee(0).is_none());
+        assert!(tx_info.assess_output_fee(1).is_none());
+        // Since we always skip the first input, and
+        // `base_signer_transaction()` only adds one input, the search for
+        // the given input when `assess_input_fee` executes will always
+        // fail, simulating that the specified outpoint wasn't found.
+        assert!(tx_info.assess_input_fee(OutPoint::null()).is_none());
+    }
+
+    #[test]
+    fn two_deposits_same_weight_split_the_fee() {
+        // These deposit inputs are essentially identical by weight. Since
+        // they are the only requests serviced by this transaction, they
+        // will have equal weight.
+        let deposit_outpoint1 = OutPoint::new(Txid::from_byte_array([1; 32]), 0);
+        let deposit_outpoint2 = OutPoint::new(Txid::from_byte_array([2; 32]), 0);
+
+        let mut tx = base_signer_transaction();
+        let deposit1 = bitcoin::TxIn {
+            previous_output: deposit_outpoint1,
+            script_sig: ScriptBuf::new(),
+            sequence: bitcoin::Sequence::ZERO,
+            witness: bitcoin::Witness::new(),
+        };
+        let deposit2 = bitcoin::TxIn {
+            previous_output: deposit_outpoint2,
+            script_sig: ScriptBuf::new(),
+            sequence: bitcoin::Sequence::ZERO,
+            witness: bitcoin::Witness::new(),
+        };
+        tx.input.push(deposit1);
+        tx.input.push(deposit2);
+
+        let fee = Amount::from_sat(500_000);
+
+        let tx_info = BitcoinTxInfo::from_tx(tx, fee);
+        let assessed_fee1 = tx_info.assess_input_fee(deposit_outpoint1).unwrap();
+        assert_eq!(assessed_fee1, fee / 2);
+
+        let assessed_fee2 = tx_info.assess_input_fee(deposit_outpoint2).unwrap();
+        assert_eq!(assessed_fee2, fee / 2);
+    }
+
+    #[test]
+    fn two_withdrawals_same_weight_split_the_fee() {
+        let mut tx = base_signer_transaction();
+        let locking_script = ScriptBuf::new_op_return([0; 10]);
+        let withdrawal = bitcoin::TxOut {
+            value: Amount::from_sat(250_000),
+            script_pubkey: ScriptBuf::new_p2sh(&locking_script.script_hash()),
+        };
+        tx.output.push(withdrawal.clone());
+        tx.output.push(withdrawal);
+        let fee = Amount::from_sat(500_000);
+
+        let tx_info = BitcoinTxInfo::from_tx(tx, fee);
+        let assessed_fee1 = tx_info.assess_output_fee(2).unwrap();
+        assert_eq!(assessed_fee1, fee / 2);
+
+        let assessed_fee2 = tx_info.assess_output_fee(3).unwrap();
+        assert_eq!(assessed_fee2, fee / 2);
+    }
+
+    #[test_case(500_000; "fee 500_000")]
+    #[test_case(123_456; "fee 123_456")]
+    #[test_case(1_234_567; "fee 1_234_567")]
+    #[test_case(10_007; "fee 10_007")]
+    fn one_deposit_two_withdrawals_fees_add(fee_sats: u64) {
+        // We're just testing that a "regular" bitcoin transaction,
+        // servicing a deposit and two withdrawals, will assess the fees in
+        // a normal way. Here we test that the fee is
+        let deposit_outpoint = OutPoint::new(Txid::from_byte_array([1; 32]), 0);
+
+        let mut tx = base_signer_transaction();
+        let deposit = bitcoin::TxIn {
+            previous_output: deposit_outpoint,
+            script_sig: ScriptBuf::new(),
+            sequence: bitcoin::Sequence::ZERO,
+            witness: bitcoin::Witness::new(),
+        };
+        tx.input.push(deposit);
+
+        let locking_script = ScriptBuf::new_op_return([0; 10]);
+        let withdrawal = bitcoin::TxOut {
+            value: Amount::from_sat(250_000),
+            script_pubkey: ScriptBuf::new_p2sh(&locking_script.script_hash()),
+        };
+        tx.output.push(withdrawal.clone());
+        tx.output.push(withdrawal);
+
+        let fee = Amount::from_sat(fee_sats);
+
+        let tx_info = BitcoinTxInfo::from_tx(tx, fee);
+        let input_assessed_fee = tx_info.assess_input_fee(deposit_outpoint).unwrap();
+        let output1_assessed_fee = tx_info.assess_output_fee(2).unwrap();
+        let output2_assessed_fee = tx_info.assess_output_fee(3).unwrap();
+
+        assert!(input_assessed_fee > Amount::ZERO);
+        assert!(output1_assessed_fee > Amount::ZERO);
+        assert!(output2_assessed_fee > Amount::ZERO);
+
+        let combined_fee = input_assessed_fee + output1_assessed_fee + output2_assessed_fee;
+
+        assert!(combined_fee >= fee);
+        // Their fees, in sats, should not add up to more than `fee +
+        // number-of-requests`.
+        assert!(combined_fee <= (fee + Amount::from_sat(3u64)));
     }
 }

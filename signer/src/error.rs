@@ -11,6 +11,32 @@ use crate::stacks::contracts::WithdrawalAcceptValidationError;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Error when creating an RPC client to bitcoin-core
+    #[error("could not create RPC client to {1}: {0}")]
+    BitcoinCoreRpcClient(#[source] bitcoincore_rpc::Error, String),
+
+    /// Returned when we could not decode the hex into a
+    /// bitcoin::Transaction.
+    #[error("failed to decode the provided hex into a transaction. txid: {1}. {0}")]
+    DecodeTx(#[source] bitcoin::consensus::encode::Error, bitcoin::Txid),
+
+    /// Could not deserialize the "blockchain.transaction.get" response
+    /// into a GetTxResponse.
+    #[error("failed to deserialize the blockchain.transaction.get response. txid: {1}. {0}")]
+    DeserializeGetTransaction(#[source] serde_json::Error, bitcoin::Txid),
+
+    /// Received an error in call to estimatesmartfee RPC call
+    #[error("failed to get fee estimate from bitcoin-core for target {1}. {0}")]
+    EstimateSmartFee(#[source] bitcoincore_rpc::Error, u16),
+
+    /// Received an error in response to estimatesmartfee RPC call
+    #[error("failed to get fee estimate from bitcoin-core for target {1}. {0:?}")]
+    EstimateSmartFeeResponse(Option<Vec<String>>, u16),
+
+    /// Received an error in response to getrawtransaction RPC call
+    #[error("failed to retrieve the raw transaction for txid {1} from bitcoin-core. {0}")]
+    GetTransactionBitcoinCore(#[source] bitcoincore_rpc::Error, bitcoin::Txid),
+
     /// Error from the fallback client.
     #[error("fallback client error: {0}")]
     FallbackClient(#[from] crate::util::FallbackClientError),
@@ -167,9 +193,17 @@ pub enum Error {
     #[error("invalid wallet definition, signatures required: {0}, number of keys: {1}")]
     InvalidWalletDefinition(u16, usize),
 
+    /// Error when parsing a URL
+    #[error("could not parse the provided URL: {0}")]
+    InvalidUrl(#[source] url::ParseError),
+
     /// This is thrown when failing to parse a hex string into an integer.
     #[error("could not parse the hex string into an integer")]
     ParseHexInt(#[source] std::num::ParseIntError),
+
+    /// Error when the port is not provided
+    #[error("a port must be specified")]
+    PortRequired,
 
     /// This is thrown when failing to parse a hex string into bytes.
     #[error("could not decode the hex string into bytes: {0}")]

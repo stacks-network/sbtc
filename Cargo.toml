@@ -20,7 +20,7 @@ lto = "thin"
 codegen-units = 16
 
 [workspace.dependencies]
-sbtc = { path = "./sbtc" }
+sbtc = { path = "./sbtc", default-features = false }
 emily-handler = { version = "0.1.0", path = "./emily/handler" }
 emily-client = { version = "0.1.0", path = "./.generated-sources/emily/client/rust" }
 

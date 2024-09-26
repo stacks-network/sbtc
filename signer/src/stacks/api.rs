@@ -825,7 +825,6 @@ mod tests {
     async fn fetch_unknown_ancestors_works() {
         let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
         let db = crate::testing::storage::new_test_database(db_num, true).await;
-        sbtc::logging::setup_logging("info,signer=debug", false);
 
         let settings = StacksSettings::new_from_config().unwrap();
         let mut client = StacksClient::new(settings);
