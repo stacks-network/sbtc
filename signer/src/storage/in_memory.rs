@@ -424,16 +424,13 @@ impl super::DbRead for SharedStore {
 
     async fn get_signer_utxo(
         &self,
+        chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &PublicKey,
     ) -> Result<Option<SignerUtxo>, Error> {
-        let Some(chain_tip) = self.get_bitcoin_canonical_chain_tip().await? else {
-            return Err(Error::NoChainTip);
-        };
-
         let script_pubkey = aggregate_key.signers_script_pubkey();
         let store = self.lock().await;
         let bitcoin_blocks = &store.bitcoin_blocks;
-        let first = bitcoin_blocks.get(&chain_tip);
+        let first = bitcoin_blocks.get(chain_tip);
 
         // Traverse the canonical chain backwards and find the first block containing relevant sbtc tx(s)
         let sbtc_txs = std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))

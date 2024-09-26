@@ -946,6 +946,7 @@ impl super::DbRead for PgStore {
 
     async fn get_signer_utxo(
         &self,
+        _chain_tip: &model::BitcoinBlockHash,
         _aggregate_key: &PublicKey,
     ) -> Result<Option<SignerUtxo>, Error> {
         unimplemented!() // TODO(538)

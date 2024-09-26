@@ -1,5 +1,7 @@
 //! Test data generation utilities
 
+use std::collections::HashSet;
+
 use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use fake::Fake;
@@ -61,7 +63,7 @@ impl TestData {
         let mut test_data = Self::new();
 
         for _ in 0..params.num_bitcoin_blocks {
-            let next_chunk = test_data.new_block(rng, signer_keys, params);
+            let (next_chunk, _) = test_data.new_block(rng, signer_keys, params, None);
             test_data.push(next_chunk);
         }
 
@@ -70,11 +72,17 @@ impl TestData {
 
     /// Generate a new bitcoin block with associated data on top of
     /// the current model.
-    pub fn new_block<R>(&self, rng: &mut R, signer_keys: &[PublicKey], params: &Params) -> Self
+    pub fn new_block<R>(
+        &self,
+        rng: &mut R,
+        signer_keys: &[PublicKey],
+        params: &Params,
+        parent: Option<&BitcoinBlockRef>,
+    ) -> (Self, BitcoinBlockRef)
     where
         R: rand::RngCore,
     {
-        let mut block = self.generate_bitcoin_block(rng);
+        let mut block = self.generate_bitcoin_block(rng, parent);
 
         let stacks_blocks =
             self.generate_stacks_blocks(rng, &block, params.num_stacks_blocks_per_bitcoin_block);
@@ -108,17 +116,20 @@ impl TestData {
 
         let bitcoin_blocks = vec![block.clone()];
 
-        Self {
-            bitcoin_blocks,
-            stacks_blocks,
-            deposit_requests: deposit_data.deposit_requests,
-            deposit_signers: deposit_data.deposit_signers,
-            withdraw_requests: withdraw_data.withdraw_requests,
-            withdraw_signers: withdraw_data.withdraw_signers,
-            bitcoin_transactions: deposit_data.bitcoin_transactions,
-            stacks_transactions: withdraw_data.stacks_transactions,
-            transactions,
-        }
+        (
+            Self {
+                bitcoin_blocks,
+                stacks_blocks,
+                deposit_requests: deposit_data.deposit_requests,
+                deposit_signers: deposit_data.deposit_signers,
+                withdraw_requests: withdraw_data.withdraw_requests,
+                withdraw_signers: withdraw_data.withdraw_signers,
+                bitcoin_transactions: deposit_data.bitcoin_transactions,
+                stacks_transactions: withdraw_data.stacks_transactions,
+                transactions,
+            },
+            block.into(),
+        )
     }
 
     /// Add newly generated data to the current model.
@@ -136,17 +147,21 @@ impl TestData {
         self.transactions.extend(new_data.transactions);
     }
 
-    /// Append a bitcoin block containing sbtc txs
-    pub fn add_bitcoin_block(
-        &mut self,
-        rng: &mut impl rand::RngCore,
-        parent: &BitcoinBlock,
-        sbtc_txs: Vec<bitcoin::Transaction>,
-    ) -> BitcoinBlock {
-        let mut block: model::BitcoinBlock = fake::Faker.fake_with_rng(rng);
-        block.parent_hash = parent.block_hash;
-        block.block_height = parent.block_height + 1;
+    /// Remove data in `other` present in the current model.
+    pub fn remove(&mut self, other: Self) {
+        vec_diff(&mut self.bitcoin_blocks, &other.bitcoin_blocks);
+        vec_diff(&mut self.stacks_blocks, &other.stacks_blocks);
+        vec_diff(&mut self.deposit_requests, &other.deposit_requests);
+        vec_diff(&mut self.deposit_signers, &other.deposit_signers);
+        vec_diff(&mut self.withdraw_requests, &other.withdraw_requests);
+        vec_diff(&mut self.withdraw_signers, &other.withdraw_signers);
+        vec_diff(&mut self.bitcoin_transactions, &other.bitcoin_transactions);
+        vec_diff(&mut self.stacks_transactions, &other.stacks_transactions);
+        vec_diff(&mut self.transactions, &other.transactions);
+    }
 
+    /// Push sbtc txs to a specific bitcoin block
+    pub fn push_sbtc_txs(&mut self, block: &BitcoinBlockRef, sbtc_txs: Vec<bitcoin::Transaction>) {
         let mut bitcoin_transactions = vec![];
         let mut transactions = vec![];
 
@@ -171,13 +186,10 @@ impl TestData {
         }
 
         self.push(Self {
-            bitcoin_blocks: vec![block.clone()],
             bitcoin_transactions,
             transactions,
             ..Self::default()
         });
-
-        block
     }
 
     /// Write the test data to the given store.
@@ -249,13 +261,20 @@ impl TestData {
         }
     }
 
-    fn generate_bitcoin_block(&self, rng: &mut impl rand::RngCore) -> model::BitcoinBlock {
+    fn generate_bitcoin_block(
+        &self,
+        rng: &mut impl rand::RngCore,
+        parent: Option<&BitcoinBlockRef>,
+    ) -> model::BitcoinBlock {
         let mut block: model::BitcoinBlock = fake::Faker.fake_with_rng(rng);
-        let parent_block_summary = self
-            .bitcoin_blocks
-            .choose(rng)
-            .map(BitcoinBlockRef::summarize)
-            .unwrap_or_else(|| BitcoinBlockRef::hallucinate_parent(&block));
+        let parent_block_summary = match parent {
+            Some(block) => block,
+            None => &self
+                .bitcoin_blocks
+                .choose(rng)
+                .map(BitcoinBlockRef::summarize)
+                .unwrap_or_else(|| BitcoinBlockRef::hallucinate_parent(&block)),
+        };
 
         block.parent_hash = parent_block_summary.block_hash;
         block.block_height = parent_block_summary.block_height + 1;
@@ -498,4 +517,9 @@ impl StacksBlockSummary {
             block_height: 1337, // Arbitrary number
         }
     }
+}
+
+fn vec_diff<T: std::cmp::Eq + std::hash::Hash>(subtrahend: &mut Vec<T>, minuend: &[T]) {
+    let minuend_set = minuend.iter().collect::<HashSet<_>>();
+    subtrahend.retain(|v| !minuend_set.contains(v));
 }

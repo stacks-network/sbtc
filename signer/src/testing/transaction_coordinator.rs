@@ -11,16 +11,20 @@ use crate::keys::SignerScriptPubKey;
 use crate::network;
 use crate::storage;
 use crate::storage::model;
-use crate::storage::model::BitcoinBlock;
 use crate::testing;
 use crate::testing::storage::model::TestData;
 use crate::testing::wsts::SignerSet;
 use crate::transaction_coordinator;
 
-use bitcoin::consensus::Encodable as _;
-use bitcoin::hashes::Hash as _;
 use rand::SeedableRng as _;
 use sha2::Digest as _;
+
+const EMPTY_BITCOIN_TX: bitcoin::Transaction = bitcoin::Transaction {
+    version: bitcoin::transaction::Version::ONE,
+    lock_time: bitcoin::absolute::LockTime::ZERO,
+    input: vec![],
+    output: vec![],
+};
 
 struct EventLoopHarness<S, C> {
     event_loop: EventLoop<S, C>,
@@ -130,45 +134,23 @@ where
                 network.connect()
             });
 
-        let (aggregate_key, bitcoin_chain_tip) = self
+        let (aggregate_key, bitcoin_chain_tip, mut test_data) = self
             .prepare_database_and_run_dkg(&mut storage, &mut rng, &mut testing_signer_set)
             .await;
 
-        let tx = bitcoin::Transaction {
-            version: bitcoin::transaction::Version::ONE,
-            lock_time: bitcoin::absolute::LockTime::ZERO,
-            input: vec![],
-            output: vec![
-                bitcoin::TxOut {
-                    value: bitcoin::Amount::from_sat(42),
-                    script_pubkey: aggregate_key.signers_script_pubkey(),
-                },
-                bitcoin::TxOut {
-                    value: bitcoin::Amount::from_sat(123),
-                    script_pubkey: bitcoin::ScriptBuf::new(),
-                },
-            ],
-        };
-        let mut tx_bytes = Vec::new();
-        tx.consensus_encode(&mut tx_bytes).unwrap();
+        let original_test_data = test_data.clone();
 
-        let tx = model::Transaction {
-            txid: tx.compute_txid().to_byte_array(),
-            tx: tx_bytes,
-            tx_type: model::TransactionType::SbtcTransaction,
-            block_hash: bitcoin_chain_tip.into_bytes(),
+        let tx_1 = bitcoin::Transaction {
+            output: vec![bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(1_337_000_000_000),
+                script_pubkey: aggregate_key.signers_script_pubkey(),
+            }],
+            ..EMPTY_BITCOIN_TX
         };
+        test_data.push_sbtc_txs(&bitcoin_chain_tip, vec![tx_1.clone()]);
 
-        let bitcoin_transaction = model::BitcoinTxRef {
-            txid: tx.txid.into(),
-            block_hash: bitcoin_chain_tip,
-        };
-
-        storage
-            .write_bitcoin_transaction(&bitcoin_transaction)
-            .await
-            .unwrap();
-        storage.write_transaction(&tx).await.unwrap();
+        test_data.remove(original_test_data);
+        Self::write_test_data(&test_data, &mut storage).await;
 
         let mut mock_bitcoin_client = crate::bitcoin::MockBitcoinInteract::new();
 
@@ -201,7 +183,7 @@ where
                 })
             });
 
-        let private_key = Self::select_coordinator(&bitcoin_chain_tip, &signer_info);
+        let private_key = Self::select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info);
 
         let event_loop_harness = EventLoopHarness::create(
             network.connect(),
@@ -242,45 +224,245 @@ where
         assert_eq!(first_script_pubkey, aggregate_key.signers_script_pubkey());
     }
 
-    /// Given a closure populating test data and returning the expected SignerUtxo,
-    /// asserts that it matches the actual SignerUtxo
-    pub async fn assert_get_signer_utxo<
-        F: Fn(&mut rand::rngs::StdRng, &PublicKey, BitcoinBlock, &mut TestData) -> SignerUtxo,
-    >(
-        mut self,
-        test_fn: F,
-    ) {
+    /// Assert we get the correct UTXO in a simple case
+    pub async fn assert_get_signer_utxo_simple(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let mut storage = (self.storage_constructor)();
 
-        let mut testing_signer_set =
+        let mut signer_set =
             testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
                 network.connect()
             });
 
-        let (aggregate_key, bitcoin_chain_tip) = self
-            .prepare_database_and_run_dkg(&mut storage, &mut rng, &mut testing_signer_set)
+        let (aggregate_key, bitcoin_chain_tip, mut test_data) = self
+            .prepare_database_and_run_dkg(&mut storage, &mut rng, &mut signer_set)
             .await;
 
-        let bitcoin_chain_tip_block = storage
-            .get_bitcoin_block(&bitcoin_chain_tip)
-            .await
-            .unwrap()
-            .unwrap();
+        let original_test_data = test_data.clone();
 
-        let mut test_data = TestData::default();
-        let expected = test_fn(
+        let tx = bitcoin::Transaction {
+            output: vec![
+                bitcoin::TxOut {
+                    value: bitcoin::Amount::from_sat(42),
+                    script_pubkey: aggregate_key.signers_script_pubkey(),
+                },
+                bitcoin::TxOut {
+                    value: bitcoin::Amount::from_sat(123),
+                    script_pubkey: bitcoin::ScriptBuf::new(),
+                },
+            ],
+            ..EMPTY_BITCOIN_TX
+        };
+
+        let (block, block_ref) = test_data.new_block(
             &mut rng,
-            &aggregate_key,
-            bitcoin_chain_tip_block,
-            &mut test_data,
+            &signer_set.signer_keys(),
+            &self.test_model_parameters,
+            Some(&bitcoin_chain_tip),
         );
+        test_data.push(block);
+        test_data.push_sbtc_txs(&block_ref, vec![tx.clone()]);
+
+        let expected = SignerUtxo {
+            outpoint: bitcoin::OutPoint::new(tx.compute_txid(), 0),
+            amount: 42,
+            public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
+        };
+
+        test_data.remove(original_test_data);
         Self::write_test_data(&test_data, &mut storage).await;
 
+        let chain_tip = storage
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("storage failure")
+            .expect("missing block");
+        assert_eq!(chain_tip, block_ref.block_hash);
+
         let signer_utxo = storage
-            .get_signer_utxo(&aggregate_key)
+            .get_signer_utxo(&chain_tip, &aggregate_key)
+            .await
+            .unwrap()
+            .expect("no signer utxo");
+
+        assert_eq!(signer_utxo, expected);
+    }
+
+    /// Assert we get the correct UTXO in a fork
+    pub async fn assert_get_signer_utxo_highest(mut self) {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let network = network::in_memory::Network::new();
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+        let mut storage = (self.storage_constructor)();
+
+        let mut signer_set =
+            testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
+                network.connect()
+            });
+
+        let (aggregate_key, bitcoin_chain_tip, mut test_data) = self
+            .prepare_database_and_run_dkg(&mut storage, &mut rng, &mut signer_set)
+            .await;
+
+        let original_test_data = test_data.clone();
+
+        let tx_1 = bitcoin::Transaction {
+            output: vec![bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(1),
+                script_pubkey: aggregate_key.signers_script_pubkey(),
+            }],
+            ..EMPTY_BITCOIN_TX
+        };
+        let (block, block_1) = test_data.new_block(
+            &mut rng,
+            &signer_set.signer_keys(),
+            &self.test_model_parameters,
+            Some(&bitcoin_chain_tip),
+        );
+        test_data.push(block);
+        test_data.push_sbtc_txs(&block_1, vec![tx_1.clone()]);
+
+        let tx_2 = bitcoin::Transaction {
+            output: vec![bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(2),
+                script_pubkey: aggregate_key.signers_script_pubkey(),
+            }],
+            ..EMPTY_BITCOIN_TX
+        };
+        let (block, block_2) = test_data.new_block(
+            &mut rng,
+            &signer_set.signer_keys(),
+            &self.test_model_parameters,
+            Some(&block_1),
+        );
+        test_data.push(block);
+        test_data.push_sbtc_txs(&block_2, vec![tx_2.clone()]);
+
+        let tx_3 = bitcoin::Transaction {
+            output: vec![bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(3),
+                script_pubkey: aggregate_key.signers_script_pubkey(),
+            }],
+            ..EMPTY_BITCOIN_TX
+        };
+        let (block, block_3) = test_data.new_block(
+            &mut rng,
+            &signer_set.signer_keys(),
+            &self.test_model_parameters,
+            Some(&bitcoin_chain_tip),
+        );
+        test_data.push(block);
+        test_data.push_sbtc_txs(&block_3, vec![tx_3.clone()]);
+
+        let expected = SignerUtxo {
+            outpoint: bitcoin::OutPoint::new(tx_2.compute_txid(), 0),
+            amount: 2,
+            public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
+        };
+
+        test_data.remove(original_test_data);
+        Self::write_test_data(&test_data, &mut storage).await;
+
+        let chain_tip = storage
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("storage failure")
+            .expect("missing block");
+        assert_eq!(chain_tip, block_2.block_hash);
+
+        let signer_utxo = storage
+            .get_signer_utxo(&chain_tip, &aggregate_key)
+            .await
+            .unwrap()
+            .expect("no signer utxo");
+
+        assert_eq!(signer_utxo, expected);
+    }
+
+    /// Assert we get the correct UTXO with a spending chain in a block
+    pub async fn assert_get_signer_utxo_unspent(mut self) {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let network = network::in_memory::Network::new();
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+        let mut storage = (self.storage_constructor)();
+
+        let mut signer_set =
+            testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
+                network.connect()
+            });
+
+        let (aggregate_key, bitcoin_chain_tip, mut test_data) = self
+            .prepare_database_and_run_dkg(&mut storage, &mut rng, &mut signer_set)
+            .await;
+
+        let original_test_data = test_data.clone();
+
+        let tx_1 = bitcoin::Transaction {
+            output: vec![bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(1),
+                script_pubkey: aggregate_key.signers_script_pubkey(),
+            }],
+            ..EMPTY_BITCOIN_TX
+        };
+        let tx_2 = bitcoin::Transaction {
+            output: vec![bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(2),
+                script_pubkey: aggregate_key.signers_script_pubkey(),
+            }],
+            ..EMPTY_BITCOIN_TX
+        };
+        let tx_3 = bitcoin::Transaction {
+            input: vec![
+                bitcoin::TxIn {
+                    previous_output: bitcoin::OutPoint {
+                        txid: tx_1.compute_txid(),
+                        vout: 0,
+                    },
+                    ..Default::default()
+                },
+                bitcoin::TxIn {
+                    previous_output: bitcoin::OutPoint {
+                        txid: tx_2.compute_txid(),
+                        vout: 0,
+                    },
+                    ..Default::default()
+                },
+            ],
+            output: vec![bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(3),
+                script_pubkey: aggregate_key.signers_script_pubkey(),
+            }],
+            ..EMPTY_BITCOIN_TX
+        };
+        let (block, block_ref) = test_data.new_block(
+            &mut rng,
+            &signer_set.signer_keys(),
+            &self.test_model_parameters,
+            Some(&bitcoin_chain_tip),
+        );
+        test_data.push(block);
+        test_data.push_sbtc_txs(&block_ref, vec![tx_1.clone(), tx_3.clone(), tx_2.clone()]);
+
+        let expected = SignerUtxo {
+            outpoint: bitcoin::OutPoint::new(tx_3.compute_txid(), 0),
+            amount: 3,
+            public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
+        };
+
+        test_data.remove(original_test_data);
+        Self::write_test_data(&test_data, &mut storage).await;
+
+        let chain_tip = storage
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("storage failure")
+            .expect("missing block");
+        assert_eq!(chain_tip, block_ref.block_hash);
+
+        let signer_utxo = storage
+            .get_signer_utxo(&chain_tip, &aggregate_key)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -293,7 +475,7 @@ where
         storage: &mut S,
         rng: &mut Rng,
         signer_set: &mut SignerSet,
-    ) -> (keys::PublicKey, model::BitcoinBlockHash)
+    ) -> (keys::PublicKey, model::BitcoinBlockRef, TestData)
     where
         Rng: rand::CryptoRng + rand::RngCore,
     {
@@ -306,6 +488,13 @@ where
             .await
             .expect("storage error")
             .expect("no chain tip");
+
+        let bitcoin_chain_tip_ref = storage
+            .get_bitcoin_block(&bitcoin_chain_tip)
+            .await
+            .expect("storage failure")
+            .expect("missing block")
+            .into();
 
         let dkg_txid = testing::dummy::txid(&fake::Faker, rng);
         let (aggregate_key, all_dkg_shares) =
@@ -322,7 +511,7 @@ where
             .await
             .expect("failed to write encrypted shares");
 
-        (aggregate_key, bitcoin_chain_tip)
+        (aggregate_key, bitcoin_chain_tip_ref, test_data)
     }
 
     async fn write_test_data(test_data: &TestData, storage: &mut S) {
