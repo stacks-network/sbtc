@@ -673,71 +673,67 @@ where
         .map_err(serde::de::Error::custom)
 }
 
-impl StacksInteract for ApiFallbackClient<StacksClient> {
+impl StacksInteract for StacksClient {
     async fn get_current_signer_set(
         &self,
         contract_principal: &StacksAddress,
     ) -> Result<Vec<PublicKey>, Error> {
-        self.exec(|client, retry| async move {
-            // Make a request to the sbtc-registry contract to get the current
-            // signer set.
-            let result = StacksClient::get_data_var(
-                client,
+        // Make a request to the sbtc-registry contract to get the current
+        // signer set.
+        let result = self
+            .get_data_var(
                 contract_principal,
                 &ContractName::from("sbtc-registry"),
                 &ClarityName::from("current-signer-set"),
             )
             .await?;
 
-            match result {
-                Value::Sequence(SequenceData::List(ListData { data, .. })) => {
-                    let mut keys = Vec::new();
-                    for item in data {
-                        if let Value::Sequence(SequenceData::Buffer(BuffData { data })) = item {
-                            keys.push(PublicKey::from_slice(&data)?);
-                        } else {
-                            retry.abort();
-                            return Err(Error::InvalidStacksResponse(
-                                "expected a buffer but got something else",
-                            ));
+        // Check the result and return the signer set. We're expecting a
+        // list of buffers, where each buffer is a public key.
+        match result {
+            Value::Sequence(SequenceData::List(ListData { data, .. })) => {
+                // Iterate through each record in the list and verify that it's a buffer.
+                // If it is a buffer, then convert it to a public key.
+                // Otherwise, abort retries and return an error.
+                data.into_iter()
+                    .map(|item| match item {
+                        // If the item is a buffer, then convert it to a public key.
+                        Value::Sequence(SequenceData::Buffer(BuffData { data })) => {
+                            PublicKey::from_slice(&data).map_err(|e| e.into())
                         }
-                    }
-                    Ok(keys)
-                }
-                _ => {
-                    retry.abort();
-                    Err(Error::InvalidStacksResponse(
-                        "expected a sequence but got something else",
-                    ))
-                }
+                        // Otherwise, return an error.
+                        _ => Err(Error::InvalidStacksResponse(
+                            "expected a buffer but got something else",
+                        )),
+                    })
+                    .collect()
             }
-        })
-        .await
+            // We expected the top-level value to be a list of buffers,
+            // but we got something else. Abort retrying and return an error.
+            _ => Err(Error::InvalidStacksResponse(
+                "expected a sequence but got something else",
+            )),
+        }
     }
 
     async fn get_account(&self, address: &StacksAddress) -> Result<AccountInfo, Error> {
-        self.exec(|client, _| StacksClient::get_account(client, address))
-            .await
+        self.get_account(address).await
     }
 
     async fn submit_tx(&self, tx: &StacksTransaction) -> Result<SubmitTxResponse, Error> {
-        self.exec(|client, _| StacksClient::submit_tx(client, tx))
-            .await
+        self.submit_tx(tx).await
     }
 
     async fn get_block(&self, block_id: StacksBlockId) -> Result<NakamotoBlock, Error> {
-        self.exec(|client, _| StacksClient::get_block(client, block_id))
-            .await
+        self.get_block(block_id).await
     }
 
     async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
-        self.exec(|client, _| StacksClient::get_tenure(client, block_id))
-            .await
+        self.get_tenure(block_id).await
     }
 
     async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
-        self.exec(|client, _| StacksClient::get_tenure_info(client))
-            .await
+        self.get_tenure_info().await
     }
 
     /// Estimate the high priority transaction fee for the input
@@ -758,17 +754,13 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
         // STX transfer fee estimate. If that fails then we bail, maybe we
         // should try another node.
         let mut resp = self
-            .exec(|client, _| async move {
-                client
-                    .get_fee_estimate(payload)
-                    .or_else(|err| async move {
-                        tracing::warn!("could not estimate contract call fees: {err}");
-                        // Estimating STX transfers is simple since the estimate
-                        // doesn't depend on the recipient, amount, or memo. So a
-                        // dummy transfer payload will do.
-                        client.get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD).await
-                    })
-                    .await
+            .get_fee_estimate(payload)
+            .or_else(|err| async move {
+                tracing::warn!("could not estimate contract call fees: {err}");
+                // Estimating STX transfers is simple since the estimate
+                // doesn't depend on the recipient, amount, or memo. So a
+                // dummy transfer payload will do.
+                self.get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD).await
             })
             .await?;
 
@@ -789,6 +781,52 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
         };
 
         Ok(fee_estimate.unwrap_or(DEFAULT_TX_FEE).min(MAX_TX_FEE))
+    }
+
+    fn nakamoto_start_height(&self) -> u64 {
+        self.nakamoto_start_height
+    }
+}
+
+impl StacksInteract for ApiFallbackClient<StacksClient> {
+    async fn get_current_signer_set(
+        &self,
+        contract_principal: &StacksAddress,
+    ) -> Result<Vec<PublicKey>, Error> {
+        self.exec(|client, retry| async move {
+            let result = client.get_current_signer_set(contract_principal).await;
+            retry.abort_if(|| matches!(result, Err(Error::InvalidStacksResponse(_))));
+            result
+        })
+        .await
+    }
+
+    async fn get_account(&self, address: &StacksAddress) -> Result<AccountInfo, Error> {
+        self.exec(|client, _| client.get_account(address)).await
+    }
+
+    async fn submit_tx(&self, tx: &StacksTransaction) -> Result<SubmitTxResponse, Error> {
+        self.exec(|client, _| client.submit_tx(tx)).await
+    }
+
+    async fn get_block(&self, block_id: StacksBlockId) -> Result<NakamotoBlock, Error> {
+        self.exec(|client, _| client.get_block(block_id)).await
+    }
+
+    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+        self.exec(|client, _| client.get_tenure(block_id)).await
+    }
+
+    async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
+        self.exec(|client, _| client.get_tenure_info()).await
+    }
+
+    async fn estimate_fees<T>(&self, payload: &T, priority: FeePriority) -> Result<u64, Error>
+    where
+        T: AsTxPayload + Send + Sync,
+    {
+        self.exec(|client, _| StacksClient::estimate_fees(client, payload, priority))
+            .await
     }
 
     fn nakamoto_start_height(&self) -> u64 {
@@ -814,7 +852,6 @@ impl TryFrom<&Settings> for ApiFallbackClient<StacksClient> {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::StacksConfig;
     use crate::keys::{PrivateKey, PublicKey};
     use crate::storage::in_memory::Store;
     use crate::storage::DbWrite;
@@ -838,6 +875,8 @@ mod tests {
         let db = crate::testing::storage::new_test_database(db_num, true).await;
 
         let settings = Settings::new_from_default_config().unwrap();
+        // This is an integration test that will read from the config, which provides
+        // a list of endpoints, so we use the fallback client.
         let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
 
         let info = client.get_tenure_info().await.unwrap();
@@ -882,8 +921,14 @@ mod tests {
     ///         -vvv
     ///     ```
     /// 4. Done
+    #[test_case(|url| StacksClient::new(url, 20).unwrap(); "stacks-client")]
+    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(); "fallback-client")]
     #[tokio::test]
-    async fn get_blocks_test() {
+    async fn get_blocks_test<F, C>(client: F)
+    where
+        C: StacksInteract,
+        F: Fn(Url) -> C,
+    {
         // Here we test that out code will handle the response from a
         // stacks node in the expected way.
         const TENURE_START_BLOCK_ID: &str =
@@ -936,13 +981,7 @@ mod tests {
             .expect(1)
             .create();
 
-        let mut settings = Settings::new_from_default_config().unwrap();
-        settings.stacks = StacksConfig {
-            endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
-            nakamoto_start_height: 20,
-        };
-
-        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
+        let client = client(url::Url::parse(stacks_node_server.url().as_str()).unwrap());
 
         let block_id = StacksBlockId::from_hex(TENURE_END_BLOCK_ID).unwrap();
         // The moment of truth, do the requests succeed?
@@ -967,8 +1006,14 @@ mod tests {
         second_mock.assert();
     }
 
+    #[test_case(|url| StacksClient::new(url, 20).unwrap(); "stacks-client")]
+    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(); "fallback-client")]
     #[tokio::test]
-    async fn get_tenure_info_works() {
+    async fn get_tenure_info_works<F, C>(client: F)
+    where
+        C: StacksInteract,
+        F: Fn(Url) -> C,
+    {
         let raw_json_response = r#"{
             "consensus_hash": "e42b3a9ffce62376e1f36cf76c33cc23d9305de1",
             "tenure_start_block_id": "e08c740242092eb0b5f74756ce203db048a5156e444df531a7c29e2d952cf628",
@@ -988,13 +1033,7 @@ mod tests {
             .expect(1)
             .create();
 
-        let mut settings = Settings::new_from_default_config().unwrap();
-        settings.stacks = StacksConfig {
-            endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
-            nakamoto_start_height: 20,
-        };
-
-        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
+        let client = client(url::Url::parse(stacks_node_server.url().as_str()).unwrap());
         let resp = client.get_tenure_info().await.unwrap();
         let expected: RPCGetTenureInfo = serde_json::from_str(raw_json_response).unwrap();
 
@@ -1021,8 +1060,14 @@ mod tests {
             .collect()
     }
 
+    #[test_case(|url| StacksClient::new(url, 20).unwrap(); "stacks-client")]
+    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(); "fallback-client")]
     #[tokio::test]
-    async fn get_current_signer_set_fails_when_value_not_a_sequence() {
+    async fn get_current_signer_set_fails_when_value_not_a_sequence<F, C>(client: F)
+    where
+        C: StacksInteract,
+        F: Fn(Url) -> C,
+    {
         let clarity_value = Value::Int(1234);
         let raw_json_response = format!(
             r#"{{"data":"0x{}"}}"#,
@@ -1039,14 +1084,7 @@ mod tests {
             .expect(1)
             .create();
 
-        // Setup our Stacks client
-        let mut settings = Settings::new_from_default_config().unwrap();
-        settings.stacks = StacksConfig {
-            endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
-            nakamoto_start_height: 20,
-        };
-
-        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
+        let client = client(url::Url::parse(stacks_node_server.url().as_str()).unwrap());
 
         // Make the request to the mock server
         let resp = client
@@ -1065,10 +1103,16 @@ mod tests {
         mock.assert();
     }
 
-    #[test_case(0; "empty-list")]
-    #[test_case(128; "list-128")]
+    #[test_case(0, |url| StacksClient::new(url, 20).unwrap(); "stacks-client-empty-list")]
+    #[test_case(128, |url| StacksClient::new(url, 20).unwrap(); "stacks-client-list-128")]
+    #[test_case(0, |url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(); "fallback-client-empty-list")]
+    #[test_case(128, |url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(); "fallback-client-list-128")]
     #[tokio::test]
-    async fn get_current_signer_set_works(list_size: u16) {
+    async fn get_current_signer_set_works<F, C>(list_size: u16, client: F)
+    where
+        C: StacksInteract,
+        F: Fn(Url) -> C,
+    {
         // Create our simulated response JSON. This uses the same method to generate
         // the serialized list of public keys as the actual Stacks node does.
         let public_keys = generate_pubkeys(list_size);
@@ -1103,13 +1147,7 @@ mod tests {
             .create();
 
         // Setup our Stacks client
-        let mut settings = Settings::new_from_default_config().unwrap();
-        settings.stacks = StacksConfig {
-            endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
-            nakamoto_start_height: 20,
-        };
-
-        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
+        let client = client(url::Url::parse(stacks_node_server.url().as_str()).unwrap());
 
         // Make the request to the mock server
         let resp = client
@@ -1161,18 +1199,16 @@ mod tests {
             .expect(1)
             .create();
 
-        // Setup our Stacks client
-        let mut settings = Settings::new_from_default_config().unwrap();
-        settings.stacks = StacksConfig {
-            endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
-            nakamoto_start_height: 20,
-        };
-
-        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
+        // Setup our Stacks client. We use a regular client here because we're
+        // testing the `get_data_var` method.
+        let client = StacksClient::new(
+            url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
+            20,
+        )
+        .unwrap();
 
         // Make the request to the mock server
         let resp = client
-            .get_client()
             .get_data_var(
                 &StacksAddress::from_string("ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM")
                     .expect("failed to parse stacks address"),
@@ -1219,15 +1255,14 @@ mod tests {
             .expect(4)
             .create();
 
-        let mut settings = Settings::new_from_default_config().unwrap();
-        settings.stacks = StacksConfig {
-            endpoints: vec![url::Url::parse(stacks_node_server.url().as_str()).unwrap()],
-            nakamoto_start_height: 20,
-        };
-
-        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
+        // Setup our Stacks client. We use a regular client here because we're
+        // testing the `get_fee_estimate` method.
+        let client = StacksClient::new(
+            url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
+            20,
+        )
+        .unwrap();
         let resp = client
-            .get_client()
             .get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD)
             .await
             .unwrap();
@@ -1262,6 +1297,8 @@ mod tests {
     #[ignore = "This is an integration test that hasn't been setup for CI yet"]
     async fn fetching_last_tenure_blocks_works() {
         let settings = Settings::new_from_default_config().unwrap();
+        // We use the fallback client here because the CI test reads from the config
+        // which provides a list of endpoints.
         let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
         let storage = Store::new_shared();
 
@@ -1293,6 +1330,8 @@ mod tests {
     #[ignore = "This is an integration test that hasn't been setup for CI yet"]
     async fn fetching_account_information_works() {
         let settings = Settings::new_from_default_config().unwrap();
+        // We use the fallback client here because the CI test reads from the config
+        // which provides a list of endpoints.
         let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
 
         let address = StacksAddress::burn_address(false);
