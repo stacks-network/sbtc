@@ -56,6 +56,16 @@ impl From<NetworkKind> for bitcoin::KnownHrp {
     }
 }
 
+impl From<NetworkKind> for bitcoin::Network {
+    fn from(network: NetworkKind) -> Self {
+        match network {
+            NetworkKind::Mainnet => bitcoin::Network::Bitcoin,
+            NetworkKind::Testnet => bitcoin::Network::Testnet,
+            NetworkKind::Regtest => bitcoin::Network::Regtest,
+        }
+    }
+}
+
 impl NetworkKind {
     /// Returns whether the network variant is Mainnet.
     pub fn is_mainnet(&self) -> bool {
@@ -81,7 +91,11 @@ pub struct Settings {
 pub struct BitcoinConfig {
     /// Bitcoin RPC endpoints.
     #[serde(deserialize_with = "url_deserializer_vec")]
-    pub endpoints: Vec<url::Url>,
+    pub rpc_endpoints: Vec<url::Url>,
+
+    /// Bitcoin ZeroMQ block-hash stream endpoint.
+    #[serde(deserialize_with = "url_deserializer_vec")]
+    pub block_hash_stream_endpoints: Vec<url::Url>,
 }
 
 /// Signer network configuration
@@ -254,7 +268,8 @@ impl Settings {
             .with_list_parse_key("signer.p2p.seeds")
             .with_list_parse_key("signer.p2p.listen_on")
             .with_list_parse_key("signer.p2p.public_endpoints")
-            .with_list_parse_key("bitcoin.endpoints")
+            .with_list_parse_key("bitcoin.rpc_endpoints")
+            .with_list_parse_key("bitcoin.block_hash_stream_endpoints")
             .prefix_separator("_");
 
         let mut cfg_builder = Config::builder();
@@ -396,11 +411,11 @@ mod tests {
         );
 
         assert_eq!(
-            settings.bitcoin.endpoints,
+            settings.bitcoin.rpc_endpoints,
             vec![url("http://user:pass@localhost:18443")]
         );
-        assert_eq!(settings.bitcoin.endpoints[0].username(), "user");
-        assert_eq!(settings.bitcoin.endpoints[0].password(), Some("pass"));
+        assert_eq!(settings.bitcoin.rpc_endpoints[0].username(), "user");
+        assert_eq!(settings.bitcoin.rpc_endpoints[0].password(), Some("pass"));
         assert_eq!(
             settings.signer.event_observer.bind,
             "0.0.0.0:8801".parse::<SocketAddr>().unwrap()
@@ -437,21 +452,34 @@ mod tests {
         clear_env();
 
         std::env::set_var(
-            "SIGNER_BITCOIN__ENDPOINTS",
+            "SIGNER_BITCOIN__RPC_ENDPOINTS",
             "http://user:pass@localhost:1234,http://foo:bar@localhost:5678",
+        );
+
+        std::env::set_var(
+            "SIGNER_BITCOIN__BLOCK_HASH_STREAM_ENDPOINTS",
+            "tcp://localhost:1234,tcp://localhost:5678",
         );
 
         let settings = Settings::new_from_default_config().unwrap();
 
-        assert_eq!(settings.bitcoin.endpoints.len(), 2);
+        assert_eq!(settings.bitcoin.rpc_endpoints.len(), 2);
         assert!(settings
             .bitcoin
-            .endpoints
+            .rpc_endpoints
             .contains(&url("http://user:pass@localhost:1234")));
         assert!(settings
             .bitcoin
-            .endpoints
+            .rpc_endpoints
             .contains(&url("http://foo:bar@localhost:5678")));
+        assert!(settings
+            .bitcoin
+            .block_hash_stream_endpoints
+            .contains(&url("tcp://localhost:1234")));
+        assert!(settings
+            .bitcoin
+            .block_hash_stream_endpoints
+            .contains(&url("tcp://localhost:5678")));
     }
 
     #[test]

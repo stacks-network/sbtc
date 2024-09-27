@@ -72,7 +72,7 @@ where
     /// Initializes a new [`SignerContext`], automatically creating clients
     /// based on the provided types.
     pub fn init(config: Settings, db: S) -> Result<Self, Error> {
-        let bc = BC::try_from(&config.bitcoin.endpoints)?;
+        let bc = BC::try_from(&config.bitcoin.rpc_endpoints)?;
 
         Ok(Self::new(config, db, bc))
     }
