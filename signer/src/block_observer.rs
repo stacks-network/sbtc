@@ -41,7 +41,9 @@ use std::collections::HashSet;
 
 /// Block observer
 #[derive(Debug)]
-pub struct BlockObserver<StacksClient, EmilyClient, BlockHashStream, Storage> {
+pub struct BlockObserver<Context, StacksClient, EmilyClient, BlockHashStream, Storage> {
+    /// Signer context
+    pub context: Context,
     /// Stacks client
     pub stacks_client: StacksClient,
     /// Emily client
@@ -103,20 +105,21 @@ pub trait DepositRequestValidator {
         C: BitcoinInteract;
 }
 
-impl<SC, EC, BHS, S> BlockObserver<SC, EC, BHS, S>
+impl<C, SC, EC, BHS, S> BlockObserver<C, SC, EC, BHS, S>
 where
+    C: Context,
     SC: StacksInteract,
     EC: EmilyInteract,
     S: DbWrite + DbRead + Send + Sync,
     BHS: futures::stream::Stream<Item = bitcoin::BlockHash> + Unpin,
 {
     /// Run the block observer
-    #[tracing::instrument(skip(self, ctx))]
-    pub async fn run(mut self, ctx: impl Context) -> Result<(), Error> {
+    #[tracing::instrument(skip(self))]
+    pub async fn run(mut self) -> Result<(), Error> {
         while let Some(new_block_hash) = self.bitcoin_blocks.next().await {
-            self.load_latest_deposit_requests(&ctx).await;
+            self.load_latest_deposit_requests().await;
 
-            for block in self.next_blocks_to_process(&ctx, new_block_hash).await? {
+            for block in self.next_blocks_to_process(new_block_hash).await? {
                 self.process_bitcoin_block(block).await?;
             }
 
@@ -131,13 +134,13 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, ctx))]
-    async fn load_latest_deposit_requests(&mut self, ctx: &impl Context) {
+    #[tracing::instrument(skip(self))]
+    async fn load_latest_deposit_requests(&mut self) {
         let deposit_requests = self.emily_client.get_deposits().await;
 
         for request in deposit_requests {
             let deposit = request
-                .validate(&ctx.get_bitcoin_client())
+                .validate(&self.context.get_bitcoin_client())
                 .inspect_err(|error| tracing::warn!(%error, "could not validate deposit request"));
 
             if let Ok(deposit) = deposit {
@@ -149,10 +152,9 @@ where
         }
     }
 
-    #[tracing::instrument(skip(self, ctx))]
+    #[tracing::instrument(skip(self))]
     async fn next_blocks_to_process(
         &mut self,
-        ctx: &impl Context,
         mut block_hash: bitcoin::BlockHash,
     ) -> Result<Vec<bitcoin::Block>, Error> {
         let mut blocks = Vec::new();
@@ -162,7 +164,8 @@ where
                 break;
             }
 
-            let block = ctx
+            let block = self
+                .context
                 .get_bitcoin_client()
                 .get_block(&block_hash)
                 .await?
@@ -373,6 +376,7 @@ mod tests {
         let (subscribers, subscriber_rx) = tokio::sync::watch::channel(());
 
         let block_observer = BlockObserver {
+            context: ctx,
             stacks_client: test_harness.clone(),
             emily_client: (),
             bitcoin_blocks: block_hash_stream,
@@ -384,7 +388,7 @@ mod tests {
         };
 
         block_observer
-            .run(ctx)
+            .run()
             .await
             .expect("block observer failed");
 
@@ -477,6 +481,7 @@ mod tests {
         );
 
         let mut block_observer = BlockObserver {
+            context: ctx,
             stacks_client: test_harness.clone(),
             emily_client: DummyEmily(vec![deposit_request0, deposit_request1]),
             bitcoin_blocks: block_hash_stream,
@@ -487,7 +492,7 @@ mod tests {
             network: bitcoin::Network::Regtest,
         };
 
-        block_observer.load_latest_deposit_requests(&ctx).await;
+        block_observer.load_latest_deposit_requests().await;
         // Only the transaction from tx_setup0 was valid.
         assert_eq!(block_observer.deposit_requests.len(), 1);
 
@@ -553,6 +558,7 @@ mod tests {
         );
 
         let mut block_observer = BlockObserver {
+            context: ctx,
             stacks_client: test_harness.clone(),
             emily_client: DummyEmily(vec![deposit_request0]),
             bitcoin_blocks: block_hash_stream,
@@ -563,7 +569,7 @@ mod tests {
             network: bitcoin::Network::Regtest,
         };
 
-        block_observer.load_latest_deposit_requests(&ctx).await;
+        block_observer.load_latest_deposit_requests().await;
         // The transaction from tx_setup0 was valid.
         assert_eq!(block_observer.deposit_requests.len(), 1);
 
@@ -615,6 +621,12 @@ mod tests {
         };
         storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 
+        let ctx = SignerContext::new(
+            Settings::new_from_default_config().unwrap(),
+            storage.clone(),
+            test_harness.clone(),
+        );
+
         // Now let's create two transactions, one spending to the signers
         // and another not spending to the signers. We use
         // sbtc::testing::deposits::tx_setup just to quickly create a
@@ -633,6 +645,7 @@ mod tests {
         let (subscribers, _) = tokio::sync::watch::channel(());
 
         let block_observer = BlockObserver {
+            context: ctx,
             stacks_client: test_harness.clone(),
             emily_client: (),
             bitcoin_blocks: test_harness.spawn_block_hash_stream(),
