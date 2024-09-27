@@ -699,7 +699,7 @@ impl StacksInteract for StacksClient {
                     .map(|item| match item {
                         // If the item is a buffer, then convert it to a public key.
                         Value::Sequence(SequenceData::Buffer(BuffData { data })) => {
-                            PublicKey::from_slice(&data).map_err(|e| e.into())
+                            PublicKey::from_slice(&data)
                         }
                         // Otherwise, return an error.
                         _ => Err(Error::InvalidStacksResponse(
