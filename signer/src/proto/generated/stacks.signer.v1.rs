@@ -6,7 +6,7 @@ pub struct SignerDepositDecision {
     /// The bitcoin transaction ID of the transaction containing the deposit
     /// request. It must be 32 bytes.
     #[prost(message, optional, tag = "1")]
-    pub txid: ::core::option::Option<BitcoinTxid>,
+    pub txid: ::core::option::Option<super::super::super::bitcoin::BitcoinTxid>,
     /// Index of the deposit request UTXO.
     #[prost(uint32, tag = "2")]
     pub output_index: u32,
@@ -24,33 +24,134 @@ pub struct SignerWithdrawDecision {
     /// The Stacks block ID of the Stacks block containing the request. It
     /// must be 32 bytes.
     #[prost(message, optional, tag = "2")]
-    pub block_id: ::core::option::Option<StacksBlockId>,
+    pub block_id: ::core::option::Option<super::super::StacksBlockId>,
     /// The stacks transaction ID that lead to the creation of the
     /// withdrawal request.
     #[prost(message, optional, tag = "3")]
-    pub txid: ::core::option::Option<StacksTxid>,
+    pub txid: ::core::option::Option<super::super::StacksTxid>,
     /// Whether or not the signer has accepted the withdrawal request.
     #[prost(bool, tag = "4")]
     pub accepted: bool,
 }
-/// The id for a transaction on the stacks blockchain.
+/// Represents an acknowledgment of a signed Bitcoin transaction.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StacksTxid {
+pub struct BitcoinTransactionSignAck {
+    /// The ID of the acknowledged transaction.
     #[prost(message, optional, tag = "1")]
-    pub txid: ::core::option::Option<super::super::Uint256>,
+    pub txid: ::core::option::Option<super::super::super::bitcoin::BitcoinTxid>,
 }
-/// The id for a transaction on the bitcoin blockchain.
+/// Represents a signature of a Stacks transaction.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct BitcoinTxid {
+pub struct StacksTransactionSignature {
+    /// Id of the signed transaction.
     #[prost(message, optional, tag = "1")]
-    pub txid: ::core::option::Option<super::super::Uint256>,
+    pub txid: ::core::option::Option<super::super::StacksTxid>,
+    /// A recoverable ECDSA signature over the transaction.
+    #[prost(message, optional, tag = "2")]
+    pub signature: ::core::option::Option<
+        super::super::super::crypto::RecoverableSignature,
+    >,
 }
-/// This type maps to the StacksBlockId in the stackslib Rust crate.
+/// Represents a request to sign a Bitcoin transaction.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StacksBlockId {
+pub struct BitcoinTransactionSignRequest {
+    /// The transaction.
+    #[prost(bytes = "vec", tag = "1")]
+    pub tx: ::prost::alloc::vec::Vec<u8>,
+    /// The aggregate key used to sign the transaction,
+    #[prost(message, optional, tag = "2")]
+    pub aggregate_key: ::core::option::Option<super::super::super::crypto::PublicKey>,
+}
+/// Represents a request to sign a Stacks transaction.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StacksTransactionSignRequest {
+    /// The aggregate public key that will sign the transaction.
     #[prost(message, optional, tag = "1")]
-    pub block_id: ::core::option::Option<super::super::Uint256>,
+    pub aggregate_key: ::core::option::Option<super::super::super::crypto::PublicKey>,
+    /// The contract call transaction to sign.
+    /// pub contract_call: ContractCall,
+    /// The nonce to use for the transaction.
+    #[prost(uint64, tag = "3")]
+    pub nonce: u64,
+    /// The transaction fee in microSTX.
+    #[prost(uint64, tag = "4")]
+    pub tx_fee: u64,
+    /// The expected digest of the transaction than needs to be signed.
+    /// It's essentially a hash of the contract call struct, the nonce, the
+    /// tx_fee and a few other things.
+    #[prost(message, optional, tag = "5")]
+    pub digest: ::core::option::Option<super::super::super::crypto::Uint256>,
+}
+/// A complete-deposit contract call on Stacks.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CompleteDeposit {
+    /// The outpoint of the bitcoin UTXO that was spent as a deposit for
+    /// sBTC.
+    #[prost(message, optional, tag = "1")]
+    pub outpoint: ::core::option::Option<super::super::super::bitcoin::OutPoint>,
+    /// The amount of sats swept in by the signers when they moved in the
+    /// above UTXO.
+    #[prost(uint64, tag = "2")]
+    pub amount: u64,
+    /// The address where the newly minted sBTC will be deposited.
+    #[prost(message, optional, tag = "3")]
+    pub recipient: ::core::option::Option<super::super::StacksPrincipal>,
+    /// The address that deployed the sBTC smart contract containing the
+    /// complete-deposit contract call.
+    #[prost(message, optional, tag = "4")]
+    pub deployer: ::core::option::Option<super::super::StacksAddress>,
+    /// The transaction ID for the sweep transaction that moved the deposit
+    /// UTXO into the signers' UTXO. One of the inputs to the sweep
+    /// transaction must be the above `outpoint`.
+    #[prost(message, optional, tag = "5")]
+    pub sweep_txid: ::core::option::Option<super::super::super::bitcoin::BitcoinTxid>,
+    /// The block hash of the bitcoin block that contains a sweep
+    /// transaction with the above `outpoint` as one of its inputs.
+    #[prost(message, optional, tag = "6")]
+    pub sweep_block_hash: ::core::option::Option<
+        super::super::super::bitcoin::BitcoinBlockHash,
+    >,
+    /// The block height associated with the above bitcoin block hash.
+    #[prost(uint64, tag = "7")]
+    pub sweep_block_height: u64,
+}
+/// The `accept-withdrawal-request` contract call on the stacks blockchain.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AcceptWithdrawal {
+    /// The ID of the withdrawal request generated by the
+    /// `initiate-withdrawal-request` function in the sbtc-withdrawal smart
+    /// contract.
+    #[prost(uint64, tag = "1")]
+    pub request_id: u64,
+    /// The outpoint of the bitcoin UTXO that was spent to fulfill the
+    /// withdrawal request.
+    #[prost(message, optional, tag = "2")]
+    pub outpoint: ::core::option::Option<super::super::super::bitcoin::OutPoint>,
+    /// The fee that was spent to the bitcoin miner when fulfilling the
+    /// withdrawal request.
+    #[prost(uint64, tag = "3")]
+    pub tx_fee: u64,
+    /// A bitmap of how the signers voted. This structure supports up to
+    /// 128 distinct signers. Here, we assume that a 1 (or true) implies
+    /// that the signer voted *against* the transaction.
+    #[prost(bool, repeated, tag = "4")]
+    pub signer_bitmap: ::prost::alloc::vec::Vec<bool>,
+    /// The address that deployed the contract.
+    #[prost(message, optional, tag = "5")]
+    pub deployer: ::core::option::Option<super::super::StacksAddress>,
+    /// The block hash of the bitcoin block that contains a sweep
+    /// transaction with the above `outpoint` as one of its outputs.
+    #[prost(message, optional, tag = "6")]
+    pub sweep_block_hash: ::core::option::Option<
+        super::super::super::bitcoin::BitcoinBlockHash,
+    >,
+    /// The block height associated with the above bitcoin block hash.
+    #[prost(uint64, tag = "7")]
+    pub sweep_block_height: u64,
 }

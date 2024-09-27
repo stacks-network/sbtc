@@ -28,6 +28,7 @@ use signer::testing::storage::model::TestData;
 
 use fake::Fake;
 use rand::SeedableRng;
+use signer::testing::TestSignerContext;
 
 use crate::DATABASE_NUM;
 
@@ -67,7 +68,7 @@ fn make_withdrawal_accept(
     };
 
     // This is what the current signer things of the state of things.
-    let ctx = ReqContext {
+    let req_ctx = ReqContext {
         chain_tip: chain_tip.into(),
         // This value means that the signer will go back 10 blocks when
         // looking for pending and accepted withdrawal requests.
@@ -84,7 +85,7 @@ fn make_withdrawal_accept(
         deployer: StacksAddress::burn_address(false),
     };
 
-    (complete_withdrawal_tx, ctx)
+    (complete_withdrawal_tx, req_ctx)
 }
 
 /// Generate a signer set, withdrawal requests and store them into the
@@ -243,11 +244,12 @@ async fn accept_withdrawal_validation_happy_path() {
     // Normal: get the signer bitmap for how they voted.
     let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
     // Generate the transaction and corresponding request context.
-    let (accept_withdrawal_tx, ctx) =
+    let (accept_withdrawal_tx, req_ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
 
     // This should not return an Err.
-    accept_withdrawal_tx.validate(&db, &ctx).await.unwrap();
+    let ctx = TestSignerContext::from_db(db.clone());
+    accept_withdrawal_tx.validate(&ctx, &req_ctx).await.unwrap();
 
     testing::storage::drop_db(db).await;
 }
@@ -307,13 +309,14 @@ async fn accept_withdrawal_validation_deployer_mismatch() {
     // Normal: get the signer bitmap for how they voted.
     let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
     // Generate the transaction and corresponding request context.
-    let (mut accept_withdrawal_tx, mut ctx) =
+    let (mut accept_withdrawal_tx, mut req_ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
     // Different: Okay, let's make sure the deployers do not match.
     accept_withdrawal_tx.deployer = StacksAddress::p2pkh(false, &signer_set[0].into());
-    ctx.deployer = StacksAddress::p2pkh(false, &signer_set[1].into());
+    req_ctx.deployer = StacksAddress::p2pkh(false, &signer_set[1].into());
 
-    let validate_future = accept_withdrawal_tx.validate(&db, &ctx);
+    let ctx = TestSignerContext::from_db(db.clone());
+    let validate_future = accept_withdrawal_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
             assert_eq!(err.error, WithdrawalErrorMsg::DeployerMismatch)
@@ -378,10 +381,11 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
     db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
-    let (accept_withdrawal_tx, ctx) =
+    let (accept_withdrawal_tx, req_ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
 
-    let validation_result = accept_withdrawal_tx.validate(&db, &ctx).await;
+    let ctx = TestSignerContext::from_db(db.clone());
+    let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
             assert_eq!(err.error, WithdrawalErrorMsg::RequestMissing)
@@ -449,10 +453,11 @@ async fn accept_withdrawal_validation_recipient_mismatch() {
     // Normal: get the signer bitmap for how they voted.
     let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
     // Generate the transaction and corresponding request context.
-    let (accept_withdrawal_tx, ctx) =
+    let (accept_withdrawal_tx, req_ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
 
-    let validation_result = accept_withdrawal_tx.validate(&db, &ctx).await;
+    let ctx = TestSignerContext::from_db(db.clone());
+    let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
             assert_eq!(err.error, WithdrawalErrorMsg::RecipientMismatch)
@@ -520,10 +525,11 @@ async fn accept_withdrawal_validation_invalid_mint_amount() {
     // Normal: get the signer bitmap for how they voted.
     let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
     // Generate the transaction and corresponding request context.
-    let (accept_withdrawal_tx, ctx) =
+    let (accept_withdrawal_tx, req_ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
 
-    let validation_result = accept_withdrawal_tx.validate(&db, &ctx).await;
+    let ctx = TestSignerContext::from_db(db.clone());
+    let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
             assert_eq!(err.error, WithdrawalErrorMsg::InvalidAmount)
@@ -591,7 +597,7 @@ async fn accept_withdrawal_validation_invalid_fee() {
     // Normal: get the signer bitmap for how they voted.
     let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
     // Generate the transaction and corresponding request context.
-    let (mut accept_withdrawal_tx, ctx) =
+    let (mut accept_withdrawal_tx, req_ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
     // Different: The fee cannot exceed the max fee. Setting the `tx_fee`
     // to `max_fee + 1` here will result in the validation validating
@@ -599,7 +605,8 @@ async fn accept_withdrawal_validation_invalid_fee() {
     // `req.value - req.max_fee` and thus invalid.
     accept_withdrawal_tx.tx_fee = req.max_fee + 1;
 
-    let validate_future = accept_withdrawal_tx.validate(&db, &ctx);
+    let ctx = TestSignerContext::from_db(db.clone());
+    let validate_future = accept_withdrawal_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
             assert_eq!(err.error, WithdrawalErrorMsg::InvalidFee)
@@ -653,10 +660,11 @@ async fn accept_withdrawal_validation_sweep_tx_missing() {
     // Normal: get the signer bitmap for how they voted.
     let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
     // Generate the transaction and corresponding request context.
-    let (accept_withdrawal_tx, ctx) =
+    let (accept_withdrawal_tx, req_ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
 
-    let validation_result = accept_withdrawal_tx.validate(&db, &ctx).await;
+    let ctx = TestSignerContext::from_db(db.clone());
+    let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
             assert_eq!(err.error, WithdrawalErrorMsg::SweepTransactionMissing)
@@ -741,15 +749,16 @@ async fn accept_withdrawal_validation_sweep_reorged() {
     // Normal: get the signer bitmap for how they voted.
     let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
     // Generate the transaction and corresponding request context.
-    let (accept_withdrawal_tx, mut ctx) =
+    let (accept_withdrawal_tx, mut req_ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip2, bitmap);
     // Different: We already created the BTC transaction that swept out the
     // users funds and confirmed it on a bitcoin blockchain identified by
     // `chain_tip2`. Here we set the canonical chain tip on the context to
     // be `chain_tip1`.
-    ctx.chain_tip = chain_tip.into();
+    req_ctx.chain_tip = chain_tip.into();
 
-    let validation_result = accept_withdrawal_tx.validate(&db, &ctx).await;
+    let ctx = TestSignerContext::from_db(db.clone());
+    let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
             assert_eq!(err.error, WithdrawalErrorMsg::SweepTransactionReorged)
@@ -822,10 +831,11 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
     let bitmap = get_withdrawal_request_signer_votes(&db, &req, &aggregate_key).await;
     // Generate the transaction and corresponding request context.
     // Different: using the "invalid" `sweep_outpoint` we created above.
-    let (accept_withdrawal_tx, ctx) =
+    let (accept_withdrawal_tx, req_ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
 
-    let validation_result = accept_withdrawal_tx.validate(&db, &ctx).await;
+    let ctx = TestSignerContext::from_db(db.clone());
+    let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
             assert_eq!(err.error, WithdrawalErrorMsg::UtxoMissingFromSweep)
@@ -899,10 +909,11 @@ async fn accept_withdrawal_validation_bitmap_mismatch() {
     let first_vote = *bitmap.get(0).unwrap();
     bitmap.set(0, !first_vote);
     // Generate the transaction and corresponding request context.
-    let (accept_withdrawal_tx, ctx) =
+    let (accept_withdrawal_tx, req_ctx) =
         make_withdrawal_accept(&req, sweep_outpoint, aggregate_key, &chain_tip, bitmap);
 
-    let validation_result = accept_withdrawal_tx.validate(&db, &ctx).await;
+    let ctx = TestSignerContext::from_db(db.clone());
+    let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
             assert_eq!(err.error, WithdrawalErrorMsg::BitmapMismatch)

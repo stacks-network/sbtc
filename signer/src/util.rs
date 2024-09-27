@@ -225,7 +225,7 @@ mod tests {
             } else {
                 // Just picked a random error here (which isn't
                 // a AllFailoverClientsFailed)
-                Err(Error::CurrentDatabaseName)
+                Err(Error::Encryption)
             }
         }
     }
@@ -419,6 +419,6 @@ mod tests {
 
         // Assert that the error is the error that the mock client returns
         // (which was just randomly chosen, it has no significance)
-        assert!(matches!(result.unwrap_err(), Error::CurrentDatabaseName));
+        assert!(matches!(result.unwrap_err(), Error::Encryption));
     }
 }

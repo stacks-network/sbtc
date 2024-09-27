@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package crypto;
+
+/// A type representing a 256-bit integer.
+message Uint256 {
+  // These are the 64 bits of the 256-bit integer from bits 0-63.
+  fixed64 bits_part0 = 1;
+  // These are the 64 bits of the 256-bit integer from bits 64-127.
+  fixed64 bits_part1 = 2;
+  // These are the 64 bits of the 256-bit integer from bits 128-191.
+  fixed64 bits_part2 = 3;
+  // These are the 64 bits of the 256-bit integer from bits 192-255.
+  fixed64 bits_part3 = 4;
+}
+
+/// Represents a public key type for the secp256k1 elliptic curve.
+message PublicKey {
+  // The x-coordinate of the public key.
+  Uint256 x_only_public_key = 1;
+  // Represents the parity bit of the public key. True means the parity is
+  // odd, while false means the parity is even.
+  bool parity_is_odd = 2;
+}
+
+// This is a recoverable signature representation. It is nonstandard and
+// defined by the libsecp256k1 library.
+message RecoverableSignature {
+  // These are the first 256-bits of the 64 byte signature part, so bits 0-255.
+  Uint256 lower_bits = 1;
+  // These are the last 256-bits of the 64 byte signature part, so bits 256-511.
+  Uint256 upper_bits = 2;
+  // A tag used for recovering the public key from a compact signature. It
+  // must be one of the values 0-3.
+  int32 recovery_id = 3;
+}

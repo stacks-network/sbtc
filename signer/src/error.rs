@@ -11,19 +11,24 @@ use crate::stacks::contracts::WithdrawalAcceptValidationError;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Attemmpt to fetch a bitcoin blockhash ended in an unexpected error.
+    /// This is not triggered if the block is missing.
+    #[error("bitcoin-core getblock RPC error for hash {1}: {0}")]
+    BitcoinCoreGetBlock(#[source] bitcoincore_rpc::Error, bitcoin::BlockHash),
+
+    /// Received an error in response to getrawtransaction RPC call
+    #[error("failed to retrieve the raw transaction for txid {1} from bitcoin-core. {0}")]
+    BitcoinCoreGetTransaction(#[source] bitcoincore_rpc::Error, bitcoin::Txid),
+
     /// Error when creating an RPC client to bitcoin-core
     #[error("could not create RPC client to {1}: {0}")]
     BitcoinCoreRpcClient(#[source] bitcoincore_rpc::Error, String),
 
-    /// Returned when we could not decode the hex into a
-    /// bitcoin::Transaction.
-    #[error("failed to decode the provided hex into a transaction. txid: {1}. {0}")]
-    DecodeTx(#[source] bitcoin::consensus::encode::Error, bitcoin::Txid),
-
-    /// Could not deserialize the "blockchain.transaction.get" response
-    /// into a GetTxResponse.
-    #[error("failed to deserialize the blockchain.transaction.get response. txid: {1}. {0}")]
-    DeserializeGetTransaction(#[source] serde_json::Error, bitcoin::Txid),
+    /// The bitcoin tranaction was not found in the mempool or on the
+    /// bitcoin blockchain. This is thrown when we expect the transaction
+    /// to exist in bitcoin core but it does not.
+    #[error("Transaction is missing from mempool")]
+    BitcoinTxMissing(bitcoin::Txid),
 
     /// Received an error in call to estimatesmartfee RPC call
     #[error("failed to get fee estimate from bitcoin-core for target {1}. {0}")]
@@ -32,10 +37,6 @@ pub enum Error {
     /// Received an error in response to estimatesmartfee RPC call
     #[error("failed to get fee estimate from bitcoin-core for target {1}. {0:?}")]
     EstimateSmartFeeResponse(Option<Vec<String>>, u16),
-
-    /// Received an error in response to getrawtransaction RPC call
-    #[error("failed to retrieve the raw transaction for txid {1} from bitcoin-core. {0}")]
-    GetTransactionBitcoinCore(#[source] bitcoincore_rpc::Error, bitcoin::Txid),
 
     /// Error from the fallback client.
     #[error("fallback client error: {0}")]
@@ -61,10 +62,6 @@ pub enum Error {
     /// I/O Error raised by the Tokio runtime.
     #[error("tokio i/o error: {0}")]
     TokioIo(#[from] tokio::io::Error),
-
-    /// The error used in the [`Encode`] and [`Decode`] trait.
-    #[error("error serializing type: {0}")]
-    Bincode(#[source] bincode::Error),
 
     /// Error when breaking out the ZeroMQ message into three parts.
     #[error("bitcoin messages should have a three part layout, received {0} parts")]
@@ -244,10 +241,6 @@ pub enum Error {
     /// An error when attempting to read a migration script.
     #[error("failed to read migration script: {0}")]
     ReadSqlMigration(Cow<'static, str>),
-
-    /// Could not retrieve the current database name.
-    #[error("could not retrieve the current database name")]
-    CurrentDatabaseName,
 
     /// An error when attempting to generically decode bytes using the
     /// trait implementation.

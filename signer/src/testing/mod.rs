@@ -12,27 +12,46 @@ pub mod transaction_signer;
 pub mod wallet;
 pub mod wsts;
 
-use crate::context::SignerContext;
 use api_clients::NoopApiClient;
 use bitcoin::key::TapTweak;
 use bitcoin::TapSighashType;
 use bitcoin::Witness;
 use secp256k1::SECP256K1;
 
-/// A [`SignerContext`] which uses [`NoopApiClient`]s.
-pub type NoopSignerContext<S> = SignerContext<S, NoopApiClient>;
-
+use crate::bitcoin::rpc::BitcoinCoreClient;
 use crate::bitcoin::utxo::UnsignedTransaction;
 use crate::config::Settings;
+use crate::context::SignerContext;
+use crate::storage::postgres::PgStore;
 
 /// The path for the configuration file that we should use during testing.
 pub const DEFAULT_CONFIG_PATH: Option<&str> = Some("./src/config/default");
+
+/// A [`SignerContext`] which uses [`NoopApiClient`]s.
+pub type NoopSignerContext<S> = SignerContext<S, NoopApiClient>;
 
 impl Settings {
     /// Create a new `Settings` instance from the default configuration file.
     /// This is useful for testing.
     pub fn new_from_default_config() -> Result<Self, config::ConfigError> {
         Self::new(DEFAULT_CONFIG_PATH)
+    }
+}
+
+/// A client that can be used for integration tests. The settings are
+/// loaded from the default config toml, and the PgStore is assumed to
+/// point to a test database.
+pub type TestSignerContext = SignerContext<PgStore, BitcoinCoreClient>;
+
+impl TestSignerContext {
+    /// Create a new one from the given database connection pool with the
+    /// default config settings.
+    pub fn from_db(db: PgStore) -> Self {
+        let config = Settings::new_from_default_config().unwrap();
+
+        let url = config.bitcoin.endpoints.first().unwrap();
+        let bitcoin_client = BitcoinCoreClient::try_from(url).unwrap();
+        Self::new(config, db, bitcoin_client)
     }
 }
 

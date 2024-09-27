@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package bitcoin;
+
+import "crypto/common.proto";
+
+// The id for a transaction on the bitcoin blockchain.
+message BitcoinTxid {
+  crypto.Uint256 txid = 1;
+}
+
+// A bitcoin block hash.
+message BitcoinBlockHash {
+  crypto.Uint256 block_hash = 1;
+}
+
+// A pointer to a specific output in a bitcoin transaction.
+message OutPoint {
+  BitcoinTxid txid = 1;
+  uint32 vout = 2;
+}

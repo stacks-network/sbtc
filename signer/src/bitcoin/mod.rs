@@ -2,6 +2,10 @@
 
 use std::future::Future;
 
+use bitcoin::BlockHash;
+use bitcoin::Txid;
+
+use rpc::BitcoinTxInfo;
 use rpc::GetTxResponse;
 
 use crate::error::Error;
@@ -20,11 +24,18 @@ pub trait BitcoinInteract {
     /// Get block
     fn get_block(
         &self,
-        block_hash: &bitcoin::BlockHash,
+        block_hash: &BlockHash,
     ) -> impl Future<Output = Result<Option<bitcoin::Block>, Error>> + Send;
 
     /// get tx
-    fn get_tx(&self, txid: &bitcoin::Txid) -> Result<GetTxResponse, Error>;
+    fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error>;
+
+    /// get tx info
+    fn get_tx_info(
+        &self,
+        txid: &Txid,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BitcoinTxInfo>, Error>;
 
     /// Estimate fee rate
     // This should be implemented with the help of the `fees::EstimateFees` trait

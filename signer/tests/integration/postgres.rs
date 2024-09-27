@@ -12,6 +12,7 @@ use blockstack_lib::types::chainstate::StacksAddress;
 use futures::StreamExt;
 use rand::seq::SliceRandom;
 
+use signer::context::Context;
 use signer::error::Error;
 use signer::keys::PublicKey;
 use signer::network;
@@ -107,9 +108,9 @@ impl AsContractCall for InitiateWithdrawalRequest {
     fn as_contract_args(&self) -> Vec<ClarityValue> {
         Vec::new()
     }
-    async fn validate<S>(&self, _db: &S, _ctx: &ReqContext) -> Result<(), Error>
+    async fn validate<C>(&self, _db: &C, _ctx: &ReqContext) -> Result<(), Error>
     where
-        S: DbRead + Send + Sync,
+        C: Context + Send + Sync,
     {
         Ok(())
     }

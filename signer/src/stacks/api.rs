@@ -281,6 +281,7 @@ impl TryFrom<AccountEntryResponse> for AccountInfo {
 }
 
 /// A client for interacting with Stacks nodes and the Stacks API
+#[derive(Debug, Clone)]
 pub struct StacksClient {
     /// The base url for the Stacks node's RPC API.
     pub endpoint: Url,
