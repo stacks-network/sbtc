@@ -68,42 +68,42 @@ impl BitcoinInteract for NoopApiClient {
 /// Noop implementation of the StacksInteract trait.
 impl StacksInteract for NoopApiClient {
     async fn get_current_signer_set(
-        &mut self,
+        &self,
         _contract_principal: &clarity::types::chainstate::StacksAddress,
     ) -> Result<Vec<crate::keys::PublicKey>, Error> {
         unimplemented!()
     }
 
     async fn get_account(
-        &mut self,
+        &self,
         _address: &clarity::types::chainstate::StacksAddress,
     ) -> Result<crate::stacks::api::AccountInfo, Error> {
         unimplemented!()
     }
 
     async fn submit_tx(
-        &mut self,
+        &self,
         _tx: &blockstack_lib::chainstate::stacks::StacksTransaction,
     ) -> Result<crate::stacks::api::SubmitTxResponse, Error> {
         unimplemented!()
     }
 
     async fn get_block(
-        &mut self,
+        &self,
         _block_id: clarity::types::chainstate::StacksBlockId,
     ) -> Result<blockstack_lib::chainstate::nakamoto::NakamotoBlock, Error> {
         unimplemented!()
     }
 
     async fn get_tenure(
-        &mut self,
+        &self,
         _block_id: clarity::types::chainstate::StacksBlockId,
     ) -> Result<Vec<blockstack_lib::chainstate::nakamoto::NakamotoBlock>, Error> {
         unimplemented!()
     }
 
     async fn get_tenure_info(
-        &mut self,
+        &self,
     ) -> Result<blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo, Error> {
         unimplemented!()
     }
