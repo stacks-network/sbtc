@@ -85,6 +85,8 @@ pub struct Settings {
     pub bitcoin: BitcoinConfig,
     /// Stacks configuration
     pub stacks: StacksConfig,
+    /// Emily client configuration
+    pub emily: EmilyClientConfig,
 }
 
 /// Configuration used for the [`BitcoinCoreClient`](sbtc::rpc::BitcoinCoreClient).
@@ -172,6 +174,20 @@ impl Validatable for EmilyClientConfig {
             return Err(ConfigError::Message(
                 "[emily_client] At least one Emily API endpoint must be provided".to_string(),
             ));
+        }
+
+        for endpoint in &self.endpoints {
+            if !["http", "https"].contains(&endpoint.scheme()) {
+                return Err(ConfigError::Message(
+                    "[emily_client] Invalid URL scheme: must be HTTP or HTTPS".to_string(),
+                ));
+            }
+
+            if endpoint.host_str().is_none() {
+                return Err(ConfigError::Message(
+                    "[emily_client] Invalid URL: host is required".to_string(),
+                ));
+            }
         }
 
         Ok(())
@@ -292,6 +308,7 @@ impl Settings {
             .with_list_parse_key("bitcoin.rpc_endpoints")
             .with_list_parse_key("bitcoin.block_hash_stream_endpoints")
             .with_list_parse_key("stacks.endpoints")
+            .with_list_parse_key("emily.endpoints")
             .prefix_separator("_");
 
         let mut cfg_builder = Config::builder();

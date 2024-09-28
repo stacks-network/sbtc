@@ -117,7 +117,7 @@ where
 
         let run = async {
             while let Some(new_block_hash) = self.bitcoin_blocks.next().await {
-                self.load_latest_deposit_requests().await;
+                self.load_latest_deposit_requests().await?;
 
                 // TODO: What to do when `new_block_hash?` errors? Perhaps we can
                 // handle this within a failover-stream if this indicates a problem
@@ -506,7 +506,7 @@ mod tests {
             network: bitcoin::Network::Regtest,
         };
 
-        block_observer.load_latest_deposit_requests().await;
+        block_observer.load_latest_deposit_requests().await.unwrap();
         // Only the transaction from tx_setup0 was valid.
         assert_eq!(block_observer.deposit_requests.len(), 1);
 
@@ -580,7 +580,7 @@ mod tests {
             network: bitcoin::Network::Regtest,
         };
 
-        block_observer.load_latest_deposit_requests().await;
+        block_observer.load_latest_deposit_requests().await.unwrap();
         // The transaction from tx_setup0 was valid.
         assert_eq!(block_observer.deposit_requests.len(), 1);
 
