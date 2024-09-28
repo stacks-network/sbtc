@@ -210,7 +210,7 @@ where
     async fn process_bitcoin_block(&mut self, block: bitcoin::Block) -> Result<(), Error> {
         let info = self.stacks_client.get_tenure_info().await?;
         let stacks_blocks = crate::stacks::api::fetch_unknown_ancestors(
-            &mut self.stacks_client,
+            &self.stacks_client,
             &self.context.get_storage(),
             info.tip_block_id,
         )

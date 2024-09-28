@@ -694,7 +694,7 @@ impl StacksInteract for StacksClient {
             Value::Sequence(SequenceData::List(ListData { data, .. })) => {
                 // Iterate through each record in the list and verify that it's a buffer.
                 // If it is a buffer, then convert it to a public key.
-                // Otherwise, abort retries and return an error.
+                // Otherwise, return an error.
                 data.into_iter()
                     .map(|item| match item {
                         // If the item is a buffer, then convert it to a public key.
@@ -709,7 +709,7 @@ impl StacksInteract for StacksClient {
                     .collect()
             }
             // We expected the top-level value to be a list of buffers,
-            // but we got something else. Abort retrying and return an error.
+            // but we got something else.
             _ => Err(Error::InvalidStacksResponse(
                 "expected a sequence but got something else",
             )),

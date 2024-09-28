@@ -13,7 +13,6 @@ use signer::bitcoin::zmq::BitcoinCoreMessageStream;
 use signer::block_observer;
 use signer::block_observer::EmilyInteract;
 use signer::config::Settings;
-use signer::config::StacksSettings;
 use signer::context::Context;
 use signer::context::SignerContext;
 use signer::error::Error;
@@ -36,7 +35,6 @@ struct SignerArgs {
     /// pending migrations to the database on startup.
     #[clap(long)]
     migrate_db: bool,
-    // TODO(532): Add db-migrations subcommand to print out all/pending db migrations sql
 }
 
 #[tokio::main]
@@ -236,7 +234,7 @@ async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
     .unwrap();
 
     // TODO: Get client from context when it's implemented
-    let stacks_client = StacksClient::new(StacksSettings::new_from_config().unwrap());
+    let stacks_client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&config)?;
 
     // TODO: We should have a new() method that builds from the context
     let block_observer = block_observer::BlockObserver {
