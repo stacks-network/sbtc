@@ -22,6 +22,7 @@ use std::collections::HashMap;
 use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
 use crate::context::SignerEvent;
+use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::stacks::api::StacksInteract;
 use crate::storage;
@@ -148,8 +149,8 @@ where
     }
 
     #[tracing::instrument(skip(self))]
-    async fn load_latest_deposit_requests(&mut self) {
-        let deposit_requests = self.emily_client.get_deposits().await;
+    async fn load_latest_deposit_requests(&mut self) -> Result<(), Error> {
+        let deposit_requests = self.emily_client.get_deposits().await?;
 
         for request in deposit_requests {
             let deposit = request
@@ -163,6 +164,8 @@ where
                     .push(deposit);
             }
         }
+
+        Ok(())
     }
 
     #[tracing::instrument(skip(self))]
@@ -337,14 +340,6 @@ where
     }
 }
 
-// Placeholder traits. To be replaced with the actual traits once implemented.
-
-/// Placeholder trait
-pub trait EmilyInteract {
-    /// Get deposits
-    fn get_deposits(&mut self) -> impl std::future::Future<Output = Vec<CreateDepositRequest>>;
-}
-
 #[cfg(test)]
 mod tests {
     use bitcoin::Amount;
@@ -367,6 +362,7 @@ mod tests {
     use crate::bitcoin::utxo;
     use crate::config::Settings;
     use crate::context::SignerContext;
+    use crate::emily_client::EmilyInteract;
     use crate::error::Error;
     use crate::keys::PublicKey;
     use crate::keys::SignerScriptPubKey as _;
@@ -383,8 +379,8 @@ mod tests {
     struct DummyEmily(pub Vec<CreateDepositRequest>);
 
     impl EmilyInteract for DummyEmily {
-        async fn get_deposits(&mut self) -> Vec<CreateDepositRequest> {
-            self.0.clone()
+        async fn get_deposits(&self) -> Result<Vec<CreateDepositRequest>, Error> {
+            Ok(self.0.clone())
         }
     }
 
@@ -406,7 +402,7 @@ mod tests {
         let block_observer = BlockObserver {
             context: ctx,
             stacks_client: test_harness.clone(),
-            emily_client: (),
+            emily_client: test_harness.clone(),
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
             deposit_requests: HashMap::new(),
@@ -659,7 +655,7 @@ mod tests {
         let block_observer = BlockObserver {
             context: ctx,
             stacks_client: test_harness.clone(),
-            emily_client: (),
+            emily_client: test_harness.clone(),
             bitcoin_blocks: test_harness.spawn_block_hash_stream(),
             horizon: 1,
             deposit_requests: HashMap::new(),
@@ -714,6 +710,9 @@ mod tests {
         stacks_blocks: Vec<(StacksBlockId, NakamotoBlock, BlockHash)>,
         /// This represents deposit transactions
         deposits: HashMap<Txid, GetTxResponse>,
+        /// This represents deposit requests that have not been processed, i.e.
+        /// they are received from the Emily API.
+        pending_deposits: Vec<CreateDepositRequest>,
     }
 
     impl TestHarness {
@@ -765,6 +764,7 @@ mod tests {
                 bitcoin_blocks,
                 stacks_blocks,
                 deposits: HashMap::new(),
+                pending_deposits: Vec::new(),
             }
         }
 
@@ -926,9 +926,9 @@ mod tests {
         }
     }
 
-    impl EmilyInteract for () {
-        async fn get_deposits(&mut self) -> Vec<CreateDepositRequest> {
-            Vec::new()
+    impl EmilyInteract for TestHarness {
+        async fn get_deposits(&self) -> Result<Vec<CreateDepositRequest>, Error> {
+            Ok(self.pending_deposits.clone())
         }
     }
 }

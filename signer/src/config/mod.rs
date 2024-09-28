@@ -91,11 +91,11 @@ pub struct Settings {
 pub struct BitcoinConfig {
     /// Bitcoin RPC endpoints.
     #[serde(deserialize_with = "url_deserializer_vec")]
-    pub rpc_endpoints: Vec<url::Url>,
+    pub rpc_endpoints: Vec<Url>,
 
     /// Bitcoin ZeroMQ block-hash stream endpoint.
     #[serde(deserialize_with = "url_deserializer_vec")]
-    pub block_hash_stream_endpoints: Vec<url::Url>,
+    pub block_hash_stream_endpoints: Vec<Url>,
 }
 
 /// Signer network configuration
@@ -150,6 +150,26 @@ impl Validatable for BlocklistClientConfig {
         if !(1..=65535).contains(&self.port) {
             return Err(ConfigError::Message(
                 "[blocklist_client] Port must be between 1 and 65535".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+}
+
+/// Emily API configuration.
+#[derive(Deserialize, Clone, Debug)]
+pub struct EmilyClientConfig {
+    /// Emily API endpoints.
+    #[serde(deserialize_with = "url_deserializer_vec")]
+    pub endpoints: Vec<Url>,
+}
+
+impl Validatable for EmilyClientConfig {
+    fn validate(&self, _: &Settings) -> Result<(), ConfigError> {
+        if self.endpoints.is_empty() {
+            return Err(ConfigError::Message(
+                "[emily_client] At least one Emily API endpoint must be provided".to_string(),
             ));
         }
 

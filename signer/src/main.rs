@@ -16,6 +16,7 @@ use signer::config::Settings;
 use signer::config::StacksSettings;
 use signer::context::Context;
 use signer::context::SignerContext;
+use signer::emily_client::EmilyClient;
 use signer::error::Error;
 use signer::network::libp2p::SignerSwarmBuilder;
 use signer::stacks::api::StacksClient;
@@ -237,13 +238,14 @@ async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
 
     // TODO: Get client from context when it's implemented
     let stacks_client = StacksClient::new(StacksSettings::new_from_config().unwrap());
+    let emily_client = EmilyClient;
 
     // TODO: We should have a new() method that builds from the context
     let block_observer = block_observer::BlockObserver {
         context: ctx,
         bitcoin_blocks: stream.to_block_hash_stream(),
         stacks_client,
-        emily_client: MockEmilyClient, // TODO: Replace with real client from context when implemented
+        emily_client: , // TODO: Replace with real client from context when implemented
         deposit_requests: HashMap::new(),
         horizon: 1,
         network: config.signer.network.into(),
@@ -267,7 +269,7 @@ async fn run_transaction_coordinator(_ctx: impl Context) -> Result<(), Error> {
 // TODO: Temporary
 pub struct MockEmilyClient;
 impl EmilyInteract for MockEmilyClient {
-    async fn get_deposits(&mut self) -> Vec<sbtc::deposits::CreateDepositRequest> {
+    async fn get_deposits(&mut self) -> Result<Vec<sbtc::deposits::CreateDepositRequest>, Error> {
         vec![]
     }
 }
