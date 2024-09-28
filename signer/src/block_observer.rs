@@ -378,15 +378,6 @@ mod tests {
 
     use super::*;
 
-    #[derive(Debug, Clone)]
-    struct DummyEmily(pub Vec<CreateDepositRequest>);
-
-    impl EmilyInteract for DummyEmily {
-        async fn get_deposits(&self) -> Result<Vec<CreateDepositRequest>, Error> {
-            Ok(self.0.clone())
-        }
-    }
-
     #[tokio::test]
     async fn should_be_able_to_extract_bitcoin_blocks_given_a_block_header_stream() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
@@ -490,6 +481,11 @@ mod tests {
             .deposits
             .insert(get_tx_resp1.tx.compute_txid(), get_tx_resp1);
 
+        // Add the deposit requests to the pending deposits which
+        // would be returned by Emily.
+        test_harness.pending_deposits.push(deposit_request0);
+        test_harness.pending_deposits.push(deposit_request1);
+
         // Now we finish setting up the block observer.
         let storage = storage::in_memory::Store::new_shared();
         let block_hash_stream = test_harness.spawn_block_hash_stream();
@@ -502,7 +498,7 @@ mod tests {
         let mut block_observer = BlockObserver {
             context: ctx,
             stacks_client: test_harness.clone(),
-            emily_client: DummyEmily(vec![deposit_request0, deposit_request1]),
+            emily_client: test_harness.clone(),
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
             deposit_requests: HashMap::new(),
@@ -563,6 +559,9 @@ mod tests {
         test_harness
             .deposits
             .insert(get_tx_resp0.tx.compute_txid(), get_tx_resp0);
+        // Add the deposit request to the pending deposits which
+        // would be returned by Emily.
+        test_harness.pending_deposits.push(deposit_request0);
 
         // Now we finish setting up the block observer.
         let storage = storage::in_memory::Store::new_shared();
@@ -576,7 +575,7 @@ mod tests {
         let mut block_observer = BlockObserver {
             context: ctx,
             stacks_client: test_harness.clone(),
-            emily_client: DummyEmily(vec![deposit_request0]),
+            emily_client: test_harness.clone(),
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
             deposit_requests: HashMap::new(),
