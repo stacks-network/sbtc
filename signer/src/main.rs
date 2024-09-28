@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use axum::routing::get;
@@ -8,11 +9,16 @@ use clap::Parser;
 use signer::api;
 use signer::api::ApiState;
 use signer::bitcoin::rpc::BitcoinCoreClient;
+use signer::bitcoin::zmq::BitcoinCoreMessageStream;
+use signer::block_observer;
+use signer::block_observer::EmilyInteract;
 use signer::config::Settings;
+use signer::config::StacksSettings;
 use signer::context::Context;
 use signer::context::SignerContext;
 use signer::error::Error;
 use signer::network::libp2p::SignerSwarmBuilder;
+use signer::stacks::api::StacksClient;
 use signer::storage::postgres::PgStore;
 use signer::util::ApiFallbackClient;
 use tokio::signal;
@@ -217,16 +223,51 @@ async fn run_stacks_event_observer(ctx: impl Context + 'static) -> Result<(), Er
 }
 
 #[allow(dead_code)] // Remove when implemented
-async fn run_block_observer(_ctx: impl Context) -> Result<(), Error> {
-    todo!() //TODO(548)
+async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
+    let config = ctx.config().clone();
+
+    // TODO: Need to handle multiple endpoints, so some sort of
+    // failover-stream-wrapper.
+    let stream = BitcoinCoreMessageStream::new_from_endpoint(
+        config.bitcoin.block_hash_stream_endpoints[0].as_str(),
+        &["hashblock"],
+    )
+    .await
+    .unwrap();
+
+    // TODO: Get client from context when it's implemented
+    let stacks_client = StacksClient::new(StacksSettings::new_from_config().unwrap());
+
+    // TODO: We should have a new() method that builds from the context
+    let block_observer = block_observer::BlockObserver {
+        context: ctx,
+        bitcoin_blocks: stream.to_block_hash_stream(),
+        stacks_client,
+        emily_client: MockEmilyClient, // TODO: Replace with real client from context when implemented
+        deposit_requests: HashMap::new(),
+        horizon: 1,
+        network: config.signer.network.into(),
+    };
+
+    block_observer.run().await
 }
 
 #[allow(dead_code)] // Remove when implemented
 async fn run_transaction_signer(_ctx: impl Context) -> Result<(), Error> {
+    // threshold: 2
+    // context_window: 10000
     todo!()
 }
 
 #[allow(dead_code)] // Remove when implemented
 async fn run_transaction_coordinator(_ctx: impl Context) -> Result<(), Error> {
     todo!()
+}
+
+// TODO: Temporary
+pub struct MockEmilyClient;
+impl EmilyInteract for MockEmilyClient {
+    async fn get_deposits(&mut self) -> Vec<sbtc::deposits::CreateDepositRequest> {
+        vec![]
+    }
 }

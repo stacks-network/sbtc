@@ -49,7 +49,7 @@ impl TestSignerContext {
     pub fn from_db(db: PgStore) -> Self {
         let config = Settings::new_from_default_config().unwrap();
 
-        let url = config.bitcoin.endpoints.first().unwrap();
+        let url = config.bitcoin.rpc_endpoints.first().unwrap();
         let bitcoin_client = BitcoinCoreClient::try_from(url).unwrap();
         Self::new(config, db, bitcoin_client)
     }
