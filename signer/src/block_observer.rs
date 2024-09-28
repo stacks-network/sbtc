@@ -118,13 +118,16 @@ where
             while let Some(new_block_hash) = self.bitcoin_blocks.next().await {
                 self.load_latest_deposit_requests().await;
 
-                // TODO: What to do when `new_block_hash?` errors?
+                // TODO: What to do when `new_block_hash?` errors? Perhaps we can
+                // handle this within a failover-stream if this indicates a problem
+                // with the stream, and then we change this back to a plain `BlockHash`
+                // instead of a `Result<>`.
                 for block in self.next_blocks_to_process(new_block_hash?).await? {
                     self.process_bitcoin_block(block).await?;
                 }
 
                 self.context
-                    .signal(SignerEvent::BlockObserverUpdated.into())?;
+                    .signal(SignerEvent::BitcoinBlockObserved.into())?;
             }
 
             Ok::<_, Error>(())
@@ -395,6 +398,8 @@ mod tests {
             storage.clone(),
             test_harness.clone(),
         );
+        // There must be at least one signal receiver alive when the block observer
+        // later tries to send a signal, hence this line.
         let _signal_rx = ctx.get_signal_receiver();
         let block_hash_stream = test_harness.spawn_block_hash_stream();
 
