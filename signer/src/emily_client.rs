@@ -73,3 +73,15 @@ impl EmilyInteract for ApiFallbackClient<EmilyClient> {
         self.exec(|client| client.get_deposits())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_try_from_url() {
+        let url = Url::parse("http://localhost:8080").unwrap();
+        let client = EmilyClient::try_from(&url).unwrap();
+        assert_eq!(client.config.base_path, "http://localhost:8080/");
+    }
+}
