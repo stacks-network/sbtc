@@ -115,6 +115,9 @@ where
     pub async fn run(mut self) -> Result<(), Error> {
         let mut term = self.context.get_termination_handle();
 
+        // TODO: We need to revisit all of the `?`'s in this function to ensure
+        // that we don't accidentally kill the signer by exiting this function
+        // early.
         let run = async {
             while let Some(new_block_hash) = self.bitcoin_blocks.next().await {
                 self.load_latest_deposit_requests().await?;
