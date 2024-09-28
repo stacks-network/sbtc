@@ -60,7 +60,7 @@ subscribe_interval = 10
 # !! ==============================================================================
 # !! Stacks Node Configuration
 # !! ==============================================================================
-[stacks.node]
+[stacks]
 # The RPC URL(s) of the Stacks node(s) to connect to. At least one must be
 # provided. If multiple nodes are provided they will be tried in order when
 # making requests.
