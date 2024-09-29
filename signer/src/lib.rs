@@ -14,6 +14,7 @@ pub mod codec;
 pub mod config;
 pub mod context;
 pub mod ecdsa;
+pub mod emily_client;
 pub mod error;
 pub mod keys;
 pub mod logging;

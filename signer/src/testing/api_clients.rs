@@ -5,8 +5,8 @@ use url::Url;
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::BitcoinInteract;
-use crate::block_observer::EmilyInteract;
 use crate::blocklist_client::BlocklistChecker;
+use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::stacks::api::StacksInteract;
 
@@ -126,7 +126,7 @@ impl StacksInteract for NoopApiClient {
 
 /// Noop implementation of the EmilyInteract trait.
 impl EmilyInteract for NoopApiClient {
-    async fn get_deposits(&mut self) -> Vec<sbtc::deposits::CreateDepositRequest> {
+    async fn get_deposits(&self) -> Result<Vec<sbtc::deposits::CreateDepositRequest>, Error> {
         todo!()
     }
 }

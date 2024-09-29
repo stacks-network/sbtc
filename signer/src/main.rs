@@ -11,10 +11,10 @@ use signer::api::ApiState;
 use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::bitcoin::zmq::BitcoinCoreMessageStream;
 use signer::block_observer;
-use signer::block_observer::EmilyInteract;
 use signer::config::Settings;
 use signer::context::Context;
 use signer::context::SignerContext;
+use signer::emily_client::EmilyClient;
 use signer::error::Error;
 use signer::network::libp2p::SignerSwarmBuilder;
 use signer::stacks::api::StacksClient;
@@ -233,7 +233,9 @@ async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
     .await
     .unwrap();
 
-    // TODO: Get client from context when it's implemented
+    // TODO: Get clients from context when implemented
+    let emily_client: ApiFallbackClient<EmilyClient> =
+        TryFrom::try_from(&config.emily.endpoints[..])?;
     let stacks_client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&config)?;
 
     // TODO: We should have a new() method that builds from the context
@@ -241,7 +243,7 @@ async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
         context: ctx,
         bitcoin_blocks: stream.to_block_hash_stream(),
         stacks_client,
-        emily_client: MockEmilyClient, // TODO: Replace with real client from context when implemented
+        emily_client,
         deposit_requests: HashMap::new(),
         horizon: 1,
         network: config.signer.network.into(),
@@ -260,12 +262,4 @@ async fn run_transaction_signer(_ctx: impl Context) -> Result<(), Error> {
 #[allow(dead_code)] // Remove when implemented
 async fn run_transaction_coordinator(_ctx: impl Context) -> Result<(), Error> {
     todo!()
-}
-
-// TODO: Temporary
-pub struct MockEmilyClient;
-impl EmilyInteract for MockEmilyClient {
-    async fn get_deposits(&mut self) -> Vec<sbtc::deposits::CreateDepositRequest> {
-        vec![]
-    }
 }

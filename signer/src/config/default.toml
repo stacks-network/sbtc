@@ -8,6 +8,23 @@ host = "127.0.0.1"
 port = 8080
 
 # !! ==============================================================================
+# !! Emily API Configuration
+# !! ==============================================================================
+[emily]
+# The URI(s) of the Emily API server to connect to.
+#
+# You may specify multiple Emily API servers if you have them. They will be
+# tried round-robin until one succeeds.
+#
+# Format: ["http(s)://<host>:<port>", ..]
+# Default: <none>
+# Required: true
+# Environment: SIGNER_EMILY__ENDPOINTS
+endpoints = [
+    "http://localhost:3000"
+]
+
+# !! ==============================================================================
 # !! Bitcoin Core Configuration
 # !! ==============================================================================
 [bitcoin]

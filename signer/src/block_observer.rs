@@ -22,6 +22,7 @@ use std::collections::HashMap;
 use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
 use crate::context::SignerEvent;
+use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::stacks::api::StacksInteract;
 use crate::storage;
@@ -114,9 +115,12 @@ where
     pub async fn run(mut self) -> Result<(), Error> {
         let mut term = self.context.get_termination_handle();
 
+        // TODO: We need to revisit all of the `?`'s in this function to ensure
+        // that we don't accidentally kill the signer by exiting this function
+        // early.
         let run = async {
             while let Some(new_block_hash) = self.bitcoin_blocks.next().await {
-                self.load_latest_deposit_requests().await;
+                self.load_latest_deposit_requests().await?;
 
                 // TODO: What to do when `new_block_hash?` errors? Perhaps we can
                 // handle this within a failover-stream if this indicates a problem
@@ -148,8 +152,8 @@ where
     }
 
     #[tracing::instrument(skip(self))]
-    async fn load_latest_deposit_requests(&mut self) {
-        let deposit_requests = self.emily_client.get_deposits().await;
+    async fn load_latest_deposit_requests(&mut self) -> Result<(), Error> {
+        let deposit_requests = self.emily_client.get_deposits().await?;
 
         for request in deposit_requests {
             let deposit = request
@@ -163,6 +167,8 @@ where
                     .push(deposit);
             }
         }
+
+        Ok(())
     }
 
     #[tracing::instrument(skip(self))]
@@ -337,14 +343,6 @@ where
     }
 }
 
-// Placeholder traits. To be replaced with the actual traits once implemented.
-
-/// Placeholder trait
-pub trait EmilyInteract {
-    /// Get deposits
-    fn get_deposits(&mut self) -> impl std::future::Future<Output = Vec<CreateDepositRequest>>;
-}
-
 #[cfg(test)]
 mod tests {
     use bitcoin::Amount;
@@ -367,6 +365,7 @@ mod tests {
     use crate::bitcoin::utxo;
     use crate::config::Settings;
     use crate::context::SignerContext;
+    use crate::emily_client::EmilyInteract;
     use crate::error::Error;
     use crate::keys::PublicKey;
     use crate::keys::SignerScriptPubKey as _;
@@ -378,15 +377,6 @@ mod tests {
     use crate::util::ApiFallbackClient;
 
     use super::*;
-
-    #[derive(Debug, Clone)]
-    struct DummyEmily(pub Vec<CreateDepositRequest>);
-
-    impl EmilyInteract for DummyEmily {
-        async fn get_deposits(&mut self) -> Vec<CreateDepositRequest> {
-            self.0.clone()
-        }
-    }
 
     #[tokio::test]
     async fn should_be_able_to_extract_bitcoin_blocks_given_a_block_header_stream() {
@@ -406,7 +396,7 @@ mod tests {
         let block_observer = BlockObserver {
             context: ctx,
             stacks_client: test_harness.clone(),
-            emily_client: (),
+            emily_client: test_harness.clone(),
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
             deposit_requests: HashMap::new(),
@@ -491,6 +481,11 @@ mod tests {
             .deposits
             .insert(get_tx_resp1.tx.compute_txid(), get_tx_resp1);
 
+        // Add the deposit requests to the pending deposits which
+        // would be returned by Emily.
+        test_harness.pending_deposits.push(deposit_request0);
+        test_harness.pending_deposits.push(deposit_request1);
+
         // Now we finish setting up the block observer.
         let storage = storage::in_memory::Store::new_shared();
         let block_hash_stream = test_harness.spawn_block_hash_stream();
@@ -503,14 +498,14 @@ mod tests {
         let mut block_observer = BlockObserver {
             context: ctx,
             stacks_client: test_harness.clone(),
-            emily_client: DummyEmily(vec![deposit_request0, deposit_request1]),
+            emily_client: test_harness.clone(),
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
             deposit_requests: HashMap::new(),
             network: bitcoin::Network::Regtest,
         };
 
-        block_observer.load_latest_deposit_requests().await;
+        block_observer.load_latest_deposit_requests().await.unwrap();
         // Only the transaction from tx_setup0 was valid.
         assert_eq!(block_observer.deposit_requests.len(), 1);
 
@@ -564,6 +559,9 @@ mod tests {
         test_harness
             .deposits
             .insert(get_tx_resp0.tx.compute_txid(), get_tx_resp0);
+        // Add the deposit request to the pending deposits which
+        // would be returned by Emily.
+        test_harness.pending_deposits.push(deposit_request0);
 
         // Now we finish setting up the block observer.
         let storage = storage::in_memory::Store::new_shared();
@@ -577,14 +575,14 @@ mod tests {
         let mut block_observer = BlockObserver {
             context: ctx,
             stacks_client: test_harness.clone(),
-            emily_client: DummyEmily(vec![deposit_request0]),
+            emily_client: test_harness.clone(),
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
             deposit_requests: HashMap::new(),
             network: bitcoin::Network::Regtest,
         };
 
-        block_observer.load_latest_deposit_requests().await;
+        block_observer.load_latest_deposit_requests().await.unwrap();
         // The transaction from tx_setup0 was valid.
         assert_eq!(block_observer.deposit_requests.len(), 1);
 
@@ -659,7 +657,7 @@ mod tests {
         let block_observer = BlockObserver {
             context: ctx,
             stacks_client: test_harness.clone(),
-            emily_client: (),
+            emily_client: test_harness.clone(),
             bitcoin_blocks: test_harness.spawn_block_hash_stream(),
             horizon: 1,
             deposit_requests: HashMap::new(),
@@ -714,6 +712,9 @@ mod tests {
         stacks_blocks: Vec<(StacksBlockId, NakamotoBlock, BlockHash)>,
         /// This represents deposit transactions
         deposits: HashMap<Txid, GetTxResponse>,
+        /// This represents deposit requests that have not been processed, i.e.
+        /// they are received from the Emily API.
+        pending_deposits: Vec<CreateDepositRequest>,
     }
 
     impl TestHarness {
@@ -765,6 +766,7 @@ mod tests {
                 bitcoin_blocks,
                 stacks_blocks,
                 deposits: HashMap::new(),
+                pending_deposits: Vec::new(),
             }
         }
 
@@ -923,9 +925,9 @@ mod tests {
         }
     }
 
-    impl EmilyInteract for () {
-        async fn get_deposits(&mut self) -> Vec<CreateDepositRequest> {
-            Vec::new()
+    impl EmilyInteract for TestHarness {
+        async fn get_deposits(&self) -> Result<Vec<CreateDepositRequest>, Error> {
+            Ok(self.pending_deposits.clone())
         }
     }
 }
