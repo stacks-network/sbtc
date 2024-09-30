@@ -972,7 +972,7 @@ impl super::DbRead for PgStore {
                   , parent_hash
                   , 0 AS counter
                 FROM sbtc_signer.bitcoin_blocks
-                WHERE block_hash = $2
+                WHERE block_hash = $1
 
                 UNION ALL
 
@@ -983,13 +983,13 @@ impl super::DbRead for PgStore {
                   , parent.counter + 1
                 FROM sbtc_signer.bitcoin_blocks AS child
                 JOIN tx_block_chain AS parent
-                  ON child.parent_hash = parent.block_hash
+                  ON child.block_hash = parent.parent_hash
                 WHERE parent.counter <= $3
             )
             SELECT EXISTS (
                 SELECT TRUE
                 FROM tx_block_chain AS tbc
-                WHERE tbc.block_hash = $1
+                WHERE tbc.block_hash = $2
                   AND tbc.block_height = $4
             );
         "#,
