@@ -428,7 +428,7 @@ impl super::DbRead for PgStore {
             "#,
         )
         .bind(chain_tip)
-        .bind(context_window as i32)
+        .bind(i32::from(context_window))
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -489,8 +489,8 @@ impl super::DbRead for PgStore {
             "#,
         )
         .bind(chain_tip)
-        .bind(context_window as i32)
-        .bind(threshold as i32)
+        .bind(i32::from(context_window))
+        .bind(i32::from(threshold))
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -533,7 +533,7 @@ impl super::DbRead for PgStore {
         )
         .bind(aggregate_key)
         .bind(txid)
-        .bind(output_index as i64)
+        .bind(i64::from(output_index))
         .fetch_all(&self.0)
         .await
         .map(model::SignerVotes::from)
@@ -727,7 +727,7 @@ impl super::DbRead for PgStore {
         )
         .bind(chain_tip)
         .bind(stacks_chain_tip.block_hash)
-        .bind(context_window as i32)
+        .bind(i32::from(context_window))
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -815,8 +815,8 @@ impl super::DbRead for PgStore {
         )
         .bind(chain_tip)
         .bind(stacks_chain_tip.block_hash)
-        .bind(context_window as i32)
-        .bind(threshold as i64)
+        .bind(i32::from(context_window))
+        .bind(i64::from(threshold))
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -1072,7 +1072,7 @@ impl super::DbWrite for PgStore {
             ON CONFLICT DO NOTHING",
         )
         .bind(deposit_request.txid)
-        .bind(deposit_request.output_index as i32)
+        .bind(i32::try_from(deposit_request.output_index).map_err(Error::ConversionDatabaseInt)?)
         .bind(&deposit_request.spend_script)
         .bind(&deposit_request.reclaim_script)
         .bind(&deposit_request.recipient)
@@ -1104,8 +1104,9 @@ impl super::DbWrite for PgStore {
         let mut sender_script_pubkeys = Vec::with_capacity(deposit_requests.len());
 
         for req in deposit_requests {
+            let vout = i32::try_from(req.output_index).map_err(Error::ConversionDatabaseInt)?;
             txid.push(req.txid);
-            output_index.push(req.output_index as i32);
+            output_index.push(vout);
             spend_script.push(req.spend_script);
             reclaim_script.push(req.reclaim_script);
             recipient.push(req.recipient);
@@ -1224,7 +1225,7 @@ impl super::DbWrite for PgStore {
             ON CONFLICT DO NOTHING",
         )
         .bind(decision.txid)
-        .bind(decision.output_index as i32)
+        .bind(i32::try_from(decision.output_index).map_err(Error::ConversionDatabaseInt)?)
         .bind(decision.signer_pub_key)
         .bind(decision.is_accepted)
         .execute(&self.0)
@@ -1479,7 +1480,7 @@ impl super::DbWrite for PgStore {
         .bind(key_rotation.txid)
         .bind(key_rotation.aggregate_key)
         .bind(&key_rotation.signer_set)
-        .bind(key_rotation.signatures_required as i32)
+        .bind(i32::from(key_rotation.signatures_required))
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1506,7 +1507,7 @@ impl super::DbWrite for PgStore {
         .bind(event.block_id.0)
         .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.outpoint.txid.to_byte_array())
-        .bind(event.outpoint.vout as i64)
+        .bind(i64::from(event.outpoint.vout))
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1569,7 +1570,7 @@ impl super::DbWrite for PgStore {
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.signer_bitmap.into_inner())
         .bind(event.outpoint.txid.to_byte_array())
-        .bind(event.outpoint.vout as i64)
+        .bind(i64::from(event.outpoint.vout))
         .bind(i64::try_from(event.fee).map_err(Error::ConversionDatabaseInt)?)
         .execute(&self.0)
         .await
