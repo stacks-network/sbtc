@@ -957,6 +957,7 @@ impl super::DbRead for PgStore {
             WITH RECURSIVE tx_block_chain AS (
                 SELECT 
                     block_hash
+                  , block_height
                   , parent_hash
                   , 0 AS counter
                 FROM sbtc_signer.bitcoin_blocks
@@ -966,6 +967,7 @@ impl super::DbRead for PgStore {
 
                 SELECT
                     child.block_hash
+                  , child.block_height
                   , child.parent_hash
                   , parent.counter + 1
                 FROM sbtc_signer.bitcoin_blocks AS child
@@ -977,12 +979,30 @@ impl super::DbRead for PgStore {
                 SELECT TRUE
                 FROM tx_block_chain AS tbc
                 WHERE tbc.block_hash = $1
+                  AND tbc.block_height = $4
             );
         "#,
         )
         .bind(chain_tip.block_hash)
         .bind(block_ref.block_hash)
-        .bind(heigh_diff as i64)
+        .bind(i64::try_from(heigh_diff).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(block_ref.block_height).map_err(Error::ConversionDatabaseInt)?)
+        .fetch_one(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn is_signer_script_pub_key(&self, script: &model::ScriptPubKey) -> Result<bool, Error> {
+        sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT TRUE
+                FROM sbtc_signer.dkg_shares AS ds
+                WHERE ds.script_pubkey = $1
+            );
+        "#,
+        )
+        .bind(script)
         .fetch_one(&self.0)
         .await
         .map_err(Error::SqlxQuery)

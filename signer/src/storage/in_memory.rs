@@ -507,6 +507,15 @@ impl super::DbRead for SharedStore {
         Ok(num_matches > 0)
     }
 
+    async fn is_signer_script_pub_key(&self, script: &model::ScriptPubKey) -> Result<bool, Error> {
+        Ok(self
+            .lock()
+            .await
+            .encrypted_dkg_shares
+            .values()
+            .any(|share| &share.script_pubkey == script))
+    }
+
     async fn get_bitcoin_tx(
         &self,
         txid: &model::BitcoinTxId,

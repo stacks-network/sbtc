@@ -156,6 +156,13 @@ pub trait DbRead {
         block_ref: &model::BitcoinBlockRef,
     ) -> impl Future<Output = Result<bool, Error>> + Send;
 
+    /// Checks whether the given scriptPubKey is one of the signers'
+    /// scriptPubKeys.
+    fn is_signer_script_pub_key(
+        &self,
+        script: &model::ScriptPubKey,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
+
     /// Fetch the bitcoin transaction that is included in the block
     /// identified by the block hash.
     fn get_bitcoin_tx(
