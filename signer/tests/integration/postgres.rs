@@ -1308,3 +1308,42 @@ async fn is_signer_script_pub_key_checks_dkg_shares_for_script_pubkeys() {
     assert!(!mem.is_signer_script_pub_key(&script_pubkey).await.unwrap());
 }
 
+/// The [`DbRead::get_signers_script_pubkeys`] function is only supposed to
+/// fetch the last 365 days worth of scriptPubKeys, but if there are no new
+/// encrypted shares in the database in a year, we should still return the
+/// most recent one.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_signers_script_pubkeys_returns_non_empty_vec_old_rows() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    let shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+
+    sqlx::query(
+        r#"
+        INSERT INTO sbtc_signer.dkg_shares (
+            aggregate_key
+            , tweaked_aggregate_key
+            , encrypted_private_shares
+            , public_shares
+            , script_pubkey
+            , created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP - INTERVAL '366 DAYS')
+        ON CONFLICT DO NOTHING"#,
+    )
+    .bind(shares.aggregate_key)
+    .bind(shares.tweaked_aggregate_key)
+    .bind(&shares.encrypted_private_shares)
+    .bind(&shares.public_shares)
+    .bind(&shares.script_pubkey)
+    .execute(db.pool())
+    .await
+    .unwrap();
+
+    let keys = db.get_signers_script_pubkeys().await.unwrap();
+    assert_eq!(keys.len(), 1);
+}

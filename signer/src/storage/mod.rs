@@ -125,7 +125,9 @@ pub trait DbRead {
         chain_tip: &model::BitcoinBlockHash,
     ) -> impl Future<Output = Result<Option<model::RotateKeysTransaction>, Error>> + Send;
 
-    /// Get the last 365 days worth of the signers' `scriptPubkey`s.
+    /// Get the last 365 days worth of the signers' `scriptPubkey`s. If no
+    /// keys are available within the last 365, then return the most recent
+    /// key.
     fn get_signers_script_pubkeys(
         &self,
     ) -> impl Future<Output = Result<Vec<model::Bytes>, Error>> + Send;

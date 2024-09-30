@@ -933,6 +933,17 @@ impl super::DbRead for PgStore {
     async fn get_signers_script_pubkeys(&self) -> Result<Vec<model::Bytes>, Error> {
         sqlx::query_scalar::<_, model::Bytes>(
             r#"
+            WITH last_script_pubkey AS (
+                SELECT script_pubkey
+                FROM sbtc_signer.dkg_shares
+                ORDER BY created_at DESC
+                LIMIT 1
+            )
+            SELECT script_pubkey
+            FROM last_script_pubkey
+
+            UNION
+
             SELECT script_pubkey
             FROM sbtc_signer.dkg_shares
             WHERE created_at > CURRENT_TIMESTAMP - INTERVAL '365 DAYS';
