@@ -303,7 +303,8 @@ pub trait DbWrite {
     ) -> impl Future<Output = Result<(), Error>> + Send;
 }
 
-pub(crate) fn get_utxo(
+/// Given the sbtc txs in a block, returns the `aggregate_key` utxo (if there's exactly one)
+pub fn get_utxo(
     aggregate_key: &PublicKey,
     sbtc_txs: Vec<bitcoin::Transaction>,
 ) -> Result<Option<SignerUtxo>, Error> {
