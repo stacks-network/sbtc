@@ -6,6 +6,7 @@ mod complete_deposit;
 mod contracts;
 mod postgres;
 mod rbf;
+mod setup;
 mod transaction_signer;
 mod utxo_construction;
 mod withdrawal_accept;

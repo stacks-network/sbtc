@@ -12,12 +12,15 @@ use clarity::vm::ClarityName;
 use clarity::vm::Value as ClarityValue;
 use rand::rngs::StdRng;
 use rand::SeedableRng as _;
+use sbtc::testing::regtest::Recipient;
 use secp256k1::Keypair;
 use stacks_common::types::chainstate::StacksAddress;
 
 use crate::config::NetworkKind;
 use crate::context::Context;
 use crate::error::Error;
+use crate::keys::PrivateKey;
+use crate::keys::PublicKey;
 use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::AsTxPayload;
 use crate::stacks::contracts::ReqContext;
@@ -44,6 +47,35 @@ pub fn generate_wallet() -> (SignerWallet, [Keypair; 3], u16) {
         SignerWallet::new(&public_keys, signatures_required, NetworkKind::Testnet, 0).unwrap();
 
     (wallet, key_pairs, signatures_required)
+}
+
+/// This function creates a signing set where the aggregate key is the
+/// given controller's public key.
+pub fn create_signers_keys<R>(rng: &mut R, signer: &Recipient, num_signers: usize) -> Vec<PublicKey>
+where
+    R: rand::Rng,
+{
+    // We only take an odd number of signers so that the math works out.
+    assert_eq!(num_signers % 2, 1);
+
+    let private_key = PrivateKey::from(signer.keypair.secret_key());
+    let aggregate_key = PublicKey::from_private_key(&private_key);
+    // The private keys of half of the other signers
+    let pks = [
+        secp256k1::SecretKey::new(rng),
+        secp256k1::SecretKey::new(rng),
+        secp256k1::SecretKey::new(rng),
+    ];
+
+    let mut keys: Vec<PublicKey> = pks
+        .iter()
+        .chain(pks.map(secp256k1::SecretKey::negate).iter())
+        .map(|sk| PublicKey::from_private_key(&PrivateKey::from(*sk)))
+        .chain([aggregate_key])
+        .collect();
+
+    keys.sort();
+    keys
 }
 
 /// A generic new-type that implements [`AsTxPayload`] for all types that
@@ -158,5 +190,26 @@ impl AsContractCall for InitiateWithdrawalRequest {
         C: Context + Send + Sync,
     {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use rand::rngs::OsRng;
+    use test_case::test_case;
+
+    #[test_case(3; "3 signers")]
+    #[test_case(5; "5 signers")]
+    #[test_case(7; "7 signers")]
+    #[test_case(15; "15 signers")]
+    fn constructed_signer_set_has_desired_aggregate_key(num_signers: usize) {
+        let signer = Recipient::new(bitcoin::AddressType::P2tr);
+
+        let aggregate_key = PublicKey::from(signer.keypair.public_key());
+        let keys = create_signers_keys(&mut OsRng, &signer, num_signers);
+
+        assert_eq!(PublicKey::combine_keys(&keys).unwrap(), aggregate_key);
     }
 }
