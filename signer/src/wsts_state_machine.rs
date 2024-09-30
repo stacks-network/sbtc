@@ -135,7 +135,7 @@ impl SignerStateMachine {
         Ok(model::EncryptedDkgShares {
             aggregate_key,
             tweaked_aggregate_key: aggregate_key.signers_tweaked_pubkey()?,
-            script_pubkey: aggregate_key.signers_script_pubkey().to_bytes(),
+            script_pubkey: aggregate_key.signers_script_pubkey().into(),
             encrypted_private_shares,
             public_shares,
         })

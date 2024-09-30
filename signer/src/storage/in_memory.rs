@@ -410,7 +410,7 @@ impl super::DbRead for SharedStore {
             .await
             .encrypted_dkg_shares
             .values()
-            .map(|share| share.script_pubkey.clone())
+            .map(|share| share.script_pubkey.to_bytes())
             .collect())
     }
 
