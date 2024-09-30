@@ -283,7 +283,7 @@ where
         assert_eq!(chain_tip, block_ref.block_hash);
 
         let signer_utxo = storage
-            .get_signer_utxo(&chain_tip, &aggregate_key)
+            .get_signer_utxo(&chain_tip, &aggregate_key, self.context_window as u16)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -380,12 +380,28 @@ where
                 public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
             };
             let signer_utxo = storage
-                .get_signer_utxo(&chain_tip.block_hash, &aggregate_key)
+                .get_signer_utxo(
+                    &chain_tip.block_hash,
+                    &aggregate_key,
+                    self.context_window as u16,
+                )
                 .await
                 .unwrap()
                 .expect("no signer utxo");
             assert_eq!(signer_utxo, expected);
         }
+
+        // Check context window
+        assert!(storage
+            .get_signer_utxo(&block_c2.block_hash, &aggregate_key, 1)
+            .await
+            .unwrap()
+            .is_none());
+        assert!(storage
+            .get_signer_utxo(&block_c2.block_hash, &aggregate_key, 2)
+            .await
+            .unwrap()
+            .is_some());
     }
 
     /// Assert we get the correct UTXO with a spending chain in a block
@@ -469,7 +485,7 @@ where
         assert_eq!(chain_tip, block_ref.block_hash);
 
         let signer_utxo = storage
-            .get_signer_utxo(&chain_tip, &aggregate_key)
+            .get_signer_utxo(&chain_tip, &aggregate_key, self.context_window as u16)
             .await
             .unwrap()
             .expect("no signer utxo");
