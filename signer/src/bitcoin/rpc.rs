@@ -132,8 +132,12 @@ pub struct BitcoinTxInfoVin {
     /// Most of the details to the input into the transaction
     #[serde(flatten)]
     pub details: GetRawTransactionResultVin,
-    /// The previous output, omitted if block undo data is not available.
-    pub prevout: Option<BitcoinTxInfoVinPrevout>,
+    /// The previous output.
+    ///
+    /// This field is omitted if block undo data is not available, so it is
+    /// missing whenever the `fee` field is missing in the
+    /// [`BitcoinTxInfo`].
+    pub prevout: BitcoinTxInfoVinPrevout,
 }
 
 /// The previous output, omitted if block undo data is not available.
@@ -241,10 +245,6 @@ impl BitcoinCoreClient {
 
         match self.inner.call::<GetTxResponse>("getrawtransaction", &args) {
             Ok(tx_info) => Ok(Some(tx_info)),
-            // If the transaction is not found in an
-            // actual block then the message is "No such transaction found
-            // in the provided block. Use gettransaction for wallet
-            // transactions." In both cases the code is the same.
             Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
             Err(err) => Err(Error::BitcoinCoreGetTransaction(err, *txid)),
         }
@@ -276,7 +276,7 @@ impl BitcoinCoreClient {
             // If the `block_hash` is not found then the message is "Block
             // hash not found", while if the transaction is not found in an
             // actual block then the message is "No such transaction found
-            // in the provided block. Use gettransaction for wallet
+            // in the provided block. Use `gettransaction` for wallet
             // transactions." In both cases the code is the same.
             Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
             Err(err) => Err(Error::BitcoinCoreGetTransaction(err, *txid)),
