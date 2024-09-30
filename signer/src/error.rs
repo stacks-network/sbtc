@@ -309,8 +309,8 @@ pub enum Error {
     #[error("missing signer utxo")]
     MissingSignerUtxo,
 
-    /// Too many signer utxo
-    #[error("too many signer utxo")]
+    /// Too many signer utxos
+    #[error("too many signer utxos")]
     TooManySignerUtxos,
 
     /// Invalid signature

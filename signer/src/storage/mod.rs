@@ -11,6 +11,7 @@ pub mod model;
 pub mod postgres;
 pub mod sqlx;
 
+use std::collections::HashSet;
 use std::future::Future;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
@@ -18,6 +19,7 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::keys::SignerScriptPubKey as _;
 use crate::stacks::events::CompletedDepositEvent;
 use crate::stacks::events::WithdrawalAcceptEvent;
 use crate::stacks::events::WithdrawalCreateEvent;
@@ -299,4 +301,41 @@ pub trait DbWrite {
         &self,
         event: &CompletedDepositEvent,
     ) -> impl Future<Output = Result<(), Error>> + Send;
+}
+
+pub(crate) fn get_utxo(
+    aggregate_key: &PublicKey,
+    sbtc_txs: Vec<bitcoin::Transaction>,
+) -> Result<Option<SignerUtxo>, Error> {
+    let script_pubkey = aggregate_key.signers_script_pubkey();
+
+    let spent: HashSet<bitcoin::OutPoint> = sbtc_txs
+        .iter()
+        .flat_map(|tx| tx.input.iter().map(|txin| txin.previous_output))
+        .collect();
+
+    let utxos = sbtc_txs
+        .iter()
+        .flat_map(|tx| {
+            if let Some(tx_out) = tx.output.first() {
+                let outpoint = bitcoin::OutPoint::new(tx.compute_txid(), 0);
+                if tx_out.script_pubkey == *script_pubkey && !spent.contains(&outpoint) {
+                    return Some(SignerUtxo {
+                        outpoint,
+                        amount: tx_out.value.to_sat(),
+                        // Txs are filtered based on the `aggregate_key` script pubkey
+                        public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
+                    });
+                }
+            }
+
+            None
+        })
+        .collect::<Vec<_>>();
+
+    match utxos[..] {
+        [] => Ok(None),
+        [utxo] => Ok(Some(utxo)),
+        _ => Err(Error::TooManySignerUtxos),
+    }
 }
