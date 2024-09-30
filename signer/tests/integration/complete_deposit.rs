@@ -25,6 +25,7 @@ use signer::testing::storage::model::TestData;
 
 use fake::Fake;
 use rand::SeedableRng;
+use signer::testing::TestSignerContext;
 
 use crate::DATABASE_NUM;
 
@@ -60,7 +61,7 @@ fn make_complete_deposit(
     };
 
     // This is what the current signer things of the state of things.
-    let ctx = ReqContext {
+    let req_ctx = ReqContext {
         chain_tip: chain_tip.into(),
         // This value means that the signer will go back 10 blocks when
         // looking for pending and accepted deposit requests.
@@ -77,7 +78,7 @@ fn make_complete_deposit(
         deployer: StacksAddress::burn_address(false),
     };
 
-    (complete_deposit_tx, ctx)
+    (complete_deposit_tx, req_ctx)
 }
 
 /// Generate a signer set, deposit requests and store them into the
@@ -188,10 +189,12 @@ async fn complete_deposit_validation_happy_path() {
     db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Generate the transaction and corresponding request context.
-    let (complete_deposit_tx, ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
+    let (complete_deposit_tx, req_ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
 
     // This should not return an Err.
-    complete_deposit_tx.validate(&db, &ctx).await.unwrap();
+    let ctx = TestSignerContext::from_db(db.clone());
+
+    complete_deposit_tx.validate(&ctx, &req_ctx).await.unwrap();
 
     testing::storage::drop_db(db).await;
 }
@@ -239,13 +242,14 @@ async fn complete_deposit_validation_deployer_mismatch() {
     db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Generate the transaction and corresponding request context.
-    let (mut complete_deposit_tx, mut ctx) =
+    let (mut complete_deposit_tx, mut req_ctx) =
         make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
     // Different: Okay, let's make sure we get the deployers do not match.
     complete_deposit_tx.deployer = StacksAddress::p2pkh(false, &signer_set[0].into());
-    ctx.deployer = StacksAddress::p2pkh(false, &signer_set[1].into());
+    req_ctx.deployer = StacksAddress::p2pkh(false, &signer_set[1].into());
+    let ctx = TestSignerContext::from_db(db.clone());
 
-    let validate_future = complete_deposit_tx.validate(&db, &ctx);
+    let validate_future = complete_deposit_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
         Error::DepositValidation(ref err) => {
             assert_eq!(err.error, DepositErrorMsg::DeployerMismatch)
@@ -298,9 +302,10 @@ async fn complete_deposit_validation_missing_deposit_request() {
     db.write_transaction(&sweep_tx).await.unwrap();
     db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
-    let (complete_deposit_tx, ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
+    let (complete_deposit_tx, req_ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
+    let ctx = TestSignerContext::from_db(db.clone());
 
-    let validation_result = complete_deposit_tx.validate(&db, &ctx).await;
+    let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::DepositValidation(ref err) => {
             assert_eq!(err.error, DepositErrorMsg::RequestMissing)
@@ -355,13 +360,15 @@ async fn complete_deposit_validation_recipient_mismatch() {
     db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Generate the transaction and corresponding request context.
-    let (mut complete_deposit_tx, ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
+    let (mut complete_deposit_tx, req_ctx) =
+        make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
     // Different: Okay, let's make sure we the recipients do not match.
     complete_deposit_tx.recipient = fake::Faker
         .fake_with_rng::<StacksPrincipal, _>(&mut rng)
         .into();
+    let ctx = TestSignerContext::from_db(db.clone());
 
-    let validate_future = complete_deposit_tx.validate(&db, &ctx);
+    let validate_future = complete_deposit_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
         Error::DepositValidation(ref err) => {
             assert_eq!(err.error, DepositErrorMsg::RecipientMismatch)
@@ -416,12 +423,14 @@ async fn complete_deposit_validation_invalid_mint_amount() {
     db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Generate the transaction and corresponding request context.
-    let (mut complete_deposit_tx, ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
+    let (mut complete_deposit_tx, req_ctx) =
+        make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
     // Different: The amount cannot exceed the amount in the deposit
     // request.
     complete_deposit_tx.amount = deposit_req.amount + 1;
+    let ctx = TestSignerContext::from_db(db.clone());
 
-    let validate_future = complete_deposit_tx.validate(&db, &ctx);
+    let validate_future = complete_deposit_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
         Error::DepositValidation(ref err) => {
             assert_eq!(err.error, DepositErrorMsg::InvalidMintAmount)
@@ -476,12 +485,14 @@ async fn complete_deposit_validation_invalid_fee() {
     db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Generate the transaction and corresponding request context.
-    let (mut complete_deposit_tx, ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
+    let (mut complete_deposit_tx, req_ctx) =
+        make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
     // Different: The amount cannot be less than the deposit amount less
     // the max-fee.
     complete_deposit_tx.amount = deposit_req.amount - deposit_req.max_fee - 1;
+    let ctx = TestSignerContext::from_db(db.clone());
 
-    let validate_future = complete_deposit_tx.validate(&db, &ctx);
+    let validate_future = complete_deposit_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
         Error::DepositValidation(ref err) => {
             assert_eq!(err.error, DepositErrorMsg::InvalidFee)
@@ -531,9 +542,10 @@ async fn complete_deposit_validation_sweep_tx_missing() {
     // not do that here.
 
     // Generate the transaction and corresponding request context.
-    let (complete_deposit_tx, ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
+    let (complete_deposit_tx, req_ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
+    let ctx = TestSignerContext::from_db(db.clone());
 
-    let validation_result = complete_deposit_tx.validate(&db, &ctx).await;
+    let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::DepositValidation(ref err) => {
             assert_eq!(err.error, DepositErrorMsg::SweepTransactionMissing)
@@ -606,11 +618,12 @@ async fn complete_deposit_validation_sweep_reorged() {
     db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Generate the transaction and corresponding request context.
-    let (complete_deposit_tx, mut ctx) =
+    let (complete_deposit_tx, mut req_ctx) =
         make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip2);
-    ctx.chain_tip = chain_tip.into();
+    req_ctx.chain_tip = chain_tip.into();
+    let ctx = TestSignerContext::from_db(db.clone());
 
-    let validation_result = complete_deposit_tx.validate(&db, &ctx).await;
+    let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::DepositValidation(ref err) => {
             assert_eq!(err.error, DepositErrorMsg::SweepTransactionReorged)
@@ -670,9 +683,10 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
     db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
     // Generate the transaction and corresponding request context.
-    let (complete_deposit_tx, ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
+    let (complete_deposit_tx, req_ctx) = make_complete_deposit(&deposit_req, &sweep_tx, &chain_tip);
+    let ctx = TestSignerContext::from_db(db.clone());
 
-    let validation_result = complete_deposit_tx.validate(&db, &ctx).await;
+    let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::DepositValidation(ref err) => {
             assert_eq!(err.error, DepositErrorMsg::MissingFromSweep)

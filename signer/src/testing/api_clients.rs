@@ -2,10 +2,11 @@
 
 use url::Url;
 
+use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::BitcoinInteract;
-use crate::block_observer::EmilyInteract;
 use crate::blocklist_client::BlocklistChecker;
+use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::stacks::api::StacksInteract;
 
@@ -23,7 +24,14 @@ impl TryFrom<&[Url]> for NoopApiClient {
 
 /// Noop implementation of the BitcoinInteract trait.
 impl BitcoinInteract for NoopApiClient {
-    fn get_tx(&self, _: &bitcoin::Txid) -> Result<GetTxResponse, Error> {
+    fn get_tx(&self, _: &bitcoin::Txid) -> Result<Option<GetTxResponse>, Error> {
+        unimplemented!()
+    }
+    fn get_tx_info(
+        &self,
+        _: &bitcoin::Txid,
+        _: &bitcoin::BlockHash,
+    ) -> Result<Option<BitcoinTxInfo>, Error> {
         unimplemented!()
     }
 
@@ -53,42 +61,42 @@ impl BitcoinInteract for NoopApiClient {
 /// Noop implementation of the StacksInteract trait.
 impl StacksInteract for NoopApiClient {
     async fn get_current_signer_set(
-        &mut self,
+        &self,
         _contract_principal: &clarity::types::chainstate::StacksAddress,
     ) -> Result<Vec<crate::keys::PublicKey>, Error> {
         unimplemented!()
     }
 
     async fn get_account(
-        &mut self,
+        &self,
         _address: &clarity::types::chainstate::StacksAddress,
     ) -> Result<crate::stacks::api::AccountInfo, Error> {
         unimplemented!()
     }
 
     async fn submit_tx(
-        &mut self,
+        &self,
         _tx: &blockstack_lib::chainstate::stacks::StacksTransaction,
     ) -> Result<crate::stacks::api::SubmitTxResponse, Error> {
         unimplemented!()
     }
 
     async fn get_block(
-        &mut self,
+        &self,
         _block_id: clarity::types::chainstate::StacksBlockId,
     ) -> Result<blockstack_lib::chainstate::nakamoto::NakamotoBlock, Error> {
         unimplemented!()
     }
 
     async fn get_tenure(
-        &mut self,
+        &self,
         _block_id: clarity::types::chainstate::StacksBlockId,
     ) -> Result<Vec<blockstack_lib::chainstate::nakamoto::NakamotoBlock>, Error> {
         unimplemented!()
     }
 
     async fn get_tenure_info(
-        &mut self,
+        &self,
     ) -> Result<blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo, Error> {
         unimplemented!()
     }
@@ -111,7 +119,7 @@ impl StacksInteract for NoopApiClient {
 
 /// Noop implementation of the EmilyInteract trait.
 impl EmilyInteract for NoopApiClient {
-    async fn get_deposits(&mut self) -> Vec<sbtc::deposits::CreateDepositRequest> {
+    async fn get_deposits(&self) -> Result<Vec<sbtc::deposits::CreateDepositRequest>, Error> {
         todo!()
     }
 }

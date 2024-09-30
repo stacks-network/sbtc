@@ -397,6 +397,13 @@ impl From<BitcoinTx> for bitcoin::Transaction {
 #[serde(transparent)]
 pub struct BitcoinTxId(bitcoin::Txid);
 
+impl Deref for BitcoinTxId {
+    type Target = bitcoin::Txid;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 impl BitcoinTxId {
     /// Return the inner bytes for the block hash
     pub fn into_bytes(&self) -> [u8; 32] {
@@ -437,6 +444,13 @@ impl BitcoinBlockHash {
 impl AsRef<[u8; 32]> for BitcoinBlockHash {
     fn as_ref(&self) -> &[u8; 32] {
         self.0.as_ref()
+    }
+}
+
+impl Deref for BitcoinBlockHash {
+    type Target = bitcoin::BlockHash;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 

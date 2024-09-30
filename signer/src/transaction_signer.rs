@@ -10,6 +10,7 @@ use std::collections::HashMap;
 
 use crate::blocklist_client;
 use crate::config::NetworkKind;
+use crate::context::Context;
 use crate::ecdsa::SignEcdsa as _;
 use crate::error::Error;
 use crate::keys;
@@ -387,10 +388,11 @@ where
     #[tracing::instrument(skip_all)]
     async fn handle_stacks_transaction_sign_request(
         &mut self,
+        ctx: &impl Context,
         request: &message::StacksTransactionSignRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
-        self.assert_valid_stackstransaction_sign_request(request, bitcoin_chain_tip)
+        self.assert_valid_stackstransaction_sign_request(ctx, request, bitcoin_chain_tip)
             .await?;
 
         let wallet = self.load_wallet(request, bitcoin_chain_tip).await?;
@@ -436,11 +438,12 @@ where
 
     async fn assert_valid_stackstransaction_sign_request(
         &mut self,
+        ctx: &impl Context,
         request: &message::StacksTransactionSignRequest,
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
         // TODO(255): Finish the implementation
-        let ctx = ReqContext {
+        let req_ctx = ReqContext {
             chain_tip: BitcoinBlockRef {
                 block_hash: *chain_tip,
                 // This is wrong
@@ -456,16 +459,10 @@ where
             deployer: StacksAddress::burn_address(false),
         };
         match &request.contract_call {
-            ContractCall::AcceptWithdrawalV1(contract) => {
-                contract.validate(&self.storage, &ctx).await
-            }
-            ContractCall::CompleteDepositV1(contract) => {
-                contract.validate(&self.storage, &ctx).await
-            }
-            ContractCall::RejectWithdrawalV1(contract) => {
-                contract.validate(&self.storage, &ctx).await
-            }
-            ContractCall::RotateKeysV1(contract) => contract.validate(&self.storage, &ctx).await,
+            ContractCall::AcceptWithdrawalV1(contract) => contract.validate(ctx, &req_ctx).await,
+            ContractCall::CompleteDepositV1(contract) => contract.validate(ctx, &req_ctx).await,
+            ContractCall::RejectWithdrawalV1(contract) => contract.validate(ctx, &req_ctx).await,
+            ContractCall::RotateKeysV1(contract) => contract.validate(ctx, &req_ctx).await,
         }
     }
 

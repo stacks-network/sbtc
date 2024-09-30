@@ -2,13 +2,15 @@ syntax = "proto3";
 
 package stacks.signer.v1;
 
+import "bitcoin/bitcoin.proto";
+import "crypto/common.proto";
 import "stacks/common.proto";
 
 // Represents a decision to accept or reject a deposit request.
 message SignerDepositDecision {
   // The bitcoin transaction ID of the transaction containing the deposit
   // request. It must be 32 bytes.
-  BitcoinTxid txid = 1;
+  bitcoin.BitcoinTxid txid = 1;
   // Index of the deposit request UTXO.
   uint32 output_index = 2;
   // Whether or not the signer has accepted the deposit request.
@@ -21,25 +23,24 @@ message SignerWithdrawDecision {
   uint64 request_id = 1;
   // The Stacks block ID of the Stacks block containing the request. It
   // must be 32 bytes.
-  StacksBlockId block_id = 2;
+  stacks.StacksBlockId block_id = 2;
   // The stacks transaction ID that lead to the creation of the
   // withdrawal request.
-  StacksTxid txid = 3;
+  stacks.StacksTxid txid = 3;
   // Whether or not the signer has accepted the withdrawal request.
   bool accepted = 4;
 }
 
-// The id for a transaction on the stacks blockchain.
-message StacksTxid {
-  stacks.Uint256 txid = 1;
+// Represents an acknowledgment of a signed Bitcoin transaction.
+message BitcoinTransactionSignAck {
+  // The ID of the acknowledged transaction.
+  bitcoin.BitcoinTxid txid = 1;
 }
 
-// The id for a transaction on the bitcoin blockchain.
-message BitcoinTxid {
-  stacks.Uint256 txid = 1;
-}
-
-// This type maps to the StacksBlockId in the stackslib Rust crate.
-message StacksBlockId {
-  stacks.Uint256 block_id = 1;
+// Represents a signature of a Stacks transaction.
+message StacksTransactionSignature {
+  // Id of the signed transaction.
+  stacks.StacksTxid txid = 1;
+  // A recoverable ECDSA signature over the transaction.
+  crypto.RecoverableSignature signature = 2;
 }

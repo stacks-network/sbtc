@@ -22,6 +22,8 @@ pub enum SignerCommand {
 pub enum SignerEvent {
     /// Signals that a P2P event has occurred.
     P2P(P2PEvent),
+    /// Signals that a block observer event has occurred.
+    BitcoinBlockObserved,
 }
 
 /// Events that can be triggered from the P2P network.

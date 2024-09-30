@@ -6,7 +6,6 @@ use stacks_common::types::chainstate::StacksAddress;
 use std::path::Path;
 use url::Url;
 
-use crate::error::Error;
 use crate::keys::PrivateKey;
 use error::SignerConfigError;
 use serialization::{
@@ -56,6 +55,16 @@ impl From<NetworkKind> for bitcoin::KnownHrp {
     }
 }
 
+impl From<NetworkKind> for bitcoin::Network {
+    fn from(network: NetworkKind) -> Self {
+        match network {
+            NetworkKind::Mainnet => bitcoin::Network::Bitcoin,
+            NetworkKind::Testnet => bitcoin::Network::Testnet,
+            NetworkKind::Regtest => bitcoin::Network::Regtest,
+        }
+    }
+}
+
 impl NetworkKind {
     /// Returns whether the network variant is Mainnet.
     pub fn is_mainnet(&self) -> bool {
@@ -74,6 +83,10 @@ pub struct Settings {
     pub signer: SignerConfig,
     /// Bitcoin core configuration
     pub bitcoin: BitcoinConfig,
+    /// Stacks configuration
+    pub stacks: StacksConfig,
+    /// Emily client configuration
+    pub emily: EmilyClientConfig,
 }
 
 /// Configuration used for the [`BitcoinCoreClient`](sbtc::rpc::BitcoinCoreClient).
@@ -81,7 +94,11 @@ pub struct Settings {
 pub struct BitcoinConfig {
     /// Bitcoin RPC endpoints.
     #[serde(deserialize_with = "url_deserializer_vec")]
-    pub endpoints: Vec<url::Url>,
+    pub rpc_endpoints: Vec<Url>,
+
+    /// Bitcoin ZeroMQ block-hash stream endpoint.
+    #[serde(deserialize_with = "url_deserializer_vec")]
+    pub block_hash_stream_endpoints: Vec<Url>,
 }
 
 /// Signer network configuration
@@ -137,6 +154,40 @@ impl Validatable for BlocklistClientConfig {
             return Err(ConfigError::Message(
                 "[blocklist_client] Port must be between 1 and 65535".to_string(),
             ));
+        }
+
+        Ok(())
+    }
+}
+
+/// Emily API configuration.
+#[derive(Deserialize, Clone, Debug)]
+pub struct EmilyClientConfig {
+    /// Emily API endpoints.
+    #[serde(deserialize_with = "url_deserializer_vec")]
+    pub endpoints: Vec<Url>,
+}
+
+impl Validatable for EmilyClientConfig {
+    fn validate(&self, _: &Settings) -> Result<(), ConfigError> {
+        if self.endpoints.is_empty() {
+            return Err(ConfigError::Message(
+                "[emily_client] At least one Emily API endpoint must be provided".to_string(),
+            ));
+        }
+
+        for endpoint in &self.endpoints {
+            if !["http", "https"].contains(&endpoint.scheme()) {
+                return Err(ConfigError::Message(
+                    "[emily_client] Invalid URL scheme: must be HTTP or HTTPS".to_string(),
+                ));
+            }
+
+            if endpoint.host_str().is_none() {
+                return Err(ConfigError::Message(
+                    "[emily_client] Invalid URL: host is required".to_string(),
+                ));
+            }
         }
 
         Ok(())
@@ -254,7 +305,10 @@ impl Settings {
             .with_list_parse_key("signer.p2p.seeds")
             .with_list_parse_key("signer.p2p.listen_on")
             .with_list_parse_key("signer.p2p.public_endpoints")
-            .with_list_parse_key("bitcoin.endpoints")
+            .with_list_parse_key("bitcoin.rpc_endpoints")
+            .with_list_parse_key("bitcoin.block_hash_stream_endpoints")
+            .with_list_parse_key("stacks.endpoints")
+            .with_list_parse_key("emily.endpoints")
             .prefix_separator("_");
 
         let mut cfg_builder = Config::builder();
@@ -282,20 +336,9 @@ impl Settings {
     }
 }
 
-/// A struct for the entries in the signers Config.toml (which is currently
-/// located in src/config/default.toml)
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct StacksSettings {
-    /// The configuration entries related to the Stacks node
-    pub node: StacksNodeSettings,
-}
-
 /// Settings associated with the stacks node that this signer uses for information
 #[derive(Debug, Clone, serde::Deserialize)]
-pub struct StacksNodeSettings {
-    /// TODO(225): We'll want to support specifying multiple Stacks Nodes
-    /// endpoints.
-    ///
+pub struct StacksConfig {
     /// The endpoint to use when making requests to a stacks node.
     #[serde(deserialize_with = "url_deserializer_vec")]
     pub endpoints: Vec<url::Url>,
@@ -304,37 +347,21 @@ pub struct StacksNodeSettings {
     pub nakamoto_start_height: u64,
 }
 
-impl StacksSettings {
-    /// Create a new StacksSettings object by reading the relevant entries
-    /// in the signer's config.toml. The values there can be overridden by
-    /// environment variables.
-    ///
-    /// # Notes
-    ///
-    /// The relevant environment variables and the config entries that are
-    /// overridden are:
-    ///
-    /// * SIGNER_STACKS_API_ENDPOINT <-> stacks.api.endpoint
-    /// * SIGNER_STACKS_NODE_ENDPOINTS <-> stacks.node.endpoints
-    ///
-    /// Each of these overrides an entry in the signer's `config.toml`
-    pub fn new_from_config() -> Result<Self, Error> {
-        let source = File::with_name("./src/config/default");
-        let env = Environment::with_prefix("SIGNER")
-            .prefix_separator("_")
-            .list_separator(",")
-            .try_parsing(true)
-            .with_list_parse_key("stacks.node.endpoints")
-            .separator("_");
+impl Validatable for StacksConfig {
+    fn validate(&self, _: &Settings) -> Result<(), ConfigError> {
+        if self.endpoints.is_empty() {
+            return Err(ConfigError::Message(
+                "[stacks] Endpoints cannot be empty".to_string(),
+            ));
+        }
 
-        let conf = Config::builder()
-            .add_source(source)
-            .add_source(env)
-            .build()
-            .map_err(Error::SignerConfig)?;
+        if self.nakamoto_start_height == 0 {
+            return Err(ConfigError::Message(
+                "[stacks] Nakamoto start height must be greater than zero".to_string(),
+            ));
+        }
 
-        conf.get::<StacksSettings>("stacks")
-            .map_err(Error::StacksApiConfig)
+        Ok(())
     }
 }
 
@@ -344,6 +371,7 @@ mod tests {
 
     use serialization::try_parse_p2p_multiaddr;
 
+    use crate::error::Error;
     use crate::testing::clear_env;
 
     use super::*;
@@ -396,11 +424,11 @@ mod tests {
         );
 
         assert_eq!(
-            settings.bitcoin.endpoints,
+            settings.bitcoin.rpc_endpoints,
             vec![url("http://user:pass@localhost:18443")]
         );
-        assert_eq!(settings.bitcoin.endpoints[0].username(), "user");
-        assert_eq!(settings.bitcoin.endpoints[0].password(), Some("pass"));
+        assert_eq!(settings.bitcoin.rpc_endpoints[0].username(), "user");
+        assert_eq!(settings.bitcoin.rpc_endpoints[0].password(), Some("pass"));
         assert_eq!(
             settings.signer.event_observer.bind,
             "0.0.0.0:8801".parse::<SocketAddr>().unwrap()
@@ -437,21 +465,34 @@ mod tests {
         clear_env();
 
         std::env::set_var(
-            "SIGNER_BITCOIN__ENDPOINTS",
+            "SIGNER_BITCOIN__RPC_ENDPOINTS",
             "http://user:pass@localhost:1234,http://foo:bar@localhost:5678",
+        );
+
+        std::env::set_var(
+            "SIGNER_BITCOIN__BLOCK_HASH_STREAM_ENDPOINTS",
+            "tcp://localhost:1234,tcp://localhost:5678",
         );
 
         let settings = Settings::new_from_default_config().unwrap();
 
-        assert_eq!(settings.bitcoin.endpoints.len(), 2);
+        assert_eq!(settings.bitcoin.rpc_endpoints.len(), 2);
         assert!(settings
             .bitcoin
-            .endpoints
+            .rpc_endpoints
             .contains(&url("http://user:pass@localhost:1234")));
         assert!(settings
             .bitcoin
-            .endpoints
+            .rpc_endpoints
             .contains(&url("http://foo:bar@localhost:5678")));
+        assert!(settings
+            .bitcoin
+            .block_hash_stream_endpoints
+            .contains(&url("tcp://localhost:1234")));
+        assert!(settings
+            .bitcoin
+            .block_hash_stream_endpoints
+            .contains(&url("tcp://localhost:5678")));
     }
 
     #[test]
@@ -497,37 +538,43 @@ mod tests {
 
         // The default toml used here specifies http://localhost:20443
         // as the stacks node endpoint.
-        let settings = StacksSettings::new_from_config().unwrap();
-        let host = settings.node.endpoints[0].host();
+        let settings = Settings::new_from_default_config().unwrap();
+        let host = settings.stacks.endpoints[0].host();
         assert_eq!(host, Some(url::Host::Domain("localhost")));
-        assert_eq!(settings.node.endpoints[0].port(), Some(20443));
+        assert_eq!(settings.stacks.endpoints[0].port(), Some(20443));
 
         std::env::set_var(
-            "SIGNER_STACKS_NODE_ENDPOINTS",
+            "SIGNER_STACKS__ENDPOINTS",
             "http://whatever:1234,http://whateva:4321",
         );
 
-        let settings = StacksSettings::new_from_config().unwrap();
-        let host = settings.node.endpoints[0].host();
+        let settings = Settings::new_from_default_config().unwrap();
+        let host = settings.stacks.endpoints[0].host();
         assert_eq!(host, Some(url::Host::Domain("whatever")));
-        assert_eq!(settings.node.endpoints[0].port(), Some(1234));
-        let host = settings.node.endpoints[1].host();
+        assert_eq!(settings.stacks.endpoints[0].port(), Some(1234));
+        let host = settings.stacks.endpoints[1].host();
         assert_eq!(host, Some(url::Host::Domain("whateva")));
-        assert_eq!(settings.node.endpoints[1].port(), Some(4321));
+        assert_eq!(settings.stacks.endpoints[1].port(), Some(4321));
 
-        std::env::set_var("SIGNER_STACKS_NODE_ENDPOINTS", "http://127.0.0.1:5678");
+        std::env::set_var("SIGNER_STACKS__ENDPOINTS", "http://127.0.0.1:5678");
 
-        let settings = StacksSettings::new_from_config().unwrap();
+        let settings = Settings::new_from_default_config().unwrap();
         let ip: std::net::Ipv4Addr = "127.0.0.1".parse().unwrap();
-        assert_eq!(settings.node.endpoints[0].host(), Some(url::Host::Ipv4(ip)));
-        assert_eq!(settings.node.endpoints[0].port(), Some(5678));
+        assert_eq!(
+            settings.stacks.endpoints[0].host(),
+            Some(url::Host::Ipv4(ip))
+        );
+        assert_eq!(settings.stacks.endpoints[0].port(), Some(5678));
 
-        std::env::set_var("SIGNER_STACKS_NODE_ENDPOINTS", "http://[::1]:9101");
+        std::env::set_var("SIGNER_STACKS__ENDPOINTS", "http://[::1]:9101");
 
-        let settings = StacksSettings::new_from_config().unwrap();
+        let settings = Settings::new_from_default_config().unwrap();
         let ip: std::net::Ipv6Addr = "::1".parse().unwrap();
-        assert_eq!(settings.node.endpoints[0].host(), Some(url::Host::Ipv6(ip)));
-        assert_eq!(settings.node.endpoints[0].port(), Some(9101));
+        assert_eq!(
+            settings.stacks.endpoints[0].host(),
+            Some(url::Host::Ipv6(ip))
+        );
+        assert_eq!(settings.stacks.endpoints[0].port(), Some(9101));
     }
 
     #[test]

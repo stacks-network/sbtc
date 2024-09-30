@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use axum::routing::get;
@@ -8,11 +9,15 @@ use clap::Parser;
 use signer::api;
 use signer::api::ApiState;
 use signer::bitcoin::rpc::BitcoinCoreClient;
+use signer::bitcoin::zmq::BitcoinCoreMessageStream;
+use signer::block_observer;
 use signer::config::Settings;
 use signer::context::Context;
 use signer::context::SignerContext;
+use signer::emily_client::EmilyClient;
 use signer::error::Error;
 use signer::network::libp2p::SignerSwarmBuilder;
+use signer::stacks::api::StacksClient;
 use signer::storage::postgres::PgStore;
 use signer::util::ApiFallbackClient;
 use tokio::signal;
@@ -30,7 +35,6 @@ struct SignerArgs {
     /// pending migrations to the database on startup.
     #[clap(long)]
     migrate_db: bool,
-    // TODO(532): Add db-migrations subcommand to print out all/pending db migrations sql
 }
 
 #[tokio::main]
@@ -58,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Initialize the signer context.
-    let context = SignerContext::<_, ApiFallbackClient<BitcoinCoreClient>>::init(&settings, db)?;
+    let context = SignerContext::<_, ApiFallbackClient<BitcoinCoreClient>>::init(settings, db)?;
 
     // Run the application components concurrently. We're `join!`ing them
     // here so that every component can shut itself down gracefully when
@@ -217,12 +221,41 @@ async fn run_stacks_event_observer(ctx: impl Context + 'static) -> Result<(), Er
 }
 
 #[allow(dead_code)] // Remove when implemented
-async fn run_block_observer(_ctx: impl Context) -> Result<(), Error> {
-    todo!() //TODO(548)
+async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
+    let config = ctx.config().clone();
+
+    // TODO: Need to handle multiple endpoints, so some sort of
+    // failover-stream-wrapper.
+    let stream = BitcoinCoreMessageStream::new_from_endpoint(
+        config.bitcoin.block_hash_stream_endpoints[0].as_str(),
+        &["hashblock"],
+    )
+    .await
+    .unwrap();
+
+    // TODO: Get clients from context when implemented
+    let emily_client: ApiFallbackClient<EmilyClient> =
+        TryFrom::try_from(&config.emily.endpoints[..])?;
+    let stacks_client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&config)?;
+
+    // TODO: We should have a new() method that builds from the context
+    let block_observer = block_observer::BlockObserver {
+        context: ctx,
+        bitcoin_blocks: stream.to_block_hash_stream(),
+        stacks_client,
+        emily_client,
+        deposit_requests: HashMap::new(),
+        horizon: 1,
+        network: config.signer.network.into(),
+    };
+
+    block_observer.run().await
 }
 
 #[allow(dead_code)] // Remove when implemented
 async fn run_transaction_signer(_ctx: impl Context) -> Result<(), Error> {
+    // threshold: 2
+    // context_window: 10000
     todo!()
 }
 

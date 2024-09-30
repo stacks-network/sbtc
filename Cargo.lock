@@ -5861,6 +5861,7 @@ dependencies = [
  "clap",
  "clarity",
  "config 0.14.0",
+ "emily-client",
  "fake",
  "futures",
  "hashbrown 0.14.5",

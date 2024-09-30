@@ -1,13 +1,20 @@
 //! Contains client wrappers for bitcoin core and electrum.
 
+use std::sync::Arc;
+
 use bitcoin::Amount;
+use bitcoin::Block;
 use bitcoin::BlockHash;
 use bitcoin::Denomination;
+use bitcoin::OutPoint;
 use bitcoin::Transaction;
 use bitcoin::Txid;
 use bitcoin::Wtxid;
 use bitcoincore_rpc::json::EstimateMode;
+use bitcoincore_rpc::jsonrpc::error::Error as JsonRpcError;
+use bitcoincore_rpc::jsonrpc::error::RpcError;
 use bitcoincore_rpc::Auth;
+use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi as _;
 use bitcoincore_rpc_json::GetRawTransactionResultVin;
 use bitcoincore_rpc_json::GetRawTransactionResultVout as BitcoinTxInfoVout;
@@ -15,7 +22,9 @@ use bitcoincore_rpc_json::GetRawTransactionResultVoutScriptPubKey as BitcoinTxIn
 use serde::Deserialize;
 use url::Url;
 
+use crate::bitcoin::BitcoinInteract;
 use crate::error::Error;
+use crate::keys::PublicKey;
 
 /// A slimmed down type representing a response from bitcoin-core's
 /// getrawtransaction RPC.
@@ -151,17 +160,18 @@ pub struct FeeEstimate {
 }
 
 /// A client for interacting with bitcoin-core
+#[derive(Debug, Clone)]
 pub struct BitcoinCoreClient {
     /// The underlying bitcoin-core client
-    inner: bitcoincore_rpc::Client,
+    inner: Arc<bitcoincore_rpc::Client>,
 }
 
 /// Implement TryFrom for Url to allow for easy conversion from a URL to a
 /// BitcoinCoreClient.
-impl TryFrom<Url> for BitcoinCoreClient {
+impl TryFrom<&Url> for BitcoinCoreClient {
     type Error = Error;
 
-    fn try_from(url: Url) -> Result<Self, Self::Error> {
+    fn try_from(url: &Url) -> Result<Self, Self::Error> {
         let username = url.username().to_string();
         let password = url.password().unwrap_or_default().to_string();
         let host = url
@@ -184,6 +194,7 @@ impl BitcoinCoreClient {
     pub fn new(url: &str, username: String, password: String) -> Result<Self, Error> {
         let auth = Auth::UserPass(username, password);
         let client = bitcoincore_rpc::Client::new(url, auth)
+            .map(Arc::new)
             .map_err(|err| Error::BitcoinCoreRpcClient(err, url.to_string()))?;
 
         Ok(Self { inner: client })
@@ -194,16 +205,31 @@ impl BitcoinCoreClient {
         &self.inner
     }
 
+    /// Fetch the block identified by the given block hash.
+    pub fn get_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, Error> {
+        match self.inner.get_block(block_hash) {
+            Ok(block) => Ok(Some(block)),
+            Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
+            Err(error) => Err(Error::BitcoinCoreGetBlock(error, *block_hash)),
+        }
+    }
+
     /// Fetch and decode raw transaction from bitcoin-core using the
-    /// getrawtransaction RPC with a verbosity of 1.
+    /// getrawtransaction RPC with a verbosity of 1. None is returned if
+    /// the node cannot find the transaction in a bitcoin block or the
+    /// mempool.
     ///
     /// # Notes
     ///
     /// By default, this call only returns a transaction if it is in the
     /// mempool. If -txindex is enabled on bitcoin-core and no blockhash
     /// argument is passed, it will return the transaction if it is in the
-    /// mempool or any block.
-    pub fn get_tx(&self, txid: &Txid) -> Result<GetTxResponse, Error> {
+    /// mempool or any block. We require -txindex to be enabled (same with
+    /// stacks-core[^1]) so this should work with transactions in either
+    /// the mempool and a bitcoin block.
+    ///
+    /// [^1]: <https://docs.stacks.co/guides-and-tutorials/run-a-miner/mine-mainnet-stacks-tokens>
+    pub fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error> {
         let args = [
             serde_json::to_value(txid).map_err(Error::JsonSerialize)?,
             // This is the verbosity level. The acceptable values are 0, 1,
@@ -213,9 +239,15 @@ impl BitcoinCoreClient {
             serde_json::Value::Null,
         ];
 
-        self.inner
-            .call("getrawtransaction", &args)
-            .map_err(|err| Error::GetTransactionBitcoinCore(err, *txid))
+        match self.inner.call::<GetTxResponse>("getrawtransaction", &args) {
+            Ok(tx_info) => Ok(Some(tx_info)),
+            // If the transaction is not found in an
+            // actual block then the message is "No such transaction found
+            // in the provided block. Use gettransaction for wallet
+            // transactions." In both cases the code is the same.
+            Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
+            Err(err) => Err(Error::BitcoinCoreGetTransaction(err, *txid)),
+        }
     }
 
     /// Fetch and decode raw transaction from bitcoin-core using the
@@ -225,7 +257,11 @@ impl BitcoinCoreClient {
     ///
     /// We require bitcoin-core v25 or later. For bitcoin-core v24 and
     /// earlier, this function will return an error.
-    pub fn get_tx_info(&self, txid: &Txid, block_hash: &BlockHash) -> Result<BitcoinTxInfo, Error> {
+    pub fn get_tx_info(
+        &self,
+        txid: &Txid,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BitcoinTxInfo>, Error> {
         let args = [
             serde_json::to_value(txid).map_err(Error::JsonSerialize)?,
             // This is the verbosity level. The acceptable values are 0, 1,
@@ -235,9 +271,16 @@ impl BitcoinCoreClient {
             serde_json::to_value(block_hash).map_err(Error::JsonSerialize)?,
         ];
 
-        self.inner
-            .call("getrawtransaction", &args)
-            .map_err(|err| Error::GetTransactionBitcoinCore(err, *txid))
+        match self.inner.call::<BitcoinTxInfo>("getrawtransaction", &args) {
+            Ok(tx_info) => Ok(Some(tx_info)),
+            // If the `block_hash` is not found then the message is "Block
+            // hash not found", while if the transaction is not found in an
+            // actual block then the message is "No such transaction found
+            // in the provided block. Use gettransaction for wallet
+            // transactions." In both cases the code is the same.
+            Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
+            Err(err) => Err(Error::BitcoinCoreGetTransaction(err, *txid)),
+        }
     }
 
     /// Estimates the approximate fee in sats per vbyte needed for a
@@ -273,5 +316,42 @@ impl BitcoinCoreClient {
         };
 
         Ok(FeeEstimate { sats_per_vbyte })
+    }
+}
+
+impl BitcoinInteract for BitcoinCoreClient {
+    async fn broadcast_transaction(&self, _: &Transaction) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    async fn get_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, Error> {
+        self.get_block(block_hash)
+    }
+
+    fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error> {
+        self.get_tx(txid)
+    }
+
+    fn get_tx_info(
+        &self,
+        txid: &Txid,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BitcoinTxInfo>, Error> {
+        self.get_tx_info(txid, block_hash)
+    }
+
+    async fn estimate_fee_rate(&self) -> Result<f64, Error> {
+        todo!()
+    }
+
+    async fn get_signer_utxo(
+        &self,
+        _: &PublicKey,
+    ) -> Result<Option<super::utxo::SignerUtxo>, Error> {
+        todo!()
+    }
+
+    async fn get_last_fee(&self, _: OutPoint) -> Result<Option<super::utxo::Fees>, Error> {
+        todo!()
     }
 }
