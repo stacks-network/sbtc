@@ -30,7 +30,7 @@ pub trait BitcoinInteract {
     /// get tx
     fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error>;
 
-    /// get tx info
+    /// Get a transaction with additional information about it.
     fn get_tx_info(
         &self,
         txid: &Txid,
