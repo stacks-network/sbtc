@@ -479,7 +479,7 @@ impl super::DbRead for SharedStore {
                         return Some(SignerUtxo {
                             outpoint,
                             amount: tx_out.value.to_sat(),
-                            // TODO: given we filter the txs by script_pubkey, is this right?
+                            // Txs were filtered based on the `aggregate_key` script pubkey
                             public_key: XOnlyPublicKey::from(aggregate_key),
                         });
                     }

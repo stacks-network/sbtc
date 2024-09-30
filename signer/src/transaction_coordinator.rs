@@ -595,8 +595,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_get_signer_utxo_highest() {
-        test_environment().assert_get_signer_utxo_highest().await;
+    async fn should_get_signer_utxo_fork() {
+        test_environment().assert_get_signer_utxo_fork().await;
     }
 
     #[tokio::test]
