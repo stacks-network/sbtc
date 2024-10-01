@@ -955,6 +955,7 @@ impl super::DbRead for PgStore {
         aggregate_key: &PublicKey,
         context_window: u16,
     ) -> Result<Option<SignerUtxo>, Error> {
+        // TODO(585): once the new table is ready, check if it can be used to simplify this
         let script_pubkey = aggregate_key.signers_script_pubkey();
         let mut txs = sqlx::query_as::<_, model::Transaction>(
             r#"
@@ -996,7 +997,7 @@ impl super::DbRead for PgStore {
         while let Some(tx) = txs.next().await {
             let tx = tx.map_err(Error::SqlxQuery)?;
             let bt_tx = bitcoin::Transaction::consensus_decode(&mut tx.tx.as_slice())
-                .map_err(Error::DecodeBitcoinBlock)?;
+                .map_err(Error::DecodeBitcoinTransaction)?;
             if !bt_tx
                 .output
                 .first()
@@ -1032,7 +1033,7 @@ impl super::DbRead for PgStore {
         .iter()
         .map(|tx| {
             bitcoin::Transaction::consensus_decode(&mut tx.tx.as_slice())
-                .map_err(Error::DecodeBitcoinBlock)
+                .map_err(Error::DecodeBitcoinTransaction)
         })
         .collect::<Result<Vec<bitcoin::Transaction>, _>>()?;
 

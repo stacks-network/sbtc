@@ -127,6 +127,10 @@ pub enum Error {
     DecodeBitcoinBlock(#[source] bitcoin::consensus::encode::Error),
 
     /// Parsing the Hex Error
+    #[error("could not decode the bitcoin transaction: {0}")]
+    DecodeBitcoinTransaction(#[source] bitcoin::consensus::encode::Error),
+
+    /// Parsing the Hex Error
     #[error("could not decode the Nakamoto block with ID: {1}; {0}")]
     DecodeNakamotoBlock(#[source] blockstack_lib::codec::Error, StacksBlockId),
 
