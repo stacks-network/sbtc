@@ -1737,7 +1737,7 @@ mod tests {
             blocks.push(NakamotoBlock::consensus_deserialize(bytes).unwrap());
         }
 
-        let deployer = StacksAddress::new(2, Hash160([0u8; 20]));
+        let deployer = StacksAddress::burn_address(false);
         let txs = extract_relevant_transactions(&blocks, &deployer);
         assert!(txs.is_empty());
 
@@ -1755,5 +1755,32 @@ mod tests {
 
         let txs = extract_relevant_transactions(&blocks, &deployer);
         assert_eq!(txs.len(), 1);
+
+        // We've just seen that if the deployer supplied here matches the
+        // address in the transaction, then we will consider it a relevant
+        // transaction. Now what if someone tries to pull a fast one by
+        // deploying their own modified version of the sBTC smart contracts
+        // and creating contract calls against that? We'll the address of
+        // these contract calls won't match the ones that we are interested
+        // in and we will filter them out. We test that now,
+        let contract_call = TransactionContractCall {
+            // This is the address of the poser that deployed their own
+            // versions of the sBTC smart contracts.
+            address: StacksAddress::new(2, Hash160([1; 20])),
+            contract_name: ContractName::from(contract_name),
+            function_name: ClarityName::from(function_name),
+            function_args: Vec::new(),
+        };
+        // The last transaction in the last nakamoto block is a legit
+        // transaction. Let's remove it and replace it with a non-legit
+        // one.
+        let last_block = blocks.last_mut().unwrap();
+        let mut tx = last_block.txs.pop().unwrap();
+        tx.payload = TransactionPayload::ContractCall(contract_call);
+        last_block.txs.push(tx);
+
+        // Now there aren't any relevant transactions in the block
+        let txs = extract_relevant_transactions(&blocks, &deployer);
+        assert!(txs.is_empty());
     }
 }
