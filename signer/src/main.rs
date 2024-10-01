@@ -82,6 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // running for the signer to be operational.
         run_checked(run_stacks_event_observer, &context),
         run_checked(run_libp2p_swarm, &context),
+        run_checked(run_block_observer, &context),
     );
 
     Ok(())
