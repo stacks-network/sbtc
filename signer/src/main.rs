@@ -65,7 +65,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Initialize the signer context.
-    let context = SignerContext::<_, ApiFallbackClient<BitcoinCoreClient>>::init(settings, db)?;
+    let context = SignerContext::<
+        _,
+        ApiFallbackClient<BitcoinCoreClient>,
+        ApiFallbackClient<StacksClient>,
+    >::init(settings, db)?;
 
     // Run the application components concurrently. We're `join!`ing them
     // here so that every component can shut itself down gracefully when

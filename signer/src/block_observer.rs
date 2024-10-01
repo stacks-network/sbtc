@@ -389,6 +389,7 @@ mod tests {
             Settings::new_from_default_config().unwrap(),
             storage.clone(),
             test_harness.clone(),
+            test_harness.clone(),
         );
         // There must be at least one signal receiver alive when the block observer
         // later tries to send a signal, hence this line.
@@ -495,6 +496,7 @@ mod tests {
             Settings::new_from_default_config().unwrap(),
             storage.clone(),
             test_harness.clone(),
+            test_harness.clone(),
         );
 
         let mut block_observer = BlockObserver {
@@ -572,6 +574,7 @@ mod tests {
             Settings::new_from_default_config().unwrap(),
             storage.clone(),
             test_harness.clone(),
+            test_harness.clone(),
         );
 
         let mut block_observer = BlockObserver {
@@ -639,6 +642,7 @@ mod tests {
         let ctx = SignerContext::new(
             Settings::new_from_default_config().unwrap(),
             storage.clone(),
+            test_harness.clone(),
             test_harness.clone(),
         );
 

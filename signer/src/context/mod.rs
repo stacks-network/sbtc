@@ -9,6 +9,7 @@ use url::Url;
 use crate::bitcoin::BitcoinInteract;
 use crate::config::Settings;
 use crate::error::Error;
+use crate::stacks::api::StacksInteract;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 pub use messaging::*;
@@ -33,12 +34,14 @@ pub trait Context: Clone + Sync + Send {
     fn get_storage_mut(&self) -> impl DbRead + DbWrite + Clone + Sync + Send;
     /// Get a handle to a Bitcoin client.
     fn get_bitcoin_client(&self) -> impl BitcoinInteract + Clone;
+    /// Get a handler to the Stacks client.
+    fn get_stacks_client(&self) -> impl StacksInteract + Clone;
 }
 
 /// Signer context which is passed to different components within the
 /// signer binary.
 #[derive(Debug, Clone)]
-pub struct SignerContext<S, BC> {
+pub struct SignerContext<S, BC, ST> {
     config: Settings,
     // Handle to the app signalling channel. This keeps the channel alive
     // for the duration of the program and is used both to send messages
@@ -55,36 +58,40 @@ pub struct SignerContext<S, BC> {
     // TODO: Additional clients to be added in future PRs. We may want
     // to break the clients out into a separate struct to keep the field
     // count down.
-    // /// Handle to a Stacks-RPC fallback-client.
-    //stacks_client: ApiFallbackClient<ST>,
+    /// Handle to a Stacks-RPC fallback-client.
+    stacks_client: ST,
     // /// Handle to a Emily-API fallback-client.
     //emily_client: ApiFallbackClient<EM>,
     // /// Handle to a Blocklist-API fallback-client.
     //blocklist_client: ApiFallbackClient<BL>,
 }
 
-impl<S, BC> SignerContext<S, BC>
+impl<S, BC, ST> SignerContext<S, BC, ST>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
     BC: for<'a> TryFrom<&'a [Url]> + BitcoinInteract + Clone + Sync + Send + 'static,
+    ST: for<'a> TryFrom<&'a Settings> + StacksInteract + Clone + Sync + Send + 'static,
     Error: for<'a> From<<BC as TryFrom<&'a [Url]>>::Error>,
+    Error: for<'a> From<<ST as TryFrom<&'a Settings>>::Error>,
 {
     /// Initializes a new [`SignerContext`], automatically creating clients
     /// based on the provided types.
     pub fn init(config: Settings, db: S) -> Result<Self, Error> {
         let bc = BC::try_from(&config.bitcoin.rpc_endpoints)?;
+        let st = ST::try_from(&config)?;
 
-        Ok(Self::new(config, db, bc))
+        Ok(Self::new(config, db, bc, st))
     }
 }
 
-impl<S, BC> SignerContext<S, BC>
+impl<S, BC, ST> SignerContext<S, BC, ST>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
     BC: BitcoinInteract + Clone + Sync + Send,
+    ST: StacksInteract + Clone + Sync + Send,
 {
     /// Create a new signer context.
-    pub fn new(config: Settings, db: S, bitcoin_client: BC) -> Self {
+    pub fn new(config: Settings, db: S, bitcoin_client: BC, stacks_client: ST) -> Self {
         // TODO: Decide on the channel capacity and how we should handle slow consumers.
         // NOTE: Ideally consumers which require processing time should pull the relevent
         // messages into a local VecDequeue and process them in their own time.
@@ -97,14 +104,16 @@ where
             term_tx,
             storage: db,
             bitcoin_client,
+            stacks_client,
         }
     }
 }
 
-impl<S, BC> Context for SignerContext<S, BC>
+impl<S, BC, ST> Context for SignerContext<S, BC, ST>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
     BC: BitcoinInteract + Clone + Sync + Send,
+    ST: StacksInteract + Clone + Sync + Send,
 {
     fn config(&self) -> &Settings {
         &self.config
@@ -146,6 +155,10 @@ where
 
     fn get_bitcoin_client(&self) -> impl BitcoinInteract + Clone {
         self.bitcoin_client.clone()
+    }
+
+    fn get_stacks_client(&self) -> impl StacksInteract + Clone {
+        self.stacks_client.clone()
     }
 }
 

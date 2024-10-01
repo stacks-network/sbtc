@@ -29,7 +29,7 @@ use crate::storage::postgres::PgStore;
 pub const DEFAULT_CONFIG_PATH: Option<&str> = Some("./src/config/default");
 
 /// A [`SignerContext`] which uses [`NoopApiClient`]s.
-pub type NoopSignerContext<S> = SignerContext<S, NoopApiClient>;
+pub type NoopSignerContext<S> = SignerContext<S, NoopApiClient, NoopApiClient>;
 
 impl Settings {
     /// Create a new `Settings` instance from the default configuration file.
@@ -42,7 +42,7 @@ impl Settings {
 /// A client that can be used for integration tests. The settings are
 /// loaded from the default config toml, and the PgStore is assumed to
 /// point to a test database.
-pub type TestSignerContext = SignerContext<PgStore, BitcoinCoreClient>;
+pub type TestSignerContext = SignerContext<PgStore, BitcoinCoreClient, NoopApiClient>;
 
 impl TestSignerContext {
     /// Create a new one from the given database connection pool with the
@@ -52,7 +52,7 @@ impl TestSignerContext {
 
         let url = config.bitcoin.rpc_endpoints.first().unwrap();
         let bitcoin_client = BitcoinCoreClient::try_from(url).unwrap();
-        Self::new(config, db, bitcoin_client)
+        Self::new(config, db, bitcoin_client, NoopApiClient)
     }
 }
 
