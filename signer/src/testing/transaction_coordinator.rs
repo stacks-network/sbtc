@@ -290,18 +290,16 @@ where
         test_data.remove(original_test_data);
         self.write_test_data(&test_data).await;
 
-        let chain_tip = self
-            .context
-            .get_storage()
+        let storage = self.context.get_storage();
+
+        let chain_tip = storage
             .get_bitcoin_canonical_chain_tip()
             .await
             .expect("storage failure")
             .expect("missing block");
         assert_eq!(chain_tip, block_ref.block_hash);
 
-        let signer_utxo = self
-            .context
-            .get_storage()
+        let signer_utxo = storage
             .get_signer_utxo(&chain_tip, &aggregate_key, self.context_window as u16)
             .await
             .unwrap()
@@ -382,6 +380,8 @@ where
         test_data.remove(original_test_data);
         self.write_test_data(&test_data).await;
 
+        let storage = self.context.get_storage();
+
         for (chain_tip, tx, amt) in [
             (&block_a1, &tx_a1, 0xA1),
             (&block_a2, &tx_a2, 0xA2),
@@ -397,9 +397,7 @@ where
                 amount: amt,
                 public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
             };
-            let signer_utxo = self
-                .context
-                .get_storage()
+            let signer_utxo = storage
                 .get_signer_utxo(
                     &chain_tip.block_hash,
                     &aggregate_key,
@@ -412,16 +410,12 @@ where
         }
 
         // Check context window
-        assert!(self
-            .context
-            .get_storage()
+        assert!(storage
             .get_signer_utxo(&block_c2.block_hash, &aggregate_key, 1)
             .await
             .unwrap()
             .is_none());
-        assert!(self
-            .context
-            .get_storage()
+        assert!(storage
             .get_signer_utxo(&block_c2.block_hash, &aggregate_key, 2)
             .await
             .unwrap()
@@ -500,18 +494,16 @@ where
         test_data.remove(original_test_data);
         self.write_test_data(&test_data).await;
 
-        let chain_tip = self
-            .context
-            .get_storage()
+        let storage = self.context.get_storage();
+
+        let chain_tip = storage
             .get_bitcoin_canonical_chain_tip()
             .await
             .expect("storage failure")
             .expect("missing block");
         assert_eq!(chain_tip, block_ref.block_hash);
 
-        let signer_utxo = self
-            .context
-            .get_storage()
+        let signer_utxo = storage
             .get_signer_utxo(&chain_tip, &aggregate_key, self.context_window as u16)
             .await
             .unwrap()
