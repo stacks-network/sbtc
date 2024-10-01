@@ -11,6 +11,7 @@ use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use futures::StreamExt as _;
 use sqlx::PgExecutor;
+use stacks_common::types::chainstate::StacksAddress;
 
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::error::Error;
@@ -64,14 +65,20 @@ fn contract_transaction_kinds() -> &'static HashMap<&'static str, TransactionTyp
 
 /// This function extracts the signer relevant sBTC related transactions
 /// from the given blocks.
-pub fn extract_relevant_transactions(blocks: &[NakamotoBlock]) -> Vec<model::Transaction> {
+/// 
+/// Here the deployer is the address that deployed the sBTC smart
+/// contracts.
+pub fn extract_relevant_transactions(
+    blocks: &[NakamotoBlock],
+    deployer: &StacksAddress,
+) -> Vec<model::Transaction> {
     let transaction_kinds = contract_transaction_kinds();
     blocks
         .iter()
         .flat_map(|block| block.txs.iter().map(|tx| (tx, block.block_id())))
         .filter_map(|(tx, block_id)| match &tx.payload {
             TransactionPayload::ContractCall(x)
-                if CONTRACT_NAMES.contains(&x.contract_name.as_str()) =>
+                if CONTRACT_NAMES.contains(&x.contract_name.as_str()) && &x.address == deployer =>
             {
                 Some(model::Transaction {
                     txid: tx.txid().into_bytes(),
@@ -1730,14 +1737,15 @@ mod tests {
             blocks.push(NakamotoBlock::consensus_deserialize(bytes).unwrap());
         }
 
-        let txs = extract_relevant_transactions(&blocks);
+        let deployer = StacksAddress::new(2, Hash160([0u8; 20]));
+        let txs = extract_relevant_transactions(&blocks, &deployer);
         assert!(txs.is_empty());
 
         let last_block = blocks.last_mut().unwrap();
         let mut tx = last_block.txs.last().unwrap().clone();
 
         let contract_call = TransactionContractCall {
-            address: StacksAddress::new(2, Hash160([0u8; 20])),
+            address: deployer,
             contract_name: ContractName::from(contract_name),
             function_name: ClarityName::from(function_name),
             function_args: Vec::new(),
@@ -1745,7 +1753,7 @@ mod tests {
         tx.payload = TransactionPayload::ContractCall(contract_call);
         last_block.txs.push(tx);
 
-        let txs = extract_relevant_transactions(&blocks);
+        let txs = extract_relevant_transactions(&blocks, &deployer);
         assert_eq!(txs.len(), 1);
     }
 }

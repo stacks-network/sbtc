@@ -188,7 +188,8 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWr
 
     // Okay now to save these blocks. We check that all of these blocks are
     // saved and that the transaction that we care about is saved as well.
-    let txs = storage::postgres::extract_relevant_transactions(&blocks);
+    let settings = Settings::new_from_default_config().unwrap();
+    let txs = storage::postgres::extract_relevant_transactions(&blocks, &settings.signer.deployer);
     let headers = blocks
         .iter()
         .map(model::StacksBlock::try_from)

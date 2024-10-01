@@ -310,7 +310,8 @@ where
         &mut self,
         blocks: &[nakamoto::NakamotoBlock],
     ) -> Result<(), Error> {
-        let txs = storage::postgres::extract_relevant_transactions(blocks);
+        let deployer = &self.context.config().signer.deployer;
+        let txs = storage::postgres::extract_relevant_transactions(blocks, deployer);
         let headers = blocks
             .iter()
             .map(model::StacksBlock::try_from)
