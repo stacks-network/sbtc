@@ -46,7 +46,7 @@ pub struct StacksBlock {
 }
 
 /// Deposit request.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct DepositRequest {
     /// Transaction ID of the deposit request transaction.

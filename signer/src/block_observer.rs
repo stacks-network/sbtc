@@ -276,7 +276,7 @@ where
         let sbtc_txs = txs
             .iter()
             .filter(|tx| {
-                // If any of the outputs are spend to one of the signers'
+                // If any of the outputs are spent to one of the signers'
                 // addresses, then we care about it
                 tx.output
                     .iter()
@@ -822,12 +822,6 @@ mod tests {
             unimplemented!()
         }
 
-        async fn get_signer_utxo(
-            &self,
-            _point: &PublicKey,
-        ) -> Result<Option<utxo::SignerUtxo>, Error> {
-            unimplemented!()
-        }
         async fn get_last_fee(
             &self,
             _utxo: bitcoin::OutPoint,

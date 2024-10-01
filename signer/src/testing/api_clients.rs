@@ -46,13 +46,6 @@ impl BitcoinInteract for NoopApiClient {
         unimplemented!()
     }
 
-    async fn get_signer_utxo(
-        &self,
-        _aggregate_key: &crate::keys::PublicKey,
-    ) -> Result<Option<crate::bitcoin::utxo::SignerUtxo>, Error> {
-        unimplemented!()
-    }
-
     async fn get_last_fee(
         &self,
         _utxo: bitcoin::OutPoint,

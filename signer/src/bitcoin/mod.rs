@@ -9,7 +9,6 @@ use rpc::BitcoinTxInfo;
 use rpc::GetTxResponse;
 
 use crate::error::Error;
-use crate::keys::PublicKey;
 
 pub mod client;
 pub mod fees;
@@ -40,12 +39,6 @@ pub trait BitcoinInteract {
     /// Estimate fee rate
     // This should be implemented with the help of the `fees::EstimateFees` trait
     fn estimate_fee_rate(&self) -> impl std::future::Future<Output = Result<f64, Error>> + Send;
-
-    /// Get the outstanding signer UTXO
-    fn get_signer_utxo(
-        &self,
-        aggregate_key: &PublicKey,
-    ) -> impl Future<Output = Result<Option<utxo::SignerUtxo>, Error>> + Send;
 
     /// Get the total fee amount and the fee rate for the last transaction that
     /// used the given UTXO as an input.
