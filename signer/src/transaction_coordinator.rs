@@ -424,8 +424,18 @@ where
     ) -> Result<utxo::SignerBtcState, Error> {
         let bitcoin_client = self.context.get_bitcoin_client();
         let fee_rate = bitcoin_client.estimate_fee_rate().await?;
-        let utxo = bitcoin_client
-            .get_signer_utxo(aggregate_key)
+        let Some(chain_tip) = self
+            .context
+            .get_storage()
+            .get_bitcoin_canonical_chain_tip()
+            .await?
+        else {
+            return Err(Error::NoChainTip);
+        };
+        let utxo = self
+            .context
+            .get_storage()
+            .get_signer_utxo(&chain_tip, aggregate_key)
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
         let last_fees = bitcoin_client.get_last_fee(utxo.outpoint).await?;
@@ -612,5 +622,20 @@ mod tests {
         test_environment()
             .assert_should_be_able_to_coordinate_signing_rounds()
             .await;
+    }
+
+    #[tokio::test]
+    async fn should_get_signer_utxo_simple() {
+        test_environment().assert_get_signer_utxo_simple().await;
+    }
+
+    #[tokio::test]
+    async fn should_get_signer_utxo_fork() {
+        test_environment().assert_get_signer_utxo_fork().await;
+    }
+
+    #[tokio::test]
+    async fn should_get_signer_utxo_unspent() {
+        test_environment().assert_get_signer_utxo_unspent().await;
     }
 }

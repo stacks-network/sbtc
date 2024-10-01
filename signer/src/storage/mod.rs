@@ -15,6 +15,7 @@ use std::future::Future;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
 
+use crate::bitcoin::utxo::SignerUtxo;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::stacks::events::CompletedDepositEvent;
@@ -129,6 +130,24 @@ pub trait DbRead {
     fn get_signers_script_pubkeys(
         &self,
     ) -> impl Future<Output = Result<Vec<model::Bytes>, Error>> + Send;
+
+    /// Get the outstanding signer UTXO.
+    ///
+    /// Under normal conditions, the signer will have only one UTXO they can spend.
+    /// The specific UTXO we want is one such that:
+    /// 1. The transaction is in a block on the canonical bitcoin blockchain.
+    /// 2. The output is the first output in the transaction.
+    /// 3. The output's `scriptPubKey` matches `aggregate_key`.
+    /// 4. The output is unspent. It is possible for more than one transaction
+    ///     within the same block to satisfy points 1-3, but if the signers
+    ///     have one or more transactions within a block, exactly one output
+    ///     satisfying points 1-3 will be unspent.
+    /// 5. The block that includes the transaction that satisfies points 1-4 has the greatest height of all such blocks.
+    fn get_signer_utxo(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        aggregate_key: &crate::keys::PublicKey,
+    ) -> impl Future<Output = Result<Option<SignerUtxo>, Error>> + Send;
 
     /// For the given outpoint and aggregate key, get the list all signer
     /// votes in the signer set.

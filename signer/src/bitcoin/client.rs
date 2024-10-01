@@ -19,12 +19,9 @@ use bitcoin::Txid;
 use bitcoincore_rpc::RpcApi as _;
 use url::Url;
 
-use crate::bitcoin::utxo;
-use crate::bitcoin::utxo::SignerUtxo;
-use crate::bitcoin::BitcoinInteract;
-use crate::error::Error;
-use crate::keys::PublicKey;
-use crate::util::ApiFallbackClient;
+use crate::{error::Error, util::ApiFallbackClient};
+
+use super::{utxo, BitcoinInteract};
 
 use super::rpc::BitcoinCoreClient;
 use super::rpc::BitcoinTxInfo;
@@ -67,13 +64,6 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
 
     async fn estimate_fee_rate(&self) -> Result<f64, Error> {
         todo!() // TODO(542)
-    }
-
-    async fn get_signer_utxo(
-        &self,
-        _aggregate_key: &PublicKey,
-    ) -> Result<Option<SignerUtxo>, Error> {
-        todo!() // TODO(538)
     }
 
     async fn get_last_fee(&self, _utxo: bitcoin::OutPoint) -> Result<Option<utxo::Fees>, Error> {

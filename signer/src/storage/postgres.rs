@@ -10,6 +10,7 @@ use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use sqlx::PgExecutor;
 
+use crate::bitcoin::utxo::SignerUtxo;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::stacks::events::CompletedDepositEvent;
@@ -941,6 +942,14 @@ impl super::DbRead for PgStore {
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_signer_utxo(
+        &self,
+        _chain_tip: &model::BitcoinBlockHash,
+        _aggregate_key: &PublicKey,
+    ) -> Result<Option<SignerUtxo>, Error> {
+        unimplemented!() // TODO(538)
     }
 
     async fn in_canonical_bitcoin_blockchain(

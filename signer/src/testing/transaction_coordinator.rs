@@ -1,11 +1,12 @@
 //! Test utilities for the transaction coordinator
 
+use std::cell::RefCell;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::bitcoin::utxo;
+use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::MockBitcoinInteract;
 use crate::context::Context;
 use crate::context::SignerEvent;
@@ -28,6 +29,13 @@ use sha2::Digest as _;
 
 use super::context::TestContext;
 use super::context::WrappedMock;
+
+const EMPTY_BITCOIN_TX: bitcoin::Transaction = bitcoin::Transaction {
+    version: bitcoin::transaction::Version::ONE,
+    lock_time: bitcoin::absolute::LockTime::ZERO,
+    input: vec![],
+    output: vec![],
+};
 
 struct EventLoopHarness<C> {
     event_loop: EventLoop<C>,
@@ -116,21 +124,23 @@ impl TestEnvironment<TestContext<WrappedMock<MockBitcoinInteract>>> {
                 network.connect()
             });
 
-        let (aggregate_key, bitcoin_chain_tip) = self
+        let (aggregate_key, bitcoin_chain_tip, mut test_data) = self
             .prepare_database_and_run_dkg(&mut rng, &mut testing_signer_set)
             .await;
 
-        let public_key = bitcoin::XOnlyPublicKey::from(&aggregate_key);
-        let outpoint = bitcoin::OutPoint {
-            txid: testing::dummy::txid(&fake::Faker, &mut rng),
-            vout: 3,
-        };
+        let original_test_data = test_data.clone();
 
-        let signer_utxo = utxo::SignerUtxo {
-            outpoint,
-            amount: 1_337_000_000_000,
-            public_key,
+        let tx_1 = bitcoin::Transaction {
+            output: vec![bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(1_337_000_000_000),
+                script_pubkey: aggregate_key.signers_script_pubkey(),
+            }],
+            ..EMPTY_BITCOIN_TX
         };
+        test_data.push_sbtc_txs(&bitcoin_chain_tip, vec![tx_1.clone()]);
+
+        test_data.remove(original_test_data);
+        self.write_test_data(&test_data).await;
 
         self.context
             .with_bitcoin_client(|client| {
@@ -138,11 +148,6 @@ impl TestEnvironment<TestContext<WrappedMock<MockBitcoinInteract>>> {
                     .expect_estimate_fee_rate()
                     .times(1)
                     .returning(|| Box::pin(async { Ok(1.3) }));
-
-                client
-                    .expect_get_signer_utxo()
-                    .once()
-                    .returning(move |_| Box::pin(async move { Ok(Some(signer_utxo)) }));
 
                 client
                     .expect_get_last_fee()
@@ -184,7 +189,7 @@ impl TestEnvironment<TestContext<WrappedMock<MockBitcoinInteract>>> {
             });
 
         // Get the private key of the coordinator of the signer set.
-        let private_key = Self::select_coordinator(&bitcoin_chain_tip, &signer_info);
+        let private_key = Self::select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info);
 
         // Bootstrap the tx coordinator within an event loop harness.
         let event_loop_harness = EventLoopHarness::create(
@@ -231,11 +236,270 @@ impl TestEnvironment<TestContext<WrappedMock<MockBitcoinInteract>>> {
         assert_eq!(first_script_pubkey, aggregate_key.signers_script_pubkey());
     }
 
+    /// Assert we get the correct UTXO in a simple case
+    pub async fn assert_get_signer_utxo_simple(mut self) {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let network = network::in_memory::Network::new();
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+
+        let mut signer_set =
+            testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
+                network.connect()
+            });
+
+        let (aggregate_key, bitcoin_chain_tip, mut test_data) = self
+            .prepare_database_and_run_dkg(&mut rng, &mut signer_set)
+            .await;
+
+        let original_test_data = test_data.clone();
+
+        let tx = bitcoin::Transaction {
+            output: vec![
+                bitcoin::TxOut {
+                    value: bitcoin::Amount::from_sat(42),
+                    script_pubkey: aggregate_key.signers_script_pubkey(),
+                },
+                bitcoin::TxOut {
+                    value: bitcoin::Amount::from_sat(123),
+                    script_pubkey: bitcoin::ScriptBuf::new(),
+                },
+            ],
+            ..EMPTY_BITCOIN_TX
+        };
+
+        let (block, block_ref) = test_data.new_block(
+            &mut rng,
+            &signer_set.signer_keys(),
+            &self.test_model_parameters,
+            Some(&bitcoin_chain_tip),
+        );
+        test_data.push(block);
+        test_data.push_sbtc_txs(&block_ref, vec![tx.clone()]);
+
+        let expected = SignerUtxo {
+            outpoint: bitcoin::OutPoint::new(tx.compute_txid(), 0),
+            amount: 42,
+            public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
+        };
+
+        test_data.remove(original_test_data);
+        self.write_test_data(&test_data).await;
+
+        let chain_tip = self
+            .context
+            .get_storage()
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("storage failure")
+            .expect("missing block");
+        assert_eq!(chain_tip, block_ref.block_hash);
+
+        let signer_utxo = self
+            .context
+            .get_storage()
+            .get_signer_utxo(&chain_tip, &aggregate_key)
+            .await
+            .unwrap()
+            .expect("no signer utxo");
+
+        assert_eq!(signer_utxo, expected);
+    }
+
+    /// Assert we get the correct UTXO in a fork
+    pub async fn assert_get_signer_utxo_fork(mut self) {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let network = network::in_memory::Network::new();
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+
+        let mut signer_set =
+            testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
+                network.connect()
+            });
+
+        let (aggregate_key, bitcoin_chain_tip, test_data) = self
+            .prepare_database_and_run_dkg(&mut rng, &mut signer_set)
+            .await;
+
+        let original_test_data = test_data.clone();
+
+        let test_data_rc = RefCell::new(test_data);
+        let mut push_block = |parent| {
+            let (block, block_ref) = test_data_rc.borrow_mut().new_block(
+                &mut rng,
+                &signer_set.signer_keys(),
+                &self.test_model_parameters,
+                Some(parent),
+            );
+            test_data_rc.borrow_mut().push(block);
+            block_ref
+        };
+        let push_utxo = |block_ref, sat_amt| {
+            let tx = bitcoin::Transaction {
+                output: vec![bitcoin::TxOut {
+                    value: bitcoin::Amount::from_sat(sat_amt),
+                    script_pubkey: aggregate_key.signers_script_pubkey(),
+                }],
+                ..EMPTY_BITCOIN_TX
+            };
+            test_data_rc
+                .borrow_mut()
+                .push_sbtc_txs(block_ref, vec![tx.clone()]);
+            tx
+        };
+
+        // The scenario is: (* = no utxo)
+        // [bitcoin_chain_tip] +- [block a1] - [block a2] - [block a3*]
+        //                     +- [block b1] - [block b2] - [block b3*]
+        //                     +- [block c1] - [block c2*]
+
+        let block_a1 = push_block(&bitcoin_chain_tip);
+        let tx_a1 = push_utxo(&block_a1, 0xA1);
+
+        let block_a2 = push_block(&block_a1);
+        let tx_a2 = push_utxo(&block_a2, 0xA2);
+
+        let block_a3 = push_block(&block_a2);
+
+        let block_b1 = push_block(&bitcoin_chain_tip);
+        let tx_b1 = push_utxo(&block_b1, 0xB1);
+
+        let block_b2 = push_block(&block_b1);
+        let tx_b2 = push_utxo(&block_b2, 0xB2);
+
+        let block_b3 = push_block(&block_b2);
+
+        let block_c1 = push_block(&bitcoin_chain_tip);
+        let tx_c1 = push_utxo(&block_c1, 0xC1);
+
+        let block_c2 = push_block(&block_c1);
+
+        let mut test_data = test_data_rc.into_inner();
+        test_data.remove(original_test_data);
+        self.write_test_data(&test_data).await;
+
+        for (chain_tip, tx, amt) in [
+            (&block_a1, &tx_a1, 0xA1),
+            (&block_a2, &tx_a2, 0xA2),
+            (&block_a3, &tx_a2, 0xA2),
+            (&block_b1, &tx_b1, 0xB1),
+            (&block_b2, &tx_b2, 0xB2),
+            (&block_b3, &tx_b2, 0xB2),
+            (&block_c1, &tx_c1, 0xC1),
+            (&block_c2, &tx_c1, 0xC1),
+        ] {
+            let expected = SignerUtxo {
+                outpoint: bitcoin::OutPoint::new(tx.compute_txid(), 0),
+                amount: amt,
+                public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
+            };
+            let signer_utxo = self
+                .context
+                .get_storage()
+                .get_signer_utxo(&chain_tip.block_hash, &aggregate_key)
+                .await
+                .unwrap()
+                .expect("no signer utxo");
+            assert_eq!(signer_utxo, expected);
+        }
+    }
+
+    /// Assert we get the correct UTXO with a spending chain in a block
+    pub async fn assert_get_signer_utxo_unspent(mut self) {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let network = network::in_memory::Network::new();
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+
+        let mut signer_set =
+            testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
+                network.connect()
+            });
+
+        let (aggregate_key, bitcoin_chain_tip, mut test_data) = self
+            .prepare_database_and_run_dkg(&mut rng, &mut signer_set)
+            .await;
+
+        let original_test_data = test_data.clone();
+
+        let tx_1 = bitcoin::Transaction {
+            output: vec![bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(1),
+                script_pubkey: aggregate_key.signers_script_pubkey(),
+            }],
+            ..EMPTY_BITCOIN_TX
+        };
+        let tx_2 = bitcoin::Transaction {
+            output: vec![bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(2),
+                script_pubkey: aggregate_key.signers_script_pubkey(),
+            }],
+            ..EMPTY_BITCOIN_TX
+        };
+        let tx_3 = bitcoin::Transaction {
+            input: vec![
+                bitcoin::TxIn {
+                    previous_output: bitcoin::OutPoint {
+                        txid: tx_1.compute_txid(),
+                        vout: 0,
+                    },
+                    ..Default::default()
+                },
+                bitcoin::TxIn {
+                    previous_output: bitcoin::OutPoint {
+                        txid: tx_2.compute_txid(),
+                        vout: 0,
+                    },
+                    ..Default::default()
+                },
+            ],
+            output: vec![bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(3),
+                script_pubkey: aggregate_key.signers_script_pubkey(),
+            }],
+            ..EMPTY_BITCOIN_TX
+        };
+        let (block, block_ref) = test_data.new_block(
+            &mut rng,
+            &signer_set.signer_keys(),
+            &self.test_model_parameters,
+            Some(&bitcoin_chain_tip),
+        );
+        test_data.push(block);
+        test_data.push_sbtc_txs(&block_ref, vec![tx_1.clone(), tx_3.clone(), tx_2.clone()]);
+
+        let expected = SignerUtxo {
+            outpoint: bitcoin::OutPoint::new(tx_3.compute_txid(), 0),
+            amount: 3,
+            public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
+        };
+
+        test_data.remove(original_test_data);
+        self.write_test_data(&test_data).await;
+
+        let chain_tip = self
+            .context
+            .get_storage()
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("storage failure")
+            .expect("missing block");
+        assert_eq!(chain_tip, block_ref.block_hash);
+
+        let signer_utxo = self
+            .context
+            .get_storage()
+            .get_signer_utxo(&chain_tip, &aggregate_key)
+            .await
+            .unwrap()
+            .expect("no signer utxo");
+
+        assert_eq!(signer_utxo, expected);
+    }
+
     async fn prepare_database_and_run_dkg<Rng>(
         &mut self,
         rng: &mut Rng,
         signer_set: &mut SignerSet,
-    ) -> (keys::PublicKey, model::BitcoinBlockHash)
+    ) -> (keys::PublicKey, model::BitcoinBlockRef, TestData)
     where
         Rng: rand::CryptoRng + rand::RngCore,
     {
@@ -250,6 +514,13 @@ impl TestEnvironment<TestContext<WrappedMock<MockBitcoinInteract>>> {
             .await
             .expect("storage error")
             .expect("no chain tip");
+
+        let bitcoin_chain_tip_ref = storage
+            .get_bitcoin_block(&bitcoin_chain_tip)
+            .await
+            .expect("storage failure")
+            .expect("missing block")
+            .into();
 
         let dkg_txid = testing::dummy::txid(&fake::Faker, rng);
         let (aggregate_key, all_dkg_shares) =
@@ -271,7 +542,7 @@ impl TestEnvironment<TestContext<WrappedMock<MockBitcoinInteract>>> {
             .await
             .expect("failed to write encrypted shares");
 
-        (aggregate_key, bitcoin_chain_tip)
+        (aggregate_key, bitcoin_chain_tip_ref, test_data)
     }
 
     async fn write_test_data(&self, test_data: &TestData) {
