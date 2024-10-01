@@ -495,7 +495,7 @@ impl SignerSet {
     /// Dump the current signer set as a dummy rotate-keys transaction to the given storage
     pub async fn write_as_rotate_keys_tx<S, Rng>(
         &self,
-        storage: &mut S,
+        storage: &S,
         chain_tip: &model::BitcoinBlockHash,
         aggregate_key: PublicKey,
         rng: &mut Rng,

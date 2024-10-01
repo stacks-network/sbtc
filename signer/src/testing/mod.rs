@@ -3,6 +3,7 @@
 #![allow(clippy::unwrap_in_result, clippy::unwrap_used, clippy::expect_used)]
 
 pub mod api_clients;
+pub mod context;
 pub mod dummy;
 pub mod message;
 pub mod network;
