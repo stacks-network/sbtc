@@ -288,6 +288,10 @@ where
                 let mut tx_bytes = Vec::new();
                 tx.consensus_encode(&mut tx_bytes)?;
 
+                // TODO: these aren't all sBTC transactions. Some of these
+                // could be "donations". One way to properly label these is
+                // to look at the scriptPubKey of the prevouts of the
+                // transaction.
                 Ok::<_, bitcoin::io::Error>(model::Transaction {
                     txid: tx.compute_txid().to_byte_array(),
                     tx: tx_bytes,
