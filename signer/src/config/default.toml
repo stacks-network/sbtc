@@ -3,9 +3,15 @@
 # !! ==============================================================================
 # !! Blocklist Client Configuration
 # !! ==============================================================================
-[blocklist_client]
-host = "127.0.0.1"
-port = 8080
+# You may specify a blocklist client url. If one is not specified, then
+# deposit or withdrawal requests are always accepted.
+#
+# Format: "http(s)://<host>:<port>"
+# Default: <none>
+# Required: false
+# Environment: SIGNER_BLOCKLIST_CLIENT__ENDPOINT
+# [blocklist_client]
+# endpoint = "http://127.0.0.1:8080"
 
 # !! ==============================================================================
 # !! Emily API Configuration

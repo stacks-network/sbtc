@@ -106,7 +106,7 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
     /// Database connection.
     pub storage: Storage,
     /// Blocklist checker.
-    pub blocklist_checker: BlocklistChecker,
+    pub blocklist_checker: Option<BlocklistChecker>,
     /// Notification receiver from the block observer.
     pub block_observer_notifications: tokio::sync::watch::Receiver<()>,
     /// Private key of the signer for network communication.
@@ -599,12 +599,7 @@ where
             .collect::<Result<Vec<bitcoin::Address>, _>>()?;
 
         let is_accepted = futures::stream::iter(&addresses)
-            .any(|address| async {
-                self.blocklist_checker
-                    .can_accept(&address.to_string())
-                    .await
-                    .unwrap_or(false)
-            })
+            .any(|address| async { self.can_accept(&address.to_string()).await })
             .await;
 
         let msg = message::SignerDepositDecision {
@@ -637,10 +632,8 @@ where
         // TODO: Do we want to do this on the sender address of the
         // recipient address?
         let is_accepted = self
-            .blocklist_checker
             .can_accept(&withdraw_request.sender_address.to_string())
-            .await
-            .unwrap_or(false);
+            .await;
 
         let signer_decision = model::WithdrawalSigner {
             request_id: withdraw_request.request_id,
@@ -655,6 +648,14 @@ where
             .await?;
 
         Ok(())
+    }
+
+    async fn can_accept(&self, address: &str) -> bool {
+        let Some(client) = self.blocklist_checker.as_ref() else {
+            return true;
+        };
+
+        client.can_accept(address).await.unwrap_or(false)
     }
 
     #[tracing::instrument(skip(self))]

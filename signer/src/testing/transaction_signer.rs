@@ -36,7 +36,7 @@ struct EventLoopHarness<S, Rng> {
 impl<S, Rng> EventLoopHarness<S, Rng>
 where
     S: storage::DbRead + storage::DbWrite + Clone + Send + Sync + 'static,
-    Rng: rand::RngCore + rand::CryptoRng + Send + 'static,
+    Rng: rand::RngCore + rand::CryptoRng + Send + Sync + 'static,
 {
     fn create(
         network: network::in_memory::MpmcBroadcaster,
@@ -46,7 +46,6 @@ where
         threshold: u32,
         rng: Rng,
     ) -> Self {
-        let blocklist_checker = ();
         let (block_observer_notification_tx, block_observer_notifications) =
             tokio::sync::watch::channel(());
 
@@ -56,7 +55,7 @@ where
             event_loop: transaction_signer::TxSignerEventLoop {
                 storage: storage.clone(),
                 network,
-                blocklist_checker,
+                blocklist_checker: Some(()),
                 block_observer_notifications,
                 signer_private_key,
                 context_window,
