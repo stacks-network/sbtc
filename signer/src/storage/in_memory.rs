@@ -1,13 +1,11 @@
 //! In-memory store implementation - useful for tests
 
-use bitcoin::consensus::Decodable;
+use bitcoin::consensus::Decodable as _;
 use bitcoin::OutPoint;
 use blockstack_lib::types::chainstate::StacksBlockId;
-use futures::StreamExt;
-use futures::TryStreamExt;
-use secp256k1::XOnlyPublicKey;
+use futures::StreamExt as _;
+use futures::TryStreamExt as _;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -20,6 +18,8 @@ use crate::stacks::events::WithdrawalAcceptEvent;
 use crate::stacks::events::WithdrawalCreateEvent;
 use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
+
+use super::util::get_utxo;
 
 /// A store wrapped in an Arc<Mutex<...>> for interior mutability
 pub type SharedStore = Arc<Mutex<Store>>;
@@ -426,6 +426,7 @@ impl super::DbRead for SharedStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &PublicKey,
+        context_window: u16,
     ) -> Result<Option<SignerUtxo>, Error> {
         let script_pubkey = aggregate_key.signers_script_pubkey();
         let store = self.lock().await;
@@ -434,6 +435,7 @@ impl super::DbRead for SharedStore {
 
         // Traverse the canonical chain backwards and find the first block containing relevant sbtc tx(s)
         let sbtc_txs = std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
+            .take(context_window as usize)
             .filter_map(|block| {
                 let txs = store.bitcoin_block_to_transactions.get(&block.block_hash)?;
 
@@ -465,35 +467,7 @@ impl super::DbRead for SharedStore {
             return Ok(None);
         };
 
-        let spent: HashSet<OutPoint> = sbtc_txs
-            .iter()
-            .flat_map(|tx| tx.input.iter().map(|txin| txin.previous_output))
-            .collect();
-
-        let utxos = sbtc_txs
-            .iter()
-            .flat_map(|tx| {
-                if let Some(tx_out) = tx.output.first() {
-                    let outpoint = OutPoint::new(tx.compute_txid(), 0);
-                    if !spent.contains(&outpoint) {
-                        return Some(SignerUtxo {
-                            outpoint,
-                            amount: tx_out.value.to_sat(),
-                            // Txs were filtered based on the `aggregate_key` script pubkey
-                            public_key: XOnlyPublicKey::from(aggregate_key),
-                        });
-                    }
-                }
-
-                None
-            })
-            .collect::<Vec<_>>();
-
-        match utxos[..] {
-            [] => Ok(None),
-            [utxo] => Ok(Some(utxo)),
-            _ => Err(Error::TooManySignerUtxos),
-        }
+        get_utxo(aggregate_key, sbtc_txs)
     }
 
     async fn get_deposit_request_signer_votes(

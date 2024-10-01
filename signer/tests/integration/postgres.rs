@@ -12,6 +12,7 @@ use blockstack_lib::types::chainstate::StacksAddress;
 use futures::StreamExt;
 use rand::seq::SliceRandom;
 
+use signer::config::Settings;
 use signer::context::Context;
 use signer::error::Error;
 use signer::keys::PublicKey;
@@ -46,6 +47,7 @@ use signer::testing::wallet::ContractCallWrapper;
 
 use fake::Fake;
 use rand::SeedableRng;
+use signer::testing::NoopSignerContext;
 use test_case::test_case;
 
 use crate::DATABASE_NUM;
@@ -1264,4 +1266,59 @@ async fn we_can_fetch_bitcoin_txs_from_db() {
     assert!(btc_tx.is_none());
 
     signer::testing::storage::drop_db(pg_store).await;
+}
+
+async fn transaction_coordinator_test_environment(
+) -> testing::transaction_coordinator::TestEnvironment<NoopSignerContext<storage::postgres::PgStore>>
+{
+    use std::sync::atomic::Ordering;
+
+    let test_model_parameters = testing::storage::model::Params {
+        num_bitcoin_blocks: 20,
+        num_stacks_blocks_per_bitcoin_block: 3,
+        num_deposit_requests_per_block: 5,
+        num_withdraw_requests_per_block: 5,
+        num_signers_per_request: 7,
+    };
+
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = testing::storage::new_test_database(db_num, true).await;
+
+    let context = NoopSignerContext::init(Settings::new_from_default_config().unwrap(), store)
+        .expect("failed to init context");
+
+    testing::transaction_coordinator::TestEnvironment {
+        context,
+        context_window: 5,
+        num_signers: 7,
+        signing_threshold: 5,
+        test_model_parameters,
+    }
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn should_get_signer_utxo_simple() {
+    transaction_coordinator_test_environment()
+        .await
+        .assert_get_signer_utxo_simple()
+        .await;
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn should_get_signer_utxo_fork() {
+    transaction_coordinator_test_environment()
+        .await
+        .assert_get_signer_utxo_fork()
+        .await;
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn should_get_signer_utxo_unspent() {
+    transaction_coordinator_test_environment()
+        .await
+        .assert_get_signer_utxo_unspent()
+        .await;
 }

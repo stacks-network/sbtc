@@ -235,7 +235,12 @@ impl TestEnvironment<TestContext<WrappedMock<MockBitcoinInteract>>> {
         // Perform assertions
         assert_eq!(first_script_pubkey, aggregate_key.signers_script_pubkey());
     }
+}
 
+impl<C> TestEnvironment<C>
+where
+    C: Context,
+{
     /// Assert we get the correct UTXO in a simple case
     pub async fn assert_get_signer_utxo_simple(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
@@ -285,19 +290,17 @@ impl TestEnvironment<TestContext<WrappedMock<MockBitcoinInteract>>> {
         test_data.remove(original_test_data);
         self.write_test_data(&test_data).await;
 
-        let chain_tip = self
-            .context
-            .get_storage()
+        let storage = self.context.get_storage();
+
+        let chain_tip = storage
             .get_bitcoin_canonical_chain_tip()
             .await
             .expect("storage failure")
             .expect("missing block");
         assert_eq!(chain_tip, block_ref.block_hash);
 
-        let signer_utxo = self
-            .context
-            .get_storage()
-            .get_signer_utxo(&chain_tip, &aggregate_key)
+        let signer_utxo = storage
+            .get_signer_utxo(&chain_tip, &aggregate_key, self.context_window as u16)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -377,6 +380,8 @@ impl TestEnvironment<TestContext<WrappedMock<MockBitcoinInteract>>> {
         test_data.remove(original_test_data);
         self.write_test_data(&test_data).await;
 
+        let storage = self.context.get_storage();
+
         for (chain_tip, tx, amt) in [
             (&block_a1, &tx_a1, 0xA1),
             (&block_a2, &tx_a2, 0xA2),
@@ -392,15 +397,29 @@ impl TestEnvironment<TestContext<WrappedMock<MockBitcoinInteract>>> {
                 amount: amt,
                 public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
             };
-            let signer_utxo = self
-                .context
-                .get_storage()
-                .get_signer_utxo(&chain_tip.block_hash, &aggregate_key)
+            let signer_utxo = storage
+                .get_signer_utxo(
+                    &chain_tip.block_hash,
+                    &aggregate_key,
+                    self.context_window as u16,
+                )
                 .await
                 .unwrap()
                 .expect("no signer utxo");
             assert_eq!(signer_utxo, expected);
         }
+
+        // Check context window
+        assert!(storage
+            .get_signer_utxo(&block_c2.block_hash, &aggregate_key, 1)
+            .await
+            .unwrap()
+            .is_none());
+        assert!(storage
+            .get_signer_utxo(&block_c2.block_hash, &aggregate_key, 2)
+            .await
+            .unwrap()
+            .is_some());
     }
 
     /// Assert we get the correct UTXO with a spending chain in a block
@@ -475,19 +494,17 @@ impl TestEnvironment<TestContext<WrappedMock<MockBitcoinInteract>>> {
         test_data.remove(original_test_data);
         self.write_test_data(&test_data).await;
 
-        let chain_tip = self
-            .context
-            .get_storage()
+        let storage = self.context.get_storage();
+
+        let chain_tip = storage
             .get_bitcoin_canonical_chain_tip()
             .await
             .expect("storage failure")
             .expect("missing block");
         assert_eq!(chain_tip, block_ref.block_hash);
 
-        let signer_utxo = self
-            .context
-            .get_storage()
-            .get_signer_utxo(&chain_tip, &aggregate_key)
+        let signer_utxo = storage
+            .get_signer_utxo(&chain_tip, &aggregate_key, self.context_window as u16)
             .await
             .unwrap()
             .expect("no signer utxo");

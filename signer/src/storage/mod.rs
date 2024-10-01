@@ -10,6 +10,7 @@ pub mod in_memory;
 pub mod model;
 pub mod postgres;
 pub mod sqlx;
+pub mod util;
 
 use std::future::Future;
 
@@ -147,6 +148,7 @@ pub trait DbRead {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &crate::keys::PublicKey,
+        context_window: u16,
     ) -> impl Future<Output = Result<Option<SignerUtxo>, Error>> + Send;
 
     /// For the given outpoint and aggregate key, get the list all signer

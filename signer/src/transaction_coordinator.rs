@@ -432,10 +432,15 @@ where
         else {
             return Err(Error::NoChainTip);
         };
+
+        let context_window = self
+            .context_window
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
         let utxo = self
             .context
             .get_storage()
-            .get_signer_utxo(&chain_tip, aggregate_key)
+            .get_signer_utxo(&chain_tip, aggregate_key, context_window)
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
         let last_fees = bitcoin_client.get_last_fee(utxo.outpoint).await?;
