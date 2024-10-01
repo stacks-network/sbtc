@@ -77,7 +77,7 @@ impl NetworkKind {
 #[derive(Deserialize, Clone, Debug)]
 pub struct Settings {
     /// Blocklist client specific config
-    pub blocklist_client: BlocklistClientConfig,
+    pub blocklist_client: Option<BlocklistClientConfig>,
     /// Electrum notifier specific config
     pub block_notifier: BlockNotifierConfig,
     /// Signer-specific configuration
@@ -138,27 +138,9 @@ impl Validatable for P2PNetworkConfig {
 /// Blocklist client specific config
 #[derive(Deserialize, Clone, Debug)]
 pub struct BlocklistClientConfig {
-    /// Host of the blocklist client
-    pub host: String,
-    /// Port of the blocklist client
-    pub port: u16,
-}
-
-impl Validatable for BlocklistClientConfig {
-    fn validate(&self, _: &Settings) -> Result<(), ConfigError> {
-        if self.host.is_empty() {
-            return Err(ConfigError::Message(
-                "[blocklist_client] Host cannot be empty".to_string(),
-            ));
-        }
-        if !(1..=65535).contains(&self.port) {
-            return Err(ConfigError::Message(
-                "[blocklist_client] Port must be between 1 and 65535".to_string(),
-            ));
-        }
-
-        Ok(())
-    }
+    /// the url for the blocklist client
+    #[serde(deserialize_with = "url_deserializer_single")]
+    pub endpoint: Url,
 }
 
 /// Emily API configuration.
@@ -329,7 +311,6 @@ impl Settings {
 
     /// Perform validation on the configuration.
     fn validate(&self) -> Result<(), ConfigError> {
-        self.blocklist_client.validate(self)?;
         self.block_notifier.validate(self)?;
         self.signer.validate(self)?;
 
@@ -398,8 +379,7 @@ mod tests {
         clear_env();
 
         let settings = Settings::new_from_default_config().unwrap();
-        assert_eq!(settings.blocklist_client.host, "127.0.0.1");
-        assert_eq!(settings.blocklist_client.port, 8080);
+        assert!(settings.blocklist_client.is_none());
 
         assert_eq!(settings.block_notifier.server, "tcp://localhost:60401");
         assert_eq!(settings.block_notifier.retry_interval, 10);
@@ -580,6 +560,18 @@ mod tests {
     }
 
     #[test]
+    fn blocklist_client_endpoint() {
+        clear_env();
+
+        let endpoint = "http://127.0.0.1:12345";
+        std::env::set_var("SIGNER_BLOCKLIST_CLIENT__ENDPOINT", endpoint);
+        let settings = Settings::new_from_default_config().unwrap();
+
+        let actual_endpoint = settings.blocklist_client.unwrap().endpoint;
+        assert_eq!(actual_endpoint, url::Url::parse(endpoint).unwrap());
+    }
+
+    #[test]
     fn invalid_private_key_length_returns_correct_error() {
         clear_env();
 
@@ -632,7 +624,6 @@ mod tests {
         let hex_err = hex::decode("zz").unwrap_err();
 
         let settings = Settings::new_from_default_config();
-        assert!(settings.is_err());
         assert!(matches!(
             settings.unwrap_err(),
             ConfigError::Message(msg) if msg == Error::DecodeHexBytes(hex_err).to_string()
