@@ -78,6 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Our global termination signal watcher. This does not run using `run_checked`
         // as it sends its own shutdown signal.
         run_shutdown_signal_watcher(context.clone()),
+        run_checked(run_block_observer, &context),
         // The rest of our services which run concurrently, and must all be
         // running for the signer to be operational.
         run_checked(run_stacks_event_observer, &context),
