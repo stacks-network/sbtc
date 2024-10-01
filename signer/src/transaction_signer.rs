@@ -599,7 +599,7 @@ where
             .collect::<Result<Vec<bitcoin::Address>, _>>()?;
 
         let is_accepted = futures::stream::iter(&addresses)
-            .any(|address| async { self.check_blocklist(&address.to_string()).await })
+            .any(|address| async { self.can_accept(&address.to_string()).await })
             .await;
 
         let msg = message::SignerDepositDecision {
@@ -632,7 +632,7 @@ where
         // TODO: Do we want to do this on the sender address of the
         // recipient address?
         let is_accepted = self
-            .check_blocklist(&withdraw_request.sender_address.to_string())
+            .can_accept(&withdraw_request.sender_address.to_string())
             .await;
 
         let signer_decision = model::WithdrawalSigner {
@@ -650,7 +650,7 @@ where
         Ok(())
     }
 
-    async fn check_blocklist(&self, address: &str) -> bool {
+    async fn can_accept(&self, address: &str) -> bool {
         let Some(client) = self.blocklist_checker.as_ref() else {
             return true;
         };
