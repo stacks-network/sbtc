@@ -102,9 +102,9 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     /// Private key of the coordinator for network communication.
     pub private_key: PrivateKey,
     /// The threshold for the signer
-    pub threshold: u16,
+    pub signatures_required: u16,
     /// How many bitcoin blocks back from the chain tip the signer will look for requests.
-    pub context_window: usize,
+    pub context_window: u16,
     /// The bitcoin network we're targeting
     pub bitcoin_network: bitcoin::Network,
     /// The maximum duration of a signing round before the coordinator will time out and return an error.
@@ -250,7 +250,7 @@ where
             &mut self.context.get_storage_mut(),
             aggregate_key,
             signer_public_keys.clone(),
-            self.threshold,
+            self.signatures_required,
             self.private_key,
         )
         .await?;
@@ -471,7 +471,7 @@ where
             .try_into()
             .map_err(|_| Error::TypeConversion)?;
 
-        let threshold = self.threshold;
+        let threshold = self.signatures_required;
 
         let pending_deposit_requests = self
             .context
@@ -513,7 +513,7 @@ where
             withdrawals.push(withdrawal);
         }
 
-        let accept_threshold = self.threshold;
+        let accept_threshold = self.signatures_required;
         let num_signers = signer_public_keys
             .len()
             .try_into()

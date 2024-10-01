@@ -578,6 +578,6 @@ mod tests {
 
         let (_, dkg_shares) = signer_set.run_dkg(bitcoin_chain_tip, txid, &mut rng).await;
 
-        assert_eq!(dkg_shares.len(), num_signers);
+        assert_eq!(dkg_shares.len(), num_signers as usize);
     }
 }

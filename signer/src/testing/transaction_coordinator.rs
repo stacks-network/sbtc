@@ -50,7 +50,7 @@ where
     fn create(
         context: C,
         network: network::in_memory::MpmcBroadcaster,
-        context_window: usize,
+        context_window: u16,
         private_key: PrivateKey,
         threshold: u16,
     ) -> Self {
@@ -60,7 +60,7 @@ where
                 network,
                 private_key,
                 context_window,
-                threshold,
+                signatures_required: threshold,
                 bitcoin_network: bitcoin::Network::Testnet,
                 signing_round_max_duration: Duration::from_secs(10),
             },
@@ -100,9 +100,9 @@ pub struct TestEnvironment<Context> {
     /// Signer context
     pub context: Context,
     /// Bitcoin context window
-    pub context_window: usize,
+    pub context_window: u16,
     /// Num signers
-    pub num_signers: usize,
+    pub num_signers: u16,
     /// Signing threshold
     pub signing_threshold: u16,
     /// Test model parameters
@@ -117,7 +117,7 @@ impl TestEnvironment<TestContext<WrappedMock<MockBitcoinInteract>>> {
 
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
-        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
         let mut testing_signer_set =
             testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
@@ -245,7 +245,7 @@ where
     pub async fn assert_get_signer_utxo_simple(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
-        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
         let mut signer_set =
             testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
@@ -312,7 +312,7 @@ where
     pub async fn assert_get_signer_utxo_fork(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
-        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
         let mut signer_set =
             testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
@@ -426,7 +426,7 @@ where
     pub async fn assert_get_signer_utxo_unspent(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
-        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
         let mut signer_set =
             testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
