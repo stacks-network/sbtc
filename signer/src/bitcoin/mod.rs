@@ -19,7 +19,7 @@ pub mod zmq;
 
 /// Represents the ability to interact with the bitcoin blockchain
 #[cfg_attr(any(test, feature = "testing"), mockall::automock())]
-pub trait BitcoinInteract {
+pub trait BitcoinInteract: Sync + Send {
     /// Get block
     fn get_block(
         &self,
@@ -27,14 +27,14 @@ pub trait BitcoinInteract {
     ) -> impl Future<Output = Result<Option<bitcoin::Block>, Error>> + Send;
 
     /// get tx
-    fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error>;
+    fn get_tx(&self, txid: &Txid) -> impl Future<Output = Result<Option<GetTxResponse>, Error>>;
 
     /// get tx info
     fn get_tx_info(
         &self,
         txid: &Txid,
         block_hash: &BlockHash,
-    ) -> Result<Option<BitcoinTxInfo>, Error>;
+    ) -> impl Future<Output = Result<Option<BitcoinTxInfo>, Error>>;
 
     /// Estimate fee rate
     // This should be implemented with the help of the `fees::EstimateFees` trait

@@ -5,6 +5,7 @@ use url::Url;
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::BitcoinInteract;
+use crate::bitcoin::MockBitcoinInteract;
 use crate::blocklist_client::BlocklistChecker;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
@@ -24,10 +25,11 @@ impl TryFrom<&[Url]> for NoopApiClient {
 
 /// Noop implementation of the BitcoinInteract trait.
 impl BitcoinInteract for NoopApiClient {
-    fn get_tx(&self, _: &bitcoin::Txid) -> Result<Option<GetTxResponse>, Error> {
+    async fn get_tx(&self, _: &bitcoin::Txid) -> Result<Option<GetTxResponse>, Error> {
         unimplemented!()
     }
-    fn get_tx_info(
+
+    async fn get_tx_info(
         &self,
         _: &bitcoin::Txid,
         _: &bitcoin::BlockHash,
@@ -132,5 +134,13 @@ impl BlocklistChecker for NoopApiClient {
     ) -> Result<bool, blocklist_api::apis::Error<blocklist_api::apis::address_api::CheckAddressError>>
     {
         todo!()
+    }
+}
+
+impl TryFrom<&[Url]> for MockBitcoinInteract {
+    type Error = Error;
+
+    fn try_from(_: &[Url]) -> Result<Self, Self::Error> {
+        Ok(Self::default())
     }
 }

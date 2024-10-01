@@ -11,13 +11,14 @@ use sha2::Digest;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
+use crate::context::{messaging::SignerEvent, messaging::SignerSignal, Context};
 use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
 use crate::network;
-use crate::storage;
 use crate::storage::model;
+use crate::storage::DbRead as _;
 use crate::wsts_state_machine;
 
 use crate::ecdsa::SignEcdsa as _;
@@ -93,15 +94,11 @@ use wsts::state_machine::coordinator::Coordinator as _;
 ///     BST --> DONE
 /// ```
 #[derive(Debug)]
-pub struct TxCoordinatorEventLoop<Network, Storage, BitcoinClient> {
+pub struct TxCoordinatorEventLoop<Context, Network> {
+    /// The signer context.
+    pub context: Context,
     /// Interface to the signer network.
     pub network: Network,
-    /// Database connection.
-    pub storage: Storage,
-    /// Bitcoin client
-    pub bitcoin_client: BitcoinClient,
-    /// Notification receiver from the block observer.
-    pub block_observer_notifications: tokio::sync::watch::Receiver<()>,
     /// Private key of the coordinator for network communication.
     pub private_key: PrivateKey,
     /// The threshold for the signer
@@ -114,25 +111,47 @@ pub struct TxCoordinatorEventLoop<Network, Storage, BitcoinClient> {
     pub signing_round_max_duration: std::time::Duration,
 }
 
-impl<N, S, B> TxCoordinatorEventLoop<N, S, B>
+impl<C, N> TxCoordinatorEventLoop<C, N>
 where
+    C: Context,
     N: network::MessageTransfer,
-    S: storage::DbRead + storage::DbWrite,
-    B: BitcoinInteract,
 {
     /// Run the coordinator event loop
     #[tracing::instrument(skip(self))]
     pub async fn run(mut self) -> Result<(), Error> {
+        tracing::info!("starting transaction coordinator event loop");
+        let mut term = self.context.get_termination_handle();
+        let mut signal_rx = self.context.get_signal_receiver();
+
         loop {
-            match self.block_observer_notifications.changed().await {
-                Ok(()) => self.process_new_blocks().await?,
-                Err(_) => {
-                    tracing::info!("block observer notification channel closed");
+            tokio::select! {
+                _ = term.wait_for_shutdown() => {
+                    tracing::info!("received termination signal");
                     break;
-                }
+                },
+                signal = signal_rx.recv() => match signal {
+                    // We're only interested in block observer notifications, which
+                    // is our trigger to do some work.
+                    Ok(SignerSignal::Event(SignerEvent::BitcoinBlockObserved)) => {
+                        tracing::debug!("received block observer notification");
+                        self.process_new_blocks().await?;
+                    },
+                    // If we get an error receiving,
+                    Err(error) => {
+                        tracing::error!(?error, "error receiving signal; application is probably shutting down");
+                        break;
+                    },
+                    // Otherwise, we've received some other signal that we're not interested
+                    // in, so we just continue.
+                    _ => {
+                        tracing::warn!("ignoring signal");
+                        continue;
+                    }
+                },
             }
         }
-        tracing::info!("shutting down transaction coordinator event loop");
+
+        tracing::info!("transaction coordinator event loop is stopping");
 
         Ok(())
     }
@@ -140,7 +159,8 @@ where
     #[tracing::instrument(skip(self))]
     async fn process_new_blocks(&mut self) -> Result<(), Error> {
         let bitcoin_chain_tip = self
-            .storage
+            .context
+            .get_storage()
             .get_bitcoin_canonical_chain_tip()
             .await?
             .ok_or(Error::NoChainTip)?;
@@ -227,7 +247,7 @@ where
         mut transaction: utxo::UnsignedTransaction<'_>,
     ) -> Result<(), Error> {
         let mut coordinator_state_machine = wsts_state_machine::CoordinatorStateMachine::load(
-            &mut self.storage,
+            &mut self.context.get_storage_mut(),
             aggregate_key,
             signer_public_keys.clone(),
             self.threshold,
@@ -294,7 +314,8 @@ where
                 tx_in.witness = witness;
             });
 
-        self.bitcoin_client
+        self.context
+            .get_bitcoin_client()
             .broadcast_transaction(&transaction.tx)
             .await?;
 
@@ -401,16 +422,23 @@ where
         &mut self,
         aggregate_key: &PublicKey,
     ) -> Result<utxo::SignerBtcState, Error> {
-        let fee_rate = self.bitcoin_client.estimate_fee_rate().await?;
-        let Some(chain_tip) = self.storage.get_bitcoin_canonical_chain_tip().await? else {
+        let bitcoin_client = self.context.get_bitcoin_client();
+        let fee_rate = bitcoin_client.estimate_fee_rate().await?;
+        let Some(chain_tip) = self
+            .context
+            .get_storage()
+            .get_bitcoin_canonical_chain_tip()
+            .await?
+        else {
             return Err(Error::NoChainTip);
         };
         let utxo = self
-            .storage
+            .context
+            .get_storage()
             .get_signer_utxo(&chain_tip, aggregate_key)
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
-        let last_fees = self.bitcoin_client.get_last_fee(utxo.outpoint).await?;
+        let last_fees = bitcoin_client.get_last_fee(utxo.outpoint).await?;
 
         Ok(utxo::SignerBtcState {
             fee_rate,
@@ -441,12 +469,14 @@ where
         let threshold = self.threshold;
 
         let pending_deposit_requests = self
-            .storage
+            .context
+            .get_storage()
             .get_pending_accepted_deposit_requests(bitcoin_chain_tip, context_window, threshold)
             .await?;
 
         let pending_withdraw_requests = self
-            .storage
+            .context
+            .get_storage()
             .get_pending_accepted_withdrawal_requests(bitcoin_chain_tip, context_window, threshold)
             .await?;
 
@@ -456,7 +486,8 @@ where
 
         for req in pending_deposit_requests {
             let votes = self
-                .storage
+                .context
+                .get_storage()
                 .get_deposit_request_signer_votes(&req.txid, req.output_index, &aggregate_key)
                 .await?;
 
@@ -468,7 +499,8 @@ where
 
         for req in pending_withdraw_requests {
             let votes = self
-                .storage
+                .context
+                .get_storage()
                 .get_withdrawal_request_signer_votes(&req.qualified_id(), &aggregate_key)
                 .await?;
 
@@ -497,7 +529,8 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(PublicKey, BTreeSet<PublicKey>), Error> {
         let last_key_rotation = self
-            .storage
+            .context
+            .get_storage()
             .get_last_key_rotation(bitcoin_chain_tip)
             .await?
             .ok_or(Error::MissingKeyRotation)?;
@@ -559,12 +592,12 @@ pub fn coordinator_public_key(
 
 #[cfg(test)]
 mod tests {
-    use crate::storage;
+    use crate::bitcoin::MockBitcoinInteract;
     use crate::testing;
+    use crate::testing::context::{TestContext, WrappedMock};
+    use crate::testing::transaction_coordinator::TestEnvironment;
 
-    fn test_environment(
-    ) -> testing::transaction_coordinator::TestEnvironment<fn() -> storage::in_memory::SharedStore>
-    {
+    fn test_environment() -> TestEnvironment<TestContext<WrappedMock<MockBitcoinInteract>>> {
         let test_model_parameters = testing::storage::model::Params {
             num_bitcoin_blocks: 20,
             num_stacks_blocks_per_bitcoin_block: 3,
@@ -573,8 +606,10 @@ mod tests {
             num_signers_per_request: 7,
         };
 
+        let context = TestContext::new(WrappedMock::<MockBitcoinInteract>::default());
+
         testing::transaction_coordinator::TestEnvironment {
-            storage_constructor: storage::in_memory::Store::new_shared,
+            context,
             context_window: 5,
             num_signers: 7,
             signing_threshold: 5,

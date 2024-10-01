@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use axum::routing::get;
 use axum::routing::post;
@@ -17,8 +18,10 @@ use signer::context::SignerContext;
 use signer::emily_client::EmilyClient;
 use signer::error::Error;
 use signer::network::libp2p::SignerSwarmBuilder;
+use signer::network::P2PNetwork;
 use signer::stacks::api::StacksClient;
 use signer::storage::postgres::PgStore;
+use signer::transaction_coordinator;
 use signer::util::ApiFallbackClient;
 use tokio::signal;
 
@@ -83,6 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_checked(run_stacks_event_observer, &context),
         run_checked(run_libp2p_swarm, &context),
         run_checked(run_block_observer, &context),
+        run_checked(run_transaction_coordinator, &context),
     );
 
     Ok(())
@@ -155,7 +159,6 @@ async fn run_shutdown_signal_watcher(ctx: impl Context) -> Result<(), Error> {
                     tracing::info!(signal = "Ctrl+C", "received termination signal");
                 }
             }
-
         }
     }
 
@@ -261,6 +264,19 @@ async fn run_transaction_signer(_ctx: impl Context) -> Result<(), Error> {
 }
 
 #[allow(dead_code)] // Remove when implemented
-async fn run_transaction_coordinator(_ctx: impl Context) -> Result<(), Error> {
-    todo!()
+async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
+    let config = ctx.config().clone();
+    let network = P2PNetwork::new(&ctx);
+
+    let coord = transaction_coordinator::TxCoordinatorEventLoop {
+        network,
+        context: ctx,
+        context_window: 10000,
+        private_key: config.signer.private_key,
+        signing_round_max_duration: Duration::from_secs(10),
+        threshold: 2,
+        bitcoin_network: config.signer.network.into(),
+    };
+
+    coord.run().await
 }
