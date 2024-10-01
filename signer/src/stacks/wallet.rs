@@ -24,13 +24,18 @@ use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Message;
 
 use crate::config::NetworkKind;
+use crate::context::Context;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::signature::RecoverableEcdsaSignature as _;
 use crate::signature::SighashDigest as _;
 use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::AsTxPayload;
+use crate::storage::model::BitcoinBlockHash;
+use crate::storage::DbRead;
 use crate::MAX_KEYS;
+
+use super::api::StacksInteract;
 
 /// Stacks multisig addresses are Hash160 hashes of bitcoin Scripts (more
 /// or less). The enum value below defines which Script will be used to
@@ -59,9 +64,6 @@ pub struct SignerWallet {
     address: StacksAddress,
     /// The next nonce for the StacksAddress associated with the address of
     /// the wallet.
-    ///
-    /// TODO(510): remove the nonce, it should be set when the signer
-    /// creates each transaction.
     nonce: AtomicU64,
 }
 
@@ -143,6 +145,36 @@ impl SignerWallet {
                 .ok_or(Error::StacksMultiSig(signatures_required, num_keys))?,
             nonce: AtomicU64::new(nonce),
         })
+    }
+
+    /// Load the multi-sig wallet corresponding to the signer set defined
+    /// in the last key rotation.
+    pub async fn load<C>(ctx: &C, chain_tip: &BitcoinBlockHash) -> Result<SignerWallet, Error>
+    where
+        C: Context,
+    {
+        // Get the key rotation transaction from the database. This maps to
+        // what the stacks network thinks the signers' address is.
+        let last_key_rotation = ctx
+            .get_storage()
+            .get_last_key_rotation(chain_tip)
+            .await?
+            .ok_or(Error::MissingKeyRotation)?;
+
+        let public_keys = last_key_rotation.signer_set.as_slice();
+        let signatures_required = last_key_rotation.signatures_required;
+        let network_kind = ctx.config().signer.network;
+
+        // Create the wallet and properly set the nonce.
+        let wallet = SignerWallet::new(public_keys, signatures_required, network_kind, 0)?;
+        // We use the stacks-node as the source of truth for the nonce.
+        let account_info = ctx
+            .get_stacks_client()
+            .get_account(&wallet.address())
+            .await?;
+
+        wallet.set_nonce(account_info.nonce);
+        Ok(wallet)
     }
 
     fn hash_mode() -> OrderIndependentMultisigHashMode {
