@@ -12,6 +12,7 @@ use blockstack_lib::types::chainstate::StacksAddress;
 use futures::StreamExt;
 use rand::seq::SliceRandom;
 
+use signer::config::Settings;
 use signer::context::Context;
 use signer::error::Error;
 use signer::keys::PublicKey;
@@ -46,6 +47,7 @@ use signer::testing::wallet::ContractCallWrapper;
 
 use fake::Fake;
 use rand::SeedableRng;
+use signer::testing::NoopSignerContext;
 use test_case::test_case;
 
 use crate::DATABASE_NUM;
@@ -1267,7 +1269,8 @@ async fn we_can_fetch_bitcoin_txs_from_db() {
 }
 
 async fn transaction_coordinator_test_environment(
-) -> testing::transaction_coordinator::TestEnvironment<impl FnMut() -> storage::postgres::PgStore> {
+) -> testing::transaction_coordinator::TestEnvironment<NoopSignerContext<storage::postgres::PgStore>>
+{
     use std::sync::atomic::Ordering;
 
     let test_model_parameters = testing::storage::model::Params {
@@ -1280,11 +1283,12 @@ async fn transaction_coordinator_test_environment(
 
     let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let store = testing::storage::new_test_database(db_num, true).await;
-    // TODO: something better than this hacky thing?
-    let mut store_vec = vec![store];
+
+    let context = NoopSignerContext::init(Settings::new_from_default_config().unwrap(), store)
+        .expect("failed to init context");
 
     testing::transaction_coordinator::TestEnvironment {
-        storage_constructor: move || store_vec.pop().unwrap(),
+        context,
         context_window: 5,
         num_signers: 7,
         signing_threshold: 5,

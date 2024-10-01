@@ -2,7 +2,7 @@
 //! messaging via the [`Context`].
 
 /// Signals that can be sent within the signer binary.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SignerSignal {
     /// Send a command to the application.
     Command(SignerCommand),
@@ -11,14 +11,14 @@ pub enum SignerSignal {
 }
 
 /// Commands that can be sent on the signalling channel.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SignerCommand {
     /// Signals to the application to publish a message to the P2P network.
     P2PPublish(crate::network::Msg),
 }
 
 /// Events that can be received on the signalling channel.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SignerEvent {
     /// Signals that a P2P event has occurred.
     P2P(P2PEvent),
@@ -27,7 +27,7 @@ pub enum SignerEvent {
 }
 
 /// Events that can be triggered from the P2P network.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum P2PEvent {
     /// Signals to the application that the P2P publish failed for the given message.
     PublishFailure(crate::network::MsgId),
@@ -41,7 +41,7 @@ pub enum P2PEvent {
 }
 
 /// Events that can be triggered from the transaction signer.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TxSignerEvent {
     /// Received a deposit decision
     ReceivedDepositDecision,

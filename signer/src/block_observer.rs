@@ -18,6 +18,7 @@
 //! - Set aggregate key transactions
 
 use std::collections::HashMap;
+use std::future::Future;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
@@ -74,12 +75,12 @@ pub struct Deposit {
 }
 
 impl DepositRequestValidator for CreateDepositRequest {
-    fn validate<C>(&self, client: &C) -> Result<Deposit, Error>
+    async fn validate<C>(&self, client: &C) -> Result<Deposit, Error>
     where
         C: BitcoinInteract,
     {
         // Fetch the transaction from either a block or from the mempool
-        let Some(response) = client.get_tx(&self.outpoint.txid)? else {
+        let Some(response) = client.get_tx(&self.outpoint.txid).await? else {
             return Err(Error::BitcoinTxMissing(self.outpoint.txid));
         };
 
@@ -98,7 +99,7 @@ pub trait DepositRequestValidator {
     /// This function fetches the transaction using the given client and
     /// checks that the transaction has been submitted. The transaction
     /// need not be confirmed.
-    fn validate<C>(&self, client: &C) -> Result<Deposit, Error>
+    fn validate<C>(&self, client: &C) -> impl Future<Output = Result<Deposit, Error>>
     where
         C: BitcoinInteract;
 }
@@ -158,6 +159,7 @@ where
         for request in deposit_requests {
             let deposit = request
                 .validate(&self.context.get_bitcoin_client())
+                .await
                 .inspect_err(|error| tracing::warn!(%error, "could not validate deposit request"));
 
             if let Ok(deposit) = deposit {
@@ -799,11 +801,15 @@ mod tests {
     }
 
     impl BitcoinInteract for TestHarness {
-        fn get_tx(&self, txid: &bitcoin::Txid) -> Result<Option<GetTxResponse>, Error> {
+        async fn get_tx(&self, txid: &bitcoin::Txid) -> Result<Option<GetTxResponse>, Error> {
             Ok(self.deposits.get(txid).cloned())
         }
 
-        fn get_tx_info(&self, _: &Txid, _: &BlockHash) -> Result<Option<BitcoinTxInfo>, Error> {
+        async fn get_tx_info(
+            &self,
+            _: &Txid,
+            _: &BlockHash,
+        ) -> Result<Option<BitcoinTxInfo>, Error> {
             unimplemented!()
         }
 
