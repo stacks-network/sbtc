@@ -1305,7 +1305,7 @@
           },
           "depositScript": {
             "type": "string",
-            "description": "Raw deposit script binary."
+            "description": "Raw deposit script binary in hex."
           },
           "fulfillment": {
             "allOf": [
@@ -1334,7 +1334,7 @@
           },
           "reclaimScript": {
             "type": "string",
-            "description": "Raw reclaim script binary."
+            "description": "Raw reclaim script binary in hex."
           },
           "status": {
             "$ref": "#/components/schemas/Status"
@@ -1378,7 +1378,7 @@
           },
           "depositScript": {
             "type": "string",
-            "description": "Raw deposit script binary."
+            "description": "Raw deposit script binary in hex."
           },
           "lastUpdateBlockHash": {
             "type": "string",
@@ -1396,7 +1396,7 @@
           },
           "reclaimScript": {
             "type": "string",
-            "description": "Raw reclaim script binary."
+            "description": "Raw reclaim script binary in hex."
           },
           "status": {
             "$ref": "#/components/schemas/Status"

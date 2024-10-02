@@ -49,9 +49,9 @@ pub struct Deposit {
     pub status_message: String,
     /// Deposit parameters
     pub parameters: DepositParameters,
-    /// Raw reclaim script binary.
+    /// Raw reclaim script binary in hex.
     pub reclaim_script: String,
-    /// Raw deposit script binary.
+    /// Raw deposit script binary in hex.
     pub deposit_script: String,
     /// Details about the on chain artifacts that fulfilled the deposit.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -80,8 +80,6 @@ pub struct DepositParameters {
     pub max_fee: u64,
     /// Bitcoin block height at which the reclaim script becomes executable.
     pub lock_time: u64,
-    // /// Raw reclaim script.
-    // pub reclaim_script: String,
 }
 
 /// Reduced version of the Deposit data.
@@ -119,9 +117,9 @@ pub struct DepositInfo {
     pub last_update_block_hash: String,
     /// The status of the deposit.
     pub status: Status,
-    /// Raw reclaim script binary.
+    /// Raw reclaim script binary in hex.
     pub reclaim_script: String,
-    /// Raw deposit script binary.
+    /// Raw deposit script binary in hex.
     pub deposit_script: String,
 }
 
