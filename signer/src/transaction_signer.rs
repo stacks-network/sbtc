@@ -156,6 +156,7 @@ where
                 result = self.network.receive() => {
                     match result {
                         Ok(msg) => {
+                            eprintln!("tx signer event loop received message: {}", &msg);
                             let res = self.handle_signer_message(&msg).await;
                             match res {
                                 Ok(()) => (),
@@ -209,6 +210,7 @@ where
     #[tracing::instrument(skip(self))]
     async fn handle_signer_message(&mut self, msg: &network::Msg) -> Result<(), Error> {
         if !msg.verify() {
+            eprintln!("unable to verify message");
             tracing::warn!("unable to verify message");
             return Err(Error::InvalidSignature);
         }
@@ -246,6 +248,7 @@ where
                 true,
                 ChainTipStatus::Canonical,
             ) => {
+                eprintln!("handling bitcoin transaction sign request");
                 self.handle_bitcoin_transaction_sign_request(request, &msg.bitcoin_chain_tip)
                     .await?;
             }
@@ -324,10 +327,13 @@ where
         let is_valid_sign_request = self
             .is_valid_bitcoin_transaction_sign_request(request)
             .await?;
+        eprintln!("is_valid_sign_request: {}", is_valid_sign_request);
 
         if is_valid_sign_request {
             let signer_public_keys = self.get_signer_public_keys(bitcoin_chain_tip).await?;
+            eprintln!("got signer public keys");
 
+            eprintln!("loading wsts state machine");
             let new_state_machine = wsts_state_machine::SignerStateMachine::load(
                 &self.context.get_storage_mut(),
                 request.aggregate_key,
@@ -335,18 +341,26 @@ where
                 self.threshold,
                 self.signer_private_key,
             )
-            .await?;
+            .await;
+        
+            if let Err(e) = &new_state_machine {
+                eprintln!("failed to load wsts state machine: {:?}", e);
+            } else {
+                eprintln!("wsts state machine loaded");
+            }
 
             let txid = request.tx.compute_txid();
 
-            self.wsts_state_machines.insert(txid, new_state_machine);
+            self.wsts_state_machines.insert(txid, new_state_machine?);
 
             let msg = message::BitcoinTransactionSignAck {
                 txid: request.tx.compute_txid(),
             };
-
+            
+            eprintln!("sending BitcoinTransactionSignAck");
             self.send_message(msg, bitcoin_chain_tip).await?;
         } else {
+            eprintln!("received invalid sign request");
             tracing::warn!("received invalid sign request");
         }
 

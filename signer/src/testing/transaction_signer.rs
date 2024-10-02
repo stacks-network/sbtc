@@ -31,6 +31,12 @@ use futures::StreamExt as _;
 use rand::SeedableRng as _;
 use sha2::Digest as _;
 
+use super::context::BuildContext as _;
+use super::context::ConfigureBitcoinClient;
+use super::context::ConfigureStacksClient;
+use super::context::ConfigureStorage;
+use super::context::TestContext;
+
 struct EventLoopHarness<Context, Rng> {
     context: Context,
     event_loop: EventLoop<Context, Rng>,
@@ -161,7 +167,7 @@ where
 
         let signer_set = &coordinator_signer_info.signer_public_keys;
         let test_data = self.generate_test_data(&mut rng, signer_set);
-        Self::write_test_data(&self.context.get_storage_mut(), &test_data).await;
+        Self::write_test_data(&handle.context.get_storage_mut(), &test_data).await;
 
         handle
             .context
@@ -200,7 +206,7 @@ where
 
         let signer_set = &coordinator_signer_info.signer_public_keys;
         let test_data = self.generate_test_data(&mut rng, signer_set);
-        Self::write_test_data(&self.context.get_storage_mut(), &test_data).await;
+        Self::write_test_data(&handle.context.get_storage_mut(), &test_data).await;
 
         handle
             .context
@@ -225,11 +231,18 @@ where
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().cloned().unwrap();
 
+        // A closure to build a new context for each signer
+        let build_context = || TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_bitcoin_client()
+            .with_mocked_stacks_client()
+            .build();
+
         let mut event_loop_handles: Vec<_> = signer_info
             .into_iter()
             .map(|signer_info| {
                 let event_loop_harness = EventLoopHarness::create(
-                    self.context.clone(),
+                    build_context(),
                     network.connect(),
                     self.context_window,
                     signer_info.signer_private_key,
@@ -320,7 +333,7 @@ where
 
         let signer_set = &coordinator_signer_info.signer_public_keys;
         let test_data = self.generate_test_data(&mut rng, signer_set);
-        Self::write_test_data(&self.context.get_storage_mut(), &test_data).await;
+        Self::write_test_data(&handle.context.get_storage_mut(), &test_data).await;
 
         let bitcoin_chain_tip = handle
             .context
@@ -397,12 +410,21 @@ where
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().unwrap().clone();
 
+        // A closure to build a new context for each signer
+        let build_context = || TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_bitcoin_client()
+            .with_mocked_stacks_client()
+            .build();
+
+        // Create a new event-loop for each signer, based on the number of signers
+        // defined in `self.num_signers`.
         let mut event_loop_handles: Vec<_> = signer_info
             .clone()
             .into_iter()
             .map(|signer_info| {
                 let event_loop_harness = EventLoopHarness::create(
-                    self.context.clone(),
+                    build_context(), // NEED TO HAVE A NEW CONTEXT FOR EACH SIGNER
                     network.connect(),
                     self.context_window,
                     signer_info.signer_private_key,
@@ -417,8 +439,7 @@ where
         let signer_set = &coordinator_signer_info.signer_public_keys;
         let test_data = self.generate_test_data(&mut rng, signer_set);
         for handle in event_loop_handles.iter_mut() {
-            test_data.write_to(&handle.context.get_storage_mut()).await;
-            //Self::write_test_data(&test_data, &mut handle.storage).await;
+            Self::write_test_data(&handle.context.get_storage_mut(), &test_data).await;
         }
 
         let bitcoin_chain_tip = event_loop_handles
@@ -471,12 +492,19 @@ where
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().unwrap().clone();
 
+        // A closure to build a new context for each signer
+        let build_context = || TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_bitcoin_client()
+            .with_mocked_stacks_client()
+            .build();
+
         let mut event_loop_handles: Vec<_> = signer_info
             .clone()
             .into_iter()
             .map(|signer_info| {
                 let event_loop_harness = EventLoopHarness::create(
-                    self.context.clone(),
+                    build_context(),
                     network.connect(),
                     self.context_window,
                     signer_info.signer_private_key,
@@ -504,6 +532,7 @@ where
             .expect("storage error")
             .expect("no chain tip");
 
+        eprintln!("running dkg and storing results");
         run_dkg_and_store_results_for_signers(
             &signer_info,
             &bitcoin_chain_tip,
@@ -515,12 +544,14 @@ where
         )
         .await;
 
+        eprintln!("determining the coordinator public key");
         let coordinator_public_key = transaction_coordinator::coordinator_public_key(
             &bitcoin_chain_tip,
             &signer_info.first().unwrap().signer_public_keys,
         )
         .unwrap()
         .unwrap();
+        eprintln!("coordinator public key: {:?}", coordinator_public_key);
 
         let coordinator_signer_info = signer_info
             .iter()
@@ -538,6 +569,8 @@ where
             coordinator_signer_info,
             self.signing_threshold,
         );
+
+        eprintln!("running dkg");
         let aggregate_key = coordinator.run_dkg(bitcoin_chain_tip, dummy_txid).await;
 
         let tx = testing::dummy::tx(&fake::Faker, &mut rng);
@@ -547,10 +580,12 @@ where
         hasher.update("sign here please");
         let msg: [u8; 32] = hasher.finalize().into(); // TODO(296): Compute proper sighash from transaction
 
+        eprintln!("requesting transaction signing");
         coordinator
             .request_sign_transaction(bitcoin_chain_tip, tx, aggregate_key)
             .await;
 
+        eprintln!("running signing round");
         let signature = coordinator
             .run_signing_round(bitcoin_chain_tip, txid, &msg)
             .await;
