@@ -393,7 +393,8 @@ impl CompleteDepositV1 {
         let rpc = ctx.get_bitcoin_client();
         // First we check that bitcoin-core has a record of the transaction
         // where we think it should be.
-        let Some(sweep_tx) = rpc.get_tx_info(&self.sweep_txid, &self.sweep_block_hash)? else {
+        let txid = &self.sweep_txid;
+        let Some(sweep_tx) = rpc.get_tx_info(txid, &self.sweep_block_hash).await? else {
             return Err(DepositErrorMsg::SweepTransactionMissing.into_error(req_ctx, self));
         };
         // 3. Check that the signer sweep transaction is on the canonical
@@ -714,7 +715,7 @@ impl AcceptWithdrawalV1 {
         // First we check that bitcoin-core has a record of the transaction
         // where we think it should be.
         let txid = &self.outpoint.txid;
-        let Some(sweep_tx) = rpc.get_tx_info(txid, &self.sweep_block_hash)? else {
+        let Some(sweep_tx) = rpc.get_tx_info(txid, &self.sweep_block_hash).await? else {
             return Err(WithdrawalErrorMsg::SweepTransactionMissing.into_error(req_ctx, self));
         };
         // 3. That the signer bitcoin transaction sweeping out the users'

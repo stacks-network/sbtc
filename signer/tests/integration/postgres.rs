@@ -1308,6 +1308,8 @@ async fn is_signer_script_pub_key_checks_dkg_shares_for_script_pubkeys() {
 
     assert!(!db.is_signer_script_pub_key(&script_pubkey).await.unwrap());
     assert!(!mem.is_signer_script_pub_key(&script_pubkey).await.unwrap());
+
+    signer::testing::storage::drop_db(db).await;
 }
 
 /// The [`DbRead::get_signers_script_pubkeys`] function is only supposed to
@@ -1348,6 +1350,8 @@ async fn get_signers_script_pubkeys_returns_non_empty_vec_old_rows() {
 
     let keys = db.get_signers_script_pubkeys().await.unwrap();
     assert_eq!(keys.len(), 1);
+
+    signer::testing::storage::drop_db(db).await;
 }
 
 async fn transaction_coordinator_test_environment(
