@@ -106,8 +106,6 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     pub network: Network,
     /// Private key of the coordinator for network communication.
     pub private_key: PrivateKey,
-    /// The threshold for the signer
-    pub signatures_required: u16,
     /// How many bitcoin blocks back from the chain tip the signer will look for requests.
     pub context_window: u16,
     /// The bitcoin network we're targeting
@@ -170,24 +168,14 @@ where
             .await?
             .ok_or(Error::NoChainTip)?;
 
-        let (aggregate_key, signer_public_keys) = self
-            .get_signer_public_keys_and_aggregate_key(&bitcoin_chain_tip)
-            .await?;
+        let wallet = SignerWallet::load(&self.context, &bitcoin_chain_tip).await?;
 
-        if self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys)? {
-            self.construct_and_sign_bitcoin_sbtc_transactions(
-                &bitcoin_chain_tip,
-                aggregate_key,
-                &signer_public_keys,
-            )
-            .await?;
+        if self.is_coordinator(&bitcoin_chain_tip, wallet.public_keys())? {
+            self.construct_and_sign_bitcoin_sbtc_transactions(&bitcoin_chain_tip, &wallet)
+                .await?;
 
-            self.construct_and_sign_stacks_sbtc_response_transactions(
-                &bitcoin_chain_tip,
-                aggregate_key,
-                &signer_public_keys,
-            )
-            .await?;
+            self.construct_and_sign_stacks_sbtc_response_transactions(&bitcoin_chain_tip, &wallet)
+                .await?;
         }
 
         Ok(())
@@ -199,30 +187,19 @@ where
     async fn construct_and_sign_bitcoin_sbtc_transactions(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: PublicKey,
-        signer_public_keys: &BTreeSet<PublicKey>,
+        wallet: &SignerWallet,
     ) -> Result<(), Error> {
-        let signer_btc_state = self.get_btc_state(&aggregate_key).await?;
+        let signer_btc_state = self.get_btc_state(wallet.aggregate_key()).await?;
 
         let pending_requests = self
-            .get_pending_requests(
-                bitcoin_chain_tip,
-                signer_btc_state,
-                aggregate_key,
-                signer_public_keys,
-            )
+            .get_pending_requests(bitcoin_chain_tip, signer_btc_state, wallet)
             .await?;
 
         let transaction_package = pending_requests.construct_transactions()?;
 
         for transaction in transaction_package {
-            self.sign_and_broadcast(
-                bitcoin_chain_tip,
-                aggregate_key,
-                signer_public_keys,
-                transaction,
-            )
-            .await?;
+            self.sign_and_broadcast(bitcoin_chain_tip, wallet, transaction)
+                .await?;
         }
 
         Ok(())
@@ -234,8 +211,7 @@ where
     async fn construct_and_sign_stacks_sbtc_response_transactions(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: PublicKey,
-        signer_public_keys: &BTreeSet<PublicKey>,
+        wallet: &SignerWallet,
     ) -> Result<(), Error> {
         let db = self.context.get_storage();
         let btc_rpc = self.context.get_bitcoin_client();
@@ -256,7 +232,7 @@ where
             .get_pending_accepted_deposit_requests(
                 chain_tip,
                 self.context_window,
-                self.signatures_required,
+                wallet.signatures_required(),
             )
             .await?;
 
@@ -266,13 +242,10 @@ where
             let tx_info = btc_rpc.get_tx_info(&req.txid, chain_tip).await?.unwrap();
             let block_ref = db.get_bitcoin_block(chain_tip).await?.unwrap();
 
-            let votes = db
-                .get_deposit_request_signer_votes(&req.txid, req.output_index, &aggregate_key)
-                .await?;
             let outpoint = req.outpoint();
 
             let tx = CompleteDepositV1 {
-                amount: req.amount - tx_info.assess_input_fee(outpoint).unwrap().to_sat(),
+                amount: req.amount - tx_info.assess_input_fee(&outpoint).unwrap().to_sat(),
                 outpoint,
                 recipient: req.recipient.clone().into(),
                 deployer: self.context.config().signer.deployer,
@@ -307,15 +280,14 @@ where
     async fn sign_and_broadcast(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: PublicKey,
-        signer_public_keys: &BTreeSet<PublicKey>,
+        wallet: &SignerWallet,
         mut transaction: utxo::UnsignedTransaction<'_>,
     ) -> Result<(), Error> {
         let mut coordinator_state_machine = wsts_state_machine::CoordinatorStateMachine::load(
             &mut self.context.get_storage_mut(),
-            aggregate_key,
-            signer_public_keys.clone(),
-            self.signatures_required,
+            *wallet.aggregate_key(),
+            wallet.public_keys().clone(),
+            wallet.signatures_required(),
             self.private_key,
         )
         .await?;
@@ -528,29 +500,37 @@ where
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         signer_btc_state: utxo::SignerBtcState,
-        aggregate_key: PublicKey,
-        signer_public_keys: &BTreeSet<PublicKey>,
+        wallet: &SignerWallet,
     ) -> Result<utxo::SbtcRequests, Error> {
         let context_window = self
             .context_window
             .try_into()
             .map_err(|_| Error::TypeConversion)?;
 
-        let threshold = self.signatures_required;
+        let signatures_required = wallet.signatures_required();
+        let aggregate_key = wallet.aggregate_key();
 
         let pending_deposit_requests = self
             .context
             .get_storage()
-            .get_pending_accepted_deposit_requests(bitcoin_chain_tip, context_window, threshold)
+            .get_pending_accepted_deposit_requests(
+                bitcoin_chain_tip,
+                context_window,
+                signatures_required,
+            )
             .await?;
 
         let pending_withdraw_requests = self
             .context
             .get_storage()
-            .get_pending_accepted_withdrawal_requests(bitcoin_chain_tip, context_window, threshold)
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip,
+                context_window,
+                signatures_required,
+            )
             .await?;
 
-        let signers_public_key = bitcoin::XOnlyPublicKey::from(&aggregate_key);
+        let signers_public_key = bitcoin::XOnlyPublicKey::from(aggregate_key);
 
         let mut deposits: Vec<utxo::DepositRequest> = Vec::new();
 
@@ -558,7 +538,7 @@ where
             let votes = self
                 .context
                 .get_storage()
-                .get_deposit_request_signer_votes(&req.txid, req.output_index, &aggregate_key)
+                .get_deposit_request_signer_votes(&req.txid, req.output_index, aggregate_key)
                 .await?;
 
             let deposit = utxo::DepositRequest::from_model(req, signers_public_key, votes);
@@ -571,43 +551,20 @@ where
             let votes = self
                 .context
                 .get_storage()
-                .get_withdrawal_request_signer_votes(&req.qualified_id(), &aggregate_key)
+                .get_withdrawal_request_signer_votes(&req.qualified_id(), aggregate_key)
                 .await?;
 
             let withdrawal = utxo::WithdrawalRequest::from_model(req, votes);
             withdrawals.push(withdrawal);
         }
 
-        let accept_threshold = self.signatures_required;
-        let num_signers = signer_public_keys
-            .len()
-            .try_into()
-            .map_err(|_| Error::TypeConversion)?;
-
         Ok(utxo::SbtcRequests {
             deposits,
             withdrawals,
             signer_state: signer_btc_state,
-            accept_threshold,
-            num_signers,
+            signatures_required,
+            num_signers: wallet.num_signers(),
         })
-    }
-
-    #[tracing::instrument(skip(self))]
-    async fn get_signer_public_keys_and_aggregate_key(
-        &mut self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<(PublicKey, BTreeSet<PublicKey>), Error> {
-        let last_key_rotation = self
-            .context
-            .get_storage()
-            .get_last_key_rotation(bitcoin_chain_tip)
-            .await?
-            .ok_or(Error::MissingKeyRotation)?;
-
-        let aggregate_key = last_key_rotation.aggregate_key;
-        let signer_set = last_key_rotation.signer_set.into_iter().collect();
-        Ok((aggregate_key, signer_set))
     }
 
     fn pub_key(&self) -> PublicKey {
