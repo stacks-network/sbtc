@@ -16,9 +16,12 @@ use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
+use crate::message::StacksTransactionSignRequest;
 use crate::network;
+use crate::signature::SighashDigest;
 use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::ContractCall;
+use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
 use crate::storage::DbRead as _;
@@ -227,45 +230,42 @@ where
         // associated with the bitcoin transaction's outputs.
 
         let deposit_requests = db
-            .get_pending_accepted_deposit_requests(
-                chain_tip,
-                self.context_window,
-                wallet.signatures_required(),
-            )
+            .get_finalizable_deposit_requests(chain_tip, self.context_window)
             .await?;
 
         // TODO: We need to filter the above deposit requests further to
         // exclude those that do not been used in a bitcoin transaction.
         for req in deposit_requests.iter() {
-            let tx_info = btc_rpc.get_tx_info(&req.txid, chain_tip).await?.unwrap();
-            let block_ref = db.get_bitcoin_block(chain_tip).await?.unwrap();
+            let tx_info = btc_rpc
+                .get_tx_info(&req.sweep_txid, chain_tip)
+                .await?
+                .unwrap();
 
-            let outpoint = req.outpoint();
+            let outpoint = bitcoin::OutPoint {
+                txid: req.txid.into(),
+                vout: req.output_index,
+            };
 
             let tx = CompleteDepositV1 {
                 amount: req.amount - tx_info.assess_input_fee(&outpoint).unwrap().to_sat(),
                 outpoint,
                 recipient: req.recipient.clone().into(),
                 deployer: self.context.config().signer.deployer,
-                // Wrong
-                sweep_txid: req.txid,
-                // Wrong
-                sweep_block_hash: *chain_tip,
-                // Wrong
-                sweep_block_height: block_ref.block_height,
+                sweep_txid: req.sweep_txid,
+                sweep_block_hash: req.sweep_block_hash,
+                sweep_block_height: req.sweep_block_height,
             };
 
-            let _contract = ContractCall::CompleteDepositV1(tx);
-            //     let wallet = SignerWallet::new(public_keys, self.signatures_required, self.bitcoin_network, 0)?;
-            //     let multi_tx = MultisigTx::new_contract_call(contract, wallet, tx_fee)
+            let contract = ContractCall::CompleteDepositV1(tx);
+            let multi_tx = MultisigTx::new_tx(&contract, wallet, 0);
 
-            //     let req = StacksTransactionSignRequest {
-            //         aggregate_key,
-            //         contract_call: ContractCall::CompleteDepositV1(tx),
-            //         nonce: 0,
-            //         tx_fee: 0,
-            //         digest:
-            //     };
+            let _req = StacksTransactionSignRequest {
+                aggregate_key: *wallet.aggregate_key(),
+                contract_call: contract.clone(),
+                nonce: 0,
+                tx_fee: 0,
+                digest: multi_tx.tx().digest(),
+            };
         }
 
         // TODO(320): Implement

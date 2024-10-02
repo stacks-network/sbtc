@@ -248,6 +248,11 @@ pub struct FulfilledDepositRequest {
     pub sweep_tx: BitcoinTx,
     /// The block id of the stacks block that includes this transaction
     pub sweep_block_hash: BitcoinBlockHash,
+    /// The block height of the stacks block that includes this transaction
+    #[sqlx(try_from = "i64")]
+    pub sweep_block_height: u64,
+    /// Transaction ID of the deposit request transaction.
+    pub txid: BitcoinTxId,
     /// Index of the deposit request UTXO.
     #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
     #[sqlx(try_from = "i32")]
