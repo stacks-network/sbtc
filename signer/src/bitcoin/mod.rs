@@ -9,7 +9,6 @@ use rpc::BitcoinTxInfo;
 use rpc::GetTxResponse;
 
 use crate::error::Error;
-use crate::keys::PublicKey;
 
 pub mod client;
 pub mod fees;
@@ -20,7 +19,7 @@ pub mod zmq;
 
 /// Represents the ability to interact with the bitcoin blockchain
 #[cfg_attr(any(test, feature = "testing"), mockall::automock())]
-pub trait BitcoinInteract {
+pub trait BitcoinInteract: Sync + Send {
     /// Get block
     fn get_block(
         &self,
@@ -28,24 +27,18 @@ pub trait BitcoinInteract {
     ) -> impl Future<Output = Result<Option<bitcoin::Block>, Error>> + Send;
 
     /// get tx
-    fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error>;
+    fn get_tx(&self, txid: &Txid) -> impl Future<Output = Result<Option<GetTxResponse>, Error>>;
 
     /// Get a transaction with additional information about it.
     fn get_tx_info(
         &self,
         txid: &Txid,
         block_hash: &BlockHash,
-    ) -> Result<Option<BitcoinTxInfo>, Error>;
+    ) -> impl Future<Output = Result<Option<BitcoinTxInfo>, Error>>;
 
     /// Estimate fee rate
     // This should be implemented with the help of the `fees::EstimateFees` trait
     fn estimate_fee_rate(&self) -> impl std::future::Future<Output = Result<f64, Error>> + Send;
-
-    /// Get the outstanding signer UTXO
-    fn get_signer_utxo(
-        &self,
-        aggregate_key: &PublicKey,
-    ) -> impl Future<Output = Result<Option<utxo::SignerUtxo>, Error>> + Send;
 
     /// Get the total fee amount and the fee rate for the last transaction that
     /// used the given UTXO as an input.

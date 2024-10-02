@@ -24,7 +24,6 @@ use url::Url;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::error::Error;
-use crate::keys::PublicKey;
 
 /// A slimmed down type representing a response from bitcoin-core's
 /// getrawtransaction RPC.
@@ -328,11 +327,11 @@ impl BitcoinInteract for BitcoinCoreClient {
         self.get_block(block_hash)
     }
 
-    fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error> {
+    async fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error> {
         self.get_tx(txid)
     }
 
-    fn get_tx_info(
+    async fn get_tx_info(
         &self,
         txid: &Txid,
         block_hash: &BlockHash,
@@ -341,13 +340,6 @@ impl BitcoinInteract for BitcoinCoreClient {
     }
 
     async fn estimate_fee_rate(&self) -> Result<f64, Error> {
-        todo!()
-    }
-
-    async fn get_signer_utxo(
-        &self,
-        _: &PublicKey,
-    ) -> Result<Option<super::utxo::SignerUtxo>, Error> {
         todo!()
     }
 

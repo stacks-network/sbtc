@@ -41,19 +41,15 @@ impl BlocklistChecker for BlocklistClient {
 
 impl BlocklistClient {
     /// Construct a new [`BlocklistClient`]
-    pub fn new(ctx: &impl Context) -> Self {
-        let base_url = format!(
-            "http://{}:{}",
-            ctx.config().blocklist_client.host,
-            ctx.config().blocklist_client.port
-        );
+    pub fn new(ctx: &impl Context) -> Option<Self> {
+        let config = ctx.config().blocklist_client.as_ref()?;
 
         let config = Configuration {
-            base_path: base_url.clone(),
+            base_path: config.endpoint.to_string(),
             ..Default::default()
         };
 
-        BlocklistClient { config }
+        Some(BlocklistClient { config })
     }
 
     #[cfg(test)]

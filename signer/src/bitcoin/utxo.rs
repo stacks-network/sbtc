@@ -539,7 +539,7 @@ impl<'a> Requests<'a> {
 ///   taproot. This is necessary because the signers collectively generate
 ///   Schnorr signatures, which requires taproot.
 /// * The taproot script for each signer UTXO is a key-spend only script.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SignerUtxo {
     /// The outpoint of the signers' UTXO
     pub outpoint: OutPoint,
