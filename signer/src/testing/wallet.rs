@@ -25,7 +25,8 @@ use crate::stacks::contracts::StacksTxPostConditions;
 use crate::stacks::wallet::SignerWallet;
 
 /// A static for a test 2-3 multi-sig wallet. This wallet is loaded with
-/// funds in the local devnet environment.
+/// funds in the local devnet environment. It matches the signer.deployer
+/// address in the default config file. 
 pub static WALLET: LazyLock<(SignerWallet, [Keypair; 3], u16)> = LazyLock::new(generate_wallet);
 
 /// Helper function for generating a test 2-3 multi-sig wallet

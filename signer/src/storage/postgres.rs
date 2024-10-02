@@ -11,6 +11,7 @@ use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use futures::StreamExt as _;
 use sqlx::PgExecutor;
+use stacks_common::types::chainstate::StacksAddress;
 
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::error::Error;
@@ -64,14 +65,20 @@ fn contract_transaction_kinds() -> &'static HashMap<&'static str, TransactionTyp
 
 /// This function extracts the signer relevant sBTC related transactions
 /// from the given blocks.
-pub fn extract_relevant_transactions(blocks: &[NakamotoBlock]) -> Vec<model::Transaction> {
+/// 
+/// Here the deployer is the address that deployed the sBTC smart
+/// contracts.
+pub fn extract_relevant_transactions(
+    blocks: &[NakamotoBlock],
+    deployer: &StacksAddress,
+) -> Vec<model::Transaction> {
     let transaction_kinds = contract_transaction_kinds();
     blocks
         .iter()
         .flat_map(|block| block.txs.iter().map(|tx| (tx, block.block_id())))
         .filter_map(|(tx, block_id)| match &tx.payload {
             TransactionPayload::ContractCall(x)
-                if CONTRACT_NAMES.contains(&x.contract_name.as_str()) =>
+                if CONTRACT_NAMES.contains(&x.contract_name.as_str()) && &x.address == deployer =>
             {
                 Some(model::Transaction {
                     txid: tx.txid().into_bytes(),
@@ -1730,14 +1737,15 @@ mod tests {
             blocks.push(NakamotoBlock::consensus_deserialize(bytes).unwrap());
         }
 
-        let txs = extract_relevant_transactions(&blocks);
+        let deployer = StacksAddress::burn_address(false);
+        let txs = extract_relevant_transactions(&blocks, &deployer);
         assert!(txs.is_empty());
 
         let last_block = blocks.last_mut().unwrap();
         let mut tx = last_block.txs.last().unwrap().clone();
 
         let contract_call = TransactionContractCall {
-            address: StacksAddress::new(2, Hash160([0u8; 20])),
+            address: deployer,
             contract_name: ContractName::from(contract_name),
             function_name: ClarityName::from(function_name),
             function_args: Vec::new(),
@@ -1745,7 +1753,34 @@ mod tests {
         tx.payload = TransactionPayload::ContractCall(contract_call);
         last_block.txs.push(tx);
 
-        let txs = extract_relevant_transactions(&blocks);
+        let txs = extract_relevant_transactions(&blocks, &deployer);
         assert_eq!(txs.len(), 1);
+
+        // We've just seen that if the deployer supplied here matches the
+        // address in the transaction, then we will consider it a relevant
+        // transaction. Now what if someone tries to pull a fast one by
+        // deploying their own modified version of the sBTC smart contracts
+        // and creating contract calls against that? We'll the address of
+        // these contract calls won't match the ones that we are interested
+        // in and we will filter them out. We test that now,
+        let contract_call = TransactionContractCall {
+            // This is the address of the poser that deployed their own
+            // versions of the sBTC smart contracts.
+            address: StacksAddress::new(2, Hash160([1; 20])),
+            contract_name: ContractName::from(contract_name),
+            function_name: ClarityName::from(function_name),
+            function_args: Vec::new(),
+        };
+        // The last transaction in the last nakamoto block is a legit
+        // transaction. Let's remove it and replace it with a non-legit
+        // one.
+        let last_block = blocks.last_mut().unwrap();
+        let mut tx = last_block.txs.pop().unwrap();
+        tx.payload = TransactionPayload::ContractCall(contract_call);
+        last_block.txs.push(tx);
+
+        // Now there aren't any relevant transactions in the block
+        let txs = extract_relevant_transactions(&blocks, &deployer);
+        assert!(txs.is_empty());
     }
 }

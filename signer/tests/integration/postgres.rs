@@ -97,14 +97,16 @@ async fn should_be_able_to_query_bitcoin_blocks() {
     signer::testing::storage::drop_db(store).await;
 }
 
-struct InitiateWithdrawalRequest;
+struct InitiateWithdrawalRequest {
+    deployer: StacksAddress,
+}
 
 impl AsContractCall for InitiateWithdrawalRequest {
     const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
     const FUNCTION_NAME: &'static str = "initiate-withdrawal-request";
     /// The stacks address that deployed the contract.
     fn deployer_address(&self) -> StacksAddress {
-        StacksAddress::burn_address(false)
+        self.deployer
     }
     /// The arguments to the clarity function.
     fn as_contract_args(&self) -> Vec<ClarityValue> {
@@ -122,7 +124,9 @@ impl AsContractCall for InitiateWithdrawalRequest {
 /// do, which is store all stacks blocks and store the transactions that we
 /// care about, which, naturally, are sBTC related transactions.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[test_case(ContractCallWrapper(InitiateWithdrawalRequest); "initiate-withdrawal")]
+#[test_case(ContractCallWrapper(InitiateWithdrawalRequest {
+    deployer: testing::wallet::WALLET.0.address(),
+}); "initiate-withdrawal")]
 #[test_case(ContractCallWrapper(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654,
@@ -188,7 +192,8 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWr
 
     // Okay now to save these blocks. We check that all of these blocks are
     // saved and that the transaction that we care about is saved as well.
-    let txs = storage::postgres::extract_relevant_transactions(&blocks);
+    let settings = Settings::new_from_default_config().unwrap();
+    let txs = storage::postgres::extract_relevant_transactions(&blocks, &settings.signer.deployer);
     let headers = blocks
         .iter()
         .map(model::StacksBlock::try_from)

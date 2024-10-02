@@ -284,7 +284,7 @@ async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: Contr
         .await
         .unwrap();
 
-    let transactions = postgres::extract_relevant_transactions(&blocks);
+    let transactions = postgres::extract_relevant_transactions(&blocks, &signer.wallet.address());
     assert!(!transactions.is_empty());
 
     let txids = transactions
