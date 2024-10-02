@@ -35,8 +35,6 @@ use crate::storage::model::BitcoinBlockHash;
 use crate::storage::DbRead;
 use crate::MAX_KEYS;
 
-use super::api::StacksInteract;
-
 /// Stacks multisig addresses are Hash160 hashes of bitcoin Scripts (more
 /// or less). The enum value below defines which Script will be used to
 /// construct the address, and so implicitly describes how the multisig
@@ -165,16 +163,7 @@ impl SignerWallet {
         let signatures_required = last_key_rotation.signatures_required;
         let network_kind = ctx.config().signer.network;
 
-        // Create the wallet and properly set the nonce.
-        let wallet = SignerWallet::new(public_keys, signatures_required, network_kind, 0)?;
-        // We use the stacks-node as the source of truth for the nonce.
-        let account_info = ctx
-            .get_stacks_client()
-            .get_account(&wallet.address())
-            .await?;
-
-        wallet.set_nonce(account_info.nonce);
-        Ok(wallet)
+        SignerWallet::new(public_keys, signatures_required, network_kind, 0)
     }
 
     fn hash_mode() -> OrderIndependentMultisigHashMode {

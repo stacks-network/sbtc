@@ -389,13 +389,15 @@ where
     async fn handle_stacks_transaction_sign_request(
         &mut self,
         ctx: &impl Context,
-        request: &message::StacksTransactionSignRequest,
+        request: &StacksTransactionSignRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
         self.assert_valid_stackstransaction_sign_request(ctx, request, bitcoin_chain_tip)
             .await?;
 
-        let wallet = self.load_wallet(request, bitcoin_chain_tip).await?;
+        let wallet = SignerWallet::load(ctx, bitcoin_chain_tip).await?;
+        wallet.set_nonce(request.nonce);
+
         let multi_sig = MultisigTx::new_tx(&request.contract_call, &wallet, request.tx_fee);
         let txid = multi_sig.tx().txid();
 
@@ -406,34 +408,6 @@ where
         self.send_message(msg, bitcoin_chain_tip).await?;
 
         Ok(())
-    }
-
-    /// Load the multi-sig wallet corresponding to the signer set defined
-    /// in the last key rotation.
-    /// TODO(255): Add a tests
-    async fn load_wallet(
-        &self,
-        request: &StacksTransactionSignRequest,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<SignerWallet, Error> {
-        let last_key_rotation = self
-            .storage
-            .get_last_key_rotation(bitcoin_chain_tip)
-            .await?
-            .ok_or(Error::MissingKeyRotation)?;
-
-        let public_keys = last_key_rotation.signer_set.as_slice();
-        let signatures_required = last_key_rotation.signatures_required;
-        let network_kind = match self.network_kind {
-            bitcoin::Network::Bitcoin => NetworkKind::Mainnet,
-            _ => NetworkKind::Testnet,
-        };
-        SignerWallet::new(
-            public_keys,
-            signatures_required,
-            network_kind,
-            request.nonce,
-        )
     }
 
     async fn assert_valid_stackstransaction_sign_request(
