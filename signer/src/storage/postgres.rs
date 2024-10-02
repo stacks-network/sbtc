@@ -65,7 +65,7 @@ fn contract_transaction_kinds() -> &'static HashMap<&'static str, TransactionTyp
 
 /// This function extracts the signer relevant sBTC related transactions
 /// from the given blocks.
-/// 
+///
 /// Here the deployer is the address that deployed the sBTC smart
 /// contracts.
 pub fn extract_relevant_transactions(
