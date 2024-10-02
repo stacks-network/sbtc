@@ -214,9 +214,7 @@ pub async fn create_deposit(
                 bitcoin_txid: body.bitcoin_txid,
                 bitcoin_tx_output_index: body.bitcoin_tx_output_index,
             },
-            parameters: DepositParametersEntry {
-                ..Default::default()
-            },
+            parameters: DepositParametersEntry { ..Default::default() },
             history: vec![DepositEvent {
                 status: StatusEntry::Pending,
                 message: "Just received deposit".to_string(),

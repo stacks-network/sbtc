@@ -87,10 +87,7 @@ async fn setup_deposit_integration_test() -> TestClient {
         let response = client.create_deposit(&request).await;
         util::assert_eq_pretty(
             response,
-            just_created_deposit(
-                bitcoin_txid,
-                bitcoin_tx_output_index,
-            ),
+            just_created_deposit(bitcoin_txid, bitcoin_tx_output_index),
         );
     }
     client
@@ -115,10 +112,7 @@ fn all_test_deposit_data() -> impl Iterator<Item = TestDepositData> {
 /// bitcoin txid and bitcoin tx output index. Note that this will
 /// need to be changed as the creation function becomes more
 /// complex and correct.
-fn just_created_deposit(
-    bitcoin_txid: String,
-    bitcoin_tx_output_index: u32,
-) -> Deposit {
+fn just_created_deposit(bitcoin_txid: String, bitcoin_tx_output_index: u32) -> Deposit {
     Deposit {
         bitcoin_txid,
         bitcoin_tx_output_index,

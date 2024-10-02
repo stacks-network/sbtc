@@ -394,7 +394,7 @@ impl From<DepositInfoEntry> for DepositInfo {
             last_update_height: deposit_info_entry.key.last_update_height,
             last_update_block_hash: deposit_info_entry.last_update_block_hash,
             status: deposit_info_entry.key.status,
-            reclaim_script: deposit_info_entry.reclaim_script,  
+            reclaim_script: deposit_info_entry.reclaim_script,
             deposit_script: deposit_info_entry.deposit_script,
         }
     }
