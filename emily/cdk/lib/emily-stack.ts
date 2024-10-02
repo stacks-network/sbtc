@@ -103,6 +103,8 @@ export class EmilyStack extends cdk.Stack {
                 "Recipient",
                 "Amount",
                 "LastUpdateBlockHash",
+                "ReclaimScript",
+                "DepositScript",
             ]
         });
 
