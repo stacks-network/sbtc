@@ -175,19 +175,34 @@ impl SignerWallet {
         self.address
     }
 
+    /// The aggregate public key of the given public keys.
+    pub fn aggregate_key(&self) -> &PublicKey {
+        &self.aggregate_key
+    }
+
+    /// Returns the number of public keys in the multi-sig wallet.
+    pub fn num_signers(&self) -> u16 {
+        // We check that the number of keys is less than or equal to the
+        // MAX_KEYS variable, which is a u16. So this cast is fine.
+        self.public_keys
+            .len()
+            .try_into()
+            .expect("BUG! the number of keys is supposed to be less than u16::MAX")
+    }
+
     /// Return the public keys for the signers' multi-sig wallet
     pub fn public_keys(&self) -> &BTreeSet<PublicKey> {
         &self.public_keys
     }
 
-    /// The aggregate public key of the given public keys.
-    pub fn aggregate_key(&self) -> PublicKey {
-        self.aggregate_key
-    }
-
     /// Set the next nonce to the provided value
     pub fn set_nonce(&self, value: u64) {
         self.nonce.store(value, Ordering::Relaxed)
+    }
+
+    /// The number of participants required to construct a valid signature.
+    pub fn signatures_required(&self) -> u16 {
+        self.signatures_required
     }
 
     /// Convert the signers wallet to an unsigned stacks spending
@@ -567,7 +582,7 @@ mod tests {
         // Let's store the key information about this wallet into the database
         let rotate_keys = RotateKeysTransaction {
             txid: fake::Faker.fake_with_rng(&mut rng),
-            aggregate_key: wallet1.aggregate_key(),
+            aggregate_key: *wallet1.aggregate_key(),
             signer_set: signer_keys.clone(),
             signatures_required: wallet1.signatures_required,
         };

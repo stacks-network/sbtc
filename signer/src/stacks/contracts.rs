@@ -929,7 +929,7 @@ impl RotateKeysV1 {
     /// Create a new instance of RotateKeysV1 using the provided wallet.
     pub fn new(wallet: &SignerWallet, deployer: StacksAddress, signatures_required: u16) -> Self {
         Self {
-            aggregate_key: wallet.aggregate_key(),
+            aggregate_key: *wallet.aggregate_key(),
             new_keys: wallet.public_keys().clone(),
             deployer,
             signatures_required,
