@@ -9,7 +9,6 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 
 use crate::blocklist_client;
-use crate::config::NetworkKind;
 use crate::context::Context;
 use crate::ecdsa::SignEcdsa as _;
 use crate::error::Error;

@@ -16,11 +16,9 @@ use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
-use crate::message::StacksTransactionSignRequest;
 use crate::network;
 use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::ContractCall;
-use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
 use crate::storage::DbRead as _;
@@ -257,7 +255,7 @@ where
                 sweep_block_height: block_ref.block_height,
             };
 
-            let contract = ContractCall::CompleteDepositV1(tx);
+            let _contract = ContractCall::CompleteDepositV1(tx);
             //     let wallet = SignerWallet::new(public_keys, self.signatures_required, self.bitcoin_network, 0)?;
             //     let multi_tx = MultisigTx::new_contract_call(contract, wallet, tx_fee)
 
@@ -470,14 +468,10 @@ where
             return Err(Error::NoChainTip);
         };
 
-        let context_window = self
-            .context_window
-            .try_into()
-            .map_err(|_| Error::TypeConversion)?;
         let utxo = self
             .context
             .get_storage()
-            .get_signer_utxo(&chain_tip, aggregate_key, context_window)
+            .get_signer_utxo(&chain_tip, aggregate_key, self.context_window)
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
         let last_fees = bitcoin_client.get_last_fee(utxo.outpoint).await?;
@@ -502,11 +496,6 @@ where
         signer_btc_state: utxo::SignerBtcState,
         wallet: &SignerWallet,
     ) -> Result<utxo::SbtcRequests, Error> {
-        let context_window = self
-            .context_window
-            .try_into()
-            .map_err(|_| Error::TypeConversion)?;
-
         let signatures_required = wallet.signatures_required();
         let aggregate_key = wallet.aggregate_key();
 
@@ -515,7 +504,7 @@ where
             .get_storage()
             .get_pending_accepted_deposit_requests(
                 bitcoin_chain_tip,
-                context_window,
+                self.context_window,
                 signatures_required,
             )
             .await?;
@@ -525,7 +514,7 @@ where
             .get_storage()
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip,
-                context_window,
+                self.context_window,
                 signatures_required,
             )
             .await?;

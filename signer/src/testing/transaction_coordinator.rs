@@ -297,7 +297,7 @@ where
         assert_eq!(chain_tip, block_ref.block_hash);
 
         let signer_utxo = storage
-            .get_signer_utxo(&chain_tip, &aggregate_key, self.context_window as u16)
+            .get_signer_utxo(&chain_tip, &aggregate_key, self.context_window)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -395,11 +395,7 @@ where
                 public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
             };
             let signer_utxo = storage
-                .get_signer_utxo(
-                    &chain_tip.block_hash,
-                    &aggregate_key,
-                    self.context_window as u16,
-                )
+                .get_signer_utxo(&chain_tip.block_hash, &aggregate_key, self.context_window)
                 .await
                 .unwrap()
                 .expect("no signer utxo");
@@ -501,7 +497,7 @@ where
         assert_eq!(chain_tip, block_ref.block_hash);
 
         let signer_utxo = storage
-            .get_signer_utxo(&chain_tip, &aggregate_key, self.context_window as u16)
+            .get_signer_utxo(&chain_tip, &aggregate_key, self.context_window)
             .await
             .unwrap()
             .expect("no signer utxo");
