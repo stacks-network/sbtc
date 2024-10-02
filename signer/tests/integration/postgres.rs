@@ -16,6 +16,7 @@ use signer::config::Settings;
 use signer::context::Context;
 use signer::error::Error;
 use signer::keys::PublicKey;
+use signer::keys::SignerScriptPubKey as _;
 use signer::network;
 use signer::stacks::contracts::AcceptWithdrawalV1;
 use signer::stacks::contracts::AsContractCall;
@@ -32,8 +33,10 @@ use signer::storage;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
+use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::QualifiedRequestId;
 use signer::storage::model::RotateKeysTransaction;
+use signer::storage::model::ScriptPubKey;
 use signer::storage::model::StacksBlock;
 use signer::storage::model::StacksBlockHash;
 use signer::storage::model::StacksTxId;
@@ -1271,6 +1274,89 @@ async fn we_can_fetch_bitcoin_txs_from_db() {
     assert!(btc_tx.is_none());
 
     signer::testing::storage::drop_db(pg_store).await;
+}
+
+/// Check that `is_signer_script_pub_key` correctly returns whether a
+/// scriptPubKey value exists in the dkg_shares table.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn is_signer_script_pub_key_checks_dkg_shares_for_script_pubkeys() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mem = storage::in_memory::Store::new_shared();
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // Okay let's put a row in the dkg_shares table.
+    let aggregate_key: PublicKey = fake::Faker.fake_with_rng(&mut rng);
+    let script_pubkey: ScriptPubKey = aggregate_key.signers_script_pubkey().into();
+    let shares = EncryptedDkgShares {
+        script_pubkey: script_pubkey.clone(),
+        tweaked_aggregate_key: aggregate_key.signers_tweaked_pubkey().unwrap(),
+        encrypted_private_shares: Vec::new(),
+        public_shares: Vec::new(),
+        aggregate_key,
+    };
+    db.write_encrypted_dkg_shares(&shares).await.unwrap();
+    mem.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+    // Now we have a row in their with our scriptPubKey, let's make sure
+    // that the query accurately reports that.
+    assert!(db.is_signer_script_pub_key(&script_pubkey).await.unwrap());
+    assert!(mem.is_signer_script_pub_key(&script_pubkey).await.unwrap());
+
+    // Now we try the case where it is the script pub key is missing from
+    // the database by generating a new one (well it's unlikely to be
+    // there).
+    let aggregate_key: PublicKey = fake::Faker.fake_with_rng(&mut rng);
+    let script_pubkey: ScriptPubKey = aggregate_key.signers_script_pubkey().into();
+
+    assert!(!db.is_signer_script_pub_key(&script_pubkey).await.unwrap());
+    assert!(!mem.is_signer_script_pub_key(&script_pubkey).await.unwrap());
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+/// The [`DbRead::get_signers_script_pubkeys`] function is only supposed to
+/// fetch the last 365 days worth of scriptPubKeys, but if there are no new
+/// encrypted shares in the database in a year, we should still return the
+/// most recent one.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_signers_script_pubkeys_returns_non_empty_vec_old_rows() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    let shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+
+    sqlx::query(
+        r#"
+        INSERT INTO sbtc_signer.dkg_shares (
+            aggregate_key
+            , tweaked_aggregate_key
+            , encrypted_private_shares
+            , public_shares
+            , script_pubkey
+            , created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP - INTERVAL '366 DAYS')
+        ON CONFLICT DO NOTHING"#,
+    )
+    .bind(shares.aggregate_key)
+    .bind(shares.tweaked_aggregate_key)
+    .bind(&shares.encrypted_private_shares)
+    .bind(&shares.public_shares)
+    .bind(&shares.script_pubkey)
+    .execute(db.pool())
+    .await
+    .unwrap();
+
+    let keys = db.get_signers_script_pubkeys().await.unwrap();
+    assert_eq!(keys.len(), 1);
+
+    signer::testing::storage::drop_db(db).await;
 }
 
 async fn transaction_coordinator_test_environment(

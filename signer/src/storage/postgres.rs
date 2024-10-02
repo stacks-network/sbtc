@@ -441,7 +441,7 @@ impl super::DbRead for PgStore {
             "#,
         )
         .bind(chain_tip)
-        .bind(context_window as i32)
+        .bind(i32::from(context_window))
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -502,8 +502,8 @@ impl super::DbRead for PgStore {
             "#,
         )
         .bind(chain_tip)
-        .bind(context_window as i32)
-        .bind(threshold as i32)
+        .bind(i32::from(context_window))
+        .bind(i32::from(threshold))
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -546,7 +546,7 @@ impl super::DbRead for PgStore {
         )
         .bind(aggregate_key)
         .bind(txid)
-        .bind(output_index as i64)
+        .bind(i64::from(output_index))
         .fetch_all(&self.0)
         .await
         .map(model::SignerVotes::from)
@@ -740,7 +740,7 @@ impl super::DbRead for PgStore {
         )
         .bind(chain_tip)
         .bind(stacks_chain_tip.block_hash)
-        .bind(context_window as i32)
+        .bind(i32::from(context_window))
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -828,8 +828,8 @@ impl super::DbRead for PgStore {
         )
         .bind(chain_tip)
         .bind(stacks_chain_tip.block_hash)
-        .bind(context_window as i32)
-        .bind(threshold as i64)
+        .bind(i32::from(context_window))
+        .bind(i64::from(threshold))
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -946,6 +946,17 @@ impl super::DbRead for PgStore {
     async fn get_signers_script_pubkeys(&self) -> Result<Vec<model::Bytes>, Error> {
         sqlx::query_scalar::<_, model::Bytes>(
             r#"
+            WITH last_script_pubkey AS (
+                SELECT script_pubkey
+                FROM sbtc_signer.dkg_shares
+                ORDER BY created_at DESC
+                LIMIT 1
+            )
+            SELECT script_pubkey
+            FROM last_script_pubkey
+
+            UNION
+
             SELECT script_pubkey
             FROM sbtc_signer.dkg_shares
             WHERE created_at > CURRENT_TIMESTAMP - INTERVAL '365 DAYS';
@@ -1061,32 +1072,52 @@ impl super::DbRead for PgStore {
             WITH RECURSIVE tx_block_chain AS (
                 SELECT 
                     block_hash
+                  , block_height
                   , parent_hash
                   , 0 AS counter
                 FROM sbtc_signer.bitcoin_blocks
-                WHERE block_hash = $2
+                WHERE block_hash = $1
 
                 UNION ALL
 
                 SELECT
                     child.block_hash
+                  , child.block_height
                   , child.parent_hash
                   , parent.counter + 1
                 FROM sbtc_signer.bitcoin_blocks AS child
                 JOIN tx_block_chain AS parent
-                  ON child.parent_hash = parent.block_hash
+                  ON child.block_hash = parent.parent_hash
                 WHERE parent.counter <= $3
             )
             SELECT EXISTS (
                 SELECT TRUE
                 FROM tx_block_chain AS tbc
-                WHERE tbc.block_hash = $1
+                WHERE tbc.block_hash = $2
+                  AND tbc.block_height = $4
             );
         "#,
         )
         .bind(chain_tip.block_hash)
         .bind(block_ref.block_hash)
-        .bind(heigh_diff as i64)
+        .bind(i64::try_from(heigh_diff).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(block_ref.block_height).map_err(Error::ConversionDatabaseInt)?)
+        .fetch_one(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn is_signer_script_pub_key(&self, script: &model::ScriptPubKey) -> Result<bool, Error> {
+        sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT TRUE
+                FROM sbtc_signer.dkg_shares AS ds
+                WHERE ds.script_pubkey = $1
+            );
+        "#,
+        )
+        .bind(script)
         .fetch_one(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -1176,7 +1207,7 @@ impl super::DbWrite for PgStore {
             ON CONFLICT DO NOTHING",
         )
         .bind(deposit_request.txid)
-        .bind(deposit_request.output_index as i32)
+        .bind(i32::try_from(deposit_request.output_index).map_err(Error::ConversionDatabaseInt)?)
         .bind(&deposit_request.spend_script)
         .bind(&deposit_request.reclaim_script)
         .bind(&deposit_request.recipient)
@@ -1208,8 +1239,9 @@ impl super::DbWrite for PgStore {
         let mut sender_script_pubkeys = Vec::with_capacity(deposit_requests.len());
 
         for req in deposit_requests {
+            let vout = i32::try_from(req.output_index).map_err(Error::ConversionDatabaseInt)?;
             txid.push(req.txid);
-            output_index.push(req.output_index as i32);
+            output_index.push(vout);
             spend_script.push(req.spend_script);
             reclaim_script.push(req.reclaim_script);
             recipient.push(req.recipient);
@@ -1328,7 +1360,7 @@ impl super::DbWrite for PgStore {
             ON CONFLICT DO NOTHING",
         )
         .bind(decision.txid)
-        .bind(decision.output_index as i32)
+        .bind(i32::try_from(decision.output_index).map_err(Error::ConversionDatabaseInt)?)
         .bind(decision.signer_pub_key)
         .bind(decision.is_accepted)
         .execute(&self.0)
@@ -1583,7 +1615,7 @@ impl super::DbWrite for PgStore {
         .bind(key_rotation.txid)
         .bind(key_rotation.aggregate_key)
         .bind(&key_rotation.signer_set)
-        .bind(key_rotation.signatures_required as i32)
+        .bind(i32::from(key_rotation.signatures_required))
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1610,7 +1642,7 @@ impl super::DbWrite for PgStore {
         .bind(event.block_id.0)
         .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.outpoint.txid.to_byte_array())
-        .bind(event.outpoint.vout as i64)
+        .bind(i64::from(event.outpoint.vout))
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1673,7 +1705,7 @@ impl super::DbWrite for PgStore {
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.signer_bitmap.into_inner())
         .bind(event.outpoint.txid.to_byte_array())
-        .bind(event.outpoint.vout as i64)
+        .bind(i64::from(event.outpoint.vout))
         .bind(i64::try_from(event.fee).map_err(Error::ConversionDatabaseInt)?)
         .execute(&self.0)
         .await

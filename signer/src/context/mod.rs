@@ -69,7 +69,7 @@ pub struct SignerContext<S, BC, ST> {
 impl<S, BC, ST> SignerContext<S, BC, ST>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
-    BC: for<'a> TryFrom<&'a [Url]> + BitcoinInteract + Clone + Sync + Send + 'static,
+    BC: for<'a> TryFrom<&'a [Url]> + BitcoinInteract + Clone + 'static,
     ST: for<'a> TryFrom<&'a Settings> + StacksInteract + Clone + Sync + Send + 'static,
     Error: for<'a> From<<BC as TryFrom<&'a [Url]>>::Error>,
     Error: for<'a> From<<ST as TryFrom<&'a Settings>>::Error>,
@@ -87,7 +87,7 @@ where
 impl<S, BC, ST> SignerContext<S, BC, ST>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
-    BC: BitcoinInteract + Clone + Sync + Send,
+    BC: BitcoinInteract + Clone,
     ST: StacksInteract + Clone + Sync + Send,
 {
     /// Create a new signer context.
@@ -112,7 +112,7 @@ where
 impl<S, BC, ST> Context for SignerContext<S, BC, ST>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
-    BC: BitcoinInteract + Clone + Sync + Send,
+    BC: BitcoinInteract + Clone,
     ST: StacksInteract + Clone + Sync + Send,
 {
     fn config(&self) -> &Settings {

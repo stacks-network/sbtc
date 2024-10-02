@@ -45,7 +45,7 @@ endpoints = [
 # Environment: SIGNER_BITCOIN__RPC_ENDPOINTS
 # Environment Example: http://user:pass@seed-1:4122,http://foo:bar@seed-2:4122
 rpc_endpoints = [
-    "http://user:pass@localhost:18443",
+    "http://devnet:devnet@localhost:18443",
 ]
 
 # The URI(s) of the Bitcoin Core ZMQ block hash stream(s) to connect to.

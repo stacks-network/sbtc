@@ -32,7 +32,7 @@ pub trait BitcoinInteract: Sync + Send {
         txid: &Txid,
     ) -> impl Future<Output = Result<Option<GetTxResponse>, Error>> + Send;
 
-    /// get tx info
+    /// Get a transaction with additional information about it.
     fn get_tx_info(
         &self,
         txid: &Txid,

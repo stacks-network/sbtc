@@ -629,7 +629,7 @@ where
         &mut self,
         withdraw_request: model::WithdrawalRequest,
     ) -> Result<(), Error> {
-        // TODO: Do we want to do this on the sender address of the
+        // TODO: Do we want to do this on the sender address or the
         // recipient address?
         let is_accepted = self
             .can_accept(&withdraw_request.sender_address.to_string())
