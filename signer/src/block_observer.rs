@@ -310,7 +310,8 @@ where
         &mut self,
         blocks: &[nakamoto::NakamotoBlock],
     ) -> Result<(), Error> {
-        let txs = storage::postgres::extract_relevant_transactions(blocks);
+        let deployer = &self.context.config().signer.deployer;
+        let txs = storage::postgres::extract_relevant_transactions(blocks, deployer);
         let headers = blocks
             .iter()
             .map(model::StacksBlock::try_from)
@@ -390,6 +391,7 @@ mod tests {
         let ctx = SignerContext::new(
             Settings::new_from_default_config().unwrap(),
             storage.clone(),
+            test_harness.clone(),
             test_harness.clone(),
         );
         // There must be at least one signal receiver alive when the block observer
@@ -497,6 +499,7 @@ mod tests {
             Settings::new_from_default_config().unwrap(),
             storage.clone(),
             test_harness.clone(),
+            test_harness.clone(),
         );
 
         let mut block_observer = BlockObserver {
@@ -574,6 +577,7 @@ mod tests {
             Settings::new_from_default_config().unwrap(),
             storage.clone(),
             test_harness.clone(),
+            test_harness.clone(),
         );
 
         let mut block_observer = BlockObserver {
@@ -641,6 +645,7 @@ mod tests {
         let ctx = SignerContext::new(
             Settings::new_from_default_config().unwrap(),
             storage.clone(),
+            test_harness.clone(),
             test_harness.clone(),
         );
 

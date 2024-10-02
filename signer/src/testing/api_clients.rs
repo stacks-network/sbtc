@@ -7,6 +7,7 @@ use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::BitcoinInteract;
 use crate::bitcoin::MockBitcoinInteract;
 use crate::blocklist_client::BlocklistChecker;
+use crate::config::Settings;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::stacks::api::StacksInteract;
@@ -19,6 +20,13 @@ pub struct NoopApiClient;
 impl TryFrom<&[Url]> for NoopApiClient {
     type Error = Error;
     fn try_from(_value: &[Url]) -> Result<Self, Self::Error> {
+        Ok(NoopApiClient)
+    }
+}
+
+impl TryFrom<&Settings> for NoopApiClient {
+    type Error = Error;
+    fn try_from(_value: &Settings) -> Result<Self, Self::Error> {
         Ok(NoopApiClient)
     }
 }

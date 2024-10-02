@@ -10,8 +10,11 @@ use crate::{
     config::Settings,
     context::{Context, SignerContext},
     error::Error,
+    stacks::api::StacksInteract,
     storage::in_memory::{SharedStore, Store},
 };
+
+use super::api_clients::NoopApiClient;
 
 /// A [`Context`] which can be used for testing.
 ///
@@ -24,7 +27,7 @@ use crate::{
 #[derive(Clone)]
 pub struct TestContext<BC> {
     /// The inner [`SignerContext`] which this context wraps.
-    pub inner: SignerContext<SharedStore, BC>,
+    pub inner: SignerContext<SharedStore, BC, NoopApiClient>,
 
     /// The mocked bitcoin client.
     pub bitcoin_client: BC,
@@ -39,7 +42,7 @@ where
         let settings = Settings::new_from_default_config().unwrap();
         let store = Store::new_shared();
 
-        let context = SignerContext::new(settings, store, bitcoin_client.clone());
+        let context = SignerContext::new(settings, store, bitcoin_client.clone(), NoopApiClient);
 
         Self { inner: context, bitcoin_client }
     }
@@ -101,6 +104,10 @@ where
 
     fn get_bitcoin_client(&self) -> impl BitcoinInteract + Clone {
         self.inner.get_bitcoin_client()
+    }
+
+    fn get_stacks_client(&self) -> impl StacksInteract + Clone {
+        NoopApiClient
     }
 }
 
