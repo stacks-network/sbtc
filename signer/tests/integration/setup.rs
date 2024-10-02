@@ -1,7 +1,6 @@
 use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoin::AddressType;
-use bitcoin::BlockHash;
 use bitcoin::OutPoint;
 use bitcoincore_rpc::Client;
 use bitcoincore_rpc::RpcApi as _;
@@ -28,7 +27,6 @@ use signer::storage::model::BitcoinTxRef;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::postgres::PgStore;
 use signer::storage::DbWrite as _;
-use signer::testing;
 
 use crate::utxo_construction::generate_withdrawal;
 use crate::utxo_construction::make_deposit_request;
@@ -59,7 +57,7 @@ pub struct TestSweepSetup {
     pub sweep_block_height: u64,
     /// The transaction that swept in the deposit transaction.
     pub sweep_tx_info: BitcoinTxInfo,
-    /// The withdrawal request, and a bitmap for how the siggners voted on
+    /// The withdrawal request, and a bitmap for how the signers voted on
     /// it.
     pub withdrawal_request: utxo::WithdrawalRequest,
     /// The address that initiated with withdrawal request.
@@ -165,7 +163,7 @@ impl TestSweepSetup {
             sweep_tx_info,
             sweep_block_height,
             sweep_block_hash,
-            signer_keys: testing::wallet::create_signers_keys(rng, &signer, 7),
+            signer_keys: signer::testing::wallet::create_signers_keys(rng, &signer, 7),
             signer,
             withdrawal_request: requests.withdrawals.pop().unwrap(),
             withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
@@ -236,7 +234,7 @@ impl TestSweepSetup {
     /// function is called.
     ///
     /// This function uses the `self.deposit_request.signer_bitmap` field
-    /// to generate the cooresponding deposit signer votes and then stores
+    /// to generate the corresponding deposit signer votes and then stores
     /// these decisions in the database.
     pub async fn store_deposit_decisions(&self, db: &PgStore) {
         let deposit_signers = self
@@ -257,7 +255,7 @@ impl TestSweepSetup {
     }
 
     /// Use the bitmap in the `self.withdrawal_request.signer_bitmap` field to
-    /// generate the cooresponding deposit signer votes and store these
+    /// generate the corresponding deposit signer votes and store these
     /// decisions in the database.
     pub async fn store_withdrawal_decisions(&self, db: &PgStore) {
         let withdrawal_signers: Vec<model::WithdrawalSigner> = self
@@ -332,7 +330,7 @@ impl TestSweepSetup {
 }
 
 /// Fetch all block headers from bitcoin-core and store it in the database.
-pub async fn backfill_bitcoin_blocks(db: &PgStore, rpc: &Client, chain_tip: &BlockHash) {
+pub async fn backfill_bitcoin_blocks(db: &PgStore, rpc: &Client, chain_tip: &bitcoin::BlockHash) {
     let mut block_header = rpc.get_block_header_info(&chain_tip).unwrap();
 
     // There are no non-coinbase transactions below this height.

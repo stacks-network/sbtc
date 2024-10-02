@@ -99,7 +99,7 @@ async fn accept_withdrawal_validation_happy_path() {
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer so we need to manually update the
+    // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
 
@@ -107,7 +107,7 @@ async fn accept_withdrawal_validation_happy_path() {
     // store it in the database.
     setup.store_sweep_tx(&db).await;
 
-    // Normel: we need to store a row in the dkg_shares table so that we
+    // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
     setup.store_dkg_shares(&db).await;
 
@@ -143,7 +143,7 @@ async fn accept_withdrawal_validation_deployer_mismatch() {
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer so we need to manually update the
+    // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
 
@@ -151,7 +151,7 @@ async fn accept_withdrawal_validation_deployer_mismatch() {
     // store it in the database.
     setup.store_sweep_tx(&db).await;
 
-    // Normel: we need to store a row in the dkg_shares table so that we
+    // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
     setup.store_dkg_shares(&db).await;
 
@@ -196,7 +196,7 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer so we need to manually update the
+    // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
 
@@ -204,7 +204,7 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
     // store it in the database.
     setup.store_sweep_tx(&db).await;
 
-    // Normel: we need to store a row in the dkg_shares table so that we
+    // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
     setup.store_dkg_shares(&db).await;
 
@@ -250,7 +250,7 @@ async fn accept_withdrawal_validation_recipient_mismatch() {
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer so we need to manually update the
+    // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
 
@@ -258,7 +258,7 @@ async fn accept_withdrawal_validation_recipient_mismatch() {
     // store it in the database.
     setup.store_sweep_tx(&db).await;
 
-    // Normel: we need to store a row in the dkg_shares table so that we
+    // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
     setup.store_dkg_shares(&db).await;
 
@@ -304,7 +304,7 @@ async fn accept_withdrawal_validation_invalid_amount() {
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer so we need to manually update the
+    // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
 
@@ -312,7 +312,7 @@ async fn accept_withdrawal_validation_invalid_amount() {
     // store it in the database.
     setup.store_sweep_tx(&db).await;
 
-    // Normel: we need to store a row in the dkg_shares table so that we
+    // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
     setup.store_dkg_shares(&db).await;
 
@@ -356,7 +356,7 @@ async fn accept_withdrawal_validation_invalid_fee() {
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer so we need to manually update the
+    // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
 
@@ -364,7 +364,7 @@ async fn accept_withdrawal_validation_invalid_fee() {
     // store it in the database.
     setup.store_sweep_tx(&db).await;
 
-    // Normel: we need to store a row in the dkg_shares table so that we
+    // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
     setup.store_dkg_shares(&db).await;
 
@@ -410,7 +410,7 @@ async fn accept_withdrawal_validation_sweep_tx_missing() {
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer so we need to manually update the
+    // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
 
@@ -418,7 +418,7 @@ async fn accept_withdrawal_validation_sweep_tx_missing() {
     // store it in the database.
     setup.store_sweep_tx(&db).await;
 
-    // Normel: we need to store a row in the dkg_shares table so that we
+    // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
     setup.store_dkg_shares(&db).await;
 
@@ -466,7 +466,7 @@ async fn accept_withdrawal_validation_sweep_reorged() {
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer so we need to manually update the
+    // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
 
@@ -474,7 +474,7 @@ async fn accept_withdrawal_validation_sweep_reorged() {
     // store it in the database.
     setup.store_sweep_tx(&db).await;
 
-    // Normel: we need to store a row in the dkg_shares table so that we
+    // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
     setup.store_dkg_shares(&db).await;
 
@@ -531,7 +531,7 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer so we need to manually update the
+    // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
 
@@ -539,7 +539,7 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
     // store it in the database.
     setup.store_sweep_tx(&db).await;
 
-    // Normel: we need to store a row in the dkg_shares table so that we
+    // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
     setup.store_dkg_shares(&db).await;
 
@@ -587,7 +587,7 @@ async fn accept_withdrawal_validation_bitmap_mismatch() {
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer so we need to manually update the
+    // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
 
@@ -595,7 +595,7 @@ async fn accept_withdrawal_validation_bitmap_mismatch() {
     // store it in the database.
     setup.store_sweep_tx(&db).await;
 
-    // Normel: we need to store a row in the dkg_shares table so that we
+    // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
     setup.store_dkg_shares(&db).await;
 
@@ -642,7 +642,7 @@ async fn accept_withdrawal_validation_withdrawal_incorrect_fee() {
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer so we need to manually update the
+    // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
 
@@ -650,7 +650,7 @@ async fn accept_withdrawal_validation_withdrawal_incorrect_fee() {
     // store it in the database.
     setup.store_sweep_tx(&db).await;
 
-    // Normel: we need to store a row in the dkg_shares table so that we
+    // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
     setup.store_dkg_shares(&db).await;
 
@@ -695,7 +695,7 @@ async fn accept_withdrawal_validation_withdrawal_invalid_sweep() {
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer so we need to manually update the
+    // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
 
@@ -705,7 +705,7 @@ async fn accept_withdrawal_validation_withdrawal_invalid_sweep() {
 
     // Different: we normally add a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control. Here we
-    // exclude it so it looks like the first UTXO in the transaction is not
+    // exclude it, so it looks like the first UTXO in the transaction is not
     // controlled by the signers.
 
     // Normal: the request and how the signers voted needs to be added to
