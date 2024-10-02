@@ -41,6 +41,7 @@ use signer::storage::model::StacksBlock;
 use signer::storage::model::StacksBlockHash;
 use signer::storage::model::StacksTxId;
 use signer::storage::model::WithdrawalSigner;
+use signer::storage::postgres::PgStore;
 use signer::storage::DbRead;
 use signer::storage::DbWrite;
 use signer::testing;
@@ -1360,10 +1361,8 @@ async fn get_signers_script_pubkeys_returns_non_empty_vec_old_rows() {
 }
 
 async fn transaction_coordinator_test_environment(
-) -> testing::transaction_coordinator::TestEnvironment<NoopSignerContext<storage::postgres::PgStore>>
-{
-    use std::sync::atomic::Ordering;
-
+    store: PgStore,
+) -> testing::transaction_coordinator::TestEnvironment<NoopSignerContext<PgStore>> {
     let test_model_parameters = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
         num_stacks_blocks_per_bitcoin_block: 3,
@@ -1371,9 +1370,6 @@ async fn transaction_coordinator_test_environment(
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: 7,
     };
-
-    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let store = testing::storage::new_test_database(db_num, true).await;
 
     let context = NoopSignerContext::init(Settings::new_from_default_config().unwrap(), store)
         .expect("failed to init context");
@@ -1390,26 +1386,41 @@ async fn transaction_coordinator_test_environment(
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_get_signer_utxo_simple() {
-    transaction_coordinator_test_environment()
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = testing::storage::new_test_database(db_num, true).await;
+
+    transaction_coordinator_test_environment(store.clone())
         .await
         .assert_get_signer_utxo_simple()
         .await;
+
+    signer::testing::storage::drop_db(store).await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_get_signer_utxo_fork() {
-    transaction_coordinator_test_environment()
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = testing::storage::new_test_database(db_num, true).await;
+
+    transaction_coordinator_test_environment(store.clone())
         .await
         .assert_get_signer_utxo_fork()
         .await;
+
+    signer::testing::storage::drop_db(store).await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_get_signer_utxo_unspent() {
-    transaction_coordinator_test_environment()
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = testing::storage::new_test_database(db_num, true).await;
+
+    transaction_coordinator_test_environment(store.clone())
         .await
         .assert_get_signer_utxo_unspent()
         .await;
+
+    signer::testing::storage::drop_db(store).await;
 }

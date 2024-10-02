@@ -624,7 +624,7 @@ mod tests {
 
         let context = TestContext::new(WrappedMock::<MockBitcoinInteract>::default());
 
-        testing::transaction_coordinator::TestEnvironment {
+        TestEnvironment {
             context,
             context_window: 5,
             num_signers: 7,
