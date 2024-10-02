@@ -80,8 +80,8 @@ async fn setup_deposit_integration_test() -> TestClient {
         let request: CreateDepositRequestBody = serde_json::from_value(json!({
             "bitcoinTxid": bitcoin_txid.clone(),
             "bitcoinTxOutputIndex": bitcoin_tx_output_index,
-            "reclaim": TEST_RECLAIM_SCRIPT.to_string(),
-            "deposit": TEST_DEPOSIT_SCRIPT.to_string(),
+            "reclaimScript": TEST_RECLAIM_SCRIPT.to_string(),
+            "depositScript": TEST_DEPOSIT_SCRIPT.to_string(),
         }))
         .expect("Failed to deserialize create deposit request body in test setup");
         let response = client.create_deposit(&request).await;

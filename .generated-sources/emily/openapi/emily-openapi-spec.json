@@ -1203,8 +1203,8 @@
         "required": [
           "bitcoinTxid",
           "bitcoinTxOutputIndex",
-          "reclaim",
-          "deposit"
+          "reclaimScript",
+          "depositScript"
         ],
         "properties": {
           "bitcoinTxOutputIndex": {
@@ -1217,11 +1217,11 @@
             "type": "string",
             "description": "Bitcoin transaction id."
           },
-          "deposit": {
+          "depositScript": {
             "type": "string",
             "description": "Deposit script."
           },
-          "reclaim": {
+          "reclaimScript": {
             "type": "string",
             "description": "Reclaim script."
           }
