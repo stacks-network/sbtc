@@ -56,7 +56,7 @@ fn make_withdrawal_accept(data: &TestSweepSetup) -> (AcceptWithdrawalV1, ReqCont
         sweep_block_height: data.sweep_block_height,
     };
 
-    // This is what the current signer things of the state of things.
+    // This is what the current signer thinks is the state of things.
     let req_ctx = ReqContext {
         chain_tip: BitcoinBlockRef {
             block_hash: data.sweep_block_hash.into(),
@@ -70,7 +70,7 @@ fn make_withdrawal_accept(data: &TestSweepSetup) -> (AcceptWithdrawalV1, ReqCont
         // When checking whether the transaction is from the signer, we
         // check that the first "prevout" has a `scriptPubKey` that the
         // signers control.
-        aggregate_key: data.signer.keypair.public_key().into(),
+        aggregate_key: data.aggregated_signer.keypair.public_key().into(),
         // This value affects whether a withdrawal request is considered
         // "accepted". During validation, a signer won't sign a transaction
         // if it is not considered accepted but the collection of signers.

@@ -44,9 +44,9 @@ pub struct TestSweepSetup {
     /// The bitcoin transaction that the user made as a deposit for sBTC.
     pub deposit_tx: bitcoin::Transaction,
     /// The signer object. It's public key represents the group of signers'
-    /// public key, allowing us to abstract away the fact that there are
+    /// public keys, allowing us to abstract away the fact that there are
     /// many signers needed to sign a transaction.
-    pub signer: Recipient,
+    pub aggregated_signer: Recipient,
     /// The public keys of the signer set. It is effectively controlled by the above signer's private key.
     pub signer_keys: Vec<PublicKey>,
     /// The block hash of the bitcoin block that confirmed the sweep
@@ -65,7 +65,7 @@ pub struct TestSweepSetup {
 }
 
 impl TestSweepSetup {
-    /// Construct a new TestDepositSetup
+    /// Construct a new TestSweepSetup
     ///
     /// This is done as follows:
     /// 1. Generating a new "signer" and "depositor" objects that control
@@ -164,7 +164,7 @@ impl TestSweepSetup {
             sweep_block_height,
             sweep_block_hash,
             signer_keys: signer::testing::wallet::create_signers_keys(rng, &signer, 7),
-            signer,
+            aggregated_signer: signer,
             withdrawal_request: requests.withdrawals.pop().unwrap(),
             withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
         }
@@ -317,7 +317,7 @@ impl TestSweepSetup {
     /// We need to have a row in the dkg_shares table for the scriptPubKey
     /// associated with the signers aggregate key.
     pub async fn store_dkg_shares(&self, db: &PgStore) {
-        let aggregate_key: PublicKey = self.signer.keypair.public_key().into();
+        let aggregate_key: PublicKey = self.aggregated_signer.keypair.public_key().into();
         let shares = EncryptedDkgShares {
             script_pubkey: aggregate_key.signers_script_pubkey().into(),
             tweaked_aggregate_key: aggregate_key.signers_tweaked_pubkey().unwrap(),
