@@ -76,6 +76,7 @@ pub enum FeePriority {
 }
 
 /// A trait detailing the interface with the Stacks API and Stacks Nodes.
+#[cfg_attr(any(test, feature = "testing"), mockall::automock)]
 pub trait StacksInteract {
     /// Retrieve the current signer set from the `sbtc-registry` contract.
     ///
@@ -127,6 +128,7 @@ pub trait StacksInteract {
     ///
     /// This function usually uses the POST /v2/fees/transaction endpoint
     /// of a stacks node.
+    #[cfg_attr(any(test, feature = "testing"), mockall::concretize)]
     fn estimate_fees<T>(
         &self,
         payload: &T,

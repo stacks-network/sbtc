@@ -16,8 +16,9 @@ use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::keys::SignerScriptPubKey;
 use crate::network;
+use crate::stacks::api::StacksInteract;
 use crate::storage::model;
-use crate::storage::DbRead as _;
+use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use crate::testing;
 use crate::testing::storage::model::TestData;
@@ -109,7 +110,12 @@ pub struct TestEnvironment<Context> {
     pub test_model_parameters: testing::storage::model::Params,
 }
 
-impl TestEnvironment<TestContext<WrappedMock<MockBitcoinInteract>>> {
+impl<Storage, Stacks>
+    TestEnvironment<TestContext<Storage, WrappedMock<MockBitcoinInteract>, Stacks>>
+where
+    Storage: DbRead + DbWrite + Clone + Sync + Send + 'static,
+    Stacks: StacksInteract + Clone + Sync + Send + 'static,
+{
     /// Assert that a coordinator should be able to coordiante a signing round
     pub async fn assert_should_be_able_to_coordinate_signing_rounds(mut self) {
         // Get a handle to our mocked bitcoin client.

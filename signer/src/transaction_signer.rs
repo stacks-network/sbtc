@@ -11,6 +11,9 @@ use std::collections::HashMap;
 use crate::blocklist_client;
 use crate::config::NetworkKind;
 use crate::context::Context;
+use crate::context::SignerEvent;
+use crate::context::SignerSignal;
+use crate::context::TxSignerEvent;
 use crate::ecdsa::SignEcdsa as _;
 use crate::error::Error;
 use crate::keys;
@@ -24,9 +27,10 @@ use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::ReqContext;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
-use crate::storage;
 use crate::storage::model;
 use crate::storage::model::BitcoinBlockRef;
+use crate::storage::DbRead as _;
+use crate::storage::DbWrite as _;
 use crate::wsts_state_machine;
 
 use clarity::types::chainstate::StacksAddress;
@@ -100,15 +104,15 @@ use wsts::net::DkgStatus;
 ///     SM --> |WSTS message| RWSM(Relay to WSTS state machine)
 /// ```
 #[derive(Debug)]
-pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
+pub struct TxSignerEventLoop<Context, Network, BlocklistChecker, Rng> {
+    /// The signer context.
+    pub context: Context,
     /// Interface to the signer network.
     pub network: Network,
-    /// Database connection.
-    pub storage: Storage,
     /// Blocklist checker.
     pub blocklist_checker: Option<BlocklistChecker>,
     /// Notification receiver from the block observer.
-    pub block_observer_notifications: tokio::sync::watch::Receiver<()>,
+    //pub block_observer_notifications: tokio::sync::watch::Receiver<()>,
     /// Private key of the signer for network communication.
     pub signer_private_key: PrivateKey,
     /// WSTS state machines for active signing rounds and DKG rounds
@@ -127,42 +131,28 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
     pub network_kind: bitcoin::Network,
     /// Random number generator used for encryption
     pub rng: Rng,
-    #[cfg(feature = "testing")]
-    /// Optional channel to communicate progress usable for testing
-    pub test_observer_tx: Option<tokio::sync::mpsc::Sender<TxSignerEvent>>,
+    //#[cfg(feature = "testing")]
+    // /// Optional channel to communicate progress usable for testing
+    //pub test_observer_tx: Option<tokio::sync::mpsc::Sender<TxSignerEvent>>,
 }
 
-/// Event useful for tests
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum TxSignerEvent {
-    /// Received a deposit decision
-    ReceivedDepositDecision,
-    /// Received a withdrawal decision
-    ReceivedWithdrawalDecision,
-}
-
-impl<N, S, B, Rng> TxSignerEventLoop<N, S, B, Rng>
+impl<C, N, B, Rng> TxSignerEventLoop<C, N, B, Rng>
 where
+    C: Context,
     N: network::MessageTransfer,
     B: blocklist_client::BlocklistChecker,
-    S: storage::DbRead + storage::DbWrite + Send + Sync,
     Rng: rand::RngCore + rand::CryptoRng,
 {
     /// Run the signer event loop
     #[tracing::instrument(skip(self))]
     pub async fn run(mut self) -> Result<(), Error> {
+        let mut signal_rx = self.context.get_signal_receiver();
+
         loop {
             tokio::select! {
-                result = self.block_observer_notifications.changed() => {
-                    match result {
-                        Ok(()) => self.handle_new_requests().await?,
-                        Err(_) => {
-                            tracing::info!("block observer notification channel closed");
-                            break;
-                        }
-                    }
+                Ok(SignerSignal::Event(SignerEvent::BitcoinBlockObserved)) = signal_rx.recv() => {
+                    self.handle_new_requests().await?;
                 }
-
                 result = self.network.receive() => {
                     match result {
                         Ok(msg) => {
@@ -191,7 +181,8 @@ where
     #[tracing::instrument(skip(self))]
     async fn handle_new_requests(&mut self) -> Result<(), Error> {
         let bitcoin_chain_tip = self
-            .storage
+            .context
+            .get_storage()
             .get_bitcoin_canonical_chain_tip()
             .await?
             .ok_or(Error::NoChainTip)?;
@@ -284,23 +275,21 @@ where
         msg_sender: keys::PublicKey,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<MsgChainTipReport, Error> {
-        let is_known = self
-            .storage
+        let storage = self.context.get_storage();
+
+        let is_known = storage
             .get_bitcoin_block(bitcoin_chain_tip)
             .await?
             .is_some();
 
-        let is_canonical = self
-            .storage
+        let is_canonical = storage
             .get_bitcoin_canonical_chain_tip()
             .await?
             .map(|canonical_chain_tip| &canonical_chain_tip == bitcoin_chain_tip)
             .unwrap_or(false);
 
-        let sender_is_coordinator = if let Some(last_key_rotation) = self
-            .storage
-            .get_last_key_rotation(bitcoin_chain_tip)
-            .await?
+        let sender_is_coordinator = if let Some(last_key_rotation) =
+            storage.get_last_key_rotation(bitcoin_chain_tip).await?
         {
             let signer_set: BTreeSet<PublicKey> =
                 last_key_rotation.signer_set.into_iter().collect();
@@ -340,7 +329,7 @@ where
             let signer_public_keys = self.get_signer_public_keys(bitcoin_chain_tip).await?;
 
             let new_state_machine = wsts_state_machine::SignerStateMachine::load(
-                &mut self.storage,
+                &self.context.get_storage_mut(),
                 request.aggregate_key,
                 signer_public_keys,
                 self.threshold,
@@ -370,7 +359,8 @@ where
     ) -> Result<bool, Error> {
         let signer_pub_key = self.signer_pub_key();
         let _accepted_deposit_requests = self
-            .storage
+            .context
+            .get_storage()
             .get_accepted_deposit_requests(&signer_pub_key)
             .await?;
 
@@ -417,7 +407,8 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<SignerWallet, Error> {
         let last_key_rotation = self
-            .storage
+            .context
+            .get_storage()
             .get_last_key_rotation(bitcoin_chain_tip)
             .await?
             .ok_or(Error::MissingKeyRotation)?;
@@ -567,7 +558,8 @@ where
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Vec<model::DepositRequest>, Error> {
-        self.storage
+        self.context
+            .get_storage()
             .get_pending_deposit_requests(chain_tip, self.context_window)
             .await
     }
@@ -577,7 +569,8 @@ where
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Vec<model::WithdrawalRequest>, Error> {
-        self.storage
+        self.context
+            .get_storage()
             .get_pending_withdrawal_requests(chain_tip, self.context_window)
             .await
     }
@@ -615,7 +608,8 @@ where
             is_accepted,
         };
 
-        self.storage
+        self.context
+            .get_storage_mut()
             .write_deposit_signer_decision(&signer_decision)
             .await?;
 
@@ -643,7 +637,8 @@ where
             txid: withdraw_request.txid,
         };
 
-        self.storage
+        self.context
+            .get_storage_mut()
             .write_withdrawal_signer_decision(&signer_decision)
             .await?;
 
@@ -671,16 +666,21 @@ where
             is_accepted: decision.accepted,
         };
 
-        self.storage
+        self.context
+            .get_storage_mut()
             .write_deposit_signer_decision(&signer_decision)
             .await?;
 
-        #[cfg(feature = "testing")]
-        if let Some(ref tx) = self.test_observer_tx {
-            tx.send(TxSignerEvent::ReceivedDepositDecision)
-                .await
-                .map_err(|_| Error::ObserverDropped)?;
-        }
+        self.context
+            .signal(TxSignerEvent::ReceivedDepositDecision.into())
+            .expect("failed to send signal");
+
+        // #[cfg(feature = "testing")]
+        // if let Some(ref tx) = self.test_observer_tx {
+        //     tx.send(TxSignerEvent::ReceivedDepositDecision)
+        //         .await
+        //         .map_err(|_| Error::ObserverDropped)?;
+        // }
 
         Ok(())
     }
@@ -699,16 +699,21 @@ where
             txid: decision.txid,
         };
 
-        self.storage
+        self.context
+            .get_storage_mut()
             .write_withdrawal_signer_decision(&signer_decision)
             .await?;
 
-        #[cfg(feature = "testing")]
-        if let Some(ref tx) = self.test_observer_tx {
-            tx.send(TxSignerEvent::ReceivedWithdrawalDecision)
-                .await
-                .map_err(|_| Error::ObserverDropped)?;
-        }
+        self.context
+            .signal(TxSignerEvent::ReceivedWithdrawalDecision.into())
+            .expect("failed to send signal");
+
+        // #[cfg(feature = "testing")]
+        // if let Some(ref tx) = self.test_observer_tx {
+        //     tx.send(TxSignerEvent::ReceivedWithdrawalDecision)
+        //         .await
+        //         .map_err(|_| Error::ObserverDropped)?;
+        // }
 
         Ok(())
     }
@@ -722,7 +727,8 @@ where
 
         let encrypted_dkg_shares = state_machine.get_encrypted_dkg_shares(&mut self.rng)?;
 
-        self.storage
+        self.context
+            .get_storage_mut()
             .write_encrypted_dkg_shares(&encrypted_dkg_shares)
             .await?;
 
@@ -751,7 +757,8 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<BTreeSet<PublicKey>, Error> {
         let last_key_rotation = self
-            .storage
+            .context
+            .get_storage()
             .get_last_key_rotation(bitcoin_chain_tip)
             .await?
             .ok_or(Error::MissingKeyRotation)?;
@@ -789,11 +796,20 @@ enum ChainTipStatus {
 
 #[cfg(test)]
 mod tests {
-    use crate::storage;
+    use crate::bitcoin::MockBitcoinInteract;
+    use crate::stacks::api::MockStacksInteract;
+    use crate::storage::in_memory::SharedStore;
     use crate::testing;
+    use crate::testing::context::BuildContext;
+    use crate::testing::context::ConfigureBitcoinClient;
+    use crate::testing::context::ConfigureStacksClient;
+    use crate::testing::context::ConfigureStorage;
+    use crate::testing::context::TestContext;
+    use crate::testing::context::WrappedMock;
 
-    fn test_environment(
-    ) -> testing::transaction_signer::TestEnvironment<fn() -> storage::in_memory::SharedStore> {
+    fn test_environment() -> testing::transaction_signer::TestEnvironment<
+        TestContext<SharedStore, WrappedMock<MockBitcoinInteract>, WrappedMock<MockStacksInteract>>,
+    > {
         let test_model_parameters = testing::storage::model::Params {
             num_bitcoin_blocks: 20,
             num_stacks_blocks_per_bitcoin_block: 3,
@@ -802,8 +818,14 @@ mod tests {
             num_signers_per_request: 0,
         };
 
+        let context = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_bitcoin_client()
+            .with_mocked_stacks_client()
+            .build();
+
         testing::transaction_signer::TestEnvironment {
-            storage_constructor: storage::in_memory::Store::new_shared,
+            context,
             context_window: 3,
             num_signers: 7,
             signing_threshold: 5,

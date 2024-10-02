@@ -7,8 +7,10 @@ use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::BitcoinInteract;
 use crate::bitcoin::MockBitcoinInteract;
 use crate::blocklist_client::BlocklistChecker;
+use crate::config::Settings;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
+use crate::stacks::api::MockStacksInteract;
 use crate::stacks::api::StacksInteract;
 
 /// A no-op API client that doesn't do anything. It will panic if you
@@ -141,6 +143,14 @@ impl TryFrom<&[Url]> for MockBitcoinInteract {
     type Error = Error;
 
     fn try_from(_: &[Url]) -> Result<Self, Self::Error> {
+        Ok(Self::default())
+    }
+}
+
+impl TryFrom<&Settings> for MockStacksInteract {
+    type Error = Error;
+
+    fn try_from(_: &Settings) -> Result<Self, Self::Error> {
         Ok(Self::default())
     }
 }

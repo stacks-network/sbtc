@@ -79,7 +79,7 @@ impl SignerStateMachine {
 
     /// Create a state machine from loaded DKG shares for the given aggregate key
     pub async fn load<S>(
-        storage: &mut S,
+        storage: &S,
         aggregate_key: PublicKey,
         signers: impl IntoIterator<Item = PublicKey>,
         threshold: u32,
