@@ -342,7 +342,7 @@ where
                 self.signer_private_key,
             )
             .await;
-        
+
             if let Err(e) = &new_state_machine {
                 eprintln!("failed to load wsts state machine: {:?}", e);
             } else {
@@ -629,6 +629,8 @@ where
 
         self.send_message(msg, bitcoin_chain_tip).await?;
 
+        self.context.signal(TxSignerEvent::PendingDepositRequestRegistered.into())?;
+
         Ok(())
     }
 
@@ -655,6 +657,9 @@ where
             .get_storage_mut()
             .write_withdrawal_signer_decision(&signer_decision)
             .await?;
+
+        // TODO: Shouldn't we be broadcasting a SignerWithdrawalDecision here?
+        self.context.signal(TxSignerEvent::PendingWithdrawalRequestRegistered.into())?;
 
         Ok(())
     }

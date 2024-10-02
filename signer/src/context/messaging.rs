@@ -49,6 +49,10 @@ pub enum TxSignerEvent {
     ReceivedDepositDecision,
     /// Received a withdrawal decision
     ReceivedWithdrawalDecision,
+    /// A new pending withdrawal request has been handled.
+    PendingWithdrawalRequestRegistered,
+    /// A new pending deposit request has been handled.
+    PendingDepositRequestRegistered,
 }
 
 impl From<TxSignerEvent> for SignerSignal {

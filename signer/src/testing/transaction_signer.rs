@@ -30,6 +30,7 @@ use crate::network::MessageTransfer as _;
 use futures::StreamExt as _;
 use rand::SeedableRng as _;
 use sha2::Digest as _;
+use tokio::sync::broadcast;
 
 use super::context::BuildContext as _;
 use super::context::ConfigureBitcoinClient;
@@ -77,11 +78,12 @@ where
         //let test_observer_rx = self.test_observer_rx;
         let join_handle = tokio::spawn(async { self.event_loop.run().await });
 
+        let signal_rx = self.context.get_signal_receiver();
+
         RunningEventLoopHandle {
             join_handle,
-            //block_observer_notification_tx,
-            //test_observer_rx,
             context: self.context,
+            signal_rx
         }
     }
 }
@@ -89,8 +91,7 @@ where
 struct RunningEventLoopHandle<C> {
     context: C,
     join_handle: tokio::task::JoinHandle<Result<(), error::Error>>,
-    //block_observer_notification_tx: tokio::sync::watch::Sender<()>,
-    //test_observer_rx: tokio::sync::mpsc::Receiver<transaction_signer::TxSignerEvent>,
+    signal_rx: broadcast::Receiver<SignerSignal>
 }
 
 impl<C> RunningEventLoopHandle<C>
@@ -99,10 +100,8 @@ where
 {
     /// Wait for N instances of the given event
     pub async fn wait_for_events(&mut self, msg: TxSignerEvent, mut n: u16) {
-        let mut rx = self.context.get_signal_receiver();
-
         loop {
-            if let Ok(SignerSignal::Event(SignerEvent::TxSigner(event))) = rx.recv().await {
+            if let Ok(SignerSignal::Event(SignerEvent::TxSigner(event))) = self.signal_rx.recv().await {
                 if event == msg {
                     n -= 1;
                 }
@@ -153,6 +152,7 @@ where
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = &signer_info.first().cloned().unwrap();
+        let mut signal_rx = self.context.get_signal_receiver();
 
         let event_loop_harness = EventLoopHarness::create(
             self.context.clone(),
@@ -174,10 +174,23 @@ where
             .signal(SignerSignal::Event(SignerEvent::BitcoinBlockObserved))
             .expect("failed to send signal");
 
+        tokio::time::timeout(Duration::from_secs(10), async move {
+            while !matches!(
+                signal_rx.recv().await, 
+                Ok(SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::PendingDepositRequestRegistered)))) 
+            {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }).await.expect("timeout");
+
+        // TODO: Figure out the race condition in the `should_store_decisions_for_pending_deposit_requests`
+        // integration test.
+        tokio::time::sleep(Duration::from_millis(250)).await;
+
         handle.join_handle.abort();
 
         Self::assert_only_deposit_requests_in_context_window_has_decisions(
-            &self.context.get_storage(),
+            &handle.context.get_storage(),
             self.context_window,
             &test_data.deposit_requests,
             1,
@@ -192,6 +205,7 @@ where
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().cloned().unwrap();
+        let mut signal_rx = self.context.get_signal_receiver();
 
         let event_loop_harness = EventLoopHarness::create(
             self.context.clone(),
@@ -213,6 +227,15 @@ where
             .signal(SignerSignal::Event(SignerEvent::BitcoinBlockObserved))
             .expect("failed to send signal");
 
+        tokio::time::timeout(Duration::from_secs(10), async move {
+            while !matches!(
+                signal_rx.recv().await, 
+                Ok(SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::PendingWithdrawalRequestRegistered)))) 
+            {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }).await.expect("timeout");
+        
         handle.join_handle.abort();
 
         self.assert_only_withdraw_requests_in_context_window_has_decisions(
@@ -709,6 +732,7 @@ where
     {
         let context_window_block_hashes =
             Self::extract_context_window_block_hashes(storage, context_window).await;
+        
         for deposit_request in deposit_requests {
             let signer_decisions = storage
                 .get_deposit_signers(&deposit_request.txid, deposit_request.output_index)
