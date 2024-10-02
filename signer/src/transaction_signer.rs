@@ -356,7 +356,7 @@ where
             let msg = message::BitcoinTransactionSignAck {
                 txid: request.tx.compute_txid(),
             };
-            
+
             eprintln!("sending BitcoinTransactionSignAck");
             self.send_message(msg, bitcoin_chain_tip).await?;
         } else {
@@ -629,7 +629,8 @@ where
 
         self.send_message(msg, bitcoin_chain_tip).await?;
 
-        self.context.signal(TxSignerEvent::PendingDepositRequestRegistered.into())?;
+        self.context
+            .signal(TxSignerEvent::PendingDepositRequestRegistered.into())?;
 
         Ok(())
     }
@@ -659,7 +660,8 @@ where
             .await?;
 
         // TODO: Shouldn't we be broadcasting a SignerWithdrawalDecision here?
-        self.context.signal(TxSignerEvent::PendingWithdrawalRequestRegistered.into())?;
+        self.context
+            .signal(TxSignerEvent::PendingWithdrawalRequestRegistered.into())?;
 
         Ok(())
     }

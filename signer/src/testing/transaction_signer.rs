@@ -83,7 +83,7 @@ where
         RunningEventLoopHandle {
             join_handle,
             context: self.context,
-            signal_rx
+            signal_rx,
         }
     }
 }
@@ -91,7 +91,7 @@ where
 struct RunningEventLoopHandle<C> {
     context: C,
     join_handle: tokio::task::JoinHandle<Result<(), error::Error>>,
-    signal_rx: broadcast::Receiver<SignerSignal>
+    signal_rx: broadcast::Receiver<SignerSignal>,
 }
 
 impl<C> RunningEventLoopHandle<C>
@@ -101,7 +101,9 @@ where
     /// Wait for N instances of the given event
     pub async fn wait_for_events(&mut self, msg: TxSignerEvent, mut n: u16) {
         loop {
-            if let Ok(SignerSignal::Event(SignerEvent::TxSigner(event))) = self.signal_rx.recv().await {
+            if let Ok(SignerSignal::Event(SignerEvent::TxSigner(event))) =
+                self.signal_rx.recv().await
+            {
                 if event == msg {
                     n -= 1;
                 }
@@ -176,12 +178,16 @@ where
 
         tokio::time::timeout(Duration::from_secs(10), async move {
             while !matches!(
-                signal_rx.recv().await, 
-                Ok(SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::PendingDepositRequestRegistered)))) 
-            {
+                signal_rx.recv().await,
+                Ok(SignerSignal::Event(SignerEvent::TxSigner(
+                    TxSignerEvent::PendingDepositRequestRegistered
+                )))
+            ) {
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
-        }).await.expect("timeout");
+        })
+        .await
+        .expect("timeout");
 
         // TODO: Figure out the race condition in the `should_store_decisions_for_pending_deposit_requests`
         // integration test.
@@ -229,13 +235,17 @@ where
 
         tokio::time::timeout(Duration::from_secs(10), async move {
             while !matches!(
-                signal_rx.recv().await, 
-                Ok(SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::PendingWithdrawalRequestRegistered)))) 
-            {
+                signal_rx.recv().await,
+                Ok(SignerSignal::Event(SignerEvent::TxSigner(
+                    TxSignerEvent::PendingWithdrawalRequestRegistered
+                )))
+            ) {
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
-        }).await.expect("timeout");
-        
+        })
+        .await
+        .expect("timeout");
+
         handle.join_handle.abort();
 
         self.assert_only_withdraw_requests_in_context_window_has_decisions(
@@ -255,11 +265,13 @@ where
         let coordinator_signer_info = signer_info.first().cloned().unwrap();
 
         // A closure to build a new context for each signer
-        let build_context = || TestContext::builder()
-            .with_in_memory_storage()
-            .with_mocked_bitcoin_client()
-            .with_mocked_stacks_client()
-            .build();
+        let build_context = || {
+            TestContext::builder()
+                .with_in_memory_storage()
+                .with_mocked_bitcoin_client()
+                .with_mocked_stacks_client()
+                .build()
+        };
 
         let mut event_loop_handles: Vec<_> = signer_info
             .into_iter()
@@ -434,11 +446,13 @@ where
         let coordinator_signer_info = signer_info.first().unwrap().clone();
 
         // A closure to build a new context for each signer
-        let build_context = || TestContext::builder()
-            .with_in_memory_storage()
-            .with_mocked_bitcoin_client()
-            .with_mocked_stacks_client()
-            .build();
+        let build_context = || {
+            TestContext::builder()
+                .with_in_memory_storage()
+                .with_mocked_bitcoin_client()
+                .with_mocked_stacks_client()
+                .build()
+        };
 
         // Create a new event-loop for each signer, based on the number of signers
         // defined in `self.num_signers`.
@@ -516,11 +530,13 @@ where
         let coordinator_signer_info = signer_info.first().unwrap().clone();
 
         // A closure to build a new context for each signer
-        let build_context = || TestContext::builder()
-            .with_in_memory_storage()
-            .with_mocked_bitcoin_client()
-            .with_mocked_stacks_client()
-            .build();
+        let build_context = || {
+            TestContext::builder()
+                .with_in_memory_storage()
+                .with_mocked_bitcoin_client()
+                .with_mocked_stacks_client()
+                .build()
+        };
 
         let mut event_loop_handles: Vec<_> = signer_info
             .clone()
@@ -732,7 +748,7 @@ where
     {
         let context_window_block_hashes =
             Self::extract_context_window_block_hashes(storage, context_window).await;
-        
+
         for deposit_request in deposit_requests {
             let signer_decisions = storage
                 .get_deposit_signers(&deposit_request.txid, deposit_request.output_index)

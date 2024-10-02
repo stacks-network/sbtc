@@ -10,8 +10,8 @@ pub struct TerminationHandle(
 impl Clone for TerminationHandle {
     fn clone(&self) -> Self {
         Self(
-            self.0.clone(), // Sender
-            self.0.subscribe() // Receiver
+            self.0.clone(),     // Sender
+            self.0.subscribe(), // Receiver
         )
     }
 }

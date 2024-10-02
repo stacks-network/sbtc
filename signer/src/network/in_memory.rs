@@ -42,7 +42,10 @@ impl Network {
     /// Construct a new in-memory communication entwork
     pub fn new() -> Self {
         let (sender, _) = broadcast::channel(BROADCAST_CHANNEL_CAPACITY);
-        Self { sender, last_id: AtomicU16::new(0) }
+        Self {
+            sender,
+            last_id: AtomicU16::new(0),
+        }
     }
 
     /// Connect a new signer to this network
@@ -50,7 +53,9 @@ impl Network {
         let sender = self.sender.clone();
         let receiver = sender.subscribe();
         let recently_sent = VecDeque::new();
-        let id = self.last_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let id = self
+            .last_id
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         MpmcBroadcaster {
             id,

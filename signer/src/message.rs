@@ -44,7 +44,9 @@ impl std::fmt::Display for Payload {
             Self::SignerWithdrawDecision(_) => write!(f, "SignerWithdrawDecision(..)"),
             Self::StacksTransactionSignRequest(_) => write!(f, "StacksTransactionSignRequest(..)"),
             Self::StacksTransactionSignature(_) => write!(f, "StacksTransactionSignature(..)"),
-            Self::BitcoinTransactionSignRequest(_) => write!(f, "BitcoinTransactionSignRequest(..)"),
+            Self::BitcoinTransactionSignRequest(_) => {
+                write!(f, "BitcoinTransactionSignRequest(..)")
+            }
             Self::BitcoinTransactionSignAck(_) => write!(f, "BitcoinTransactionSignAck(..)"),
             Self::WstsMessage(msg) => {
                 write!(f, "WstsMessage(")?;
@@ -59,10 +61,10 @@ impl std::fmt::Display for Payload {
                     wsts::net::Message::NonceResponse(_) => write!(f, "NonceResponse(..)")?,
                     wsts::net::Message::SignatureShareRequest(_) => {
                         write!(f, "SignatureShareRequest(..)")?
-                    },
+                    }
                     wsts::net::Message::SignatureShareResponse(_) => {
                         write!(f, "SignatureShareResponse(..)")?
-                    },
+                    }
                 }
                 write!(f, ")")
             }
