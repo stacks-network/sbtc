@@ -171,8 +171,8 @@ impl SignerWallet {
     }
 
     /// Return the stacks address for the signers
-    pub fn address(&self) -> StacksAddress {
-        self.address
+    pub fn address(&self) -> &StacksAddress {
+        &self.address
     }
 
     /// The aggregate public key of the given public keys.
