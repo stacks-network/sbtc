@@ -27,7 +27,7 @@ use crate::DATABASE_NUM;
 /// context.
 fn make_withdrawal_accept(data: &TestSweepSetup) -> (AcceptWithdrawalV1, ReqContext) {
     // Okay now we get ready to create the transaction using the
-    // `CompleteDepositV1` type.
+    // `AcceptWithdrawalV1` type.
     let fee = data.sweep_tx_info.assess_output_fee(2).unwrap().to_sat();
     let complete_withdrawal_tx = AcceptWithdrawalV1 {
         // This OutPoint points to the withdrawal UTXO. We look up our
@@ -62,7 +62,7 @@ fn make_withdrawal_accept(data: &TestSweepSetup) -> (AcceptWithdrawalV1, ReqCont
             block_hash: data.sweep_block_hash.into(),
             block_height: data.sweep_block_height,
         },
-        // This value means that the signer will go back 10 blocks when
+        // This value means that the signer will go back 20 blocks when
         // looking for pending and accepted withdrawal requests.
         context_window: 20,
         // The value here doesn't matter.

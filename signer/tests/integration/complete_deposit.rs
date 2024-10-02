@@ -68,7 +68,8 @@ fn make_complete_deposit(data: &TestSweepSetup) -> (CompleteDepositV1, ReqContex
         // signers control.
         aggregate_key: data.aggregated_signer.keypair.public_key().into(),
         // This value affects how many deposit transactions are consider
-        // accepted.
+        // accepted. During validation, a signer won't sign a transaction
+        // if it is not considered accepted but the collection of signers.
         signatures_required: 2,
         // This is who the current signer thinks deployed the sBTC
         // contracts.
