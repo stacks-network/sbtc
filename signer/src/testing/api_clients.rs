@@ -81,7 +81,12 @@ impl StacksInteract for NoopApiClient {
         &self,
         _address: &clarity::types::chainstate::StacksAddress,
     ) -> Result<crate::stacks::api::AccountInfo, Error> {
-        unimplemented!()
+        Ok(crate::stacks::api::AccountInfo {
+            balance: 0,
+            locked: 0,
+            unlock_height: 0,
+            nonce: 0,
+        })
     }
 
     async fn submit_tx(
