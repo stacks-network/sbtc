@@ -193,6 +193,30 @@ pub trait DbRead {
         txid: &model::BitcoinTxId,
         block_hash: &model::BitcoinBlockHash,
     ) -> impl Future<Output = Result<Option<model::BitcoinTx>, Error>> + Send;
+
+    /// Fetch bitcoin transactions that have fulfilled a deposit request
+    /// but where we have not confirmed a stacks transaction finalizing the
+    /// request.
+    ///
+    /// These requests are now "finalizable", and only require a
+    /// `complete-deposit` contract call.
+    fn get_finalizable_deposit_requests(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+    ) -> impl Future<Output = Result<Vec<model::FulfilledDepositRequest>, Error>> + Send;
+
+    /// Fetch bitcoin transactions that have fulfilled a withdrawal request
+    /// but where we have not confirmed a stacks transaction finalizing the
+    /// request.
+    ///
+    /// These requests are now "finalizable", and only require a
+    /// `accept-withdrawal-request` contract call.
+    fn get_finalizable_withdrawal_requests(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+    ) -> impl Future<Output = Result<Vec<model::FulfilledWithdrawalRequest>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.

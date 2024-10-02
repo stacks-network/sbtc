@@ -585,6 +585,22 @@ impl super::DbRead for SharedStore {
 
         Ok(maybe_tx)
     }
+
+    async fn get_finalizable_deposit_requests(
+        &self,
+        _chain_tip: &model::BitcoinBlockHash,
+        _context_window: u16,
+    ) -> Result<Vec<model::FulfilledDepositRequest>, Error> {
+        unimplemented!()
+    }
+
+    async fn get_finalizable_withdrawal_requests(
+        &self,
+        _chain_tip: &model::BitcoinBlockHash,
+        _context_window: u16,
+    ) -> Result<Vec<model::FulfilledWithdrawalRequest>, Error> {
+        unimplemented!()
+    }
 }
 
 impl super::DbWrite for SharedStore {
