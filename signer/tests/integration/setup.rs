@@ -125,7 +125,7 @@ impl TestSweepSetup {
                 last_fees: None,
                 magic_bytes: [b'T', b'3'],
             },
-            accept_threshold: 4,
+            signatures_required: 4,
             num_signers: 7,
         };
 

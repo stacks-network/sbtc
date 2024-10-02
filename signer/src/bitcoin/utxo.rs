@@ -104,8 +104,9 @@ pub struct SbtcRequests {
     /// Summary of the Signers' UTXO and information necessary for
     /// constructing their next UTXO.
     pub signer_state: SignerBtcState,
-    /// The minimum acceptable number of votes for any given request.
-    pub accept_threshold: u16,
+    /// The minimum acceptable number of accept votes for any given
+    /// request.
+    pub signatures_required: u16,
     /// The total number of signers.
     pub num_signers: u16,
 }
@@ -169,7 +170,7 @@ impl SbtcRequests {
     }
 
     fn reject_capacity(&self) -> u32 {
-        self.num_signers.saturating_sub(self.accept_threshold) as u32
+        self.num_signers.saturating_sub(self.signatures_required) as u32
     }
 
     /// Calculates the minimum fee threshold for servicing a user's
@@ -1276,7 +1277,7 @@ mod tests {
                 magic_bytes: [0; 2],
             },
             num_signers: 10,
-            accept_threshold: 2,
+            signatures_required: 2,
         };
         let keypair = Keypair::new_global(&mut OsRng);
 
@@ -1374,7 +1375,7 @@ mod tests {
                 magic_bytes: [0; 2],
             },
             num_signers: 10,
-            accept_threshold: 0,
+            signatures_required: 0,
         };
 
         // This should all be in one transaction since there are no votes
@@ -1468,7 +1469,7 @@ mod tests {
                 magic_bytes: [b'T', b'3'],
             },
             num_signers: 10,
-            accept_threshold: 0,
+            signatures_required: 0,
         };
 
         // We'll have the deposit get two vote against, and the withdrawals
@@ -1575,7 +1576,7 @@ mod tests {
                 magic_bytes: [b'T', b'3'],
             },
             num_signers: 10,
-            accept_threshold: 0,
+            signatures_required: 0,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -1656,7 +1657,7 @@ mod tests {
                 magic_bytes: [0; 2],
             },
             num_signers: 10,
-            accept_threshold: 0,
+            signatures_required: 0,
         };
 
         // This should all be in one transaction since there are no votes
@@ -1705,7 +1706,7 @@ mod tests {
                 magic_bytes: [0; 2],
             },
             num_signers: 10,
-            accept_threshold: 0,
+            signatures_required: 0,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -1751,7 +1752,7 @@ mod tests {
                 magic_bytes: [0; 2],
             },
             num_signers: 10,
-            accept_threshold: 8,
+            signatures_required: 8,
         };
 
         let transactions = requests.construct_transactions().unwrap();
@@ -1809,7 +1810,7 @@ mod tests {
                 magic_bytes: [0; 2],
             },
             num_signers: 10,
-            accept_threshold: 8,
+            signatures_required: 8,
         };
 
         let transactions = requests.construct_transactions().unwrap();
@@ -1907,7 +1908,7 @@ mod tests {
                 magic_bytes: [0; 2],
             },
             num_signers: 10,
-            accept_threshold: 8,
+            signatures_required: 8,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -1971,7 +1972,7 @@ mod tests {
                 magic_bytes: [0; 2],
             },
             num_signers: 10,
-            accept_threshold: 8,
+            signatures_required: 8,
         };
 
         let (old_fee_total, old_fee_rate) = {
@@ -2049,7 +2050,7 @@ mod tests {
                 magic_bytes: [0; 2],
             },
             num_signers: 10,
-            accept_threshold: 8,
+            signatures_required: 8,
         };
         let mut transactions = requests.construct_transactions().unwrap();
         assert_eq!(transactions.len(), 1);
@@ -2084,7 +2085,7 @@ mod tests {
                 magic_bytes: [0; 2],
             },
             num_signers: 10,
-            accept_threshold: 0,
+            signatures_required: 0,
         };
 
         let transactions = requests.construct_transactions();
@@ -2140,7 +2141,7 @@ mod tests {
                 magic_bytes: [0; 2],
             },
             num_signers: 10,
-            accept_threshold: 8,
+            signatures_required: 8,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();

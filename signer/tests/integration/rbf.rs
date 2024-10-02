@@ -224,7 +224,7 @@ pub fn transaction_with_rbf(
             // in Nakamoto testnet.
             magic_bytes: [b'T', b'3'],
         },
-        accept_threshold: failure_threshold,
+        signatures_required: failure_threshold,
         num_signers: 2 * failure_threshold,
     };
 

@@ -217,7 +217,7 @@ fn deposits_add_to_controlled_amounts() {
             last_fees: None,
             magic_bytes: [b'T', b'3'],
         },
-        accept_threshold: 4,
+        signatures_required: 4,
         num_signers: 7,
     };
 
@@ -281,7 +281,7 @@ fn withdrawals_reduce_to_signers_amounts() {
             last_fees: None,
             magic_bytes: [b'T', b'3'],
         },
-        accept_threshold: 4,
+        signatures_required: 4,
         num_signers: 7,
     };
 
