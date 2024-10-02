@@ -117,8 +117,12 @@ def replace_local_lambda_path(template, local_lambda_path):
         modified_template, "AWS::Lambda::Function")
 
     # Ensure there's exactly one lambda function in the template.
+    if len(lambda_template_resource_ids) == 0:
+        print(f"Not making any lambda changes because no Lambda functions were found.")
+        return
     if len(lambda_template_resource_ids) != 1:
-        print(f"{len(lambda_template_resource_ids)} Lambda functions found, but there must be exactly 1.")
+        print(f"{len(lambda_template_resource_ids)} Lambda functions found, but this script supports at most 1. Failing...")
+        print(f"Lambda resource ids: {lambda_template_resource_ids}")
         exit(1)
 
     # Update lambda local code path.
