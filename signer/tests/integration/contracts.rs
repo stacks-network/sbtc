@@ -171,7 +171,7 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     static SBTC_DEPLOYMENT: OnceCell<()> = OnceCell::const_new();
     static SIGNER_STATE: OnceCell<SignerStxState> = OnceCell::const_new();
 
-    let (signer_wallet, key_pairs, _) = testing::wallet::generate_wallet();
+    let (signer_wallet, key_pairs) = testing::wallet::generate_wallet();
 
     let client = stacks_client();
 
@@ -245,7 +245,6 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
 #[test_case(ContractCallWrapper(RotateKeysV1::new(
     &testing::wallet::WALLET.0,
     testing::wallet::WALLET.0.address(),
-    testing::wallet::WALLET.2,
 )); "rotate-keys")]
 #[tokio::test]
 async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: ContractCallWrapper<T>) {

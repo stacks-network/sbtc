@@ -166,7 +166,6 @@ impl AsContractCall for InitiateWithdrawalRequest {
 #[test_case(ContractCallWrapper(RotateKeysV1::new(
     &testing::wallet::WALLET.0,
     testing::wallet::WALLET.0.address(),
-    testing::wallet::WALLET.2,
 )); "rotate-keys")]
 #[tokio::test]
 async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWrapper<T>) {
