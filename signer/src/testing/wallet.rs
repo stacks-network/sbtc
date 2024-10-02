@@ -61,16 +61,15 @@ where
     let private_key = PrivateKey::from(signer.keypair.secret_key());
     let aggregate_key = PublicKey::from_private_key(&private_key);
     // The private keys of half of the other signers
-    let pks = [
-        secp256k1::SecretKey::new(rng),
-        secp256k1::SecretKey::new(rng),
-        secp256k1::SecretKey::new(rng),
-    ];
+    let pks: Vec<secp256k1::SecretKey> = std::iter::repeat_with(|| secp256k1::SecretKey::new(rng))
+        .take(num_signers / 2)
+        .collect();
 
     let mut keys: Vec<PublicKey> = pks
-        .iter()
-        .chain(pks.map(secp256k1::SecretKey::negate).iter())
-        .map(|sk| PublicKey::from_private_key(&PrivateKey::from(*sk)))
+        .clone()
+        .into_iter()
+        .chain(pks.into_iter().map(secp256k1::SecretKey::negate))
+        .map(|sk| PublicKey::from_private_key(&PrivateKey::from(sk)))
         .chain([aggregate_key])
         .collect();
 
@@ -210,6 +209,7 @@ mod tests {
         let aggregate_key = PublicKey::from(signer.keypair.public_key());
         let keys = create_signers_keys(&mut OsRng, &signer, num_signers);
 
+        assert_eq!(keys.len(), num_signers);
         assert_eq!(PublicKey::combine_keys(&keys).unwrap(), aggregate_key);
     }
 }
