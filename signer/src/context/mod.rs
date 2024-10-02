@@ -32,7 +32,7 @@ pub trait Context: Clone + Sync + Send {
     /// Get a read-write handle to the signer storage.
     fn get_storage_mut(&self) -> impl DbRead + DbWrite + Clone + Sync + Send;
     /// Get a handle to a Bitcoin client.
-    fn get_bitcoin_client(&self) -> impl BitcoinInteract + Clone + Send;
+    fn get_bitcoin_client(&self) -> impl BitcoinInteract + Clone;
 }
 
 /// Signer context which is passed to different components within the
@@ -66,7 +66,7 @@ pub struct SignerContext<S, BC> {
 impl<S, BC> SignerContext<S, BC>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
-    BC: for<'a> TryFrom<&'a [Url]> + BitcoinInteract + Clone + Sync + Send + 'static,
+    BC: for<'a> TryFrom<&'a [Url]> + BitcoinInteract + Clone + 'static,
     Error: for<'a> From<<BC as TryFrom<&'a [Url]>>::Error>,
 {
     /// Initializes a new [`SignerContext`], automatically creating clients
@@ -81,7 +81,7 @@ where
 impl<S, BC> SignerContext<S, BC>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
-    BC: BitcoinInteract + Clone + Sync + Send,
+    BC: BitcoinInteract + Clone,
 {
     /// Create a new signer context.
     pub fn new(config: Settings, db: S, bitcoin_client: BC) -> Self {
@@ -104,7 +104,7 @@ where
 impl<S, BC> Context for SignerContext<S, BC>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
-    BC: BitcoinInteract + Clone + Sync + Send,
+    BC: BitcoinInteract + Clone,
 {
     fn config(&self) -> &Settings {
         &self.config
