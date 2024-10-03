@@ -359,10 +359,7 @@ where
     fn with_settings(self, settings: Settings) -> ContextBuilder<Storage, Bitcoin, Stacks> {
         let config = self.get_config();
         ContextBuilder {
-            config: ContextConfig {
-                settings,
-                ..config
-            },
+            config: ContextConfig { settings, ..config },
         }
     }
 }
