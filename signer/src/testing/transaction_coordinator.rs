@@ -63,7 +63,7 @@ where
                 private_key,
                 context_window,
                 threshold,
-                signing_round_max_duration: Duration::from_secs(8),
+                signing_round_max_duration: Duration::from_secs(10),
             },
             context,
             is_started: Arc::new(AtomicBool::new(false)),
