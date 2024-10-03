@@ -196,6 +196,11 @@ impl SignerWallet {
         &self.public_keys
     }
 
+    /// Return the nonce that should be used with the next transaction
+    pub fn get_nonce(&self) -> u64 {
+        self.nonce.load(Ordering::SeqCst)
+    }
+
     /// Set the next nonce to the provided value
     pub fn set_nonce(&self, value: u64) {
         self.nonce.store(value, Ordering::Relaxed)

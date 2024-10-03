@@ -19,6 +19,8 @@ use crate::message;
 use crate::message::StacksTransactionSignRequest;
 use crate::network;
 use crate::signature::SighashDigest;
+use crate::stacks::api::FeePriority;
+use crate::stacks::api::StacksInteract;
 use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::wallet::MultisigTx;
@@ -215,8 +217,7 @@ where
         wallet: &SignerWallet,
     ) -> Result<(), Error> {
         let db = self.context.get_storage();
-        let btc_rpc = self.context.get_bitcoin_client();
-        // let stacks =
+        let stacks = self.context.get_stacks_client();
 
         // Fetch deposit and withdrawal requests from the database where
         // there has been a confirmed bitcoin transaction associated with
@@ -233,43 +234,83 @@ where
             .get_finalizable_deposit_requests(chain_tip, self.context_window)
             .await?;
 
+        if deposit_requests.is_empty() {
+            return Ok(());
+        }
+
+        let account = stacks.get_account(wallet.address()).await?;
+        wallet.set_nonce(account.nonce);
+
+        let mut sign_requests = Vec::new();
+
         // TODO: We need to filter the above deposit requests further to
         // exclude those that do not been used in a bitcoin transaction.
         for req in deposit_requests.iter() {
-            let tx_info = btc_rpc
-                .get_tx_info(&req.sweep_txid, chain_tip)
-                .await?
-                .unwrap();
-
-            let outpoint = bitcoin::OutPoint {
-                txid: req.txid.into(),
-                vout: req.output_index,
-            };
-
-            let tx = CompleteDepositV1 {
-                amount: req.amount - tx_info.assess_input_fee(&outpoint).unwrap().to_sat(),
-                outpoint,
-                recipient: req.recipient.clone().into(),
-                deployer: self.context.config().signer.deployer,
-                sweep_txid: req.sweep_txid,
-                sweep_block_hash: req.sweep_block_hash,
-                sweep_block_height: req.sweep_block_height,
-            };
-
-            let contract = ContractCall::CompleteDepositV1(tx);
-            let multi_tx = MultisigTx::new_tx(&contract, wallet, 0);
-
-            let _req = StacksTransactionSignRequest {
-                aggregate_key: *wallet.aggregate_key(),
-                contract_call: contract.clone(),
-                nonce: 0,
-                tx_fee: 0,
-                digest: multi_tx.tx().digest(),
-            };
+            sign_requests.push(
+                self.construct_stacks_sign_requests(req, chain_tip, wallet)
+                    .await?,
+            );
         }
 
         // TODO(320): Implement
         Ok(())
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn construct_stacks_sign_requests(
+        &self,
+        req: &model::FulfilledDepositRequest,
+        _chain_tip: &model::BitcoinBlockHash,
+        wallet: &SignerWallet,
+    ) -> Result<StacksTransactionSignRequest, Error> {
+        let tx_info = self
+            .context
+            .get_bitcoin_client()
+            .get_tx_info(&req.sweep_txid, &req.sweep_block_hash)
+            .await?
+            .ok_or_else(|| {
+                Error::BitcoinTxMissing(req.sweep_txid.into(), Some(req.sweep_block_hash.into()))
+            })?;
+
+        let outpoint = bitcoin::OutPoint {
+            txid: req.txid.into(),
+            vout: req.output_index,
+        };
+        let assessed_bitcoin_fee = tx_info
+            .assess_input_fee(&outpoint)
+            .ok_or_else(|| Error::OutPointMissing(outpoint))?;
+
+        // TODO: we should validate the contract call before asking others
+        // to sign it.
+        let contract_call = ContractCall::CompleteDepositV1(CompleteDepositV1 {
+            amount: req.amount - assessed_bitcoin_fee.to_sat(),
+            outpoint,
+            recipient: req.recipient.clone().into(),
+            deployer: self.context.config().signer.deployer,
+            sweep_txid: req.sweep_txid,
+            sweep_block_hash: req.sweep_block_hash,
+            sweep_block_height: req.sweep_block_height,
+        });
+
+        // Complete deposit requests should be done as soon as possible, so
+        // we set the fee rate to the high priority fee
+        let tx_fee = self
+            .context
+            .get_stacks_client()
+            .estimate_fees(&contract_call, FeePriority::High)
+            .await?;
+
+        // The nonce gets updated here.
+        let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
+        debug_assert_eq!(multi_tx.tx().get_tx_fee(), tx_fee);
+
+        Ok(StacksTransactionSignRequest {
+            aggregate_key: *wallet.aggregate_key(),
+            contract_call,
+            nonce: multi_tx.tx().get_origin_nonce(),
+            tx_fee: multi_tx.tx().get_tx_fee(),
+            digest: multi_tx.tx().digest(),
+        })
     }
 
     /// Coordinate a signing round for the given request
