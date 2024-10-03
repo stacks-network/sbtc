@@ -208,7 +208,7 @@ where
             .get_pending_withdraw_requests(&bitcoin_chain_tip)
             .await?
         {
-            self.handle_pending_withdraw_request(withdraw_request, &bitcoin_chain_tip)
+            self.handle_pending_withdrawal_request(withdraw_request, &bitcoin_chain_tip)
                 .await?;
         }
 
@@ -625,7 +625,7 @@ where
     }
 
     #[tracing::instrument(skip(self))]
-    async fn handle_pending_withdraw_request(
+    async fn handle_pending_withdrawal_request(
         &mut self,
         withdrawal_request: model::WithdrawalRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -636,7 +636,7 @@ where
             .can_accept(&withdrawal_request.sender_address.to_string())
             .await;
 
-        let msg = message::SignerWithdrawDecision {
+        let msg = message::SignerWithdrawalDecision {
             request_id: withdrawal_request.request_id,
             block_hash: withdrawal_request.block_hash.0,
             accepted: is_accepted,
@@ -698,7 +698,7 @@ where
     #[tracing::instrument(skip(self))]
     async fn persist_received_withdraw_decision(
         &mut self,
-        decision: &message::SignerWithdrawDecision,
+        decision: &message::SignerWithdrawalDecision,
         signer_pub_key: PublicKey,
     ) -> Result<(), Error> {
         let signer_decision = model::WithdrawalSigner {
