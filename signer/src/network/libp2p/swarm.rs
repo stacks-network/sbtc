@@ -248,8 +248,7 @@ mod tests {
 
         let ctx = TestContext::builder()
             .with_in_memory_storage()
-            .with_mocked_bitcoin_client()
-            .with_mocked_stacks_client()
+            .with_mocked_clients()
             .build();
 
         let term = ctx.get_termination_handle();

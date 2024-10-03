@@ -1384,8 +1384,7 @@ async fn transaction_coordinator_test_environment(
 
     let context = TestContext::builder()
         .with_storage(store)
-        .with_mocked_bitcoin_client()
-        .with_mocked_stacks_client()
+        .with_mocked_clients()
         .build();
 
     testing::transaction_coordinator::TestEnvironment {

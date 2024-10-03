@@ -185,8 +185,7 @@ mod tests {
         // Create a context.
         let context = TestContext::builder()
             .with_in_memory_storage()
-            .with_mocked_bitcoin_client()
-            .with_mocked_stacks_client()
+            .with_mocked_clients()
             .build();
 
         // Clone the context.

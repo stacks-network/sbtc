@@ -143,14 +143,12 @@ mod tests {
 
         let context1 = TestContext::builder()
             .with_in_memory_storage()
-            .with_mocked_bitcoin_client()
-            .with_mocked_stacks_client()
+            .with_mocked_clients()
             .build();
 
         let context2 = TestContext::builder()
             .with_in_memory_storage()
-            .with_mocked_bitcoin_client()
-            .with_mocked_stacks_client()
+            .with_mocked_clients()
             .build();
 
         let term1 = context1.get_termination_handle();

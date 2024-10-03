@@ -509,6 +509,34 @@ where
 {
 }
 
+/// Trait for configuring the context with mocked clients. These methods are
+/// available when no clients have been configured yet.
+pub trait ConfigureMockedClients<Storage>
+where
+    Self: Sized + BuilderState<Storage, (), ()>,
+{
+    /// Configure the context to use mocks for all client implementations.
+    fn with_mocked_clients(
+        self,
+    ) -> ContextBuilder<Storage, WrappedMock<MockBitcoinInteract>, WrappedMock<MockStacksInteract>>
+    {
+        let config = self.get_config();
+        ContextBuilder {
+            config: ContextConfig {
+                settings: config.settings,
+                storage: config.storage,
+                bitcoin: WrappedMock::default(),
+                stacks: WrappedMock::default(),
+            },
+        }
+    }
+}
+
+impl<Storage> ConfigureMockedClients<Storage> for ContextBuilder<Storage, (), ()> where
+    Self: Sized + BuilderState<Storage, (), ()>
+{
+}
+
 /// Trait for building a [`TestContext`]. The [`BuildContext::build`] method
 /// consumes the builder and returns a new [`TestContext`]. The method is only
 /// available when all required components have been configured.
@@ -555,18 +583,14 @@ mod tests {
 
     use crate::{
         context::{Context as _, SignerEvent, SignerSignal},
-        testing::context::{
-            BuildContext, ConfigureBitcoinClient, ConfigureStacksClient, ConfigureStorage,
-            ContextBuilder, TestContext,
-        },
+        testing::context::*,
     };
 
     #[test]
     fn can_build() {
         let _builder = ContextBuilder::new()
             .with_in_memory_storage()
-            .with_mocked_bitcoin_client()
-            .with_mocked_stacks_client()
+            .with_mocked_clients()
             .build();
     }
 
@@ -576,8 +600,7 @@ mod tests {
     async fn context_clone_signalling_works() {
         let context = TestContext::builder()
             .with_in_memory_storage()
-            .with_mocked_bitcoin_client()
-            .with_mocked_stacks_client()
+            .with_mocked_clients()
             .build();
 
         let context = Arc::new(context);
