@@ -31,6 +31,7 @@ use futures::StreamExt as _;
 use rand::SeedableRng as _;
 use sha2::Digest as _;
 use tokio::sync::broadcast;
+use tokio::time::error::Elapsed;
 
 use super::context::BuildContext as _;
 use super::context::ConfigureBitcoinClient;
@@ -61,7 +62,6 @@ where
                 context: context.clone(),
                 network,
                 blocklist_checker: Some(()),
-                //block_observer_notifications,
                 signer_private_key,
                 context_window,
                 wsts_state_machines: HashMap::new(),
@@ -74,8 +74,6 @@ where
     }
 
     pub fn start(self) -> RunningEventLoopHandle<Ctx> {
-        //let block_observer_notification_tx = self.block_observer_notification_tx;
-        //let test_observer_rx = self.test_observer_rx;
         let join_handle = tokio::spawn(async { self.event_loop.run().await });
 
         let signal_rx = self.context.get_signal_receiver();
@@ -98,22 +96,28 @@ impl<C> RunningEventLoopHandle<C>
 where
     C: Context,
 {
-    /// Wait for N instances of the given event
-    pub async fn wait_for_events(&mut self, msg: TxSignerEvent, expected: u16) {
-        let mut n = 0;
-        loop {
-            if let Ok(SignerSignal::Event(SignerEvent::TxSigner(event))) =
-                self.signal_rx.recv().await
-            {
-                if event == msg {
-                    n += 1;
-                }
+    /// Wait for `expected` instances of the given event `msg`, timing out after `timeout`.
+    pub async fn wait_for_events(&mut self, msg: TxSignerEvent, expected: u16, timeout: Duration) -> Result<(), Elapsed> {
 
-                if n == expected {
-                    return;
+        let future = async {
+            let mut n = 0;
+            loop {
+                if let Ok(SignerSignal::Event(SignerEvent::TxSigner(event))) =
+                    self.signal_rx.recv().await
+                {
+                    if event == msg {
+                        n += 1;
+                    }
+
+                    if n == expected {
+                        return;
+                    }
                 }
             }
-        }
+        };
+
+        tokio::time::timeout(timeout, future)
+            .await
     }
 }
 
@@ -318,10 +322,9 @@ where
         // Wait for the expected number of decisions to be received by each signer.
         for handle in event_loop_handles.iter_mut() {
             let msg = TxSignerEvent::ReceivedDepositDecision;
-            let future = handle.wait_for_events(msg, num_expected_decisions);
-            tokio::time::timeout(Duration::from_secs(10), future)
+            handle.wait_for_events(msg, num_expected_decisions, Duration::from_secs(10))
                 .await
-                .unwrap();
+                .expect("timed out waiting for events");
         }
 
         // Abort the event loops and assert that the decisions have been stored.

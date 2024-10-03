@@ -113,8 +113,6 @@ pub struct TxSignerEventLoop<Context, Network, BlocklistChecker, Rng> {
     pub network: Network,
     /// Blocklist checker.
     pub blocklist_checker: Option<BlocklistChecker>,
-    /// Notification receiver from the block observer.
-    //pub block_observer_notifications: tokio::sync::watch::Receiver<()>,
     /// Private key of the signer for network communication.
     pub signer_private_key: PrivateKey,
     /// WSTS state machines for active signing rounds and DKG rounds
@@ -133,9 +131,6 @@ pub struct TxSignerEventLoop<Context, Network, BlocklistChecker, Rng> {
     pub network_kind: bitcoin::Network,
     /// Random number generator used for encryption
     pub rng: Rng,
-    //#[cfg(feature = "testing")]
-    // /// Optional channel to communicate progress usable for testing
-    //pub test_observer_tx: Option<tokio::sync::mpsc::Sender<TxSignerEvent>>,
 }
 
 impl<C, N, B, Rng> TxSignerEventLoop<C, N, B, Rng>
@@ -692,6 +687,8 @@ where
             .write_withdrawal_signer_decision(&signer_decision)
             .await?;
 
+        // NOTE: This is done in PR #607 which should be verified and merged first.
+        // Included it here because I've already fixed the tests for it.
         self.send_message(msg, bitcoin_chain_tip).await?;
 
         self.context
