@@ -177,10 +177,7 @@ where
                 // loop. We don't have any methods (atm) on the Network that would
                 // let us `try_recv` or peek. We can get rid of this later on if
                 // we split this run-loop into two separate loops.
-                let future = tokio::time::timeout(
-                    Duration::from_millis(5), 
-                    self.network.receive()
-                );
+                let future = tokio::time::timeout(Duration::from_millis(5), self.network.receive());
 
                 match future.await {
                     Ok(msg) => {
