@@ -940,5 +940,13 @@ mod tests {
         async fn get_deposits(&self) -> Result<Vec<CreateDepositRequest>, Error> {
             Ok(self.pending_deposits.clone())
         }
+
+        async fn update_broadcasted_deposits<'a>(
+            &'a self,
+            _transaction: &'a utxo::UnsignedTransaction<'a>,
+            _bitcoin_chain_tip: &'a model::BitcoinBlockRef,
+        ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
+            unimplemented!()
+        }
     }
 }

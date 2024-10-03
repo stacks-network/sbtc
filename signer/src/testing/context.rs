@@ -11,7 +11,9 @@ use clarity::types::chainstate::{StacksAddress, StacksBlockId};
 use tokio::sync::Mutex;
 
 use crate::{
-    bitcoin::{rpc::GetTxResponse, BitcoinInteract, MockBitcoinInteract},
+    bitcoin::{
+        rpc::GetTxResponse, utxo::UnsignedTransaction, BitcoinInteract, MockBitcoinInteract,
+    },
     config::Settings,
     context::{Context, SignerContext},
     emily_client::{EmilyInteract, MockEmilyInteract},
@@ -23,6 +25,7 @@ use crate::{
     },
     storage::{
         in_memory::{SharedStore, Store},
+        model::BitcoinBlockRef,
         DbRead, DbWrite,
     },
 };
@@ -337,6 +340,18 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
 impl EmilyInteract for WrappedMock<MockEmilyInteract> {
     async fn get_deposits(&self) -> Result<Vec<sbtc::deposits::CreateDepositRequest>, Error> {
         self.inner.lock().await.get_deposits().await
+    }
+
+    async fn update_broadcasted_deposits<'a>(
+        &'a self,
+        transaction: &'a UnsignedTransaction<'a>,
+        bitcoin_chain_tip: &'a BitcoinBlockRef,
+    ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
+        self.inner
+            .lock()
+            .await
+            .update_broadcasted_deposits(transaction, bitcoin_chain_tip)
+            .await
     }
 }
 

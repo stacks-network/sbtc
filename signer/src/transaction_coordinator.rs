@@ -12,6 +12,7 @@ use sha2::Digest;
 use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
 use crate::context::{messaging::SignerEvent, messaging::SignerSignal, Context};
+use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
@@ -198,6 +199,13 @@ where
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<(), Error> {
         let signer_btc_state = self.get_btc_state(&aggregate_key).await?;
+        let bitcoin_chain_tip_block: model::BitcoinBlockRef = self
+            .context
+            .get_storage()
+            .get_bitcoin_block(bitcoin_chain_tip)
+            .await?
+            .ok_or(Error::NoChainTip)?
+            .into();
 
         let pending_requests = self
             .get_pending_requests(
@@ -210,14 +218,20 @@ where
 
         let transaction_package = pending_requests.construct_transactions()?;
 
-        for transaction in transaction_package {
+        for mut transaction in transaction_package {
             self.sign_and_broadcast(
                 bitcoin_chain_tip,
                 aggregate_key,
                 signer_public_keys,
-                transaction,
+                &mut transaction,
             )
             .await?;
+
+            // TODO: need to add a retry (somewhere else?) if this fails?
+            self.context
+                .get_emily_client()
+                .update_broadcasted_deposits(&transaction, &bitcoin_chain_tip_block)
+                .await?;
         }
 
         Ok(())
@@ -244,7 +258,7 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
-        mut transaction: utxo::UnsignedTransaction<'_>,
+        transaction: &mut utxo::UnsignedTransaction<'_>,
     ) -> Result<(), Error> {
         let mut coordinator_state_machine = wsts_state_machine::CoordinatorStateMachine::load(
             &mut self.context.get_storage_mut(),
