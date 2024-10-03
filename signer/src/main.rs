@@ -12,6 +12,7 @@ use signer::api::ApiState;
 use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::bitcoin::zmq::BitcoinCoreMessageStream;
 use signer::block_observer;
+use signer::blocklist_client::BlocklistClient;
 use signer::config::Settings;
 use signer::context::Context;
 use signer::context::SignerContext;
@@ -272,11 +273,11 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
 
     let signer = transaction_signer::TxSignerEventLoop {
         network,
-        context: ctx,
+        context: ctx.clone(),
         context_window: 10000,
         threshold: 2,
         // TODO: Update when we have a blocklist impl
-        blocklist_checker: Some(()),
+        blocklist_checker: BlocklistClient::new(&ctx),
         network_kind: config.signer.network.into(),
         rng: rand::thread_rng(),
         signer_private_key: config.signer.private_key,
