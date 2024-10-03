@@ -12,12 +12,14 @@ use blockstack_lib::types::chainstate::StacksAddress;
 use futures::StreamExt;
 use rand::seq::SliceRandom;
 
+use signer::bitcoin::MockBitcoinInteract;
 use signer::config::Settings;
 use signer::context::Context;
 use signer::error::Error;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey as _;
 use signer::network;
+use signer::stacks::api::MockStacksInteract;
 use signer::stacks::contracts::AcceptWithdrawalV1;
 use signer::stacks::contracts::AsContractCall;
 use signer::stacks::contracts::AsTxPayload as _;
@@ -50,7 +52,7 @@ use signer::testing::wallet::ContractCallWrapper;
 
 use fake::Fake;
 use rand::SeedableRng;
-use signer::testing::NoopSignerContext;
+use signer::testing::context::*;
 use test_case::test_case;
 
 use crate::DATABASE_NUM;
@@ -1360,8 +1362,13 @@ async fn get_signers_script_pubkeys_returns_non_empty_vec_old_rows() {
 }
 
 async fn transaction_coordinator_test_environment(
-) -> testing::transaction_coordinator::TestEnvironment<NoopSignerContext<storage::postgres::PgStore>>
-{
+) -> testing::transaction_coordinator::TestEnvironment<
+    TestContext<
+        storage::postgres::PgStore,
+        WrappedMock<MockBitcoinInteract>,
+        WrappedMock<MockStacksInteract>,
+    >,
+> {
     use std::sync::atomic::Ordering;
 
     let test_model_parameters = testing::storage::model::Params {
@@ -1375,8 +1382,10 @@ async fn transaction_coordinator_test_environment(
     let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let store = testing::storage::new_test_database(db_num, true).await;
 
-    let context = NoopSignerContext::init(Settings::new_from_default_config().unwrap(), store)
-        .expect("failed to init context");
+    let context = TestContext::builder()
+        .with_storage(store)
+        .with_mocked_clients()
+        .build();
 
     testing::transaction_coordinator::TestEnvironment {
         context,

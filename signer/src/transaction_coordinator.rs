@@ -598,11 +598,15 @@ pub fn coordinator_public_key(
 #[cfg(test)]
 mod tests {
     use crate::bitcoin::MockBitcoinInteract;
+    use crate::stacks::api::MockStacksInteract;
+    use crate::storage::in_memory::SharedStore;
     use crate::testing;
-    use crate::testing::context::{TestContext, WrappedMock};
+    use crate::testing::context::*;
     use crate::testing::transaction_coordinator::TestEnvironment;
 
-    fn test_environment() -> TestEnvironment<TestContext<WrappedMock<MockBitcoinInteract>>> {
+    fn test_environment() -> TestEnvironment<
+        TestContext<SharedStore, WrappedMock<MockBitcoinInteract>, WrappedMock<MockStacksInteract>>,
+    > {
         let test_model_parameters = testing::storage::model::Params {
             num_bitcoin_blocks: 20,
             num_stacks_blocks_per_bitcoin_block: 3,
@@ -611,7 +615,10 @@ mod tests {
             num_signers_per_request: 7,
         };
 
-        let context = TestContext::new(WrappedMock::<MockBitcoinInteract>::default());
+        let context = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
 
         testing::transaction_coordinator::TestEnvironment {
             context,

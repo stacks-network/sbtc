@@ -15,7 +15,7 @@ use signer::testing;
 
 use fake::Fake;
 use rand::SeedableRng;
-use signer::testing::TestSignerContext;
+use signer::testing::context::*;
 
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::TestSweepSetup;
@@ -121,7 +121,12 @@ async fn accept_withdrawal_validation_happy_path() {
     let (accept_withdrawal_tx, req_ctx) = make_withdrawal_accept(&setup);
 
     // This should not return an Err.
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
+
     accept_withdrawal_tx.validate(&ctx, &req_ctx).await.unwrap();
 
     testing::storage::drop_db(db).await;
@@ -167,7 +172,12 @@ async fn accept_withdrawal_validation_deployer_mismatch() {
     accept_withdrawal_tx.deployer = StacksAddress::p2pkh(false, &setup.signer_keys[0].into());
     req_ctx.deployer = StacksAddress::p2pkh(false, &setup.signer_keys[1].into());
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
+
     let validate_future = accept_withdrawal_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -221,7 +231,12 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
     // increments by 1 for each withdrawal request generated.
     accept_withdrawal_tx.request_id = u64::MAX;
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
+
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -275,7 +290,12 @@ async fn accept_withdrawal_validation_recipient_mismatch() {
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, req_ctx) = make_withdrawal_accept(&setup);
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
+
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -327,7 +347,12 @@ async fn accept_withdrawal_validation_invalid_amount() {
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, req_ctx) = make_withdrawal_accept(&setup);
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
+
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -381,7 +406,12 @@ async fn accept_withdrawal_validation_invalid_fee() {
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, req_ctx) = make_withdrawal_accept(&setup);
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
+
     let validate_future = accept_withdrawal_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -437,7 +467,12 @@ async fn accept_withdrawal_validation_sweep_tx_missing() {
     let fake_txid: BitcoinTxId = fake::Faker.fake_with_rng(&mut rng);
     accept_withdrawal_tx.outpoint.txid = fake_txid.into();
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
+
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -501,7 +536,12 @@ async fn accept_withdrawal_validation_sweep_reorged() {
         block_height: 30000,
     };
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
+
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -558,7 +598,12 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
     // greater than 2 will do.
     accept_withdrawal_tx.outpoint = OutPoint::new(setup.sweep_tx_info.txid, 3);
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
+
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -612,7 +657,12 @@ async fn accept_withdrawal_validation_bitmap_mismatch() {
     let first_vote = *accept_withdrawal_tx.signer_bitmap.get(0).unwrap();
     accept_withdrawal_tx.signer_bitmap.set(0, !first_vote);
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
+
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -666,7 +716,12 @@ async fn accept_withdrawal_validation_withdrawal_incorrect_fee() {
     // should be.
     accept_withdrawal_tx.tx_fee -= 1;
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
+
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
@@ -717,7 +772,12 @@ async fn accept_withdrawal_validation_withdrawal_invalid_sweep() {
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, req_ctx) = make_withdrawal_accept(&setup);
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
+
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {

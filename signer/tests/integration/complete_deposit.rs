@@ -13,7 +13,7 @@ use signer::stacks::contracts::ReqContext;
 use signer::storage::model::BitcoinBlockRef;
 use signer::storage::model::StacksPrincipal;
 use signer::testing;
-use signer::testing::TestSignerContext;
+use signer::testing::context::*;
 
 use fake::Fake;
 
@@ -124,7 +124,11 @@ async fn complete_deposit_validation_happy_path() {
     // core. This will create a bitcoin core client that connects to the
     // bitcoin-core at the [bitcoin].endpoints[0] endpoint from the default
     // toml config file.
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
 
     // Check to see if validation passes.
     complete_deposit_tx.validate(&ctx, &req_ctx).await.unwrap();
@@ -178,7 +182,11 @@ async fn complete_deposit_validation_deployer_mismatch() {
     complete_deposit_tx.deployer = StacksAddress::p2pkh(false, &setup.signer_keys[0].into());
     req_ctx.deployer = StacksAddress::p2pkh(false, &setup.signer_keys[1].into());
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
 
     let validate_future = complete_deposit_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
@@ -232,7 +240,11 @@ async fn complete_deposit_validation_missing_deposit_request() {
     // and the corresponding request context.
     let (complete_deposit_tx, req_ctx) = make_complete_deposit(&setup);
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
 
     let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -292,7 +304,12 @@ async fn complete_deposit_validation_recipient_mismatch() {
     complete_deposit_tx.recipient = fake::Faker
         .fake_with_rng::<StacksPrincipal, _>(&mut rng)
         .into();
-    let ctx = TestSignerContext::from_db(db.clone());
+
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
 
     let validate_future = complete_deposit_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
@@ -351,7 +368,12 @@ async fn complete_deposit_validation_invalid_mint_amount() {
     // Different: The amount cannot exceed the amount in the deposit
     // request.
     complete_deposit_tx.amount = setup.deposit_request.amount + 1;
-    let ctx = TestSignerContext::from_db(db.clone());
+
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
 
     let validate_future = complete_deposit_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
@@ -416,7 +438,11 @@ async fn complete_deposit_validation_fee_too_high() {
     // and the corresponding request context.
     let (complete_deposit_tx, req_ctx) = make_complete_deposit(&setup);
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
 
     let validate_future = complete_deposit_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
@@ -478,7 +504,11 @@ async fn complete_deposit_validation_sweep_tx_missing() {
     // exist.
     complete_deposit_tx.sweep_txid = fake::Faker.fake_with_rng(&mut rng);
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
 
     let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -549,7 +579,11 @@ async fn complete_deposit_validation_sweep_reorged() {
         block_height: 30000,
     };
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
 
     let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -613,7 +647,11 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
     // of the prevout outpoints in the sweep transaction.
     complete_deposit_tx.outpoint.vout = 5000;
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
 
     let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -675,7 +713,11 @@ async fn complete_deposit_validation_deposit_incorrect_fee() {
     // would have thought.
     complete_deposit_tx.amount -= 1;
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
 
     let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -733,7 +775,11 @@ async fn complete_deposit_validation_deposit_invalid_sweep() {
     // and the corresponding request context.
     let (complete_deposit_tx, req_ctx) = make_complete_deposit(&setup);
 
-    let ctx = TestSignerContext::from_db(db.clone());
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .build();
 
     let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {

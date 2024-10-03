@@ -172,10 +172,8 @@ mod tests {
     use tokio::sync::Notify;
 
     use crate::{
-        config::Settings,
         context::{Context as _, SignerEvent, SignerSignal},
-        storage::in_memory::Store,
-        testing::NoopSignerContext,
+        testing::context::*,
     };
 
     /// This test shows that cloning a context and signalling on the original
@@ -185,11 +183,10 @@ mod tests {
     #[tokio::test]
     async fn context_clone_signalling_works() {
         // Create a context.
-        let context = NoopSignerContext::init(
-            Settings::new_from_default_config().unwrap(),
-            Store::new_shared(),
-        )
-        .unwrap();
+        let context = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
 
         // Clone the context.
         let context_clone = context.clone();

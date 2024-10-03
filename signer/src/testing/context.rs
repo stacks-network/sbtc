@@ -3,6 +3,11 @@
 use std::{ops::Deref, sync::Arc};
 
 use bitcoin::Txid;
+use blockstack_lib::{
+    chainstate::{nakamoto::NakamotoBlock, stacks::StacksTransaction},
+    net::api::gettenureinfo::RPCGetTenureInfo,
+};
+use clarity::types::chainstate::{StacksAddress, StacksBlockId};
 use tokio::sync::Mutex;
 
 use crate::{
@@ -10,11 +15,16 @@ use crate::{
     config::Settings,
     context::{Context, SignerContext},
     error::Error,
-    stacks::api::StacksInteract,
-    storage::in_memory::{SharedStore, Store},
+    keys::PublicKey,
+    stacks::{
+        api::{AccountInfo, FeePriority, MockStacksInteract, StacksInteract, SubmitTxResponse},
+        contracts::AsTxPayload,
+    },
+    storage::{
+        in_memory::{SharedStore, Store},
+        DbRead, DbWrite,
+    },
 };
-
-use super::api_clients::NoopApiClient;
 
 /// A [`Context`] which can be used for testing.
 ///
@@ -25,36 +35,75 @@ use super::api_clients::NoopApiClient;
 /// as well as the different mocked clients, so you can modify their behavior as
 /// needed.
 #[derive(Clone)]
-pub struct TestContext<BC> {
+pub struct TestContext<Storage, Bitcoin, Stacks> {
     /// The inner [`SignerContext`] which this context wraps.
-    pub inner: SignerContext<SharedStore, BC, NoopApiClient>,
+    pub inner: SignerContext<Storage, Bitcoin, Stacks>,
 
-    /// The mocked bitcoin client.
-    pub bitcoin_client: BC,
+    /// The raw inner storage implementation.
+    pub storage: Storage,
+
+    /// The raw inner Bitcoin client.
+    pub bitcoin_client: Bitcoin,
+
+    /// The raw inner Stacks client.
+    pub stacks_client: Stacks,
 }
 
-impl<BC> TestContext<BC>
+impl<Storage, Bitcoin, Stacks> TestContext<Storage, Bitcoin, Stacks>
 where
-    BC: BitcoinInteract + Clone + Send + Sync,
+    Storage: DbRead + DbWrite + Clone + Sync + Send,
+    Bitcoin: BitcoinInteract + Clone + Send + Sync,
+    Stacks: StacksInteract + Clone + Send + Sync,
 {
     /// Create a new test context.
-    pub fn new(bitcoin_client: BC) -> Self {
-        let settings = Settings::new_from_default_config().unwrap();
-        let store = Store::new_shared();
+    pub fn new(
+        settings: Settings,
+        storage: Storage,
+        bitcoin_client: Bitcoin,
+        stacks_client: Stacks,
+    ) -> Self {
+        let context = SignerContext::new(
+            settings,
+            storage.clone(),
+            bitcoin_client.clone(),
+            stacks_client.clone(),
+        );
 
-        let context = SignerContext::new(settings, store, bitcoin_client.clone(), NoopApiClient);
-
-        Self { inner: context, bitcoin_client }
+        Self {
+            inner: context,
+            storage,
+            bitcoin_client,
+            stacks_client,
+        }
     }
 
-    /// Get an instance of the inner bitcoin client. This will be a clone of the
-    ///
-    pub fn inner_bitcoin_client(&self) -> BC {
+    /// Get an instance of the raw storage implementation.
+    pub fn inner_storage(&self) -> Storage {
+        self.storage.clone()
+    }
+
+    /// Get an instance of the raw inner Bitcoin client.
+    pub fn inner_bitcoin_client(&self) -> Bitcoin {
         self.bitcoin_client.clone()
+    }
+
+    /// Get an instance of the raw inner Stacks client.
+    pub fn inner_stacks_client(&self) -> Stacks {
+        self.stacks_client.clone()
     }
 }
 
-impl TestContext<WrappedMock<MockBitcoinInteract>> {
+impl TestContext<(), (), ()> {
+    /// Returns a builder for creating a new [`TestContext`]. The builder will
+    /// be initialized with settings from the default configuration file; use
+    /// the [`ContextBuilder::with_settings`] method to override these settings.
+    pub fn builder() -> ContextBuilder<(), (), ()> {
+        Default::default()
+    }
+}
+
+/// Provide extra methods for when using a mocked bitcoin client.
+impl<Storage, Stacks> TestContext<Storage, WrappedMock<MockBitcoinInteract>, Stacks> {
     /// Execute a closure with a mutable reference to the inner mocked
     /// bitcoin client.
     pub async fn with_bitcoin_client<F>(&mut self, f: F)
@@ -66,9 +115,24 @@ impl TestContext<WrappedMock<MockBitcoinInteract>> {
     }
 }
 
-impl<BC> Context for TestContext<BC>
+/// Provide extra methods for when using a mocked stacks client.
+impl<Storage, Bitcoin> TestContext<Storage, Bitcoin, WrappedMock<MockStacksInteract>> {
+    /// Execute a closure with a mutable reference to the inner mocked
+    /// stacks client.
+    pub async fn with_stacks_client<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut MockStacksInteract),
+    {
+        let mut client = self.stacks_client.lock().await;
+        f(&mut client);
+    }
+}
+
+impl<Storage, Bitcoin, Stacks> Context for TestContext<Storage, Bitcoin, Stacks>
 where
-    BC: BitcoinInteract + Clone + Send + Sync,
+    Storage: DbRead + DbWrite + Clone + Sync + Send,
+    Bitcoin: BitcoinInteract + Clone + Send + Sync,
+    Stacks: StacksInteract + Clone + Send + Sync,
 {
     fn config(&self) -> &Settings {
         self.inner.config()
@@ -107,7 +171,7 @@ where
     }
 
     fn get_stacks_client(&self) -> impl StacksInteract + Clone {
-        NoopApiClient
+        self.inner.get_stacks_client()
     }
 }
 
@@ -184,6 +248,325 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
     }
 }
 
+impl StacksInteract for WrappedMock<MockStacksInteract> {
+    async fn get_current_signer_set(
+        &self,
+        contract_principal: &StacksAddress,
+    ) -> Result<Vec<PublicKey>, Error> {
+        self.inner
+            .lock()
+            .await
+            .get_current_signer_set(contract_principal)
+            .await
+    }
+
+    async fn get_account(&self, address: &StacksAddress) -> Result<AccountInfo, Error> {
+        self.inner.lock().await.get_account(address).await
+    }
+
+    async fn submit_tx(&self, tx: &StacksTransaction) -> Result<SubmitTxResponse, Error> {
+        self.inner.lock().await.submit_tx(tx).await
+    }
+
+    async fn get_block(&self, block_id: StacksBlockId) -> Result<NakamotoBlock, Error> {
+        self.inner.lock().await.get_block(block_id).await
+    }
+
+    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+        self.inner.lock().await.get_tenure(block_id).await
+    }
+
+    async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
+        self.inner.lock().await.get_tenure_info().await
+    }
+
+    async fn estimate_fees<T>(&self, payload: &T, priority: FeePriority) -> Result<u64, Error>
+    where
+        T: AsTxPayload + Send + Sync,
+    {
+        self.inner
+            .lock()
+            .await
+            .estimate_fees(payload, priority)
+            .await
+    }
+
+    fn nakamoto_start_height(&self) -> u64 {
+        tokio::runtime::Handle::current().block_on(async move {
+            let inner = self.inner.lock().await;
+            inner.nakamoto_start_height()
+        })
+    }
+}
+
+/// Struct which holds the current configuration of the context builder.
+pub struct ContextConfig<Storage, Bitcoin, Stacks> {
+    settings: crate::config::Settings,
+    storage: Storage,
+    bitcoin: Bitcoin,
+    stacks: Stacks,
+}
+
+impl Default for ContextConfig<(), (), ()> {
+    fn default() -> Self {
+        Self {
+            settings: Settings::new_from_default_config().expect("failed to load default config"),
+            storage: (),
+            bitcoin: (),
+            stacks: (),
+        }
+    }
+}
+
+/// State for the builder pattern.
+pub trait BuilderState<Storage, Bitcoin, Stacks> {
+    /// Consumes the builder, returning its current internal configuration.
+    fn get_config(self) -> ContextConfig<Storage, Bitcoin, Stacks>;
+}
+
+/// A builder for creating a [`TestContext`].
+pub struct ContextBuilder<Storage, Bitcoin, Stacks> {
+    config: ContextConfig<Storage, Bitcoin, Stacks>,
+}
+
+impl ContextBuilder<(), (), ()> {
+    /// Create a new context builder.
+    pub fn new() -> Self {
+        Self { config: Default::default() }
+    }
+}
+
+impl Default for ContextBuilder<(), (), ()> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<Storage, Bitcoin, Stacks> BuilderState<Storage, Bitcoin, Stacks>
+    for ContextBuilder<Storage, Bitcoin, Stacks>
+{
+    fn get_config(self) -> ContextConfig<Storage, Bitcoin, Stacks> {
+        self.config
+    }
+}
+
+/// Trait for configuring the settings. These methods are always available.
+pub trait ConfigureSettings<Storage, Bitcoin, Stacks>
+where
+    Self: Sized + BuilderState<Storage, Bitcoin, Stacks>,
+{
+    /// Configure the context with the specified settings.
+    fn with_settings(self, settings: Settings) -> ContextBuilder<Storage, Bitcoin, Stacks> {
+        let config = self.get_config();
+        ContextBuilder {
+            config: ContextConfig {
+                settings,
+                ..config
+            },
+        }
+    }
+}
+
+impl<Storage, Bitcoin, Stacks> ConfigureSettings<Storage, Bitcoin, Stacks>
+    for ContextBuilder<Storage, Bitcoin, Stacks>
+where
+    Self: BuilderState<Storage, Bitcoin, Stacks>,
+{
+}
+
+/// Trait for configuring the storage implementation. These methods are available
+/// when the storage implementation has not been set yet.
+pub trait ConfigureStorage<Bitcoin, Stacks>
+where
+    Self: Sized + BuilderState<(), Bitcoin, Stacks>,
+{
+    /// Configure the context with an in-memory storage implementation.
+    fn with_in_memory_storage(self) -> ContextBuilder<SharedStore, Bitcoin, Stacks> {
+        let config = self.get_config();
+        ContextBuilder {
+            config: ContextConfig {
+                settings: config.settings,
+                storage: Store::new_shared(),
+                bitcoin: config.bitcoin,
+                stacks: config.stacks,
+            },
+        }
+    }
+
+    /// Configure the context with the specified storage implementation.
+    fn with_storage<Storage: DbRead + DbWrite + Clone + Send + Sync>(
+        self,
+        storage: Storage,
+    ) -> ContextBuilder<Storage, Bitcoin, Stacks> {
+        let config = self.get_config();
+        ContextBuilder {
+            config: ContextConfig {
+                settings: config.settings,
+                storage,
+                bitcoin: config.bitcoin,
+                stacks: config.stacks,
+            },
+        }
+    }
+}
+
+impl<Bitcoin, Stacks> ConfigureStorage<Bitcoin, Stacks> for ContextBuilder<(), Bitcoin, Stacks> where
+    Self: BuilderState<(), Bitcoin, Stacks>
+{
+}
+
+/// Trait for configuring the Bitcoin client implementation. These methods are
+/// available when the Bitcoin client implementation has not been set yet.
+pub trait ConfigureBitcoinClient<Storage, Stacks>
+where
+    Self: Sized + BuilderState<Storage, (), Stacks>,
+{
+    /// Configure the context with the specified Bitcoin client implementation.
+    fn with_bitcoin_client<Bitcoin: BitcoinInteract + Clone + Send + Sync>(
+        self,
+        bitcoin_client: Bitcoin,
+    ) -> ContextBuilder<Storage, Bitcoin, Stacks> {
+        let config = self.get_config();
+        ContextBuilder {
+            config: ContextConfig {
+                settings: config.settings,
+                storage: config.storage,
+                bitcoin: bitcoin_client,
+                stacks: config.stacks,
+            },
+        }
+    }
+
+    /// Configure the context to use a [`BitcoinCoreClient`](crate::bitcoin::rpc::BitcoinCoreClient)
+    /// with the first RPC endpoint from the settings.
+    fn with_first_bitcoin_core_client(
+        self,
+    ) -> ContextBuilder<Storage, crate::bitcoin::rpc::BitcoinCoreClient, Stacks> {
+        let config = self.get_config();
+        let url = config.settings.bitcoin.rpc_endpoints.first().unwrap();
+        let bitcoin_client = crate::bitcoin::rpc::BitcoinCoreClient::try_from(url).unwrap();
+        ContextBuilder {
+            config: ContextConfig {
+                settings: config.settings,
+                storage: config.storage,
+                bitcoin: bitcoin_client,
+                stacks: config.stacks,
+            },
+        }
+    }
+
+    /// Configure the context with a mocked Bitcoin client.
+    fn with_mocked_bitcoin_client(
+        self,
+    ) -> ContextBuilder<Storage, WrappedMock<MockBitcoinInteract>, Stacks> {
+        self.with_bitcoin_client(WrappedMock::default())
+    }
+}
+
+impl<Storage, Stacks> ConfigureBitcoinClient<Storage, Stacks>
+    for ContextBuilder<Storage, (), Stacks>
+where
+    Self: Sized + BuilderState<Storage, (), Stacks>,
+{
+}
+
+/// Trait for configuring the Stacks client implementation. These methods are
+/// available when the Stacks client implementation has not been set yet.
+pub trait ConfigureStacksClient<Storage, Bitcoin>
+where
+    Self: Sized + BuilderState<Storage, Bitcoin, ()>,
+{
+    /// Configure the context with the specified Stacks client implementation.
+    fn with_stacks_client<Stacks: StacksInteract + Clone + Send + Sync>(
+        self,
+        stacks_client: Stacks,
+    ) -> ContextBuilder<Storage, Bitcoin, Stacks> {
+        let config = self.get_config();
+        ContextBuilder {
+            config: ContextConfig {
+                settings: config.settings,
+                storage: config.storage,
+                bitcoin: config.bitcoin,
+                stacks: stacks_client,
+            },
+        }
+    }
+
+    /// Configure the context with a mocked stacks client.
+    fn with_mocked_stacks_client(
+        self,
+    ) -> ContextBuilder<Storage, Bitcoin, WrappedMock<MockStacksInteract>> {
+        self.with_stacks_client(WrappedMock::default())
+    }
+}
+
+impl<Storage, Bitcoin> ConfigureStacksClient<Storage, Bitcoin>
+    for ContextBuilder<Storage, Bitcoin, ()>
+where
+    Self: Sized + BuilderState<Storage, Bitcoin, ()>,
+{
+}
+
+/// Trait for configuring the context with mocked clients. These methods are
+/// available when no clients have been configured yet.
+pub trait ConfigureMockedClients<Storage>
+where
+    Self: Sized + BuilderState<Storage, (), ()>,
+{
+    /// Configure the context to use mocks for all client implementations.
+    fn with_mocked_clients(
+        self,
+    ) -> ContextBuilder<Storage, WrappedMock<MockBitcoinInteract>, WrappedMock<MockStacksInteract>>
+    {
+        let config = self.get_config();
+        ContextBuilder {
+            config: ContextConfig {
+                settings: config.settings,
+                storage: config.storage,
+                bitcoin: WrappedMock::default(),
+                stacks: WrappedMock::default(),
+            },
+        }
+    }
+}
+
+impl<Storage> ConfigureMockedClients<Storage> for ContextBuilder<Storage, (), ()> where
+    Self: Sized + BuilderState<Storage, (), ()>
+{
+}
+
+/// Trait for building a [`TestContext`]. The [`BuildContext::build`] method
+/// consumes the builder and returns a new [`TestContext`]. The method is only
+/// available when all required components have been configured.
+pub trait BuildContext<Storage, Bitcoin, Stacks>
+where
+    Self: Sized + BuilderState<Storage, Bitcoin, Stacks>,
+{
+    /// Consume the builder and return a new [`TestContext`].
+    fn build(self) -> TestContext<Storage, Bitcoin, Stacks>;
+}
+
+// TODO: We could probably move the entire builder and use it for the `SignerContext`
+// as well with a separate `SignerContextBuilder` trait.
+impl<Storage, Bitcoin, Stacks> BuildContext<Storage, Bitcoin, Stacks>
+    for ContextBuilder<Storage, Bitcoin, Stacks>
+where
+    Self: BuilderState<Storage, Bitcoin, Stacks>,
+    Storage: DbRead + DbWrite + Clone + Sync + Send,
+    Bitcoin: BitcoinInteract + Clone + Send + Sync,
+    Stacks: StacksInteract + Clone + Send + Sync,
+{
+    fn build(self) -> TestContext<Storage, Bitcoin, Stacks> {
+        let config = self.get_config();
+        TestContext::new(
+            config.settings,
+            config.storage,
+            config.bitcoin,
+            config.stacks,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -197,18 +580,28 @@ mod tests {
     use tokio::sync::Notify;
 
     use crate::{
-        bitcoin::MockBitcoinInteract,
         context::{Context as _, SignerEvent, SignerSignal},
-        testing::context::{TestContext, WrappedMock},
+        testing::context::*,
     };
+
+    #[test]
+    fn can_build() {
+        let _builder = ContextBuilder::new()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+    }
 
     /// This test ensures that the context can be cloned and signals can be sent
     /// to both clones.
     #[tokio::test]
     async fn context_clone_signalling_works() {
-        let context = Arc::new(TestContext::new(
-            WrappedMock::<MockBitcoinInteract>::default(),
-        ));
+        let context = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        let context = Arc::new(context);
         let mut recv = context.get_signal_receiver();
         let recv_count = Arc::new(AtomicU8::new(0));
 
@@ -222,7 +615,7 @@ mod tests {
             signal
         });
 
-        let context_clone = Arc::clone(&context);
+        let context_clone = context.clone();
         let recv_count_clone = Arc::clone(&recv_count);
         let recv_task_started = Arc::new(AtomicBool::new(false));
         let recv_task_started_clone = Arc::clone(&recv_task_started);

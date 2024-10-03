@@ -120,10 +120,8 @@ mod tests {
     use super::*;
 
     use crate::{
-        config::Settings,
         keys::PrivateKey,
-        storage::in_memory::Store,
-        testing::{self, clear_env, NoopSignerContext},
+        testing::{self, clear_env, context::*},
     };
 
     #[tokio::test]
@@ -143,10 +141,15 @@ mod tests {
         let key1 = PrivateKey::new(&mut rand::thread_rng());
         let key2 = PrivateKey::new(&mut rand::thread_rng());
 
-        let settings = Settings::new_from_default_config().unwrap();
+        let context1 = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
 
-        let context1 = NoopSignerContext::init(settings.clone(), Store::new_shared()).unwrap();
-        let context2 = NoopSignerContext::init(settings, Store::new_shared()).unwrap();
+        let context2 = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
 
         let term1 = context1.get_termination_handle();
         let term2 = context2.get_termination_handle();
