@@ -131,13 +131,13 @@ impl AsContractCall for InitiateWithdrawalRequest {
 /// care about, which, naturally, are sBTC related transactions.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case(ContractCallWrapper(InitiateWithdrawalRequest {
-    deployer: testing::wallet::WALLET.0.address(),
+    deployer: *testing::wallet::WALLET.0.address(),
 }); "initiate-withdrawal")]
 #[test_case(ContractCallWrapper(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654,
     recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap(),
-    deployer: testing::wallet::WALLET.0.address(),
+    deployer: *testing::wallet::WALLET.0.address(),
     sweep_txid: BitcoinTxId::from([0; 32]),
     sweep_block_hash: BitcoinBlockHash::from([0; 32]),
     sweep_block_height: 7,
@@ -146,7 +146,7 @@ impl AsContractCall for InitiateWithdrawalRequest {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654,
     recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y.my-contract-name").unwrap(),
-    deployer: testing::wallet::WALLET.0.address(),
+    deployer: *testing::wallet::WALLET.0.address(),
     sweep_txid: BitcoinTxId::from([0; 32]),
     sweep_block_hash: BitcoinBlockHash::from([0; 32]),
     sweep_block_height: 7,
@@ -156,19 +156,18 @@ impl AsContractCall for InitiateWithdrawalRequest {
     outpoint: bitcoin::OutPoint::null(),
     tx_fee: 3500,
     signer_bitmap: BitArray::ZERO,
-    deployer: testing::wallet::WALLET.0.address(),
+    deployer: *testing::wallet::WALLET.0.address(),
     sweep_block_hash: BitcoinBlockHash::from([0; 32]),
     sweep_block_height: 7,
 }); "accept-withdrawal")]
 #[test_case(ContractCallWrapper(RejectWithdrawalV1 {
     request_id: 0,
     signer_bitmap: BitArray::ZERO,
-    deployer: testing::wallet::WALLET.0.address(),
+    deployer: *testing::wallet::WALLET.0.address(),
 }); "reject-withdrawal")]
 #[test_case(ContractCallWrapper(RotateKeysV1::new(
     &testing::wallet::WALLET.0,
-    testing::wallet::WALLET.0.address(),
-    testing::wallet::WALLET.2,
+    *testing::wallet::WALLET.0.address(),
 )); "rotate-keys")]
 #[tokio::test]
 async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWrapper<T>) {

@@ -150,8 +150,24 @@ impl SignerWallet {
     }
 
     /// Return the stacks address for the signers
-    pub fn address(&self) -> StacksAddress {
-        self.address
+    pub fn address(&self) -> &StacksAddress {
+        &self.address
+    }
+
+    /// The aggregate public key of the given public keys.
+    pub fn aggregate_key(&self) -> &PublicKey {
+        &self.aggregate_key
+    }
+
+    /// Returns the number of public keys in the multi-sig wallet.
+    pub fn num_signers(&self) -> u16 {
+        // We check that the number of keys is less than or equal to the
+        // MAX_KEYS variable when we created this struct, and MAX_KEYS is a
+        // u16. So this cast should always succeed.
+        self.public_keys
+            .len()
+            .try_into()
+            .expect("BUG! the number of keys is supposed to be less than u16::MAX")
     }
 
     /// Return the public keys for the signers' multi-sig wallet
@@ -159,14 +175,19 @@ impl SignerWallet {
         &self.public_keys
     }
 
-    /// The aggregate public key of the given public keys.
-    pub fn aggregate_key(&self) -> PublicKey {
-        self.aggregate_key
+    /// Return the nonce that should be used with the next transaction
+    pub fn get_nonce(&self) -> u64 {
+        self.nonce.load(Ordering::SeqCst)
     }
 
     /// Set the next nonce to the provided value
     pub fn set_nonce(&self, value: u64) {
         self.nonce.store(value, Ordering::Relaxed)
+    }
+
+    /// The number of participants required to construct a valid signature.
+    pub fn signatures_required(&self) -> u16 {
+        self.signatures_required
     }
 
     /// Convert the signers wallet to an unsigned stacks spending
