@@ -47,7 +47,7 @@ impl fake::Dummy<fake::Faker> for message::Payload {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let variants = [
             dummy_payload::<message::SignerDepositDecision, _>,
-            dummy_payload::<message::SignerWithdrawDecision, _>,
+            dummy_payload::<message::SignerWithdrawalDecision, _>,
             dummy_payload::<message::WstsMessage, _>,
         ];
 

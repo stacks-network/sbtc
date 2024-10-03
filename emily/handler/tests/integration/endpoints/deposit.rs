@@ -6,7 +6,7 @@ use emily_handler::{
         deposit::{
             requests::{CreateDepositRequestBody, DepositUpdate, UpdateDepositsRequestBody},
             responses::{GetDepositsForTransactionResponse, GetDepositsResponse},
-            Deposit, DepositInfo, DepositParameters,
+            Deposit, DepositInfo,
         },
     },
     context::EmilyContext,
@@ -23,6 +23,8 @@ use std::sync::LazyLock;
 use tokio;
 
 const TEST_BLOCK_HEIGHT: u64 = 123;
+const TEST_RECLAIM_SCRIPT: &str = "example_reclaim_script";
+const TEST_DEPOSIT_SCRIPT: &str = "example_deposit_script";
 
 /// Contains data about a deposit transaction used for testing so that
 /// all the tests have a common understanding of the deposits in the
@@ -78,8 +80,8 @@ async fn setup_deposit_integration_test() -> TestClient {
         let request: CreateDepositRequestBody = serde_json::from_value(json!({
             "bitcoinTxid": bitcoin_txid.clone(),
             "bitcoinTxOutputIndex": bitcoin_tx_output_index,
-            "reclaim": "example_reclaim_script",
-            "deposit": "example_deposit_script",
+            "reclaimScript": TEST_RECLAIM_SCRIPT.to_string(),
+            "depositScript": TEST_DEPOSIT_SCRIPT.to_string(),
         }))
         .expect("Failed to deserialize create deposit request body in test setup");
         let response = client.create_deposit(&request).await;
@@ -117,10 +119,8 @@ fn just_created_deposit(bitcoin_txid: String, bitcoin_tx_output_index: u32) -> D
         last_update_block_hash: "DUMMY_HASH".to_string(),
         last_update_height: TEST_BLOCK_HEIGHT,
         status_message: "Just received deposit".to_string(),
-        parameters: DepositParameters {
-            reclaim_script: "example_reclaim_script".to_string(),
-            ..Default::default()
-        },
+        reclaim_script: TEST_RECLAIM_SCRIPT.to_string(),
+        deposit_script: TEST_DEPOSIT_SCRIPT.to_string(),
         ..Default::default()
     }
 }

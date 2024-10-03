@@ -161,6 +161,7 @@ EMILY_CDK_SOURCE_FILES := $(wildcard $(subst dir, emily/bin/lib, $(FIVE_DIRS_DEE
 
 $(EMILY_CDK_TEMPLATE): $(INSTALL_TARGET) $(EMILY_OPENAPI_SPEC) $(EMILY_CDK_SOURCE_FILES)
 	AWS_STAGE=local \
+	TABLES_ONLY=true \
 	pnpm --filter $(EMILY_CDK_PROJECT_NAME) run synth
 
 # Emily Handler --------------------------------------
@@ -233,5 +234,5 @@ run-signer:
 		POSTGRES_PORT=$$(docker port sbtc-postgres 5432 | awk -F: '{print $$2}'); \
 	done; \
 	echo $$POSTGRES_PORT; \
-	RUST_LOG=debug SIGNER_SIGNER__DB_ENDPOINT="postgres://postgres:postgres@localhost:$$POSTGRES_PORT/signer" cargo run --bin signer -- -c ./signer/src/config/default.toml --migrate-db
+	RUST_LOG=info SIGNER_SIGNER__DB_ENDPOINT="postgres://postgres:postgres@localhost:$$POSTGRES_PORT/signer" cargo run --bin signer -- -c ./signer/src/config/default.toml --migrate-db
 	

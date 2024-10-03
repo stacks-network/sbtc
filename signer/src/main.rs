@@ -12,6 +12,7 @@ use signer::api::ApiState;
 use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::bitcoin::zmq::BitcoinCoreMessageStream;
 use signer::block_observer;
+use signer::blocklist_client::BlocklistClient;
 use signer::config::Settings;
 use signer::context::Context;
 use signer::context::SignerContext;
@@ -22,6 +23,7 @@ use signer::network::P2PNetwork;
 use signer::stacks::api::StacksClient;
 use signer::storage::postgres::PgStore;
 use signer::transaction_coordinator;
+use signer::transaction_signer;
 use signer::util::ApiFallbackClient;
 use tokio::signal;
 
@@ -92,6 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_checked(run_libp2p_swarm, &context),
         run_checked(run_block_observer, &context),
         run_checked(run_transaction_coordinator, &context),
+        run_checked(run_transaction_signer, &context),
     );
 
     Ok(())
@@ -229,7 +232,8 @@ async fn run_stacks_event_observer(ctx: impl Context + 'static) -> Result<(), Er
         })
 }
 
-#[allow(dead_code)] // Remove when implemented
+/// Run the block observer event-loop.
+#[tracing::instrument(skip(ctx))]
 async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
     let config = ctx.config().clone();
 
@@ -261,14 +265,29 @@ async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
     block_observer.run().await
 }
 
-#[allow(dead_code)] // Remove when implemented
-async fn run_transaction_signer(_ctx: impl Context) -> Result<(), Error> {
-    // threshold: 2
-    // context_window: 10000
-    todo!()
+/// Run the transaction signer event-loop.
+#[tracing::instrument(skip(ctx))]
+async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
+    let config = ctx.config().clone();
+    let network = P2PNetwork::new(&ctx);
+
+    let signer = transaction_signer::TxSignerEventLoop {
+        network,
+        context: ctx.clone(),
+        context_window: 10000,
+        threshold: 2,
+        blocklist_checker: BlocklistClient::new(&ctx),
+        network_kind: config.signer.network.into(),
+        rng: rand::thread_rng(),
+        signer_private_key: config.signer.private_key,
+        wsts_state_machines: HashMap::new(),
+    };
+
+    signer.run().await
 }
 
-#[allow(dead_code)] // Remove when implemented
+/// Run the transaction coordinator event-loop.
+#[tracing::instrument(skip(ctx))]
 async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
     let config = ctx.config().clone();
     let network = P2PNetwork::new(&ctx);

@@ -214,10 +214,7 @@ pub async fn create_deposit(
                 bitcoin_txid: body.bitcoin_txid,
                 bitcoin_tx_output_index: body.bitcoin_tx_output_index,
             },
-            parameters: DepositParametersEntry {
-                reclaim_script: body.reclaim,
-                ..Default::default()
-            },
+            parameters: DepositParametersEntry { ..Default::default() },
             history: vec![DepositEvent {
                 status: StatusEntry::Pending,
                 message: "Just received deposit".to_string(),
@@ -227,6 +224,8 @@ pub async fn create_deposit(
             status,
             last_update_block_hash: stacks_block_hash,
             last_update_height: stacks_block_height,
+            reclaim_script: body.reclaim_script,
+            deposit_script: body.deposit_script,
             ..Default::default()
         };
         // Validate deposit entry.

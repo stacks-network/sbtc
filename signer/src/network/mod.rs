@@ -37,12 +37,27 @@ pub trait MessageTransfer {
     fn receive(&mut self) -> impl Future<Output = Result<Msg, Error>> + Send;
 }
 
+impl std::fmt::Display for Msg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Msg({})", self.payload)
+    }
+}
+
 /// MessageTransfer interface for the application signalling channel.
-/// TODO: Better name?
 pub struct P2PNetwork {
     signal_tx: Sender<SignerSignal>,
     signal_rx: Receiver<SignerSignal>,
     term: TerminationHandle,
+}
+
+impl Clone for P2PNetwork {
+    fn clone(&self) -> Self {
+        Self {
+            signal_tx: self.signal_tx.clone(),
+            signal_rx: self.signal_tx.subscribe(),
+            term: self.term.clone(),
+        }
+    }
 }
 
 impl P2PNetwork {
@@ -102,6 +117,9 @@ impl MessageTransfer for P2PNetwork {
                     match recv {
                         Ok(SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(msg)))) => {
                             return Ok(msg);
+                        },
+                        Err(_) => {
+                            return Err(Error::SignerShutdown);
                         },
                         // We're only interested in the above messages, so we ignore
                         // the rest.

@@ -1,9 +1,12 @@
 use std::sync::atomic::Ordering;
 
-use signer::storage::postgres::PgStore;
+use signer::emily_client::MockEmilyInteract;
+use signer::stacks::api::MockStacksInteract;
 use signer::testing;
+use signer::{bitcoin::MockBitcoinInteract, storage::postgres::PgStore};
 
 use futures::StreamExt;
+use signer::testing::context::*;
 use testing::transaction_signer::TestEnvironment;
 
 use crate::DATABASE_NUM;
@@ -11,7 +14,14 @@ use crate::DATABASE_NUM;
 async fn test_environment(
     mut signer_connections: Vec<PgStore>,
     signing_threshold: u32,
-) -> TestEnvironment<impl FnMut() -> PgStore> {
+) -> TestEnvironment<
+    TestContext<
+        PgStore,
+        WrappedMock<MockBitcoinInteract>,
+        WrappedMock<MockStacksInteract>,
+        WrappedMock<MockEmilyInteract>,
+    >,
+> {
     let context_window = 3;
 
     let test_model_parameters = testing::storage::model::Params {
@@ -22,9 +32,14 @@ async fn test_environment(
         num_signers_per_request: 0,
     };
 
+    let context = TestContext::builder()
+        .with_storage(signer_connections.pop().unwrap())
+        .with_mocked_clients()
+        .build();
+
     testing::transaction_signer::TestEnvironment {
+        context,
         num_signers: signer_connections.len(),
-        storage_constructor: move || signer_connections.pop().unwrap(),
         context_window,
         signing_threshold,
         test_model_parameters,

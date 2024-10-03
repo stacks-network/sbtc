@@ -24,7 +24,7 @@ pub enum Payload {
     /// A decision related to signer deposit
     SignerDepositDecision(SignerDepositDecision),
     /// A decision related to signer withdrawal
-    SignerWithdrawDecision(SignerWithdrawDecision),
+    SignerWithdrawalDecision(SignerWithdrawalDecision),
     /// A request to sign a Stacks transaction
     StacksTransactionSignRequest(StacksTransactionSignRequest),
     /// A signature of a Stacks transaction
@@ -35,6 +35,41 @@ pub enum Payload {
     BitcoinTransactionSignAck(BitcoinTransactionSignAck),
     /// Contains all variants for DKG and WSTS signing rounds
     WstsMessage(WstsMessage),
+}
+
+impl std::fmt::Display for Payload {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SignerDepositDecision(_) => write!(f, "SignerDepositDecision(..)"),
+            Self::SignerWithdrawalDecision(_) => write!(f, "SignerWithdrawDecision(..)"),
+            Self::StacksTransactionSignRequest(_) => write!(f, "StacksTransactionSignRequest(..)"),
+            Self::StacksTransactionSignature(_) => write!(f, "StacksTransactionSignature(..)"),
+            Self::BitcoinTransactionSignRequest(_) => {
+                write!(f, "BitcoinTransactionSignRequest(..)")
+            }
+            Self::BitcoinTransactionSignAck(_) => write!(f, "BitcoinTransactionSignAck(..)"),
+            Self::WstsMessage(msg) => {
+                write!(f, "WstsMessage(")?;
+                match msg.inner {
+                    wsts::net::Message::DkgBegin(_) => write!(f, "DkgBegin(..)")?,
+                    wsts::net::Message::DkgEnd(_) => write!(f, "DkgEnd(..)")?,
+                    wsts::net::Message::DkgEndBegin(_) => write!(f, "DkgEndBegin(..)")?,
+                    wsts::net::Message::DkgPrivateBegin(_) => write!(f, "DkgPrivateBegin(..)")?,
+                    wsts::net::Message::DkgPrivateShares(_) => write!(f, "DkgPrivateShares(..)")?,
+                    wsts::net::Message::DkgPublicShares(_) => write!(f, "DkgPublicShares(..)")?,
+                    wsts::net::Message::NonceRequest(_) => write!(f, "NonceRequest(..)")?,
+                    wsts::net::Message::NonceResponse(_) => write!(f, "NonceResponse(..)")?,
+                    wsts::net::Message::SignatureShareRequest(_) => {
+                        write!(f, "SignatureShareRequest(..)")?
+                    }
+                    wsts::net::Message::SignatureShareResponse(_) => {
+                        write!(f, "SignatureShareResponse(..)")?
+                    }
+                }
+                write!(f, ")")
+            }
+        }
+    }
 }
 
 impl Payload {
@@ -53,9 +88,9 @@ impl From<SignerDepositDecision> for Payload {
     }
 }
 
-impl From<SignerWithdrawDecision> for Payload {
-    fn from(value: SignerWithdrawDecision) -> Self {
-        Self::SignerWithdrawDecision(value)
+impl From<SignerWithdrawalDecision> for Payload {
+    fn from(value: SignerWithdrawalDecision) -> Self {
+        Self::SignerWithdrawalDecision(value)
     }
 }
 
@@ -103,7 +138,7 @@ pub struct SignerDepositDecision {
 /// Represents a decision related to signer withdrawal.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub struct SignerWithdrawDecision {
+pub struct SignerWithdrawalDecision {
     /// ID of the withdraw request.
     pub request_id: u64,
     /// ID of the Stacks block containing the request.
@@ -181,7 +216,7 @@ impl wsts::net::Signable for Payload {
         match self {
             Self::WstsMessage(msg) => msg.hash(hasher),
             Self::SignerDepositDecision(msg) => msg.hash(hasher),
-            Self::SignerWithdrawDecision(msg) => msg.hash(hasher),
+            Self::SignerWithdrawalDecision(msg) => msg.hash(hasher),
             Self::BitcoinTransactionSignRequest(msg) => msg.hash(hasher),
             Self::BitcoinTransactionSignAck(msg) => msg.hash(hasher),
             Self::StacksTransactionSignRequest(msg) => msg.hash(hasher),
@@ -199,7 +234,7 @@ impl wsts::net::Signable for SignerDepositDecision {
     }
 }
 
-impl wsts::net::Signable for SignerWithdrawDecision {
+impl wsts::net::Signable for SignerWithdrawalDecision {
     fn hash(&self, hasher: &mut sha2::Sha256) {
         hasher.update("SIGNER_WITHDRAW_DECISION");
         hasher.update(self.request_id.to_be_bytes());
@@ -265,7 +300,7 @@ mod tests {
     #[test]
     fn signer_messages_should_be_signable() {
         assert_signer_messages_should_be_signable_with_type::<SignerDepositDecision>();
-        assert_signer_messages_should_be_signable_with_type::<SignerWithdrawDecision>();
+        assert_signer_messages_should_be_signable_with_type::<SignerWithdrawalDecision>();
         assert_signer_messages_should_be_signable_with_type::<BitcoinTransactionSignRequest>();
         assert_signer_messages_should_be_signable_with_type::<BitcoinTransactionSignAck>();
         assert_signer_messages_should_be_signable_with_type::<StacksTransactionSignRequest>();
@@ -276,7 +311,7 @@ mod tests {
     #[test]
     fn signer_messages_should_be_encodable() {
         assert_signer_messages_should_be_encodable_with_type::<SignerDepositDecision>();
-        assert_signer_messages_should_be_encodable_with_type::<SignerWithdrawDecision>();
+        assert_signer_messages_should_be_encodable_with_type::<SignerWithdrawalDecision>();
         assert_signer_messages_should_be_encodable_with_type::<BitcoinTransactionSignRequest>();
         assert_signer_messages_should_be_encodable_with_type::<BitcoinTransactionSignAck>();
         assert_signer_messages_should_be_encodable_with_type::<StacksTransactionSignRequest>();
