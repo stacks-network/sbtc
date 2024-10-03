@@ -128,6 +128,15 @@ impl SignerStateMachine {
             .encode_to_vec()
             .map_err(error::Error::Codec)?;
 
+        // After DKG, each of the signers will have new public keys.
+        let public_keys: Vec<PublicKey> = self
+            .commitments
+            .values()
+            .filter_map(|x| x.poly.first().map(PublicKey::try_from))
+            .collect::<Result<Vec<PublicKey>, Error>>()?;
+
+        debug_assert_eq!(PublicKey::combine_keys(public_keys.iter())?, aggregate_key);
+
         let encrypted_private_shares =
             wsts::util::encrypt(&self.0.network_private_key.to_bytes(), &encoded, rng)
                 .map_err(|_| error::Error::Encryption)?;
@@ -138,6 +147,7 @@ impl SignerStateMachine {
             script_pubkey: aggregate_key.signers_script_pubkey().into(),
             encrypted_private_shares,
             public_shares,
+            public_keys,
         })
     }
 }

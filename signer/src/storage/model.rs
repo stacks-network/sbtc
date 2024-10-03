@@ -332,6 +332,8 @@ pub struct EncryptedDkgShares {
     pub encrypted_private_shares: Bytes,
     /// The public DKG shares
     pub public_shares: Bytes,
+    /// The public keys of each of the participants in DKG
+    pub public_keys: Vec<PublicKey>,
 }
 
 /// Persisted public DKG shares from other signers

@@ -1296,6 +1296,7 @@ async fn is_signer_script_pub_key_checks_dkg_shares_for_script_pubkeys() {
         encrypted_private_shares: Vec::new(),
         public_shares: Vec::new(),
         aggregate_key,
+        public_keys: Vec::new(),
     };
     db.write_encrypted_dkg_shares(&shares).await.unwrap();
     mem.write_encrypted_dkg_shares(&shares).await.unwrap();

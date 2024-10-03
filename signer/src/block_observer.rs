@@ -643,6 +643,7 @@ mod tests {
             script_pubkey: signers_script_pubkey.clone(),
             encrypted_private_shares: Vec::new(),
             public_shares: Vec::new(),
+            public_keys: Vec::new(),
         };
         storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 
