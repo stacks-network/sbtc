@@ -7,6 +7,7 @@
 
 use std::collections::BTreeSet;
 use std::collections::HashMap;
+use std::time::Duration;
 
 use crate::blocklist_client;
 use crate::config::NetworkKind;
@@ -35,6 +36,7 @@ use crate::wsts_state_machine;
 
 use clarity::types::chainstate::StacksAddress;
 use futures::StreamExt;
+use tokio::time::error::Elapsed;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
 
@@ -147,35 +149,70 @@ where
     #[tracing::instrument(skip(self))]
     pub async fn run(mut self) -> Result<(), Error> {
         let mut signal_rx = self.context.get_signal_receiver();
+        let mut term = self.context.get_termination_handle();
 
-        loop {
-            tokio::select! {
-                Ok(SignerSignal::Event(SignerEvent::BitcoinBlockObserved)) = signal_rx.recv() => {
-                    self.handle_new_requests().await?;
-                }
-                result = self.network.receive() => {
-                    match result {
-                        Ok(msg) => {
-                            eprintln!("tx signer event loop received message: {}", &msg);
-                            let res = self.handle_signer_message(&msg).await;
-                            match res {
-                                Ok(()) => (),
-                                Err(Error::InvalidSignature) => (),
-                                Err(error) => {
-                                    tracing::error!(%error, "fatal signer error");
-                                    return Err(error)}
-                            }
-                        },
-                        Err(error) => {
-                            tracing::error!(%error,"signer network error");
-                            break;
-                        }
+        // TODO: We should really split these operations out into two separate
+        // main run-loops since they don't have anything to do with eachother.
+        //
+        // We run the event loop like this because `tokio::select!()` could
+        // potentially kill either `handle_new_requests()` or `handle_signer_message()`
+        // in the middle of processing if they end-up running concurrently and
+        // the other one finishes first.
+        let run_task = async {
+            loop {
+                // First we empty the signal channel subscription, checking for
+                // new Bitcoin block observed events. It doesn't matter how many
+                // of these we get, we only care if it has happened. It's also
+                // important that we empty this channel as quickly as possible
+                // to avoid un-processed messagages being dropped.
+                let mut new_block_observed = false;
+                while let Ok(signal) = signal_rx.try_recv() {
+                    if let SignerSignal::Event(SignerEvent::BitcoinBlockObserved) = signal {
+                        new_block_observed = true;
                     }
                 }
+
+                // If we've observed a new block, we need to handle any new requests.
+                if new_block_observed {
+                    self.handle_new_requests().await?;
+                }
+
+                // Next, we define a future that polls the network for new messages
+                // which times out after 5ms to ensure we don't block the above
+                // loop. We don't have any methods (atm) on the Network that would
+                // let us `try_recv` or peek. We can get rid of this later on if
+                // we split this run-loop into two separate loops.
+                let future = tokio::time::timeout(Duration::from_millis(5), async {
+                    self.network.receive().await
+                });
+
+                match future.await {
+                    Ok(msg) => {
+                        // Handle the received message.
+                        let res = self.handle_signer_message(&msg?).await;
+                        match res {
+                            Ok(()) => (),
+                            Err(Error::InvalidSignature) => (),
+                            Err(error) => {
+                                tracing::error!(%error, "fatal signer error");
+                                return Err::<(), Error>(error);
+                            }
+                        }
+                    }
+                    Err(Elapsed { .. }) => (),
+                }
+
+                // We don't do any extra waiting here since we have the
+                // `tokio::time::timeout` above.
             }
+        };
+
+        tokio::select! {
+            _ = run_task => (),
+            _ = term.wait_for_shutdown() => (),
         }
 
-        tracing::info!("shutting down transaction signer event loop");
+        tracing::info!("transaction signer event loop has been stopped");
         Ok(())
     }
 
@@ -210,7 +247,6 @@ where
     #[tracing::instrument(skip(self))]
     async fn handle_signer_message(&mut self, msg: &network::Msg) -> Result<(), Error> {
         if !msg.verify() {
-            eprintln!("unable to verify message");
             tracing::warn!("unable to verify message");
             return Err(Error::InvalidSignature);
         }
@@ -248,7 +284,7 @@ where
                 true,
                 ChainTipStatus::Canonical,
             ) => {
-                eprintln!("handling bitcoin transaction sign request");
+                tracing::debug!("handling bitcoin transaction sign request");
                 self.handle_bitcoin_transaction_sign_request(request, &msg.bitcoin_chain_tip)
                     .await?;
             }
@@ -327,13 +363,10 @@ where
         let is_valid_sign_request = self
             .is_valid_bitcoin_transaction_sign_request(request)
             .await?;
-        eprintln!("is_valid_sign_request: {}", is_valid_sign_request);
 
         if is_valid_sign_request {
             let signer_public_keys = self.get_signer_public_keys(bitcoin_chain_tip).await?;
-            eprintln!("got signer public keys");
 
-            eprintln!("loading wsts state machine");
             let new_state_machine = wsts_state_machine::SignerStateMachine::load(
                 &self.context.get_storage_mut(),
                 request.aggregate_key,
@@ -341,26 +374,18 @@ where
                 self.threshold,
                 self.signer_private_key,
             )
-            .await;
-
-            if let Err(e) = &new_state_machine {
-                eprintln!("failed to load wsts state machine: {:?}", e);
-            } else {
-                eprintln!("wsts state machine loaded");
-            }
+            .await?;
 
             let txid = request.tx.compute_txid();
 
-            self.wsts_state_machines.insert(txid, new_state_machine?);
+            self.wsts_state_machines.insert(txid, new_state_machine);
 
             let msg = message::BitcoinTransactionSignAck {
                 txid: request.tx.compute_txid(),
             };
 
-            eprintln!("sending BitcoinTransactionSignAck");
             self.send_message(msg, bitcoin_chain_tip).await?;
         } else {
-            eprintln!("received invalid sign request");
             tracing::warn!("received invalid sign request");
         }
 
@@ -669,7 +694,6 @@ where
 
         self.send_message(msg, bitcoin_chain_tip).await?;
 
-        // TODO: Shouldn't we be broadcasting a SignerWithdrawalDecision here?
         self.context
             .signal(TxSignerEvent::PendingWithdrawalRequestRegistered.into())?;
 
@@ -706,13 +730,6 @@ where
             .signal(TxSignerEvent::ReceivedDepositDecision.into())
             .expect("failed to send signal");
 
-        // #[cfg(feature = "testing")]
-        // if let Some(ref tx) = self.test_observer_tx {
-        //     tx.send(TxSignerEvent::ReceivedDepositDecision)
-        //         .await
-        //         .map_err(|_| Error::ObserverDropped)?;
-        // }
-
         Ok(())
     }
 
@@ -738,13 +755,6 @@ where
         self.context
             .signal(TxSignerEvent::ReceivedWithdrawalDecision.into())
             .expect("failed to send signal");
-
-        // #[cfg(feature = "testing")]
-        // if let Some(ref tx) = self.test_observer_tx {
-        //     tx.send(TxSignerEvent::ReceivedWithdrawalDecision)
-        //         .await
-        //         .map_err(|_| Error::ObserverDropped)?;
-        // }
 
         Ok(())
     }

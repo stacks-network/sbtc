@@ -99,16 +99,17 @@ where
     C: Context,
 {
     /// Wait for N instances of the given event
-    pub async fn wait_for_events(&mut self, msg: TxSignerEvent, mut n: u16) {
+    pub async fn wait_for_events(&mut self, msg: TxSignerEvent, expected: u16) {
+        let mut n = 0;
         loop {
             if let Ok(SignerSignal::Event(SignerEvent::TxSigner(event))) =
                 self.signal_rx.recv().await
             {
                 if event == msg {
-                    n -= 1;
+                    n += 1;
                 }
 
-                if n == 0 {
+                if n == expected {
                     return;
                 }
             }
@@ -273,6 +274,12 @@ where
                 .build()
         };
 
+        // Create a new event-loop for each signer, based on the number of signers
+        // defined in `self.num_signers`. Note that it is important that each
+        // signer has its own context (and thus storage and signalling channel).
+        //
+        // Each signer also gets its own `MpscBroadcaster` instance, which is
+        // backed by the `network` instance, simulating a network connection.
         let mut event_loop_handles: Vec<_> = signer_info
             .into_iter()
             .map(|signer_info| {
@@ -289,12 +296,14 @@ where
             })
             .collect();
 
+        // Generate test data and write it to each signer's storage.
         let signer_set = &coordinator_signer_info.signer_public_keys;
         let test_data = self.generate_test_data(&mut rng, signer_set);
         for handle in event_loop_handles.iter_mut() {
             test_data.write_to(&handle.context.get_storage_mut()).await;
         }
 
+        // For each signer, send a signal to simulate the observation of a new block.
         for handle in event_loop_handles.iter() {
             handle
                 .context
@@ -306,6 +315,7 @@ where
             * self.context_window
             * self.test_model_parameters.num_deposit_requests_per_block as u16;
 
+        // Wait for the expected number of decisions to be received by each signer.
         for handle in event_loop_handles.iter_mut() {
             let msg = TxSignerEvent::ReceivedDepositDecision;
             let future = handle.wait_for_events(msg, num_expected_decisions);
@@ -314,6 +324,7 @@ where
                 .unwrap();
         }
 
+        // Abort the event loops and assert that the decisions have been stored.
         for handle in event_loop_handles {
             handle.join_handle.abort();
 
@@ -571,7 +582,6 @@ where
             .expect("storage error")
             .expect("no chain tip");
 
-        eprintln!("running dkg and storing results");
         run_dkg_and_store_results_for_signers(
             &signer_info,
             &bitcoin_chain_tip,
@@ -583,14 +593,12 @@ where
         )
         .await;
 
-        eprintln!("determining the coordinator public key");
         let coordinator_public_key = transaction_coordinator::coordinator_public_key(
             &bitcoin_chain_tip,
             &signer_info.first().unwrap().signer_public_keys,
         )
         .unwrap()
         .unwrap();
-        eprintln!("coordinator public key: {:?}", coordinator_public_key);
 
         let coordinator_signer_info = signer_info
             .iter()
@@ -609,7 +617,6 @@ where
             self.signing_threshold,
         );
 
-        eprintln!("running dkg");
         let aggregate_key = coordinator.run_dkg(bitcoin_chain_tip, dummy_txid).await;
 
         let tx = testing::dummy::tx(&fake::Faker, &mut rng);
@@ -619,12 +626,10 @@ where
         hasher.update("sign here please");
         let msg: [u8; 32] = hasher.finalize().into(); // TODO(296): Compute proper sighash from transaction
 
-        eprintln!("requesting transaction signing");
         coordinator
             .request_sign_transaction(bitcoin_chain_tip, tx, aggregate_key)
             .await;
 
-        eprintln!("running signing round");
         let signature = coordinator
             .run_signing_round(bitcoin_chain_tip, txid, &msg)
             .await;

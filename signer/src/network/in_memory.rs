@@ -74,7 +74,7 @@ impl Default for Network {
 
 impl super::MessageTransfer for MpmcBroadcaster {
     async fn broadcast(&mut self, msg: super::Msg) -> Result<(), Error> {
-        eprintln!("[network{:0>2}] broadcasting: {}", self.id, msg);
+        tracing::trace!("[network{:0>2}] broadcasting: {}", self.id, msg);
         self.recently_sent.push_back(msg.id());
         self.sender.send(msg).map_err(|_| Error::SendMessage)?;
         Ok(())
@@ -82,7 +82,7 @@ impl super::MessageTransfer for MpmcBroadcaster {
 
     async fn receive(&mut self) -> Result<super::Msg, Error> {
         let mut msg = self.receiver.recv().await.map_err(Error::ChannelReceive)?;
-        eprintln!("[network{:0>2}] received: {}", self.id, msg);
+        tracing::trace!("[network{:0>2}] received: {}", self.id, msg);
 
         while Some(&msg.id()) == self.recently_sent.front() {
             self.recently_sent.pop_front();

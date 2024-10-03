@@ -176,7 +176,7 @@ impl Coordinator {
 
         let future = async move {
             loop {
-                eprintln!(
+                tracing::trace!(
                     "[network{:0>2}] [resp. {}/{}] waiting for responses",
                     self.network.id(),
                     responses,
@@ -185,7 +185,7 @@ impl Coordinator {
                 let msg = self.network.receive().await.expect("network error");
 
                 let message::Payload::BitcoinTransactionSignAck(_) = msg.inner.payload else {
-                    eprintln!(
+                    tracing::trace!(
                         "[network{:0>2}] [resp. {}/{}] skipping: {}",
                         self.network.id(),
                         responses,
@@ -196,7 +196,7 @@ impl Coordinator {
                 };
 
                 responses += 1;
-                eprintln!(
+                tracing::trace!(
                     "[network{:0>2}] [resp. {}/{}] received message: {}",
                     self.network.id(),
                     responses,
