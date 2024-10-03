@@ -838,19 +838,21 @@ describe("optimization tests for completing withdrawals", () => {
         alice
       );
     }
-    txOk(
-      withdrawal.completeWithdrawals(
-        txids.map((txid, index) => {
+    txErr(
+      withdrawal.completeWithdrawals({
+        withdrawals: txids.map((txid, index) => {
           return {
-            requestId: index + 1,
+            requestId: BigInt(index + 1),
             status: true,
             signerBitmap: 1n,
             bitcoinTxid: txid,
             outputIndex: 0n,
-            fee: maxFee,
+            fee: 10n,
           };
-        })
-      ),
+        }),
+        burnHeight: 10n,
+        burnHash: new Uint8Array(32).fill(0)
+      }),
       deployer
     );
   });
