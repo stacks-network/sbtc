@@ -37,6 +37,41 @@ pub enum Payload {
     WstsMessage(WstsMessage),
 }
 
+impl std::fmt::Display for Payload {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SignerDepositDecision(_) => write!(f, "SignerDepositDecision(..)"),
+            Self::SignerWithdrawalDecision(_) => write!(f, "SignerWithdrawDecision(..)"),
+            Self::StacksTransactionSignRequest(_) => write!(f, "StacksTransactionSignRequest(..)"),
+            Self::StacksTransactionSignature(_) => write!(f, "StacksTransactionSignature(..)"),
+            Self::BitcoinTransactionSignRequest(_) => {
+                write!(f, "BitcoinTransactionSignRequest(..)")
+            }
+            Self::BitcoinTransactionSignAck(_) => write!(f, "BitcoinTransactionSignAck(..)"),
+            Self::WstsMessage(msg) => {
+                write!(f, "WstsMessage(")?;
+                match msg.inner {
+                    wsts::net::Message::DkgBegin(_) => write!(f, "DkgBegin(..)")?,
+                    wsts::net::Message::DkgEnd(_) => write!(f, "DkgEnd(..)")?,
+                    wsts::net::Message::DkgEndBegin(_) => write!(f, "DkgEndBegin(..)")?,
+                    wsts::net::Message::DkgPrivateBegin(_) => write!(f, "DkgPrivateBegin(..)")?,
+                    wsts::net::Message::DkgPrivateShares(_) => write!(f, "DkgPrivateShares(..)")?,
+                    wsts::net::Message::DkgPublicShares(_) => write!(f, "DkgPublicShares(..)")?,
+                    wsts::net::Message::NonceRequest(_) => write!(f, "NonceRequest(..)")?,
+                    wsts::net::Message::NonceResponse(_) => write!(f, "NonceResponse(..)")?,
+                    wsts::net::Message::SignatureShareRequest(_) => {
+                        write!(f, "SignatureShareRequest(..)")?
+                    }
+                    wsts::net::Message::SignatureShareResponse(_) => {
+                        write!(f, "SignatureShareResponse(..)")?
+                    }
+                }
+                write!(f, ")")
+            }
+        }
+    }
+}
+
 impl Payload {
     /// Converts the payload into a signer message with the given Bitcoin chain tip
     pub fn to_message(self, bitcoin_chain_tip: BitcoinBlockHash) -> SignerMessage {

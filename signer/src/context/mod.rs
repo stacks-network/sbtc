@@ -108,7 +108,7 @@ where
         // TODO: Decide on the channel capacity and how we should handle slow consumers.
         // NOTE: Ideally consumers which require processing time should pull the relevent
         // messages into a local VecDequeue and process them in their own time.
-        let (signal_tx, _) = tokio::sync::broadcast::channel(128);
+        let (signal_tx, _) = tokio::sync::broadcast::channel(1024);
         let (term_tx, _) = tokio::sync::watch::channel(false);
 
         Self {

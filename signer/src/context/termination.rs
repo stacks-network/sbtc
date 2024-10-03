@@ -7,6 +7,15 @@ pub struct TerminationHandle(
     tokio::sync::watch::Receiver<bool>,
 );
 
+impl Clone for TerminationHandle {
+    fn clone(&self) -> Self {
+        Self(
+            self.0.clone(),     // Sender
+            self.0.subscribe(), // Receiver
+        )
+    }
+}
+
 impl TerminationHandle {
     /// Create a new termination handle.
     pub fn new(
