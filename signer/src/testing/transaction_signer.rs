@@ -93,8 +93,12 @@ where
     C: Context,
 {
     /// Wait for `expected` instances of the given event `msg`, timing out after `timeout`.
-    pub async fn wait_for_events(&mut self, msg: TxSignerEvent, expected: u16, timeout: Duration) -> Result<(), Elapsed> {
-
+    pub async fn wait_for_events(
+        &mut self,
+        msg: TxSignerEvent,
+        expected: u16,
+        timeout: Duration,
+    ) -> Result<(), Elapsed> {
         let future = async {
             let mut n = 0;
             loop {
@@ -112,8 +116,7 @@ where
             }
         };
 
-        tokio::time::timeout(timeout, future)
-            .await
+        tokio::time::timeout(timeout, future).await
     }
 }
 
@@ -326,7 +329,8 @@ where
         // Wait for the expected number of decisions to be received by each signer.
         for handle in event_loop_handles.iter_mut() {
             let msg = TxSignerEvent::ReceivedDepositDecision;
-            handle.wait_for_events(msg, num_expected_decisions, Duration::from_secs(10))
+            handle
+                .wait_for_events(msg, num_expected_decisions, Duration::from_secs(10))
                 .await
                 .expect("timed out waiting for events");
         }

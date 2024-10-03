@@ -842,8 +842,13 @@ mod tests {
     use crate::testing::context::*;
 
     fn test_environment() -> testing::transaction_signer::TestEnvironment<
-        TestContext<SharedStore, WrappedMock<MockBitcoinInteract>, WrappedMock<MockStacksInteract>, WrappedMock<MockEmilyInteract>,
-    >> {
+        TestContext<
+            SharedStore,
+            WrappedMock<MockBitcoinInteract>,
+            WrappedMock<MockStacksInteract>,
+            WrappedMock<MockEmilyInteract>,
+        >,
+    > {
         let test_model_parameters = testing::storage::model::Params {
             num_bitcoin_blocks: 20,
             num_stacks_blocks_per_bitcoin_block: 3,

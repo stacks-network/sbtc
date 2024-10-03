@@ -15,7 +15,12 @@ async fn test_environment(
     mut signer_connections: Vec<PgStore>,
     signing_threshold: u32,
 ) -> TestEnvironment<
-    TestContext<PgStore, WrappedMock<MockBitcoinInteract>, WrappedMock<MockStacksInteract>, WrappedMock<MockEmilyInteract>>,
+    TestContext<
+        PgStore,
+        WrappedMock<MockBitcoinInteract>,
+        WrappedMock<MockStacksInteract>,
+        WrappedMock<MockEmilyInteract>,
+    >,
 > {
     let context_window = 3;
 
