@@ -63,8 +63,8 @@ pub fn test_create_deposit_request(id_num: u64, output_index: u32) -> CreateDepo
     CreateDepositRequestBody {
         bitcoin_txid: format!("deposit-txid-{id_num}"),
         bitcoin_tx_output_index: output_index,
-        reclaim: format!("deposit-txid-{id_num}:{output_index}-reclaim-script"),
-        deposit: format!("deposit-txid-{id_num}:{output_index}-deposit-script"),
+        reclaim_script: format!("deposit-txid-{id_num}:{output_index}-reclaim-script"),
+        deposit_script: format!("deposit-txid-{id_num}:{output_index}-deposit-script"),
     }
 }
 

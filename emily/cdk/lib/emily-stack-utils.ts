@@ -26,6 +26,11 @@ export class EmilyStackUtils {
     private static awsRegion?: string;
 
     /*
+     * Whether only tables should be deployed.
+     */
+    private static tablesOnly?: boolean;
+
+    /*
      * Returns the current stage name.
      */
     public static getStageName(): string {
@@ -62,6 +67,14 @@ export class EmilyStackUtils {
         // standard beta region: us-west-2.
         this.awsRegion ??= "us-west-2";
         return this.awsRegion;
+    }
+
+    /*
+     * Returns whether only tables should be deployed.
+     */
+    public static isTablesOnly(): boolean {
+        this.tablesOnly ??= (process.env.TABLES_ONLY ?? "false").toLowerCase() === "true";
+        return this.tablesOnly;
     }
 
     /*
