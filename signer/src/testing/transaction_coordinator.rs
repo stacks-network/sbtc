@@ -52,9 +52,8 @@ where
     fn create(
         context: C,
         network: network::in_memory::MpmcBroadcaster,
-        context_window: usize,
+        context_window: u16,
         private_key: PrivateKey,
-        threshold: u16,
     ) -> Self {
         Self {
             event_loop: transaction_coordinator::TxCoordinatorEventLoop {
@@ -62,7 +61,6 @@ where
                 network,
                 private_key,
                 context_window,
-                threshold,
                 bitcoin_network: bitcoin::Network::Testnet,
                 signing_round_max_duration: Duration::from_secs(10),
             },
@@ -102,9 +100,9 @@ pub struct TestEnvironment<Context> {
     /// Signer context
     pub context: Context,
     /// Bitcoin context window
-    pub context_window: usize,
+    pub context_window: u16,
     /// Num signers
-    pub num_signers: usize,
+    pub num_signers: u16,
     /// Signing threshold
     pub signing_threshold: u16,
     /// Test model parameters
@@ -129,7 +127,7 @@ where
     pub async fn assert_should_be_able_to_coordinate_signing_rounds(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
-        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
         let mut testing_signer_set =
             testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
@@ -211,7 +209,6 @@ where
             network.connect(),
             self.context_window,
             private_key,
-            self.signing_threshold,
         );
 
         // Start the tx coordinator run loop.
@@ -231,10 +228,12 @@ where
             .expect("failed to signal");
 
         // Await the `wait_for_tx_task` to receive the first transaction broadcasted.
-        let broadcasted_tx = wait_for_transaction_task
-            .await
-            .expect("failed to receive message")
-            .expect("no message received");
+        let broadcasted_tx =
+            tokio::time::timeout(Duration::from_secs(10), wait_for_transaction_task)
+                .await
+                .unwrap()
+                .expect("failed to receive message")
+                .expect("no message received");
 
         // Extract the first script pubkey from the broadcasted transaction.
         let first_script_pubkey = broadcasted_tx
@@ -259,7 +258,7 @@ where
     pub async fn assert_get_signer_utxo_simple(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
-        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
         let mut signer_set =
             testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
@@ -314,7 +313,7 @@ where
         assert_eq!(chain_tip, block_ref.block_hash);
 
         let signer_utxo = storage
-            .get_signer_utxo(&chain_tip, &aggregate_key, self.context_window as u16)
+            .get_signer_utxo(&chain_tip, &aggregate_key, self.context_window)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -326,7 +325,7 @@ where
     pub async fn assert_get_signer_utxo_fork(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
-        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
         let mut signer_set =
             testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
@@ -412,11 +411,7 @@ where
                 public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
             };
             let signer_utxo = storage
-                .get_signer_utxo(
-                    &chain_tip.block_hash,
-                    &aggregate_key,
-                    self.context_window as u16,
-                )
+                .get_signer_utxo(&chain_tip.block_hash, &aggregate_key, self.context_window)
                 .await
                 .unwrap()
                 .expect("no signer utxo");
@@ -440,7 +435,7 @@ where
     pub async fn assert_get_signer_utxo_unspent(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
-        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
         let mut signer_set =
             testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
@@ -518,7 +513,7 @@ where
         assert_eq!(chain_tip, block_ref.block_hash);
 
         let signer_utxo = storage
-            .get_signer_utxo(&chain_tip, &aggregate_key, self.context_window as u16)
+            .get_signer_utxo(&chain_tip, &aggregate_key, self.context_window)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -561,7 +556,7 @@ where
             .write_as_rotate_keys_tx(
                 &self.context.get_storage_mut(),
                 &bitcoin_chain_tip,
-                aggregate_key,
+                all_dkg_shares.first().unwrap(),
                 rng,
             )
             .await;
