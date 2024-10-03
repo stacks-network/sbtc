@@ -930,7 +930,7 @@ impl RotateKeysV1 {
     /// the new keys will match those provided by the input wallet.
     pub fn new(wallet: &SignerWallet, deployer: StacksAddress) -> Self {
         Self {
-            aggregate_key: *wallet.aggregate_key(),
+            aggregate_key: *wallet.stacks_aggregate_key(),
             new_keys: wallet.public_keys().clone(),
             deployer,
             signatures_required: wallet.signatures_required(),

@@ -128,6 +128,7 @@ impl SignerStateMachine {
             .encode_to_vec()
             .map_err(error::Error::Codec)?;
 
+        // After DKG, each of the signers will have "new public keys".
         let encrypted_private_shares =
             wsts::util::encrypt(&self.0.network_private_key.to_bytes(), &encoded, rng)
                 .map_err(|_| error::Error::Encryption)?;
@@ -179,7 +180,7 @@ impl CoordinatorStateMachine {
         let num_signers: u32 = signer_public_keys
             .len()
             .try_into()
-            .expect("The number of signers is creater than u32::MAX?");
+            .expect("The number of signers is greater than u32::MAX?");
         let signer_key_ids = (0..num_signers)
             .map(|signer_id| (signer_id, std::iter::once(signer_id).collect()))
             .collect();
