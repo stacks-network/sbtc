@@ -361,9 +361,7 @@ where
         ContextBuilder {
             config: ContextConfig {
                 settings,
-                storage: config.storage,
-                bitcoin: config.bitcoin,
-                stacks: config.stacks,
+                ..config
             },
         }
     }
@@ -396,7 +394,7 @@ where
     }
 
     /// Configure the context with the specified storage implementation.
-    fn with_storage<Storage: DbRead + DbWrite>(
+    fn with_storage<Storage: DbRead + DbWrite + Clone + Send + Sync>(
         self,
         storage: Storage,
     ) -> ContextBuilder<Storage, Bitcoin, Stacks> {
