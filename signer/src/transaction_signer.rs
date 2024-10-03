@@ -208,7 +208,7 @@ where
             .get_pending_withdraw_requests(&bitcoin_chain_tip)
             .await?
         {
-            self.handle_pending_withdraw_request(withdraw_request)
+            self.handle_pending_withdrawal_request(withdraw_request, &bitcoin_chain_tip)
                 .await?;
         }
 
@@ -236,7 +236,7 @@ where
                     .await?;
             }
 
-            (message::Payload::SignerWithdrawDecision(decision), _, _) => {
+            (message::Payload::SignerWithdrawalDecision(decision), _, _) => {
                 self.persist_received_withdraw_decision(decision, msg.signer_pub_key)
                     .await?;
             }
@@ -625,27 +625,37 @@ where
     }
 
     #[tracing::instrument(skip(self))]
-    async fn handle_pending_withdraw_request(
+    async fn handle_pending_withdrawal_request(
         &mut self,
-        withdraw_request: model::WithdrawalRequest,
+        withdrawal_request: model::WithdrawalRequest,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
         // TODO: Do we want to do this on the sender address or the
         // recipient address?
         let is_accepted = self
-            .can_accept(&withdraw_request.sender_address.to_string())
+            .can_accept(&withdrawal_request.sender_address.to_string())
             .await;
 
+        let msg = message::SignerWithdrawalDecision {
+            request_id: withdrawal_request.request_id,
+            block_hash: withdrawal_request.block_hash.0,
+            accepted: is_accepted,
+            txid: withdrawal_request.txid,
+        };
+
         let signer_decision = model::WithdrawalSigner {
-            request_id: withdraw_request.request_id,
-            block_hash: withdraw_request.block_hash,
+            request_id: withdrawal_request.request_id,
+            block_hash: withdrawal_request.block_hash,
             signer_pub_key: self.signer_pub_key(),
             is_accepted,
-            txid: withdraw_request.txid,
+            txid: withdrawal_request.txid,
         };
 
         self.storage
             .write_withdrawal_signer_decision(&signer_decision)
             .await?;
+
+        self.send_message(msg, bitcoin_chain_tip).await?;
 
         Ok(())
     }
@@ -688,7 +698,7 @@ where
     #[tracing::instrument(skip(self))]
     async fn persist_received_withdraw_decision(
         &mut self,
-        decision: &message::SignerWithdrawDecision,
+        decision: &message::SignerWithdrawalDecision,
         signer_pub_key: PublicKey,
     ) -> Result<(), Error> {
         let signer_decision = model::WithdrawalSigner {
