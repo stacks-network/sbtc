@@ -216,6 +216,9 @@ where
         chain_tip: &model::BitcoinBlockHash,
         wallet: &SignerWallet,
     ) -> Result<(), Error> {
+        if true {
+            return Ok(());
+        }
         let db = self.context.get_storage();
         let stacks = self.context.get_stacks_client();
 
