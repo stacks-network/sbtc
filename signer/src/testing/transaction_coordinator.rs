@@ -54,6 +54,7 @@ where
         network: network::in_memory::MpmcBroadcaster,
         context_window: u16,
         private_key: PrivateKey,
+        threshold: u16,
     ) -> Self {
         Self {
             event_loop: transaction_coordinator::TxCoordinatorEventLoop {
@@ -61,8 +62,9 @@ where
                 network,
                 private_key,
                 context_window,
+                threshold,
                 bitcoin_network: bitcoin::Network::Testnet,
-                signing_round_max_duration: Duration::from_secs(10),
+                signing_round_max_duration: Duration::from_secs(8),
             },
             context,
             is_started: Arc::new(AtomicBool::new(false)),
@@ -209,6 +211,7 @@ where
             network.connect(),
             self.context_window,
             private_key,
+            self.signing_threshold,
         );
 
         // Start the tx coordinator run loop.
