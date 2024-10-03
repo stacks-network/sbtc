@@ -69,6 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         _,
         ApiFallbackClient<BitcoinCoreClient>,
         ApiFallbackClient<StacksClient>,
+        ApiFallbackClient<EmilyClient>,
     >::init(settings, db)?;
 
     // Run the application components concurrently. We're `join!`ing them

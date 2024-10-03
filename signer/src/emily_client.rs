@@ -26,11 +26,12 @@ pub enum EmilyClientError {
 }
 
 /// Trait describing the interactions with Emily API.
-pub trait EmilyInteract {
+#[cfg_attr(any(test, feature = "testing"), mockall::automock())]
+pub trait EmilyInteract: Sync + Send {
     /// Get pending deposits from Emily.
     fn get_deposits(
         &self,
-    ) -> impl std::future::Future<Output = Result<Vec<CreateDepositRequest>, Error>>;
+    ) -> impl std::future::Future<Output = Result<Vec<CreateDepositRequest>, Error>> + Send;
 }
 
 /// Emily API client.

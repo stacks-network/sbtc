@@ -14,6 +14,7 @@ use crate::{
     bitcoin::{rpc::GetTxResponse, BitcoinInteract, MockBitcoinInteract},
     config::Settings,
     context::{Context, SignerContext},
+    emily_client::{EmilyInteract, MockEmilyInteract},
     error::Error,
     keys::PublicKey,
     stacks::{
@@ -35,9 +36,9 @@ use crate::{
 /// as well as the different mocked clients, so you can modify their behavior as
 /// needed.
 #[derive(Clone)]
-pub struct TestContext<Storage, Bitcoin, Stacks> {
+pub struct TestContext<Storage, Bitcoin, Stacks, Emily> {
     /// The inner [`SignerContext`] which this context wraps.
-    pub inner: SignerContext<Storage, Bitcoin, Stacks>,
+    pub inner: SignerContext<Storage, Bitcoin, Stacks, Emily>,
 
     /// The raw inner storage implementation.
     pub storage: Storage,
@@ -47,13 +48,17 @@ pub struct TestContext<Storage, Bitcoin, Stacks> {
 
     /// The raw inner Stacks client.
     pub stacks_client: Stacks,
+
+    /// The raw inner Emily client.
+    pub emily_client: Emily,
 }
 
-impl<Storage, Bitcoin, Stacks> TestContext<Storage, Bitcoin, Stacks>
+impl<Storage, Bitcoin, Stacks, Emily> TestContext<Storage, Bitcoin, Stacks, Emily>
 where
     Storage: DbRead + DbWrite + Clone + Sync + Send,
     Bitcoin: BitcoinInteract + Clone + Send + Sync,
     Stacks: StacksInteract + Clone + Send + Sync,
+    Emily: EmilyInteract + Clone + Send + Sync,
 {
     /// Create a new test context.
     pub fn new(
@@ -61,12 +66,14 @@ where
         storage: Storage,
         bitcoin_client: Bitcoin,
         stacks_client: Stacks,
+        emily_client: Emily,
     ) -> Self {
         let context = SignerContext::new(
             settings,
             storage.clone(),
             bitcoin_client.clone(),
             stacks_client.clone(),
+            emily_client.clone(),
         );
 
         Self {
@@ -74,6 +81,7 @@ where
             storage,
             bitcoin_client,
             stacks_client,
+            emily_client,
         }
     }
 
@@ -91,19 +99,24 @@ where
     pub fn inner_stacks_client(&self) -> Stacks {
         self.stacks_client.clone()
     }
+
+    /// Get an instance of the raw inner Emily client.
+    pub fn inner_emily_client(&self) -> Emily {
+        self.emily_client.clone()
+    }
 }
 
-impl TestContext<(), (), ()> {
+impl TestContext<(), (), (), ()> {
     /// Returns a builder for creating a new [`TestContext`]. The builder will
     /// be initialized with settings from the default configuration file; use
     /// the [`ContextBuilder::with_settings`] method to override these settings.
-    pub fn builder() -> ContextBuilder<(), (), ()> {
+    pub fn builder() -> ContextBuilder<(), (), (), ()> {
         Default::default()
     }
 }
 
 /// Provide extra methods for when using a mocked bitcoin client.
-impl<Storage, Stacks> TestContext<Storage, WrappedMock<MockBitcoinInteract>, Stacks> {
+impl<Storage, Stacks, Emily> TestContext<Storage, WrappedMock<MockBitcoinInteract>, Stacks, Emily> {
     /// Execute a closure with a mutable reference to the inner mocked
     /// bitcoin client.
     pub async fn with_bitcoin_client<F>(&mut self, f: F)
@@ -116,7 +129,9 @@ impl<Storage, Stacks> TestContext<Storage, WrappedMock<MockBitcoinInteract>, Sta
 }
 
 /// Provide extra methods for when using a mocked stacks client.
-impl<Storage, Bitcoin> TestContext<Storage, Bitcoin, WrappedMock<MockStacksInteract>> {
+impl<Storage, Bitcoin, Emily>
+    TestContext<Storage, Bitcoin, WrappedMock<MockStacksInteract>, Emily>
+{
     /// Execute a closure with a mutable reference to the inner mocked
     /// stacks client.
     pub async fn with_stacks_client<F>(&mut self, f: F)
@@ -128,11 +143,27 @@ impl<Storage, Bitcoin> TestContext<Storage, Bitcoin, WrappedMock<MockStacksInter
     }
 }
 
-impl<Storage, Bitcoin, Stacks> Context for TestContext<Storage, Bitcoin, Stacks>
+/// Provide extra methods for when using a mocked emily client.
+impl<Storage, Bitcoin, Stacks>
+    TestContext<Storage, Bitcoin, Stacks, WrappedMock<MockEmilyInteract>>
+{
+    /// Execute a closure with a mutable reference to the inner mocked
+    /// emily client.
+    pub async fn with_emily_client<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut MockEmilyInteract),
+    {
+        let mut client = self.emily_client.lock().await;
+        f(&mut client);
+    }
+}
+
+impl<Storage, Bitcoin, Stacks, Emily> Context for TestContext<Storage, Bitcoin, Stacks, Emily>
 where
     Storage: DbRead + DbWrite + Clone + Sync + Send,
     Bitcoin: BitcoinInteract + Clone + Send + Sync,
     Stacks: StacksInteract + Clone + Send + Sync,
+    Emily: EmilyInteract + Clone + Send + Sync,
 {
     fn config(&self) -> &Settings {
         self.inner.config()
@@ -172,6 +203,10 @@ where
 
     fn get_stacks_client(&self) -> impl StacksInteract + Clone {
         self.inner.get_stacks_client()
+    }
+
+    fn get_emily_client(&self) -> impl EmilyInteract + Clone {
+        self.inner.get_emily_client()
     }
 }
 
@@ -299,89 +334,94 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
     }
 }
 
+impl EmilyInteract for WrappedMock<MockEmilyInteract> {
+    async fn get_deposits(&self) -> Result<Vec<sbtc::deposits::CreateDepositRequest>, Error> {
+        self.inner.lock().await.get_deposits().await
+    }
+}
+
 /// Struct which holds the current configuration of the context builder.
-pub struct ContextConfig<Storage, Bitcoin, Stacks> {
+pub struct ContextConfig<Storage, Bitcoin, Stacks, Emily> {
     settings: crate::config::Settings,
     storage: Storage,
     bitcoin: Bitcoin,
     stacks: Stacks,
+    emily: Emily,
 }
 
-impl Default for ContextConfig<(), (), ()> {
+impl Default for ContextConfig<(), (), (), ()> {
     fn default() -> Self {
         Self {
             settings: Settings::new_from_default_config().expect("failed to load default config"),
             storage: (),
             bitcoin: (),
             stacks: (),
+            emily: (),
         }
     }
 }
 
 /// State for the builder pattern.
-pub trait BuilderState<Storage, Bitcoin, Stacks> {
+pub trait BuilderState<Storage, Bitcoin, Stacks, Emily> {
     /// Consumes the builder, returning its current internal configuration.
-    fn get_config(self) -> ContextConfig<Storage, Bitcoin, Stacks>;
+    fn get_config(self) -> ContextConfig<Storage, Bitcoin, Stacks, Emily>;
 }
 
 /// A builder for creating a [`TestContext`].
-pub struct ContextBuilder<Storage, Bitcoin, Stacks> {
-    config: ContextConfig<Storage, Bitcoin, Stacks>,
+pub struct ContextBuilder<Storage, Bitcoin, Stacks, Emily> {
+    config: ContextConfig<Storage, Bitcoin, Stacks, Emily>,
 }
 
-impl ContextBuilder<(), (), ()> {
+impl ContextBuilder<(), (), (), ()> {
     /// Create a new context builder.
     pub fn new() -> Self {
         Self { config: Default::default() }
     }
 }
 
-impl Default for ContextBuilder<(), (), ()> {
+impl Default for ContextBuilder<(), (), (), ()> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<Storage, Bitcoin, Stacks> BuilderState<Storage, Bitcoin, Stacks>
-    for ContextBuilder<Storage, Bitcoin, Stacks>
+impl<Storage, Bitcoin, Stacks, Emily> BuilderState<Storage, Bitcoin, Stacks, Emily>
+    for ContextBuilder<Storage, Bitcoin, Stacks, Emily>
 {
-    fn get_config(self) -> ContextConfig<Storage, Bitcoin, Stacks> {
+    fn get_config(self) -> ContextConfig<Storage, Bitcoin, Stacks, Emily> {
         self.config
     }
 }
 
 /// Trait for configuring the settings. These methods are always available.
-pub trait ConfigureSettings<Storage, Bitcoin, Stacks>
+pub trait ConfigureSettings<Storage, Bitcoin, Stacks, Emily>
 where
-    Self: Sized + BuilderState<Storage, Bitcoin, Stacks>,
+    Self: Sized + BuilderState<Storage, Bitcoin, Stacks, Emily>,
 {
     /// Configure the context with the specified settings.
-    fn with_settings(self, settings: Settings) -> ContextBuilder<Storage, Bitcoin, Stacks> {
+    fn with_settings(self, settings: Settings) -> ContextBuilder<Storage, Bitcoin, Stacks, Emily> {
         let config = self.get_config();
         ContextBuilder {
-            config: ContextConfig {
-                settings,
-                ..config
-            },
+            config: ContextConfig { settings, ..config },
         }
     }
 }
 
-impl<Storage, Bitcoin, Stacks> ConfigureSettings<Storage, Bitcoin, Stacks>
-    for ContextBuilder<Storage, Bitcoin, Stacks>
+impl<Storage, Bitcoin, Stacks, Emily> ConfigureSettings<Storage, Bitcoin, Stacks, Emily>
+    for ContextBuilder<Storage, Bitcoin, Stacks, Emily>
 where
-    Self: BuilderState<Storage, Bitcoin, Stacks>,
+    Self: BuilderState<Storage, Bitcoin, Stacks, Emily>,
 {
 }
 
 /// Trait for configuring the storage implementation. These methods are available
 /// when the storage implementation has not been set yet.
-pub trait ConfigureStorage<Bitcoin, Stacks>
+pub trait ConfigureStorage<Bitcoin, Stacks, Emily>
 where
-    Self: Sized + BuilderState<(), Bitcoin, Stacks>,
+    Self: Sized + BuilderState<(), Bitcoin, Stacks, Emily>,
 {
     /// Configure the context with an in-memory storage implementation.
-    fn with_in_memory_storage(self) -> ContextBuilder<SharedStore, Bitcoin, Stacks> {
+    fn with_in_memory_storage(self) -> ContextBuilder<SharedStore, Bitcoin, Stacks, Emily> {
         let config = self.get_config();
         ContextBuilder {
             config: ContextConfig {
@@ -389,6 +429,7 @@ where
                 storage: Store::new_shared(),
                 bitcoin: config.bitcoin,
                 stacks: config.stacks,
+                emily: config.emily,
             },
         }
     }
@@ -397,7 +438,7 @@ where
     fn with_storage<Storage: DbRead + DbWrite + Clone + Send + Sync>(
         self,
         storage: Storage,
-    ) -> ContextBuilder<Storage, Bitcoin, Stacks> {
+    ) -> ContextBuilder<Storage, Bitcoin, Stacks, Emily> {
         let config = self.get_config();
         ContextBuilder {
             config: ContextConfig {
@@ -405,27 +446,30 @@ where
                 storage,
                 bitcoin: config.bitcoin,
                 stacks: config.stacks,
+                emily: config.emily,
             },
         }
     }
 }
 
-impl<Bitcoin, Stacks> ConfigureStorage<Bitcoin, Stacks> for ContextBuilder<(), Bitcoin, Stacks> where
-    Self: BuilderState<(), Bitcoin, Stacks>
+impl<Bitcoin, Stacks, Emily> ConfigureStorage<Bitcoin, Stacks, Emily>
+    for ContextBuilder<(), Bitcoin, Stacks, Emily>
+where
+    Self: BuilderState<(), Bitcoin, Stacks, Emily>,
 {
 }
 
 /// Trait for configuring the Bitcoin client implementation. These methods are
 /// available when the Bitcoin client implementation has not been set yet.
-pub trait ConfigureBitcoinClient<Storage, Stacks>
+pub trait ConfigureBitcoinClient<Storage, Stacks, Emily>
 where
-    Self: Sized + BuilderState<Storage, (), Stacks>,
+    Self: Sized + BuilderState<Storage, (), Stacks, Emily>,
 {
     /// Configure the context with the specified Bitcoin client implementation.
     fn with_bitcoin_client<Bitcoin: BitcoinInteract + Clone + Send + Sync>(
         self,
         bitcoin_client: Bitcoin,
-    ) -> ContextBuilder<Storage, Bitcoin, Stacks> {
+    ) -> ContextBuilder<Storage, Bitcoin, Stacks, Emily> {
         let config = self.get_config();
         ContextBuilder {
             config: ContextConfig {
@@ -433,6 +477,7 @@ where
                 storage: config.storage,
                 bitcoin: bitcoin_client,
                 stacks: config.stacks,
+                emily: config.emily,
             },
         }
     }
@@ -441,7 +486,7 @@ where
     /// with the first RPC endpoint from the settings.
     fn with_first_bitcoin_core_client(
         self,
-    ) -> ContextBuilder<Storage, crate::bitcoin::rpc::BitcoinCoreClient, Stacks> {
+    ) -> ContextBuilder<Storage, crate::bitcoin::rpc::BitcoinCoreClient, Stacks, Emily> {
         let config = self.get_config();
         let url = config.settings.bitcoin.rpc_endpoints.first().unwrap();
         let bitcoin_client = crate::bitcoin::rpc::BitcoinCoreClient::try_from(url).unwrap();
@@ -451,6 +496,7 @@ where
                 storage: config.storage,
                 bitcoin: bitcoin_client,
                 stacks: config.stacks,
+                emily: config.emily,
             },
         }
     }
@@ -458,29 +504,29 @@ where
     /// Configure the context with a mocked Bitcoin client.
     fn with_mocked_bitcoin_client(
         self,
-    ) -> ContextBuilder<Storage, WrappedMock<MockBitcoinInteract>, Stacks> {
+    ) -> ContextBuilder<Storage, WrappedMock<MockBitcoinInteract>, Stacks, Emily> {
         self.with_bitcoin_client(WrappedMock::default())
     }
 }
 
-impl<Storage, Stacks> ConfigureBitcoinClient<Storage, Stacks>
-    for ContextBuilder<Storage, (), Stacks>
+impl<Storage, Stacks, Emily> ConfigureBitcoinClient<Storage, Stacks, Emily>
+    for ContextBuilder<Storage, (), Stacks, Emily>
 where
-    Self: Sized + BuilderState<Storage, (), Stacks>,
+    Self: Sized + BuilderState<Storage, (), Stacks, Emily>,
 {
 }
 
 /// Trait for configuring the Stacks client implementation. These methods are
 /// available when the Stacks client implementation has not been set yet.
-pub trait ConfigureStacksClient<Storage, Bitcoin>
+pub trait ConfigureStacksClient<Storage, Bitcoin, Emily>
 where
-    Self: Sized + BuilderState<Storage, Bitcoin, ()>,
+    Self: Sized + BuilderState<Storage, Bitcoin, (), Emily>,
 {
     /// Configure the context with the specified Stacks client implementation.
     fn with_stacks_client<Stacks: StacksInteract + Clone + Send + Sync>(
         self,
         stacks_client: Stacks,
-    ) -> ContextBuilder<Storage, Bitcoin, Stacks> {
+    ) -> ContextBuilder<Storage, Bitcoin, Stacks, Emily> {
         let config = self.get_config();
         ContextBuilder {
             config: ContextConfig {
@@ -488,6 +534,7 @@ where
                 storage: config.storage,
                 bitcoin: config.bitcoin,
                 stacks: stacks_client,
+                emily: config.emily,
             },
         }
     }
@@ -495,15 +542,53 @@ where
     /// Configure the context with a mocked stacks client.
     fn with_mocked_stacks_client(
         self,
-    ) -> ContextBuilder<Storage, Bitcoin, WrappedMock<MockStacksInteract>> {
+    ) -> ContextBuilder<Storage, Bitcoin, WrappedMock<MockStacksInteract>, Emily> {
         self.with_stacks_client(WrappedMock::default())
     }
 }
 
-impl<Storage, Bitcoin> ConfigureStacksClient<Storage, Bitcoin>
-    for ContextBuilder<Storage, Bitcoin, ()>
+impl<Storage, Bitcoin, Emily> ConfigureStacksClient<Storage, Bitcoin, Emily>
+    for ContextBuilder<Storage, Bitcoin, (), Emily>
 where
-    Self: Sized + BuilderState<Storage, Bitcoin, ()>,
+    Self: Sized + BuilderState<Storage, Bitcoin, (), Emily>,
+{
+}
+
+/// Trait for configuring the Emily client implementation. These methods are
+/// available when the Emily client implementation has not been set yet.
+pub trait ConfigureEmilyClient<Storage, Bitcoin, Stacks>
+where
+    Self: Sized + BuilderState<Storage, Bitcoin, Stacks, ()>,
+{
+    /// Configure the context with the specified Emily client implementation.
+    fn with_emily_client<Emily: EmilyInteract + Clone + Send + Sync>(
+        self,
+        emily_client: Emily,
+    ) -> ContextBuilder<Storage, Bitcoin, Stacks, Emily> {
+        let config = self.get_config();
+        ContextBuilder {
+            config: ContextConfig {
+                settings: config.settings,
+                storage: config.storage,
+                bitcoin: config.bitcoin,
+                stacks: config.stacks,
+                emily: emily_client,
+            },
+        }
+    }
+
+    /// Configure the context with a mocked Emily client.
+    fn with_mocked_emily_client(
+        self,
+    ) -> ContextBuilder<Storage, Bitcoin, Stacks, WrappedMock<MockEmilyInteract>> {
+        self.with_emily_client(WrappedMock::default())
+    }
+}
+
+impl<Storage, Bitcoin, Stacks> ConfigureEmilyClient<Storage, Bitcoin, Stacks>
+    for ContextBuilder<Storage, Bitcoin, Stacks, ()>
+where
+    Self: Sized + BuilderState<Storage, Bitcoin, Stacks, ()>,
 {
 }
 
@@ -511,13 +596,17 @@ where
 /// available when no clients have been configured yet.
 pub trait ConfigureMockedClients<Storage>
 where
-    Self: Sized + BuilderState<Storage, (), ()>,
+    Self: Sized + BuilderState<Storage, (), (), ()>,
 {
     /// Configure the context to use mocks for all client implementations.
     fn with_mocked_clients(
         self,
-    ) -> ContextBuilder<Storage, WrappedMock<MockBitcoinInteract>, WrappedMock<MockStacksInteract>>
-    {
+    ) -> ContextBuilder<
+        Storage,
+        WrappedMock<MockBitcoinInteract>,
+        WrappedMock<MockStacksInteract>,
+        WrappedMock<MockEmilyInteract>,
+    > {
         let config = self.get_config();
         ContextBuilder {
             config: ContextConfig {
@@ -525,44 +614,47 @@ where
                 storage: config.storage,
                 bitcoin: WrappedMock::default(),
                 stacks: WrappedMock::default(),
+                emily: WrappedMock::default(),
             },
         }
     }
 }
 
-impl<Storage> ConfigureMockedClients<Storage> for ContextBuilder<Storage, (), ()> where
-    Self: Sized + BuilderState<Storage, (), ()>
+impl<Storage> ConfigureMockedClients<Storage> for ContextBuilder<Storage, (), (), ()> where
+    Self: Sized + BuilderState<Storage, (), (), ()>
 {
 }
 
 /// Trait for building a [`TestContext`]. The [`BuildContext::build`] method
 /// consumes the builder and returns a new [`TestContext`]. The method is only
 /// available when all required components have been configured.
-pub trait BuildContext<Storage, Bitcoin, Stacks>
+pub trait BuildContext<Storage, Bitcoin, Stacks, Emily>
 where
-    Self: Sized + BuilderState<Storage, Bitcoin, Stacks>,
+    Self: Sized + BuilderState<Storage, Bitcoin, Stacks, Emily>,
 {
     /// Consume the builder and return a new [`TestContext`].
-    fn build(self) -> TestContext<Storage, Bitcoin, Stacks>;
+    fn build(self) -> TestContext<Storage, Bitcoin, Stacks, Emily>;
 }
 
 // TODO: We could probably move the entire builder and use it for the `SignerContext`
 // as well with a separate `SignerContextBuilder` trait.
-impl<Storage, Bitcoin, Stacks> BuildContext<Storage, Bitcoin, Stacks>
-    for ContextBuilder<Storage, Bitcoin, Stacks>
+impl<Storage, Bitcoin, Stacks, Emily> BuildContext<Storage, Bitcoin, Stacks, Emily>
+    for ContextBuilder<Storage, Bitcoin, Stacks, Emily>
 where
-    Self: BuilderState<Storage, Bitcoin, Stacks>,
+    Self: BuilderState<Storage, Bitcoin, Stacks, Emily>,
     Storage: DbRead + DbWrite + Clone + Sync + Send,
     Bitcoin: BitcoinInteract + Clone + Send + Sync,
     Stacks: StacksInteract + Clone + Send + Sync,
+    Emily: EmilyInteract + Clone + Send + Sync,
 {
-    fn build(self) -> TestContext<Storage, Bitcoin, Stacks> {
+    fn build(self) -> TestContext<Storage, Bitcoin, Stacks, Emily> {
         let config = self.get_config();
         TestContext::new(
             config.settings,
             config.storage,
             config.bitcoin,
             config.stacks,
+            config.emily,
         )
     }
 }

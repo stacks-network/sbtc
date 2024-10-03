@@ -8,6 +8,7 @@ use url::Url;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::config::Settings;
+use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::stacks::api::StacksInteract;
 use crate::storage::DbRead;
@@ -36,12 +37,14 @@ pub trait Context: Clone + Sync + Send {
     fn get_bitcoin_client(&self) -> impl BitcoinInteract + Clone;
     /// Get a handler to the Stacks client.
     fn get_stacks_client(&self) -> impl StacksInteract + Clone;
+    /// Get a handle to a Emily client.
+    fn get_emily_client(&self) -> impl EmilyInteract + Clone;
 }
 
 /// Signer context which is passed to different components within the
 /// signer binary.
 #[derive(Debug, Clone)]
-pub struct SignerContext<S, BC, ST> {
+pub struct SignerContext<S, BC, ST, EM> {
     config: Settings,
     // Handle to the app signalling channel. This keeps the channel alive
     // for the duration of the program and is used both to send messages
@@ -60,38 +63,48 @@ pub struct SignerContext<S, BC, ST> {
     // count down.
     /// Handle to a Stacks-RPC fallback-client.
     stacks_client: ST,
-    // /// Handle to a Emily-API fallback-client.
-    //emily_client: ApiFallbackClient<EM>,
+    /// Handle to a Emily-API fallback-client.
+    emily_client: EM,
     // /// Handle to a Blocklist-API fallback-client.
     //blocklist_client: ApiFallbackClient<BL>,
 }
 
-impl<S, BC, ST> SignerContext<S, BC, ST>
+impl<S, BC, ST, EM> SignerContext<S, BC, ST, EM>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
     BC: for<'a> TryFrom<&'a [Url]> + BitcoinInteract + Clone + 'static,
     ST: for<'a> TryFrom<&'a Settings> + StacksInteract + Clone + Sync + Send + 'static,
+    EM: for<'a> TryFrom<&'a [Url]> + EmilyInteract + Clone + Sync + Send + 'static,
     Error: for<'a> From<<BC as TryFrom<&'a [Url]>>::Error>,
     Error: for<'a> From<<ST as TryFrom<&'a Settings>>::Error>,
+    Error: for<'a> From<<EM as TryFrom<&'a [Url]>>::Error>,
 {
     /// Initializes a new [`SignerContext`], automatically creating clients
     /// based on the provided types.
     pub fn init(config: Settings, db: S) -> Result<Self, Error> {
         let bc = BC::try_from(&config.bitcoin.rpc_endpoints)?;
         let st = ST::try_from(&config)?;
+        let em = EM::try_from(&config.emily.endpoints)?;
 
-        Ok(Self::new(config, db, bc, st))
+        Ok(Self::new(config, db, bc, st, em))
     }
 }
 
-impl<S, BC, ST> SignerContext<S, BC, ST>
+impl<S, BC, ST, EM> SignerContext<S, BC, ST, EM>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
     BC: BitcoinInteract + Clone,
     ST: StacksInteract + Clone + Sync + Send,
+    EM: EmilyInteract + Clone + Sync + Send,
 {
     /// Create a new signer context.
-    pub fn new(config: Settings, db: S, bitcoin_client: BC, stacks_client: ST) -> Self {
+    pub fn new(
+        config: Settings,
+        db: S,
+        bitcoin_client: BC,
+        stacks_client: ST,
+        emily_client: EM,
+    ) -> Self {
         // TODO: Decide on the channel capacity and how we should handle slow consumers.
         // NOTE: Ideally consumers which require processing time should pull the relevent
         // messages into a local VecDequeue and process them in their own time.
@@ -105,15 +118,17 @@ where
             storage: db,
             bitcoin_client,
             stacks_client,
+            emily_client,
         }
     }
 }
 
-impl<S, BC, ST> Context for SignerContext<S, BC, ST>
+impl<S, BC, ST, EM> Context for SignerContext<S, BC, ST, EM>
 where
     S: DbRead + DbWrite + Clone + Sync + Send,
     BC: BitcoinInteract + Clone,
     ST: StacksInteract + Clone + Sync + Send,
+    EM: EmilyInteract + Clone + Sync + Send,
 {
     fn config(&self) -> &Settings {
         &self.config
@@ -159,6 +174,10 @@ where
 
     fn get_stacks_client(&self) -> impl StacksInteract + Clone {
         self.stacks_client.clone()
+    }
+
+    fn get_emily_client(&self) -> impl EmilyInteract + Clone {
+        self.emily_client.clone()
     }
 }
 
