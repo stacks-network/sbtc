@@ -78,7 +78,7 @@ impl SignerWallet {
     /// 4. The number of public keys exceeds the MAX_KEYS constant.
     /// 5. The combined public key would be the point at infinity.
     ///
-    /// Error condition (5) occurs when PublicKey::combine_keys errors.
+    /// Error condition (5) occurs when [`PublicKey::combine_keys`] errors.
     /// There are two other conditions where that function errors, which
     /// are:
     ///
@@ -93,10 +93,11 @@ impl SignerWallet {
     ///
     /// # Notes
     ///
-    /// Now there is always a small risk that the PublicKey::combine_keys
-    /// function will return a Result::Err, even with perfectly fine
-    /// inputs. This is highly unlikely by chance, but a Byzantine actor
-    /// could trigger it purposefully if we aren't careful.
+    /// Now there is always a small risk that [`PublicKey::combine_keys`]
+    /// will return a `Result::Err`, even with perfectly fine inputs. This
+    /// is highly unlikely by chance, but a Byzantine actor could trigger
+    /// it purposefully if we don't require a signer to prove that they
+    /// control the public key that they submit.
     pub fn new(
         public_keys: &[PublicKey],
         signatures_required: u16,

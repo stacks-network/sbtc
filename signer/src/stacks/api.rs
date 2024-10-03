@@ -121,9 +121,9 @@ pub trait StacksInteract: Send + Sync {
     /// This function is analogous to the GET /v3/tenures/info stacks node
     /// endpoint for retrieving tenure information.
     fn get_tenure_info(&self) -> impl Future<Output = Result<RPCGetTenureInfo, Error>> + Send;
-    /// Estimate the priority transaction fees for the input transaction
-    /// for the current state of the mempool. The result should be and
-    /// estimated total fee in microSTX.
+    /// Estimate the priority transaction fees given the input transaction
+    /// and the current state of the mempool. The result will be the
+    /// estimated total transaction fee in microSTX.
     ///
     /// This function usually uses the POST /v2/fees/transaction endpoint
     /// of a stacks node.
