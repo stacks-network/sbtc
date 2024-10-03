@@ -63,7 +63,6 @@ where
                 context_window,
                 wsts_state_machines: HashMap::new(),
                 threshold,
-                network_kind: bitcoin::Network::Regtest,
                 rng,
             },
             context,
