@@ -218,7 +218,7 @@ impl SignerSwarm {
 
 #[cfg(test)]
 mod tests {
-    use crate::{config::Settings, storage::in_memory::Store, testing::NoopSignerContext};
+    use crate::testing::context::*;
 
     use super::*;
 
@@ -246,8 +246,11 @@ mod tests {
         let builder = SignerSwarmBuilder::new(&private_key);
         let mut swarm = builder.build().unwrap();
 
-        let settings = Settings::new_from_default_config().unwrap();
-        let ctx = NoopSignerContext::init(settings, Store::new_shared()).unwrap();
+        let ctx = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
         let term = ctx.get_termination_handle();
 
         let timeout = tokio::time::timeout(Duration::from_secs(10), async {

@@ -161,8 +161,8 @@ pub struct AcceptWithdrawal {
     /// withdrawal request.
     #[prost(message, optional, tag = "2")]
     pub outpoint: ::core::option::Option<super::super::super::bitcoin::OutPoint>,
-    /// The fee that was spent to the bitcoin miner when fulfilling the
-    /// withdrawal request.
+    /// This is the assessed transaction fee for fulfilling the withdrawal
+    /// request.
     #[prost(uint64, tag = "3")]
     pub tx_fee: u64,
     /// A bitmap of how the signers voted. The length of the list must be less

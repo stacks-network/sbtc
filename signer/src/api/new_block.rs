@@ -128,10 +128,9 @@ mod tests {
     use rand::rngs::OsRng;
     use test_case::test_case;
 
-    use crate::config::Settings;
     use crate::storage::in_memory::Store;
     use crate::storage::model::StacksPrincipal;
-    use crate::testing::NoopSignerContext;
+    use crate::testing::context::*;
 
     /// These were generated from a stacks node after running the
     /// "complete-deposit standard recipient", "accept-withdrawal",
@@ -159,12 +158,14 @@ mod tests {
     where
         F: Fn(tokio::sync::MutexGuard<'_, Store>) -> bool,
     {
-        let db = Store::new_shared();
-
-        let ctx = NoopSignerContext::init(Settings::new_from_default_config().unwrap(), db.clone())
-            .expect("failed to init context");
+        let ctx = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
 
         let api = ApiState { ctx: ctx.clone() };
+
+        let db = ctx.inner_storage();
 
         // Hey look, there is nothing here!
         assert!(table_is_empty(db.lock().await));
@@ -188,12 +189,14 @@ mod tests {
     where
         F: Fn(tokio::sync::MutexGuard<'_, Store>) -> bool,
     {
-        let db = Store::new_shared();
-
-        let ctx = NoopSignerContext::init(Settings::new_from_default_config().unwrap(), db.clone())
-            .expect("failed to init context");
+        let ctx = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
 
         let api = ApiState { ctx: ctx.clone() };
+
+        let db = ctx.inner_storage();
 
         // Hey look, there is nothing here!
         assert!(table_is_empty(db.lock().await));

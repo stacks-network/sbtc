@@ -13,7 +13,7 @@ use bitcoin::TxIn;
 use bitcoin::TxOut;
 use bitcoin::Witness;
 use bitcoin::XOnlyPublicKey;
-use bitcoincore_rpc::RpcApi;
+use bitcoincore_rpc::RpcApi as _;
 use bitvec::array::BitArray;
 use clarity::vm::types::PrincipalData;
 use fake::Fake;
@@ -38,10 +38,11 @@ pub static REQUEST_IDS: AtomicU64 = AtomicU64::new(0);
 
 pub fn generate_withdrawal() -> (WithdrawalRequest, Recipient) {
     let recipient = Recipient::new(AddressType::P2tr);
+    let amount = OsRng.sample(Uniform::new(200_000, 250_000));
 
     let req = WithdrawalRequest {
-        amount: OsRng.sample(Uniform::new(100_000, 250_000)),
-        max_fee: 250_000,
+        amount,
+        max_fee: amount / 2,
         script_pubkey: recipient.script_pubkey.clone().into(),
         signer_bitmap: BitArray::ZERO,
         request_id: REQUEST_IDS.fetch_add(1, Ordering::Relaxed),
@@ -64,7 +65,7 @@ where
     let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
     let deposit_inputs = DepositScriptInputs {
         signers_public_key,
-        max_fee: amount,
+        max_fee: amount / 2,
         recipient: PrincipalData::from(StacksAddress::burn_address(false)),
     };
     let reclaim_inputs = ReclaimScriptInputs::try_new(50, ScriptBuf::new()).unwrap();

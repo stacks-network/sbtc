@@ -227,7 +227,7 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         encrypted_private_shares,
         public_shares,
         tweaked_aggregate_key: group_key.signers_tweaked_pubkey().unwrap(),
-        script_pubkey: group_key.signers_script_pubkey().into_bytes(),
+        script_pubkey: group_key.signers_script_pubkey().into(),
     }
 }
 

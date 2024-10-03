@@ -10,6 +10,7 @@ pub mod in_memory;
 pub mod model;
 pub mod postgres;
 pub mod sqlx;
+pub mod util;
 
 use std::future::Future;
 
@@ -126,7 +127,9 @@ pub trait DbRead {
         chain_tip: &model::BitcoinBlockHash,
     ) -> impl Future<Output = Result<Option<model::RotateKeysTransaction>, Error>> + Send;
 
-    /// Get the last 365 days worth of the signers' `scriptPubkey`s.
+    /// Get the last 365 days worth of the signers' `scriptPubkey`s. If no
+    /// keys are available within the last 365, then return the most recent
+    /// key.
     fn get_signers_script_pubkeys(
         &self,
     ) -> impl Future<Output = Result<Vec<model::Bytes>, Error>> + Send;
@@ -147,6 +150,7 @@ pub trait DbRead {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &crate::keys::PublicKey,
+        context_window: u16,
     ) -> impl Future<Output = Result<Option<SignerUtxo>, Error>> + Send;
 
     /// For the given outpoint and aggregate key, get the list all signer
@@ -173,6 +177,13 @@ pub trait DbRead {
         &self,
         chain_tip: &model::BitcoinBlockRef,
         block_ref: &model::BitcoinBlockRef,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
+
+    /// Checks whether the given scriptPubKey is one of the signers'
+    /// scriptPubKeys.
+    fn is_signer_script_pub_key(
+        &self,
+        script: &model::ScriptPubKey,
     ) -> impl Future<Output = Result<bool, Error>> + Send;
 
     /// Fetch the bitcoin transaction that is included in the block

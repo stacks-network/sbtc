@@ -953,7 +953,7 @@ impl BitcoinTxInfo {
     ///
     /// The logic for the fee assessment is from
     /// <https://github.com/stacks-network/sbtc/issues/182>.
-    pub fn assess_input_fee(&self, outpoint: OutPoint) -> Option<Amount> {
+    pub fn assess_input_fee(&self, outpoint: &OutPoint) -> Option<Amount> {
         // The Weight::to_wu function just returns the inner weight units
         // as an u64, so this is really just the weight.
         let request_weight = self.request_weight().to_wu();
@@ -964,7 +964,7 @@ impl BitcoinTxInfo {
             .input
             .iter()
             .skip(1)
-            .find(|tx_in| tx_in.previous_output == outpoint)?
+            .find(|tx_in| &tx_in.previous_output == outpoint)?
             .segwit_weight()
             .to_wu();
 
@@ -2267,7 +2267,7 @@ mod tests {
         let fee = Amount::from_sat(500_000);
 
         let tx_info = BitcoinTxInfo::from_tx(tx, fee);
-        let assessed_fee = tx_info.assess_input_fee(deposit_outpoint).unwrap();
+        let assessed_fee = tx_info.assess_input_fee(&deposit_outpoint).unwrap();
         assert_eq!(assessed_fee, fee);
     }
 
@@ -2300,7 +2300,7 @@ mod tests {
         // `base_signer_transaction()` only adds one input, the search for
         // the given input when `assess_input_fee` executes will always
         // fail, simulating that the specified outpoint wasn't found.
-        assert!(tx_info.assess_input_fee(OutPoint::null()).is_none());
+        assert!(tx_info.assess_input_fee(&OutPoint::null()).is_none());
     }
 
     #[test]
@@ -2330,10 +2330,10 @@ mod tests {
         let fee = Amount::from_sat(500_000);
 
         let tx_info = BitcoinTxInfo::from_tx(tx, fee);
-        let assessed_fee1 = tx_info.assess_input_fee(deposit_outpoint1).unwrap();
+        let assessed_fee1 = tx_info.assess_input_fee(&deposit_outpoint1).unwrap();
         assert_eq!(assessed_fee1, fee / 2);
 
-        let assessed_fee2 = tx_info.assess_input_fee(deposit_outpoint2).unwrap();
+        let assessed_fee2 = tx_info.assess_input_fee(&deposit_outpoint2).unwrap();
         assert_eq!(assessed_fee2, fee / 2);
     }
 
@@ -2387,7 +2387,7 @@ mod tests {
         let fee = Amount::from_sat(fee_sats);
 
         let tx_info = BitcoinTxInfo::from_tx(tx, fee);
-        let input_assessed_fee = tx_info.assess_input_fee(deposit_outpoint).unwrap();
+        let input_assessed_fee = tx_info.assess_input_fee(&deposit_outpoint).unwrap();
         let output1_assessed_fee = tx_info.assess_output_fee(2).unwrap();
         let output2_assessed_fee = tx_info.assess_output_fee(3).unwrap();
 

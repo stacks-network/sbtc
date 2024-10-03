@@ -48,6 +48,11 @@ pub const BITCOIN_CORE_RPC_PASSWORD: &str = "devnet";
 /// The fallback fee in bitcoin core
 pub const BITCOIN_CORE_FALLBACK_FEE: Amount = Amount::from_sat(1000);
 
+/// The minimum height of the bitcoin blockchains. You need 100 blocks
+/// mined on top of a bitcoin block before you can spend the coinbase
+/// rewards.
+pub const MIN_BLOCKCHAIN_HEIGHT: u64 = 101;
+
 /// The name of our wallet on bitcoin-core
 const BITCOIN_CORE_WALLET_NAME: &str = "integration-tests-wallet";
 
@@ -85,7 +90,7 @@ pub fn initialize_blockchain() -> (&'static Client, &'static Faucet) {
         let amount = rpc.get_received_by_address(&faucet.address, None).unwrap();
 
         if amount < Amount::from_int_btc(1) {
-            faucet.generate_blocks(101);
+            faucet.generate_blocks(MIN_BLOCKCHAIN_HEIGHT);
         }
 
         faucet

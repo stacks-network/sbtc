@@ -3,22 +3,28 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
+use bitcoin::consensus::Decodable as _;
 use bitcoin::hashes::Hash as _;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksBlockId;
+use futures::StreamExt as _;
 use sqlx::PgExecutor;
+use stacks_common::types::chainstate::StacksAddress;
 
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::keys::SignerScriptPubKey as _;
 use crate::stacks::events::CompletedDepositEvent;
 use crate::stacks::events::WithdrawalAcceptEvent;
 use crate::stacks::events::WithdrawalCreateEvent;
 use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
 use crate::storage::model::TransactionType;
+
+use super::util::get_utxo;
 
 /// All migration scripts from the `signer/migrations` directory.
 static PGSQL_MIGRATIONS: include_dir::Dir =
@@ -59,14 +65,20 @@ fn contract_transaction_kinds() -> &'static HashMap<&'static str, TransactionTyp
 
 /// This function extracts the signer relevant sBTC related transactions
 /// from the given blocks.
-pub fn extract_relevant_transactions(blocks: &[NakamotoBlock]) -> Vec<model::Transaction> {
+///
+/// Here the deployer is the address that deployed the sBTC smart
+/// contracts.
+pub fn extract_relevant_transactions(
+    blocks: &[NakamotoBlock],
+    deployer: &StacksAddress,
+) -> Vec<model::Transaction> {
     let transaction_kinds = contract_transaction_kinds();
     blocks
         .iter()
         .flat_map(|block| block.txs.iter().map(|tx| (tx, block.block_id())))
         .filter_map(|(tx, block_id)| match &tx.payload {
             TransactionPayload::ContractCall(x)
-                if CONTRACT_NAMES.contains(&x.contract_name.as_str()) =>
+                if CONTRACT_NAMES.contains(&x.contract_name.as_str()) && &x.address == deployer =>
             {
                 Some(model::Transaction {
                     txid: tx.txid().into_bytes(),
@@ -429,7 +441,7 @@ impl super::DbRead for PgStore {
             "#,
         )
         .bind(chain_tip)
-        .bind(context_window as i32)
+        .bind(i32::from(context_window))
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -490,8 +502,8 @@ impl super::DbRead for PgStore {
             "#,
         )
         .bind(chain_tip)
-        .bind(context_window as i32)
-        .bind(threshold as i32)
+        .bind(i32::from(context_window))
+        .bind(i32::from(threshold))
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -534,7 +546,7 @@ impl super::DbRead for PgStore {
         )
         .bind(aggregate_key)
         .bind(txid)
-        .bind(output_index as i64)
+        .bind(i64::from(output_index))
         .fetch_all(&self.0)
         .await
         .map(model::SignerVotes::from)
@@ -728,7 +740,7 @@ impl super::DbRead for PgStore {
         )
         .bind(chain_tip)
         .bind(stacks_chain_tip.block_hash)
-        .bind(context_window as i32)
+        .bind(i32::from(context_window))
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -816,8 +828,8 @@ impl super::DbRead for PgStore {
         )
         .bind(chain_tip)
         .bind(stacks_chain_tip.block_hash)
-        .bind(context_window as i32)
-        .bind(threshold as i64)
+        .bind(i32::from(context_window))
+        .bind(i64::from(threshold))
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -934,6 +946,17 @@ impl super::DbRead for PgStore {
     async fn get_signers_script_pubkeys(&self) -> Result<Vec<model::Bytes>, Error> {
         sqlx::query_scalar::<_, model::Bytes>(
             r#"
+            WITH last_script_pubkey AS (
+                SELECT script_pubkey
+                FROM sbtc_signer.dkg_shares
+                ORDER BY created_at DESC
+                LIMIT 1
+            )
+            SELECT script_pubkey
+            FROM last_script_pubkey
+
+            UNION
+
             SELECT script_pubkey
             FROM sbtc_signer.dkg_shares
             WHERE created_at > CURRENT_TIMESTAMP - INTERVAL '365 DAYS';
@@ -946,10 +969,93 @@ impl super::DbRead for PgStore {
 
     async fn get_signer_utxo(
         &self,
-        _chain_tip: &model::BitcoinBlockHash,
-        _aggregate_key: &PublicKey,
+        chain_tip: &model::BitcoinBlockHash,
+        aggregate_key: &PublicKey,
+        context_window: u16,
     ) -> Result<Option<SignerUtxo>, Error> {
-        unimplemented!() // TODO(538)
+        // TODO(585): once the new table is ready, check if it can be used to simplify this
+        let script_pubkey = aggregate_key.signers_script_pubkey();
+        let mut txs = sqlx::query_as::<_, model::Transaction>(
+            r#"
+            WITH RECURSIVE tx_block_chain AS (
+                SELECT
+                    block_hash
+                  , parent_hash
+                  , 1 AS depth
+                FROM sbtc_signer.bitcoin_blocks
+                WHERE block_hash = $1
+                
+                UNION ALL
+                
+                SELECT
+                    parent.block_hash
+                  , parent.parent_hash
+                  , child.depth + 1
+                FROM sbtc_signer.bitcoin_blocks AS parent
+                JOIN tx_block_chain AS child ON child.parent_hash = parent.block_hash
+                WHERE child.depth < $2
+            )
+            SELECT
+                txs.txid
+              , txs.tx
+              , txs.tx_type
+              , tbc.block_hash
+            FROM tx_block_chain AS tbc
+            JOIN sbtc_signer.bitcoin_transactions AS bt ON tbc.block_hash = bt.block_hash
+            JOIN sbtc_signer.transactions AS txs USING (txid)
+            WHERE txs.tx_type = 'sbtc_transaction'
+            ORDER BY tbc.depth ASC;
+            "#,
+        )
+        .bind(chain_tip)
+        .bind(context_window as i32)
+        .fetch(&self.0);
+
+        let mut utxo_block = None;
+        while let Some(tx) = txs.next().await {
+            let tx = tx.map_err(Error::SqlxQuery)?;
+            let bt_tx = bitcoin::Transaction::consensus_decode(&mut tx.tx.as_slice())
+                .map_err(Error::DecodeBitcoinTransaction)?;
+            if !bt_tx
+                .output
+                .first()
+                .is_some_and(|out| out.script_pubkey == script_pubkey)
+            {
+                continue;
+            }
+            utxo_block = Some(tx.block_hash);
+            break;
+        }
+
+        // `utxo_block` is the heighest block containing a valid utxo
+        let Some(utxo_block) = utxo_block else {
+            return Ok(None);
+        };
+        // Fetch all the sbtc txs in the same block
+        let sbtc_txs = sqlx::query_as::<_, model::Transaction>(
+            r#"
+            SELECT
+                txs.txid
+              , txs.tx
+              , txs.tx_type
+              , bt.block_hash
+            FROM sbtc_signer.transactions AS txs
+            JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
+            WHERE txs.tx_type = 'sbtc_transaction' AND bt.block_hash = $1;
+            "#,
+        )
+        .bind(utxo_block)
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?
+        .iter()
+        .map(|tx| {
+            bitcoin::Transaction::consensus_decode(&mut tx.tx.as_slice())
+                .map_err(Error::DecodeBitcoinTransaction)
+        })
+        .collect::<Result<Vec<bitcoin::Transaction>, _>>()?;
+
+        get_utxo(aggregate_key, sbtc_txs)
     }
 
     async fn in_canonical_bitcoin_blockchain(
@@ -966,32 +1072,52 @@ impl super::DbRead for PgStore {
             WITH RECURSIVE tx_block_chain AS (
                 SELECT 
                     block_hash
+                  , block_height
                   , parent_hash
                   , 0 AS counter
                 FROM sbtc_signer.bitcoin_blocks
-                WHERE block_hash = $2
+                WHERE block_hash = $1
 
                 UNION ALL
 
                 SELECT
                     child.block_hash
+                  , child.block_height
                   , child.parent_hash
                   , parent.counter + 1
                 FROM sbtc_signer.bitcoin_blocks AS child
                 JOIN tx_block_chain AS parent
-                  ON child.parent_hash = parent.block_hash
+                  ON child.block_hash = parent.parent_hash
                 WHERE parent.counter <= $3
             )
             SELECT EXISTS (
                 SELECT TRUE
                 FROM tx_block_chain AS tbc
-                WHERE tbc.block_hash = $1
+                WHERE tbc.block_hash = $2
+                  AND tbc.block_height = $4
             );
         "#,
         )
         .bind(chain_tip.block_hash)
         .bind(block_ref.block_hash)
-        .bind(heigh_diff as i64)
+        .bind(i64::try_from(heigh_diff).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(block_ref.block_height).map_err(Error::ConversionDatabaseInt)?)
+        .fetch_one(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn is_signer_script_pub_key(&self, script: &model::ScriptPubKey) -> Result<bool, Error> {
+        sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT TRUE
+                FROM sbtc_signer.dkg_shares AS ds
+                WHERE ds.script_pubkey = $1
+            );
+        "#,
+        )
+        .bind(script)
         .fetch_one(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -1081,7 +1207,7 @@ impl super::DbWrite for PgStore {
             ON CONFLICT DO NOTHING",
         )
         .bind(deposit_request.txid)
-        .bind(deposit_request.output_index as i32)
+        .bind(i32::try_from(deposit_request.output_index).map_err(Error::ConversionDatabaseInt)?)
         .bind(&deposit_request.spend_script)
         .bind(&deposit_request.reclaim_script)
         .bind(&deposit_request.recipient)
@@ -1113,8 +1239,9 @@ impl super::DbWrite for PgStore {
         let mut sender_script_pubkeys = Vec::with_capacity(deposit_requests.len());
 
         for req in deposit_requests {
+            let vout = i32::try_from(req.output_index).map_err(Error::ConversionDatabaseInt)?;
             txid.push(req.txid);
-            output_index.push(req.output_index as i32);
+            output_index.push(vout);
             spend_script.push(req.spend_script);
             reclaim_script.push(req.reclaim_script);
             recipient.push(req.recipient);
@@ -1233,7 +1360,7 @@ impl super::DbWrite for PgStore {
             ON CONFLICT DO NOTHING",
         )
         .bind(decision.txid)
-        .bind(decision.output_index as i32)
+        .bind(i32::try_from(decision.output_index).map_err(Error::ConversionDatabaseInt)?)
         .bind(decision.signer_pub_key)
         .bind(decision.is_accepted)
         .execute(&self.0)
@@ -1488,7 +1615,7 @@ impl super::DbWrite for PgStore {
         .bind(key_rotation.txid)
         .bind(key_rotation.aggregate_key)
         .bind(&key_rotation.signer_set)
-        .bind(key_rotation.signatures_required as i32)
+        .bind(i32::from(key_rotation.signatures_required))
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1515,7 +1642,7 @@ impl super::DbWrite for PgStore {
         .bind(event.block_id.0)
         .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.outpoint.txid.to_byte_array())
-        .bind(event.outpoint.vout as i64)
+        .bind(i64::from(event.outpoint.vout))
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1578,7 +1705,7 @@ impl super::DbWrite for PgStore {
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.signer_bitmap.into_inner())
         .bind(event.outpoint.txid.to_byte_array())
-        .bind(event.outpoint.vout as i64)
+        .bind(i64::from(event.outpoint.vout))
         .bind(i64::try_from(event.fee).map_err(Error::ConversionDatabaseInt)?)
         .execute(&self.0)
         .await
@@ -1642,14 +1769,15 @@ mod tests {
             blocks.push(NakamotoBlock::consensus_deserialize(bytes).unwrap());
         }
 
-        let txs = extract_relevant_transactions(&blocks);
+        let deployer = StacksAddress::burn_address(false);
+        let txs = extract_relevant_transactions(&blocks, &deployer);
         assert!(txs.is_empty());
 
         let last_block = blocks.last_mut().unwrap();
         let mut tx = last_block.txs.last().unwrap().clone();
 
         let contract_call = TransactionContractCall {
-            address: StacksAddress::new(2, Hash160([0u8; 20])),
+            address: deployer,
             contract_name: ContractName::from(contract_name),
             function_name: ClarityName::from(function_name),
             function_args: Vec::new(),
@@ -1657,7 +1785,34 @@ mod tests {
         tx.payload = TransactionPayload::ContractCall(contract_call);
         last_block.txs.push(tx);
 
-        let txs = extract_relevant_transactions(&blocks);
+        let txs = extract_relevant_transactions(&blocks, &deployer);
         assert_eq!(txs.len(), 1);
+
+        // We've just seen that if the deployer supplied here matches the
+        // address in the transaction, then we will consider it a relevant
+        // transaction. Now what if someone tries to pull a fast one by
+        // deploying their own modified version of the sBTC smart contracts
+        // and creating contract calls against that? We'll the address of
+        // these contract calls won't match the ones that we are interested
+        // in and we will filter them out. We test that now,
+        let contract_call = TransactionContractCall {
+            // This is the address of the poser that deployed their own
+            // versions of the sBTC smart contracts.
+            address: StacksAddress::new(2, Hash160([1; 20])),
+            contract_name: ContractName::from(contract_name),
+            function_name: ClarityName::from(function_name),
+            function_args: Vec::new(),
+        };
+        // The last transaction in the last nakamoto block is a legit
+        // transaction. Let's remove it and replace it with a non-legit
+        // one.
+        let last_block = blocks.last_mut().unwrap();
+        let mut tx = last_block.txs.pop().unwrap();
+        tx.payload = TransactionPayload::ContractCall(contract_call);
+        last_block.txs.push(tx);
+
+        // Now there aren't any relevant transactions in the block
+        let txs = extract_relevant_transactions(&blocks, &deployer);
+        assert!(txs.is_empty());
     }
 }

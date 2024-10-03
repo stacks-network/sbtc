@@ -225,7 +225,7 @@ pub struct TransactionIds {
 }
 
 /// A raw transaction on either Bitcoin or Stacks.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct Transaction {
     /// Transaction ID.
@@ -247,7 +247,7 @@ pub struct EncryptedDkgShares {
     /// The tweaked aggregate key for these shares
     pub tweaked_aggregate_key: PublicKey,
     /// The `scriptPubKey` for the aggregate public key.
-    pub script_pubkey: Bytes,
+    pub script_pubkey: ScriptPubKey,
     /// The encrypted DKG shares
     pub encrypted_private_shares: Bytes,
     /// The public DKG shares

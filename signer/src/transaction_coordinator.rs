@@ -432,10 +432,15 @@ where
         else {
             return Err(Error::NoChainTip);
         };
+
+        let context_window = self
+            .context_window
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
         let utxo = self
             .context
             .get_storage()
-            .get_signer_utxo(&chain_tip, aggregate_key)
+            .get_signer_utxo(&chain_tip, aggregate_key, context_window)
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
         let last_fees = bitcoin_client.get_last_fee(utxo.outpoint).await?;
@@ -596,10 +601,7 @@ mod tests {
     use crate::stacks::api::MockStacksInteract;
     use crate::storage::in_memory::SharedStore;
     use crate::testing;
-    use crate::testing::context::{
-        BuildContext, ConfigureBitcoinClient, ConfigureStacksClient, ConfigureStorage, TestContext,
-        WrappedMock,
-    };
+    use crate::testing::context::*;
     use crate::testing::transaction_coordinator::TestEnvironment;
 
     fn test_environment() -> TestEnvironment<
@@ -615,8 +617,7 @@ mod tests {
 
         let context = TestContext::builder()
             .with_in_memory_storage()
-            .with_mocked_bitcoin_client()
-            .with_mocked_stacks_client()
+            .with_mocked_clients()
             .build();
 
         testing::transaction_coordinator::TestEnvironment {

@@ -310,7 +310,8 @@ where
         &mut self,
         blocks: &[nakamoto::NakamotoBlock],
     ) -> Result<(), Error> {
-        let txs = storage::postgres::extract_relevant_transactions(blocks);
+        let deployer = &self.context.config().signer.deployer;
+        let txs = storage::postgres::extract_relevant_transactions(blocks, deployer);
         let headers = blocks
             .iter()
             .map(model::StacksBlock::try_from)
@@ -358,7 +359,9 @@ mod tests {
     use blockstack_lib::types::chainstate::StacksAddress;
     use blockstack_lib::types::chainstate::StacksBlockId;
     use fake::Dummy;
+    use fake::Fake;
     use model::BitcoinTxId;
+    use model::ScriptPubKey;
     use rand::seq::IteratorRandom;
     use rand::SeedableRng;
 
@@ -388,6 +391,7 @@ mod tests {
         let ctx = SignerContext::new(
             Settings::new_from_default_config().unwrap(),
             storage.clone(),
+            test_harness.clone(),
             test_harness.clone(),
         );
         // There must be at least one signal receiver alive when the block observer
@@ -495,6 +499,7 @@ mod tests {
             Settings::new_from_default_config().unwrap(),
             storage.clone(),
             test_harness.clone(),
+            test_harness.clone(),
         );
 
         let mut block_observer = BlockObserver {
@@ -572,6 +577,7 @@ mod tests {
             Settings::new_from_default_config().unwrap(),
             storage.clone(),
             test_harness.clone(),
+            test_harness.clone(),
         );
 
         let mut block_observer = BlockObserver {
@@ -622,7 +628,7 @@ mod tests {
         // 4. We try "extracting" a block with two transactions where one
         //    of them spends to the signers. The one transaction should be
         //    stored in our storage.
-        let signers_script_pubkey = vec![1, 2, 3, 4];
+        let signers_script_pubkey: ScriptPubKey = fake::Faker.fake_with_rng(&mut rng);
 
         // We start by storing our `scriptPubKey`.
         let storage = storage::in_memory::Store::new_shared();
@@ -640,6 +646,7 @@ mod tests {
             Settings::new_from_default_config().unwrap(),
             storage.clone(),
             test_harness.clone(),
+            test_harness.clone(),
         );
 
         // Now let's create two transactions, one spending to the signers
@@ -650,7 +657,7 @@ mod tests {
         let mut tx_setup0 = sbtc::testing::deposits::tx_setup(0, 0, 100);
         tx_setup0.tx.output.push(TxOut {
             value: Amount::ONE_BTC,
-            script_pubkey: ScriptBuf::from_bytes(signers_script_pubkey.clone()),
+            script_pubkey: signers_script_pubkey.into(),
         });
 
         // This one does not spend to the signers :(

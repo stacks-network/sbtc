@@ -410,10 +410,10 @@ mod tests {
 
         assert_eq!(
             settings.bitcoin.rpc_endpoints,
-            vec![url("http://user:pass@localhost:18443")]
+            vec![url("http://devnet:devnet@localhost:18443")]
         );
-        assert_eq!(settings.bitcoin.rpc_endpoints[0].username(), "user");
-        assert_eq!(settings.bitcoin.rpc_endpoints[0].password(), Some("pass"));
+        assert_eq!(settings.bitcoin.rpc_endpoints[0].username(), "devnet");
+        assert_eq!(settings.bitcoin.rpc_endpoints[0].password(), Some("devnet"));
         assert_eq!(
             settings.signer.event_observer.bind,
             "0.0.0.0:8801".parse::<SocketAddr>().unwrap()
