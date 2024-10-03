@@ -35,8 +35,8 @@ async fn create_deposits(client: &TestClient) {
             let create_request = CreateDepositRequestBody {
                 bitcoin_txid: format!("txid-{i}"),
                 bitcoin_tx_output_index: j + offset,
-                reclaim: format!("reclaim-script-{i}"),
-                deposit: format!("deposit-script-{i}"),
+                reclaim_script: format!("reclaim-script-{i}"),
+                deposit_script: format!("deposit-script-{i}"),
             };
             client.create_deposit(&create_request).await;
         }

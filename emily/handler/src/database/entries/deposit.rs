@@ -50,6 +50,10 @@ pub struct DepositEntry {
     /// The status of the deposit.
     #[serde(rename = "OpStatus")]
     pub status: Status,
+    /// The raw reclaim script.
+    pub reclaim_script: String,
+    /// The raw deposit script.
+    pub deposit_script: String,
     /// The most recent Stacks block height the API was aware of when the deposit was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this height is the Stacks block height that contains that artifact.
@@ -235,8 +239,9 @@ impl TryFrom<DepositEntry> for Deposit {
             parameters: DepositParameters {
                 max_fee: deposit_entry.parameters.max_fee,
                 lock_time: deposit_entry.parameters.lock_time,
-                reclaim_script: deposit_entry.parameters.reclaim_script,
             },
+            reclaim_script: deposit_entry.reclaim_script,
+            deposit_script: deposit_entry.deposit_script,
             fulfillment,
         })
     }
@@ -251,8 +256,6 @@ pub struct DepositParametersEntry {
     pub max_fee: u64,
     /// Bitcoin block height at which the reclaim script becomes executable.
     pub lock_time: u64,
-    /// Raw reclaim script.
-    pub reclaim_script: String,
 }
 
 /// Event in the history of a deposit.
@@ -334,6 +337,10 @@ pub struct DepositInfoEntry {
     pub recipient: String,
     /// Amount of BTC being deposited in satoshis.
     pub amount: u64,
+    /// The raw reclaim script.
+    pub reclaim_script: String,
+    /// The raw deposit script.
+    pub deposit_script: String,
     /// The most recent Stacks block hash the API was aware of when the deposit was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this hash is the Stacks block hash that contains that artifact.
@@ -387,6 +394,8 @@ impl From<DepositInfoEntry> for DepositInfo {
             last_update_height: deposit_info_entry.key.last_update_height,
             last_update_block_hash: deposit_info_entry.last_update_block_hash,
             status: deposit_info_entry.key.status,
+            reclaim_script: deposit_info_entry.reclaim_script,
+            deposit_script: deposit_info_entry.deposit_script,
         }
     }
 }

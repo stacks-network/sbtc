@@ -276,7 +276,6 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
         context: ctx.clone(),
         context_window: 10000,
         threshold: 2,
-        // TODO: Update when we have a blocklist impl
         blocklist_checker: BlocklistClient::new(&ctx),
         network_kind: config.signer.network.into(),
         rng: rand::thread_rng(),

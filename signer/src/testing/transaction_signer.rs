@@ -14,6 +14,7 @@ use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::keys::SignerScriptPubKey as _;
 use crate::message;
+use crate::message::Payload;
 use crate::network;
 use crate::storage;
 use crate::storage::model;
@@ -158,6 +159,7 @@ where
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = &signer_info.first().cloned().unwrap();
+        let mut network_rx = network.connect();
         let mut signal_rx = self.context.get_signal_receiver();
 
         let event_loop_harness = EventLoopHarness::create(
@@ -206,6 +208,16 @@ where
             1,
         )
         .await;
+
+        tokio::time::timeout(Duration::from_secs(1), async move {
+            while let Ok(msg) = network_rx.receive().await {
+                if matches!(msg.payload, Payload::SignerDepositDecision(_)) {
+                    break;
+                }
+            }
+        })
+        .await
+        .expect("signer deposit decision was not broadcasted");
     }
 
     /// Assert that the transaction signer will make and store decisions
@@ -215,6 +227,7 @@ where
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().cloned().unwrap();
+        let mut network_rx = network.connect();
         let mut signal_rx = self.context.get_signal_receiver();
 
         let event_loop_harness = EventLoopHarness::create(
@@ -267,6 +280,16 @@ where
             1,
         )
         .await;
+
+        tokio::time::timeout(Duration::from_secs(1), async move {
+            while let Ok(msg) = network_rx.receive().await {
+                if matches!(msg.payload, Payload::SignerWithdrawalDecision(_)) {
+                    break;
+                }
+            }
+        })
+        .await
+        .expect("signer withdrawal decision was not broadcasted");
     }
 
     /// Assert that the transaction signer will make and store decisions

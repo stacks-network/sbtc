@@ -45,19 +45,21 @@ export class EmilyStack extends cdk.Stack {
             chainstateTableName,
         );
 
-        const operationLambda: lambda.Function = this.createOrUpdateOperationLambda(
-            depositTableName,
-            withdrawalTableName,
-            chainstateTableName,
-            props
-        );
+        if (!EmilyStackUtils.isTablesOnly()) {
+            const operationLambda: lambda.Function = this.createOrUpdateOperationLambda(
+                depositTableName,
+                withdrawalTableName,
+                chainstateTableName,
+                props
+            );
 
-        // Give the operation lambda full access to the DynamoDB tables.
-        depositTable.grantReadWriteData(operationLambda);
-        withdrawalTable.grantReadWriteData(operationLambda);
-        chainstateTable.grantReadWriteData(operationLambda);
+            // Give the operation lambda full access to the DynamoDB tables.
+            depositTable.grantReadWriteData(operationLambda);
+            withdrawalTable.grantReadWriteData(operationLambda);
+            chainstateTable.grantReadWriteData(operationLambda);
 
-        const emilyApi: apig.SpecRestApi = this.createOrUpdateApi(operationLambda, props);
+            const emilyApi: apig.SpecRestApi = this.createOrUpdateApi(operationLambda, props);
+        }
     }
 
     /**
@@ -101,6 +103,8 @@ export class EmilyStack extends cdk.Stack {
                 "Recipient",
                 "Amount",
                 "LastUpdateBlockHash",
+                "ReclaimScript",
+                "DepositScript",
             ]
         });
 

@@ -113,8 +113,8 @@ async fn simple_reorg_test_base(scenario: ReorgScenario) {
         let deposit_request = CreateDepositRequestBody {
             bitcoin_txid: format!("{TEST_BITCOIN_TXID}-{stacks_block_height}"),
             bitcoin_tx_output_index: 1,
-            reclaim: TEST_RECLAIM_SCRIPT.to_string(),
-            deposit: TEST_DEPOSIT_SCRIPT.to_string(),
+            reclaim_script: TEST_RECLAIM_SCRIPT.to_string(),
+            deposit_script: TEST_DEPOSIT_SCRIPT.to_string(),
         };
         let withdrawal_request = CreateWithdrawalRequestBody {
             request_id: stacks_block_height,

@@ -40,9 +40,9 @@ pub struct CreateDepositRequestBody {
     /// Output index on the bitcoin transaction associated with this specific deposit.
     pub bitcoin_tx_output_index: u32,
     /// Reclaim script.
-    pub reclaim: String,
+    pub reclaim_script: String,
     /// Deposit script.
-    pub deposit: String,
+    pub deposit_script: String,
 }
 
 /// A singlular Deposit update that contains only the fields pertinent
