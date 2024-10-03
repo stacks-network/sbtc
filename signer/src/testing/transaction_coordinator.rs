@@ -542,7 +542,7 @@ where
             .write_as_rotate_keys_tx(
                 &self.context.get_storage_mut(),
                 &bitcoin_chain_tip,
-                aggregate_key,
+                all_dkg_shares.first().unwrap(),
                 rng,
             )
             .await;

@@ -596,16 +596,17 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
     let mut testing_signer_set =
         testing::wsts::SignerSet::new(&signer_info, threshold, || dummy_wsts_network.connect());
     let dkg_txid = testing::dummy::txid(&fake::Faker, &mut rng);
-    let (aggregate_key, _) = testing_signer_set
+    let (_, all_shares) = testing_signer_set
         .run_dkg(chain_tip, dkg_txid, &mut rng)
         .await;
 
+    let shares = all_shares.first().unwrap();
     testing_signer_set
-        .write_as_rotate_keys_tx(&mut in_memory_store, &chain_tip, aggregate_key, &mut rng)
+        .write_as_rotate_keys_tx(&mut in_memory_store, &chain_tip, shares, &mut rng)
         .await;
 
     testing_signer_set
-        .write_as_rotate_keys_tx(&mut pg_store, &chain_tip, aggregate_key, &mut rng)
+        .write_as_rotate_keys_tx(&mut pg_store, &chain_tip, shares, &mut rng)
         .await;
 
     let last_key_rotation_in_memory = in_memory_store
