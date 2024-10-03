@@ -129,14 +129,6 @@ impl SignerStateMachine {
             .map_err(error::Error::Codec)?;
 
         // After DKG, each of the signers will have new public keys.
-        let public_keys: Vec<PublicKey> = self
-            .commitments
-            .values()
-            .filter_map(|x| x.poly.first().map(PublicKey::try_from))
-            .collect::<Result<Vec<PublicKey>, Error>>()?;
-
-        debug_assert_eq!(PublicKey::combine_keys(public_keys.iter())?, aggregate_key);
-
         let encrypted_private_shares =
             wsts::util::encrypt(&self.0.network_private_key.to_bytes(), &encoded, rng)
                 .map_err(|_| error::Error::Encryption)?;
@@ -147,7 +139,7 @@ impl SignerStateMachine {
             script_pubkey: aggregate_key.signers_script_pubkey().into(),
             encrypted_private_shares,
             public_shares,
-            public_keys,
+            public_keys: self.public_keys.signers.values().map(PublicKey::from).collect(),
         })
     }
 }
@@ -189,7 +181,7 @@ impl CoordinatorStateMachine {
         let num_signers: u32 = signer_public_keys
             .len()
             .try_into()
-            .expect("The number of signers is creater than u32::MAX?");
+            .expect("The number of signers is greater than u32::MAX?");
         let signer_key_ids = (0..num_signers)
             .map(|signer_id| (signer_id, std::iter::once(signer_id).collect()))
             .collect();
