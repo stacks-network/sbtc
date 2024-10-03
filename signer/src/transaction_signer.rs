@@ -200,7 +200,7 @@ where
             .get_pending_withdraw_requests(&bitcoin_chain_tip)
             .await?
         {
-            self.handle_pending_withdraw_request(withdraw_request)
+            self.handle_pending_withdraw_request(withdraw_request, &bitcoin_chain_tip)
                 .await?;
         }
 
@@ -639,6 +639,7 @@ where
     async fn handle_pending_withdraw_request(
         &mut self,
         withdraw_request: model::WithdrawalRequest,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
         // TODO: Do we want to do this on the sender address of the
         // recipient address?
@@ -654,10 +655,19 @@ where
             txid: withdraw_request.txid,
         };
 
+        let msg = message::SignerWithdrawDecision {
+            request_id: withdraw_request.request_id,
+            block_hash: withdraw_request.block_hash.0,
+            accepted: is_accepted,
+            txid: withdraw_request.txid,
+        };
+
         self.context
             .get_storage_mut()
             .write_withdrawal_signer_decision(&signer_decision)
             .await?;
+
+        self.send_message(msg, bitcoin_chain_tip).await?;
 
         // TODO: Shouldn't we be broadcasting a SignerWithdrawalDecision here?
         self.context
