@@ -44,6 +44,7 @@ use signer::storage::model::StacksBlock;
 use signer::storage::model::StacksBlockHash;
 use signer::storage::model::StacksTxId;
 use signer::storage::model::WithdrawalSigner;
+use signer::storage::postgres::PgStore;
 use signer::storage::DbRead;
 use signer::storage::DbWrite;
 use signer::testing;
@@ -598,16 +599,17 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
     let mut testing_signer_set =
         testing::wsts::SignerSet::new(&signer_info, threshold, || dummy_wsts_network.connect());
     let dkg_txid = testing::dummy::txid(&fake::Faker, &mut rng);
-    let (aggregate_key, _) = testing_signer_set
+    let (_, all_shares) = testing_signer_set
         .run_dkg(chain_tip, dkg_txid, &mut rng)
         .await;
 
+    let shares = all_shares.first().unwrap();
     testing_signer_set
-        .write_as_rotate_keys_tx(&mut in_memory_store, &chain_tip, aggregate_key, &mut rng)
+        .write_as_rotate_keys_tx(&mut in_memory_store, &chain_tip, shares, &mut rng)
         .await;
 
     testing_signer_set
-        .write_as_rotate_keys_tx(&mut pg_store, &chain_tip, aggregate_key, &mut rng)
+        .write_as_rotate_keys_tx(&mut pg_store, &chain_tip, shares, &mut rng)
         .await;
 
     let last_key_rotation_in_memory = in_memory_store
@@ -1362,6 +1364,7 @@ async fn get_signers_script_pubkeys_returns_non_empty_vec_old_rows() {
 }
 
 async fn transaction_coordinator_test_environment(
+    store: PgStore,
 ) -> testing::transaction_coordinator::TestEnvironment<
     TestContext<
         storage::postgres::PgStore,
@@ -1370,8 +1373,6 @@ async fn transaction_coordinator_test_environment(
         WrappedMock<MockEmilyInteract>,
     >,
 > {
-    use std::sync::atomic::Ordering;
-
     let test_model_parameters = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
         num_stacks_blocks_per_bitcoin_block: 3,
@@ -1379,9 +1380,6 @@ async fn transaction_coordinator_test_environment(
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: 7,
     };
-
-    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let store = testing::storage::new_test_database(db_num, true).await;
 
     let context = TestContext::builder()
         .with_storage(store)
@@ -1400,26 +1398,41 @@ async fn transaction_coordinator_test_environment(
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_get_signer_utxo_simple() {
-    transaction_coordinator_test_environment()
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = testing::storage::new_test_database(db_num, true).await;
+
+    transaction_coordinator_test_environment(store.clone())
         .await
         .assert_get_signer_utxo_simple()
         .await;
+
+    signer::testing::storage::drop_db(store).await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_get_signer_utxo_fork() {
-    transaction_coordinator_test_environment()
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = testing::storage::new_test_database(db_num, true).await;
+
+    transaction_coordinator_test_environment(store.clone())
         .await
         .assert_get_signer_utxo_fork()
         .await;
+
+    signer::testing::storage::drop_db(store).await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_get_signer_utxo_unspent() {
-    transaction_coordinator_test_environment()
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = testing::storage::new_test_database(db_num, true).await;
+
+    transaction_coordinator_test_environment(store.clone())
         .await
         .assert_get_signer_utxo_unspent()
         .await;
+
+    signer::testing::storage::drop_db(store).await;
 }

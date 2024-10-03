@@ -628,7 +628,7 @@ mod tests {
             .with_mocked_clients()
             .build();
 
-        testing::transaction_coordinator::TestEnvironment {
+        TestEnvironment {
             context,
             context_window: 5,
             num_signers: 7,
