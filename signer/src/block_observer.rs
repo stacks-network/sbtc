@@ -81,7 +81,7 @@ impl DepositRequestValidator for CreateDepositRequest {
     {
         // Fetch the transaction from either a block or from the mempool
         let Some(response) = client.get_tx(&self.outpoint.txid).await? else {
-            return Err(Error::BitcoinTxMissing(self.outpoint.txid));
+            return Err(Error::BitcoinTxMissing(self.outpoint.txid, None));
         };
 
         Ok(Deposit {
