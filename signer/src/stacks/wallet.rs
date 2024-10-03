@@ -184,7 +184,8 @@ impl SignerWallet {
     /// Returns the number of public keys in the multi-sig wallet.
     pub fn num_signers(&self) -> u16 {
         // We check that the number of keys is less than or equal to the
-        // MAX_KEYS variable, which is a u16. So this cast is fine.
+        // MAX_KEYS variable when we created this struct, and MAX_KEYS is a
+        // u16. So this cast should always succeed.
         self.public_keys
             .len()
             .try_into()
