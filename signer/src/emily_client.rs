@@ -111,6 +111,7 @@ impl EmilyInteract for EmilyClient {
             RequestRef::Deposit(d) => Some(d),
             _ => None,
         });
+
         let mut update_request = Vec::new();
         for deposit in deposits {
             update_request.push(DepositUpdate {
@@ -125,6 +126,12 @@ impl EmilyInteract for EmilyClient {
                 status_message: "TODO?".to_string(),
             });
         }
+
+        if update_request.is_empty() {
+            // Skip the call
+            return Ok(UpdateDepositsResponse { deposits: vec![] });
+        }
+
         let update_request = UpdateDepositsRequestBody { deposits: update_request };
 
         deposit_api::update_deposits(&self.config, update_request)
