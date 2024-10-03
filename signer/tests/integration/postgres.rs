@@ -15,6 +15,7 @@ use rand::seq::SliceRandom;
 use signer::bitcoin::MockBitcoinInteract;
 use signer::config::Settings;
 use signer::context::Context;
+use signer::emily_client::MockEmilyInteract;
 use signer::error::Error;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey as _;
@@ -1367,6 +1368,7 @@ async fn transaction_coordinator_test_environment(
         storage::postgres::PgStore,
         WrappedMock<MockBitcoinInteract>,
         WrappedMock<MockStacksInteract>,
+        WrappedMock<MockEmilyInteract>,
     >,
 > {
     use std::sync::atomic::Ordering;

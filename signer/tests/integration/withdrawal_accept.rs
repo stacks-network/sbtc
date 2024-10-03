@@ -125,6 +125,7 @@ async fn accept_withdrawal_validation_happy_path() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     accept_withdrawal_tx.validate(&ctx, &req_ctx).await.unwrap();
@@ -176,6 +177,7 @@ async fn accept_withdrawal_validation_deployer_mismatch() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validate_future = accept_withdrawal_tx.validate(&ctx, &req_ctx);
@@ -235,6 +237,7 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
@@ -294,6 +297,7 @@ async fn accept_withdrawal_validation_recipient_mismatch() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
@@ -351,6 +355,7 @@ async fn accept_withdrawal_validation_invalid_amount() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
@@ -410,6 +415,7 @@ async fn accept_withdrawal_validation_invalid_fee() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validate_future = accept_withdrawal_tx.validate(&ctx, &req_ctx);
@@ -471,6 +477,7 @@ async fn accept_withdrawal_validation_sweep_tx_missing() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
@@ -540,6 +547,7 @@ async fn accept_withdrawal_validation_sweep_reorged() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
@@ -602,6 +610,7 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
@@ -661,6 +670,7 @@ async fn accept_withdrawal_validation_bitmap_mismatch() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
@@ -720,6 +730,7 @@ async fn accept_withdrawal_validation_withdrawal_incorrect_fee() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
@@ -776,6 +787,7 @@ async fn accept_withdrawal_validation_withdrawal_invalid_sweep() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
