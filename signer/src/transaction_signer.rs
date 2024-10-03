@@ -835,19 +835,15 @@ enum ChainTipStatus {
 #[cfg(test)]
 mod tests {
     use crate::bitcoin::MockBitcoinInteract;
+    use crate::emily_client::MockEmilyInteract;
     use crate::stacks::api::MockStacksInteract;
     use crate::storage::in_memory::SharedStore;
     use crate::testing;
-    use crate::testing::context::BuildContext;
-    use crate::testing::context::ConfigureBitcoinClient;
-    use crate::testing::context::ConfigureStacksClient;
-    use crate::testing::context::ConfigureStorage;
-    use crate::testing::context::TestContext;
-    use crate::testing::context::WrappedMock;
+    use crate::testing::context::*;
 
     fn test_environment() -> testing::transaction_signer::TestEnvironment<
-        TestContext<SharedStore, WrappedMock<MockBitcoinInteract>, WrappedMock<MockStacksInteract>>,
-    > {
+        TestContext<SharedStore, WrappedMock<MockBitcoinInteract>, WrappedMock<MockStacksInteract>, WrappedMock<MockEmilyInteract>,
+    >> {
         let test_model_parameters = testing::storage::model::Params {
             num_bitcoin_blocks: 20,
             num_stacks_blocks_per_bitcoin_block: 3,
@@ -858,8 +854,7 @@ mod tests {
 
         let context = TestContext::builder()
             .with_in_memory_storage()
-            .with_mocked_bitcoin_client()
-            .with_mocked_stacks_client()
+            .with_mocked_clients()
             .build();
 
         testing::transaction_signer::TestEnvironment {

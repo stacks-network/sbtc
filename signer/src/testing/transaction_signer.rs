@@ -33,11 +33,7 @@ use sha2::Digest as _;
 use tokio::sync::broadcast;
 use tokio::time::error::Elapsed;
 
-use super::context::BuildContext as _;
-use super::context::ConfigureBitcoinClient;
-use super::context::ConfigureStacksClient;
-use super::context::ConfigureStorage;
-use super::context::TestContext;
+use super::context::*;
 
 struct EventLoopHarness<Context, Rng> {
     context: Context,
@@ -238,6 +234,15 @@ where
             .signal(SignerSignal::Event(SignerEvent::BitcoinBlockObserved))
             .expect("failed to send signal");
 
+        // let msg = TxSignerEvent::PendingWithdrawalRequestRegistered;
+        // handle.wait_for_events(msg, 1, Duration::from_secs(10))
+        //     .await
+        //     .expect("timed out waiting for events");
+
+        // TODO: For some reason this works but the above commented-out doesn't.
+        // Probably to due with when the channel is subscribed. But that's weird
+        // because the handle has its own copy of the receiver just for this.
+        // Investigate.
         tokio::time::timeout(Duration::from_secs(10), async move {
             while !matches!(
                 signal_rx.recv().await,
@@ -273,8 +278,7 @@ where
         let build_context = || {
             TestContext::builder()
                 .with_in_memory_storage()
-                .with_mocked_bitcoin_client()
-                .with_mocked_stacks_client()
+                .with_mocked_clients()
                 .build()
         };
 
@@ -463,8 +467,7 @@ where
         let build_context = || {
             TestContext::builder()
                 .with_in_memory_storage()
-                .with_mocked_bitcoin_client()
-                .with_mocked_stacks_client()
+                .with_mocked_clients()
                 .build()
         };
 
@@ -547,8 +550,7 @@ where
         let build_context = || {
             TestContext::builder()
                 .with_in_memory_storage()
-                .with_mocked_bitcoin_client()
-                .with_mocked_stacks_client()
+                .with_mocked_clients()
                 .build()
         };
 
