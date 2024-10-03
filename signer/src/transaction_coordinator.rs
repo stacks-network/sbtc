@@ -115,12 +115,10 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     pub network: Network,
     /// Private key of the coordinator for network communication.
     pub private_key: PrivateKey,
-    /// How many bitcoin blocks back from the chain tip the signer will look for requests.
-    pub context_window: u16,
     /// the number of signatures required.
     pub threshold: u16,
-    /// The bitcoin network we're targeting
-    pub bitcoin_network: bitcoin::Network,
+    /// How many bitcoin blocks back from the chain tip the signer will look for requests.
+    pub context_window: u16,
     /// The maximum duration of a signing round before the coordinator will time out and return an error.
     pub signing_round_max_duration: std::time::Duration,
 }

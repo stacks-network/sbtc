@@ -63,7 +63,6 @@ where
                 private_key,
                 context_window,
                 threshold,
-                bitcoin_network: bitcoin::Network::Testnet,
                 signing_round_max_duration: Duration::from_secs(8),
             },
             context,
