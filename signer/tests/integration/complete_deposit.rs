@@ -128,6 +128,7 @@ async fn complete_deposit_validation_happy_path() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     // Check to see if validation passes.
@@ -186,6 +187,7 @@ async fn complete_deposit_validation_deployer_mismatch() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validate_future = complete_deposit_tx.validate(&ctx, &req_ctx);
@@ -244,6 +246,7 @@ async fn complete_deposit_validation_missing_deposit_request() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
@@ -309,6 +312,7 @@ async fn complete_deposit_validation_recipient_mismatch() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validate_future = complete_deposit_tx.validate(&ctx, &req_ctx);
@@ -373,6 +377,7 @@ async fn complete_deposit_validation_invalid_mint_amount() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validate_future = complete_deposit_tx.validate(&ctx, &req_ctx);
@@ -442,6 +447,7 @@ async fn complete_deposit_validation_fee_too_high() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validate_future = complete_deposit_tx.validate(&ctx, &req_ctx);
@@ -508,6 +514,7 @@ async fn complete_deposit_validation_sweep_tx_missing() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
@@ -583,6 +590,7 @@ async fn complete_deposit_validation_sweep_reorged() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
@@ -651,6 +659,7 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
@@ -717,6 +726,7 @@ async fn complete_deposit_validation_deposit_incorrect_fee() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
@@ -779,6 +789,7 @@ async fn complete_deposit_validation_deposit_invalid_sweep() {
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
+        .with_mocked_emily_client()
         .build();
 
     let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;

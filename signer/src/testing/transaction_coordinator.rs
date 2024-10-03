@@ -10,6 +10,7 @@ use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::MockBitcoinInteract;
 use crate::context::Context;
 use crate::context::SignerEvent;
+use crate::emily_client::EmilyInteract;
 use crate::error;
 use crate::keys;
 use crate::keys::PrivateKey;
@@ -110,23 +111,22 @@ pub struct TestEnvironment<Context> {
     pub test_model_parameters: testing::storage::model::Params,
 }
 
-impl<Storage, Stacks>
+impl<Storage, Stacks, Emily>
     TestEnvironment<
         TestContext<
             Storage,
             WrappedMock<MockBitcoinInteract>, // We specify this explicitly to gain access to the mock client
             Stacks,
+            Emily,
         >,
     >
 where
     Storage: DbRead + DbWrite + Clone + Sync + Send + 'static,
     Stacks: StacksInteract + Clone + Sync + Send + 'static,
+    Emily: EmilyInteract + Clone + Sync + Send + 'static,
 {
     /// Assert that a coordinator should be able to coordiante a signing round
     pub async fn assert_should_be_able_to_coordinate_signing_rounds(mut self) {
-        // Get a handle to our mocked bitcoin client.
-        let mock_bitcoin_client = self.context.inner_bitcoin_client();
-
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
@@ -184,21 +184,23 @@ where
 
         // Setup the bitcoin client mock to broadcast the transaction to our
         // channel.
-        mock_bitcoin_client
-            .lock()
-            .await
-            .expect_broadcast_transaction()
-            .times(1..)
-            .returning(move |tx| {
-                let tx = tx.clone();
-                let broadcasted_transaction_tx = broadcasted_transaction_tx.clone();
-                Box::pin(async move {
-                    broadcasted_transaction_tx
-                        .send(tx)
-                        .expect("Failed to send result");
-                    Ok(())
-                })
-            });
+        self.context
+            .with_bitcoin_client(|client| {
+                client
+                    .expect_broadcast_transaction()
+                    .times(1..)
+                    .returning(move |tx| {
+                        let tx = tx.clone();
+                        let broadcasted_transaction_tx = broadcasted_transaction_tx.clone();
+                        Box::pin(async move {
+                            broadcasted_transaction_tx
+                                .send(tx)
+                                .expect("Failed to send result");
+                            Ok(())
+                        })
+                    });
+            })
+            .await;
 
         // Get the private key of the coordinator of the signer set.
         let private_key = Self::select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info);
