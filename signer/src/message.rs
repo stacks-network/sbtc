@@ -24,7 +24,7 @@ pub enum Payload {
     /// A decision related to signer deposit
     SignerDepositDecision(SignerDepositDecision),
     /// A decision related to signer withdrawal
-    SignerWithdrawDecision(SignerWithdrawDecision),
+    SignerWithdrawalDecision(SignerWithdrawDecision),
     /// A request to sign a Stacks transaction
     StacksTransactionSignRequest(StacksTransactionSignRequest),
     /// A signature of a Stacks transaction
@@ -55,7 +55,7 @@ impl From<SignerDepositDecision> for Payload {
 
 impl From<SignerWithdrawDecision> for Payload {
     fn from(value: SignerWithdrawDecision) -> Self {
-        Self::SignerWithdrawDecision(value)
+        Self::SignerWithdrawalDecision(value)
     }
 }
 
@@ -181,7 +181,7 @@ impl wsts::net::Signable for Payload {
         match self {
             Self::WstsMessage(msg) => msg.hash(hasher),
             Self::SignerDepositDecision(msg) => msg.hash(hasher),
-            Self::SignerWithdrawDecision(msg) => msg.hash(hasher),
+            Self::SignerWithdrawalDecision(msg) => msg.hash(hasher),
             Self::BitcoinTransactionSignRequest(msg) => msg.hash(hasher),
             Self::BitcoinTransactionSignAck(msg) => msg.hash(hasher),
             Self::StacksTransactionSignRequest(msg) => msg.hash(hasher),
