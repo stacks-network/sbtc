@@ -172,7 +172,8 @@ impl GetNakamotoStartHeight for RPCPoxInfoData {
 /// The official documentation specifies what to expect when there is a
 /// rejection, and that documentation can be found here:
 /// https://github.com/stacks-network/stacks-core/blob/2.5.0.0.5/docs/rpc-endpoints.md
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, strum::IntoStaticStr)]
+#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(feature = "testing", derive(serde::Serialize))]
 pub enum RejectionReason {
     /// From MemPoolRejection::SerializationFailure
