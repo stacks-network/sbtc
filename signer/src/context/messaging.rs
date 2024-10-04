@@ -24,6 +24,8 @@ pub enum SignerEvent {
     P2P(P2PEvent),
     /// Signals that a block observer event has occurred.
     BitcoinBlockObserved,
+    /// Transaction signer events
+    TxSigner(TxSignerEvent),
 }
 
 /// Events that can be triggered from the P2P network.
@@ -47,6 +49,16 @@ pub enum TxSignerEvent {
     ReceivedDepositDecision,
     /// Received a withdrawal decision
     ReceivedWithdrawalDecision,
+    /// A new pending withdrawal request has been handled.
+    PendingWithdrawalRequestRegistered,
+    /// A new pending deposit request has been handled.
+    PendingDepositRequestRegistered,
+}
+
+impl From<TxSignerEvent> for SignerSignal {
+    fn from(event: TxSignerEvent) -> Self {
+        SignerSignal::Event(SignerEvent::TxSigner(event))
+    }
 }
 
 impl From<SignerEvent> for SignerSignal {

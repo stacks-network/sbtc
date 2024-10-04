@@ -7,10 +7,14 @@
 
 use std::collections::BTreeSet;
 use std::collections::HashMap;
+use std::time::Duration;
 
 use crate::blocklist_client;
 use crate::config::NetworkKind;
 use crate::context::Context;
+use crate::context::SignerEvent;
+use crate::context::SignerSignal;
+use crate::context::TxSignerEvent;
 use crate::ecdsa::SignEcdsa as _;
 use crate::error::Error;
 use crate::keys;
@@ -24,13 +28,15 @@ use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::ReqContext;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
-use crate::storage;
 use crate::storage::model;
 use crate::storage::model::BitcoinBlockRef;
+use crate::storage::DbRead as _;
+use crate::storage::DbWrite as _;
 use crate::wsts_state_machine;
 
 use clarity::types::chainstate::StacksAddress;
 use futures::StreamExt;
+use tokio::time::error::Elapsed;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
 
@@ -100,15 +106,13 @@ use wsts::net::DkgStatus;
 ///     SM --> |WSTS message| RWSM(Relay to WSTS state machine)
 /// ```
 #[derive(Debug)]
-pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
+pub struct TxSignerEventLoop<Context, Network, BlocklistChecker, Rng> {
+    /// The signer context.
+    pub context: Context,
     /// Interface to the signer network.
     pub network: Network,
-    /// Database connection.
-    pub storage: Storage,
     /// Blocklist checker.
     pub blocklist_checker: Option<BlocklistChecker>,
-    /// Notification receiver from the block observer.
-    pub block_observer_notifications: tokio::sync::watch::Receiver<()>,
     /// Private key of the signer for network communication.
     pub signer_private_key: PrivateKey,
     /// WSTS state machines for active signing rounds and DKG rounds
@@ -127,71 +131,89 @@ pub struct TxSignerEventLoop<Network, Storage, BlocklistChecker, Rng> {
     pub network_kind: bitcoin::Network,
     /// Random number generator used for encryption
     pub rng: Rng,
-    #[cfg(feature = "testing")]
-    /// Optional channel to communicate progress usable for testing
-    pub test_observer_tx: Option<tokio::sync::mpsc::Sender<TxSignerEvent>>,
 }
 
-/// Event useful for tests
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum TxSignerEvent {
-    /// Received a deposit decision
-    ReceivedDepositDecision,
-    /// Received a withdrawal decision
-    ReceivedWithdrawalDecision,
-}
-
-impl<N, S, B, Rng> TxSignerEventLoop<N, S, B, Rng>
+impl<C, N, B, Rng> TxSignerEventLoop<C, N, B, Rng>
 where
+    C: Context,
     N: network::MessageTransfer,
     B: blocklist_client::BlocklistChecker,
-    S: storage::DbRead + storage::DbWrite + Send + Sync,
     Rng: rand::RngCore + rand::CryptoRng,
 {
     /// Run the signer event loop
     #[tracing::instrument(skip(self))]
     pub async fn run(mut self) -> Result<(), Error> {
-        loop {
-            tokio::select! {
-                result = self.block_observer_notifications.changed() => {
-                    match result {
-                        Ok(()) => self.handle_new_requests().await?,
-                        Err(_) => {
-                            tracing::info!("block observer notification channel closed");
-                            break;
-                        }
+        let mut signal_rx = self.context.get_signal_receiver();
+        let mut term = self.context.get_termination_handle();
+
+        // TODO: We should really split these operations out into two separate
+        // main run-loops since they don't have anything to do with eachother.
+        //
+        // We run the event loop like this because `tokio::select!()` could
+        // potentially kill either `handle_new_requests()` or `handle_signer_message()`
+        // in the middle of processing if they end-up running concurrently and
+        // the other one finishes first.
+        let run_task = async {
+            loop {
+                // First we empty the signal channel subscription, checking for
+                // new Bitcoin block observed events. It doesn't matter how many
+                // of these we get, we only care if it has happened. It's also
+                // important that we empty this channel as quickly as possible
+                // to avoid un-processed messagages being dropped.
+                let mut new_block_observed = false;
+                while let Ok(signal) = signal_rx.try_recv() {
+                    if let SignerSignal::Event(SignerEvent::BitcoinBlockObserved) = signal {
+                        new_block_observed = true;
                     }
                 }
 
-                result = self.network.receive() => {
-                    match result {
-                        Ok(msg) => {
-                            let res = self.handle_signer_message(&msg).await;
-                            match res {
-                                Ok(()) => (),
-                                Err(Error::InvalidSignature) => (),
-                                Err(error) => {
-                                    tracing::error!(%error, "fatal signer error");
-                                    return Err(error)}
+                // If we've observed a new block, we need to handle any new requests.
+                if new_block_observed {
+                    self.handle_new_requests().await?;
+                }
+
+                // Next, we define a future that polls the network for new messages
+                // which times out after 5ms to ensure we don't block the above
+                // loop. We don't have any methods (atm) on the Network that would
+                // let us `try_recv` or peek. We can get rid of this later on if
+                // we split this run-loop into two separate loops.
+                let future = tokio::time::timeout(Duration::from_millis(5), self.network.receive());
+
+                match future.await {
+                    Ok(msg) => {
+                        // Handle the received message.
+                        let res = self.handle_signer_message(&msg?).await;
+                        match res {
+                            Ok(()) => (),
+                            Err(Error::InvalidSignature) => (),
+                            Err(error) => {
+                                tracing::error!(%error, "fatal signer error");
+                                return Err::<(), Error>(error);
                             }
-                        },
-                        Err(error) => {
-                            tracing::error!(%error,"signer network error");
-                            break;
                         }
                     }
+                    Err(Elapsed { .. }) => (),
                 }
+
+                // We don't do any extra waiting here since we have the
+                // `tokio::time::timeout` above.
             }
+        };
+
+        tokio::select! {
+            _ = run_task => (),
+            _ = term.wait_for_shutdown() => (),
         }
 
-        tracing::info!("shutting down transaction signer event loop");
+        tracing::info!("transaction signer event loop has been stopped");
         Ok(())
     }
 
     #[tracing::instrument(skip(self))]
     async fn handle_new_requests(&mut self) -> Result<(), Error> {
         let bitcoin_chain_tip = self
-            .storage
+            .context
+            .get_storage()
             .get_bitcoin_canonical_chain_tip()
             .await?
             .ok_or(Error::NoChainTip)?;
@@ -255,6 +277,7 @@ where
                 true,
                 ChainTipStatus::Canonical,
             ) => {
+                tracing::debug!("handling bitcoin transaction sign request");
                 self.handle_bitcoin_transaction_sign_request(request, &msg.bitcoin_chain_tip)
                     .await?;
             }
@@ -284,23 +307,21 @@ where
         msg_sender: keys::PublicKey,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<MsgChainTipReport, Error> {
-        let is_known = self
-            .storage
+        let storage = self.context.get_storage();
+
+        let is_known = storage
             .get_bitcoin_block(bitcoin_chain_tip)
             .await?
             .is_some();
 
-        let is_canonical = self
-            .storage
+        let is_canonical = storage
             .get_bitcoin_canonical_chain_tip()
             .await?
             .map(|canonical_chain_tip| &canonical_chain_tip == bitcoin_chain_tip)
             .unwrap_or(false);
 
-        let sender_is_coordinator = if let Some(last_key_rotation) = self
-            .storage
-            .get_last_key_rotation(bitcoin_chain_tip)
-            .await?
+        let sender_is_coordinator = if let Some(last_key_rotation) =
+            storage.get_last_key_rotation(bitcoin_chain_tip).await?
         {
             let signer_set: BTreeSet<PublicKey> =
                 last_key_rotation.signer_set.into_iter().collect();
@@ -340,7 +361,7 @@ where
             let signer_public_keys = self.get_signer_public_keys(bitcoin_chain_tip).await?;
 
             let new_state_machine = wsts_state_machine::SignerStateMachine::load(
-                &mut self.storage,
+                &self.context.get_storage_mut(),
                 request.aggregate_key,
                 signer_public_keys,
                 self.threshold,
@@ -370,7 +391,8 @@ where
     ) -> Result<bool, Error> {
         let signer_pub_key = self.signer_pub_key();
         let _accepted_deposit_requests = self
-            .storage
+            .context
+            .get_storage()
             .get_accepted_deposit_requests(&signer_pub_key)
             .await?;
 
@@ -417,7 +439,8 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<SignerWallet, Error> {
         let last_key_rotation = self
-            .storage
+            .context
+            .get_storage()
             .get_last_key_rotation(bitcoin_chain_tip)
             .await?
             .ok_or(Error::MissingKeyRotation)?;
@@ -567,7 +590,8 @@ where
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Vec<model::DepositRequest>, Error> {
-        self.storage
+        self.context
+            .get_storage()
             .get_pending_deposit_requests(chain_tip, self.context_window)
             .await
     }
@@ -577,7 +601,8 @@ where
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Vec<model::WithdrawalRequest>, Error> {
-        self.storage
+        self.context
+            .get_storage()
             .get_pending_withdrawal_requests(chain_tip, self.context_window)
             .await
     }
@@ -615,11 +640,15 @@ where
             is_accepted,
         };
 
-        self.storage
+        self.context
+            .get_storage_mut()
             .write_deposit_signer_decision(&signer_decision)
             .await?;
 
         self.send_message(msg, bitcoin_chain_tip).await?;
+
+        self.context
+            .signal(TxSignerEvent::PendingDepositRequestRegistered.into())?;
 
         Ok(())
     }
@@ -651,11 +680,15 @@ where
             txid: withdrawal_request.txid,
         };
 
-        self.storage
+        self.context
+            .get_storage_mut()
             .write_withdrawal_signer_decision(&signer_decision)
             .await?;
 
         self.send_message(msg, bitcoin_chain_tip).await?;
+
+        self.context
+            .signal(TxSignerEvent::PendingWithdrawalRequestRegistered.into())?;
 
         Ok(())
     }
@@ -681,16 +714,14 @@ where
             is_accepted: decision.accepted,
         };
 
-        self.storage
+        self.context
+            .get_storage_mut()
             .write_deposit_signer_decision(&signer_decision)
             .await?;
 
-        #[cfg(feature = "testing")]
-        if let Some(ref tx) = self.test_observer_tx {
-            tx.send(TxSignerEvent::ReceivedDepositDecision)
-                .await
-                .map_err(|_| Error::ObserverDropped)?;
-        }
+        self.context
+            .signal(TxSignerEvent::ReceivedDepositDecision.into())
+            .expect("failed to send signal");
 
         Ok(())
     }
@@ -709,16 +740,14 @@ where
             txid: decision.txid,
         };
 
-        self.storage
+        self.context
+            .get_storage_mut()
             .write_withdrawal_signer_decision(&signer_decision)
             .await?;
 
-        #[cfg(feature = "testing")]
-        if let Some(ref tx) = self.test_observer_tx {
-            tx.send(TxSignerEvent::ReceivedWithdrawalDecision)
-                .await
-                .map_err(|_| Error::ObserverDropped)?;
-        }
+        self.context
+            .signal(TxSignerEvent::ReceivedWithdrawalDecision.into())
+            .expect("failed to send signal");
 
         Ok(())
     }
@@ -732,7 +761,8 @@ where
 
         let encrypted_dkg_shares = state_machine.get_encrypted_dkg_shares(&mut self.rng)?;
 
-        self.storage
+        self.context
+            .get_storage_mut()
             .write_encrypted_dkg_shares(&encrypted_dkg_shares)
             .await?;
 
@@ -761,7 +791,8 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<BTreeSet<PublicKey>, Error> {
         let last_key_rotation = self
-            .storage
+            .context
+            .get_storage()
             .get_last_key_rotation(bitcoin_chain_tip)
             .await?
             .ok_or(Error::MissingKeyRotation)?;
@@ -799,11 +830,21 @@ enum ChainTipStatus {
 
 #[cfg(test)]
 mod tests {
-    use crate::storage;
+    use crate::bitcoin::MockBitcoinInteract;
+    use crate::emily_client::MockEmilyInteract;
+    use crate::stacks::api::MockStacksInteract;
+    use crate::storage::in_memory::SharedStore;
     use crate::testing;
+    use crate::testing::context::*;
 
-    fn test_environment(
-    ) -> testing::transaction_signer::TestEnvironment<fn() -> storage::in_memory::SharedStore> {
+    fn test_environment() -> testing::transaction_signer::TestEnvironment<
+        TestContext<
+            SharedStore,
+            WrappedMock<MockBitcoinInteract>,
+            WrappedMock<MockStacksInteract>,
+            WrappedMock<MockEmilyInteract>,
+        >,
+    > {
         let test_model_parameters = testing::storage::model::Params {
             num_bitcoin_blocks: 20,
             num_stacks_blocks_per_bitcoin_block: 3,
@@ -812,8 +853,13 @@ mod tests {
             num_signers_per_request: 0,
         };
 
+        let context = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
         testing::transaction_signer::TestEnvironment {
-            storage_constructor: storage::in_memory::Store::new_shared,
+            context,
             context_window: 3,
             num_signers: 7,
             signing_threshold: 5,

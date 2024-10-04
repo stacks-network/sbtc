@@ -5,6 +5,10 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::blocklist_client;
+use crate::context::Context;
+use crate::context::SignerEvent;
+use crate::context::SignerSignal;
+use crate::context::TxSignerEvent;
 use crate::error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
@@ -14,11 +18,12 @@ use crate::message::Payload;
 use crate::network;
 use crate::storage;
 use crate::storage::model;
+use crate::storage::DbRead;
+use crate::storage::DbWrite;
 use crate::testing;
 use crate::testing::storage::model::TestData;
 use crate::transaction_coordinator;
 use crate::transaction_signer;
-use crate::transaction_signer::TxSignerEvent;
 
 use crate::ecdsa::SignEcdsa as _;
 use crate::network::MessageTransfer as _;
@@ -26,106 +31,98 @@ use crate::network::MessageTransfer as _;
 use futures::StreamExt as _;
 use rand::SeedableRng as _;
 use sha2::Digest as _;
+use tokio::sync::broadcast;
+use tokio::time::error::Elapsed;
 
-struct EventLoopHarness<S, Rng> {
-    event_loop: EventLoop<S, Rng>,
-    block_observer_notification_tx: tokio::sync::watch::Sender<()>,
-    test_observer_rx: tokio::sync::mpsc::Receiver<transaction_signer::TxSignerEvent>,
-    storage: S,
+use super::context::*;
+
+struct EventLoopHarness<Context, Rng> {
+    context: Context,
+    event_loop: EventLoop<Context, Rng>,
 }
 
-impl<S, Rng> EventLoopHarness<S, Rng>
+impl<Ctx, Rng> EventLoopHarness<Ctx, Rng>
 where
-    S: storage::DbRead + storage::DbWrite + Clone + Send + Sync + 'static,
+    Ctx: Context + 'static,
     Rng: rand::RngCore + rand::CryptoRng + Send + Sync + 'static,
 {
     fn create(
+        context: Ctx,
         network: network::in_memory::MpmcBroadcaster,
-        storage: S,
         context_window: u16,
         signer_private_key: PrivateKey,
         threshold: u32,
         rng: Rng,
     ) -> Self {
-        let (block_observer_notification_tx, block_observer_notifications) =
-            tokio::sync::watch::channel(());
-
-        let (test_observer_tx, test_observer_rx) = tokio::sync::mpsc::channel(128);
-
         Self {
             event_loop: transaction_signer::TxSignerEventLoop {
-                storage: storage.clone(),
+                context: context.clone(),
                 network,
                 blocklist_checker: Some(()),
-                block_observer_notifications,
                 signer_private_key,
                 context_window,
                 wsts_state_machines: HashMap::new(),
                 threshold,
                 network_kind: bitcoin::Network::Regtest,
                 rng,
-                test_observer_tx: Some(test_observer_tx),
             },
-            block_observer_notification_tx,
-            test_observer_rx,
-            storage,
+            context,
         }
     }
 
-    pub fn start(self) -> RunningEventLoopHandle<S> {
-        let block_observer_notification_tx = self.block_observer_notification_tx;
-        let test_observer_rx = self.test_observer_rx;
+    pub fn start(self) -> RunningEventLoopHandle<Ctx> {
         let join_handle = tokio::spawn(async { self.event_loop.run().await });
-        let storage = self.storage;
+
+        let signal_rx = self.context.get_signal_receiver();
 
         RunningEventLoopHandle {
             join_handle,
-            block_observer_notification_tx,
-            test_observer_rx,
-            storage,
+            context: self.context,
+            signal_rx,
         }
     }
 }
 
-struct RunningEventLoopHandle<S> {
+struct RunningEventLoopHandle<C> {
+    context: C,
     join_handle: tokio::task::JoinHandle<Result<(), error::Error>>,
-    block_observer_notification_tx: tokio::sync::watch::Sender<()>,
-    test_observer_rx: tokio::sync::mpsc::Receiver<transaction_signer::TxSignerEvent>,
-    storage: S,
+    signal_rx: broadcast::Receiver<SignerSignal>,
 }
 
-impl<S> RunningEventLoopHandle<S> {
-    /// Stop event loop
-    pub async fn stop_event_loop(self) -> S {
-        // While this explicit drop isn't strictly necessary, it serves to clarify our intention.
-        drop(self.block_observer_notification_tx);
+impl<C> RunningEventLoopHandle<C>
+where
+    C: Context,
+{
+    /// Wait for `expected` instances of the given event `msg`, timing out after `timeout`.
+    pub async fn wait_for_events(
+        &mut self,
+        msg: TxSignerEvent,
+        expected: u16,
+        timeout: Duration,
+    ) -> Result<(), Elapsed> {
+        let future = async {
+            let mut n = 0;
+            loop {
+                if let Ok(SignerSignal::Event(SignerEvent::TxSigner(event))) =
+                    self.signal_rx.recv().await
+                {
+                    if event == msg {
+                        n += 1;
+                    }
 
-        let future = self.join_handle;
-        tokio::time::timeout(Duration::from_secs(10), future)
-            .await
-            .unwrap()
-            .expect("joining event loop failed")
-            .expect("event loop returned error");
-
-        self.storage
-    }
-
-    /// Wait for N instances of the given event
-    pub async fn wait_for_events(&mut self, msg: transaction_signer::TxSignerEvent, mut n: u16) {
-        while let Some(event) = self.test_observer_rx.recv().await {
-            if event == msg {
-                n -= 1;
+                    if n == expected {
+                        return;
+                    }
+                }
             }
+        };
 
-            if n == 0 {
-                return;
-            }
-        }
+        tokio::time::timeout(timeout, future).await
     }
 }
 
-type EventLoop<S, Rng> =
-    transaction_signer::TxSignerEventLoop<network::in_memory::MpmcBroadcaster, S, (), Rng>;
+type EventLoop<Context, Rng> =
+    transaction_signer::TxSignerEventLoop<Context, network::in_memory::MpmcBroadcaster, (), Rng>;
 
 impl blocklist_client::BlocklistChecker for () {
     async fn can_accept(
@@ -140,7 +137,7 @@ impl blocklist_client::BlocklistChecker for () {
 /// Test environment.
 pub struct TestEnvironment<C> {
     /// Function to construct a storage instance
-    pub storage_constructor: C,
+    pub context: C,
     /// Bitcoin context window
     pub context_window: u16,
     /// Num signers
@@ -151,44 +148,61 @@ pub struct TestEnvironment<C> {
     pub test_model_parameters: testing::storage::model::Params,
 }
 
-impl<C, S> TestEnvironment<C>
+impl<C> TestEnvironment<C>
 where
-    C: FnMut() -> S,
-    S: storage::DbRead + storage::DbWrite + Clone + Send + Sync + 'static,
+    C: Context + 'static,
 {
     /// Assert that the transaction signer will make and store decisions
     /// for pending deposit requests.
-    pub async fn assert_should_store_decisions_for_pending_deposit_requests(mut self) {
+    pub async fn assert_should_store_decisions_for_pending_deposit_requests(self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = &signer_info.first().cloned().unwrap();
         let mut network_rx = network.connect();
+        let mut signal_rx = self.context.get_signal_receiver();
 
         let event_loop_harness = EventLoopHarness::create(
+            self.context.clone(),
             network.connect(),
-            (self.storage_constructor)(),
             self.context_window,
             coordinator_signer_info.signer_private_key,
             self.signing_threshold,
             rng.clone(),
         );
 
-        let mut handle = event_loop_harness.start();
+        let handle = event_loop_harness.start();
 
         let signer_set = &coordinator_signer_info.signer_public_keys;
         let test_data = self.generate_test_data(&mut rng, signer_set);
-        Self::write_test_data(&test_data, &mut handle.storage).await;
+        Self::write_test_data(&handle.context.get_storage_mut(), &test_data).await;
 
         handle
-            .block_observer_notification_tx
-            .send(())
-            .expect("failed to send notification");
+            .context
+            .signal(SignerSignal::Event(SignerEvent::BitcoinBlockObserved))
+            .expect("failed to send signal");
 
-        let storage = handle.stop_event_loop().await;
+        tokio::time::timeout(Duration::from_secs(10), async move {
+            while !matches!(
+                signal_rx.recv().await,
+                Ok(SignerSignal::Event(SignerEvent::TxSigner(
+                    TxSignerEvent::PendingDepositRequestRegistered
+                )))
+            ) {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("timeout");
+
+        // TODO: Figure out the race condition in the `should_store_decisions_for_pending_deposit_requests`
+        // integration test.
+        tokio::time::sleep(Duration::from_millis(250)).await;
+
+        handle.join_handle.abort();
 
         Self::assert_only_deposit_requests_in_context_window_has_decisions(
-            &storage,
+            &handle.context.get_storage(),
             self.context_window,
             &test_data.deposit_requests,
             1,
@@ -208,37 +222,59 @@ where
 
     /// Assert that the transaction signer will make and store decisions
     /// for pending withdraw requests.
-    pub async fn assert_should_store_decisions_for_pending_withdraw_requests(mut self) {
+    pub async fn assert_should_store_decisions_for_pending_withdraw_requests(self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().cloned().unwrap();
         let mut network_rx = network.connect();
+        let mut signal_rx = self.context.get_signal_receiver();
 
         let event_loop_harness = EventLoopHarness::create(
+            self.context.clone(),
             network.connect(),
-            (self.storage_constructor)(),
             self.context_window,
             coordinator_signer_info.signer_private_key,
             self.signing_threshold,
             rng.clone(),
         );
 
-        let mut handle = event_loop_harness.start();
+        let handle = event_loop_harness.start();
 
         let signer_set = &coordinator_signer_info.signer_public_keys;
         let test_data = self.generate_test_data(&mut rng, signer_set);
-        Self::write_test_data(&test_data, &mut handle.storage).await;
+        Self::write_test_data(&handle.context.get_storage_mut(), &test_data).await;
 
         handle
-            .block_observer_notification_tx
-            .send(())
-            .expect("failed to send notification");
+            .context
+            .signal(SignerSignal::Event(SignerEvent::BitcoinBlockObserved))
+            .expect("failed to send signal");
 
-        let storage = handle.stop_event_loop().await;
+        // let msg = TxSignerEvent::PendingWithdrawalRequestRegistered;
+        // handle.wait_for_events(msg, 1, Duration::from_secs(10))
+        //     .await
+        //     .expect("timed out waiting for events");
 
-        Self::assert_only_withdraw_requests_in_context_window_has_decisions(
-            &storage,
+        // TODO: For some reason this works but the above commented-out doesn't.
+        // Probably to due with when the channel is subscribed. But that's weird
+        // because the handle has its own copy of the receiver just for this.
+        // Investigate.
+        tokio::time::timeout(Duration::from_secs(10), async move {
+            while !matches!(
+                signal_rx.recv().await,
+                Ok(SignerSignal::Event(SignerEvent::TxSigner(
+                    TxSignerEvent::PendingWithdrawalRequestRegistered
+                )))
+            ) {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("timeout");
+
+        handle.join_handle.abort();
+
+        self.assert_only_withdraw_requests_in_context_window_has_decisions(
             self.context_window,
             &test_data.withdraw_requests,
             1,
@@ -258,18 +294,32 @@ where
 
     /// Assert that the transaction signer will make and store decisions
     /// received from other signers.
-    pub async fn assert_should_store_decisions_received_from_other_signers(mut self) {
+    pub async fn assert_should_store_decisions_received_from_other_signers(self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().cloned().unwrap();
 
+        // A closure to build a new context for each signer
+        let build_context = || {
+            TestContext::builder()
+                .with_in_memory_storage()
+                .with_mocked_clients()
+                .build()
+        };
+
+        // Create a new event-loop for each signer, based on the number of signers
+        // defined in `self.num_signers`. Note that it is important that each
+        // signer has its own context (and thus storage and signalling channel).
+        //
+        // Each signer also gets its own `MpscBroadcaster` instance, which is
+        // backed by the `network` instance, simulating a network connection.
         let mut event_loop_handles: Vec<_> = signer_info
             .into_iter()
             .map(|signer_info| {
                 let event_loop_harness = EventLoopHarness::create(
+                    build_context(),
                     network.connect(),
-                    (self.storage_constructor)(),
                     self.context_window,
                     signer_info.signer_private_key,
                     self.signing_threshold,
@@ -280,36 +330,40 @@ where
             })
             .collect();
 
+        // Generate test data and write it to each signer's storage.
         let signer_set = &coordinator_signer_info.signer_public_keys;
         let test_data = self.generate_test_data(&mut rng, signer_set);
         for handle in event_loop_handles.iter_mut() {
-            Self::write_test_data(&test_data, &mut handle.storage).await;
+            test_data.write_to(&handle.context.get_storage_mut()).await;
         }
 
+        // For each signer, send a signal to simulate the observation of a new block.
         for handle in event_loop_handles.iter() {
             handle
-                .block_observer_notification_tx
-                .send(())
-                .expect("failed to send notification");
+                .context
+                .signal(SignerSignal::Event(SignerEvent::BitcoinBlockObserved))
+                .expect("failed to send signal");
         }
 
         let num_expected_decisions = (self.num_signers - 1) as u16
             * self.context_window
             * self.test_model_parameters.num_deposit_requests_per_block as u16;
 
+        // Wait for the expected number of decisions to be received by each signer.
         for handle in event_loop_handles.iter_mut() {
             let msg = TxSignerEvent::ReceivedDepositDecision;
-            let future = handle.wait_for_events(msg, num_expected_decisions);
-            tokio::time::timeout(Duration::from_secs(10), future)
+            handle
+                .wait_for_events(msg, num_expected_decisions, Duration::from_secs(10))
                 .await
-                .unwrap();
+                .expect("timed out waiting for events");
         }
 
+        // Abort the event loops and assert that the decisions have been stored.
         for handle in event_loop_handles {
-            let storage = handle.stop_event_loop().await;
+            handle.join_handle.abort();
 
             Self::assert_only_deposit_requests_in_context_window_has_decisions(
-                &storage,
+                &handle.context.get_storage(),
                 self.context_window,
                 &test_data.deposit_requests,
                 self.num_signers,
@@ -329,22 +383,22 @@ where
 
     /// Assert that the transaction signer will respond to bitcoin transaction sign requests
     /// with an acknowledge message
-    pub async fn assert_should_respond_to_bitcoin_transaction_sign_requests_impl(mut self) {
+    pub async fn assert_should_respond_to_bitcoin_transaction_sign_requests_impl(self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = &signer_info.first().cloned().unwrap();
 
         let event_loop_harness = EventLoopHarness::create(
+            self.context.clone(),
             network.connect(),
-            (self.storage_constructor)(),
             self.context_window,
             coordinator_signer_info.signer_private_key,
             self.signing_threshold,
             rng.clone(),
         );
 
-        let mut handle = event_loop_harness.start();
+        let handle = event_loop_harness.start();
 
         let signer_private_key = signer_info.first().unwrap().signer_private_key.to_bytes();
         let dummy_aggregate_key = PublicKey::from_private_key(&PrivateKey::new(&mut rng));
@@ -352,17 +406,18 @@ where
         store_dummy_dkg_shares(
             &mut rng,
             &signer_private_key,
-            &mut handle.storage,
+            &handle.context.get_storage_mut(),
             dummy_aggregate_key,
         )
         .await;
 
         let signer_set = &coordinator_signer_info.signer_public_keys;
         let test_data = self.generate_test_data(&mut rng, signer_set);
-        Self::write_test_data(&test_data, &mut handle.storage).await;
+        Self::write_test_data(&handle.context.get_storage_mut(), &test_data).await;
 
         let bitcoin_chain_tip = handle
-            .storage
+            .context
+            .get_storage()
             .get_bitcoin_canonical_chain_tip()
             .await
             .expect("storage failure")
@@ -393,7 +448,7 @@ where
             &signer_info,
             &bitcoin_chain_tip,
             self.signing_threshold,
-            [&mut handle.storage],
+            [handle.context.get_storage_mut()],
             &mut rng,
         )
         .await;
@@ -424,24 +479,34 @@ where
             message::Payload::BitcoinTransactionSignAck(_)
         ));
 
-        handle.stop_event_loop().await;
+        handle.join_handle.abort();
     }
 
     /// Assert that a group of transaction signers together can
     /// participate successfully in a DKG round
-    pub async fn assert_should_be_able_to_participate_in_dkg(mut self) {
+    pub async fn assert_should_be_able_to_participate_in_dkg(self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().unwrap().clone();
 
+        // A closure to build a new context for each signer
+        let build_context = || {
+            TestContext::builder()
+                .with_in_memory_storage()
+                .with_mocked_clients()
+                .build()
+        };
+
+        // Create a new event-loop for each signer, based on the number of signers
+        // defined in `self.num_signers`.
         let mut event_loop_handles: Vec<_> = signer_info
             .clone()
             .into_iter()
             .map(|signer_info| {
                 let event_loop_harness = EventLoopHarness::create(
+                    build_context(), // NEED TO HAVE A NEW CONTEXT FOR EACH SIGNER
                     network.connect(),
-                    (self.storage_constructor)(),
                     self.context_window,
                     signer_info.signer_private_key,
                     self.signing_threshold,
@@ -455,13 +520,14 @@ where
         let signer_set = &coordinator_signer_info.signer_public_keys;
         let test_data = self.generate_test_data(&mut rng, signer_set);
         for handle in event_loop_handles.iter_mut() {
-            Self::write_test_data(&test_data, &mut handle.storage).await;
+            Self::write_test_data(&handle.context.get_storage_mut(), &test_data).await;
         }
 
         let bitcoin_chain_tip = event_loop_handles
             .first()
             .unwrap()
-            .storage
+            .context
+            .get_storage()
             .get_bitcoin_canonical_chain_tip()
             .await
             .expect("storage error")
@@ -473,7 +539,7 @@ where
             self.signing_threshold,
             event_loop_handles
                 .iter_mut()
-                .map(|handle| &mut handle.storage),
+                .map(|handle| handle.context.get_storage_mut()),
             &mut rng,
         )
         .await;
@@ -488,8 +554,10 @@ where
         let aggregate_key = coordinator.run_dkg(bitcoin_chain_tip, dummy_txid).await;
 
         for handle in event_loop_handles.into_iter() {
-            let storage = handle.stop_event_loop().await;
-            assert!(storage
+            handle.join_handle.abort();
+            assert!(handle
+                .context
+                .get_storage()
                 .get_encrypted_dkg_shares(&aggregate_key)
                 .await
                 .expect("storage error")
@@ -499,19 +567,27 @@ where
 
     /// Assert that a group of transaction signers together can
     /// participate successfully in a signing roundd
-    pub async fn assert_should_be_able_to_participate_in_signing_round(mut self) {
+    pub async fn assert_should_be_able_to_participate_in_signing_round(self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().unwrap().clone();
+
+        // A closure to build a new context for each signer
+        let build_context = || {
+            TestContext::builder()
+                .with_in_memory_storage()
+                .with_mocked_clients()
+                .build()
+        };
 
         let mut event_loop_handles: Vec<_> = signer_info
             .clone()
             .into_iter()
             .map(|signer_info| {
                 let event_loop_harness = EventLoopHarness::create(
+                    build_context(),
                     network.connect(),
-                    (self.storage_constructor)(),
                     self.context_window,
                     signer_info.signer_private_key,
                     self.signing_threshold,
@@ -525,13 +601,14 @@ where
         let signer_set = &coordinator_signer_info.signer_public_keys;
         let test_data = self.generate_test_data(&mut rng, signer_set);
         for handle in event_loop_handles.iter_mut() {
-            Self::write_test_data(&test_data, &mut handle.storage).await;
+            Self::write_test_data(&handle.context.get_storage_mut(), &test_data).await;
         }
 
         let bitcoin_chain_tip = event_loop_handles
             .first()
             .unwrap()
-            .storage
+            .context
+            .get_storage()
             .get_bitcoin_canonical_chain_tip()
             .await
             .expect("storage error")
@@ -543,7 +620,7 @@ where
             self.signing_threshold,
             event_loop_handles
                 .iter_mut()
-                .map(|handle| &mut handle.storage),
+                .map(|handle| handle.context.get_storage_mut()),
             &mut rng,
         )
         .await;
@@ -571,6 +648,7 @@ where
             coordinator_signer_info,
             self.signing_threshold,
         );
+
         let aggregate_key = coordinator.run_dkg(bitcoin_chain_tip, dummy_txid).await;
 
         let tx = testing::dummy::tx(&fake::Faker, &mut rng);
@@ -600,14 +678,20 @@ where
         assert!(signature.verify(&tweaked_aggregate_key.x(), &msg));
     }
 
-    async fn write_test_data(test_data: &TestData, storage: &mut S) {
+    async fn write_test_data<S>(storage: &S, test_data: &TestData)
+    where
+        S: DbWrite,
+    {
         test_data.write_to(storage).await;
     }
 
-    async fn extract_context_window_block_hashes(
-        context_window: u16,
+    async fn extract_context_window_block_hashes<S>(
         storage: &S,
-    ) -> Vec<model::BitcoinBlockHash> {
+        context_window: u16,
+    ) -> Vec<model::BitcoinBlockHash>
+    where
+        S: DbRead,
+    {
         let mut context_window_block_hashes = Vec::new();
         let mut block_hash = storage
             .get_bitcoin_canonical_chain_tip()
@@ -627,9 +711,11 @@ where
     }
 
     async fn extract_stacks_context_window_block_hashes(
+        &self,
         context_window: u16,
-        storage: &S,
     ) -> Vec<model::StacksBlockHash> {
+        let storage = self.context.get_storage();
+
         let canoncial_tip_block_hash = storage
             .get_bitcoin_canonical_chain_tip()
             .await
@@ -644,6 +730,7 @@ where
 
         let context_window_end_block = futures::stream::iter(0..context_window)
             .fold(chain_tip.clone(), |block, _| async move {
+                let storage = self.context.get_storage();
                 storage
                     .get_bitcoin_block(&block.parent_hash)
                     .await
@@ -654,6 +741,7 @@ where
 
         let stacks_chain_tip = futures::stream::iter(chain_tip.confirms)
             .then(|stacks_block_hash| async move {
+                let storage = self.context.get_storage();
                 storage
                     .get_stacks_block(&stacks_block_hash)
                     .await
@@ -687,14 +775,17 @@ where
         context_window_block_hashes
     }
 
-    async fn assert_only_deposit_requests_in_context_window_has_decisions(
+    async fn assert_only_deposit_requests_in_context_window_has_decisions<S>(
         storage: &S,
         context_window: u16,
         deposit_requests: &[model::DepositRequest],
         num_expected_decisions: usize,
-    ) {
+    ) where
+        S: DbRead,
+    {
         let context_window_block_hashes =
-            Self::extract_context_window_block_hashes(context_window, storage).await;
+            Self::extract_context_window_block_hashes(storage, context_window).await;
+
         for deposit_request in deposit_requests {
             let signer_decisions = storage
                 .get_deposit_signers(&deposit_request.txid, deposit_request.output_index)
@@ -718,13 +809,16 @@ where
     }
 
     async fn assert_only_withdraw_requests_in_context_window_has_decisions(
-        storage: &S,
+        &self,
         context_window: u16,
         withdraw_requests: &[model::WithdrawalRequest],
         num_expected_decisions: usize,
     ) {
-        let context_window_block_hashes =
-            Self::extract_stacks_context_window_block_hashes(context_window, storage).await;
+        let storage = self.context.get_storage();
+
+        let context_window_block_hashes = self
+            .extract_stacks_context_window_block_hashes(context_window)
+            .await;
 
         for withdraw_request in withdraw_requests {
             let signer_decisions = storage
@@ -753,7 +847,7 @@ where
 async fn store_dummy_dkg_shares<R, S>(
     rng: &mut R,
     signer_private_key: &[u8; 32],
-    storage: &mut S,
+    storage: &S,
     group_key: PublicKey,
 ) where
     R: rand::CryptoRng + rand::RngCore,
@@ -773,10 +867,10 @@ async fn run_dkg_and_store_results_for_signers<'s: 'r, 'r, S, Rng>(
     signer_info: &[testing::wsts::SignerInfo],
     chain_tip: &model::BitcoinBlockHash,
     threshold: u32,
-    stores: impl IntoIterator<Item = &'r mut S>,
+    stores: impl IntoIterator<Item = S>,
     rng: &mut Rng,
 ) where
-    S: storage::DbRead + storage::DbWrite + 's,
+    S: storage::DbRead + storage::DbWrite,
     Rng: rand::CryptoRng + rand::RngCore,
 {
     let network = network::in_memory::Network::new();
@@ -790,7 +884,7 @@ async fn run_dkg_and_store_results_for_signers<'s: 'r, 'r, S, Rng>(
 
     for (storage, encrypted_dkg_shares) in stores.into_iter().zip(all_dkg_shares) {
         testing_signer_set
-            .write_as_rotate_keys_tx(storage, chain_tip, aggregate_key, rng)
+            .write_as_rotate_keys_tx(&storage, chain_tip, aggregate_key, rng)
             .await;
 
         storage

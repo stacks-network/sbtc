@@ -234,4 +234,5 @@ run-signer:
 		POSTGRES_PORT=$$(docker port sbtc-postgres 5432 | awk -F: '{print $$2}'); \
 	done; \
 	echo $$POSTGRES_PORT; \
-	RUST_LOG=debug SIGNER_SIGNER__DB_ENDPOINT="postgres://postgres:postgres@localhost:$$POSTGRES_PORT/signer" cargo run --bin signer -- -c ./signer/src/config/default.toml --migrate-db
+	RUST_LOG=info SIGNER_SIGNER__DB_ENDPOINT="postgres://postgres:postgres@localhost:$$POSTGRES_PORT/signer" cargo run --bin signer -- -c ./signer/src/config/default.toml --migrate-db
+	
