@@ -353,13 +353,15 @@ where
             .await?;
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
+        let tx = multi_tx.tx();
 
         Ok(StacksTransactionSignRequest {
             aggregate_key: *bitcoin_aggregate_key,
             contract_call,
-            nonce: multi_tx.tx().get_origin_nonce(),
-            tx_fee: multi_tx.tx().get_tx_fee(),
-            digest: multi_tx.tx().digest(),
+            nonce: tx.get_origin_nonce(),
+            tx_fee: tx.get_tx_fee(),
+            digest: tx.digest(),
+            txid: tx.txid(),
         })
     }
 
