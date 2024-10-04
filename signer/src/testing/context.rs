@@ -330,7 +330,9 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
     }
 
     fn nakamoto_start_height(&self) -> u64 {
-        tokio::runtime::Handle::current().block_on(async move {
+        let handle = tokio::runtime::Handle::current();
+        let _guard = handle.enter();
+        futures::executor::block_on(async move {
             let inner = self.inner.lock().await;
             inner.nakamoto_start_height()
         })
