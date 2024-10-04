@@ -608,6 +608,12 @@ impl From<[u8; 32]> for StacksBlockHash {
 #[serde(transparent)]
 pub struct StacksTxId(blockstack_lib::burnchains::Txid);
 
+impl std::fmt::Display for StacksTxId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 impl Deref for StacksTxId {
     type Target = blockstack_lib::burnchains::Txid;
     fn deref(&self) -> &Self::Target {

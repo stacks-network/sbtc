@@ -7,7 +7,6 @@
 
 use std::collections::BTreeSet;
 
-use bitcoin::OutPoint;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use sha2::Digest;
 
@@ -31,6 +30,7 @@ use crate::stacks::contracts::ContractCall;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
+use crate::storage::model::StacksTxId;
 use crate::storage::DbRead as _;
 use crate::wsts_state_machine;
 
@@ -260,7 +260,6 @@ where
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
         let wallet = SignerWallet::load(&self.context, chain_tip).await?;
-        let db = self.context.get_storage();
         let stacks = self.context.get_stacks_client();
 
         // Fetch deposit and withdrawal requests from the database where
@@ -274,7 +273,9 @@ where
         // For withdrawals, we need to have a record of the `request_id`
         // associated with the bitcoin transaction's outputs.
 
-        let deposit_requests = db
+        let deposit_requests = self
+            .context
+            .get_storage()
             .get_swept_deposit_requests(chain_tip, self.context_window)
             .await?;
 
@@ -290,43 +291,59 @@ where
         let account = stacks.get_account(wallet.address()).await?;
         wallet.set_nonce(account.nonce);
 
-        for deposit_req in deposit_requests {
-            // If this fails, we do not need to decrement the nonce.
-            let (sign_request, multi_tx, outpoint) = self
-                .construct_stacks_sign_request(deposit_req, bitcoin_aggregate_key, &wallet)
-                .await?;
-            // If we fail to sign the transaction for some reason, we
-            // shouldn't bail, but log the error, decrement the nonce by
-            // one, and try the next trasnaction.
-            let tx = self
-                .sign_stacks_transaction(sign_request, multi_tx, chain_tip, &wallet)
-                .await?;
+        for req in deposit_requests {
+            let sign_request_fut =
+                self.construct_stacks_sign_request(req, bitcoin_aggregate_key, &wallet);
 
-            match stacks.submit_tx(&tx).await {
-                Ok(SubmitTxResponse::Acceptance(txid)) => tracing::info!(
-                    %txid,
-                    deposit_txid = %outpoint.txid,
-                    deposit_vout = %outpoint.vout,
-                    "successfully submitted complete-deposit stacks transaction"
-                ),
-                Ok(SubmitTxResponse::Rejection(err)) => tracing::warn!(
-                    txid = %tx.txid(),
-                    deposit_txid = %outpoint.txid,
-                    deposit_vout = %outpoint.vout,
-                    error = %Into::<&'static str>::into(err.reason),
-                    "complete-deposit transaction rejected from stacks node"
-                ),
-                Err(error) => tracing::error!(
-                    txid = %tx.txid(),
-                    deposit_txid = %outpoint.txid,
-                    deposit_vout = %outpoint.vout,
-                    %error,
-                    "failed to submit the stacks transaction to the stacks-node"
-                ),
+            let (sign_request, multi_tx) = match sign_request_fut.await {
+                Ok(res) => res,
+                Err(error) => {
+                    tracing::error!(%error, "could not construct a transaction completing the deposit request");
+                    continue;
+                }
+            };
+
+            // If we fail here, then we need to decrement the nonce.
+            let process_request_fut =
+                self.process_sign_request(sign_request, chain_tip, multi_tx, &wallet);
+
+            match process_request_fut.await {
+                Ok(txid) => {
+                    tracing::info!(%txid, "successfully submitted complete-deposit transaction")
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "could process the sign request for deposit request");
+                    wallet.set_nonce(wallet.get_nonce().saturating_sub(1));
+                }
             }
         }
 
         Ok(())
+    }
+
+    /// Sign and broadcast the stacks transaction
+    ///
+    /// If we fail to sign the transaction for some reason, we decrement
+    /// the nonce by one, and try the next transaction. This is not a fatal
+    /// error, since we could fail to sign the transaction because someone
+    /// else is now the coordinator, and all of the signers are now
+    /// ignoring us.
+    async fn process_sign_request(
+        &mut self,
+        sign_request: StacksTransactionSignRequest,
+        chain_tip: &model::BitcoinBlockHash,
+        multi_tx: MultisigTx,
+        wallet: &SignerWallet,
+    ) -> Result<StacksTxId, Error> {
+        let tx = self
+            .sign_stacks_transaction(sign_request, multi_tx, chain_tip, wallet)
+            .await?;
+
+        match self.context.get_stacks_client().submit_tx(&tx).await {
+            Ok(SubmitTxResponse::Acceptance(txid)) => Ok(txid.into()),
+            Ok(SubmitTxResponse::Rejection(err)) => Err(err.into()),
+            Err(err) => Err(err),
+        }
     }
 
     /// Transform the swept deposit request into a Stacks sign request
@@ -341,7 +358,7 @@ where
         req: model::SweptDepositRequest,
         bitcoin_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
-    ) -> Result<(StacksTransactionSignRequest, MultisigTx, OutPoint), Error> {
+    ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
         let tx_info = self
             .context
             .get_bitcoin_client()
@@ -391,7 +408,7 @@ where
             txid: tx.txid(),
         };
 
-        Ok((sign_request, multi_tx, outpoint))
+        Ok((sign_request, multi_tx))
     }
 
     /// Attempt to sign the stacks transaction.

@@ -286,6 +286,10 @@ pub enum Error {
     #[error("failed to make a request to the stacks Node: {0}")]
     StacksNodeRequest(#[source] reqwest::Error),
 
+    /// We failed to submit the transaction to the mempool.
+    #[error("{0}")]
+    StacksTxRejection(#[from] crate::stacks::api::TxRejection),
+
     /// Reqwest error
     #[error("response from stacks node did not conform to the expected schema: {0}")]
     UnexpectedStacksResponse(#[source] reqwest::Error),
