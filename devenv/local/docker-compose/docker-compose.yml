@@ -5,6 +5,7 @@ x-common-vars:
   - &MINER_SEED 9e446f6b0c6a96cf2190e54bcd5a8569c3e386f091605499464389b8d4e0bfc201 # stx: STEW4ZNT093ZHK4NEQKX8QJGM2Y7WWJ2FQQS5C19, btc: miEJtNKa3ASpA19v5ZhvbKTEieYjLpzCYT, pub_key: 035379aa40c02890d253cfa577964116eb5295570ae9f7287cbae5f2585f5b2c7c, wif: cStMQXkK5yTFGP3KbNXYQ3sJf2qwQiKrZwR9QJnksp32eKzef1za
   - &BITCOIN_PEER_PORT 18444
   - &BITCOIN_RPC_PORT 18443
+  - &BITCOIN_BLOCK_HASH_STREAM_PORT 28332
   - &BITCOIN_RPC_USER devnet
   - &BITCOIN_RPC_PASS devnet
   - &MINE_INTERVAL ${MINE_INTERVAL:-1s}
@@ -32,8 +33,8 @@ services:
       context: .
       dockerfile: Dockerfile.btc
     ports:
-      - "18443:18443"
-      - "18444:18444"
+      - 18443
+      - 28332
     volumes:
       - ./bitcoin.conf:/root/.bitcoin/bitcoin.conf
       - ./init-data:/init-data
@@ -49,9 +50,17 @@ services:
         rm -rf $${DATA_DIR}/*
         bitcoind
 
-  postgres:
+  postgres-stacks-api:
     image: postgres:15-alpine
-    container_name: postgres
+    container_name: postgres-stacks-api
+    stop_grace_period: 5s
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+
+  postgres-1:
+    image: postgres:15-alpine
+    container_name: postgres-1
     stop_grace_period: 5s
     ports:
       - 5432:5432
@@ -59,6 +68,76 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: signer
+
+  postgres-2:
+    image: postgres:15-alpine
+    container_name: postgres-2
+    stop_grace_period: 5s
+    ports:
+      - 5433:5432
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: signer
+
+  postgres-3:
+    image: postgres:15-alpine
+    container_name: postgres-3
+    stop_grace_period: 5s
+    ports:
+      - 5434:5432
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: signer
+
+  sbtc-signer-1:
+    build:
+      context: ./sbtc-signer
+      dockerfile: Dockerfile.sbtc-signer
+    entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
+    depends_on:
+      - postgres-1
+    environment:
+      RUST_LOG: info
+      SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-1:5432/signer
+      SIGNER_SIGNER__PRIVATE_KEY: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc
+      SIGNER_SIGNER__P2P__LISTEN_ON: tcp://0.0.0.0:4122
+      SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-2:4122,tcp://sbtc-signer-3:4122
+    volumes:
+      - ./sbtc-signer/signer-config.toml:/signer-config.toml
+
+  sbtc-signer-2:
+    build:
+      context: ./sbtc-signer
+      dockerfile: Dockerfile.sbtc-signer
+    entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
+    depends_on:
+      - postgres-2
+    environment:
+      RUST_LOG: info
+      SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-2:5432/signer
+      SIGNER_SIGNER__PRIVATE_KEY: 9bfecf16c9c12792589dd2b843f850d5b89b81a04f8ab91c083bdf6709fbefee01
+      SIGNER_SIGNER__P2P__LISTEN_ON: tcp://0.0.0.0:4122
+      SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-1:4122,tcp://sbtc-signer-3:4122
+    volumes:
+      - ./sbtc-signer/signer-config.toml:/signer-config.toml
+
+  sbtc-signer-3:
+    build:
+      context: ./sbtc-signer
+      dockerfile: Dockerfile.sbtc-signer
+    entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
+    depends_on:
+      - postgres-3
+    environment:
+      RUST_LOG: info
+      SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-3:5432/signer
+      SIGNER_SIGNER__PRIVATE_KEY: 3ec0ca5770a356d6cd1a9bfcbf6cd151eb1bd85c388cc00648ec4ef5853fdb7401
+      SIGNER_SIGNER__P2P__LISTEN_ON: tcp://0.0.0.0:4122
+      SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-1:4122,tcp://sbtc-signer-2:4122
+    volumes:
+      - ./sbtc-signer/signer-config.toml:/signer-config.toml
 
   mariadb:
     image: mariadb:10.5.21
@@ -192,13 +271,13 @@ services:
       - 3999:3999
       - 3700:3700
     depends_on:
-      - postgres
+      - postgres-stacks-api
       - stacks
       - bitcoin
     environment:
       NODE_ENV: "production"
       GIT_TAG: "v7.10.0-nakamoto.7"
-      PG_HOST: "postgres"
+      PG_HOST: "postgres-stacks-api"
       PG_PORT: 5432
       PG_USER: "postgres"
       PG_PASSWORD: "postgres"
@@ -225,7 +304,7 @@ services:
     environment:
       SIGNER_DB_PATH: /chainstate/stacks-signer-1.sqlite
       STACKS_NODE_HOST: stacks:20443
-      STACKS_SIGNER_ENDPOINT: 0.0.0.0:30001
+      STACKS_SIGNER_ENDPOINT: 0.0.0.0:30000
       SIGNER_PRIVATE_KEY: 6a1a754ba863d7bab14adbbc3f8ebb090af9e871ace621d3e5ab634e1422885e01
     entrypoint:
       - /bin/bash
@@ -248,7 +327,7 @@ services:
     environment:
       SIGNER_DB_PATH: /chainstate/stacks-signer-2.sqlite
       STACKS_NODE_HOST: stacks:20443
-      STACKS_SIGNER_ENDPOINT: 0.0.0.0:30002
+      STACKS_SIGNER_ENDPOINT: 0.0.0.0:30000
       SIGNER_PRIVATE_KEY: b463f0df6c05d2f156393eee73f8016c5372caa0e9e29a901bb7171d90dc4f1401
     entrypoint:
       - /bin/bash
@@ -271,7 +350,7 @@ services:
     environment:
       SIGNER_DB_PATH: /chainstate/stacks-signer-3.sqlite
       STACKS_NODE_HOST: stacks:20443
-      STACKS_SIGNER_ENDPOINT: 0.0.0.0:30003
+      STACKS_SIGNER_ENDPOINT: 0.0.0.0:30000
       SIGNER_PRIVATE_KEY: 7036b29cb5e235e5fd9b09ae3e8eec4404e44906814d5d01cbca968a60ed4bfb01
     entrypoint:
       - /bin/bash
@@ -296,9 +375,10 @@ services:
       - bitcoin
       - stacks
       - stacks-api
-      - postgres
+      - postgres-stacks-api
     environment:
       NEXT_PUBLIC_MAINNET_API_SERVER: "http://stacks-api:3999"
+
   electrs:
     image: electrs:latest
     container_name: electrs
@@ -315,6 +395,7 @@ services:
       RUST_BACKTRACE: 1
       BITCOIN_RPC_HOST: "bitcoin"
       BITCOIN_RPC_PORT: "18443"
+
   mempool-web:
     image: mempool/frontend:latest
     container_name: mempool-web
@@ -331,6 +412,7 @@ services:
       FRONTEND_HTTP_PORT: "8083"
       BACKEND_MAINNET_HTTP_HOST: "mempool-api"
     command: "./wait-for mariadb:3306 --timeout=720 -- nginx -g 'daemon off;'"
+
   mempool-api:
     image: mempool/backend:latest
     container_name: mempool-api
@@ -369,6 +451,7 @@ services:
     command: "-jar DynamoDBLocal.jar -sharedDb -dbPath ./data"
     ports:
       - "8000:8000"
+    user: root
     volumes:
       - "../../dynamodb/data:/home/dynamodblocal/data"
     networks:
