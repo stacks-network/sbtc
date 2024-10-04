@@ -420,8 +420,8 @@ where
         wallet: &SignerWallet,
     ) -> Result<StacksTransaction, Error> {
         // First we ask for the other signers to sign our transaction
-        let msg = req.clone();
-        self.send_message(msg, chain_tip).await?;
+        let txid = req.txid;
+        self.send_message(req, chain_tip).await?;
         // Second we sign it ourselves
         //
         // TODO: Note that this is all pretty "loose". We haven't yet
@@ -434,22 +434,14 @@ where
         let signature = crate::signature::sign_stacks_tx(multi_tx.tx(), &private_key);
         multi_tx.add_signature(signature)?;
 
-        let txid = req.txid;
+        
         let mut count = 1;
 
         let future = async {
             while count <= wallet.signatures_required() {
                 let msg = self.network.receive().await?;
-                if !msg.verify() {
-                    // TODO: We should track these kinds of errors. If this
-                    // happens then something really went wrong elsewhere.
-                    tracing::error!(
-                        %txid,
-                        offending_public_key = %msg.signer_pub_key,
-                        "could not varify the received message",
-                    );
-                    continue;
-                }
+                // TODO: We need to verify these messages, but it is best
+                // to do that at the source when we receive the message.
 
                 if &msg.bitcoin_chain_tip != chain_tip {
                     tracing::warn!(?msg, "concurrent signing round message observed");
@@ -477,7 +469,7 @@ where
 
         tokio::time::timeout(self.signing_round_max_duration, future)
             .await
-            .map_err(|_| Error::SignatureTimeout(req.txid))?
+            .map_err(|_| Error::SignatureTimeout(txid))?
     }
 
     /// Coordinate a signing round for the given request
