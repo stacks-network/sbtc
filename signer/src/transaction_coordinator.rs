@@ -11,6 +11,7 @@ use sha2::Digest;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
+use crate::context::TxSignerEvent;
 use crate::context::{messaging::SignerEvent, messaging::SignerSignal, Context};
 use crate::error::Error;
 use crate::keys::PrivateKey;
@@ -130,9 +131,9 @@ where
                     break;
                 },
                 signal = signal_rx.recv() => match signal {
-                    // We're only interested in block observer notifications, which
-                    // is our trigger to do some work.
-                    Ok(SignerSignal::Event(SignerEvent::BitcoinBlockObserved)) => {
+                    // We're only interested in notifications from the transaction
+                    // signer indicating that it has handled new requests.
+                    Ok(SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled))) => {
                         tracing::debug!("received block observer notification");
                         self.process_new_blocks().await?;
                     },

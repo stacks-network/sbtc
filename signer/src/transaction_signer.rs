@@ -234,6 +234,9 @@ where
                 .await?;
         }
 
+        self.context
+            .signal(TxSignerEvent::NewRequestsHandled.into())?;
+
         Ok(())
     }
 
