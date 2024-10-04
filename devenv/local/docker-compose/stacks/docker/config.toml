@@ -30,17 +30,35 @@ public_ip_address = "1.1.1.1:1234"
 block_proposal_token = "helloworld"
 private_neighbors = false
 
+# Stacks signer event observers
 [[events_observer]]
-endpoint = "nakamoto-signer:30000" # change to your signer endpoint
-retry_count = 255
-include_data_events = false
+endpoint = "stacks-signer-1:30000"
+events_keys = ["stackerdb", "block_proposal"]
+
+[[events_observer]]
+endpoint = "stacks-signer-2:30000"
+events_keys = ["stackerdb", "block_proposal"]
+
+[[events_observer]]
+endpoint = "stacks-signer-3:30000" # change to your signer endpoint
 events_keys = ["stackerdb", "block_proposal"]
 
 # Add stacks-api as an event observer
 [[events_observer]]
 endpoint = "stacks-api:3700"
-retry_count = 255
-#include_data_events = false
+events_keys = ["*"]
+
+# sBTC signer event observers
+[[events_observer]]
+endpoint = "sbtc-signer-1:8801"
+events_keys = ["*"]
+
+[[events_observer]]
+endpoint = "sbtc-signer-2:8801"
+events_keys = ["*"]
+
+[[events_observer]]
+endpoint = "sbtc-signer-3:8801"
 events_keys = ["*"]
 
 
@@ -70,31 +88,47 @@ start_height = 0
 
 [[burnchain.epochs]]
 epoch_name = "2.05"
-start_height = 102
+start_height = 1
 
 [[burnchain.epochs]]
 epoch_name = "2.1"
-start_height = 103
+start_height = 2
 
 [[burnchain.epochs]]
 epoch_name = "2.2"
-start_height = 105
+start_height = 3
 
 [[burnchain.epochs]]
 epoch_name = "2.3"
-start_height = 106
+start_height = 4
 
 [[burnchain.epochs]]
 epoch_name = "2.4"
-start_height = 107
+start_height = 5
 
 [[burnchain.epochs]]
 epoch_name = "2.5"
-start_height = 108
+start_height = 6
 
 [[burnchain.epochs]]
 epoch_name = "3.0"
-start_height = 1000001
+start_height = 7
+
+[[ustx_balance]]
+address = "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039" # sBTC deployer
+amount = 10000000000000000
+
+[[ustx_balance]]
+address = "ST24VB7FBXCBV6P0SRDSPSW0Y2J9XHDXNHW9Q8S7H" # sBTC signer 1
+amount = 10000000000000000
+
+[[ustx_balance]]
+address = "ST2XAK68AR2TKBQBFNYSK9KN2AY9CVA91A7CSK63Z" # sBTC signer 2
+amount = 10000000000000000
+
+[[ustx_balance]]
+address = "ST1J9R0VMA5GQTW65QVHW1KVSKD7MCGT27X37A551" # sBTC signer 3
+amount = 10000000000000000
 
 [[ustx_balance]]
 address = "ST0DZFQ1XGHC5P1BZ6B7HSWQKQJHM74JBGCSDTNA"
