@@ -28,6 +28,7 @@
 //! [^3]: https://github.com/Trust-Machines/p256k1/blob/3ecb941c1af13741d52335ef911693b6d6fda94b/p256k1/src/scalar.rs#L245-L257
 //! [^4]: https://github.com/bitcoin-core/secp256k1/blob/3fdf146bad042a17f6b2f490ef8bd9d8e774cdbd/src/scalar.h#L31-L36
 
+use std::ops::Deref;
 use std::str::FromStr;
 
 use bitcoin::ScriptBuf;
@@ -43,6 +44,13 @@ use crate::error::Error;
 #[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PublicKey(secp256k1::PublicKey);
+
+impl Deref for PublicKey {
+    type Target = secp256k1::PublicKey;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 impl From<&secp256k1::PublicKey> for PublicKey {
     fn from(value: &secp256k1::PublicKey) -> Self {
