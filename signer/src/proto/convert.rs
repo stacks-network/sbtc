@@ -1,14 +1,19 @@
 //! Conversion functions from protobufs to regular types
 //!
 
-use bitcoin::OutPoint;
 use bitcoin::hashes::Hash as _;
+use bitcoin::OutPoint;
+use clarity::codec::StacksMessageCodec;
+use clarity::vm::types::PrincipalData;
 use secp256k1::ecdsa::RecoverableSignature;
+use stacks_common::types::chainstate::StacksAddress;
 
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::proto;
-use crate::storage::model::{BitcoinBlockHash, BitcoinTxId, StacksTxId};
+use crate::storage::model::{
+    BitcoinBlockHash, BitcoinTxId, StacksBlockHash, StacksPrincipal, StacksTxId,
+};
 
 use crate::proto::Uint256;
 
@@ -121,22 +126,6 @@ impl TryFrom<proto::RecoverableSignature> for RecoverableSignature {
     }
 }
 
-impl From<StacksTxId> for proto::StacksTxid {
-    fn from(value: StacksTxId) -> Self {
-        proto::StacksTxid {
-            txid: Some(Uint256::from(value.into_bytes())),
-        }
-    }
-}
-
-impl TryFrom<proto::StacksTxid> for StacksTxId {
-    type Error = Error;
-    fn try_from(value: proto::StacksTxid) -> Result<Self, Self::Error> {
-        let bytes: [u8; 32] = value.txid.required()?.into();
-        Ok(StacksTxId::from(bytes))
-    }
-}
-
 impl From<BitcoinTxId> for proto::BitcoinTxid {
     fn from(value: BitcoinTxId) -> Self {
         proto::BitcoinTxid {
@@ -195,6 +184,71 @@ impl TryFrom<proto::OutPoint> for OutPoint {
             txid: txid.into(),
             vout: value.vout,
         })
+    }
+}
+
+impl From<StacksTxId> for proto::StacksTxid {
+    fn from(value: StacksTxId) -> Self {
+        proto::StacksTxid {
+            txid: Some(Uint256::from(value.into_bytes())),
+        }
+    }
+}
+
+impl TryFrom<proto::StacksTxid> for StacksTxId {
+    type Error = Error;
+    fn try_from(value: proto::StacksTxid) -> Result<Self, Self::Error> {
+        let bytes: [u8; 32] = value.txid.required()?.into();
+        Ok(StacksTxId::from(bytes))
+    }
+}
+
+impl From<StacksBlockHash> for proto::StacksBlockId {
+    fn from(value: StacksBlockHash) -> Self {
+        proto::StacksBlockId {
+            block_id: Some(Uint256::from(value.into_bytes())),
+        }
+    }
+}
+
+impl TryFrom<proto::StacksBlockId> for StacksBlockHash {
+    type Error = Error;
+    fn try_from(value: proto::StacksBlockId) -> Result<Self, Self::Error> {
+        let bytes: [u8; 32] = value.block_id.required()?.into();
+        Ok(StacksBlockHash::from(bytes))
+    }
+}
+
+impl From<StacksAddress> for proto::StacksAddress {
+    fn from(value: StacksAddress) -> Self {
+        proto::StacksAddress {
+            address: value.serialize_to_vec(),
+        }
+    }
+}
+
+impl TryFrom<proto::StacksAddress> for StacksAddress {
+    type Error = Error;
+    fn try_from(value: proto::StacksAddress) -> Result<Self, Self::Error> {
+        let fd = &mut value.address.as_slice();
+        StacksAddress::consensus_deserialize(fd).map_err(Error::StacksCodec)
+    }
+}
+
+impl From<StacksPrincipal> for proto::StacksPrincipal {
+    fn from(value: StacksPrincipal) -> Self {
+        proto::StacksPrincipal { data: value.serialize_to_vec() }
+    }
+}
+
+impl TryFrom<proto::StacksPrincipal> for StacksPrincipal {
+    type Error = Error;
+    fn try_from(value: proto::StacksPrincipal) -> Result<Self, Self::Error> {
+        let fd = &mut value.data.as_slice();
+
+        PrincipalData::consensus_deserialize(fd)
+            .map(StacksPrincipal::from)
+            .map_err(Error::StacksCodec)
     }
 }
 
