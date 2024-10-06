@@ -1,9 +1,7 @@
 //! Conversion functions from protobufs to regular types
 //!
 
-use bitcoin::hashes::Hash as _;
-use bitcoin::OutPoint;
-use clarity::codec::StacksMessageCodec;
+use clarity::codec::StacksMessageCodec as _;
 use clarity::vm::types::PrincipalData;
 use secp256k1::ecdsa::RecoverableSignature;
 use stacks_common::types::chainstate::StacksAddress;
@@ -11,9 +9,11 @@ use stacks_common::types::chainstate::StacksAddress;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::proto;
-use crate::storage::model::{
-    BitcoinBlockHash, BitcoinTxId, StacksBlockHash, StacksPrincipal, StacksTxId,
-};
+use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::BitcoinTxId;
+use crate::storage::model::StacksBlockHash;
+use crate::storage::model::StacksPrincipal;
+use crate::storage::model::StacksTxId;
 
 use crate::proto::Uint256;
 
@@ -158,29 +158,21 @@ impl TryFrom<proto::BitcoinBlockHash> for BitcoinBlockHash {
     }
 }
 
-impl From<bitcoin::Txid> for proto::BitcoinTxid {
-    fn from(value: bitcoin::Txid) -> Self {
-        proto::BitcoinTxid {
-            txid: Some(Uint256::from(value.to_byte_array())),
-        }
-    }
-}
-
-impl From<OutPoint> for proto::OutPoint {
-    fn from(value: OutPoint) -> Self {
+impl From<bitcoin::OutPoint> for proto::OutPoint {
+    fn from(value: bitcoin::OutPoint) -> Self {
         proto::OutPoint {
-            txid: Some(proto::BitcoinTxid::from(value.txid)),
+            txid: Some(proto::BitcoinTxid::from(BitcoinTxId::from(value.txid))),
             vout: value.vout,
         }
     }
 }
 
-impl TryFrom<proto::OutPoint> for OutPoint {
+impl TryFrom<proto::OutPoint> for bitcoin::OutPoint {
     type Error = Error;
     fn try_from(value: proto::OutPoint) -> Result<Self, Self::Error> {
         let txid: BitcoinTxId = value.txid.required()?.try_into()?;
 
-        Ok(OutPoint {
+        Ok(bitcoin::OutPoint {
             txid: txid.into(),
             vout: value.vout,
         })
@@ -254,10 +246,38 @@ impl TryFrom<proto::StacksPrincipal> for StacksPrincipal {
 
 #[cfg(test)]
 mod tests {
+    use crate::keys::PrivateKey;
+
     use super::*;
+
+    use std::marker::PhantomData;
+
+    use bitcoin::hashes::Hash as _;
+
+    use fake::Dummy;
     use fake::Fake;
     use fake::Faker;
     use rand::rngs::OsRng;
+    use test_case::test_case;
+
+    struct Unit;
+
+    impl Dummy<Unit> for bitcoin::OutPoint {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+            let bytes: [u8; 32] = Faker.fake_with_rng(rng);
+            let txid = bitcoin::Txid::from_byte_array(bytes);
+            let vout: u32 = Faker.fake_with_rng(rng);
+            bitcoin::OutPoint { txid, vout }
+        }
+    }
+
+    impl Dummy<Unit> for RecoverableSignature {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+            let private_key = PrivateKey::new(rng);
+            let msg = secp256k1::Message::from_digest([0; 32]);
+            private_key.sign_ecdsa_recoverable(&msg)
+        }
+    }
 
     #[test]
     fn conversion_between_bytes_and_uint256() {
@@ -280,5 +300,54 @@ mod tests {
 
         let rount_trip_bytes = <[u8; 32]>::from(number);
         assert_eq!(rount_trip_bytes, bytes);
+    }
+
+    #[test_case(PhantomData::<[u8; 32]>, PhantomData::<proto::Uint256>; "Uint256")]
+    #[test_case(PhantomData::<PublicKey>, PhantomData::<proto::PublicKey>; "PublicKey")]
+    #[test_case(PhantomData::<BitcoinTxId>, PhantomData::<proto::BitcoinTxid>; "BitcoinTxId")]
+    #[test_case(PhantomData::<BitcoinBlockHash>, PhantomData::<proto::BitcoinBlockHash>; "BitcoinBlockHash")]
+    #[test_case(PhantomData::<StacksTxId>, PhantomData::<proto::StacksTxid>; "StacksTxId")]
+    #[test_case(PhantomData::<StacksBlockHash>, PhantomData::<proto::StacksBlockId>; "StacksBlockHash")]
+    #[test_case(PhantomData::<StacksPrincipal>, PhantomData::<proto::StacksPrincipal>; "StacksPrincipal")]
+    fn convert_protobuf_types<T, U, E>(_: PhantomData<T>, _: PhantomData<U>)
+    where
+        // `.unwrap()` requires that `E` implement `std::fmt::Debug` and
+        // `assert_eq!` requires `PartialEq + std::fmt::Debug`.
+        T: Dummy<Faker> + TryFrom<U, Error = E> + Clone + PartialEq + std::fmt::Debug,
+        U: From<T>,
+        E: std::fmt::Debug,
+    {
+        // The type T originates from a signer. Let's create a random
+        // instance of one.
+        let original: T = Faker.fake_with_rng(&mut OsRng);
+        // The type U is a protobuf type. Before sending it to other
+        // signers, we convert our internal type into it's protobuf
+        // counterpart. We can always infallibly create U from T.
+        let proto_original = U::from(original.clone());
+
+        // Some other signer recieves an instance of U. This could be a
+        // mallicious actor or a modified version of the signer binary
+        // where they made some mistake, so converting back to T can fail.
+        let original_from_proto = T::try_from(proto_original).unwrap();
+        // In this case, we know U was created from T correctly, so we
+        // should be able to convert back without issues.
+        assert_eq!(original, original_from_proto);
+    }
+
+    /// This test is identical to [`convert_protobuf_types`] tests above,
+    /// except we cannot implement Dummy<Faker> on these types.
+    #[test_case(PhantomData::<bitcoin::OutPoint>, PhantomData::<proto::OutPoint>; "OutPoint")]
+    #[test_case(PhantomData::<RecoverableSignature>, PhantomData::<proto::RecoverableSignature>; "RecoverableSignature")]
+    fn convert_protobuf_types2<T, U, E>(_: PhantomData<T>, _: PhantomData<U>)
+    where
+        T: Dummy<Unit> + TryFrom<U, Error = E> + Clone + PartialEq + std::fmt::Debug,
+        U: From<T>,
+        E: std::fmt::Debug,
+    {
+        let original: T = Unit.fake_with_rng(&mut OsRng);
+        let proto_original = U::from(original.clone());
+
+        let original_from_proto = T::try_from(proto_original).unwrap();
+        assert_eq!(original, original_from_proto);
     }
 }
