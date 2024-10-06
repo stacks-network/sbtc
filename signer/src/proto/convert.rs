@@ -1,16 +1,20 @@
 //! Conversion functions from protobufs to regular types
 //!
 
+use bitcoin::OutPoint;
+use bitcoin::hashes::Hash as _;
 use secp256k1::ecdsa::RecoverableSignature;
 
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::proto;
-use crate::storage::model::{BitcoinTxId, StacksTxId};
+use crate::storage::model::{BitcoinBlockHash, BitcoinTxId, StacksTxId};
 
 use crate::proto::Uint256;
 
-pub trait RequiredField: Sized {
+/// This trait is to make it easy to handle fields of protobuf structs that
+/// are `None`, when they should be `Some(_)`.
+trait RequiredField: Sized {
     type Inner;
     fn required(self) -> Result<Self::Inner, Error>;
 }
@@ -146,6 +150,51 @@ impl TryFrom<proto::BitcoinTxid> for BitcoinTxId {
     fn try_from(value: proto::BitcoinTxid) -> Result<Self, Self::Error> {
         let bytes: [u8; 32] = value.txid.required()?.into();
         Ok(BitcoinTxId::from(bytes))
+    }
+}
+
+impl From<BitcoinBlockHash> for proto::BitcoinBlockHash {
+    fn from(value: BitcoinBlockHash) -> Self {
+        proto::BitcoinBlockHash {
+            block_hash: Some(Uint256::from(value.into_bytes())),
+        }
+    }
+}
+
+impl TryFrom<proto::BitcoinBlockHash> for BitcoinBlockHash {
+    type Error = Error;
+    fn try_from(value: proto::BitcoinBlockHash) -> Result<Self, Self::Error> {
+        let bytes: [u8; 32] = value.block_hash.required()?.into();
+        Ok(BitcoinBlockHash::from(bytes))
+    }
+}
+
+impl From<bitcoin::Txid> for proto::BitcoinTxid {
+    fn from(value: bitcoin::Txid) -> Self {
+        proto::BitcoinTxid {
+            txid: Some(Uint256::from(value.to_byte_array())),
+        }
+    }
+}
+
+impl From<OutPoint> for proto::OutPoint {
+    fn from(value: OutPoint) -> Self {
+        proto::OutPoint {
+            txid: Some(proto::BitcoinTxid::from(value.txid)),
+            vout: value.vout,
+        }
+    }
+}
+
+impl TryFrom<proto::OutPoint> for OutPoint {
+    type Error = Error;
+    fn try_from(value: proto::OutPoint) -> Result<Self, Self::Error> {
+        let txid: BitcoinTxId = value.txid.required()?.try_into()?;
+
+        Ok(OutPoint {
+            txid: txid.into(),
+            vout: value.vout,
+        })
     }
 }
 
