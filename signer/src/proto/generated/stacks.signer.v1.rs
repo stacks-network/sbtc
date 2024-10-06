@@ -6,10 +6,7 @@ pub struct SignerDepositDecision {
     /// The bitcoin transaction ID of the transaction containing the deposit
     /// request. It must be 32 bytes.
     #[prost(message, optional, tag = "1")]
-    pub txid: ::core::option::Option<super::super::super::bitcoin::BitcoinTxid>,
-    /// Index of the deposit request UTXO.
-    #[prost(uint32, tag = "2")]
-    pub output_index: u32,
+    pub outpoint: ::core::option::Option<super::super::super::bitcoin::OutPoint>,
     /// Whether or not the signer has accepted the deposit request.
     #[prost(bool, tag = "3")]
     pub accepted: bool,
@@ -18,10 +15,10 @@ pub struct SignerDepositDecision {
     #[prost(bool, tag = "4")]
     pub can_sign: bool,
 }
-/// Represents a decision to accept or reject a deposit request.
+/// Represents a decision to accept or reject a withdrawal request.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SignerWithdrawDecision {
+pub struct SignerWithdrawalDecision {
     /// ID of the withdraw request.
     #[prost(uint64, tag = "1")]
     pub request_id: u64,

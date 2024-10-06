@@ -8,6 +8,10 @@ use stacks_common::types::chainstate::StacksAddress;
 
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::message::BitcoinTransactionSignAck;
+use crate::message::SignerDepositDecision;
+use crate::message::SignerWithdrawalDecision;
+use crate::message::StacksTransactionSignature;
 use crate::proto;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
@@ -244,6 +248,90 @@ impl TryFrom<proto::StacksPrincipal> for StacksPrincipal {
     }
 }
 
+impl From<SignerDepositDecision> for proto::SignerDepositDecision {
+    fn from(value: SignerDepositDecision) -> Self {
+        proto::SignerDepositDecision {
+            outpoint: Some(proto::OutPoint {
+                txid: Some(BitcoinTxId::from(value.txid).into()),
+                vout: value.output_index,
+            }),
+            accepted: value.accepted,
+        }
+    }
+}
+
+impl TryFrom<proto::SignerDepositDecision> for SignerDepositDecision {
+    type Error = Error;
+    fn try_from(value: proto::SignerDepositDecision) -> Result<Self, Self::Error> {
+        let outpoint: bitcoin::OutPoint = value.outpoint.required()?.try_into()?;
+        Ok(SignerDepositDecision {
+            txid: outpoint.txid,
+            output_index: outpoint.vout,
+            accepted: value.accepted,
+        })
+    }
+}
+
+impl From<SignerWithdrawalDecision> for proto::SignerWithdrawalDecision {
+    fn from(value: SignerWithdrawalDecision) -> Self {
+        proto::SignerWithdrawalDecision {
+            request_id: value.request_id,
+            block_id: Some(StacksBlockHash::from(value.block_hash).into()),
+            accepted: value.accepted,
+            txid: Some(value.txid.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::SignerWithdrawalDecision> for SignerWithdrawalDecision {
+    type Error = Error;
+    fn try_from(value: proto::SignerWithdrawalDecision) -> Result<Self, Self::Error> {
+        Ok(SignerWithdrawalDecision {
+            request_id: value.request_id,
+            block_hash: StacksBlockHash::try_from(value.block_id.required()?)?.into_bytes(),
+            accepted: value.accepted,
+            txid: value.txid.required()?.try_into()?,
+        })
+    }
+}
+
+impl From<BitcoinTransactionSignAck> for proto::BitcoinTransactionSignAck {
+    fn from(value: BitcoinTransactionSignAck) -> Self {
+        proto::BitcoinTransactionSignAck {
+            txid: Some(BitcoinTxId::from(value.txid).into()),
+        }
+    }
+}
+
+impl TryFrom<proto::BitcoinTransactionSignAck> for BitcoinTransactionSignAck {
+    type Error = Error;
+    fn try_from(value: proto::BitcoinTransactionSignAck) -> Result<Self, Self::Error> {
+        Ok(BitcoinTransactionSignAck {
+            txid: BitcoinTxId::try_from(value.txid.required()?)?.into(),
+        })
+    }
+}
+
+impl From<StacksTransactionSignature> for proto::StacksTransactionSignature {
+    fn from(value: StacksTransactionSignature) -> Self {
+        proto::StacksTransactionSignature {
+            txid: Some(StacksTxId::from(value.txid).into()),
+            signature: Some(value.signature.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::StacksTransactionSignature> for StacksTransactionSignature {
+    type Error = Error;
+    fn try_from(value: proto::StacksTransactionSignature) -> Result<Self, Self::Error> {
+        Ok(StacksTransactionSignature {
+            txid: StacksTxId::try_from(value.txid.required()?)?.into(),
+            signature: value.signature.required()?.try_into()?,
+        })
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use crate::keys::PrivateKey;
@@ -309,7 +397,11 @@ mod tests {
     #[test_case(PhantomData::<StacksTxId>, PhantomData::<proto::StacksTxid>; "StacksTxId")]
     #[test_case(PhantomData::<StacksBlockHash>, PhantomData::<proto::StacksBlockId>; "StacksBlockHash")]
     #[test_case(PhantomData::<StacksPrincipal>, PhantomData::<proto::StacksPrincipal>; "StacksPrincipal")]
-    fn convert_protobuf_types<T, U, E>(_: PhantomData<T>, _: PhantomData<U>)
+    #[test_case(PhantomData::<SignerDepositDecision>, PhantomData::<proto::SignerDepositDecision>; "SignerDepositDecision")]
+    #[test_case(PhantomData::<SignerWithdrawalDecision>, PhantomData::<proto::SignerWithdrawalDecision>; "SignerWithdrawalDecision")]
+    #[test_case(PhantomData::<BitcoinTransactionSignAck>, PhantomData::<proto::BitcoinTransactionSignAck>; "BitcoinTransactionSignAck")]
+    #[test_case(PhantomData::<StacksTransactionSignature>, PhantomData::<proto::StacksTransactionSignature>; "StacksTransactionSignature")]
+    fn convert_protobuf_type<T, U, E>(_: PhantomData<T>, _: PhantomData<U>)
     where
         // `.unwrap()` requires that `E` implement `std::fmt::Debug` and
         // `assert_eq!` requires `PartialEq + std::fmt::Debug`.
@@ -338,7 +430,7 @@ mod tests {
     /// except we cannot implement Dummy<Faker> on these types.
     #[test_case(PhantomData::<bitcoin::OutPoint>, PhantomData::<proto::OutPoint>; "OutPoint")]
     #[test_case(PhantomData::<RecoverableSignature>, PhantomData::<proto::RecoverableSignature>; "RecoverableSignature")]
-    fn convert_protobuf_types2<T, U, E>(_: PhantomData<T>, _: PhantomData<U>)
+    fn convert_protobuf_type2<T, U, E>(_: PhantomData<T>, _: PhantomData<U>)
     where
         T: Dummy<Unit> + TryFrom<U, Error = E> + Clone + PartialEq + std::fmt::Debug,
         U: From<T>,
