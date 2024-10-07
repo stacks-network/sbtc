@@ -9,7 +9,7 @@ use std::time::Duration;
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::MockBitcoinInteract;
 use crate::context::Context;
-use crate::context::SignerEvent;
+use crate::context::TxSignerEvent;
 use crate::emily_client::EmilyInteract;
 use crate::error;
 use crate::keys;
@@ -224,10 +224,10 @@ where
                 .await
         });
 
-        // Signal `BitcoinBlockObserved` to trigger the coordinator.
+        // Signal `TxSignerEvent::NewRequestsHandled` to trigger the coordinator.
         handle
             .context
-            .signal(SignerEvent::BitcoinBlockObserved.into())
+            .signal(TxSignerEvent::NewRequestsHandled.into())
             .expect("failed to signal");
 
         // Await the `wait_for_tx_task` to receive the first transaction broadcasted.
