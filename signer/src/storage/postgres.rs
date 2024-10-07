@@ -1184,7 +1184,7 @@ impl super::DbRead for PgStore {
               , cbb.block_height AS sweep_block_height
               , dr.txid
               , dr.output_index
-              , dr.recpipient
+              , dr.recipient
               , dr.amount
             FROM sbtc_signer.transactions AS t
             JOIN sbtc_signer.bitcoin_transactions AS bt
@@ -1192,7 +1192,11 @@ impl super::DbRead for PgStore {
             JOIN canonical_bitcoin_blockchain AS cbb
               ON bt.block_hash = cbb.block_hash
             CROSS JOIN sbtc_signer.deposit_requests AS dr
-            WHERE t.tx_type = 'sbtc_transaction'
+            LEFT JOIN sbtc_signer.completed_deposit_events AS cde
+              ON cde.bitcoin_txid = dr.txid
+             AND cde.output_index = dr.output_index
+            WHERE cde.bitcoin_txid IS NULL
+              AND t.tx_type = 'sbtc_transaction'
             ORDER BY t.created_at DESC
             LIMIT 1
         "#,
