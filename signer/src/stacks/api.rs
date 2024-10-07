@@ -865,13 +865,14 @@ mod tests {
         TypeSignature,
     };
     use test_case::test_case;
+    use test_log::test;
 
     use super::*;
     use std::io::Read;
     use std::sync::atomic::Ordering;
 
     #[ignore = "This is an integration test that hasn't been setup for CI yet"]
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn fetch_unknown_ancestors_works() {
         let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
         let db = crate::testing::storage::new_test_database(db_num, true).await;
