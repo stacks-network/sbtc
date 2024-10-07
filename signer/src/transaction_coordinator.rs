@@ -434,7 +434,6 @@ where
         let signature = crate::signature::sign_stacks_tx(multi_tx.tx(), &private_key);
         multi_tx.add_signature(signature)?;
 
-        
         let mut count = 1;
 
         let future = async {
