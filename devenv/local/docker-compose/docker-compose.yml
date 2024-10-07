@@ -1,6 +1,6 @@
 x-common-vars:
   - &STACKS_BLOCKCHAIN_COMMIT c87c0eb6c050688340b975b0b42fb0a1ae378afa
-  - &STACKS_API_COMMIT 1c325dfc04d9a81738c48961b4eef1c28fccb3bd
+  - &STACKS_API_COMMIT 46e1ae256e474eac98979d0a3df685fe3fa48d6d
   - &BTC_ADDR miEJtNKa3ASpA19v5ZhvbKTEieYjLpzCYT
   - &MINER_SEED 9e446f6b0c6a96cf2190e54bcd5a8569c3e386f091605499464389b8d4e0bfc201 # stx: STEW4ZNT093ZHK4NEQKX8QJGM2Y7WWJ2FQQS5C19, btc: miEJtNKa3ASpA19v5ZhvbKTEieYjLpzCYT, pub_key: 035379aa40c02890d253cfa577964116eb5295570ae9f7287cbae5f2585f5b2c7c, wif: cStMQXkK5yTFGP3KbNXYQ3sJf2qwQiKrZwR9QJnksp32eKzef1za
   - &BITCOIN_PEER_PORT 18444
@@ -9,8 +9,8 @@ x-common-vars:
   - &BITCOIN_RPC_USER devnet
   - &BITCOIN_RPC_PASS devnet
   - &MINE_INTERVAL ${MINE_INTERVAL:-1s}
-  - &MINE_INTERVAL_EPOCH25 ${MINE_INTERVAL_EPOCH25:-10s} # 10 second bitcoin block times in epoch 2.5
-  - &MINE_INTERVAL_EPOCH3 ${MINE_INTERVAL_EPOCH3:-30s} # 10 minute bitcoin block times in epoch 3
+  - &MINE_INTERVAL_EPOCH25 ${MINE_INTERVAL_EPOCH25:-10s} # 5 second bitcoin block times in epoch 2.5
+  - &MINE_INTERVAL_EPOCH3 ${MINE_INTERVAL_EPOCH3:-15s} # 15 second bitcoin block times in epoch 3
   - &NAKAMOTO_BLOCK_INTERVAL 2 # seconds to wait between issuing stx-transfer transactions (which triggers Nakamoto block production)
   - &STACKS_20_HEIGHT ${STACKS_20_HEIGHT:-0}
   - &STACKS_2_05_HEIGHT ${STACKS_2_05_HEIGHT:-102}
@@ -266,7 +266,7 @@ services:
       context: ./stacks-api/docker
       args:
         GIT_URI: "https://github.com/hirosystems/stacks-blockchain-api.git"
-        GIT_BRANCH: "v7.10.0-nakamoto.7"
+        GIT_BRANCH: "v8.0.3"
     ports:
       - 3999:3999
       - 3700:3700
@@ -305,7 +305,7 @@ services:
       SIGNER_DB_PATH: /chainstate/stacks-signer-1.sqlite
       STACKS_NODE_HOST: stacks:20443
       STACKS_SIGNER_ENDPOINT: 0.0.0.0:30000
-      SIGNER_PRIVATE_KEY: 6a1a754ba863d7bab14adbbc3f8ebb090af9e871ace621d3e5ab634e1422885e01
+      SIGNER_PRIVATE_KEY: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc01
     entrypoint:
       - /bin/bash
       - -c
@@ -328,7 +328,7 @@ services:
       SIGNER_DB_PATH: /chainstate/stacks-signer-2.sqlite
       STACKS_NODE_HOST: stacks:20443
       STACKS_SIGNER_ENDPOINT: 0.0.0.0:30000
-      SIGNER_PRIVATE_KEY: b463f0df6c05d2f156393eee73f8016c5372caa0e9e29a901bb7171d90dc4f1401
+      SIGNER_PRIVATE_KEY: 9bfecf16c9c12792589dd2b843f850d5b89b81a04f8ab91c083bdf6709fbefee01
     entrypoint:
       - /bin/bash
       - -c
@@ -351,7 +351,7 @@ services:
       SIGNER_DB_PATH: /chainstate/stacks-signer-3.sqlite
       STACKS_NODE_HOST: stacks:20443
       STACKS_SIGNER_ENDPOINT: 0.0.0.0:30000
-      SIGNER_PRIVATE_KEY: 7036b29cb5e235e5fd9b09ae3e8eec4404e44906814d5d01cbca968a60ed4bfb01
+      SIGNER_PRIVATE_KEY: 3ec0ca5770a356d6cd1a9bfcbf6cd151eb1bd85c388cc00648ec4ef5853fdb7401
     entrypoint:
       - /bin/bash
       - -c
@@ -368,7 +368,7 @@ services:
       context: ./stacks-explorer/docker
       args:
         GIT_URI: "https://github.com/hirosystems/explorer.git"
-        GIT_BRANCH: "v1.170.1"
+        GIT_BRANCH: "v1.211.2"
     ports:
       - 3020:3000
     depends_on:
@@ -535,7 +535,7 @@ services:
       STACKS_CORE_RPC_HOST: stacks
       STACKS_CORE_RPC_PORT: 20443
       STACKING_CYCLES: *STACKING_CYCLES
-      STACKING_KEYS: 6a1a754ba863d7bab14adbbc3f8ebb090af9e871ace621d3e5ab634e1422885e01,b463f0df6c05d2f156393eee73f8016c5372caa0e9e29a901bb7171d90dc4f1401,7036b29cb5e235e5fd9b09ae3e8eec4404e44906814d5d01cbca968a60ed4bfb01
+      STACKING_KEYS: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc01,9bfecf16c9c12792589dd2b843f850d5b89b81a04f8ab91c083bdf6709fbefee01,3ec0ca5770a356d6cd1a9bfcbf6cd151eb1bd85c388cc00648ec4ef5853fdb7401
       STACKS_25_HEIGHT: *STACKS_25_HEIGHT
       STACKS_30_HEIGHT: *STACKS_30_HEIGHT
       POX_PREPARE_LENGTH: *POX_PREPARE_LENGTH
@@ -554,7 +554,7 @@ services:
       STACKS_CORE_RPC_HOST: stacks-api
       STACKS_CORE_RPC_PORT: 3999
       STACKING_CYCLES: *STACKING_CYCLES
-      STACKING_KEYS: 6a1a754ba863d7bab14adbbc3f8ebb090af9e871ace621d3e5ab634e1422885e01,b463f0df6c05d2f156393eee73f8016c5372caa0e9e29a901bb7171d90dc4f1401,7036b29cb5e235e5fd9b09ae3e8eec4404e44906814d5d01cbca968a60ed4bfb01
+      STACKING_KEYS: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc01,9bfecf16c9c12792589dd2b843f850d5b89b81a04f8ab91c083bdf6709fbefee01,3ec0ca5770a356d6cd1a9bfcbf6cd151eb1bd85c388cc00648ec4ef5853fdb7401
       STACKS_25_HEIGHT: *STACKS_25_HEIGHT
       STACKS_30_HEIGHT: *STACKS_30_HEIGHT
       POX_PREPARE_LENGTH: *POX_PREPARE_LENGTH
@@ -579,11 +579,11 @@ services:
       STACKS_CORE_RPC_PORT: 20443
       NAKAMOTO_BLOCK_INTERVAL: *NAKAMOTO_BLOCK_INTERVAL
       STACKS_30_HEIGHT: *STACKS_30_HEIGHT
-      ACCOUNT_KEYS: 0d2f965b472a82efd5a96e6513c8b9f7edc725d5c96c7d35d6c722cedeb80d1b01,975b251dd7809469ef0c26ec3917971b75c51cd73a022024df4bf3b232cc2dc001,c71700b07d520a8c9731e4d0f095aa6efb91e16e25fb27ce2b72e7b698f8127a01
+      ACCOUNT_KEYS: e26e611fc92fe535c5e2e58a6a446375bb5e3b471440af21bbe327384befb50a01,e3ebd73a51da9a2ab0c6679145420876bf4338554a8972e3ab200cef7adbec6001,0bfff38daea4561a4343c9b3f29bfb06e32a988868fc68beed31a6c0f6de4cf701
       STACKS_25_HEIGHT: *STACKS_25_HEIGHT
       POX_PREPARE_LENGTH: *POX_PREPARE_LENGTH
       POX_REWARD_LENGTH: *POX_REWARD_LENGTH
-      STACKING_KEYS: 6a1a754ba863d7bab14adbbc3f8ebb090af9e871ace621d3e5ab634e1422885e01,b463f0df6c05d2f156393eee73f8016c5372caa0e9e29a901bb7171d90dc4f1401,7036b29cb5e235e5fd9b09ae3e8eec4404e44906814d5d01cbca968a60ed4bfb01
+      STACKING_KEYS: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc01,9bfecf16c9c12792589dd2b843f850d5b89b81a04f8ab91c083bdf6709fbefee01,3ec0ca5770a356d6cd1a9bfcbf6cd151eb1bd85c388cc00648ec4ef5853fdb7401
     depends_on:
       - stacks
     entrypoint:
