@@ -1250,7 +1250,7 @@ checksum = "98cc8fbded0c607b7ba9dd60cd98df59af97e84d24e49c8557331cfc26d301ce"
 [[package]]
 name = "clarity"
 version = "0.0.1"
-source = "git+https://github.com/stacks-network/stacks-core?rev=cbf0c52fb7a0b8ac55badadcf3773ca0848a25cf#cbf0c52fb7a0b8ac55badadcf3773ca0848a25cf"
+source = "git+https://github.com/stacks-network/stacks-core?rev=c87c0eb6c050688340b975b0b42fb0a1ae378afa#c87c0eb6c050688340b975b0b42fb0a1ae378afa"
 dependencies = [
  "hashbrown 0.14.5",
  "integer-sqrt",
@@ -3611,7 +3611,7 @@ dependencies = [
 [[package]]
 name = "libstackerdb"
 version = "0.0.1"
-source = "git+https://github.com/stacks-network/stacks-core?rev=cbf0c52fb7a0b8ac55badadcf3773ca0848a25cf#cbf0c52fb7a0b8ac55badadcf3773ca0848a25cf"
+source = "git+https://github.com/stacks-network/stacks-core?rev=c87c0eb6c050688340b975b0b42fb0a1ae378afa#c87c0eb6c050688340b975b0b42fb0a1ae378afa"
 dependencies = [
  "clarity",
  "secp256k1 0.24.3",
@@ -4567,7 +4567,7 @@ checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
 [[package]]
 name = "pox-locking"
 version = "2.4.0"
-source = "git+https://github.com/stacks-network/stacks-core?rev=cbf0c52fb7a0b8ac55badadcf3773ca0848a25cf#cbf0c52fb7a0b8ac55badadcf3773ca0848a25cf"
+source = "git+https://github.com/stacks-network/stacks-core?rev=c87c0eb6c050688340b975b0b42fb0a1ae378afa#c87c0eb6c050688340b975b0b42fb0a1ae378afa"
 dependencies = [
  "clarity",
  "slog",
@@ -5887,6 +5887,7 @@ dependencies = [
  "stackslib",
  "strum",
  "test-case",
+ "test-log",
  "thiserror",
  "time 0.3.36",
  "tokio",
@@ -6154,7 +6155,7 @@ dependencies = [
 [[package]]
 name = "stacks-common"
 version = "0.0.1"
-source = "git+https://github.com/stacks-network/stacks-core?rev=cbf0c52fb7a0b8ac55badadcf3773ca0848a25cf#cbf0c52fb7a0b8ac55badadcf3773ca0848a25cf"
+source = "git+https://github.com/stacks-network/stacks-core?rev=c87c0eb6c050688340b975b0b42fb0a1ae378afa#c87c0eb6c050688340b975b0b42fb0a1ae378afa"
 dependencies = [
  "chrono",
  "curve25519-dalek 2.0.0",
@@ -6178,13 +6179,12 @@ dependencies = [
  "slog-term",
  "time 0.2.27",
  "winapi 0.3.9",
- "wsts",
 ]
 
 [[package]]
 name = "stackslib"
 version = "0.0.1"
-source = "git+https://github.com/stacks-network/stacks-core?rev=cbf0c52fb7a0b8ac55badadcf3773ca0848a25cf#cbf0c52fb7a0b8ac55badadcf3773ca0848a25cf"
+source = "git+https://github.com/stacks-network/stacks-core?rev=c87c0eb6c050688340b975b0b42fb0a1ae378afa#c87c0eb6c050688340b975b0b42fb0a1ae378afa"
 dependencies = [
  "chrono",
  "clarity",
@@ -6220,7 +6220,6 @@ dependencies = [
  "time 0.2.27",
  "url",
  "winapi 0.3.9",
- "wsts",
 ]
 
 [[package]]
@@ -6464,6 +6463,27 @@ dependencies = [
  "quote",
  "syn 2.0.76",
  "test-case-core",
+]
+
+[[package]]
+name = "test-log"
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3dffced63c2b5c7be278154d76b479f9f9920ed34e7574201407f0b14e2bbb93"
+dependencies = [
+ "test-log-macros",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "test-log-macros"
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5999e24eaa32083191ba4e425deb75cdf25efefabe5aaccb7446dd0d4122a3f5"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.76",
 ]
 
 [[package]]
