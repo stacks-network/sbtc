@@ -554,16 +554,16 @@ where
         let (aggregate_key, all_dkg_shares) =
             signer_set.run_dkg(bitcoin_chain_tip, dkg_txid, rng).await;
 
+        let encrypted_dkg_shares = all_dkg_shares.first().unwrap();
+
         signer_set
             .write_as_rotate_keys_tx(
                 &self.context.get_storage_mut(),
                 &bitcoin_chain_tip,
-                all_dkg_shares.first().unwrap(),
+                encrypted_dkg_shares,
                 rng,
             )
             .await;
-
-        let encrypted_dkg_shares = all_dkg_shares.first().unwrap();
 
         storage
             .write_encrypted_dkg_shares(encrypted_dkg_shares)
