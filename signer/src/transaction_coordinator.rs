@@ -304,7 +304,7 @@ where
 
     /// Transform the finalizable deposit request into a Stacks sign
     /// request object.
-    /// 
+    ///
     /// This function uses bitcoin-core to help with the fee assessment of
     /// the deposit request, and stacks-core for fee estimation of the
     /// transaction.

@@ -179,12 +179,12 @@ impl SignerWallet {
     }
 
     /// The aggregate public key of the given public keys.
-    /// 
+    ///
     /// # Notes
-    /// 
+    ///
     /// This aggregate is almost certainly different from the aggregate key
     /// that is output after DKG.
-    /// 
+    ///
     /// Once <https://github.com/stacks-network/sbtc/issues/614> gets done
     /// then we will always have a unification of the Stacks and bitcoin
     /// aggregate keys.
