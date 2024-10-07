@@ -421,7 +421,9 @@ where
     ) -> Result<StacksTransaction, Error> {
         // First we ask for the other signers to sign our transaction
         let txid = req.txid;
-        self.send_message(req, chain_tip).await?;
+        if wallet.signatures_required() > 1 {
+            self.send_message(req, chain_tip).await?;
+        }
         // Second we sign it ourselves
         //
         // TODO: Note that this is all pretty "loose". We haven't yet
@@ -437,7 +439,7 @@ where
         let mut count = 1;
 
         let future = async {
-            while count <= wallet.signatures_required() {
+            while count < wallet.signatures_required() {
                 let msg = self.network.receive().await?;
                 // TODO: We need to verify these messages, but it is best
                 // to do that at the source when we receive the message.
