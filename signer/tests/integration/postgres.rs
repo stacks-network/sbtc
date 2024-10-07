@@ -1428,7 +1428,7 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
 /// This function tests that deposit requests that do not have a confirmed
 /// response bitcoin transaction are not returned from
 /// [`DbRead::get_swept_deposit_requests`].
-/// 
+///
 /// We need to update the query before we can activate this test. Right now
 /// we do not associate deposit transactions with their sweep transaction,
 /// so the query is very dumb. We should fix this once
