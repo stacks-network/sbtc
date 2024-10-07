@@ -1144,15 +1144,15 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn get_finalizable_deposit_requests(
+    async fn get_swept_deposit_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
-    ) -> Result<Vec<model::FulfilledDepositRequest>, Error> {
+    ) -> Result<Vec<model::SweptDepositRequest>, Error> {
         // TODO: This query is definitely incorrect. Doing it correctly
         // will be much easier once
         // https://github.com/stacks-network/sbtc/issues/585 is completed.
-        sqlx::query_as::<_, model::FulfilledDepositRequest>(
+        sqlx::query_as::<_, model::SweptDepositRequest>(
             r#"
             WITH RECURSIVE canonical_bitcoin_blockchain AS (
                 SELECT
@@ -1204,7 +1204,7 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn get_finalizable_withdrawal_requests(
+    async fn get_swept_withdrawal_requests(
         &self,
         _chain_tip: &model::BitcoinBlockHash,
         _context_window: u16,

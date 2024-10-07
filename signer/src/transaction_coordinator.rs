@@ -273,7 +273,7 @@ where
         // associated with the bitcoin transaction's outputs.
 
         let deposit_requests = db
-            .get_finalizable_deposit_requests(chain_tip, self.context_window)
+            .get_swept_deposit_requests(chain_tip, self.context_window)
             .await?;
 
         if deposit_requests.is_empty() {
@@ -311,7 +311,7 @@ where
     #[tracing::instrument(skip_all)]
     async fn construct_stacks_sign_request(
         &self,
-        req: model::FulfilledDepositRequest,
+        req: model::SweptDepositRequest,
         bitcoin_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
     ) -> Result<StacksTransactionSignRequest, Error> {

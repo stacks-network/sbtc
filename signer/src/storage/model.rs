@@ -238,17 +238,20 @@ pub struct Transaction {
     pub block_hash: [u8; 32],
 }
 
-/// A deposit request with a response bitcoin transaction that has been confirmed
+/// A deposit request with a response bitcoin transaction that has been
+/// confirmed.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub struct FulfilledDepositRequest {
-    /// Transaction ID.
+pub struct SweptDepositRequest {
+    /// The transaction ID of the bitcoin transaction that swept in the
+    /// funds into the signers' UTXO.
     pub sweep_txid: BitcoinTxId,
-    /// The transaction fulfillinf the deposit request.
+    /// The transaction sweeping in the deposit request UTXO.
     pub sweep_tx: BitcoinTx,
-    /// The block id of the stacks block that includes this transaction
+    /// The block id of the bitcoin block that includes the sweep
+    /// transaction.
     pub sweep_block_hash: BitcoinBlockHash,
-    /// The block height of the stacks block that includes this transaction
+    /// The block height of the block referenced by the `sweep_block_hash`.
     #[sqlx(try_from = "i64")]
     pub sweep_block_height: u64,
     /// Transaction ID of the deposit request transaction.
@@ -257,10 +260,6 @@ pub struct FulfilledDepositRequest {
     #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
     #[sqlx(try_from = "i32")]
     pub output_index: u32,
-    /// Script spendable by the sBTC signers.
-    pub spend_script: Bytes,
-    /// Script spendable by the depositor.
-    pub reclaim_script: Bytes,
     /// The address of which the sBTC should be minted,
     /// can be a smart contract address.
     pub recipient: StacksPrincipal,
@@ -268,17 +267,6 @@ pub struct FulfilledDepositRequest {
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
     pub amount: u64,
-    /// The maximum portion of the deposited amount that may
-    /// be used to pay for transaction fees.
-    #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "100..100_000"))]
-    pub max_fee: u64,
-    /// The addresses of the input UTXOs funding the deposit request.
-    #[cfg_attr(
-        feature = "testing",
-        dummy(faker = "crate::testing::dummy::BitcoinAddresses(1..5)")
-    )]
-    pub sender_script_pub_keys: Vec<ScriptPubKey>,
 }
 
 /// Withdraw request.
