@@ -588,6 +588,12 @@ impl From<StacksBlockId> for StacksBlockHash {
     }
 }
 
+impl From<StacksBlockHash> for StacksBlockId {
+    fn from(value: StacksBlockHash) -> Self {
+        value.0
+    }
+}
+
 impl From<[u8; 32]> for StacksBlockHash {
     fn from(bytes: [u8; 32]) -> Self {
         Self(StacksBlockId(bytes))
@@ -609,6 +615,12 @@ impl Deref for StacksTxId {
 impl From<blockstack_lib::burnchains::Txid> for StacksTxId {
     fn from(value: blockstack_lib::burnchains::Txid) -> Self {
         Self(value)
+    }
+}
+
+impl From<StacksTxId> for blockstack_lib::burnchains::Txid {
+    fn from(value: StacksTxId) -> Self {
+        value.0
     }
 }
 

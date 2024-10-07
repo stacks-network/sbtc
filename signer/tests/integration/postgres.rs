@@ -57,6 +57,7 @@ use rand::SeedableRng;
 use signer::testing::context::*;
 use test_case::test_case;
 
+use crate::setup::TestSweepSetup;
 use crate::DATABASE_NUM;
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -1362,6 +1363,195 @@ async fn get_signers_script_pubkeys_returns_non_empty_vec_old_rows() {
 
     signer::testing::storage::drop_db(db).await;
 }
+
+/// This tests that deposit requests where there is an associated sweep
+/// transaction will show up in the query results from
+/// [`DbRead::get_swept_deposit_requests`].
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // This query doesn't *need* bitcoind (it's just a query), we just need
+    // the transaction data in the database. We use the [`TestSweepSetup`]
+    // structure because it has helper functions for generating and storing
+    // sweep transactions, and the [`TestSweepSetup`] structure correctly
+    // sets up the database.
+    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    // Wwe need to manually update the database with new bitcoin block
+    // headers.
+    crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+
+    // This isn't technically required right now, but the deposit
+    // transaction is supposed to be there, so future versions of our query
+    // can rely on that fact.
+    setup.store_deposit_tx(&db).await;
+
+    // We take the sweep transaction as is from the test setup and
+    // store it in the database.
+    setup.store_sweep_tx(&db).await;
+
+    // Lastly, the request needs to be added to the database. This stores
+    // `setup.deposit_request` into the database.
+    setup.store_deposit_request(&db).await;
+
+    let chain_tip = setup.sweep_block_hash.into();
+    let context_window = 20;
+
+    let mut requests = db
+        .get_swept_deposit_requests(&chain_tip, context_window)
+        .await
+        .unwrap();
+
+    // There should only be one request in the database and it has a sweep
+    // trasnaction so the length should be 1.
+    assert_eq!(requests.len(), 1);
+
+    // Its details should match that of the deposit request.
+    let req = requests.pop().unwrap();
+    assert_eq!(req.amount, setup.deposit_request.amount);
+    assert_eq!(req.txid, setup.deposit_request.outpoint.txid.into());
+    assert_eq!(req.output_index, setup.deposit_request.outpoint.vout);
+    assert_eq!(req.recipient, setup.deposit_recipient.into());
+    assert_eq!(req.sweep_block_hash, setup.sweep_block_hash.into());
+    assert_eq!(req.sweep_block_height, setup.sweep_block_height);
+    assert_eq!(req.sweep_txid, setup.sweep_tx_info.txid.into());
+    assert_eq!(req.sweep_tx, setup.sweep_tx_info.tx.into());
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+/// This function tests that deposit requests that do not have a confirmed
+/// response bitcoin transaction are not returned from
+/// [`DbRead::get_swept_deposit_requests`].
+/// 
+/// We need to update the query before we can activate this test. Right now
+/// we do not associate deposit transactions with their sweep transaction,
+/// so the query is very dumb. We should fix this once
+/// https://github.com/stacks-network/sbtc/issues/585 gets completed.
+#[ignore = "Underlying query has not been completed"]
+#[tokio::test]
+async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // This query doesn't *need* bitcoind (it's just a query), we just need
+    // the transaction data in the database. We use the [`TestSweepSetup`]
+    // structure because it has helper functions for generating and storing
+    // sweep transactions, and the [`TestSweepSetup`] structure correctly
+    // sets up the database.
+    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    // Wwe need to manually update the database with new bitcoin block
+    // headers.
+    crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+
+    // This isn't technically required right now, but the deposit
+    // transaction is supposed to be there, so future versions of our query
+    // can rely on that fact.
+    setup.store_deposit_tx(&db).await;
+
+    // The request needs to be added to the database. This stores
+    // `setup.deposit_request` into the database.
+    setup.store_deposit_request(&db).await;
+
+    // We are supposed to store a sweep transaction, but we haven't, so the
+    // deposit request is not considered swept.
+    let chain_tip = setup.sweep_block_hash.into();
+    let context_window = 20;
+
+    let requests = db
+        .get_swept_deposit_requests(&chain_tip, context_window)
+        .await
+        .unwrap();
+
+    // Womp, the request is not considered swept.
+    assert!(requests.is_empty());
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+/// This function tests that [`DbRead::get_swept_deposit_requests`]
+/// function does not return requests where we have already confirmed a
+/// `complete-deposit` contract call transaction on the canonical Stacks
+/// blockchain.
+///
+/// Right now the query in [`DbRead::get_swept_deposit_requests`] does not
+/// satisfy that criteria, because it does not check that the
+/// `complete-deposit` contract call is on the Stacks blockchain that is
+/// associated with the canonical bitcoin blockchain.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_responses() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // This query doesn't *need* bitcoind (it's just a query), we just need
+    // the transaction data in the database. We use the [`TestSweepSetup`]
+    // structure because it has helper functions for generating and storing
+    // sweep transactions, and the [`TestSweepSetup`] structure correctly
+    // sets up the database.
+    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    // Wwe need to manually update the database with new bitcoin block
+    // headers.
+    crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+
+    // This isn't technically required right now, but the deposit
+    // transaction is supposed to be there, so future versions of our query
+    // can rely on that fact.
+    setup.store_deposit_tx(&db).await;
+
+    // We take the sweep transaction as is from the test setup and
+    // store it in the database.
+    setup.store_sweep_tx(&db).await;
+
+    // The request needs to be added to the database. This stores
+    // `setup.deposit_request` into the database.
+    setup.store_deposit_request(&db).await;
+
+    // Here we store an event that signals that the deposit request has been confirmed.
+    let event = CompletedDepositEvent {
+        txid: fake::Faker.fake_with_rng::<StacksTxId, _>(&mut rng).into(),
+        block_id: fake::Faker
+            .fake_with_rng::<StacksBlockHash, _>(&mut rng)
+            .into(),
+        amount: setup.deposit_request.amount,
+        outpoint: setup.deposit_request.outpoint,
+    };
+
+    db.write_completed_deposit_event(&event).await.unwrap();
+
+    let chain_tip = setup.sweep_block_hash.into();
+    let context_window = 20;
+
+    let requests = db
+        .get_swept_deposit_requests(&chain_tip, context_window)
+        .await
+        .unwrap();
+
+    // The only deposit request has a confirmed complete-deposit
+    // transaction on the canonical stacks blockchain.
+    assert!(requests.is_empty());
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+/// This function tests that [`DbRead::get_swept_deposit_requests`]
+/// function return requests where we have already confirmed a
+/// `complete-deposit` contract call transaction on the Stacks blockchain
+/// but that transaction has been reorged while the sweep transaction has not.
+#[ignore = "Query does not check for transactions on canonical Stacks blockchain"]
+#[tokio::test]
+async fn get_swept_deposit_requests_response_tx_reorged() {}
 
 async fn transaction_coordinator_test_environment(
     store: PgStore,
