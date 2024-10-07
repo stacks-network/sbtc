@@ -362,6 +362,7 @@ mod tests {
     use fake::Fake;
     use model::BitcoinTxId;
     use model::ScriptPubKey;
+    use model::StacksTxId;
     use rand::seq::IteratorRandom;
     use rand::SeedableRng;
 
@@ -945,6 +946,15 @@ mod tests {
             &'a self,
             _transaction: &'a utxo::UnsignedTransaction<'a>,
             _bitcoin_chain_tip: &'a model::BitcoinBlockRef,
+        ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
+            unimplemented!()
+        }
+
+        async fn update_confirmed_deposits(
+            &self,
+            _deposit: &crate::emily_client::FulfilledDepositRequest,
+            _txid: &StacksTxId,
+            _bitcoin_chain_tip: &model::BitcoinBlockRef,
         ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
             unimplemented!()
         }

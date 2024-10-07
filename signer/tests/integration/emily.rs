@@ -9,6 +9,7 @@ use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::Block;
 use bitcoin::CompactTarget;
+use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
 use bitcoin::TxMerkleNode;
@@ -23,13 +24,21 @@ use clarity::types::chainstate::ConsensusHash;
 use clarity::types::chainstate::StacksBlockId;
 use emily_client::apis::deposit_api;
 use emily_client::models::CreateDepositRequestBody;
+use rand::rngs::OsRng;
 use sbtc::testing::regtest::Recipient;
 use sha2::Digest as _;
 use signer::bitcoin::rpc::GetTxResponse;
+use signer::bitcoin::utxo::DepositRequest;
+use signer::bitcoin::utxo::RequestRef;
+use signer::bitcoin::utxo::Requests;
+use signer::bitcoin::utxo::SignerBtcState;
+use signer::bitcoin::utxo::SignerUtxo;
+use signer::bitcoin::utxo::UnsignedTransaction;
 use signer::block_observer;
 use signer::context::Context;
 use signer::context::SignerEvent;
 use signer::emily_client::EmilyClient;
+use signer::emily_client::EmilyInteract;
 use signer::error::Error;
 use signer::keys;
 use signer::keys::SignerScriptPubKey as _;
@@ -153,7 +162,7 @@ where
 /// then, once Emily is up and running, run this test.
 #[ignore = "This is an integration test that requires manually running emily"]
 #[tokio::test]
-async fn deposit_e2e() {
+async fn deposit_flow() {
     let num_signers = 7;
     let signing_threshold = 5;
     let context_window = 10;
@@ -572,4 +581,172 @@ async fn deposit_e2e() {
         fetched_deposit.status,
         emily_client::models::Status::Accepted
     );
+
+    // TODO: add stacks tx broadcast part once ready and check emily gets updated
+}
+
+/// Test Emily interactions by directly invoking Emily client
+///
+/// To run this test, concurrently run:
+///  - make emily-integration-env-up
+///  - AWS_ACCESS_KEY_ID=foo AWS_SECRET_ACCESS_KEY=bar AWS_REGION=us-west-2 make emily-server
+/// then, once Emily is up and running, run this test.
+#[ignore = "This is an integration test that requires manually running emily"]
+#[tokio::test]
+async fn deposit_flow_client() {
+    let emily_client =
+        EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
+
+    let deposit_txid = testing::dummy::txid(&fake::Faker, &mut OsRng);
+    let deposit_vout = 7;
+    let deposit_script = ScriptBuf::new_op_return([1, 2, 3]);
+    let reclaim_script = ScriptBuf::new_op_return([4, 5, 6]);
+    let signers_key: keys::PublicKey = fake::Faker.fake_with_rng(&mut OsRng);
+
+    let emily_request = CreateDepositRequestBody {
+        bitcoin_tx_output_index: deposit_vout,
+        bitcoin_txid: deposit_txid.to_string(),
+        deposit_script: deposit_script.to_hex_string(),
+        reclaim_script: reclaim_script.to_hex_string(),
+    };
+
+    // Create deposit in Emily
+    deposit_api::create_deposit(emily_client.config(), emily_request.clone())
+        .await
+        .expect("cannot create emily deposit");
+
+    let deposits = emily_client
+        .get_deposits()
+        .await
+        .expect("cannot get emily deposits");
+    assert!(deposits
+        .iter()
+        .any(|deposit| deposit.outpoint.txid == deposit_txid));
+
+    let fetched_deposit = deposit_api::get_deposit(
+        emily_client.config(),
+        &deposit_txid.to_string(),
+        &deposit_vout.to_string(),
+    )
+    .await
+    .expect("cannot get deposit from emily");
+    assert_eq!(
+        fetched_deposit.status,
+        emily_client::models::Status::Pending
+    );
+
+    // Update it as accepted
+    let deposit_request = DepositRequest {
+        outpoint: OutPoint {
+            txid: deposit_txid,
+            vout: deposit_vout,
+        },
+        max_fee: 0,
+        signer_bitmap: [0; 16].into(),
+        amount: 0,
+        deposit_script: deposit_script.clone(),
+        reclaim_script: reclaim_script.clone(),
+        signers_public_key: signers_key.into(),
+    };
+    let unsigned_tx = UnsignedTransaction {
+        requests: Requests::new(vec![RequestRef::Deposit(&deposit_request)]),
+        tx: Transaction {
+            version: bitcoin::transaction::Version::ONE,
+            lock_time: bitcoin::absolute::LockTime::ZERO,
+            input: vec![],
+            output: vec![],
+        },
+        signer_public_key: signers_key.into(),
+        signer_utxo: SignerBtcState {
+            utxo: SignerUtxo {
+                outpoint: OutPoint {
+                    txid: deposit_txid,
+                    vout: deposit_vout,
+                },
+                amount: 550_000_000,
+                public_key: signers_key.into(),
+            },
+            fee_rate: 5.0,
+            public_key: signers_key.into(),
+            last_fees: None,
+            magic_bytes: [0; 2],
+        },
+        tx_fee: 0,
+    };
+    emily_client
+        .update_broadcasted_deposits(
+            &unsigned_tx,
+            &model::BitcoinBlockRef {
+                block_height: 42,
+                block_hash: fake::Faker.fake(),
+            },
+        )
+        .await
+        .expect("cannot update deposit");
+
+    // Check we don't get it as pending deposit
+    let deposits = emily_client
+        .get_deposits()
+        .await
+        .expect("cannot get emily deposits");
+    assert!(!deposits
+        .iter()
+        .any(|deposit| deposit.outpoint.txid == deposit_txid));
+
+    let fetched_deposit = deposit_api::get_deposit(
+        emily_client.config(),
+        &deposit_txid.to_string(),
+        &deposit_vout.to_string(),
+    )
+    .await
+    .expect("cannot get deposit from emily");
+    assert_eq!(
+        fetched_deposit.status,
+        emily_client::models::Status::Accepted
+    );
+
+    // Update it as completed
+    let mut deposit_request: signer::emily_client::FulfilledDepositRequest =
+        fake::Faker.fake_with_rng(&mut OsRng);
+    deposit_request.txid = deposit_txid.into();
+    deposit_request.output_index = deposit_vout;
+    let stacks_txid = fake::Faker.fake_with_rng(&mut OsRng);
+    emily_client
+        .update_confirmed_deposits(
+            &deposit_request,
+            &stacks_txid,
+            &model::BitcoinBlockRef {
+                block_height: 43,
+                block_hash: fake::Faker.fake(),
+            },
+        )
+        .await
+        .expect("cannot update deposit");
+
+    // Check we don't get it as pending deposit
+    let deposits = emily_client
+        .get_deposits()
+        .await
+        .expect("cannot get emily deposits");
+    assert!(!deposits
+        .iter()
+        .any(|deposit| deposit.outpoint.txid == deposit_txid));
+
+    let fetched_deposit = deposit_api::get_deposit(
+        emily_client.config(),
+        &deposit_txid.to_string(),
+        &deposit_vout.to_string(),
+    )
+    .await
+    .expect("cannot get deposit from emily");
+    assert_eq!(
+        fetched_deposit.status,
+        emily_client::models::Status::Confirmed
+    );
+    // TODO: currently fulfillment are available only for accepted requests
+    assert!(fetched_deposit.fulfillment.is_none());
+    // assert_eq!(
+    //     fetched_deposit.fulfillment.unwrap().unwrap().stacks_txid,
+    //     stacks_txid.to_string()
+    // );
 }

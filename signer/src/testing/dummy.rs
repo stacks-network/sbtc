@@ -454,6 +454,14 @@ impl fake::Dummy<DepositTxConfig> for BitcoinTx {
     }
 }
 
+// TODO: remove before merging
+impl fake::Dummy<fake::Faker> for BitcoinTx {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let deposit_config: DepositTxConfig = config.fake_with_rng(rng);
+        deposit_config.fake_with_rng(rng)
+    }
+}
+
 impl fake::Dummy<DepositTxConfig> for model::Transaction {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &DepositTxConfig, rng: &mut R) -> Self {
         let mut tx = Vec::new();
