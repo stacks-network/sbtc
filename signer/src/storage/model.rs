@@ -272,16 +272,18 @@ pub struct SweptDepositRequest {
 /// Withdraw request.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub struct FulfilledWithdrawalRequest {
-    /// Transaction ID.
+pub struct SweptWithdrawalRequest {
+    /// The transaction ID of the bitcoin transaction that swept out the
+    /// funds to the intended recipient.
     pub sweep_txid: BitcoinTxId,
-    /// The transaction fulfillinf the deposit request.
+    /// The bitcoin transaction fulfilling the withdrawal request.
     pub sweep_tx: BitcoinTx,
-    /// The block id of the stacks block that includes this transaction
+    /// The block id of the stacks block that includes this sweep
+    /// transaction.
     pub sweep_block_hash: BitcoinBlockHash,
     /// Request ID of the withdrawal request. These are supposed to be
     /// unique, but there can be duplicates if there is a reorg that
-    /// affects a transaction that calls the initiate-withdrawal-request
+    /// affects a transaction that calls the `initiate-withdrawal-request`
     /// public function.
     #[sqlx(try_from = "i64")]
     pub request_id: u64,
@@ -291,18 +293,19 @@ pub struct FulfilledWithdrawalRequest {
     /// Stacks block ID of the block that includes the transaction
     /// associated with this withdrawal request.
     pub block_hash: StacksBlockHash,
-    /// The address that should receive the BTC withdrawal.
+    /// The ScriptPubKey that should receive the BTC withdrawal.
     pub recipient: ScriptPubKey,
-    /// The amount to withdraw.
+    /// The amount of satoshis to withdraw.
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000"))]
     pub amount: u64,
-    /// The maximum portion of the withdrawn amount that may
-    /// be used to pay for transaction fees.
+    /// The maximum amount that may be spent as for the bitcoin miner
+    /// transaction fee.
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "100..10000"))]
     pub max_fee: u64,
-    /// The address that initiated the request.
+    /// The stacks address that initiated the request. This is populated
+    /// using `tx-sender`.
     pub sender_address: StacksPrincipal,
 }
 

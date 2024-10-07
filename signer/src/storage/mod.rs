@@ -216,7 +216,7 @@ pub trait DbRead {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
-    ) -> impl Future<Output = Result<Vec<model::FulfilledWithdrawalRequest>, Error>> + Send;
+    ) -> impl Future<Output = Result<Vec<model::SweptWithdrawalRequest>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.

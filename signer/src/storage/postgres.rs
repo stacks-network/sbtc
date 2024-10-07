@@ -1212,7 +1212,7 @@ impl super::DbRead for PgStore {
         &self,
         _chain_tip: &model::BitcoinBlockHash,
         _context_window: u16,
-    ) -> Result<Vec<model::FulfilledWithdrawalRequest>, Error> {
+    ) -> Result<Vec<model::SweptWithdrawalRequest>, Error> {
         unimplemented!()
     }
 }
