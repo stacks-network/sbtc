@@ -48,21 +48,15 @@ events_keys = ["*"]
 
 # Add stacks-signer as an event observer
 [[events_observer]]
-endpoint = "stacks-signer-1:30001"
-retry_count = 255
-include_data_events = false
+endpoint = "stacks-signer-1:30000"
 events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
 
 [[events_observer]]
-endpoint = "stacks-signer-2:30002"
-retry_count = 255
-include_data_events = false
+endpoint = "stacks-signer-2:30000"
 events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
 
 [[events_observer]]
-endpoint = "stacks-signer-3:30003"
-retry_count = 255
-include_data_events = false
+endpoint = "stacks-signer-3:30000"
 events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
 
 [burnchain]
