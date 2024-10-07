@@ -23,10 +23,8 @@ use tokio::sync::OnceCell;
 
 use signer::stacks;
 use signer::stacks::api::FeePriority;
-use signer::stacks::api::RejectionReason;
 use signer::stacks::api::StacksClient;
 use signer::stacks::api::SubmitTxResponse;
-use signer::stacks::api::TxRejection;
 use signer::stacks::contracts::CompleteDepositV1;
 use signer::stacks::wallet::MultisigTx;
 use signer::storage::in_memory::Store;
@@ -116,10 +114,6 @@ impl SignerStxState {
 
         match self.stacks_client.submit_tx(&tx).await.unwrap() {
             SubmitTxResponse::Acceptance(_) => (),
-            SubmitTxResponse::Rejection(TxRejection {
-                reason: RejectionReason::ContractAlreadyExists,
-                ..
-            }) => (),
             SubmitTxResponse::Rejection(err) => panic!("{}", serde_json::to_string(&err).unwrap()),
         }
     }
