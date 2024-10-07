@@ -1158,6 +1158,7 @@ impl super::DbRead for PgStore {
                 SELECT
                     block_hash
                   , parent_hash
+                  , block_height
                   , confirms
                   , 1 AS depth
                 FROM sbtc_signer.bitcoin_blocks
@@ -1168,6 +1169,7 @@ impl super::DbRead for PgStore {
                 SELECT
                     parent.block_hash
                   , parent.parent_hash
+                  , parent.block_height
                   , parent.confirms
                   , last.depth + 1
                 FROM sbtc_signer.bitcoin_blocks AS parent
@@ -1176,15 +1178,20 @@ impl super::DbRead for PgStore {
                 WHERE last.depth <= $2
             )
             SELECT
-                t.txid
-              , t.tx
-              , t.tx_type
-              , bt.block_hash
+                t.txid           AS sweep_txid
+              , t.tx             AS sweep_tx
+              , bt.block_hash    AS sweep_block_hash
+              , cbb.block_height AS sweep_block_height
+              , dr.txid
+              , dr.output_index
+              , dr.recpipient
+              , dr.amount
             FROM sbtc_signer.transactions AS t
             JOIN sbtc_signer.bitcoin_transactions AS bt
               ON t.txid = bt.txid
-            JOIN canonical_bitcoin_blockchain as cbb
+            JOIN canonical_bitcoin_blockchain AS cbb
               ON bt.block_hash = cbb.block_hash
+            CROSS JOIN sbtc_signer.deposit_requests AS dr
             WHERE t.tx_type = 'sbtc_transaction'
             ORDER BY t.created_at DESC
             LIMIT 1
