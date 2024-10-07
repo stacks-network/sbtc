@@ -36,12 +36,12 @@ use tokio::time::error::Elapsed;
 
 use super::context::*;
 
-struct EventLoopHarness<Context, Rng> {
+struct TxSignerEventLoopHarness<Context, Rng> {
     context: Context,
     event_loop: EventLoop<Context, Rng>,
 }
 
-impl<Ctx, Rng> EventLoopHarness<Ctx, Rng>
+impl<Ctx, Rng> TxSignerEventLoopHarness<Ctx, Rng>
 where
     Ctx: Context + 'static,
     Rng: rand::RngCore + rand::CryptoRng + Send + Sync + 'static,
@@ -161,7 +161,7 @@ where
         let mut network_rx = network.connect();
         let mut signal_rx = self.context.get_signal_receiver();
 
-        let event_loop_harness = EventLoopHarness::create(
+        let event_loop_harness = TxSignerEventLoopHarness::create(
             self.context.clone(),
             network.connect(),
             self.context_window,
@@ -229,7 +229,7 @@ where
         let mut network_rx = network.connect();
         let mut signal_rx = self.context.get_signal_receiver();
 
-        let event_loop_harness = EventLoopHarness::create(
+        let event_loop_harness = TxSignerEventLoopHarness::create(
             self.context.clone(),
             network.connect(),
             self.context_window,
@@ -316,7 +316,7 @@ where
         let mut event_loop_handles: Vec<_> = signer_info
             .into_iter()
             .map(|signer_info| {
-                let event_loop_harness = EventLoopHarness::create(
+                let event_loop_harness = TxSignerEventLoopHarness::create(
                     build_context(),
                     network.connect(),
                     self.context_window,
@@ -388,7 +388,7 @@ where
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = &signer_info.first().cloned().unwrap();
 
-        let event_loop_harness = EventLoopHarness::create(
+        let event_loop_harness = TxSignerEventLoopHarness::create(
             self.context.clone(),
             network.connect(),
             self.context_window,
@@ -503,7 +503,7 @@ where
             .clone()
             .into_iter()
             .map(|signer_info| {
-                let event_loop_harness = EventLoopHarness::create(
+                let event_loop_harness = TxSignerEventLoopHarness::create(
                     build_context(), // NEED TO HAVE A NEW CONTEXT FOR EACH SIGNER
                     network.connect(),
                     self.context_window,
@@ -584,7 +584,7 @@ where
             .clone()
             .into_iter()
             .map(|signer_info| {
-                let event_loop_harness = EventLoopHarness::create(
+                let event_loop_harness = TxSignerEventLoopHarness::create(
                     build_context(),
                     network.connect(),
                     self.context_window,
