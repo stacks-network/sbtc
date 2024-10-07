@@ -149,7 +149,7 @@ impl SignerWallet {
     /// Load the multi-sig wallet from storage.
     ///
     /// The wallet that is loaded is the one that cooresponds to the signer
-    /// set defined in the last confirmed key rotation contract callß.
+    /// set defined in the last confirmed key rotation contract call.
     pub async fn load<C>(ctx: &C, chain_tip: &BitcoinBlockHash) -> Result<SignerWallet, Error>
     where
         C: Context,
@@ -616,6 +616,10 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
+
+        // We haven't stored any RotateKeysTransactions into the database
+        // yet, so loading the wallet should fail.
+        assert!(SignerWallet::load(&ctx, &bitcoin_chain_tip).await.is_err());
 
         let tx = model::StacksTransaction {
             txid: rotate_keys.txid,
