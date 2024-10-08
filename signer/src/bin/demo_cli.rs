@@ -1,0 +1,204 @@
+use std::str::FromStr;
+
+use bitcoin::{
+    absolute, transaction::Version, Amount, Network, OutPoint, ScriptBuf, Sequence, Transaction,
+    TxIn, TxOut,
+};
+use bitcoincore_rpc::json;
+use bitcoincore_rpc::{Client, RpcApi};
+use clap::{Args, Parser, Subcommand};
+use clarity::{
+    types::{chainstate::StacksAddress, Address as _},
+    vm::types::{PrincipalData, StandardPrincipalData},
+};
+use emily_client::{
+    apis::{configuration::Configuration, deposit_api},
+    models::CreateDepositRequestBody,
+};
+use sbtc::deposits::{DepositScriptInputs, ReclaimScriptInputs};
+use secp256k1::PublicKey;
+use signer::config::Settings;
+
+#[derive(Debug, thiserror::Error)]
+enum Error {
+    #[error("Signer error: {0}")]
+    SignerError(#[from] signer::error::Error),
+    #[error("Bitcoin RPC error: {0}")]
+    BitcoinRpcError(#[from] bitcoincore_rpc::Error),
+    #[error("Invalid Bitcoin address: {0}")]
+    InvalidBitcoinAddress(#[from] bitcoin::address::ParseError),
+    #[error("No available UTXOs")]
+    NoAvailableUtxos,
+    #[error("Secp256k1 error: {0}")]
+    Secp256k1Error(#[from] secp256k1::Error),
+    #[error("SBTC error: {0}")]
+    SbtcError(#[from] sbtc::error::Error),
+    #[error("Emily deposit error: {0}")]
+    EmilyDeposit(#[from] emily_client::apis::Error<deposit_api::CreateDepositError>),
+    #[error("Invalid stacks address: {0}")]
+    InvalidStacksAddress(String),
+}
+
+#[derive(Debug, Parser)]
+struct CliArgs {
+    #[clap(subcommand)]
+    command: CliCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum CliCommand {
+    /// Simulate a deposit request
+    Deposit(DepositArgs),
+}
+
+#[derive(Debug, Args)]
+struct DepositArgs {
+    /// Amount to deposit in satoshis, excluding the fee.
+    #[clap(long)]
+    amount: u64,
+    /// Maximum fee to pay for the transaction in satoshis, in addition to
+    /// the amount.
+    #[clap(long)]
+    max_fee: u64,
+    /// The beneficiary Stacks address to receive the deposit in sBTC.
+    #[clap(long = "stacks-addr")]
+    stacks_recipient: String,
+    /// The public key of the aggregate signer.
+    #[clap(long = "signer-key")]
+    signer_aggregate_key: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = CliArgs::parse();
+
+    let settings = Settings::new(Some("signer/src/config/default.toml"))?;
+
+    // Setup our Emily client configuration
+    let emily_client_config = Configuration {
+        base_path: settings
+            .emily
+            .endpoints
+            .first()
+            .expect("No Emily endpoints configured")
+            .to_string(),
+        ..Default::default()
+    };
+
+    let bitcoin_client = Client::new(
+        &format!(
+            "{}/wallet/{}",
+            settings
+                .bitcoin
+                .rpc_endpoints
+                .first()
+                .expect("No Bitcoin RPC endpoints configured"),
+            "default"
+        ),
+        bitcoincore_rpc::Auth::UserPass("devnet".into(), "devnet".into()),
+    )
+    .expect("Failed to create Bitcoin RPC client");
+
+    match args.command {
+        CliCommand::Deposit(args) => {
+            exec_deposit(args, &bitcoin_client, &emily_client_config).await?
+        }
+    }
+
+    Ok(())
+}
+
+async fn exec_deposit(
+    args: DepositArgs,
+    bitcoin_client: &Client,
+    emily_config: &Configuration,
+) -> Result<(), Error> {
+    let (unsigned_tx, deposit_script, reclaim_script) =
+        create_bitcoin_deposit_transaction(bitcoin_client, &args)?;
+
+    let txid = unsigned_tx.compute_txid();
+
+    let emily_deposit = deposit_api::create_deposit(
+        &emily_config,
+        CreateDepositRequestBody {
+            bitcoin_tx_output_index: 1,
+            bitcoin_txid: txid.to_string(),
+            deposit_script: deposit_script.deposit_script().to_hex_string(),
+            reclaim_script: reclaim_script.reclaim_script().to_hex_string(),
+        },
+    )
+    .await?;
+
+    println!("Deposit request created: {:?}", emily_deposit);
+
+    let signed_tx = bitcoin_client.sign_raw_transaction_with_wallet(&unsigned_tx, None, None)?;
+    let tx = bitcoin_client.send_raw_transaction(&signed_tx.hex)?;
+
+    println!("Transaction sent: calc: {txid:?}, actual: {tx:?}");
+
+    todo!()
+}
+
+fn create_bitcoin_deposit_transaction(
+    client: &Client,
+    args: &DepositArgs,
+) -> Result<(Transaction, DepositScriptInputs, ReclaimScriptInputs), Error> {
+    let pubkey = PublicKey::from_str(&args.signer_aggregate_key)?;
+    // write_as_rotate_keys_tx
+    let deposit_script = DepositScriptInputs {
+        signers_public_key: pubkey.into(),
+        max_fee: args.max_fee,
+        recipient: PrincipalData::Standard(StandardPrincipalData::from(
+            StacksAddress::from_string(&args.stacks_recipient)
+                .ok_or(Error::InvalidStacksAddress(args.stacks_recipient.clone()))?,
+        )),
+    };
+
+    let reclaim_script = ReclaimScriptInputs::try_new(20, ScriptBuf::new())?;
+
+    // Look for UTXOs that can cover the amount + max fee
+    let opts = json::ListUnspentQueryOptions {
+        minimum_amount: Some(Amount::from_sat(args.amount + args.max_fee)),
+        ..Default::default()
+    };
+    let unspent = client
+        .list_unspent(Some(6), None, None, None, Some(opts))?
+        .into_iter()
+        .nth(0)
+        .ok_or(Error::NoAvailableUtxos)?;
+
+    // Get a new address for change (SegWit)
+    let change_address = client
+        .get_new_address(None, Some(json::AddressType::Bech32))?
+        .require_network(Network::Regtest)?;
+
+    // Create the unsigned transaction
+    let unsigned_tx = Transaction {
+        input: vec![TxIn {
+            previous_output: OutPoint {
+                txid: unspent.txid,
+                vout: unspent.vout,
+            },
+            script_sig: Default::default(),
+            sequence: Sequence::ZERO,
+            witness: Default::default(),
+        }],
+        output: vec![
+            TxOut {
+                value: Amount::from_sat(unspent.amount.to_sat() - args.amount - args.max_fee),
+                script_pubkey: change_address.into(),
+            },
+            TxOut {
+                value: Amount::from_sat(args.amount + args.max_fee),
+                script_pubkey: sbtc::deposits::to_script_pubkey(
+                    deposit_script.deposit_script(),
+                    reclaim_script.reclaim_script(),
+                ),
+            },
+        ],
+        version: Version::TWO,
+        lock_time: absolute::LockTime::ZERO,
+    };
+
+    Ok((unsigned_tx, deposit_script, reclaim_script))
+}
