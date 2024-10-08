@@ -4,7 +4,8 @@ rpc_bind = "0.0.0.0:20443"
 p2p_bind = "0.0.0.0:20444"
 data_url = "http://127.0.0.1:20443"
 p2p_address = "127.0.0.1:20443"
-working_dir = "$DATA_DIR"
+#working_dir = "$DATA_DIR"
+working_dir = "/data"
 
 seed = "$MINER_SEED"
 local_peer_seed = "$MINER_SEED"
@@ -27,7 +28,7 @@ wait_for_block_download = false
 microblock_attempt_time_ms = 10
 #self_signing_seed = 1
 mining_key = "19ec1c3e31d139c989a23a27eac60d1abfad5277d3ae9604242514c738258efa01"
-$REWARD_RECIPIENT_CONF
+block_reward_recipient = "STQM73RQC4EX0A07KWG1J5ECZJYBZS4SJ4ERC6WN" # priv: 6ad9cadb42d4edbfbe0c5bfb3b8a4125ddced021c4174f829b714ccbf527f02001
 
 [connection_options]
 # inv_sync_interval = 10
