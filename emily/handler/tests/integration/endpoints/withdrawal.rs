@@ -337,7 +337,7 @@ async fn update_withdrawal() {
     assert_eq!(updated_withdrawal.fulfillment, None);
 
     // Now try getting the raw internal entry and ensure that the history is good.
-    let context: EmilyContext = EmilyContext::local_test_instance()
+    let context: EmilyContext = EmilyContext::local_instance("http://localhost:8000")
         .await
         .expect("Making emily context must succeed in integration test.");
     let withdrawal_entry = accessors::get_withdrawal_entry(&context, &request_id_1)

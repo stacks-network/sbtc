@@ -88,7 +88,9 @@ impl EmilyContext {
     }
     /// Create a local testing instance.
     #[cfg(feature = "testing")]
-    pub async fn local_test_instance() -> Result<Self, Error> {
+    pub async fn local_instance(
+        dynamodb_endpoint: &str,
+    ) -> Result<Self, Error> {
         use std::collections::HashMap;
 
         // Get config that always points to the dynamodb table directly
@@ -96,7 +98,7 @@ impl EmilyContext {
         let sdk_config = aws_config::load_defaults(BehaviorVersion::latest())
             .await
             .into_builder()
-            .endpoint_url("http://localhost:8000")
+            .endpoint_url(dynamodb_endpoint)
             .build();
         let dynamodb_client = Client::new(&sdk_config);
 
