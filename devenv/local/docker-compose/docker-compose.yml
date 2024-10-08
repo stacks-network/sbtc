@@ -27,10 +27,6 @@ x-common-vars:
   - &REWARD_RECIPIENT ${REWARD_RECIPIENT:-STQM73RQC4EX0A07KWG1J5ECZJYBZS4SJ4ERC6WN} # priv: 6ad9cadb42d4edbfbe0c5bfb3b8a4125ddced021c4174f829b714ccbf527f02001
   - &EXIT_FROM_MONITOR 1 # set to "1" to automatically shut down via monitor.ts
 
-networks:
-  aws-local-vpc:
-    name: aws-local-vpc
-
 services:
   bitcoin:
     build:
@@ -455,22 +451,18 @@ services:
     user: root
     volumes:
       - "../../dynamodb/data:/home/dynamodblocal/data"
-    networks:
-      - aws-local-vpc
 
   # Modifies the CDK template and creates DynamoDB Tables if necessary.
-  aws-setup:
+  emily-aws-setup:
     build:
       context: .
       dockerfile: ./Dockerfile.emily
-      target: aws-setup
+      target: emily-aws-setup
     depends_on:
       dynamodb:
         condition: service_started
     environment:
       - DYNAMODB_ENDPOINT=http://dynamodb:8000
-    networks:
-      - aws-local-vpc
 
   # Hosts the SAM CLI
   emily-server:
@@ -479,7 +471,7 @@ services:
       dockerfile: ./Dockerfile.emily
       target: emily-server
     depends_on:
-      aws-setup:
+      emily-aws-setup:
         condition: service_completed_successfully
     environment:
       - AWS_ACCESS_KEY_ID=xxxxxxxxxxxx
@@ -489,8 +481,6 @@ services:
       - PORT=3031
     ports:
       - "3031:3031"
-    networks:
-      - aws-local-vpc
 
   stacker:
     build:

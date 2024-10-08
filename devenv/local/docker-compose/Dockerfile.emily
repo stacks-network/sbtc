@@ -38,12 +38,11 @@ RUN pnpm --filter emily-cdk run synth
 
 # Compile emily handler as a warp server.
 # ------------------------------------------------------------------------------
-RUN cargo build --release --bin emily-server
-RUN ls -l ./target/release/emily-server
+RUN cargo build --bin emily-server
 
 # Create Docker image to setup AWS resources.
 # ------------------------------------------------------------------------------
-FROM python:3.12-slim AS aws-setup
+FROM python:3.12-slim AS emily-aws-setup
 WORKDIR /code
 COPY --from=builder /code/sbtc/devenv/aws-setup/initialize.py /code/initialize.py
 COPY --from=builder /code/sbtc/emily/cdk/cdk.out /code/cdk.out
@@ -62,7 +61,7 @@ ENTRYPOINT ["python3", "/code/initialize.py"]
 FROM debian:bookworm-slim AS emily-server
 WORKDIR /code
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /code/sbtc/target/release/emily-server /usr/local/bin/emily-server
+COPY --from=builder /code/sbtc/target/debug/emily-server /usr/local/bin/emily-server
 ENV HOST=0.0.0.0
 ENV PORT=3031
 ENV DYNAMODB_ENDPOINT=http://dynamodb:8000
