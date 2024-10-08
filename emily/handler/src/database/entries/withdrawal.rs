@@ -180,7 +180,7 @@ impl TryFrom<WithdrawalEntry> for Withdrawal {
         let status_message = latest_event.message.clone();
         let status: Status = (&latest_event.status).into();
         let fulfillment = match &latest_event.status {
-            StatusEntry::Accepted(fulfillment) => Some(fulfillment.clone()),
+            StatusEntry::Confirmed(fulfillment) => Some(fulfillment.clone()),
             _ => None,
         };
 
@@ -424,11 +424,11 @@ impl TryFrom<WithdrawalUpdate> for ValidatedWithdrawalUpdate {
     fn try_from(update: WithdrawalUpdate) -> Result<Self, Self::Error> {
         // Make status entry.
         let status_entry: StatusEntry = match update.status {
-            Status::Accepted => {
+            Status::Confirmed => {
                 let fulfillment = update.fulfillment.ok_or(Error::InternalServer)?;
-                StatusEntry::Accepted(fulfillment)
+                StatusEntry::Confirmed(fulfillment)
             }
-            Status::Confirmed => StatusEntry::Confirmed,
+            Status::Accepted => StatusEntry::Accepted,
             Status::Pending => StatusEntry::Pending,
             Status::Reprocessing => StatusEntry::Reprocessing,
             Status::Failed => StatusEntry::Failed,
