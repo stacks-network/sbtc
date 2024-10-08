@@ -222,12 +222,16 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         .encode_to_vec()
         .expect("encoding to vec failed");
 
+    let signer_public_key: PublicKey = fake::Faker.fake_with_rng(rng);
+
     model::EncryptedDkgShares {
         aggregate_key: group_key,
         encrypted_private_shares,
         public_shares,
         tweaked_aggregate_key: group_key.signers_tweaked_pubkey().unwrap(),
         script_pubkey: group_key.signers_script_pubkey().into(),
+        signer_set_aggregate_key: signer_public_key,
+        signer_set_public_keys: vec![signer_public_key],
     }
 }
 

@@ -122,6 +122,13 @@ impl SignerStateMachine {
         let saved_state = self.signer.save();
         let aggregate_key = PublicKey::try_from(&saved_state.group_key)?;
 
+        let signer_set_public_keys = self
+            .public_keys
+            .signers
+            .values()
+            .map(PublicKey::from)
+            .collect::<Vec<PublicKey>>();
+
         let encoded = saved_state.encode_to_vec().map_err(error::Error::Codec)?;
         let public_shares = self
             .dkg_public_shares
@@ -138,6 +145,8 @@ impl SignerStateMachine {
             script_pubkey: aggregate_key.signers_script_pubkey().into(),
             encrypted_private_shares,
             public_shares,
+            signer_set_aggregate_key: PublicKey::combine_keys(&signer_set_public_keys)?,
+            signer_set_public_keys,
         })
     }
 }

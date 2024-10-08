@@ -879,6 +879,8 @@ impl super::DbRead for PgStore {
               , script_pubkey
               , encrypted_private_shares
               , public_shares
+              , signer_set_public_keys
+              , signer_set_aggregate_key
             FROM sbtc_signer.dkg_shares
             WHERE aggregate_key = $1;
             "#,
@@ -1581,8 +1583,10 @@ impl super::DbWrite for PgStore {
               , encrypted_private_shares
               , public_shares
               , script_pubkey
+              , signer_set_public_keys
+              , signer_set_aggregate_key
             )
-            VALUES ($1, $2, $3, $4, $5)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT DO NOTHING"#,
         )
         .bind(shares.aggregate_key)
@@ -1590,6 +1594,8 @@ impl super::DbWrite for PgStore {
         .bind(&shares.encrypted_private_shares)
         .bind(&shares.public_shares)
         .bind(&shares.script_pubkey)
+        .bind(&shares.signer_set_public_keys)
+        .bind(&shares.signer_set_aggregate_key)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
