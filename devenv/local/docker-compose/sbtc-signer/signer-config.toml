@@ -25,7 +25,7 @@
 # Required: true
 # Environment: SIGNER_EMILY__ENDPOINTS
 endpoints = [
-    "http://localhost:3000"
+    "http://emily-server:3031"
 ]
 
 # !! ==============================================================================
@@ -43,7 +43,7 @@ endpoints = [
 # Environment: SIGNER_BITCOIN__RPC_ENDPOINTS
 # Environment Example: http://user:pass@seed-1:4122,http://foo:bar@seed-2:4122
 rpc_endpoints = [
-    "http://devnet:devnet@localhost:18443",
+    "http://devnet:devnet@bitcoin:18443",
 ]
 
 # The URI(s) of the Bitcoin Core ZMQ block hash stream(s) to connect to.
@@ -58,7 +58,7 @@ rpc_endpoints = [
 # Environment: SIGNER_BITCOIN__BLOCK_HASH_STREAM_ENDPOINTS
 # Environment Example: tcp://10.0.0.1:28332,tcp://10.0.0.2:28332
 block_hash_stream_endpoints = [
-    "tcp://localhost:28332"
+    "tcp://bitcoin:28332"
 ]
 
 # !! ==============================================================================
@@ -89,7 +89,7 @@ endpoints = ["http://stacks:20443"]
 
 # This is the start height of the first EPOCH 3.0 block on the stacks
 # blockchain.
-nakamoto_start_height = 7
+nakamoto_start_height = 30
 
 # !! ==============================================================================
 # !! Signer Configuration
