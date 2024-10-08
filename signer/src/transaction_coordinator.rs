@@ -336,7 +336,7 @@ where
     ) -> Result<wsts::taproot::SchnorrProof, Error> {
         let outbound = coordinator_state_machine
             .start_signing_round(msg, true, None)
-            .map_err(wsts_state_machine::coordinator_error)?;
+            .map_err(Error::wsts_coordinator)?;
 
         let msg = message::WstsMessage { txid, inner: outbound.msg };
         self.send_message(msg, bitcoin_chain_tip).await?;
