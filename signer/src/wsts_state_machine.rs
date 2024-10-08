@@ -122,12 +122,14 @@ impl SignerStateMachine {
         let saved_state = self.signer.save();
         let aggregate_key = PublicKey::try_from(&saved_state.group_key)?;
 
-        let signer_set_public_keys = self
+        let mut signer_set_public_keys = self
             .public_keys
             .signers
             .values()
             .map(PublicKey::from)
             .collect::<Vec<PublicKey>>();
+
+        signer_set_public_keys.sort();
 
         let encoded = saved_state.encode_to_vec().map_err(error::Error::Codec)?;
         let public_shares = self
