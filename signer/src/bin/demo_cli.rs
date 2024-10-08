@@ -85,19 +85,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
+    let bitcoin_url = format!(
+        "{}wallet/depositor",
+        settings
+            .bitcoin
+            .rpc_endpoints
+            .first()
+            .expect("No Bitcoin RPC endpoints configured")
+    );
+
     let bitcoin_client = Client::new(
-        &format!(
-            "{}/wallet/{}",
-            settings
-                .bitcoin
-                .rpc_endpoints
-                .first()
-                .expect("No Bitcoin RPC endpoints configured"),
-            "default"
-        ),
+        &bitcoin_url,
         bitcoincore_rpc::Auth::UserPass("devnet".into(), "devnet".into()),
     )
     .expect("Failed to create Bitcoin RPC client");
+
+    //println!("Getting a new address...");
+    //let addr = bitcoin_client.get_new_address(None, Some(json::AddressType::Bech32))?
+    //    .require_network(Network::Regtest)?;
+    //println!("New address: {:?}", addr);
+    //bitcoin_client.generate_to_address(150, &addr)?;
+    let unspent = bitcoin_client.list_unspent(None, None, None, None, None)?;
+    println!("Unspent: {:?}", unspent);
 
     match args.command {
         CliCommand::Deposit(args) => {
