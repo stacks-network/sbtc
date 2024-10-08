@@ -65,6 +65,7 @@ where
                 threshold,
                 bitcoin_network: bitcoin::Network::Testnet,
                 signing_round_max_duration: Duration::from_secs(10),
+                dkg_max_duration: Duration::from_secs(10),
             },
             context,
             is_started: Arc::new(AtomicBool::new(false)),
