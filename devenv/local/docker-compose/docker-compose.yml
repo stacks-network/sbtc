@@ -9,7 +9,7 @@ x-common-vars:
   - &BITCOIN_RPC_USER devnet
   - &BITCOIN_RPC_PASS devnet
   - &MINE_INTERVAL ${MINE_INTERVAL:-1s}
-  - &MINE_INTERVAL_EPOCH25 ${MINE_INTERVAL_EPOCH25:-10s} # 5 second bitcoin block times in epoch 2.5
+  - &MINE_INTERVAL_EPOCH25 ${MINE_INTERVAL_EPOCH25:-5s} # 5 second bitcoin block times in epoch 2.5
   - &MINE_INTERVAL_EPOCH3 ${MINE_INTERVAL_EPOCH3:-15s} # 15 second bitcoin block times in epoch 3
   - &NAKAMOTO_BLOCK_INTERVAL 2 # seconds to wait between issuing stx-transfer transactions (which triggers Nakamoto block production)
   - &STACKS_20_HEIGHT ${STACKS_20_HEIGHT:-0}
@@ -27,27 +27,29 @@ x-common-vars:
   - &REWARD_RECIPIENT ${REWARD_RECIPIENT:-STQM73RQC4EX0A07KWG1J5ECZJYBZS4SJ4ERC6WN} # priv: 6ad9cadb42d4edbfbe0c5bfb3b8a4125ddced021c4174f829b714ccbf527f02001
   - &EXIT_FROM_MONITOR 1 # set to "1" to automatically shut down via monitor.ts
 
+networks:
+  aws-local-vpc:
+    name: aws-local-vpc
+
 services:
   bitcoin:
     build:
-      context: .
+      context: ./bitcoin
       dockerfile: Dockerfile.btc
     ports:
       - 18443
       - 28332
     volumes:
-      - ./bitcoin.conf:/root/.bitcoin/bitcoin.conf
-      - ./init-data:/init-data
-      - chainstate:/chainstate
-    environment:
-      DATA_DIR: /chainstate/bitcoin-data
+      - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
+#      - ./init-data:/init-data
+#      - chainstate:/chainstate
+#    environment:
+#      DATA_DIR: /chainstate/bitcoin-data
     entrypoint:
       - /bin/bash
       - -c
       - |
         set -e
-        mkdir -p $${DATA_DIR}
-        rm -rf $${DATA_DIR}/*
         bitcoind
 
   postgres-stacks-api:
@@ -153,12 +155,12 @@ services:
 
   bitcoin-miner:
     build:
-      context: .
+      context: ./bitcoin
       dockerfile: Dockerfile.btc
     depends_on:
       - bitcoin
     volumes:
-      - ./bitcoin.conf:/root/.bitcoin/bitcoin.conf
+      - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
     environment:
       BTC_ADDR: *BTC_ADDR
       MINE_INTERVAL: *MINE_INTERVAL
@@ -209,7 +211,8 @@ services:
 
   stacks:
     build:
-      context: ./stacks/docker
+      context: ./stacks
+      dockerfile: Dockerfile.stacks
       args:
         GIT_COMMIT: *STACKS_BLOCKCHAIN_COMMIT
     depends_on:
@@ -217,15 +220,15 @@ services:
     ports:
       - "20443:20443"
     volumes:
-      - ./stacks-krypton-miner.toml/:/root/config.toml.in
-      - ./bitcoin.conf:/root/.bitcoin/bitcoin.conf
-      - ./init-data:/init-data
-      - chainstate:/chainstate
+      - ./stacks/stacks-regtest-miner.toml:/data/config.toml.in
+      - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
+#      - ./init-data:/init-data
+#      - chainstate:/chainstate
     environment:
       # STACKS_LOG_TRACE: 1 # uncomment for trace logging
       # STACKS_LOG_DEBUG: 1
       # RUST_LOG: debug
-      DATA_DIR: /chainstate/stacks-blockchain-miner-data
+ #     DATA_DIR: /chainstate/stacks-blockchain-miner-data
       BITCOIN_PEER_HOST: bitcoin
       BITCOIN_PEER_PORT: *BITCOIN_PEER_PORT
       BITCOIN_RPC_PORT: *BITCOIN_RPC_PORT
@@ -249,11 +252,6 @@ services:
       - -c
       - |
         set -e
-        if [[ ! -z "$${REWARD_RECIPIENT}" ]]; then
-          export REWARD_RECIPIENT_CONF="block_reward_recipient = \"$${REWARD_RECIPIENT}\""
-        fi
-        mkdir -p $${DATA_DIR}
-        rm -rf $${DATA_DIR}/*
         envsubst < config.toml.in > config.toml
         bitcoin-cli -rpcwait -rpcconnect=bitcoin getmininginfo
         exec stacks-node start --config config.toml
@@ -293,16 +291,17 @@ services:
 
   stacks-signer-1:
     build:
-      context: ./stacks/docker
+      context: ./stacks
+      dockerfile: Dockerfile.stacks
       args:
         GIT_COMMIT: *STACKS_BLOCKCHAIN_COMMIT
     depends_on:
       - stacks
     volumes:
-      - ./signer-0.toml:/root/config.toml.in
-      - chainstate:/chainstate
+      - ./stacks/stacks-signer.toml:/data/config.toml.in
+#      - chainstate:/chainstate
     environment:
-      SIGNER_DB_PATH: /chainstate/stacks-signer-1.sqlite
+#      SIGNER_DB_PATH: /chainstate/stacks-signer-2.sqlite
       STACKS_NODE_HOST: stacks:20443
       STACKS_SIGNER_ENDPOINT: 0.0.0.0:30000
       SIGNER_PRIVATE_KEY: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc01
@@ -316,16 +315,17 @@ services:
 
   stacks-signer-2:
     build:
-      context: ./stacks/docker
+      context: ./stacks
+      dockerfile: Dockerfile.stacks
       args:
         GIT_COMMIT: *STACKS_BLOCKCHAIN_COMMIT
     depends_on:
       - stacks
     volumes:
-      - ./signer-0.toml:/root/config.toml.in
-      - chainstate:/chainstate
+      - ./stacks/stacks-signer.toml:/data/config.toml.in
+#      - chainstate:/chainstate
     environment:
-      SIGNER_DB_PATH: /chainstate/stacks-signer-2.sqlite
+#      SIGNER_DB_PATH: /chainstate/stacks-signer-2.sqlite
       STACKS_NODE_HOST: stacks:20443
       STACKS_SIGNER_ENDPOINT: 0.0.0.0:30000
       SIGNER_PRIVATE_KEY: 9bfecf16c9c12792589dd2b843f850d5b89b81a04f8ab91c083bdf6709fbefee01
@@ -339,16 +339,17 @@ services:
 
   stacks-signer-3:
     build:
-      context: ./stacks/docker
+      context: ./stacks
+      dockerfile: Dockerfile.stacks
       args:
         GIT_COMMIT: *STACKS_BLOCKCHAIN_COMMIT
     depends_on:
       - stacks
     volumes:
-      - ./signer-0.toml:/root/config.toml.in
-      - chainstate:/chainstate
+      - ./stacks/stacks-signer.toml:/data/config.toml.in
+#      - chainstate:/chainstate
     environment:
-      SIGNER_DB_PATH: /chainstate/stacks-signer-3.sqlite
+#      SIGNER_DB_PATH: /chainstate/stacks-signer-3.sqlite
       STACKS_NODE_HOST: stacks:20443
       STACKS_SIGNER_ENDPOINT: 0.0.0.0:30000
       SIGNER_PRIVATE_KEY: 3ec0ca5770a356d6cd1a9bfcbf6cd151eb1bd85c388cc00648ec4ef5853fdb7401
@@ -611,9 +612,3 @@ services:
     depends_on:
       - stacks
       - stacks-api
-
-networks:
-  aws-local-vpc:
-    name: aws-local-vpc
-volumes:
-  chainstate:
