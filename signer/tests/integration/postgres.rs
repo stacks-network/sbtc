@@ -1292,6 +1292,7 @@ async fn is_signer_script_pub_key_checks_dkg_shares_for_script_pubkeys() {
 
     // Okay let's put a row in the dkg_shares table.
     let aggregate_key: PublicKey = fake::Faker.fake_with_rng(&mut rng);
+    let signer_set_aggregate_key: PublicKey = fake::Faker.fake_with_rng(&mut rng);
     let script_pubkey: ScriptPubKey = aggregate_key.signers_script_pubkey().into();
     let shares = EncryptedDkgShares {
         script_pubkey: script_pubkey.clone(),
@@ -1299,6 +1300,8 @@ async fn is_signer_script_pub_key_checks_dkg_shares_for_script_pubkeys() {
         encrypted_private_shares: Vec::new(),
         public_shares: Vec::new(),
         aggregate_key,
+        signer_set_aggregate_key,
+        signer_set_public_keys: vec![signer_set_aggregate_key],
     };
     db.write_encrypted_dkg_shares(&shares).await.unwrap();
     mem.write_encrypted_dkg_shares(&shares).await.unwrap();

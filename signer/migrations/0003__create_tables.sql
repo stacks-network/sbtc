@@ -83,6 +83,8 @@ CREATE TABLE sbtc_signer.dkg_shares (
     encrypted_private_shares BYTEA NOT NULL,
     public_shares BYTEA NOT NULL,
     script_pubkey BYTEA NOT NULL,
+    signer_set_public_keys BYTEA[] NOT NULL,
+    signer_set_aggregate_key BYTEA NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
