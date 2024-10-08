@@ -1424,3 +1424,12 @@ async fn should_get_signer_utxo_unspent() {
         .assert_get_signer_utxo_unspent()
         .await;
 }
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn should_get_signer_utxo_donations() {
+    transaction_coordinator_test_environment()
+        .await
+        .assert_get_signer_utxo_donations()
+        .await;
+}

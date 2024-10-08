@@ -149,7 +149,10 @@ where
             }],
             ..EMPTY_BITCOIN_TX
         };
-        test_data.push_sbtc_txs(&bitcoin_chain_tip, vec![tx_1.clone()]);
+        test_data.push_bitcoin_txs(
+            &bitcoin_chain_tip,
+            vec![(model::TransactionType::SbtcTransaction, tx_1.clone())],
+        );
 
         test_data.remove(original_test_data);
         self.write_test_data(&test_data).await;
@@ -293,7 +296,10 @@ where
             Some(&bitcoin_chain_tip),
         );
         test_data.push(block);
-        test_data.push_sbtc_txs(&block_ref, vec![tx.clone()]);
+        test_data.push_bitcoin_txs(
+            &block_ref,
+            vec![(model::TransactionType::SbtcTransaction, tx.clone())],
+        );
 
         let expected = SignerUtxo {
             outpoint: bitcoin::OutPoint::new(tx.compute_txid(), 0),
@@ -358,9 +364,10 @@ where
                 }],
                 ..EMPTY_BITCOIN_TX
             };
-            test_data_rc
-                .borrow_mut()
-                .push_sbtc_txs(block_ref, vec![tx.clone()]);
+            test_data_rc.borrow_mut().push_bitcoin_txs(
+                block_ref,
+                vec![(model::TransactionType::SbtcTransaction, tx.clone())],
+            );
             tx
         };
 
@@ -497,7 +504,14 @@ where
             Some(&bitcoin_chain_tip),
         );
         test_data.push(block);
-        test_data.push_sbtc_txs(&block_ref, vec![tx_1.clone(), tx_3.clone(), tx_2.clone()]);
+        test_data.push_bitcoin_txs(
+            &block_ref,
+            vec![
+                (model::TransactionType::SbtcTransaction, tx_1.clone()),
+                (model::TransactionType::SbtcTransaction, tx_3.clone()),
+                (model::TransactionType::SbtcTransaction, tx_2.clone()),
+            ],
+        );
 
         let expected = SignerUtxo {
             outpoint: bitcoin::OutPoint::new(tx_3.compute_txid(), 0),
@@ -524,6 +538,147 @@ where
             .expect("no signer utxo");
 
         assert_eq!(signer_utxo, expected);
+    }
+
+    /// Assert we get the correct UTXO in case of donations
+    pub async fn assert_get_signer_utxo_donations(mut self) {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let network = network::in_memory::Network::new();
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+
+        let mut signer_set =
+            testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
+                network.connect()
+            });
+
+        let (aggregate_key, bitcoin_chain_tip, mut test_data) = self
+            .prepare_database_and_run_dkg(&mut rng, &mut signer_set)
+            .await;
+
+        let original_test_data = test_data.clone();
+
+        // The scenario is:
+        // [bitcoin_chain_tip] +- [block a1 with signer utxo] - [block a2 with donation]
+        //                     +- [block b1 with donation]
+
+        let (block, block_a1) = test_data.new_block(
+            &mut rng,
+            &signer_set.signer_keys(),
+            &self.test_model_parameters,
+            Some(&bitcoin_chain_tip),
+        );
+        let tx_a1 = bitcoin::Transaction {
+            output: vec![bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(0xA1),
+                script_pubkey: aggregate_key.signers_script_pubkey(),
+            }],
+            ..EMPTY_BITCOIN_TX
+        };
+        test_data.push(block);
+        test_data.push_bitcoin_txs(
+            &block_a1,
+            vec![(model::TransactionType::SbtcTransaction, tx_a1.clone())],
+        );
+
+        let (block, block_a2) = test_data.new_block(
+            &mut rng,
+            &signer_set.signer_keys(),
+            &self.test_model_parameters,
+            Some(&block_a1),
+        );
+        let tx_a2 = bitcoin::Transaction {
+            output: vec![bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(0xA2),
+                script_pubkey: aggregate_key.signers_script_pubkey(),
+            }],
+            ..EMPTY_BITCOIN_TX
+        };
+        test_data.push(block);
+        test_data.push_bitcoin_txs(
+            &block_a2,
+            vec![(model::TransactionType::Donation, tx_a2.clone())],
+        );
+
+        let (block, block_b1) = test_data.new_block(
+            &mut rng,
+            &signer_set.signer_keys(),
+            &self.test_model_parameters,
+            Some(&bitcoin_chain_tip),
+        );
+        let tx_b1 = bitcoin::Transaction {
+            output: vec![bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(0xB1),
+                script_pubkey: aggregate_key.signers_script_pubkey(),
+            }],
+            ..EMPTY_BITCOIN_TX
+        };
+        test_data.push(block);
+        test_data.push_bitcoin_txs(
+            &block_b1,
+            vec![(model::TransactionType::Donation, tx_b1.clone())],
+        );
+
+        test_data.remove(original_test_data);
+        self.write_test_data(&test_data).await;
+
+        let storage = self.context.get_storage();
+
+        // Check with chain tip A1
+        let signer_utxo = storage
+            .get_signer_utxo(
+                &block_a1.block_hash,
+                &aggregate_key,
+                self.context_window as u16,
+            )
+            .await
+            .unwrap()
+            .expect("no signer utxo");
+        assert_eq!(
+            signer_utxo,
+            SignerUtxo {
+                outpoint: bitcoin::OutPoint::new(tx_a1.compute_txid(), 0),
+                amount: 0xA1,
+                public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
+            }
+        );
+
+        // Check with chain tip A2
+        let signer_utxo = storage
+            .get_signer_utxo(
+                &block_a2.block_hash,
+                &aggregate_key,
+                self.context_window as u16,
+            )
+            .await
+            .unwrap()
+            .expect("no signer utxo");
+        assert_eq!(
+            signer_utxo,
+            SignerUtxo {
+                outpoint: bitcoin::OutPoint::new(tx_a1.compute_txid(), 0),
+                amount: 0xA1,
+                public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
+            }
+        );
+
+        // Check with chain tip B1
+        let signer_utxo = storage
+            .get_signer_utxo(
+                &block_b1.block_hash,
+                &aggregate_key,
+                self.context_window as u16,
+            )
+            .await
+            .unwrap()
+            .expect("no signer utxo");
+        assert_eq!(
+            signer_utxo,
+            SignerUtxo {
+                outpoint: bitcoin::OutPoint::new(tx_b1.compute_txid(), 0),
+                amount: 0xB1,
+                public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
+            }
+        );
     }
 
     async fn prepare_database_and_run_dkg<Rng>(
