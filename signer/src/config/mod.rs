@@ -16,6 +16,7 @@ use crate::config::serialization::private_key_deserializer;
 use crate::config::serialization::url_deserializer_single;
 use crate::config::serialization::url_deserializer_vec;
 use crate::keys::PrivateKey;
+use crate::keys::PublicKey;
 
 mod error;
 mod serialization;
@@ -225,6 +226,8 @@ pub struct SignerConfig {
     /// The postgres database endpoint
     #[serde(deserialize_with = "url_deserializer_single")]
     pub db_endpoint: Url,
+    /// The public keys of the signer peers.
+    pub peer_public_keys: Vec<PublicKey>,
 }
 
 impl Validatable for SignerConfig {
@@ -288,6 +291,7 @@ impl Settings {
             .separator("__")
             .list_separator(",")
             .try_parsing(true)
+            .with_list_parse_key("signer.peer_public_keys")
             .with_list_parse_key("signer.p2p.seeds")
             .with_list_parse_key("signer.p2p.listen_on")
             .with_list_parse_key("signer.p2p.public_endpoints")
@@ -418,6 +422,7 @@ mod tests {
             settings.signer.event_observer.bind,
             "0.0.0.0:8801".parse::<SocketAddr>().unwrap()
         );
+        assert!(!settings.signer.peer_public_keys.is_empty());
     }
 
     #[test]
