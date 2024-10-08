@@ -227,19 +227,43 @@ where
         self.write_stacks_blocks(&stacks_blocks).await?;
         self.write_bitcoin_block(&block).await?;
 
-        self.extract_deposit_requests(&block.txdata).await?;
+        self.extract_deposit_requests(&block.txdata, block.block_hash())
+            .await?;
 
         Ok(())
     }
 
-    async fn extract_deposit_requests(&mut self, txs: &[Transaction]) -> Result<(), Error> {
-        let deposit_request: Vec<model::DepositRequest> = txs
+    async fn extract_deposit_requests(
+        &mut self,
+        txs: &[Transaction],
+        block_hash: BlockHash,
+    ) -> Result<(), Error> {
+        let (deposit_request, deposit_request_txs) = txs
             .iter()
             .filter_map(|tx| self.deposit_requests.remove(&tx.compute_txid()))
             .flatten()
-            .map(model::DepositRequest::from)
-            .collect();
+            .map(|deposit| {
+                let mut tx_bytes = Vec::new();
+                deposit.tx.consensus_encode(&mut tx_bytes)?;
 
+                let tx = model::Transaction {
+                    txid: deposit.tx.compute_txid().to_byte_array(),
+                    tx: tx_bytes,
+                    tx_type: model::TransactionType::DepositRequest,
+                    block_hash: block_hash.to_byte_array(),
+                };
+
+                Ok((model::DepositRequest::from(deposit), tx))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(Error::BitcoinEncodeTransaction)?
+            .into_iter()
+            .unzip();
+
+        self.context
+            .get_storage_mut()
+            .write_bitcoin_transactions(deposit_request_txs)
+            .await?;
         self.context
             .get_storage_mut()
             .write_deposit_requests(deposit_request)
@@ -535,6 +559,7 @@ mod tests {
         let mut rng = rand::rngs::StdRng::seed_from_u64(365);
         let mut test_harness = TestHarness::generate(&mut rng, 20, 0..5);
 
+        let block_hash = BlockHash::from_byte_array([1u8; 32]);
         let lock_time = 150;
         let max_fee = 32000;
         let amount = 500_000;
@@ -558,7 +583,7 @@ mod tests {
         // response.
         let get_tx_resp0 = GetTxResponse {
             tx: tx_setup0.tx.clone(),
-            block_hash: None,
+            block_hash: Some(block_hash.clone()),
             confirmations: None,
             block_time: None,
         };
@@ -598,13 +623,26 @@ mod tests {
         assert_eq!(block_observer.deposit_requests.len(), 1);
 
         block_observer
-            .extract_deposit_requests(&[tx_setup0.tx.clone()])
+            .extract_deposit_requests(&[tx_setup0.tx.clone()], block_hash)
             .await
             .unwrap();
         let storage = storage.lock().await;
         assert_eq!(storage.deposit_requests.len(), 1);
         let db_outpoint: (BitcoinTxId, u32) = (tx_setup0.tx.compute_txid().into(), 0);
         assert!(storage.deposit_requests.get(&db_outpoint).is_some());
+
+        assert!(storage
+            .bitcoin_transactions_to_blocks
+            .get(&db_outpoint.0)
+            .is_some());
+        assert_eq!(
+            storage
+                .raw_transactions
+                .get(db_outpoint.0.as_byte_array())
+                .unwrap()
+                .tx_type,
+            model::TransactionType::DepositRequest
+        );
 
         // Now the deposit_requests thing should be empty now, since we stored the things.
         assert!(block_observer.deposit_requests.is_empty());

@@ -53,6 +53,9 @@ pub enum TxSignerEvent {
     PendingWithdrawalRequestRegistered,
     /// A new pending deposit request has been handled.
     PendingDepositRequestRegistered,
+    /// New pending requests have been handled. This is primarily used as a
+    /// trigger for the transaction coordinator to process the new blocks.
+    NewRequestsHandled,
 }
 
 impl From<TxSignerEvent> for SignerSignal {
