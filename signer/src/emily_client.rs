@@ -9,7 +9,6 @@ use emily_client::apis::configuration::Configuration as EmilyApiConfig;
 use emily_client::apis::deposit_api;
 use emily_client::apis::Error as EmilyError;
 use emily_client::models::DepositUpdate;
-use emily_client::models::Fulfillment;
 use emily_client::models::Status;
 use emily_client::models::UpdateDepositsRequestBody;
 use emily_client::models::UpdateDepositsResponse;
@@ -139,19 +138,12 @@ impl EmilyInteract for EmilyClient {
             update_request.push(DepositUpdate {
                 bitcoin_tx_output_index: deposit.outpoint.vout,
                 bitcoin_txid: deposit.outpoint.txid.to_string(),
+                status: Status::Accepted,
+                fulfillment: None,
+                status_message: "".to_string(),
+                // TODO: use stacks tip/hash here?
                 last_update_block_hash: bitcoin_chain_tip.block_hash.to_string(),
                 last_update_height: bitcoin_chain_tip.block_height,
-                status: Status::Accepted,
-                fulfillment: Some(Some(Box::new(Fulfillment {
-                    bitcoin_txid: transaction.tx.compute_txid().to_string(),
-                    btc_fee: transaction.tx_fee,
-                    // For accepted requests we don't have a block, nor a tx index
-                    bitcoin_block_hash: "".to_string(),
-                    bitcoin_block_height: 0,
-                    bitcoin_tx_index: 0,
-                    stacks_txid: "".to_string(),
-                }))),
-                status_message: "".to_string(),
             });
         }
 

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::time::Duration;
 
 use bitcoin::block::Header;
@@ -12,7 +11,6 @@ use bitcoin::CompactTarget;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
 use bitcoin::TxMerkleNode;
-use bitcoin::TxOut;
 use bitcoin::Txid;
 use bitcoincore_rpc_json::Utxo;
 
@@ -29,6 +27,7 @@ use signer::bitcoin::rpc::GetTxResponse;
 use signer::block_observer;
 use signer::context::Context;
 use signer::context::SignerEvent;
+use signer::context::TxSignerEvent;
 use signer::emily_client::EmilyClient;
 use signer::error::Error;
 use signer::keys;
@@ -209,38 +208,12 @@ async fn deposit_e2e() {
         amount: Amount::from_sat(deposit_config.amount + deposit_config.max_fee + 1),
         height: 0,
     };
-    let (mut deposit_tx, mut deposit_request) = make_deposit_request(
+    let (deposit_tx, deposit_request) = make_deposit_request(
         &depositor,
         deposit_config.amount,
         depositor_utxo,
         deposit_config.aggregate_key.into(),
     );
-
-    // TODO: there's something wrong: `extract_sbtc_transactions` expect one of the output to be
-    //       spendable by `signers_pubkey` instead of the combined script?
-    let signers_pubkey: HashSet<ScriptBuf> = context
-        .get_storage()
-        .get_signers_script_pubkeys()
-        .await
-        .unwrap()
-        .into_iter()
-        .map(ScriptBuf::from_bytes)
-        .collect();
-    assert!(!deposit_tx
-        .output
-        .iter()
-        .any(|txout| signers_pubkey.contains(&txout.script_pubkey)));
-    // anyway, hacking this togheter for now to test the emily flow
-    deposit_tx.output.push(TxOut {
-        value: bitcoin::Amount::from_sat(1),
-        script_pubkey: aggregate_key.signers_script_pubkey(),
-    });
-    assert!(deposit_tx
-        .output
-        .iter()
-        .any(|txout| signers_pubkey.contains(&txout.script_pubkey)));
-    deposit_request.outpoint.txid = deposit_tx.compute_txid();
-    //
 
     let emily_request = CreateDepositRequestBody {
         bitcoin_tx_output_index: deposit_request.outpoint.vout,
@@ -444,7 +417,7 @@ async fn deposit_e2e() {
 
     // Add a stacks block in the current bitcoin tip, otherwise `get_last_key_rotation`
     // will not get the signer keys and the txcoord process_new_blocks will fail.
-    // NOTE: currently there's no not-hacky ways to set the stacks confirmations?
+    // TODO: remove after #559 is fixed
     assert!(context
         .get_storage()
         .get_last_key_rotation(&deposit_block_hash.into())
@@ -476,6 +449,7 @@ async fn deposit_e2e() {
         .await
         .unwrap()
         .is_some());
+    //
 
     // We also need to accept the request, so let's pick some signer to accept it
     for signer_pub_key in signer_info[0]
@@ -494,20 +468,6 @@ async fn deposit_e2e() {
             .await
             .expect("failed to write deposit decision");
     }
-
-    // As there was a moment where there was no signer set, the coordinator died when processing the block
-    assert!(tx_coordinator_handle.is_finished());
-    // So we recreate it
-    let tx_coordinator = transaction_coordinator::TxCoordinatorEventLoop {
-        context: context.clone(),
-        network: network.connect(),
-        private_key,
-        context_window,
-        threshold: signing_threshold as u16,
-        bitcoin_network: bitcoin::Network::Regtest,
-        signing_round_max_duration: Duration::from_secs(10),
-    };
-    let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
 
     // Start the in-memory signer set.
     let _signers_handle = tokio::spawn(async move {
@@ -534,7 +494,7 @@ async fn deposit_e2e() {
 
     // Wake coordinator up (again)
     context
-        .signal(SignerEvent::BitcoinBlockObserved.into())
+        .signal(SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled).into())
         .expect("failed to signal");
 
     // Await the `wait_for_tx_task` to receive the first transaction broadcasted.

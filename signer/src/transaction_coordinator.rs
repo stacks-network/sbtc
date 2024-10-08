@@ -231,7 +231,9 @@ where
             )
             .await?;
 
-            // TODO: need to add a retry (somewhere else?) if this fails?
+            // TODO: need to add a retry (somewhere else?) if this fails? Otherwise
+            // since we already submitted the bitcoin tx, we would never mark the request
+            // as accepted.
             self.context
                 .get_emily_client()
                 .update_broadcasted_deposits(&transaction, &bitcoin_chain_tip_block)
