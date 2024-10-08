@@ -13,6 +13,7 @@ use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
 use crate::context::TxSignerEvent;
 use crate::context::{messaging::SignerEvent, messaging::SignerSignal, Context};
+use crate::ecdsa::SignEcdsa as _;
 use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
@@ -20,11 +21,13 @@ use crate::message;
 use crate::network;
 use crate::storage::model;
 use crate::storage::DbRead as _;
-use crate::wsts_state_machine;
+use crate::wsts_state_machine::CoordinatorStateMachine;
 
-use crate::ecdsa::SignEcdsa as _;
 use bitcoin::hashes::Hash as _;
 use wsts::state_machine::coordinator::Coordinator as _;
+use wsts::state_machine::coordinator::State as WstsCoordinatorState;
+use wsts::state_machine::OperationResult as WstsOperationResult;
+use wsts::state_machine::StateMachine as _;
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// # Transaction coordinator event loop
@@ -71,9 +74,9 @@ use wsts::state_machine::coordinator::Coordinator as _;
 ///
 /// [^1]: A deposit or withdraw request is considered pending if it is confirmed
 ///       on chain but hasn't been fulfilled in an sBTC transaction yet.
-/// [^2]: A deposit or withdraw request is considered active if has been 
+/// [^2]: A deposit or withdraw request is considered active if has been
 ///       fulfilled in an sBTC transaction,
-///       but the result hasn't been acknowledged on Stacks as a 
+///       but the result hasn't been acknowledged on Stacks as a
 ///       `deposit-accept`, `withdraw-accept` or `withdraw-reject` transaction.
 ///
 /// The whole flow is illustrated in the following flowchart.
@@ -255,7 +258,7 @@ where
         signer_public_keys: &BTreeSet<PublicKey>,
         mut transaction: utxo::UnsignedTransaction<'_>,
     ) -> Result<(), Error> {
-        let mut coordinator_state_machine = wsts_state_machine::CoordinatorStateMachine::load(
+        let mut coordinator_state_machine = CoordinatorStateMachine::load(
             &mut self.context.get_storage_mut(),
             aggregate_key,
             signer_public_keys.clone(),
@@ -331,11 +334,11 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn coordinate_signing_round(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        coordinator_state_machine: &mut wsts_state_machine::CoordinatorStateMachine,
+        coordinator_state_machine: &mut CoordinatorStateMachine,
         txid: bitcoin::Txid,
         msg: &[u8],
     ) -> Result<wsts::taproot::SchnorrProof, Error> {
@@ -347,24 +350,58 @@ where
         self.send_message(msg, bitcoin_chain_tip).await?;
 
         let max_duration = self.signing_round_max_duration;
-        let run_signing_round = self.relay_messages_to_wsts_state_machine_until_signature_created(
-            bitcoin_chain_tip,
-            coordinator_state_machine,
-            txid,
-        );
+        let run_signing_round =
+            self.drive_wsts_state_machine(bitcoin_chain_tip, coordinator_state_machine, txid);
 
-        tokio::time::timeout(max_duration, run_signing_round)
+        let operation_result = tokio::time::timeout(max_duration, run_signing_round)
             .await
-            .map_err(|_| Error::CoordinatorTimeout(self.signing_round_max_duration.as_secs()))?
+            .map_err(|_| Error::CoordinatorTimeout(max_duration.as_secs()))??;
+
+        match operation_result {
+            WstsOperationResult::SignTaproot(signature) => Ok(signature),
+            _ => Err(Error::UnexpectedOperationResult),
+        }
     }
 
-    #[tracing::instrument(skip(self))]
-    async fn relay_messages_to_wsts_state_machine_until_signature_created(
+    #[tracing::instrument(skip_all)]
+    async fn coordinate_dkg(
+        &mut self,
+        chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<PublicKey, Error> {
+        let mut state_machine = CoordinatorStateMachine::new([], self.threshold, self.private_key);
+        state_machine
+            .move_to(WstsCoordinatorState::DkgPublicDistribute)
+            .map_err(Error::wsts_coordinator)?;
+
+        let outbound = state_machine
+            .start_public_shares()
+            .map_err(Error::wsts_coordinator)?;
+
+        let identifier = secp256k1::XOnlyPublicKey::from(self.pub_key()).serialize();
+        let txid = bitcoin::Txid::from_byte_array(identifier);
+        let msg = message::WstsMessage { txid, inner: outbound.msg };
+        self.send_message(msg, chain_tip).await?;
+
+        let max_duration = self.dkg_max_duration;
+        let dkg_fut = self.drive_wsts_state_machine(chain_tip, &mut state_machine, txid);
+
+        let operation_result = tokio::time::timeout(max_duration, dkg_fut)
+            .await
+            .map_err(|_| Error::CoordinatorTimeout(max_duration.as_secs()))??;
+
+        match operation_result {
+            WstsOperationResult::Dkg(aggregate_key) => PublicKey::try_from(&aggregate_key),
+            _ => Err(Error::UnexpectedOperationResult),
+        }
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn drive_wsts_state_machine(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        coordinator_state_machine: &mut wsts_state_machine::CoordinatorStateMachine,
+        coordinator_state_machine: &mut CoordinatorStateMachine,
         txid: bitcoin::Txid,
-    ) -> Result<wsts::taproot::SchnorrProof, Error> {
+    ) -> Result<WstsOperationResult, Error> {
         loop {
             let msg = self.network.receive().await?;
 
@@ -397,11 +434,8 @@ where
             }
 
             match operation_result {
-                Some(wsts::state_machine::OperationResult::SignTaproot(signature)) => {
-                    return Ok(signature)
-                }
+                Some(res) => return Ok(res),
                 None => continue,
-                Some(_) => return Err(Error::UnexpectedOperationResult),
             }
         }
     }
