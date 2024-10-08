@@ -177,6 +177,12 @@ where
             .await?
             .ok_or(Error::NoChainTip)?;
 
+        if self.needs_dkg(&bitcoin_chain_tip).await? == DkgState::NeedsDkg {
+            // This function returns the new DKG aggregate key. That
+            // aggregate key is different from aggregate key of the signers.
+            let _ = self.coordinate_dkg(&bitcoin_chain_tip).await?;
+        }
+
         let (aggregate_key, signer_public_keys) = self
             .get_signer_public_keys_and_aggregate_key(&bitcoin_chain_tip)
             .await?;
@@ -377,7 +383,7 @@ where
             .start_public_shares()
             .map_err(Error::wsts_coordinator)?;
 
-        let identifier = secp256k1::XOnlyPublicKey::from(self.pub_key()).serialize();
+        let identifier = self.coordinator_id();
         let txid = bitcoin::Txid::from_byte_array(identifier);
         let msg = message::WstsMessage { txid, inner: outbound.msg };
         self.send_message(msg, chain_tip).await?;
@@ -406,7 +412,7 @@ where
             let msg = self.network.receive().await?;
 
             if &msg.bitcoin_chain_tip != bitcoin_chain_tip {
-                tracing::warn!(?msg, "concurrent wsts signing round message observed");
+                tracing::warn!(?msg, "concurrent WSTS activity observed");
                 continue;
             }
 
@@ -437,6 +443,27 @@ where
                 Some(res) => return Ok(res),
                 None => continue,
             }
+        }
+    }
+
+    /// Check whether or not we need to run DKG
+    /// 
+    /// This function checks for the existence of a
+    /// [`RotateKeysTransaction`] in the database, and one does not exist
+    async fn needs_dkg(&self, chain_tip: &model::BitcoinBlockHash) -> Result<DkgState, Error> {
+        let db = self.context.get_storage();
+        let last_key_rotation = db.get_last_key_rotation(chain_tip).await?;
+
+        if last_key_rotation.is_some() {
+            return Ok(DkgState::DkgComplete);
+        }
+
+        let signer_keys = &self.context.config().signer.peer_public_keys;
+        let signers_aggregate_key = PublicKey::combine_keys(signer_keys)?;
+
+        match db.get_encrypted_dkg_shares(&signers_aggregate_key).await? {
+            Some(_) => Ok(DkgState::NeedsRotateKeysTransaction),
+            _ => Ok(DkgState::NeedsDkg)
         }
     }
 
@@ -592,6 +619,15 @@ where
         PublicKey::from_private_key(&self.private_key)
     }
 
+    /// This function provides a deterministic 32-byte identifier for the
+    /// signer. This should probably deterministically too.
+    fn coordinator_id(&self) -> [u8; 32] {
+        sha2::Sha256::new_with_prefix("SIGNER_COORDINATOR_ID")
+            .chain_update(self.pub_key().serialize())
+            .finalize()
+            .into()
+    }
+
     #[tracing::instrument(skip(self, msg))]
     async fn send_message(
         &mut self,
@@ -607,6 +643,22 @@ where
 
         Ok(())
     }
+}
+
+/// A struct describing the state of the signers with respect to
+/// distributed key generation (DKG).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DkgState {
+    /// This is the state of the things when the signers boot for the first
+    /// time. In this case, we need to run DKG and store the shares in the
+    /// database.
+    NeedsDkg,
+    /// This implies that DKG has been run, but there is no rotate-keys
+    /// transaction in the database on the canonical Stacks blockchain.
+    NeedsRotateKeysTransaction,
+    /// This implies that we have run DKG and have confirmed a rotate-keys
+    /// transaction.
+    DkgComplete,
 }
 
 /// Check if the provided public key is the coordinator for the provided chain tip
@@ -669,7 +721,7 @@ mod tests {
             .with_mocked_clients()
             .build();
 
-        testing::transaction_coordinator::TestEnvironment {
+        TestEnvironment {
             context,
             context_window: 5,
             num_signers: 7,
