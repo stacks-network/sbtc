@@ -71,9 +71,9 @@ use wsts::state_machine::coordinator::Coordinator as _;
 ///
 /// [^1]: A deposit or withdraw request is considered pending if it is confirmed
 ///       on chain but hasn't been fulfilled in an sBTC transaction yet.
-/// [^2]: A deposit or withdraw request is considered active if has been 
+/// [^2]: A deposit or withdraw request is considered active if has been
 ///       fulfilled in an sBTC transaction,
-///       but the result hasn't been acknowledged on Stacks as a 
+///       but the result hasn't been acknowledged on Stacks as a
 ///       `deposit-accept`, `withdraw-accept` or `withdraw-reject` transaction.
 ///
 /// The whole flow is illustrated in the following flowchart.
@@ -659,5 +659,10 @@ mod tests {
     #[tokio::test]
     async fn should_get_signer_utxo_unspent() {
         test_environment().assert_get_signer_utxo_unspent().await;
+    }
+
+    #[tokio::test]
+    async fn should_get_signer_utxo_donations() {
+        test_environment().assert_get_signer_utxo_donations().await;
     }
 }
