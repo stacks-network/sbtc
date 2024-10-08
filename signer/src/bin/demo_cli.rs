@@ -81,9 +81,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .endpoints
             .first()
             .expect("No Emily endpoints configured")
+            .to_string()
+            .trim_end_matches("/")
             .to_string(),
         ..Default::default()
     };
+
+    dbg!(&emily_client_config);
 
     let bitcoin_url = format!(
         "{}wallet/depositor",
@@ -182,7 +186,7 @@ fn create_bitcoin_deposit_transaction(
         .require_network(Network::Regtest)?;
 
     // Create the unsigned transaction
-    let unsigned_tx = Transaction {
+    let mut unsigned_tx = Transaction {
         input: vec![TxIn {
             previous_output: OutPoint {
                 txid: unspent.txid,
@@ -194,7 +198,7 @@ fn create_bitcoin_deposit_transaction(
         }],
         output: vec![
             TxOut {
-                value: Amount::from_sat(unspent.amount.to_sat() - args.amount - args.max_fee),
+                value: Amount::from_sat(unspent.amount.to_sat() - args.amount - args.max_fee - 153),
                 script_pubkey: change_address.into(),
             },
             TxOut {
