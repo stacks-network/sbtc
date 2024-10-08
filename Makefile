@@ -159,7 +159,7 @@ devenv: $(wildcard $(subst dir, devenv, $(TWO_DIRS_DEEP)))
 EMILY_CDK_SOURCE_FILES := $(wildcard $(subst dir, emily/cdk/lib, $(FIVE_DIRS_DEEP)))
 EMILY_CDK_SOURCE_FILES := $(wildcard $(subst dir, emily/bin/lib, $(FIVE_DIRS_DEEP))) $(EMILY_CDK_SOURCE_FILES)
 
-$(EMILY_CDK_TEMPLATE): $(INSTALL_TARGET) $(EMILY_OPENAPI_SPEC) $(EMILY_CDK_SOURCE_FILES)
+$(EMILY_CDK_TEMPLATE): $(INSTALL_TARGET) $(EMILY_CDK_SOURCE_FILES)
 	AWS_STAGE=local \
 	TABLES_ONLY=true \
 	pnpm --filter $(EMILY_CDK_PROJECT_NAME) run synth
