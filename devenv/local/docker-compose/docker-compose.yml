@@ -13,14 +13,14 @@ x-common-vars:
   - &MINE_INTERVAL_EPOCH3 ${MINE_INTERVAL_EPOCH3:-15s} # 15 second bitcoin block times in epoch 3
   - &NAKAMOTO_BLOCK_INTERVAL 2 # seconds to wait between issuing stx-transfer transactions (which triggers Nakamoto block production)
   - &STACKS_20_HEIGHT ${STACKS_20_HEIGHT:-0}
-  - &STACKS_2_05_HEIGHT ${STACKS_2_05_HEIGHT:-102}
-  - &STACKS_21_HEIGHT ${STACKS_21_HEIGHT:-103}
-  - &STACKS_POX2_HEIGHT ${STACKS_POX2_HEIGHT:-104} # 104 is is stacks_block=1, 106 is stacks_block=3
-  - &STACKS_22_HEIGHT ${STACKS_22_HEIGHT:-105}
-  - &STACKS_23_HEIGHT ${STACKS_23_HEIGHT:-106}
-  - &STACKS_24_HEIGHT ${STACKS_24_HEIGHT:-107}
-  - &STACKS_25_HEIGHT ${STACKS_25_HEIGHT:-108}
-  - &STACKS_30_HEIGHT ${STACKS_30_HEIGHT:-131}
+  - &STACKS_2_05_HEIGHT ${STACKS_2_05_HEIGHT:-203}
+  - &STACKS_21_HEIGHT ${STACKS_21_HEIGHT:-204}
+  - &STACKS_POX2_HEIGHT ${STACKS_POX2_HEIGHT:-205} # 104 is is stacks_block=1, 106 is stacks_block=3
+  - &STACKS_22_HEIGHT ${STACKS_22_HEIGHT:-206}
+  - &STACKS_23_HEIGHT ${STACKS_23_HEIGHT:-207}
+  - &STACKS_24_HEIGHT ${STACKS_24_HEIGHT:-208}
+  - &STACKS_25_HEIGHT ${STACKS_25_HEIGHT:-209}
+  - &STACKS_30_HEIGHT ${STACKS_30_HEIGHT:-232}
   - &STACKING_CYCLES ${STACKING_CYCLES:-1} # number of cycles to stack-stx or stack-extend for
   - &POX_PREPARE_LENGTH ${POX_PREPARE_LENGTH:-5}
   - &POX_REWARD_LENGTH ${POX_REWARD_LENGTH:-20}
@@ -33,14 +33,10 @@ services:
       context: ./bitcoin
       dockerfile: Dockerfile.btc
     ports:
-      - 18443
+      - "18443:18443"
       - 28332
     volumes:
       - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
-#      - ./init-data:/init-data
-#      - chainstate:/chainstate
-#    environment:
-#      DATA_DIR: /chainstate/bitcoin-data
     entrypoint:
       - /bin/bash
       - -c
@@ -93,9 +89,12 @@ services:
     build:
       context: ./sbtc-signer
       dockerfile: Dockerfile.sbtc-signer
-    entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
+    entrypoint: "/bin/bash -c 'sleep 300 && /usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
     depends_on:
       - postgres-1
+      - stacks
+      - bitcoin
+      - bitcoin-miner
     environment:
       RUST_LOG: info
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-1:5432/signer
@@ -109,9 +108,12 @@ services:
     build:
       context: ./sbtc-signer
       dockerfile: Dockerfile.sbtc-signer
-    entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
+    entrypoint: "/bin/bash -c 'sleep 300 && /usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
     depends_on:
       - postgres-2
+      - stacks
+      - bitcoin
+      - bitcoin-miner
     environment:
       RUST_LOG: info
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-2:5432/signer
@@ -125,9 +127,12 @@ services:
     build:
       context: ./sbtc-signer
       dockerfile: Dockerfile.sbtc-signer
-    entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
+    entrypoint: "/bin/bash -c 'sleep 300 && /usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
     depends_on:
       - postgres-3
+      - stacks
+      - bitcoin
+      - bitcoin-miner
     environment:
       RUST_LOG: info
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-3:5432/signer
@@ -174,11 +179,14 @@ services:
         trap "kill 0" EXIT
         bitcoin-cli -rpcconnect=bitcoin -rpcwait getmininginfo
         bitcoin-cli -rpcconnect=bitcoin -named createwallet wallet_name=main descriptors=false
-        bitcoin-cli -rpcconnect=bitcoin importaddress $${BTC_ADDR} "" false
-        bitcoin-cli -rpcconnect=bitcoin generatetoaddress $${INIT_BLOCKS} $${BTC_ADDR}
+        bitcoin-cli -rpcconnect=bitcoin -named createwallet wallet_name=depositor descriptors=true
+        bitcoin-cli -rpcwallet=main -rpcconnect=bitcoin importaddress $${BTC_ADDR} "" false
+        bitcoin-cli -rpcwallet=main -rpcconnect=bitcoin generatetoaddress $${INIT_BLOCKS} $${BTC_ADDR}
+        ADDR=$$(bitcoin-cli -rpcwallet=depositor -rpcconnect=bitcoin getnewaddress label="" bech32)
+        bitcoin-cli -rpcwallet=depositor -rpcconnect=bitcoin generatetoaddress 101 $${ADDR}
         DEFAULT_TIMEOUT=$$(($$(date +%s) + 30))
         while true; do
-          TX=$$(bitcoin-cli -rpcconnect=bitcoin listtransactions '*' 1 0 true)
+          TX=$$(bitcoin-cli -rpcwallet=main -rpcconnect=bitcoin listtransactions '*' 1 0 true)
           CONFS=$$(echo "$${TX}" | jq '.[].confirmations')
           if [ "$${CONFS}" = "0" ] || [ $$(date +%s) -gt $$DEFAULT_TIMEOUT ]; then
             if [ $$(date +%s) -gt $$DEFAULT_TIMEOUT ]; then
@@ -186,14 +194,14 @@ services:
             else
               echo "Detected Stacks mining mempool tx, mining btc block..."
             fi
-            bitcoin-cli -rpcconnect=bitcoin generatetoaddress 1 "$${BTC_ADDR}"
+            bitcoin-cli -rpcwallet=main -rpcconnect=bitcoin generatetoaddress 1 "$${BTC_ADDR}"
             DEFAULT_TIMEOUT=$$(($$(date +%s) + 30))
           else
             echo "No Stacks mining tx detected"
           fi
 
           SLEEP_DURATION=$${MINE_INTERVAL}
-          BLOCK_HEIGHT=$$(bitcoin-cli -rpcconnect=bitcoin getblockcount)
+          BLOCK_HEIGHT=$$(bitcoin-cli -rpcwallet=main -rpcconnect=bitcoin getblockcount)
           if [ "$${BLOCK_HEIGHT}" -gt $$(( $${STACKS_30_HEIGHT} + 1 )) ]; then
             echo "In Epoch3, sleeping for $${MINE_INTERVAL_EPOCH3} ..."
             SLEEP_DURATION=$${MINE_INTERVAL_EPOCH3}
@@ -218,13 +226,10 @@ services:
     volumes:
       - ./stacks/stacks-regtest-miner.toml:/data/config.toml.in
       - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
-#      - ./init-data:/init-data
-#      - chainstate:/chainstate
     environment:
       # STACKS_LOG_TRACE: 1 # uncomment for trace logging
       # STACKS_LOG_DEBUG: 1
       # RUST_LOG: debug
- #     DATA_DIR: /chainstate/stacks-blockchain-miner-data
       BITCOIN_PEER_HOST: bitcoin
       BITCOIN_PEER_PORT: *BITCOIN_PEER_PORT
       BITCOIN_RPC_PORT: *BITCOIN_RPC_PORT
@@ -295,9 +300,7 @@ services:
       - stacks
     volumes:
       - ./stacks/stacks-signer.toml:/data/config.toml.in
-#      - chainstate:/chainstate
     environment:
-#      SIGNER_DB_PATH: /chainstate/stacks-signer-2.sqlite
       STACKS_NODE_HOST: stacks:20443
       STACKS_SIGNER_ENDPOINT: 0.0.0.0:30000
       SIGNER_PRIVATE_KEY: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc01
@@ -319,9 +322,7 @@ services:
       - stacks
     volumes:
       - ./stacks/stacks-signer.toml:/data/config.toml.in
-#      - chainstate:/chainstate
     environment:
-#      SIGNER_DB_PATH: /chainstate/stacks-signer-2.sqlite
       STACKS_NODE_HOST: stacks:20443
       STACKS_SIGNER_ENDPOINT: 0.0.0.0:30000
       SIGNER_PRIVATE_KEY: 9bfecf16c9c12792589dd2b843f850d5b89b81a04f8ab91c083bdf6709fbefee01
@@ -343,9 +344,7 @@ services:
       - stacks
     volumes:
       - ./stacks/stacks-signer.toml:/data/config.toml.in
-#      - chainstate:/chainstate
     environment:
-#      SIGNER_DB_PATH: /chainstate/stacks-signer-3.sqlite
       STACKS_NODE_HOST: stacks:20443
       STACKS_SIGNER_ENDPOINT: 0.0.0.0:30000
       SIGNER_PRIVATE_KEY: 3ec0ca5770a356d6cd1a9bfcbf6cd151eb1bd85c388cc00648ec4ef5853fdb7401
