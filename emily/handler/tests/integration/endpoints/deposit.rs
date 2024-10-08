@@ -392,7 +392,7 @@ async fn update_deposit() {
     // Make some parameters.
     let updated_hash = "UPDATED_HASH".to_string();
     let updated_height: u64 = 12345;
-    let updated_status: Status = Status::Accepted;
+    let updated_status: Status = Status::Confirmed;
     let updated_message: String = "UPDATED_MESSAGE".to_string();
     let fulfillment: Fulfillment = Fulfillment {
         bitcoin_txid: "FULFILLMENT_BITCOIN_TXID".to_string(),
@@ -496,7 +496,7 @@ async fn update_deposit() {
             stacks_block_hash: "DUMMY_HASH".to_string(),
         },
         DepositEvent {
-            status: StatusEntry::Accepted(fulfillment.clone()),
+            status: StatusEntry::Confirmed(fulfillment.clone()),
             message: updated_message.clone(),
             stacks_block_height: updated_height,
             stacks_block_hash: updated_hash.clone(),
