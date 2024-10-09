@@ -1,7 +1,7 @@
 {
   "name": "emily-api",
   "scripts": {
-    "build-rust": "openapi-generator-cli generate -i ./emily-openapi-spec.json -g rust -o ../client/rust/ --config ./config.json",
+    "build-rust": "openapi-generator-cli generate -i ./emily-openapi-spec.json -g rust -o ../client/rust/ --config ./config.json --additional-properties=preferUnsignedInt=true",
     "clean-rust": "find ../client/rust ! -path '../client/rust/src/main.rs' ! -path '../client/rust/Cargo.toml' -mindepth 1 -delete",
     "build": "pnpm build-rust",
     "clean": "pnpm clean-rust"

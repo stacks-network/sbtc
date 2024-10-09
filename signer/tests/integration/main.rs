@@ -4,6 +4,7 @@ mod bitcoin_client;
 mod bitcoin_rpc;
 mod complete_deposit;
 mod contracts;
+mod emily;
 mod postgres;
 mod rbf;
 mod setup;
