@@ -16,6 +16,7 @@ use bitcoincore_rpc_json::Utxo;
 
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
+use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use clarity::types::chainstate::ConsensusHash;
 use clarity::types::chainstate::StacksBlockId;
@@ -341,7 +342,14 @@ async fn deposit_e2e() {
                 })
             });
 
-            client.expect_nakamoto_start_height().once().returning(|| 0);
+            client.expect_get_pox_info().once().returning(|| {
+                let raw_json_response =
+                    include_str!("../../tests/fixtures/stacksapi-get-pox-info-test-data.json");
+                Box::pin(async move {
+                    serde_json::from_str::<RPCPoxInfoData>(raw_json_response)
+                        .map_err(Error::JsonSerialize)
+                })
+            });
         })
         .await;
 

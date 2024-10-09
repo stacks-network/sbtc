@@ -169,7 +169,9 @@ where
 
                 // If we've observed a new block, we need to handle any new requests.
                 if new_block_observed {
-                    self.handle_new_requests().await?;
+                    if let Err(error) = self.handle_new_requests().await {
+                        tracing::warn!(%error, "error handling new requests; skipping this round");
+                    }
                 }
 
                 // Next, we define a future that polls the network for new messages
@@ -180,15 +182,16 @@ where
                 let future = tokio::time::timeout(Duration::from_millis(5), self.network.receive());
 
                 match future.await {
-                    Ok(msg) => {
+                    Ok(Err(error)) => {
+                        tracing::warn!(%error, "message error; skipping");
+                    }
+                    Ok(Ok(msg)) => {
                         // Handle the received message.
-                        let res = self.handle_signer_message(&msg?).await;
+                        let res = self.handle_signer_message(&msg).await;
                         match res {
-                            Ok(()) => (),
-                            Err(Error::InvalidSignature) => (),
+                            Ok(()) | Err(Error::InvalidSignature) => (),
                             Err(error) => {
-                                tracing::error!(%error, "fatal signer error");
-                                return Err::<(), Error>(error);
+                                tracing::error!(%error, "error handling signer message");
                             }
                         }
                     }
