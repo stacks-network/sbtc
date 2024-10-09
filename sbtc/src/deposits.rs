@@ -692,6 +692,7 @@ mod tests {
 
         let extracts = ReclaimScriptInputs::parse(&reclaim_script).unwrap();
         assert_eq!(extracts.lock_time, lock_time);
+        assert_eq!(extracts.lock_time(), lock_time as u64);
         assert_eq!(extracts.reclaim_script(), reclaim_script);
 
         // Let's check that ReclaimScriptInputs::reclaim_script and
@@ -702,8 +703,9 @@ mod tests {
             .push_opcode(opcodes::OP_CHECKSIG)
             .into_script();
 
-        let inputs = ReclaimScriptInputs::try_new(lock_time, script).unwrap();
+        let inputs = ReclaimScriptInputs::try_new(lock_time, script.clone()).unwrap();
         let reclaim_script = inputs.reclaim_script();
+        assert_eq!(inputs.user_script(), script.as_script());
         assert_eq!(ReclaimScriptInputs::parse(&reclaim_script).unwrap(), inputs);
     }
 
