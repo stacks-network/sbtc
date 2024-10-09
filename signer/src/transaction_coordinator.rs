@@ -293,7 +293,7 @@ where
 
         for req in deposit_requests {
             let sign_request_fut =
-                self.construct_stacks_sign_request(req, bitcoin_aggregate_key, &wallet);
+                self.construct_deposit_stacks_sign_request(req, bitcoin_aggregate_key, &wallet);
 
             let (sign_request, multi_tx) = match sign_request_fut.await {
                 Ok(res) => res,
