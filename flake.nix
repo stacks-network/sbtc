@@ -30,6 +30,8 @@
 
             buildInputs = [
               toolchain
+
+              # TODO: `Smithy` is currently missing.
               cargo-lambda
               gnumake
               jdk21_headless
