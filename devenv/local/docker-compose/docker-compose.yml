@@ -89,7 +89,7 @@ services:
     build:
       context: ./sbtc-signer
       dockerfile: Dockerfile.sbtc-signer
-    entrypoint: "/bin/bash -c 'sleep 300 && /usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
+    entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
     depends_on:
       - postgres-1
       - stacks
@@ -108,7 +108,7 @@ services:
     build:
       context: ./sbtc-signer
       dockerfile: Dockerfile.sbtc-signer
-    entrypoint: "/bin/bash -c 'sleep 300 && /usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
+    entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
     depends_on:
       - postgres-2
       - stacks
@@ -127,7 +127,7 @@ services:
     build:
       context: ./sbtc-signer
       dockerfile: Dockerfile.sbtc-signer
-    entrypoint: "/bin/bash -c 'sleep 300 && /usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
+    entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
     depends_on:
       - postgres-3
       - stacks
