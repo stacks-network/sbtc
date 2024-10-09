@@ -352,9 +352,9 @@ pub struct ReclaimScriptInputs {
     /// script. It is not allowed to exceed the bounds expected for a
     /// 5-byte lock-time in bitcoin-core. It is also not allowed to have
     /// the [`SEQUENCE_LOCKTIME_DISABLE_FLAG`] bit set.
-    lock_time: i64,
+    pub lock_time: i64,
     /// The reclaim script after the <locked-time> OP_CSV part of the script
-    script: ScriptBuf,
+    pub script: ScriptBuf,
 }
 
 impl ReclaimScriptInputs {
