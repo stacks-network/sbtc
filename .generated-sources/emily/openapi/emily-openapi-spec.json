@@ -1414,8 +1414,7 @@
           "lockTime": {
             "type": "integer",
             "format": "int64",
-            "description": "Bitcoin block height at which the reclaim script becomes executable.",
-            "minimum": 0
+            "description": "Bitcoin block height at which the reclaim script becomes executable."
           },
           "maxFee": {
             "type": "integer",
