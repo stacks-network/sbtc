@@ -447,9 +447,12 @@ where
     }
 
     /// Check whether or not we need to run DKG
-    /// 
-    /// This function checks for the existence of a
-    /// [`RotateKeysTransaction`] in the database, and one does not exist
+    ///
+    /// This function checks for the existence of a row in the in the
+    /// database, and one does exist the DKG has completed and the results
+    /// are known to the network. If such a transaction does not exist then
+    /// we check the `dkg_shares` table to know if we either need to run
+    /// DKG or just submit a `rotate-keys` transaction.
     async fn needs_dkg(&self, chain_tip: &model::BitcoinBlockHash) -> Result<DkgState, Error> {
         let db = self.context.get_storage();
         let last_key_rotation = db.get_last_key_rotation(chain_tip).await?;
@@ -459,11 +462,15 @@ where
         }
 
         let signer_keys = &self.context.config().signer.peer_public_keys;
-        let signers_aggregate_key = PublicKey::combine_keys(signer_keys)?;
+        let signer_set_aggregate_key = PublicKey::combine_keys(signer_keys)?;
 
-        match db.get_encrypted_dkg_shares(&signers_aggregate_key).await? {
+        let shares = db
+            .get_encrypted_dkg_shares_by_signing_set(&signer_set_aggregate_key)
+            .await?;
+
+        match shares {
             Some(_) => Ok(DkgState::NeedsRotateKeysTransaction),
-            _ => Ok(DkgState::NeedsDkg)
+            _ => Ok(DkgState::NeedsDkg),
         }
     }
 
@@ -603,16 +610,25 @@ where
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(PublicKey, BTreeSet<PublicKey>), Error> {
-        let last_key_rotation = self
-            .context
-            .get_storage()
-            .get_last_key_rotation(bitcoin_chain_tip)
-            .await?
-            .ok_or(Error::MissingKeyRotation)?;
+        let db = self.context.get_storage();
+        let last_key_rotation = db.get_last_key_rotation(bitcoin_chain_tip).await?;
 
-        let aggregate_key = last_key_rotation.aggregate_key;
-        let signer_set = last_key_rotation.signer_set.into_iter().collect();
-        Ok((aggregate_key, signer_set))
+        match last_key_rotation {
+            Some(last_key) => {
+                let aggregate_key = last_key.aggregate_key;
+                let signer_set = last_key.signer_set.into_iter().collect();
+                Ok((aggregate_key, signer_set))
+            }
+            None => {
+                let signer_set = &self.context.config().signer.peer_public_keys;
+                let signer_set_aggregate_key = PublicKey::combine_keys(signer_set)?;
+                let shares = db
+                    .get_encrypted_dkg_shares_by_signing_set(&signer_set_aggregate_key)
+                    .await?
+                    .ok_or(Error::MissingDkgShares)?;
+                Ok((shares.aggregate_key, signer_set.iter().copied().collect()))
+            }
+        }
     }
 
     fn pub_key(&self) -> PublicKey {
@@ -682,11 +698,12 @@ pub fn coordinator_public_key(
     let mut hasher = sha2::Sha256::new();
     hasher.update(bitcoin_chain_tip.into_bytes());
     let digest = hasher.finalize();
-    let index = usize::from_be_bytes(*digest.first_chunk().ok_or(Error::TypeConversion)?);
+    let index = u64::from_be_bytes(*digest.first_chunk().ok_or(Error::TypeConversion)?);
+    let num_signers = u64::try_from(signer_public_keys.len()).map_err(|_| Error::TypeConversion)?;
 
     Ok(signer_public_keys
         .iter()
-        .nth(index % signer_public_keys.len())
+        .nth(usize::try_from(index % num_signers).map_err(|_| Error::TypeConversion)?)
         .copied())
 }
 

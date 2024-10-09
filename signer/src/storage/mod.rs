@@ -121,6 +121,14 @@ pub trait DbRead {
         aggregate_key: &PublicKey,
     ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Error>> + Send;
 
+    /// Return the applicable DKG shares for the given aggregate key of the
+    /// signing set. If there are more than one such key, this function
+    /// returns the one that was stored most recently.
+    fn get_encrypted_dkg_shares_by_signing_set(
+        &self,
+        signer_set_aggregate_key: &PublicKey,
+    ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Error>> + Send;
+
     /// Return the latest rotate-keys transaction confirmed by the given `chain-tip`.
     fn get_last_key_rotation(
         &self,
