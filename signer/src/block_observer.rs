@@ -121,18 +121,38 @@ where
         // early.
         let run = async {
             while let Some(new_block_hash) = self.bitcoin_blocks.next().await {
-                self.load_latest_deposit_requests().await?;
+                if let Err(error) = self.load_latest_deposit_requests().await {
+                    tracing::warn!(%error, "could not load latest deposit requests from Emily");
+                }
 
                 // TODO: What to do when `new_block_hash?` errors? Perhaps we can
                 // handle this within a failover-stream if this indicates a problem
                 // with the stream, and then we change this back to a plain `BlockHash`
                 // instead of a `Result<>`.
-                for block in self.next_blocks_to_process(new_block_hash?).await? {
-                    self.process_bitcoin_block(block).await?;
-                }
+                match new_block_hash {
+                    Ok(new_block_hash) => {
+                        tracing::info!(%new_block_hash, "observed new bitcoin block from stream");
 
-                self.context
-                    .signal(SignerEvent::BitcoinBlockObserved.into())?;
+                        match self.next_blocks_to_process(new_block_hash).await {
+                            Ok(next_blocks_to_process) => {
+                                for block in next_blocks_to_process {
+                                    if let Err(error) = self.process_bitcoin_block(block).await {
+                                        tracing::warn!(%error, "could not process bitcoin block");
+                                    }
+                                }
+
+                                self.context
+                                    .signal(SignerEvent::BitcoinBlockObserved.into())?;
+                            }
+                            Err(error) => {
+                                tracing::warn!(%error, "could not get next blocks to process");
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "error decoding new bitcoin block hash from stream");
+                    }
+                }
             }
 
             Ok::<_, Error>(())
