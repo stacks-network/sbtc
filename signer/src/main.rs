@@ -277,7 +277,6 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
         context_window: 10000,
         threshold: 2,
         blocklist_checker: BlocklistClient::new(&ctx),
-        network_kind: config.signer.network.into(),
         rng: rand::thread_rng(),
         signer_private_key: config.signer.private_key,
         wsts_state_machines: HashMap::new(),
@@ -299,7 +298,6 @@ async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
         private_key: config.signer.private_key,
         signing_round_max_duration: Duration::from_secs(10),
         threshold: 2,
-        bitcoin_network: config.signer.network.into(),
         dkg_max_duration: Duration::from_secs(10),
     };
 

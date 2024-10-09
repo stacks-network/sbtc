@@ -113,11 +113,10 @@ impl From<&PublicKey> for p256k1::point::Point {
         // [^2]: https://github.com/bitcoin-core/secp256k1/blob/v0.3.0/src/field.h#L78-L79
         let x_element = p256k1::field::Element::from(x_part);
         let y_element = p256k1::field::Element::from(y_part);
-        // You would think that you couldn't always convert two elements
-        // into a Point, but `p256k1::point::Point::from` uses
-        // `secp256k1_gej_set_ge` under the hood, which I believe does any
-        // reduction. But still, we have a valid public key, so no
-        // reductions should be necessary.
+        // You cannot always convert two aribtrary elements into a Point,
+        // and `p256k1::point::Point::from` assumes that it is being given
+        // two elements that from a point in affine coordinates. We have a
+        // valid public key, so we know that this assumption is upheld.
         p256k1::point::Point::from((x_element, y_element))
     }
 }
