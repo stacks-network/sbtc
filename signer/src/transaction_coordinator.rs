@@ -138,7 +138,8 @@ where
                     // signer indicating that it has handled new requests.
                     Ok(SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled))) => {
                         tracing::debug!("received block observer notification");
-                        self.process_new_blocks().await?;
+                        let _ = self.process_new_blocks().await
+                            .inspect_err(|error| tracing::error!(?error, "error processing new blocks; skipping this round"));
                     },
                     // If we get an error receiving,
                     Err(error) => {
@@ -149,7 +150,6 @@ where
                     // in, so we just continue.
                     _ => {
                         tracing::warn!("ignoring signal");
-                        continue;
                     }
                 },
             }
