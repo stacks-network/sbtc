@@ -1575,7 +1575,7 @@ mod tests {
             .create();
 
         // Setup our Stacks client. We use a regular client here because we're
-        // testing the `get_fee_estimate` method.
+        // testing the `get_pox_info` method.
         let client = StacksClient::new(
             url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
             20,
@@ -1665,7 +1665,7 @@ mod tests {
             .create();
 
         // Setup our Stacks client. We use a regular client here because we're
-        // testing the `get_fee_estimate` method.
+        // testing the `get_node_info` method.
         let client = StacksClient::new(
             url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
             20,
