@@ -9,6 +9,7 @@ use bitcoin::taproot::TaprootSpendInfo;
 use bitcoin::Address;
 use bitcoin::Network;
 use bitcoin::OutPoint;
+use bitcoin::Script;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
 use bitcoin::XOnlyPublicKey;
@@ -162,7 +163,7 @@ impl CreateDepositRequest {
             reclaim_script,
             signers_public_key: deposit.signers_public_key,
             recipient: deposit.recipient,
-            lock_time: reclaim.lock_time as u64,
+            lock_time: reclaim.lock_time(),
             amount: tx_out.value.to_sat(),
             outpoint: self.outpoint,
         })
@@ -346,6 +347,10 @@ impl DepositScriptInputs {
 }
 /// This struct contains the key variable inputs when constructing a
 /// deposit script address.
+///
+/// This struct upholds the invariant that the `lock_time` is a valid,
+/// standard `locktime` in bitcoin-core, so it is positive and less than or
+/// equal to the maximum acceptable value of `2**39 - 1`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReclaimScriptInputs {
     /// This is the lock time used for the OP_CSV opcode in the reclaim
@@ -353,7 +358,8 @@ pub struct ReclaimScriptInputs {
     /// 5-byte lock-time in bitcoin-core. It is also not allowed to have
     /// the [`SEQUENCE_LOCKTIME_DISABLE_FLAG`] bit set.
     lock_time: i64,
-    /// The reclaim script after the <locked-time> OP_CSV part of the script
+    /// The reclaim script after the `<locked-time> OP_CSV` part of the
+    /// script.
     script: ScriptBuf,
 }
 
@@ -361,8 +367,8 @@ impl ReclaimScriptInputs {
     /// Create a new one
     pub fn try_new(lock_time: i64, script: ScriptBuf) -> Result<Self, Error> {
         // We can only use numbers that can be expressed as a 5-byte signed
-        // integer, which has a max of 2**39 - 1. Negative numbers might be
-        // considered non-standard, so we reject them as well.
+        // integer, which has a max of `2**39 - 1`. Negative numbers might
+        // be considered non-standard, so we reject them as well.
         if lock_time > i64::pow(2, 39) - 1 || lock_time < 0 {
             return Err(Error::InvalidReclaimScriptLockTime(lock_time));
         }
@@ -377,6 +383,28 @@ impl ReclaimScriptInputs {
         }
 
         Ok(Self { lock_time, script })
+    }
+
+    /// Get the lock time in the reclaim script.
+    pub fn lock_time(&self) -> u64 {
+        // We know this number is positive because that is one of the
+        // invariants upheld by this struct, and we check for it in
+        // `Self::try_new`, so this will never fail.
+        self.lock_time
+            .try_into()
+            .expect("BUG: We've decided not to uphold the lock_time invariant")
+    }
+
+    /// Return the user supplied part of the script.
+    /// 
+    /// The full reclaim script has the form:
+    ///```text
+    ///  <locked-time> OP_CHECKSEQUENCEVERIFY <rest-of-reclaim-script>
+    /// ```
+    /// where the user supplies `<rest-of-reclaim-script>`. This function
+    /// returns `<rest-of-reclaim-script>`.
+    pub fn user_script(&self) -> &Script {
+        self.script.as_script()
     }
 
     /// Create the reclaim script from the inputs
