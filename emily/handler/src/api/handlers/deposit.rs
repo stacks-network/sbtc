@@ -6,6 +6,7 @@ use crate::api::models::deposit::responses::{
 use crate::database::entries::StatusEntry;
 use warp::reply::{json, with_status, Reply};
 
+use bitcoin::ScriptBuf;
 use warp::http::StatusCode;
 
 use crate::api::models::deposit::{Deposit, DepositInfo};
@@ -208,13 +209,22 @@ pub async fn create_deposit(
         let stacks_block_hash: String = chaintip.key.hash;
         let stacks_block_height: u64 = chaintip.key.height;
         let status = Status::Pending;
+
+        // Get parameters from scripts.
+        let script_parameters =
+            scripts_to_resource_parameters(&body.deposit_script, &body.reclaim_script)?;
+
         // Make table entry.
         let deposit_entry: DepositEntry = DepositEntry {
             key: DepositEntryKey {
                 bitcoin_txid: body.bitcoin_txid,
                 bitcoin_tx_output_index: body.bitcoin_tx_output_index,
             },
-            parameters: DepositParametersEntry { ..Default::default() },
+            recipient: script_parameters.recipient,
+            parameters: DepositParametersEntry {
+                max_fee: script_parameters.max_fee,
+                lock_time: script_parameters.lock_time,
+            },
             history: vec![DepositEvent {
                 status: StatusEntry::Pending,
                 message: "Just received deposit".to_string(),
@@ -240,6 +250,42 @@ pub async fn create_deposit(
     handler(context, body)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
+}
+
+/// Parameters from the deposit and reclaim scripts.
+struct ScriptParameters {
+    max_fee: u64,
+    recipient: String,
+    lock_time: i64,
+}
+
+/// Convert scripts to resource parameters.
+///
+/// This function is used to convert the deposit and reclaim scripts into the
+/// parameters that are stored in the database.
+fn scripts_to_resource_parameters(
+    deposit_script: &String,
+    reclaim_script: &String,
+) -> Result<ScriptParameters, Error> {
+    let bytes = hex::decode(deposit_script)?;
+    let script = ScriptBuf::from(bytes);
+    let sbtc::deposits::DepositScriptInputs {
+        signers_public_key: _,
+        recipient,
+        max_fee,
+    } = sbtc::deposits::DepositScriptInputs::parse(&script)?;
+
+    let bytes = hex::decode(reclaim_script)?;
+    let script = ScriptBuf::from(bytes);
+    let sbtc::deposits::ReclaimScriptInputs { lock_time, script: _ } =
+        sbtc::deposits::ReclaimScriptInputs::parse(&script)?;
+
+    // TODO: Convert the recipient into a hex encoding of the recipient.
+    Ok(ScriptParameters {
+        max_fee,
+        recipient: recipient.to_string(),
+        lock_time,
+    })
 }
 
 /// Update deposits handler.
@@ -300,3 +346,30 @@ pub async fn update_deposits(
 }
 
 // TODO(393): Add handler unit tests.
+
+// Test module
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use sbtc::testing::{self, deposits::TxSetup};
+    use test_case::test_case;
+
+    #[test_case(15000, 500_000, 150; "All parameters are normal numbers")]
+    #[test_case(0, 0, 0; "All parameters are zeros")]
+    fn test_scripts_to_resource_parameters(max_fee: u64, amount_sats: u64, lock_time: i64) {
+        let setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
+
+        let deposit_script = setup.deposit.deposit_script().to_hex_string();
+        let reclaim_script = setup.reclaim.reclaim_script().to_hex_string();
+
+        let script_parameters: ScriptParameters =
+            scripts_to_resource_parameters(&deposit_script, &reclaim_script).unwrap();
+
+        assert_eq!(script_parameters.max_fee, max_fee);
+        assert_eq!(script_parameters.lock_time, lock_time);
+
+        // TODO: Test the recipient with an input value.
+        assert!(script_parameters.recipient.len() > 0);
+    }
+}
