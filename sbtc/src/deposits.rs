@@ -459,7 +459,7 @@ impl ReclaimScriptInputs {
                 // We know the error and panic paths cannot happen because
                 // of the above `if` check.
                 let (script_num, [OP_CSV, script @ ..]) = rest.split_at(*n as usize) else {
-                    return Err(Error::InvalidDepositScript);
+                    return Err(Error::InvalidReclaimScript);
                 };
                 (read_scriptint(script_num, 5)?, script)
             }
