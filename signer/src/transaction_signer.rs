@@ -189,8 +189,7 @@ where
                         // Handle the received message.
                         let res = self.handle_signer_message(&msg).await;
                         match res {
-                            Ok(()) => (),
-                            Err(Error::InvalidSignature) => (),
+                            Ok(()) | Err(Error::InvalidSignature) => (),
                             Err(error) => {
                                 tracing::error!(%error, "error handling signer message");
                             }
