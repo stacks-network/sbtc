@@ -474,7 +474,7 @@ async fn update_deposit() {
     assert_eq!(updated_deposit.fulfillment, None);
 
     // Now try getting the raw internal entry.
-    let context: EmilyContext = EmilyContext::local_test_instance()
+    let context: EmilyContext = EmilyContext::local_instance("http://localhost:8000")
         .await
         .expect("Making emily context must succeed in integration test.");
     let deposit_entry = accessors::get_deposit_entry(

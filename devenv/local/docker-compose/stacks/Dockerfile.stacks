@@ -1,4 +1,4 @@
-FROM rust:bookworm as builder
+FROM rust:bookworm AS builder
 
 # TODO: is there a built-in required arg syntax?
 ARG GIT_COMMIT
@@ -25,8 +25,9 @@ COPY --from=builder /stacks/target/debug/stacks-signer /usr/local/bin/
 
 COPY --from=dobtc/bitcoin:25.1 /opt/bitcoin-*/bin /usr/local/bin
 
-RUN apt-get update && apt-get install -y curl gettext-base jq
+RUN apt-get update && apt-get install -y curl gettext-base jq dnsutils net-tools
 RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+RUN mkdir /data
 
-WORKDIR /root
+WORKDIR /data
 CMD ["stacks-node"]

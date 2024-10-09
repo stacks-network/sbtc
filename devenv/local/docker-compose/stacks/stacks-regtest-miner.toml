@@ -1,0 +1,145 @@
+[node]
+name = "krypton-node"
+rpc_bind = "0.0.0.0:20443"
+p2p_bind = "0.0.0.0:20444"
+data_url = "http://127.0.0.1:20443"
+p2p_address = "127.0.0.1:20443"
+#working_dir = "$DATA_DIR"
+working_dir = "/data"
+
+seed = "$MINER_SEED"
+local_peer_seed = "$MINER_SEED"
+
+miner = true
+use_test_genesis_chainstate = true
+pox_sync_sample_secs = 0
+wait_time_for_blocks = 0
+wait_time_for_microblocks = 0
+mine_microblocks = false
+microblock_frequency = 1000
+# mine_microblocks = true
+# max_microblocks = 10
+
+[miner]
+min_tx_fee = 1
+first_attempt_time_ms = 180_000
+subsequent_attempt_time_ms = 360_000
+wait_for_block_download = false
+microblock_attempt_time_ms = 10
+#self_signing_seed = 1
+mining_key = "19ec1c3e31d139c989a23a27eac60d1abfad5277d3ae9604242514c738258efa01"
+block_reward_recipient = "STQM73RQC4EX0A07KWG1J5ECZJYBZS4SJ4ERC6WN" # priv: 6ad9cadb42d4edbfbe0c5bfb3b8a4125ddced021c4174f829b714ccbf527f02001
+
+[connection_options]
+# inv_sync_interval = 10
+# download_interval = 10
+# walk_interval = 10
+disable_block_download = true
+disable_inbound_handshakes = true
+disable_inbound_walks = true
+public_ip_address = "1.1.1.1:1234"
+auth_token = "12345"
+
+# Add stacks-api as an event observer
+[[events_observer]]
+endpoint = "stacks-api:3700"
+retry_count = 255
+include_data_events = false
+events_keys = ["*"]
+
+# Add stacks-signer as an event observer
+[[events_observer]]
+endpoint = "stacks-signer-1:30000"
+events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
+
+[[events_observer]]
+endpoint = "stacks-signer-2:30000"
+events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
+
+[[events_observer]]
+endpoint = "stacks-signer-3:30000"
+events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
+
+[burnchain]
+chain = "bitcoin"
+mode = "nakamoto-neon"
+poll_time_secs = 1
+magic_bytes = "T3"
+pox_prepare_length = $POX_PREPARE_LENGTH
+pox_reward_length = $POX_REWARD_LENGTH
+burn_fee_cap = 20_000
+
+### bitcoind-regtest connection info
+peer_host = "$BITCOIN_PEER_HOST"
+peer_port = $BITCOIN_PEER_PORT
+rpc_port = $BITCOIN_RPC_PORT
+rpc_ssl = false
+username = "$BITCOIN_RPC_USER"
+password = "$BITCOIN_RPC_PASS"
+timeout = 30
+wallet_name = "main"
+
+[[burnchain.epochs]]
+epoch_name = "1.0"
+start_height = 0
+
+[[burnchain.epochs]]
+epoch_name = "2.0"
+start_height = $STACKS_20_HEIGHT
+
+[[burnchain.epochs]]
+epoch_name = "2.05"
+start_height = $STACKS_2_05_HEIGHT
+
+[[burnchain.epochs]]
+epoch_name = "2.1"
+start_height = $STACKS_21_HEIGHT
+
+[[burnchain.epochs]]
+epoch_name = "2.2"
+start_height = $STACKS_22_HEIGHT
+
+[[burnchain.epochs]]
+epoch_name = "2.3"
+start_height = $STACKS_23_HEIGHT
+
+[[burnchain.epochs]]
+epoch_name = "2.4"
+start_height = $STACKS_24_HEIGHT
+
+[[burnchain.epochs]]
+epoch_name = "2.5"
+start_height = $STACKS_25_HEIGHT
+
+[[burnchain.epochs]]
+epoch_name = "3.0"
+start_height = $STACKS_30_HEIGHT
+
+[[ustx_balance]]
+address = "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039" # sBTC deployer
+amount = 10000000000000000
+
+[[ustx_balance]]
+address = "ST24VB7FBXCBV6P0SRDSPSW0Y2J9XHDXNHW9Q8S7H" # sBTC signer 1
+amount = 10000000000000000
+
+[[ustx_balance]]
+address = "ST2XAK68AR2TKBQBFNYSK9KN2AY9CVA91A7CSK63Z" # sBTC signer 2
+amount = 10000000000000000
+
+[[ustx_balance]]
+address = "ST1J9R0VMA5GQTW65QVHW1KVSKD7MCGT27X37A551" # sBTC signer 3
+amount = 10000000000000000
+
+
+[[ustx_balance]]
+address = "ST1YEHRRYJ4GF9CYBFFN0ZVCXX1APSBEEQ5KEDN7M" # Stacker 1 (Alice)
+amount = 10000000000000000
+
+[[ustx_balance]]
+address = "ST1WNJTS9JM1JYGK758B10DBAMBZ0K23ADP392SBV" # Stacker 2 (Bobe)
+amount = 10000000000000000
+
+[[ustx_balance]]
+address = "ST1MDWBDVDGAANEH9001HGXQA6XRNK7PX7A7X8M6R" # Stacker 3 (Charlie)
+amount = 10000000000000000
