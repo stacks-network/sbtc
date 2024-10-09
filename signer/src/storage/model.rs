@@ -269,6 +269,16 @@ pub struct SweptDepositRequest {
     pub amount: u64,
 }
 
+impl SweptDepositRequest {
+    /// The OutPoint of the actual deposit
+    pub fn deposit_outpoint(&self) -> bitcoin::OutPoint {
+        bitcoin::OutPoint {
+            txid: self.txid.into(),
+            vout: self.output_index,
+        }
+    }
+}
+
 /// Withdraw request.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]

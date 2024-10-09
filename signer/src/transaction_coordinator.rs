@@ -292,6 +292,7 @@ where
         wallet.set_nonce(account.nonce);
 
         for req in deposit_requests {
+            let outpoint = req.deposit_outpoint();
             let sign_request_fut =
                 self.construct_deposit_stacks_sign_request(req, bitcoin_aggregate_key, &wallet);
 
@@ -303,7 +304,11 @@ where
                 }
             };
 
-            // If we fail here, then we need to decrement the nonce.
+            // If we fail to sign the transaction for some reason, we
+            // decrement the nonce by one, and try the next transaction.
+            // This is not a fatal error, since we could fail to sign the
+            // transaction because someone else is now the coordinator, and
+            // all of the signers are now ignoring us.
             let process_request_fut =
                 self.process_sign_request(sign_request, chain_tip, multi_tx, &wallet);
 
@@ -312,7 +317,12 @@ where
                     tracing::info!(%txid, "successfully submitted complete-deposit transaction")
                 }
                 Err(error) => {
-                    tracing::warn!(%error, "could process the sign request for deposit request");
+                    tracing::warn!(
+                        %error,
+                        txid = %outpoint.txid,
+                        vout = %outpoint.vout,
+                        "could not process the stacks sign request for a deposit"
+                    );
                     wallet.set_nonce(wallet.get_nonce().saturating_sub(1));
                 }
             }
@@ -322,12 +332,6 @@ where
     }
 
     /// Sign and broadcast the stacks transaction
-    ///
-    /// If we fail to sign the transaction for some reason, we decrement
-    /// the nonce by one, and try the next transaction. This is not a fatal
-    /// error, since we could fail to sign the transaction because someone
-    /// else is now the coordinator, and all of the signers are now
-    /// ignoring us.
     async fn process_sign_request(
         &mut self,
         sign_request: StacksTransactionSignRequest,
@@ -368,10 +372,7 @@ where
                 Error::BitcoinTxMissing(req.sweep_txid.into(), Some(req.sweep_block_hash.into()))
             })?;
 
-        let outpoint = bitcoin::OutPoint {
-            txid: req.txid.into(),
-            vout: req.output_index,
-        };
+        let outpoint = req.deposit_outpoint();
         let assessed_bitcoin_fee = tx_info
             .assess_input_fee(&outpoint)
             .ok_or_else(|| Error::OutPointMissing(outpoint))?;
