@@ -390,10 +390,8 @@ impl ReclaimScriptInputs {
     pub fn lock_time(&self) -> u64 {
         // We know this number is positive because that is one of the
         // invariants upheld by this struct, and we check for it in
-        // `Self::try_new`, so this will never fail.
-        self.lock_time
-            .try_into()
-            .expect("BUG: We've decided not to uphold the lock_time invariant")
+        // `Self::try_new`, so this will never be a lossy conversion.
+        self.lock_time as u64
     }
 
     /// Return the user supplied part of the script.
@@ -692,7 +690,7 @@ mod tests {
 
         let extracts = ReclaimScriptInputs::parse(&reclaim_script).unwrap();
         assert_eq!(extracts.lock_time, lock_time);
-        assert_eq!(extracts.lock_time(), lock_time as u64);
+        assert_eq!(extracts.lock_time(), u64::try_from(lock_time).unwrap());
         assert_eq!(extracts.reclaim_script(), reclaim_script);
 
         // Let's check that ReclaimScriptInputs::reclaim_script and
