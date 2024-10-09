@@ -386,6 +386,19 @@ impl super::DbRead for SharedStore {
             .cloned())
     }
 
+    async fn get_encrypted_dkg_shares_by_signing_set(
+        &self,
+        signer_set_aggregate_key: &PublicKey,
+    ) -> Result<Option<model::EncryptedDkgShares>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .encrypted_dkg_shares
+            .values()
+            .find(|shares| &shares.signer_set_aggregate_key == signer_set_aggregate_key)
+            .cloned())
+    }
+
     async fn get_last_key_rotation(
         &self,
         chain_tip: &model::BitcoinBlockHash,
