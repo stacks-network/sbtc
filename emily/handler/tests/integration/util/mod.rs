@@ -70,7 +70,7 @@ pub fn test_create_deposit_request(id_num: u64, output_index: u32) -> CreateDepo
 
 /// Make a test context for Emily.
 pub async fn test_context() -> EmilyContext {
-    EmilyContext::local_test_instance()
+    EmilyContext::local_instance("http://localhost:8000")
         .await
         .expect("Failed to setup local test context for Emily integration test.")
 }

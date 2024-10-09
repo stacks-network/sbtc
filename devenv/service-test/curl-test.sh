@@ -22,8 +22,8 @@ curl -X POST "$ENDPOINT/deposit" \
      -d '{
            "bitcoinTxid": "example_txid",
            "bitcoinTxOutputIndex": 0,
-           "reclaim": "example_reclaim_script",
-           "deposit": "example_deposit_script"
+           "reclaimScript": "example_reclaim_script",
+           "depositScript": "example_deposit_script"
          }' | jq
 
 curl -X POST "$ENDPOINT/deposit" \
@@ -31,8 +31,8 @@ curl -X POST "$ENDPOINT/deposit" \
      -d '{
            "bitcoinTxid": "example_txid",
            "bitcoinTxOutputIndex": 1,
-           "reclaim": "example_reclaim_script",
-           "deposit": "example_deposit_script"
+           "reclaimScript": "example_reclaim_script",
+           "depositScript": "example_deposit_script"
          }' | jq
 
 curl -X POST "$ENDPOINT/deposit" \
@@ -40,8 +40,8 @@ curl -X POST "$ENDPOINT/deposit" \
      -d '{
            "bitcoinTxid": "example_txid",
            "bitcoinTxOutputIndex": 4,
-           "reclaim": "example_reclaim_script",
-           "deposit": "example_deposit_script"
+           "reclaimScript": "example_reclaim_script",
+           "depositScript": "example_deposit_script"
          }' | jq
 
 curl "$ENDPOINT/deposit/example_txid/0" | jq
@@ -67,6 +67,7 @@ curl -X POST "$ENDPOINT/withdrawal" \
      -d '{
            "requestId": 0,
            "stacksBlockHash": "example_hash",
+           "stacksBlockHeight": 11,
            "recipient": "example_recipient",
            "amount": 0,
            "parameters": {
@@ -79,6 +80,7 @@ curl -X POST "$ENDPOINT/withdrawal" \
      -d '{
            "requestId": 2,
            "stacksBlockHash": "example_hash",
+           "stacksBlockHeight": 12,
            "recipient": "example_recipient",
            "amount": 0,
            "parameters": {
@@ -91,6 +93,7 @@ curl -X POST "$ENDPOINT/withdrawal" \
      -d '{
            "requestId": 3,
            "stacksBlockHash": "example_hash",
+           "stacksBlockHeight": 13,
            "recipient": "example_recipient",
            "amount": 0,
            "parameters": {

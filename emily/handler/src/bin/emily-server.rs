@@ -35,6 +35,9 @@ pub struct GeneralArgs {
     /// Log directives.
     #[arg(long, default_value = "info,emily-handler=debug")]
     pub log_directives: String,
+    /// DynamoDB endpoint.
+    #[arg(long, default_value = "http://localhost:8000")]
+    pub dynamodb_endpoint: String,
 }
 
 /// Server related arguments.
@@ -54,7 +57,7 @@ async fn main() {
     // Get command line arguments.
     let Cli {
         server: ServerArgs { host, port },
-        general: GeneralArgs { pretty_logs, log_directives },
+        general: GeneralArgs { pretty_logs, log_directives, dynamodb_endpoint },
     } = Cli::parse();
 
     // Setup logging.
@@ -62,7 +65,7 @@ async fn main() {
 
     // Setup context.
     // TODO(389 + 358): Handle config pickup in a way that will only fail for the relevant call.
-    let context: EmilyContext = EmilyContext::local_test_instance()
+    let context: EmilyContext = EmilyContext::local_instance(&dynamodb_endpoint)
         .await
         .unwrap_or_else(|e| panic!("{e}"));
     info!("Lambda Context:\n{context:?}");

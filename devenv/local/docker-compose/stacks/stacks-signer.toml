@@ -4,4 +4,4 @@ node_host = "$STACKS_NODE_HOST" # eg "127.0.0.1:20443"
 endpoint = "$STACKS_SIGNER_ENDPOINT" # e.g 127.0.0.1:30000
 network = "testnet"
 auth_password = "12345"
-db_path = "$SIGNER_DB_PATH"
+db_path = "/data/stacks-signer.sqlite"
