@@ -13,11 +13,14 @@ use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::types::StandardPrincipalData;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::net::api::getaccount::AccountEntryResponse;
+use blockstack_lib::net::api::getinfo::RPCPeerInfoData;
+use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use blockstack_lib::net::api::postfeerate::FeeRateEstimateRequestBody;
 use blockstack_lib::net::api::postfeerate::RPCFeeEstimateResponse;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::types::chainstate::StacksBlockId;
+use clarity::types::StacksEpochId;
 use clarity::vm::types::{BuffData, ListData, SequenceData};
 use clarity::vm::{ClarityName, ContractName, Value};
 use futures::TryFutureExt;
@@ -136,9 +139,32 @@ pub trait StacksInteract {
     ) -> impl Future<Output = Result<u64, Error>> + Send
     where
         T: AsTxPayload + Send + Sync;
+
+    /// Get information about the current PoX state.
+    fn get_pox_info(&self) -> impl Future<Output = Result<RPCPoxInfoData, Error>> + Send;
+
+    /// Get information about the current node.
+    fn get_node_info(&self) -> impl Future<Output = Result<RPCPeerInfoData, Error>> + Send;
+}
+
+/// A trait for getting the start height of the first EPOCH 3.0 block on the
+/// Stacks blockchain.
+pub trait GetNakamotoStartHeight {
     /// Get the start height of the first EPOCH 3.0 block on the Stacks
     /// blockchain.
-    fn nakamoto_start_height(&self) -> u64;
+    fn nakamoto_start_height(&self) -> Option<u64>;
+}
+
+impl GetNakamotoStartHeight for RPCPoxInfoData {
+    fn nakamoto_start_height(&self) -> Option<u64> {
+        self.epochs.iter().find_map(|epoch| {
+            if epoch.epoch_id == StacksEpochId::Epoch30 {
+                Some(epoch.start_height)
+            } else {
+                None
+            }
+        })
+    }
 }
 
 /// These are the rejection reason codes for submitting a transaction
@@ -626,6 +652,58 @@ impl StacksClient {
             .await
             .map_err(Error::UnexpectedStacksResponse)
     }
+
+    /// Get PoX information from the Stacks node.
+    #[tracing::instrument(skip(self))]
+    pub async fn get_pox_info(&self) -> Result<RPCPoxInfoData, Error> {
+        let path = "/v2/pox";
+        let url = self
+            .endpoint
+            .join(path)
+            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Borrowed(path)))?;
+
+        tracing::debug!("Making request to the stacks node for the current PoX info");
+        let response = self
+            .client
+            .get(url.clone())
+            .timeout(REQUEST_TIMEOUT)
+            .send()
+            .await
+            .map_err(Error::StacksNodeRequest)?;
+
+        response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
+            .json()
+            .await
+            .map_err(Error::UnexpectedStacksResponse)
+    }
+
+    /// Get information about the current node.
+    #[tracing::instrument(skip(self))]
+    pub async fn get_node_info(&self) -> Result<RPCPeerInfoData, Error> {
+        let path = "/v2/info";
+        let url = self
+            .endpoint
+            .join(path)
+            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Borrowed(path)))?;
+
+        tracing::debug!("Making request to the stacks node for the current node info");
+        let response = self
+            .client
+            .get(url.clone())
+            .timeout(REQUEST_TIMEOUT)
+            .send()
+            .await
+            .map_err(Error::StacksNodeRequest)?;
+
+        response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
+            .json()
+            .await
+            .map_err(Error::UnexpectedStacksResponse)
+    }
 }
 
 /// Fetch all Nakamoto blocks that are not already stored in the
@@ -640,13 +718,17 @@ where
     D: DbRead + Send + Sync,
 {
     let mut blocks = vec![stacks.get_block(block_id).await?];
+    let pox_info = stacks.get_pox_info().await?;
+    let nakamoto_start_height = pox_info
+        .nakamoto_start_height()
+        .ok_or(Error::MissingNakamotoStartHeight)?;
 
     while let Some(block) = blocks.last() {
         // We won't get anymore Nakamoto blocks before this point, so
         // time to stop.
-        if block.header.chain_length <= stacks.nakamoto_start_height() {
+        if block.header.chain_length <= nakamoto_start_height {
             tracing::info!(
-                nakamoto_start_height = %stacks.nakamoto_start_height(),
+                nakamoto_start_height = %nakamoto_start_height,
                 last_chain_length = %block.header.chain_length,
                 "Stopping, since we have fetched all Nakamoto blocks"
             );
@@ -785,8 +867,12 @@ impl StacksInteract for StacksClient {
         Ok(fee_estimate.unwrap_or(DEFAULT_TX_FEE).min(MAX_TX_FEE))
     }
 
-    fn nakamoto_start_height(&self) -> u64 {
-        self.nakamoto_start_height
+    async fn get_pox_info(&self) -> Result<RPCPoxInfoData, Error> {
+        self.get_pox_info().await
+    }
+
+    async fn get_node_info(&self) -> Result<RPCPeerInfoData, Error> {
+        self.get_node_info().await
     }
 }
 
@@ -831,8 +917,12 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
             .await
     }
 
-    fn nakamoto_start_height(&self) -> u64 {
-        self.get_client().nakamoto_start_height
+    async fn get_pox_info(&self) -> Result<RPCPoxInfoData, Error> {
+        self.exec(|client, _| client.get_pox_info()).await
+    }
+
+    async fn get_node_info(&self) -> Result<RPCPeerInfoData, Error> {
+        self.exec(|client, _| client.get_node_info()).await
     }
 }
 
@@ -1294,6 +1384,298 @@ mod tests {
         assert_eq!(fee, 25505);
 
         first_mock.assert();
+    }
+
+    #[tokio::test]
+    async fn get_pox_info_and_get_nakamoto_start_height_works() {
+        let raw_json_response = r#"
+        {
+            "contract_id": "ST000000000000000000002AMW42H.pox-4",
+            "pox_activation_threshold_ustx": 700073322473389,
+            "first_burnchain_block_height": 0,
+            "current_burnchain_block_height": 1880,
+            "prepare_phase_block_length": 5,
+            "reward_phase_block_length": 15,
+            "reward_slots": 30,
+            "rejection_fraction": null,
+            "total_liquid_supply_ustx": 70007332247338910,
+            "current_cycle": {
+                "id": 94,
+                "min_threshold_ustx": 583400000000000,
+                "stacked_ustx": 5250510000000000,
+                "is_pox_active": true
+            },
+            "next_cycle": {
+                "id": 95,
+                "min_threshold_ustx": 583400000000000,
+                "min_increment_ustx": 8750916530917,
+                "stacked_ustx": 5250510000000000,
+                "prepare_phase_start_block_height": 1895,
+                "blocks_until_prepare_phase": 15,
+                "reward_phase_start_block_height": 1900,
+                "blocks_until_reward_phase": 20,
+                "ustx_until_pox_rejection": null
+            },
+            "epochs": [
+                {
+                "epoch_id": "Epoch10",
+                "start_height": 0,
+                "end_height": 0,
+                "block_limit": {
+                    "write_length": 0,
+                    "write_count": 0,
+                    "read_length": 0,
+                    "read_count": 0,
+                    "runtime": 0
+                },
+                "network_epoch": 0
+                },
+                {
+                "epoch_id": "Epoch20",
+                "start_height": 0,
+                "end_height": 203,
+                "block_limit": {
+                    "write_length": 150000000,
+                    "write_count": 50000,
+                    "read_length": 1000000000,
+                    "read_count": 50000,
+                    "runtime": 100000000000
+                },
+                "network_epoch": 0
+                },
+                {
+                "epoch_id": "Epoch2_05",
+                "start_height": 203,
+                "end_height": 204,
+                "block_limit": {
+                    "write_length": 150000000,
+                    "write_count": 50000,
+                    "read_length": 1000000000,
+                    "read_count": 50000,
+                    "runtime": 100000000000
+                },
+                "network_epoch": 5
+                },
+                {
+                "epoch_id": "Epoch21",
+                "start_height": 204,
+                "end_height": 206,
+                "block_limit": {
+                    "write_length": 150000000,
+                    "write_count": 50000,
+                    "read_length": 1000000000,
+                    "read_count": 50000,
+                    "runtime": 100000000000
+                },
+                "network_epoch": 6
+                },
+                {
+                "epoch_id": "Epoch22",
+                "start_height": 206,
+                "end_height": 207,
+                "block_limit": {
+                    "write_length": 150000000,
+                    "write_count": 50000,
+                    "read_length": 1000000000,
+                    "read_count": 50000,
+                    "runtime": 100000000000
+                },
+                "network_epoch": 7
+                },
+                {
+                "epoch_id": "Epoch23",
+                "start_height": 207,
+                "end_height": 208,
+                "block_limit": {
+                    "write_length": 150000000,
+                    "write_count": 50000,
+                    "read_length": 1000000000,
+                    "read_count": 50000,
+                    "runtime": 100000000000
+                },
+                "network_epoch": 8
+                },
+                {
+                "epoch_id": "Epoch24",
+                "start_height": 208,
+                "end_height": 209,
+                "block_limit": {
+                    "write_length": 150000000,
+                    "write_count": 50000,
+                    "read_length": 1000000000,
+                    "read_count": 50000,
+                    "runtime": 100000000000
+                },
+                "network_epoch": 9
+                },
+                {
+                "epoch_id": "Epoch25",
+                "start_height": 209,
+                "end_height": 232,
+                "block_limit": {
+                    "write_length": 15000000,
+                    "write_count": 15000,
+                    "read_length": 100000000,
+                    "read_count": 15000,
+                    "runtime": 5000000000
+                },
+                "network_epoch": 10
+                },
+                {
+                "epoch_id": "Epoch30",
+                "start_height": 232,
+                "end_height": 9223372036854776000,
+                "block_limit": {
+                    "write_length": 15000000,
+                    "write_count": 15000,
+                    "read_length": 100000000,
+                    "read_count": 15000,
+                    "runtime": 5000000000
+                },
+                "network_epoch": 11
+                }
+            ],
+            "min_amount_ustx": 583400000000000,
+            "prepare_cycle_length": 5,
+            "reward_cycle_id": 94,
+            "reward_cycle_length": 20,
+            "rejection_votes_left_required": null,
+            "next_reward_cycle_in": 20,
+            "contract_versions": [
+                {
+                "contract_id": "ST000000000000000000002AMW42H.pox",
+                "activation_burnchain_block_height": 0,
+                "first_reward_cycle_id": 0
+                },
+                {
+                "contract_id": "ST000000000000000000002AMW42H.pox-2",
+                "activation_burnchain_block_height": 205,
+                "first_reward_cycle_id": 11
+                },
+                {
+                "contract_id": "ST000000000000000000002AMW42H.pox-3",
+                "activation_burnchain_block_height": 208,
+                "first_reward_cycle_id": 11
+                },
+                {
+                "contract_id": "ST000000000000000000002AMW42H.pox-4",
+                "activation_burnchain_block_height": 209,
+                "first_reward_cycle_id": 11
+                }
+            ]
+        }"#;
+
+        let mut stacks_node_server = mockito::Server::new_async().await;
+        let mock = stacks_node_server
+            .mock("GET", "/v2/pox")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(raw_json_response)
+            .expect(1)
+            .create();
+
+        // Setup our Stacks client. We use a regular client here because we're
+        // testing the `get_fee_estimate` method.
+        let client = StacksClient::new(
+            url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
+            20,
+        )
+        .unwrap();
+        let resp = client.get_pox_info().await.unwrap();
+        let expected: RPCPoxInfoData = serde_json::from_str(raw_json_response).unwrap();
+
+        assert_eq!(resp, expected);
+        mock.assert();
+
+        let nakamoto_start_height = resp.nakamoto_start_height();
+        assert!(nakamoto_start_height.is_some());
+        assert_eq!(nakamoto_start_height.unwrap(), 232);
+    }
+
+    #[tokio::test]
+    async fn get_node_info_works() {
+        let raw_json_response = r#"
+        {
+            "peer_version": 4207599114,
+            "pox_consensus": "daf212e6103309e3918de4b2bf39ae2399109d9a",
+            "burn_block_height": 2083,
+            "stable_pox_consensus": "11fc12900b1f1369098f1099bcb2708ea78ea3b4",
+            "stable_burn_block_height": 2082,
+            "server_version": "stacks-node 0.0.1 (:c87c0eb6c050688340b975b0b42fb0a1ae378afa, debug build, linux [x86_64])",
+            "network_id": 2147483648,
+            "parent_network_id": 3669344250,
+            "stacks_tip_height": 9520,
+            "stacks_tip": "ffd652ff665bb1b07b19e537a5a007d44ea1e8cd0ddfd8753d9f95f915aaee41",
+            "stacks_tip_consensus_hash": "11fc12900b1f1369098f1099bcb2708ea78ea3b4",
+            "genesis_chainstate_hash": "74237aa39aa50a83de11a4f53e9d3bb7d43461d1de9873f402e5453ae60bc59b",
+            "unanchored_tip": null,
+            "unanchored_seq": null,
+            "exit_at_block_height": null,
+            "is_fully_synced": true,
+            "node_public_key": "035379aa40c02890d253cfa577964116eb5295570ae9f7287cbae5f2585f5b2c7c",
+            "node_public_key_hash": "1dc27eba0247f8cc9575e7d45e50a0bc7e72427d",
+            "affirmations": {
+                "heaviest": "nnnnnnnnnn",
+                "stacks_tip": "nnnnnnnnnnp",
+                "sortition_tip": "nnnnnnnnnnp",
+                "tentative_best": "nnnnnnnnnnp"
+            },
+            "last_pox_anchor": {
+                "anchor_block_hash": "4f57cfdc7fe6cc7cfa5b7caa5791993cd01a9fa3162326d6cc74f34007ded99b",
+                "anchor_block_txid": "f96a10160fbece3070aed33ffe6afeb3540fa6a13e0d0c4f88b43ee8ebb68f9d"
+            },
+            "stackerdbs": [
+                "ST000000000000000000002AMW42H.signers-0-5",
+                "ST000000000000000000002AMW42H.miners",
+                "ST000000000000000000002AMW42H.signers-1-0",
+                "ST000000000000000000002AMW42H.signers-0-6",
+                "ST000000000000000000002AMW42H.signers-1-12",
+                "ST000000000000000000002AMW42H.signers-0-12",
+                "ST000000000000000000002AMW42H.signers-0-11",
+                "ST000000000000000000002AMW42H.signers-0-9",
+                "ST000000000000000000002AMW42H.signers-1-5",
+                "ST000000000000000000002AMW42H.signers-1-4",
+                "ST000000000000000000002AMW42H.signers-1-11",
+                "ST000000000000000000002AMW42H.signers-0-4",
+                "ST000000000000000000002AMW42H.signers-0-10",
+                "ST000000000000000000002AMW42H.signers-0-8",
+                "ST000000000000000000002AMW42H.signers-1-9",
+                "ST000000000000000000002AMW42H.signers-0-0",
+                "ST000000000000000000002AMW42H.signers-0-7",
+                "ST000000000000000000002AMW42H.signers-1-10",
+                "ST000000000000000000002AMW42H.signers-0-1",
+                "ST000000000000000000002AMW42H.signers-1-3",
+                "ST000000000000000000002AMW42H.signers-1-2",
+                "ST000000000000000000002AMW42H.signers-0-2",
+                "ST000000000000000000002AMW42H.signers-1-6",
+                "ST000000000000000000002AMW42H.signers-1-7",
+                "ST000000000000000000002AMW42H.signers-1-8",
+                "ST000000000000000000002AMW42H.signers-1-1",
+                "ST000000000000000000002AMW42H.signers-0-3"
+            ]
+        }"#;
+
+        let mut stacks_node_server = mockito::Server::new_async().await;
+        let mock = stacks_node_server
+            .mock("GET", "/v2/info")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(raw_json_response)
+            .expect(1)
+            .create();
+
+        // Setup our Stacks client. We use a regular client here because we're
+        // testing the `get_fee_estimate` method.
+        let client = StacksClient::new(
+            url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
+            20,
+        )
+        .unwrap();
+        let resp = client.get_node_info().await.unwrap();
+        let expected: RPCPeerInfoData = serde_json::from_str(raw_json_response).unwrap();
+
+        assert_eq!(resp, expected);
+        mock.assert();
     }
 
     #[tokio::test]
