@@ -10,6 +10,7 @@ use aws_sdk_dynamodb::{
         update_item::UpdateItemError,
     },
 };
+use hex::FromHexError;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -245,6 +246,16 @@ impl From<serde_json::Error> for Error {
 impl From<serde_dynamo::Error> for Error {
     fn from(err: serde_dynamo::Error) -> Self {
         Error::Debug(format!("serde_dynamo::Error - {err:?}"))
+    }
+}
+impl From<FromHexError> for Error {
+    fn from(err: FromHexError) -> Self {
+        Error::Debug(format!("FromHexError - {err:?}"))
+    }
+}
+impl From<sbtc::error::Error> for Error {
+    fn from(err: sbtc::error::Error) -> Self {
+        Error::Debug(format!("sbtc::error::Error - {err:?}"))
     }
 }
 
