@@ -7,6 +7,8 @@
 
 use std::collections::BTreeSet;
 
+use futures::StreamExt;
+use futures::TryStreamExt;
 use sha2::Digest;
 
 use crate::bitcoin::utxo;
@@ -17,7 +19,15 @@ use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
+use crate::message::StacksTransactionSignRequest;
 use crate::network;
+use crate::signature::SighashDigest;
+use crate::stacks::api::FeePriority;
+use crate::stacks::api::StacksInteract;
+use crate::stacks::contracts::CompleteDepositV1;
+use crate::stacks::contracts::ContractCall;
+use crate::stacks::wallet::MultisigTx;
+use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
 use crate::storage::DbRead as _;
 use crate::wsts_state_machine;
@@ -105,12 +115,10 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     pub network: Network,
     /// Private key of the coordinator for network communication.
     pub private_key: PrivateKey,
-    /// The threshold for the signer
+    /// the number of signatures required.
     pub threshold: u16,
     /// How many bitcoin blocks back from the chain tip the signer will look for requests.
-    pub context_window: usize,
-    /// The bitcoin network we're targeting
-    pub bitcoin_network: bitcoin::Network,
+    pub context_window: u16,
     /// The maximum duration of a signing round before the coordinator will time out and return an error.
     pub signing_round_max_duration: std::time::Duration,
 }
@@ -176,15 +184,14 @@ where
         if self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys)? {
             self.construct_and_sign_bitcoin_sbtc_transactions(
                 &bitcoin_chain_tip,
-                aggregate_key,
+                &aggregate_key,
                 &signer_public_keys,
             )
             .await?;
 
             self.construct_and_sign_stacks_sbtc_response_transactions(
                 &bitcoin_chain_tip,
-                aggregate_key,
-                &signer_public_keys,
+                &aggregate_key,
             )
             .await?;
         }
@@ -198,10 +205,10 @@ where
     async fn construct_and_sign_bitcoin_sbtc_transactions(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: PublicKey,
+        aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<(), Error> {
-        let signer_btc_state = self.get_btc_state(&aggregate_key).await?;
+        let signer_btc_state = self.get_btc_state(aggregate_key).await?;
 
         let pending_requests = self
             .get_pending_requests(
@@ -227,17 +234,133 @@ where
         Ok(())
     }
 
-    /// Construct and coordinate signing rounds for
-    /// `deposit-accept`, `withdraw-accept` and `withdraw-reject` transactions.
-    #[tracing::instrument(skip(self))]
+    /// Construct and coordinate signing rounds for `deposit-accept`,
+    /// `withdraw-accept` and `withdraw-reject` transactions.
+    ///
+    /// # Notes
+    ///
+    /// This function does the following.
+    /// 1. Load the stacks wallet from the database. This wallet is
+    ///    determined by the public keys and threshold stored in the last
+    ///    [`RotateKeysTransaction`] object that is returned from the
+    ///    database.
+    /// 2. Fetch all "finalizable" requests from the database. These are
+    ///    requests that where we have a response transactions on bitcoin
+    ///    fulfilling the deposit or withdrawal request.
+    /// 3. Construct a sign-request object for each finalizable request.
+    /// 4. Broadcast this sign-request to the network and wait for
+    ///    responses.
+    /// 5. If there are enough signatures then broadcast the transaction.
+    #[tracing::instrument(skip_all)]
     async fn construct_and_sign_stacks_sbtc_response_transactions(
         &mut self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: PublicKey,
-        signer_public_keys: &BTreeSet<PublicKey>,
+        chain_tip: &model::BitcoinBlockHash,
+        bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
-        // TODO(320): Implement
+        let wallet = SignerWallet::load(&self.context, chain_tip).await?;
+        let db = self.context.get_storage();
+        let stacks = self.context.get_stacks_client();
+
+        // Fetch deposit and withdrawal requests from the database where
+        // there has been a confirmed bitcoin transaction associated with
+        // the request.
+        //
+        // For deposits, there will be at most one such bitcoin transaction
+        // on the blockchain identified by the chain tip, where an input is
+        // the deposit UTXO.
+        //
+        // For withdrawals, we need to have a record of the `request_id`
+        // associated with the bitcoin transaction's outputs.
+
+        let deposit_requests = db
+            .get_swept_deposit_requests(chain_tip, self.context_window)
+            .await?;
+
+        if deposit_requests.is_empty() {
+            return Ok(());
+        }
+
+        // We need to know the nonce to use, so we reach out to our stacks
+        // node for the account information for our multi-sig address.
+        //
+        // Note that the wallet object will automatically increment the
+        // nonce for each transaction that it creates.
+        let account = stacks.get_account(wallet.address()).await?;
+        wallet.set_nonce(account.nonce);
+
+        // Generate
+        let _sign_requests = futures::stream::iter(deposit_requests)
+            .then(|req| self.construct_deposit_stacks_sign_request(req, bitcoin_aggregate_key, &wallet))
+            .try_collect::<Vec<StacksTransactionSignRequest>>()
+            .await?;
+
+        // TODO:
+        // 1. Broadcast the sign requests
+        // 2. Gather the signatures into the transaction.
+        // 3. Broadcast the transaction to the stacks network. Then go home
+        //    and relax.
         Ok(())
+    }
+
+    /// Transform the swept deposit request into a Stacks sign request
+    /// object.
+    ///
+    /// This function uses bitcoin-core to help with the fee assessment of
+    /// the deposit request, and stacks-core for fee estimation of the
+    /// transaction.
+    #[tracing::instrument(skip_all)]
+    async fn construct_deposit_stacks_sign_request(
+        &self,
+        req: model::SweptDepositRequest,
+        bitcoin_aggregate_key: &PublicKey,
+        wallet: &SignerWallet,
+    ) -> Result<StacksTransactionSignRequest, Error> {
+        let tx_info = self
+            .context
+            .get_bitcoin_client()
+            .get_tx_info(&req.sweep_txid, &req.sweep_block_hash)
+            .await?
+            .ok_or_else(|| {
+                Error::BitcoinTxMissing(req.sweep_txid.into(), Some(req.sweep_block_hash.into()))
+            })?;
+
+        let outpoint = bitcoin::OutPoint {
+            txid: req.txid.into(),
+            vout: req.output_index,
+        };
+        let assessed_bitcoin_fee = tx_info
+            .assess_input_fee(&outpoint)
+            .ok_or_else(|| Error::OutPointMissing(outpoint))?;
+
+        // TODO: we should validate the contract call before asking others
+        // to sign it.
+        let contract_call = ContractCall::CompleteDepositV1(CompleteDepositV1 {
+            amount: req.amount - assessed_bitcoin_fee.to_sat(),
+            outpoint,
+            recipient: req.recipient.into(),
+            deployer: self.context.config().signer.deployer,
+            sweep_txid: req.sweep_txid,
+            sweep_block_hash: req.sweep_block_hash,
+            sweep_block_height: req.sweep_block_height,
+        });
+
+        // Complete deposit requests should be done as soon as possible, so
+        // we set the fee rate to the high priority fee.
+        let tx_fee = self
+            .context
+            .get_stacks_client()
+            .estimate_fees(&contract_call, FeePriority::High)
+            .await?;
+
+        let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
+
+        Ok(StacksTransactionSignRequest {
+            aggregate_key: *bitcoin_aggregate_key,
+            contract_call,
+            nonce: multi_tx.tx().get_origin_nonce(),
+            tx_fee: multi_tx.tx().get_tx_fee(),
+            digest: multi_tx.tx().digest(),
+        })
     }
 
     /// Coordinate a signing round for the given request
@@ -246,13 +369,13 @@ where
     async fn sign_and_broadcast(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: PublicKey,
+        aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
         mut transaction: utxo::UnsignedTransaction<'_>,
     ) -> Result<(), Error> {
         let mut coordinator_state_machine = wsts_state_machine::CoordinatorStateMachine::load(
             &mut self.context.get_storage_mut(),
-            aggregate_key,
+            *aggregate_key,
             signer_public_keys.clone(),
             self.threshold,
             self.private_key,
@@ -437,14 +560,10 @@ where
             return Err(Error::NoChainTip);
         };
 
-        let context_window = self
-            .context_window
-            .try_into()
-            .map_err(|_| Error::TypeConversion)?;
         let utxo = self
             .context
             .get_storage()
-            .get_signer_utxo(&chain_tip, aggregate_key, context_window)
+            .get_signer_utxo(&chain_tip, aggregate_key, self.context_window)
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
         let last_fees = bitcoin_client.get_last_fee(utxo.outpoint).await?;
@@ -467,14 +586,10 @@ where
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         signer_btc_state: utxo::SignerBtcState,
-        aggregate_key: PublicKey,
+        aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<utxo::SbtcRequests, Error> {
-        let context_window = self
-            .context_window
-            .try_into()
-            .map_err(|_| Error::TypeConversion)?;
-
+        let context_window = self.context_window;
         let threshold = self.threshold;
 
         let pending_deposit_requests = self
@@ -489,7 +604,7 @@ where
             .get_pending_accepted_withdrawal_requests(bitcoin_chain_tip, context_window, threshold)
             .await?;
 
-        let signers_public_key = bitcoin::XOnlyPublicKey::from(&aggregate_key);
+        let signers_public_key = bitcoin::XOnlyPublicKey::from(aggregate_key);
 
         let mut deposits: Vec<utxo::DepositRequest> = Vec::new();
 
@@ -497,7 +612,7 @@ where
             let votes = self
                 .context
                 .get_storage()
-                .get_deposit_request_signer_votes(&req.txid, req.output_index, &aggregate_key)
+                .get_deposit_request_signer_votes(&req.txid, req.output_index, aggregate_key)
                 .await?;
 
             let deposit = utxo::DepositRequest::from_model(req, signers_public_key, votes);
@@ -510,7 +625,7 @@ where
             let votes = self
                 .context
                 .get_storage()
-                .get_withdrawal_request_signer_votes(&req.qualified_id(), &aggregate_key)
+                .get_withdrawal_request_signer_votes(&req.qualified_id(), aggregate_key)
                 .await?;
 
             let withdrawal = utxo::WithdrawalRequest::from_model(req, votes);
@@ -630,7 +745,7 @@ mod tests {
             .with_mocked_clients()
             .build();
 
-        testing::transaction_coordinator::TestEnvironment {
+        TestEnvironment {
             context,
             context_window: 5,
             num_signers: 7,

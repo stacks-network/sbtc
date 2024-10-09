@@ -926,13 +926,14 @@ pub struct RotateKeysV1 {
 }
 
 impl RotateKeysV1 {
-    /// Create a new instance of RotateKeysV1 using the provided wallet.
-    pub fn new(wallet: &SignerWallet, deployer: StacksAddress, signatures_required: u16) -> Self {
+    /// Create a new instance of a RotateKeysV1 transaction object where
+    /// the new keys will match those provided by the input wallet.
+    pub fn new(wallet: &SignerWallet, deployer: StacksAddress) -> Self {
         Self {
-            aggregate_key: wallet.aggregate_key(),
+            aggregate_key: *wallet.stacks_aggregate_key(),
             new_keys: wallet.public_keys().clone(),
             deployer,
-            signatures_required,
+            signatures_required: wallet.signatures_required(),
         }
     }
 
@@ -1091,7 +1092,7 @@ mod tests {
         let wallet = SignerWallet::new(&public_keys, 2, NetworkKind::Testnet, 0).unwrap();
         let deployer = StacksAddress::burn_address(false);
 
-        let call = RotateKeysV1::new(&wallet, deployer, 2);
+        let call = RotateKeysV1::new(&wallet, deployer);
 
         // This is to check that this function doesn't implicitly panic. If
         // it doesn't panic now, it can never panic at runtime.

@@ -9,6 +9,7 @@ use crate::message;
 use crate::network;
 use crate::storage;
 use crate::storage::model;
+use crate::storage::model::EncryptedDkgShares;
 use crate::wsts_state_machine;
 
 use fake::Fake;
@@ -517,7 +518,7 @@ impl SignerSet {
         &self,
         storage: &S,
         chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: PublicKey,
+        shares: &EncryptedDkgShares,
         rng: &mut Rng,
     ) where
         S: storage::DbWrite + storage::DbRead,
@@ -543,7 +544,7 @@ impl SignerSet {
         };
 
         let rotate_keys_tx = model::RotateKeysTransaction {
-            aggregate_key,
+            aggregate_key: shares.aggregate_key,
             txid,
             signer_set: self.signer_keys(),
             signatures_required: self.signers.len() as u16,
@@ -598,6 +599,6 @@ mod tests {
 
         let (_, dkg_shares) = signer_set.run_dkg(bitcoin_chain_tip, txid, &mut rng).await;
 
-        assert_eq!(dkg_shares.len(), num_signers);
+        assert_eq!(dkg_shares.len(), num_signers as usize);
     }
 }

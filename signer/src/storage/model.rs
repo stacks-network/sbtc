@@ -238,6 +238,77 @@ pub struct Transaction {
     pub block_hash: [u8; 32],
 }
 
+/// A deposit request with a response bitcoin transaction that has been
+/// confirmed.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct SweptDepositRequest {
+    /// The transaction ID of the bitcoin transaction that swept in the
+    /// funds into the signers' UTXO.
+    pub sweep_txid: BitcoinTxId,
+    /// The transaction sweeping in the deposit request UTXO.
+    pub sweep_tx: BitcoinTx,
+    /// The block id of the bitcoin block that includes the sweep
+    /// transaction.
+    pub sweep_block_hash: BitcoinBlockHash,
+    /// The block height of the block referenced by the `sweep_block_hash`.
+    #[sqlx(try_from = "i64")]
+    pub sweep_block_height: u64,
+    /// Transaction ID of the deposit request transaction.
+    pub txid: BitcoinTxId,
+    /// Index of the deposit request UTXO.
+    #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
+    #[sqlx(try_from = "i32")]
+    pub output_index: u32,
+    /// The address of which the sBTC should be minted,
+    /// can be a smart contract address.
+    pub recipient: StacksPrincipal,
+    /// The amount in the deposit UTXO.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
+    pub amount: u64,
+}
+
+/// Withdraw request.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct SweptWithdrawalRequest {
+    /// The transaction ID of the bitcoin transaction that swept out the
+    /// funds to the intended recipient.
+    pub sweep_txid: BitcoinTxId,
+    /// The bitcoin transaction fulfilling the withdrawal request.
+    pub sweep_tx: BitcoinTx,
+    /// The block id of the stacks block that includes this sweep
+    /// transaction.
+    pub sweep_block_hash: BitcoinBlockHash,
+    /// Request ID of the withdrawal request. These are supposed to be
+    /// unique, but there can be duplicates if there is a reorg that
+    /// affects a transaction that calls the `initiate-withdrawal-request`
+    /// public function.
+    #[sqlx(try_from = "i64")]
+    pub request_id: u64,
+    /// The stacks transaction ID that lead to the creation of the
+    /// withdrawal request.
+    pub txid: StacksTxId,
+    /// Stacks block ID of the block that includes the transaction
+    /// associated with this withdrawal request.
+    pub block_hash: StacksBlockHash,
+    /// The ScriptPubKey that should receive the BTC withdrawal.
+    pub recipient: ScriptPubKey,
+    /// The amount of satoshis to withdraw.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000"))]
+    pub amount: u64,
+    /// The maximum amount that may be spent as for the bitcoin miner
+    /// transaction fee.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..10000"))]
+    pub max_fee: u64,
+    /// The stacks address that initiated the request. This is populated
+    /// using `tx-sender`.
+    pub sender_address: StacksPrincipal,
+}
+
 /// Persisted DKG shares
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
@@ -520,6 +591,12 @@ impl From<StacksBlockId> for StacksBlockHash {
     }
 }
 
+impl From<StacksBlockHash> for StacksBlockId {
+    fn from(value: StacksBlockHash) -> Self {
+        value.0
+    }
+}
+
 impl From<[u8; 32]> for StacksBlockHash {
     fn from(bytes: [u8; 32]) -> Self {
         Self(StacksBlockId(bytes))
@@ -541,6 +618,12 @@ impl Deref for StacksTxId {
 impl From<blockstack_lib::burnchains::Txid> for StacksTxId {
     fn from(value: blockstack_lib::burnchains::Txid) -> Self {
         Self(value)
+    }
+}
+
+impl From<StacksTxId> for blockstack_lib::burnchains::Txid {
+    fn from(value: StacksTxId) -> Self {
+        value.0
     }
 }
 

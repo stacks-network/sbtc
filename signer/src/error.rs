@@ -36,8 +36,8 @@ pub enum Error {
     /// The bitcoin tranaction was not found in the mempool or on the
     /// bitcoin blockchain. This is thrown when we expect the transaction
     /// to exist in bitcoin core but it does not.
-    #[error("Transaction is missing from mempool")]
-    BitcoinTxMissing(bitcoin::Txid),
+    #[error("transaction is missing, txid: {0}, block hash {1:?}")]
+    BitcoinTxMissing(bitcoin::Txid, Option<bitcoin::BlockHash>),
 
     /// Received an error in call to estimatesmartfee RPC call
     #[error("failed to get fee estimate from bitcoin-core for target {1}. {0}")]
@@ -206,6 +206,10 @@ pub enum Error {
     /// Error when parsing a URL
     #[error("could not parse the provided URL: {0}")]
     InvalidUrl(#[source] url::ParseError),
+
+    /// This should never happen.
+    #[error("outpoint missing from transaction when assessing fee {0}")]
+    OutPointMissing(bitcoin::OutPoint),
 
     /// This is thrown when failing to parse a hex string into an integer.
     #[error("could not parse the hex string into an integer")]

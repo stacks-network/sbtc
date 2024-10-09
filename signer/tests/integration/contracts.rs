@@ -23,10 +23,8 @@ use tokio::sync::OnceCell;
 
 use signer::stacks;
 use signer::stacks::api::FeePriority;
-use signer::stacks::api::RejectionReason;
 use signer::stacks::api::StacksClient;
 use signer::stacks::api::SubmitTxResponse;
-use signer::stacks::api::TxRejection;
 use signer::stacks::contracts::CompleteDepositV1;
 use signer::stacks::wallet::MultisigTx;
 use signer::storage::in_memory::Store;
@@ -116,10 +114,6 @@ impl SignerStxState {
 
         match self.stacks_client.submit_tx(&tx).await.unwrap() {
             SubmitTxResponse::Acceptance(_) => (),
-            SubmitTxResponse::Rejection(TxRejection {
-                reason: RejectionReason::ContractAlreadyExists,
-                ..
-            }) => (),
             SubmitTxResponse::Rejection(err) => panic!("{}", serde_json::to_string(&err).unwrap()),
         }
     }
@@ -171,7 +165,7 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     static SBTC_DEPLOYMENT: OnceCell<()> = OnceCell::const_new();
     static SIGNER_STATE: OnceCell<SignerStxState> = OnceCell::const_new();
 
-    let (signer_wallet, key_pairs, _) = testing::wallet::generate_wallet();
+    let (signer_wallet, key_pairs) = testing::wallet::generate_wallet();
 
     let client = stacks_client();
 
@@ -208,7 +202,7 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654789,
     recipient: PrincipalData::parse("SN2V7WTJ7BHR03MPHZ1C9A9ZR6NZGR4WM8HT4V67Y").unwrap(),
-    deployer: testing::wallet::WALLET.0.address(),
+    deployer: *testing::wallet::WALLET.0.address(),
     sweep_txid: BitcoinTxId::from([0; 32]),
     sweep_block_hash: BitcoinBlockHash::from([0; 32]),
     sweep_block_height: 7,
@@ -217,7 +211,7 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654,
     recipient: PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y.my-contract-name").unwrap(),
-    deployer: testing::wallet::WALLET.0.address(),
+    deployer: *testing::wallet::WALLET.0.address(),
     sweep_txid: BitcoinTxId::from([0; 32]),
     sweep_block_hash: BitcoinBlockHash::from([0; 32]),
     sweep_block_height: 7,
@@ -227,7 +221,7 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     outpoint: bitcoin::OutPoint::null(),
     tx_fee: 2500,
     signer_bitmap: BitArray::ZERO,
-    deployer: testing::wallet::WALLET.0.address(),
+    deployer: *testing::wallet::WALLET.0.address(),
     sweep_block_hash: BitcoinBlockHash::from([0; 32]),
     sweep_block_height: 7,
 }); "accept-withdrawal")]
@@ -235,17 +229,16 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     amount: 22500,
     recipient: (0x00, vec![0; 20]),
     max_fee: 3000,
-    deployer: testing::wallet::WALLET.0.address(),
+    deployer: *testing::wallet::WALLET.0.address(),
 }); "create-withdrawal")]
 #[test_case(ContractCallWrapper(RejectWithdrawalV1 {
     request_id: 2,
     signer_bitmap: BitArray::ZERO,
-    deployer: testing::wallet::WALLET.0.address(),
+    deployer: *testing::wallet::WALLET.0.address(),
 }); "reject-withdrawal")]
 #[test_case(ContractCallWrapper(RotateKeysV1::new(
     &testing::wallet::WALLET.0,
-    testing::wallet::WALLET.0.address(),
-    testing::wallet::WALLET.2,
+    *testing::wallet::WALLET.0.address(),
 )); "rotate-keys")]
 #[tokio::test]
 async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: ContractCallWrapper<T>) {

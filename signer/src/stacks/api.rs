@@ -80,7 +80,7 @@ pub enum FeePriority {
 
 /// A trait detailing the interface with the Stacks API and Stacks Nodes.
 #[cfg_attr(any(test, feature = "testing"), mockall::automock)]
-pub trait StacksInteract {
+pub trait StacksInteract: Send + Sync {
     /// Retrieve the current signer set from the `sbtc-registry` contract.
     ///
     /// This is done by making a `GET /v2/data_var/<contract-principal>/sbtc-registry/current-signer-set`
@@ -88,18 +88,18 @@ pub trait StacksInteract {
     fn get_current_signer_set(
         &self,
         contract_principal: &StacksAddress,
-    ) -> impl Future<Output = Result<Vec<PublicKey>, Error>>;
+    ) -> impl Future<Output = Result<Vec<PublicKey>, Error>> + Send;
     /// Get the latest account info for the given address.
     fn get_account(
         &self,
         address: &StacksAddress,
-    ) -> impl Future<Output = Result<AccountInfo, Error>>;
+    ) -> impl Future<Output = Result<AccountInfo, Error>> + Send;
 
     /// Submit a transaction to a Stacks node.
     fn submit_tx(
         &self,
         tx: &StacksTransaction,
-    ) -> impl Future<Output = Result<SubmitTxResponse, Error>>;
+    ) -> impl Future<Output = Result<SubmitTxResponse, Error>> + Send;
 
     /// Fetch the raw stacks nakamoto block from a Stacks node given the
     /// Stacks block ID.
@@ -125,9 +125,9 @@ pub trait StacksInteract {
     /// This function is analogous to the GET /v3/tenures/info stacks node
     /// endpoint for retrieving tenure information.
     fn get_tenure_info(&self) -> impl Future<Output = Result<RPCGetTenureInfo, Error>> + Send;
-    /// Estimate the priority transaction fees for the input transaction
-    /// for the current state of the mempool. The result should be and
-    /// estimated total fee in microSTX.
+    /// Estimate the priority transaction fees given the input transaction
+    /// and the current state of the mempool. The result will be the
+    /// estimated total transaction fee in microSTX.
     ///
     /// This function usually uses the POST /v2/fees/transaction endpoint
     /// of a stacks node.

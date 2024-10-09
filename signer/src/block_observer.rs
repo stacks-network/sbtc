@@ -81,7 +81,7 @@ impl DepositRequestValidator for CreateDepositRequest {
     {
         // Fetch the transaction from either a block or from the mempool
         let Some(response) = client.get_tx(&self.outpoint.txid).await? else {
-            return Err(Error::BitcoinTxMissing(self.outpoint.txid));
+            return Err(Error::BitcoinTxMissing(self.outpoint.txid, None));
         };
 
         Ok(Deposit {
@@ -334,6 +334,10 @@ where
                 let mut tx_bytes = Vec::new();
                 tx.consensus_encode(&mut tx_bytes)?;
 
+                // TODO: these aren't all sBTC transactions. Some of these
+                // could be "donations". One way to properly label these is
+                // to look at the scriptPubKey of the prevouts of the
+                // transaction.
                 Ok::<_, bitcoin::io::Error>(model::Transaction {
                     txid: tx.compute_txid().to_byte_array(),
                     tx: tx_bytes,
