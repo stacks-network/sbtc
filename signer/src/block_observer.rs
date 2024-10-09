@@ -1126,4 +1126,83 @@ mod tests {
 
         serde_json::from_str::<RPCPeerInfoData>(raw_json_response).unwrap()
     }
+
+    fn get_pox_info_data() -> RPCPoxInfoData {
+        let raw_json_response = r#"
+        {
+            "contract_id": "ST000000000000000000002AMW42H.pox-4",
+            "pox_activation_threshold_ustx": 700073322473389,
+            "first_burnchain_block_height": 0,
+            "current_burnchain_block_height": 1880,
+            "prepare_phase_block_length": 5,
+            "reward_phase_block_length": 15,
+            "reward_slots": 30,
+            "rejection_fraction": null,
+            "total_liquid_supply_ustx": 70007332247338910,
+            "current_cycle": {
+                "id": 94,
+                "min_threshold_ustx": 583400000000000,
+                "stacked_ustx": 5250510000000000,
+                "is_pox_active": true
+            },
+            "next_cycle": {
+                "id": 95,
+                "min_threshold_ustx": 583400000000000,
+                "min_increment_ustx": 8750916530917,
+                "stacked_ustx": 5250510000000000,
+                "prepare_phase_start_block_height": 1895,
+                "blocks_until_prepare_phase": 15,
+                "reward_phase_start_block_height": 1900,
+                "blocks_until_reward_phase": 20,
+                "ustx_until_pox_rejection": null
+            },
+            "epochs": [],
+            "min_amount_ustx": 583400000000000,
+            "prepare_cycle_length": 5,
+            "reward_cycle_id": 94,
+            "reward_cycle_length": 20,
+            "rejection_votes_left_required": null,
+            "next_reward_cycle_in": 20,
+            "contract_versions": []
+        }"#;
+
+        serde_json::from_str::<RPCPoxInfoData>(raw_json_response).unwrap()
+    }
+
+    fn get_node_info_data() -> RPCPeerInfoData {
+        let raw_json_response = r#"
+        {
+            "peer_version": 4207599114,
+            "pox_consensus": "daf212e6103309e3918de4b2bf39ae2399109d9a",
+            "burn_block_height": 2083,
+            "stable_pox_consensus": "11fc12900b1f1369098f1099bcb2708ea78ea3b4",
+            "stable_burn_block_height": 2082,
+            "server_version": "stacks-node 0.0.1 (:c87c0eb6c050688340b975b0b42fb0a1ae378afa, debug build, linux [x86_64])",
+            "network_id": 2147483648,
+            "parent_network_id": 3669344250,
+            "stacks_tip_height": 9520,
+            "stacks_tip": "ffd652ff665bb1b07b19e537a5a007d44ea1e8cd0ddfd8753d9f95f915aaee41",
+            "stacks_tip_consensus_hash": "11fc12900b1f1369098f1099bcb2708ea78ea3b4",
+            "genesis_chainstate_hash": "74237aa39aa50a83de11a4f53e9d3bb7d43461d1de9873f402e5453ae60bc59b",
+            "unanchored_tip": null,
+            "unanchored_seq": null,
+            "exit_at_block_height": null,
+            "is_fully_synced": true,
+            "node_public_key": "035379aa40c02890d253cfa577964116eb5295570ae9f7287cbae5f2585f5b2c7c",
+            "node_public_key_hash": "1dc27eba0247f8cc9575e7d45e50a0bc7e72427d",
+            "affirmations": {
+                "heaviest": "nnnnnnnnnn",
+                "stacks_tip": "nnnnnnnnnnp",
+                "sortition_tip": "nnnnnnnnnnp",
+                "tentative_best": "nnnnnnnnnnp"
+            },
+            "last_pox_anchor": {
+                "anchor_block_hash": "4f57cfdc7fe6cc7cfa5b7caa5791993cd01a9fa3162326d6cc74f34007ded99b",
+                "anchor_block_txid": "f96a10160fbece3070aed33ffe6afeb3540fa6a13e0d0c4f88b43ee8ebb68f9d"
+            },
+            "stackerdbs": []
+        }"#;
+
+        serde_json::from_str::<RPCPeerInfoData>(raw_json_response).unwrap()
+    }
 }
