@@ -290,7 +290,7 @@ where
 
         // Generate
         let _sign_requests = futures::stream::iter(deposit_requests)
-            .then(|req| self.construct_stacks_sign_request(req, bitcoin_aggregate_key, &wallet))
+            .then(|req| self.construct_deposit_stacks_sign_request(req, bitcoin_aggregate_key, &wallet))
             .try_collect::<Vec<StacksTransactionSignRequest>>()
             .await?;
 
@@ -309,7 +309,7 @@ where
     /// the deposit request, and stacks-core for fee estimation of the
     /// transaction.
     #[tracing::instrument(skip_all)]
-    async fn construct_stacks_sign_request(
+    async fn construct_deposit_stacks_sign_request(
         &self,
         req: model::SweptDepositRequest,
         bitcoin_aggregate_key: &PublicKey,
