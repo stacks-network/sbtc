@@ -348,9 +348,10 @@ impl DepositScriptInputs {
 /// This struct contains the key variable inputs when constructing a
 /// deposit script address.
 ///
-/// This struct upholds the invariant that the `lock_time` is a valid,
-/// standard `locktime` in bitcoin-core, so it is positive and less than or
-/// equal to the maximum acceptable value of `2**39 - 1`.
+/// This struct upholds the invariant that the `lock_time` is a valid and
+/// standard `locktime` in bitcoin-core. So it is positive and less than or
+/// equal to the maximum acceptable value of `2**39 - 1`. We do not check
+/// whether the user supplied script is correct and standard.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReclaimScriptInputs {
     /// This is the lock time used for the OP_CSV opcode in the reclaim
@@ -396,7 +397,7 @@ impl ReclaimScriptInputs {
     }
 
     /// Return the user supplied part of the script.
-    /// 
+    ///
     /// The full reclaim script has the form:
     ///```text
     ///  <locked-time> OP_CHECKSEQUENCEVERIFY <rest-of-reclaim-script>
@@ -592,7 +593,7 @@ mod tests {
         assert_eq!(extracts.deposit_script(), script);
     }
 
-    /// Construct a parsable deposit stript that is non-standard and check
+    /// Construct a parsable deposit script that is non-standard and check
     /// that it errors.
     #[test]
     fn non_standard_deposit_scripts() {
