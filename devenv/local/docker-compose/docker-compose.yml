@@ -481,6 +481,18 @@ services:
     ports:
       - "3031:3031"
 
+  sbtc-bridge-website:
+    build:
+      context: .
+      dockerfile: Dockerfile.sbtc-bridge-website
+    depends_on:
+      - stacks
+      - stacks-api
+      - emily-server
+      - bitcoin
+    ports:
+      - "3010:3000"
+
   stacker:
     build:
       context: .
