@@ -13,11 +13,14 @@ use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::types::StandardPrincipalData;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::net::api::getaccount::AccountEntryResponse;
+use blockstack_lib::net::api::getinfo::RPCPeerInfoData;
+use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use blockstack_lib::net::api::postfeerate::FeeRateEstimateRequestBody;
 use blockstack_lib::net::api::postfeerate::RPCFeeEstimateResponse;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::types::chainstate::StacksBlockId;
+use clarity::types::StacksEpochId;
 use clarity::vm::types::{BuffData, ListData, SequenceData};
 use clarity::vm::{ClarityName, ContractName, Value};
 use futures::TryFutureExt;
@@ -136,9 +139,32 @@ pub trait StacksInteract {
     ) -> impl Future<Output = Result<u64, Error>> + Send
     where
         T: AsTxPayload + Send + Sync;
+
+    /// Get information about the current PoX state.
+    fn get_pox_info(&self) -> impl Future<Output = Result<RPCPoxInfoData, Error>> + Send;
+
+    /// Get information about the current node.
+    fn get_node_info(&self) -> impl Future<Output = Result<RPCPeerInfoData, Error>> + Send;
+}
+
+/// A trait for getting the start height of the first EPOCH 3.0 block on the
+/// Stacks blockchain.
+pub trait GetNakamotoStartHeight {
     /// Get the start height of the first EPOCH 3.0 block on the Stacks
     /// blockchain.
-    fn nakamoto_start_height(&self) -> u64;
+    fn nakamoto_start_height(&self) -> Option<u64>;
+}
+
+impl GetNakamotoStartHeight for RPCPoxInfoData {
+    fn nakamoto_start_height(&self) -> Option<u64> {
+        self.epochs.iter().find_map(|epoch| {
+            if epoch.epoch_id == StacksEpochId::Epoch30 {
+                Some(epoch.start_height)
+            } else {
+                None
+            }
+        })
+    }
 }
 
 /// These are the rejection reason codes for submitting a transaction
@@ -626,6 +652,58 @@ impl StacksClient {
             .await
             .map_err(Error::UnexpectedStacksResponse)
     }
+
+    /// Get PoX information from the Stacks node.
+    #[tracing::instrument(skip(self))]
+    pub async fn get_pox_info(&self) -> Result<RPCPoxInfoData, Error> {
+        let path = "/v2/pox";
+        let url = self
+            .endpoint
+            .join(path)
+            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Borrowed(path)))?;
+
+        tracing::debug!("Making request to the stacks node for the current PoX info");
+        let response = self
+            .client
+            .get(url.clone())
+            .timeout(REQUEST_TIMEOUT)
+            .send()
+            .await
+            .map_err(Error::StacksNodeRequest)?;
+
+        response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
+            .json()
+            .await
+            .map_err(Error::UnexpectedStacksResponse)
+    }
+
+    /// Get information about the current node.
+    #[tracing::instrument(skip(self))]
+    pub async fn get_node_info(&self) -> Result<RPCPeerInfoData, Error> {
+        let path = "/v2/info";
+        let url = self
+            .endpoint
+            .join(path)
+            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Borrowed(path)))?;
+
+        tracing::debug!("Making request to the stacks node for the current node info");
+        let response = self
+            .client
+            .get(url.clone())
+            .timeout(REQUEST_TIMEOUT)
+            .send()
+            .await
+            .map_err(Error::StacksNodeRequest)?;
+
+        response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
+            .json()
+            .await
+            .map_err(Error::UnexpectedStacksResponse)
+    }
 }
 
 /// Fetch all Nakamoto blocks that are not already stored in the
@@ -640,13 +718,22 @@ where
     D: DbRead + Send + Sync,
 {
     let mut blocks = vec![stacks.get_block(block_id).await?];
+    let pox_info = stacks.get_pox_info().await?;
+    let nakamoto_start_height = pox_info
+        .nakamoto_start_height()
+        .ok_or(Error::MissingNakamotoStartHeight)?;
 
     while let Some(block) = blocks.last() {
         // We won't get anymore Nakamoto blocks before this point, so
         // time to stop.
-        if block.header.chain_length <= stacks.nakamoto_start_height() {
+        //
+        // TODO: This check is technically incorrect. The nakamoto start height
+        // is the _bitcoin block height_ at which Stacks epoch 3.0 activates.
+        // stacks.get_block() will fail if it's requested a pre-nakamoto block,
+        // but I'm not sure about the stacks.get_tenure() down below.
+        if block.header.chain_length <= nakamoto_start_height {
             tracing::info!(
-                nakamoto_start_height = %stacks.nakamoto_start_height(),
+                %nakamoto_start_height,
                 last_chain_length = %block.header.chain_length,
                 "Stopping, since we have fetched all Nakamoto blocks"
             );
@@ -785,8 +872,12 @@ impl StacksInteract for StacksClient {
         Ok(fee_estimate.unwrap_or(DEFAULT_TX_FEE).min(MAX_TX_FEE))
     }
 
-    fn nakamoto_start_height(&self) -> u64 {
-        self.nakamoto_start_height
+    async fn get_pox_info(&self) -> Result<RPCPoxInfoData, Error> {
+        self.get_pox_info().await
+    }
+
+    async fn get_node_info(&self) -> Result<RPCPeerInfoData, Error> {
+        self.get_node_info().await
     }
 }
 
@@ -831,8 +922,12 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
             .await
     }
 
-    fn nakamoto_start_height(&self) -> u64 {
-        self.get_client().nakamoto_start_height
+    async fn get_pox_info(&self) -> Result<RPCPoxInfoData, Error> {
+        self.exec(|client, _| client.get_pox_info()).await
+    }
+
+    async fn get_node_info(&self) -> Result<RPCPeerInfoData, Error> {
+        self.exec(|client, _| client.get_node_info()).await
     }
 }
 
@@ -1294,6 +1389,66 @@ mod tests {
         assert_eq!(fee, 25505);
 
         first_mock.assert();
+    }
+
+    #[tokio::test]
+    async fn get_pox_info_and_get_nakamoto_start_height_works() {
+        let raw_json_response =
+            include_str!("../../tests/fixtures/stacksapi-get-pox-info-test-data.json");
+
+        let mut stacks_node_server = mockito::Server::new_async().await;
+        let mock = stacks_node_server
+            .mock("GET", "/v2/pox")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(raw_json_response)
+            .expect(1)
+            .create();
+
+        // Setup our Stacks client. We use a regular client here because we're
+        // testing the `get_pox_info` method.
+        let client = StacksClient::new(
+            url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
+            20,
+        )
+        .unwrap();
+        let resp = client.get_pox_info().await.unwrap();
+        let expected: RPCPoxInfoData = serde_json::from_str(raw_json_response).unwrap();
+
+        assert_eq!(resp, expected);
+        mock.assert();
+
+        let nakamoto_start_height = resp.nakamoto_start_height();
+        assert!(nakamoto_start_height.is_some());
+        assert_eq!(nakamoto_start_height.unwrap(), 232);
+    }
+
+    #[tokio::test]
+    async fn get_node_info_works() {
+        let raw_json_response =
+            include_str!("../../tests/fixtures/stacksapi-get-node-info-test-data.json");
+
+        let mut stacks_node_server = mockito::Server::new_async().await;
+        let mock = stacks_node_server
+            .mock("GET", "/v2/info")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(raw_json_response)
+            .expect(1)
+            .create();
+
+        // Setup our Stacks client. We use a regular client here because we're
+        // testing the `get_node_info` method.
+        let client = StacksClient::new(
+            url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
+            20,
+        )
+        .unwrap();
+        let resp = client.get_node_info().await.unwrap();
+        let expected: RPCPeerInfoData = serde_json::from_str(raw_json_response).unwrap();
+
+        assert_eq!(resp, expected);
+        mock.assert();
     }
 
     #[tokio::test]
