@@ -32,14 +32,14 @@ pub const NUMS_X_COORDINATE: [u8; 32] = [
     0x47, 0xbf, 0xee, 0x9a, 0xce, 0x80, 0x3a, 0xc0,
 ];
 
-/// Returns an address with no known private key, since it has no known
+/// Returns a public key with no known private key, since it has no known
 /// discrete logarithm.
 ///
 /// # Notes
 ///
 /// This function returns the public key to used in the key-spend path of
-/// the taproot address. Since we do not want a key-spend path for sBTC
-/// deposit transactions, this address is such that it does not have a
-/// known private key.
+/// the taproot `scriptPubKey`. Since we do not want a key-spend path for
+/// sBTC deposit transactions, this public key is such that it does not
+/// have a known private key.
 pub static UNSPENDABLE_TAPROOT_KEY: LazyLock<XOnlyPublicKey> =
     LazyLock::new(|| XOnlyPublicKey::from_slice(&NUMS_X_COORDINATE).unwrap());
