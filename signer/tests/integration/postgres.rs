@@ -1382,7 +1382,7 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
-    // Wwe need to manually update the database with new bitcoin block
+    // We need to manually update the database with new bitcoin block
     // headers.
     crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
 
@@ -1448,7 +1448,7 @@ async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
-    // Wwe need to manually update the database with new bitcoin block
+    // We need to manually update the database with new bitcoin block
     // headers.
     crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
 
@@ -1501,7 +1501,7 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
-    // Wwe need to manually update the database with new bitcoin block
+    // We need to manually update the database with new bitcoin block
     // headers.
     crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
 
