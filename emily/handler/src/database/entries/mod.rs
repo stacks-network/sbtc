@@ -84,14 +84,14 @@ pub enum StatusEntry {
     ///
     /// For example, a deposit or withdrawal that has specified too low of a
     /// BTC fee may fail after being accepted.
-    Accepted(Fulfillment),
+    Accepted,
     /// The articacts that fulill the operation have been observed in a valid fork of
     /// both the Stacks blockchain and the Bitcoin blockchain by at least one signer.
     ///
     /// Note that if the signers detect a conflicting chainstate in which the operation
     /// is not confirmed this status will be reverted to either ACCEPTED or REEVALUATING
     /// depending on whether the conflicting chainstate calls the acceptance into question.
-    Confirmed,
+    Confirmed(Fulfillment),
     /// The operation was not fulfilled.
     Failed,
 }
@@ -101,8 +101,8 @@ impl From<&StatusEntry> for Status {
         match value {
             StatusEntry::Pending => Status::Pending,
             StatusEntry::Reprocessing => Status::Reprocessing,
-            StatusEntry::Accepted(_) => Status::Accepted,
-            StatusEntry::Confirmed => Status::Confirmed,
+            StatusEntry::Accepted => Status::Accepted,
+            StatusEntry::Confirmed(_) => Status::Confirmed,
             StatusEntry::Failed => Status::Failed,
         }
     }

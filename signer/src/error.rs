@@ -12,6 +12,10 @@ use crate::stacks::contracts::WithdrawalAcceptValidationError;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The nakamoto start height could not be determined.
+    #[error("nakamoto start height could not be determined")]
+    MissingNakamotoStartHeight,
+
     /// An error occurred while communicating with the Emily API
     #[error("emily API error: {0}")]
     EmilyApi(#[from] EmilyClientError),
