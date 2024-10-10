@@ -588,8 +588,8 @@ where
             return Ok(DkgState::DkgComplete);
         }
 
-        let signer_keys = &self.context.config().signer.peer_public_keys;
-        let signer_set_aggregate_key = PublicKey::combine_keys(signer_keys)?;
+        let signer_keys = self.context.config().signer.bootstrap_signing_set();
+        let signer_set_aggregate_key = PublicKey::combine_keys(&signer_keys)?;
 
         let shares = db
             .get_encrypted_dkg_shares_by_signing_set(&signer_set_aggregate_key)
@@ -739,13 +739,13 @@ where
                 Ok((aggregate_key, signer_set))
             }
             None => {
-                let signer_set = &self.context.config().signer.peer_public_keys;
-                let signer_set_aggregate_key = PublicKey::combine_keys(signer_set)?;
+                let signer_set = self.context.config().signer.bootstrap_signing_set();
+                let signer_set_aggregate_key = PublicKey::combine_keys(&signer_set)?;
                 let shares = db
                     .get_encrypted_dkg_shares_by_signing_set(&signer_set_aggregate_key)
                     .await?
                     .ok_or(Error::MissingDkgShares)?;
-                Ok((shares.aggregate_key, signer_set.iter().copied().collect()))
+                Ok((shares.aggregate_key, signer_set))
             }
         }
     }
@@ -755,7 +755,10 @@ where
     }
 
     /// This function provides a deterministic 32-byte identifier for the
-    /// signer. This should probably deterministically too.
+    /// signer.
+    ///
+    /// TODO: Maybe this should change deterministically with the bitcoin
+    /// chain tip.
     fn coordinator_id(&self) -> [u8; 32] {
         sha2::Sha256::new_with_prefix("SIGNER_COORDINATOR_ID")
             .chain_update(self.pub_key().serialize())

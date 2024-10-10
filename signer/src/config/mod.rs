@@ -6,6 +6,7 @@ use config::File;
 use libp2p::Multiaddr;
 use serde::Deserialize;
 use stacks_common::types::chainstate::StacksAddress;
+use std::collections::BTreeSet;
 use std::path::Path;
 use url::Url;
 
@@ -17,6 +18,7 @@ use crate::config::serialization::url_deserializer_single;
 use crate::config::serialization::url_deserializer_vec;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
+use crate::stacks::wallet::SignerWallet;
 
 mod error;
 mod serialization;
@@ -226,8 +228,12 @@ pub struct SignerConfig {
     /// The postgres database endpoint
     #[serde(deserialize_with = "url_deserializer_single")]
     pub db_endpoint: Url,
-    /// The public keys of the signer peers.
-    pub peer_public_keys: Vec<PublicKey>,
+    /// The public keys of the signer sit during the bootstrapping phase of
+    /// the signers.
+    pub bootstrap_signing_set: Vec<PublicKey>,
+    /// The number of signatures required for the signers' bootstrapped
+    /// multi-sig wallet on Stacks.
+    pub bootstrap_signatures_required: u16,
 }
 
 impl Validatable for SignerConfig {
@@ -246,9 +252,35 @@ impl Validatable for SignerConfig {
                 SignerConfigError::UnsupportedDatabaseDriver(self.db_endpoint.scheme().to_string());
             return Err(ConfigError::Message(err.to_string()));
         }
+
+        // The requirement here is that the bootstrap wallet in the config
+        // is a valid wallet, and all of those checks are done by the
+        // `SignerWallet::load_boostrap_wallet` function. Some of these
+        // checks include checks for an empty `bootstrap_signing_set`, or a
+        // `bootstrap_signatures_required` that is to high, there are
+        // others.
+        if let Err(err) = SignerWallet::load_boostrap_wallet(self) {
+            return Err(ConfigError::Message(err.to_string()));
+        }
+
         // db_endpoint note: we don't validate the host because we will never
         // get here; the URL deserializer will fail if the host is empty.
         Ok(())
+    }
+}
+
+impl SignerConfig {
+    /// Return the bootstrapped signing set from the config. This function
+    /// makes sure that the signing set includes the current signer.
+    pub fn bootstrap_signing_set(&self) -> BTreeSet<PublicKey> {
+        // We add in the current signer into the signing set from the
+        // config just in case it hasn't been included already.
+        let self_public_key = PublicKey::from_private_key(&self.private_key);
+        self.bootstrap_signing_set
+            .iter()
+            .copied()
+            .chain([self_public_key])
+            .collect()
     }
 }
 
@@ -422,7 +454,8 @@ mod tests {
             settings.signer.event_observer.bind,
             "0.0.0.0:8801".parse::<SocketAddr>().unwrap()
         );
-        assert!(!settings.signer.peer_public_keys.is_empty());
+        assert!(!settings.signer.bootstrap_signing_set.is_empty());
+        assert_eq!(settings.signer.bootstrap_signatures_required, 2);
     }
 
     #[test]
