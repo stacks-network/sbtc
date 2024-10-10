@@ -346,12 +346,12 @@ where
                     .get_bitcoin_client()
                     .get_tx(&txin.previous_output.txid)
                     .await?
-                    .ok_or(Error::BitcoinTxMissing(txin.previous_output.txid))?;
+                    .ok_or(Error::BitcoinTxMissing(txin.previous_output.txid, None))?;
 
                 let prevout = &tx_info
                     .tx
                     .tx_out(txin.previous_output.vout as usize)
-                    .map_err(|_| Error::BitcoinTxMissing(txin.previous_output.txid))?
+                    .map_err(|_| Error::OutPointMissing(txin.previous_output))?
                     .script_pubkey;
 
                 if signer_script_pubkeys.contains(prevout) {

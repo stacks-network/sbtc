@@ -541,7 +541,7 @@ where
     pub async fn assert_get_signer_utxo_donations(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::in_memory::Network::new();
-        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
         let mut signer_set =
             testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
@@ -622,11 +622,7 @@ where
 
         // Check with chain tip A1
         let signer_utxo = storage
-            .get_signer_utxo(
-                &block_a1.block_hash,
-                &aggregate_key,
-                self.context_window as u16,
-            )
+            .get_signer_utxo(&block_a1.block_hash, &aggregate_key, self.context_window)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -641,11 +637,7 @@ where
 
         // Check with chain tip A2
         let signer_utxo = storage
-            .get_signer_utxo(
-                &block_a2.block_hash,
-                &aggregate_key,
-                self.context_window as u16,
-            )
+            .get_signer_utxo(&block_a2.block_hash, &aggregate_key, self.context_window)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -660,11 +652,7 @@ where
 
         // Check with chain tip B1
         let signer_utxo = storage
-            .get_signer_utxo(
-                &block_b1.block_hash,
-                &aggregate_key,
-                self.context_window as u16,
-            )
+            .get_signer_utxo(&block_b1.block_hash, &aggregate_key, self.context_window)
             .await
             .unwrap()
             .expect("no signer utxo");

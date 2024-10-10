@@ -290,7 +290,9 @@ where
 
         // Generate
         let _sign_requests = futures::stream::iter(deposit_requests)
-            .then(|req| self.construct_deposit_stacks_sign_request(req, bitcoin_aggregate_key, &wallet))
+            .then(|req| {
+                self.construct_deposit_stacks_sign_request(req, bitcoin_aggregate_key, &wallet)
+            })
             .try_collect::<Vec<StacksTransactionSignRequest>>()
             .await?;
 

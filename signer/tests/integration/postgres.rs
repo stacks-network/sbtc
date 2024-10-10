@@ -1630,8 +1630,13 @@ async fn should_get_signer_utxo_unspent() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_get_signer_utxo_donations() {
-    transaction_coordinator_test_environment()
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let store = testing::storage::new_test_database(db_num, true).await;
+
+    transaction_coordinator_test_environment(store.clone())
         .await
         .assert_get_signer_utxo_donations()
         .await;
+
+    signer::testing::storage::drop_db(store).await;
 }
