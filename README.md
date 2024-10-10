@@ -13,12 +13,13 @@ Ths repository builds off the developer experience within https://github.com/sta
 - [sBTC Rollout Plan](https://www.bitcoinwrites.com/p/sbtc-rollout-bootstrapping-programmable-bitcoin)
 - [sBTC Developer Release](https://sbtc.tech/developer-release)
 
-## Decisions and Design
+## Design Docs
 
 **All decisions are made and tracked via GitHub issues where they and their rationale can be verified publicly.** Due to sBTC's critical nature extensive research and planning has been done to ensure all funds remain secure on launch.
 
 - [Research GitHub Issues](https://github.com/stacks-network/sbtc/issues?q=is%3Aissue+label%3Aresearch+)
 - [Design GitHub Issues](https://github.com/stacks-network/sbtc/issues?q=is%3Aissue+label%3Adesign+)
+- [Additional Docs and Material](https://drive.google.com/drive/folders/1CgsrR1Q5y7a7u7HyOtdM_zOFxSXm518J)
 
 ## Contributing
 
