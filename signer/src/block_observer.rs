@@ -758,6 +758,4 @@ mod tests {
         assert_eq!(tx_ids.len(), 1);
         assert_eq!(tx_ids[0], expected_tx_id);
     }
-
-    
 }

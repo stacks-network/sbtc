@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 
+use crate::bitcoin::BitcoinInteract;
+use crate::stacks::api::StacksInteract;
 use bitcoin::BlockHash;
 use bitcoin::Txid;
 use blockstack_lib::chainstate::burn::ConsensusHash;
@@ -15,10 +17,8 @@ use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use clarity::vm::costs::ExecutionCost;
-use sbtc::deposits::CreateDepositRequest;
-use crate::bitcoin::BitcoinInteract;
-use crate::stacks::api::StacksInteract;
 use rand::seq::IteratorRandom;
+use sbtc::deposits::CreateDepositRequest;
 
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::rpc::GetTxResponse;
@@ -71,7 +71,7 @@ impl TestHarness {
     /// Add multiple deposit transactions to the test harness.
     pub fn add_deposits(&mut self, deposits: &[(Txid, GetTxResponse)]) {
         for (txid, response) in deposits {
-            self.add_deposit(txid.clone(), response.clone());
+            self.add_deposit(*txid, response.clone());
         }
     }
 
@@ -87,7 +87,7 @@ impl TestHarness {
 
     /// Add multiple pending deposit requests to the test harness.
     pub fn add_pending_deposits(&mut self, deposits: &[CreateDepositRequest]) {
-        self.pending_deposits.extend(deposits.into_iter().cloned());
+        self.pending_deposits.extend(deposits.iter().cloned());
     }
 
     /// Generate a new test harness with random data.
@@ -96,10 +96,9 @@ impl TestHarness {
         num_bitcoin_blocks: usize,
         num_stacks_blocks_per_bitcoin_block: std::ops::Range<usize>,
     ) -> Self {
-        let mut bitcoin_blocks: Vec<_> =
-            std::iter::repeat_with(|| dummy::block(&fake::Faker, rng))
-                .take(num_bitcoin_blocks)
-                .collect();
+        let mut bitcoin_blocks: Vec<_> = std::iter::repeat_with(|| dummy::block(&fake::Faker, rng))
+            .take(num_bitcoin_blocks)
+            .collect();
 
         for idx in 1..bitcoin_blocks.len() {
             bitcoin_blocks[idx].header.prev_blockhash = bitcoin_blocks[idx - 1].block_hash();
@@ -119,8 +118,7 @@ impl TestHarness {
                         .take(num_blocks)
                         .scan(initial_state, |last_stx_block_header, mut stx_block| {
                             stx_block.header.parent_block_id = last_stx_block_header.block_id();
-                            stx_block.header.chain_length =
-                                last_stx_block_header.chain_length + 1;
+                            stx_block.header.chain_length = last_stx_block_header.chain_length + 1;
                             *last_stx_block_header = stx_block.header.clone();
                             Some((stx_block.block_id(), stx_block, btc_block.block_hash()))
                         })
@@ -177,11 +175,7 @@ impl BitcoinInteract for TestHarness {
         Ok(self.deposits.get(txid).cloned())
     }
 
-    async fn get_tx_info(
-        &self,
-        _: &Txid,
-        _: &BlockHash,
-    ) -> Result<Option<BitcoinTxInfo>, Error> {
+    async fn get_tx_info(&self, _: &Txid, _: &BlockHash) -> Result<Option<BitcoinTxInfo>, Error> {
         unimplemented!()
     }
 
@@ -200,10 +194,7 @@ impl BitcoinInteract for TestHarness {
         unimplemented!()
     }
 
-    async fn get_last_fee(
-        &self,
-        _utxo: bitcoin::OutPoint,
-    ) -> Result<Option<utxo::Fees>, Error> {
+    async fn get_last_fee(&self, _utxo: bitcoin::OutPoint) -> Result<Option<utxo::Fees>, Error> {
         unimplemented!()
     }
 
@@ -243,8 +234,7 @@ impl StacksInteract for TestHarness {
         let (stx_block_id, stx_block, btc_block_id) = self
             .stacks_blocks
             .iter()
-            .skip_while(|(id, _, _)| &block_id != id)
-            .next()
+            .find(|(id, _, _)| &block_id == id)
             .ok_or(Error::MissingBlock)?;
 
         let blocks: Vec<NakamotoBlock> = self
@@ -267,8 +257,7 @@ impl StacksInteract for TestHarness {
             tenure_start_block_id: self
                 .stacks_blocks
                 .iter()
-                .skip_while(|(_, _, block_id)| block_id != btc_block_id)
-                .next()
+                .find(|(_, _, block_id)| block_id == btc_block_id)
                 .map(|(stx_block_id, _, _)| *stx_block_id)
                 .unwrap(),
             parent_consensus_hash: ConsensusHash([0; 20]),

@@ -57,7 +57,12 @@ async fn main() {
     // Get command line arguments.
     let Cli {
         server: ServerArgs { host, port },
-        general: GeneralArgs { pretty_logs, log_directives, dynamodb_endpoint },
+        general:
+            GeneralArgs {
+                pretty_logs,
+                log_directives,
+                dynamodb_endpoint,
+            },
     } = Cli::parse();
 
     // Setup logging.
