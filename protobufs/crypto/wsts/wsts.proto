@@ -4,8 +4,7 @@ package crypto.wsts;
 
 import "crypto/common.proto";
 
-// Scalar maps to a wrapper around libsecp256k1's internal secp256k1_scalar
-// struct. It's a number between 0 and the order of the secp256k1 curve.
+// Scalar maps to a number between 0 and the order of the secp256k1 curve.
 message Scalar {
   Uint256 value = 1;
 }
@@ -32,7 +31,7 @@ message DkgPublicShares {
   uint64 dkg_id = 1;
   // Signer ID
   uint32 signer_id = 2;
-  // List of (party_id, commitment)
+  // List of (signer_id, commitment)
   repeated PartyCommitment commitments = 3;
 }
 
@@ -40,7 +39,7 @@ message DkgPublicShares {
 // participating in distributed key generation.
 message PartyCommitment {
   // The specific party that submitted the public polynomial.
-  uint32 party_id = 1;
+  uint32 signer_id = 1;
   // The public polynomial of the associated party. Each polynomial
   // includes a proof of ownership of the underlying private private
   // polynomial.
@@ -63,17 +62,20 @@ message DkgPrivateShares {
   uint64 dkg_id = 1;
   // Signer ID
   uint32 signer_id = 2;
-  // List of (src_party_id, Map(dst_key_id, encrypted_share))
+  // List of (src_signer_id, Map(dst_key_id, encrypted_share))
   repeated PrivateShare shares = 3;
 }
 
 message PrivateShare {
-  uint32 source_party_id = 1;
+  // The ID of the signer that created the secret share.
+  uint32 source_signer_id = 1;
   // The encrypted private shares to send to the the other parties.
   repeated SecretShare encrypted_shares = 2;
 }
 
 message SecretShare {
+  // The signer ID associated with the secret share. This is the only
+  // signer who will be able to decrypt the encrypted_secret_share field.
   uint32 signer_id = 1;
   // This is the private polynomial evaluated at the `signer_id` and then
   // encrypted in such a way that only the public key associated with the
@@ -110,7 +112,7 @@ message NonceRequest {
   // Signing round iteration ID
   uint64 sign_iter_id = 3;
   // The message to sign
-  bytes message = 4;
+  Uint256 message = 4;
   // Whether to make a taproot signature
   bool is_taproot = 5;
   // Taproot merkle root. This field is optional
@@ -131,8 +133,8 @@ message NonceResponse {
   repeated uint32 key_ids = 5;
   // Public nonces
   repeated PublicNonce nonces = 6;
-  // Bytes being signed
-  bytes message = 7;
+  // Bytes being signed.
+  Uint256 message = 7;
 }
 
 // Signature share request message from coordinator to signers
@@ -145,8 +147,8 @@ message SignatureShareRequest {
   uint64 sign_iter_id = 3;
   // Nonces responses used for this signature
   repeated NonceResponse nonce_responses = 4;
-  // Bytes to sign
-  bytes message = 5;
+  // Bytes to sign.
+  Uint256 message = 5;
   // Whether to make a taproot signature
   bool is_taproot = 6;
   // Taproot merkle root. This field is optional
@@ -169,7 +171,7 @@ message SignatureShareResponse {
 
 // A commitment to a polynomial, with a Schnorr proof of ownership bound to the ID
 message PolyCommitment {
-  // The party ID with a schnorr proof
+  // The party ID with a Schnorr proof
   ProofIdentifier id = 1;
   // The public polynomial which commits to the secret polynomial
   repeated Point poly = 2;
@@ -180,9 +182,9 @@ message PolyCommitment {
 message ProofIdentifier {
   // The ID
   Scalar id = 1;
-  // The public schnorr response, kG
+  // The public Schnorr response, kG
   Point schnorr_response = 2;
-  // The aggregate of the schnorr committed values, kca
+  // The aggregate of the Schnorr committed values, kca
   Scalar aggregate_commitment = 3;
 }
 
