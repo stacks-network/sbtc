@@ -3,6 +3,7 @@ use crate::api::models::common::Status;
 use crate::api::models::deposit::responses::{
     GetDepositsForTransactionResponse, UpdateDepositsResponse,
 };
+use stacks_common::codec::StacksMessageCodec as _;
 use crate::database::entries::StatusEntry;
 use warp::reply::{json, with_status, Reply};
 
@@ -273,10 +274,12 @@ fn scripts_to_resource_parameters(
     let reclaim_script_buf = ScriptBuf::from_hex(reclaim_script)?;
     let reclaim_script_inputs = sbtc::deposits::ReclaimScriptInputs::parse(&reclaim_script_buf)?;
 
-    // TODO: Convert the recipient into a hex encoding of the recipient.
+    let recipient_bytes = deposit_script_inputs.recipient.serialize_to_vec();
+    let recipient_hex_string = hex::encode(&recipient_bytes);
+
     Ok(ScriptParameters {
         max_fee: deposit_script_inputs.max_fee,
-        recipient: deposit_script_inputs.recipient.to_string(),
+        recipient: recipient_hex_string,
         lock_time: reclaim_script_inputs.lock_time(),
     })
 }
