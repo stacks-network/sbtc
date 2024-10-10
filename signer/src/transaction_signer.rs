@@ -144,7 +144,7 @@ where
         let mut term = self.context.get_termination_handle();
 
         // TODO: We should really split these operations out into two separate
-        // main run-loops since they don't have anything to do with eachother.
+        // main run-loops since they don't have anything to do with each other.
         //
         // We run the event loop like this because `tokio::select!()` could
         // potentially kill either `handle_new_requests()` or `handle_signer_message()`
@@ -156,7 +156,7 @@ where
                 // new Bitcoin block observed events. It doesn't matter how many
                 // of these we get, we only care if it has happened. It's also
                 // important that we empty this channel as quickly as possible
-                // to avoid un-processed messagages being dropped.
+                // to avoid un-processed messages being dropped.
                 let mut new_block_observed = false;
                 while let Ok(signal) = signal_rx.try_recv() {
                     if let SignerSignal::Event(SignerEvent::BitcoinBlockObserved) = signal {
@@ -323,20 +323,13 @@ where
             .map(|canonical_chain_tip| &canonical_chain_tip == bitcoin_chain_tip)
             .unwrap_or(false);
 
-        let sender_is_coordinator = if let Some(last_key_rotation) =
-            storage.get_last_key_rotation(bitcoin_chain_tip).await?
-        {
-            let signer_set: BTreeSet<PublicKey> =
-                last_key_rotation.signer_set.into_iter().collect();
+        let signer_set = self.get_signer_public_keys(bitcoin_chain_tip).await?;
 
-            crate::transaction_coordinator::given_key_is_coordinator(
-                msg_sender,
-                bitcoin_chain_tip,
-                &signer_set,
-            )?
-        } else {
-            false
-        };
+        let sender_is_coordinator = crate::transaction_coordinator::given_key_is_coordinator(
+            msg_sender,
+            bitcoin_chain_tip,
+            &signer_set,
+        )?;
 
         let chain_tip_status = match (is_known, is_canonical) {
             (true, true) => ChainTipStatus::Canonical,
@@ -389,7 +382,7 @@ where
     }
 
     async fn is_valid_bitcoin_transaction_sign_request(
-        &mut self,
+        &self,
         _request: &message::BitcoinTransactionSignRequest,
     ) -> Result<bool, Error> {
         let signer_pub_key = self.signer_pub_key();
@@ -514,7 +507,7 @@ where
                 ..
             }) => {
                 tracing::info!("DKG ended in failure: {fail:?}");
-                // TODO(#414): handle DKG failute
+                // TODO(#414): handle DKG failure
             }
             wsts::net::Message::NonceResponse(_)
             | wsts::net::Message::SignatureShareResponse(_) => {
@@ -559,7 +552,7 @@ where
 
     /// TODO(#380): This function needs to filter deposit requests based on
     /// time as well. We need to do this because deposit requests are locked
-    /// using OP_CSV, which lock up coins based on block hieght or
+    /// using OP_CSV, which lock up coins based on block height or
     /// multiples of 512 seconds measure by the median time past.
     #[tracing::instrument(skip(self))]
     async fn get_pending_deposit_requests(
@@ -762,21 +755,17 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn get_signer_public_keys(
-        &mut self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
     ) -> Result<BTreeSet<PublicKey>, Error> {
-        let last_key_rotation = self
-            .context
-            .get_storage()
-            .get_last_key_rotation(bitcoin_chain_tip)
-            .await?
-            .ok_or(Error::MissingKeyRotation)?;
+        let db = self.context.get_storage();
 
-        let signer_set = last_key_rotation.signer_set.into_iter().collect();
-
-        Ok(signer_set)
+        match db.get_last_key_rotation(chain_tip).await? {
+            Some(last_key) => Ok(last_key.signer_set.into_iter().collect()),
+            None => Ok(self.context.config().signer.bootstrap_signing_set()),
+        }
     }
 
     fn signer_pub_key(&self) -> PublicKey {
@@ -790,7 +779,7 @@ where
 struct MsgChainTipReport {
     /// Whether the sender of the incoming message is the coordinator for this chain tip.
     sender_is_coordinator: bool,
-    /// The status of the chain tip relative to the signers perspective.
+    /// The status of the chain tip relative to the signers' perspective.
     chain_tip_status: ChainTipStatus,
 }
 

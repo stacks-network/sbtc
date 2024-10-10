@@ -24,6 +24,7 @@ use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Message;
 
 use crate::config::NetworkKind;
+use crate::config::SignerConfig;
 use crate::context::Context;
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -98,13 +99,18 @@ impl SignerWallet {
     /// is highly unlikely by chance, but a Byzantine actor could trigger
     /// it purposefully if we don't require a signer to prove that they
     /// control the public key that they submit.
-    pub fn new(
-        public_keys: &[PublicKey],
+    pub fn new<I>(
+        public_keys: I,
         signatures_required: u16,
         network_kind: NetworkKind,
         nonce: u64,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, Error>
+    where
+        I: IntoIterator<Item = PublicKey>,
+    {
         // Check most error conditions
+        let public_keys: BTreeSet<PublicKey> = public_keys.into_iter().collect();
+
         let num_keys = public_keys.len();
         let invalid_threshold = num_keys < signatures_required as usize;
         let invalid_num_keys = num_keys == 0 || num_keys > MAX_KEYS as usize;
@@ -116,7 +122,6 @@ impl SignerWallet {
             ));
         }
 
-        let public_keys: BTreeSet<PublicKey> = public_keys.iter().copied().collect();
         // Used for creating the combined stacks address
         let pubkeys: Vec<Secp256k1PublicKey> =
             public_keys.iter().map(Secp256k1PublicKey::from).collect();
@@ -146,7 +151,9 @@ impl SignerWallet {
         })
     }
 
-    /// Load the multi-sig wallet from storage.
+    /// Load the multi-sig wallet from the last rotate-keys-trasnaction
+    /// stored in the database. If it's not there, fall back to the
+    /// bootstrap multi-sig wallet in the signer's config.
     ///
     /// The wallet that is loaded is the one that cooresponds to the signer
     /// set defined in the last confirmed key rotation contract call.
@@ -156,15 +163,26 @@ impl SignerWallet {
     {
         // Get the key rotation transaction from the database. This maps to
         // what the stacks network thinks the signers' address is.
-        let last_key_rotation = ctx
-            .get_storage()
-            .get_last_key_rotation(chain_tip)
-            .await?
-            .ok_or(Error::MissingKeyRotation)?;
+        let last_key_rotation = ctx.get_storage().get_last_key_rotation(chain_tip).await?;
 
-        let public_keys = last_key_rotation.signer_set.as_slice();
-        let signatures_required = last_key_rotation.signatures_required;
-        let network_kind = ctx.config().signer.network;
+        let config = &ctx.config().signer;
+        let network_kind = config.network;
+
+        match last_key_rotation {
+            Some(keys) => {
+                let public_keys = keys.signer_set;
+                let signatures_required = keys.signatures_required;
+                SignerWallet::new(public_keys, signatures_required, network_kind, 0)
+            }
+            None => Self::load_boostrap_wallet(config),
+        }
+    }
+
+    /// Load the bootstrap wallet implicitly defined in the signer config.
+    pub fn load_boostrap_wallet(config: &SignerConfig) -> Result<SignerWallet, Error> {
+        let network_kind = config.network;
+        let public_keys = config.bootstrap_signing_set();
+        let signatures_required = config.bootstrap_signatures_required;
 
         SignerWallet::new(public_keys, signatures_required, network_kind, 0)
     }
@@ -443,7 +461,7 @@ mod tests {
             .collect();
 
         let public_keys: Vec<_> = key_pairs.iter().map(|kp| kp.public_key().into()).collect();
-        let wallet = SignerWallet::new(&public_keys, signatures_required, network, 1).unwrap();
+        let wallet = SignerWallet::new(public_keys, signatures_required, network, 1).unwrap();
 
         let mut tx_signer = MultisigTx::new_contract_call(TestContractCall, &wallet, TX_FEE);
         let tx = tx_signer.tx();
@@ -490,7 +508,7 @@ mod tests {
             .collect();
 
         let public_keys: Vec<_> = key_pairs.iter().map(|kp| kp.public_key().into()).collect();
-        let wallet = SignerWallet::new(&public_keys, signatures_required, network, 1).unwrap();
+        let wallet = SignerWallet::new(public_keys, signatures_required, network, 1).unwrap();
 
         let mut tx_signer = MultisigTx::new_contract_call(TestContractCall, &wallet, TX_FEE);
 
@@ -547,15 +565,14 @@ mod tests {
                 .collect();
 
         let pks1 = public_keys.clone();
-        let wallet1 = SignerWallet::new(&pks1, 5, network, 0).unwrap();
-
         // Although it's unlikely, it's possible for the shuffle to not
         // shuffle anything, so we need to keep trying.
         while pks1 == public_keys {
             public_keys.shuffle(&mut OsRng);
         }
+        let wallet1 = SignerWallet::new(pks1, 5, network, 0).unwrap();
 
-        let wallet2 = SignerWallet::new(&public_keys, 5, network, 0).unwrap();
+        let wallet2 = SignerWallet::new(public_keys, 5, network, 0).unwrap();
 
         assert_eq!(wallet1.address(), wallet2.address())
     }
@@ -600,7 +617,8 @@ mod tests {
                 .collect();
         let signatures_required = 5;
         let network = NetworkKind::Regtest;
-        let wallet1 = SignerWallet::new(&signer_keys, signatures_required, network, 0).unwrap();
+        let public_keys = signer_keys.clone();
+        let wallet1 = SignerWallet::new(public_keys, signatures_required, network, 0).unwrap();
 
         // Let's store the key information about this wallet into the database
         let rotate_keys = RotateKeysTransaction {
@@ -618,8 +636,12 @@ mod tests {
             .unwrap();
 
         // We haven't stored any RotateKeysTransactions into the database
-        // yet, so loading the wallet should fail.
-        assert!(SignerWallet::load(&ctx, &bitcoin_chain_tip).await.is_err());
+        // yet, so it will try to load the wallet from the context.
+        let ans = SignerWallet::load(&ctx, &bitcoin_chain_tip).await.unwrap();
+        let config = &ctx.config().signer;
+        let bootstrap_aggregate_key =
+            PublicKey::combine_keys(&config.bootstrap_signing_set()).unwrap();
+        assert_eq!(ans.aggregate_key, bootstrap_aggregate_key);
 
         let tx = model::StacksTransaction {
             txid: rotate_keys.txid,

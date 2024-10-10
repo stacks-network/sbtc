@@ -122,6 +122,15 @@ impl SignerStateMachine {
         let saved_state = self.signer.save();
         let aggregate_key = PublicKey::try_from(&saved_state.group_key)?;
 
+        let mut signer_set_public_keys = self
+            .public_keys
+            .signers
+            .values()
+            .map(PublicKey::from)
+            .collect::<Vec<PublicKey>>();
+
+        signer_set_public_keys.sort();
+
         let encoded = saved_state.encode_to_vec().map_err(error::Error::Codec)?;
         let public_shares = self
             .dkg_public_shares
@@ -139,6 +148,8 @@ impl SignerStateMachine {
             script_pubkey: aggregate_key.signers_script_pubkey().into(),
             encrypted_private_shares,
             public_shares,
+            signer_set_aggregate_key: PublicKey::combine_keys(&signer_set_public_keys)?,
+            signer_set_public_keys,
         })
     }
 }
@@ -253,11 +264,11 @@ impl CoordinatorStateMachine {
         // starts at 0 and we start our's at 1.
         let (Some(_), _) = coordinator
             .process_message(&packet)
-            .map_err(coordinator_error)?
+            .map_err(Error::wsts_coordinator)?
         else {
             let msg = "Bad DKG id given".to_string();
             let err = wsts::state_machine::coordinator::Error::BadStateChange(msg);
-            return Err(coordinator_error(err));
+            return Err(Error::wsts_coordinator(err));
         };
 
         // TODO(338): Replace this for-loop with a simpler method to set
@@ -277,7 +288,7 @@ impl CoordinatorStateMachine {
             // process them.
             coordinator
                 .process_message(&packet)
-                .map_err(coordinator_error)?;
+                .map_err(Error::wsts_coordinator)?;
         }
 
         // Once we've processed all DKG public shares for all participants,
@@ -295,7 +306,7 @@ impl CoordinatorStateMachine {
 
         coordinator
             .move_to(WstsState::Idle)
-            .map_err(coordinator_error)?;
+            .map_err(Error::wsts_coordinator)?;
 
         Ok(coordinator)
     }
@@ -313,9 +324,4 @@ impl std::ops::DerefMut for CoordinatorStateMachine {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
-}
-
-/// Convert a coordinator error to an `error::Error`
-pub fn coordinator_error(err: wsts::state_machine::coordinator::Error) -> error::Error {
-    error::Error::WstsCoordinator(Box::new(err))
 }
