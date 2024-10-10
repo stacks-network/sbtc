@@ -98,7 +98,7 @@ message DkgEnd {
   // Signer ID
   uint32 signer_id = 2;
   // DKG status for this Signer after receiving public/private shares
-  // pub status: DkgStatus,
+  DkgStatus status = 3;
 }
 
 // Nonce request message from coordinator to signers
@@ -186,19 +186,55 @@ message ProofIdentifier {
   Scalar aggregate_commitment = 3;
 }
 
-// // Final DKG status after receiving public and private shares
-// pub enum DkgFailure {
-//     // Signer was in the wrong internal state to complete DKG
-//     BadState,
-//     // DKG public shares were missing from these signer_ids
-//     MissingPublicShares(HashSet<u32>),
-//     // DKG public shares were bad from these signer_ids
-//     BadPublicShares(HashSet<u32>),
-//     // DKG private shares were missing from these signer_ids
-//     MissingPrivateShares(HashSet<u32>),
-//     // DKG private shares were bad from these signer_ids
-//     BadPrivateShares(HashMap<u32, BadPrivateShare>),
-// }
+// Final DKG status after receiving public and private shares
+message DkgStatus {
+  oneof mode {
+    // DKG completed successfully
+    Success success = 1;
+    // Signer was in the wrong internal state to complete DKG
+    BadState bad_state = 2;
+    // DKG public shares were missing from these signer_ids
+    MissingPublicShares missing_public_shares = 3;
+    // DKG public shares were bad from these signer_ids
+    BadPublicShares bad_public_shares = 4;
+    // DKG private shares were missing from these signer_ids
+    MissingPrivateShares missing_private_shares = 5;
+    // DKG private shares were bad from these signer_ids
+    BadPrivateShares bad_private_shares = 6;
+  }
+}
+
+// DKG completed successfully
+message Success {}
+
+// Signer was in the wrong internal state to complete DKG
+message BadState {}
+
+// DKG public shares were bad from these signer_ids.
+message MissingPublicShares {
+  // In WSTS this is a HashSet<u32>, so these should be unique, duplicates
+  // will be ignored at the application level.
+  repeated uint32 signer_ids = 1;
+}
+
+// DKG public shares were bad from these signer_ids.
+message BadPublicShares {
+  // In WSTS this is a HashSet<u32>, so these should be unique, duplicates
+  // will be ignored at the application level.
+  repeated uint32 signer_ids = 1;
+}
+
+// DKG private shares were missing from these signer_ids.
+message MissingPrivateShares {
+  // In WSTS this is a HashSet<u32>, so these should be unique, duplicates
+  // will be ignored at the application level.
+  repeated uint32 signer_ids = 1;
+}
+
+// DKG private shares were bad from these signer_ids.
+message BadPrivateShares {
+  map<uint32, BadPrivateShare> shares = 1;
+}
 
 // A bad private share
 message BadPrivateShare {
@@ -211,21 +247,19 @@ message BadPrivateShare {
 // A Chaum-Pedersen proof that (G, A=a*G, B=b*G, K=(a*b)*G) is a
 // Diffie-Hellman tuple.
 message TupleProof {
-  // R = r*G for a random scalar r
-  Point random_commitment = 1;
-  // rB = r*B
-  Point response = 2;
-  // z = r + a*s where s = H(G,A,B,K,R) as per Fiat-Shamir
-  Scalar signature = 3;
+  // This is a commitment to both the random commitment in the Schnorr
+  // proof and the private key used for the signature. It represents r*B.
+  Point combined_commitment = 1;
+  // The Schnorr proof using the commitment of the above Point.
+  SchnorrSignature signature = 2;
 }
 
-// // Final DKG status after receiving public and private shares
-// pub enum DkgStatus {
-//     // DKG completed successfully
-//     Success,
-//     // DKG failed
-//     Failure(DkgFailure),
-// }
+message SchnorrSignature {
+  // This is R, where R = r*G for a random scalar r.
+  Point random_commitment = 1;
+  // This is z, where z = r + a*s where s = H(G,A,B,K,R) as per Fiat-Shamir
+  Scalar response = 2;
+}
 
 // A merkle root is a 256 bit hash
 message MerkleRoot {
