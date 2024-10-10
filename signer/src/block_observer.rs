@@ -81,7 +81,7 @@ impl DepositRequestValidator for CreateDepositRequest {
     {
         // Fetch the transaction from either a block or from the mempool
         let Some(response) = client.get_tx(&self.outpoint.txid).await? else {
-            return Err(Error::BitcoinTxMissing(self.outpoint.txid));
+            return Err(Error::BitcoinTxMissing(self.outpoint.txid, None));
         };
 
         Ok(Deposit {
@@ -116,19 +116,40 @@ where
     pub async fn run(mut self) -> Result<(), Error> {
         let mut term = self.context.get_termination_handle();
 
-        // TODO: We need to revisit all of the `?`'s in this function to ensure
-        // that we don't accidentally kill the signer by exiting this function
-        // early.
         let run = async {
             while let Some(new_block_hash) = self.bitcoin_blocks.next().await {
-                self.load_latest_deposit_requests().await?;
+                tracing::info!(
+                    ?new_block_hash,
+                    "new bitcoin block observed on bitcoin core block hash stream"
+                );
+                tracing::info!("loading latest deposit requests from Emily");
+                if let Err(error) = self.load_latest_deposit_requests().await {
+                    tracing::warn!(%error, "could not load latest deposit requests from Emily");
+                }
 
-                // TODO: What to do when `new_block_hash?` errors? Perhaps we can
-                // handle this within a failover-stream if this indicates a problem
-                // with the stream, and then we change this back to a plain `BlockHash`
-                // instead of a `Result<>`.
-                for block in self.next_blocks_to_process(new_block_hash?).await? {
-                    self.process_bitcoin_block(block).await?;
+                let new_block_hash = match new_block_hash {
+                    Ok(hash) => hash,
+                    Err(error) => {
+                        tracing::warn!(%error, "error decoding new bitcoin block hash from stream");
+                        continue;
+                    }
+                };
+
+                tracing::info!(%new_block_hash, "observed new bitcoin block from stream");
+
+                let next_blocks_to_process = match self.next_blocks_to_process(new_block_hash).await
+                {
+                    Ok(blocks) => blocks,
+                    Err(error) => {
+                        tracing::warn!(%error, block_hash = %new_block_hash, "could not get next blocks to process");
+                        continue;
+                    }
+                };
+
+                for block in next_blocks_to_process {
+                    if let Err(error) = self.process_bitcoin_block(block).await {
+                        tracing::warn!(%error, "could not process bitcoin block");
+                    }
                 }
 
                 self.context
@@ -182,6 +203,7 @@ where
 
         for _ in 0..self.horizon {
             if self.have_already_processed_block(block_hash).await? {
+                tracing::debug!(?block_hash, "already processed block");
                 break;
             }
 
@@ -227,19 +249,43 @@ where
         self.write_stacks_blocks(&stacks_blocks).await?;
         self.write_bitcoin_block(&block).await?;
 
-        self.extract_deposit_requests(&block.txdata).await?;
+        self.extract_deposit_requests(&block.txdata, block.block_hash())
+            .await?;
 
         Ok(())
     }
 
-    async fn extract_deposit_requests(&mut self, txs: &[Transaction]) -> Result<(), Error> {
-        let deposit_request: Vec<model::DepositRequest> = txs
+    async fn extract_deposit_requests(
+        &mut self,
+        txs: &[Transaction],
+        block_hash: BlockHash,
+    ) -> Result<(), Error> {
+        let (deposit_request, deposit_request_txs) = txs
             .iter()
             .filter_map(|tx| self.deposit_requests.remove(&tx.compute_txid()))
             .flatten()
-            .map(model::DepositRequest::from)
-            .collect();
+            .map(|deposit| {
+                let mut tx_bytes = Vec::new();
+                deposit.tx.consensus_encode(&mut tx_bytes)?;
 
+                let tx = model::Transaction {
+                    txid: deposit.tx.compute_txid().to_byte_array(),
+                    tx: tx_bytes,
+                    tx_type: model::TransactionType::DepositRequest,
+                    block_hash: block_hash.to_byte_array(),
+                };
+
+                Ok((model::DepositRequest::from(deposit), tx))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(Error::BitcoinEncodeTransaction)?
+            .into_iter()
+            .unzip();
+
+        self.context
+            .get_storage_mut()
+            .write_bitcoin_transactions(deposit_request_txs)
+            .await?;
         self.context
             .get_storage_mut()
             .write_deposit_requests(deposit_request)
@@ -378,9 +424,13 @@ mod tests {
     use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
     use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
     use blockstack_lib::chainstate::stacks::StacksTransaction;
+    use blockstack_lib::net::api::getinfo::RPCPeerInfoData;
+    use blockstack_lib::net::api::getpoxinfo::RPCPoxEpoch;
+    use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
     use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
     use blockstack_lib::types::chainstate::StacksAddress;
     use blockstack_lib::types::chainstate::StacksBlockId;
+    use clarity::vm::costs::ExecutionCost;
     use fake::Dummy;
     use fake::Fake;
     use model::BitcoinTxId;
@@ -558,6 +608,7 @@ mod tests {
         let mut rng = rand::rngs::StdRng::seed_from_u64(365);
         let mut test_harness = TestHarness::generate(&mut rng, 20, 0..5);
 
+        let block_hash = BlockHash::from_byte_array([1u8; 32]);
         let lock_time = 150;
         let max_fee = 32000;
         let amount = 500_000;
@@ -581,7 +632,7 @@ mod tests {
         // response.
         let get_tx_resp0 = GetTxResponse {
             tx: tx_setup0.tx.clone(),
-            block_hash: None,
+            block_hash: Some(block_hash.clone()),
             confirmations: None,
             block_time: None,
         };
@@ -621,13 +672,26 @@ mod tests {
         assert_eq!(block_observer.deposit_requests.len(), 1);
 
         block_observer
-            .extract_deposit_requests(&[tx_setup0.tx.clone()])
+            .extract_deposit_requests(&[tx_setup0.tx.clone()], block_hash)
             .await
             .unwrap();
         let storage = storage.lock().await;
         assert_eq!(storage.deposit_requests.len(), 1);
         let db_outpoint: (BitcoinTxId, u32) = (tx_setup0.tx.compute_txid().into(), 0);
         assert!(storage.deposit_requests.get(&db_outpoint).is_some());
+
+        assert!(storage
+            .bitcoin_transactions_to_blocks
+            .get(&db_outpoint.0)
+            .is_some());
+        assert_eq!(
+            storage
+                .raw_transactions
+                .get(db_outpoint.0.as_byte_array())
+                .unwrap()
+                .tx_type,
+            model::TransactionType::DepositRequest
+        );
 
         // Now the deposit_requests thing should be empty now, since we stored the things.
         assert!(block_observer.deposit_requests.is_empty());
@@ -945,17 +1009,51 @@ mod tests {
             })
         }
 
-        fn nakamoto_start_height(&self) -> u64 {
-            self.stacks_blocks
-                .first()
-                .map(|(_, block, _)| block.header.chain_length)
-                .unwrap_or_default()
-        }
         async fn estimate_fees<T>(&self, _: &T, _: FeePriority) -> Result<u64, Error>
         where
             T: crate::stacks::contracts::AsTxPayload,
         {
             Ok(500_000)
+        }
+
+        async fn get_pox_info(&self) -> Result<RPCPoxInfoData, Error> {
+            let nakamoto_start_height = self
+                .stacks_blocks
+                .first()
+                .map(|(_, block, _)| block.header.chain_length)
+                .unwrap_or_default();
+            let data = get_pox_info_data();
+
+            let result = RPCPoxInfoData {
+                epochs: vec![RPCPoxEpoch {
+                    epoch_id: clarity::types::StacksEpochId::Epoch30,
+                    start_height: nakamoto_start_height,
+                    end_height: 9223372036854776000,
+                    network_epoch: 11,
+                    block_limit: ExecutionCost {
+                        write_length: 15_000_000,
+                        write_count: 15_000,
+                        read_length: 100_000_000,
+                        read_count: 15_000,
+                        runtime: 5_000_000_000,
+                    },
+                }],
+                ..data
+            };
+
+            Ok(result)
+        }
+
+        async fn get_node_info(&self) -> Result<RPCPeerInfoData, Error> {
+            let data = get_node_info_data();
+
+            let result = RPCPeerInfoData {
+                burn_block_height: self.bitcoin_blocks.len() as u64,
+                stacks_tip_height: self.stacks_blocks.len() as u64,
+                ..data
+            };
+
+            Ok(result)
         }
     }
 
@@ -963,5 +1061,84 @@ mod tests {
         async fn get_deposits(&self) -> Result<Vec<CreateDepositRequest>, Error> {
             Ok(self.pending_deposits.clone())
         }
+    }
+
+    fn get_pox_info_data() -> RPCPoxInfoData {
+        let raw_json_response = r#"
+        {
+            "contract_id": "ST000000000000000000002AMW42H.pox-4",
+            "pox_activation_threshold_ustx": 700073322473389,
+            "first_burnchain_block_height": 0,
+            "current_burnchain_block_height": 1880,
+            "prepare_phase_block_length": 5,
+            "reward_phase_block_length": 15,
+            "reward_slots": 30,
+            "rejection_fraction": null,
+            "total_liquid_supply_ustx": 70007332247338910,
+            "current_cycle": {
+                "id": 94,
+                "min_threshold_ustx": 583400000000000,
+                "stacked_ustx": 5250510000000000,
+                "is_pox_active": true
+            },
+            "next_cycle": {
+                "id": 95,
+                "min_threshold_ustx": 583400000000000,
+                "min_increment_ustx": 8750916530917,
+                "stacked_ustx": 5250510000000000,
+                "prepare_phase_start_block_height": 1895,
+                "blocks_until_prepare_phase": 15,
+                "reward_phase_start_block_height": 1900,
+                "blocks_until_reward_phase": 20,
+                "ustx_until_pox_rejection": null
+            },
+            "epochs": [],
+            "min_amount_ustx": 583400000000000,
+            "prepare_cycle_length": 5,
+            "reward_cycle_id": 94,
+            "reward_cycle_length": 20,
+            "rejection_votes_left_required": null,
+            "next_reward_cycle_in": 20,
+            "contract_versions": []
+        }"#;
+
+        serde_json::from_str::<RPCPoxInfoData>(raw_json_response).unwrap()
+    }
+
+    fn get_node_info_data() -> RPCPeerInfoData {
+        let raw_json_response = r#"
+        {
+            "peer_version": 4207599114,
+            "pox_consensus": "daf212e6103309e3918de4b2bf39ae2399109d9a",
+            "burn_block_height": 2083,
+            "stable_pox_consensus": "11fc12900b1f1369098f1099bcb2708ea78ea3b4",
+            "stable_burn_block_height": 2082,
+            "server_version": "stacks-node 0.0.1 (:c87c0eb6c050688340b975b0b42fb0a1ae378afa, debug build, linux [x86_64])",
+            "network_id": 2147483648,
+            "parent_network_id": 3669344250,
+            "stacks_tip_height": 9520,
+            "stacks_tip": "ffd652ff665bb1b07b19e537a5a007d44ea1e8cd0ddfd8753d9f95f915aaee41",
+            "stacks_tip_consensus_hash": "11fc12900b1f1369098f1099bcb2708ea78ea3b4",
+            "genesis_chainstate_hash": "74237aa39aa50a83de11a4f53e9d3bb7d43461d1de9873f402e5453ae60bc59b",
+            "unanchored_tip": null,
+            "unanchored_seq": null,
+            "exit_at_block_height": null,
+            "is_fully_synced": true,
+            "node_public_key": "035379aa40c02890d253cfa577964116eb5295570ae9f7287cbae5f2585f5b2c7c",
+            "node_public_key_hash": "1dc27eba0247f8cc9575e7d45e50a0bc7e72427d",
+            "affirmations": {
+                "heaviest": "nnnnnnnnnn",
+                "stacks_tip": "nnnnnnnnnnp",
+                "sortition_tip": "nnnnnnnnnnp",
+                "tentative_best": "nnnnnnnnnnp"
+            },
+            "last_pox_anchor": {
+                "anchor_block_hash": "4f57cfdc7fe6cc7cfa5b7caa5791993cd01a9fa3162326d6cc74f34007ded99b",
+                "anchor_block_txid": "f96a10160fbece3070aed33ffe6afeb3540fa6a13e0d0c4f88b43ee8ebb68f9d"
+            },
+            "stackerdbs": []
+        }"#;
+
+        serde_json::from_str::<RPCPeerInfoData>(raw_json_response).unwrap()
     }
 }

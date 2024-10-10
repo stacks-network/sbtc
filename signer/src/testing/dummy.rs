@@ -423,7 +423,7 @@ impl fake::Dummy<DepositTxConfig> for BitcoinTx {
         let deposit = DepositScriptInputs {
             signers_public_key: config.aggregate_key.into(),
             recipient: fake::Faker.fake_with_rng::<StacksPrincipal, _>(rng).into(),
-            max_fee: config.max_fee,
+            max_fee: config.max_fee.min(config.amount),
         };
         let deposit_script = deposit.deposit_script();
         // This is the part of the reclaim script that the user controls.
@@ -451,6 +451,13 @@ impl fake::Dummy<DepositTxConfig> for BitcoinTx {
         };
 
         Self::from(deposit_tx)
+    }
+}
+
+impl fake::Dummy<fake::Faker> for BitcoinTx {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let deposit_config: DepositTxConfig = config.fake_with_rng(rng);
+        deposit_config.fake_with_rng(rng)
     }
 }
 

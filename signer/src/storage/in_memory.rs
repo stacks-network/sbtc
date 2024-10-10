@@ -635,6 +635,22 @@ impl super::DbRead for SharedStore {
 
         Ok(maybe_tx)
     }
+
+    async fn get_swept_deposit_requests(
+        &self,
+        _chain_tip: &model::BitcoinBlockHash,
+        _context_window: u16,
+    ) -> Result<Vec<model::SweptDepositRequest>, Error> {
+        unimplemented!()
+    }
+
+    async fn get_swept_withdrawal_requests(
+        &self,
+        _chain_tip: &model::BitcoinBlockHash,
+        _context_window: u16,
+    ) -> Result<Vec<model::SweptWithdrawalRequest>, Error> {
+        unimplemented!()
+    }
 }
 
 impl super::DbWrite for SharedStore {
@@ -649,6 +665,7 @@ impl super::DbWrite for SharedStore {
 
     async fn write_bitcoin_transactions(&self, txs: Vec<model::Transaction>) -> Result<(), Error> {
         for tx in txs {
+            self.write_transaction(&tx).await?;
             let bitcoin_transaction = model::BitcoinTxRef {
                 txid: tx.txid.into(),
                 block_hash: tx.block_hash.into(),
@@ -807,6 +824,7 @@ impl super::DbWrite for SharedStore {
         stacks_transactions: Vec<model::Transaction>,
     ) -> Result<(), Error> {
         for tx in stacks_transactions {
+            self.write_transaction(&tx).await?;
             let stacks_transaction = model::StacksTransaction {
                 txid: tx.txid.into(),
                 block_hash: tx.block_hash.into(),

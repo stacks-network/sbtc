@@ -1,25 +1,26 @@
 x-common-vars:
   - &STACKS_BLOCKCHAIN_COMMIT c87c0eb6c050688340b975b0b42fb0a1ae378afa
-  - &STACKS_API_COMMIT 1c325dfc04d9a81738c48961b4eef1c28fccb3bd
+  - &STACKS_API_COMMIT 46e1ae256e474eac98979d0a3df685fe3fa48d6d
   - &BTC_ADDR miEJtNKa3ASpA19v5ZhvbKTEieYjLpzCYT
   - &MINER_SEED 9e446f6b0c6a96cf2190e54bcd5a8569c3e386f091605499464389b8d4e0bfc201 # stx: STEW4ZNT093ZHK4NEQKX8QJGM2Y7WWJ2FQQS5C19, btc: miEJtNKa3ASpA19v5ZhvbKTEieYjLpzCYT, pub_key: 035379aa40c02890d253cfa577964116eb5295570ae9f7287cbae5f2585f5b2c7c, wif: cStMQXkK5yTFGP3KbNXYQ3sJf2qwQiKrZwR9QJnksp32eKzef1za
   - &BITCOIN_PEER_PORT 18444
   - &BITCOIN_RPC_PORT 18443
+  - &BITCOIN_BLOCK_HASH_STREAM_PORT 28332
   - &BITCOIN_RPC_USER devnet
   - &BITCOIN_RPC_PASS devnet
   - &MINE_INTERVAL ${MINE_INTERVAL:-1s}
-  - &MINE_INTERVAL_EPOCH25 ${MINE_INTERVAL_EPOCH25:-10s} # 10 second bitcoin block times in epoch 2.5
-  - &MINE_INTERVAL_EPOCH3 ${MINE_INTERVAL_EPOCH3:-30s} # 10 minute bitcoin block times in epoch 3
+  - &MINE_INTERVAL_EPOCH25 ${MINE_INTERVAL_EPOCH25:-5s} # 5 second bitcoin block times in epoch 2.5
+  - &MINE_INTERVAL_EPOCH3 ${MINE_INTERVAL_EPOCH3:-15s} # 15 second bitcoin block times in epoch 3
   - &NAKAMOTO_BLOCK_INTERVAL 2 # seconds to wait between issuing stx-transfer transactions (which triggers Nakamoto block production)
   - &STACKS_20_HEIGHT ${STACKS_20_HEIGHT:-0}
-  - &STACKS_2_05_HEIGHT ${STACKS_2_05_HEIGHT:-102}
-  - &STACKS_21_HEIGHT ${STACKS_21_HEIGHT:-103}
-  - &STACKS_POX2_HEIGHT ${STACKS_POX2_HEIGHT:-104} # 104 is is stacks_block=1, 106 is stacks_block=3
-  - &STACKS_22_HEIGHT ${STACKS_22_HEIGHT:-105}
-  - &STACKS_23_HEIGHT ${STACKS_23_HEIGHT:-106}
-  - &STACKS_24_HEIGHT ${STACKS_24_HEIGHT:-107}
-  - &STACKS_25_HEIGHT ${STACKS_25_HEIGHT:-108}
-  - &STACKS_30_HEIGHT ${STACKS_30_HEIGHT:-131}
+  - &STACKS_2_05_HEIGHT ${STACKS_2_05_HEIGHT:-203}
+  - &STACKS_21_HEIGHT ${STACKS_21_HEIGHT:-204}
+  - &STACKS_POX2_HEIGHT ${STACKS_POX2_HEIGHT:-205} # 104 is is stacks_block=1, 106 is stacks_block=3
+  - &STACKS_22_HEIGHT ${STACKS_22_HEIGHT:-206}
+  - &STACKS_23_HEIGHT ${STACKS_23_HEIGHT:-207}
+  - &STACKS_24_HEIGHT ${STACKS_24_HEIGHT:-208}
+  - &STACKS_25_HEIGHT ${STACKS_25_HEIGHT:-209}
+  - &STACKS_30_HEIGHT ${STACKS_30_HEIGHT:-232}
   - &STACKING_CYCLES ${STACKING_CYCLES:-1} # number of cycles to stack-stx or stack-extend for
   - &POX_PREPARE_LENGTH ${POX_PREPARE_LENGTH:-5}
   - &POX_REWARD_LENGTH ${POX_REWARD_LENGTH:-20}
@@ -29,29 +30,31 @@ x-common-vars:
 services:
   bitcoin:
     build:
-      context: .
+      context: ./bitcoin
       dockerfile: Dockerfile.btc
     ports:
       - "18443:18443"
-      - "18444:18444"
+      - 28332
     volumes:
-      - ./bitcoin.conf:/root/.bitcoin/bitcoin.conf
-      - ./init-data:/init-data
-      - chainstate:/chainstate
-    environment:
-      DATA_DIR: /chainstate/bitcoin-data
+      - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
     entrypoint:
       - /bin/bash
       - -c
       - |
         set -e
-        mkdir -p $${DATA_DIR}
-        rm -rf $${DATA_DIR}/*
         bitcoind
 
-  postgres:
+  postgres-stacks-api:
     image: postgres:15-alpine
-    container_name: postgres
+    container_name: postgres-stacks-api
+    stop_grace_period: 5s
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+
+  postgres-1:
+    image: postgres:15-alpine
+    container_name: postgres-1
     stop_grace_period: 5s
     ports:
       - 5432:5432
@@ -59,6 +62,85 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: signer
+
+  postgres-2:
+    image: postgres:15-alpine
+    container_name: postgres-2
+    stop_grace_period: 5s
+    ports:
+      - 5433:5432
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: signer
+
+  postgres-3:
+    image: postgres:15-alpine
+    container_name: postgres-3
+    stop_grace_period: 5s
+    ports:
+      - 5434:5432
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: signer
+
+  sbtc-signer-1:
+    build:
+      context: ./sbtc-signer
+      dockerfile: Dockerfile.sbtc-signer
+    entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
+    depends_on:
+      - postgres-1
+      - stacks
+      - bitcoin
+      - bitcoin-miner
+    environment:
+      RUST_LOG: info
+      SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-1:5432/signer
+      SIGNER_SIGNER__PRIVATE_KEY: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc
+      SIGNER_SIGNER__P2P__LISTEN_ON: tcp://0.0.0.0:4122
+      SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-2:4122,tcp://sbtc-signer-3:4122
+    volumes:
+      - ./sbtc-signer/signer-config.toml:/signer-config.toml
+
+  sbtc-signer-2:
+    build:
+      context: ./sbtc-signer
+      dockerfile: Dockerfile.sbtc-signer
+    entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
+    depends_on:
+      - postgres-2
+      - stacks
+      - bitcoin
+      - bitcoin-miner
+    environment:
+      RUST_LOG: info
+      SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-2:5432/signer
+      SIGNER_SIGNER__PRIVATE_KEY: 9bfecf16c9c12792589dd2b843f850d5b89b81a04f8ab91c083bdf6709fbefee01
+      SIGNER_SIGNER__P2P__LISTEN_ON: tcp://0.0.0.0:4122
+      SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-1:4122,tcp://sbtc-signer-3:4122
+    volumes:
+      - ./sbtc-signer/signer-config.toml:/signer-config.toml
+
+  sbtc-signer-3:
+    build:
+      context: ./sbtc-signer
+      dockerfile: Dockerfile.sbtc-signer
+    entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
+    depends_on:
+      - postgres-3
+      - stacks
+      - bitcoin
+      - bitcoin-miner
+    environment:
+      RUST_LOG: info
+      SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-3:5432/signer
+      SIGNER_SIGNER__PRIVATE_KEY: 3ec0ca5770a356d6cd1a9bfcbf6cd151eb1bd85c388cc00648ec4ef5853fdb7401
+      SIGNER_SIGNER__P2P__LISTEN_ON: tcp://0.0.0.0:4122
+      SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-1:4122,tcp://sbtc-signer-2:4122
+    volumes:
+      - ./sbtc-signer/signer-config.toml:/signer-config.toml
 
   mariadb:
     image: mariadb:10.5.21
@@ -74,12 +156,12 @@ services:
 
   bitcoin-miner:
     build:
-      context: .
+      context: ./bitcoin
       dockerfile: Dockerfile.btc
     depends_on:
       - bitcoin
     volumes:
-      - ./bitcoin.conf:/root/.bitcoin/bitcoin.conf
+      - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
     environment:
       BTC_ADDR: *BTC_ADDR
       MINE_INTERVAL: *MINE_INTERVAL
@@ -97,11 +179,14 @@ services:
         trap "kill 0" EXIT
         bitcoin-cli -rpcconnect=bitcoin -rpcwait getmininginfo
         bitcoin-cli -rpcconnect=bitcoin -named createwallet wallet_name=main descriptors=false
-        bitcoin-cli -rpcconnect=bitcoin importaddress $${BTC_ADDR} "" false
-        bitcoin-cli -rpcconnect=bitcoin generatetoaddress $${INIT_BLOCKS} $${BTC_ADDR}
+        bitcoin-cli -rpcconnect=bitcoin -named createwallet wallet_name=depositor descriptors=true
+        bitcoin-cli -rpcwallet=main -rpcconnect=bitcoin importaddress $${BTC_ADDR} "" false
+        bitcoin-cli -rpcwallet=main -rpcconnect=bitcoin generatetoaddress $${INIT_BLOCKS} $${BTC_ADDR}
+        ADDR=$$(bitcoin-cli -rpcwallet=depositor -rpcconnect=bitcoin getnewaddress label="" bech32)
+        bitcoin-cli -rpcwallet=depositor -rpcconnect=bitcoin generatetoaddress 101 $${ADDR}
         DEFAULT_TIMEOUT=$$(($$(date +%s) + 30))
         while true; do
-          TX=$$(bitcoin-cli -rpcconnect=bitcoin listtransactions '*' 1 0 true)
+          TX=$$(bitcoin-cli -rpcwallet=main -rpcconnect=bitcoin listtransactions '*' 1 0 true)
           CONFS=$$(echo "$${TX}" | jq '.[].confirmations')
           if [ "$${CONFS}" = "0" ] || [ $$(date +%s) -gt $$DEFAULT_TIMEOUT ]; then
             if [ $$(date +%s) -gt $$DEFAULT_TIMEOUT ]; then
@@ -109,14 +194,14 @@ services:
             else
               echo "Detected Stacks mining mempool tx, mining btc block..."
             fi
-            bitcoin-cli -rpcconnect=bitcoin generatetoaddress 1 "$${BTC_ADDR}"
+            bitcoin-cli -rpcwallet=main -rpcconnect=bitcoin generatetoaddress 1 "$${BTC_ADDR}"
             DEFAULT_TIMEOUT=$$(($$(date +%s) + 30))
           else
             echo "No Stacks mining tx detected"
           fi
 
           SLEEP_DURATION=$${MINE_INTERVAL}
-          BLOCK_HEIGHT=$$(bitcoin-cli -rpcconnect=bitcoin getblockcount)
+          BLOCK_HEIGHT=$$(bitcoin-cli -rpcwallet=main -rpcconnect=bitcoin getblockcount)
           if [ "$${BLOCK_HEIGHT}" -gt $$(( $${STACKS_30_HEIGHT} + 1 )) ]; then
             echo "In Epoch3, sleeping for $${MINE_INTERVAL_EPOCH3} ..."
             SLEEP_DURATION=$${MINE_INTERVAL_EPOCH3}
@@ -130,7 +215,8 @@ services:
 
   stacks:
     build:
-      context: ./stacks/docker
+      context: ./stacks
+      dockerfile: Dockerfile.stacks
       args:
         GIT_COMMIT: *STACKS_BLOCKCHAIN_COMMIT
     depends_on:
@@ -138,15 +224,12 @@ services:
     ports:
       - "20443:20443"
     volumes:
-      - ./stacks-krypton-miner.toml/:/root/config.toml.in
-      - ./bitcoin.conf:/root/.bitcoin/bitcoin.conf
-      - ./init-data:/init-data
-      - chainstate:/chainstate
+      - ./stacks/stacks-regtest-miner.toml:/data/config.toml.in
+      - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
     environment:
       # STACKS_LOG_TRACE: 1 # uncomment for trace logging
       # STACKS_LOG_DEBUG: 1
       # RUST_LOG: debug
-      DATA_DIR: /chainstate/stacks-blockchain-miner-data
       BITCOIN_PEER_HOST: bitcoin
       BITCOIN_PEER_PORT: *BITCOIN_PEER_PORT
       BITCOIN_RPC_PORT: *BITCOIN_RPC_PORT
@@ -170,11 +253,6 @@ services:
       - -c
       - |
         set -e
-        if [[ ! -z "$${REWARD_RECIPIENT}" ]]; then
-          export REWARD_RECIPIENT_CONF="block_reward_recipient = \"$${REWARD_RECIPIENT}\""
-        fi
-        mkdir -p $${DATA_DIR}
-        rm -rf $${DATA_DIR}/*
         envsubst < config.toml.in > config.toml
         bitcoin-cli -rpcwait -rpcconnect=bitcoin getmininginfo
         exec stacks-node start --config config.toml
@@ -187,18 +265,18 @@ services:
       context: ./stacks-api/docker
       args:
         GIT_URI: "https://github.com/hirosystems/stacks-blockchain-api.git"
-        GIT_BRANCH: "v7.10.0-nakamoto.7"
+        GIT_BRANCH: "v8.0.3"
     ports:
       - 3999:3999
       - 3700:3700
     depends_on:
-      - postgres
+      - postgres-stacks-api
       - stacks
       - bitcoin
     environment:
       NODE_ENV: "production"
       GIT_TAG: "v7.10.0-nakamoto.7"
-      PG_HOST: "postgres"
+      PG_HOST: "postgres-stacks-api"
       PG_PORT: 5432
       PG_USER: "postgres"
       PG_PASSWORD: "postgres"
@@ -214,19 +292,18 @@ services:
 
   stacks-signer-1:
     build:
-      context: ./stacks/docker
+      context: ./stacks
+      dockerfile: Dockerfile.stacks
       args:
         GIT_COMMIT: *STACKS_BLOCKCHAIN_COMMIT
     depends_on:
       - stacks
     volumes:
-      - ./signer-0.toml:/root/config.toml.in
-      - chainstate:/chainstate
+      - ./stacks/stacks-signer.toml:/data/config.toml.in
     environment:
-      SIGNER_DB_PATH: /chainstate/stacks-signer-1.sqlite
       STACKS_NODE_HOST: stacks:20443
-      STACKS_SIGNER_ENDPOINT: 0.0.0.0:30001
-      SIGNER_PRIVATE_KEY: 6a1a754ba863d7bab14adbbc3f8ebb090af9e871ace621d3e5ab634e1422885e01
+      STACKS_SIGNER_ENDPOINT: 0.0.0.0:30000
+      SIGNER_PRIVATE_KEY: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc01
     entrypoint:
       - /bin/bash
       - -c
@@ -237,19 +314,18 @@ services:
 
   stacks-signer-2:
     build:
-      context: ./stacks/docker
+      context: ./stacks
+      dockerfile: Dockerfile.stacks
       args:
         GIT_COMMIT: *STACKS_BLOCKCHAIN_COMMIT
     depends_on:
       - stacks
     volumes:
-      - ./signer-0.toml:/root/config.toml.in
-      - chainstate:/chainstate
+      - ./stacks/stacks-signer.toml:/data/config.toml.in
     environment:
-      SIGNER_DB_PATH: /chainstate/stacks-signer-2.sqlite
       STACKS_NODE_HOST: stacks:20443
-      STACKS_SIGNER_ENDPOINT: 0.0.0.0:30002
-      SIGNER_PRIVATE_KEY: b463f0df6c05d2f156393eee73f8016c5372caa0e9e29a901bb7171d90dc4f1401
+      STACKS_SIGNER_ENDPOINT: 0.0.0.0:30000
+      SIGNER_PRIVATE_KEY: 9bfecf16c9c12792589dd2b843f850d5b89b81a04f8ab91c083bdf6709fbefee01
     entrypoint:
       - /bin/bash
       - -c
@@ -260,19 +336,18 @@ services:
 
   stacks-signer-3:
     build:
-      context: ./stacks/docker
+      context: ./stacks
+      dockerfile: Dockerfile.stacks
       args:
         GIT_COMMIT: *STACKS_BLOCKCHAIN_COMMIT
     depends_on:
       - stacks
     volumes:
-      - ./signer-0.toml:/root/config.toml.in
-      - chainstate:/chainstate
+      - ./stacks/stacks-signer.toml:/data/config.toml.in
     environment:
-      SIGNER_DB_PATH: /chainstate/stacks-signer-3.sqlite
       STACKS_NODE_HOST: stacks:20443
-      STACKS_SIGNER_ENDPOINT: 0.0.0.0:30003
-      SIGNER_PRIVATE_KEY: 7036b29cb5e235e5fd9b09ae3e8eec4404e44906814d5d01cbca968a60ed4bfb01
+      STACKS_SIGNER_ENDPOINT: 0.0.0.0:30000
+      SIGNER_PRIVATE_KEY: 3ec0ca5770a356d6cd1a9bfcbf6cd151eb1bd85c388cc00648ec4ef5853fdb7401
     entrypoint:
       - /bin/bash
       - -c
@@ -289,16 +364,17 @@ services:
       context: ./stacks-explorer/docker
       args:
         GIT_URI: "https://github.com/hirosystems/explorer.git"
-        GIT_BRANCH: "v1.170.1"
+        GIT_BRANCH: "v1.211.2"
     ports:
       - 3020:3000
     depends_on:
       - bitcoin
       - stacks
       - stacks-api
-      - postgres
+      - postgres-stacks-api
     environment:
       NEXT_PUBLIC_MAINNET_API_SERVER: "http://stacks-api:3999"
+
   electrs:
     image: electrs:latest
     container_name: electrs
@@ -315,6 +391,7 @@ services:
       RUST_BACKTRACE: 1
       BITCOIN_RPC_HOST: "bitcoin"
       BITCOIN_RPC_PORT: "18443"
+
   mempool-web:
     image: mempool/frontend:latest
     container_name: mempool-web
@@ -331,6 +408,7 @@ services:
       FRONTEND_HTTP_PORT: "8083"
       BACKEND_MAINNET_HTTP_HOST: "mempool-api"
     command: "./wait-for mariadb:3306 --timeout=720 -- nginx -g 'daemon off;'"
+
   mempool-api:
     image: mempool/backend:latest
     container_name: mempool-api
@@ -369,80 +447,39 @@ services:
     command: "-jar DynamoDBLocal.jar -sharedDb -dbPath ./data"
     ports:
       - "8000:8000"
+    user: root
     volumes:
       - "../../dynamodb/data:/home/dynamodblocal/data"
-    networks:
-      - aws-local-vpc
 
   # Modifies the CDK template and creates DynamoDB Tables if necessary.
-  aws-setup:
-    build: ../../aws-setup
+  emily-aws-setup:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.emily
+      target: emily-aws-setup
     depends_on:
       dynamodb:
         condition: service_started
-    volumes:
-      - "../../aws-setup/initialize.py:/initialize.py"
-      - "../../../emily/cdk/cdk.out:/cdk.out"
     environment:
       - DYNAMODB_ENDPOINT=http://dynamodb:8000
-      - LOCAL_LAMBDA_PATH=/code/emily-handler/bootstrap.zip
-      - INPUT_CDK_TEMPLATE=/cdk.out/EmilyStack.template.json
-      - OUTPUT_CDK_TEMPLATE=/cdk.out/EmilyStack.devenv.template.json
-    command: python3 ./initialize.py
-    networks:
-      - aws-local-vpc
 
   # Hosts the SAM CLI
-  apigateway:
-    build: ../../apigateway
+  emily-server:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.emily
+      target: emily-server
     depends_on:
-      aws-setup:
+      emily-aws-setup:
         condition: service_completed_successfully
-    ports:
-      - "3000:3000"
-    volumes:
-      - "../../../target/lambda:/code"
-      - "../../../emily/cdk/cdk.out:/cdk.out"
-      - "../../lambda:/lambda"
-      # Give this container access to the host docker socket so it makes sibling containers and
-      # not child containers.
-      - "/var/run/docker.sock:/var/run/docker.sock"
-      # When the SAM CLI launches a lambda container it decompresses the sources in folder under
-      # `tmp` and then mounts that folder onto the new container. When two sibling containers
-      # need access to the same directory they need to do that via a directory on the shared host.
-      #
-      # tl;dr: We're running SAM in a docker container and launching the lambda as a sibling container
-      # so we need the `tmp` directory to be shared on the host.
-      - "/tmp:/tmp"
     environment:
-      - SAM_CLI_TELEMETRY=0
-      - SAM_CLI_CONTAINER_CONNECTION_TIMEOUT=10
-    command: |
-      sam local start-api
-        --host 0.0.0.0
-        --container-host ${CONTAINER_HOST}
-        --docker-network aws-local-vpc
-        --warm-containers LAZY
-        --env-vars /lambda/env.json
-        -t /cdk.out/EmilyStack.devenv.template.json
-    networks:
-      - aws-local-vpc
-
-  service-test:
-    build: ../../service-test
-    image: "debian:12.5"
-    profiles:
-      - test
-    depends_on:
-      apigateway:
-        condition: service_started
-    volumes:
-      - "../../service-test:/service-test:ro"
-    command: bash /service-test/curl-test.sh apigateway 3000 5
-    networks:
-      - aws-local-vpc
-
-  # Auto-stacking scripts
+      - AWS_ACCESS_KEY_ID=xxxxxxxxxxxx
+      - AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxx
+      - AWS_REGION=us-west-2
+      - DYNAMODB_ENDPOINT=http://dynamodb:8000
+      - PORT=3031
+    ports:
+      - "3031:3031"
 
   stacker:
     build:
@@ -452,7 +489,7 @@ services:
       STACKS_CORE_RPC_HOST: stacks
       STACKS_CORE_RPC_PORT: 20443
       STACKING_CYCLES: *STACKING_CYCLES
-      STACKING_KEYS: 6a1a754ba863d7bab14adbbc3f8ebb090af9e871ace621d3e5ab634e1422885e01,b463f0df6c05d2f156393eee73f8016c5372caa0e9e29a901bb7171d90dc4f1401,7036b29cb5e235e5fd9b09ae3e8eec4404e44906814d5d01cbca968a60ed4bfb01
+      STACKING_KEYS: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc01,9bfecf16c9c12792589dd2b843f850d5b89b81a04f8ab91c083bdf6709fbefee01,3ec0ca5770a356d6cd1a9bfcbf6cd151eb1bd85c388cc00648ec4ef5853fdb7401
       STACKS_25_HEIGHT: *STACKS_25_HEIGHT
       STACKS_30_HEIGHT: *STACKS_30_HEIGHT
       POX_PREPARE_LENGTH: *POX_PREPARE_LENGTH
@@ -471,7 +508,7 @@ services:
       STACKS_CORE_RPC_HOST: stacks-api
       STACKS_CORE_RPC_PORT: 3999
       STACKING_CYCLES: *STACKING_CYCLES
-      STACKING_KEYS: 6a1a754ba863d7bab14adbbc3f8ebb090af9e871ace621d3e5ab634e1422885e01,b463f0df6c05d2f156393eee73f8016c5372caa0e9e29a901bb7171d90dc4f1401,7036b29cb5e235e5fd9b09ae3e8eec4404e44906814d5d01cbca968a60ed4bfb01
+      STACKING_KEYS: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc01,9bfecf16c9c12792589dd2b843f850d5b89b81a04f8ab91c083bdf6709fbefee01,3ec0ca5770a356d6cd1a9bfcbf6cd151eb1bd85c388cc00648ec4ef5853fdb7401
       STACKS_25_HEIGHT: *STACKS_25_HEIGHT
       STACKS_30_HEIGHT: *STACKS_30_HEIGHT
       POX_PREPARE_LENGTH: *POX_PREPARE_LENGTH
@@ -496,11 +533,11 @@ services:
       STACKS_CORE_RPC_PORT: 20443
       NAKAMOTO_BLOCK_INTERVAL: *NAKAMOTO_BLOCK_INTERVAL
       STACKS_30_HEIGHT: *STACKS_30_HEIGHT
-      ACCOUNT_KEYS: 0d2f965b472a82efd5a96e6513c8b9f7edc725d5c96c7d35d6c722cedeb80d1b01,975b251dd7809469ef0c26ec3917971b75c51cd73a022024df4bf3b232cc2dc001,c71700b07d520a8c9731e4d0f095aa6efb91e16e25fb27ce2b72e7b698f8127a01
+      ACCOUNT_KEYS: e26e611fc92fe535c5e2e58a6a446375bb5e3b471440af21bbe327384befb50a01,e3ebd73a51da9a2ab0c6679145420876bf4338554a8972e3ab200cef7adbec6001,0bfff38daea4561a4343c9b3f29bfb06e32a988868fc68beed31a6c0f6de4cf701
       STACKS_25_HEIGHT: *STACKS_25_HEIGHT
       POX_PREPARE_LENGTH: *POX_PREPARE_LENGTH
       POX_REWARD_LENGTH: *POX_REWARD_LENGTH
-      STACKING_KEYS: 6a1a754ba863d7bab14adbbc3f8ebb090af9e871ace621d3e5ab634e1422885e01,b463f0df6c05d2f156393eee73f8016c5372caa0e9e29a901bb7171d90dc4f1401,7036b29cb5e235e5fd9b09ae3e8eec4404e44906814d5d01cbca968a60ed4bfb01
+      STACKING_KEYS: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc01,9bfecf16c9c12792589dd2b843f850d5b89b81a04f8ab91c083bdf6709fbefee01,3ec0ca5770a356d6cd1a9bfcbf6cd151eb1bd85c388cc00648ec4ef5853fdb7401
     depends_on:
       - stacks
     entrypoint:
@@ -528,9 +565,3 @@ services:
     depends_on:
       - stacks
       - stacks-api
-
-networks:
-  aws-local-vpc:
-    name: aws-local-vpc
-volumes:
-  chainstate:
