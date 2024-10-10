@@ -264,8 +264,8 @@ struct ScriptParameters {
 /// This function is used to convert the deposit and reclaim scripts into the
 /// parameters that are stored in the database.
 fn scripts_to_resource_parameters(
-    deposit_script: &String,
-    reclaim_script: &String,
+    deposit_script: &str,
+    reclaim_script: &str,
 ) -> Result<ScriptParameters, Error> {
     let deposit_script_buf = ScriptBuf::from_hex(deposit_script)?;
     let deposit_script_inputs = sbtc::deposits::DepositScriptInputs::parse(&deposit_script_buf)?;
