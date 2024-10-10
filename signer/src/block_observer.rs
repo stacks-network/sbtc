@@ -279,11 +279,12 @@ where
         for tx in txs {
             // If any of the outputs are spent to one of the signers'
             // addresses, then we care about it
-            if !tx
+            let outputs_spent_to_signers = tx
                 .output
                 .iter()
-                .any(|tx_out| signer_script_pubkeys.contains(&tx_out.script_pubkey))
-            {
+                .any(|tx_out| signer_script_pubkeys.contains(&tx_out.script_pubkey));
+
+            if !outputs_spent_to_signers {
                 continue;
             }
 

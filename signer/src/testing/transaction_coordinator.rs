@@ -372,7 +372,7 @@ where
         };
 
         // The scenario is: (* = no utxo)
-        // [bitcoin_chain_tip] +- [block a1] - [block a2] - [block a3*]
+        // [initial chain tip] +- [block a1] - [block a2] - [block a3*]
         //                     +- [block b1] - [block b2] - [block b3*]
         //                     +- [block c1] - [block c2*]
 
@@ -558,7 +558,7 @@ where
         let original_test_data = test_data.clone();
 
         // The scenario is:
-        // [bitcoin_chain_tip] +- [block a1 with signer utxo] - [block a2 with donation]
+        // [initial chain tip] +- [block a1 with signer utxo] - [block a2 with donation]
         //                     +- [block b1 with donation]
 
         let (block, block_a1) = test_data.new_block(
