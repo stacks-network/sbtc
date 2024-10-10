@@ -239,7 +239,7 @@ pub struct PolyCommitment {
     pub poly: ::prost::alloc::vec::Vec<Point>,
 }
 /// This type maps to the `ID` type in WSTS, which encapsulates the ID and a
-/// Schnorr proof of ownership of the polynomial
+/// Schnorr proof of ownership of the polynomial.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ProofIdentifier {
@@ -279,10 +279,11 @@ pub struct TupleProof {
     #[prost(message, optional, tag = "3")]
     pub signature: ::core::option::Option<Scalar>,
 }
-/// // A merkle root is a 256 bit hash
+/// A merkle root is a 256 bit hash
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MerkleRoot {
+    /// The root of the merkle tree
     #[prost(message, optional, tag = "1")]
     pub root: ::core::option::Option<super::Uint256>,
 }

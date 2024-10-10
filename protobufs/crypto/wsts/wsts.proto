@@ -7,7 +7,7 @@ import "crypto/common.proto";
 // Scalar maps to a wrapper around libsecp256k1's internal secp256k1_scalar
 // struct. It's a number between 0 and the order of the secp256k1 curve.
 message Scalar {
-    Uint256 value = 1;
+  Uint256 value = 1;
 }
 
 // Represents a point on the secp256k1 elliptic curve. A Point is either a
@@ -22,168 +22,168 @@ message Point {
 
 // DKG begin message from coordinator to signers
 message DkgBegin {
-    // DKG round ID
-    uint64 dkg_id = 1;
+  // DKG round ID
+  uint64 dkg_id = 1;
 }
 
 // DKG public shares message from signer to all signers and coordinator
 message DkgPublicShares {
-    // DKG round ID
-    uint64 dkg_id = 1;
-    // Signer ID
-    uint32 signer_id = 2;
-    // List of (party_id, commitment)
-    repeated PartyCommitment commitments = 3;
+  // DKG round ID
+  uint64 dkg_id = 1;
+  // Signer ID
+  uint32 signer_id = 2;
+  // List of (party_id, commitment)
+  repeated PartyCommitment commitments = 3;
 }
 
 // The public polynomial committed to by one of the party members who are
 // participating in distributed key generation.
 message PartyCommitment {
-    // The specific party that submitted the public polynomial.
-    uint32 party_id = 1;
-    // The public polynomial of the associated party. Each polynomial
-    // includes a proof of ownership of the underlying private privte
-    // polynomial.
-    PolyCommitment commitment = 2;
+  // The specific party that submitted the public polynomial.
+  uint32 party_id = 1;
+  // The public polynomial of the associated party. Each polynomial
+  // includes a proof of ownership of the underlying private privte
+  // polynomial.
+  PolyCommitment commitment = 2;
 }
 
 // DKG private begin message from signer to all signers and coordinator
 message DkgPrivateBegin {
-    // DKG round ID
-    uint64 dkg_id = 1;
-    // Signer IDs who responded in time for this DKG round
-    repeated uint32 signer_ids = 2;
-    // Key IDs who responded in time for this DKG round
-    repeated uint32 key_ids = 3;
+  // DKG round ID
+  uint64 dkg_id = 1;
+  // Signer IDs who responded in time for this DKG round
+  repeated uint32 signer_ids = 2;
+  // Key IDs who responded in time for this DKG round
+  repeated uint32 key_ids = 3;
 }
 
 // DKG private shares message from signer to all signers and coordinator
 message DkgPrivateShares {
-    // DKG round ID
-    uint64 dkg_id = 1;
-    // Signer ID
-    uint32 signer_id = 2;
-    // List of (src_party_id, Map(dst_key_id, encrypted_share))
-    repeated PrivateShare shares = 3;
+  // DKG round ID
+  uint64 dkg_id = 1;
+  // Signer ID
+  uint32 signer_id = 2;
+  // List of (src_party_id, Map(dst_key_id, encrypted_share))
+  repeated PrivateShare shares = 3;
 }
 
 message PrivateShare {
-    uint32 source_party_id = 1;
-    // The encrypted private shares to send to the the other parties.
-    repeated SecretShare encrypted_shares = 2;
+  uint32 source_party_id = 1;
+  // The encrypted private shares to send to the the other parties.
+  repeated SecretShare encrypted_shares = 2;
 }
 
 message SecretShare {
-    uint32 signer_id = 1;
-    // This is the private polynomial evaluated at the `signer_id` and then
-    // encrypted in such a way that only the public key associated with the
-    // above `signer_id` can decrypt it.
-    bytes encrypted_secret_share = 2;
+  uint32 signer_id = 1;
+  // This is the private polynomial evaluated at the `signer_id` and then
+  // encrypted in such a way that only the public key associated with the
+  // above `signer_id` can decrypt it.
+  bytes encrypted_secret_share = 2;
 }
 
 // DKG end begin message from signer to all signers and coordinator
 message DkgEndBegin {
-    // DKG round ID
-    uint64 dkg_id = 1;
-    // Signer IDs who responded in time for this DKG round
-    repeated uint32 signer_ids = 2;
-    // Key IDs who responded in time for this DKG round
-    repeated uint32 key_ids = 3;
+  // DKG round ID
+  uint64 dkg_id = 1;
+  // Signer IDs who responded in time for this DKG round
+  repeated uint32 signer_ids = 2;
+  // Key IDs who responded in time for this DKG round
+  repeated uint32 key_ids = 3;
 }
 
 // DKG end message from signers to coordinator
 message DkgEnd {
-    // DKG round ID
-    uint64 dkg_id = 1;
-    // Signer ID
-    uint32 signer_id = 2;
-    // DKG status for this Signer after receiving public/private shares
-    // pub status: DkgStatus,
+  // DKG round ID
+  uint64 dkg_id = 1;
+  // Signer ID
+  uint32 signer_id = 2;
+  // DKG status for this Signer after receiving public/private shares
+  // pub status: DkgStatus,
 }
 
 // Nonce request message from coordinator to signers
 message NonceRequest {
-    // DKG round ID
-    uint64 dkg_id = 1;
-    // Signing round ID
-    uint64 sign_id = 2;
-    // Signing round iteration ID
-    uint64 sign_iter_id = 3;
-    // The message to sign
-    bytes message = 4;
-    // Whether to make a taproot signature
-    bool is_taproot = 5;
-    // Taproot merkle root. This field is optional
-    MerkleRoot merkle_root = 6;
+  // DKG round ID
+  uint64 dkg_id = 1;
+  // Signing round ID
+  uint64 sign_id = 2;
+  // Signing round iteration ID
+  uint64 sign_iter_id = 3;
+  // The message to sign
+  bytes message = 4;
+  // Whether to make a taproot signature
+  bool is_taproot = 5;
+  // Taproot merkle root. This field is optional
+  MerkleRoot merkle_root = 6;
 }
 
 // Nonce response message from signers to coordinator
 message NonceResponse {
-    // DKG round ID
-    uint64 dkg_id = 1;
-    // Signing round ID
-    uint64 sign_id = 2;
-    // Signing round iteration ID
-    uint64 sign_iter_id = 3;
-    // Signer ID
-    uint32 signer_id = 4;
-    // Key IDs
-    repeated uint32 key_ids = 5;
-    // Public nonces
-    repeated PublicNonce nonces = 6;
-    // Bytes being signed
-    bytes message = 7;
+  // DKG round ID
+  uint64 dkg_id = 1;
+  // Signing round ID
+  uint64 sign_id = 2;
+  // Signing round iteration ID
+  uint64 sign_iter_id = 3;
+  // Signer ID
+  uint32 signer_id = 4;
+  // Key IDs
+  repeated uint32 key_ids = 5;
+  // Public nonces
+  repeated PublicNonce nonces = 6;
+  // Bytes being signed
+  bytes message = 7;
 }
 
 // Signature share request message from coordinator to signers
 message SignatureShareRequest {
-    // DKG round ID
-    uint64 dkg_id = 1;
-    // Signing round ID
-    uint64 sign_id = 2;
-    // Signing round iteration ID
-    uint64 sign_iter_id = 3;
-    // Nonces responses used for this signature
-    repeated NonceResponse nonce_responses = 4;
-    // Bytes to sign
-    bytes message = 5;
-    // Whether to make a taproot signature
-    bool is_taproot = 6;
-    // Taproot merkle root. This field is optional
-    MerkleRoot merkle_root = 7;
+  // DKG round ID
+  uint64 dkg_id = 1;
+  // Signing round ID
+  uint64 sign_id = 2;
+  // Signing round iteration ID
+  uint64 sign_iter_id = 3;
+  // Nonces responses used for this signature
+  repeated NonceResponse nonce_responses = 4;
+  // Bytes to sign
+  bytes message = 5;
+  // Whether to make a taproot signature
+  bool is_taproot = 6;
+  // Taproot merkle root. This field is optional
+  MerkleRoot merkle_root = 7;
 }
 
 // Signature share response message from signers to coordinator
 message SignatureShareResponse {
-    // DKG round ID
-    uint64 dkg_id = 1;
-    // Signing round ID
-    uint64 sign_id = 2;
-    // Signing round iteration ID
-    uint64 sign_iter_id = 3;
-    // Signer ID
-    uint32 signer_id = 4;
-    // Signature shares from this Signer
-    repeated SignatureShare signature_shares = 5;
+  // DKG round ID
+  uint64 dkg_id = 1;
+  // Signing round ID
+  uint64 sign_id = 2;
+  // Signing round iteration ID
+  uint64 sign_iter_id = 3;
+  // Signer ID
+  uint32 signer_id = 4;
+  // Signature shares from this Signer
+  repeated SignatureShare signature_shares = 5;
 }
 
 // A commitment to a polynonial, with a Schnorr proof of ownership bound to the ID
 message PolyCommitment {
-    // The party ID with a schnorr proof
-    ProofIdentifier id = 1;
-    // The public polynomial which commits to the secret polynomial
-    repeated Point poly = 2;
+  // The party ID with a schnorr proof
+  ProofIdentifier id = 1;
+  // The public polynomial which commits to the secret polynomial
+  repeated Point poly = 2;
 }
 
 // This type maps to the `ID` type in WSTS, which encapsulates the ID and a
 // Schnorr proof of ownership of the polynomial.
 message ProofIdentifier {
-    // The ID
-    Scalar id = 1;
-    // The public schnorr response, kG
-    Point schnorr_response = 2;
-    // The aggregate of the schnorr committed values, kca
-    Scalar aggregate_commitment = 3;
+  // The ID
+  Scalar id = 1;
+  // The public schnorr response, kG
+  Point schnorr_response = 2;
+  // The aggregate of the schnorr committed values, kca
+  Scalar aggregate_commitment = 3;
 }
 
 // // Final DKG status after receiving public and private shares
@@ -202,21 +202,21 @@ message ProofIdentifier {
 
 // A bad private share
 message BadPrivateShare {
-    // The DH shared key between these participants
-    Point shared_key = 1;
-    // Proof that the shared key is a valid DH tuple as per Chaum-Pedersen.
-    TupleProof tuple_proof = 2;
+  // The DH shared key between these participants
+  Point shared_key = 1;
+  // Proof that the shared key is a valid DH tuple as per Chaum-Pedersen.
+  TupleProof tuple_proof = 2;
 }
 
 // A Chaum-Pedersen proof that (G, A=a*G, B=b*G, K=(a*b)*G) is a
 // Diffie-Hellman tuple.
 message TupleProof {
-    // R = r*G for a random scalar r
-    Point random_commitment = 1;
-    // rB = r*B
-    Point response = 2;
-    // z = r + a*s where s = H(G,A,B,K,R) as per Fiat-Shamir
-    Scalar signature = 3;
+  // R = r*G for a random scalar r
+  Point random_commitment = 1;
+  // rB = r*B
+  Point response = 2;
+  // z = r + a*s where s = H(G,A,B,K,R) as per Fiat-Shamir
+  Scalar signature = 3;
 }
 
 // // Final DKG status after receiving public and private shares
@@ -227,26 +227,27 @@ message TupleProof {
 //     Failure(DkgFailure),
 // }
 
-// // A merkle root is a 256 bit hash
+// A merkle root is a 256 bit hash
 message MerkleRoot {
-    Uint256 root = 1;
+  // The root of the merkle tree
+  Uint256 root = 1;
 }
 
 // A commitment to the private nonce
 message PublicNonce {
-    // A commitment to the private nonce's first value
-    Point nonce_d = 1;
-    // A commitment to the private nonce's second value
-    Point nonce_e = 2;
+  // A commitment to the private nonce's first value
+  Point nonce_d = 1;
+  // A commitment to the private nonce's second value
+  Point nonce_e = 2;
 }
 
 // A share of the party signature with related values
 message SignatureShare {
-    // The ID of the party
-    uint32 id = 1;
-    // The party signature, z_i
-    Scalar signature_share = 2;
-    // The key IDs of the party
-    repeated uint32 key_ids = 3;
+  // The ID of the party
+  uint32 id = 1;
+  // The party signature, z_i
+  Scalar signature_share = 2;
+  // The key IDs of the party
+  repeated uint32 key_ids = 3;
 }
 
