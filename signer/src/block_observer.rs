@@ -321,32 +321,51 @@ where
         // Look through all the UTXOs in the given transaction slice and
         // keep the transactions where a UTXO is locked with a
         // `scriptPubKey` controlled by the signers.
-        let sbtc_txs = txs
-            .iter()
-            .filter(|tx| {
-                // If any of the outputs are spent to one of the signers'
-                // addresses, then we care about it
-                tx.output
-                    .iter()
-                    .any(|tx_out| signer_script_pubkeys.contains(&tx_out.script_pubkey))
-            })
-            .map(|tx| {
-                let mut tx_bytes = Vec::new();
-                tx.consensus_encode(&mut tx_bytes)?;
+        let mut sbtc_txs = Vec::new();
+        for tx in txs {
+            // If any of the outputs are spent to one of the signers'
+            // addresses, then we care about it
+            let outputs_spent_to_signers = tx
+                .output
+                .iter()
+                .any(|tx_out| signer_script_pubkeys.contains(&tx_out.script_pubkey));
 
-                // TODO: these aren't all sBTC transactions. Some of these
-                // could be "donations". One way to properly label these is
-                // to look at the scriptPubKey of the prevouts of the
-                // transaction.
-                Ok::<_, bitcoin::io::Error>(model::Transaction {
-                    txid: tx.compute_txid().to_byte_array(),
-                    tx: tx_bytes,
-                    tx_type: model::TransactionType::SbtcTransaction,
-                    block_hash: block_hash.to_byte_array(),
-                })
-            })
-            .collect::<Result<Vec<model::Transaction>, _>>()
-            .map_err(Error::BitcoinEncodeTransaction)?;
+            if !outputs_spent_to_signers {
+                continue;
+            }
+
+            let mut tx_bytes = Vec::new();
+            tx.consensus_encode(&mut tx_bytes)
+                .map_err(Error::BitcoinEncodeTransaction)?;
+
+            // sBTC transactions have as first txin a signers spendable output
+            let mut tx_type = model::TransactionType::Donation;
+            if let Some(txin) = tx.input.first() {
+                let tx_info = self
+                    .context
+                    .get_bitcoin_client()
+                    .get_tx(&txin.previous_output.txid)
+                    .await?
+                    .ok_or(Error::BitcoinTxMissing(txin.previous_output.txid, None))?;
+
+                let prevout = &tx_info
+                    .tx
+                    .tx_out(txin.previous_output.vout as usize)
+                    .map_err(|_| Error::OutPointMissing(txin.previous_output))?
+                    .script_pubkey;
+
+                if signer_script_pubkeys.contains(prevout) {
+                    tx_type = model::TransactionType::SbtcTransaction;
+                }
+            };
+
+            sbtc_txs.push(model::Transaction {
+                txid: tx.compute_txid().to_byte_array(),
+                tx: tx_bytes,
+                tx_type,
+                block_hash: block_hash.to_byte_array(),
+            });
+        }
 
         // Write these transactions into storage.
         self.context

@@ -114,6 +114,53 @@ impl Store {
     pub fn new_shared() -> SharedStore {
         Arc::new(Mutex::new(Self::new()))
     }
+
+    async fn get_utxo_from_donation(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        aggregate_key: &PublicKey,
+        context_window: u16,
+    ) -> Result<Option<SignerUtxo>, Error> {
+        let script_pubkey = aggregate_key.signers_script_pubkey();
+        let bitcoin_blocks = &self.bitcoin_blocks;
+        let first = bitcoin_blocks.get(chain_tip);
+
+        // Traverse the canonical chain backwards and find the first block containing relevant tx(s)
+        let sbtc_txs = std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
+            .take(context_window as usize)
+            .filter_map(|block| {
+                let txs = self.bitcoin_block_to_transactions.get(&block.block_hash)?;
+
+                let mut sbtc_txs = txs
+                    .iter()
+                    .filter_map(|tx| self.raw_transactions.get(&tx.into_bytes()))
+                    .filter(|sbtc_tx| sbtc_tx.tx_type == model::TransactionType::Donation)
+                    .filter_map(|tx| {
+                        bitcoin::Transaction::consensus_decode(&mut tx.tx.as_slice()).ok()
+                    })
+                    .filter(|tx| {
+                        tx.output
+                            .first()
+                            .is_some_and(|out| out.script_pubkey == script_pubkey)
+                    })
+                    .peekable();
+
+                if sbtc_txs.peek().is_some() {
+                    Some(sbtc_txs.collect::<Vec<_>>())
+                } else {
+                    None
+                }
+            })
+            .next();
+
+        // `sbtc_txs` contains all the txs in the highest canonical block where the first
+        // output is spendable by script_pubkey
+        let Some(sbtc_txs) = sbtc_txs else {
+            return Ok(None);
+        };
+
+        get_utxo(aggregate_key, sbtc_txs)
+    }
 }
 
 impl super::DbRead for SharedStore {
@@ -464,7 +511,10 @@ impl super::DbRead for SharedStore {
         // `sbtc_txs` contains all the txs in the highest canonical block where the first
         // output is spendable by script_pubkey
         let Some(sbtc_txs) = sbtc_txs else {
-            return Ok(None);
+            // if no sbtc tx exists, consider donations
+            return store
+                .get_utxo_from_donation(chain_tip, aggregate_key, context_window)
+                .await;
         };
 
         get_utxo(aggregate_key, sbtc_txs)

@@ -415,6 +415,8 @@ pub enum TransactionType {
     WithdrawReject,
     /// A rotate keys call on Stacks.
     RotateKeys,
+    /// A donation to signers aggregated key on Bitcoin.
+    Donation,
 }
 
 /// An identifier for a withdrawal request, comprised of the Stacks

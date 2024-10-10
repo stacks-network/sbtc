@@ -777,4 +777,9 @@ mod tests {
     async fn should_get_signer_utxo_unspent() {
         test_environment().assert_get_signer_utxo_unspent().await;
     }
+
+    #[tokio::test]
+    async fn should_get_signer_utxo_donations() {
+        test_environment().assert_get_signer_utxo_donations().await;
+    }
 }
