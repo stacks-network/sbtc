@@ -36,7 +36,8 @@ use tokio::time::error::Elapsed;
 
 use super::context::*;
 
-struct TxSignerEventLoopHarness<Context, Rng> {
+/// A test harness for the signer event loop.
+pub struct TxSignerEventLoopHarness<Context, Rng> {
     context: Context,
     event_loop: EventLoop<Context, Rng>,
 }
@@ -46,7 +47,8 @@ where
     Ctx: Context + 'static,
     Rng: rand::RngCore + rand::CryptoRng + Send + Sync + 'static,
 {
-    fn create(
+    /// Create the test harness.
+    pub fn create(
         context: Ctx,
         network: network::in_memory::MpmcBroadcaster,
         context_window: u16,
@@ -69,6 +71,7 @@ where
         }
     }
 
+    /// Start the event loop.
     pub fn start(self) -> RunningEventLoopHandle<Ctx> {
         let join_handle = tokio::spawn(async { self.event_loop.run().await });
 
@@ -82,7 +85,8 @@ where
     }
 }
 
-struct RunningEventLoopHandle<C> {
+/// A running event loop.
+pub struct RunningEventLoopHandle<C> {
     context: C,
     join_handle: tokio::task::JoinHandle<Result<(), error::Error>>,
     signal_rx: broadcast::Receiver<SignerSignal>,
@@ -117,6 +121,11 @@ where
         };
 
         tokio::time::timeout(timeout, future).await
+    }
+
+    /// Abort the event loop
+    pub fn abort(&self) {
+        self.join_handle.abort();
     }
 }
 

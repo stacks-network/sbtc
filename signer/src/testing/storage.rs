@@ -122,6 +122,6 @@ pub async fn drop_db(store: PgStore) {
         sqlx::query(&drop_db)
             .execute(&pool)
             .await
-            .expect("failed to create test database");
+            .expect("failed to drop test database");
     }
 }
