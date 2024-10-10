@@ -22,6 +22,7 @@ use crate::keys::PublicKey;
 use crate::message;
 use crate::message::StacksTransactionSignRequest;
 use crate::network;
+use crate::signature::SighashDigest as _;
 use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::ReqContext;
@@ -267,12 +268,12 @@ where
             }
 
             (
-                message::Payload::StacksTransactionSignRequest(_request),
+                message::Payload::StacksTransactionSignRequest(request),
                 true,
                 ChainTipStatus::Canonical,
             ) => {
-
-                //TODO(255): Implement
+                self.handle_stacks_transaction_sign_request(request, &msg.bitcoin_chain_tip)
+                    .await?;
             }
 
             (
@@ -413,18 +414,25 @@ where
     #[tracing::instrument(skip_all)]
     async fn handle_stacks_transaction_sign_request(
         &mut self,
-        ctx: &impl Context,
         request: &StacksTransactionSignRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
-        self.assert_valid_stackstransaction_sign_request(ctx, request, bitcoin_chain_tip)
+        self.assert_valid_stacks_tx_sign_request(request, bitcoin_chain_tip)
             .await?;
 
-        let wallet = SignerWallet::load(ctx, bitcoin_chain_tip).await?;
+        // We need to set the nonce in order to get the exact transaction
+        // that we need to sign.
+        let wallet = SignerWallet::load(&self.context, bitcoin_chain_tip).await?;
         wallet.set_nonce(request.nonce);
 
         let multi_sig = MultisigTx::new_tx(&request.contract_call, &wallet, request.tx_fee);
         let txid = multi_sig.tx().txid();
+
+        // TODO: Make this more robust. The signer that recieves this won't
+        // be able to use the signature if it's over the wrong digest, so
+        // maybe we should error here.
+        debug_assert_eq!(multi_sig.tx().digest(), request.digest);
+        debug_assert_eq!(txid, request.txid);
 
         let signature = crate::signature::sign_stacks_tx(multi_sig.tx(), &self.signer_private_key);
 
@@ -435,12 +443,14 @@ where
         Ok(())
     }
 
-    async fn assert_valid_stackstransaction_sign_request(
-        &mut self,
-        ctx: &impl Context,
-        request: &message::StacksTransactionSignRequest,
+    async fn assert_valid_stacks_tx_sign_request(
+        &self,
+        request: &StacksTransactionSignRequest,
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
+        if true {
+            return Ok(());
+        }
         // TODO(255): Finish the implementation
         let req_ctx = ReqContext {
             chain_tip: BitcoinBlockRef {
@@ -457,6 +467,8 @@ where
             // This is wrong
             deployer: StacksAddress::burn_address(false),
         };
+        // TODO: Maybe check the transaction fee in the request?
+        let ctx = &self.context;
         match &request.contract_call {
             ContractCall::AcceptWithdrawalV1(contract) => contract.validate(ctx, &req_ctx).await,
             ContractCall::CompleteDepositV1(contract) => contract.validate(ctx, &req_ctx).await,

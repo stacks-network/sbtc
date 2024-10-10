@@ -30,15 +30,15 @@ pub trait Context: Clone + Sync + Send {
     /// Returns a handle to the application's termination signal.
     fn get_termination_handle(&self) -> TerminationHandle;
     /// Get a read-only handle to the signer storage.
-    fn get_storage(&self) -> impl DbRead + Clone + Sync + Send;
+    fn get_storage(&self) -> impl DbRead + Clone + Sync + Send + 'static;
     /// Get a read-write handle to the signer storage.
-    fn get_storage_mut(&self) -> impl DbRead + DbWrite + Clone + Sync + Send;
+    fn get_storage_mut(&self) -> impl DbRead + DbWrite + Clone + Sync + Send + 'static;
     /// Get a handle to a Bitcoin client.
-    fn get_bitcoin_client(&self) -> impl BitcoinInteract + Clone;
+    fn get_bitcoin_client(&self) -> impl BitcoinInteract + Clone + 'static;
     /// Get a handler to the Stacks client.
-    fn get_stacks_client(&self) -> impl StacksInteract + Clone;
+    fn get_stacks_client(&self) -> impl StacksInteract + Clone + 'static;
     /// Get a handle to a Emily client.
-    fn get_emily_client(&self) -> impl EmilyInteract + Clone;
+    fn get_emily_client(&self) -> impl EmilyInteract + Clone + 'static;
 }
 
 /// Signer context which is passed to different components within the
@@ -71,7 +71,7 @@ pub struct SignerContext<S, BC, ST, EM> {
 
 impl<S, BC, ST, EM> SignerContext<S, BC, ST, EM>
 where
-    S: DbRead + DbWrite + Clone + Sync + Send,
+    S: DbRead + DbWrite + Clone + Sync + Send + 'static,
     BC: for<'a> TryFrom<&'a [Url]> + BitcoinInteract + Clone + 'static,
     ST: for<'a> TryFrom<&'a Settings> + StacksInteract + Clone + Sync + Send + 'static,
     EM: for<'a> TryFrom<&'a [Url]> + EmilyInteract + Clone + Sync + Send + 'static,
@@ -125,10 +125,10 @@ where
 
 impl<S, BC, ST, EM> Context for SignerContext<S, BC, ST, EM>
 where
-    S: DbRead + DbWrite + Clone + Sync + Send,
-    BC: BitcoinInteract + Clone,
-    ST: StacksInteract + Clone + Sync + Send,
-    EM: EmilyInteract + Clone + Sync + Send,
+    S: DbRead + DbWrite + Clone + Sync + Send + 'static,
+    BC: BitcoinInteract + Clone + 'static,
+    ST: StacksInteract + Clone + Sync + Send + 'static,
+    EM: EmilyInteract + Clone + Sync + Send + 'static,
 {
     fn config(&self) -> &Settings {
         &self.config
@@ -160,23 +160,23 @@ where
         TerminationHandle::new(self.term_tx.clone(), self.term_tx.subscribe())
     }
 
-    fn get_storage(&self) -> impl DbRead + Clone + Sync + Send {
+    fn get_storage(&self) -> impl DbRead + Clone + Sync + Send + 'static {
         self.storage.clone()
     }
 
-    fn get_storage_mut(&self) -> impl DbRead + DbWrite + Clone + Sync + Send {
+    fn get_storage_mut(&self) -> impl DbRead + DbWrite + Clone + Sync + Send + 'static {
         self.storage.clone()
     }
 
-    fn get_bitcoin_client(&self) -> impl BitcoinInteract + Clone {
+    fn get_bitcoin_client(&self) -> impl BitcoinInteract + Clone + 'static {
         self.bitcoin_client.clone()
     }
 
-    fn get_stacks_client(&self) -> impl StacksInteract + Clone {
+    fn get_stacks_client(&self) -> impl StacksInteract + Clone + 'static {
         self.stacks_client.clone()
     }
 
-    fn get_emily_client(&self) -> impl EmilyInteract + Clone {
+    fn get_emily_client(&self) -> impl EmilyInteract + Clone + 'static {
         self.emily_client.clone()
     }
 }

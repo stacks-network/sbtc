@@ -162,10 +162,10 @@ impl<Storage, Bitcoin, Stacks>
 
 impl<Storage, Bitcoin, Stacks, Emily> Context for TestContext<Storage, Bitcoin, Stacks, Emily>
 where
-    Storage: DbRead + DbWrite + Clone + Sync + Send,
-    Bitcoin: BitcoinInteract + Clone + Send + Sync,
-    Stacks: StacksInteract + Clone + Send + Sync,
-    Emily: EmilyInteract + Clone + Send + Sync,
+    Storage: DbRead + DbWrite + Clone + Sync + Send + 'static,
+    Bitcoin: BitcoinInteract + Clone + Send + Sync + 'static,
+    Stacks: StacksInteract + Clone + Send + Sync + 'static,
+    Emily: EmilyInteract + Clone + Send + Sync + 'static,
 {
     fn config(&self) -> &Settings {
         self.inner.config()
@@ -189,25 +189,25 @@ where
         self.inner.get_termination_handle()
     }
 
-    fn get_storage(&self) -> impl crate::storage::DbRead + Clone + Sync + Send {
+    fn get_storage(&self) -> impl crate::storage::DbRead + Clone + Sync + Send + 'static {
         self.inner.get_storage()
     }
 
     fn get_storage_mut(
         &self,
-    ) -> impl crate::storage::DbRead + crate::storage::DbWrite + Clone + Sync + Send {
+    ) -> impl crate::storage::DbRead + crate::storage::DbWrite + Clone + Sync + Send + 'static {
         self.inner.get_storage_mut()
     }
 
-    fn get_bitcoin_client(&self) -> impl BitcoinInteract + Clone {
+    fn get_bitcoin_client(&self) -> impl BitcoinInteract + Clone + 'static {
         self.inner.get_bitcoin_client()
     }
 
-    fn get_stacks_client(&self) -> impl StacksInteract + Clone {
+    fn get_stacks_client(&self) -> impl StacksInteract + Clone + 'static {
         self.inner.get_stacks_client()
     }
 
-    fn get_emily_client(&self) -> impl EmilyInteract + Clone {
+    fn get_emily_client(&self) -> impl EmilyInteract + Clone + 'static {
         self.inner.get_emily_client()
     }
 }

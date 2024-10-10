@@ -11,6 +11,7 @@ use crate::message;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::RejectWithdrawalV1;
 use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::StacksTxId;
 use crate::testing::dummy;
 
 impl message::SignerMessage {
@@ -105,6 +106,7 @@ impl fake::Dummy<fake::Faker> for message::StacksTransactionSignRequest {
             nonce: 1,
             aggregate_key: PublicKey::from_private_key(&private_key),
             digest: config.fake_with_rng(rng),
+            txid: config.fake_with_rng::<StacksTxId, _>(rng).into(),
         }
     }
 }

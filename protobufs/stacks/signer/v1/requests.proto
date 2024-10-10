@@ -26,16 +26,18 @@ message StacksTransactionSignRequest {
   // essentially a hash of the contract call struct, the nonce, the tx_fee
   // and a few other things.
   crypto.Uint256 digest = 4;
+  // The transaction ID of the associated contract call transaction.
+  crypto.Uint256 txid = 5;
   // The contract call transaction to sign.
   oneof contract_call {
     // The `complete-deposit` contract call
-    CompleteDeposit complete_deposit = 5;
+    CompleteDeposit complete_deposit = 6;
     // The `accept-withdrawal-request` contract call
-    AcceptWithdrawal accept_withdrawal = 6;
+    AcceptWithdrawal accept_withdrawal = 7;
     // The `reject-withdrawal-request` contract call
-    RejectWithdrawal reject_withdrawal = 7;
+    RejectWithdrawal reject_withdrawal = 8;
     // The `rotate-keys-wrapper` contract call
-    RotateKeys rotate_keys = 8;
+    RotateKeys rotate_keys = 9;
   }
 }
 

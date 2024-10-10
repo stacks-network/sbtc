@@ -83,10 +83,13 @@ pub struct StacksTransactionSignRequest {
     /// and a few other things.
     #[prost(message, optional, tag = "4")]
     pub digest: ::core::option::Option<super::super::super::crypto::Uint256>,
+    /// The transaction ID of the associated contract call transaction.
+    #[prost(message, optional, tag = "5")]
+    pub txid: ::core::option::Option<super::super::super::crypto::Uint256>,
     /// The contract call transaction to sign.
     #[prost(
         oneof = "stacks_transaction_sign_request::ContractCall",
-        tags = "5, 6, 7, 8"
+        tags = "6, 7, 8, 9"
     )]
     pub contract_call: ::core::option::Option<
         stacks_transaction_sign_request::ContractCall,
@@ -99,16 +102,16 @@ pub mod stacks_transaction_sign_request {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum ContractCall {
         /// The `complete-deposit` contract call
-        #[prost(message, tag = "5")]
+        #[prost(message, tag = "6")]
         CompleteDeposit(super::CompleteDeposit),
         /// The `accept-withdrawal-request` contract call
-        #[prost(message, tag = "6")]
+        #[prost(message, tag = "7")]
         AcceptWithdrawal(super::AcceptWithdrawal),
         /// The `reject-withdrawal-request` contract call
-        #[prost(message, tag = "7")]
+        #[prost(message, tag = "8")]
         RejectWithdrawal(super::RejectWithdrawal),
         /// The `rotate-keys-wrapper` contract call
-        #[prost(message, tag = "8")]
+        #[prost(message, tag = "9")]
         RotateKeys(super::RotateKeys),
     }
 }

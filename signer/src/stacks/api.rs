@@ -172,7 +172,8 @@ impl GetNakamotoStartHeight for RPCPoxInfoData {
 /// The official documentation specifies what to expect when there is a
 /// rejection, and that documentation can be found here:
 /// https://github.com/stacks-network/stacks-core/blob/2.5.0.0.5/docs/rpc-endpoints.md
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, serde::Deserialize, strum::IntoStaticStr)]
+#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(feature = "testing", derive(serde::Serialize))]
 pub enum RejectionReason {
     /// From MemPoolRejection::SerializationFailure
@@ -245,6 +246,15 @@ pub struct TxRejection {
     /// The transaction ID of the rejected transaction.
     pub txid: Txid,
 }
+
+impl std::fmt::Display for TxRejection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let reason_str: &'static str = self.reason.into();
+        write!(f, "transaction rejected from stacks mempool: {reason_str}")
+    }
+}
+
+impl std::error::Error for TxRejection {}
 
 /// The response from a POST /v2/transactions request
 ///
