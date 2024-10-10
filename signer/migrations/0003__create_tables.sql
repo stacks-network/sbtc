@@ -5,7 +5,8 @@ CREATE TYPE sbtc_signer.transaction_type AS ENUM (
    'deposit_accept',
    'withdraw_accept',
    'withdraw_reject',
-   'rotate_keys'
+   'rotate_keys',
+   'donation'
 );
 
 CREATE TABLE sbtc_signer.bitcoin_blocks (

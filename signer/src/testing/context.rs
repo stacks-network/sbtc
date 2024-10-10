@@ -5,7 +5,9 @@ use std::{ops::Deref, sync::Arc};
 use bitcoin::Txid;
 use blockstack_lib::{
     chainstate::{nakamoto::NakamotoBlock, stacks::StacksTransaction},
-    net::api::gettenureinfo::RPCGetTenureInfo,
+    net::api::{
+        getinfo::RPCPeerInfoData, getpoxinfo::RPCPoxInfoData, gettenureinfo::RPCGetTenureInfo,
+    },
 };
 use clarity::types::chainstate::{StacksAddress, StacksBlockId};
 use tokio::sync::Mutex;
@@ -326,11 +328,12 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
             .await
     }
 
-    fn nakamoto_start_height(&self) -> u64 {
-        tokio::runtime::Handle::current().block_on(async move {
-            let inner = self.inner.lock().await;
-            inner.nakamoto_start_height()
-        })
+    async fn get_pox_info(&self) -> Result<RPCPoxInfoData, Error> {
+        self.inner.lock().await.get_pox_info().await
+    }
+
+    async fn get_node_info(&self) -> Result<RPCPeerInfoData, Error> {
+        self.inner.lock().await.get_node_info().await
     }
 }
 
