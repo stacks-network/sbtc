@@ -39,6 +39,16 @@ The following are the developer tools that you should install on your local mach
 - **[Docker](https://docs.docker.com/manuals/)** - [Installation Guide](https://docs.docker.com/desktop/). This is used for running integration tests.
 - **[protoc](https://github.com/protocolbuffers/protobuf)** - [Installation Guide](https://grpc.io/docs/protoc-installation/). Compiles protobuf files.
 
+#### Developer shell through `nix`
+
+If you have `nix` and `flakes` installed (e.g. through the [DeterminateSystems
+installer](https://github.com/DeterminateSystems/nix-installer)), running the
+following command will enter a shell with all dependencies installed:
+
+```bash
+$ nix develop
+```
+
 #### Tool Versions
 
 This command should check the version of the dependencies required for the sBTC
