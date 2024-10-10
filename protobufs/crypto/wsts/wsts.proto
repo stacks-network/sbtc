@@ -42,7 +42,7 @@ message PartyCommitment {
   // The specific party that submitted the public polynomial.
   uint32 party_id = 1;
   // The public polynomial of the associated party. Each polynomial
-  // includes a proof of ownership of the underlying private privte
+  // includes a proof of ownership of the underlying private private
   // polynomial.
   PolyCommitment commitment = 2;
 }
@@ -167,7 +167,7 @@ message SignatureShareResponse {
   repeated SignatureShare signature_shares = 5;
 }
 
-// A commitment to a polynonial, with a Schnorr proof of ownership bound to the ID
+// A commitment to a polynomial, with a Schnorr proof of ownership bound to the ID
 message PolyCommitment {
   // The party ID with a schnorr proof
   ProofIdentifier id = 1;

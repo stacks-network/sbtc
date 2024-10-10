@@ -51,7 +51,7 @@ pub struct PartyCommitment {
     #[prost(uint32, tag = "1")]
     pub party_id: u32,
     /// The public polynomial of the associated party. Each polynomial
-    /// includes a proof of ownership of the underlying private privte
+    /// includes a proof of ownership of the underlying private private
     /// polynomial.
     #[prost(message, optional, tag = "2")]
     pub commitment: ::core::option::Option<PolyCommitment>,
@@ -227,7 +227,7 @@ pub struct SignatureShareResponse {
     #[prost(message, repeated, tag = "5")]
     pub signature_shares: ::prost::alloc::vec::Vec<SignatureShare>,
 }
-/// A commitment to a polynonial, with a Schnorr proof of ownership bound to the ID
+/// A commitment to a polynomial, with a Schnorr proof of ownership bound to the ID
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PolyCommitment {
