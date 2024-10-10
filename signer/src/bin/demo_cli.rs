@@ -20,6 +20,7 @@ use secp256k1::PublicKey;
 use signer::config::Settings;
 
 #[derive(Debug, thiserror::Error)]
+#[allow(clippy::enum_variant_names)]
 enum Error {
     #[error("Signer error: {0}")]
     SignerError(#[from] signer::error::Error),
@@ -132,7 +133,7 @@ async fn exec_deposit(
     let txid = unsigned_tx.compute_txid();
 
     let emily_deposit = deposit_api::create_deposit(
-        &emily_config,
+        emily_config,
         CreateDepositRequestBody {
             bitcoin_tx_output_index: 1,
             bitcoin_txid: txid.to_string(),
@@ -177,7 +178,7 @@ fn create_bitcoin_deposit_transaction(
     let unspent = client
         .list_unspent(Some(6), None, None, None, Some(opts))?
         .into_iter()
-        .nth(0)
+        .next()
         .ok_or(Error::NoAvailableUtxos)?;
 
     // Get a new address for change (SegWit)
@@ -186,7 +187,7 @@ fn create_bitcoin_deposit_transaction(
         .require_network(Network::Regtest)?;
 
     // Create the unsigned transaction
-    let mut unsigned_tx = Transaction {
+    let unsigned_tx = Transaction {
         input: vec![TxIn {
             previous_output: OutPoint {
                 txid: unspent.txid,
