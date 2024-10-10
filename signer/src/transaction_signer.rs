@@ -144,7 +144,7 @@ where
         let mut term = self.context.get_termination_handle();
 
         // TODO: We should really split these operations out into two separate
-        // main run-loops since they don't have anything to do with eachother.
+        // main run-loops since they don't have anything to do with each other.
         //
         // We run the event loop like this because `tokio::select!()` could
         // potentially kill either `handle_new_requests()` or `handle_signer_message()`
@@ -156,7 +156,7 @@ where
                 // new Bitcoin block observed events. It doesn't matter how many
                 // of these we get, we only care if it has happened. It's also
                 // important that we empty this channel as quickly as possible
-                // to avoid un-processed messagages being dropped.
+                // to avoid un-processed messages being dropped.
                 let mut new_block_observed = false;
                 while let Ok(signal) = signal_rx.try_recv() {
                     if let SignerSignal::Event(SignerEvent::BitcoinBlockObserved) = signal {
@@ -382,7 +382,7 @@ where
     }
 
     async fn is_valid_bitcoin_transaction_sign_request(
-        &mut self,
+        &self,
         _request: &message::BitcoinTransactionSignRequest,
     ) -> Result<bool, Error> {
         let signer_pub_key = self.signer_pub_key();
@@ -507,7 +507,7 @@ where
                 ..
             }) => {
                 tracing::info!("DKG ended in failure: {fail:?}");
-                // TODO(#414): handle DKG failute
+                // TODO(#414): handle DKG failure
             }
             wsts::net::Message::NonceResponse(_)
             | wsts::net::Message::SignatureShareResponse(_) => {
@@ -552,7 +552,7 @@ where
 
     /// TODO(#380): This function needs to filter deposit requests based on
     /// time as well. We need to do this because deposit requests are locked
-    /// using OP_CSV, which lock up coins based on block hieght or
+    /// using OP_CSV, which lock up coins based on block height or
     /// multiples of 512 seconds measure by the median time past.
     #[tracing::instrument(skip(self))]
     async fn get_pending_deposit_requests(
@@ -779,7 +779,7 @@ where
 struct MsgChainTipReport {
     /// Whether the sender of the incoming message is the coordinator for this chain tip.
     sender_is_coordinator: bool,
-    /// The status of the chain tip relative to the signers perspective.
+    /// The status of the chain tip relative to the signers' perspective.
     chain_tip_status: ChainTipStatus,
 }
 

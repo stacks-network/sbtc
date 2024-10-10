@@ -260,10 +260,12 @@ where
     ///    determined by the public keys and threshold stored in the last
     ///    [`RotateKeysTransaction`] object that is returned from the
     ///    database.
-    /// 2. Fetch all "finalizable" requests from the database. These are
-    ///    requests that where we have a response transactions on bitcoin
-    ///    fulfilling the deposit or withdrawal request.
-    /// 3. Construct a sign-request object for each finalizable request.
+    /// 2. Fetch all requests from the database where we can finish the
+    ///    fulfillment with only a Stacks transaction. These are requests
+    ///    that where we have a response transactions on bitcoin fulfilling
+    ///    the deposit or withdrawal request.
+    /// 3. Construct a sign-request object for each of the requests
+    ///    identified in (2).
     /// 4. Broadcast this sign-request to the network and wait for
     ///    responses.
     /// 5. If there are enough signatures then broadcast the transaction.
@@ -575,11 +577,11 @@ where
 
     /// Check whether or not we need to run DKG
     ///
-    /// This function checks for the existence of a row in the in the
-    /// database, and one does exist the DKG has completed and the results
-    /// are known to the network. If such a transaction does not exist then
-    /// we check the `dkg_shares` table to know if we either need to run
-    /// DKG or just submit a `rotate-keys` transaction.
+    /// This function checks for the existence of a row in the database,
+    /// and one does exist the DKG has completed and the results are known
+    /// to the network. If such a transaction does not exist then we check
+    /// the `dkg_shares` table to know if we either need to run DKG or just
+    /// submit a `rotate-keys` transaction.
     async fn needs_dkg(&self, chain_tip: &model::BitcoinBlockHash) -> Result<DkgState, Error> {
         let db = self.context.get_storage();
         let last_key_rotation = db.get_last_key_rotation(chain_tip).await?;
