@@ -7,6 +7,7 @@ mod contracts;
 mod postgres;
 mod rbf;
 mod setup;
+mod transaction_coordinator;
 mod transaction_signer;
 mod utxo_construction;
 mod withdrawal_accept;

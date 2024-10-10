@@ -340,10 +340,12 @@ impl BitcoinInteract for BitcoinCoreClient {
     }
 
     async fn estimate_fee_rate(&self) -> Result<f64, Error> {
-        todo!()
+        // TODO(542): implement this
+        Ok(1.3)
     }
 
     async fn get_last_fee(&self, _: OutPoint) -> Result<Option<super::utxo::Fees>, Error> {
-        todo!()
+        // TODO(541): implement this
+        Ok(None)
     }
 }
