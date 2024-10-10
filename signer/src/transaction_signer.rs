@@ -323,20 +323,13 @@ where
             .map(|canonical_chain_tip| &canonical_chain_tip == bitcoin_chain_tip)
             .unwrap_or(false);
 
-        let sender_is_coordinator = if let Some(last_key_rotation) =
-            storage.get_last_key_rotation(bitcoin_chain_tip).await?
-        {
-            let signer_set: BTreeSet<PublicKey> =
-                last_key_rotation.signer_set.into_iter().collect();
+        let signer_set = self.get_signer_public_keys(bitcoin_chain_tip).await?;
 
-            crate::transaction_coordinator::given_key_is_coordinator(
-                msg_sender,
-                bitcoin_chain_tip,
-                &signer_set,
-            )?
-        } else {
-            false
-        };
+        let sender_is_coordinator = crate::transaction_coordinator::given_key_is_coordinator(
+            msg_sender,
+            bitcoin_chain_tip,
+            &signer_set,
+        )?;
 
         let chain_tip_status = match (is_known, is_canonical) {
             (true, true) => ChainTipStatus::Canonical,
@@ -762,21 +755,17 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn get_signer_public_keys(
-        &mut self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
     ) -> Result<BTreeSet<PublicKey>, Error> {
-        let last_key_rotation = self
-            .context
-            .get_storage()
-            .get_last_key_rotation(bitcoin_chain_tip)
-            .await?
-            .ok_or(Error::MissingKeyRotation)?;
+        let db = self.context.get_storage();
 
-        let signer_set = last_key_rotation.signer_set.into_iter().collect();
-
-        Ok(signer_set)
+        match db.get_last_key_rotation(chain_tip).await? {
+            Some(last_key) => Ok(last_key.signer_set.into_iter().collect()),
+            None => Ok(self.context.config().signer.bootstrap_signing_set()),
+        }
     }
 
     fn signer_pub_key(&self) -> PublicKey {
