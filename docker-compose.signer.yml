@@ -4,6 +4,13 @@
 # dependencies to run the signer and used to adapt the devenv later. 
 # See # TODO(536)
 
+volumes:
+  dynamodb_data:
+
+networks:
+  sbtc_signer:
+    driver: bridge
+
 services:
 
   signer:
@@ -23,7 +30,7 @@ services:
     environment:
       RUST_BACKTRACE: 1
       RUST_LOG: info
-      SIGNER_SIGNER__DB_ENDPOINT: postgres://postgres:postgres@sbtc-postgres/signer
+      SIGNER_SIGNER__DB_ENDPOINT: postgres://devenv:devenv@sbtc-postgres/signer
     depends_on:
       postgres:
         condition: service_healthy
@@ -32,7 +39,7 @@ services:
 
   bitcoind:
     container_name: sbtc-bitcoind
-    image: lncm/bitcoind:v27.0
+    image: lncm/bitcoind:v25.1
     volumes:
       - ./signer/tests/service-configs/bitcoin.conf:/data/.bitcoin/bitcoin.conf:ro
     restart: on-failure
@@ -43,12 +50,8 @@ services:
     command: ["-logtimestamps"]
     stop_grace_period: 10s
     ports:
-      - 8333:8333
-      - 8332:8332
       - 18443:18443
-      - 18444:18444
       - 28332:28332
-      - 28333:28333
     networks:
       - sbtc_signer
     healthcheck:
@@ -61,8 +64,8 @@ services:
     image: postgres:16.3
     container_name: sbtc-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: devenv
+      POSTGRES_PASSWORD: devenv
       POSTGRES_DB: signer
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
@@ -75,6 +78,44 @@ services:
       timeout: 1s
       retries: 5
 
-networks:
-  sbtc_signer:
-    driver: bridge
+  dynamodb:
+    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath ./data"
+    image: "amazon/dynamodb-local:latest"
+    container_name: dynamodb-local
+    user: root
+    ports:
+      - "8000:8000"
+    restart: always
+    volumes:
+      - dynamodb_data:/home/dynamodblocal/data:rw
+    working_dir: /home/dynamodblocal
+
+  dynamodb-admin: 
+    image: "aaronshaf/dynamodb-admin"
+    container_name: dynamodb-admin
+    depends_on:
+      - dynamodb
+    restart: always
+    ports:
+      - "8001:8001"
+    environment:
+      - DYNAMO_ENDPOINT=http://dynamodb:8000
+      - AWS_REGION=eu-west-1
+    profiles:
+      - tools
+
+    # Modifies the CDK template and creates DynamoDB Tables if necessary.
+  aws-setup:
+    build: devenv/aws-setup
+    depends_on:
+      dynamodb:
+        condition: service_started
+    volumes:
+      - "./devenv/aws-setup/initialize.py:/initialize.py"
+      - "./emily/cdk/cdk.out:/cdk.out"
+    environment:
+      - DYNAMODB_ENDPOINT=http://dynamodb:8000
+      - LOCAL_LAMBDA_PATH=/code/emily-handler/bootstrap.zip
+      - INPUT_CDK_TEMPLATE=/cdk.out/EmilyStack.template.json
+      - OUTPUT_CDK_TEMPLATE=/cdk.out/EmilyStack.devenv.template.json
+    command: python3 ./initialize.py
