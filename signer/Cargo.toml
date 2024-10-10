@@ -4,6 +4,14 @@ name = "signer"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "sbtc-signer"
+path = "src/bin/sbtc_signer.rs"
+
+[[bin]]
+name = "demo-cli"
+path = "src/bin/demo_cli.rs"
+
 [features]
 default = ["testing"]
 integration-tests = ["testing"]
