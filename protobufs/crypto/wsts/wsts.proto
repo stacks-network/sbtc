@@ -250,4 +250,3 @@ message SignatureShare {
   // The key IDs of the party
   repeated uint32 key_ids = 3;
 }
-
