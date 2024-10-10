@@ -271,13 +271,13 @@ pub struct BadPrivateShare {
 pub struct TupleProof {
     /// R = r*G for a random scalar r
     #[prost(message, optional, tag = "1")]
-    pub random_point: ::core::option::Option<Point>,
+    pub random_commitment: ::core::option::Option<Point>,
     /// rB = r*B
     #[prost(message, optional, tag = "2")]
-    pub r_times_b: ::core::option::Option<Point>,
+    pub response: ::core::option::Option<Point>,
     /// z = r + a*s where s = H(G,A,B,K,R) as per Fiat-Shamir
     #[prost(message, optional, tag = "3")]
-    pub z: ::core::option::Option<Scalar>,
+    pub signature: ::core::option::Option<Scalar>,
 }
 /// // A merkle root is a 256 bit hash
 #[allow(clippy::derive_partial_eq_without_eq)]

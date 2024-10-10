@@ -176,7 +176,7 @@ message PolyCommitment {
 }
 
 // This type maps to the `ID` type in WSTS, which encapsulates the ID and a
-// Schnorr proof of ownership of the polynomial
+// Schnorr proof of ownership of the polynomial.
 message ProofIdentifier {
     // The ID
     Scalar id = 1;
@@ -212,11 +212,11 @@ message BadPrivateShare {
 // Diffie-Hellman tuple.
 message TupleProof {
     // R = r*G for a random scalar r
-    Point random_point = 1;
+    Point random_commitment = 1;
     // rB = r*B
-    Point r_times_b = 2;
+    Point response = 2;
     // z = r + a*s where s = H(G,A,B,K,R) as per Fiat-Shamir
-    Scalar z = 3;
+    Scalar signature = 3;
 }
 
 // // Final DKG status after receiving public and private shares
