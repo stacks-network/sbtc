@@ -4,8 +4,10 @@ FROM rust:bookworm as builder
 RUN apt-get update
 RUN apt-get install -y \
     libclang-dev \
-    git pkg-config \
-    libssl-dev make \
+    git \
+    pkg-config \
+    libssl-dev \
+    make \
     protobuf-compiler \
     npm \
     default-jre
@@ -19,9 +21,6 @@ WORKDIR /code
 RUN git clone https://github.com/stacks-network/sbtc.git
 WORKDIR /code/sbtc
 
-# TODO: DELETE THIS LINE BEFORE MERGING vvv
-RUN git checkout chore/run-signer-binary-against-devenv
-# TODO: DELETE THIS LINE BEFORE MERGING ^^^
 
 RUN make install
 RUN make build
@@ -30,6 +29,8 @@ RUN make build
 # ------------------------------------------------------------------------------
 ARG AWS_STAGE=local
 ARG TABLES_ONLY=true
+
+# TODO: Use make command to generat the cdk template.
 RUN pnpm --filter emily-cdk run synth
 
 # NOTE: If you want to synthsize with the lambda and apigateway instance as well

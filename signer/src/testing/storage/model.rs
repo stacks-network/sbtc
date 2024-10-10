@@ -160,19 +160,23 @@ impl TestData {
         vec_diff(&mut self.transactions, &other.transactions);
     }
 
-    /// Push sbtc txs to a specific bitcoin block
-    pub fn push_sbtc_txs(&mut self, block: &BitcoinBlockRef, sbtc_txs: Vec<bitcoin::Transaction>) {
+    /// Push bitcoin txs to a specific bitcoin block
+    pub fn push_bitcoin_txs(
+        &mut self,
+        block: &BitcoinBlockRef,
+        sbtc_txs: Vec<(model::TransactionType, bitcoin::Transaction)>,
+    ) {
         let mut bitcoin_transactions = vec![];
         let mut transactions = vec![];
 
-        for tx in sbtc_txs {
+        for (tx_type, tx) in sbtc_txs {
             let mut tx_bytes = Vec::new();
             tx.consensus_encode(&mut tx_bytes).unwrap();
 
             let tx = model::Transaction {
                 txid: tx.compute_txid().to_byte_array(),
                 tx: tx_bytes,
-                tx_type: model::TransactionType::SbtcTransaction,
+                tx_type,
                 block_hash: block.block_hash.into_bytes(),
             };
 
