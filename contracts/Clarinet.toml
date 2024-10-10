@@ -7,28 +7,28 @@ cache_dir = './.cache'
 requirements = []
 [contracts.sbtc-bootstrap-signers]
 path = 'contracts/sbtc-bootstrap-signers.clar'
-clarity_version = 2
-epoch = 2.5
+clarity_version = 3
+epoch = 3.0
 
 [contracts.sbtc-deposit]
 path = 'contracts/sbtc-deposit.clar'
-clarity_version = 2
-epoch = 2.5
+clarity_version = 3
+epoch = 3.0
 
 [contracts.sbtc-registry]
 path = 'contracts/sbtc-registry.clar'
-clarity_version = 2
-epoch = 2.5
+clarity_version = 3
+epoch = 3.0
 
 [contracts.sbtc-withdrawal]
 path = 'contracts/sbtc-withdrawal.clar'
-clarity_version = 2
-epoch = 2.5
+clarity_version = 3
+epoch = 3.0
 
 [contracts.sbtc-token]
 path = 'contracts/sbtc-token.clar'
-clarity_version = 2
-epoch = 2.5
+clarity_version = 3
+epoch = 3.0
 [repl.analysis]
 passes = ['check_checker']
 

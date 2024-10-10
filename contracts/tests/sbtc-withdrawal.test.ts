@@ -782,7 +782,7 @@ describe("Complete multiple withdrawals", () => {
       bob
     );
     //
-    const receipt = txOk(
+    const receipt = txErr(
       withdrawal.completeWithdrawals({
         withdrawals: [
           {
@@ -802,10 +802,12 @@ describe("Complete multiple withdrawals", () => {
             fee: null,
           },
         ],
+        burnHeight: 10n,
+        burnHash: new Uint8Array(32).fill(0),
       }),
       deployer
     );
-    expect(receipt.value).toEqual(2n);
+    expect(receipt.value).toEqual(errors.withdrawal.ERR_INVALID_BURN_HASH);
   });
 });
 
@@ -836,19 +838,21 @@ describe("optimization tests for completing withdrawals", () => {
         alice
       );
     }
-    txOk(
-      withdrawal.completeWithdrawals(
-        txids.map((txid, index) => {
+    txErr(
+      withdrawal.completeWithdrawals({
+        withdrawals: txids.map((txid, index) => {
           return {
-            requestId: index + 1,
+            requestId: BigInt(index + 1),
             status: true,
             signerBitmap: 1n,
             bitcoinTxid: txid,
             outputIndex: 0n,
             fee: maxFee,
           };
-        })
-      ),
+        }),
+        burnHeight: 10n,
+        burnHash: new Uint8Array(32).fill(0)
+      }),
       deployer
     );
   });

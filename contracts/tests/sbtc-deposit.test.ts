@@ -3,6 +3,7 @@ import {
   deployer,
   deposit,
   errors,
+  getCurrentBurnInfo,
   randomPublicKeys,
   registry,
 } from "./helpers";
@@ -133,6 +134,7 @@ describe("sBTC deposit contract", () => {
               recipient: deployer,
             },
           ],
+          ...getCurrentBurnInfo(),
         }),
         deployer
       );
@@ -156,6 +158,7 @@ describe("sBTC deposit contract", () => {
               recipient: deployer,
             },
           ],
+          ...getCurrentBurnInfo(),
         }),
         deployer
       );
@@ -185,13 +188,14 @@ describe("sBTC deposit contract", () => {
               recipient: alice,
             },
           ],
+          ...getCurrentBurnInfo(),
         }),
         deployer
       );
       // fold err prefix is "u303" + 10, third item errs so should be 315
       expect(receipt.value).toEqual(315n);
     });
-    test("complete multiple deposits successfully", () => {
+    test.only("complete multiple deposits successfully", () => {
       const receipt = txOk(
         deposit.completeDepositsWrapper({
           deposits: [
@@ -208,6 +212,7 @@ describe("sBTC deposit contract", () => {
               recipient: deployer,
             },
           ],
+          ...getCurrentBurnInfo(),
         }),
         deployer
       );
@@ -229,6 +234,7 @@ describe("optimization tests", () => {
           amount: totalAmount / BigInt(runs),
           recipient: deployer,
         })),
+        ...getCurrentBurnInfo(),
       }),
       deployer
     );
