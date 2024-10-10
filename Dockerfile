@@ -9,13 +9,6 @@ RUN cargo install --locked cargo-lambda
 
 RUN wget -qO- https://get.pnpm.io/install.sh | bash -
 
-RUN mkdir -p /tmp/smithy-install/smithy
-RUN curl -L https://github.com/smithy-lang/smithy/releases/download/1.49.0/smithy-cli-linux-aarch64.zip -o /tmp/smithy-install/smithy-cli-linux-aarch64.zip
-RUN unzip -qo /tmp/smithy-install/smithy-cli-linux-aarch64.zip -d /tmp/smithy-install
-RUN mv /tmp/smithy-install/smithy-cli-linux-aarch64/* /tmp/smithy-install/smithy
-RUN /tmp/smithy-install/smithy/install
-RUN rm -rf /tmp/smithy-install
-
 RUN mkdir -p /tmp/node-install
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/node-install/nodesource_setup.sh
 RUN bash /tmp/node-install/nodesource_setup.sh
