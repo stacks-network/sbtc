@@ -150,9 +150,9 @@ where
 /// that Emily is informed about it.
 ///
 /// To run this test, concurrently run:
-///  - make integration-env-up
 ///  - make emily-integration-env-up
 ///  - AWS_ACCESS_KEY_ID=foo AWS_SECRET_ACCESS_KEY=bar AWS_REGION=us-west-2 make emily-server
+///  - docker compose --file docker-compose.test.yml up
 /// then, once everything is up and running, run this test.
 #[ignore = "This is an integration test that requires manually running emily"]
 #[tokio::test]
