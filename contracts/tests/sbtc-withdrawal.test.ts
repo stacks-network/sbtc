@@ -710,6 +710,44 @@ describe("Reject a withdrawal request", () => {
     );
     expect(receipt.value).toEqual(errors.withdrawal.ERR_ALREADY_PROCESSED);
   });
+  test("Fails when Bitcoin forks", () => {
+    // Alice initiates withdrawalrequest
+    txOk(
+      deposit.completeDepositWrapper({
+        txid: new Uint8Array(32).fill(0),
+        voutIndex: 0,
+        amount: 1001n,
+        recipient: alice,
+      }),
+      deployer
+    );
+    txOk(
+      withdrawal.initiateWithdrawalRequest({
+        amount: 1000n,
+        recipient: alicePoxAddr,
+        maxFee: 10n,
+      }),
+      alice
+    );
+    const receipt = txErr(
+      withdrawal.completeWithdrawals({
+        withdrawals: [
+          {
+            requestId: 1n,
+            status: true,
+            signerBitmap: 1n,
+            bitcoinTxid: new Uint8Array(32).fill(1),
+            outputIndex: 10n,
+            fee: 10n,
+          }
+        ],
+        burnHeight: 10n,
+        burnHash: new Uint8Array(32).fill(0),
+      }),
+      deployer
+    );
+    expect(receipt.value).toEqual(errors.withdrawal.ERR_INVALID_BURN_HASH);
+  });
   test("Successfully reject a requested withdrawal", () => {
     // Alice initiates withdrawalrequest
     txOk(
