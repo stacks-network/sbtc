@@ -433,6 +433,18 @@ impl super::DbRead for SharedStore {
             .cloned())
     }
 
+    async fn get_last_encrypted_dkg_shares(
+        &self,
+    ) -> Result<Option<model::EncryptedDkgShares>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .encrypted_dkg_shares
+            .values()
+            .last()
+            .cloned())
+    }
+
     async fn get_last_key_rotation(
         &self,
         chain_tip: &model::BitcoinBlockHash,

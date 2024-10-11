@@ -982,6 +982,28 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
+    async fn get_last_encrypted_dkg_shares(
+        &self,
+    ) -> Result<Option<model::EncryptedDkgShares>, Error> {
+        sqlx::query_as::<_, model::EncryptedDkgShares>(
+            r#"
+            SELECT
+                aggregate_key
+              , tweaked_aggregate_key
+              , script_pubkey
+              , encrypted_private_shares
+              , public_shares
+              , signer_set_public_keys
+            FROM sbtc_signer.dkg_shares
+            ORDER BY created_at DESC
+            LIMIT 1;
+            "#,
+        )
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
     /// Find the last key rotation by iterating backwards from the stacks
     /// chain tip scanning all transactions until we encounter a key
     /// rotation transactions.

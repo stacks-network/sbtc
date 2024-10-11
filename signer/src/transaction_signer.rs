@@ -758,7 +758,7 @@ where
     }
 
     /// Get the set of public keys for the current signing set.
-    /// 
+    ///
     /// If there is a successful `rotate-keys` transaction in the database
     /// then we should use that as the source of truth for the current
     /// signing set, otherwise we fall back to the bootstrap keys in our

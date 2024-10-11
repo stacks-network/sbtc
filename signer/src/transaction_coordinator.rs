@@ -654,16 +654,24 @@ where
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(PublicKey, BTreeSet<PublicKey>), Error> {
-        let last_key_rotation = self
-            .context
-            .get_storage()
-            .get_last_key_rotation(bitcoin_chain_tip)
-            .await?
-            .ok_or(Error::MissingKeyRotation)?;
+        let db = self.context.get_storage();
+        let last_key_rotation = db.get_last_key_rotation(bitcoin_chain_tip).await?;
 
-        let aggregate_key = last_key_rotation.aggregate_key;
-        let signer_set = last_key_rotation.signer_set.into_iter().collect();
-        Ok((aggregate_key, signer_set))
+        match last_key_rotation {
+            Some(last_key) => {
+                let aggregate_key = last_key.aggregate_key;
+                let signer_set = last_key.signer_set.into_iter().collect();
+                Ok((aggregate_key, signer_set))
+            }
+            None => {
+                let shares = db
+                    .get_last_encrypted_dkg_shares()
+                    .await?
+                    .ok_or(Error::MissingDkgShares)?;
+                let signer_set = shares.signer_set_public_keys.into_iter().collect();
+                Ok((shares.aggregate_key, signer_set))
+            }
+        }
     }
 
     fn pub_key(&self) -> PublicKey {
