@@ -34,8 +34,7 @@ use crate::DATABASE_NUM;
 #[tokio::test]
 async fn get_signer_public_keys_and_aggregate_key_falls_back() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db: signer::storage::postgres::PgStore =
-        testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database(db_num, true).await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
@@ -127,5 +126,5 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
     assert_eq!(rotate_keys.aggregate_key, aggregate_key);
     assert_eq!(rotate_keys_signer_set, signer_set);
 
-    signer::testing::storage::drop_db(db).await;
+    testing::storage::drop_db(db).await;
 }
