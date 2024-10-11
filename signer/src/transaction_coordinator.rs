@@ -178,7 +178,7 @@ where
             .ok_or(Error::NoChainTip)?;
 
         let (aggregate_key, signer_public_keys) = self
-            .get_signer_public_keys_and_aggregate_key(&bitcoin_chain_tip)
+            .get_signer_set_and_aggregate_key(&bitcoin_chain_tip)
             .await?;
 
         if self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys)? {
@@ -661,7 +661,7 @@ where
     /// our database, and return an error if is not found, implying that
     /// DKG has never been run.
     #[tracing::instrument(skip(self))]
-    pub async fn get_signer_public_keys_and_aggregate_key(
+    pub async fn get_signer_set_and_aggregate_key(
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(PublicKey, BTreeSet<PublicKey>), Error> {
