@@ -225,6 +225,12 @@ pub struct SignerConfig {
     /// The postgres database endpoint
     #[serde(deserialize_with = "url_deserializer_single")]
     pub db_endpoint: Url,
+    /// The public keys of the signer sit during the bootstrapping phase of
+    /// the signers.
+    pub bootstrap_signing_set: Vec<PublicKey>,
+    /// The number of signatures required for the signers' bootstrapped
+    /// multi-sig wallet on Stacks.
+    pub bootstrap_signatures_required: u16,
 }
 
 impl Validatable for SignerConfig {
@@ -288,6 +294,7 @@ impl Settings {
             .separator("__")
             .list_separator(",")
             .try_parsing(true)
+            .with_list_parse_key("signer.peer_public_keys")
             .with_list_parse_key("signer.p2p.seeds")
             .with_list_parse_key("signer.p2p.listen_on")
             .with_list_parse_key("signer.p2p.public_endpoints")
@@ -418,6 +425,8 @@ mod tests {
             settings.signer.event_observer.bind,
             "0.0.0.0:8801".parse::<SocketAddr>().unwrap()
         );
+        assert!(!settings.signer.bootstrap_signing_set.is_empty());
+        assert_eq!(settings.signer.bootstrap_signatures_required, 2);
     }
 
     #[test]
