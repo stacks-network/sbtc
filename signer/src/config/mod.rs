@@ -18,6 +18,7 @@ use crate::config::serialization::url_deserializer_single;
 use crate::config::serialization::url_deserializer_vec;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
+use crate::stacks::wallet::SignerWallet;
 
 mod error;
 mod serialization;
@@ -251,6 +252,14 @@ impl Validatable for SignerConfig {
                 SignerConfigError::UnsupportedDatabaseDriver(self.db_endpoint.scheme().to_string());
             return Err(ConfigError::Message(err.to_string()));
         }
+
+        // The requirement here is that the bootstrap wallet in the config
+        // is a valid wallet, and all of those checks are done by the
+        // `SignerWallet::load_boostrap_wallet` function.
+        if let Err(err) = SignerWallet::load_boostrap_wallet(self) {
+            return Err(ConfigError::Message(err.to_string()));
+        }
+
         // db_endpoint note: we don't validate the host because we will never
         // get here; the URL deserializer will fail if the host is empty.
         Ok(())
