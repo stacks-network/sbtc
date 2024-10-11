@@ -122,6 +122,10 @@ impl SignerStateMachine {
         let saved_state = self.signer.save();
         let aggregate_key = PublicKey::try_from(&saved_state.group_key)?;
 
+        // When creating a new Self, the `public_keys` field gets populated
+        // using the `signers` input iterator. It represents the public
+        // keys for all signers in the signing set for DKG, including the
+        // coordinator.
         let mut signer_set_public_keys = self
             .public_keys
             .signers
@@ -129,6 +133,8 @@ impl SignerStateMachine {
             .map(PublicKey::from)
             .collect::<Vec<PublicKey>>();
 
+        // We do not depend on the fact that these keys are sorted in the
+        // database, but it doesn't hurt much either.
         signer_set_public_keys.sort();
 
         let encoded = saved_state.encode_to_vec().map_err(error::Error::Codec)?;

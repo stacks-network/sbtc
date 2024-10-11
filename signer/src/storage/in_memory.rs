@@ -443,7 +443,7 @@ impl super::DbRead for SharedStore {
             .await
             .encrypted_dkg_shares
             .values()
-            .max_by_key(|(x, _)| x)
+            .max_by_key(|(time, _)| time)
             .map(|(_, shares)| shares.clone()))
     }
 
