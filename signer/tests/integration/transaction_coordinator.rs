@@ -52,6 +52,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
         private_key: ctx.config().signer.private_key,
         signing_round_max_duration: Duration::from_secs(10),
         threshold: 2,
+        dkg_max_duration: Duration::from_secs(10),
     };
 
     // We need stacks blocks for the rotate-keys transactions.
