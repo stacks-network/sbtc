@@ -6,6 +6,7 @@ use config::File;
 use libp2p::Multiaddr;
 use serde::Deserialize;
 use stacks_common::types::chainstate::StacksAddress;
+use std::collections::BTreeSet;
 use std::path::Path;
 use url::Url;
 
@@ -16,6 +17,7 @@ use crate::config::serialization::private_key_deserializer;
 use crate::config::serialization::url_deserializer_single;
 use crate::config::serialization::url_deserializer_vec;
 use crate::keys::PrivateKey;
+use crate::keys::PublicKey;
 
 mod error;
 mod serialization;
@@ -252,6 +254,21 @@ impl Validatable for SignerConfig {
         // db_endpoint note: we don't validate the host because we will never
         // get here; the URL deserializer will fail if the host is empty.
         Ok(())
+    }
+}
+
+impl SignerConfig {
+    /// Return the bootstrapped signing set from the config. This function
+    /// makes sure that the signing set includes the current signer.
+    pub fn bootstrap_signing_set(&self) -> BTreeSet<PublicKey> {
+        // We add in the current signer into the signing set from the
+        // config just in case it hasn't been included already.
+        let self_public_key = PublicKey::from_private_key(&self.private_key);
+        self.bootstrap_signing_set
+            .iter()
+            .copied()
+            .chain([self_public_key])
+            .collect()
     }
 }
 
