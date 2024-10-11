@@ -1367,6 +1367,79 @@ async fn get_signers_script_pubkeys_returns_non_empty_vec_old_rows() {
     signer::testing::storage::drop_db(db).await;
 }
 
+/// The [`DbRead::get_last_encrypted_dkg_shares`] function is supposed to
+/// fetch the last encrypted DKG shares stored in the database.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_last_encrypted_dkg_shares_gets_most_recent_shares() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // We have an empty database, so we don't have any DKG shares there.
+    let no_shares = db.get_last_encrypted_dkg_shares().await.unwrap();
+    assert!(no_shares.is_none());
+
+    // Let's create some random DKG shares and store them in the database.
+    // When we fetch the last one, there is only one to get, so nothing
+    // surprising yet.
+    let shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    db.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+    let stored_shares = db.get_last_encrypted_dkg_shares().await.unwrap();
+    assert_eq!(stored_shares.as_ref(), Some(&shares));
+
+    // Now let's pretend that we somehow insert into the database some
+    // shares with a timestamp that is in the past. Manually setting the
+    // timestamp to be something in the past isn't possible in our current
+    // codebase (and should probably never be possible), so this is just
+    // for testing purposes.
+    let old_shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    assert_ne!(shares, old_shares);
+    sqlx::query(
+        r#"
+        INSERT INTO sbtc_signer.dkg_shares (
+              aggregate_key
+            , tweaked_aggregate_key
+            , encrypted_private_shares
+            , public_shares
+            , script_pubkey
+            , signer_set_public_keys
+            , created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP - INTERVAL '2 DAYS')
+        ON CONFLICT DO NOTHING"#,
+    )
+    .bind(old_shares.aggregate_key)
+    .bind(old_shares.tweaked_aggregate_key)
+    .bind(&old_shares.encrypted_private_shares)
+    .bind(&old_shares.public_shares)
+    .bind(&old_shares.script_pubkey)
+    .bind(&old_shares.signer_set_public_keys)
+    .execute(db.pool())
+    .await
+    .unwrap();
+
+    // So when we try to get the last DKG shares this time, we'll get the
+    // same ones as last time since they are the most recent.
+    let some_shares = db.get_last_encrypted_dkg_shares().await.unwrap();
+    assert_eq!(some_shares.as_ref(), Some(&shares));
+
+    // Now let's pretend that we ran DKG again and stored them, these new
+    // shares should be selected.
+    let new_shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    // Yeah these aren't the same as the old ones.
+    assert_ne!(shares, new_shares);
+
+    db.write_encrypted_dkg_shares(&new_shares).await.unwrap();
+
+    let new_stored_shares = db.get_last_encrypted_dkg_shares().await.unwrap();
+    assert_eq!(new_stored_shares, Some(new_shares));
+
+    signer::testing::storage::drop_db(db).await;
+}
+
 /// This tests that deposit requests where there is an associated sweep
 /// transaction will show up in the query results from
 /// [`DbRead::get_swept_deposit_requests`].
