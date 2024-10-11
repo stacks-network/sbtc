@@ -27,7 +27,7 @@ use crate::{
     },
     storage::{
         in_memory::{SharedStore, Store},
-        model::BitcoinBlockRef,
+        model::StacksBlock,
         DbRead, DbWrite,
     },
 };
@@ -345,15 +345,15 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
         self.inner.lock().await.get_deposits().await
     }
 
-    async fn update_broadcasted_deposits<'a>(
+    async fn accept_deposits<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
-        bitcoin_chain_tip: &'a BitcoinBlockRef,
+        stacks_chain_tip: &'a StacksBlock,
     ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
         self.inner
             .lock()
             .await
-            .update_broadcasted_deposits(transaction, bitcoin_chain_tip)
+            .accept_deposits(transaction, stacks_chain_tip)
             .await
     }
 }

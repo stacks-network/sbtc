@@ -18,7 +18,7 @@ use url::Url;
 use crate::bitcoin::utxo::RequestRef;
 use crate::bitcoin::utxo::UnsignedTransaction;
 use crate::error::Error;
-use crate::storage::model::BitcoinBlockRef;
+use crate::storage::model::StacksBlock;
 use crate::util::ApiFallbackClient;
 
 /// Emily client error variants.
@@ -49,11 +49,13 @@ pub trait EmilyInteract: Sync + Send {
         &self,
     ) -> impl std::future::Future<Output = Result<Vec<CreateDepositRequest>, Error>> + Send;
 
-    /// Update deposits.
-    fn update_broadcasted_deposits<'a>(
+    /// Update accepted deposits after their sweep bitcoin transaction has been
+    /// confirmed (but before being finalized -- the stacks transaction minting
+    /// sBTC has not been confirmed yet).
+    fn accept_deposits<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
-        bitcoin_chain_tip: &'a BitcoinBlockRef,
+        stacks_chain_tip: &'a StacksBlock,
     ) -> impl std::future::Future<Output = Result<UpdateDepositsResponse, Error>> + Send;
 }
 
@@ -99,12 +101,13 @@ impl TryFrom<&Url> for EmilyClient {
 
 impl EmilyInteract for EmilyClient {
     async fn get_deposits(&self) -> Result<Vec<CreateDepositRequest>, Error> {
+        // TODO: hanlde pagination -- if the queried data is over 1MB DynamoDB will
+        // paginate the results even if we pass `None` as page limit.
         let resp = deposit_api::get_deposits(&self.config, Status::Pending, None, None)
             .await
             .map_err(EmilyClientError::GetDeposits)
             .map_err(Error::EmilyApi)?;
 
-        // TODO: fetch multiple pages?
         resp.deposits
             .iter()
             .map(|deposit| {
@@ -123,32 +126,29 @@ impl EmilyInteract for EmilyClient {
             .collect()
     }
 
-    async fn update_broadcasted_deposits<'a>(
+    async fn accept_deposits<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
-        bitcoin_chain_tip: &'a BitcoinBlockRef,
+        stacks_chain_tip: &'a StacksBlock,
     ) -> Result<UpdateDepositsResponse, Error> {
         let deposits = transaction
             .requests
             .iter()
             .filter_map(RequestRef::as_deposit);
 
-        let mut update_request = Vec::new();
-        for deposit in deposits {
-            update_request.push(DepositUpdate {
+        let update_request: Vec<_> = deposits
+            .map(|deposit| DepositUpdate {
                 bitcoin_tx_output_index: deposit.outpoint.vout,
                 bitcoin_txid: deposit.outpoint.txid.to_string(),
                 status: Status::Accepted,
                 fulfillment: None,
                 status_message: "".to_string(),
-                // TODO: use stacks tip/hash here?
-                last_update_block_hash: bitcoin_chain_tip.block_hash.to_string(),
-                last_update_height: bitcoin_chain_tip.block_height,
-            });
-        }
+                last_update_block_hash: stacks_chain_tip.block_hash.to_string(),
+                last_update_height: stacks_chain_tip.block_height,
+            })
+            .collect();
 
         if update_request.is_empty() {
-            // Skip the call
             return Ok(UpdateDepositsResponse { deposits: vec![] });
         }
 
@@ -168,12 +168,12 @@ impl EmilyInteract for ApiFallbackClient<EmilyClient> {
         self.exec(|client, _| client.get_deposits())
     }
 
-    async fn update_broadcasted_deposits<'a>(
+    async fn accept_deposits<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
-        bitcoin_chain_tip: &'a BitcoinBlockRef,
+        stacks_chain_tip: &'a StacksBlock,
     ) -> Result<UpdateDepositsResponse, Error> {
-        self.exec(|client, _| client.update_broadcasted_deposits(transaction, bitcoin_chain_tip))
+        self.exec(|client, _| client.accept_deposits(transaction, stacks_chain_tip))
             .await
     }
 }

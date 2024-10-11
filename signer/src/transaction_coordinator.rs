@@ -210,13 +210,12 @@ where
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<(), Error> {
         let signer_btc_state = self.get_btc_state(aggregate_key).await?;
-        let bitcoin_chain_tip_block: model::BitcoinBlockRef = self
+        let stacks_chain_tip = self
             .context
             .get_storage()
-            .get_bitcoin_block(bitcoin_chain_tip)
+            .get_stacks_chain_tip(bitcoin_chain_tip)
             .await?
-            .ok_or(Error::NoChainTip)?
-            .into();
+            .ok_or(Error::NoChainTip)?;
 
         let pending_requests = self
             .get_pending_requests(
@@ -238,12 +237,12 @@ where
             )
             .await?;
 
-            // TODO: need to add a retry (somewhere else?) if this fails? Otherwise
-            // since we already submitted the bitcoin tx, we would never mark the request
-            // as accepted.
+            // TODO: if this (considering also fallback clients) fails, we will
+            // need to handle the inconsistency of having the sweep tx confirmed
+            // but emily deposit still marked as pending.
             self.context
                 .get_emily_client()
-                .update_broadcasted_deposits(&transaction, &bitcoin_chain_tip_block)
+                .accept_deposits(&transaction, &stacks_chain_tip)
                 .await?;
         }
 
