@@ -663,4 +663,15 @@ mod tests {
             wallet2.stacks_aggregate_key()
         );
     }
+
+    #[test]
+    fn loading_signer_wallet_from_config() {
+        let ctx = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        // Let's try to load the wallet from our test config.
+        SignerWallet::load_boostrap_wallet(&ctx.config().signer).unwrap();
+    }
 }
