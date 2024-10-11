@@ -9,6 +9,7 @@ use emily_client::apis::configuration::Configuration as EmilyApiConfig;
 use emily_client::apis::deposit_api;
 use emily_client::apis::Error as EmilyError;
 use emily_client::models::DepositUpdate;
+use emily_client::models::Fulfillment;
 use emily_client::models::Status;
 use emily_client::models::UpdateDepositsRequestBody;
 use emily_client::models::UpdateDepositsResponse;
@@ -18,9 +19,9 @@ use url::Url;
 use crate::bitcoin::utxo::RequestRef;
 use crate::bitcoin::utxo::UnsignedTransaction;
 use crate::error::Error;
-use crate::storage::model::BitcoinBlockRef;
-use crate::storage::model::StacksTxId;
 use crate::storage::model::StacksBlock;
+use crate::storage::model::StacksTxId;
+use crate::storage::model::SweptDepositRequest;
 use crate::util::ApiFallbackClient;
 
 /// Emily client error variants.
@@ -60,12 +61,13 @@ pub trait EmilyInteract: Sync + Send {
         stacks_chain_tip: &'a StacksBlock,
     ) -> impl std::future::Future<Output = Result<UpdateDepositsResponse, Error>> + Send;
 
-    /// Update confirmed deposits.
-    fn update_confirmed_deposits(
+    /// Update confirmed deposits after the stacks transaction minting SBTC is confirmed.
+    fn confirm_deposit(
         &self,
-        deposit: &FulfilledDepositRequest,
-        txid: &StacksTxId,
-        bitcoin_chain_tip: &BitcoinBlockRef,
+        deposit: &SweptDepositRequest,
+        sbtc_txid: &StacksTxId,
+        stacks_chain_tip: &StacksBlock,
+        btc_fee: bitcoin::Amount,
     ) -> impl std::future::Future<Output = Result<UpdateDepositsResponse, Error>> + Send;
 }
 
@@ -170,27 +172,28 @@ impl EmilyInteract for EmilyClient {
             .map_err(Error::EmilyApi)
     }
 
-    async fn update_confirmed_deposits(
+    async fn confirm_deposit(
         &self,
-        deposit: &FulfilledDepositRequest,
-        txid: &StacksTxId,
-        bitcoin_chain_tip: &BitcoinBlockRef,
+        deposit: &SweptDepositRequest,
+        sbtc_txid: &StacksTxId,
+        stacks_chain_tip: &StacksBlock,
+        btc_fee: bitcoin::Amount,
     ) -> Result<UpdateDepositsResponse, Error> {
         let update_request = DepositUpdate {
             bitcoin_tx_output_index: deposit.output_index,
             bitcoin_txid: deposit.txid.to_string(),
-            // TODO: use stacks block info
-            last_update_block_hash: bitcoin_chain_tip.block_hash.to_string(),
-            last_update_height: bitcoin_chain_tip.block_height,
             status: Status::Confirmed,
+            last_update_block_hash: stacks_chain_tip.block_hash.to_string(),
+            last_update_height: stacks_chain_tip.block_height,
             fulfillment: Some(Some(Box::new(Fulfillment {
-                // TODO: do we want to keep the sweep tx info here?
                 bitcoin_txid: deposit.sweep_txid.to_string(),
-                bitcoin_tx_index: 0, // TODO: we don't have this info in FulfilledDepositRequest
-                btc_fee: deposit.max_fee, // TODO: wire the correct one
-                bitcoin_block_hash: bitcoin_chain_tip.block_hash.to_string(),
-                bitcoin_block_height: bitcoin_chain_tip.block_height,
-                stacks_txid: txid.to_string(),
+                // TODO: we don't keep a mapping between sweep tx inputs and
+                // deposits requests fulfilled, should we?
+                bitcoin_tx_index: 0,
+                btc_fee: btc_fee.to_sat(),
+                bitcoin_block_hash: deposit.sweep_block_hash.to_string(),
+                bitcoin_block_height: deposit.sweep_block_height,
+                stacks_txid: sbtc_txid.to_string(),
             }))),
             status_message: "".to_string(),
         };
@@ -221,13 +224,14 @@ impl EmilyInteract for ApiFallbackClient<EmilyClient> {
             .await
     }
 
-    async fn update_confirmed_deposits(
+    async fn confirm_deposit(
         &self,
-        deposit: &FulfilledDepositRequest,
-        txid: &StacksTxId,
-        bitcoin_chain_tip: &BitcoinBlockRef,
+        deposit: &SweptDepositRequest,
+        sbtc_txid: &StacksTxId,
+        stacks_chain_tip: &StacksBlock,
+        btc_fee: bitcoin::Amount,
     ) -> Result<UpdateDepositsResponse, Error> {
-        self.exec(|client, _| client.update_confirmed_deposits(deposit, txid, bitcoin_chain_tip))
+        self.exec(|client, _| client.confirm_deposit(deposit, sbtc_txid, stacks_chain_tip, btc_fee))
             .await
     }
 }
@@ -255,48 +259,4 @@ mod tests {
         let client = EmilyClient::try_from(&url).unwrap();
         assert_eq!(client.config.base_path, "http://localhost:8080");
     }
-}
-
-// TODO: remove before merging
-/// FulfilledDepositRequest
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
-#[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub struct FulfilledDepositRequest {
-    /// Transaction ID.
-    pub sweep_txid: crate::storage::model::BitcoinTxId,
-    /// The transaction fulfillinf the deposit request.
-    pub sweep_tx: crate::storage::model::BitcoinTx,
-    /// The block id of the stacks block that includes this transaction
-    pub sweep_block_hash: crate::storage::model::BitcoinBlockHash,
-    /// The block height of the stacks block that includes this transaction
-    #[sqlx(try_from = "i64")]
-    pub sweep_block_height: u64,
-    /// Transaction ID of the deposit request transaction.
-    pub txid: crate::storage::model::BitcoinTxId,
-    /// Index of the deposit request UTXO.
-    #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
-    #[sqlx(try_from = "i32")]
-    pub output_index: u32,
-    /// Script spendable by the sBTC signers.
-    pub spend_script: crate::storage::model::Bytes,
-    /// Script spendable by the depositor.
-    pub reclaim_script: crate::storage::model::Bytes,
-    /// The address of which the sBTC should be minted,
-    /// can be a smart contract address.
-    pub recipient: crate::storage::model::StacksPrincipal,
-    /// The amount in the deposit UTXO.
-    #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
-    pub amount: u64,
-    /// The maximum portion of the deposited amount that may
-    /// be used to pay for transaction fees.
-    #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "100..100_000"))]
-    pub max_fee: u64,
-    /// The addresses of the input UTXOs funding the deposit request.
-    #[cfg_attr(
-        feature = "testing",
-        dummy(faker = "crate::testing::dummy::BitcoinAddresses(1..5)")
-    )]
-    pub sender_script_pub_keys: Vec<crate::storage::model::ScriptPubKey>,
 }

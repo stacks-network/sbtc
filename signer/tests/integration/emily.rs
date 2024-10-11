@@ -21,10 +21,14 @@ use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use clarity::types::chainstate::ConsensusHash;
+use clarity::types::chainstate::StacksAddress;
 use clarity::types::chainstate::StacksBlockId;
+use clarity::vm::types::PrincipalData;
 use emily_client::apis::deposit_api;
 use emily_client::models::CreateDepositRequestBody;
 use rand::rngs::OsRng;
+use sbtc::deposits::DepositScriptInputs;
+use sbtc::deposits::ReclaimScriptInputs;
 use sbtc::testing::regtest::Recipient;
 use sha2::Digest as _;
 use signer::bitcoin::rpc::GetTxResponse;
@@ -46,6 +50,7 @@ use signer::keys::SignerScriptPubKey as _;
 use signer::network;
 use signer::storage::model;
 use signer::storage::model::DepositSigner;
+use signer::storage::model::SweptDepositRequest;
 use signer::storage::model::TransactionType;
 use signer::storage::DbRead;
 use signer::storage::DbWrite;
@@ -597,9 +602,18 @@ async fn deposit_flow_client() {
 
     let deposit_txid = testing::dummy::txid(&fake::Faker, &mut OsRng);
     let deposit_vout = 7;
-    let deposit_script = ScriptBuf::new_op_return([1, 2, 3]);
-    let reclaim_script = ScriptBuf::new_op_return([4, 5, 6]);
     let signers_key: keys::PublicKey = fake::Faker.fake_with_rng(&mut OsRng);
+    let max_fee = 10;
+
+    let deposit_inputs = DepositScriptInputs {
+        signers_public_key: signers_key.into(),
+        max_fee,
+        recipient: PrincipalData::from(StacksAddress::burn_address(false)),
+    };
+    let reclaim_inputs = ReclaimScriptInputs::try_new(50, ScriptBuf::new()).unwrap();
+
+    let deposit_script = deposit_inputs.deposit_script();
+    let reclaim_script = reclaim_inputs.reclaim_script();
 
     let emily_request = CreateDepositRequestBody {
         bitcoin_tx_output_index: deposit_vout,
@@ -639,9 +653,9 @@ async fn deposit_flow_client() {
             txid: deposit_txid,
             vout: deposit_vout,
         },
-        max_fee: 0,
+        max_fee,
         signer_bitmap: [0; 16].into(),
-        amount: 0,
+        amount: 1000,
         deposit_script: deposit_script.clone(),
         reclaim_script: reclaim_script.clone(),
         signers_public_key: signers_key.into(),
@@ -672,11 +686,12 @@ async fn deposit_flow_client() {
         tx_fee: 0,
     };
     emily_client
-        .update_broadcasted_deposits(
+        .accept_deposits(
             &unsigned_tx,
-            &model::BitcoinBlockRef {
+            &model::StacksBlock {
                 block_height: 42,
                 block_hash: fake::Faker.fake(),
+                parent_hash: fake::Faker.fake(),
             },
         )
         .await
@@ -703,20 +718,21 @@ async fn deposit_flow_client() {
         emily_client::models::Status::Accepted
     );
 
-    // Update it as completed
-    let mut deposit_request: signer::emily_client::FulfilledDepositRequest =
-        fake::Faker.fake_with_rng(&mut OsRng);
+    // Update it as confirmed
+    let mut deposit_request: SweptDepositRequest = fake::Faker.fake_with_rng(&mut OsRng);
     deposit_request.txid = deposit_txid.into();
     deposit_request.output_index = deposit_vout;
     let stacks_txid = fake::Faker.fake_with_rng(&mut OsRng);
     emily_client
-        .update_confirmed_deposits(
+        .confirm_deposit(
             &deposit_request,
             &stacks_txid,
-            &model::BitcoinBlockRef {
+            &model::StacksBlock {
                 block_height: 43,
                 block_hash: fake::Faker.fake(),
+                parent_hash: fake::Faker.fake(),
             },
+            Amount::from_sat(9),
         )
         .await
         .expect("cannot update deposit");
@@ -741,10 +757,10 @@ async fn deposit_flow_client() {
         fetched_deposit.status,
         emily_client::models::Status::Confirmed
     );
-    // TODO: currently fulfillment are available only for accepted requests
-    assert!(fetched_deposit.fulfillment.is_none());
-    // assert_eq!(
-    //     fetched_deposit.fulfillment.unwrap().unwrap().stacks_txid,
-    //     stacks_txid.to_string()
-    // );
+
+    let fulfillment = fetched_deposit
+        .fulfillment
+        .expect("missing fulfillment")
+        .unwrap();
+    assert_eq!(fulfillment.stacks_txid, stacks_txid.to_string());
 }
