@@ -81,7 +81,6 @@ impl SignerStateMachine {
     pub async fn load<S>(
         storage: &S,
         aggregate_key: PublicKey,
-        signers: impl IntoIterator<Item = PublicKey>,
         threshold: u32,
         signer_private_key: PrivateKey,
     ) -> Result<Self, error::Error>
@@ -106,6 +105,7 @@ impl SignerStateMachine {
         // however, that should never be the case since wsts maintains this invariant
         // when we save the state.
         let signer = wsts::v2::Party::load(&saved_state);
+        let signers = encrypted_shares.signer_set_public_keys;
 
         let mut state_machine = Self::new(signers, threshold, signer_private_key)?;
 

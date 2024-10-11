@@ -354,14 +354,9 @@ where
             .await?;
 
         if is_valid_sign_request {
-            // We need the current set of public keys for all signers on
-            // our network.
-            let signer_public_keys = self.get_signer_public_keys(bitcoin_chain_tip).await?;
-
             let new_state_machine = wsts_state_machine::SignerStateMachine::load(
                 &self.context.get_storage_mut(),
                 request.aggregate_key,
-                signer_public_keys,
                 self.threshold,
                 self.signer_private_key,
             )
