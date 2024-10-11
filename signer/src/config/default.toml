@@ -108,7 +108,7 @@ nakamoto_start_height = 31
 # Format: "<hex-encoded-private-key>" (64 or 66 hex-characters)
 # Required: true
 # Environment: SIGNER_SIGNER__PRIVATE_KEY
-private_key = "8183dc385a7a1fc8353b9e781ee0859a71e57abea478a5bca679334094f7adb5"
+private_key = "41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc"
 
 # Specifies which network to use when constructing and sending transactions
 # on stacks and bitcoin. This cooresponds to the `chain` flag in the
@@ -124,7 +124,7 @@ network = "regtest"
 # The address that deployed the sbtc smart contracts.
 #
 # Required: true
-deployer = "SN2V7WTJ7BHR03MPHZ1C9A9ZR6NZGR4WM8HT4V67Y"
+deployer = "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS"
 
 # The signer database endpoint (pgsql connection string)
 #

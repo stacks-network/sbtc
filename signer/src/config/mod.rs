@@ -400,7 +400,7 @@ mod tests {
         assert_eq!(
             settings.signer.private_key,
             PrivateKey::from_str(
-                "8183dc385a7a1fc8353b9e781ee0859a71e57abea478a5bca679334094f7adb5"
+                "41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc"
             )
             .unwrap()
         );
