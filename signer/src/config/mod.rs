@@ -320,7 +320,7 @@ impl Settings {
             .separator("__")
             .list_separator(",")
             .try_parsing(true)
-            .with_list_parse_key("signer.peer_public_keys")
+            .with_list_parse_key("signer.bootstrap_signing_set")
             .with_list_parse_key("signer.p2p.seeds")
             .with_list_parse_key("signer.p2p.listen_on")
             .with_list_parse_key("signer.p2p.public_endpoints")
@@ -839,6 +839,35 @@ mod tests {
         std::env::set_var("SIGNER_SIGNER__P2P__SEEDS", "tcp://localhost:4122");
 
         assert!(Settings::new_from_default_config().is_ok());
+    }
+
+    #[test]
+    fn bootstrap_wallet_signatures_required() {
+        let signatures_required = 3;
+        std::env::set_var(
+            "SIGNER_SIGNER__BOOTSTRAP_SIGNATURES_REQUIRED",
+            signatures_required.to_string(),
+        );
+        let settings = Settings::new_from_default_config().unwrap();
+
+        assert_eq!(
+            settings.signer.bootstrap_signatures_required,
+            signatures_required
+        );
+    }
+
+    #[test]
+    fn bootstrap_wallet_signer_set() {
+        let keys = "035249137286c077ccee65ecc43e724b9b9e5a588e3d7f51e3b62f9624c2a49e46,031a4d9f4903da97498945a4e01a5023a1d53bc96ad670bfe03adf8a06c52e6380";
+        std::env::set_var("SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET", keys);
+        let settings = Settings::new_from_default_config().unwrap();
+        let public_keys: Vec<PublicKey> = keys
+            .split(",")
+            .flat_map(secp256k1::PublicKey::from_str)
+            .map(PublicKey::from)
+            .collect();
+
+        assert_eq!(settings.signer.bootstrap_signing_set, public_keys);
     }
 
     #[test]
