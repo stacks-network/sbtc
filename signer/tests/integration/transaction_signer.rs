@@ -184,6 +184,9 @@ async fn should_be_able_to_participate_in_signing_round() {
         .await;
 }
 
+/// Test that [`TxSignerEventLoop::get_signer_public_keys`] falls back to
+/// the bootstrap config if there is no rotate-keys transaction in the
+/// database.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_signer_public_keys_and_aggregate_key_falls_back() {
@@ -224,12 +227,13 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
     // We always need the chain tip.
     let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
 
-    // We have no rows in the DKG shares table and no rotate-keys
-    // transactions, but this function falls back to the config for keys if
-    // no rotate-keys transaction can be found. We check that the signer
-    // set can form a valid wallet when we load the config. In particular,
-    // the signing set should not be empty.
+    // We have no transactions in the database, just blocks header hashes
+    // and block heights. The `get_signer_public_keys` function falls back
+    // to the config for keys if no rotate-keys transaction can be found.
+    // So this function almost never errors.
     let bootstrap_signer_set = coord.get_signer_public_keys(&chain_tip).await.unwrap();
+    // We check that the signer set can form a valid wallet when we load
+    // the config. In particular, the signing set should not be empty.
     assert!(!bootstrap_signer_set.is_empty());
 
     let config_signer_set = ctx.config().signer.bootstrap_signing_set();
