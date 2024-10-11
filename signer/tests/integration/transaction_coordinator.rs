@@ -27,7 +27,7 @@ use crate::DATABASE_NUM;
 /// latest rotate-keys contract call transaction confirmed on the canonical
 /// Stacks blockchain and falls back to the DKG shares table if no such
 /// transaction can be found.
-/// 
+///
 /// This tests that we prefer rotate keys transactions if it's available
 /// but will use the DKG shares behavior is indeed the case.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -71,9 +71,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
 
     // We have no rows in the DKG shares table and no rotate-keys
     // transactions, so this should error
-    let ans = coord
-        .get_signer_set_and_aggregate_key(&chain_tip)
-        .await;
+    let ans = coord.get_signer_set_and_aggregate_key(&chain_tip).await;
     assert!(ans.is_err());
 
     // Alright, lets write some DKG shares into the database. When we do

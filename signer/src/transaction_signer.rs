@@ -759,7 +759,7 @@ where
     /// signing set, otherwise we fall back to the bootstrap keys in our
     /// config.
     #[tracing::instrument(skip_all)]
-    async fn get_signer_public_keys(
+    pub async fn get_signer_public_keys(
         &self,
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<BTreeSet<PublicKey>, Error> {
@@ -767,8 +767,8 @@ where
 
         // Get the last rotate-keys transaction from the database on the
         // canonical Stacks blockchain (which we identify using the
-        // canonical bitcoin blockchain). If we don't have one get keys
-        // from our config.
+        // canonical bitcoin blockchain). If we don't have such a
+        // transaction then get the bootstrap keys from our config.
         match db.get_last_key_rotation(chain_tip).await? {
             Some(last_key) => Ok(last_key.signer_set.into_iter().collect()),
             None => Ok(self.context.config().signer.bootstrap_signing_set()),
