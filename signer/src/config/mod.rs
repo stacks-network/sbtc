@@ -843,6 +843,8 @@ mod tests {
 
     #[test]
     fn bootstrap_wallet_signatures_required() {
+        clear_env();
+
         let signatures_required = 3;
         std::env::set_var(
             "SIGNER_SIGNER__BOOTSTRAP_SIGNATURES_REQUIRED",
@@ -858,6 +860,8 @@ mod tests {
 
     #[test]
     fn bootstrap_wallet_signer_set() {
+        clear_env();
+
         let keys = "035249137286c077ccee65ecc43e724b9b9e5a588e3d7f51e3b62f9624c2a49e46,031a4d9f4903da97498945a4e01a5023a1d53bc96ad670bfe03adf8a06c52e6380";
         std::env::set_var("SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET", keys);
         let settings = Settings::new_from_default_config().unwrap();
@@ -868,6 +872,20 @@ mod tests {
             .collect();
 
         assert_eq!(settings.signer.bootstrap_signing_set, public_keys);
+    }
+
+    #[test]
+    fn bad_bootstrap_wallet_signer_set() {
+        clear_env();
+
+        let keys = "031a4d9f4903da97498945a4e01a5023a1d53bc96ad670bfe03adf8a06c52e6380";
+        let signatures_required = 3;
+        std::env::set_var("SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET", keys);
+        std::env::set_var(
+            "SIGNER_SIGNER__BOOTSTRAP_SIGNATURES_REQUIRED",
+            signatures_required.to_string(),
+        );
+        assert!(Settings::new_from_default_config().is_err());
     }
 
     #[test]
