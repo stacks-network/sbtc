@@ -63,7 +63,6 @@ where
                 context_window,
                 wsts_state_machines: HashMap::new(),
                 threshold,
-                network_kind: bitcoin::Network::Regtest,
                 rng,
             },
             context,
@@ -878,13 +877,13 @@ async fn run_dkg_and_store_results_for_signers<'s: 'r, 'r, S, Rng>(
         testing::wsts::SignerSet::new(signer_info, threshold, || network.connect());
     let dkg_txid = testing::dummy::txid(&fake::Faker, rng);
     let bitcoin_chain_tip = *chain_tip;
-    let (aggregate_key, all_dkg_shares) = testing_signer_set
+    let (_, all_dkg_shares) = testing_signer_set
         .run_dkg(bitcoin_chain_tip, dkg_txid, rng)
         .await;
 
     for (storage, encrypted_dkg_shares) in stores.into_iter().zip(all_dkg_shares) {
         testing_signer_set
-            .write_as_rotate_keys_tx(&storage, chain_tip, aggregate_key, rng)
+            .write_as_rotate_keys_tx(&storage, chain_tip, &encrypted_dkg_shares, rng)
             .await;
 
         storage
