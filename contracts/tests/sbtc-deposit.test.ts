@@ -195,7 +195,7 @@ describe("sBTC deposit contract", () => {
       // fold err prefix is "u303" + 10, third item errs so should be 315
       expect(receipt.value).toEqual(315n);
     });
-    test.only("complete multiple deposits successfully", () => {
+    test("complete multiple deposits successfully", () => {
       const receipt = txOk(
         deposit.completeDepositsWrapper({
           deposits: [
