@@ -4,6 +4,7 @@ import {
   deployer,
   deposit,
   errors,
+  getCurrentBurnInfo,
   randomPublicKeys,
   registry,
   stxAddressToPoxAddress,
@@ -106,7 +107,7 @@ describe("initiating a withdrawal request", () => {
       recipient: alicePoxAddr,
       amount: defaultAmount,
       maxFee: defaultMaxFee,
-      blockHeight: 2n,
+      blockHeight: BigInt(simnet.blockHeight - 2),
       status: null,
     });
 
@@ -131,7 +132,7 @@ describe("initiating a withdrawal request", () => {
       recipient: alicePoxAddr,
       amount: defaultAmount,
       maxFee: defaultMaxFee,
-      blockHeight: 2n,
+      blockHeight: BigInt(simnet.blockHeight - 2),
       topic: "withdrawal-create",
       requestId: 1n,
     });
@@ -147,7 +148,9 @@ describe("initiating a withdrawal request", () => {
       }),
       deployer
     );
-    expect(rovOk(token.getBalance(alice))).toEqual(defaultAmount + defaultMaxFee);
+    expect(rovOk(token.getBalance(alice))).toEqual(
+      defaultAmount + defaultMaxFee
+    );
     const receipt = txOk(
       withdrawal.initiateWithdrawalRequest({
         amount: defaultAmount,
@@ -165,7 +168,9 @@ describe("initiating a withdrawal request", () => {
     expect(mintEvent.data.asset_identifier).toEqual(
       `${token.identifier}::${token.fungible_tokens[1].name}`
     );
-    expect(mintEvent.data.amount).toEqual((defaultAmount + defaultMaxFee).toString());
+    expect(mintEvent.data.amount).toEqual(
+      (defaultAmount + defaultMaxFee).toString()
+    );
     expect(rovOk(token.getBalanceAvailable(alice))).toEqual(0n);
   });
 
@@ -263,7 +268,6 @@ test("max-fee must be accounted for", () => {
   // the response.
   expect(receipt.value).toEqual(1n);
 });
-
 
 describe("Accepting a withdrawal request", () => {
   test("Fails with non-existant request-id", () => {
@@ -452,7 +456,7 @@ describe("Accepting a withdrawal request", () => {
       requestId: 1n,
       bitcoinTxid: new Uint8Array(32).fill(0),
       signerBitmap: 2n,
-      outputIndex : 10n,
+      outputIndex: 10n,
       topic: "withdrawal-accept",
       fee: defaultMaxFee + 10n,
     });
@@ -499,7 +503,7 @@ describe("Accepting a withdrawal request", () => {
       recipient: alicePoxAddr,
       amount: defaultAmount,
       maxFee: defaultMaxFee,
-      blockHeight: 2n,
+      blockHeight: BigInt(simnet.blockHeight - 3),
       status: true,
     });
   });
@@ -518,8 +522,12 @@ describe("Accepting a withdrawal request", () => {
       }),
       deployer
     );
-    expect(rovOk(token.getBalance(alice))).toEqual(defaultAmount + defaultMaxFee);
-    expect(rovOk(token.getBalanceAvailable(alice))).toEqual(defaultAmount + defaultMaxFee);
+    expect(rovOk(token.getBalance(alice))).toEqual(
+      defaultAmount + defaultMaxFee
+    );
+    expect(rovOk(token.getBalanceAvailable(alice))).toEqual(
+      defaultAmount + defaultMaxFee
+    );
     expect(rovOk(token.getBalanceLocked(alice))).toEqual(0n);
     txOk(
       withdrawal.initiateWithdrawalRequest({
@@ -531,9 +539,13 @@ describe("Accepting a withdrawal request", () => {
     );
     // Initiating a withdrawal request doesn't change the "balance", but
     // does change how much is available.
-    expect(rovOk(token.getBalance(alice))).toEqual(defaultAmount + defaultMaxFee);
+    expect(rovOk(token.getBalance(alice))).toEqual(
+      defaultAmount + defaultMaxFee
+    );
     expect(rovOk(token.getBalanceAvailable(alice))).toEqual(0n);
-    expect(rovOk(token.getBalanceLocked(alice))).toEqual(defaultAmount + defaultMaxFee);
+    expect(rovOk(token.getBalanceLocked(alice))).toEqual(
+      defaultAmount + defaultMaxFee
+    );
     const receipt = txOk(
       withdrawal.rejectWithdrawalRequest({
         requestId: 1n,
@@ -542,8 +554,12 @@ describe("Accepting a withdrawal request", () => {
       deployer
     );
     // This is the original balance, rejecting the request restores it.
-    expect(rovOk(token.getBalance(alice))).toEqual(defaultAmount + defaultMaxFee);
-    expect(rovOk(token.getBalanceAvailable(alice))).toEqual(defaultAmount + defaultMaxFee);
+    expect(rovOk(token.getBalance(alice))).toEqual(
+      defaultAmount + defaultMaxFee
+    );
+    expect(rovOk(token.getBalanceAvailable(alice))).toEqual(
+      defaultAmount + defaultMaxFee
+    );
     expect(rovOk(token.getBalanceLocked(alice))).toEqual(0n);
 
     // Check that the request was stored correctly with the correct status
@@ -556,7 +572,7 @@ describe("Accepting a withdrawal request", () => {
       recipient: alicePoxAddr,
       amount: defaultAmount,
       maxFee: defaultMaxFee,
-      blockHeight: 2n,
+      blockHeight: BigInt(simnet.blockHeight - 3),
       status: false,
     });
 
@@ -739,7 +755,7 @@ describe("Reject a withdrawal request", () => {
             bitcoinTxid: new Uint8Array(32).fill(1),
             outputIndex: 10n,
             fee: 10n,
-          }
+          },
         ],
         burnHeight: 10n,
         burnHash: new Uint8Array(32).fill(0),
@@ -852,7 +868,7 @@ describe("Complete multiple withdrawals", () => {
 describe("optimization tests for completing withdrawals", () => {
   test("maximizing the number of withdrawal completions in one tx", () => {
     const totalAmount = 1000000n;
-    const runs = 500;
+    const runs = 300;
     const perAmount = totalAmount / BigInt(runs);
     const maxFee = 10n;
     const txids = randomPublicKeys(runs).map((pk) => pk.slice(0, 32));
@@ -876,7 +892,8 @@ describe("optimization tests for completing withdrawals", () => {
         alice
       );
     }
-    txErr(
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
+    txOk(
       withdrawal.completeWithdrawals({
         withdrawals: txids.map((txid, index) => {
           return {
@@ -888,8 +905,8 @@ describe("optimization tests for completing withdrawals", () => {
             fee: 10n,
           };
         }),
-        burnHeight: 10n,
-        burnHash: new Uint8Array(32).fill(0)
+        burnHeight,
+        burnHash: burnHash!,
       }),
       deployer
     );
