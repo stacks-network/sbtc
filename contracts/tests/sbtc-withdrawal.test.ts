@@ -716,7 +716,7 @@ describe("Reject a withdrawal request", () => {
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
-        amount: 1001n,
+        amount: defaultAmount + defaultMaxFee,
         recipient: alice,
       }),
       deployer
@@ -725,7 +725,7 @@ describe("Reject a withdrawal request", () => {
       withdrawal.initiateWithdrawalRequest({
         amount: 1000n,
         recipient: alicePoxAddr,
-        maxFee: 10n,
+        maxFee: defaultMaxFee,
       }),
       alice
     );
