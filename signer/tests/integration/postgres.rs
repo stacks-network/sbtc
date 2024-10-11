@@ -1301,6 +1301,7 @@ async fn is_signer_script_pub_key_checks_dkg_shares_for_script_pubkeys() {
         encrypted_private_shares: Vec::new(),
         public_shares: Vec::new(),
         aggregate_key,
+        signer_set_public_keys: vec![fake::Faker.fake_with_rng(&mut rng)],
     };
     db.write_encrypted_dkg_shares(&shares).await.unwrap();
     mem.write_encrypted_dkg_shares(&shares).await.unwrap();
@@ -1344,9 +1345,10 @@ async fn get_signers_script_pubkeys_returns_non_empty_vec_old_rows() {
             , encrypted_private_shares
             , public_shares
             , script_pubkey
+            , signer_set_public_keys
             , created_at
         )
-        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP - INTERVAL '366 DAYS')
+        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP - INTERVAL '366 DAYS')
         ON CONFLICT DO NOTHING"#,
     )
     .bind(shares.aggregate_key)
@@ -1354,6 +1356,7 @@ async fn get_signers_script_pubkeys_returns_non_empty_vec_old_rows() {
     .bind(&shares.encrypted_private_shares)
     .bind(&shares.public_shares)
     .bind(&shares.script_pubkey)
+    .bind(&shares.signer_set_public_keys)
     .execute(db.pool())
     .await
     .unwrap();

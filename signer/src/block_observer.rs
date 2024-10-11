@@ -704,6 +704,7 @@ mod tests {
             script_pubkey: signers_script_pubkey.clone(),
             encrypted_private_shares: Vec::new(),
             public_shares: Vec::new(),
+            signer_set_public_keys: vec![aggregate_key],
         };
         storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 
