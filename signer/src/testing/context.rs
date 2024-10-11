@@ -5,7 +5,9 @@ use std::{ops::Deref, sync::Arc};
 use bitcoin::Txid;
 use blockstack_lib::{
     chainstate::{nakamoto::NakamotoBlock, stacks::StacksTransaction},
-    net::api::gettenureinfo::RPCGetTenureInfo,
+    net::api::{
+        getinfo::RPCPeerInfoData, getpoxinfo::RPCPoxInfoData, gettenureinfo::RPCGetTenureInfo,
+    },
 };
 use clarity::types::chainstate::{StacksAddress, StacksBlockId};
 use tokio::sync::Mutex;
@@ -25,7 +27,7 @@ use crate::{
     },
     storage::{
         in_memory::{SharedStore, Store},
-        model::{BitcoinBlockRef, StacksTxId},
+        model::{StacksBlock, StacksTxId},
         DbRead, DbWrite,
     },
 };
@@ -329,13 +331,12 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
             .await
     }
 
-    fn nakamoto_start_height(&self) -> u64 {
-        let handle = tokio::runtime::Handle::current();
-        let _guard = handle.enter();
-        futures::executor::block_on(async move {
-            let inner = self.inner.lock().await;
-            inner.nakamoto_start_height()
-        })
+    async fn get_pox_info(&self) -> Result<RPCPoxInfoData, Error> {
+        self.inner.lock().await.get_pox_info().await
+    }
+
+    async fn get_node_info(&self) -> Result<RPCPeerInfoData, Error> {
+        self.inner.lock().await.get_node_info().await
     }
 }
 
@@ -344,15 +345,15 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
         self.inner.lock().await.get_deposits().await
     }
 
-    async fn update_broadcasted_deposits<'a>(
+    async fn accept_deposits<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
-        bitcoin_chain_tip: &'a BitcoinBlockRef,
+        stacks_chain_tip: &'a StacksBlock,
     ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
         self.inner
             .lock()
             .await
-            .update_broadcasted_deposits(transaction, bitcoin_chain_tip)
+            .accept_deposits(transaction, stacks_chain_tip)
             .await
     }
 

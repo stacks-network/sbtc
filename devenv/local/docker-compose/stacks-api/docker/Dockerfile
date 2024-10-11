@@ -2,7 +2,7 @@ FROM node:16-alpine
 LABEL org.opencontainers.image.authors="Gowtham Sundar <gowtham@trustmachines.co>"
 
 ARG GIT_URI='https://github.com/hirosystems/stacks-blockchain-api.git'
-ARG GIT_BRANCH='v7.10.0-nakamoto.7'
+ARG GIT_BRANCH='46e1ae256e474eac98979d0a3df685fe3fa48d6d'
 
 WORKDIR /app
 

@@ -19,13 +19,17 @@ populate = ["testing"]
 aws-config.workspace = true
 aws-sdk-dynamodb.workspace = true
 base64.workspace = true
+bitcoin.workspace = true
 config.workspace = true
 clap.workspace = true
+hex.workspace = true
 openssl.workspace = true
 reqwest.workspace = true
+sbtc.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_dynamo.workspace = true
 serde_json.workspace = true
+stacks-common.workspace = true
 thiserror.workspace = true
 time = { workspace = true, features = ["serde"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "rt", "macros"] }
@@ -42,3 +46,5 @@ fake = { version = "2.9.2", features = ["derive", "time"], optional = true }
 rand = "0.8"
 mockito = "0.28"
 mockall = "0.10"
+sbtc = { workspace = true, features = ["testing"] }
+test-case = "3.1"

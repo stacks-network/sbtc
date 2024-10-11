@@ -10,35 +10,35 @@ plan:
       transactions:
         - contract-publish:
             contract-name: sbtc-registry
-            expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            expected-sender: ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039
             cost: 76600
             path: contracts/sbtc-registry.clar
             anchor-block-only: true
             clarity-version: 2
         - contract-publish:
             contract-name: sbtc-bootstrap-signers
-            expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            expected-sender: ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039
             cost: 52280
             path: contracts/sbtc-bootstrap-signers.clar
             anchor-block-only: true
             clarity-version: 2
         - contract-publish:
             contract-name: sbtc-token
-            expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            expected-sender: ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039
             cost: 42090
             path: contracts/sbtc-token.clar
             anchor-block-only: true
             clarity-version: 2
         - contract-publish:
             contract-name: sbtc-deposit
-            expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            expected-sender: ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039
             cost: 35540
             path: contracts/sbtc-deposit.clar
             anchor-block-only: true
             clarity-version: 2
         - contract-publish:
             contract-name: sbtc-withdrawal
-            expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            expected-sender: ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039
             cost: 84750
             path: contracts/sbtc-withdrawal.clar
             anchor-block-only: true

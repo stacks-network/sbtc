@@ -4,7 +4,7 @@ LABEL org.opencontainers.image.authors="Gowtham Sundar <gowtham@trustmachines.co
 
 
 ARG GIT_URI='https://github.com/hirosystems/explorer.git'
-ARG GIT_BRANCH='v1.170.1'
+ARG GIT_BRANCH='v1.211.2'
 
 WORKDIR /app
 RUN apk add --no-cache git python3 make g++

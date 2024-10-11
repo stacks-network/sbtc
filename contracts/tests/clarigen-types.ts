@@ -1127,7 +1127,7 @@ export const contracts = {
       },
       currentAggregatePubkey: Uint8Array.from([0]),
       currentSignatureThreshold: 0n,
-      currentSignerPrincipal: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
+      currentSignerPrincipal: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039",
       currentSignerSet: [],
       lastWithdrawalRequestId: 0n,
     },
@@ -1848,7 +1848,7 @@ export const contracts = {
 
 export const accounts = {
   deployer: {
-    address: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
+    address: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039",
     balance: "100000000000000",
   },
   faucet: {
@@ -1856,46 +1856,26 @@ export const accounts = {
     balance: "100000000000000",
   },
   wallet_1: {
-    address: "ST1SJ3DTE5DN7X54YDH5D64R3BCB6A2AG2ZQ8YPD5",
+    address: "ST1YEHRRYJ4GF9CYBFFN0ZVCXX1APSBEEQ5KEDN7M",
     balance: "100000000000000",
   },
   wallet_2: {
-    address: "ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG",
+    address: "ST1WNJTS9JM1JYGK758B10DBAMBZ0K23ADP392SBV",
     balance: "100000000000000",
   },
   wallet_3: {
-    address: "ST2JHG361ZXG51QTKY2NQCVBPPRRE2KZB1HR05NNC",
-    balance: "100000000000000",
-  },
-  wallet_4: {
-    address: "ST2NEB84ASENDXKYGJPQW86YXQCEFEX2ZQPG87ND",
-    balance: "100000000000000",
-  },
-  wallet_5: {
-    address: "ST2REHHS5J3CERCRBEPMGH7921Q6PYKAADT7JP2VB",
-    balance: "100000000000000",
-  },
-  wallet_6: {
-    address: "ST3AM1A56AK2C1XAFJ4115ZSV26EB49BVQ10MGCS0",
-    balance: "100000000000000",
-  },
-  wallet_7: {
-    address: "ST3PF13W7Z0RRM42A8VZRVFQ75SV1K26RXEP8YGKJ",
-    balance: "100000000000000",
-  },
-  wallet_8: {
-    address: "ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP",
+    address: "ST1MDWBDVDGAANEH9001HGXQA6XRNK7PX7A7X8M6R",
     balance: "100000000000000",
   },
 } as const;
 
 export const identifiers = {
   sbtcBootstrapSigners:
-    "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-bootstrap-signers",
-  sbtcDeposit: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-deposit",
-  sbtcRegistry: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-registry",
-  sbtcToken: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-token",
-  sbtcWithdrawal: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-withdrawal",
+    "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-bootstrap-signers",
+  sbtcDeposit: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-deposit",
+  sbtcRegistry: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-registry",
+  sbtcToken: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-token",
+  sbtcWithdrawal: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-withdrawal",
 } as const;
 
 export const simnet = {
@@ -1906,32 +1886,32 @@ export const simnet = {
 
 export const deployments = {
   sbtcBootstrapSigners: {
-    devnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-bootstrap-signers",
-    simnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-bootstrap-signers",
+    devnet: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-bootstrap-signers",
+    simnet: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-bootstrap-signers",
     testnet: null,
     mainnet: null,
   },
   sbtcDeposit: {
-    devnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-deposit",
-    simnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-deposit",
+    devnet: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-deposit",
+    simnet: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-deposit",
     testnet: null,
     mainnet: null,
   },
   sbtcRegistry: {
-    devnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-registry",
-    simnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-registry",
+    devnet: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-registry",
+    simnet: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-registry",
     testnet: null,
     mainnet: null,
   },
   sbtcToken: {
-    devnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-token",
-    simnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-token",
+    devnet: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-token",
+    simnet: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-token",
     testnet: null,
     mainnet: null,
   },
   sbtcWithdrawal: {
-    devnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-withdrawal",
-    simnet: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-withdrawal",
+    devnet: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-withdrawal",
+    simnet: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-withdrawal",
     testnet: null,
     mainnet: null,
   },

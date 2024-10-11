@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::collections::HashSet;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use bitcoin::block::Header;
@@ -13,12 +13,12 @@ use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
 use bitcoin::TxMerkleNode;
-use bitcoin::TxOut;
 use bitcoin::Txid;
 use bitcoincore_rpc_json::Utxo;
 
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
+use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use clarity::types::chainstate::ConsensusHash;
 use clarity::types::chainstate::StacksBlockId;
@@ -37,6 +37,7 @@ use signer::bitcoin::utxo::UnsignedTransaction;
 use signer::block_observer;
 use signer::context::Context;
 use signer::context::SignerEvent;
+use signer::context::TxSignerEvent;
 use signer::emily_client::EmilyClient;
 use signer::emily_client::EmilyInteract;
 use signer::error::Error;
@@ -45,6 +46,7 @@ use signer::keys::SignerScriptPubKey as _;
 use signer::network;
 use signer::storage::model;
 use signer::storage::model::DepositSigner;
+use signer::storage::model::TransactionType;
 use signer::storage::DbRead;
 use signer::storage::DbWrite;
 use signer::testing;
@@ -66,6 +68,7 @@ use signer::transaction_coordinator;
 use url::Url;
 
 use crate::utxo_construction::make_deposit_request;
+use crate::DATABASE_NUM;
 
 async fn run_dkg<Rng, C>(
     ctx: &C,
@@ -106,11 +109,10 @@ where
     let (aggregate_key, all_dkg_shares) =
         signer_set.run_dkg(bitcoin_chain_tip, dkg_txid, rng).await;
 
-    signer_set
-        .write_as_rotate_keys_tx(&storage, &bitcoin_chain_tip, aggregate_key, rng)
-        .await;
-
     let encrypted_dkg_shares = all_dkg_shares.first().unwrap();
+    signer_set
+        .write_as_rotate_keys_tx(&storage, &bitcoin_chain_tip, encrypted_dkg_shares, rng)
+        .await;
 
     storage
         .write_encrypted_dkg_shares(encrypted_dkg_shares)
@@ -159,7 +161,8 @@ where
 /// To run this test, concurrently run:
 ///  - make emily-integration-env-up
 ///  - AWS_ACCESS_KEY_ID=foo AWS_SECRET_ACCESS_KEY=bar AWS_REGION=us-west-2 make emily-server
-/// then, once Emily is up and running, run this test.
+///  - docker compose --file docker-compose.test.yml up
+/// then, once everything is up and running, run this test.
 #[ignore = "This is an integration test that requires manually running emily"]
 #[tokio::test]
 async fn deposit_flow() {
@@ -167,6 +170,8 @@ async fn deposit_flow() {
     let signing_threshold = 5;
     let context_window = 10;
 
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(46);
     let network = network::in_memory::Network::new();
     let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
@@ -176,7 +181,7 @@ async fn deposit_flow() {
     let stacks_client = WrappedMock::default();
 
     let mut context = TestContext::builder()
-        .with_in_memory_storage()
+        .with_storage(db.clone())
         .with_mocked_bitcoin_client()
         .with_stacks_client(stacks_client.clone())
         .with_emily_client(emily_client.clone())
@@ -200,7 +205,10 @@ async fn deposit_flow() {
             script_pubkey: aggregate_key.signers_script_pubkey(),
         }],
     };
-    test_data.push_sbtc_txs(&bitcoin_chain_tip, vec![signers_utxo_tx.clone()]);
+    test_data.push_bitcoin_txs(
+        &bitcoin_chain_tip,
+        vec![(TransactionType::SbtcTransaction, signers_utxo_tx.clone())],
+    );
     test_data.remove(original_test_data);
     test_data.write_to(&context.get_storage_mut()).await;
 
@@ -218,38 +226,12 @@ async fn deposit_flow() {
         amount: Amount::from_sat(deposit_config.amount + deposit_config.max_fee + 1),
         height: 0,
     };
-    let (mut deposit_tx, mut deposit_request) = make_deposit_request(
+    let (deposit_tx, deposit_request) = make_deposit_request(
         &depositor,
         deposit_config.amount,
         depositor_utxo,
         deposit_config.aggregate_key.into(),
     );
-
-    // TODO: there's something wrong: `extract_sbtc_transactions` expect one of the output to be
-    //       spendable by `signers_pubkey` instead of the combined script?
-    let signers_pubkey: HashSet<ScriptBuf> = context
-        .get_storage()
-        .get_signers_script_pubkeys()
-        .await
-        .unwrap()
-        .into_iter()
-        .map(ScriptBuf::from_bytes)
-        .collect();
-    assert!(!deposit_tx
-        .output
-        .iter()
-        .any(|txout| signers_pubkey.contains(&txout.script_pubkey)));
-    // anyway, hacking this togheter for now to test the emily flow
-    deposit_tx.output.push(TxOut {
-        value: bitcoin::Amount::from_sat(1),
-        script_pubkey: aggregate_key.signers_script_pubkey(),
-    });
-    assert!(deposit_tx
-        .output
-        .iter()
-        .any(|txout| signers_pubkey.contains(&txout.script_pubkey)));
-    deposit_request.outpoint.txid = deposit_tx.compute_txid();
-    //
 
     let emily_request = CreateDepositRequestBody {
         bitcoin_tx_output_index: deposit_request.outpoint.vout,
@@ -275,16 +257,19 @@ async fn deposit_flow() {
     };
     let deposit_block_hash = deposit_block.block_hash();
 
+    // Mock required bitcoin client functions
     context
         .with_bitcoin_client(|client| {
             client
                 .expect_estimate_fee_rate()
                 .once()
+                // Dummy value
                 .returning(|| Box::pin(async { Ok(1.3) }));
 
             client
                 .expect_get_last_fee()
                 .once()
+                // Dummy value -- we don't need to worry about RBF
                 .returning(|_| Box::pin(async { Ok(None) }));
         })
         .await;
@@ -322,7 +307,7 @@ async fn deposit_flow() {
                 });
 
             // Return the deposit tx
-            client.expect_get_tx().once().returning(move |txid| {
+            client.expect_get_tx().returning(move |txid| {
                 let res = if *txid == deposit_tx.compute_txid() {
                     Ok(Some(GetTxResponse {
                         tx: deposit_tx.clone(),
@@ -331,12 +316,17 @@ async fn deposit_flow() {
                         block_time: None,
                     }))
                 } else {
-                    Err(Error::BitcoinTxMissing(txid.clone()))
+                    // We may get queried for unrelated txids if Emily state
+                    // was not reset; returning an error will ignore those
+                    // deposit requests (as desired).
+                    Err(Error::BitcoinTxMissing(txid.clone(), None))
                 };
                 Box::pin(async move { res })
             });
 
-            // Return the deposit tx block
+            // Return the deposit tx block, when the block observer will query us for it
+            // when processing the new block; as its parent is already in storage
+            // we don't need to provide any other blocks.
             client
                 .expect_get_block()
                 .once()
@@ -377,7 +367,21 @@ async fn deposit_flow() {
                 })
             });
 
-            client.expect_nakamoto_start_height().once().returning(|| 0);
+            client.expect_get_pox_info().once().returning(|| {
+                let raw_json_response =
+                    include_str!("../../tests/fixtures/stacksapi-get-pox-info-test-data.json");
+                Box::pin(async move {
+                    serde_json::from_str::<RPCPoxInfoData>(raw_json_response)
+                        .map_err(Error::JsonSerialize)
+                })
+            });
+
+            // The coordinator will try to further process the deposit to submit
+            // the stacks tx, but we are not interested (for the current test iteration).
+            client
+                .expect_get_account()
+                .once()
+                .returning(|_| Box::pin(async move { Err(Error::InvalidStacksResponse("mock")) }));
         })
         .await;
 
@@ -407,7 +411,6 @@ async fn deposit_flow() {
         private_key,
         context_window,
         threshold: signing_threshold as u16,
-        bitcoin_network: bitcoin::Network::Regtest,
         signing_round_max_duration: Duration::from_secs(10),
     };
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
@@ -453,7 +456,7 @@ async fn deposit_flow() {
 
     // Add a stacks block in the current bitcoin tip, otherwise `get_last_key_rotation`
     // will not get the signer keys and the txcoord process_new_blocks will fail.
-    // NOTE: currently there's no not-hacky ways to set the stacks confirmations?
+    // TODO: remove after #559 is fixed
     assert!(context
         .get_storage()
         .get_last_key_rotation(&deposit_block_hash.into())
@@ -466,18 +469,19 @@ async fn deposit_flow() {
         .get_stacks_chain_tip(&bitcoin_chain_tip.block_hash)
         .await
         .unwrap()
-        .unwrap()
-        .block_hash
-        .clone();
-    context
-        .inner_storage()
-        .lock()
-        .await
-        .bitcoin_blocks
-        .get_mut(&deposit_block_hash.into())
-        .unwrap()
-        .confirms
-        .push(stacks_tip);
+        .unwrap();
+    sqlx::query(
+        r#"
+        UPDATE sbtc_signer.bitcoin_blocks
+        SET confirms = array_append(confirms, $1)
+        WHERE block_hash = $2;
+        "#,
+    )
+    .bind(&stacks_tip.block_hash)
+    .bind(&model::BitcoinBlockHash::from(deposit_block_hash))
+    .execute(db.pool())
+    .await
+    .unwrap();
 
     assert!(context
         .get_storage()
@@ -485,13 +489,14 @@ async fn deposit_flow() {
         .await
         .unwrap()
         .is_some());
+    //
 
     // We also need to accept the request, so let's pick some signer to accept it
-    for signer_pub_key in signer_info[0]
+    let public_keys = signer_info[0]
         .signer_public_keys
         .iter()
-        .take(signing_threshold as usize)
-    {
+        .take(signing_threshold as usize);
+    for signer_pub_key in public_keys {
         context
             .get_storage_mut()
             .write_deposit_signer_decision(&DepositSigner {
@@ -503,20 +508,6 @@ async fn deposit_flow() {
             .await
             .expect("failed to write deposit decision");
     }
-
-    // As there was a moment where there was no signer set, the coordinator died when processing the block
-    assert!(tx_coordinator_handle.is_finished());
-    // So we recreate it
-    let tx_coordinator = transaction_coordinator::TxCoordinatorEventLoop {
-        context: context.clone(),
-        network: network.connect(),
-        private_key,
-        context_window,
-        threshold: signing_threshold as u16,
-        bitcoin_network: bitcoin::Network::Regtest,
-        signing_round_max_duration: Duration::from_secs(10),
-    };
-    let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
 
     // Start the in-memory signer set.
     let _signers_handle = tokio::spawn(async move {
@@ -543,7 +534,7 @@ async fn deposit_flow() {
 
     // Wake coordinator up (again)
     context
-        .signal(SignerEvent::BitcoinBlockObserved.into())
+        .signal(SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled).into())
         .expect("failed to signal");
 
     // Await the `wait_for_tx_task` to receive the first transaction broadcasted.
@@ -581,6 +572,13 @@ async fn deposit_flow() {
         fetched_deposit.status,
         emily_client::models::Status::Accepted
     );
+    assert_eq!(
+        fetched_deposit.last_update_block_hash,
+        stacks_tip.block_hash.to_string()
+    );
+    assert_eq!(fetched_deposit.last_update_height, stacks_tip.block_height);
+
+    testing::storage::drop_db(db).await;
 
     // TODO: add stacks tx broadcast part once ready and check emily gets updated
 }
