@@ -176,7 +176,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(skip(self))]
     async fn process_new_blocks(&mut self) -> Result<(), Error> {
         let bitcoin_chain_tip = self
             .context
@@ -788,9 +788,6 @@ where
 
     /// This function provides a deterministic 32-byte identifier for the
     /// signer.
-    ///
-    /// TODO: Maybe this should change deterministically with the bitcoin
-    /// chain tip.
     fn coordinator_id(&self, chain_tip: &model::BitcoinBlockHash) -> [u8; 32] {
         sha2::Sha256::new_with_prefix("SIGNER_COORDINATOR_ID")
             .chain_update(self.pub_key().serialize())
