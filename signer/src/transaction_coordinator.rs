@@ -176,7 +176,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn process_new_blocks(&mut self) -> Result<(), Error> {
         let bitcoin_chain_tip = self
             .context
@@ -198,9 +198,11 @@ where
         // coordinating DKG or constructing bitcoin and stacks
         // transactions, might as well return early.
         if !self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys) {
+            tracing::debug!("We are not the coordinator, so nothing to do");
             return Ok(());
         }
 
+        tracing::debug!("We are the coordinator, we may need to coordinate DKG");
         // If Self::get_signer_set_and_aggregate_key did not return an
         // aggregate key, then we know that we have not run DKG yet. Since
         // we are the signer, we should coordinate DKG.
@@ -514,6 +516,7 @@ where
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<PublicKey, Error> {
+        tracing::info!("Coordinating DKG");
         // Get the current signer set for running DKG.
         //
         // Also, note that in order to change the signing set we must first
@@ -819,9 +822,7 @@ pub fn given_key_is_coordinator(
     bitcoin_chain_tip: &model::BitcoinBlockHash,
     signer_public_keys: &BTreeSet<PublicKey>,
 ) -> bool {
-    coordinator_public_key(bitcoin_chain_tip, signer_public_keys)
-        .map(|coordinator_pub_key| coordinator_pub_key == pub_key)
-        .unwrap_or(false)
+    coordinator_public_key(bitcoin_chain_tip, signer_public_keys) == Some(pub_key)
 }
 
 /// Find the coordinator public key
