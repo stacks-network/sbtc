@@ -4,23 +4,6 @@ package crypto.wsts;
 
 import "crypto/common.proto";
 
-// Scalar maps to a number between 0 and the order of the secp256k1 curve.
-// This maps to this type <https://github.com/Trust-Machines/wsts/blob/10760178d88c779d9377641e360656b27c05a771/src/common.rs#L120-L129>
-message Scalar {
-  Uint256 value = 1;
-}
-
-// Represents a point on the secp256k1 elliptic curve. A Point is either a
-// public key, like the crypto.PublicKey type, or the point at infinity.
-// This maps to this type <https://github.com/Trust-Machines/wsts/blob/10760178d88c779d9377641e360656b27c05a771/src/common.rs#L120-L129>
-message Point {
-  // The x-coordinate of the point.
-  Uint256 x_coordinate = 1;
-  // Represents the parity bit of the point. True means the parity is
-  // odd, while false means the parity is even.
-  bool parity_is_odd = 2;
-}
-
 // DKG begin message from coordinator to signers
 // This maps to this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L123-L128>
 message DkgBegin {
@@ -28,9 +11,13 @@ message DkgBegin {
   uint64 dkg_id = 1;
 }
 
-// DKG public shares message from signer to all signers and coordinator
-// This maps to this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L137-L146>
 message DkgPublicShares {
+  map<uint32, SignerDkgPublicShares> shares = 1;
+}
+
+// DKG public shares message from a signer to all signers and coordinator
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L137-L146>
+message SignerDkgPublicShares {
   // DKG round ID
   uint64 dkg_id = 1;
   // Signer ID
@@ -78,7 +65,7 @@ message DkgPrivateShares {
 message PrivateShare {
   // The ID of the signer that created the secret share.
   uint32 source_signer_id = 1;
-  // The encrypted private shares to send to the the other parties.
+  // The encrypted private shares to send to another parties.
   repeated SecretShare encrypted_shares = 2;
 }
 
@@ -191,7 +178,7 @@ message PolyCommitment {
   // The party ID with a Schnorr proof
   ProofIdentifier id = 1;
   // The public polynomial which commits to the secret polynomial
-  repeated Point poly = 2;
+  repeated crypto.Point poly = 2;
 }
 
 // This type maps to the `ID` type in WSTS, which encapsulates the ID and a
@@ -199,11 +186,11 @@ message PolyCommitment {
 // This maps to this type <https://github.com/Trust-Machines/wsts/blob/7435dec216aab547133de0dc2915e49875630c84/src/schnorr.rs#L12-L23>
 message ProofIdentifier {
   // The ID
-  Scalar id = 1;
+  crypto.Scalar id = 1;
   // The public Schnorr response, kG
-  Point schnorr_response = 2;
+  crypto.Point schnorr_response = 2;
   // The aggregate of the Schnorr committed values, kca
-  Scalar aggregate_commitment = 3;
+  crypto.Scalar aggregate_commitment = 3;
 }
 
 // Final DKG status after receiving public and private shares
@@ -239,21 +226,21 @@ message BadState {}
 message MissingPublicShares {
   // In WSTS this is a HashSet<u32>, so these should be unique, duplicates
   // will be ignored at the application level.
-  repeated uint32 signer_ids = 1;
+  map<uint32, crypto.SetValueZst> signer_ids = 1;
 }
 
 // DKG public shares were bad from these signer_ids.
 message BadPublicShares {
   // In WSTS this is a HashSet<u32>, so these should be unique, duplicates
   // will be ignored at the application level.
-  repeated uint32 signer_ids = 1;
+  map<uint32, crypto.SetValueZst> signer_ids = 1;
 }
 
 // DKG private shares were missing from these signer_ids.
 message MissingPrivateShares {
   // In WSTS this is a HashSet<u32>, so these should be unique, duplicates
   // will be ignored at the application level.
-  repeated uint32 signer_ids = 1;
+  map<uint32, crypto.SetValueZst> signer_ids = 1;
 }
 
 // DKG private shares were bad from these signer_ids.
@@ -264,7 +251,7 @@ message BadPrivateShares {
 // A bad private share
 message BadPrivateShare {
   // The DH shared key between these participants
-  Point shared_key = 1;
+  crypto.Point shared_key = 1;
   // Proof that the shared key is a valid DH tuple as per Chaum-Pedersen.
   TupleProof tuple_proof = 2;
 }
@@ -275,32 +262,32 @@ message BadPrivateShare {
 message TupleProof {
   // This is a commitment to both the random commitment in the Schnorr
   // proof and the private key used for the signature. It represents r*B.
-  Point combined_commitment = 1;
+  crypto.Point combined_commitment = 1;
   // The Schnorr proof using the commitment of the above Point.
   SchnorrProof signature = 2;
 }
 
 message SchnorrProof {
   // This is R, where R = r*G for a random scalar r.
-  Point random_commitment = 1;
+  crypto.Point random_commitment = 1;
   // This is z, where z = r + a*s where s = H(G,A,B,K,R) as per Fiat-Shamir
-  Scalar response = 2;
+  crypto.Scalar response = 2;
 }
 
 // A merkle root is a 256 bit hash
 // This maps to this type <https://github.com/Trust-Machines/wsts/blob/10760178d88c779d9377641e360656b27c05a771/src/common.rs#L22-L23>
 message MerkleRoot {
   // The root of the merkle tree
-  Uint256 root = 1;
+  crypto.Uint256 root = 1;
 }
 
 // A commitment to the private nonce
 // This maps to this type <https://github.com/Trust-Machines/wsts/blob/10760178d88c779d9377641e360656b27c05a771/src/common.rs#L94-L102>
 message PublicNonce {
   // A commitment to the private nonce's first value
-  Point nonce_d = 1;
+  crypto.Point nonce_d = 1;
   // A commitment to the private nonce's second value
-  Point nonce_e = 2;
+  crypto.Point nonce_e = 2;
 }
 
 // A share of the party signature with related values
@@ -309,7 +296,7 @@ message SignatureShare {
   // The ID of the party
   uint32 id = 1;
   // The party signature, z_i
-  Scalar signature_share = 2;
+  crypto.Scalar signature_share = 2;
   // The key IDs of the party
   repeated uint32 key_ids = 3;
 }
