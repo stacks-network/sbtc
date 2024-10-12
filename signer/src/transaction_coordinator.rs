@@ -61,7 +61,7 @@ use wsts::state_machine::StateMachine as _;
 /// The pending requests are used to construct a transaction package, which is a
 /// set of bitcoin transactions fulfilling a subset of the requests. Which
 /// pending requests that end up in the transaction package depends on the
-/// amount of singers deciding to accept the request, and on the maximum fee
+/// amount of signers deciding to accept the request, and on the maximum fee
 /// allowed in the requests. Once the package has been constructed, the
 /// coordinator proceeds by coordinating WSTS signing rounds for each of the
 /// transactions in the package. The signed transactions are then broadcast to
@@ -185,17 +185,20 @@ where
             .await?
             .ok_or(Error::NoChainTip)?;
 
-        if self.needs_dkg(&bitcoin_chain_tip).await? == DkgState::NeedsDkg {
+        let signer_set = self.get_signer_set(&bitcoin_chain_tip).await?;
+        let is_coordinator = self.is_coordinator(&bitcoin_chain_tip, &signer_set)?;
+
+        if self.needs_dkg(&bitcoin_chain_tip).await? == DkgState::NeedsDkg && is_coordinator {
             // This function returns the new DKG aggregate key. That
             // aggregate key is different from aggregate key of the signers.
             let _ = self.coordinate_dkg(&bitcoin_chain_tip).await?;
         }
 
-        let (aggregate_key, signer_public_keys) = self
-            .get_signer_set_and_aggregate_key(&bitcoin_chain_tip)
-            .await?;
+        if is_coordinator {
+            let (aggregate_key, signer_public_keys) = self
+                .get_signer_set_and_aggregate_key(&bitcoin_chain_tip)
+                .await?;
 
-        if self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys)? {
             self.construct_and_sign_bitcoin_sbtc_transactions(
                 &bitcoin_chain_tip,
                 &aggregate_key,
@@ -222,16 +225,14 @@ where
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<(), Error> {
-        let signer_btc_state = self.get_btc_state(aggregate_key).await?;
+        // let _signer_btc_state = self.get_btc_state(aggregate_key).await?;
 
-        let pending_requests = self
-            .get_pending_requests(
-                bitcoin_chain_tip,
-                signer_btc_state,
-                aggregate_key,
-                signer_public_keys,
-            )
-            .await?;
+        let pending_requests_fut =
+            self.get_pending_requests(bitcoin_chain_tip, aggregate_key, signer_public_keys);
+
+        let Some(pending_requests) = pending_requests_fut.await? else {
+            return Ok(());
+        };
 
         let transaction_package = pending_requests.construct_transactions()?;
 
@@ -504,7 +505,7 @@ where
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<PublicKey, Error> {
         // Get the current signer set for running DKG.
-        // 
+        //
         // Also, note that in order to change the signing set we must first
         // run DKG (which the current function is doing), and DKG requires
         // us to define signing set (which is returned in the next
@@ -683,10 +684,9 @@ where
     async fn get_pending_requests(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        signer_btc_state: utxo::SignerBtcState,
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
-    ) -> Result<utxo::SbtcRequests, Error> {
+    ) -> Result<Option<utxo::SbtcRequests>, Error> {
         let context_window = self.context_window;
         let threshold = self.threshold;
 
@@ -730,19 +730,22 @@ where
             withdrawals.push(withdrawal);
         }
 
-        let accept_threshold = self.threshold;
         let num_signers = signer_public_keys
             .len()
             .try_into()
             .map_err(|_| Error::TypeConversion)?;
 
-        Ok(utxo::SbtcRequests {
+        if deposits.is_empty() && withdrawals.is_empty() {
+            return Ok(None);
+        }
+
+        Ok(Some(utxo::SbtcRequests {
             deposits,
             withdrawals,
-            signer_state: signer_btc_state,
-            accept_threshold,
+            signer_state: self.get_btc_state(aggregate_key).await?,
+            accept_threshold: threshold,
             num_signers,
-        })
+        }))
     }
 
     /// Return the signing set that can make sBTC related contract calls
@@ -792,9 +795,9 @@ where
     }
 
     /// Returns the current signer set.
-    /// 
+    ///
     /// # Notes
-    /// 
+    ///
     /// This function can assumes the signer set is stable. That is, it
     /// returns the same signer set that was included in the last
     /// rotate-keys contract call. If no such contract call exists, it
@@ -886,7 +889,7 @@ pub fn coordinator_public_key(
 ) -> Result<Option<PublicKey>, Error> {
     let mut hasher = sha2::Sha256::new();
     hasher.update(bitcoin_chain_tip.into_bytes());
-    let digest = hasher.finalize();
+    let digest: [u8; 32] = hasher.finalize().into();
     let index = u64::from_be_bytes(*digest.first_chunk().ok_or(Error::TypeConversion)?);
     let num_signers = u64::try_from(signer_public_keys.len()).map_err(|_| Error::TypeConversion)?;
 
