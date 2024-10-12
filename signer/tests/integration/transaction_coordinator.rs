@@ -149,11 +149,19 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
 /// run yet.
 ///
 /// This test proceeds by doing the following:
-/// 1. Create a database, an associated context, and a Keypair for each of the signers in the signing set.
-/// 2. Populate each database with the same data. They now have the same view of the canonical bitcoin blockchain.
+/// 1. Create a database, an associated context, and a Keypair for each of
+///    the signers in the signing set.
+/// 2. Populate each database with the same data, so that they have the
+///    same view of the canonical bitcoin blockchain. This ensures that
+///    they participate in DKG.
 /// 3. Check that there are no DKG shares in the database.
-/// 4. Start the transaction coordinator for the "first" signer. We could start it for all signers, but we only need it for one.
-/// 5. Start the
+/// 4. Start the [`TxCoordinatorEventLoop`] and [`TxSignerEventLoop`]
+///    processes for each signer.
+/// 5. Once they are all running, signal that DKG should be run. We signal
+///    them all because we do not know which one is the coordinator.
+/// 6. Check that we have exactly one row in the `dkg_shares` table.
+/// 7. Check that they all have the same aggregate key in the `dkg_shares`
+///    table.
 ///
 /// Some of the preconditions for this test to run successfully includes
 /// having bootstrap public keys that align with the [`Keypair`] returned
@@ -164,6 +172,7 @@ async fn run_dkg_from_scratch() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
 
+    // We need to populate our databases, so let's generate some data.
     let test_params = testing::storage::model::Params {
         num_bitcoin_blocks: 10,
         num_stacks_blocks_per_bitcoin_block: 1,
@@ -179,7 +188,9 @@ async fn run_dkg_from_scratch() {
         .zip(std::iter::repeat_with(|| test_data.clone()))
         .collect();
 
-    let signer_connections: Vec<(_, PgStore, Keypair)> = futures::stream::iter(iter)
+    // 1. Create a database, an associated context, and a Keypair for each of
+    //    the signers in the signing set.
+    let signers: Vec<(_, PgStore, Keypair)> = futures::stream::iter(iter)
         .then(|(kp, data)| async move {
             let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
             let db = testing::storage::new_test_database(db_num, true).await;
@@ -188,6 +199,9 @@ async fn run_dkg_from_scratch() {
                 .with_mocked_clients()
                 .build();
 
+            // 2. Populate each database with the same data, so that they
+            //    have the same view of the canonical bitcoin blockchain.
+            //    This ensures that they participate in DKG.
             data.write_to(&db).await;
 
             (ctx, db, kp)
@@ -197,68 +211,97 @@ async fn run_dkg_from_scratch() {
 
     let network = network::in_memory::Network::new();
 
-    let (ctx, db, keypair) = signer_connections.first().unwrap();
+    // 3. Check that there are no DKG shares in the database.
+    for (_, db, _) in signers.iter() {
+        let some_shares = db.get_last_encrypted_dkg_shares().await.unwrap();
+        assert!(some_shares.is_none());
+    }
 
-    let some_shares = db.get_last_encrypted_dkg_shares().await.unwrap();
-
-    assert!(some_shares.is_none());
-
-    let coord = TxCoordinatorEventLoop {
+    // 4. Start the [`TxCoordinatorEventLoop`] and [`TxSignerEventLoop`]
+    //    processes for each signer.
+    let tx_coordinator_processes = signers.iter().map(|(ctx, _, kp)| TxCoordinatorEventLoop {
         network: network.connect(),
         context: ctx.clone(),
         context_window: 10000,
-        private_key: keypair.secret_key().into(),
+        private_key: kp.secret_key().into(),
         signing_round_max_duration: Duration::from_secs(10),
         threshold: ctx.config().signer.bootstrap_signatures_required,
         dkg_max_duration: Duration::from_secs(10),
-    };
-
-    let start_count = Arc::new(AtomicU8::new(0));
-
-    let tx_signer_processes = signer_connections
-        .iter()
-        .map(|(context, _, kp)| TxSignerEventLoop {
-            network: network.connect(),
-            threshold: context.config().signer.bootstrap_signatures_required as u32,
-            context: context.clone(),
-            context_window: 10000,
-            blocklist_checker: Some(()),
-            wsts_state_machines: HashMap::new(),
-            signer_private_key: kp.secret_key().into(),
-            rng: rand::rngs::OsRng,
-        });
-
-    let _fut = tx_signer_processes
-        .map(|ev| {
-            let counter = start_count.clone();
-            tokio::spawn(async move {
-                counter.fetch_add(1, Ordering::Relaxed);
-                ev.run().await
-            })
-        })
-        .collect::<Vec<_>>();
-    let counter = start_count.clone();
-    let _handle = tokio::spawn({
-        counter.fetch_add(1, Ordering::Relaxed);
-        coord.run()
     });
 
-    while start_count.load(Ordering::SeqCst) < 4 {
+    let tx_signer_processes = signers.iter().map(|(context, _, kp)| TxSignerEventLoop {
+        network: network.connect(),
+        threshold: context.config().signer.bootstrap_signatures_required as u32,
+        context: context.clone(),
+        context_window: 10000,
+        blocklist_checker: Some(()),
+        wsts_state_machines: HashMap::new(),
+        signer_private_key: kp.secret_key().into(),
+        rng: rand::rngs::OsRng,
+    });
+
+    // We only proceed with the test after all processes have started, and
+    // we use this counter to notify us when that happens.
+    let start_count = Arc::new(AtomicU8::new(0));
+
+    tx_coordinator_processes.for_each(|ev| {
+        let counter = start_count.clone();
+        tokio::spawn(async move {
+            counter.fetch_add(1, Ordering::Relaxed);
+            ev.run().await
+        });
+    });
+
+    tx_signer_processes.for_each(|ev| {
+        let counter = start_count.clone();
+        tokio::spawn(async move {
+            counter.fetch_add(1, Ordering::Relaxed);
+            ev.run().await
+        });
+    });
+
+    while start_count.load(Ordering::SeqCst) < 6 {
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 
+    // 5. Once they are all running, signal that DKG should be run. We
+    //    signal them all because we do not know which one is the
+    //    coordinator.
     let event = SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled);
-    ctx.get_signal_sender()
-        .send(SignerSignal::Event(event))
-        .unwrap();
+    signers.iter().for_each(|(ctx, _, _)| {
+        ctx.get_signal_sender()
+            .send(SignerSignal::Event(event.clone()))
+            .unwrap();
+    });
 
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    let some_shares = db.get_last_encrypted_dkg_shares().await.unwrap();
+    let mut aggregate_keys = BTreeSet::new();
 
-    assert!(some_shares.is_some());
+    for (_, db, _) in signers.iter() {
+        let mut aggregate_key =
+            sqlx::query_as::<_, (PublicKey,)>("SELECT aggregate_key FROM sbtc_signer.dkg_shares")
+                .fetch_all(db.pool())
+                .await
+                .unwrap();
 
-    for (_, db, _) in signer_connections {
+        // 6. Check that we have exactly one row in the `dkg_shares` table.
+        assert_eq!(aggregate_key.len(), 1);
+
+        // An additional sanity check that the query in
+        // get_last_encrypted_dkg_shares gets the right thing (which is the
+        // only thing in this case.)
+        let key = aggregate_key.pop().unwrap().0;
+        let shares = db.get_last_encrypted_dkg_shares().await.unwrap().unwrap();
+        assert_eq!(shares.aggregate_key, key);
+        aggregate_keys.insert(key);
+    }
+
+    // 7. Check that they all have the same aggregate key in the
+    //    `dkg_shares` table.
+    assert_eq!(aggregate_keys.len(), 1);
+
+    for (_, db, _) in signers {
         testing::storage::drop_db(db).await;
     }
 }
