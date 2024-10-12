@@ -165,7 +165,7 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     static SBTC_DEPLOYMENT: OnceCell<()> = OnceCell::const_new();
     static SIGNER_STATE: OnceCell<SignerStxState> = OnceCell::const_new();
 
-    let (signer_wallet, key_pairs) = testing::wallet::generate_wallet();
+    let (signer_wallet, key_pairs) = testing::wallet::regtest_bootstrap_wallet();
 
     let client = stacks_client();
 

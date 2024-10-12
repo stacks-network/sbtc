@@ -29,10 +29,10 @@ use crate::stacks::wallet::SignerWallet;
 /// A static for a test 2-3 multi-sig wallet. This wallet is loaded with
 /// funds in the local devnet environment. It matches the signer.deployer
 /// address in the default config file.
-pub static WALLET: LazyLock<(SignerWallet, [Keypair; 3])> = LazyLock::new(generate_wallet);
+pub static WALLET: LazyLock<(SignerWallet, [Keypair; 3])> = LazyLock::new(regtest_bootstrap_wallet);
 
 /// Helper function for generating a test 2-3 multi-sig wallet.
-pub fn generate_wallet() -> (SignerWallet, [Keypair; 3]) {
+pub fn regtest_bootstrap_wallet() -> (SignerWallet, [Keypair; 3]) {
     let signatures_required = 2;
 
     let key_pairs = [
