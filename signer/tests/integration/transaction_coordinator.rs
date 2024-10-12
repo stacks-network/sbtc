@@ -80,13 +80,18 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
     let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
 
     // We have no rows in the DKG shares table and no rotate-keys
-    // transactions, so this should error
-    let ans = coord.get_signer_set_and_aggregate_key(&chain_tip).await;
-    assert!(ans.is_err());
+    // transactions, so there should be no aggregate key, since that only
+    // happens after DKG, but we should always know the current signer set.
+    let (maybe_aggregate_key, signer_set) = coord
+        .get_signer_set_and_aggregate_key(&chain_tip)
+        .await
+        .unwrap();
+    assert!(maybe_aggregate_key.is_none());
+    assert!(!signer_set.is_empty());
 
     // Alright, lets write some DKG shares into the database. When we do
     // that the signer set should be considered whatever the signer set is
-    // from our DKG shares.
+    // from our DKG shares. Moreover, we should have an aggregate key now.
     let shares: EncryptedDkgShares = Faker.fake_with_rng(&mut rng);
     db.write_encrypted_dkg_shares(&shares).await.unwrap();
 
@@ -98,7 +103,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
     let shares_signer_set: BTreeSet<PublicKey> =
         shares.signer_set_public_keys.iter().copied().collect();
 
-    assert_eq!(shares.aggregate_key, aggregate_key);
+    assert_eq!(shares.aggregate_key, aggregate_key.unwrap());
     assert_eq!(shares_signer_set, signer_set);
 
     // Okay not we write a rotate-keys transaction into the database. To do
@@ -134,7 +139,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
     let rotate_keys_signer_set: BTreeSet<PublicKey> =
         rotate_keys.signer_set.iter().copied().collect();
 
-    assert_eq!(rotate_keys.aggregate_key, aggregate_key);
+    assert_eq!(rotate_keys.aggregate_key, aggregate_key.unwrap());
     assert_eq!(rotate_keys_signer_set, signer_set);
 
     testing::storage::drop_db(db).await;

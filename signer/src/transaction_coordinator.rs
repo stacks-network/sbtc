@@ -185,33 +185,43 @@ where
             .await?
             .ok_or(Error::NoChainTip)?;
 
-        let signer_set = self.get_signer_set(&bitcoin_chain_tip).await?;
-        let is_coordinator = self.is_coordinator(&bitcoin_chain_tip, &signer_set)?;
-
-        if self.needs_dkg(&bitcoin_chain_tip).await? == DkgState::NeedsDkg && is_coordinator {
-            // This function returns the new DKG aggregate key. That
-            // aggregate key is different from aggregate key of the signers.
-            let _ = self.coordinate_dkg(&bitcoin_chain_tip).await?;
-        }
-
-        if is_coordinator {
-            let (aggregate_key, signer_public_keys) = self
-                .get_signer_set_and_aggregate_key(&bitcoin_chain_tip)
-                .await?;
-
-            self.construct_and_sign_bitcoin_sbtc_transactions(
-                &bitcoin_chain_tip,
-                &aggregate_key,
-                &signer_public_keys,
-            )
+        // We first need to determine if we are the coordinator, so we need
+        // to know the current signing set. If we are the coordinator then
+        // we need to know the aggregate key for constructing bitcoin
+        // transactions. We need to know the current signing set and the
+        // current aggregate key.
+        let (maybe_aggregate_key, signer_public_keys) = self
+            .get_signer_set_and_aggregate_key(&bitcoin_chain_tip)
             .await?;
 
-            self.construct_and_sign_stacks_sbtc_response_transactions(
-                &bitcoin_chain_tip,
-                &aggregate_key,
-            )
-            .await?;
+        // If we are not the coordinator, then we have no business
+        // coordinating DKG or constructing bitcoin and stacks
+        // transactions, might as well return early.
+        if !self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys) {
+            return Ok(());
         }
+
+        // If Self::get_signer_set_and_aggregate_key did not return an
+        // aggregate key, then we know that we have not run DKG yet. Since
+        // we are the signer, we should coordinate DKG.
+        let aggregate_key = match maybe_aggregate_key {
+            Some(key) => key,
+            // This function returns the new DKG aggregate key.
+            None => self.coordinate_dkg(&bitcoin_chain_tip).await?,
+        };
+
+        self.construct_and_sign_bitcoin_sbtc_transactions(
+            &bitcoin_chain_tip,
+            &aggregate_key,
+            &signer_public_keys,
+        )
+        .await?;
+
+        self.construct_and_sign_stacks_sbtc_response_transactions(
+            &bitcoin_chain_tip,
+            &aggregate_key,
+        )
+        .await?;
 
         Ok(())
     }
@@ -225,11 +235,11 @@ where
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<(), Error> {
-        // let _signer_btc_state = self.get_btc_state(aggregate_key).await?;
-
         let pending_requests_fut =
             self.get_pending_requests(bitcoin_chain_tip, aggregate_key, signer_public_keys);
 
+        // If Self::get_pending_requests returns Ok(None) then there are no
+        // requests to respond to, so let's just exit.
         let Some(pending_requests) = pending_requests_fut.await? else {
             return Ok(());
         };
@@ -497,7 +507,7 @@ where
         }
     }
 
-    /// Setup a WSTS coordinator state machine and run DKG with the other
+    /// Set up a WSTS coordinator state machine and run DKG with the other
     /// signers in the signing set.
     #[tracing::instrument(skip_all)]
     async fn coordinate_dkg(
@@ -513,7 +523,7 @@ where
         // set of the last DKG (either through the last rotate-keys
         // contract call or from the `dkg_shares` table) so we wind up
         // never changing the signing set.
-        let signer_set = self.get_signer_set(chain_tip).await?;
+        let (_, signer_set) = self.get_signer_set_and_aggregate_key(chain_tip).await?;
 
         let mut state_machine =
             CoordinatorStateMachine::new(signer_set, self.threshold, self.private_key);
@@ -600,29 +610,6 @@ where
         }
     }
 
-    /// Check whether or not we need to run DKG
-    ///
-    /// This function checks for the existence of a row in the database,
-    /// and one does exist the DKG has completed and the results are known
-    /// to the network. If such a transaction does not exist then we check
-    /// the `dkg_shares` table to know if we either need to run DKG or just
-    /// submit a `rotate-keys` transaction.
-    async fn needs_dkg(&self, chain_tip: &model::BitcoinBlockHash) -> Result<DkgState, Error> {
-        let db = self.context.get_storage();
-        let last_key_rotation = db.get_last_key_rotation(chain_tip).await?;
-
-        if last_key_rotation.is_some() {
-            return Ok(DkgState::DkgComplete);
-        }
-
-        let shares = db.get_last_encrypted_dkg_shares().await?;
-
-        match shares {
-            Some(_) => Ok(DkgState::NeedsRotateKeysTransaction),
-            _ => Ok(DkgState::NeedsDkg),
-        }
-    }
-
     // Determine if the current coordinator is the coordinator.
     //
     // The coordinator is decided using the hash of the bitcoin
@@ -639,7 +626,7 @@ where
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         signer_public_keys: &BTreeSet<PublicKey>,
-    ) -> Result<bool, Error> {
+    ) -> bool {
         given_key_is_coordinator(self.pub_key(), bitcoin_chain_tip, signer_public_keys)
     }
 
@@ -757,13 +744,14 @@ where
     /// call. It will be the public key that is the result of a DKG run. If
     /// there are no rotate-keys transactions on the canonical stacks
     /// blockchain, then we fall back on the last known DKG shares row in
-    /// our database, and return an error if is not found, implying that
-    /// DKG has never been run.
+    /// our database, and return None as the aggregate key if no DKG shares
+    /// can be found, implying that this signer has not participated in
+    /// DKG.
     #[tracing::instrument(skip(self))]
     pub async fn get_signer_set_and_aggregate_key(
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<(PublicKey, BTreeSet<PublicKey>), Error> {
+    ) -> Result<(Option<PublicKey>, BTreeSet<PublicKey>), Error> {
         let db = self.context.get_storage();
 
         // We are supposed to submit a rotate-keys transaction after
@@ -772,51 +760,23 @@ where
         // on the canonical Stacks blockchain.
         //
         // If the signers have already run DKG, then we know that all
-        // participating signers have completed it successfully (well, some
-        // may have failed suddenly at the end, and some may have dropped
-        // off during DKG, but yeah enough should have their DKG shares).
-        // So we can fall back on the stored DKG shares for getting the
-        // current aggregate key and associated signing set.
+        // participating signers should have the same view of the latest
+        // aggregate key, so we can fall back on the stored DKG shares for
+        // getting the current aggregate key and associated signing set.
         match db.get_last_key_rotation(bitcoin_chain_tip).await? {
             Some(last_key) => {
                 let aggregate_key = last_key.aggregate_key;
                 let signer_set = last_key.signer_set.into_iter().collect();
-                Ok((aggregate_key, signer_set))
+                Ok((Some(aggregate_key), signer_set))
             }
-            None => {
-                let shares = db
-                    .get_last_encrypted_dkg_shares()
-                    .await?
-                    .ok_or(Error::MissingDkgShares)?;
-                let signer_set = shares.signer_set_public_keys.into_iter().collect();
-                Ok((shares.aggregate_key, signer_set))
-            }
+            None => match db.get_last_encrypted_dkg_shares().await? {
+                Some(shares) => {
+                    let signer_set = shares.signer_set_public_keys.into_iter().collect();
+                    Ok((Some(shares.aggregate_key), signer_set))
+                }
+                None => Ok((None, self.context.config().signer.bootstrap_signing_set())),
+            },
         }
-    }
-
-    /// Returns the current signer set.
-    ///
-    /// # Notes
-    ///
-    /// This function can assumes the signer set is stable. That is, it
-    /// returns the same signer set that was included in the last
-    /// rotate-keys contract call. If no such contract call exists, it
-    /// returns the signer set of the last round of DKG. And if DKG has
-    /// never been run, then it returns the bootstrap signer set.
-    pub async fn get_signer_set(
-        &self,
-        chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<BTreeSet<PublicKey>, Error> {
-        let signer_set = match self.get_signer_set_and_aggregate_key(chain_tip).await {
-            Ok((_, signer_set)) => signer_set,
-            // This is only returned from get_signer_set_and_aggregate_key
-            // when there are no encrypted DKG shares in the database.
-            Err(Error::MissingDkgShares) => self.context.config().signer.bootstrap_signing_set(),
-            // Anything else is a real error, so let's bail.
-            Err(err) => return Err(err),
-        };
-
-        Ok(signer_set)
     }
 
     fn pub_key(&self) -> PublicKey {
@@ -853,50 +813,37 @@ where
     }
 }
 
-/// A struct describing the state of the signers with respect to
-/// distributed key generation (DKG).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DkgState {
-    /// This is the state of the things when the signers boot for the first
-    /// time. In this case, we need to run DKG and store the shares in the
-    /// database.
-    NeedsDkg,
-    /// This implies that DKG has been run, but there is no rotate-keys
-    /// transaction in the database on the canonical Stacks blockchain.
-    NeedsRotateKeysTransaction,
-    /// This implies that we have run DKG and have confirmed a rotate-keys
-    /// transaction.
-    DkgComplete,
-}
-
 /// Check if the provided public key is the coordinator for the provided chain tip
 pub fn given_key_is_coordinator(
     pub_key: PublicKey,
     bitcoin_chain_tip: &model::BitcoinBlockHash,
     signer_public_keys: &BTreeSet<PublicKey>,
-) -> Result<bool, Error> {
-    Ok(
-        coordinator_public_key(bitcoin_chain_tip, signer_public_keys)?
-            .map(|coordinator_pub_key| coordinator_pub_key == pub_key)
-            .unwrap_or(false),
-    )
+) -> bool {
+    coordinator_public_key(bitcoin_chain_tip, signer_public_keys)
+        .map(|coordinator_pub_key| coordinator_pub_key == pub_key)
+        .unwrap_or(false)
 }
 
 /// Find the coordinator public key
 pub fn coordinator_public_key(
     bitcoin_chain_tip: &model::BitcoinBlockHash,
     signer_public_keys: &BTreeSet<PublicKey>,
-) -> Result<Option<PublicKey>, Error> {
+) -> Option<PublicKey> {
     let mut hasher = sha2::Sha256::new();
     hasher.update(bitcoin_chain_tip.into_bytes());
     let digest: [u8; 32] = hasher.finalize().into();
-    let index = u64::from_be_bytes(*digest.first_chunk().ok_or(Error::TypeConversion)?);
-    let num_signers = u64::try_from(signer_public_keys.len()).map_err(|_| Error::TypeConversion)?;
+    // <[u8; 32]>::first_chunk<N> will return None if the requested slice
+    // is greater than 32 bytes. Since we are converting to a `usize`, the
+    // number of bytes necessary depends on the width of pointers on the
+    // machine that compiled this binary. Since we only support systems
+    // with a target pointer width of either 4 or 8 bytes, the <[u8;
+    // 32]>::first_chunk<N> call will return Some(_) since N > 4 or 8.
+    // Also, do humans even make machines where the pointer width is
+    // greater than 32 bytes?
+    let index = usize::from_be_bytes(*digest.first_chunk()?);
+    let num_signers = signer_public_keys.len();
 
-    Ok(signer_public_keys
-        .iter()
-        .nth(usize::try_from(index % num_signers).map_err(|_| Error::TypeConversion)?)
-        .copied())
+    signer_public_keys.iter().nth(index % num_signers).copied()
 }
 
 #[cfg(test)]
