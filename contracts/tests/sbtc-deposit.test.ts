@@ -20,6 +20,8 @@ describe("sBTC deposit contract", () => {
           voutIndex: 0,
           amount: 1000n,
           recipient: deployer,
+          burnHash: new Uint8Array(32).fill(0),
+          burnHeight: 0n,
         }),
         deployer
       );
@@ -33,6 +35,8 @@ describe("sBTC deposit contract", () => {
           voutIndex: 0,
           amount: 10n,
           recipient: deployer,
+          burnHash: new Uint8Array(32).fill(0),
+          burnHeight: 0n,
         }),
         deployer
       );
@@ -48,6 +52,8 @@ describe("sBTC deposit contract", () => {
           voutIndex: 0,
           amount: 1000n,
           recipient: deployer,
+          burnHash: new Uint8Array(32).fill(0),
+          burnHeight: 0n,
         }),
         deployer
       );
@@ -58,6 +64,8 @@ describe("sBTC deposit contract", () => {
           voutIndex: 0,
           amount: 1000n,
           recipient: deployer,
+          burnHash: new Uint8Array(32).fill(0),
+          burnHeight: 0n,
         }),
         deployer
       );
@@ -71,6 +79,8 @@ describe("sBTC deposit contract", () => {
           voutIndex: 0,
           amount: 1000n,
           recipient: deployer,
+          burnHash: new Uint8Array(32).fill(0),
+          burnHeight: 0n,
         }),
         deployer
       );
@@ -100,6 +110,8 @@ describe("sBTC deposit contract", () => {
           voutIndex: 0,
           amount: 1000n,
           recipient: deployer,
+          burnHash: new Uint8Array(32).fill(0),
+          burnHeight: 0n,
         }),
         deployer
       );
@@ -126,12 +138,16 @@ describe("sBTC deposit contract", () => {
               voutIndex: 0,
               amount: 1000n,
               recipient: deployer,
+              burnHash: new Uint8Array(32).fill(0),
+              burnHeight: 0n,
             },
             {
               txid: new Uint8Array(32).fill(1),
               voutIndex: 0,
               amount: 1000n,
               recipient: deployer,
+              burnHash: new Uint8Array(32).fill(0),
+              burnHeight: 0n,
             },
           ],
           ...getCurrentBurnInfo(),
@@ -150,12 +166,16 @@ describe("sBTC deposit contract", () => {
               voutIndex: 0,
               amount: 1000n,
               recipient: deployer,
+              burnHash: new Uint8Array(32).fill(0),
+              burnHeight: 0n,
             },
             {
               txid: new Uint8Array(32).fill(1),
               voutIndex: 0,
               amount: 100n,
               recipient: deployer,
+              burnHash: new Uint8Array(32).fill(0),
+              burnHeight: 0n,
             },
           ],
           ...getCurrentBurnInfo(),
@@ -174,18 +194,24 @@ describe("sBTC deposit contract", () => {
               voutIndex: 0,
               amount: 1000n,
               recipient: deployer,
+              burnHash: new Uint8Array(32).fill(0),
+              burnHeight: 0n,
             },
             {
               txid: new Uint8Array(32).fill(1),
               voutIndex: 0,
               amount: 1000n,
               recipient: deployer,
+              burnHash: new Uint8Array(32).fill(0),
+              burnHeight: 0n,
             },
             {
               txid: new Uint8Array(32).fill(2),
               voutIndex: 0,
               amount: 100n,
               recipient: alice,
+              burnHash: new Uint8Array(32).fill(0),
+              burnHeight: 0n,
             },
           ],
           ...getCurrentBurnInfo(),
@@ -204,12 +230,16 @@ describe("sBTC deposit contract", () => {
               voutIndex: 0,
               amount: 1000n,
               recipient: deployer,
+              burnHash: new Uint8Array(32).fill(0),
+              burnHeight: 0n,
             },
             {
               txid: new Uint8Array(32).fill(1),
               voutIndex: 0,
               amount: 1000n,
               recipient: deployer,
+              burnHash: new Uint8Array(32).fill(0),
+              burnHeight: 0n,
             },
           ],
           ...getCurrentBurnInfo(),
@@ -233,6 +263,8 @@ describe("optimization tests", () => {
           voutIndex: 0,
           amount: totalAmount / BigInt(runs),
           recipient: deployer,
+          burnHash: new Uint8Array(32).fill(0),
+          burnHeight: 0n,
         })),
         ...getCurrentBurnInfo(),
       }),
