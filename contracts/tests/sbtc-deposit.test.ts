@@ -128,6 +128,8 @@ describe("sBTC deposit contract", () => {
         bitcoinTxid: new Uint8Array(32).fill(0),
         outputIndex: 0n,
         amount: 1000n,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       });
     });
 

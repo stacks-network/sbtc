@@ -747,6 +747,8 @@ export const contracts = {
           { name: "vout-index", type: "uint128" },
           { name: "amount", type: "uint128" },
           { name: "recipient", type: "principal" },
+          { name: "burn-hash", type: { buffer: { length: 32 } } },
+          { name: "burn-height", type: "uint128" },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
@@ -755,6 +757,8 @@ export const contracts = {
           voutIndex: TypedAbiArg<number | bigint, "voutIndex">,
           amount: TypedAbiArg<number | bigint, "amount">,
           recipient: TypedAbiArg<string, "recipient">,
+          burnHash: TypedAbiArg<Uint8Array, "burnHash">,
+          burnHeight: TypedAbiArg<number | bigint, "burnHeight">,
         ],
         Response<boolean, bigint>
       >,
