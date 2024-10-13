@@ -55,7 +55,7 @@
         (try! (contract-call? .sbtc-token protocol-mint amount recipient))
 
         ;; Complete the deposit
-        (ok (contract-call? .sbtc-registry complete-deposit txid vout-index amount recipient))
+        (ok (contract-call? .sbtc-registry complete-deposit txid vout-index amount recipient burn-hash burn-height))
     )
 )
 
