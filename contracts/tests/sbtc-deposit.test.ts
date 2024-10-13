@@ -72,6 +72,34 @@ describe("sBTC deposit contract", () => {
       expect(receipt1.value).toEqual(errors.deposit.ERR_DEPOSIT_REPLAY);
     });
 
+    test("Fail complete-deposit-wrapper Bitcoin forked", () => {
+      const receipt0 = txOk(
+        deposit.completeDepositWrapper({
+          txid: new Uint8Array(32).fill(0),
+          voutIndex: 0,
+          amount: 1000n,
+          recipient: deployer,
+          burnHash: new Uint8Array(32).fill(0),
+          burnHeight: 0n,
+        }),
+        deployer
+      );
+      expect(receipt0.value).toEqual(true);
+      simnet.mineEmptyBlock()
+      const receipt1 = txErr(
+        deposit.completeDepositWrapper({
+          txid: new Uint8Array(32).fill(1),
+          voutIndex: 0,
+          amount: 1000n,
+          recipient: deployer,
+          burnHash: new Uint8Array(32).fill(1),
+          burnHeight: 0n,
+        }),
+        deployer
+      );
+      expect(receipt1.value).toEqual(errors.deposit.ERR_INVALID_BURN_HASH);
+    });
+
     test("Call complete-deposit-wrapper placeholder, check print", () => {
       const receipt = txOk(
         deposit.completeDepositWrapper({
