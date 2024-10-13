@@ -500,6 +500,8 @@ export const contracts = {
             type: {
               tuple: [
                 { name: "amount", type: "uint128" },
+                { name: "burn-hash", type: { buffer: { length: 32 } } },
+                { name: "burn-height", type: "uint128" },
                 { name: "recipient", type: "principal" },
                 { name: "txid", type: { buffer: { length: 32 } } },
                 { name: "vout-index", type: "uint128" },
@@ -517,6 +519,8 @@ export const contracts = {
           deposit: TypedAbiArg<
             {
               amount: number | bigint;
+              burnHash: Uint8Array;
+              burnHeight: number | bigint;
               recipient: string;
               txid: Uint8Array;
               voutIndex: number | bigint;
@@ -538,6 +542,8 @@ export const contracts = {
           { name: "vout-index", type: "uint128" },
           { name: "amount", type: "uint128" },
           { name: "recipient", type: "principal" },
+          { name: "burn-hash", type: { buffer: { length: 32 } } },
+          { name: "burn-height", type: "uint128" },
         ],
         outputs: {
           type: {
@@ -553,6 +559,8 @@ export const contracts = {
           voutIndex: TypedAbiArg<number | bigint, "voutIndex">,
           amount: TypedAbiArg<number | bigint, "amount">,
           recipient: TypedAbiArg<string, "recipient">,
+          burnHash: TypedAbiArg<Uint8Array, "burnHash">,
+          burnHeight: TypedAbiArg<number | bigint, "burnHeight">,
         ],
         Response<Response<boolean, bigint>, bigint>
       >,
@@ -567,6 +575,8 @@ export const contracts = {
                 type: {
                   tuple: [
                     { name: "amount", type: "uint128" },
+                    { name: "burn-hash", type: { buffer: { length: 32 } } },
+                    { name: "burn-height", type: "uint128" },
                     { name: "recipient", type: "principal" },
                     { name: "txid", type: { buffer: { length: 32 } } },
                     { name: "vout-index", type: "uint128" },
@@ -585,6 +595,8 @@ export const contracts = {
           deposits: TypedAbiArg<
             {
               amount: number | bigint;
+              burnHash: Uint8Array;
+              burnHeight: number | bigint;
               recipient: string;
               txid: Uint8Array;
               voutIndex: number | bigint;
