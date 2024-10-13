@@ -23,8 +23,8 @@ message SignerState {
   repeated PartyState parties = 7;
 }
 
-// https://github.com/Trust-Machines/wsts/blob/91a37c8a097e6fa5d5a67519a72567bc82560c0d/src/traits.rs#L14-L23
 // The saved state required to reconstruct a party
+// https://github.com/Trust-Machines/wsts/blob/91a37c8a097e6fa5d5a67519a72567bc82560c0d/src/traits.rs#L14-L23
 message PartyState {
   uint32 key_id = 1;
   // The party's private polynomial
@@ -45,7 +45,6 @@ message PrivateKeyShare {
   uint32 key_id = 1;
   Scalar private_key = 2;
 }
-
 
 // A nonce
 // https://github.com/Trust-Machines/wsts/blob/10760178d88c779d9377641e360656b27c05a771/src/common.rs#L51-L58
