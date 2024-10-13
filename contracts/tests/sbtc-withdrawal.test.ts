@@ -82,6 +82,8 @@ describe("initiating a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + (defaultMaxFee + 1n),
         recipient: alice,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -145,6 +147,8 @@ describe("initiating a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -181,6 +185,8 @@ describe("initiating a withdrawal request", () => {
         voutIndex: 0,
         amount: 4000n,
         recipient: alice,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -225,6 +231,8 @@ describe("initiating a withdrawal request", () => {
         voutIndex: 0,
         amount: 4000n,
         recipient: alice,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -247,6 +255,8 @@ test("max-fee must be accounted for", () => {
       voutIndex: 0,
       amount: 4000n,
       recipient: alice,
+      burnHash: new Uint8Array(32).fill(0),
+      burnHeight: 0n,
     }),
     deployer
   );
@@ -278,6 +288,8 @@ describe("Accepting a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -309,6 +321,8 @@ describe("Accepting a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -340,6 +354,8 @@ describe("Accepting a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -381,6 +397,8 @@ describe("Accepting a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -412,6 +430,8 @@ describe("Accepting a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + (defaultMaxFee + 10n),
         recipient: alice,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -469,6 +489,8 @@ describe("Accepting a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -519,6 +541,8 @@ describe("Accepting a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -606,6 +630,8 @@ describe("Accepting a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -640,6 +666,8 @@ describe("Reject a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -668,6 +696,8 @@ describe("Reject a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -696,6 +726,8 @@ describe("Reject a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -734,6 +766,8 @@ describe("Reject a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -772,6 +806,8 @@ describe("Reject a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -806,6 +842,8 @@ describe("Complete multiple withdrawals", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -824,6 +862,8 @@ describe("Complete multiple withdrawals", () => {
         voutIndex: 1,
         amount: defaultAmount + defaultMaxFee,
         recipient: bob,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -880,6 +920,8 @@ describe("optimization tests for completing withdrawals", () => {
           voutIndex: 0,
           amount: perAmount + maxFee,
           recipient: alice,
+          burnHash: new Uint8Array(32).fill(0),
+          burnHeight: 0n,
         }),
         deployer
       );
