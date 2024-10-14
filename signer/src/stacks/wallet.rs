@@ -335,6 +335,15 @@ impl MultisigTx {
         &self.tx
     }
 
+    /// Return the total number of signatures that have been received so
+    /// far for this transaction.
+    pub fn num_signatures(&self) -> u16 {
+        self.signatures
+            .values()
+            .map(|maybe_sig| maybe_sig.is_some() as u16)
+            .sum()
+    }
+
     /// Add the given signature to the signature list
     ///
     /// # Notes
