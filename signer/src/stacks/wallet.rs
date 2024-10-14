@@ -490,8 +490,12 @@ mod tests {
             .collect();
 
         // Now add the signatures to the signing object.
+        let mut count = 0;
+        assert_eq!(count, tx_signer.num_signatures());
         for signature in signatures {
             tx_signer.add_signature(signature).unwrap();
+            count += 1;
+            assert_eq!(count, tx_signer.num_signatures());
         }
 
         // Okay, now finalize the transaction. Afterward, it should be
