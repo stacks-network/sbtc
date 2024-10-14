@@ -16,7 +16,7 @@ type MsgId = [u8; 32];
 
 /// Represents an in-memory communication network useful for tests
 #[derive(Debug)]
-pub struct Network {
+pub struct InMemoryNetwork {
     last_id: AtomicU16,
     sender: broadcast::Sender<super::Msg>,
 }
@@ -38,7 +38,7 @@ impl MpmcBroadcaster {
     }
 }
 
-impl Network {
+impl InMemoryNetwork {
     /// Construct a new in-memory communication entwork
     pub fn new() -> Self {
         let (sender, _) = broadcast::channel(BROADCAST_CHANNEL_CAPACITY);
@@ -66,7 +66,7 @@ impl Network {
     }
 }
 
-impl Default for Network {
+impl Default for InMemoryNetwork {
     fn default() -> Self {
         Self::new()
     }
@@ -90,5 +90,21 @@ impl super::MessageTransfer for MpmcBroadcaster {
         }
 
         Ok(msg)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing;
+
+    #[tokio::test]
+    async fn two_clients_should_be_able_to_exchange_messages_given_an_in_memory_network() {
+        let network = InMemoryNetwork::new();
+
+        let client_1 = network.connect();
+        let client_2 = network.connect();
+
+        testing::network::assert_clients_can_exchange_messages(client_1, client_2).await;
     }
 }
