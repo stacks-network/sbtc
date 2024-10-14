@@ -4,9 +4,12 @@
 //! channel, with deduplication logic to prevent a single client
 //! from receiving it's own messages.
 
-use std::{collections::VecDeque, sync::atomic::AtomicU16};
+use std::{
+    collections::VecDeque,
+    sync::{atomic::AtomicU16, Arc},
+};
 
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Mutex};
 
 use crate::error::Error;
 
@@ -16,7 +19,7 @@ type MsgId = [u8; 32];
 
 /// Represents an in-memory communication network useful for tests
 #[derive(Debug)]
-pub struct Network {
+pub struct InMemoryNetwork {
     last_id: AtomicU16,
     sender: broadcast::Sender<super::Msg>,
 }
@@ -28,7 +31,18 @@ pub struct MpmcBroadcaster {
     id: u16,
     sender: broadcast::Sender<super::Msg>,
     receiver: broadcast::Receiver<super::Msg>,
-    recently_sent: VecDeque<MsgId>,
+    recently_sent: Arc<Mutex<VecDeque<MsgId>>>,
+}
+
+impl Clone for MpmcBroadcaster {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            sender: self.sender.clone(),
+            receiver: self.sender.subscribe(),
+            recently_sent: Arc::clone(&self.recently_sent),
+        }
+    }
 }
 
 impl MpmcBroadcaster {
@@ -38,7 +52,7 @@ impl MpmcBroadcaster {
     }
 }
 
-impl Network {
+impl InMemoryNetwork {
     /// Construct a new in-memory communication entwork
     pub fn new() -> Self {
         let (sender, _) = broadcast::channel(BROADCAST_CHANNEL_CAPACITY);
@@ -50,23 +64,20 @@ impl Network {
 
     /// Connect a new signer to this network
     pub fn connect(&self) -> MpmcBroadcaster {
-        let sender = self.sender.clone();
-        let receiver = sender.subscribe();
-        let recently_sent = VecDeque::new();
         let id = self
             .last_id
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         MpmcBroadcaster {
             id,
-            sender,
-            receiver,
-            recently_sent,
+            sender: self.sender.clone(),
+            receiver: self.sender.subscribe(),
+            recently_sent: Default::default(),
         }
     }
 }
 
-impl Default for Network {
+impl Default for InMemoryNetwork {
     fn default() -> Self {
         Self::new()
     }
@@ -75,7 +86,7 @@ impl Default for Network {
 impl super::MessageTransfer for MpmcBroadcaster {
     async fn broadcast(&mut self, msg: super::Msg) -> Result<(), Error> {
         tracing::trace!("[network{:0>2}] broadcasting: {}", self.id, msg);
-        self.recently_sent.push_back(msg.id());
+        self.recently_sent.lock().await.push_back(msg.id());
         self.sender.send(msg).map_err(|_| Error::SendMessage)?;
         Ok(())
     }
@@ -84,11 +95,27 @@ impl super::MessageTransfer for MpmcBroadcaster {
         let mut msg = self.receiver.recv().await.map_err(Error::ChannelReceive)?;
         tracing::trace!("[network{:0>2}] received: {}", self.id, msg);
 
-        while Some(&msg.id()) == self.recently_sent.front() {
-            self.recently_sent.pop_front();
+        while Some(&msg.id()) == self.recently_sent.lock().await.front() {
+            self.recently_sent.lock().await.pop_front();
             msg = self.receiver.recv().await.map_err(Error::ChannelReceive)?;
         }
 
         Ok(msg)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing;
+
+    #[tokio::test]
+    async fn two_clients_should_be_able_to_exchange_messages_given_an_in_memory_network() {
+        let network = InMemoryNetwork::new();
+
+        let client_1 = network.connect();
+        let client_2 = network.connect();
+
+        testing::network::assert_clients_can_exchange_messages(client_1, client_2).await;
     }
 }

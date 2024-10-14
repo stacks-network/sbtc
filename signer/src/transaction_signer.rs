@@ -7,21 +7,26 @@
 
 use std::collections::BTreeSet;
 use std::collections::HashMap;
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use crate::blocklist_client;
 use crate::context::Context;
 use crate::context::SignerEvent;
 use crate::context::SignerSignal;
+use crate::context::TxCoordinatorEvent;
 use crate::context::TxSignerEvent;
 use crate::ecdsa::SignEcdsa as _;
+use crate::ecdsa::Signed;
 use crate::error::Error;
 use crate::keys;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
+use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
 use crate::network;
+use crate::signature::SighashDigest as _;
 use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::ReqContext;
@@ -35,7 +40,7 @@ use crate::wsts_state_machine;
 
 use clarity::types::chainstate::StacksAddress;
 use futures::StreamExt;
-use tokio::time::error::Elapsed;
+use tokio::sync::Mutex;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
 
@@ -142,27 +147,45 @@ where
     pub async fn run(mut self) -> Result<(), Error> {
         let mut signal_rx = self.context.get_signal_receiver();
         let mut term = self.context.get_termination_handle();
+        let mut network = self.network.clone();
 
-        // TODO: We should really split these operations out into two separate
-        // main run-loops since they don't have anything to do with each other.
-        //
-        // We run the event loop like this because `tokio::select!()` could
-        // potentially kill either `handle_new_requests()` or `handle_signer_message()`
-        // in the middle of processing if they end-up running concurrently and
-        // the other one finishes first.
-        let run_task = async {
-            loop {
-                // First we empty the signal channel subscription, checking for
-                // new Bitcoin block observed events. It doesn't matter how many
-                // of these we get, we only care if it has happened. It's also
-                // important that we empty this channel as quickly as possible
-                // to avoid un-processed messages being dropped.
-                let mut new_block_observed = false;
-                while let Ok(signal) = signal_rx.try_recv() {
-                    if let SignerSignal::Event(SignerEvent::BitcoinBlockObserved) = signal {
-                        new_block_observed = true;
+        let signalled_events: Mutex<Vec<SignerEvent>> = Default::default();
+        let network_messages: Mutex<Vec<Signed<SignerMessage>>> = Default::default();
+        let shutdown_notify = AtomicBool::new(false);
+
+        let should_shutdown = || shutdown_notify.load(std::sync::atomic::Ordering::Relaxed);
+
+        // TODO: We should really split these operations out into two
+        // separate main run-loops since they don't have anything to do
+        // with each other.
+        let signer_event_loop = async {
+            while !should_shutdown() {
+                // Collect all events which have been signalled into this loop
+                // iteration for processing.
+                let mut events_guard = signalled_events.lock().await;
+                let events = events_guard.drain(..).collect::<Vec<_>>();
+                drop(events_guard);
+
+                // Collect all network messages which have been received into
+                // this loop iteration for processing.
+                let mut network_messages_guard = network_messages.lock().await;
+                let mut messages_to_process = network_messages_guard.drain(..).collect::<Vec<_>>();
+                drop(network_messages_guard);
+
+                // Append all `TxCoordinatorEvent::MessageGenerated` event messages
+                // into `messages_to_process` for processing.
+                events.iter().for_each(|event| {
+                    if let SignerEvent::TxCoordinator(TxCoordinatorEvent::MessageGenerated(msg)) =
+                        event
+                    {
+                        messages_to_process.push(msg.clone());
                     }
-                }
+                });
+
+                // Check if we've observed a new block.
+                let new_block_observed = events
+                    .iter()
+                    .any(|event| matches!(event, SignerEvent::BitcoinBlockObserved));
 
                 // If we've observed a new block, we need to handle any new requests.
                 if new_block_observed {
@@ -171,39 +194,62 @@ where
                     }
                 }
 
-                // Next, we define a future that polls the network for new messages
-                // which times out after 5ms to ensure we don't block the above
-                // loop. We don't have any methods (atm) on the Network that would
-                // let us `try_recv` or peek. We can get rid of this later on if
-                // we split this run-loop into two separate loops.
-                let future = tokio::time::timeout(Duration::from_millis(5), self.network.receive());
-
-                match future.await {
-                    Ok(Err(error)) => {
-                        tracing::warn!(%error, "message error; skipping");
-                    }
-                    Ok(Ok(msg)) => {
-                        // Handle the received message.
-                        let res = self.handle_signer_message(&msg).await;
-                        match res {
-                            Ok(()) | Err(Error::InvalidSignature) => (),
-                            Err(error) => {
-                                tracing::error!(%error, "error handling signer message");
-                            }
+                // Process all messages which have been received (both from the
+                // network and from this signer's own transaction coordinator).
+                for msg in messages_to_process {
+                    match self.handle_signer_message(&msg).await {
+                        Ok(()) | Err(Error::InvalidSignature) => (),
+                        Err(error) => {
+                            tracing::error!(%error, "error handling signer message");
                         }
                     }
-                    Err(Elapsed { .. }) => (),
                 }
 
-                // We don't do any extra waiting here since we have the
-                // `tokio::time::timeout` above.
+                // A small delay to avoid busy-looping if there are no events
+                // to process.
+                tokio::time::sleep(Duration::from_millis(10)).await;
             }
         };
 
-        tokio::select! {
-            _ = run_task => (),
-            _ = term.wait_for_shutdown() => (),
-        }
+        // This task will poll the signal channel for new events and push them
+        // into the `signalled_events` vec for processing in the main loop.
+        let poll_signalled_events = async {
+            while !should_shutdown() {
+                if let Ok(SignerSignal::Event(event)) = signal_rx.recv().await {
+                    signalled_events.lock().await.push(event);
+                }
+            }
+        };
+
+        // This task will poll the network for new messages and push them into
+        // the `network_messages` vec for processing in the main loop.
+        let poll_network_messages = async {
+            while !should_shutdown() {
+                if let Ok(msg) = network.receive().await {
+                    network_messages.lock().await.push(msg);
+                }
+            }
+        };
+
+        // This task will wait for a termination signal and then set the
+        // `shutdown_notify` flag to true, which will cause all of the other
+        // tasks to shutdown.
+        let poll_shutdown = async {
+            term.wait_for_shutdown().await;
+            tracing::info!(
+                "termination signal received; transaction signer event loop is shutting down"
+            );
+            shutdown_notify.store(true, std::sync::atomic::Ordering::Relaxed);
+        };
+
+        tokio::join!(
+            // Polling
+            poll_signalled_events,
+            poll_network_messages,
+            poll_shutdown,
+            // Main event loop
+            signer_event_loop,
+        );
 
         tracing::info!("transaction signer event loop has been stopped");
         Ok(())
@@ -267,12 +313,12 @@ where
             }
 
             (
-                message::Payload::StacksTransactionSignRequest(_request),
+                message::Payload::StacksTransactionSignRequest(request),
                 true,
                 ChainTipStatus::Canonical,
             ) => {
-
-                //TODO(255): Implement
+                self.handle_stacks_transaction_sign_request(request, &msg.bitcoin_chain_tip)
+                    .await?;
             }
 
             (
@@ -403,18 +449,25 @@ where
     #[tracing::instrument(skip_all)]
     async fn handle_stacks_transaction_sign_request(
         &mut self,
-        ctx: &impl Context,
         request: &StacksTransactionSignRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
-        self.assert_valid_stackstransaction_sign_request(ctx, request, bitcoin_chain_tip)
+        self.assert_valid_stacks_tx_sign_request(request, bitcoin_chain_tip)
             .await?;
 
-        let wallet = SignerWallet::load(ctx, bitcoin_chain_tip).await?;
+        // We need to set the nonce in order to get the exact transaction
+        // that we need to sign.
+        let wallet = SignerWallet::load(&self.context, bitcoin_chain_tip).await?;
         wallet.set_nonce(request.nonce);
 
         let multi_sig = MultisigTx::new_tx(&request.contract_call, &wallet, request.tx_fee);
         let txid = multi_sig.tx().txid();
+
+        // TODO: Make this more robust. The signer that recieves this won't
+        // be able to use the signature if it's over the wrong digest, so
+        // maybe we should error here.
+        debug_assert_eq!(multi_sig.tx().digest(), request.digest);
+        debug_assert_eq!(txid, request.txid);
 
         let signature = crate::signature::sign_stacks_tx(multi_sig.tx(), &self.signer_private_key);
 
@@ -425,12 +478,14 @@ where
         Ok(())
     }
 
-    async fn assert_valid_stackstransaction_sign_request(
-        &mut self,
-        ctx: &impl Context,
-        request: &message::StacksTransactionSignRequest,
+    async fn assert_valid_stacks_tx_sign_request(
+        &self,
+        request: &StacksTransactionSignRequest,
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
+        if true {
+            return Ok(());
+        }
         // TODO(255): Finish the implementation
         let req_ctx = ReqContext {
             chain_tip: BitcoinBlockRef {
@@ -447,6 +502,8 @@ where
             // This is wrong
             deployer: StacksAddress::burn_address(false),
         };
+        // TODO: Maybe check the transaction fee in the request?
+        let ctx = &self.context;
         match &request.contract_call {
             ContractCall::AcceptWithdrawalV1(contract) => contract.validate(ctx, &req_ctx).await,
             ContractCall::CompleteDepositV1(contract) => contract.validate(ctx, &req_ctx).await,
@@ -747,7 +804,9 @@ where
             .to_message(*bitcoin_chain_tip)
             .sign_ecdsa(&self.signer_private_key)?;
 
-        self.network.broadcast(msg).await?;
+        self.network.broadcast(msg.clone()).await?;
+        self.context
+            .signal(TxSignerEvent::MessageGenerated(msg).into())?;
 
         Ok(())
     }

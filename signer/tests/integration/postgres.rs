@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use bitcoin::hashes::Hash as _;
 use bitvec::array::BitArray;
@@ -38,7 +39,6 @@ use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::QualifiedRequestId;
-use signer::storage::model::RotateKeysTransaction;
 use signer::storage::model::ScriptPubKey;
 use signer::storage::model::StacksBlock;
 use signer::storage::model::StacksBlockHash;
@@ -596,7 +596,7 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
 
     let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
 
-    let dummy_wsts_network = network::in_memory::Network::new();
+    let dummy_wsts_network = network::InMemoryNetwork::new();
     let mut testing_signer_set =
         testing::wsts::SignerSet::new(&signer_info, threshold, || dummy_wsts_network.connect());
     let dkg_txid = testing::dummy::txid(&fake::Faker, &mut rng);
@@ -935,20 +935,9 @@ async fn fetching_deposit_request_votes() {
         num_keys: 7,
         signatures_required: 4,
     };
-    let rotate_keys: RotateKeysTransaction = signer_set_config.fake_with_rng(&mut rng);
-    // Before we can write the rotate keys into the postgres database, we
-    // need to have a transaction in the transactions table.
-    let transaction = model::Transaction {
-        txid: rotate_keys.txid.into_bytes(),
-        tx: Vec::new(),
-        tx_type: model::TransactionType::RotateKeys,
-        block_hash: fake::Faker.fake_with_rng(&mut rng),
-    };
-    store.write_transaction(&transaction).await.unwrap();
-    store
-        .write_rotate_keys_transaction(&rotate_keys)
-        .await
-        .unwrap();
+    let shares: EncryptedDkgShares = signer_set_config.fake_with_rng(&mut rng);
+
+    store.write_encrypted_dkg_shares(&shares).await.unwrap();
 
     let txid: BitcoinTxId = fake::Faker.fake_with_rng(&mut rng);
     let output_index = 2;
@@ -957,25 +946,25 @@ async fn fetching_deposit_request_votes() {
         model::DepositSigner {
             txid,
             output_index,
-            signer_pub_key: rotate_keys.signer_set[0],
+            signer_pub_key: shares.signer_set_public_keys[0],
             is_accepted: true,
         },
         model::DepositSigner {
             txid,
             output_index,
-            signer_pub_key: rotate_keys.signer_set[1],
+            signer_pub_key: shares.signer_set_public_keys[1],
             is_accepted: false,
         },
         model::DepositSigner {
             txid,
             output_index,
-            signer_pub_key: rotate_keys.signer_set[2],
+            signer_pub_key: shares.signer_set_public_keys[2],
             is_accepted: true,
         },
         model::DepositSigner {
             txid,
             output_index,
-            signer_pub_key: rotate_keys.signer_set[3],
+            signer_pub_key: shares.signer_set_public_keys[3],
             is_accepted: true,
         },
     ];
@@ -999,7 +988,7 @@ async fn fetching_deposit_request_votes() {
 
     // Okay let's test the query and get the votes.
     let votes = store
-        .get_deposit_request_signer_votes(&txid, output_index, &rotate_keys.aggregate_key)
+        .get_deposit_request_signer_votes(&txid, output_index, &shares.aggregate_key)
         .await
         .unwrap();
 
@@ -1043,20 +1032,9 @@ async fn fetching_withdrawal_request_votes() {
         num_keys: 7,
         signatures_required: 4,
     };
-    let rotate_keys: RotateKeysTransaction = signer_set_config.fake_with_rng(&mut rng);
-    // Before we can write the rotate keys into the postgres database, we
-    // need to have a transaction in the transactions table.
-    let transaction = model::Transaction {
-        txid: rotate_keys.txid.into_bytes(),
-        tx: Vec::new(),
-        tx_type: model::TransactionType::RotateKeys,
-        block_hash: fake::Faker.fake_with_rng(&mut rng),
-    };
-    store.write_transaction(&transaction).await.unwrap();
-    store
-        .write_rotate_keys_transaction(&rotate_keys)
-        .await
-        .unwrap();
+    let shares: EncryptedDkgShares = signer_set_config.fake_with_rng(&mut rng);
+
+    store.write_encrypted_dkg_shares(&shares).await.unwrap();
 
     let txid: StacksTxId = fake::Faker.fake_with_rng(&mut rng);
     let block_hash: StacksBlockHash = fake::Faker.fake_with_rng(&mut rng);
@@ -1067,28 +1045,28 @@ async fn fetching_withdrawal_request_votes() {
             txid,
             block_hash,
             request_id,
-            signer_pub_key: rotate_keys.signer_set[0],
+            signer_pub_key: shares.signer_set_public_keys[0],
             is_accepted: true,
         },
         WithdrawalSigner {
             txid,
             block_hash,
             request_id,
-            signer_pub_key: rotate_keys.signer_set[1],
+            signer_pub_key: shares.signer_set_public_keys[1],
             is_accepted: false,
         },
         WithdrawalSigner {
             txid,
             block_hash,
             request_id,
-            signer_pub_key: rotate_keys.signer_set[2],
+            signer_pub_key: shares.signer_set_public_keys[2],
             is_accepted: true,
         },
         WithdrawalSigner {
             txid,
             block_hash,
             request_id,
-            signer_pub_key: rotate_keys.signer_set[3],
+            signer_pub_key: shares.signer_set_public_keys[3],
             is_accepted: true,
         },
     ];
@@ -1122,7 +1100,7 @@ async fn fetching_withdrawal_request_votes() {
 
     // Okay let's test the query and get the votes.
     let votes = store
-        .get_withdrawal_request_signer_votes(&id, &rotate_keys.aggregate_key)
+        .get_withdrawal_request_signer_votes(&id, &shares.aggregate_key)
         .await
         .unwrap();
 
@@ -1378,7 +1356,7 @@ async fn get_last_encrypted_dkg_shares_gets_most_recent_shares() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
     // We have an empty database, so we don't have any DKG shares there.
-    let no_shares = db.get_last_encrypted_dkg_shares().await.unwrap();
+    let no_shares = db.get_lastest_encrypted_dkg_shares().await.unwrap();
     assert!(no_shares.is_none());
 
     // Let's create some random DKG shares and store them in the database.
@@ -1387,7 +1365,7 @@ async fn get_last_encrypted_dkg_shares_gets_most_recent_shares() {
     let shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
     db.write_encrypted_dkg_shares(&shares).await.unwrap();
 
-    let stored_shares = db.get_last_encrypted_dkg_shares().await.unwrap();
+    let stored_shares = db.get_lastest_encrypted_dkg_shares().await.unwrap();
     assert_eq!(stored_shares.as_ref(), Some(&shares));
 
     // Now let's pretend that we somehow insert into the database some
@@ -1395,47 +1373,23 @@ async fn get_last_encrypted_dkg_shares_gets_most_recent_shares() {
     // timestamp to be something in the past isn't possible in our current
     // codebase (and should probably never be possible), so this is just
     // for testing purposes.
-    let old_shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
-    assert_ne!(shares, old_shares);
-    sqlx::query(
-        r#"
-        INSERT INTO sbtc_signer.dkg_shares (
-              aggregate_key
-            , tweaked_aggregate_key
-            , encrypted_private_shares
-            , public_shares
-            , script_pubkey
-            , signer_set_public_keys
-            , created_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP - INTERVAL '2 DAYS')
-        ON CONFLICT DO NOTHING"#,
-    )
-    .bind(old_shares.aggregate_key)
-    .bind(old_shares.tweaked_aggregate_key)
-    .bind(&old_shares.encrypted_private_shares)
-    .bind(&old_shares.public_shares)
-    .bind(&old_shares.script_pubkey)
-    .bind(&old_shares.signer_set_public_keys)
-    .execute(db.pool())
-    .await
-    .unwrap();
+    let shares0: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    db.write_encrypted_dkg_shares(&shares0).await.unwrap();
+
+    tokio::time::sleep(Duration::from_millis(5)).await;
+
+    let shares1: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    db.write_encrypted_dkg_shares(&shares1).await.unwrap();
+
+    tokio::time::sleep(Duration::from_millis(5)).await;
+
+    let shares2: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    db.write_encrypted_dkg_shares(&shares2).await.unwrap();
 
     // So when we try to get the last DKG shares this time, we'll get the
     // same ones as last time since they are the most recent.
-    let some_shares = db.get_last_encrypted_dkg_shares().await.unwrap();
-    assert_eq!(some_shares.as_ref(), Some(&shares));
-
-    // Now let's pretend that we ran DKG again and stored them, these new
-    // shares should be selected.
-    let new_shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
-    // Yeah these aren't the same as the old ones.
-    assert_ne!(shares, new_shares);
-
-    db.write_encrypted_dkg_shares(&new_shares).await.unwrap();
-
-    let new_stored_shares = db.get_last_encrypted_dkg_shares().await.unwrap();
-    assert_eq!(new_stored_shares, Some(new_shares));
+    let some_shares = db.get_lastest_encrypted_dkg_shares().await.unwrap();
+    assert_eq!(some_shares.as_ref(), Some(&shares2));
 
     signer::testing::storage::drop_db(db).await;
 }

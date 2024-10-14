@@ -9,7 +9,7 @@ use rand::SeedableRng as _;
 use signer::context::Context as _;
 use signer::emily_client::MockEmilyInteract;
 use signer::keys::PublicKey;
-use signer::network;
+use signer::network::InMemoryNetwork;
 use signer::stacks::api::MockStacksInteract;
 use signer::storage::model;
 use signer::storage::model::RotateKeysTransaction;
@@ -200,7 +200,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
         .with_mocked_clients()
         .build();
 
-    let network = network::in_memory::Network::new();
+    let network = InMemoryNetwork::new();
 
     let coord = TxSignerEventLoop {
         network: network.connect(),
