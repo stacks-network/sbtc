@@ -64,6 +64,7 @@ where
                 context_window,
                 threshold,
                 signing_round_max_duration: Duration::from_secs(10),
+                dkg_max_duration: Duration::from_secs(10),
             },
             context,
             is_started: Arc::new(AtomicBool::new(false)),

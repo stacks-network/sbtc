@@ -420,3 +420,10 @@ impl From<std::convert::Infallible> for Error {
         match value {}
     }
 }
+
+impl Error {
+    /// Convert a coordinator error to an `error::Error`
+    pub fn wsts_coordinator(err: wsts::state_machine::coordinator::Error) -> Self {
+        Error::WstsCoordinator(Box::new(err))
+    }
+}

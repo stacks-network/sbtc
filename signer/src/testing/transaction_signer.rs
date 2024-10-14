@@ -437,7 +437,6 @@ where
             &bitcoin_chain_tip,
             &signer_info.first().unwrap().signer_public_keys,
         )
-        .expect("failed to compute coordinator public key")
         .unwrap();
 
         let coordinator_private_key = signer_info
@@ -639,7 +638,6 @@ where
             &bitcoin_chain_tip,
             &signer_info.first().unwrap().signer_public_keys,
         )
-        .unwrap()
         .unwrap();
 
         let coordinator_signer_info = signer_info

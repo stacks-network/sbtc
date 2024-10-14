@@ -269,11 +269,11 @@ impl CoordinatorStateMachine {
         // starts at 0 and we start our's at 1.
         let (Some(_), _) = coordinator
             .process_message(&packet)
-            .map_err(coordinator_error)?
+            .map_err(Error::wsts_coordinator)?
         else {
             let msg = "Bad DKG id given".to_string();
             let err = wsts::state_machine::coordinator::Error::BadStateChange(msg);
-            return Err(coordinator_error(err));
+            return Err(Error::wsts_coordinator(err));
         };
 
         // TODO(338): Replace this for-loop with a simpler method to set
@@ -293,7 +293,7 @@ impl CoordinatorStateMachine {
             // process them.
             coordinator
                 .process_message(&packet)
-                .map_err(coordinator_error)?;
+                .map_err(Error::wsts_coordinator)?;
         }
 
         // Once we've processed all DKG public shares for all participants,
@@ -311,7 +311,7 @@ impl CoordinatorStateMachine {
 
         coordinator
             .move_to(WstsState::Idle)
-            .map_err(coordinator_error)?;
+            .map_err(Error::wsts_coordinator)?;
 
         Ok(coordinator)
     }
@@ -329,9 +329,4 @@ impl std::ops::DerefMut for CoordinatorStateMachine {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
-}
-
-/// Convert a coordinator error to an `error::Error`
-pub fn coordinator_error(err: wsts::state_machine::coordinator::Error) -> error::Error {
-    error::Error::WstsCoordinator(Box::new(err))
 }

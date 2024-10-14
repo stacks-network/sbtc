@@ -1356,7 +1356,7 @@ async fn get_last_encrypted_dkg_shares_gets_most_recent_shares() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
     // We have an empty database, so we don't have any DKG shares there.
-    let no_shares = db.get_lastest_encrypted_dkg_shares().await.unwrap();
+    let no_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
     assert!(no_shares.is_none());
 
     // Let's create some random DKG shares and store them in the database.
@@ -1365,7 +1365,7 @@ async fn get_last_encrypted_dkg_shares_gets_most_recent_shares() {
     let shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
     db.write_encrypted_dkg_shares(&shares).await.unwrap();
 
-    let stored_shares = db.get_lastest_encrypted_dkg_shares().await.unwrap();
+    let stored_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
     assert_eq!(stored_shares.as_ref(), Some(&shares));
 
     // Now let's pretend that we somehow insert into the database some
@@ -1388,7 +1388,7 @@ async fn get_last_encrypted_dkg_shares_gets_most_recent_shares() {
 
     // So when we try to get the last DKG shares this time, we'll get the
     // same ones as last time since they are the most recent.
-    let some_shares = db.get_lastest_encrypted_dkg_shares().await.unwrap();
+    let some_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
     assert_eq!(some_shares.as_ref(), Some(&shares2));
 
     signer::testing::storage::drop_db(db).await;

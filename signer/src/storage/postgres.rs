@@ -975,7 +975,7 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn get_lastest_encrypted_dkg_shares(
+    async fn get_latest_encrypted_dkg_shares(
         &self,
     ) -> Result<Option<model::EncryptedDkgShares>, Error> {
         sqlx::query_as::<_, model::EncryptedDkgShares>(
