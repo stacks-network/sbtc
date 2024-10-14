@@ -904,7 +904,7 @@ where
                 let signer_set = last_key.signer_set.into_iter().collect();
                 Ok((Some(aggregate_key), signer_set))
             }
-            None => match db.get_lastest_encrypted_dkg_shares().await? {
+            None => match db.get_latest_encrypted_dkg_shares().await? {
                 Some(shares) => {
                     let signer_set = shares.signer_set_public_keys.into_iter().collect();
                     Ok((Some(shares.aggregate_key), signer_set))

@@ -530,7 +530,7 @@ async fn run_dkg_from_scratch() {
 
     // 3. Check that there are no DKG shares in the database.
     for (_, db, _) in signers.iter() {
-        let some_shares = db.get_lastest_encrypted_dkg_shares().await.unwrap();
+        let some_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
         assert!(some_shares.is_none());
     }
 
@@ -608,7 +608,7 @@ async fn run_dkg_from_scratch() {
         // get_last_encrypted_dkg_shares gets the right thing (which is the
         // only thing in this case.)
         let key = aggregate_key.pop().unwrap().0;
-        let shares = db.get_lastest_encrypted_dkg_shares().await.unwrap().unwrap();
+        let shares = db.get_latest_encrypted_dkg_shares().await.unwrap().unwrap();
         assert_eq!(shares.aggregate_key, key);
         aggregate_keys.insert(key);
     }
