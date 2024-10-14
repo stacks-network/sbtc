@@ -302,7 +302,7 @@ async fn process_complete_deposit() {
     tx_coordinator_handle.abort();
     event_loop_handles.iter().for_each(|h| h.abort());
 
-    assert!(broadcasted_tx.verify().is_ok());
+    broadcasted_tx.verify().unwrap();
 
     assert_eq!(broadcasted_tx.get_origin_nonce(), nonce);
 
