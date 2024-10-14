@@ -203,7 +203,7 @@ async fn process_complete_deposit() {
     let signing_threshold = 5;
     let context_window = 10;
 
-    let network = network::in_memory::Network::new();
+    let network = network::in_memory::InMemoryNetwork::new();
     let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
 
     let mut testing_signer_set =
