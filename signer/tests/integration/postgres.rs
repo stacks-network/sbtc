@@ -38,7 +38,6 @@ use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::QualifiedRequestId;
-use signer::storage::model::RotateKeysTransaction;
 use signer::storage::model::ScriptPubKey;
 use signer::storage::model::StacksBlock;
 use signer::storage::model::StacksBlockHash;
@@ -935,20 +934,9 @@ async fn fetching_deposit_request_votes() {
         num_keys: 7,
         signatures_required: 4,
     };
-    let rotate_keys: RotateKeysTransaction = signer_set_config.fake_with_rng(&mut rng);
-    // Before we can write the rotate keys into the postgres database, we
-    // need to have a transaction in the transactions table.
-    let transaction = model::Transaction {
-        txid: rotate_keys.txid.into_bytes(),
-        tx: Vec::new(),
-        tx_type: model::TransactionType::RotateKeys,
-        block_hash: fake::Faker.fake_with_rng(&mut rng),
-    };
-    store.write_transaction(&transaction).await.unwrap();
-    store
-        .write_rotate_keys_transaction(&rotate_keys)
-        .await
-        .unwrap();
+    let shares: EncryptedDkgShares = signer_set_config.fake_with_rng(&mut rng);
+
+    store.write_encrypted_dkg_shares(&shares).await.unwrap();
 
     let txid: BitcoinTxId = fake::Faker.fake_with_rng(&mut rng);
     let output_index = 2;
@@ -957,25 +945,25 @@ async fn fetching_deposit_request_votes() {
         model::DepositSigner {
             txid,
             output_index,
-            signer_pub_key: rotate_keys.signer_set[0],
+            signer_pub_key: shares.signer_set_public_keys[0],
             is_accepted: true,
         },
         model::DepositSigner {
             txid,
             output_index,
-            signer_pub_key: rotate_keys.signer_set[1],
+            signer_pub_key: shares.signer_set_public_keys[1],
             is_accepted: false,
         },
         model::DepositSigner {
             txid,
             output_index,
-            signer_pub_key: rotate_keys.signer_set[2],
+            signer_pub_key: shares.signer_set_public_keys[2],
             is_accepted: true,
         },
         model::DepositSigner {
             txid,
             output_index,
-            signer_pub_key: rotate_keys.signer_set[3],
+            signer_pub_key: shares.signer_set_public_keys[3],
             is_accepted: true,
         },
     ];
@@ -999,7 +987,7 @@ async fn fetching_deposit_request_votes() {
 
     // Okay let's test the query and get the votes.
     let votes = store
-        .get_deposit_request_signer_votes(&txid, output_index, &rotate_keys.aggregate_key)
+        .get_deposit_request_signer_votes(&txid, output_index, &shares.aggregate_key)
         .await
         .unwrap();
 
@@ -1043,20 +1031,9 @@ async fn fetching_withdrawal_request_votes() {
         num_keys: 7,
         signatures_required: 4,
     };
-    let rotate_keys: RotateKeysTransaction = signer_set_config.fake_with_rng(&mut rng);
-    // Before we can write the rotate keys into the postgres database, we
-    // need to have a transaction in the transactions table.
-    let transaction = model::Transaction {
-        txid: rotate_keys.txid.into_bytes(),
-        tx: Vec::new(),
-        tx_type: model::TransactionType::RotateKeys,
-        block_hash: fake::Faker.fake_with_rng(&mut rng),
-    };
-    store.write_transaction(&transaction).await.unwrap();
-    store
-        .write_rotate_keys_transaction(&rotate_keys)
-        .await
-        .unwrap();
+    let shares: EncryptedDkgShares = signer_set_config.fake_with_rng(&mut rng);
+
+    store.write_encrypted_dkg_shares(&shares).await.unwrap();
 
     let txid: StacksTxId = fake::Faker.fake_with_rng(&mut rng);
     let block_hash: StacksBlockHash = fake::Faker.fake_with_rng(&mut rng);
@@ -1067,28 +1044,28 @@ async fn fetching_withdrawal_request_votes() {
             txid,
             block_hash,
             request_id,
-            signer_pub_key: rotate_keys.signer_set[0],
+            signer_pub_key: shares.signer_set_public_keys[0],
             is_accepted: true,
         },
         WithdrawalSigner {
             txid,
             block_hash,
             request_id,
-            signer_pub_key: rotate_keys.signer_set[1],
+            signer_pub_key: shares.signer_set_public_keys[1],
             is_accepted: false,
         },
         WithdrawalSigner {
             txid,
             block_hash,
             request_id,
-            signer_pub_key: rotate_keys.signer_set[2],
+            signer_pub_key: shares.signer_set_public_keys[2],
             is_accepted: true,
         },
         WithdrawalSigner {
             txid,
             block_hash,
             request_id,
-            signer_pub_key: rotate_keys.signer_set[3],
+            signer_pub_key: shares.signer_set_public_keys[3],
             is_accepted: true,
         },
     ];
@@ -1122,7 +1099,7 @@ async fn fetching_withdrawal_request_votes() {
 
     // Okay let's test the query and get the votes.
     let votes = store
-        .get_withdrawal_request_signer_votes(&id, &rotate_keys.aggregate_key)
+        .get_withdrawal_request_signer_votes(&id, &shares.aggregate_key)
         .await
         .unwrap();
 
