@@ -10,6 +10,17 @@ pub enum SignerSignal {
     Event(SignerEvent),
 }
 
+impl SignerSignal {
+    /// Return the message that was generated from a [`TxSignerEventLoop`]
+    /// task and None otherwise.
+    pub fn tx_signer_generated(self) -> Option<crate::network::Msg> {
+        match self {
+            Self::Event(SignerEvent::TxSigner(TxSignerEvent::MessageGenerated(msg))) => Some(msg),
+            _ => None,
+        }
+    }
+}
+
 /// Commands that can be sent on the signalling channel.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SignerCommand {

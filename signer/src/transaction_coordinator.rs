@@ -6,10 +6,13 @@
 //! For more details, see the [`TxCoordinatorEventLoop`] documentation.
 
 use std::collections::BTreeSet;
-use std::time::Duration;
 
 use blockstack_lib::chainstate::stacks::StacksTransaction;
+use futures::FutureExt;
+use futures::StreamExt as _;
+use futures::TryStreamExt;
 use sha2::Digest;
+use tokio_stream::wrappers::BroadcastStream;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
@@ -21,8 +24,8 @@ use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
-use crate::message::SignerMessage;
 use crate::message::Payload;
+use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
 use crate::network;
 use crate::signature::SighashDigest;
@@ -170,6 +173,34 @@ where
         tracing::info!("transaction coordinator event loop is stopping");
 
         Ok(())
+    }
+
+    /// Receive the next message. This message could be from over the
+    /// network or from.
+    async fn receive_message(&mut self) -> Signed<SignerMessage> {
+        let signal_rx = self.context.get_signal_receiver();
+        // Turn the reciever into a stream that returns messages that have
+        // been sent by the TxSignerEventLoop.
+        let stream1 = BroadcastStream::new(signal_rx)
+            .filter_map(|msg| async move { msg.ok()?.tx_signer_generated() });
+
+        // We should potentially turn this into a stream that only returns
+        // successful responses.
+        let stream2 = self
+            .network
+            .receive()
+            .into_stream()
+            .inspect_err(|error| tracing::warn!(%error, "received an error from the network"))
+            .filter_map(|x| std::future::ready(x.ok()));
+
+        // The `.select_next_some()` method requires the streams to
+        // implement `Unpin`.
+        tokio::pin!(stream1);
+        tokio::pin!(stream2);
+
+        futures::stream::select(stream1, stream2)
+            .select_next_some()
+            .await
     }
 
     #[tracing::instrument(skip(self))]
@@ -423,31 +454,16 @@ where
         wallet: &SignerWallet,
     ) -> Result<StacksTransaction, Error> {
         let txid = req.txid;
-        let mut count = 0;
 
-        // TODO(667): this is tailored to in-memory network propagating messages internally
-        if wallet.signatures_required() > 1 {
-            // We ask for the signers to sign our transaction (including
-            // ourselves, via our tx signer event loop)
-            self.send_message(req, chain_tip).await?;
-        } else {
-            // We sign it here without talking to the signers
-            //
-            // TODO: Note that this is all pretty "loose". We haven't yet
-            // confirmed whether we are actually a part of the multi-sig wallet
-            // that we loaded. Thus, this signature could be invalid. This will
-            // change if we make the `SignerWallet` include the private key and
-            // have it verify that it is part of the signer set. This would
-            // make everything much more solid.
-            let private_key = self.context.config().signer.private_key;
-            let signature = crate::signature::sign_stacks_tx(multi_tx.tx(), &private_key);
-            multi_tx.add_signature(signature)?;
-            count = 1;
-        }
+        // We ask for the signers to sign our transaction (including
+        // ourselves, via our tx signer event loop)
+        self.send_message(req, chain_tip).await?;
+
+        let max_duration = self.signing_round_max_duration;
 
         let future = async {
-            while count < wallet.signatures_required() {
-                let msg = self.network.receive().await?;
+            while multi_tx.num_signatures() < wallet.signatures_required() {
+                let msg = self.receive_message().await;
                 // TODO: We need to verify these messages, but it is best
                 // to do that at the source when we receive the message.
 
@@ -461,21 +477,20 @@ where
                     _ => continue,
                 };
 
-                match multi_tx.add_signature(sig.signature) {
-                    Ok(_) => count += 1,
-                    Err(error) => tracing::warn!(
+                if let Err(error) = multi_tx.add_signature(sig.signature) {
+                    tracing::warn!(
                         %txid,
                         %error,
                         offending_public_key = %msg.signer_pub_key,
                         "got an invalid signature"
-                    ),
+                    );
                 }
             }
 
             Ok::<_, Error>(multi_tx.finalize_transaction())
         };
 
-        tokio::time::timeout(self.signing_round_max_duration, future)
+        tokio::time::timeout(max_duration, future)
             .await
             .map_err(|_| Error::SignatureTimeout(txid))?
     }
@@ -593,76 +608,52 @@ where
             .map_err(|_| Error::CoordinatorTimeout(self.signing_round_max_duration.as_secs()))?
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn relay_messages_to_wsts_state_machine_until_signature_created(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         coordinator_state_machine: &mut wsts_state_machine::CoordinatorStateMachine,
         txid: bitcoin::Txid,
     ) -> Result<wsts::taproot::SchnorrProof, Error> {
-        let mut signal_rx = self.context.get_signal_receiver();
-
-        // We'll poll both the network and the signal channel for messages
-        // from our own tx signer. We'll store any received messages here.
-        let mut signer_messages: Vec<Signed<SignerMessage>> = vec![];
-
         loop {
-            // Empty the signal channel and collect all messages generated by
-            // our own transaction signer.
-            while let Ok(msg) = signal_rx.try_recv() {
-                if let SignerSignal::Event(SignerEvent::TxSigner(
-                    TxSignerEvent::MessageGenerated(msg),
-                )) = msg
-                {
-                    signer_messages.push(msg);
-                }
+            // Let's get the next message from the network or the
+            // TxSignerEventLoop.
+            let msg = self.receive_message().await;
+
+            if &msg.bitcoin_chain_tip != bitcoin_chain_tip {
+                tracing::warn!(?msg, "concurrent wsts signing round message observed");
+                continue;
             }
 
-            // Check the network for new messages. We don't have a `try_receive()`
-            // equivilent for the network, so we use a timeout to avoid blocking.
-            if let Ok(msg) =
-                tokio::time::timeout(Duration::from_millis(10), self.network.receive()).await
-            {
-                signer_messages.push(msg?);
-            }
+            let Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
+                continue;
+            };
 
-            // Process all messages received from both our own signer and the network.
-            for msg in signer_messages.drain(..) {
-                if &msg.bitcoin_chain_tip != bitcoin_chain_tip {
-                    tracing::warn!(?msg, "concurrent wsts signing round message observed");
-                    continue;
-                }
+            let packet = wsts::net::Packet {
+                msg: wsts_msg.inner,
+                sig: Vec::new(),
+            };
 
-                let Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
-                    continue;
-                };
-
-                let packet = wsts::net::Packet {
-                    msg: wsts_msg.inner,
-                    sig: Vec::new(),
-                };
-
-                let (outbound_packet, operation_result) =
-                    match coordinator_state_machine.process_message(&packet) {
-                        Ok(val) => val,
-                        Err(err) => {
-                            tracing::warn!(?packet, reason = %err, "ignoring packet");
-                            continue;
-                        }
-                    };
-
-                if let Some(packet) = outbound_packet {
-                    let msg = message::WstsMessage { txid, inner: packet.msg };
-                    self.send_message(msg, bitcoin_chain_tip).await?;
-                }
-
-                match operation_result {
-                    Some(wsts::state_machine::OperationResult::SignTaproot(signature)) => {
-                        return Ok(signature)
+            let (outbound_packet, operation_result) =
+                match coordinator_state_machine.process_message(&packet) {
+                    Ok(val) => val,
+                    Err(err) => {
+                        tracing::warn!(?packet, reason = %err, "ignoring packet");
+                        continue;
                     }
-                    None => continue,
-                    Some(_) => return Err(Error::UnexpectedOperationResult),
+                };
+
+            if let Some(packet) = outbound_packet {
+                let msg = message::WstsMessage { txid, inner: packet.msg };
+                self.send_message(msg, bitcoin_chain_tip).await?;
+            }
+
+            match operation_result {
+                Some(wsts::state_machine::OperationResult::SignTaproot(signature)) => {
+                    return Ok(signature)
                 }
+                None => continue,
+                Some(_) => return Err(Error::UnexpectedOperationResult),
             }
         }
     }
