@@ -156,11 +156,6 @@ where
 
         // TODO: We should really split these operations out into two separate
         // main run-loops since they don't have anything to do with eachother.
-        //
-        // We run the event loop like this because `tokio::select!()` could
-        // potentially kill either `handle_new_requests()` or `handle_signer_message()`
-        // in the middle of processing if they end-up running concurrently and
-        // the other one finishes first.
         let signer_event_loop = async {
             while !should_shutdown() {
                 // Collect all events which have been signalled into this loop
