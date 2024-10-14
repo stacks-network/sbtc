@@ -587,7 +587,7 @@ mod tests {
     #[tokio::test]
     async fn should_be_able_to_run_dkg() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let network = network::in_memory::Network::new();
+        let network = network::InMemoryNetwork::new();
         let num_signers = 7;
         let threshold = 5;
 
