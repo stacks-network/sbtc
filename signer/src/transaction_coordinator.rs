@@ -420,24 +420,28 @@ where
         chain_tip: &model::BitcoinBlockHash,
         wallet: &SignerWallet,
     ) -> Result<StacksTransaction, Error> {
-        // First we ask for the other signers to sign our transaction
         let txid = req.txid;
-        if wallet.signatures_required() > 1 {
-            self.send_message(req, chain_tip).await?;
-        }
-        // Second we sign it ourselves
-        //
-        // TODO: Note that this is all pretty "loose". We haven't yet
-        // confirmed whether we are actually a part of the multi-sig wallet
-        // that we loaded. Thus, this signature could be invalid. This will
-        // change if we make the `SignerWallet` include the private key and
-        // have it verify that it is part of the signer set. This would
-        // make everything much more solid.
-        let private_key = self.context.config().signer.private_key;
-        let signature = crate::signature::sign_stacks_tx(multi_tx.tx(), &private_key);
-        multi_tx.add_signature(signature)?;
+        let mut count = 0;
 
-        let mut count = 1;
+        // TODO(667): this is tailored to in-memory network propagating messages internally
+        if wallet.signatures_required() > 1 {
+            // We ask for the signers to sign our transaction (including
+            // ourselves, via our tx signer event loop)
+            self.send_message(req, chain_tip).await?;
+        } else {
+            // We sign it here without talking to the signers
+            //
+            // TODO: Note that this is all pretty "loose". We haven't yet
+            // confirmed whether we are actually a part of the multi-sig wallet
+            // that we loaded. Thus, this signature could be invalid. This will
+            // change if we make the `SignerWallet` include the private key and
+            // have it verify that it is part of the signer set. This would
+            // make everything much more solid.
+            let private_key = self.context.config().signer.private_key;
+            let signature = crate::signature::sign_stacks_tx(multi_tx.tx(), &private_key);
+            multi_tx.add_signature(signature)?;
+            count = 1;
+        }
 
         let future = async {
             while count < wallet.signatures_required() {
