@@ -21,7 +21,6 @@ use sha2::Digest as _;
 use signer::context::Context;
 use signer::context::SignerEvent;
 use signer::context::TxSignerEvent;
-use signer::error::Error;
 use signer::keys;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey as _;
@@ -398,13 +397,6 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
         .unwrap();
     assert!(maybe_aggregate_key.is_none());
     assert!(!signer_set.is_empty());
-
-    // Alright, lets write some DKG shares into the database. When we do
-    // that the signer set should be considered whatever the signer set is
-    // from our DKG shares. Moreover, we should have an aggregate key now.
-    // transactions, so this should error
-    let ans = coord.get_signer_set_and_aggregate_key(&chain_tip).await;
-    assert!(matches!(ans.unwrap_err(), Error::MissingDkgShares));
 
     // Alright, lets write some DKG shares into the database. When we do
     // that the signer set should be considered whatever the signer set is
