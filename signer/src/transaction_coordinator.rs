@@ -19,9 +19,9 @@ use crate::bitcoin::BitcoinInteract;
 use crate::context::TxCoordinatorEvent;
 use crate::context::TxSignerEvent;
 use crate::context::{messaging::SignerEvent, messaging::SignerSignal, Context};
-use crate::emily_client::EmilyInteract;
 use crate::ecdsa::SignEcdsa as _;
 use crate::ecdsa::Signed;
+use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
@@ -273,7 +273,6 @@ where
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<(), Error> {
-        let signer_btc_state = self.get_btc_state(aggregate_key).await?;
         let stacks_chain_tip = self
             .context
             .get_storage()
