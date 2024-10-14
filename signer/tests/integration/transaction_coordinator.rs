@@ -16,6 +16,7 @@ use sha2::Digest as _;
 use signer::context::Context;
 use signer::context::SignerEvent;
 use signer::context::TxSignerEvent;
+use signer::error::Error;
 use signer::keys;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey as _;
@@ -382,7 +383,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
     // We have no rows in the DKG shares table and no rotate-keys
     // transactions, so this should error
     let ans = coord.get_signer_set_and_aggregate_key(&chain_tip).await;
-    assert!(ans.is_err());
+    assert!(matches!(ans.unwrap_err(), Error::MissingDkgShares));
 
     // Alright, lets write some DKG shares into the database. When we do
     // that the signer set should be considered whatever the signer set is
@@ -401,7 +402,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
     assert_eq!(shares.aggregate_key, aggregate_key);
     assert_eq!(shares_signer_set, signer_set);
 
-    // Okay not we write a rotate-keys transaction into the database. To do
+    // Okay now we write a rotate-keys transaction into the database. To do
     // that we need the stacks chain tip, and a something in 3 different
     // tables...
     let stacks_chain_tip = db.get_stacks_chain_tip(&chain_tip).await.unwrap().unwrap();

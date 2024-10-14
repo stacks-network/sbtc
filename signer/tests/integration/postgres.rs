@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use bitcoin::hashes::Hash as _;
 use bitvec::array::BitArray;
@@ -1372,47 +1373,23 @@ async fn get_last_encrypted_dkg_shares_gets_most_recent_shares() {
     // timestamp to be something in the past isn't possible in our current
     // codebase (and should probably never be possible), so this is just
     // for testing purposes.
-    let old_shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
-    assert_ne!(shares, old_shares);
-    sqlx::query(
-        r#"
-        INSERT INTO sbtc_signer.dkg_shares (
-              aggregate_key
-            , tweaked_aggregate_key
-            , encrypted_private_shares
-            , public_shares
-            , script_pubkey
-            , signer_set_public_keys
-            , created_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP - INTERVAL '2 DAYS')
-        ON CONFLICT DO NOTHING"#,
-    )
-    .bind(old_shares.aggregate_key)
-    .bind(old_shares.tweaked_aggregate_key)
-    .bind(&old_shares.encrypted_private_shares)
-    .bind(&old_shares.public_shares)
-    .bind(&old_shares.script_pubkey)
-    .bind(&old_shares.signer_set_public_keys)
-    .execute(db.pool())
-    .await
-    .unwrap();
+    let shares0: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    db.write_encrypted_dkg_shares(&shares0).await.unwrap();
+
+    tokio::time::sleep(Duration::from_millis(5)).await;
+
+    let shares1: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    db.write_encrypted_dkg_shares(&shares1).await.unwrap();
+
+    tokio::time::sleep(Duration::from_millis(5)).await;
+
+    let shares2: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    db.write_encrypted_dkg_shares(&shares2).await.unwrap();
 
     // So when we try to get the last DKG shares this time, we'll get the
     // same ones as last time since they are the most recent.
     let some_shares = db.get_lastest_encrypted_dkg_shares().await.unwrap();
-    assert_eq!(some_shares.as_ref(), Some(&shares));
-
-    // Now let's pretend that we ran DKG again and stored them, these new
-    // shares should be selected.
-    let new_shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
-    // Yeah these aren't the same as the old ones.
-    assert_ne!(shares, new_shares);
-
-    db.write_encrypted_dkg_shares(&new_shares).await.unwrap();
-
-    let new_stored_shares = db.get_lastest_encrypted_dkg_shares().await.unwrap();
-    assert_eq!(new_stored_shares, Some(new_shares));
+    assert_eq!(some_shares.as_ref(), Some(&shares2));
 
     signer::testing::storage::drop_db(db).await;
 }
