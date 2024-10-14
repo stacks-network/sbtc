@@ -799,7 +799,7 @@ where
             }
             None => {
                 let shares = db
-                    .get_last_encrypted_dkg_shares()
+                    .get_lastest_encrypted_dkg_shares()
                     .await?
                     .ok_or(Error::MissingDkgShares)?;
                 let signer_set = shares.signer_set_public_keys.into_iter().collect();
