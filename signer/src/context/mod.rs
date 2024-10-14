@@ -121,12 +121,6 @@ where
             emily_client,
         }
     }
-
-    /// Testing method to alter the internal config
-    #[cfg(feature = "testing")]
-    pub fn config_mut(&mut self) -> &mut Settings {
-        &mut self.config
-    }
 }
 
 impl<S, BC, ST, EM> Context for SignerContext<S, BC, ST, EM>

@@ -237,7 +237,7 @@ async fn process_complete_deposit() {
     // Setup the stacks client mock to broadcast the transaction to our channel.
     context
         .with_stacks_client(|client| {
-            client.expect_submit_tx().times(1..).returning(move |tx| {
+            client.expect_submit_tx().once().returning(move |tx| {
                 let tx = tx.clone();
                 let txid = tx.txid();
                 let broadcasted_transaction_tx = broadcasted_transaction_tx.clone();
@@ -254,13 +254,9 @@ async fn process_complete_deposit() {
     // Get the private key of the coordinator of the signer set.
     let private_key = select_coordinator(&setup.sweep_block_hash.into(), &signer_info);
 
-    // TODO: should the tx coordinator evloop use its private key instead of `config().signer.private_key`?
-    let mut coordinator_ctx = context.clone();
-    coordinator_ctx.inner.config_mut().signer.private_key = private_key;
-
     // Bootstrap the tx coordinator event loop
     let tx_coordinator = transaction_coordinator::TxCoordinatorEventLoop {
-        context: coordinator_ctx,
+        context: context.clone(),
         network: network.connect(),
         private_key,
         context_window,

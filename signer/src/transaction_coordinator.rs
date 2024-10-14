@@ -423,6 +423,7 @@ where
         let txid = req.txid;
         let mut count = 0;
 
+        // TODO(667): this is tailored to in-memory network propagating messages internally
         if wallet.signatures_required() > 1 {
             // We ask for the signers to sign our transaction (including
             // ourselves, via our tx signer event loop)
