@@ -5,8 +5,10 @@ use bitcoin::OutPoint;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use futures::StreamExt as _;
 use futures::TryStreamExt as _;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
+use time::OffsetDateTime;
 use tokio::sync::Mutex;
 
 use crate::bitcoin::utxo::SignerUtxo;
@@ -78,7 +80,7 @@ pub struct Store {
     pub stacks_nakamoto_blocks: HashMap<model::StacksBlockHash, model::StacksBlock>,
 
     /// Encrypted DKG shares
-    pub encrypted_dkg_shares: HashMap<PublicKey, model::EncryptedDkgShares>,
+    pub encrypted_dkg_shares: BTreeMap<PublicKey, (OffsetDateTime, model::EncryptedDkgShares)>,
 
     /// Rotate keys transactions
     pub rotate_keys_transactions: HashMap<model::StacksTxId, model::RotateKeysTransaction>,
@@ -430,7 +432,19 @@ impl super::DbRead for SharedStore {
             .await
             .encrypted_dkg_shares
             .get(aggregate_key)
-            .cloned())
+            .map(|(_, shares)| shares.clone()))
+    }
+
+    async fn get_lastest_encrypted_dkg_shares(
+        &self,
+    ) -> Result<Option<model::EncryptedDkgShares>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .encrypted_dkg_shares
+            .values()
+            .max_by_key(|(time, _)| time)
+            .map(|(_, shares)| shares.clone()))
     }
 
     async fn get_last_key_rotation(
@@ -465,7 +479,7 @@ impl super::DbRead for SharedStore {
             .await
             .encrypted_dkg_shares
             .values()
-            .map(|share| share.script_pubkey.to_bytes())
+            .map(|(_, share)| share.script_pubkey.to_bytes())
             .collect())
     }
 
@@ -619,7 +633,7 @@ impl super::DbRead for SharedStore {
             .await
             .encrypted_dkg_shares
             .values()
-            .any(|share| &share.script_pubkey == script))
+            .any(|(_, share)| &share.script_pubkey == script))
     }
 
     async fn get_bitcoin_tx(
@@ -853,10 +867,10 @@ impl super::DbWrite for SharedStore {
         &self,
         shares: &model::EncryptedDkgShares,
     ) -> Result<(), Error> {
-        self.lock()
-            .await
-            .encrypted_dkg_shares
-            .insert(shares.aggregate_key, shares.clone());
+        self.lock().await.encrypted_dkg_shares.insert(
+            shares.aggregate_key,
+            (time::OffsetDateTime::now_utc(), shares.clone()),
+        );
 
         Ok(())
     }

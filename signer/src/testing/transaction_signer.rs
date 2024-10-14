@@ -411,11 +411,13 @@ where
         let signer_private_key = signer_info.first().unwrap().signer_private_key.to_bytes();
         let dummy_aggregate_key = PublicKey::from_private_key(&PrivateKey::new(&mut rng));
 
+        let signer_set = signer_info.first().unwrap().signer_public_keys.clone();
         store_dummy_dkg_shares(
             &mut rng,
             &signer_private_key,
             &handle.context.get_storage_mut(),
             dummy_aggregate_key,
+            signer_set,
         )
         .await;
 
@@ -857,12 +859,15 @@ async fn store_dummy_dkg_shares<R, S>(
     signer_private_key: &[u8; 32],
     storage: &S,
     group_key: PublicKey,
+    signer_set: BTreeSet<PublicKey>,
 ) where
     R: rand::CryptoRng + rand::RngCore,
     S: storage::DbWrite,
 {
-    let shares =
+    let mut shares =
         testing::dummy::encrypted_dkg_shares(&fake::Faker, rng, signer_private_key, group_key);
+    shares.signer_set_public_keys = signer_set.into_iter().collect();
+
     storage
         .write_encrypted_dkg_shares(&shares)
         .await

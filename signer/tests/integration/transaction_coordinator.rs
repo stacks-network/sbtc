@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -5,33 +6,39 @@ use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoin::Transaction;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
+use fake::Fake as _;
 use fake::Faker;
 use rand::rngs::OsRng;
-use rand::SeedableRng;
-
+use rand::SeedableRng as _;
 use sbtc::testing::regtest;
-use sha2::Digest;
+use sha2::Digest as _;
+
 use signer::context::Context;
 use signer::context::SignerEvent;
 use signer::context::TxSignerEvent;
+use signer::error::Error;
 use signer::keys;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey as _;
 use signer::network;
+use signer::network::in_memory::InMemoryNetwork;
 use signer::stacks::api::AccountInfo;
 use signer::stacks::api::SubmitTxResponse;
-use signer::stacks::contracts::AsContractCall;
+use signer::stacks::contracts::AsContractCall as _;
 use signer::stacks::contracts::CompleteDepositV1;
 use signer::storage::model;
+use signer::storage::model::EncryptedDkgShares;
+use signer::storage::model::RotateKeysTransaction;
 use signer::storage::DbRead as _;
 use signer::storage::DbWrite as _;
 use signer::testing;
+use signer::testing::context::TestContext;
 use signer::testing::context::*;
-
-use fake::Fake;
+use signer::testing::storage::model::TestData;
 use signer::testing::transaction_signer::TxSignerEventLoopHarness;
 use signer::testing::wsts::SignerSet;
 use signer::transaction_coordinator;
+use signer::transaction_coordinator::TxCoordinatorEventLoop;
 
 use crate::complete_deposit::make_complete_deposit;
 use crate::setup::backfill_bitcoin_blocks;
@@ -322,6 +329,114 @@ async fn process_complete_deposit() {
         contract_call.function_args,
         complete_deposit.as_contract_args()
     );
+
+    testing::storage::drop_db(db).await;
+}
+
+/// The [`TxCoordinatorEventLoop::get_signer_set_and_aggregate_key`]
+/// function is supposed to fetch the "current" signing set and the
+/// aggregate key to use for bitcoin transactions. It attempts to get the
+/// latest rotate-keys contract call transaction confirmed on the canonical
+/// Stacks blockchain and falls back to the DKG shares table if no such
+/// transaction can be found.
+///
+/// This tests that we prefer rotate keys transactions if it's available
+/// but will use the DKG shares behavior is indeed the case.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_signer_public_keys_and_aggregate_key_falls_back() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_mocked_clients()
+        .build();
+
+    let network = InMemoryNetwork::new();
+
+    let coord = TxCoordinatorEventLoop {
+        network: network.connect(),
+        context: ctx.clone(),
+        context_window: 10000,
+        private_key: ctx.config().signer.private_key,
+        signing_round_max_duration: Duration::from_secs(10),
+        threshold: 2,
+    };
+
+    // We need stacks blocks for the rotate-keys transactions.
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 10,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: 0,
+    };
+    let test_data = TestData::generate(&mut rng, &[], &test_params);
+    test_data.write_to(&db).await;
+
+    // We always need the chain tip.
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+
+    // We have no rows in the DKG shares table and no rotate-keys
+    // transactions, so this should error
+    let ans = coord.get_signer_set_and_aggregate_key(&chain_tip).await;
+    assert!(matches!(ans.unwrap_err(), Error::MissingDkgShares));
+
+    // Alright, lets write some DKG shares into the database. When we do
+    // that the signer set should be considered whatever the signer set is
+    // from our DKG shares.
+    let shares: EncryptedDkgShares = Faker.fake_with_rng(&mut rng);
+    db.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+    let (aggregate_key, signer_set) = coord
+        .get_signer_set_and_aggregate_key(&chain_tip)
+        .await
+        .unwrap();
+
+    let shares_signer_set: BTreeSet<PublicKey> =
+        shares.signer_set_public_keys.iter().copied().collect();
+
+    assert_eq!(shares.aggregate_key, aggregate_key);
+    assert_eq!(shares_signer_set, signer_set);
+
+    // Okay now we write a rotate-keys transaction into the database. To do
+    // that we need the stacks chain tip, and a something in 3 different
+    // tables...
+    let stacks_chain_tip = db.get_stacks_chain_tip(&chain_tip).await.unwrap().unwrap();
+
+    let rotate_keys: RotateKeysTransaction = Faker.fake_with_rng(&mut rng);
+    let transaction = model::Transaction {
+        txid: rotate_keys.txid.into_bytes(),
+        tx: Vec::new(),
+        tx_type: model::TransactionType::RotateKeys,
+        block_hash: stacks_chain_tip.block_hash.into_bytes(),
+    };
+    let tx = model::StacksTransaction {
+        txid: rotate_keys.txid,
+        block_hash: stacks_chain_tip.block_hash,
+    };
+
+    db.write_transaction(&transaction).await.unwrap();
+    db.write_stacks_transaction(&tx).await.unwrap();
+    db.write_rotate_keys_transaction(&rotate_keys)
+        .await
+        .unwrap();
+
+    // Alright, now that we have a rotate-keys transaction, we can check if
+    // it is preferred over the DKG shares table.
+    let (aggregate_key, signer_set) = coord
+        .get_signer_set_and_aggregate_key(&chain_tip)
+        .await
+        .unwrap();
+
+    let rotate_keys_signer_set: BTreeSet<PublicKey> =
+        rotate_keys.signer_set.iter().copied().collect();
+
+    assert_eq!(rotate_keys.aggregate_key, aggregate_key);
+    assert_eq!(rotate_keys_signer_set, signer_set);
 
     testing::storage::drop_db(db).await;
 }

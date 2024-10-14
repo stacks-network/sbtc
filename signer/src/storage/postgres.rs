@@ -610,14 +610,8 @@ impl super::DbRead for PgStore {
         sqlx::query_as::<_, model::SignerVote>(
             r#"
             WITH signer_set_rows AS (
-                -- Note that we could have multiple rotate keys transaction
-                -- with the same aggregate key, but every time we see the
-                -- same aggragate key it is very likely that it is
-                -- associated with the same set of public keys. So we match
-                -- on the aggregate key, assume we get the same set of
-                -- public keys, and use DISTINCT to remove duplicates.
-                SELECT DISTINCT UNNEST(signer_set) AS signer_public_key
-                FROM sbtc_signer.rotate_keys_transactions
+                SELECT DISTINCT UNNEST(signer_set_public_keys) AS signer_public_key
+                FROM sbtc_signer.dkg_shares
                 WHERE aggregate_key = $1
             ),
             deposit_votes AS (
@@ -653,9 +647,8 @@ impl super::DbRead for PgStore {
         sqlx::query_as::<_, model::SignerVote>(
             r#"
             WITH signer_set_rows AS (
-                -- See the note in Self::get_deposit_request_signer_votes
-                SELECT DISTINCT UNNEST(signer_set) AS signer_public_key
-                FROM sbtc_signer.rotate_keys_transactions
+                SELECT DISTINCT UNNEST(signer_set_public_keys) AS signer_public_key
+                FROM sbtc_signer.dkg_shares
                 WHERE aggregate_key = $1
             ),
             withdrawal_votes AS (
@@ -971,11 +964,34 @@ impl super::DbRead for PgStore {
               , script_pubkey
               , encrypted_private_shares
               , public_shares
+              , signer_set_public_keys
             FROM sbtc_signer.dkg_shares
             WHERE aggregate_key = $1;
             "#,
         )
         .bind(aggregate_key)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_lastest_encrypted_dkg_shares(
+        &self,
+    ) -> Result<Option<model::EncryptedDkgShares>, Error> {
+        sqlx::query_as::<_, model::EncryptedDkgShares>(
+            r#"
+            SELECT
+                aggregate_key
+              , tweaked_aggregate_key
+              , script_pubkey
+              , encrypted_private_shares
+              , public_shares
+              , signer_set_public_keys
+            FROM sbtc_signer.dkg_shares
+            ORDER BY created_at DESC
+            LIMIT 1;
+            "#,
+        )
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -1748,8 +1764,9 @@ impl super::DbWrite for PgStore {
               , encrypted_private_shares
               , public_shares
               , script_pubkey
+              , signer_set_public_keys
             )
-            VALUES ($1, $2, $3, $4, $5)
+            VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT DO NOTHING"#,
         )
         .bind(shares.aggregate_key)
@@ -1757,6 +1774,7 @@ impl super::DbWrite for PgStore {
         .bind(&shares.encrypted_private_shares)
         .bind(&shares.public_shares)
         .bind(&shares.script_pubkey)
+        .bind(&shares.signer_set_public_keys)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
