@@ -11,8 +11,6 @@ use futures::StreamExt;
 use rand::SeedableRng as _;
 use secp256k1::Keypair;
 use signer::context::Context;
-use signer::context::SignerEvent;
-use signer::context::SignerSignal;
 use signer::context::TxSignerEvent;
 use signer::keys::PublicKey;
 use signer::network;
@@ -267,10 +265,9 @@ async fn run_dkg_from_scratch() {
     // 5. Once they are all running, signal that DKG should be run. We
     //    signal them all because we do not know which one is the
     //    coordinator.
-    let event = SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled);
     signers.iter().for_each(|(ctx, _, _)| {
         ctx.get_signal_sender()
-            .send(SignerSignal::Event(event.clone()))
+            .send(TxSignerEvent::NewRequestsHandled.into())
             .unwrap();
     });
 
