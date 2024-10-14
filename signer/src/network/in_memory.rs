@@ -4,9 +4,12 @@
 //! channel, with deduplication logic to prevent a single client
 //! from receiving it's own messages.
 
-use std::{collections::VecDeque, sync::atomic::AtomicU16};
+use std::{
+    collections::VecDeque,
+    sync::{atomic::AtomicU16, Arc},
+};
 
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Mutex};
 
 use crate::error::Error;
 
@@ -28,7 +31,18 @@ pub struct MpmcBroadcaster {
     id: u16,
     sender: broadcast::Sender<super::Msg>,
     receiver: broadcast::Receiver<super::Msg>,
-    recently_sent: VecDeque<MsgId>,
+    recently_sent: Arc<Mutex<VecDeque<MsgId>>>,
+}
+
+impl Clone for MpmcBroadcaster {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            sender: self.sender.clone(),
+            receiver: self.sender.subscribe(),
+            recently_sent: Arc::clone(&self.recently_sent),
+        }
+    }
 }
 
 impl MpmcBroadcaster {
@@ -50,18 +64,15 @@ impl InMemoryNetwork {
 
     /// Connect a new signer to this network
     pub fn connect(&self) -> MpmcBroadcaster {
-        let sender = self.sender.clone();
-        let receiver = sender.subscribe();
-        let recently_sent = VecDeque::new();
         let id = self
             .last_id
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         MpmcBroadcaster {
             id,
-            sender,
-            receiver,
-            recently_sent,
+            sender: self.sender.clone(),
+            receiver: self.sender.subscribe(),
+            recently_sent: Default::default(),
         }
     }
 }
@@ -75,7 +86,7 @@ impl Default for InMemoryNetwork {
 impl super::MessageTransfer for MpmcBroadcaster {
     async fn broadcast(&mut self, msg: super::Msg) -> Result<(), Error> {
         tracing::trace!("[network{:0>2}] broadcasting: {}", self.id, msg);
-        self.recently_sent.push_back(msg.id());
+        self.recently_sent.lock().await.push_back(msg.id());
         self.sender.send(msg).map_err(|_| Error::SendMessage)?;
         Ok(())
     }
@@ -84,8 +95,8 @@ impl super::MessageTransfer for MpmcBroadcaster {
         let mut msg = self.receiver.recv().await.map_err(Error::ChannelReceive)?;
         tracing::trace!("[network{:0>2}] received: {}", self.id, msg);
 
-        while Some(&msg.id()) == self.recently_sent.front() {
-            self.recently_sent.pop_front();
+        while Some(&msg.id()) == self.recently_sent.lock().await.front() {
+            self.recently_sent.lock().await.pop_front();
             msg = self.receiver.recv().await.map_err(Error::ChannelReceive)?;
         }
 

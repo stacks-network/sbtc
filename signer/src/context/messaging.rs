@@ -26,6 +26,8 @@ pub enum SignerEvent {
     BitcoinBlockObserved,
     /// Transaction signer events
     TxSigner(TxSignerEvent),
+    /// Transaction coordinator events
+    TxCoordinator(TxCoordinatorEvent),
 }
 
 /// Events that can be triggered from the P2P network.
@@ -56,6 +58,23 @@ pub enum TxSignerEvent {
     /// New pending requests have been handled. This is primarily used as a
     /// trigger for the transaction coordinator to process the new blocks.
     NewRequestsHandled,
+    /// Event which occurs when the transaction signer has sent a message to
+    /// the P2P network.
+    MessageGenerated(crate::network::Msg),
+}
+
+/// Events that can be triggered from the transaction coordinator.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TxCoordinatorEvent {
+    /// Event which occurs when the transaction coordinator has sent a message
+    /// to the P2P network.
+    MessageGenerated(crate::network::Msg),
+}
+
+impl From<TxCoordinatorEvent> for SignerSignal {
+    fn from(event: TxCoordinatorEvent) -> Self {
+        SignerSignal::Event(SignerEvent::TxCoordinator(event))
+    }
 }
 
 impl From<TxSignerEvent> for SignerSignal {
