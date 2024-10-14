@@ -13,6 +13,7 @@ use sha2::Digest;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
+use crate::context::TxCoordinatorEvent;
 use crate::context::TxSignerEvent;
 use crate::context::{messaging::SignerEvent, messaging::SignerSignal, Context};
 use crate::error::Error;
@@ -156,9 +157,7 @@ where
                     },
                     // Otherwise, we've received some other signal that we're not interested
                     // in, so we just continue.
-                    _ => {
-                        tracing::warn!("ignoring signal");
-                    }
+                    _ => {}
                 },
             }
         }
@@ -681,7 +680,9 @@ where
             .to_message(*bitcoin_chain_tip)
             .sign_ecdsa(&self.private_key)?;
 
-        self.network.broadcast(msg).await?;
+        self.network.broadcast(msg.clone()).await?;
+        self.context
+            .signal(TxCoordinatorEvent::MessageGenerated(msg).into())?;
 
         Ok(())
     }

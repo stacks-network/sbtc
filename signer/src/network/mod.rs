@@ -26,7 +26,7 @@ pub type MsgId = [u8; 32];
 
 /// Represents the interaction point between signers and the signer network,
 /// allowing signers to exchange messages with each other.
-pub trait MessageTransfer {
+pub trait MessageTransfer: Clone {
     /// Send `msg` to all other signers
     fn broadcast(&mut self, msg: Msg) -> impl Future<Output = Result<(), Error>> + Send;
     /// Receive a message from the network
