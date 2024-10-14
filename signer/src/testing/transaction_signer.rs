@@ -164,7 +164,7 @@ where
     /// for pending deposit requests.
     pub async fn assert_should_store_decisions_for_pending_deposit_requests(self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let network = network::in_memory::Network::new();
+        let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = &signer_info.first().cloned().unwrap();
         let mut network_rx = network.connect();
@@ -232,7 +232,7 @@ where
     /// for pending withdraw requests.
     pub async fn assert_should_store_decisions_for_pending_withdraw_requests(self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let network = network::in_memory::Network::new();
+        let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().cloned().unwrap();
         let mut network_rx = network.connect();
@@ -304,7 +304,7 @@ where
     /// received from other signers.
     pub async fn assert_should_store_decisions_received_from_other_signers(self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let network = network::in_memory::Network::new();
+        let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().cloned().unwrap();
 
@@ -393,7 +393,7 @@ where
     /// with an acknowledge message
     pub async fn assert_should_respond_to_bitcoin_transaction_sign_requests_impl(self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let network = network::in_memory::Network::new();
+        let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = &signer_info.first().cloned().unwrap();
 
@@ -494,7 +494,7 @@ where
     /// participate successfully in a DKG round
     pub async fn assert_should_be_able_to_participate_in_dkg(self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let network = network::in_memory::Network::new();
+        let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().unwrap().clone();
 
@@ -577,7 +577,7 @@ where
     /// participate successfully in a signing roundd
     pub async fn assert_should_be_able_to_participate_in_signing_round(self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let network = network::in_memory::Network::new();
+        let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().unwrap().clone();
 
@@ -881,7 +881,7 @@ async fn run_dkg_and_store_results_for_signers<'s: 'r, 'r, S, Rng>(
     S: storage::DbRead + storage::DbWrite,
     Rng: rand::CryptoRng + rand::RngCore,
 {
-    let network = network::in_memory::Network::new();
+    let network = network::InMemoryNetwork::new();
     let mut testing_signer_set =
         testing::wsts::SignerSet::new(signer_info, threshold, || network.connect());
     let dkg_txid = testing::dummy::txid(&fake::Faker, rng);

@@ -6,9 +6,11 @@ use libp2p::gossipsub::IdentTopic;
 
 mod errors;
 mod event_loop;
+mod network;
 mod swarm;
 
 pub use self::errors::SignerSwarmError;
+pub use self::network::P2PNetwork;
 pub use self::swarm::SignerSwarmBuilder;
 
 /// The default port for the libp2p network

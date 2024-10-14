@@ -10,10 +10,9 @@ use blockstack_lib::util_lib::strings::StacksString;
 use clarity::vm::types::TupleData;
 use clarity::vm::ClarityName;
 use clarity::vm::Value as ClarityValue;
-use rand::rngs::StdRng;
-use rand::SeedableRng as _;
 use sbtc::testing::regtest::Recipient;
 use secp256k1::Keypair;
+use secp256k1::SECP256K1;
 use stacks_common::types::chainstate::StacksAddress;
 
 use crate::config::NetworkKind;
@@ -32,16 +31,16 @@ use crate::stacks::wallet::SignerWallet;
 /// address in the default config file.
 pub static WALLET: LazyLock<(SignerWallet, [Keypair; 3])> = LazyLock::new(generate_wallet);
 
-/// Helper function for generating a test 2-3 multi-sig wallet
+/// Helper function for generating a test 2-3 multi-sig wallet.
 pub fn generate_wallet() -> (SignerWallet, [Keypair; 3]) {
-    let mut rng = StdRng::seed_from_u64(100);
     let signatures_required = 2;
 
     let key_pairs = [
-        Keypair::new_global(&mut rng),
-        Keypair::new_global(&mut rng),
-        Keypair::new_global(&mut rng),
-    ];
+        "41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc",
+        "9bfecf16c9c12792589dd2b843f850d5b89b81a04f8ab91c083bdf6709fbefee",
+        "3ec0ca5770a356d6cd1a9bfcbf6cd151eb1bd85c388cc00648ec4ef5853fdb74",
+    ]
+    .map(|sk| Keypair::from_seckey_str(SECP256K1, sk).unwrap());
 
     let public_keys = key_pairs.map(|kp| kp.public_key().into());
     let wallet =
