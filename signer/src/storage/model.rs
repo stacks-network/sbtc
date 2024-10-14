@@ -320,6 +320,9 @@ pub struct SweptWithdrawalRequest {
 }
 
 /// Persisted DKG shares
+///
+/// This struct represents the output of a successful run of distributed
+/// key generation (DKG) that was run by a set of signers.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct EncryptedDkgShares {
@@ -333,6 +336,8 @@ pub struct EncryptedDkgShares {
     pub encrypted_private_shares: Bytes,
     /// The public DKG shares
     pub public_shares: Bytes,
+    /// The set of public keys that were a party to the DKG.
+    pub signer_set_public_keys: Vec<PublicKey>,
 }
 
 /// Persisted public DKG shares from other signers

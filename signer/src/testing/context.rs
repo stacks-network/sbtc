@@ -721,7 +721,6 @@ mod tests {
                 signal,
                 SignerSignal::Event(SignerEvent::BitcoinBlockObserved)
             );
-            dbg!(&signal);
             signal
         });
 

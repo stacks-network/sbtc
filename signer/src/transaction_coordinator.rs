@@ -8,18 +8,26 @@
 use std::collections::BTreeSet;
 
 use blockstack_lib::chainstate::stacks::StacksTransaction;
+use futures::FutureExt;
+use futures::StreamExt as _;
+use futures::TryStreamExt;
 use sha2::Digest;
+use tokio_stream::wrappers::BroadcastStream;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
+use crate::context::TxCoordinatorEvent;
 use crate::context::TxSignerEvent;
 use crate::context::{messaging::SignerEvent, messaging::SignerSignal, Context};
 use crate::emily_client::EmilyInteract;
+use crate::ecdsa::SignEcdsa as _;
+use crate::ecdsa::Signed;
 use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
 use crate::message::Payload;
+use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
 use crate::network;
 use crate::signature::SighashDigest;
@@ -33,11 +41,13 @@ use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
 use crate::storage::model::StacksTxId;
 use crate::storage::DbRead as _;
-use crate::wsts_state_machine;
+use crate::wsts_state_machine::CoordinatorStateMachine;
 
-use crate::ecdsa::SignEcdsa as _;
 use bitcoin::hashes::Hash as _;
 use wsts::state_machine::coordinator::Coordinator as _;
+use wsts::state_machine::coordinator::State as WstsCoordinatorState;
+use wsts::state_machine::OperationResult as WstsOperationResult;
+use wsts::state_machine::StateMachine as _;
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// # Transaction coordinator event loop
@@ -61,7 +71,7 @@ use wsts::state_machine::coordinator::Coordinator as _;
 /// The pending requests are used to construct a transaction package, which is a
 /// set of bitcoin transactions fulfilling a subset of the requests. Which
 /// pending requests that end up in the transaction package depends on the
-/// amount of singers deciding to accept the request, and on the maximum fee
+/// amount of signers deciding to accept the request, and on the maximum fee
 /// allowed in the requests. Once the package has been constructed, the
 /// coordinator proceeds by coordinating WSTS signing rounds for each of the
 /// transactions in the package. The signed transactions are then broadcast to
@@ -120,10 +130,15 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     pub private_key: PrivateKey,
     /// the number of signatures required.
     pub threshold: u16,
-    /// How many bitcoin blocks back from the chain tip the signer will look for requests.
+    /// How many bitcoin blocks back from the chain tip the signer will
+    /// look for requests.
     pub context_window: u16,
-    /// The maximum duration of a signing round before the coordinator will time out and return an error.
+    /// The maximum duration of a signing round before the coordinator will
+    /// time out and return an error.
     pub signing_round_max_duration: std::time::Duration,
+    /// The maximum duration of distributed key generation before the
+    /// coordinator will time out and return an error.
+    pub dkg_max_duration: std::time::Duration,
 }
 
 impl<C, N> TxCoordinatorEventLoop<C, N>
@@ -159,9 +174,7 @@ where
                     },
                     // Otherwise, we've received some other signal that we're not interested
                     // in, so we just continue.
-                    _ => {
-                        tracing::warn!("ignoring signal");
-                    }
+                    _ => {}
                 },
             }
         }
@@ -169,6 +182,34 @@ where
         tracing::info!("transaction coordinator event loop is stopping");
 
         Ok(())
+    }
+
+    /// Receive the next message. This message could be from over the
+    /// network or from.
+    async fn receive_message(&mut self) -> Signed<SignerMessage> {
+        let signal_rx = self.context.get_signal_receiver();
+        // Turn the reciever into a stream that returns messages that have
+        // been sent by the TxSignerEventLoop.
+        let stream1 = BroadcastStream::new(signal_rx)
+            .filter_map(|msg| async move { msg.ok()?.tx_signer_generated() });
+
+        // We should potentially turn this into a stream that only returns
+        // successful responses.
+        let stream2 = self
+            .network
+            .receive()
+            .into_stream()
+            .inspect_err(|error| tracing::warn!(%error, "received an error from the network"))
+            .filter_map(|x| std::future::ready(x.ok()));
+
+        // The `.select_next_some()` method requires the streams to
+        // implement `Unpin`.
+        tokio::pin!(stream1);
+        tokio::pin!(stream2);
+
+        futures::stream::select(stream1, stream2)
+            .select_next_some()
+            .await
     }
 
     #[tracing::instrument(skip(self))]
@@ -180,24 +221,45 @@ where
             .await?
             .ok_or(Error::NoChainTip)?;
 
-        let (aggregate_key, signer_public_keys) = self
-            .get_signer_public_keys_and_aggregate_key(&bitcoin_chain_tip)
+        // We first need to determine if we are the coordinator, so we need
+        // to know the current signing set. If we are the coordinator then
+        // we need to know the aggregate key for constructing bitcoin
+        // transactions. We need to know the current signing set and the
+        // current aggregate key.
+        let (maybe_aggregate_key, signer_public_keys) = self
+            .get_signer_set_and_aggregate_key(&bitcoin_chain_tip)
             .await?;
 
-        if self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys)? {
-            self.construct_and_sign_bitcoin_sbtc_transactions(
-                &bitcoin_chain_tip,
-                &aggregate_key,
-                &signer_public_keys,
-            )
-            .await?;
-
-            self.construct_and_sign_stacks_sbtc_response_transactions(
-                &bitcoin_chain_tip,
-                &aggregate_key,
-            )
-            .await?;
+        // If we are not the coordinator, then we have no business
+        // coordinating DKG or constructing bitcoin and stacks
+        // transactions, might as well return early.
+        if !self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys) {
+            tracing::debug!("We are not the coordinator, so nothing to do");
+            return Ok(());
         }
+
+        tracing::debug!("We are the coordinator, we may need to coordinate DKG");
+        // If Self::get_signer_set_and_aggregate_key did not return an
+        // aggregate key, then we know that we have not run DKG yet. Since
+        // we are the signer, we should coordinate DKG.
+        let aggregate_key = match maybe_aggregate_key {
+            Some(key) => key,
+            // This function returns the new DKG aggregate key.
+            None => self.coordinate_dkg(&bitcoin_chain_tip).await?,
+        };
+
+        self.construct_and_sign_bitcoin_sbtc_transactions(
+            &bitcoin_chain_tip,
+            &aggregate_key,
+            &signer_public_keys,
+        )
+        .await?;
+
+        self.construct_and_sign_stacks_sbtc_response_transactions(
+            &bitcoin_chain_tip,
+            &aggregate_key,
+        )
+        .await?;
 
         Ok(())
     }
@@ -219,14 +281,14 @@ where
             .await?
             .ok_or(Error::NoChainTip)?;
 
-        let pending_requests = self
-            .get_pending_requests(
-                bitcoin_chain_tip,
-                signer_btc_state,
-                aggregate_key,
-                signer_public_keys,
-            )
-            .await?;
+        let pending_requests_fut =
+            self.get_pending_requests(bitcoin_chain_tip, aggregate_key, signer_public_keys);
+
+        // If Self::get_pending_requests returns Ok(None) then there are no
+        // requests to respond to, so let's just exit.
+        let Some(pending_requests) = pending_requests_fut.await? else {
+            return Ok(());
+        };
 
         let transaction_package = pending_requests.construct_transactions()?;
 
@@ -261,10 +323,12 @@ where
     ///    determined by the public keys and threshold stored in the last
     ///    [`RotateKeysTransaction`] object that is returned from the
     ///    database.
-    /// 2. Fetch all "finalizable" requests from the database. These are
-    ///    requests that where we have a response transactions on bitcoin
-    ///    fulfilling the deposit or withdrawal request.
-    /// 3. Construct a sign-request object for each finalizable request.
+    /// 2. Fetch all requests from the database where we can finish the
+    ///    fulfillment with only a Stacks transaction. These are requests
+    ///    that where we have a response transactions on bitcoin fulfilling
+    ///    the deposit or withdrawal request.
+    /// 3. Construct a sign-request object for each of the requests
+    ///    identified in (2).
     /// 4. Broadcast this sign-request to the network and wait for
     ///    responses.
     /// 5. If there are enough signatures then broadcast the transaction.
@@ -435,28 +499,17 @@ where
         chain_tip: &model::BitcoinBlockHash,
         wallet: &SignerWallet,
     ) -> Result<StacksTransaction, Error> {
-        // First we ask for the other signers to sign our transaction
         let txid = req.txid;
-        if wallet.signatures_required() > 1 {
-            self.send_message(req, chain_tip).await?;
-        }
-        // Second we sign it ourselves
-        //
-        // TODO: Note that this is all pretty "loose". We haven't yet
-        // confirmed whether we are actually a part of the multi-sig wallet
-        // that we loaded. Thus, this signature could be invalid. This will
-        // change if we make the `SignerWallet` include the private key and
-        // have it verify that it is part of the signer set. This would
-        // make everything much more solid.
-        let private_key = self.context.config().signer.private_key;
-        let signature = crate::signature::sign_stacks_tx(multi_tx.tx(), &private_key);
-        multi_tx.add_signature(signature)?;
 
-        let mut count = 1;
+        // We ask for the signers to sign our transaction (including
+        // ourselves, via our tx signer event loop)
+        self.send_message(req, chain_tip).await?;
+
+        let max_duration = self.signing_round_max_duration;
 
         let future = async {
-            while count < wallet.signatures_required() {
-                let msg = self.network.receive().await?;
+            while multi_tx.num_signatures() < wallet.signatures_required() {
+                let msg = self.receive_message().await;
                 // TODO: We need to verify these messages, but it is best
                 // to do that at the source when we receive the message.
 
@@ -470,21 +523,20 @@ where
                     _ => continue,
                 };
 
-                match multi_tx.add_signature(sig.signature) {
-                    Ok(_) => count += 1,
-                    Err(error) => tracing::warn!(
+                if let Err(error) = multi_tx.add_signature(sig.signature) {
+                    tracing::warn!(
                         %txid,
                         %error,
                         offending_public_key = %msg.signer_pub_key,
                         "got an invalid signature"
-                    ),
+                    );
                 }
             }
 
             Ok::<_, Error>(multi_tx.finalize_transaction())
         };
 
-        tokio::time::timeout(self.signing_round_max_duration, future)
+        tokio::time::timeout(max_duration, future)
             .await
             .map_err(|_| Error::SignatureTimeout(txid))?
     }
@@ -499,7 +551,7 @@ where
         signer_public_keys: &BTreeSet<PublicKey>,
         transaction: &mut utxo::UnsignedTransaction<'_>,
     ) -> Result<(), Error> {
-        let mut coordinator_state_machine = wsts_state_machine::CoordinatorStateMachine::load(
+        let mut coordinator_state_machine = CoordinatorStateMachine::load(
             &mut self.context.get_storage_mut(),
             *aggregate_key,
             signer_public_keys.clone(),
@@ -575,45 +627,108 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn coordinate_signing_round(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        coordinator_state_machine: &mut wsts_state_machine::CoordinatorStateMachine,
+        coordinator_state_machine: &mut CoordinatorStateMachine,
         txid: bitcoin::Txid,
         msg: &[u8],
     ) -> Result<wsts::taproot::SchnorrProof, Error> {
         let outbound = coordinator_state_machine
             .start_signing_round(msg, true, None)
-            .map_err(wsts_state_machine::coordinator_error)?;
+            .map_err(Error::wsts_coordinator)?;
 
         let msg = message::WstsMessage { txid, inner: outbound.msg };
         self.send_message(msg, bitcoin_chain_tip).await?;
 
         let max_duration = self.signing_round_max_duration;
-        let run_signing_round = self.relay_messages_to_wsts_state_machine_until_signature_created(
-            bitcoin_chain_tip,
-            coordinator_state_machine,
-            txid,
-        );
+        let run_signing_round =
+            self.drive_wsts_state_machine(bitcoin_chain_tip, coordinator_state_machine, txid);
 
-        tokio::time::timeout(max_duration, run_signing_round)
+        let operation_result = tokio::time::timeout(max_duration, run_signing_round)
             .await
-            .map_err(|_| Error::CoordinatorTimeout(self.signing_round_max_duration.as_secs()))?
+            .map_err(|_| Error::CoordinatorTimeout(max_duration.as_secs()))??;
+
+        match operation_result {
+            WstsOperationResult::SignTaproot(signature) => Ok(signature),
+            _ => Err(Error::UnexpectedOperationResult),
+        }
     }
 
-    #[tracing::instrument(skip(self))]
-    async fn relay_messages_to_wsts_state_machine_until_signature_created(
+    /// Set up a WSTS coordinator state machine and run DKG with the other
+    /// signers in the signing set.
+    #[tracing::instrument(skip_all)]
+    async fn coordinate_dkg(
+        &mut self,
+        chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<PublicKey, Error> {
+        tracing::info!("Coordinating DKG");
+        // Get the current signer set for running DKG.
+        //
+        // Also, note that in order to change the signing set we must first
+        // run DKG (which the current function is doing), and DKG requires
+        // us to define signing set (which is returned in the next
+        // non-comment line). That function essentially uses the signing
+        // set of the last DKG (either through the last rotate-keys
+        // contract call or from the `dkg_shares` table) so we wind up
+        // never changing the signing set.
+        let (_, signer_set) = self.get_signer_set_and_aggregate_key(chain_tip).await?;
+
+        let mut state_machine =
+            CoordinatorStateMachine::new(signer_set, self.threshold, self.private_key);
+
+        // Okay let's move the coordinator state machine to the beginning
+        // of the DKG phase.
+        state_machine
+            .move_to(WstsCoordinatorState::DkgPublicDistribute)
+            .map_err(Error::wsts_coordinator)?;
+
+        let outbound = state_machine
+            .start_public_shares()
+            .map_err(Error::wsts_coordinator)?;
+
+        // We identify the DKG round by a 32-byte hash which we throw
+        // around as a bitcoin transaction ID, even when it is not one. We
+        // should probably change this
+        let identifier = self.coordinator_id(chain_tip);
+        let txid = bitcoin::Txid::from_byte_array(identifier);
+        let msg = message::WstsMessage { txid, inner: outbound.msg };
+
+        // This message effectively kicks off DKG. The `TxSignerEventLoop`s
+        // running on the signers will pick up this message and act on it,
+        // including our own. When they do they create a signing state
+        // machine and begin DKG.
+        self.send_message(msg, chain_tip).await?;
+
+        // Now that DKG has "begun" we need to drive it to completion.
+        let max_duration = self.dkg_max_duration;
+        let dkg_fut = self.drive_wsts_state_machine(chain_tip, &mut state_machine, txid);
+
+        let operation_result = tokio::time::timeout(max_duration, dkg_fut)
+            .await
+            .map_err(|_| Error::CoordinatorTimeout(max_duration.as_secs()))??;
+
+        match operation_result {
+            WstsOperationResult::Dkg(aggregate_key) => PublicKey::try_from(&aggregate_key),
+            _ => Err(Error::UnexpectedOperationResult),
+        }
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn drive_wsts_state_machine(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        coordinator_state_machine: &mut wsts_state_machine::CoordinatorStateMachine,
+        coordinator_state_machine: &mut CoordinatorStateMachine,
         txid: bitcoin::Txid,
-    ) -> Result<wsts::taproot::SchnorrProof, Error> {
+    ) -> Result<WstsOperationResult, Error> {
         loop {
-            let msg = self.network.receive().await?;
+            // Let's get the next message from the network or the
+            // TxSignerEventLoop.
+            let msg = self.receive_message().await;
 
             if &msg.bitcoin_chain_tip != bitcoin_chain_tip {
-                tracing::warn!(?msg, "concurrent wsts signing round message observed");
+                tracing::warn!(?msg, "concurrent WSTS activity observed");
                 continue;
             }
 
@@ -641,11 +756,8 @@ where
             }
 
             match operation_result {
-                Some(wsts::state_machine::OperationResult::SignTaproot(signature)) => {
-                    return Ok(signature)
-                }
+                Some(res) => return Ok(res),
                 None => continue,
-                Some(_) => return Err(Error::UnexpectedOperationResult),
             }
         }
     }
@@ -666,7 +778,7 @@ where
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         signer_public_keys: &BTreeSet<PublicKey>,
-    ) -> Result<bool, Error> {
+    ) -> bool {
         given_key_is_coordinator(self.pub_key(), bitcoin_chain_tip, signer_public_keys)
     }
 
@@ -711,10 +823,9 @@ where
     async fn get_pending_requests(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        signer_btc_state: utxo::SignerBtcState,
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
-    ) -> Result<utxo::SbtcRequests, Error> {
+    ) -> Result<Option<utxo::SbtcRequests>, Error> {
         let context_window = self.context_window;
         let threshold = self.threshold;
 
@@ -758,40 +869,80 @@ where
             withdrawals.push(withdrawal);
         }
 
-        let accept_threshold = self.threshold;
         let num_signers = signer_public_keys
             .len()
             .try_into()
             .map_err(|_| Error::TypeConversion)?;
 
-        Ok(utxo::SbtcRequests {
+        if deposits.is_empty() && withdrawals.is_empty() {
+            return Ok(None);
+        }
+
+        Ok(Some(utxo::SbtcRequests {
             deposits,
             withdrawals,
-            signer_state: signer_btc_state,
-            accept_threshold,
+            signer_state: self.get_btc_state(aggregate_key).await?,
+            accept_threshold: threshold,
             num_signers,
-        })
+        }))
     }
 
+    /// Return the signing set that can make sBTC related contract calls
+    /// along with the current aggregate key to use for locking UTXOs on
+    /// bitcoin.
+    ///
+    /// The aggregate key fetched here is the one confirmed on the
+    /// canonical Stacks blockchain as part of a `rotate-keys` contract
+    /// call. It will be the public key that is the result of a DKG run. If
+    /// there are no rotate-keys transactions on the canonical stacks
+    /// blockchain, then we fall back on the last known DKG shares row in
+    /// our database, and return None as the aggregate key if no DKG shares
+    /// can be found, implying that this signer has not participated in
+    /// DKG.
     #[tracing::instrument(skip(self))]
-    async fn get_signer_public_keys_and_aggregate_key(
-        &mut self,
+    pub async fn get_signer_set_and_aggregate_key(
+        &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<(PublicKey, BTreeSet<PublicKey>), Error> {
-        let last_key_rotation = self
-            .context
-            .get_storage()
-            .get_last_key_rotation(bitcoin_chain_tip)
-            .await?
-            .ok_or(Error::MissingKeyRotation)?;
+    ) -> Result<(Option<PublicKey>, BTreeSet<PublicKey>), Error> {
+        let db = self.context.get_storage();
 
-        let aggregate_key = last_key_rotation.aggregate_key;
-        let signer_set = last_key_rotation.signer_set.into_iter().collect();
-        Ok((aggregate_key, signer_set))
+        // We are supposed to submit a rotate-keys transaction after
+        // running DKG, but that transaction may not have been submitted
+        // yet (if we have just run DKG) or it may not have been confirmed
+        // on the canonical Stacks blockchain.
+        //
+        // If the signers have already run DKG, then we know that all
+        // participating signers should have the same view of the latest
+        // aggregate key, so we can fall back on the stored DKG shares for
+        // getting the current aggregate key and associated signing set.
+        match db.get_last_key_rotation(bitcoin_chain_tip).await? {
+            Some(last_key) => {
+                let aggregate_key = last_key.aggregate_key;
+                let signer_set = last_key.signer_set.into_iter().collect();
+                Ok((Some(aggregate_key), signer_set))
+            }
+            None => match db.get_latest_encrypted_dkg_shares().await? {
+                Some(shares) => {
+                    let signer_set = shares.signer_set_public_keys.into_iter().collect();
+                    Ok((Some(shares.aggregate_key), signer_set))
+                }
+                None => Ok((None, self.context.config().signer.bootstrap_signing_set())),
+            },
+        }
     }
 
     fn pub_key(&self) -> PublicKey {
         PublicKey::from_private_key(&self.private_key)
+    }
+
+    /// This function provides a deterministic 32-byte identifier for the
+    /// signer.
+    fn coordinator_id(&self, chain_tip: &model::BitcoinBlockHash) -> [u8; 32] {
+        sha2::Sha256::new_with_prefix("SIGNER_COORDINATOR_ID")
+            .chain_update(self.pub_key().serialize())
+            .chain_update(chain_tip.into_bytes())
+            .finalize()
+            .into()
     }
 
     #[tracing::instrument(skip(self, msg))]
@@ -805,7 +956,9 @@ where
             .to_message(*bitcoin_chain_tip)
             .sign_ecdsa(&self.private_key)?;
 
-        self.network.broadcast(msg).await?;
+        self.network.broadcast(msg.clone()).await?;
+        self.context
+            .signal(TxCoordinatorEvent::MessageGenerated(msg).into())?;
 
         Ok(())
     }
@@ -816,28 +969,30 @@ pub fn given_key_is_coordinator(
     pub_key: PublicKey,
     bitcoin_chain_tip: &model::BitcoinBlockHash,
     signer_public_keys: &BTreeSet<PublicKey>,
-) -> Result<bool, Error> {
-    Ok(
-        coordinator_public_key(bitcoin_chain_tip, signer_public_keys)?
-            .map(|coordinator_pub_key| coordinator_pub_key == pub_key)
-            .unwrap_or(false),
-    )
+) -> bool {
+    coordinator_public_key(bitcoin_chain_tip, signer_public_keys) == Some(pub_key)
 }
 
 /// Find the coordinator public key
 pub fn coordinator_public_key(
     bitcoin_chain_tip: &model::BitcoinBlockHash,
     signer_public_keys: &BTreeSet<PublicKey>,
-) -> Result<Option<PublicKey>, Error> {
+) -> Option<PublicKey> {
     let mut hasher = sha2::Sha256::new();
     hasher.update(bitcoin_chain_tip.into_bytes());
-    let digest = hasher.finalize();
-    let index = usize::from_be_bytes(*digest.first_chunk().ok_or(Error::TypeConversion)?);
+    let digest: [u8; 32] = hasher.finalize().into();
+    // <[u8; 32]>::first_chunk<N> will return None if the requested slice
+    // is greater than 32 bytes. Since we are converting to a `usize`, the
+    // number of bytes necessary depends on the width of pointers on the
+    // machine that compiled this binary. Since we only support systems
+    // with a target pointer width of either 4 or 8 bytes, the <[u8;
+    // 32]>::first_chunk<N> call will return Some(_) since N > 4 or 8.
+    // Also, do humans even make machines where the pointer width is
+    // greater than 32 bytes?
+    let index = usize::from_be_bytes(*digest.first_chunk()?);
+    let num_signers = signer_public_keys.len();
 
-    Ok(signer_public_keys
-        .iter()
-        .nth(index % signer_public_keys.len())
-        .copied())
+    signer_public_keys.iter().nth(index % num_signers).copied()
 }
 
 #[cfg(test)]

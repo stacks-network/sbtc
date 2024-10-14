@@ -25,7 +25,7 @@ use crate::DATABASE_NUM;
 /// given information. If the information here is correct then the returned
 /// [`CompleteDepositV1`] object will pass validation with the given
 /// context.
-fn make_complete_deposit(data: &TestSweepSetup) -> (CompleteDepositV1, ReqContext) {
+pub fn make_complete_deposit(data: &TestSweepSetup) -> (CompleteDepositV1, ReqContext) {
     // The fee assessed for a deposit is subtracted from the minted amount.
     let fee = data
         .sweep_tx_info

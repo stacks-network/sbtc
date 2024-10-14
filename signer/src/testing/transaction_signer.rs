@@ -36,7 +36,8 @@ use tokio::time::error::Elapsed;
 
 use super::context::*;
 
-struct TxSignerEventLoopHarness<Context, Rng> {
+/// A test harness for the signer event loop.
+pub struct TxSignerEventLoopHarness<Context, Rng> {
     context: Context,
     event_loop: EventLoop<Context, Rng>,
 }
@@ -46,7 +47,8 @@ where
     Ctx: Context + 'static,
     Rng: rand::RngCore + rand::CryptoRng + Send + Sync + 'static,
 {
-    fn create(
+    /// Create the test harness.
+    pub fn create(
         context: Ctx,
         network: network::in_memory::MpmcBroadcaster,
         context_window: u16,
@@ -69,6 +71,7 @@ where
         }
     }
 
+    /// Start the event loop.
     pub fn start(self) -> RunningEventLoopHandle<Ctx> {
         let join_handle = tokio::spawn(async { self.event_loop.run().await });
 
@@ -82,7 +85,8 @@ where
     }
 }
 
-struct RunningEventLoopHandle<C> {
+/// A running event loop.
+pub struct RunningEventLoopHandle<C> {
     context: C,
     join_handle: tokio::task::JoinHandle<Result<(), error::Error>>,
     signal_rx: broadcast::Receiver<SignerSignal>,
@@ -117,6 +121,11 @@ where
         };
 
         tokio::time::timeout(timeout, future).await
+    }
+
+    /// Abort the event loop
+    pub fn abort(&self) {
+        self.join_handle.abort();
     }
 }
 
@@ -402,11 +411,13 @@ where
         let signer_private_key = signer_info.first().unwrap().signer_private_key.to_bytes();
         let dummy_aggregate_key = PublicKey::from_private_key(&PrivateKey::new(&mut rng));
 
+        let signer_set = signer_info.first().unwrap().signer_public_keys.clone();
         store_dummy_dkg_shares(
             &mut rng,
             &signer_private_key,
             &handle.context.get_storage_mut(),
             dummy_aggregate_key,
+            signer_set,
         )
         .await;
 
@@ -426,7 +437,6 @@ where
             &bitcoin_chain_tip,
             &signer_info.first().unwrap().signer_public_keys,
         )
-        .expect("failed to compute coordinator public key")
         .unwrap();
 
         let coordinator_private_key = signer_info
@@ -628,7 +638,6 @@ where
             &bitcoin_chain_tip,
             &signer_info.first().unwrap().signer_public_keys,
         )
-        .unwrap()
         .unwrap();
 
         let coordinator_signer_info = signer_info
@@ -848,12 +857,15 @@ async fn store_dummy_dkg_shares<R, S>(
     signer_private_key: &[u8; 32],
     storage: &S,
     group_key: PublicKey,
+    signer_set: BTreeSet<PublicKey>,
 ) where
     R: rand::CryptoRng + rand::RngCore,
     S: storage::DbWrite,
 {
-    let shares =
+    let mut shares =
         testing::dummy::encrypted_dkg_shares(&fake::Faker, rng, signer_private_key, group_key);
+    shares.signer_set_public_keys = signer_set.into_iter().collect();
+
     storage
         .write_encrypted_dkg_shares(&shares)
         .await
