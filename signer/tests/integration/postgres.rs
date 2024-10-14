@@ -596,7 +596,7 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
 
     let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
 
-    let dummy_wsts_network = network::in_memory::Network::new();
+    let dummy_wsts_network = network::InMemoryNetwork::new();
     let mut testing_signer_set =
         testing::wsts::SignerSet::new(&signer_info, threshold, || dummy_wsts_network.connect());
     let dkg_txid = testing::dummy::txid(&fake::Faker, &mut rng);
