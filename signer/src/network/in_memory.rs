@@ -95,7 +95,6 @@ impl super::MessageTransfer for MpmcBroadcaster {
         let mut msg = self.receiver.recv().await.map_err(Error::ChannelReceive)?;
         tracing::trace!("[network{:0>2}] received: {}", self.id, msg);
 
-        //let mut recently_sent = ;
         while Some(&msg.id()) == self.recently_sent.lock().await.front() {
             self.recently_sent.lock().await.pop_front();
             msg = self.receiver.recv().await.map_err(Error::ChannelReceive)?;
