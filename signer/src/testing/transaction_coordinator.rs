@@ -127,7 +127,7 @@ where
     /// Assert that a coordinator should be able to coordiante a signing round
     pub async fn assert_should_be_able_to_coordinate_signing_rounds(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let network = network::in_memory::Network::new();
+        let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
         let mut testing_signer_set =
@@ -262,7 +262,7 @@ where
     /// Assert we get the correct UTXO in a simple case
     pub async fn assert_get_signer_utxo_simple(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let network = network::in_memory::Network::new();
+        let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
         let mut signer_set =
@@ -332,7 +332,7 @@ where
     /// Assert we get the correct UTXO in a fork
     pub async fn assert_get_signer_utxo_fork(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let network = network::in_memory::Network::new();
+        let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
         let mut signer_set =
@@ -443,7 +443,7 @@ where
     /// Assert we get the correct UTXO with a spending chain in a block
     pub async fn assert_get_signer_utxo_unspent(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let network = network::in_memory::Network::new();
+        let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
         let mut signer_set =
@@ -540,7 +540,7 @@ where
     /// Assert we get the correct UTXO in case of donations
     pub async fn assert_get_signer_utxo_donations(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let network = network::in_memory::Network::new();
+        let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
         let mut signer_set =
