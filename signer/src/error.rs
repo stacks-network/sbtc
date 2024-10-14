@@ -259,6 +259,11 @@ pub enum Error {
     #[error("failed to read migration script: {0}")]
     ReadSqlMigration(Cow<'static, str>),
 
+    /// An error when we exceeded the timeout when trying to sign a stacks
+    /// transaction.
+    #[error("took too long to receive enough signatures for transaction: {0}")]
+    SignatureTimeout(blockstack_lib::burnchains::Txid),
+
     /// An error when attempting to generically decode bytes using the
     /// trait implementation.
     #[error("got an error wen attempting to call StacksMessageCodec::consensus_deserialize {0}")]
@@ -280,6 +285,10 @@ pub enum Error {
     /// Could not make a successful request to the Stacks node.
     #[error("failed to make a request to the stacks Node: {0}")]
     StacksNodeRequest(#[source] reqwest::Error),
+
+    /// We failed to submit the transaction to the mempool.
+    #[error("{0}")]
+    StacksTxRejection(#[from] crate::stacks::api::TxRejection),
 
     /// Reqwest error
     #[error("response from stacks node did not conform to the expected schema: {0}")]
