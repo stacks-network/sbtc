@@ -109,7 +109,9 @@ mod tests {
     use super::*;
 
     use crate::{
-        keys::PrivateKey, network::libp2p::SignerSwarmBuilder, testing::{self, clear_env, context::*}
+        keys::PrivateKey,
+        network::libp2p::SignerSwarmBuilder,
+        testing::{self, clear_env, context::*},
     };
 
     #[tokio::test]

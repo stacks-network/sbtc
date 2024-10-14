@@ -15,9 +15,9 @@ use crate::ecdsa;
 use crate::error::Error;
 use crate::message;
 
-pub use libp2p::P2PNetwork;
 #[cfg(any(test, feature = "testing"))]
 pub use in_memory::InMemoryNetwork;
+pub use libp2p::P2PNetwork;
 
 /// The supported message type of the signer network
 pub type Msg = ecdsa::Signed<message::SignerMessage>;

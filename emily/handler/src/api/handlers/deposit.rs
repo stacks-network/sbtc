@@ -3,8 +3,8 @@ use crate::api::models::common::Status;
 use crate::api::models::deposit::responses::{
     GetDepositsForTransactionResponse, UpdateDepositsResponse,
 };
-use stacks_common::codec::StacksMessageCodec as _;
 use crate::database::entries::StatusEntry;
+use stacks_common::codec::StacksMessageCodec as _;
 use warp::reply::{json, with_status, Reply};
 
 use bitcoin::ScriptBuf;
