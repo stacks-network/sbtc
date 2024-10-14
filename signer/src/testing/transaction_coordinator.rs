@@ -39,13 +39,13 @@ const EMPTY_BITCOIN_TX: bitcoin::Transaction = bitcoin::Transaction {
     output: vec![],
 };
 
-struct EventLoopHarness<C> {
+struct TxCoordinatorEventLoopHarness<C> {
     event_loop: EventLoop<C>,
     context: C,
     is_started: Arc<AtomicBool>,
 }
 
-impl<C> EventLoopHarness<C>
+impl<C> TxCoordinatorEventLoopHarness<C>
 where
     C: Context + 'static,
 {
@@ -208,7 +208,7 @@ where
         let private_key = Self::select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info);
 
         // Bootstrap the tx coordinator within an event loop harness.
-        let event_loop_harness = EventLoopHarness::create(
+        let event_loop_harness = TxCoordinatorEventLoopHarness::create(
             self.context.clone(),
             network.connect(),
             self.context_window,
@@ -697,16 +697,16 @@ where
         let (aggregate_key, all_dkg_shares) =
             signer_set.run_dkg(bitcoin_chain_tip, dkg_txid, rng).await;
 
+        let encrypted_dkg_shares = all_dkg_shares.first().unwrap();
+
         signer_set
             .write_as_rotate_keys_tx(
                 &self.context.get_storage_mut(),
                 &bitcoin_chain_tip,
-                all_dkg_shares.first().unwrap(),
+                encrypted_dkg_shares,
                 rng,
             )
             .await;
-
-        let encrypted_dkg_shares = all_dkg_shares.first().unwrap();
 
         storage
             .write_encrypted_dkg_shares(encrypted_dkg_shares)
