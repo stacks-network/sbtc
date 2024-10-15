@@ -9,11 +9,12 @@ RUN mkdir /code
 WORKDIR /code
 RUN git clone https://github.com/stacks-network/sbtc.git
 RUN cd sbtc \
+    && git checkout feat/demo-cli \
     && make install \
     && make build
 
 FROM debian:bookworm-slim AS runtime
 
 WORKDIR /code
-COPY --from=build /code/sbtc/target/debug/signer /usr/local/bin/sbtc-signer
+COPY --from=build /code/sbtc/target/debug/sbtc-signer /usr/local/bin/sbtc-signer
 ENTRYPOINT ["/usr/local/bin/sbtc-signer --config /signer-config.toml --migrate-db"]
