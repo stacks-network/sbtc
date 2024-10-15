@@ -21,6 +21,7 @@ use crate::context::TxSignerEvent;
 use crate::context::{messaging::SignerEvent, messaging::SignerSignal, Context};
 use crate::ecdsa::SignEcdsa as _;
 use crate::ecdsa::Signed;
+use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
@@ -272,6 +273,13 @@ where
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<(), Error> {
+        let stacks_chain_tip = self
+            .context
+            .get_storage()
+            .get_stacks_chain_tip(bitcoin_chain_tip)
+            .await?
+            .ok_or(Error::NoChainTip)?;
+
         let pending_requests_fut =
             self.get_pending_requests(bitcoin_chain_tip, aggregate_key, signer_public_keys);
 
@@ -283,14 +291,22 @@ where
 
         let transaction_package = pending_requests.construct_transactions()?;
 
-        for transaction in transaction_package {
+        for mut transaction in transaction_package {
             self.sign_and_broadcast(
                 bitcoin_chain_tip,
                 aggregate_key,
                 signer_public_keys,
-                transaction,
+                &mut transaction,
             )
             .await?;
+
+            // TODO: if this (considering also fallback clients) fails, we will
+            // need to handle the inconsistency of having the sweep tx confirmed
+            // but emily deposit still marked as pending.
+            self.context
+                .get_emily_client()
+                .accept_deposits(&transaction, &stacks_chain_tip)
+                .await?;
         }
 
         Ok(())
@@ -532,7 +548,7 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
-        mut transaction: utxo::UnsignedTransaction<'_>,
+        transaction: &mut utxo::UnsignedTransaction<'_>,
     ) -> Result<(), Error> {
         let mut coordinator_state_machine = CoordinatorStateMachine::load(
             &mut self.context.get_storage_mut(),

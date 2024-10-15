@@ -392,6 +392,14 @@ pub enum Error {
         bitcoin::OutPoint,
     ),
 
+    /// Could not parse hex script.
+    #[error("could not parse hex script: {0}")]
+    DecodeHexScript(#[source] bitcoin::hex::HexToBytesError),
+
+    /// Could not parse hex txid.
+    #[error("could not parse hex txid: {0}")]
+    DecodeHexTxid(#[source] bitcoin::hex::HexToArrayError),
+
     /// Could not connect to bitcoin-core with a zeromq subscription
     /// socket.
     #[error("{0}")]
