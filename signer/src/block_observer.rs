@@ -112,7 +112,7 @@ where
     BHS: futures::stream::Stream<Item = Result<bitcoin::BlockHash, Error>> + Unpin,
 {
     /// Run the block observer
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self), name = "block_observer")]
     pub async fn run(mut self) -> Result<(), Error> {
         let mut term = self.context.get_termination_handle();
 
