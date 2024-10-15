@@ -10,7 +10,7 @@ x-common-vars:
   - &BITCOIN_RPC_PASS devnet
   - &MINE_INTERVAL ${MINE_INTERVAL:-1s}
   - &MINE_INTERVAL_EPOCH25 ${MINE_INTERVAL_EPOCH25:-5s} # 5 second bitcoin block times in epoch 2.5
-  - &MINE_INTERVAL_EPOCH3 ${MINE_INTERVAL_EPOCH3:-15s} # 15 second bitcoin block times in epoch 3
+  - &MINE_INTERVAL_EPOCH3 ${MINE_INTERVAL_EPOCH3:-30s} # 30 second bitcoin block times in epoch 3
   - &NAKAMOTO_BLOCK_INTERVAL 2 # seconds to wait between issuing stx-transfer transactions (which triggers Nakamoto block production)
   - &STACKS_20_HEIGHT ${STACKS_20_HEIGHT:-0}
   - &STACKS_2_05_HEIGHT ${STACKS_2_05_HEIGHT:-203}
@@ -153,6 +153,8 @@ services:
       MYSQL_USER: "mempool"
       MYSQL_PASSWORD: "mempool"
       MYSQL_ROOT_PASSWORD: "admin"
+    profiles:
+      - bitcoin-mempool
 
   bitcoin-miner:
     build:
@@ -391,6 +393,8 @@ services:
       RUST_BACKTRACE: 1
       BITCOIN_RPC_HOST: "bitcoin"
       BITCOIN_RPC_PORT: "18443"
+    profiles:
+      - bitcoin-mempool
 
   mempool-web:
     image: mempool/frontend:latest
@@ -408,6 +412,8 @@ services:
       FRONTEND_HTTP_PORT: "8083"
       BACKEND_MAINNET_HTTP_HOST: "mempool-api"
     command: "./wait-for mariadb:3306 --timeout=720 -- nginx -g 'daemon off;'"
+    profiles:
+      - bitcoin-mempool
 
   mempool-api:
     image: mempool/backend:latest
@@ -438,6 +444,8 @@ services:
       DATABASE_PASSWORD: "mempool"
       STATISTICS_ENABLED: "true"
     command: "./wait-for-it.sh mariadb:3306 --timeout=720 --strict -- ./start.sh"
+    profiles:
+      - bitcoin-mempool
 
   # Emily services
 
