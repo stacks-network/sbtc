@@ -34,7 +34,7 @@ services:
       dockerfile: Dockerfile.btc
     ports:
       - "18443:18443"
-      - 28332
+      - "28332:28332"
     volumes:
       - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
     entrypoint:
@@ -103,6 +103,8 @@ services:
       SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-2:4122,tcp://sbtc-signer-3:4122
     volumes:
       - ./sbtc-signer/signer-config.toml:/signer-config.toml
+    profiles:
+      - sbtc-signer
 
   sbtc-signer-2:
     build:
@@ -122,6 +124,8 @@ services:
       SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-1:4122,tcp://sbtc-signer-3:4122
     volumes:
       - ./sbtc-signer/signer-config.toml:/signer-config.toml
+    profiles:
+      - sbtc-signer
 
   sbtc-signer-3:
     build:
@@ -141,6 +145,8 @@ services:
       SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-1:4122,tcp://sbtc-signer-2:4122
     volumes:
       - ./sbtc-signer/signer-config.toml:/signer-config.toml
+    profiles:
+      - sbtc-signer
 
   mariadb:
     image: mariadb:10.5.21
