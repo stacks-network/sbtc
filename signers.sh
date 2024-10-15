@@ -10,6 +10,11 @@ NC='\e[0m' # No Color
 BOLD='\e[1m' # Bold
 
 exec_run() {
+  if [ "$1" -eq 1 ]; then
+    printf "${RED}ERROR:${NC} At least 2 signers are required\n"
+    exit 1
+  fi
+
   printf "${GRAY}Running ${NC}${BOLD}$@${NC} signers\n"
   SIGNER1_KEY=$(. $PWD/devenv/local/envs/signer-1.env; echo "$SIGNER_PUBKEY")
   SIGNER2_KEY=$(. $PWD/devenv/local/envs/signer-2.env; echo "$SIGNER_PUBKEY")
@@ -18,9 +23,7 @@ exec_run() {
   docker compose -f $PWD/devenv/local/docker-compose/docker-compose.yml down postgres-1 postgres-2 postgres-3 -v
   docker compose -f $PWD/devenv/local/docker-compose/docker-compose.yml up -d postgres-1 postgres-2 postgres-3
 
-  if [ "$1" -eq 1 ]; then
-    BOOTSTRAP_SIGNER_SET=$SIGNER1_KEY
-  elif [ "$1" -eq 2 ]; then
+  if [ "$1" -eq 2 ]; then
     BOOTSTRAP_SIGNER_SET="$SIGNER1_KEY,$SIGNER2_KEY"
   elif [ "$1" -eq 3 ]; then
     BOOTSTRAP_SIGNER_SET="$SIGNER1_KEY,$SIGNER2_KEY,$SIGNER3_KEY"
