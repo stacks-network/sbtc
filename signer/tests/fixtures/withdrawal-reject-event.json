@@ -23,7 +23,7 @@
         {
             "committed": true,
             "contract_event": {
-                "contract_identifier": "SN2V7WTJ7BHR03MPHZ1C9A9ZR6NZGR4WM8HT4V67Y.sbtc-registry",
+                "contract_identifier": "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry",
                 "raw_value": "0x0c000000030a726571756573742d696401000000000000000000000000000000020d7369676e65722d6269746d6170010000000000000000000000000000000005746f7069630d000000117769746864726177616c2d72656a656374",
                 "topic": "print",
                 "value": {

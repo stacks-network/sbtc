@@ -121,6 +121,12 @@ pub trait DbRead {
         aggregate_key: &PublicKey,
     ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Error>> + Send;
 
+    /// Return the most recent DKG shares, and return None if the table is
+    /// empty.
+    fn get_lastest_encrypted_dkg_shares(
+        &self,
+    ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Error>> + Send;
+
     /// Return the latest rotate-keys transaction confirmed by the given `chain-tip`.
     fn get_last_key_rotation(
         &self,

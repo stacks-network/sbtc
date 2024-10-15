@@ -81,7 +81,6 @@ impl SignerStateMachine {
     pub async fn load<S>(
         storage: &S,
         aggregate_key: PublicKey,
-        signers: impl IntoIterator<Item = PublicKey>,
         threshold: u32,
         signer_private_key: PrivateKey,
     ) -> Result<Self, error::Error>
@@ -106,6 +105,7 @@ impl SignerStateMachine {
         // however, that should never be the case since wsts maintains this invariant
         // when we save the state.
         let signer = wsts::v2::Party::load(&saved_state);
+        let signers = encrypted_shares.signer_set_public_keys;
 
         let mut state_machine = Self::new(signers, threshold, signer_private_key)?;
 
@@ -121,6 +121,21 @@ impl SignerStateMachine {
     ) -> Result<model::EncryptedDkgShares, error::Error> {
         let saved_state = self.signer.save();
         let aggregate_key = PublicKey::try_from(&saved_state.group_key)?;
+
+        // When creating a new Self, the `public_keys` field gets populated
+        // using the `signers` input iterator. It represents the public
+        // keys for all signers in the signing set for DKG, including the
+        // coordinator.
+        let mut signer_set_public_keys = self
+            .public_keys
+            .signers
+            .values()
+            .map(PublicKey::from)
+            .collect::<Vec<PublicKey>>();
+
+        // We do not depend on the fact that these keys are sorted in the
+        // database, but it doesn't hurt much either.
+        signer_set_public_keys.sort();
 
         let encoded = saved_state.encode_to_vec().map_err(error::Error::Codec)?;
         let public_shares = self
@@ -139,6 +154,7 @@ impl SignerStateMachine {
             script_pubkey: aggregate_key.signers_script_pubkey().into(),
             encrypted_private_shares,
             public_shares,
+            signer_set_public_keys,
         })
     }
 }

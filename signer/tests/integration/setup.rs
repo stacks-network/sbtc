@@ -324,6 +324,7 @@ impl TestSweepSetup {
             encrypted_private_shares: Vec::new(),
             public_shares: Vec::new(),
             aggregate_key,
+            signer_set_public_keys: self.signer_keys.clone(),
         };
         db.write_encrypted_dkg_shares(&shares).await.unwrap();
     }

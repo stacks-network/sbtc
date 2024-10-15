@@ -35,6 +35,7 @@ use crate::codec::Encode;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
+use crate::storage::model::EncryptedDkgShares;
 use crate::storage::model::RotateKeysTransaction;
 use crate::storage::model::ScriptPubKey;
 use crate::storage::model::StacksBlockHash;
@@ -228,6 +229,7 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         public_shares,
         tweaked_aggregate_key: group_key.signers_tweaked_pubkey().unwrap(),
         script_pubkey: group_key.signers_script_pubkey().into(),
+        signer_set_public_keys: vec![fake::Faker.fake_with_rng(rng)],
     }
 }
 
@@ -351,6 +353,24 @@ impl fake::Dummy<SignerSetConfig> for RotateKeysTransaction {
             aggregate_key: PublicKey::combine_keys(signer_set.iter()).unwrap(),
             signer_set,
             signatures_required: config.signatures_required,
+        }
+    }
+}
+
+impl fake::Dummy<SignerSetConfig> for EncryptedDkgShares {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &SignerSetConfig, rng: &mut R) -> Self {
+        let signer_set_public_keys: Vec<PublicKey> =
+            std::iter::repeat_with(|| fake::Faker.fake_with_rng(rng))
+                .take(config.num_keys as usize)
+                .collect();
+        let aggregate_key = PublicKey::combine_keys(&signer_set_public_keys).unwrap();
+        EncryptedDkgShares {
+            aggregate_key: PublicKey::combine_keys(&signer_set_public_keys).unwrap(),
+            tweaked_aggregate_key: aggregate_key.signers_tweaked_pubkey().unwrap(),
+            script_pubkey: aggregate_key.signers_script_pubkey().into(),
+            encrypted_private_shares: Vec::new(),
+            public_shares: Vec::new(),
+            signer_set_public_keys,
         }
     }
 }
