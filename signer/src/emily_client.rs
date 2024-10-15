@@ -114,13 +114,13 @@ impl EmilyInteract for EmilyClient {
                 Ok(CreateDepositRequest {
                     outpoint: OutPoint {
                         txid: Txid::from_str(&deposit.bitcoin_txid)
-                            .map_err(|_| Error::TypeConversion)?,
+                            .map_err(Error::DecodeHexTxid)?,
                         vout: deposit.bitcoin_tx_output_index,
                     },
                     reclaim_script: ScriptBuf::from_hex(&deposit.reclaim_script)
-                        .map_err(|_| Error::TypeConversion)?,
+                        .map_err(Error::DecodeHexScript)?,
                     deposit_script: ScriptBuf::from_hex(&deposit.deposit_script)
-                        .map_err(|_| Error::TypeConversion)?,
+                        .map_err(Error::DecodeHexScript)?,
                 })
             })
             .collect()
