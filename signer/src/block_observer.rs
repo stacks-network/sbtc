@@ -236,9 +236,12 @@ where
             .is_some())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, block), fields(block_hash = %block.block_hash()))]
     async fn process_bitcoin_block(&mut self, block: bitcoin::Block) -> Result<(), Error> {
+        tracing::info!("processing bitcoin block");
         let info = self.stacks_client.get_tenure_info().await?;
+
+        tracing::debug!("fetching unknown ancestral blocks from Stacks");
         let stacks_blocks = crate::stacks::api::fetch_unknown_ancestors(
             &self.stacks_client,
             &self.context.get_storage(),
@@ -255,6 +258,7 @@ where
         Ok(())
     }
 
+    #[tracing::instrument(skip(self, txs))]
     async fn extract_deposit_requests(
         &mut self,
         txs: &[Transaction],
@@ -302,6 +306,7 @@ where
     /// When using the postgres storage, we need to make sure that this
     /// function is called after the `Self::write_bitcoin_block` function
     /// because of the foreign key constraints.
+    #[tracing::instrument(skip(self, txs))]
     async fn extract_sbtc_transactions(
         &self,
         block_hash: BlockHash,
@@ -323,6 +328,8 @@ where
         // `scriptPubKey` controlled by the signers.
         let mut sbtc_txs = Vec::new();
         for tx in txs {
+            tracing::debug!(txid = %tx.compute_txid(), "attempting to extract sbtc transaction");
+
             // If any of the outputs are spent to one of the signers'
             // addresses, then we care about it
             let outputs_spent_to_signers = tx
