@@ -255,6 +255,7 @@ where
         self.extract_deposit_requests(&block.txdata, block.block_hash())
             .await?;
 
+        tracing::debug!("finished processing bitcoin block");
         Ok(())
     }
 

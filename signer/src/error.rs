@@ -384,6 +384,10 @@ pub enum Error {
     #[error("no bitcoin chain tip")]
     NoChainTip,
 
+    /// No stacks chain tip found.
+    #[error("no stacks chain tip")]
+    NoStacksChainTip,
+
     /// Bitcoin error when attempting to construct an address from a
     /// scriptPubKey.
     #[error("bitcoin address parse error")]
