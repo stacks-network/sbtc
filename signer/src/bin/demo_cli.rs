@@ -41,6 +41,8 @@ enum Error {
     EmilyDeposit(#[from] emily_client::apis::Error<deposit_api::CreateDepositError>),
     #[error("Invalid stacks address: {0}")]
     InvalidStacksAddress(String),
+    #[error("Invalid signer key: {0}")]
+    InvalidSignerKey(String)
 }
 
 #[derive(Debug, Parser)]
@@ -141,7 +143,7 @@ async fn exec_deposit(
     let emily_deposit = deposit_api::create_deposit(
         emily_config,
         CreateDepositRequestBody {
-            bitcoin_tx_output_index: 1,
+            bitcoin_tx_output_index: 0,
             bitcoin_txid: txid.to_string(),
             deposit_script: deposit_script.deposit_script().to_hex_string(),
             reclaim_script: reclaim_script.reclaim_script().to_hex_string(),
@@ -164,7 +166,10 @@ fn create_bitcoin_deposit_transaction(
     client: &Client,
     args: &DepositArgs,
 ) -> Result<(Transaction, DepositScriptInputs, ReclaimScriptInputs), Error> {
-    let pubkey = XOnlyPublicKey::from_str(&args.signer_aggregate_key)?;
+    let pubkey = XOnlyPublicKey::from_str(&args.signer_aggregate_key)
+        .or_else(|_| PublicKey::from_str(&args.signer_aggregate_key).map(XOnlyPublicKey::from))
+        .map_err(|_| Error::InvalidSignerKey(args.signer_aggregate_key.clone()))?;
+
     // write_as_rotate_keys_tx
     let deposit_script = DepositScriptInputs {
         signers_public_key: pubkey,
