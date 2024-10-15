@@ -39,7 +39,7 @@ pub struct TestSweepSetup {
     pub deposit_block_hash: bitcoin::BlockHash,
     /// Where the corresponding sBTC will be minted.
     pub deposit_recipient: PrincipalData,
-    /// The deposit request, and a bitmap for how the singers voted on it.
+    /// The deposit request, and a bitmap for how the signers voted on it.
     pub deposit_request: utxo::DepositRequest,
     /// The bitcoin transaction that the user made as a deposit for sBTC.
     pub deposit_tx: bitcoin::Transaction,
@@ -324,6 +324,7 @@ impl TestSweepSetup {
             encrypted_private_shares: Vec::new(),
             public_shares: Vec::new(),
             aggregate_key,
+            signer_set_public_keys: self.signer_keys.clone(),
         };
         db.write_encrypted_dkg_shares(&shares).await.unwrap();
     }

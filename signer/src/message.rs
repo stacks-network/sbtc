@@ -165,6 +165,8 @@ pub struct StacksTransactionSignRequest {
     /// It's essentially a hash of the contract call struct, the nonce, the
     /// tx_fee and a few other things.
     pub digest: [u8; 32],
+    /// The transaction ID of the associated contract call transaction.
+    pub txid: blockstack_lib::burnchains::Txid,
 }
 
 /// Represents a signature of a Stacks transaction.

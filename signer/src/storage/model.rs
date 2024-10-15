@@ -269,6 +269,16 @@ pub struct SweptDepositRequest {
     pub amount: u64,
 }
 
+impl SweptDepositRequest {
+    /// The OutPoint of the actual deposit
+    pub fn deposit_outpoint(&self) -> bitcoin::OutPoint {
+        bitcoin::OutPoint {
+            txid: self.txid.into(),
+            vout: self.output_index,
+        }
+    }
+}
+
 /// Withdraw request.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
@@ -310,6 +320,9 @@ pub struct SweptWithdrawalRequest {
 }
 
 /// Persisted DKG shares
+///
+/// This struct represents the output of a successful run of distributed
+/// key generation (DKG) that was run by a set of signers.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct EncryptedDkgShares {
@@ -323,6 +336,8 @@ pub struct EncryptedDkgShares {
     pub encrypted_private_shares: Bytes,
     /// The public DKG shares
     pub public_shares: Bytes,
+    /// The set of public keys that were a party to the DKG.
+    pub signer_set_public_keys: Vec<PublicKey>,
 }
 
 /// Persisted public DKG shares from other signers
@@ -609,6 +624,12 @@ impl From<[u8; 32]> for StacksBlockHash {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct StacksTxId(blockstack_lib::burnchains::Txid);
+
+impl std::fmt::Display for StacksTxId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 impl Deref for StacksTxId {
     type Target = blockstack_lib::burnchains::Txid;

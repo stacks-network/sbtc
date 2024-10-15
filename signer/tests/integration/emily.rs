@@ -178,7 +178,7 @@ async fn deposit_flow() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-    let network = network::in_memory::Network::new();
+    let network = network::in_memory::InMemoryNetwork::new();
     let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
 
     let emily_client =
@@ -417,6 +417,7 @@ async fn deposit_flow() {
         context_window,
         threshold: signing_threshold as u16,
         signing_round_max_duration: Duration::from_secs(10),
+        dkg_max_duration: Duration::from_secs(10),
     };
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
 
