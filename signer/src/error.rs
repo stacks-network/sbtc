@@ -392,6 +392,14 @@ pub enum Error {
         bitcoin::OutPoint,
     ),
 
+    /// Could not parse hex script.
+    #[error("could not parse hex script: {0}")]
+    DecodeHexScript(#[source] bitcoin::hex::HexToBytesError),
+
+    /// Could not parse hex txid.
+    #[error("could not parse hex txid: {0}")]
+    DecodeHexTxid(#[source] bitcoin::hex::HexToArrayError),
+
     /// Could not connect to bitcoin-core with a zeromq subscription
     /// socket.
     #[error("{0}")]
@@ -418,5 +426,12 @@ pub enum Error {
 impl From<std::convert::Infallible> for Error {
     fn from(value: std::convert::Infallible) -> Self {
         match value {}
+    }
+}
+
+impl Error {
+    /// Convert a coordinator error to an `error::Error`
+    pub fn wsts_coordinator(err: wsts::state_machine::coordinator::Error) -> Self {
+        Error::WstsCoordinator(Box::new(err))
     }
 }

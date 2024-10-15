@@ -1095,7 +1095,6 @@ mod tests {
         // The moment of truth, do the requests succeed?
         let blocks = client.get_tenure(block_id).await.unwrap();
         assert!(blocks.len() > 1);
-        dbg!(blocks.len());
 
         // We know that the blocks are ordered as a chain, and we know the
         // first and last block IDs, let's check that.
@@ -1203,7 +1202,6 @@ mod tests {
             .await;
 
         let err = resp.unwrap_err();
-        dbg!(&err);
         assert!(matches!(
             err,
             Error::InvalidStacksResponse(s) if s == "expected a sequence but got something else"

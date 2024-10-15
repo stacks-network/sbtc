@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::stacks::api::StacksInteract;
+use crate::storage::model::StacksBlock;
 use bitcoin::BlockHash;
 use bitcoin::Txid;
 use blockstack_lib::chainstate::burn::ConsensusHash;
@@ -323,6 +324,14 @@ impl StacksInteract for TestHarness {
 impl EmilyInteract for TestHarness {
     async fn get_deposits(&self) -> Result<Vec<CreateDepositRequest>, Error> {
         Ok(self.pending_deposits.clone())
+    }
+
+    async fn accept_deposits<'a>(
+        &'a self,
+        _transaction: &'a utxo::UnsignedTransaction<'a>,
+        _stacks_chain_tip: &'a StacksBlock,
+    ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
+        unimplemented!()
     }
 }
 

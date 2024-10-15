@@ -375,6 +375,7 @@ async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
         private_key: config.signer.private_key,
         signing_round_max_duration: Duration::from_secs(10),
         threshold: 2,
+        dkg_max_duration: Duration::from_secs(10),
     };
 
     coord.run().await

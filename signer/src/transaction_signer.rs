@@ -375,7 +375,7 @@ where
             msg_sender,
             bitcoin_chain_tip,
             &signer_set,
-        )?;
+        );
 
         let chain_tip_status = match (is_known, is_canonical) {
             (true, true) => ChainTipStatus::Canonical,

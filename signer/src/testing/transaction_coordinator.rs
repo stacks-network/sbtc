@@ -10,7 +10,7 @@ use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::MockBitcoinInteract;
 use crate::context::Context;
 use crate::context::TxSignerEvent;
-use crate::emily_client::EmilyInteract;
+use crate::emily_client::MockEmilyInteract;
 use crate::error;
 use crate::keys;
 use crate::keys::PrivateKey;
@@ -64,6 +64,7 @@ where
                 context_window,
                 threshold,
                 signing_round_max_duration: Duration::from_secs(10),
+                dkg_max_duration: Duration::from_secs(10),
             },
             context,
             is_started: Arc::new(AtomicBool::new(false)),
@@ -110,19 +111,18 @@ pub struct TestEnvironment<Context> {
     pub test_model_parameters: testing::storage::model::Params,
 }
 
-impl<Storage, Stacks, Emily>
+impl<Storage, Stacks>
     TestEnvironment<
         TestContext<
             Storage,
             WrappedMock<MockBitcoinInteract>, // We specify this explicitly to gain access to the mock client
             Stacks,
-            Emily,
+            WrappedMock<MockEmilyInteract>, // We specify this explicitly to gain access to the mock client
         >,
     >
 where
     Storage: DbRead + DbWrite + Clone + Sync + Send + 'static,
     Stacks: StacksInteract + Clone + Sync + Send + 'static,
-    Emily: EmilyInteract + Clone + Sync + Send + 'static,
 {
     /// Assert that a coordinator should be able to coordiante a signing round
     pub async fn assert_should_be_able_to_coordinate_signing_rounds(mut self) {
@@ -167,6 +167,16 @@ where
                     .expect_get_last_fee()
                     .once()
                     .returning(|_| Box::pin(async { Ok(None) }));
+            })
+            .await;
+
+        self.context
+            .with_emily_client(|client| {
+                client.expect_accept_deposits().once().returning(|_, _| {
+                    Box::pin(async {
+                        Ok(emily_client::models::UpdateDepositsResponse { deposits: vec![] })
+                    })
+                });
             })
             .await;
 

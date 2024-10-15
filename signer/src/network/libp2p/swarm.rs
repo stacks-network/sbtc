@@ -12,8 +12,8 @@ use libp2p::identity::Keypair;
 use libp2p::kad::store::MemoryStore;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{
-    gossipsub, identify, kad, mdns, noise, ping, relay, tcp, yamux, Multiaddr, PeerId, Swarm,
-    SwarmBuilder,
+    gossipsub, identify, kad, mdns, noise, ping, relay, tcp, yamux, Multiaddr, PeerId,
+    StreamProtocol, Swarm, SwarmBuilder,
 };
 use rand::rngs::OsRng;
 use tokio::sync::Mutex;
@@ -60,14 +60,11 @@ impl SignerBehavior {
                 keypair.public().to_peer_id(),
             )
             .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?,
-            kademlia: kad::Behaviour::new(
-                keypair.public().to_peer_id(),
-                MemoryStore::new(keypair.public().to_peer_id()),
-            ),
+            kademlia: Self::kademlia(&keypair),
             ping: ping::Behaviour::default(),
             relay: relay::Behaviour::new(keypair.public().to_peer_id(), Default::default()),
             identify: identify::Behaviour::new(identify::Config::new(
-                "/sbtc-signer/1.0.0".into(),
+                "/sbtc-signer/identify/1.0.0".into(),
                 keypair.public(),
             )),
             autonat_server: AutoNatServerBehavior::new(OsRng),
@@ -76,6 +73,18 @@ impl SignerBehavior {
                 AutoNatClientConfig::default().with_probe_interval(Duration::from_secs(2)),
             ),
         })
+    }
+
+    fn kademlia(keypair: &Keypair) -> kad::Behaviour<MemoryStore> {
+        let config = kad::Config::new(StreamProtocol::new("/sbtc-signer/kad/1.0.0"))
+            .disjoint_query_paths(true)
+            .to_owned();
+
+        kad::Behaviour::with_config(
+            keypair.public().to_peer_id(),
+            MemoryStore::new(keypair.public().to_peer_id()),
+            config,
+        )
     }
 }
 

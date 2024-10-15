@@ -123,7 +123,7 @@ pub trait DbRead {
 
     /// Return the most recent DKG shares, and return None if the table is
     /// empty.
-    fn get_lastest_encrypted_dkg_shares(
+    fn get_latest_encrypted_dkg_shares(
         &self,
     ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Error>> + Send;
 

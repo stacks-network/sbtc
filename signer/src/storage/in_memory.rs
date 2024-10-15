@@ -435,7 +435,7 @@ impl super::DbRead for SharedStore {
             .map(|(_, shares)| shares.clone()))
     }
 
-    async fn get_lastest_encrypted_dkg_shares(
+    async fn get_latest_encrypted_dkg_shares(
         &self,
     ) -> Result<Option<model::EncryptedDkgShares>, Error> {
         Ok(self
