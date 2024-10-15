@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use crate::bitcoin::BitcoinInteract;
 use crate::stacks::api::StacksInteract;
 use crate::storage::model::StacksBlock;
+use crate::storage::model::StacksTxId;
+use crate::storage::model::SweptDepositRequest;
 use bitcoin::BlockHash;
 use bitcoin::Txid;
 use blockstack_lib::chainstate::burn::ConsensusHash;
@@ -330,6 +332,15 @@ impl EmilyInteract for TestHarness {
         &'a self,
         _transaction: &'a utxo::UnsignedTransaction<'a>,
         _stacks_chain_tip: &'a StacksBlock,
+    ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
+        unimplemented!()
+    }
+    async fn confirm_deposit(
+        &self,
+        _deposit: &SweptDepositRequest,
+        _sbtc_txid: &StacksTxId,
+        _stacks_chain_tip: &StacksBlock,
+        _btc_fee: bitcoin::Amount,
     ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
         unimplemented!()
     }

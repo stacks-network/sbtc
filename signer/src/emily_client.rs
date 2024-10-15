@@ -9,6 +9,7 @@ use emily_client::apis::configuration::Configuration as EmilyApiConfig;
 use emily_client::apis::deposit_api;
 use emily_client::apis::Error as EmilyError;
 use emily_client::models::DepositUpdate;
+use emily_client::models::Fulfillment;
 use emily_client::models::Status;
 use emily_client::models::UpdateDepositsRequestBody;
 use emily_client::models::UpdateDepositsResponse;
@@ -19,6 +20,8 @@ use crate::bitcoin::utxo::RequestRef;
 use crate::bitcoin::utxo::UnsignedTransaction;
 use crate::error::Error;
 use crate::storage::model::StacksBlock;
+use crate::storage::model::StacksTxId;
+use crate::storage::model::SweptDepositRequest;
 use crate::util::ApiFallbackClient;
 
 /// Emily client error variants.
@@ -56,6 +59,15 @@ pub trait EmilyInteract: Sync + Send {
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
         stacks_chain_tip: &'a StacksBlock,
+    ) -> impl std::future::Future<Output = Result<UpdateDepositsResponse, Error>> + Send;
+
+    /// Update confirmed deposits after the stacks transaction minting SBTC is confirmed.
+    fn confirm_deposit(
+        &self,
+        deposit: &SweptDepositRequest,
+        sbtc_txid: &StacksTxId,
+        stacks_chain_tip: &StacksBlock,
+        btc_fee: bitcoin::Amount,
     ) -> impl std::future::Future<Output = Result<UpdateDepositsResponse, Error>> + Send;
 }
 
@@ -159,6 +171,41 @@ impl EmilyInteract for EmilyClient {
             .map_err(EmilyClientError::UpdateDeposits)
             .map_err(Error::EmilyApi)
     }
+
+    async fn confirm_deposit(
+        &self,
+        deposit: &SweptDepositRequest,
+        sbtc_txid: &StacksTxId,
+        stacks_chain_tip: &StacksBlock,
+        btc_fee: bitcoin::Amount,
+    ) -> Result<UpdateDepositsResponse, Error> {
+        let update_request = DepositUpdate {
+            bitcoin_tx_output_index: deposit.output_index,
+            bitcoin_txid: deposit.txid.to_string(),
+            status: Status::Confirmed,
+            last_update_block_hash: stacks_chain_tip.block_hash.to_string(),
+            last_update_height: stacks_chain_tip.block_height,
+            fulfillment: Some(Some(Box::new(Fulfillment {
+                bitcoin_txid: deposit.sweep_txid.to_string(),
+                // TODO: we don't keep a mapping between sweep tx inputs and
+                // deposits requests fulfilled, should we?
+                bitcoin_tx_index: 0,
+                btc_fee: btc_fee.to_sat(),
+                bitcoin_block_hash: deposit.sweep_block_hash.to_string(),
+                bitcoin_block_height: deposit.sweep_block_height,
+                stacks_txid: sbtc_txid.to_string(),
+            }))),
+            status_message: "".to_string(),
+        };
+
+        deposit_api::update_deposits(
+            &self.config,
+            UpdateDepositsRequestBody { deposits: vec![update_request] },
+        )
+        .await
+        .map_err(EmilyClientError::UpdateDeposits)
+        .map_err(Error::EmilyApi)
+    }
 }
 
 impl EmilyInteract for ApiFallbackClient<EmilyClient> {
@@ -174,6 +221,17 @@ impl EmilyInteract for ApiFallbackClient<EmilyClient> {
         stacks_chain_tip: &'a StacksBlock,
     ) -> Result<UpdateDepositsResponse, Error> {
         self.exec(|client, _| client.accept_deposits(transaction, stacks_chain_tip))
+            .await
+    }
+
+    async fn confirm_deposit(
+        &self,
+        deposit: &SweptDepositRequest,
+        sbtc_txid: &StacksTxId,
+        stacks_chain_tip: &StacksBlock,
+        btc_fee: bitcoin::Amount,
+    ) -> Result<UpdateDepositsResponse, Error> {
+        self.exec(|client, _| client.confirm_deposit(deposit, sbtc_txid, stacks_chain_tip, btc_fee))
             .await
     }
 }
