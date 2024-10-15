@@ -1,5 +1,7 @@
 use std::str::FromStr;
 
+use bitcoin::hex::DisplayHex;
+use bitcoin::XOnlyPublicKey;
 use bitcoin::{
     absolute, transaction::Version, Amount, Network, OutPoint, ScriptBuf, Sequence, Transaction,
     TxIn, TxOut,
@@ -7,6 +9,7 @@ use bitcoin::{
 use bitcoincore_rpc::json;
 use bitcoincore_rpc::{Client, RpcApi};
 use clap::{Args, Parser, Subcommand};
+use clarity::vm::database::ClarityDeserializable;
 use clarity::{
     types::{chainstate::StacksAddress, Address as _},
     vm::types::{PrincipalData, StandardPrincipalData},
@@ -114,7 +117,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //println!("New address: {:?}", addr);
     //bitcoin_client.generate_to_address(150, &addr)?;
     let unspent = bitcoin_client.list_unspent(None, None, None, None, None)?;
-    println!("Unspent: {:?}", unspent);
+    //println!("Unspent: {:?}", unspent);
 
     match args.command {
         CliCommand::Deposit(args) => {
@@ -161,16 +164,17 @@ fn create_bitcoin_deposit_transaction(
     client: &Client,
     args: &DepositArgs,
 ) -> Result<(Transaction, DepositScriptInputs, ReclaimScriptInputs), Error> {
-    let pubkey = PublicKey::from_str(&args.signer_aggregate_key)?;
+    let pubkey = XOnlyPublicKey::from_str(&args.signer_aggregate_key)?;
     // write_as_rotate_keys_tx
     let deposit_script = DepositScriptInputs {
-        signers_public_key: pubkey.into(),
+        signers_public_key: pubkey,
         max_fee: args.max_fee,
         recipient: PrincipalData::Standard(StandardPrincipalData::from(
             StacksAddress::from_string(&args.stacks_recipient)
                 .ok_or(Error::InvalidStacksAddress(args.stacks_recipient.clone()))?,
         )),
     };
+
 
     let reclaim_script = ReclaimScriptInputs::try_new(args.lock_time as i64, ScriptBuf::new())?;
 
@@ -203,20 +207,23 @@ fn create_bitcoin_deposit_transaction(
         }],
         output: vec![
             TxOut {
-                value: Amount::from_sat(unspent.amount.to_sat() - args.amount - args.max_fee - 153),
-                script_pubkey: change_address.into(),
-            },
-            TxOut {
                 value: Amount::from_sat(args.amount + args.max_fee),
                 script_pubkey: sbtc::deposits::to_script_pubkey(
                     deposit_script.deposit_script(),
                     reclaim_script.reclaim_script(),
                 ),
             },
+            TxOut {
+                value: Amount::from_sat(unspent.amount.to_sat() - args.amount - args.max_fee - 153),
+                script_pubkey: change_address.into(),
+            },
         ],
         version: Version::TWO,
         lock_time: absolute::LockTime::ZERO,
     };
+
+    println!("deposit script: {:?}", deposit_script.deposit_script().as_bytes().to_lower_hex_string());
+    println!("reclaim script: {:?}", reclaim_script.reclaim_script().as_bytes().to_lower_hex_string());
 
     Ok((unsigned_tx, deposit_script, reclaim_script))
 }
