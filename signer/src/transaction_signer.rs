@@ -39,7 +39,7 @@ use crate::storage::DbWrite as _;
 use crate::wsts_state_machine;
 
 use clarity::types::chainstate::StacksAddress;
-use futures::StreamExt;
+//use futures::StreamExt;
 use tokio::sync::Mutex;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
@@ -636,8 +636,8 @@ where
         request: model::DepositRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
-        let bitcoin_network = bitcoin::Network::from(self.context.config().signer.network);
-        let params = bitcoin_network.params();
+        //let bitcoin_network = bitcoin::Network::from(self.context.config().signer.network);
+        //let params = bitcoin_network.params();
         // let addresses = request
         //     .sender_script_pub_keys
         //     .iter()

@@ -9,7 +9,7 @@ use bitcoin::{
 use bitcoincore_rpc::json;
 use bitcoincore_rpc::{Client, RpcApi};
 use clap::{Args, Parser, Subcommand};
-use clarity::vm::database::ClarityDeserializable;
+//use clarity::vm::database::ClarityDeserializable;
 use clarity::{
     types::{chainstate::StacksAddress, Address as _},
     vm::types::{PrincipalData, StandardPrincipalData},
@@ -130,7 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //    .require_network(Network::Regtest)?;
     //println!("New address: {:?}", addr);
     //bitcoin_client.generate_to_address(150, &addr)?;
-    let unspent = bitcoin_client.list_unspent(None, None, None, None, None)?;
+    //let unspent = bitcoin_client.list_unspent(None, None, None, None, None)?;
     //println!("Unspent: {:?}", unspent);
 
     match args.command {
