@@ -61,6 +61,9 @@ struct DepositArgs {
     /// the amount.
     #[clap(long)]
     max_fee: u64,
+    /// Lock time for the transaction.
+    #[clap(long)]
+    lock_time: u32,
     /// The beneficiary Stacks address to receive the deposit in sBTC.
     #[clap(long = "stacks-addr")]
     stacks_recipient: String,
@@ -146,6 +149,7 @@ async fn exec_deposit(
     println!("Deposit request created: {:?}", emily_deposit);
 
     let signed_tx = bitcoin_client.sign_raw_transaction_with_wallet(&unsigned_tx, None, None)?;
+    println!("Signed transaction: {:?}", hex::encode(&signed_tx.hex));
     let tx = bitcoin_client.send_raw_transaction(&signed_tx.hex)?;
 
     println!("Transaction sent: calc: {txid:?}, actual: {tx:?}");
@@ -168,7 +172,7 @@ fn create_bitcoin_deposit_transaction(
         )),
     };
 
-    let reclaim_script = ReclaimScriptInputs::try_new(20, ScriptBuf::new())?;
+    let reclaim_script = ReclaimScriptInputs::try_new(args.lock_time as i64, ScriptBuf::new())?;
 
     // Look for UTXOs that can cover the amount + max fee
     let opts = json::ListUnspentQueryOptions {
