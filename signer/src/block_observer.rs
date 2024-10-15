@@ -250,7 +250,7 @@ where
         .await?;
 
         self.write_stacks_blocks(&stacks_blocks).await?;
-        self.write_bitcoin_block(&block).await?;
+        self.write_bitcoin_block(&block, &stacks_blocks).await?;
 
         self.extract_deposit_requests(&block.txdata, block.block_hash())
             .await?;
@@ -401,14 +401,22 @@ where
 
     /// Write the bitcoin block to the database. We also write any
     /// transactions that are spend to any of the signers `scriptPubKey`s
-    async fn write_bitcoin_block(&mut self, block: &bitcoin::Block) -> Result<(), Error> {
+    async fn write_bitcoin_block(
+        &mut self, 
+        block: &bitcoin::Block,
+        blocks: &[nakamoto::NakamotoBlock],
+    ) -> Result<(), Error> {
         let db_block = model::BitcoinBlock {
             block_hash: block.block_hash().into(),
             block_height: block
                 .bip34_block_height()
                 .expect("Failed to get block height"),
             parent_hash: block.header.prev_blockhash.into(),
-            confirms: Vec::new(),
+            // hacky thing
+            confirms: blocks  // here
+                .iter()
+                .map(|b| model::StacksBlock::try_from(b).unwrap().block_hash)
+                .collect(),
         };
 
         self.context
