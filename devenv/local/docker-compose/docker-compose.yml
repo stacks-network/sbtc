@@ -452,12 +452,10 @@ services:
   # Hosts the DynamoDB Tables.
   dynamodb:
     image: "amazon/dynamodb-local:latest"
-    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath ./data"
+    command: "-jar DynamoDBLocal.jar -sharedDb"
     ports:
       - "8000:8000"
     user: root
-    volumes:
-      - "../../dynamodb/data:/home/dynamodblocal/data"
 
   # Modifies the CDK template and creates DynamoDB Tables if necessary.
   emily-aws-setup:
