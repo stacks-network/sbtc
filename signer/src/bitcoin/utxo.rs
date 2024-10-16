@@ -14,6 +14,7 @@ use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::Sequence;
 use bitcoin::TapLeafHash;
+use bitcoin::TapNodeHash;
 use bitcoin::TapSighash;
 use bitcoin::TapSighashType;
 use bitcoin::Transaction;
@@ -606,7 +607,7 @@ pub struct SignatureHashes<'a> {
     /// Each deposit request is associated with a UTXO input for the peg-in
     /// transaction. This field contains digests/signature hashes that need
     /// Schnorr signatures and the associated deposit request for each hash.
-    pub deposits: Vec<(&'a DepositRequest, TapSighash)>,
+    pub deposits: Vec<(&'a DepositRequest, TapSighash, Option<TapNodeHash>)>,
 }
 
 impl<'a> UnsignedTransaction<'a> {
@@ -663,6 +664,8 @@ impl<'a> UnsignedTransaction<'a> {
     /// Other noteworthy assumptions is that the signers' UTXO is always a
     /// key-spend path only taproot UTXO.
     pub fn construct_digests(&self) -> Result<SignatureHashes, Error> {
+        let leaf_version = LeafVersion::TapScript;
+
         let deposit_requests = self.requests.iter().filter_map(RequestRef::as_deposit);
         let deposit_utxos = deposit_requests.clone().map(DepositRequest::as_tx_out);
         // All the transaction's inputs are used to construct the sighash
@@ -687,11 +690,14 @@ impl<'a> UnsignedTransaction<'a> {
             .map(|(input_index, deposit)| {
                 let index = input_index + 1;
                 let script = deposit.deposit_script.as_script();
-                let leaf_hash = TapLeafHash::from_script(script, LeafVersion::TapScript);
+                let leaf_hash = TapLeafHash::from_script(script, leaf_version);
+
+                //
+                let taproot_info = deposit.construct_taproot_info(leaf_version);
 
                 sighasher
                     .taproot_script_spend_signature_hash(index, &prevouts, leaf_hash, sighash_type)
-                    .map(|sighash| (deposit, sighash))
+                    .map(|sighash| (deposit, sighash, taproot_info.merkle_root()))
                     .map_err(Error::from)
             })
             .collect::<Result<_, _>>()?;

@@ -58,7 +58,7 @@ pub fn set_witness_data(unsigned: &mut UnsignedTransaction, keypair: secp256k1::
     let signature = bitcoin::taproot::Signature { signature, sighash_type };
     let signer_witness = Witness::p2tr_key_spend(&signature);
 
-    let deposit_witness = sighashes.deposits.into_iter().map(|(deposit, sighash)| {
+    let deposit_witness = sighashes.deposits.into_iter().map(|(deposit, sighash, _)| {
         let deposit_msg = secp256k1::Message::from(sighash);
         let signature = SECP256K1.sign_schnorr(&deposit_msg, &keypair);
         let signature = bitcoin::taproot::Signature { signature, sighash_type };

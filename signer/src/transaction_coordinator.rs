@@ -7,6 +7,7 @@
 
 use std::collections::BTreeSet;
 
+use bitcoin::TapNodeHash;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use futures::FutureExt;
 use futures::StreamExt as _;
@@ -31,6 +32,7 @@ use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
 use crate::network;
 use crate::signature::SighashDigest;
+use crate::signature::TaprootSignature;
 use crate::stacks::api::FeePriority;
 use crate::stacks::api::StacksInteract;
 use crate::stacks::api::SubmitTxResponse;
@@ -39,6 +41,8 @@ use crate::stacks::contracts::ContractCall;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
+use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::BitcoinTxId;
 use crate::storage::model::StacksTxId;
 use crate::storage::DbRead as _;
 use crate::wsts_state_machine::CoordinatorStateMachine;
@@ -542,7 +546,7 @@ where
 
     /// Coordinate a signing round for the given request
     /// and broadcast it once it's signed.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, signer_public_keys, transaction))]
     async fn sign_and_broadcast(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -570,19 +574,15 @@ where
                 &mut coordinator_state_machine,
                 txid,
                 &msg,
+                None,
             )
             .await?;
 
-        let signature = bitcoin::taproot::Signature {
-            signature: secp256k1::schnorr::Signature::from_slice(&signature.to_bytes())
-                .map_err(|_| Error::TypeConversion)?,
-            sighash_type: bitcoin::TapSighashType::Default,
-        };
-        let signer_witness = bitcoin::Witness::p2tr_key_spend(&signature);
+        let signer_witness = bitcoin::Witness::p2tr_key_spend(&signature.into());
 
         let mut deposit_witness = Vec::new();
 
-        for (deposit, sighash) in sighashes.deposits.into_iter() {
+        for (deposit, sighash, merkle_root) in sighashes.deposits.into_iter() {
             let msg = sighash.to_raw_hash().to_byte_array();
 
             let signature = self
@@ -591,16 +591,11 @@ where
                     &mut coordinator_state_machine,
                     txid,
                     &msg,
+                    merkle_root,
                 )
                 .await?;
 
-            let signature = bitcoin::taproot::Signature {
-                signature: secp256k1::schnorr::Signature::from_slice(&signature.to_bytes())
-                    .map_err(|_| Error::TypeConversion)?,
-                sighash_type: bitcoin::TapSighashType::Default,
-            };
-
-            let witness = deposit.construct_witness_data(signature);
+            let witness = deposit.construct_witness_data(signature.into());
 
             deposit_witness.push(witness);
         }
@@ -633,9 +628,12 @@ where
         coordinator_state_machine: &mut CoordinatorStateMachine,
         txid: bitcoin::Txid,
         msg: &[u8],
-    ) -> Result<wsts::taproot::SchnorrProof, Error> {
+        merkle_root: Option<TapNodeHash>,
+    ) -> Result<TaprootSignature, Error> {
+        let is_taproot = merkle_root.is_none();
+        let merkle_root = merkle_root.map(TapNodeHash::to_byte_array);
         let outbound = coordinator_state_machine
-            .start_signing_round(msg, true, None)
+            .start_signing_round(msg, is_taproot, merkle_root)
             .map_err(Error::wsts_coordinator)?;
 
         let msg = message::WstsMessage { txid, inner: outbound.msg };
@@ -650,7 +648,8 @@ where
             .map_err(|_| Error::CoordinatorTimeout(max_duration.as_secs()))??;
 
         match operation_result {
-            WstsOperationResult::SignTaproot(signature) => Ok(signature),
+            WstsOperationResult::SignTaproot(signature) => Ok(signature.into()),
+            WstsOperationResult::Sign(sig) => Ok(sig.into()),
             _ => Err(Error::UnexpectedOperationResult),
         }
     }
