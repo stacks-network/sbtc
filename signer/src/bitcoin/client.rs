@@ -63,11 +63,13 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
     }
 
     async fn estimate_fee_rate(&self) -> Result<f64, Error> {
-        todo!() // TODO(542)
+        self.exec(|client, _| async { client.estimate_fee_rate(1) })
+            .await
+            .map(|feerate| feerate.sats_per_vbyte)
     }
 
-    async fn get_last_fee(&self, _utxo: bitcoin::OutPoint) -> Result<Option<utxo::Fees>, Error> {
-        todo!() // TODO(541)
+    async fn get_last_fee(&self, utxo: bitcoin::OutPoint) -> Result<Option<utxo::Fees>, Error> {
+        self.exec(|client, _| client.get_last_fee(utxo)).await
     }
 
     async fn broadcast_transaction(&self, tx: &bitcoin::Transaction) -> Result<(), Error> {

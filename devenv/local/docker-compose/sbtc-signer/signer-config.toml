@@ -130,6 +130,23 @@ deployer = "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039"
 # Environment: SIGNER_SIGNER__DB_ENDPOINT
 db_endpoint = ""
 
+# A complete list of (compressed) public keys for known bootstrap signer
+# peers who are approved to be in the sBTC signer set.
+#
+# Required: true Environment: SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET
+bootstrap_signing_set = [
+    "035249137286c077ccee65ecc43e724b9b9e5a588e3d7f51e3b62f9624c2a49e46",
+    "031a4d9f4903da97498945a4e01a5023a1d53bc96ad670bfe03adf8a06c52e6380",
+    "02007311430123d4cad97f4f7e86e023b28143130a18099ecf094d36fef0f6135c",
+]
+
+# The number of signatures required for signing Stacks transactions when
+# using the multi-sig wallet formed from the public keys in the
+# `bootstrap_signing_set`. Must be strictly positive.
+# 
+# Required: true Environment: SIGNER_SIGNER__BOOTSTRAP_SIGNATURES_REQUIRED
+bootstrap_signatures_required = 2
+
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration
 # !!

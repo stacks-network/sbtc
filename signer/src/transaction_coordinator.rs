@@ -147,7 +147,7 @@ where
     N: network::MessageTransfer,
 {
     /// Run the coordinator event loop
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self), name = "tx_coord")]
     pub async fn run(mut self) -> Result<(), Error> {
         tracing::info!("starting transaction coordinator event loop");
         let mut term = self.context.get_termination_handle();
@@ -278,7 +278,7 @@ where
             .get_storage()
             .get_stacks_chain_tip(bitcoin_chain_tip)
             .await?
-            .ok_or(Error::NoChainTip)?;
+            .ok_or(Error::NoStacksChainTip)?;
 
         let pending_requests_fut =
             self.get_pending_requests(bitcoin_chain_tip, aggregate_key, signer_public_keys);

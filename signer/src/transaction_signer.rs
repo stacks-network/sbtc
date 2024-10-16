@@ -39,7 +39,7 @@ use crate::storage::DbWrite as _;
 use crate::wsts_state_machine;
 
 use clarity::types::chainstate::StacksAddress;
-use futures::StreamExt;
+//use futures::StreamExt;
 use tokio::sync::Mutex;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
@@ -143,7 +143,7 @@ where
     Rng: rand::RngCore + rand::CryptoRng,
 {
     /// Run the signer event loop
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self), name = "tx_signer")]
     pub async fn run(mut self) -> Result<(), Error> {
         let mut signal_rx = self.context.get_signal_receiver();
         let mut term = self.context.get_termination_handle();
@@ -636,20 +636,21 @@ where
         request: model::DepositRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
-        let bitcoin_network = bitcoin::Network::from(self.context.config().signer.network);
-        let params = bitcoin_network.params();
-        let addresses = request
-            .sender_script_pub_keys
-            .iter()
-            .map(|script_pubkey| {
-                bitcoin::Address::from_script(script_pubkey, params)
-                    .map_err(|err| Error::BitcoinAddressFromScript(err, request.outpoint()))
-            })
-            .collect::<Result<Vec<bitcoin::Address>, _>>()?;
+        //let bitcoin_network = bitcoin::Network::from(self.context.config().signer.network);
+        //let params = bitcoin_network.params();
+        // let addresses = request
+        //     .sender_script_pub_keys
+        //     .iter()
+        //     .map(|script_pubkey| {
+        //         bitcoin::Address::from_script(script_pubkey, params)
+        //             .map_err(|err| Error::BitcoinAddressFromScript(err, request.outpoint()))
+        //     })
+        //     .collect::<Result<Vec<bitcoin::Address>, _>>()?;
 
-        let is_accepted = futures::stream::iter(&addresses)
-            .any(|address| async { self.can_accept(&address.to_string()).await })
-            .await;
+        // let is_accepted = futures::stream::iter(&addresses)
+        //     .any(|address| async { self.can_accept(&address.to_string()).await })
+        //     .await;
+        let is_accepted = true;
 
         let msg = message::SignerDepositDecision {
             txid: request.txid.into(),

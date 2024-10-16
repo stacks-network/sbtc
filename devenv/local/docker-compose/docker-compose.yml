@@ -10,7 +10,7 @@ x-common-vars:
   - &BITCOIN_RPC_PASS devnet
   - &MINE_INTERVAL ${MINE_INTERVAL:-1s}
   - &MINE_INTERVAL_EPOCH25 ${MINE_INTERVAL_EPOCH25:-5s} # 5 second bitcoin block times in epoch 2.5
-  - &MINE_INTERVAL_EPOCH3 ${MINE_INTERVAL_EPOCH3:-15s} # 15 second bitcoin block times in epoch 3
+  - &MINE_INTERVAL_EPOCH3 ${MINE_INTERVAL_EPOCH3:-30s} # 30 second bitcoin block times in epoch 3
   - &NAKAMOTO_BLOCK_INTERVAL 2 # seconds to wait between issuing stx-transfer transactions (which triggers Nakamoto block production)
   - &STACKS_20_HEIGHT ${STACKS_20_HEIGHT:-0}
   - &STACKS_2_05_HEIGHT ${STACKS_2_05_HEIGHT:-203}
@@ -34,7 +34,7 @@ services:
       dockerfile: Dockerfile.btc
     ports:
       - "18443:18443"
-      - 28332
+      - "28332:28332"
     volumes:
       - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
     entrypoint:
@@ -87,7 +87,7 @@ services:
 
   sbtc-signer-1:
     build:
-      context: ./sbtc-signer
+      context: ../../..
       dockerfile: Dockerfile.sbtc-signer
     entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
     depends_on:
@@ -103,10 +103,12 @@ services:
       SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-2:4122,tcp://sbtc-signer-3:4122
     volumes:
       - ./sbtc-signer/signer-config.toml:/signer-config.toml
+    profiles:
+      - sbtc-signer
 
   sbtc-signer-2:
     build:
-      context: ./sbtc-signer
+      context: ../../..
       dockerfile: Dockerfile.sbtc-signer
     entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
     depends_on:
@@ -122,10 +124,12 @@ services:
       SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-1:4122,tcp://sbtc-signer-3:4122
     volumes:
       - ./sbtc-signer/signer-config.toml:/signer-config.toml
+    profiles:
+      - sbtc-signer
 
   sbtc-signer-3:
     build:
-      context: ./sbtc-signer
+      context: ../../..
       dockerfile: Dockerfile.sbtc-signer
     entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
     depends_on:
@@ -141,6 +145,8 @@ services:
       SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-1:4122,tcp://sbtc-signer-2:4122
     volumes:
       - ./sbtc-signer/signer-config.toml:/signer-config.toml
+    profiles:
+      - sbtc-signer
 
   mariadb:
     image: mariadb:10.5.21
@@ -153,6 +159,8 @@ services:
       MYSQL_USER: "mempool"
       MYSQL_PASSWORD: "mempool"
       MYSQL_ROOT_PASSWORD: "admin"
+    profiles:
+      - bitcoin-mempool
 
   bitcoin-miner:
     build:
@@ -391,6 +399,8 @@ services:
       RUST_BACKTRACE: 1
       BITCOIN_RPC_HOST: "bitcoin"
       BITCOIN_RPC_PORT: "18443"
+    profiles:
+      - bitcoin-mempool
 
   mempool-web:
     image: mempool/frontend:latest
@@ -408,6 +418,8 @@ services:
       FRONTEND_HTTP_PORT: "8083"
       BACKEND_MAINNET_HTTP_HOST: "mempool-api"
     command: "./wait-for mariadb:3306 --timeout=720 -- nginx -g 'daemon off;'"
+    profiles:
+      - bitcoin-mempool
 
   mempool-api:
     image: mempool/backend:latest
@@ -438,18 +450,18 @@ services:
       DATABASE_PASSWORD: "mempool"
       STATISTICS_ENABLED: "true"
     command: "./wait-for-it.sh mariadb:3306 --timeout=720 --strict -- ./start.sh"
+    profiles:
+      - bitcoin-mempool
 
   # Emily services
 
   # Hosts the DynamoDB Tables.
   dynamodb:
     image: "amazon/dynamodb-local:latest"
-    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath ./data"
+    command: "-jar DynamoDBLocal.jar -sharedDb"
     ports:
       - "8000:8000"
     user: root
-    volumes:
-      - "../../dynamodb/data:/home/dynamodblocal/data"
 
   # Modifies the CDK template and creates DynamoDB Tables if necessary.
   emily-aws-setup:
