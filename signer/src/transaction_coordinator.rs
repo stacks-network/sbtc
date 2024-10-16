@@ -223,13 +223,6 @@ where
             .inspect_err(|_| tracing::warn!("Could not acquire a lock within the DKG timeout; something may be wrong with DKG"))
             .map_err(|_| Error::DkgInProgress)?;
 
-        // let bitcoin_chain_tip = self
-        //     .context
-        //     .get_storage()
-        //     .get_bitcoin_canonical_chain_tip()
-        //     .await?
-        //     .ok_or(Error::NoChainTip)?;
-
         // We first need to determine if we are the coordinator, so we need
         // to know the current signing set. If we are the coordinator then
         // we need to know the aggregate key for constructing bitcoin
@@ -304,7 +297,10 @@ where
         // Get the current aggregate key and signer set. `check_dkg()` will run DKG
         // if it hasn't been run yet and we are the coordinator. See the `check_dkg()`
         // function docs for more details. This will return an error if we can't
-        // achieve a valid DKG state.
+        // achieve a valid DKG state. Really this should just be grabbing the existing
+        // DKG state since in order to get here a `BitcoinBlockObserved` signal must
+        // have been received first, and that would have run DKG and blocked the coordinators
+        // event loop until it was done. But this felt like an OK interim solution.
         let (aggregate_key, signer_public_keys) = self.check_dkg(&bitcoin_chain_tip).await?;
 
         self.construct_and_sign_bitcoin_sbtc_transactions(
