@@ -403,7 +403,7 @@ where
     /// Write the bitcoin block to the database. We also write any
     /// transactions that are spend to any of the signers `scriptPubKey`s
     async fn write_bitcoin_block(
-        &mut self, 
+        &mut self,
         block: &bitcoin::Block,
         blocks: &[nakamoto::NakamotoBlock],
     ) -> Result<(), Error> {
@@ -414,7 +414,7 @@ where
                 .expect("Failed to get block height"),
             parent_hash: block.header.prev_blockhash.into(),
             // hacky thing
-            confirms: blocks  // here
+            confirms: blocks // here
                 .iter()
                 .map(|b| model::StacksBlock::try_from(b).unwrap().block_hash)
                 .collect(),

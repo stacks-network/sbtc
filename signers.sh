@@ -18,6 +18,7 @@ LOG_SETTINGS="debug" # Default log level
 LOG_SETTINGS="$LOG_SETTINGS,signer::stacks::api=info" # Stacks API
 LOG_SETTINGS="$LOG_SETTINGS,hyper=info" # Hyper
 LOG_SETTINGS="$LOG_SETTINGS,sqlx=info" # SQLx
+LOG_SETTINGS="$LOG_SETTINGS,reqwest=info" # Reqwest
 # LibP2P
 LOG_SETTINGS="$LOG_SETTINGS,netlink_proto=info,libp2p_autonat=info,libp2p_gossipsub=info,multistream_select=info,yamux=info,libp2p_ping=info,libp2p_kad=info,libp2p_swarm=info,libp2p_tcp=info,libp2p_identify=info,libp2p_dns=info"
 

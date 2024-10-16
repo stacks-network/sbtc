@@ -295,8 +295,20 @@ fn create_bitcoin_deposit_transaction(
         lock_time: absolute::LockTime::ZERO,
     };
 
-    println!("deposit script: {:?}", deposit_script.deposit_script().as_bytes().to_lower_hex_string());
-    println!("reclaim script: {:?}", reclaim_script.reclaim_script().as_bytes().to_lower_hex_string());
+    println!(
+        "deposit script: {:?}",
+        deposit_script
+            .deposit_script()
+            .as_bytes()
+            .to_lower_hex_string()
+    );
+    println!(
+        "reclaim script: {:?}",
+        reclaim_script
+            .reclaim_script()
+            .as_bytes()
+            .to_lower_hex_string()
+    );
 
     Ok((unsigned_tx, deposit_script, reclaim_script))
 }

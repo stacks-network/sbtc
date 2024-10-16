@@ -28,7 +28,9 @@ pub async fn run(
     // tasks can access the swarm.
     let topic = TOPIC.clone();
 
-    swarm.lock().await
+    swarm
+        .lock()
+        .await
         .behaviour_mut()
         .gossipsub
         .subscribe(&TOPIC)
@@ -38,7 +40,9 @@ pub async fn run(
 
     let poll_outbound = async {
         loop {
-            let Ok(SignerSignal::Command(SignerCommand::P2PPublish(payload))) = signal_rx.recv().await else {
+            let Ok(SignerSignal::Command(SignerCommand::P2PPublish(payload))) =
+                signal_rx.recv().await
+            else {
                 continue;
             };
 
@@ -49,77 +53,89 @@ pub async fn run(
     let poll_swarm = async {
         loop {
             //tracing::info!("polling swarm");
-            let event = match tokio::time::timeout(Duration::from_millis(5), swarm.lock().await.next()).await {
-                Ok(event) => event,
-                Err(_) => None,
-            };
+            let event =
+                match tokio::time::timeout(Duration::from_millis(5), swarm.lock().await.next())
+                    .await
+                {
+                    Ok(event) => event,
+                    Err(_) => None,
+                };
             if let Some(event) = event {
-
                 let swarm = &mut *swarm.lock().await;
 
                 match event {
                     // mDNS autodiscovery events. These are used by the local
                     // peer to discover other peers on the local network.
-                    SwarmEvent::Behaviour(SignerBehaviorEvent::Mdns(event)) =>
-                        handle_mdns_event(swarm, event),
+                    SwarmEvent::Behaviour(SignerBehaviorEvent::Mdns(event)) => {
+                        handle_mdns_event(swarm, event)
+                    }
                     // Identify protocol events. These are used by the relay to
                     // help determine/verify its own address.
-                    SwarmEvent::Behaviour(SignerBehaviorEvent::Identify(event)) =>
-                        handle_identify_event(swarm, event),
+                    SwarmEvent::Behaviour(SignerBehaviorEvent::Identify(event)) => {
+                        handle_identify_event(swarm, event)
+                    }
                     // Gossipsub protocol events.
-                    SwarmEvent::Behaviour(SignerBehaviorEvent::Gossipsub(event)) =>
-                        handle_gossipsub_event(swarm, event, &signal_tx),
+                    SwarmEvent::Behaviour(SignerBehaviorEvent::Gossipsub(event)) => {
+                        handle_gossipsub_event(swarm, event, &signal_tx)
+                    }
                     // AutoNAT client protocol events.
-                    SwarmEvent::Behaviour(SignerBehaviorEvent::AutonatClient(event)) =>
-                        handle_autonat_client_event(swarm, event),
+                    SwarmEvent::Behaviour(SignerBehaviorEvent::AutonatClient(event)) => {
+                        handle_autonat_client_event(swarm, event)
+                    }
                     // AutoNAT server protocol events.
-                    SwarmEvent::Behaviour(SignerBehaviorEvent::AutonatServer(event)) =>
-                        handle_autonat_server_event(swarm, event),
+                    SwarmEvent::Behaviour(SignerBehaviorEvent::AutonatServer(event)) => {
+                        handle_autonat_server_event(swarm, event)
+                    }
                     SwarmEvent::NewListenAddr { address, .. } => {
                         tracing::info!(%address, "Listener started");
-                    },
+                    }
                     SwarmEvent::ExpiredListenAddr { address, .. } => {
                         tracing::debug!(%address, "Listener expired");
-                    },
+                    }
                     SwarmEvent::ListenerClosed { addresses, reason, .. } => {
                         tracing::info!(?addresses, ?reason, "Listener closed");
-                    },
+                    }
                     SwarmEvent::ListenerError { listener_id, error } => {
                         tracing::warn!(%listener_id, %error, "Listener error");
-                    },
+                    }
                     SwarmEvent::Dialing { peer_id, connection_id } => {
                         tracing::info!(peer_id = ?peer_id, %connection_id, "Dialing peer");
-                    },
+                    }
                     SwarmEvent::ConnectionEstablished { endpoint, peer_id, .. } => {
                         tracing::info!(%peer_id, ?endpoint, "Connected to peer");
-                    },
+                    }
                     SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                         tracing::info!(%peer_id, ?cause, "Connection closed");
-                    },
+                    }
                     SwarmEvent::IncomingConnection { local_addr, send_back_addr, .. } => {
                         tracing::debug!(%local_addr, %send_back_addr, "Incoming connection");
-                    },
+                    }
                     SwarmEvent::Behaviour(SignerBehaviorEvent::Ping(ping)) => {
                         tracing::trace!("ping received: {:?}", ping);
-                    },
+                    }
                     SwarmEvent::OutgoingConnectionError { connection_id, error, .. } => {
                         tracing::warn!(%connection_id, %error, "outgoing connection error");
-                    },
-                    SwarmEvent::IncomingConnectionError { local_addr, send_back_addr, error, .. } => {
+                    }
+                    SwarmEvent::IncomingConnectionError {
+                        local_addr,
+                        send_back_addr,
+                        error,
+                        ..
+                    } => {
                         tracing::warn!(%local_addr, %send_back_addr, %error, "incoming connection error");
-                    },
+                    }
                     SwarmEvent::NewExternalAddrCandidate { address } => {
                         tracing::debug!(%address, "New external address candidate");
-                    },
+                    }
                     SwarmEvent::ExternalAddrConfirmed { address } => {
                         tracing::debug!(%address, "External address confirmed");
-                    },
+                    }
                     SwarmEvent::ExternalAddrExpired { address } => {
                         tracing::debug!(%address, "External address expired");
-                    },
+                    }
                     SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
                         tracing::debug!(%peer_id, %address, "New external address of peer");
-                    },
+                    }
                     // The derived `SwarmEvent` is marked as #[non_exhaustive], so we must have a
                     // catch-all.
                     _ => tracing::trace!("unhandled swarm event"),
@@ -147,7 +163,9 @@ pub async fn run(
                     }
                 };
 
-                let _ = swarm.lock().await
+                let _ = swarm
+                    .lock()
+                    .await
                     .behaviour_mut()
                     .gossipsub
                     .publish(topic.clone(), encoded_msg)
@@ -182,8 +200,6 @@ pub async fn run(
     }
 
     tracing::info!("libp2p event loop terminated");
-
-
 
     // loop {
     //     tokio::select! {
@@ -358,11 +374,11 @@ fn handle_autonat_server_event(_: &mut Swarm<SignerBehavior>, event: autonat::v2
             result: Err(error),
         } => {
             tracing::warn!(
-                ?all_addrs, 
-                %client, 
-                %tested_addr, 
-                %data_amount, 
-                %error, 
+                ?all_addrs,
+                %client,
+                %tested_addr,
+                %data_amount,
+                %error,
                 "AutoNAT (server) test failed");
         }
     }
