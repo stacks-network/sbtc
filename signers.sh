@@ -1,5 +1,8 @@
 #!/usr/bin/env sh
 
+# shellcheck disable=SC2059
+# shellcheck source=/dev/null
+
 # Encoding
 LC_CTYPE=en_US.UTF-8
 
@@ -11,19 +14,27 @@ BOLD='\e[1m' # Bold
 
 DEVENV="$PWD/devenv/local"
 
+LOG_SETTINGS="debug" # Default log level
+LOG_SETTINGS="$LOG_SETTINGS,signer::stacks::api=info" # Stacks API
+LOG_SETTINGS="$LOG_SETTINGS,hyper=info" # Hyper
+LOG_SETTINGS="$LOG_SETTINGS,sqlx=info" # SQLx
+# LibP2P
+LOG_SETTINGS="$LOG_SETTINGS,netlink_proto=info,libp2p_autonat=info,libp2p_gossipsub=info,multistream_select=info,yamux=info,libp2p_ping=info,libp2p_kad=info,libp2p_swarm=info,libp2p_tcp=info,libp2p_identify=info,libp2p_dns=info"
+
+# Run the specified number of signers
 exec_run() {
   if [ "$1" -eq 1 ]; then
     printf "${RED}ERROR:${NC} At least 2 signers are required\n"
     exit 1
   fi
 
-  printf "${GRAY}Running ${NC}${BOLD}$@${NC} signers\n"
-  SIGNER1_KEY=$(. $DEVENV/envs/signer-1.env; echo "$SIGNER_PUBKEY")
-  SIGNER2_KEY=$(. $DEVENV/envs/signer-2.env; echo "$SIGNER_PUBKEY")
-  SIGNER3_KEY=$(. $DEVENV/envs/signer-3.env; echo "$SIGNER_PUBKEY")
+  printf "${GRAY}Running ${NC}${BOLD}$*${NC} signers\n"
+  SIGNER1_KEY=$(. "$DEVENV/envs/signer-1.env"; echo "$SIGNER_PUBKEY")
+  SIGNER2_KEY=$(. "$DEVENV/envs/signer-2.env"; echo "$SIGNER_PUBKEY")
+  SIGNER3_KEY=$(. "$DEVENV/envs/signer-3.env"; echo "$SIGNER_PUBKEY")
 
-  docker compose -f $DEVENV/docker-compose/docker-compose.yml down postgres-1 postgres-2 postgres-3 -v
-  docker compose -f $DEVENV/docker-compose/docker-compose.yml up -d postgres-1 postgres-2 postgres-3
+  docker compose -f "$DEVENV/docker-compose/docker-compose.yml" down postgres-1 postgres-2 postgres-3 -v
+  docker compose -f "$DEVENV/docker-compose/docker-compose.yml" up -d postgres-1 postgres-2 postgres-3
 
   if [ "$1" -eq 2 ]; then
     BOOTSTRAP_SIGNER_SET="$SIGNER1_KEY,$SIGNER2_KEY"
@@ -31,17 +42,41 @@ exec_run() {
     BOOTSTRAP_SIGNER_SET="$SIGNER1_KEY,$SIGNER2_KEY,$SIGNER3_KEY"
   fi
 
-  RESULT1=$(. $DEVENV/envs/signer-1.env && SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET="$BOOTSTRAP_SIGNER_SET" && cargo run --bin sbtc-signer -- --config $DEVENV/docker-compose/sbtc-signer/signer-config.toml --migrate-db > $PWD/target/signer-1.log 2>&1 &)
+  printf "${BOLD}Using bootstrap signer set:${NC} $BOOTSTRAP_SIGNER_SET\n"
+
+  # Run the first signer (always).
+  (
+    . "$DEVENV/envs/signer-1.env" \
+    && RUST_LOG="$LOG_SETTINGS" \
+    && SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET="$BOOTSTRAP_SIGNER_SET" \
+    && cargo run --bin sbtc-signer -- --config "$DEVENV/docker-compose/sbtc-signer/signer-config.toml" --migrate-db > "$PWD/target/signer-1.log" 2>&1 \
+    &
+  )
+  # Run the second signer if the requested signer count >= 2.
   if [ "$1" -ge 2 ]; then
-    RESULT2=$(. $DEVENV/envs/signer-2.env && SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET="$BOOTSTRAP_SIGNER_SET" && cargo run --bin sbtc-signer -- --config $DEVENV/docker-compose/sbtc-signer/signer-config.toml --migrate-db > $PWD/target/signer-2.log 2>&1 &)
+    (
+      . "$DEVENV/envs/signer-2.env" \
+      && RUST_LOG="$LOG_SETTINGS" \
+      && SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET="$BOOTSTRAP_SIGNER_SET" \
+      && cargo run --bin sbtc-signer -- --config "$DEVENV/docker-compose/sbtc-signer/signer-config.toml" --migrate-db > "$PWD/target/signer-2.log" 2>&1 \
+      &
+    )
   fi
+  # Run the third signer if the requested signer count >= 3.
   if [ "$1" -ge 3 ]; then
-    RESULT3=$(. $DEVENV/envs/signer-3.env && SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET="$BOOTSTRAP_SIGNER_SET" && cargo run --bin sbtc-signer -- --config $DEVENV/docker-compose/sbtc-signer/signer-config.toml --migrate-db > $PWD/target/signer-3.log 2>&1 &)
+    (
+      . "$DEVENV/envs/signer-3.env" \
+      && RUST_LOG="$LOG_SETTINGS" \
+      && SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET="$BOOTSTRAP_SIGNER_SET" \
+      && cargo run --bin sbtc-signer -- --config "$DEVENV/docker-compose/sbtc-signer/signer-config.toml" --migrate-db > "$PWD/target/signer-3.log" 2>&1 \
+      &
+    )
   fi
 
   printf "${GRAY}$* signers started${NC}\n"
 }
 
+# The main function
 main() {
   if [ "$#" -eq 0 ]; then
     printf "${RED}ERROR:${NC} No command provided\n"
@@ -50,14 +85,20 @@ main() {
 
   # Parse the command line arguments
   case "$1" in
+    # Run the specified number of signers. Valid values are 2 or 3.
     "run")
       shift # Shift the command off the argument list
       exec_run "$@"
     ;;
+    # Stop all running signers by killing the processes.
     "stop")
       ps -ef | awk  '/[s]btc-signer/{print $2}' | xargs kill -9
     ;;
+    *)
+      printf "${RED}ERROR:${NC} Unknown command: $1\n"
+      exit 1
   esac
 }
 
+# Run the main function with all the command line arguments
 main "$@"

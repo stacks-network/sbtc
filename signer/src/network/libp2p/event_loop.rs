@@ -14,6 +14,7 @@ use crate::network::Msg;
 use super::swarm::{SignerBehavior, SignerBehaviorEvent};
 use super::TOPIC;
 
+#[tracing::instrument(skip_all, name = "p2p")]
 pub async fn run(
     term: &mut TerminationHandle,
     swarm: Arc<Mutex<Swarm<SignerBehavior>>>,
