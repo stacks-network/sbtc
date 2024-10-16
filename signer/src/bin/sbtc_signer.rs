@@ -336,7 +336,6 @@ async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
         emily_client,
         deposit_requests: HashMap::new(),
         horizon: 1,
-        network: config.signer.network.into(),
     };
 
     block_observer.run().await

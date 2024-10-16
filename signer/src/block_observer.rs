@@ -59,8 +59,6 @@ pub struct BlockObserver<Context, StacksClient, EmilyClient, BlockHashStream> {
     /// An in memory map of deposit requests that haven't been confirmed
     /// on bitcoin yet.
     pub deposit_requests: HashMap<Txid, Vec<Deposit>>,
-    /// The bitcoin network
-    pub network: bitcoin::Network,
 }
 
 /// A full "deposit", containing the bitcoin transaction and a fully
@@ -417,7 +415,7 @@ where
     /// Write the bitcoin block to the database. We also write any
     /// transactions that are spend to any of the signers `scriptPubKey`s
     async fn write_bitcoin_block(
-        &mut self, 
+        &mut self,
         block: &bitcoin::Block,
         blocks: &[nakamoto::NakamotoBlock],
     ) -> Result<(), Error> {
@@ -428,7 +426,7 @@ where
                 .expect("Failed to get block height"),
             parent_hash: block.header.prev_blockhash.into(),
             // hacky thing
-            confirms: blocks  // here
+            confirms: blocks // here
                 .iter()
                 .map(|b| model::StacksBlock::try_from(b).unwrap().block_hash)
                 .collect(),
@@ -490,7 +488,6 @@ mod tests {
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
             deposit_requests: HashMap::new(),
-            network: bitcoin::Network::Regtest,
         };
 
         block_observer.run().await.expect("block observer failed");
@@ -610,7 +607,6 @@ mod tests {
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
             deposit_requests: HashMap::new(),
-            network: bitcoin::Network::Regtest,
         };
 
         block_observer.load_latest_deposit_requests().await.unwrap();
@@ -688,7 +684,6 @@ mod tests {
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
             deposit_requests: HashMap::new(),
-            network: bitcoin::Network::Regtest,
         };
 
         block_observer.load_latest_deposit_requests().await.unwrap();
@@ -786,7 +781,6 @@ mod tests {
             bitcoin_blocks: test_harness.spawn_block_hash_stream(),
             horizon: 1,
             deposit_requests: HashMap::new(),
-            network: bitcoin::Network::Regtest,
         };
 
         // First we try extracting the transactions from a block that does

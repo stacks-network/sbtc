@@ -387,7 +387,6 @@ async fn deposit_e2e() {
         emily_client: emily_client.clone(),
         deposit_requests: HashMap::new(),
         horizon: 1,
-        network: bitcoin::Network::Regtest,
     };
 
     let block_observer_handle = tokio::spawn(async move { block_observer.run().await });
