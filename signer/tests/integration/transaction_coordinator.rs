@@ -17,6 +17,7 @@ use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use emily_client::apis::deposit_api;
+use emily_client::apis::testing_api;
 use emily_client::models::CreateDepositRequestBody;
 use fake::Fake as _;
 use fake::Faker;
@@ -638,6 +639,11 @@ async fn run_dkg_from_scratch() {
     }
 }
 
+/// To run this test, concurrently run:
+///  - make emily-integration-env-up
+///  - AWS_ACCESS_KEY_ID=foo AWS_SECRET_ACCESS_KEY=bar AWS_REGION=us-west-2 make emily-server
+///  - docker compose --file docker-compose.test.yml up
+/// then, once everything is up and running, run this test.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn sign_bitcoin_transaction() {
@@ -646,29 +652,20 @@ async fn sign_bitcoin_transaction() {
     let (rpc, faucet) = regtest::initialize_blockchain();
     signer::logging::setup_logging("info", false);
 
-    // We need to populate our databases, so let's generate some data.
-    let test_params = testing::storage::model::Params {
-        num_bitcoin_blocks: 10,
-        num_stacks_blocks_per_bitcoin_block: 1,
-        num_deposit_requests_per_block: 0,
-        num_withdraw_requests_per_block: 0,
-        num_signers_per_request: 0,
-    };
-    let test_data = TestData::generate(&mut rng, &[], &test_params);
-
-    let iter: Vec<(Keypair, TestData)> = signer_key_pairs
-        .iter()
-        .copied()
-        .zip(std::iter::repeat_with(|| test_data.clone()))
-        .collect();
-
+    // We need to populate our databases, so let's fetch the data.
     let emily_client =
         EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
+
+    testing_api::wipe_databases(emily_client.config())
+        .await
+        .unwrap();
+
+    let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
 
     // 1. Create a database, an associated context, and a Keypair for each of
     //    the signers in the signing set.
     let mut signers = Vec::new();
-    for (kp, data) in iter {
+    for kp in signer_key_pairs.iter() {
         let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
         let db = testing::storage::new_test_database(db_num, true).await;
         let ctx = TestContext::builder()
@@ -681,7 +678,7 @@ async fn sign_bitcoin_transaction() {
         // 2. Populate each database with the same data, so that they
         //    have the same view of the canonical bitcoin blockchain.
         //    This ensures that they participate in DKG.
-        data.write_to(&db).await;
+        backfill_bitcoin_blocks(&db, rpc, &chain_tip_info.hash).await;
 
         signers.push((ctx, db, kp));
     }
@@ -871,9 +868,8 @@ async fn sign_bitcoin_transaction() {
 
     tokio::time::sleep(Duration::from_secs(4)).await;
 
-
-    let unspent = rpc.list_unspent(None, None, None, None, None).unwrap();
-    println!("Unspent: {:?}", unspent);
+    // let unspent = rpc.list_unspent(None, None, None, None, None).unwrap();
+    // println!("Unspent: {:?}", unspent);
 
     for (_, db, _) in signers {
         testing::storage::drop_db(db).await;
