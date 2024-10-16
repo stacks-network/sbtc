@@ -545,6 +545,23 @@ where
             }
             wsts::net::Message::NonceRequest(_) => {
                 // TODO(296): Validate that message is the appropriate sighash
+                if !self.wsts_state_machines.contains_key(&msg.txid) {
+                    let (maybe_aggregate_key, _) = self
+                        .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
+                        .await?;
+
+                    let state_machine = wsts_state_machine::SignerStateMachine::load(
+                        &self.context.get_storage_mut(),
+                        maybe_aggregate_key.ok_or(Error::MissingDkgShares)?,
+                        self.threshold,
+                        self.signer_private_key,
+                    )
+                    .await?;
+                    // Note that we may already have a state machine for this txid, but we need
+                    // a new one as we may be signing a different output.
+                    self.wsts_state_machines.insert(msg.txid, state_machine);
+                }
+
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
