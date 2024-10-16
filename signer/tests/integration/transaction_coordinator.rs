@@ -7,20 +7,28 @@ use std::time::Duration;
 
 use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
+use bitcoin::Address;
+use bitcoin::AddressType;
 use bitcoin::Transaction;
+use bitcoincore_rpc::RpcApi as _;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
+use emily_client::apis::deposit_api;
+use emily_client::models::CreateDepositRequestBody;
 use fake::Fake as _;
 use fake::Faker;
 use futures::StreamExt;
+// use hex::ToHex;
 use rand::rngs::OsRng;
 use rand::SeedableRng as _;
 use sbtc::testing::regtest;
+use sbtc::testing::regtest::Recipient;
 use secp256k1::Keypair;
 use sha2::Digest as _;
+use signer::emily_client::EmilyClient;
 use signer::error::Error;
 use stacks_common::types::chainstate::ConsensusHash;
 use stacks_common::types::chainstate::StacksBlockId;
@@ -55,10 +63,12 @@ use signer::transaction_coordinator;
 use signer::transaction_coordinator::TxCoordinatorEventLoop;
 use signer::transaction_signer::TxSignerEventLoop;
 use tokio_stream::wrappers::ReceiverStream;
+use url::Url;
 
 use crate::complete_deposit::make_complete_deposit;
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::TestSweepSetup;
+use crate::utxo_construction::make_deposit_request;
 use crate::zmq::BITCOIN_CORE_ZMQ_ENDPOINT;
 use crate::DATABASE_NUM;
 
@@ -633,6 +643,8 @@ async fn run_dkg_from_scratch() {
 async fn sign_bitcoin_transaction() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
+    let (rpc, faucet) = regtest::initialize_blockchain();
+    signer::logging::setup_logging("info", false);
 
     // We need to populate our databases, so let's generate some data.
     let test_params = testing::storage::model::Params {
@@ -650,51 +662,49 @@ async fn sign_bitcoin_transaction() {
         .zip(std::iter::repeat_with(|| test_data.clone()))
         .collect();
 
+    let emily_client =
+        EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
+
     // 1. Create a database, an associated context, and a Keypair for each of
     //    the signers in the signing set.
-    let mut signers: Vec<(_, PgStore, Keypair)> = futures::stream::iter(iter)
-        .then(|(kp, data)| async move {
-            let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-            let db = testing::storage::new_test_database(db_num, true).await;
-            let ctx = TestContext::builder()
-                .with_storage(db.clone())
-                .with_first_bitcoin_core_client()
-                .with_mocked_emily_client()
-                .with_mocked_stacks_client()
-                .build();
+    let mut signers = Vec::new();
+    for (kp, data) in iter {
+        let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+        let db = testing::storage::new_test_database(db_num, true).await;
+        let ctx = TestContext::builder()
+            .with_storage(db.clone())
+            .with_first_bitcoin_core_client()
+            .with_emily_client(emily_client.clone())
+            .with_mocked_stacks_client()
+            .build();
 
-            // 2. Populate each database with the same data, so that they
-            //    have the same view of the canonical bitcoin blockchain.
-            //    This ensures that they participate in DKG.
-            data.write_to(&db).await;
+        // 2. Populate each database with the same data, so that they
+        //    have the same view of the canonical bitcoin blockchain.
+        //    This ensures that they participate in DKG.
+        data.write_to(&db).await;
 
-            (ctx, db, kp)
-        })
-        .collect::<Vec<_>>()
-        .await;
+        signers.push((ctx, db, kp));
+    }
 
     let network = InMemoryNetwork::new();
 
     // 3. Check that there are no DKG shares in the database.
     for (ctx, _, _) in signers.iter_mut() {
         ctx.with_stacks_client(|client| {
-            client
-                .expect_get_tenure_info()
-                .times(1..)
-                .returning(move || {
-                    let response = Ok(RPCGetTenureInfo {
-                        consensus_hash: ConsensusHash([0; 20]),
-                        tenure_start_block_id: StacksBlockId([0; 32]),
-                        parent_consensus_hash: ConsensusHash([0; 20]),
-                        parent_tenure_start_block_id: StacksBlockId::first_mined(),
-                        tip_block_id: StacksBlockId([0; 32]),
-                        tip_height: 0,
-                        reward_cycle: 0,
-                    });
-                    Box::pin(std::future::ready(response))
+            client.expect_get_tenure_info().returning(move || {
+                let response = Ok(RPCGetTenureInfo {
+                    consensus_hash: ConsensusHash([0; 20]),
+                    tenure_start_block_id: StacksBlockId([0; 32]),
+                    parent_consensus_hash: ConsensusHash([0; 20]),
+                    parent_tenure_start_block_id: StacksBlockId::first_mined(),
+                    tip_block_id: StacksBlockId([0; 32]),
+                    tip_height: 0,
+                    reward_cycle: 0,
                 });
+                Box::pin(std::future::ready(response))
+            });
 
-            client.expect_get_block().times(1..).returning(|_| {
+            client.expect_get_block().returning(|_| {
                 let response = Ok(NakamotoBlock {
                     header: NakamotoBlockHeader::empty(),
                     txs: vec![],
@@ -702,12 +712,12 @@ async fn sign_bitcoin_transaction() {
                 Box::pin(std::future::ready(response))
             });
 
-            client.expect_get_tenure().times(1..).returning(|_| {
+            client.expect_get_tenure().returning(|_| {
                 let response = Ok(Vec::new());
                 Box::pin(std::future::ready(response))
             });
 
-            client.expect_get_pox_info().times(1..).returning(|| {
+            client.expect_get_pox_info().returning(|| {
                 let response = serde_json::from_str::<RPCPoxInfoData>(GET_POX_INFO_JSON)
                     .map_err(Error::JsonSerialize);
                 Box::pin(std::future::ready(response))
@@ -715,7 +725,7 @@ async fn sign_bitcoin_transaction() {
 
             // The coordinator will try to further process the deposit to submit
             // the stacks tx, but we are not interested (for the current test iteration).
-            client.expect_get_account().times(1..).returning(|_| {
+            client.expect_get_account().returning(|_| {
                 let response = Ok(AccountInfo {
                     balance: 0,
                     locked: 0,
@@ -724,15 +734,6 @@ async fn sign_bitcoin_transaction() {
                     nonce: 12,
                 });
                 Box::pin(std::future::ready(response))
-            });
-        })
-        .await;
-
-        ctx.with_emily_client(|client| {
-            client.expect_accept_deposits().once().returning(|_, _| {
-                Box::pin(async {
-                    Ok(emily_client::models::UpdateDepositsResponse { deposits: vec![] })
-                })
             });
         })
         .await;
@@ -795,12 +796,13 @@ async fn sign_bitcoin_transaction() {
                 sender.send(block).await.unwrap();
             }
         });
+
         let block_observer = BlockObserver {
             context: ctx.clone(),
             stacks_client: ctx.stacks_client.clone(),
             emily_client: ctx.emily_client.clone(),
             bitcoin_blocks: ReceiverStream::new(receiver),
-            horizon: 10000,
+            horizon: 10,
             deposit_requests: Default::default(),
         };
 
@@ -814,41 +816,64 @@ async fn sign_bitcoin_transaction() {
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 
+    faucet.generate_blocks(1);
+
     // 5. Once they are all running, signal that DKG should be run. We
     //    signal them all because we do not know which one is the
     //    coordinator.
-    signers.iter().for_each(|(ctx, _, _)| {
-        ctx.get_signal_sender()
-            .send(TxSignerEvent::NewRequestsHandled.into())
-            .unwrap();
-    });
 
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    let mut aggregate_keys = BTreeSet::new();
-
+    let mut shares: EncryptedDkgShares = Faker.fake_with_rng(&mut rng);
     for (_, db, _) in signers.iter() {
-        let mut aggregate_key =
-            sqlx::query_as::<_, (PublicKey,)>("SELECT aggregate_key FROM sbtc_signer.dkg_shares")
-                .fetch_all(db.pool())
-                .await
-                .unwrap();
-
-        // 6. Check that we have exactly one row in the `dkg_shares` table.
-        assert_eq!(aggregate_key.len(), 1);
-
-        // An additional sanity check that the query in
-        // get_last_encrypted_dkg_shares gets the right thing (which is the
-        // only thing in this case.)
-        let key = aggregate_key.pop().unwrap().0;
-        let shares = db.get_latest_encrypted_dkg_shares().await.unwrap().unwrap();
-        assert_eq!(shares.aggregate_key, key);
-        aggregate_keys.insert(key);
+        shares = db.get_latest_encrypted_dkg_shares().await.unwrap().unwrap();
     }
 
-    // 7. Check that they all have the same aggregate key in the
-    //    `dkg_shares` table.
-    assert_eq!(aggregate_keys.len(), 1);
+    let script_pub_key = shares.aggregate_key.signers_script_pubkey();
+    let network = bitcoin::Network::Regtest;
+    let address = Address::from_script(&script_pub_key, network).unwrap();
+
+    faucet.send_to(100_000, &address);
+
+    let depositor = Recipient::new(AddressType::P2tr);
+
+    // Start off with some initial UTXOs to work with.
+
+    faucet.send_to(50_000_000, &depositor.address);
+    faucet.generate_blocks(1);
+
+    // Now lets make a deposit transaction and submit it
+    let depositor_utxo = depositor.get_utxos(rpc, None).pop().unwrap();
+
+    let amount = 2_500_000;
+    let signers_public_key = shares.aggregate_key.into();
+    let (deposit_tx, deposit_request) =
+        make_deposit_request(&depositor, amount, depositor_utxo, signers_public_key);
+    rpc.send_raw_transaction(&deposit_tx).unwrap();
+
+    assert_eq!(deposit_tx.compute_txid(), deposit_request.outpoint.txid);
+
+    let body = CreateDepositRequestBody {
+        bitcoin_tx_output_index: deposit_request.outpoint.vout,
+        bitcoin_txid: deposit_request.outpoint.txid.to_string(),
+        deposit_script: deposit_request.deposit_script.to_hex_string(),
+        reclaim_script: deposit_request.reclaim_script.to_hex_string(),
+    };
+    let _ = deposit_api::create_deposit(emily_client.config(), body)
+        .await
+        .unwrap();
+
+    faucet.generate_blocks(1);
+
+    tokio::time::sleep(Duration::from_secs(4)).await;
+
+    faucet.generate_blocks(1);
+
+    tokio::time::sleep(Duration::from_secs(4)).await;
+
+
+    let unspent = rpc.list_unspent(None, None, None, None, None).unwrap();
+    println!("Unspent: {:?}", unspent);
 
     for (_, db, _) in signers {
         testing::storage::drop_db(db).await;

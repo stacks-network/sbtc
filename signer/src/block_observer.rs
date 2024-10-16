@@ -187,8 +187,10 @@ where
 
     #[tracing::instrument(skip(self))]
     async fn load_latest_deposit_requests(&mut self) -> Result<(), Error> {
+        tracing::info!("loading latest deposit requests from Emily");
         let deposit_requests = self.emily_client.get_deposits().await?;
 
+        tracing::info!(num_requests = %deposit_requests.len(), "received response from emily");
         for request in deposit_requests {
             let deposit = request
                 .validate(&self.context.get_bitcoin_client())
