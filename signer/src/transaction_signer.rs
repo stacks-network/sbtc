@@ -305,6 +305,7 @@ where
                 withdrawal_count = handled_withdrawals,
                 "handled new requests; signalling to the application"
             );
+            
             self.context
                 .signal(TxSignerEvent::NewRequestsHandled.into())?;
         } else {
