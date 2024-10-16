@@ -257,31 +257,59 @@ where
 
     #[tracing::instrument(skip(self))]
     async fn handle_new_requests(&mut self) -> Result<(), Error> {
+        // Get the Bitcoin chain tip.
         let bitcoin_chain_tip = self
             .context
             .get_storage()
             .get_bitcoin_canonical_chain_tip()
-            .await?
+            .await
+            .inspect_err(|error| tracing::warn!(%error, "unable to get bitcoin chain tip"))?
             .ok_or(Error::NoChainTip)?;
 
+        tracing::debug!(%bitcoin_chain_tip, "handling new deposit requests");
+        let mut handled_deposits = 0;
         for deposit_request in self
             .get_pending_deposit_requests(&bitcoin_chain_tip)
             .await?
         {
-            self.handle_pending_deposit_request(deposit_request, &bitcoin_chain_tip)
-                .await?;
+            tracing::debug!(txid = %deposit_request.txid, "handling new deposit request");
+            if let Err(error) = self
+                .handle_pending_deposit_request(&deposit_request, &bitcoin_chain_tip)
+                .await
+            {
+                tracing::warn!(%error, txid = %deposit_request.txid, "error handling pending deposit request");
+            }
+            handled_deposits += 1;
         }
 
-        for withdraw_request in self
-            .get_pending_withdraw_requests(&bitcoin_chain_tip)
+        tracing::debug!(%bitcoin_chain_tip, "handling new withdrawal requests");
+        let mut handled_withdrawals = 0;
+        for withdrawal_request in self
+            .get_pending_withdrawal_requests(&bitcoin_chain_tip)
             .await?
         {
-            self.handle_pending_withdrawal_request(withdraw_request, &bitcoin_chain_tip)
-                .await?;
+            tracing::debug!(txid = %withdrawal_request.txid, "handling new withdrawal request");
+            if let Err(error) = self
+                .handle_pending_withdrawal_request(&withdrawal_request, &bitcoin_chain_tip)
+                .await
+            {
+                tracing::warn!(%error, txid = %withdrawal_request.txid, "error handling pending withdrawal request");
+                continue;
+            }
+            handled_withdrawals += 1;
         }
 
-        self.context
-            .signal(TxSignerEvent::NewRequestsHandled.into())?;
+        if handled_deposits + handled_withdrawals > 0 {
+            tracing::debug!(
+                deposit_count = handled_deposits,
+                withdrawal_count = handled_withdrawals,
+                "handled new requests; signalling to the application"
+            );
+            self.context
+                .signal(TxSignerEvent::NewRequestsHandled.into())?;
+        } else {
+            tracing::debug!("no new requests were handled");
+        }
 
         Ok(())
     }
@@ -620,7 +648,7 @@ where
     }
 
     #[tracing::instrument(skip(self))]
-    async fn get_pending_withdraw_requests(
+    async fn get_pending_withdrawal_requests(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Vec<model::WithdrawalRequest>, Error> {
@@ -633,9 +661,10 @@ where
     #[tracing::instrument(skip(self))]
     async fn handle_pending_deposit_request(
         &mut self,
-        request: model::DepositRequest,
+        request: &model::DepositRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
+        // TODO: This is commented out due to an error parsing the bitcoin address
         //let bitcoin_network = bitcoin::Network::from(self.context.config().signer.network);
         //let params = bitcoin_network.params();
         // let addresses = request
@@ -681,7 +710,7 @@ where
     #[tracing::instrument(skip(self))]
     async fn handle_pending_withdrawal_request(
         &mut self,
-        withdrawal_request: model::WithdrawalRequest,
+        withdrawal_request: &model::WithdrawalRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
         // TODO: Do we want to do this on the sender address or the

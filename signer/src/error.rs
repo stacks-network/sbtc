@@ -314,6 +314,10 @@ pub enum Error {
     #[error("missing dkg shares")]
     MissingDkgShares,
 
+    /// DKG coordination already in progress
+    #[error("DKG coordination already in progress")]
+    DkgInProgress,
+
     /// Missing public key
     #[error("missing public key")]
     MissingPublicKey,

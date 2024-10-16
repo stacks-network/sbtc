@@ -7,10 +7,11 @@
 LC_CTYPE=en_US.UTF-8
 
 # Colors
-GRAY='\e[0;90m'        # Gray
+GRAY='\e[0;90m'         # Gray
 RED='\e[0;31m'          # Red
-NC='\e[0m' # No Color
-BOLD='\e[1m' # Bold
+NC='\e[0m'              # No Color
+BOLD='\e[1m'            # Bold
+WHITE='\e[0;37m'        # White
 
 DEVENV="$PWD/devenv/local"
 
@@ -34,8 +35,9 @@ exec_run() {
   SIGNER2_KEY=$(. "$DEVENV/envs/signer-2.env"; echo "$SIGNER_PUBKEY")
   SIGNER3_KEY=$(. "$DEVENV/envs/signer-3.env"; echo "$SIGNER_PUBKEY")
 
-  docker compose -f "$DEVENV/docker-compose/docker-compose.yml" down postgres-1 postgres-2 postgres-3 -v
-  docker compose -f "$DEVENV/docker-compose/docker-compose.yml" up -d postgres-1 postgres-2 postgres-3
+  printf "Restarting PostgreSQL instances\n"
+  (docker compose -f "$DEVENV/docker-compose/docker-compose.yml" down postgres-1 postgres-2 postgres-3 -v)
+  (docker compose -f "$DEVENV/docker-compose/docker-compose.yml" up -d postgres-1 postgres-2 postgres-3)
 
   if [ "$1" -eq 2 ]; then
     BOOTSTRAP_SIGNER_SET="$SIGNER1_KEY,$SIGNER2_KEY"

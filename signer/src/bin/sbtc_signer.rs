@@ -24,6 +24,7 @@ use signer::stacks::api::GetNakamotoStartHeight;
 use signer::stacks::api::StacksClient;
 use signer::stacks::api::StacksInteract;
 use signer::storage::postgres::PgStore;
+use signer::storage::DbWrite as _;
 use signer::transaction_coordinator;
 use signer::transaction_signer;
 use signer::util::ApiFallbackClient;
@@ -82,6 +83,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     wait_for_nakamoto(&context).await;
     tracing::info!("Nakamoto activation height reached, starting the signer");
 
+    // Load the historical Stacks blocks from the Stacks node and store them in the
+    // database. We do this at startup since this operation can take a while, and
+    // we want to ensure that the signer is operational before joining the network
+    // and starting to process new blocks, as this long wait time can otherwise
+    // look to other nodes like the signer is unresponsive.
+    tracing::info!("preemtively loading historical Stacks blocks");
+    let start = std::time::Instant::now();
+    load_historical_stacks_blocks(&context).await?;
+    tracing::info!(
+        elapsed_ms = start.elapsed().as_millis(),
+        "historical Stacks blocks loaded"
+    );
+
     // Run the application components concurrently. We're `join!`ing them
     // here so that every component can shut itself down gracefully when
     // the shutdown signal is received.
@@ -106,6 +120,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     Ok(())
+}
+
+/// Loads the ancestral Stacks blocks from the Stacks node and stores them in the
+/// database.
+#[tracing::instrument(skip(ctx))]
+async fn load_historical_stacks_blocks(ctx: &impl Context) -> Result<(), Error> {
+    let stacks_client = ctx.get_stacks_client();
+    let storage = ctx.get_storage_mut();
+    let info = ctx.get_stacks_client().get_tenure_info().await?;
+
+    tracing::debug!("fetching unknown ancestral blocks from Stacks");
+    let stacks_blocks =
+        signer::stacks::api::fetch_unknown_ancestors(&stacks_client, &storage, info.tip_block_id)
+            .await?;
+
+    let deployer = &ctx.config().signer.deployer;
+    let txs = signer::storage::postgres::extract_relevant_transactions(&stacks_blocks, deployer);
+    let headers = stacks_blocks
+        .iter()
+        .map(signer::storage::model::StacksBlock::try_from)
+        .collect::<Result<_, _>>()?;
+
+    let storage = ctx.get_storage_mut();
+    storage.write_stacks_block_headers(headers).await?;
+    storage.write_stacks_transactions(txs).await
 }
 
 /// A helper method that waits for the Nakamoto activation height to be reached.

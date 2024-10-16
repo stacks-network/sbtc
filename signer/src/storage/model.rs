@@ -485,6 +485,12 @@ impl From<BitcoinTx> for bitcoin::Transaction {
 #[serde(transparent)]
 pub struct BitcoinTxId(bitcoin::Txid);
 
+impl std::fmt::Display for BitcoinTxId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 impl Deref for BitcoinTxId {
     type Target = bitcoin::Txid;
     fn deref(&self) -> &Self::Target {
@@ -518,7 +524,7 @@ impl From<[u8; 32]> for BitcoinTxId {
 }
 
 /// Bitcoin block hash
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct BitcoinBlockHash(bitcoin::BlockHash);
 
@@ -539,6 +545,18 @@ impl Deref for BitcoinBlockHash {
     type Target = bitcoin::BlockHash;
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl std::fmt::Display for BitcoinBlockHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::fmt::Debug for BitcoinBlockHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

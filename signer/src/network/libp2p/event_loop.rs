@@ -53,7 +53,7 @@ pub async fn run(
     // publishes messages from the outbox to the network.
     let poll_swarm = async {
         tracing::debug!("P2P network polling started");
-        
+
         loop {
             // Poll the libp2p swarm for events, waiting for a maximum of 5ms
             // so that we don't starve the outbox.

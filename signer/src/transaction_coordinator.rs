@@ -6,6 +6,7 @@
 //! For more details, see the [`TxCoordinatorEventLoop`] documentation.
 
 use std::collections::BTreeSet;
+use std::sync::LazyLock;
 
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use futures::FutureExt;
@@ -167,6 +168,10 @@ where
                         let _ = self.process_new_blocks().await
                             .inspect_err(|error| tracing::error!(?error, "error processing new blocks; skipping this round"));
                     },
+                    Ok(SignerSignal::Event(SignerEvent::BitcoinBlockObserved)) => {
+                        let _ = self.check_dkg().await
+                            .inspect_err(|error| tracing::error!(?error, "error checking DKG; skipping this round"));
+                    },
                     // If we get an error receiving,
                     Err(error) => {
                         tracing::error!(?error, "error receiving signal; application is probably shutting down");
@@ -182,6 +187,67 @@ where
         tracing::info!("transaction coordinator event loop is stopping");
 
         Ok(())
+    }
+
+    /// Checks whether or not DKG has been run:
+    /// - If DKG has been run, the aggregate key and the signer set are
+    ///   returned.
+    /// - If DKG has NOT been run and WE ARE the coordinator, we attempt to
+    ///   coordinate DKG.
+    /// - If DKG has NOT been run and WE ARE NOT the coordinator, we return a
+    ///   `MissingDkgShares` error.
+    ///
+    /// This function is guarded by a lock to prevent multiple DKG operations
+    /// from running concurrently (on this signer). We do not wait for the lock
+    /// to be acquired, but instead return an error if the lock is already held.
+    #[tracing::instrument(skip(self))]
+    async fn check_dkg(&mut self) -> Result<(PublicKey, BTreeSet<PublicKey>), Error> {
+        static DKG_LOCK: LazyLock<tokio::sync::Mutex<()>> =
+            LazyLock::new(|| tokio::sync::Mutex::new(()));
+        let acquire_lock = tokio::time::timeout(self.dkg_max_duration, DKG_LOCK.lock());
+        let _guard = acquire_lock.await
+            .inspect_err(|_| tracing::warn!("Could not acquire a lock within the DKG timeout; something may be wrong with DKG"))
+            .map_err(|_| Error::DkgInProgress)?;
+
+        let bitcoin_chain_tip = self
+            .context
+            .get_storage()
+            .get_bitcoin_canonical_chain_tip()
+            .await?
+            .ok_or(Error::NoChainTip)?;
+
+        // We first need to determine if we are the coordinator, so we need
+        // to know the current signing set. If we are the coordinator then
+        // we need to know the aggregate key for constructing bitcoin
+        // transactions. We need to know the current signing set and the
+        // current aggregate key.
+        let (maybe_aggregate_key, signer_public_keys) = self
+            .get_signer_set_and_aggregate_key(&bitcoin_chain_tip)
+            .await?;
+
+        // If we are not the coordinator then we can't coordinate DKG, so return.
+        if !self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys)
+            && maybe_aggregate_key.is_none()
+        {
+            tracing::warn!(
+                "DKG has not been run yet and we are not the coordinator; nothing to do"
+            );
+            return Err(Error::MissingDkgShares);
+        }
+
+        if let Some(aggregate_key) = maybe_aggregate_key {
+            tracing::debug!("DKG has already been run; nothing to do");
+            return Ok((aggregate_key, signer_public_keys));
+        }
+
+        tracing::debug!("We are the coordinator and DKG has not been run yet; coordinating DKG");
+        let aggregate_key = self
+            .coordinate_dkg(&bitcoin_chain_tip)
+            .await
+            .inspect(|aggregate_key| tracing::info!(%aggregate_key, "coordinated DKG successfully"))
+            .inspect_err(|error| tracing::error!(?error, "error coordinating DKG"))?;
+
+        Ok((aggregate_key, signer_public_keys))
     }
 
     /// Receive the next message. This message could be from over the
@@ -221,32 +287,34 @@ where
             .await?
             .ok_or(Error::NoChainTip)?;
 
-        // We first need to determine if we are the coordinator, so we need
-        // to know the current signing set. If we are the coordinator then
-        // we need to know the aggregate key for constructing bitcoin
-        // transactions. We need to know the current signing set and the
-        // current aggregate key.
-        let (maybe_aggregate_key, signer_public_keys) = self
-            .get_signer_set_and_aggregate_key(&bitcoin_chain_tip)
-            .await?;
+        // // We first need to determine if we are the coordinator, so we need
+        // // to know the current signing set. If we are the coordinator then
+        // // we need to know the aggregate key for constructing bitcoin
+        // // transactions. We need to know the current signing set and the
+        // // current aggregate key.
+        // let (maybe_aggregate_key, signer_public_keys) = self
+        //     .get_signer_set_and_aggregate_key(&bitcoin_chain_tip)
+        //     .await?;
 
-        // If we are not the coordinator, then we have no business
-        // coordinating DKG or constructing bitcoin and stacks
-        // transactions, might as well return early.
-        if !self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys) {
-            tracing::debug!("We are not the coordinator, so nothing to do");
-            return Ok(());
-        }
+        // // If we are not the coordinator, then we have no business
+        // // coordinating DKG or constructing bitcoin and stacks
+        // // transactions, might as well return early.
+        // if !self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys) {
+        //     tracing::debug!("We are not the coordinator, so nothing to do");
+        //     return Ok(());
+        // }
 
-        tracing::debug!("We are the coordinator, we may need to coordinate DKG");
-        // If Self::get_signer_set_and_aggregate_key did not return an
-        // aggregate key, then we know that we have not run DKG yet. Since
-        // we are the signer, we should coordinate DKG.
-        let aggregate_key = match maybe_aggregate_key {
-            Some(key) => key,
-            // This function returns the new DKG aggregate key.
-            None => self.coordinate_dkg(&bitcoin_chain_tip).await?,
-        };
+        // tracing::debug!("We are the coordinator, we may need to coordinate DKG");
+        // // If Self::get_signer_set_and_aggregate_key did not return an
+        // // aggregate key, then we know that we have not run DKG yet. Since
+        // // we are the signer, we should coordinate DKG.
+        // let aggregate_key = match maybe_aggregate_key {
+        //     Some(key) => key,
+        //     // This function returns the new DKG aggregate key.
+        //     None => self.coordinate_dkg(&bitcoin_chain_tip).await?,
+        // };
+
+        let (aggregate_key, signer_public_keys) = self.check_dkg().await?;
 
         self.construct_and_sign_bitcoin_sbtc_transactions(
             &bitcoin_chain_tip,
