@@ -199,6 +199,7 @@ where
 
 /// Runs the shutdown-signal watcher. On Unix systems, this listens for SIGHUP,
 /// SIGTERM, and SIGINT. On other systems, it listens for Ctrl-C.
+#[tracing::instrument(skip(ctx), name = "shutdown-watcher")]
 async fn run_shutdown_signal_watcher(ctx: impl Context) -> Result<(), Error> {
     let mut term = ctx.get_termination_handle();
 
