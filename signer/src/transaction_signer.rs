@@ -286,7 +286,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn handle_signer_message(&mut self, msg: &network::Msg) -> Result<(), Error> {
         if !msg.verify() {
             tracing::warn!("unable to verify message");
@@ -389,7 +389,7 @@ where
         })
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, request))]
     async fn handle_bitcoin_transaction_sign_request(
         &mut self,
         request: &message::BitcoinTransactionSignRequest,
@@ -512,7 +512,7 @@ where
         }
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, msg), fields(txid = %msg.txid))]
     async fn handle_wsts_message(
         &mut self,
         msg: &message::WstsMessage,
@@ -589,7 +589,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, msg))]
     async fn relay_message(
         &mut self,
         txid: bitcoin::Txid,
@@ -657,8 +657,8 @@ where
         request: model::DepositRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
-        let bitcoin_network = bitcoin::Network::from(self.context.config().signer.network);
-        let params = bitcoin_network.params();
+        // let bitcoin_network = bitcoin::Network::from(self.context.config().signer.network);
+        // let params = bitcoin_network.params();
         // let addresses = request
         //     .sender_script_pub_keys
         //     .iter()
@@ -747,7 +747,7 @@ where
         client.can_accept(address).await.unwrap_or(false)
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, decision), fields(txid = %decision.txid, vout = decision.output_index))]
     async fn persist_received_deposit_decision(
         &mut self,
         decision: &message::SignerDepositDecision,

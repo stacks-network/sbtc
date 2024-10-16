@@ -6,6 +6,7 @@
 //! For more details, see the [`TxCoordinatorEventLoop`] documentation.
 
 use std::collections::BTreeSet;
+use std::ops::Deref as _;
 
 use bitcoin::TapNodeHash;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
@@ -270,7 +271,7 @@ where
 
     /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
     /// fulfilling pending deposit and withdraw requests.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, signer_public_keys))]
     async fn construct_and_sign_bitcoin_sbtc_transactions(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -335,7 +336,7 @@ where
     /// 4. Broadcast this sign-request to the network and wait for
     ///    responses.
     /// 5. If there are enough signatures then broadcast the transaction.
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(skip(self, bitcoin_aggregate_key))]
     async fn construct_and_sign_stacks_sbtc_response_transactions(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
@@ -438,13 +439,14 @@ where
     /// This function uses bitcoin-core to help with the fee assessment of
     /// the deposit request, and stacks-core for fee estimation of the
     /// transaction.
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(skip_all, fields(txid = %req.txid, vout = req.output_index))]
     async fn construct_deposit_stacks_sign_request(
         &self,
         req: model::SweptDepositRequest,
         bitcoin_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
     ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
+        tracing::info!("Attempting to construct a stacks sign request");
         let tx_info = self
             .context
             .get_bitcoin_client()
@@ -713,7 +715,7 @@ where
         }
     }
 
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(skip(self, coordinator_state_machine))]
     async fn drive_wsts_state_machine(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -810,7 +812,7 @@ where
     /// time as well. We need to do this because deposit requests are locked
     /// using OP_CSV, which lock up coins based on block height or
     /// multiples of 512 seconds measure by the median time past.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, signer_public_keys))]
     async fn get_pending_requests(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,

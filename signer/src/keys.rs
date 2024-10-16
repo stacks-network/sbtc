@@ -235,6 +235,16 @@ impl std::fmt::Display for PublicKey {
     }
 }
 
+impl FromStr for PublicKey {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        secp256k1::PublicKey::from_str(s)
+            .map(PublicKey::from)
+            .map_err(Error::InvalidPublicKey)
+    }
+}
+
 /// A private key type for the secp256k1 elliptic curve.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(transparent)]
