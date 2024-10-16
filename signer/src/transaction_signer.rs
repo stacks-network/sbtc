@@ -854,6 +854,50 @@ where
         }
     }
 
+    /// Return the signing set that can make sBTC related contract calls
+    /// along with the current aggregate key to use for locking UTXOs on
+    /// bitcoin.
+    ///
+    /// The aggregate key fetched here is the one confirmed on the
+    /// canonical Stacks blockchain as part of a `rotate-keys` contract
+    /// call. It will be the public key that is the result of a DKG run. If
+    /// there are no rotate-keys transactions on the canonical stacks
+    /// blockchain, then we fall back on the last known DKG shares row in
+    /// our database, and return None as the aggregate key if no DKG shares
+    /// can be found, implying that this signer has not participated in
+    /// DKG.
+    #[tracing::instrument(skip(self))]
+    pub async fn get_signer_set_and_aggregate_key(
+        &self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<(Option<PublicKey>, BTreeSet<PublicKey>), Error> {
+        let db = self.context.get_storage();
+
+        // We are supposed to submit a rotate-keys transaction after
+        // running DKG, but that transaction may not have been submitted
+        // yet (if we have just run DKG) or it may not have been confirmed
+        // on the canonical Stacks blockchain.
+        //
+        // If the signers have already run DKG, then we know that all
+        // participating signers should have the same view of the latest
+        // aggregate key, so we can fall back on the stored DKG shares for
+        // getting the current aggregate key and associated signing set.
+        match db.get_last_key_rotation(bitcoin_chain_tip).await? {
+            Some(last_key) => {
+                let aggregate_key = last_key.aggregate_key;
+                let signer_set = last_key.signer_set.into_iter().collect();
+                Ok((Some(aggregate_key), signer_set))
+            }
+            None => match db.get_latest_encrypted_dkg_shares().await? {
+                Some(shares) => {
+                    let signer_set = shares.signer_set_public_keys.into_iter().collect();
+                    Ok((Some(shares.aggregate_key), signer_set))
+                }
+                None => Ok((None, self.context.config().signer.bootstrap_signing_set())),
+            },
+        }
+    }
+
     fn signer_pub_key(&self) -> PublicKey {
         PublicKey::from_private_key(&self.signer_private_key)
     }
