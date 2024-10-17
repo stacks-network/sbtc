@@ -162,7 +162,7 @@ async fn get_withdrawals() {
             Some(chunksize),
         )
         .await
-        .expect("Received an error after making a valid get deposits api call.");
+        .expect("Received an error after making a valid get withdrawal api call.");
         gotten_withdrawal_info_chunks.push(response.withdrawals);
         // If there's no next token then break.
         next_token = response.next_token;
@@ -193,7 +193,7 @@ async fn get_withdrawals() {
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-async fn update_deposits() {
+async fn update_withdrawals() {
     let configuration = clean_setup().await;
 
     // Arrange.
@@ -260,7 +260,6 @@ async fn update_deposits() {
         expected_withdrawals.push(expected);
     }
 
-    // Create the deposits here.
     let update_request = UpdateWithdrawalsRequestBody {
         withdrawals: withdrawal_updates,
     };
@@ -271,7 +270,7 @@ async fn update_deposits() {
     let update_withdrawals_response =
         apis::withdrawal_api::update_withdrawals(&configuration, update_request)
             .await
-            .expect("Received an error after making a valid update deposits api call.");
+            .expect("Received an error after making a valid update withdrawals api call.");
 
     // Assert.
     // -------
@@ -279,4 +278,68 @@ async fn update_deposits() {
     updated_withdrawals.sort_by(arbitrary_withdrawal_partial_cmp);
     expected_withdrawals.sort_by(arbitrary_withdrawal_partial_cmp);
     assert_eq!(expected_withdrawals, updated_withdrawals);
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn update_withdrawals_updates_chainstate() {
+    let configuration = clean_setup().await;
+
+    // Arrange.
+    // --------
+    let request_id = 123;
+    let amount = 0;
+    let parameters = WithdrawalParameters { max_fee: 123 };
+
+    let create_request = CreateWithdrawalRequestBody {
+        amount,
+        parameters: Box::new(parameters.clone()),
+        recipient: RECIPIENT.into(),
+        request_id,
+        stacks_block_hash: BLOCK_HASH.into(),
+        stacks_block_height: BLOCK_HEIGHT,
+    };
+
+    // It's okay to say it's accepted over and over.
+    let update_status: Status = Status::Accepted;
+    let update_status_message: &str = "test_status_message";
+    let range = 20..30;
+
+    let mut withdrawal_updates = Vec::new();
+    for update_block_height in range.clone() {
+        let withdrawal_update = WithdrawalUpdate {
+            request_id,
+            fulfillment: None,
+            last_update_block_hash: format!("hash_{}", update_block_height),
+            last_update_height: update_block_height,
+            status: update_status.clone(),
+            status_message: update_status_message.into(),
+        };
+        withdrawal_updates.push(withdrawal_update);
+    }
+
+    let update_request = UpdateWithdrawalsRequestBody {
+        withdrawals: withdrawal_updates,
+    };
+
+    // Act.
+    // ----
+
+    // Create a withdrawal.
+    apis::withdrawal_api::create_withdrawal(&configuration, create_request)
+        .await
+        .expect("Received an error after making a valid create withdrawal request api call.");
+
+    // Send it a bunch of updates.
+    apis::withdrawal_api::update_withdrawals(&configuration, update_request)
+        .await
+        .expect("Received an error after making a valid update withdrawals api call.");
+
+    for height in range {
+        let chainstate = apis::chainstate_api::get_chainstate_at_height(&configuration, height)
+            .await
+            .expect("Received an error after making a valid get chainstate at height api call.");
+        assert_eq!(chainstate.stacks_block_height, height);
+        assert_eq!(chainstate.stacks_block_hash, format!("hash_{}", height));
+    }
 }
