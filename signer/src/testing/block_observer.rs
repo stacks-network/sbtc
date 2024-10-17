@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use crate::bitcoin::BitcoinInteract;
 use crate::stacks::api::StacksInteract;
 use crate::storage::model::StacksBlock;
+use bitcoin::hashes::Hash;
 use bitcoin::BlockHash;
 use bitcoin::Txid;
 use blockstack_lib::chainstate::burn::ConsensusHash;
@@ -42,7 +43,7 @@ pub struct TestHarness {
     /// have the same bitcoin::BlockHash occur within the same tenure.
     stacks_blocks: Vec<(StacksBlockId, NakamotoBlock, BlockHash)>,
     /// This represents deposit transactions
-    deposits: HashMap<Txid, GetTxResponse>,
+    deposits: HashMap<Txid, (GetTxResponse, BitcoinTxInfo)>,
     /// This represents deposit requests that have not been processed, i.e.
     /// they are received from the Emily API.
     pending_deposits: Vec<CreateDepositRequest>,
@@ -60,13 +61,29 @@ impl TestHarness {
     }
 
     /// Get the deposit transactions in the test harness.
-    pub fn deposits(&self) -> &HashMap<Txid, GetTxResponse> {
+    pub fn deposits(&self) -> &HashMap<Txid, (GetTxResponse, BitcoinTxInfo)> {
         &self.deposits
     }
 
     /// Add a single deposit transaction to the test harness.
     pub fn add_deposit(&mut self, txid: Txid, response: GetTxResponse) {
-        self.deposits.insert(txid, response);
+        let tx_info = BitcoinTxInfo {
+            in_active_chain: response.block_hash.is_some(),
+            fee: bitcoin::Amount::from_sat(1000),
+            tx: response.tx.clone(),
+            txid: response.tx.compute_txid(),
+            hash: response.tx.compute_wtxid(),
+            size: response.tx.total_size() as u64,
+            vsize: response.tx.vsize() as u64,
+            vin: Vec::new(),
+            vout: Vec::new(),
+            block_hash: response
+                .block_hash
+                .unwrap_or(bitcoin::BlockHash::all_zeros()),
+            confirmations: 0,
+            block_time: 0,
+        };
+        self.deposits.insert(txid, (response, tx_info));
     }
 
     /// Add multiple deposit transactions to the test harness.
@@ -173,11 +190,15 @@ impl TryFrom<TestHarness> for ApiFallbackClient<TestHarness> {
 
 impl BitcoinInteract for TestHarness {
     async fn get_tx(&self, txid: &bitcoin::Txid) -> Result<Option<GetTxResponse>, Error> {
-        Ok(self.deposits.get(txid).cloned())
+        Ok(self.deposits.get(txid).cloned().map(|(resp, _)| resp))
     }
 
-    async fn get_tx_info(&self, _: &Txid, _: &BlockHash) -> Result<Option<BitcoinTxInfo>, Error> {
-        unimplemented!()
+    async fn get_tx_info(
+        &self,
+        txid: &Txid,
+        _: &BlockHash,
+    ) -> Result<Option<BitcoinTxInfo>, Error> {
+        Ok(self.deposits.get(txid).cloned().map(|(_, tx_info)| tx_info))
     }
 
     async fn get_block(

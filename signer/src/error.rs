@@ -117,7 +117,7 @@ pub enum Error {
     SendMessage,
 
     /// Could not receive a message from the channel.
-    #[error("{0}")]
+    #[error("receive error: {0}")]
     ChannelReceive(#[source] tokio::sync::broadcast::error::RecvError),
 
     /// Thrown when doing [`i64::try_from`] or [`i32::try_from`] before
@@ -143,11 +143,11 @@ pub enum Error {
     DecodeNakamotoTenure(#[source] blockstack_lib::codec::Error, StacksBlockId),
 
     /// Failed to validate the complete-deposit contract call transaction.
-    #[error("{0}")]
+    #[error("deposit validation error: {0}")]
     DepositValidation(#[from] Box<DepositValidationError>),
 
     /// An error when serializing an object to JSON
-    #[error("{0}")]
+    #[error("JSON serialization error: {0}")]
     JsonSerialize(#[source] serde_json::Error),
 
     /// Could not parse the path part of a URL
@@ -156,12 +156,12 @@ pub enum Error {
 
     /// This occurs when combining many public keys would result in a
     /// "public key" that is the point at infinity.
-    #[error("{0}")]
+    #[error("invalid aggregate key: {0}")]
     InvalidAggregateKey(#[source] secp256k1::Error),
 
     /// This occurs when converting a byte slice to our internal public key
     /// type, which is a thin wrapper around the secp256k1::PublicKey.
-    #[error("{0}")]
+    #[error("invalid public key: {0}")]
     InvalidPublicKey(#[source] secp256k1::Error),
 
     /// This happens when we tweak our public key by a scalar, and the
@@ -176,7 +176,7 @@ pub enum Error {
 
     /// This occurs when converting a byte slice to our internal public key
     /// type, which is a thin wrapper around the secp256k1::SecretKey.
-    #[error("{0}")]
+    #[error("invalid private key: {0}")]
     InvalidPrivateKey(#[source] secp256k1::Error),
 
     /// This occurs when converting a byte slice to a [`PrivateKey`](crate::keys::PrivateKey)
@@ -287,7 +287,7 @@ pub enum Error {
     StacksNodeRequest(#[source] reqwest::Error),
 
     /// We failed to submit the transaction to the mempool.
-    #[error("{0}")]
+    #[error("stacks transaction rejected: {0}")]
     StacksTxRejection(#[from] crate::stacks::api::TxRejection),
 
     /// Reqwest error
@@ -369,7 +369,7 @@ pub enum Error {
 
     /// The error for when the request to sign a withdrawal-accept
     /// transaction fails at the validation step.
-    #[error("{0}")]
+    #[error("withdrawal accept validation error: {0}")]
     WithdrawalAcceptValidation(#[source] Box<WithdrawalAcceptValidationError>),
 
     /// WSTS error.
@@ -390,7 +390,7 @@ pub enum Error {
 
     /// Bitcoin error when attempting to construct an address from a
     /// scriptPubKey.
-    #[error("bitcoin address parse error")]
+    #[error("bitcoin address parse error: {0}; txid {}, vout: {}", .1.txid, .1.vout)]
     BitcoinAddressFromScript(
         #[source] bitcoin::address::FromScriptError,
         bitcoin::OutPoint,
@@ -406,16 +406,16 @@ pub enum Error {
 
     /// Could not connect to bitcoin-core with a zeromq subscription
     /// socket.
-    #[error("{0}")]
+    #[error("ZMQ connect error: {0}")]
     ZmqConnect(#[source] zeromq::ZmqError),
 
     /// Error when receiving a message from to bitcoin-core over zeromq.
-    #[error("{0}")]
+    #[error("ZMQ receive error: {0}")]
     ZmqReceive(#[source] zeromq::ZmqError),
 
     /// Could not subscribe to bitcoin-core with a zeromq subscription
     /// socket.
-    #[error("{0}")]
+    #[error("ZMQ subscribe error: {0}")]
     ZmqSubscribe(#[source] zeromq::ZmqError),
 
     /// Transaction coordinator timed out

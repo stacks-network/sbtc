@@ -217,7 +217,7 @@ async fn deposit_e2e() {
         amount: Amount::from_sat(deposit_config.amount + deposit_config.max_fee + 1),
         height: 0,
     };
-    let (deposit_tx, deposit_request) = make_deposit_request(
+    let (deposit_tx, deposit_request, _) = make_deposit_request(
         &depositor,
         deposit_config.amount,
         depositor_utxo,

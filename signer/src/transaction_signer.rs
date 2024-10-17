@@ -630,8 +630,12 @@ where
             .await
     }
 
+    /// Reach out to the blocklist client and find out whether we can
+    /// accept the deposit given all of the input `scriptPubKey`s of the
+    /// transaction. If the block list client is not configured then we
+    /// always accept the deposit request.
     #[tracing::instrument(skip(self))]
-    async fn handle_pending_deposit_request(
+    pub async fn handle_pending_deposit_request(
         &mut self,
         request: model::DepositRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -744,8 +748,7 @@ where
             .await?;
 
         self.context
-            .signal(TxSignerEvent::ReceivedDepositDecision.into())
-            .expect("failed to send signal");
+            .signal(TxSignerEvent::ReceivedDepositDecision.into())?;
 
         Ok(())
     }
@@ -770,8 +773,7 @@ where
             .await?;
 
         self.context
-            .signal(TxSignerEvent::ReceivedWithdrawalDecision.into())
-            .expect("failed to send signal");
+            .signal(TxSignerEvent::ReceivedWithdrawalDecision.into())?;
 
         Ok(())
     }

@@ -10,6 +10,7 @@ use clarity::vm::types::PrincipalData;
 use fake::Fake;
 use fake::Faker;
 use rand::rngs::OsRng;
+use sbtc::deposits::DepositInfo;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::Faucet;
 use sbtc::testing::regtest::Recipient;
@@ -19,6 +20,7 @@ use signer::bitcoin::utxo;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
 use signer::bitcoin::utxo::SignerUtxo;
+use signer::block_observer::Deposit;
 use signer::config::Settings;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey;
@@ -37,12 +39,14 @@ pub struct TestSweepSetup {
     /// The block hash of the bitcoin block that confirms the deposit
     /// transaction.
     pub deposit_block_hash: bitcoin::BlockHash,
+    /// The full validated deposit info
+    pub deposit_info: DepositInfo,
     /// Where the corresponding sBTC will be minted.
     pub deposit_recipient: PrincipalData,
     /// The deposit request, and a bitmap for how the signers voted on it.
     pub deposit_request: utxo::DepositRequest,
     /// The bitcoin transaction that the user made as a deposit for sBTC.
-    pub deposit_tx: bitcoin::Transaction,
+    pub deposit_tx_info: BitcoinTxInfo,
     /// The signer object. It's public key represents the group of signers'
     /// public keys, allowing us to abstract away the fact that there are
     /// many signers needed to sign a transaction.
@@ -99,7 +103,7 @@ impl TestSweepSetup {
 
         more_asserts::assert_lt!(amount, 50_000_000);
 
-        let (deposit_tx, deposit_request) =
+        let (deposit_tx, deposit_request, deposit_info) =
             make_deposit_request(&depositor, amount, depositor_utxo, signers_public_key);
         rpc.send_raw_transaction(&deposit_tx).unwrap();
         let deposit_block_hash = faucet.generate_blocks(1).pop().unwrap();
@@ -155,11 +159,17 @@ impl TestSweepSetup {
             .unwrap()
             .unwrap();
 
+        let deposit_tx_info = client
+            .get_tx_info(&deposit_tx.compute_txid(), &deposit_block_hash)
+            .unwrap()
+            .unwrap();
+
         TestSweepSetup {
             deposit_block_hash,
+            deposit_info,
             deposit_recipient: PrincipalData::from(StacksAddress::burn_address(false)),
             deposit_request: requests.deposits.pop().unwrap(),
-            deposit_tx,
+            deposit_tx_info,
             sweep_tx_info,
             sweep_block_height,
             sweep_block_hash,
@@ -173,11 +183,11 @@ impl TestSweepSetup {
     /// Store the deposit transaction into the database
     pub async fn store_deposit_tx(&self, db: &PgStore) {
         let mut tx = Vec::new();
-        self.deposit_tx.consensus_encode(&mut tx).unwrap();
+        self.deposit_tx_info.tx.consensus_encode(&mut tx).unwrap();
 
         let deposit_tx = model::Transaction {
             tx,
-            txid: self.deposit_tx.compute_txid().to_byte_array(),
+            txid: self.deposit_tx_info.txid.to_byte_array(),
             tx_type: model::TransactionType::SbtcTransaction,
             block_hash: self.deposit_block_hash.to_byte_array(),
         };
@@ -214,17 +224,11 @@ impl TestSweepSetup {
 
     /// Store the deposit request in the database.
     pub async fn store_deposit_request(&self, db: &PgStore) {
-        let deposit_request = model::DepositRequest {
-            txid: self.deposit_request.outpoint.txid.into(),
-            output_index: self.deposit_request.outpoint.vout,
-            spend_script: self.deposit_request.deposit_script.clone().into(),
-            reclaim_script: self.deposit_request.reclaim_script.clone().into(),
-            recipient: self.deposit_recipient.clone().into(),
-            amount: self.deposit_request.amount,
-            max_fee: self.deposit_request.max_fee,
-            sender_script_pub_keys: Vec::new(),
+        let deposit = Deposit {
+            tx_info: self.deposit_tx_info.clone(),
+            info: self.deposit_info.clone(),
         };
-
+        let deposit_request = model::DepositRequest::from(deposit);
         db.write_deposit_request(&deposit_request).await.unwrap();
     }
 

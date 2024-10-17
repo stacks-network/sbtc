@@ -20,6 +20,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 
+use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
 use crate::context::SignerEvent;
@@ -68,26 +69,39 @@ pub struct BlockObserver<Context, StacksClient, EmilyClient, BlockHashStream> {
 #[derive(Debug, Clone)]
 pub struct Deposit {
     /// The transaction spent to the signers as a deposit for sBTC.
-    pub tx: Transaction,
+    pub tx_info: BitcoinTxInfo,
     /// The deposit information included in one of the output
     /// `scriptPubKey`s of the above transaction.
     pub info: DepositInfo,
 }
 
 impl DepositRequestValidator for CreateDepositRequest {
-    async fn validate<C>(&self, client: &C) -> Result<Deposit, Error>
+    async fn validate<C>(&self, client: &C) -> Result<Option<Deposit>, Error>
     where
         C: BitcoinInteract,
     {
         // Fetch the transaction from either a block or from the mempool
         let Some(response) = client.get_tx(&self.outpoint.txid).await? else {
-            return Err(Error::BitcoinTxMissing(self.outpoint.txid, None));
+            return Ok(None);
         };
 
-        Ok(Deposit {
-            info: self.validate_tx(&response.tx)?,
-            tx: response.tx,
-        })
+        // If the transaction has not been confirmed yet, then the block
+        // hash will be None. The trasnaction has not failed validation,
+        // let's try again when it gets confirmed.
+        let Some(block_hash) = response.block_hash else {
+            return Ok(None);
+        };
+
+        // The `get_tx_info` call here should not return None, we know that
+        // it has been included in a block.
+        let Some(tx_info) = client.get_tx_info(&self.outpoint.txid, &block_hash).await? else {
+            return Ok(None);
+        };
+
+        Ok(Some(Deposit {
+            info: self.validate_tx(&tx_info.tx)?,
+            tx_info,
+        }))
     }
 }
 
@@ -99,7 +113,7 @@ pub trait DepositRequestValidator {
     /// This function fetches the transaction using the given client and
     /// checks that the transaction has been submitted. The transaction
     /// need not be confirmed.
-    fn validate<C>(&self, client: &C) -> impl Future<Output = Result<Deposit, Error>>
+    fn validate<C>(&self, client: &C) -> impl Future<Output = Result<Option<Deposit>, Error>>
     where
         C: BitcoinInteract;
 }
@@ -183,7 +197,7 @@ where
                 .await
                 .inspect_err(|error| tracing::warn!(%error, "could not validate deposit request"));
 
-            if let Ok(deposit) = deposit {
+            if let Ok(Some(deposit)) = deposit {
                 self.deposit_requests
                     .entry(deposit.info.outpoint.txid)
                     .or_default()
@@ -270,10 +284,10 @@ where
             .flatten()
             .map(|deposit| {
                 let mut tx_bytes = Vec::new();
-                deposit.tx.consensus_encode(&mut tx_bytes)?;
+                deposit.tx_info.tx.consensus_encode(&mut tx_bytes)?;
 
                 let tx = model::Transaction {
-                    txid: deposit.tx.compute_txid().to_byte_array(),
+                    txid: deposit.tx_info.txid.to_byte_array(),
                     tx: tx_bytes,
                     tx_type: model::TransactionType::DepositRequest,
                     block_hash: block_hash.to_byte_array(),
@@ -483,9 +497,9 @@ mod tests {
 
     /// Test that `BlockObserver::load_latest_deposit_requests` takes
     /// deposits from emily, validates them and only keeps the ones that
-    /// pass validation.
+    /// pass validation and have been confirmed.
     #[tokio::test]
-    async fn validated_deposits_get_added_to_state() {
+    async fn validated_confirmed_deposits_get_added_to_state() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let mut test_harness = TestHarness::generate(&mut rng, 20, 0..5);
 
@@ -508,11 +522,10 @@ mod tests {
             reclaim_script: tx_setup0.reclaim.reclaim_script(),
         };
         // When we validate the deposit request, we fetch the transaction
-        // from bitcoin-core's mempool or blockchain. The stubs out that
-        // response.
+        // from bitcoin-core's blockchain. The stubs out that response.
         let get_tx_resp0 = GetTxResponse {
             tx: tx_setup0.tx.clone(),
-            block_hash: None,
+            block_hash: Some(bitcoin::BlockHash::all_zeros()),
             confirmations: None,
             block_time: None,
         };
@@ -537,16 +550,36 @@ mod tests {
             block_time: None,
         };
 
+        // This deposit transaction is a fine deposit, it just hasn't been
+        // confirmed yet.
+        let tx_setup2 = sbtc::testing::deposits::tx_setup(400, 3000, amount);
+        let get_tx_resp2 = GetTxResponse {
+            tx: tx_setup2.tx.clone(),
+            block_hash: None,
+            confirmations: None,
+            block_time: None,
+        };
+
+        let deposit_request2 = CreateDepositRequest {
+            outpoint: bitcoin::OutPoint {
+                txid: tx_setup2.tx.compute_txid(),
+                vout: 0,
+            },
+            deposit_script: tx_setup2.deposit.deposit_script(),
+            reclaim_script: tx_setup2.reclaim.reclaim_script(),
+        };
+
         // Let's add the "responses" to the field that feeds the
         // response to the `BitcoinClient::get_tx` call.
         test_harness.add_deposits(&[
             (get_tx_resp0.tx.compute_txid(), get_tx_resp0),
             (get_tx_resp1.tx.compute_txid(), get_tx_resp1),
+            (get_tx_resp2.tx.compute_txid(), get_tx_resp2),
         ]);
 
         // Add the deposit requests to the pending deposits which
         // would be returned by Emily.
-        test_harness.add_pending_deposits(&[deposit_request0, deposit_request1]);
+        test_harness.add_pending_deposits(&[deposit_request0, deposit_request1, deposit_request2]);
 
         // Now we finish setting up the block observer.
         let storage = storage::in_memory::Store::new_shared();
@@ -579,7 +612,7 @@ mod tests {
             .cloned()
             .unwrap();
         assert_eq!(deposit.len(), 1);
-        assert_eq!(deposit[0].tx, tx_setup0.tx);
+        assert_eq!(deposit[0].tx_info.tx, tx_setup0.tx);
     }
 
     /// Test that `BlockObserver::extract_deposit_requests` after
@@ -610,7 +643,7 @@ mod tests {
             reclaim_script: tx_setup0.reclaim.reclaim_script(),
         };
         // When we validate the deposit request, we fetch the transaction
-        // from bitcoin-core's mempool or blockchain. The stubs out that
+        // from bitcoin-core's blockchain. The stubs out that
         // response.
         let get_tx_resp0 = GetTxResponse {
             tx: tx_setup0.tx.clone(),

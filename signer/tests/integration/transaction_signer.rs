@@ -12,6 +12,7 @@ use signer::keys::PublicKey;
 use signer::network::InMemoryNetwork;
 use signer::stacks::api::MockStacksInteract;
 use signer::storage::model;
+use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::RotateKeysTransaction;
 use signer::storage::DbRead as _;
 use signer::storage::DbWrite as _;
@@ -22,6 +23,8 @@ use signer::testing::transaction_signer::TestEnvironment;
 use signer::transaction_signer::TxSignerEventLoop;
 use signer::{bitcoin::MockBitcoinInteract, storage::postgres::PgStore};
 
+use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::TestSweepSetup;
 use crate::DATABASE_NUM;
 
 async fn test_environment(
@@ -272,6 +275,87 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
         .collect();
 
     assert_eq!(rotate_keys.signer_set, signer_set);
+
+    testing::storage::drop_db(db).await;
+}
+
+/// Test that [`TxSignerEventLoop::handle_pending_deposit_request`] does
+/// not error when attempting to check the scriptPubKeys of any of the
+/// inputs of a deposit.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn handle_pending_deposit_request_address_script_pub_key() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_mocked_clients()
+        .build();
+
+    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+
+    // This confirms a deposit transaction, and has a nice helper function
+    // for storing a real deposit.
+    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+
+    // Let's get the blockchain data into the database.
+    let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
+    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+
+    // We need to store the deposit request because of the foreign key
+    // constraint on the deposit_signers table.
+    setup.store_deposit_request(&db).await;
+
+    // In order to fetch the deposit request that we just store, we need to
+    // store the deposit transaction.
+    setup.store_deposit_tx(&db).await;
+
+    let mut requests = db
+        .get_pending_deposit_requests(&chain_tip, 100)
+        .await
+        .unwrap();
+    // There should only be the one deposit request that we just fetched.
+    assert_eq!(requests.len(), 1);
+    let request = requests.pop().unwrap();
+
+    let network = InMemoryNetwork::new();
+    let mut tx_signer = TxSignerEventLoop {
+        network: network.connect(),
+        context: ctx.clone(),
+        context_window: 10000,
+        blocklist_checker: Some(()),
+        wsts_state_machines: HashMap::new(),
+        signer_private_key: ctx.config().signer.private_key,
+        threshold: 2,
+        rng: rand::rngs::StdRng::seed_from_u64(51),
+    };
+
+    // We need this so that there is a live "network". Otherwise,
+    // TxSignerEventLoop::handle_pending_deposit_request will error when
+    // trying to send a message at the end.
+    let _rec = ctx.get_signal_receiver();
+
+    // We don't want this to error. There was a bug before, see
+    // https://github.com/stacks-network/sbtc/issues/674.
+    tx_signer
+        .handle_pending_deposit_request(request, &chain_tip)
+        .await
+        .unwrap();
+
+    // A decision should get stored and there should only be one
+    let outpoint = setup.deposit_request.outpoint;
+    let mut votes = db
+        .get_deposit_signers(&outpoint.txid.into(), outpoint.vout)
+        .await
+        .unwrap();
+    assert_eq!(votes.len(), 1);
+
+    // The blocklist checker that we have configured accepts all deposits.
+    let vote = votes.pop().unwrap();
+    assert!(vote.is_accepted);
 
     testing::storage::drop_db(db).await;
 }
