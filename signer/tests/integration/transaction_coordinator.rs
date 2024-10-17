@@ -866,8 +866,27 @@ async fn sign_bitcoin_transaction() {
 
     faucet.generate_blocks(1);
 
-    tokio::time::sleep(Duration::from_secs(4)).await;
+    tokio::time::sleep(Duration::from_secs(10)).await;
 
+    let (ctx, _, _) = signers.first().unwrap();
+
+    let mut txids = ctx.bitcoin_client.inner_client().get_raw_mempool().unwrap();
+    assert_eq!(txids.len(), 1);
+
+    let block_hash = faucet.generate_blocks(1).pop().unwrap();
+
+    let txid = txids.pop().unwrap();
+    let tx_info = ctx
+        .bitcoin_client
+        .get_tx_info(&txid, &block_hash)
+        .unwrap()
+        .unwrap();
+    let actual_script_pub_key = &tx_info.vin[0].prevout.script_pub_key.hex;
+
+    assert_eq!(actual_script_pub_key, script_pub_key.as_bytes());
+    assert_eq!(&tx_info.tx.output[0].script_pubkey, &script_pub_key);
+
+    tokio::time::sleep(Duration::from_secs(2)).await;
     // let unspent = rpc.list_unspent(None, None, None, None, None).unwrap();
     // println!("Unspent: {:?}", unspent);
 

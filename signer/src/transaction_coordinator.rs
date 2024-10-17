@@ -808,7 +808,7 @@ where
             utxo,
             public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
             last_fees,
-            magic_bytes: [0, 0], //TODO(#472): Use the correct magic bytes.
+            magic_bytes: [b'T', b'3'], //TODO(#472): Use the correct magic bytes.
         })
     }
 
