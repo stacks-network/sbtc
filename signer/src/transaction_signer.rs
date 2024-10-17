@@ -744,8 +744,7 @@ where
             .await?;
 
         self.context
-            .signal(TxSignerEvent::ReceivedDepositDecision.into())
-            .expect("failed to send signal");
+            .signal(TxSignerEvent::ReceivedDepositDecision.into())?;
 
         Ok(())
     }
@@ -770,8 +769,7 @@ where
             .await?;
 
         self.context
-            .signal(TxSignerEvent::ReceivedWithdrawalDecision.into())
-            .expect("failed to send signal");
+            .signal(TxSignerEvent::ReceivedWithdrawalDecision.into())?;
 
         Ok(())
     }
