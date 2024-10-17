@@ -147,7 +147,7 @@ pub enum Error {
     DepositValidation(#[from] Box<DepositValidationError>),
 
     /// An error when serializing an object to JSON
-    #[error("json serialization error: {0}")]
+    #[error("JSON serialization error: {0}")]
     JsonSerialize(#[source] serde_json::Error),
 
     /// Could not parse the path part of a URL
@@ -384,10 +384,6 @@ pub enum Error {
     #[error("no bitcoin chain tip")]
     NoChainTip,
 
-    /// No stacks chain tip found.
-    #[error("no stacks chain tip")]
-    NoStacksChainTip,
-
     /// Bitcoin error when attempting to construct an address from a
     /// scriptPubKey.
     #[error("bitcoin address parse error: {0}; txid {}, vout: {}", .1.txid, .1.vout)]
@@ -406,16 +402,16 @@ pub enum Error {
 
     /// Could not connect to bitcoin-core with a zeromq subscription
     /// socket.
-    #[error("zmq connect error: {0}")]
+    #[error("ZMQ connect error: {0}")]
     ZmqConnect(#[source] zeromq::ZmqError),
 
     /// Error when receiving a message from to bitcoin-core over zeromq.
-    #[error("zmq receive error: {0}")]
+    #[error("ZMQ receive error: {0}")]
     ZmqReceive(#[source] zeromq::ZmqError),
 
     /// Could not subscribe to bitcoin-core with a zeromq subscription
     /// socket.
-    #[error("zmq subscribe error: {0}")]
+    #[error("ZMQ subscribe error: {0}")]
     ZmqSubscribe(#[source] zeromq::ZmqError),
 
     /// Transaction coordinator timed out
