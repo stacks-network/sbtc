@@ -73,7 +73,7 @@ impl TestHarness {
             tx: response.tx.clone(),
             txid: response.tx.compute_txid(),
             hash: response.tx.compute_wtxid(),
-            size: response.tx.vsize() as u64,
+            size: response.tx.total_size() as u64,
             vsize: response.tx.vsize() as u64,
             vin: Vec::new(),
             vout: Vec::new(),

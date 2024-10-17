@@ -322,7 +322,7 @@ async fn handle_pending_deposit_request_address_script_pub_key() {
     let request = requests.pop().unwrap();
 
     let network = InMemoryNetwork::new();
-    let mut coord = TxSignerEventLoop {
+    let mut tx_signer = TxSignerEventLoop {
         network: network.connect(),
         context: ctx.clone(),
         context_window: 10000,
@@ -340,7 +340,7 @@ async fn handle_pending_deposit_request_address_script_pub_key() {
 
     // We don't want this to error. There was a bug before, see
     // https://github.com/stacks-network/sbtc/issues/674.
-    coord
+    tx_signer
         .handle_pending_deposit_request(request, &chain_tip)
         .await
         .unwrap();

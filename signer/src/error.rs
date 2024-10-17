@@ -287,7 +287,7 @@ pub enum Error {
     StacksNodeRequest(#[source] reqwest::Error),
 
     /// We failed to submit the transaction to the mempool.
-    #[error("transaction rejected: {0}")]
+    #[error("stacks transaction rejected: {0}")]
     StacksTxRejection(#[from] crate::stacks::api::TxRejection),
 
     /// Reqwest error
