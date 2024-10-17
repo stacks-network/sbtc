@@ -319,8 +319,11 @@ impl BitcoinCoreClient {
 }
 
 impl BitcoinInteract for BitcoinCoreClient {
-    async fn broadcast_transaction(&self, _: &Transaction) -> Result<(), Error> {
-        unimplemented!()
+    async fn broadcast_transaction(&self, tx: &Transaction) -> Result<(), Error> {
+        self.inner
+            .send_raw_transaction(tx)
+            .map_err(Error::BitcoinCoreRpc)
+            .map(|_| ())
     }
 
     async fn get_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, Error> {
@@ -340,8 +343,11 @@ impl BitcoinInteract for BitcoinCoreClient {
     }
 
     async fn estimate_fee_rate(&self) -> Result<f64, Error> {
-        // TODO(542): implement this
-        Ok(1.3)
+        // TODO(542): This function is supposed to incorporate other fee
+        // estimation methods, in particular the ones in the
+        // src/bitcoin/fees.rs module.
+        self.estimate_fee_rate(1)
+            .map(|estimate| estimate.sats_per_vbyte)
     }
 
     async fn get_last_fee(&self, _: OutPoint) -> Result<Option<super::utxo::Fees>, Error> {

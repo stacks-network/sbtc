@@ -27,7 +27,7 @@
 # Required: true
 # Environment: SIGNER_EMILY__ENDPOINTS
 endpoints = [
-    "http://localhost:3000"
+    "http://localhost:3031"
 ]
 
 # !! ==============================================================================

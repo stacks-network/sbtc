@@ -112,7 +112,7 @@ where
     BHS: futures::stream::Stream<Item = Result<bitcoin::BlockHash, Error>> + Unpin,
 {
     /// Run the block observer
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self), name = "block-observer")]
     pub async fn run(mut self) -> Result<(), Error> {
         let mut term = self.context.get_termination_handle();
 
@@ -238,7 +238,10 @@ where
 
     #[tracing::instrument(skip(self))]
     async fn process_bitcoin_block(&mut self, block: bitcoin::Block) -> Result<(), Error> {
+        tracing::info!("processing bitcoin block");
         let info = self.stacks_client.get_tenure_info().await?;
+
+        tracing::debug!("fetching unknown ancestral blocks from stacks-core");
         let stacks_blocks = crate::stacks::api::fetch_unknown_ancestors(
             &self.stacks_client,
             &self.context.get_storage(),
@@ -252,6 +255,7 @@ where
         self.extract_deposit_requests(&block.txdata, block.block_hash())
             .await?;
 
+        tracing::debug!("finished processing bitcoin block");
         Ok(())
     }
 
@@ -323,6 +327,7 @@ where
         // `scriptPubKey` controlled by the signers.
         let mut sbtc_txs = Vec::new();
         for tx in txs {
+            tracing::debug!(txid = %tx.compute_txid(), "attempting to extract sbtc transaction");
             // If any of the outputs are spent to one of the signers'
             // addresses, then we care about it
             let outputs_spent_to_signers = tx

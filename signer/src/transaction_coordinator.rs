@@ -147,7 +147,7 @@ where
     N: network::MessageTransfer,
 {
     /// Run the coordinator event loop
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self), name = "tx-coordinator")]
     pub async fn run(mut self) -> Result<(), Error> {
         tracing::info!("starting transaction coordinator event loop");
         let mut term = self.context.get_termination_handle();
@@ -278,7 +278,7 @@ where
             .get_storage()
             .get_stacks_chain_tip(bitcoin_chain_tip)
             .await?
-            .ok_or(Error::NoChainTip)?;
+            .ok_or(Error::NoStacksChainTip)?;
 
         let pending_requests_fut =
             self.get_pending_requests(bitcoin_chain_tip, aggregate_key, signer_public_keys);
@@ -784,23 +784,16 @@ where
     #[tracing::instrument(skip(self))]
     async fn get_btc_state(
         &mut self,
+        chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &PublicKey,
     ) -> Result<utxo::SignerBtcState, Error> {
         let bitcoin_client = self.context.get_bitcoin_client();
         let fee_rate = bitcoin_client.estimate_fee_rate().await?;
-        let Some(chain_tip) = self
-            .context
-            .get_storage()
-            .get_bitcoin_canonical_chain_tip()
-            .await?
-        else {
-            return Err(Error::NoChainTip);
-        };
 
         let utxo = self
             .context
             .get_storage()
-            .get_signer_utxo(&chain_tip, aggregate_key, self.context_window)
+            .get_signer_utxo(chain_tip, aggregate_key, self.context_window)
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
         let last_fees = bitcoin_client.get_last_fee(utxo.outpoint).await?;
@@ -880,7 +873,7 @@ where
         Ok(Some(utxo::SbtcRequests {
             deposits,
             withdrawals,
-            signer_state: self.get_btc_state(aggregate_key).await?,
+            signer_state: self.get_btc_state(bitcoin_chain_tip, aggregate_key).await?,
             accept_threshold: threshold,
             num_signers,
         }))

@@ -16,16 +16,14 @@
 
 use bitcoin::BlockHash;
 use bitcoin::Txid;
-use bitcoincore_rpc::RpcApi as _;
 use url::Url;
 
 use crate::{error::Error, util::ApiFallbackClient};
 
-use super::{utxo, BitcoinInteract};
-
 use super::rpc::BitcoinCoreClient;
 use super::rpc::BitcoinTxInfo;
 use super::rpc::GetTxResponse;
+use super::{utxo, BitcoinInteract};
 
 /// Implement the [`TryFrom`] trait for a slice of [`Url`]s to allow for a
 /// [`ApiFallbackClient`] to be implicitly created from a list of URLs.
@@ -51,7 +49,8 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
     }
 
     async fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error> {
-        self.get_client().get_tx(txid)
+        self.exec(|client, _| BitcoinInteract::get_tx(client, txid))
+            .await
     }
 
     async fn get_tx_info(
@@ -59,25 +58,23 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
         txid: &Txid,
         block_hash: &BlockHash,
     ) -> Result<Option<BitcoinTxInfo>, Error> {
-        self.get_client().get_tx_info(txid, block_hash)
+        self.exec(|client, _| BitcoinInteract::get_tx_info(client, txid, block_hash))
+            .await
     }
 
     async fn estimate_fee_rate(&self) -> Result<f64, Error> {
-        todo!() // TODO(542)
+        // TODO(542)
+        self.exec(|client, _| BitcoinInteract::estimate_fee_rate(client))
+            .await
     }
 
-    async fn get_last_fee(&self, _utxo: bitcoin::OutPoint) -> Result<Option<utxo::Fees>, Error> {
-        todo!() // TODO(541)
+    async fn get_last_fee(&self, utxo: bitcoin::OutPoint) -> Result<Option<utxo::Fees>, Error> {
+        // TODO(541)
+        self.exec(|client, _| client.get_last_fee(utxo)).await
     }
 
     async fn broadcast_transaction(&self, tx: &bitcoin::Transaction) -> Result<(), Error> {
-        self.exec(|client, _| async {
-            client
-                .inner_client()
-                .send_raw_transaction(tx)
-                .map_err(Error::BitcoinCoreRpc)
-                .map(|_| ())
-        })
-        .await
+        self.exec(|client, _| client.broadcast_transaction(tx))
+            .await
     }
 }
