@@ -1801,6 +1801,7 @@ dependencies = [
  "bitcoin",
  "clap",
  "config 0.11.0",
+ "emily-client",
  "fake",
  "hex",
  "mockall 0.10.2",

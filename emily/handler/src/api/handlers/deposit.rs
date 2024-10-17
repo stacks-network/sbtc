@@ -106,6 +106,8 @@ pub async fn get_deposits_for_transaction(
         bitcoin_txid: String,
         query: GetDepositsForTransactionQuery,
     ) -> Result<impl warp::reply::Reply, Error> {
+        // TODO(506): Reverse this order of deposits so that the transactions are returned
+        // in ascending index order.
         let (entries, next_token) = accessors::get_deposit_entries_for_transaction(
             &context,
             &bitcoin_txid,
@@ -235,6 +237,7 @@ pub async fn create_deposit(
             status,
             last_update_block_hash: stacks_block_hash,
             last_update_height: stacks_block_height,
+            amount: script_parameters.amount,
             reclaim_script: body.reclaim_script,
             deposit_script: body.deposit_script,
             ..Default::default()
@@ -255,6 +258,7 @@ pub async fn create_deposit(
 
 /// Parameters from the deposit and reclaim scripts.
 struct ScriptParameters {
+    amount: u64,
     max_fee: u64,
     recipient: String,
     lock_time: u64,
@@ -278,6 +282,8 @@ fn scripts_to_resource_parameters(
     let recipient_hex_string = hex::encode(&recipient_bytes);
 
     Ok(ScriptParameters {
+        // TODO(TBD): Get the amount from some script related data somehow.
+        amount: 0,
         max_fee: deposit_script_inputs.max_fee,
         recipient: recipient_hex_string,
         lock_time: reclaim_script_inputs.lock_time(),
