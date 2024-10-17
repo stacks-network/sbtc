@@ -12,10 +12,10 @@ use stacks_common::codec::StacksMessageCodec as _;
 use crate::common::{clean_setup, StandardError};
 
 const BLOCK_HASH: &'static str = "";
-const BLOCK_HEIGHT: i64 = 0;
+const BLOCK_HEIGHT: u64 = 0;
 const INITIAL_DEPOSIT_STATUS_MESSAGE: &'static str = "Just received deposit";
 
-const DEPOSIT_LOCK_TIME: i64 = 12345;
+const DEPOSIT_LOCK_TIME: u64 = 12345;
 const DEPOSIT_MAX_FEE: u64 = 30;
 
 // TODO(TBD): This is the only value that will work at the moment because the
@@ -69,8 +69,9 @@ struct DepositTxnData {
 }
 
 impl DepositTxnData {
-    pub fn new(lock_time: i64, max_fee: u64, amount_sats: u64) -> Self {
-        let test_deposit_tx: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
+    pub fn new(lock_time: u64, max_fee: u64, amount_sats: u64) -> Self {
+        let test_deposit_tx: TxSetup =
+            testing::deposits::tx_setup(lock_time as i64, max_fee, amount_sats);
         let recipient_hex_string =
             hex::encode(&test_deposit_tx.deposit.recipient.serialize_to_vec());
         Self {
@@ -106,7 +107,7 @@ async fn create_and_get_deposit_happy_path() {
     };
 
     let expected_deposit = Deposit {
-        amount: DEPOSIT_AMOUNT_SATS as i64,
+        amount: DEPOSIT_AMOUNT_SATS,
         bitcoin_tx_output_index,
         bitcoin_txid: bitcoin_txid.into(),
         fulfillment: None,
@@ -116,7 +117,7 @@ async fn create_and_get_deposit_happy_path() {
         deposit_script: deposit_script.clone(),
         parameters: Box::new(DepositParameters {
             lock_time: DEPOSIT_LOCK_TIME,
-            max_fee: DEPOSIT_MAX_FEE as i64,
+            max_fee: DEPOSIT_MAX_FEE,
         }),
         recipient: expected_recipient,
         status: emily_client::models::Status::Pending,
@@ -223,7 +224,7 @@ async fn get_deposits_for_transaction() {
         create_requests.push(request);
 
         let expected_deposit = Deposit {
-            amount: DEPOSIT_AMOUNT_SATS as i64,
+            amount: DEPOSIT_AMOUNT_SATS,
             bitcoin_tx_output_index,
             bitcoin_txid: bitcoin_txid.into(),
             fulfillment: None,
@@ -233,7 +234,7 @@ async fn get_deposits_for_transaction() {
             deposit_script: deposit_script.clone(),
             parameters: Box::new(DepositParameters {
                 lock_time: DEPOSIT_LOCK_TIME,
-                max_fee: DEPOSIT_MAX_FEE as i64,
+                max_fee: DEPOSIT_MAX_FEE,
             }),
             recipient: expected_recipient.clone(),
             status: emily_client::models::Status::Pending,
@@ -296,7 +297,7 @@ async fn get_deposits() {
             create_requests.push(request);
 
             let expected_deposit_info = DepositInfo {
-                amount: DEPOSIT_AMOUNT_SATS as i64,
+                amount: DEPOSIT_AMOUNT_SATS,
                 bitcoin_tx_output_index,
                 bitcoin_txid: bitcoin_txid.into(),
                 last_update_block_hash: BLOCK_HASH.into(),
@@ -379,7 +380,7 @@ async fn update_deposits() {
 
     let update_status_message: &str = "test_status_message";
     let update_block_hash: &str = "update_block_hash";
-    let update_block_height: i64 = 34;
+    let update_block_height: u64 = 34;
     let update_status: Status = Status::Confirmed;
 
     let update_fulfillment: Fulfillment = Fulfillment {
@@ -410,24 +411,24 @@ async fn update_deposits() {
                 bitcoin_txid: bitcoin_txid.into(),
                 fulfillment: Some(Some(Box::new(update_fulfillment.clone()))),
                 last_update_block_hash: update_block_hash.into(),
-                last_update_height: update_block_height.clone(),
+                last_update_height: update_block_height,
                 status: update_status.clone(),
                 status_message: update_status_message.into(),
             };
             deposit_updates.push(deposit_update);
 
             let expected_deposit = Deposit {
-                amount: DEPOSIT_AMOUNT_SATS as i64,
+                amount: DEPOSIT_AMOUNT_SATS,
                 bitcoin_tx_output_index,
                 bitcoin_txid: bitcoin_txid.into(),
                 fulfillment: Some(Some(Box::new(update_fulfillment.clone()))),
                 last_update_block_hash: update_block_hash.into(),
-                last_update_height: update_block_height.clone(),
+                last_update_height: update_block_height,
                 reclaim_script: reclaim_script.clone(),
                 deposit_script: deposit_script.clone(),
                 parameters: Box::new(DepositParameters {
                     lock_time: DEPOSIT_LOCK_TIME,
-                    max_fee: DEPOSIT_MAX_FEE as i64,
+                    max_fee: DEPOSIT_MAX_FEE,
                 }),
                 recipient: expected_recipient.clone(),
                 status: update_status.clone(),

@@ -10,7 +10,7 @@ use emily_client::models::{
 
 const RECIPIENT: &'static str = "";
 const BLOCK_HASH: &'static str = "TEST_BLOCK_HASH";
-const BLOCK_HEIGHT: i64 = 0;
+const BLOCK_HEIGHT: u64 = 0;
 const INITIAL_WITHDRAWAL_STATUS_MESSAGE: &'static str = "Just received withdrawal";
 
 /// An arbitrary fully ordered partial cmp comparator for WithdrawalInfos.
@@ -205,7 +205,7 @@ async fn update_deposits() {
 
     let update_status_message: &str = "test_status_message";
     let update_block_hash: &str = "update_block_hash";
-    let update_block_height: i64 = 34;
+    let update_block_height: u64 = 34;
     let update_status: Status = Status::Confirmed;
 
     let update_fulfillment: Fulfillment = Fulfillment {

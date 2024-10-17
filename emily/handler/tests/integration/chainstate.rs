@@ -8,7 +8,7 @@ use crate::common::clean_setup;
 use test_case::test_case;
 
 /// Make a test chainstate.
-fn new_test_chainstate(height: i64, fork_id: i32) -> Chainstate {
+fn new_test_chainstate(height: u64, fork_id: i32) -> Chainstate {
     Chainstate {
         stacks_block_hash: format!("test-hash-{height}-fork-{fork_id}"),
         stacks_block_height: height,
@@ -45,7 +45,7 @@ async fn batch_set_chainstates(
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case(1123, 1128; "create-5-chainstates")]
 #[tokio::test]
-async fn create_and_get_chainstate_happy_path(min_height: i64, max_height: i64) {
+async fn create_and_get_chainstate_happy_path(min_height: u64, max_height: u64) {
     let configuration = clean_setup().await;
 
     // Arrange.
@@ -92,9 +92,9 @@ async fn create_and_get_chainstate_happy_path(min_height: i64, max_height: i64) 
 #[test_case(1123, 1111, 1133; "reorg-to-tip-below-any-existing-entry")]
 #[tokio::test]
 async fn create_and_get_chainstate_reorg_happy_path(
-    min_height: i64,
-    reorg_height: i64,
-    max_height: i64,
+    min_height: u64,
+    reorg_height: u64,
+    max_height: u64,
 ) {
     let configuration = clean_setup().await;
 
@@ -128,7 +128,7 @@ async fn create_and_get_chainstate_reorg_happy_path(
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case(1123, 1128; "replay-5-chainstates-out-of-order")]
 #[tokio::test]
-async fn create_and_replay_does_not_initiate_reorg(min_height: i64, max_height: i64) {
+async fn create_and_replay_does_not_initiate_reorg(min_height: u64, max_height: u64) {
     let configuration = clean_setup().await;
 
     // Arrange.
