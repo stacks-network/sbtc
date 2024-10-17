@@ -844,7 +844,7 @@ async fn sign_bitcoin_transaction() {
 
     let amount = 2_500_000;
     let signers_public_key = shares.aggregate_key.into();
-    let (deposit_tx, deposit_request) =
+    let (deposit_tx, deposit_request, _) =
         make_deposit_request(&depositor, amount, depositor_utxo, signers_public_key);
     rpc.send_raw_transaction(&deposit_tx).unwrap();
 

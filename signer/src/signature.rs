@@ -47,23 +47,6 @@ impl From<wsts::taproot::SchnorrProof> for TaprootSignature {
     }
 }
 
-impl From<wsts::common::Signature> for TaprootSignature {
-    fn from(value: wsts::common::Signature) -> Self {
-        let mut bytes = [0u8; 64];
-
-        bytes[0..32].copy_from_slice(&value.R.x().to_bytes());
-        bytes[32..64].copy_from_slice(&value.z.to_bytes());
-
-        // This `expect()` is fine since the only requirement for a Schnorr
-        // signature is that it be 64 bytes long, which we can see is the
-        // case.
-        let signature = secp256k1::schnorr::Signature::from_slice(&bytes)
-            .expect("We know this is 64 bytes long");
-        let sighash_type = bitcoin::TapSighashType::Default;
-        Self(bitcoin::taproot::Signature { signature, sighash_type })
-    }
-}
-
 /// For creating signatures.
 pub trait SighashDigest {
     /// The digest to sign.

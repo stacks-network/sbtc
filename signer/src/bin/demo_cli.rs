@@ -42,7 +42,7 @@ enum Error {
     #[error("Invalid stacks address: {0}")]
     InvalidStacksAddress(String),
     #[error("Invalid signer key: {0}")]
-    InvalidSignerKey(String)
+    InvalidSignerKey(String),
 }
 
 #[derive(Debug, Parser)]
@@ -180,7 +180,6 @@ fn create_bitcoin_deposit_transaction(
         )),
     };
 
-
     let reclaim_script = ReclaimScriptInputs::try_new(args.lock_time as i64, ScriptBuf::new())?;
 
     // Look for UTXOs that can cover the amount + max fee
@@ -227,8 +226,20 @@ fn create_bitcoin_deposit_transaction(
         lock_time: absolute::LockTime::ZERO,
     };
 
-    println!("deposit script: {:?}", deposit_script.deposit_script().as_bytes().to_lower_hex_string());
-    println!("reclaim script: {:?}", reclaim_script.reclaim_script().as_bytes().to_lower_hex_string());
+    println!(
+        "deposit script: {:?}",
+        deposit_script
+            .deposit_script()
+            .as_bytes()
+            .to_lower_hex_string()
+    );
+    println!(
+        "reclaim script: {:?}",
+        reclaim_script
+            .reclaim_script()
+            .as_bytes()
+            .to_lower_hex_string()
+    );
 
     Ok((unsigned_tx, deposit_script, reclaim_script))
 }

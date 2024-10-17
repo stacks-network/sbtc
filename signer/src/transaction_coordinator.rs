@@ -15,6 +15,7 @@ use futures::StreamExt as _;
 use futures::TryStreamExt;
 use sha2::Digest;
 use tokio_stream::wrappers::BroadcastStream;
+use wsts::net::SignatureType;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
@@ -632,10 +633,12 @@ where
         msg: &[u8],
         merkle_root: Option<TapNodeHash>,
     ) -> Result<TaprootSignature, Error> {
-        let is_taproot = merkle_root.is_none();
-        let merkle_root = merkle_root.map(TapNodeHash::to_byte_array);
+        let signature_type = match merkle_root {
+            Some(_) => SignatureType::Schnorr,
+            None => SignatureType::Taproot(None),
+        };
         let outbound = coordinator_state_machine
-            .start_signing_round(msg, is_taproot, merkle_root)
+            .start_signing_round(msg, signature_type)
             .map_err(Error::wsts_coordinator)?;
 
         let msg = message::WstsMessage { txid, inner: outbound.msg };
@@ -650,8 +653,9 @@ where
             .map_err(|_| Error::CoordinatorTimeout(max_duration.as_secs()))??;
 
         match operation_result {
-            WstsOperationResult::SignTaproot(signature) => Ok(signature.into()),
-            WstsOperationResult::Sign(sig) => Ok(sig.into()),
+            WstsOperationResult::SignTaproot(sig) | WstsOperationResult::SignSchnorr(sig) => {
+                Ok(sig.into())
+            }
             _ => Err(Error::UnexpectedOperationResult),
         }
     }
@@ -950,8 +954,8 @@ where
             .sign_ecdsa(&self.private_key)?;
 
         self.network.broadcast(msg.clone()).await?;
-        self.context
-            .signal(TxCoordinatorEvent::MessageGenerated(msg).into())?;
+        // self.context
+        //     .signal(TxCoordinatorEvent::MessageGenerated(msg).into())?;
 
         Ok(())
     }
