@@ -87,7 +87,7 @@ services:
 
   sbtc-signer-1:
     build:
-      context: ./sbtc-signer
+      context: ../../..
       dockerfile: Dockerfile.sbtc-signer
     entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
     depends_on:
@@ -108,7 +108,7 @@ services:
 
   sbtc-signer-2:
     build:
-      context: ./sbtc-signer
+      context: ../../..
       dockerfile: Dockerfile.sbtc-signer
     entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
     depends_on:
@@ -129,7 +129,7 @@ services:
 
   sbtc-signer-3:
     build:
-      context: ./sbtc-signer
+      context: ../../..
       dockerfile: Dockerfile.sbtc-signer
     entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
     depends_on:

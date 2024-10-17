@@ -9,7 +9,7 @@ use bitcoin::{
 use bitcoincore_rpc::json;
 use bitcoincore_rpc::{Client, RpcApi};
 use clap::{Args, Parser, Subcommand};
-use clarity::vm::database::ClarityDeserializable;
+//use clarity::vm::database::ClarityDeserializable;
 use clarity::{
     types::{chainstate::StacksAddress, Address as _},
     vm::types::{PrincipalData, StandardPrincipalData},
@@ -21,6 +21,7 @@ use emily_client::{
 use sbtc::deposits::{DepositScriptInputs, ReclaimScriptInputs};
 use secp256k1::PublicKey;
 use signer::config::Settings;
+use signer::keys::SignerScriptPubKey;
 
 #[derive(Debug, thiserror::Error)]
 #[allow(clippy::enum_variant_names)]
@@ -55,6 +56,7 @@ struct CliArgs {
 enum CliCommand {
     /// Simulate a deposit request
     Deposit(DepositArgs),
+    Donation(DonationArgs),
 }
 
 #[derive(Debug, Args)]
@@ -72,6 +74,16 @@ struct DepositArgs {
     /// The beneficiary Stacks address to receive the deposit in sBTC.
     #[clap(long = "stacks-addr")]
     stacks_recipient: String,
+    /// The public key of the aggregate signer.
+    #[clap(long = "signer-key")]
+    signer_aggregate_key: String,
+}
+
+#[derive(Debug, Args)]
+struct DonationArgs {
+    /// Amount to deposit in satoshis, excluding the fee.
+    #[clap(long)]
+    amount: u64,
     /// The public key of the aggregate signer.
     #[clap(long = "signer-key")]
     signer_aggregate_key: String,
@@ -118,13 +130,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //    .require_network(Network::Regtest)?;
     //println!("New address: {:?}", addr);
     //bitcoin_client.generate_to_address(150, &addr)?;
-    let unspent = bitcoin_client.list_unspent(None, None, None, None, None)?;
+    //let unspent = bitcoin_client.list_unspent(None, None, None, None, None)?;
     //println!("Unspent: {:?}", unspent);
 
     match args.command {
         CliCommand::Deposit(args) => {
             exec_deposit(args, &bitcoin_client, &emily_client_config).await?
         }
+        CliCommand::Donation(args) => exec_donation(args, &bitcoin_client).await?,
     }
 
     Ok(())
@@ -158,6 +171,62 @@ async fn exec_deposit(
     let tx = bitcoin_client.send_raw_transaction(&signed_tx.hex)?;
 
     println!("Transaction sent: calc: {txid:?}, actual: {tx:?}");
+
+    todo!()
+}
+
+async fn exec_donation(args: DonationArgs, bitcoin_client: &Client) -> Result<(), Error> {
+    let pubkey = XOnlyPublicKey::from_str(&args.signer_aggregate_key)
+        .or_else(|_| PublicKey::from_str(&args.signer_aggregate_key).map(XOnlyPublicKey::from))
+        .map_err(|_| Error::InvalidSignerKey(args.signer_aggregate_key.clone()))?;
+
+    // Look for UTXOs that can cover the amount + max fee
+    let opts = json::ListUnspentQueryOptions {
+        minimum_amount: Some(Amount::from_sat(args.amount)),
+        ..Default::default()
+    };
+
+    let unspent = bitcoin_client
+        .list_unspent(Some(6), None, None, None, Some(opts))?
+        .into_iter()
+        .next()
+        .ok_or(Error::NoAvailableUtxos)?;
+
+    // Get a new address for change (SegWit)
+    let change_address = bitcoin_client
+        .get_new_address(None, Some(json::AddressType::Bech32))?
+        .require_network(Network::Regtest)?;
+
+    // Create the unsigned transaction
+    let unsigned_tx = Transaction {
+        input: vec![TxIn {
+            previous_output: OutPoint {
+                txid: unspent.txid,
+                vout: unspent.vout,
+            },
+            script_sig: Default::default(),
+            sequence: Sequence::ZERO,
+            witness: Default::default(),
+        }],
+        output: vec![
+            TxOut {
+                value: Amount::from_sat(args.amount),
+                script_pubkey: pubkey.signers_script_pubkey(),
+            },
+            TxOut {
+                value: Amount::from_sat(unspent.amount.to_sat() - args.amount - 153),
+                script_pubkey: change_address.into(),
+            },
+        ],
+        version: Version::TWO,
+        lock_time: absolute::LockTime::ZERO,
+    };
+
+    let signed_tx = bitcoin_client.sign_raw_transaction_with_wallet(&unsigned_tx, None, None)?;
+    println!("Signed transaction: {:?}", hex::encode(&signed_tx.hex));
+    let tx = bitcoin_client.send_raw_transaction(&signed_tx.hex)?;
+
+    println!("Transaction sent: {tx:?}");
 
     todo!()
 }

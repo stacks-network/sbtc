@@ -256,7 +256,6 @@ async fn run_shutdown_signal_watcher(ctx: impl Context) -> Result<(), Error> {
 }
 
 /// Runs the libp2p swarm.
-#[tracing::instrument(skip(ctx))]
 async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
     tracing::info!("initializing the p2p network");
 
