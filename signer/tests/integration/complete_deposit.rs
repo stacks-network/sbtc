@@ -431,7 +431,7 @@ async fn complete_deposit_validation_fee_too_high() {
     let assessed_fee = setup
         .sweep_tx_info
         .assess_input_fee(&setup.deposit_request.outpoint);
-    setup.deposit_request.max_fee = assessed_fee.unwrap().to_sat() - 1;
+    setup.deposit_info.max_fee = assessed_fee.unwrap().to_sat() - 1;
 
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the deposit request object
