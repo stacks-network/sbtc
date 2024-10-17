@@ -8,7 +8,6 @@ use std::str::FromStr as _;
 
 use bitcoin::consensus::Decodable as _;
 use bitcoin::consensus::Encodable as _;
-use bitcoin::ScriptBuf;
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
 use sqlx::postgres::PgArgumentBuffer;
@@ -27,7 +26,7 @@ use crate::storage::model::StacksTxId;
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for ScriptPubKey {
     fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
         let bytes = <Vec<u8> as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
-        Ok(ScriptPubKey::from(ScriptBuf::from_bytes(bytes)))
+        Ok(ScriptPubKey::from_bytes(bytes))
     }
 }
 

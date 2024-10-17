@@ -733,5 +733,12 @@ impl From<ScriptPubKey> for bitcoin::ScriptBuf {
     }
 }
 
+impl ScriptPubKey {
+    /// Converts byte vector into script.
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+        bitcoin::ScriptBuf::from_bytes(bytes).into()
+    }
+}
+
 /// Arbitrary bytes
 pub type Bytes = Vec<u8>;
