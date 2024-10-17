@@ -218,9 +218,21 @@ pub async fn update_withdrawals(
         api_state.error_if_reorganizing()?;
         // Validate request.
         let validated_request: ValidatedUpdateWithdrawalRequest = body.try_into()?;
+
+        // Infer the new chainstates that would come from these deposit updates and then
+        // attempt to update the chainstates.
+        let inferred_chainstates = validated_request.inferred_chainstates()?;
+        for chainstate in inferred_chainstates {
+            // TODO(TBD): Determine what happens if this occurs in multiple lambda
+            // instances at once.
+            crate::api::handlers::chainstate::add_chainstate_entry_or_reorg(&context, &chainstate)
+                .await?;
+        }
+
         // Create aggregator.
         let mut updated_withdrawals: Vec<Withdrawal> =
             Vec::with_capacity(validated_request.withdrawals.len());
+
         // Loop through all updates and execute.
         for update in validated_request.withdrawals {
             // Get original withdrawal entry.
