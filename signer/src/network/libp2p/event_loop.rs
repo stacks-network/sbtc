@@ -192,11 +192,12 @@ fn handle_autonat_server_event(_: &mut Swarm<SignerBehavior>, event: autonat::v2
             result: Ok(()),
         } => {
             tracing::trace!(
-                ?all_addrs, 
-                %client, 
-                %tested_addr, 
-                %data_amount, 
-                "AutoNAT (server) test successful");
+                ?all_addrs,
+                %client,
+                %tested_addr,
+                %data_amount,
+                "AutoNAT (server) test successful"
+            );
         }
         Event {
             all_addrs,
@@ -206,12 +207,13 @@ fn handle_autonat_server_event(_: &mut Swarm<SignerBehavior>, event: autonat::v2
             result: Err(error),
         } => {
             tracing::warn!(
-                ?all_addrs, 
-                %client, 
-                %tested_addr, 
-                %data_amount, 
-                %error, 
-                "AutoNAT (server) test failed");
+                ?all_addrs,
+                %client,
+                %tested_addr,
+                %data_amount,
+                %error,
+                "AutoNAT (server) test failed"
+            );
         }
     }
 }
