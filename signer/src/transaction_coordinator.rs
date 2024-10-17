@@ -278,7 +278,7 @@ where
             .get_storage()
             .get_stacks_chain_tip(bitcoin_chain_tip)
             .await?
-            .ok_or(Error::NoChainTip)?;
+            .ok_or(Error::NoStacksChainTip)?;
 
         let pending_requests_fut =
             self.get_pending_requests(bitcoin_chain_tip, aggregate_key, signer_public_keys);
