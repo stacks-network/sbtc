@@ -254,12 +254,16 @@ where
             None => self.coordinate_dkg(&bitcoin_chain_tip).await?,
         };
 
-        self.construct_and_sign_bitcoin_sbtc_transactions(
+        let result = self.construct_and_sign_bitcoin_sbtc_transactions(
             &bitcoin_chain_tip,
             &aggregate_key,
             &signer_public_keys,
         )
-        .await?;
+        .await;
+
+        if let Err(error) = result {
+            tracing::warn!(%error, "continuing");
+        }
 
         self.construct_and_sign_stacks_sbtc_response_transactions(
             &bitcoin_chain_tip,

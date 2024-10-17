@@ -720,6 +720,10 @@ async fn sign_bitcoin_transaction() {
                 Box::pin(std::future::ready(response))
             });
 
+            client.expect_estimate_fees().returning(|_, _| {
+                Box::pin(std::future::ready(Ok(25)))
+            });
+
             // The coordinator will try to further process the deposit to submit
             // the stacks tx, but we are not interested (for the current test iteration).
             client.expect_get_account().returning(|_| {

@@ -657,20 +657,20 @@ where
         request: model::DepositRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
-        // let bitcoin_network = bitcoin::Network::from(self.context.config().signer.network);
-        // let params = bitcoin_network.params();
-        // let addresses = request
-        //     .sender_script_pub_keys
-        //     .iter()
-        //     .map(|script_pubkey| {
-        //         bitcoin::Address::from_script(script_pubkey, params)
-        //             .map_err(|err| Error::BitcoinAddressFromScript(err, request.outpoint()))
-        //     })
-        //     .collect::<Result<Vec<bitcoin::Address>, _>>()?;
+        let bitcoin_network = bitcoin::Network::from(self.context.config().signer.network);
+        let params = bitcoin_network.params();
+        let addresses = request
+            .sender_script_pub_keys
+            .iter()
+            .map(|script_pubkey| {
+                bitcoin::Address::from_script(script_pubkey, params)
+                    .map_err(|err| Error::BitcoinAddressFromScript(err, request.outpoint()))
+            })
+            .collect::<Result<Vec<bitcoin::Address>, _>>()?;
 
-        // let is_accepted = futures::stream::iter(&addresses)
-        //     .any(|address| async { self.can_accept(&address.to_string()).await })
-        //     .await;
+        let is_accepted = futures::stream::iter(&addresses)
+            .any(|address| async { self.can_accept(&address.to_string()).await })
+            .await;
         let is_accepted = true;
 
         let msg = message::SignerDepositDecision {
