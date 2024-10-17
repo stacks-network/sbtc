@@ -21,6 +21,7 @@ use rand::distributions::Uniform;
 use rand::rngs::OsRng;
 use rand::Rng as _;
 use sbtc::deposits::CreateDepositRequest;
+use sbtc::deposits::DepositInfo;
 use sbtc::deposits::DepositScriptInputs;
 use sbtc::deposits::ReclaimScriptInputs;
 use signer::bitcoin::utxo::DepositRequest;
@@ -58,7 +59,7 @@ pub fn make_deposit_request<U>(
     amount: u64,
     utxo: U,
     signers_public_key: XOnlyPublicKey,
-) -> (Transaction, DepositRequest)
+) -> (Transaction, DepositRequest, DepositInfo)
 where
     U: AsUtxo,
 {
@@ -112,11 +113,11 @@ where
         max_fee: dep.max_fee,
         signer_bitmap: BitArray::ZERO,
         amount: dep.amount,
-        deposit_script: dep.deposit_script,
-        reclaim_script: dep.reclaim_script,
+        deposit_script: dep.deposit_script.clone(),
+        reclaim_script: dep.reclaim_script.clone(),
         signers_public_key: dep.signers_public_key,
     };
-    (deposit_tx, req)
+    (deposit_tx, req, dep)
 }
 
 /// This test just checks that many of the methods on the Recipient struct
@@ -181,7 +182,7 @@ fn deposits_add_to_controlled_amounts() {
     let depositor_utxo = depositor.get_utxos(rpc, None).pop().unwrap();
     let deposit_amount = 25_000_000;
 
-    let (deposit_tx, deposit_request) = make_deposit_request(
+    let (deposit_tx, deposit_request, _) = make_deposit_request(
         &depositor,
         deposit_amount,
         depositor_utxo,
