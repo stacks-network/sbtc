@@ -492,9 +492,9 @@ mod tests {
 
     /// Test that `BlockObserver::load_latest_deposit_requests` takes
     /// deposits from emily, validates them and only keeps the ones that
-    /// pass validation.
+    /// pass validation and have been confirmed.
     #[tokio::test]
-    async fn validated_deposits_get_added_to_state() {
+    async fn validated_confirmed_deposits_get_added_to_state() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let mut test_harness = TestHarness::generate(&mut rng, 20, 0..5);
 
@@ -517,11 +517,10 @@ mod tests {
             reclaim_script: tx_setup0.reclaim.reclaim_script(),
         };
         // When we validate the deposit request, we fetch the transaction
-        // from bitcoin-core's mempool or blockchain. The stubs out that
-        // response.
+        // from bitcoin-core's blockchain. The stubs out that response.
         let get_tx_resp0 = GetTxResponse {
             tx: tx_setup0.tx.clone(),
-            block_hash: None,
+            block_hash: Some(bitcoin::BlockHash::all_zeros()),
             confirmations: None,
             block_time: None,
         };
@@ -546,16 +545,36 @@ mod tests {
             block_time: None,
         };
 
+        // This deposit transaction is a fine deposit, it just hasn't been
+        // confirmed yet.
+        let tx_setup2 = sbtc::testing::deposits::tx_setup(400, 3000, amount);
+        let get_tx_resp2 = GetTxResponse {
+            tx: tx_setup2.tx.clone(),
+            block_hash: None,
+            confirmations: None,
+            block_time: None,
+        };
+
+        let deposit_request2 = CreateDepositRequest {
+            outpoint: bitcoin::OutPoint {
+                txid: tx_setup2.tx.compute_txid(),
+                vout: 0,
+            },
+            deposit_script: tx_setup2.deposit.deposit_script(),
+            reclaim_script: tx_setup2.reclaim.reclaim_script(),
+        };
+
         // Let's add the "responses" to the field that feeds the
         // response to the `BitcoinClient::get_tx` call.
         test_harness.add_deposits(&[
             (get_tx_resp0.tx.compute_txid(), get_tx_resp0),
             (get_tx_resp1.tx.compute_txid(), get_tx_resp1),
+            (get_tx_resp2.tx.compute_txid(), get_tx_resp2),
         ]);
 
         // Add the deposit requests to the pending deposits which
         // would be returned by Emily.
-        test_harness.add_pending_deposits(&[deposit_request0, deposit_request1]);
+        test_harness.add_pending_deposits(&[deposit_request0, deposit_request1, deposit_request2]);
 
         // Now we finish setting up the block observer.
         let storage = storage::in_memory::Store::new_shared();
@@ -619,7 +638,7 @@ mod tests {
             reclaim_script: tx_setup0.reclaim.reclaim_script(),
         };
         // When we validate the deposit request, we fetch the transaction
-        // from bitcoin-core's mempool or blockchain. The stubs out that
+        // from bitcoin-core's blockchain. The stubs out that
         // response.
         let get_tx_resp0 = GetTxResponse {
             tx: tx_setup0.tx.clone(),
