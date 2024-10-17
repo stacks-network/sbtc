@@ -143,7 +143,7 @@ where
     Rng: rand::RngCore + rand::CryptoRng,
 {
     /// Run the signer event loop
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self), name = "tx-signer")]
     pub async fn run(mut self) -> Result<(), Error> {
         let mut signal_rx = self.context.get_signal_receiver();
         let mut term = self.context.get_termination_handle();
