@@ -3,9 +3,16 @@ use std::sync::Arc;
 use tokio::sync::broadcast::Sender;
 use url::Url;
 
-use crate::{bitcoin::BitcoinInteract, config::Settings, emily_client::EmilyInteract, error::Error, stacks::api::StacksInteract, storage::{DbRead, DbWrite}};
+use crate::{
+    bitcoin::BitcoinInteract,
+    config::Settings,
+    emily_client::EmilyInteract,
+    error::Error,
+    stacks::api::StacksInteract,
+    storage::{DbRead, DbWrite},
+};
 
-use super::{Context, SignerSignal, TerminationHandle, SignerState};
+use super::{Context, SignerSignal, SignerState, TerminationHandle};
 
 /// Signer context which is passed to different components within the
 /// signer binary.

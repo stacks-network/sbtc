@@ -1,9 +1,9 @@
 //! Context module for the signer binary.
 
 mod messaging;
-mod termination;
 mod signer_context;
 mod signer_state;
+mod termination;
 #[cfg(test)]
 mod tests;
 
@@ -16,9 +16,9 @@ use crate::storage::DbRead;
 use crate::storage::DbWrite;
 
 pub use messaging::*;
-pub use termination::*;
 pub use signer_context::SignerContext;
 pub use signer_state::*;
+pub use termination::*;
 
 /// Context trait that is implemented by the [`SignerContext`].
 pub trait Context: Clone + Sync + Send {

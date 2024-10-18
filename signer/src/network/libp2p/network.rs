@@ -122,9 +122,19 @@ mod tests {
         clear_env();
 
         // PeerId = 16Uiu2HAm46BSFWYYWzMjhTRDRwXHpDWpQ32iu93nzDwd1F4Tt256
-        let key1 = PrivateKey::from_slice(hex::decode("ab0893ecf683dc188c3fb219dd6489dc304bb5babb8151a41245a70e60cb7258").unwrap().as_slice()).unwrap();
+        let key1 = PrivateKey::from_slice(
+            hex::decode("ab0893ecf683dc188c3fb219dd6489dc304bb5babb8151a41245a70e60cb7258")
+                .unwrap()
+                .as_slice(),
+        )
+        .unwrap();
         // PeerId = 16Uiu2HAkuyB8ECXxACm8hzQj4vZ2iWrYMF3xcKNf1oJJ1NuQEMvQ
-        let key2 = PrivateKey::from_slice(hex::decode("0dd4077c8bcec09c803f9ba23a0f5b56eba75769b2d1b96a33b579dbbe5055ce").unwrap().as_slice()).unwrap();
+        let key2 = PrivateKey::from_slice(
+            hex::decode("0dd4077c8bcec09c803f9ba23a0f5b56eba75769b2d1b96a33b579dbbe5055ce")
+                .unwrap()
+                .as_slice(),
+        )
+        .unwrap();
 
         let context1 = TestContext::builder()
             .with_in_memory_storage()
@@ -133,7 +143,10 @@ mod tests {
                 settings.signer.private_key = key1;
             })
             .build();
-        context1.state().current_signer_set().add_signer(PublicKey::from_private_key(&key2));
+        context1
+            .state()
+            .current_signer_set()
+            .add_signer(PublicKey::from_private_key(&key2));
 
         let context2 = TestContext::builder()
             .with_in_memory_storage()
@@ -142,7 +155,10 @@ mod tests {
                 settings.signer.private_key = key2;
             })
             .build();
-        context2.state().current_signer_set().add_signer(PublicKey::from_private_key(&key1));
+        context2
+            .state()
+            .current_signer_set()
+            .add_signer(PublicKey::from_private_key(&key1));
 
         let term1 = context1.get_termination_handle();
         let term2 = context2.get_termination_handle();
@@ -206,11 +222,20 @@ mod tests {
         // emitted.
 
         // PeerId = 16Uiu2HAm46BSFWYYWzMjhTRDRwXHpDWpQ32iu93nzDwd1F4Tt256
-        let key1 = PrivateKey::from_str("ab0893ecf683dc188c3fb219dd6489dc304bb5babb8151a41245a70e60cb7258").unwrap();
+        let key1 = PrivateKey::from_str(
+            "ab0893ecf683dc188c3fb219dd6489dc304bb5babb8151a41245a70e60cb7258",
+        )
+        .unwrap();
         // PeerId = 16Uiu2HAkuyB8ECXxACm8hzQj4vZ2iWrYMF3xcKNf1oJJ1NuQEMvQ
-        let key2 = PrivateKey::from_str("0dd4077c8bcec09c803f9ba23a0f5b56eba75769b2d1b96a33b579dbbe5055ce").unwrap();
+        let key2 = PrivateKey::from_str(
+            "0dd4077c8bcec09c803f9ba23a0f5b56eba75769b2d1b96a33b579dbbe5055ce",
+        )
+        .unwrap();
         // PeerId = 16Uiu2HAkv4DBE9f9eg53RoRYsfuzJXdoAvRU91gb6oii5pTseo1j
-        let key3 = PrivateKey::from_str("bdbb219e045b12c12d99c86afd83764ea67a9e3c0127c0298d7c57b3597a4645").unwrap();
+        let key3 = PrivateKey::from_str(
+            "bdbb219e045b12c12d99c86afd83764ea67a9e3c0127c0298d7c57b3597a4645",
+        )
+        .unwrap();
 
         // Create the context for signer1.
         let context1 = TestContext::builder()
@@ -221,7 +246,10 @@ mod tests {
             })
             .build();
         // Add key2 to the known signers for signer1.
-        context1.state().current_signer_set().add_signer(PublicKey::from_private_key(&key2));
+        context1
+            .state()
+            .current_signer_set()
+            .add_signer(PublicKey::from_private_key(&key2));
 
         // Create the context for signer2.
         let context2 = TestContext::builder()
@@ -232,10 +260,16 @@ mod tests {
             })
             .build();
         // Add key1 to the known signers for signer2.
-        context2.state().current_signer_set().add_signer(PublicKey::from_private_key(&key1));
+        context2
+            .state()
+            .current_signer_set()
+            .add_signer(PublicKey::from_private_key(&key1));
 
         // Add key2 to the known signers for signer1.
-        context1.state().current_signer_set().add_signer(PublicKey::from_private_key(&key2));
+        context1
+            .state()
+            .current_signer_set()
+            .add_signer(PublicKey::from_private_key(&key2));
 
         // Create the context for signer2.
         let context3 = TestContext::builder()
@@ -248,8 +282,14 @@ mod tests {
         // Add key1 and key2 to the known signers for signer 3. This simulates
         // what an adversary signer might do, i.e. it would want to join with
         // the known signers.
-        context3.state().current_signer_set().add_signer(PublicKey::from_private_key(&key1));
-        context3.state().current_signer_set().add_signer(PublicKey::from_private_key(&key2));
+        context3
+            .state()
+            .current_signer_set()
+            .add_signer(PublicKey::from_private_key(&key1));
+        context3
+            .state()
+            .current_signer_set()
+            .add_signer(PublicKey::from_private_key(&key2));
 
         // Create the two trusted swarms.
         let mut swarm1 = SignerSwarmBuilder::new(&key1)
@@ -294,28 +334,44 @@ mod tests {
         let trusted_msg_from_2_to_1 = tokio::time::timeout(Duration::from_secs(1), async {
             trusted1.receive().await.unwrap();
         });
-        trusted2.broadcast(Msg::random(&mut rand::thread_rng())).await.unwrap();
-        trusted_msg_from_2_to_1.await.expect("Failed to receive message from trusted 2 to trusted 1");
+        trusted2
+            .broadcast(Msg::random(&mut rand::thread_rng()))
+            .await
+            .unwrap();
+        trusted_msg_from_2_to_1
+            .await
+            .expect("Failed to receive message from trusted 2 to trusted 1");
 
         // Test that trusted 1 can send a message to trusted 2.
         let trusted_msg_from_1_to_2 = tokio::time::timeout(Duration::from_secs(1), async {
             trusted2.receive().await.unwrap();
         });
-        trusted1.broadcast(Msg::random(&mut rand::thread_rng())).await.unwrap();
-        trusted_msg_from_1_to_2.await.expect("Failed to receive message from trusted 1 to trusted 2");
+        trusted1
+            .broadcast(Msg::random(&mut rand::thread_rng()))
+            .await
+            .unwrap();
+        trusted_msg_from_1_to_2
+            .await
+            .expect("Failed to receive message from trusted 1 to trusted 2");
 
         // Test that adversarial can't send a message to trusted 1.
         let adversarial_msg_to_1 = tokio::time::timeout(Duration::from_secs(1), async {
             trusted1.receive().await.unwrap();
         });
-        adversarial.broadcast(Msg::random(&mut rand::thread_rng())).await.unwrap();
+        adversarial
+            .broadcast(Msg::random(&mut rand::thread_rng()))
+            .await
+            .unwrap();
         assert!(adversarial_msg_to_1.await.is_err());
 
         // Test that adversarial can't send a message to trusted 2.
         let adversarial_msg_to_2 = tokio::time::timeout(Duration::from_secs(1), async {
             trusted2.receive().await.unwrap();
         });
-        adversarial.broadcast(Msg::random(&mut rand::thread_rng())).await.unwrap();
+        adversarial
+            .broadcast(Msg::random(&mut rand::thread_rng()))
+            .await
+            .unwrap();
         assert!(adversarial_msg_to_2.await.is_err());
 
         // Kill the swarms just to be sure.

@@ -12,7 +12,7 @@ use crate::keys::PublicKey;
 /// fetching it via I/O for frequently accessed information.
 #[derive(Debug, Default)]
 pub struct SignerState {
-    current_signer_set: SignerSet
+    current_signer_set: SignerSet,
 }
 
 impl SignerState {

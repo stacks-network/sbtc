@@ -178,9 +178,7 @@ where
         self.inner.state()
     }
 
-    fn get_signal_receiver(
-        &self,
-    ) -> broadcast::Receiver<SignerSignal> {
+    fn get_signal_receiver(&self) -> broadcast::Receiver<SignerSignal> {
         self.inner.get_signal_receiver()
     }
 
@@ -429,12 +427,13 @@ where
     }
 
     /// Modify the current [`Settings`] using the provided closure.
-    fn modify_settings(self, f: impl FnOnce(&mut Settings)) -> ContextBuilder<Storage, Bitcoin, Stacks, Emily> {
+    fn modify_settings(
+        self,
+        f: impl FnOnce(&mut Settings),
+    ) -> ContextBuilder<Storage, Bitcoin, Stacks, Emily> {
         let mut config = self.get_config();
         f(&mut config.settings);
-        ContextBuilder {
-            config
-        }
+        ContextBuilder { config }
     }
 }
 

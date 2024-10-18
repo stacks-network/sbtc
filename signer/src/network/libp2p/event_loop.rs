@@ -12,10 +12,7 @@ use crate::network::Msg;
 use super::swarm::{SignerBehavior, SignerBehaviorEvent};
 use super::TOPIC;
 
-pub async fn run(
-    ctx: &impl Context,
-    swarm: Arc<Mutex<Swarm<SignerBehavior>>>,
-) {
+pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
     // NOTE: We are locking the swarm here for the life of the event loop.
     // Right now there's nothing else that needs to access the swarm while
     // it's running, but if that changes we will need to move the lock into
@@ -161,7 +158,11 @@ pub async fn run(
     }
 }
 
-fn handle_autonat_client_event(_: &mut Swarm<SignerBehavior>, ctx: &impl Context, event: autonat::v2::client::Event) {
+fn handle_autonat_client_event(
+    _: &mut Swarm<SignerBehavior>,
+    ctx: &impl Context,
+    event: autonat::v2::client::Event,
+) {
     use autonat::v2::client::Event;
 
     match event {
@@ -262,7 +263,11 @@ fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, ctx: &impl Context, even
     }
 }
 
-fn handle_identify_event(swarm: &mut Swarm<SignerBehavior>, ctx: &impl Context, event: identify::Event) {
+fn handle_identify_event(
+    swarm: &mut Swarm<SignerBehavior>,
+    ctx: &impl Context,
+    event: identify::Event,
+) {
     use identify::Event;
 
     match event {
