@@ -207,7 +207,7 @@ where
                 // script.
                 Err(Error::SbtcLib(_)) | Err(Error::UnknownAggregateKey(_, _)) => {
                     failed_requests.push(request);
-                },
+                }
                 // This happens when we cannot find the associated
                 // transaction confirmed on a bitcoin block, or when we
                 // encounted some unexpected error when reaching out to
@@ -288,7 +288,7 @@ where
 
     /// For each of the deposit requests, persist the corresponding
     /// transaction and the parsed deposit info into the database.
-    /// 
+    ///
     /// Since this functions writes to the `bitcoin_transactions` table, we
     /// must make sure that we have the bitcoin block header info in the
     /// database. So, this function must be called after
@@ -525,6 +525,7 @@ mod tests {
             deposit_script: tx_setup0.deposit.deposit_script(),
             reclaim_script: tx_setup0.reclaim.reclaim_script(),
         };
+        let req0 = deposit_request0.clone();
         // When we validate the deposit request, we fetch the transaction
         // from bitcoin-core's blockchain. The stubs out that response.
         let get_tx_resp0 = GetTxResponse {
@@ -604,10 +605,23 @@ mod tests {
             horizon: 1,
         };
 
+        {
+            let db = storage.lock().await;
+            assert_eq!(db.deposit_requests.len(), 0);
+        }
+
         block_observer.load_latest_deposit_requests().await.unwrap();
-        let db = storage.lock().await;
-        // Only the transaction from tx_setup0 was valid.
-        assert_eq!(db.deposit_requests.len(), 1);
+        // Only the transaction from tx_setup0 was valid. Note that, since
+        // we are not using a real block hash stored in the database. Out
+        // DbRead function won't actually find it. And in prod we won't
+        // actually store the deposit request transaction.
+        let deposit = {
+            let db = storage.lock().await;
+            assert_eq!(db.deposit_requests.len(), 1);
+            db.deposit_requests.values().next().cloned().unwrap()
+        };
+
+        assert_eq!(deposit.outpoint(), req0.outpoint);
     }
 
     /// Test that `BlockObserver::extract_deposit_requests` after
