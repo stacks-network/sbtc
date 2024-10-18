@@ -77,6 +77,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ApiFallbackClient<EmilyClient>,
     >::init(settings, db)?;
 
+    // TODO: We should first check "another source of truth" for the current
+    // signing set, and only assume we are bootstrapping if that source is
+    // empty.
+    let settings = context.config();
+    for signer in settings.signer.bootstrap_signing_set() {
+        context.state().current_signer_set().add_signer(signer);
+    }
+
     // Wait for the Nakamoto activation height to be reached.
     tracing::info!("waiting for Nakamoto activation height");
     wait_for_nakamoto(&context).await;

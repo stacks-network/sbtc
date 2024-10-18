@@ -18,7 +18,7 @@ use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
 use crate::context::TxCoordinatorEvent;
 use crate::context::TxSignerEvent;
-use crate::context::{messaging::SignerEvent, messaging::SignerSignal, Context};
+use crate::context::{Context, SignerEvent, SignerSignal};
 use crate::ecdsa::SignEcdsa as _;
 use crate::ecdsa::Signed;
 use crate::emily_client::EmilyInteract;

@@ -147,8 +147,7 @@ impl<'a> SignerSwarmBuilder<'a> {
 
     /// Build the [`SignerSwarm`], consuming the builder.
     pub fn build(self) -> Result<SignerSwarm, SignerSwarmError> {
-        let keypair = Keypair::ed25519_from_bytes(self.private_key.to_bytes())?;
-
+        let keypair: Keypair = (*self.private_key).into();
         let behavior = SignerBehavior::new(keypair.clone())?;
 
         let swarm = SwarmBuilder::with_existing_identity(keypair.clone())
@@ -213,13 +212,8 @@ impl SignerSwarm {
                 .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
         }
 
-        // Get our signal channel sender/receiver.
-        let signal_tx = ctx.get_signal_sender();
-        let signal_rx = ctx.get_signal_receiver();
-        let mut term = ctx.get_termination_handle();
-
         // Run the event loop, blocking until its completion.
-        event_loop::run(&mut term, Arc::clone(&self.swarm), signal_tx, signal_rx).await;
+        event_loop::run(ctx, Arc::clone(&self.swarm)).await;
 
         Ok(())
     }
@@ -235,7 +229,7 @@ mod tests {
     async fn test_signer_swarm_builder() {
         let addr: Multiaddr = "/ip4/127.0.0.1/tcp/0".parse().unwrap();
         let private_key = PrivateKey::new(&mut rand::thread_rng());
-        let keypair = Keypair::ed25519_from_bytes(private_key.to_bytes()).unwrap();
+        let keypair: Keypair = private_key.into();
         let builder = SignerSwarmBuilder::new(&private_key)
             .add_listen_endpoint(addr.clone())
             .add_seed_addr(addr.clone());
