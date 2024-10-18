@@ -1,4 +1,3 @@
-use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoin::AddressType;
 use bitcoin::OutPoint;
@@ -182,11 +181,8 @@ impl TestSweepSetup {
 
     /// Store the deposit transaction into the database
     pub async fn store_deposit_tx(&self, db: &PgStore) {
-        let mut tx = Vec::new();
-        self.deposit_tx_info.tx.consensus_encode(&mut tx).unwrap();
-
         let deposit_tx = model::Transaction {
-            tx,
+            tx: bitcoin::consensus::serialize(&self.deposit_tx_info.tx),
             txid: self.deposit_tx_info.txid.to_byte_array(),
             tx_type: model::TransactionType::SbtcTransaction,
             block_hash: self.deposit_block_hash.to_byte_array(),
@@ -203,11 +199,8 @@ impl TestSweepSetup {
     /// Store the transaction that swept the deposit into the signers' UTXO
     /// into the database
     pub async fn store_sweep_tx(&self, db: &PgStore) {
-        let mut tx = Vec::new();
-        self.sweep_tx_info.tx.consensus_encode(&mut tx).unwrap();
-
         let sweep_tx = model::Transaction {
-            tx,
+            tx: bitcoin::consensus::serialize(&self.sweep_tx_info.tx),
             txid: self.sweep_tx_info.txid.to_byte_array(),
             tx_type: model::TransactionType::SbtcTransaction,
             block_hash: self.sweep_block_hash.to_byte_array(),

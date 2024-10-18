@@ -90,11 +90,6 @@ pub enum Error {
     #[error("the message topic {0:?} is unsupported")]
     BitcoinCoreZmqUnsupported(Result<String, std::str::Utf8Error>),
 
-    /// This is for when bitcoin::Transaction::consensus_encode fails. It
-    /// should never happen.
-    #[error("could not serialize bitcoin transaction into bytes.")]
-    BitcoinEncodeTransaction(#[source] bitcoin::io::Error),
-
     /// Invalid amount
     #[error("the change amounts for the transaction is negative: {0}")]
     InvalidAmount(i64),

@@ -30,7 +30,6 @@ use crate::storage;
 use crate::storage::model;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
-use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoin::BlockHash;
 use bitcoin::ScriptBuf;
@@ -364,10 +363,6 @@ where
                 continue;
             }
 
-            let mut tx_bytes = Vec::new();
-            tx.consensus_encode(&mut tx_bytes)
-                .map_err(Error::BitcoinEncodeTransaction)?;
-
             // sBTC transactions have as first txin a signers spendable output
             let mut tx_type = model::TransactionType::Donation;
             if let Some(txin) = tx.input.first() {
@@ -391,7 +386,7 @@ where
 
             sbtc_txs.push(model::Transaction {
                 txid: tx.compute_txid().to_byte_array(),
-                tx: tx_bytes,
+                tx: bitcoin::consensus::serialize(&tx),
                 tx_type,
                 block_hash: block_hash.to_byte_array(),
             });
