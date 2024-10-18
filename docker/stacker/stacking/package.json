@@ -1,0 +1,32 @@
+{
+  "name": "stacking",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "scripts": {
+    "format": "prettier --write *.ts",
+    "flood": "dotenvx run -f ./tx-broadcaster.env -- npx tsx flood.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@stacks/api": "6.11.4-pr.472091f.0",
+    "@stacks/blockchain-api-client": "7.8.2",
+    "@stacks/common": "6.11.4-pr.36558cf.0",
+    "@stacks/encryption": "6.11.4-pr.36558cf.0",
+    "@stacks/network": "6.11.4-pr.36558cf.0",
+    "@stacks/stacking": "6.11.4-pr.36558cf.0",
+    "@stacks/stacks-blockchain-api-types": "7.8.2",
+    "@stacks/transactions": "6.11.4-pr.36558cf.0",
+    "dotenv": "^16.4.5",
+    "pino": "^8.19.0",
+    "pino-pretty": "^10.3.1"
+  },
+  "devDependencies": {
+    "@dotenvx/dotenvx": "^0.26.0",
+    "@stacks/prettier-config": "^0.0.10",
+    "tsx": "4.7.1"
+  },
+  "prettier": "@stacks/prettier-config"
+}
