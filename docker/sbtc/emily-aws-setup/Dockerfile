@@ -11,7 +11,7 @@ RUN pnpm --filter emily-cdk run synth
 # --------
 FROM python:3.12-slim AS emily-aws-setup
 WORKDIR /code
-COPY --from=build /code/sbtc/docker/sbtc/aws-setup/initialize.py /code/initialize.py
+COPY --from=build /code/sbtc/docker/sbtc/emily-aws-setup/initialize.py /code/initialize.py
 COPY --from=build /code/sbtc/emily/cdk/cdk.out /code/cdk.out
 RUN pip3 install boto3
 # The local lambda path is not used here because we're only deploying with the

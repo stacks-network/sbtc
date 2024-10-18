@@ -71,14 +71,14 @@ integration-env-down:
 integration-test-full: integration-env-down integration-env-up integration-test integration-env-down
 
 integration-env-up-ci: emily-cdk-synth
-	docker compose --file docker/docker-compose.test.ci.yml --profile ci up --detach
+	docker compose --file docker/docker-compose.test.ci.yml up --detach --quiet-pull
 	@echo "Wait for aws resources to be set up..."
 	sleep 5
 	cargo run --bin emily-server -- \
 		--host 127.0.0.1 --port 3031 --dynamodb-endpoint http://localhost:8000 > ./target/emily-server.log 2>&1 &
 
 integration-env-down-ci:
-	docker compose --file docker/docker-compose.test.ci.yml --profile ci down
+	docker compose --file docker/docker-compose.test.ci.yml down
 	@echo "killing emily server process..."
 	ps -ef | awk  '/[e]mily-server/{print $$2}' | xargs kill -9
 
