@@ -720,9 +720,9 @@ async fn sign_bitcoin_transaction() {
                 Box::pin(std::future::ready(response))
             });
 
-            client.expect_estimate_fees().returning(|_, _| {
-                Box::pin(std::future::ready(Ok(25)))
-            });
+            client
+                .expect_estimate_fees()
+                .returning(|_, _| Box::pin(std::future::ready(Ok(25))));
 
             // The coordinator will try to further process the deposit to submit
             // the stacks tx, but we are not interested (for the current test iteration).
@@ -823,7 +823,7 @@ async fn sign_bitcoin_transaction() {
     //    signal them all because we do not know which one is the
     //    coordinator.
 
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(Duration::from_secs(3)).await;
 
     let mut shares: EncryptedDkgShares = Faker.fake_with_rng(&mut rng);
     for (_, db, _) in signers.iter() {

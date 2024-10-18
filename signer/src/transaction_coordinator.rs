@@ -6,9 +6,8 @@
 //! For more details, see the [`TxCoordinatorEventLoop`] documentation.
 
 use std::collections::BTreeSet;
-use std::ops::Deref as _;
+// use std::ops::Deref as _;
 
-use bitcoin::TapNodeHash;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use futures::FutureExt;
 use futures::StreamExt as _;
@@ -43,8 +42,6 @@ use crate::stacks::contracts::ContractCall;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
-use crate::storage::model::BitcoinBlockHash;
-use crate::storage::model::BitcoinTxId;
 use crate::storage::model::StacksTxId;
 use crate::storage::DbRead as _;
 use crate::wsts_state_machine::CoordinatorStateMachine;
@@ -254,12 +251,13 @@ where
             None => self.coordinate_dkg(&bitcoin_chain_tip).await?,
         };
 
-        let result = self.construct_and_sign_bitcoin_sbtc_transactions(
-            &bitcoin_chain_tip,
-            &aggregate_key,
-            &signer_public_keys,
-        )
-        .await;
+        let result = self
+            .construct_and_sign_bitcoin_sbtc_transactions(
+                &bitcoin_chain_tip,
+                &aggregate_key,
+                &signer_public_keys,
+            )
+            .await;
 
         if let Err(error) = result {
             tracing::warn!(%error, "continuing");
@@ -484,7 +482,8 @@ where
             .context
             .get_stacks_client()
             .estimate_fees(&contract_call, FeePriority::High)
-            .await?;
+            .await?
+            * 10;
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
         let tx = multi_tx.tx();
@@ -581,7 +580,7 @@ where
                 &mut coordinator_state_machine,
                 txid,
                 &msg,
-                None,
+                SignatureType::Taproot(None),
             )
             .await?;
 
@@ -589,7 +588,7 @@ where
 
         let mut deposit_witness = Vec::new();
 
-        for (deposit, sighash, merkle_root) in sighashes.deposits.into_iter() {
+        for (deposit, sighash, _) in sighashes.deposits.into_iter() {
             let msg = sighash.to_raw_hash().to_byte_array();
 
             let signature = self
@@ -598,7 +597,7 @@ where
                     &mut coordinator_state_machine,
                     txid,
                     &msg,
-                    merkle_root,
+                    SignatureType::Schnorr,
                 )
                 .await?;
 
@@ -635,12 +634,8 @@ where
         coordinator_state_machine: &mut CoordinatorStateMachine,
         txid: bitcoin::Txid,
         msg: &[u8],
-        merkle_root: Option<TapNodeHash>,
+        signature_type: SignatureType,
     ) -> Result<TaprootSignature, Error> {
-        let signature_type = match merkle_root {
-            Some(_) => SignatureType::Schnorr,
-            None => SignatureType::Taproot(None),
-        };
         let outbound = coordinator_state_machine
             .start_signing_round(msg, signature_type)
             .map_err(Error::wsts_coordinator)?;
@@ -797,7 +792,13 @@ where
         aggregate_key: &PublicKey,
     ) -> Result<utxo::SignerBtcState, Error> {
         let bitcoin_client = self.context.get_bitcoin_client();
-        let fee_rate = bitcoin_client.estimate_fee_rate().await?;
+        let fee_rate = match bitcoin_client.estimate_fee_rate().await {
+            Ok(fee_rate) => fee_rate,
+            Err(error) => {
+                tracing::warn!(%error, "could not estimate fee rate");
+                4.
+            }
+        };
 
         let utxo = self
             .context
@@ -958,8 +959,8 @@ where
             .sign_ecdsa(&self.private_key)?;
 
         self.network.broadcast(msg.clone()).await?;
-        // self.context
-        //     .signal(TxCoordinatorEvent::MessageGenerated(msg).into())?;
+        self.context
+            .signal(TxCoordinatorEvent::MessageGenerated(msg).into())?;
 
         Ok(())
     }

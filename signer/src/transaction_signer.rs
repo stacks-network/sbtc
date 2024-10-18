@@ -671,7 +671,6 @@ where
         let is_accepted = futures::stream::iter(&addresses)
             .any(|address| async { self.can_accept(&address.to_string()).await })
             .await;
-        let is_accepted = true;
 
         let msg = message::SignerDepositDecision {
             txid: request.txid.into(),
@@ -825,8 +824,8 @@ where
             .sign_ecdsa(&self.signer_private_key)?;
 
         self.network.broadcast(msg.clone()).await?;
-        // self.context
-        //     .signal(TxSignerEvent::MessageGenerated(msg).into())?;
+        self.context
+            .signal(TxSignerEvent::MessageGenerated(msg).into())?;
 
         Ok(())
     }

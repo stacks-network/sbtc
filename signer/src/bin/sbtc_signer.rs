@@ -50,10 +50,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
     // TODO(497): The whole logging thing should be revisited. We should support
     //   enabling different layers, i.e. for pretty console, for opentelem, etc.
-    //sbtc::logging::setup_logging("info,signer=debug", false);
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .try_init();
+    // let _ = tracing_subscriber::fmt()
+    //     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+    //     .try_init();
+
+    signer::logging::setup_logging("info,sbtc_signer=debug", false);
 
     // Parse the command line arguments.
     let args = SignerArgs::parse();

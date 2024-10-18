@@ -1,7 +1,6 @@
 use std::str::FromStr;
 
 use bitcoin::hex::DisplayHex;
-use bitcoin::XOnlyPublicKey;
 use bitcoin::{
     absolute, transaction::Version, Amount, Network, OutPoint, ScriptBuf, Sequence, Transaction,
     TxIn, TxOut,
@@ -14,13 +13,14 @@ use clarity::{
     types::{chainstate::StacksAddress, Address as _},
     vm::types::{PrincipalData, StandardPrincipalData},
 };
+use emily_client::apis::testing_api;
 use emily_client::{
     apis::{configuration::Configuration, deposit_api},
     models::CreateDepositRequestBody,
 };
 use sbtc::deposits::{DepositScriptInputs, ReclaimScriptInputs};
-use secp256k1::PublicKey;
 use signer::config::Settings;
+use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey;
 
 #[derive(Debug, thiserror::Error)]
@@ -42,8 +42,6 @@ enum Error {
     EmilyDeposit(#[from] emily_client::apis::Error<deposit_api::CreateDepositError>),
     #[error("Invalid stacks address: {0}")]
     InvalidStacksAddress(String),
-    #[error("Invalid signer key: {0}")]
-    InvalidSignerKey(String),
 }
 
 #[derive(Debug, Parser)]
@@ -148,6 +146,7 @@ async fn exec_deposit(
     bitcoin_client: &Client,
     emily_config: &Configuration,
 ) -> Result<(), Error> {
+    testing_api::wipe_databases(emily_config).await.unwrap();
     let (unsigned_tx, deposit_script, reclaim_script) =
         create_bitcoin_deposit_transaction(bitcoin_client, &args)?;
 
@@ -176,9 +175,7 @@ async fn exec_deposit(
 }
 
 async fn exec_donation(args: DonationArgs, bitcoin_client: &Client) -> Result<(), Error> {
-    let pubkey = XOnlyPublicKey::from_str(&args.signer_aggregate_key)
-        .or_else(|_| PublicKey::from_str(&args.signer_aggregate_key).map(XOnlyPublicKey::from))
-        .map_err(|_| Error::InvalidSignerKey(args.signer_aggregate_key.clone()))?;
+    let pubkey = PublicKey::from_str(&args.signer_aggregate_key)?;
 
     // Look for UTXOs that can cover the amount + max fee
     let opts = json::ListUnspentQueryOptions {
@@ -235,13 +232,11 @@ fn create_bitcoin_deposit_transaction(
     client: &Client,
     args: &DepositArgs,
 ) -> Result<(Transaction, DepositScriptInputs, ReclaimScriptInputs), Error> {
-    let pubkey = XOnlyPublicKey::from_str(&args.signer_aggregate_key)
-        .or_else(|_| PublicKey::from_str(&args.signer_aggregate_key).map(XOnlyPublicKey::from))
-        .map_err(|_| Error::InvalidSignerKey(args.signer_aggregate_key.clone()))?;
+    let pubkey = PublicKey::from_str(&args.signer_aggregate_key)?;
 
     // write_as_rotate_keys_tx
     let deposit_script = DepositScriptInputs {
-        signers_public_key: pubkey,
+        signers_public_key: pubkey.into(),
         max_fee: args.max_fee,
         recipient: PrincipalData::Standard(StandardPrincipalData::from(
             StacksAddress::from_string(&args.stacks_recipient)
@@ -291,7 +286,7 @@ fn create_bitcoin_deposit_transaction(
                 script_pubkey: change_address.into(),
             },
         ],
-        version: Version::TWO,
+        version: Version::ONE,
         lock_time: absolute::LockTime::ZERO,
     };
 
