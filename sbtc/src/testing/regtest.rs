@@ -30,8 +30,11 @@ use bitcoincore_rpc::json::ScanTxOutRequest;
 use bitcoincore_rpc::json::ScanTxOutResult;
 use bitcoincore_rpc::json::Timestamp;
 use bitcoincore_rpc::json::Utxo;
+use bitcoincore_rpc::jsonrpc::error::Error as JsonRpcError;
+use bitcoincore_rpc::jsonrpc::error::RpcError;
 use bitcoincore_rpc::Auth;
 use bitcoincore_rpc::Client;
+use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi;
 use secp256k1::SECP256K1;
 use std::sync::OnceLock;
@@ -41,6 +44,9 @@ use std::sync::OnceLock;
 pub const BITCOIN_CORE_RPC_USERNAME: &str = "devnet";
 /// The password for RPC calls in bitcoin-core
 pub const BITCOIN_CORE_RPC_PASSWORD: &str = "devnet";
+
+/// The name of our wallet on bitcoin-core
+const BITCOIN_CORE_WALLET_NAME: &str = "integration-tests-wallet";
 
 /// The fallback fee in bitcoin core
 pub const BITCOIN_CORE_FALLBACK_FEE: Amount = Amount::from_sat(1000);
@@ -77,6 +83,7 @@ pub fn initialize_blockchain() -> (&'static Client, &'static Faucet) {
     });
 
     let faucet = FAUCET.get_or_init(|| {
+        get_or_create_wallet(rpc, BITCOIN_CORE_WALLET_NAME);
         let faucet = Faucet::new(FAUCET_SECRET_KEY, AddressType::P2wpkh, rpc);
         faucet.track_address(FAUCET_LABEL);
 
@@ -90,6 +97,22 @@ pub fn initialize_blockchain() -> (&'static Client, &'static Faucet) {
     });
 
     (rpc, faucet)
+}
+
+fn get_or_create_wallet(rpc: &Client, wallet: &str) {
+    match rpc.load_wallet(wallet) {
+        // Success
+        Ok(_) => (),
+        // This happens if the wallet has already been loaded.
+        Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -35, .. }))) => (),
+        // The wallet probably hasn't been created yet, so let's do that
+        Err(_) => {
+            // We want a wallet that is watch only, since we manage keys
+            let disable_private_keys = Some(true);
+            rpc.create_wallet(wallet, disable_private_keys, None, None, None)
+                .unwrap();
+        }
+    };
 }
 
 /// Struct representing the bitcoin miner, all coins are usually generated
