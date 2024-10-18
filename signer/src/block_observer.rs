@@ -202,15 +202,15 @@ where
                 // request.
                 Ok(Some(deposit)) => deposit_requests.push(deposit),
                 // This happens when the transaction has failed the first
-                // step of validation or has passed the first step but we
-                // don't recongnize the x-only public key in the deposit
+                // step of validation or has passed the first step, but we
+                // don't recognize the x-only public key in the deposit
                 // script.
                 Err(Error::SbtcLib(_)) | Err(Error::UnknownAggregateKey(_, _)) => {
                     failed_requests.push(request.outpoint);
                 }
                 // This happens when we cannot find the associated
                 // transaction confirmed on a bitcoin block, or when we
-                // encounted some unexpected error when reaching out to
+                // encountered some unexpected error when reaching out to
                 // bitcoin-core or our database. We've already logged the
                 // error above, so there is nothing more to do.
                 Err(_) | Ok(None) => {}
@@ -287,7 +287,7 @@ where
     /// For each of the deposit requests, persist the corresponding
     /// transaction and the parsed deposit info into the database.
     ///
-    /// Since this functions writes to the `bitcoin_transactions` table, we
+    /// Since this function writes to the `bitcoin_transactions` table, we
     /// must make sure that we have the bitcoin block header info in the
     /// database. So, this function must be called after
     /// [`BlockObserver::process_bitcoin_block`]
@@ -610,7 +610,7 @@ mod tests {
 
         block_observer.load_latest_deposit_requests().await.unwrap();
         // Only the transaction from tx_setup0 was valid. Note that, since
-        // we are not using a real block hash stored in the database. Out
+        // we are not using a real block hash stored in the database. Our
         // DbRead function won't actually find it. And in prod we won't
         // actually store the deposit request transaction.
         let deposit = {
