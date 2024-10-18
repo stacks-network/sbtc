@@ -31,9 +31,6 @@ jobs:
       - name: Run tests
         run: make test
 
-      - name: Clean up
-        run: make clean
-
       - name: Docker test service setup
         run: make integration-env-up-ci
 
@@ -45,4 +42,4 @@ jobs:
 
       - name: Docker compose down
         if: always()
-        run:  make integration-env-down
+        run:  make integration-env-down-ci
