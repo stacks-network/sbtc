@@ -1,0 +1,211 @@
+# !! ==============================================================================
+# !! Blocklist Client Configuration
+# !! ==============================================================================
+# You may specify a blocklist client url. If one is not specified, then
+# deposit or withdrawal requests are always accepted.
+#
+# Format: "http(s)://<host>:<port>"
+# Default: <none>
+# Required: false
+# Environment: SIGNER_BLOCKLIST_CLIENT__ENDPOINT
+# [blocklist_client]
+# endpoint = "http://127.0.0.1:8080"
+
+# !! ==============================================================================
+# !! Emily API Configuration
+# !! ==============================================================================
+[emily]
+# The URI(s) of the Emily API server to connect to.
+#
+# You may specify multiple Emily API servers if you have them. They will be
+# tried round-robin until one succeeds.
+#
+# Format: ["http(s)://<host>:<port>", ..]
+# Default: <none>
+# Required: true
+# Environment: SIGNER_EMILY__ENDPOINTS
+endpoints = [
+    "http://emily-server:3031"
+]
+
+# !! ==============================================================================
+# !! Bitcoin Core Configuration
+# !! ==============================================================================
+[bitcoin]
+# The URI(s) of the Bitcoin Core RPC server(s) to connect to.
+#
+# You may specify multiple Bitcoin Core RPC servers if you have them. They will
+# be randomly tried until one succeeds.
+#
+# Format: ["http://<user>:<pass>@<host>:<port>", ..]
+# Default: <none>
+# Required: true
+# Environment: SIGNER_BITCOIN__RPC_ENDPOINTS
+# Environment Example: http://user:pass@seed-1:4122,http://foo:bar@seed-2:4122
+rpc_endpoints = [
+    "http://devnet:devnet@bitcoin:18443",
+]
+
+# The URI(s) of the Bitcoin Core ZMQ block hash stream(s) to connect to.
+#
+# You may optionally specify multiple endpoints if you have them. They will be
+# tried in order until one succeeds, and it will attempt failover to the next
+# endpoint if the connection is lost.
+#
+# Format: ["tcp://<host>:<port>", ..]
+# Default: <none>
+# Required: true
+# Environment: SIGNER_BITCOIN__BLOCK_HASH_STREAM_ENDPOINTS
+# Environment Example: tcp://10.0.0.1:28332,tcp://10.0.0.2:28332
+block_hash_stream_endpoints = [
+    "tcp://bitcoin:28332"
+]
+
+# !! ==============================================================================
+# !! Block Notifier Configuration
+# !! ==============================================================================
+# Electrum server connection confirmation.
+[block_notifier]
+# The URI of the Electrum server to connect to.
+#
+# Format: "<protocol>://<host>:<port>"
+# Default: <none>
+# Required: true
+# Environment: SIGNER_BLOCK_NOTIFIER__SERVER
+server = "tcp://localhost:60401"
+retry_interval = 10
+max_retry_attempts = 5
+ping_interval = 60
+subscribe_interval = 10
+
+# !! ==============================================================================
+# !! Stacks Node Configuration
+# !! ==============================================================================
+[stacks]
+# The RPC URL(s) of the Stacks node(s) to connect to. At least one must be
+# provided. If multiple nodes are provided they will be tried in order when
+# making requests.
+endpoints = ["http://stacks:20443"]
+
+# This is the start height of the first EPOCH 3.0 block on the stacks
+# blockchain.
+nakamoto_start_height = 30
+
+# !! ==============================================================================
+# !! Signer Configuration
+# !! ==============================================================================
+[signer]
+# The private key associated with the signer. This is used to generate the
+# signers associated public key and sign messages to other signers.
+#
+# This may be either in 32- or 33-byte format. If you generated the key using
+# `stacks-cli` or other ecosystem tools, it is likely that the key is in 33-byte
+# format which includes a stacks-proprietary suffix byte. The sBTC signer doesn't
+# make use of this byte and it will be trimmed automatically if provided.
+#
+# Format: "<hex-encoded-private-key>" (64 or 66 hex-characters)
+# Required: true
+# Environment: SIGNER_SIGNER__PRIVATE_KEY
+private_key = ""
+
+# Specifies which network to use when constructing and sending transactions
+# on stacks and bitcoin. This cooresponds to the `chain` flag in the
+# bitcoin.conf file of the connected bitcoin-core node, and the
+# `burnchain.mode` flag int he config.toml of the connected stacks-core
+# node.
+#
+# Required: true
+# Possible values: mainnet, testnet, regtest
+# Environment: SIGNER_SIGNER__NETWORK
+network = "regtest"
+
+# The address that deployed the sbtc smart contracts.
+#
+# Required: true
+deployer = "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039"
+
+# The signer database endpoint (pgsql connection string)
+#
+# Required: true
+# Environment: SIGNER_SIGNER__DB_ENDPOINT
+db_endpoint = ""
+
+# !! ==============================================================================
+# !! Stacks Event Observer Configuration
+# !!
+# !! The event observer listens for events on the Stacks blockchain. The listen 
+# !! address must be reachable by your Stacks node, and must be configured in the 
+# !! node's `event_observer` configuration section.
+# !!
+# !! Note that the event observer endpoint _does not_ support TLS and is served 
+# !! over HTTP.
+# !! ==============================================================================
+[signer.event_observer]
+# The network interface (ip address) and port to bind the event observer server to.
+# 
+# Format: "<ip>:<port>"
+# Required: true
+# Environment: SIGNER_SIGNER__EVENT_OBSERVER__BIND
+bind = "0.0.0.0:8801"
+
+# !! ==============================================================================
+# !! Signer P2P Networking Configuration
+# !! ==============================================================================
+[signer.p2p]
+# List of seed nodes to connect to to bootstrap the network.
+#
+# If specified, these nodes will be used to discover other nodes on the network.
+# If not specified or if none of the specified seeds could be reached, the node
+# will attempt to discover other nodes using StackerDB.
+#
+# See the `listen_on` parameter for available protocols.
+#
+# Format: ["<protocol>:<ip>:<port>", "<protocol>:<ip>:<port>", ...]
+# Required: false
+# Environment: SIGNER_SIGNER__P2P__SEEDS
+# Environment Example: tcp://seed-1:4122,tcp://seed-2:4122
+# TODO(429): Add well-known seed nodes
+seeds = []
+
+# The local network interface(s) and port(s) to listen on. 
+#
+# You may specify multiple interfaces and ports by adding additional entries to 
+# the list. Entries can be addressed by any of IPv4 address, IPv6 address or 
+# hostname. Note that not all networks have IPv6 enabled, so it is recommended 
+# to provide an IPv4 address as well.
+#
+# Specifying a port of `0` will cause the server to bind to a random port, 
+# and an IP of `0.0.0.0` will cause the server to listen on all available
+# interfaces.
+#
+# Available protocols:
+# - tcp: Standard TCP socket connections.
+# - quick-v1: QUIC over UDP. This protocol is faster and uses less bandwidth,
+#       but may not be supported by all nodes' networks. Nodes will always
+#       attempt QUIC connections first, and fall back to TCP if it fails.
+#       If UDP is blocked on your network then you should not specify a QUIC
+#       listener (as it will never be reachable).
+#       More information: https://en.wikipedia.org/wiki/QUIC
+#
+# Format: ["<protocol>:<ip>[:port]", ...]
+# - If port is omitted then the default port 4122 will be used.
+# Default: ["tcp://0.0.0.0:4122", "quic-v1://0.0.0.0:4122"]
+# Required: false
+# Environment: SIGNER_SIGNER__P2P__LISTEN_ON
+listen_on = []
+
+# The publicly accessible network endpoint to advertise to other nodes.
+#
+# If this is not specified then the node will attempt to use other peers on the 
+# network to determine its public endpoint. This is the recommended
+# configuration for most users.
+#
+# If your network uses an advanced configuration with separate inbound/outbound
+# addresses then you must specify this value with your inbound address and
+# configure port-forwarding as auto-discovery will report your outbound address.
+#
+# Format: ["<protocol>:<ip>:<port>", ...] (see `listen_on` for protocol options)
+# Default: <none>
+# Required: false
+# Environment: SIGNER_SIGNER__P2P__PUBLIC_ENDPOINTS
+public_endpoints = []

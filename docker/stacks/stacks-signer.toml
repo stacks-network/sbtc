@@ -1,0 +1,7 @@
+stacks_private_key = "$SIGNER_PRIVATE_KEY"
+node_host = "$STACKS_NODE_HOST" # eg "127.0.0.1:20443"
+# must be added as event_observer in node config:
+endpoint = "$STACKS_SIGNER_ENDPOINT" # e.g 127.0.0.1:30000
+network = "testnet"
+auth_password = "12345"
+db_path = "/data/stacks-signer.sqlite"
