@@ -264,7 +264,7 @@ where
             .is_some())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all, fields(block_hash = %block.block_hash()))]
     async fn process_bitcoin_block(&mut self, block: bitcoin::Block) -> Result<(), Error> {
         tracing::info!("processing bitcoin block");
         let info = self.stacks_client.get_tenure_info().await?;
@@ -286,6 +286,11 @@ where
 
     /// For each of the deposit requests, persist the corresponding
     /// transaction and the parsed deposit info into the database.
+    /// 
+    /// Since this functions writes to the `bitcoin_transactions` table, we
+    /// must make sure that we have the bitcoin block header info in the
+    /// database. So, this function must be called after
+    /// [`BlockObserver::process_bitcoin_block`]
     async fn store_deposit_requests(&mut self, requests: Vec<Deposit>) -> Result<(), Error> {
         let (deposit_requests, deposit_request_txs) = requests
             .into_iter()
