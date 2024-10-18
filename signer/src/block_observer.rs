@@ -54,8 +54,6 @@ pub struct BlockObserver<Context, StacksClient, EmilyClient, BlockHashStream> {
     pub bitcoin_blocks: BlockHashStream,
     /// How far back in time the observer should look
     pub horizon: usize,
-    /// The bitcoin network
-    pub network: bitcoin::Network,
 }
 
 /// A full "deposit", containing the bitcoin transaction and a fully
@@ -491,7 +489,6 @@ mod tests {
             emily_client: test_harness.clone(),
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
-            network: bitcoin::Network::Regtest,
         };
 
         block_observer.run().await.expect("block observer failed");
@@ -610,7 +607,6 @@ mod tests {
             emily_client: test_harness.clone(),
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
-            network: bitcoin::Network::Regtest,
         };
 
         block_observer.load_latest_deposit_requests().await.unwrap();
@@ -680,7 +676,6 @@ mod tests {
             emily_client: test_harness.clone(),
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
-            network: bitcoin::Network::Regtest,
         };
 
         block_observer.load_latest_deposit_requests().await.unwrap();
@@ -768,7 +763,6 @@ mod tests {
             emily_client: test_harness.clone(),
             bitcoin_blocks: test_harness.spawn_block_hash_stream(),
             horizon: 1,
-            network: bitcoin::Network::Regtest,
         };
 
         // First we try extracting the transactions from a block that does

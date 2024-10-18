@@ -335,7 +335,6 @@ async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
         stacks_client,
         emily_client,
         horizon: 1,
-        network: config.signer.network.into(),
     };
 
     block_observer.run().await
