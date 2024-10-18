@@ -58,7 +58,7 @@ services:
     profiles:
       - manual_start
 
-    # Builder for the sBTC repository.
+  # Builder for the sBTC repository.
   sbtc-build:
     build:
       context: .. # Set the context to be root of the project.
