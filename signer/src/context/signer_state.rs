@@ -10,17 +10,9 @@ use crate::keys::PublicKey;
 /// A struct for holding internal signer state. This struct is served by
 /// the [`SignerContext`] and can be used to cache global state instead of
 /// fetching it via I/O for frequently accessed information.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct SignerState {
     current_signer_set: SignerSet
-}
-
-impl Default for SignerState {
-    fn default() -> Self {
-        Self {
-            current_signer_set: Default::default()
-        }
-    }
 }
 
 impl SignerState {
@@ -74,19 +66,10 @@ impl Signer {
 
 /// A struct for holding the set of signers that are currently part of the
 /// active signing set.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct SignerSet {
     signers: RwLock<HashSet<Signer>>,
     peer_ids: RwLock<HashSet<PeerId>>,
-}
-
-impl Default for SignerSet {
-    fn default() -> Self {
-        Self {
-            signers: Default::default(),
-            peer_ids: Default::default(),
-        }
-    }
 }
 
 /// NOTE: We should never fail to acquire a lock from the RwLock so that it panics.
@@ -102,7 +85,7 @@ impl SignerSet {
         self.peer_ids
             .write()
             .expect("BUG: Failed to acquire write lock")
-            .insert(signer.peer_id.clone());
+            .insert(signer.peer_id);
 
         // Insert the signer into the set.
         #[allow(clippy::expect_used)]

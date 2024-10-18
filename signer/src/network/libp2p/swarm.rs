@@ -147,7 +147,7 @@ impl<'a> SignerSwarmBuilder<'a> {
 
     /// Build the [`SignerSwarm`], consuming the builder.
     pub fn build(self) -> Result<SignerSwarm, SignerSwarmError> {
-        let keypair: Keypair = self.private_key.clone().into();
+        let keypair: Keypair = (*self.private_key).into();
         let behavior = SignerBehavior::new(keypair.clone())?;
 
         let swarm = SwarmBuilder::with_existing_identity(keypair.clone())
