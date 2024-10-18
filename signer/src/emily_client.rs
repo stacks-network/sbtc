@@ -25,7 +25,6 @@ use crate::util::ApiFallbackClient;
 #[derive(Debug, thiserror::Error)]
 pub enum EmilyClientError {
     /// Scheme must be HTTP or HTTPS
-    /// SOMEBODY ONCE TOLD ME THE WORLD WAS GONNA ROLL ME.
     #[error("invalid URL scheme: {0}")]
     InvalidUrlScheme(String),
 
