@@ -42,7 +42,6 @@ x-postgres: &postgres
 x-sbtc-signer: &sbtc-signer
   build: sbtc/signer
   entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
-  # entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer --help'"
   depends_on: &sbtc-signer-depends_on
     sbtc-build:
       condition: service_completed_successfully
