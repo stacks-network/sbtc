@@ -206,7 +206,7 @@ where
                 // don't recongnize the x-only public key in the deposit
                 // script.
                 Err(Error::SbtcLib(_)) | Err(Error::UnknownAggregateKey(_, _)) => {
-                    failed_requests.push(request);
+                    failed_requests.push(request.outpoint);
                 }
                 // This happens when we cannot find the associated
                 // transaction confirmed on a bitcoin block, or when we
