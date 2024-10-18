@@ -185,7 +185,7 @@ where
     }
 
     /// Fetch deposit requests from Emily and store the validated ones into
-    /// the database. Update Emily about the ones that fail validation.
+    /// the database.
     #[tracing::instrument(skip(self))]
     async fn load_latest_deposit_requests(&mut self) -> Result<(), Error> {
         let mut deposit_requests = Vec::new();
@@ -216,8 +216,6 @@ where
                 Err(_) | Ok(None) => {}
             }
         }
-
-        // TODO: Update emily about the requests that have failed validation.
 
         self.store_deposit_requests(deposit_requests).await?;
 
