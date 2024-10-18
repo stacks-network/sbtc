@@ -93,6 +93,10 @@ impl DepositRequestValidator for CreateDepositRequest {
             return Ok(None);
         };
 
+        // TODO(515): After the transaction passes validation, we need to
+        // check whether we know about the public key in the deposit
+        // script.
+
         Ok(Some(Deposit {
             info: self.validate_tx(&tx_info.tx)?,
             tx_info,
@@ -209,8 +213,9 @@ where
                 },
                 // This happens when we cannot find the associated
                 // transaction confirmed on a bitcoin block, or when we
-                // encounted some unexpected error when reaching out the
-                // bitcoin-core.
+                // encounted some unexpected error when reaching out to
+                // bitcoin-core or our database. We've already logged the
+                // error above, so there is nothing more to do.
                 Err(_) | Ok(None) => {}
             }
         }
