@@ -367,6 +367,11 @@ pub enum Error {
     #[error("unexpected public key from signature. key {0}; digest: {1}")]
     UnknownPublicKey(crate::keys::PublicKey, secp256k1::Message),
 
+    /// This is thrown when there is a deposit that parses correctly but
+    /// the public key in the deposit script is not known to the signer.
+    #[error("Unknown x-only public key in deposit outpoint: {0}, public key {1}")]
+    UnknownAggregateKey(bitcoin::OutPoint, secp256k1::XOnlyPublicKey),
+
     /// The error for when the request to sign a withdrawal-accept
     /// transaction fails at the validation step.
     #[error("withdrawal accept validation error: {0}")]

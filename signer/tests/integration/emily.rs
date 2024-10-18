@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -385,7 +384,6 @@ async fn deposit_e2e() {
         bitcoin_blocks: block_stream,
         stacks_client: stacks_client,
         emily_client: emily_client.clone(),
-        deposit_requests: HashMap::new(),
         horizon: 1,
         network: bitcoin::Network::Regtest,
     };
