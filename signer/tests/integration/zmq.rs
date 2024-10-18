@@ -4,7 +4,7 @@ use futures::StreamExt;
 use sbtc::testing::regtest;
 use signer::bitcoin::zmq::BitcoinCoreMessageStream;
 
-const BITCOIN_CORE_ZMQ_ENDPOINT: &str = "tcp://localhost:28332";
+pub const BITCOIN_CORE_ZMQ_ENDPOINT: &str = "tcp://localhost:28332";
 
 /// This tests that out bitcoin block stream receives new blocks from
 /// bitcoin-core as it receives them. We create the stream, generate

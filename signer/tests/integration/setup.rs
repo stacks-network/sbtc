@@ -1,4 +1,3 @@
-use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoin::AddressType;
 use bitcoin::OutPoint;
@@ -10,6 +9,7 @@ use clarity::vm::types::PrincipalData;
 use fake::Fake;
 use fake::Faker;
 use rand::rngs::OsRng;
+use sbtc::deposits::CreateDepositRequest;
 use sbtc::deposits::DepositInfo;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::Faucet;
@@ -180,13 +180,20 @@ impl TestSweepSetup {
         }
     }
 
+    /// Return the expected deposit request that our internal EmilyClient
+    /// should return for the deposit here.
+    pub fn emily_deposit_request(&self) -> CreateDepositRequest {
+        CreateDepositRequest {
+            outpoint: self.deposit_info.outpoint,
+            reclaim_script: self.deposit_info.reclaim_script.clone(),
+            deposit_script: self.deposit_info.deposit_script.clone(),
+        }
+    }
+
     /// Store the deposit transaction into the database
     pub async fn store_deposit_tx(&self, db: &PgStore) {
-        let mut tx = Vec::new();
-        self.deposit_tx_info.tx.consensus_encode(&mut tx).unwrap();
-
         let deposit_tx = model::Transaction {
-            tx,
+            tx: bitcoin::consensus::serialize(&self.deposit_tx_info.tx),
             txid: self.deposit_tx_info.txid.to_byte_array(),
             tx_type: model::TransactionType::SbtcTransaction,
             block_hash: self.deposit_block_hash.to_byte_array(),
@@ -203,11 +210,8 @@ impl TestSweepSetup {
     /// Store the transaction that swept the deposit into the signers' UTXO
     /// into the database
     pub async fn store_sweep_tx(&self, db: &PgStore) {
-        let mut tx = Vec::new();
-        self.sweep_tx_info.tx.consensus_encode(&mut tx).unwrap();
-
         let sweep_tx = model::Transaction {
-            tx,
+            tx: bitcoin::consensus::serialize(&self.sweep_tx_info.tx),
             txid: self.sweep_tx_info.txid.to_byte_array(),
             tx_type: model::TransactionType::SbtcTransaction,
             block_hash: self.sweep_block_hash.to_byte_array(),
