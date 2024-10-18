@@ -62,11 +62,6 @@ clean:
 # Integration tests.
 # ------------------------------------------------------------------------------
 
-temp:
-	cargo test --test integration --all-features --no-fail-fast --package emily-handler -- \
-		chainstate::create_and_get_chainstate_reorg_happy_path::reorg_to_tip_at_same_height \
-		--test-threads=1
-
 integration-env-up: $(INSTALL_TARGET)
 	docker compose --file docker/docker-compose.test.yml up --detach
 
