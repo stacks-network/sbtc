@@ -196,6 +196,14 @@ impl From<&stacks_common::util::secp256k1::Secp256k1PublicKey> for PublicKey {
     }
 }
 
+impl From<PublicKey> for libp2p::identity::PeerId {
+    fn from(value: PublicKey) -> Self {
+        let key = libp2p::identity::secp256k1::PublicKey::try_from_bytes(&value.0.serialize())
+            .expect("BUG: rust-secp256k1 public keys should map to libp2p public keys");
+        libp2p::identity::PeerId::from_public_key(&key.into())
+    }
+}
+
 impl PublicKey {
     /// Creates a public key directly from a slice.
     pub fn from_slice(data: &[u8]) -> Result<Self, Error> {
@@ -387,6 +395,7 @@ impl SignerScriptPubKey for secp256k1::XOnlyPublicKey {
 mod tests {
     use super::*;
 
+    use libp2p::PeerId;
     use rand::rngs::OsRng;
     use secp256k1::SecretKey;
     use stacks_common::util::secp256k1::Secp256k1PrivateKey;
