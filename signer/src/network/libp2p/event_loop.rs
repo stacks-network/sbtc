@@ -3,21 +3,19 @@ use std::sync::Arc;
 use futures::StreamExt;
 use libp2p::swarm::SwarmEvent;
 use libp2p::{autonat, gossipsub, identify, mdns, Swarm};
-use tokio::sync::broadcast::{Receiver, Sender};
+use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 
 use crate::codec::{Decode, Encode};
-use crate::context::{P2PEvent, SignerCommand, SignerSignal, TerminationHandle};
+use crate::context::{Context, P2PEvent, SignerCommand, SignerSignal};
 use crate::network::Msg;
 
 use super::swarm::{SignerBehavior, SignerBehaviorEvent};
 use super::TOPIC;
 
 pub async fn run(
-    term: &mut TerminationHandle,
+    ctx: &impl Context,
     swarm: Arc<Mutex<Swarm<SignerBehavior>>>,
-    signal_tx: Sender<SignerSignal>,
-    mut signal_rx: Receiver<SignerSignal>,
 ) {
     // NOTE: We are locking the swarm here for the life of the event loop.
     // Right now there's nothing else that needs to access the swarm while
@@ -32,6 +30,10 @@ pub async fn run(
         .gossipsub
         .subscribe(&TOPIC)
         .expect("failed to subscribe to topic");
+
+    let mut term = ctx.get_termination_handle();
+    let mut signal_rx = ctx.get_signal_receiver();
+    let signal_tx = ctx.get_signal_sender();
 
     loop {
         tokio::select! {

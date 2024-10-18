@@ -263,6 +263,14 @@ impl From<PrivateKey> for secp256k1::SecretKey {
     }
 }
 
+impl From<PrivateKey> for libp2p::identity::Keypair {
+    fn from(value: PrivateKey) -> Self {
+        let secret = libp2p::identity::secp256k1::SecretKey::try_from_bytes(value.0.secret_bytes())
+            .expect("BUG: secp256k1::SecretKey should be valid");
+        libp2p::identity::secp256k1::Keypair::from(secret).into()
+    }
+}
+
 /// This should only error when the [`p256k1::scalar::Scalar`] is zero.
 impl TryFrom<&p256k1::scalar::Scalar> for PrivateKey {
     type Error = Error;
