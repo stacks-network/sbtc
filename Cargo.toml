@@ -7,7 +7,7 @@ members = [
   "blocklist-client",
   ".generated-sources/blocklist-openapi-gen",
   "sbtc",
-  ".generated-sources/emily/client/rust"
+  ".generated-sources/emily/client/rust",
 ]
 
 [profile.dev]

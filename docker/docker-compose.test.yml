@@ -1,0 +1,102 @@
+services:
+
+  bitcoind:
+    container_name: bitcoind
+    image: lncm/bitcoind:v25.0
+    volumes:
+      - ../signer/tests/service-configs/bitcoin.conf:/data/.bitcoin/bitcoin.conf:ro
+    restart: on-failure
+    # For some reason, the CMD in the original Dockerfile is set to publish
+    # events on zeromq, and it seems to interfere with the events that we
+    # want to publish. So we overwrite the CMD by just setting the
+    # -logtimestamps argument in the command here.
+    command: ["-logtimestamps"]
+    stop_grace_period: 10s
+    ports:
+      - 8333:8333
+      - 8332:8332
+      - 18443:18443
+      - 18444:18444
+      - 28332:28332
+      - 28333:28333
+    healthcheck:
+      test: ["CMD-SHELL", "bitcoin-cli getblockcount"]
+      interval: 3s
+      timeout: 1s
+      retries: 3
+
+  postgres:
+    image: postgres:16.3
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: signer
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --username=postgres --dbname=signer"]
+      interval: 2s
+      timeout: 1s
+      retries: 5
+
+  flyway:
+    image: flyway/flyway:10.13.0
+    command: >-
+      -url=jdbc:postgresql://postgres:5432/signer
+      -user=postgres
+      -password=postgres
+      -sqlMigrationPrefix=""
+      -connectRetries=60
+      migrate
+    volumes:
+      - ../signer/migrations:/flyway/sql
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - manual_start
+
+  # Builder for the sBTC repository.
+  sbtc-build:
+    build:
+      context: .. # Set the context to be root of the project.
+      dockerfile: docker/sbtc/Dockerfile.build
+      args:
+        # GIT_BRANCH:
+        # The branch that we use as a common root for this build. Note
+        # that this branch will be overwritten with the code within this local
+        # repository, but the sources from this branch will be pulled in, compiled,
+        # and then cached so that when the local repository is copied the build
+        # is starting from a place where the dependencies are already compiled.
+        GIT_BRANCH: main
+    image: sbtc-build:latest
+
+  emily-dynamodb:
+    image: "amazon/dynamodb-local:latest"
+    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath ."
+    ports:
+      - "8000:8000"
+
+  emily-aws-setup:
+    build: sbtc/emily-aws-setup
+    depends_on:
+      - sbtc-build
+      - emily-dynamodb
+    environment:
+      - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
+
+  emily-server:
+    build: sbtc/emily-server
+    depends_on:
+      sbtc-build:
+        condition: service_completed_successfully
+      emily-aws-setup:
+        condition: service_completed_successfully
+    environment:
+      - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
+      - HOST=0.0.0.0
+      - PORT=3031
+    ports:
+      - "3031:3031"

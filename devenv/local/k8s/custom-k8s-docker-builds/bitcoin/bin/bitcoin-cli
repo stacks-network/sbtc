@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-
-docker exec -it bitcoin bitcoin-cli -regtest -rpcuser=devnet -rpcpassword=devnet $@
