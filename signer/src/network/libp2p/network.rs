@@ -72,7 +72,7 @@ impl MessageTransfer for P2PNetwork {
     ///
     /// ### Important Note
     /// To avoid ending up in a slow-receiver situation, you should queue
-    /// messages in a local buffer (i.e. [`std::collections::VecDeque`]) and
+    /// messages in a local buffer (i.e. [`VecDeque`](std::collections::VecDeque) and
     /// process them in your own time. Otherwise, if there are a large number
     /// of messages being sent, you risk lagging and eventually having the tail
     /// of the receiver being dropped, thus missing messages.
@@ -201,8 +201,9 @@ mod tests {
         // an untrusted peer. We start the swarms and ensure that signers 1 & 2
         // can exchange messages, but that signer 3 is rejected by both signers.
         //
-        // TODO: This test could be made better by emitting more events from the
-        // swarms and checking that the expected events are emitted.
+        // TODO: This test could be made much more efficient by emitting more
+        // events from the swarms and checking that the expected events are
+        // emitted.
 
         // PeerId = 16Uiu2HAm46BSFWYYWzMjhTRDRwXHpDWpQ32iu93nzDwd1F4Tt256
         let key1 = PrivateKey::from_str("ab0893ecf683dc188c3fb219dd6489dc304bb5babb8151a41245a70e60cb7258").unwrap();
@@ -265,10 +266,13 @@ mod tests {
             .build()
             .expect("Failed to build swarm 3");
 
+        // Create the network liasons for the swarms (i.e. `MessageTransfer`
+        // instances).
         let mut trusted1 = P2PNetwork::new(&context1);
         let mut trusted2 = P2PNetwork::new(&context2);
         let mut adversarial = P2PNetwork::new(&context3);
 
+        // Start the swarms.
         let handle1 = tokio::spawn(async move {
             swarm1.start(&context1).await.unwrap();
         });
@@ -314,6 +318,7 @@ mod tests {
         adversarial.broadcast(Msg::random(&mut rand::thread_rng())).await.unwrap();
         assert!(adversarial_msg_to_2.await.is_err());
 
+        // Kill the swarms just to be sure.
         handle1.abort();
         handle2.abort();
         handle3.abort();

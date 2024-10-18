@@ -186,21 +186,13 @@ mod tests {
     fn test_is_allowed_peer() {
         use super::*;
 
-        eprintln!("-1");
         let signer_set = SignerSet::default();
-        eprintln!("0");
         let public_key = PublicKey::from_private_key(&PrivateKey::new(&mut OsRng));
 
-        eprintln!("1");
         assert!(!signer_set.is_allowed_peer(&public_key.into()));
-        eprintln!("2");
         signer_set.add_signer(public_key.clone());
-        eprintln!("3");
         assert!(signer_set.is_allowed_peer(&public_key.into()));
-        eprintln!("4");
         signer_set.remove_signer(&public_key);
-        eprintln!("5");
         assert!(!signer_set.is_allowed_peer(&public_key.into()));
-        eprintln!("6");
     }
 }
