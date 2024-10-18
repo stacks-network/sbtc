@@ -76,13 +76,15 @@ impl Signer {
 /// active signing set.
 #[derive(Debug)]
 pub struct SignerSet {
-    public_keys: RwLock<HashSet<Signer>>
+    signers: RwLock<HashSet<Signer>>,
+    peer_ids: RwLock<HashSet<PeerId>>,
 }
 
 impl Default for SignerSet {
     fn default() -> Self {
         Self {
-            public_keys: Default::default()
+            signers: Default::default(),
+            peer_ids: Default::default(),
         }
     }
 }
@@ -92,9 +94,19 @@ impl Default for SignerSet {
 impl SignerSet {
     /// Add a signer (public key) to the known active signer set.
     pub fn add_signer(&self, signer: PublicKey) {
+        // Create a new signer object.
         let signer = Signer::new(signer);
+
+        // Insert the peer ID into the set.
         #[allow(clippy::expect_used)]
-        self.public_keys
+        self.peer_ids
+            .write()
+            .expect("BUG: Failed to acquire write lock")
+            .insert(signer.peer_id.clone());
+
+        // Insert the signer into the set.
+        #[allow(clippy::expect_used)]
+        self.signers
             .write()
             .expect("BUG: Failed to acquire write lock")
             .insert(signer);
@@ -102,17 +114,26 @@ impl SignerSet {
 
     /// Remove a signer (public key) from the known active signer set.
     pub fn remove_signer(&self, signer: &PublicKey) {
-        #[allow(clippy::expect_used)]
-        self.public_keys
-            .write()
-            .expect("BUG: Failed to acquire write lock")
-            .remove(signer);
+        if self.is_signer(signer) {
+            let peer_id: PeerId = (*signer).into();
+            #[allow(clippy::expect_used)]
+            self.peer_ids
+                .write()
+                .expect("BUG: Failed to acquire write lock")
+                .remove(&peer_id);
+
+            #[allow(clippy::expect_used)]
+            self.signers
+                .write()
+                .expect("BUG: Failed to acquire write lock")
+                .remove(signer);
+        }
     }
 
     /// Returns the current set of public keys for the known active signers.
-    pub fn get_signer_public_keys(&self) -> Vec<Signer> {
+    pub fn get_signers(&self) -> Vec<Signer> {
         #[allow(clippy::expect_used)]
-        self.public_keys
+        self.signers
             .read()
             .expect("BUG: Failed to acquire read lock")
             .iter()
@@ -124,10 +145,20 @@ impl SignerSet {
     /// active set.
     pub fn is_signer(&self, signer: &PublicKey) -> bool {
         #[allow(clippy::expect_used)]
-        self.public_keys
+        self.signers
             .read()
             .expect("BUG: Failed to acquire read lock")
             .contains(signer)
+    }
+
+    /// Returns whether or not the given peer ID is a known signer in the
+    /// active set.
+    pub fn is_allowed_peer(&self, peer_id: &PeerId) -> bool {
+        #[allow(clippy::expect_used)]
+        self.peer_ids
+            .read()
+            .expect("BUG: Failed to acquire read lock")
+            .contains(peer_id)
     }
 }
 
@@ -149,5 +180,27 @@ mod tests {
         assert!(signer_set.is_signer(&public_key));
         signer_set.remove_signer(&public_key);
         assert!(!signer_set.is_signer(&public_key));
+    }
+
+    #[test]
+    fn test_is_allowed_peer() {
+        use super::*;
+
+        eprintln!("-1");
+        let signer_set = SignerSet::default();
+        eprintln!("0");
+        let public_key = PublicKey::from_private_key(&PrivateKey::new(&mut OsRng));
+
+        eprintln!("1");
+        assert!(!signer_set.is_allowed_peer(&public_key.into()));
+        eprintln!("2");
+        signer_set.add_signer(public_key.clone());
+        eprintln!("3");
+        assert!(signer_set.is_allowed_peer(&public_key.into()));
+        eprintln!("4");
+        signer_set.remove_signer(&public_key);
+        eprintln!("5");
+        assert!(!signer_set.is_allowed_peer(&public_key.into()));
+        eprintln!("6");
     }
 }

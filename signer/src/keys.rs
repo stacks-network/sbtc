@@ -395,7 +395,6 @@ impl SignerScriptPubKey for secp256k1::XOnlyPublicKey {
 mod tests {
     use super::*;
 
-    use libp2p::PeerId;
     use rand::rngs::OsRng;
     use secp256k1::SecretKey;
     use stacks_common::util::secp256k1::Secp256k1PrivateKey;

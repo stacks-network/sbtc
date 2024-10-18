@@ -427,6 +427,15 @@ where
             config: ContextConfig { settings, ..config },
         }
     }
+
+    /// Modify the current [`Settings`] using the provided closure.
+    fn modify_settings(self, f: impl FnOnce(&mut Settings)) -> ContextBuilder<Storage, Bitcoin, Stacks, Emily> {
+        let mut config = self.get_config();
+        f(&mut config.settings);
+        ContextBuilder {
+            config
+        }
+    }
 }
 
 impl<Storage, Bitcoin, Stacks, Emily> ConfigureSettings<Storage, Bitcoin, Stacks, Emily>
