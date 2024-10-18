@@ -12,7 +12,10 @@ RED='\e[0;31m'          # Red
 NC='\e[0m' # No Color
 BOLD='\e[1m' # Bold
 
-DEVENV="$PWD/devenv/local"
+PROJECT_ROOT="$PWD"
+SIGNER_CONFIG="$PROJECT_ROOT/docker/sbtc/signer/signer-config.toml"
+ENV_PATH="$PROJECT_ROOT/envs"
+DOCKER_COMPOSE_PATH="$PROJECT_ROOT/docker/docker-compose.yml"
 
 LOG_SETTINGS="debug" # Default log level
 LOG_SETTINGS="$LOG_SETTINGS,signer::stacks::api=info" # Stacks API
@@ -24,55 +27,53 @@ LOG_SETTINGS="$LOG_SETTINGS,netlink_proto=info,libp2p_autonat=info,libp2p_gossip
 
 # Run the specified number of signers
 exec_run() {
+  echo "here!"
+
   if [ "$1" -eq 1 ]; then
     printf "${RED}ERROR:${NC} At least 2 signers are required\n"
     exit 1
   fi
 
   printf "${GRAY}Running ${NC}${BOLD}$*${NC} signers\n"
-  SIGNER1_KEY=$(. "$DEVENV/envs/signer-1.env"; echo "$SIGNER_PUBKEY")
-  SIGNER2_KEY=$(. "$DEVENV/envs/signer-2.env"; echo "$SIGNER_PUBKEY")
-  SIGNER3_KEY=$(. "$DEVENV/envs/signer-3.env"; echo "$SIGNER_PUBKEY")
 
-  docker compose -f "$DEVENV/docker-compose/docker-compose.yml" down postgres-1 postgres-2 postgres-3 -v
-  docker compose -f "$DEVENV/docker-compose/docker-compose.yml" up -d postgres-1 postgres-2 postgres-3
+  # Turn all the relevant postgres instances off and on.
+  i=1
+  while [ $i -le "$1" ]
+  do
+    docker compose -f "$DOCKER_COMPOSE_PATH" down postgres-"$i"
+    docker compose -f "$DOCKER_COMPOSE_PATH" up postgres-"$i -d"
+    i=$((i + 1))
+  done
 
-  if [ "$1" -eq 2 ]; then
-    BOOTSTRAP_SIGNER_SET="$SIGNER1_KEY,$SIGNER2_KEY"
-  elif [ "$1" -eq 3 ]; then
-    BOOTSTRAP_SIGNER_SET="$SIGNER1_KEY,$SIGNER2_KEY,$SIGNER3_KEY"
-  fi
+  # Setup the bootstrap signer set.
+  i=1
+  BOOTSTRAP_SIGNER_SET=""
+  while [ $i -le "$1" ]
+  do
+    SIGNER_KEY=$(. "$ENV_PATH/signer-$i.env"; echo "$SIGNER_PUBKEY")
+    if [ "$BOOTSTRAP_SIGNER_SET" = "" ]; then
+      export BOOTSTRAP_SIGNER_SET="$SIGNER_KEY"
+    else
+      export BOOTSTRAP_SIGNER_SET="$BOOTSTRAP_SIGNER_SET,$SIGNER_KEY"
+    fi
+    i=$((i + 1))
+  done
 
   printf "${BOLD}Using bootstrap signer set:${NC} $BOOTSTRAP_SIGNER_SET\n"
 
-  # Run the first signer (always).
-  (
-    . "$DEVENV/envs/signer-1.env" \
-    && RUST_LOG="$LOG_SETTINGS" \
-    && SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET="$BOOTSTRAP_SIGNER_SET" \
-    && cargo run --bin sbtc-signer -- --config "$DEVENV/docker-compose/sbtc-signer/signer-config.toml" --migrate-db > "$PWD/target/signer-1.log" 2>&1 \
-    &
-  )
-  # Run the second signer if the requested signer count >= 2.
-  if [ "$1" -ge 2 ]; then
+  # Spin up the specified number of signers.
+  i=1
+  while [ $i -le "$1" ]
+  do
     (
-      . "$DEVENV/envs/signer-2.env" \
-      && RUST_LOG="$LOG_SETTINGS" \
-      && SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET="$BOOTSTRAP_SIGNER_SET" \
-      && cargo run --bin sbtc-signer -- --config "$DEVENV/docker-compose/sbtc-signer/signer-config.toml" --migrate-db > "$PWD/target/signer-2.log" 2>&1 \
+      . "$ENV_PATH/signer-$i.env" \
+      && export RUST_LOG="$LOG_SETTINGS" \
+      && export SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET="$BOOTSTRAP_SIGNER_SET" \
+      && cargo run --bin sbtc-signer -- --config "$SIGNER_CONFIG" --migrate-db > "$PWD/target/signer-$i.log" 2>&1 \
       &
     )
-  fi
-  # Run the third signer if the requested signer count >= 3.
-  if [ "$1" -ge 3 ]; then
-    (
-      . "$DEVENV/envs/signer-3.env" \
-      && RUST_LOG="$LOG_SETTINGS" \
-      && SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET="$BOOTSTRAP_SIGNER_SET" \
-      && cargo run --bin sbtc-signer -- --config "$DEVENV/docker-compose/sbtc-signer/signer-config.toml" --migrate-db > "$PWD/target/signer-3.log" 2>&1 \
-      &
-    )
-  fi
+    i=$((i + 1))
+  done
 
   printf "${GRAY}$* signers started${NC}\n"
 }
