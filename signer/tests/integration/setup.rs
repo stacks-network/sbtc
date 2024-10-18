@@ -9,6 +9,7 @@ use clarity::vm::types::PrincipalData;
 use fake::Fake;
 use fake::Faker;
 use rand::rngs::OsRng;
+use sbtc::deposits::CreateDepositRequest;
 use sbtc::deposits::DepositInfo;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::Faucet;
@@ -176,6 +177,16 @@ impl TestSweepSetup {
             aggregated_signer: signer,
             withdrawal_request: requests.withdrawals.pop().unwrap(),
             withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
+        }
+    }
+
+    /// Return the expected deposit request that our internal EmilyClient
+    /// should return for the deposit here.
+    pub fn emily_deposit_request(&self) -> CreateDepositRequest {
+        CreateDepositRequest {
+            outpoint: self.deposit_info.outpoint,
+            reclaim_script: self.deposit_info.reclaim_script.clone(),
+            deposit_script: self.deposit_info.deposit_script.clone(),
         }
     }
 
