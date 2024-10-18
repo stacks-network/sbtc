@@ -544,7 +544,7 @@ services:
     stop_grace_period: 5s
     depends_on:
       - mempool-api
-      - mariadb
+      - mariadbgi
       - electrs
     user: "1000:1000"
     restart: on-failure
@@ -554,6 +554,8 @@ services:
       FRONTEND_HTTP_PORT: "8083"
       BACKEND_MAINNET_HTTP_HOST: "mempool-api"
     command: "./wait-for mariadb:3306 --timeout=720 -- nginx -g 'daemon off;'"
+    profiles:
+      - bitcoin-mempool
 
   mempool-api:
     image: mempool/backend:latest
