@@ -17,7 +17,6 @@
 //! - Update signer set transactions
 //! - Set aggregate key transactions
 
-use std::collections::HashMap;
 use std::future::Future;
 
 use crate::bitcoin::rpc::BitcoinTxInfo;
@@ -31,12 +30,10 @@ use crate::storage;
 use crate::storage::model;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
-use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoin::BlockHash;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
-use bitcoin::Txid;
 use blockstack_lib::chainstate::nakamoto;
 use futures::stream::StreamExt;
 use sbtc::deposits::CreateDepositRequest;
@@ -56,11 +53,6 @@ pub struct BlockObserver<Context, StacksClient, EmilyClient, BlockHashStream> {
     pub bitcoin_blocks: BlockHashStream,
     /// How far back in time the observer should look
     pub horizon: usize,
-    /// An in memory map of deposit requests that haven't been confirmed
-    /// on bitcoin yet.
-    pub deposit_requests: HashMap<Txid, Vec<Deposit>>,
-    /// The bitcoin network
-    pub network: bitcoin::Network,
 }
 
 /// A full "deposit", containing the bitcoin transaction and a fully
@@ -97,6 +89,10 @@ impl DepositRequestValidator for CreateDepositRequest {
         let Some(tx_info) = client.get_tx_info(&self.outpoint.txid, &block_hash).await? else {
             return Ok(None);
         };
+
+        // TODO(515): After the transaction passes validation, we need to
+        // check whether we know about the public key in the deposit
+        // script.
 
         Ok(Some(Deposit {
             info: self.validate_tx(&tx_info.tx)?,
@@ -136,10 +132,6 @@ where
                     ?new_block_hash,
                     "new bitcoin block observed on bitcoin core block hash stream"
                 );
-                tracing::info!("loading latest deposit requests from Emily");
-                if let Err(error) = self.load_latest_deposit_requests().await {
-                    tracing::warn!(%error, "could not load latest deposit requests from Emily");
-                }
 
                 let new_block_hash = match new_block_hash {
                     Ok(hash) => hash,
@@ -166,6 +158,11 @@ where
                     }
                 }
 
+                tracing::info!("loading latest deposit requests from Emily");
+                if let Err(error) = self.load_latest_deposit_requests().await {
+                    tracing::warn!(%error, "could not load latest deposit requests from Emily");
+                }
+
                 self.context
                     .signal(SignerEvent::BitcoinBlockObserved.into())?;
             }
@@ -187,23 +184,40 @@ where
         Ok(())
     }
 
+    /// Fetch deposit requests from Emily and store the validated ones into
+    /// the database.
     #[tracing::instrument(skip(self))]
     async fn load_latest_deposit_requests(&mut self) -> Result<(), Error> {
-        let deposit_requests = self.emily_client.get_deposits().await?;
+        let mut deposit_requests = Vec::new();
+        let mut failed_requests = Vec::new();
 
-        for request in deposit_requests {
+        for request in self.emily_client.get_deposits().await? {
             let deposit = request
                 .validate(&self.context.get_bitcoin_client())
                 .await
                 .inspect_err(|error| tracing::warn!(%error, "could not validate deposit request"));
 
-            if let Ok(Some(deposit)) = deposit {
-                self.deposit_requests
-                    .entry(deposit.info.outpoint.txid)
-                    .or_default()
-                    .push(deposit);
+            match deposit {
+                // Happy path, we've successfully validated the deposit
+                // request.
+                Ok(Some(deposit)) => deposit_requests.push(deposit),
+                // This happens when the transaction has failed the first
+                // step of validation or has passed the first step, but we
+                // don't recognize the x-only public key in the deposit
+                // script.
+                Err(Error::SbtcLib(_)) | Err(Error::UnknownAggregateKey(_, _)) => {
+                    failed_requests.push(request.outpoint);
+                }
+                // This happens when we cannot find the associated
+                // transaction confirmed on a bitcoin block, or when we
+                // encountered some unexpected error when reaching out to
+                // bitcoin-core or our database. We've already logged the
+                // error above, so there is nothing more to do.
+                Err(_) | Ok(None) => {}
             }
         }
+
+        self.store_deposit_requests(deposit_requests).await?;
 
         Ok(())
     }
@@ -250,7 +264,7 @@ where
             .is_some())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all, fields(block_hash = %block.block_hash()))]
     async fn process_bitcoin_block(&mut self, block: bitcoin::Block) -> Result<(), Error> {
         tracing::info!("processing bitcoin block");
         let info = self.stacks_client.get_tenure_info().await?;
@@ -266,37 +280,31 @@ where
         self.write_stacks_blocks(&stacks_blocks).await?;
         self.write_bitcoin_block(&block).await?;
 
-        self.extract_deposit_requests(&block.txdata, block.block_hash())
-            .await?;
-
         tracing::debug!("finished processing bitcoin block");
         Ok(())
     }
 
-    async fn extract_deposit_requests(
-        &mut self,
-        txs: &[Transaction],
-        block_hash: BlockHash,
-    ) -> Result<(), Error> {
-        let (deposit_request, deposit_request_txs) = txs
-            .iter()
-            .filter_map(|tx| self.deposit_requests.remove(&tx.compute_txid()))
-            .flatten()
+    /// For each of the deposit requests, persist the corresponding
+    /// transaction and the parsed deposit info into the database.
+    ///
+    /// Since this function writes to the `bitcoin_transactions` table, we
+    /// must make sure that we have the bitcoin block header info in the
+    /// database. So, this function must be called after
+    /// [`BlockObserver::process_bitcoin_block`]
+    async fn store_deposit_requests(&mut self, requests: Vec<Deposit>) -> Result<(), Error> {
+        let (deposit_requests, deposit_request_txs) = requests
+            .into_iter()
             .map(|deposit| {
-                let mut tx_bytes = Vec::new();
-                deposit.tx_info.tx.consensus_encode(&mut tx_bytes)?;
-
                 let tx = model::Transaction {
                     txid: deposit.tx_info.txid.to_byte_array(),
-                    tx: tx_bytes,
+                    tx: bitcoin::consensus::serialize(&deposit.tx_info.tx),
                     tx_type: model::TransactionType::DepositRequest,
-                    block_hash: block_hash.to_byte_array(),
+                    block_hash: deposit.tx_info.block_hash.to_byte_array(),
                 };
 
-                Ok((model::DepositRequest::from(deposit), tx))
+                (model::DepositRequest::from(deposit), tx)
             })
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(Error::BitcoinEncodeTransaction)?
+            .collect::<Vec<_>>()
             .into_iter()
             .unzip();
 
@@ -306,7 +314,7 @@ where
             .await?;
         self.context
             .get_storage_mut()
-            .write_deposit_requests(deposit_request)
+            .write_deposit_requests(deposit_requests)
             .await?;
 
         Ok(())
@@ -353,10 +361,6 @@ where
                 continue;
             }
 
-            let mut tx_bytes = Vec::new();
-            tx.consensus_encode(&mut tx_bytes)
-                .map_err(Error::BitcoinEncodeTransaction)?;
-
             // sBTC transactions have as first txin a signers spendable output
             let mut tx_type = model::TransactionType::Donation;
             if let Some(txin) = tx.input.first() {
@@ -380,7 +384,7 @@ where
 
             sbtc_txs.push(model::Transaction {
                 txid: tx.compute_txid().to_byte_array(),
-                tx: tx_bytes,
+                tx: bitcoin::consensus::serialize(&tx),
                 tx_type,
                 block_hash: block_hash.to_byte_array(),
             });
@@ -478,8 +482,6 @@ mod tests {
             emily_client: test_harness.clone(),
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
-            deposit_requests: HashMap::new(),
-            network: bitcoin::Network::Regtest,
         };
 
         block_observer.run().await.expect("block observer failed");
@@ -521,6 +523,7 @@ mod tests {
             deposit_script: tx_setup0.deposit.deposit_script(),
             reclaim_script: tx_setup0.reclaim.reclaim_script(),
         };
+        let req0 = deposit_request0.clone();
         // When we validate the deposit request, we fetch the transaction
         // from bitcoin-core's blockchain. The stubs out that response.
         let get_tx_resp0 = GetTxResponse {
@@ -598,21 +601,25 @@ mod tests {
             emily_client: test_harness.clone(),
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
-            deposit_requests: HashMap::new(),
-            network: bitcoin::Network::Regtest,
         };
 
-        block_observer.load_latest_deposit_requests().await.unwrap();
-        // Only the transaction from tx_setup0 was valid.
-        assert_eq!(block_observer.deposit_requests.len(), 1);
+        {
+            let db = storage.lock().await;
+            assert_eq!(db.deposit_requests.len(), 0);
+        }
 
-        let deposit = block_observer
-            .deposit_requests
-            .get(&tx_setup0.tx.compute_txid())
-            .cloned()
-            .unwrap();
-        assert_eq!(deposit.len(), 1);
-        assert_eq!(deposit[0].tx_info.tx, tx_setup0.tx);
+        block_observer.load_latest_deposit_requests().await.unwrap();
+        // Only the transaction from tx_setup0 was valid. Note that, since
+        // we are not using a real block hash stored in the database. Our
+        // DbRead function won't actually find it. And in prod we won't
+        // actually store the deposit request transaction.
+        let deposit = {
+            let db = storage.lock().await;
+            assert_eq!(db.deposit_requests.len(), 1);
+            db.deposit_requests.values().next().cloned().unwrap()
+        };
+
+        assert_eq!(deposit.outpoint(), req0.outpoint);
     }
 
     /// Test that `BlockObserver::extract_deposit_requests` after
@@ -676,18 +683,10 @@ mod tests {
             emily_client: test_harness.clone(),
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
-            deposit_requests: HashMap::new(),
-            network: bitcoin::Network::Regtest,
         };
 
         block_observer.load_latest_deposit_requests().await.unwrap();
-        // The transaction from tx_setup0 was valid.
-        assert_eq!(block_observer.deposit_requests.len(), 1);
 
-        block_observer
-            .extract_deposit_requests(&[tx_setup0.tx.clone()], block_hash)
-            .await
-            .unwrap();
         let storage = storage.lock().await;
         assert_eq!(storage.deposit_requests.len(), 1);
         let db_outpoint: (BitcoinTxId, u32) = (tx_setup0.tx.compute_txid().into(), 0);
@@ -705,9 +704,6 @@ mod tests {
                 .tx_type,
             model::TransactionType::DepositRequest
         );
-
-        // Now the deposit_requests thing should be empty now, since we stored the things.
-        assert!(block_observer.deposit_requests.is_empty());
     }
 
     /// Test that `BlockObserver::extract_sbtc_transactions` takes the
@@ -774,8 +770,6 @@ mod tests {
             emily_client: test_harness.clone(),
             bitcoin_blocks: test_harness.spawn_block_hash_stream(),
             horizon: 1,
-            deposit_requests: HashMap::new(),
-            network: bitcoin::Network::Regtest,
         };
 
         // First we try extracting the transactions from a block that does

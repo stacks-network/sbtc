@@ -334,9 +334,7 @@ async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
         bitcoin_blocks: stream.to_block_hash_stream(),
         stacks_client,
         emily_client,
-        deposit_requests: HashMap::new(),
         horizon: 1,
-        network: config.signer.network.into(),
     };
 
     block_observer.run().await
