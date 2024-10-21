@@ -303,7 +303,10 @@ async fn update_withdrawals_updates_chainstate() {
     // It's okay to say it's accepted over and over.
     let update_status: Status = Status::Accepted;
     let update_status_message: &str = "test_status_message";
-    let range = 20..30;
+
+    let min_height: i64 = 20;
+    let max_height: i64 = 30;
+    let range = min_height..max_height;
 
     let mut withdrawal_updates = Vec::new();
     for update_block_height in range.clone() {
@@ -311,12 +314,22 @@ async fn update_withdrawals_updates_chainstate() {
             request_id,
             fulfillment: None,
             last_update_block_hash: format!("hash_{}", update_block_height),
-            last_update_height: update_block_height,
+            last_update_height: update_block_height as u64,
             status: update_status.clone(),
             status_message: update_status_message.into(),
         };
         withdrawal_updates.push(withdrawal_update);
     }
+
+    // Order the, pecularily so that they are not in order.
+    withdrawal_updates.sort_by_key(|update|
+        (update.last_update_height as i64 - (max_height - min_height) / 2).abs());
+
+    let expected_last_update_height_at_output_index: Vec<(usize, u64)> = withdrawal_updates
+        .iter()
+        .enumerate()
+        .map(|(index, update)| (index, update.last_update_height))
+        .collect();
 
     let update_request = UpdateWithdrawalsRequestBody {
         withdrawals: withdrawal_updates,
@@ -331,15 +344,19 @@ async fn update_withdrawals_updates_chainstate() {
         .expect("Received an error after making a valid create withdrawal request api call.");
 
     // Send it a bunch of updates.
-    apis::withdrawal_api::update_withdrawals(&configuration, update_request)
+    let update_withdrawals_response = apis::withdrawal_api::update_withdrawals(&configuration, update_request)
         .await
         .expect("Received an error after making a valid update withdrawals api call.");
 
     for height in range {
-        let chainstate = apis::chainstate_api::get_chainstate_at_height(&configuration, height)
+        let chainstate = apis::chainstate_api::get_chainstate_at_height(&configuration, height as u64)
             .await
             .expect("Received an error after making a valid get chainstate at height api call.");
-        assert_eq!(chainstate.stacks_block_height, height);
+        assert_eq!(chainstate.stacks_block_height, height as u64);
         assert_eq!(chainstate.stacks_block_hash, format!("hash_{}", height));
+    }
+
+    for (index, last_update_height) in expected_last_update_height_at_output_index {
+        assert_eq!(update_withdrawals_response.withdrawals[index].last_update_height, last_update_height);
     }
 }
