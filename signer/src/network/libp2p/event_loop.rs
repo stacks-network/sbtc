@@ -3,22 +3,16 @@ use std::sync::Arc;
 use futures::StreamExt;
 use libp2p::swarm::SwarmEvent;
 use libp2p::{autonat, gossipsub, identify, mdns, Swarm};
-use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::Mutex;
 
 use crate::codec::{Decode, Encode};
-use crate::context::{P2PEvent, SignerCommand, SignerSignal, TerminationHandle};
+use crate::context::{Context, P2PEvent, SignerCommand, SignerSignal};
 use crate::network::Msg;
 
 use super::swarm::{SignerBehavior, SignerBehaviorEvent};
 use super::TOPIC;
 
-pub async fn run(
-    term: &mut TerminationHandle,
-    swarm: Arc<Mutex<Swarm<SignerBehavior>>>,
-    signal_tx: Sender<SignerSignal>,
-    mut signal_rx: Receiver<SignerSignal>,
-) {
+pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
     // NOTE: We are locking the swarm here for the life of the event loop.
     // Right now there's nothing else that needs to access the swarm while
     // it's running, but if that changes we will need to move the lock into
@@ -32,6 +26,10 @@ pub async fn run(
         .gossipsub
         .subscribe(&TOPIC)
         .expect("failed to subscribe to topic");
+
+    let mut term = ctx.get_termination_handle();
+    let mut signal_rx = ctx.get_signal_receiver();
+    let signal_tx = ctx.get_signal_sender();
 
     loop {
         tokio::select! {
@@ -87,17 +85,17 @@ pub async fn run(
                     // mDNS autodiscovery events. These are used by the local
                     // peer to discover other peers on the local network.
                     SwarmEvent::Behaviour(SignerBehaviorEvent::Mdns(event)) =>
-                        handle_mdns_event(&mut swarm, event),
+                        handle_mdns_event(&mut swarm, ctx, event),
                     // Identify protocol events. These are used by the relay to
                     // help determine/verify its own address.
                     SwarmEvent::Behaviour(SignerBehaviorEvent::Identify(event)) =>
-                        handle_identify_event(&mut swarm, event),
+                        handle_identify_event(&mut swarm, ctx, event),
                     // Gossipsub protocol events.
                     SwarmEvent::Behaviour(SignerBehaviorEvent::Gossipsub(event)) =>
-                        handle_gossipsub_event(&mut swarm, event, &signal_tx),
+                        handle_gossipsub_event(&mut swarm, ctx, event),
                     // AutoNAT client protocol events.
                     SwarmEvent::Behaviour(SignerBehaviorEvent::AutonatClient(event)) =>
-                        handle_autonat_client_event(&mut swarm, event),
+                        handle_autonat_client_event(&mut swarm, ctx, event),
                     // AutoNAT server protocol events.
                     SwarmEvent::Behaviour(SignerBehaviorEvent::AutonatServer(event)) =>
                         handle_autonat_server_event(&mut swarm, event),
@@ -117,6 +115,11 @@ pub async fn run(
                         tracing::info!(peer_id = ?peer_id, %connection_id, "Dialing peer");
                     },
                     SwarmEvent::ConnectionEstablished { endpoint, peer_id, .. } => {
+                        if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
+                            tracing::warn!(%peer_id, ?endpoint, "Connected to peer, however it is not a known signer; disconnecting");
+                            let _ = swarm.disconnect_peer_id(peer_id);
+                            continue;
+                        }
                         tracing::info!(%peer_id, ?endpoint, "Connected to peer");
                     },
                     SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
@@ -155,7 +158,11 @@ pub async fn run(
     }
 }
 
-fn handle_autonat_client_event(_: &mut Swarm<SignerBehavior>, event: autonat::v2::client::Event) {
+fn handle_autonat_client_event(
+    _: &mut Swarm<SignerBehavior>,
+    ctx: &impl Context,
+    event: autonat::v2::client::Event,
+) {
     use autonat::v2::client::Event;
 
     match event {
@@ -166,16 +173,38 @@ fn handle_autonat_client_event(_: &mut Swarm<SignerBehavior>, event: autonat::v2
             bytes_sent,
             result: Ok(()),
         } => {
-            tracing::trace!(%server, %tested_addr, %bytes_sent, "AutoNAT (client) test successful");
+            if !ctx.state().current_signer_set().is_allowed_peer(&server) {
+                tracing::debug!(
+                    peer_id = %server,
+                    %tested_addr,
+                    %bytes_sent,
+                    "AutoNAT (client) test successful, however the server is not a known signer; ignoring"
+                );
+                return;
+            }
+
+            tracing::trace!(peer_id = %server, %tested_addr, %bytes_sent, "AutoNAT (client) test successful");
         }
         // Match on failed AutoNAT test event
         Event {
             server,
             tested_addr,
             bytes_sent,
-            result: Err(e),
+            result: Err(error),
         } => {
-            tracing::trace!(%server, %tested_addr, %bytes_sent, %e, "AutoNAT (client) test failed");
+            if !ctx.state().current_signer_set().is_allowed_peer(&server) {
+                tracing::debug!(
+                    peer_id = %server,
+                    %tested_addr,
+                    %bytes_sent,
+                    "AutoNAT (client) test successful, however the server is not a known signer; ignoring"
+                );
+                return;
+            }
+
+            tracing::trace!(
+                peer_id = %server, %tested_addr, %bytes_sent, %error, "AutoNAT (client) test failed"
+            );
         }
     }
 }
@@ -218,7 +247,7 @@ fn handle_autonat_server_event(_: &mut Swarm<SignerBehavior>, event: autonat::v2
     }
 }
 
-fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, event: mdns::Event) {
+fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, ctx: &impl Context, event: mdns::Event) {
     use mdns::Event;
 
     match event {
@@ -228,6 +257,11 @@ fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, event: mdns::Event) {
         // be discovered via seed nodes.
         Event::Discovered(peers) => {
             for (peer_id, addr) in peers {
+                if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
+                    tracing::warn!(%peer_id, %addr, "Discovered peer via mDNS, however it is not a known signer; ignoring");
+                    continue;
+                }
+
                 tracing::info!(%peer_id, %addr, "Discovered peer via mDNS");
                 swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
             }
@@ -243,11 +277,19 @@ fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, event: mdns::Event) {
     }
 }
 
-fn handle_identify_event(swarm: &mut Swarm<SignerBehavior>, event: identify::Event) {
+fn handle_identify_event(
+    swarm: &mut Swarm<SignerBehavior>,
+    ctx: &impl Context,
+    event: identify::Event,
+) {
     use identify::Event;
 
     match event {
         Event::Received { peer_id, info, .. } => {
+            if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
+                tracing::debug!(%peer_id, "ignoring identify message from unknown peer");
+                return;
+            }
             tracing::debug!(%peer_id, "Received identify message from peer; adding to confirmed external addresses");
             swarm.add_external_address(info.observed_addr.clone());
         }
@@ -265,8 +307,8 @@ fn handle_identify_event(swarm: &mut Swarm<SignerBehavior>, event: identify::Eve
 
 fn handle_gossipsub_event(
     swarm: &mut Swarm<SignerBehavior>,
+    ctx: &impl Context,
     event: gossipsub::Event,
-    signal_tx: &Sender<SignerSignal>,
 ) {
     use gossipsub::Event;
 
@@ -276,6 +318,11 @@ fn handle_gossipsub_event(
             message_id: id,
             message,
         } => {
+            if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
+                tracing::warn!(%peer_id, "ignoring message from unknown peer");
+                return;
+            }
+
             tracing::trace!(local_peer_id = %swarm.local_peer_id(), %peer_id,
                 "Got message: '{}' with id: {id} from peer: {peer_id}",
                 String::from_utf8_lossy(&message.data),
@@ -283,7 +330,7 @@ fn handle_gossipsub_event(
 
             Msg::decode(message.data.as_slice())
                 .map(|msg| {
-                    let _ = signal_tx
+                    let _ = ctx.get_signal_sender()
                         .send(P2PEvent::MessageReceived(msg).into())
                         .map_err(|error| {
                             tracing::debug!(%error, "Failed to send message to application; we are likely shutting down.");
