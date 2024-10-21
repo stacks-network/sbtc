@@ -66,7 +66,7 @@ pub struct WithdrawalEntry {
     pub history: Vec<WithdrawalEvent>,
 }
 
-/// Implements versioned entry trait for the deposit entry.
+/// Implements versioned entry trait for the withdrawal entry.
 impl VersionedEntryTrait for WithdrawalEntry {
     /// Version field.
     const VERSION_FIELD: &'static str = "Version";
@@ -119,7 +119,7 @@ impl WithdrawalEntry {
     }
 
     /// Reorgs around a given chainstate.
-    /// TODO(TBD): Remove duplicate code around deposits and withdrawals if possible.
+    /// TODO(TBD): Remove duplicate code around withdrawals and withdrawals if possible.
     pub fn reorganize_around(&mut self, chainstate: &Chainstate) -> Result<(), Error> {
         // Update the history to have the histories wiped after the reorg.
         self.history.retain(|event| {
@@ -396,25 +396,34 @@ impl From<WithdrawalInfoEntry> for WithdrawalInfo {
 /// Validated version of the update withdrawal request.
 #[derive(Clone, Default, Debug, Eq, PartialEq, Hash)]
 pub struct ValidatedUpdateWithdrawalRequest {
-    /// Validated withdrawal update requests.
-    pub withdrawals: Vec<ValidatedWithdrawalUpdate>,
+    /// Validated withdrawal update requests where each update request is in chronoloical order
+    /// of when the update should have occurred, but where the first value of the tuple is the
+    /// index of the update in the original request.
+    ///
+    /// This allows the updates to be executed in chronological order but returned in the order
+    /// that the client sent them.
+    pub withdrawals: Vec<(usize, ValidatedWithdrawalUpdate)>,
 }
 
-/// Implement try from for the validated depoit requests.
+/// Implement try from for the validated withdrawal requests.
 impl TryFrom<UpdateWithdrawalsRequestBody> for ValidatedUpdateWithdrawalRequest {
     type Error = Error;
     fn try_from(update_request: UpdateWithdrawalsRequestBody) -> Result<Self, Self::Error> {
-        // Validate all the depoit updates.
-        let mut withdrawals: Vec<_> = update_request
+        // Validate all the withdrawal updates.
+        let mut withdrawals: Vec<(usize, ValidatedWithdrawalUpdate)> = update_request
             .withdrawals
             .into_iter()
-            .map(|i| i.try_into())
+            .enumerate()
+            .map(|(index, update)| {
+                update
+                    .try_into()
+                    .map(|validated_update| (index, validated_update))
+            })
             .collect::<Result<_, Error>>()?;
 
-        // Order the updates by order of when they occur so that it's
-        // as though we got them in chronological order.
-        withdrawals
-            .sort_by_key(|update: &ValidatedWithdrawalUpdate| update.event.stacks_block_height);
+        // Order the updates by order of when they occur so that it's as though we got them in
+        // chronological order.
+        withdrawals.sort_by_key(|(_, update)| update.event.stacks_block_height);
 
         Ok(ValidatedUpdateWithdrawalRequest { withdrawals })
     }
@@ -430,7 +439,7 @@ impl ValidatedUpdateWithdrawalRequest {
             .withdrawals
             .clone()
             .into_iter()
-            .map(|update| Chainstate {
+            .map(|(_, update)| Chainstate {
                 stacks_block_hash: update.event.stacks_block_hash,
                 stacks_block_height: update.event.stacks_block_height,
             })

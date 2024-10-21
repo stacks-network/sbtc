@@ -230,11 +230,11 @@ pub async fn update_withdrawals(
         }
 
         // Create aggregator.
-        let mut updated_withdrawals: Vec<Withdrawal> =
+        let mut updated_withdrawals: Vec<(usize, Withdrawal)> =
             Vec::with_capacity(validated_request.withdrawals.len());
 
         // Loop through all updates and execute.
-        for update in validated_request.withdrawals {
+        for (index, update) in validated_request.withdrawals {
             // Get original withdrawal entry.
             let withdrawal_entry =
                 accessors::get_withdrawal_entry(&context, &update.request_id).await?;
@@ -244,11 +244,14 @@ pub async fn update_withdrawals(
                 .await?
                 .try_into()?;
             // Append the updated withdrawal to the list.
-            updated_withdrawals.push(updated_withdrawal);
+            updated_withdrawals.push((index, updated_withdrawal));
         }
-        let response = UpdateWithdrawalsResponse {
-            withdrawals: updated_withdrawals,
-        };
+        updated_withdrawals.sort_by_key(|(index, _)| *index);
+        let withdrawals = updated_withdrawals
+            .into_iter()
+            .map(|(_, withdrawal)| withdrawal)
+            .collect();
+        let response = UpdateWithdrawalsResponse { withdrawals };
         Ok(with_status(json(&response), StatusCode::CREATED))
     }
     // Handle and respond.

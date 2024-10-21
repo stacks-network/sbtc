@@ -282,7 +282,7 @@ impl DepositEvent {
         // Determine if event is valid.
         if self.stacks_block_height > next_event.stacks_block_height {
             let err_msg = format!(
-                "Attempting to update a deposit with a block height earlier than it should be..\n
+                "Attempting to update a deposit with a block height earlier than it should be.\n
                 latest_existing_event:\n{self:?}\n
                 newest_event:\n{next_event:?}"
             );
@@ -409,24 +409,34 @@ impl From<DepositInfoEntry> for DepositInfo {
 /// Validated version of the update deposit request.
 #[derive(Clone, Default, Debug, Eq, PartialEq, Hash)]
 pub struct ValidatedUpdateDepositsRequest {
-    /// Validated deposit update requests.
-    pub deposits: Vec<ValidatedDepositUpdate>,
+    /// Validated deposit update requests where each update request is in chronoloical order
+    /// of when the update should have occurred, but where the first value of the tuple is the
+    /// index of the update in the original request.
+    ///
+    /// This allows the updates to be executed in chronological order but returned in the order
+    /// that the client sent them.
+    pub deposits: Vec<(usize, ValidatedDepositUpdate)>,
 }
 
-/// Implement try from for the validated depoit requests.
+/// Implement try from for the validated deposit requests.
 impl TryFrom<UpdateDepositsRequestBody> for ValidatedUpdateDepositsRequest {
     type Error = Error;
     fn try_from(update_request: UpdateDepositsRequestBody) -> Result<Self, Self::Error> {
         // Validate all the depoit updates.
-        let mut deposits: Vec<_> = update_request
+        let mut deposits: Vec<(usize, ValidatedDepositUpdate)> = update_request
             .deposits
             .into_iter()
-            .map(|i| i.try_into())
+            .enumerate()
+            .map(|(index, update)| {
+                update
+                    .try_into()
+                    .map(|validated_update| (index, validated_update))
+            })
             .collect::<Result<_, Error>>()?;
 
-        // Order the updates by order of when they occur so that it's
-        // as though we got them in chronological order.
-        deposits.sort_by_key(|update: &ValidatedDepositUpdate| update.event.stacks_block_height);
+        // Order the updates by order of when they occur so that it's as though we got them in
+        // chronological order.
+        deposits.sort_by_key(|(_, update)| update.event.stacks_block_height);
 
         Ok(ValidatedUpdateDepositsRequest { deposits })
     }
@@ -442,7 +452,7 @@ impl ValidatedUpdateDepositsRequest {
             .deposits
             .clone()
             .into_iter()
-            .map(|update| Chainstate {
+            .map(|(_, update)| Chainstate {
                 stacks_block_hash: update.event.stacks_block_hash,
                 stacks_block_height: update.event.stacks_block_height,
             })
