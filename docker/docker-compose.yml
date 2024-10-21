@@ -96,7 +96,7 @@ services:
         # repository, but the sources from this branch will be pulled in, compiled,
         # and then cached so that when the local repository is copied the build
         # is starting from a place where the dependencies are already compiled.
-        GIT_BRANCH: feat/demo-cli
+        GIT_BRANCH: main
     image: sbtc-build:latest
 
   # Emily API.
