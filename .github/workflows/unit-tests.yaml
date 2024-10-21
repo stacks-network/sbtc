@@ -42,4 +42,10 @@ jobs:
 
       - name: Docker compose down
         if: always()
-        run:  make integration-env-down-ci
+        run: make integration-env-down-ci
+
+      - name: Upload integration test logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          path: ./target/emily-server.log

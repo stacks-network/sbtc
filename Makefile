@@ -74,6 +74,9 @@ integration-env-up-ci: emily-cdk-synth
 	docker compose --file docker/docker-compose.test.ci.yml up --detach --quiet-pull
 	@echo "Wait for aws resources to be set up..."
 	@while docker compose --file docker/docker-compose.test.ci.yml ps | grep -q 'emily-aws-setup'; do echo "waiting..." && sleep 1; done
+	AWS_ACCESS_KEY_ID=xxxxxxxxxxxx \
+	AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxx \
+	AWS_REGION=us-west-2 \
 	cargo run --bin emily-server -- \
 		--host 127.0.0.1 --port 3031 --dynamodb-endpoint http://localhost:8000 > ./target/emily-server.log 2>&1 &
 
