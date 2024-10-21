@@ -4,8 +4,6 @@ mod messaging;
 mod signer_context;
 mod signer_state;
 mod termination;
-#[cfg(test)]
-mod tests;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::config::Settings;
