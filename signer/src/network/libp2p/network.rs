@@ -209,7 +209,7 @@ mod tests {
     }
 
     #[test(tokio::test)]
-    async fn swarm_rejects_connections_from_known_peers() {
+    async fn swarm_rejects_connections_from_unknown_peers() {
         clear_env();
 
         // In this test we create three swarms (simulating three signers). We
