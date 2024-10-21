@@ -174,9 +174,15 @@ fn handle_autonat_client_event(
             result: Ok(()),
         } => {
             if !ctx.state().current_signer_set().is_allowed_peer(&server) {
-                tracing::debug!(%server, %tested_addr, %bytes_sent, "AutoNAT (client) test successful, however the server is not a known signer; ignoring");
+                tracing::debug!(
+                    peer_id = %server,
+                    %tested_addr,
+                    %bytes_sent,
+                    "AutoNAT (client) test successful, however the server is not a known signer; ignoring"
+                );
                 return;
             }
+
             tracing::trace!(peer_id = %server, %tested_addr, %bytes_sent, "AutoNAT (client) test successful");
         }
         // Match on failed AutoNAT test event
@@ -184,13 +190,21 @@ fn handle_autonat_client_event(
             server,
             tested_addr,
             bytes_sent,
-            result: Err(e),
+            result: Err(error),
         } => {
             if !ctx.state().current_signer_set().is_allowed_peer(&server) {
-                tracing::debug!(%server, %tested_addr, %bytes_sent, "AutoNAT (client) test successful, however the server is not a known signer; ignoring");
+                tracing::debug!(
+                    peer_id = %server,
+                    %tested_addr,
+                    %bytes_sent,
+                    "AutoNAT (client) test successful, however the server is not a known signer; ignoring"
+                );
                 return;
             }
-            tracing::trace!(peer_id = %server, %tested_addr, %bytes_sent, %e, "AutoNAT (client) test failed");
+
+            tracing::trace!(
+                peer_id = %server, %tested_addr, %bytes_sent, %error, "AutoNAT (client) test failed"
+            );
         }
     }
 }
