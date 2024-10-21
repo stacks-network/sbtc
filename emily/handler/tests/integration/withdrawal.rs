@@ -323,7 +323,7 @@ async fn update_withdrawals_updates_chainstate() {
 
     // Order the, pecularily so that they are not in order.
     withdrawal_updates.sort_by_key(|update|
-        (update.last_update_height as i64 - (max_height - min_height) / 2).abs());
+        (update.last_update_height as i64 - (min_height + (max_height - min_height) / 2)).abs());
 
     let expected_last_update_height_at_output_index: Vec<(usize, u64)> = withdrawal_updates
         .iter()
