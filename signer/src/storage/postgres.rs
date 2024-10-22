@@ -1769,7 +1769,7 @@ impl super::DbWrite for PgStore {
               , signer_set_public_keys
               , signature_share_threshold
             )
-            VALUES ($1, $2, $3, $4, $5, $6)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT DO NOTHING"#,
         )
         .bind(shares.aggregate_key)
