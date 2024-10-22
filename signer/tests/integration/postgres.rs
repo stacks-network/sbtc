@@ -1280,6 +1280,7 @@ async fn is_signer_script_pub_key_checks_dkg_shares_for_script_pubkeys() {
         public_shares: Vec::new(),
         aggregate_key,
         signer_set_public_keys: vec![fake::Faker.fake_with_rng(&mut rng)],
+        signature_share_threshold: 1,
     };
     db.write_encrypted_dkg_shares(&shares).await.unwrap();
     mem.write_encrypted_dkg_shares(&shares).await.unwrap();

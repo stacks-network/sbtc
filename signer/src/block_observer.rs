@@ -739,6 +739,7 @@ mod tests {
             encrypted_private_shares: Vec::new(),
             public_shares: Vec::new(),
             signer_set_public_keys: vec![aggregate_key],
+            signature_share_threshold: 1,
         };
         storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 

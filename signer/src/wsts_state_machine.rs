@@ -148,6 +148,11 @@ impl SignerStateMachine {
             wsts::util::encrypt(&self.0.network_private_key.to_bytes(), &encoded, rng)
                 .map_err(|_| error::Error::Encryption)?;
 
+        let signature_share_threshold: u16 = self
+            .threshold
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
+
         Ok(model::EncryptedDkgShares {
             aggregate_key,
             tweaked_aggregate_key: aggregate_key.signers_tweaked_pubkey()?,
@@ -155,6 +160,7 @@ impl SignerStateMachine {
             encrypted_private_shares,
             public_shares,
             signer_set_public_keys,
+            signature_share_threshold,
         })
     }
 }

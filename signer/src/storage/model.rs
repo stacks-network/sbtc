@@ -339,6 +339,10 @@ pub struct EncryptedDkgShares {
     pub public_shares: Bytes,
     /// The set of public keys that were a party to the DKG.
     pub signer_set_public_keys: Vec<PublicKey>,
+    /// The threshold number of signature shares required to generate a
+    /// Schnorr signature.
+    #[sqlx(try_from = "i32")]
+    pub signature_share_threshold: u16,
 }
 
 /// Persisted public DKG shares from other signers

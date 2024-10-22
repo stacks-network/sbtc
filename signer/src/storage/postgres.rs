@@ -965,6 +965,7 @@ impl super::DbRead for PgStore {
               , encrypted_private_shares
               , public_shares
               , signer_set_public_keys
+              , signature_share_threshold
             FROM sbtc_signer.dkg_shares
             WHERE aggregate_key = $1;
             "#,
@@ -987,6 +988,7 @@ impl super::DbRead for PgStore {
               , encrypted_private_shares
               , public_shares
               , signer_set_public_keys
+              , signature_share_threshold
             FROM sbtc_signer.dkg_shares
             ORDER BY created_at DESC
             LIMIT 1;
@@ -1765,6 +1767,7 @@ impl super::DbWrite for PgStore {
               , public_shares
               , script_pubkey
               , signer_set_public_keys
+              , signature_share_threshold
             )
             VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT DO NOTHING"#,
@@ -1775,6 +1778,7 @@ impl super::DbWrite for PgStore {
         .bind(&shares.public_shares)
         .bind(&shares.script_pubkey)
         .bind(&shares.signer_set_public_keys)
+        .bind(i32::from(shares.signature_share_threshold))
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
