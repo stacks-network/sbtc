@@ -571,6 +571,12 @@ impl From<[u8; 32]> for BitcoinBlockHash {
     }
 }
 
+impl std::fmt::Display for BitcoinBlockHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 /// A struct that references a specific bitcoin block is identifier and its
 /// position in the blockchain.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
