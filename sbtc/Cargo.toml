@@ -20,6 +20,8 @@ serde.workspace = true
 serde_json.workspace = true
 stacks-common.workspace = true
 thiserror.workspace = true
+wsts = { git = "https://github.com/Trust-Machines/wsts.git", branch = "simple-signature-type" }
+#wsts.workspace = true
 
 [dependencies.secp256k1]
 version = "0.29.0"

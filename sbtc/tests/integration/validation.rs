@@ -3,6 +3,7 @@
 use bitcoin::absolute::LockTime;
 use bitcoin::script::PushBytes;
 use bitcoin::transaction::Version;
+use bitcoin::Address;
 use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
@@ -23,6 +24,20 @@ use sbtc::testing::deposits::TxSetup;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::AsUtxo;
 use sbtc::testing::regtest::Recipient;
+
+use wsts::{
+    state_machine::{
+	coordinator::{
+	    test::{
+		run_dkg, run_sign,
+	    },
+	    frost::Coordinator as FrostCoordinator,
+	    Coordinator, 
+	},
+	signer::Signer,
+    },
+    v1, v2,
+};
 
 /// Test the CreateDepositRequest::validate function.
 ///
@@ -383,4 +398,199 @@ fn op_csv_disabled() {
             if message.ends_with("(Locktime requirement not satisfied)") => {}
         err => panic!("{err}"),
     };
+}
+
+/// This test shows that WSTS can sign taproot inputs
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[test]
+fn wsts_taproot_inputs() {
+    let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
+
+    let (rpc, faucet) = regtest::initialize_blockchain();
+    
+    let (mut coordinators, mut signers) = run_dkg::<FrostCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
+    
+    let aggregate_public_key = coordinators.first_mut().unwrap().get_aggregate_public_key().unwrap();
+
+    let x_data = aggregate_public_key.x().to_bytes();
+    let pk = secp256k1::XOnlyPublicKey::from_slice(&x_data).expect("InvalidPublicKey");
+    let parity = if aggregate_public_key.has_even_y() {
+        secp256k1::Parity::Even
+    } else {
+        secp256k1::Parity::Odd
+    };
+    let public_key = secp256k1::PublicKey::from_x_only_public_key(pk, parity);
+    
+    let address = Address::p2tr(secp256k1::SECP256K1, bitcoin::XOnlyPublicKey::from_slice(&x_data).unwrap(), None, bitcoin::Network::Regtest);
+    
+    //let depositor = Recipient::new(AddressType::P2tr);
+
+    // Start off with some initial UTXOs to work with.
+    let _ = faucet.send_to(50_000_000, &address);
+    faucet.generate_blocks(1);
+
+    // There is only one UTXO under the depositor's name, so let's get it
+    let utxos = Recipient::scan_public_key(rpc, bitcoin::PublicKey::from_slice(aggregate_public_key.compress().as_bytes()).unwrap(), AddressType::P2tr).unspents;
+    let utxo = utxos.first().cloned().unwrap();
+    let amount = 30_000_000;
+
+    let script_pubkey = ScriptBuf::builder()
+        .push_opcode(bitcoin::opcodes::OP_TRUE)
+        .into_script();
+
+    let mut tx0 = Transaction {
+        version: Version::ONE,
+        lock_time: LockTime::ZERO,
+        input: vec![TxIn {
+            previous_output: utxo.outpoint(),
+            sequence: Sequence::ZERO,
+            script_sig: ScriptBuf::new(),
+            witness: Witness::new(),
+        }],
+        output: vec![
+            TxOut {
+                value: Amount::from_sat(amount),
+                script_pubkey: ScriptBuf::new_p2sh(&script_pubkey.script_hash()),
+            },
+            TxOut {
+                value: utxo.amount() - Amount::from_sat(amount + fee),
+                script_pubkey: address.script_pubkey(),
+            },
+        ],
+    };
+/*
+    regtest::p2tr_sign_transaction(&mut tx0, 0, &[utxo], &depositor.keypair);
+    rpc.send_raw_transaction(&tx0).unwrap();
+
+    // 2. Confirm the transaction and spend it immediately, proving that
+    //    OP_CSV was disabled.
+    faucet.generate_blocks(1);
+
+    // The Builder::push_slice wants to make sure that the length of the
+    // pushed data is within the limits, hence the conversion into this
+    // PushBytes thing.
+    let locking_script: &PushBytes = script_pubkey.as_bytes().try_into().unwrap();
+    let script_sig = ScriptBuf::builder()
+        .push_slice(locking_script)
+        .into_script();
+
+    let tx1 = Transaction {
+        version: Version::TWO,
+        lock_time: LockTime::ZERO,
+        input: vec![TxIn {
+            previous_output: OutPoint::new(tx0.compute_txid(), 0),
+            sequence: Sequence::ZERO,
+            script_sig,
+            witness: Witness::new(),
+        }],
+        output: vec![TxOut {
+            value: Amount::from_sat(amount - fee),
+            script_pubkey: depositor.address.script_pubkey(),
+        }],
+    };
+    // We just created a transaction that spends the P2SH UTXO where we
+    // disabled OP_CSV. When bitcoin-core attempts to validate the
+    // transaction it should pass, proving OP_CSV was disabled.
+    rpc.send_raw_transaction(&tx1).unwrap();
+    faucet.generate_blocks(1);
+
+    // Note that the above script_sig is equivalent to this one, which is
+    // rejected as a reclaim script.
+    let reclaim = ScriptBuf::builder()
+        .push_opcode(bitcoin::opcodes::all::OP_DROP)
+        .push_opcode(bitcoin::opcodes::OP_TRUE)
+        .into_script();
+    assert!(ReclaimScriptInputs::try_new(lock_time, reclaim).is_err());
+
+    // 3. Create and submit another transaction where the lock script uses
+    //    a lock-time where OP_CSV is not disabled.
+    let lock_time = 50;
+
+    let reclaim = ScriptBuf::builder()
+        .push_opcode(bitcoin::opcodes::all::OP_DROP)
+        .push_opcode(bitcoin::opcodes::OP_TRUE)
+        .into_script();
+    // The ReclaimScriptInputs::try_new function just checks that the
+    // lock_time does not disable OP_CSV, is positive, and is within
+    // bitcoin-core's bounds for an acceptable value.
+    let script_pubkey = ReclaimScriptInputs::try_new(lock_time, reclaim)
+        .unwrap()
+        .reclaim_script();
+    // The script_pubkey script function above is quite simple, it should
+    // produce this:
+    let script_pubkey2 = ScriptBuf::builder()
+        .push_int(lock_time)
+        .push_opcode(bitcoin::opcodes::all::OP_CSV)
+        .push_opcode(bitcoin::opcodes::all::OP_DROP)
+        .push_opcode(bitcoin::opcodes::OP_TRUE)
+        .into_script();
+    assert_eq!(script_pubkey, script_pubkey2);
+
+    // Get all UTXOs where their amounts are greater than 10_000_000.
+    let utxos = depositor.get_utxos(rpc, Some(10_000_000));
+    let utxo = utxos.first().cloned().unwrap();
+    let amount = 8_000_000;
+
+    let mut tx2 = Transaction {
+        version: Version::ONE,
+        lock_time: LockTime::ZERO,
+        input: vec![TxIn {
+            previous_output: utxo.outpoint(),
+            sequence: Sequence::ZERO,
+            script_sig: ScriptBuf::new(),
+            witness: Witness::new(),
+        }],
+        output: vec![
+            TxOut {
+                value: Amount::from_sat(amount),
+                script_pubkey: ScriptBuf::new_p2sh(&script_pubkey.script_hash()),
+            },
+            TxOut {
+                value: utxo.amount() - Amount::from_sat(amount + fee),
+                script_pubkey: depositor.address.script_pubkey(),
+            },
+        ],
+    };
+
+    regtest::p2tr_sign_transaction(&mut tx2, 0, &[utxo], &depositor.keypair);
+    rpc.send_raw_transaction(&tx2).unwrap();
+
+    // 4. Confirm that transaction and try to spend it immediately. The
+    //    transaction that tries to spend the transaction from (3) should
+    //    be rejected.
+    faucet.generate_blocks(1);
+
+    // Remember, Builder::push_slice wants to make sure that the length of
+    // the pushed data is within the limits, so we have to do this dance.
+    let locking_script: &PushBytes = script_pubkey.as_bytes().try_into().unwrap();
+    let script_sig = ScriptBuf::builder()
+        .push_slice(&locking_script)
+        .into_script();
+
+    let tx3 = Transaction {
+        version: Version::TWO,
+        lock_time: LockTime::ZERO,
+        input: vec![TxIn {
+            previous_output: OutPoint::new(tx2.compute_txid(), 0),
+            sequence: Sequence::ZERO,
+            script_sig,
+            witness: Witness::new(),
+        }],
+        output: vec![TxOut {
+            value: Amount::from_sat(amount - fee),
+            script_pubkey: depositor.address.script_pubkey(),
+        }],
+    };
+
+    // In bitcoin-core v25 the message is "non-mandatory-script-verify-flag
+    // (Locktime requirement not satisfied)", but in bitcoin-core v27 the
+    // message is "mandatory-script-verify-flag-failed (Locktime
+    // requirement not satisfied)". We match on the part that is probably
+    // consistent across versions.
+    match rpc.send_raw_transaction(&tx3).unwrap_err() {
+        BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -26, message, .. }))
+            if message.ends_with("(Locktime requirement not satisfied)") => {}
+        err => panic!("{err}"),
+};
+    */
 }

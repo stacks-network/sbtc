@@ -192,10 +192,15 @@ impl Recipient {
 
     /// Scan Bitcoin-core for transactions associated with this recipient's
     /// address.
-    fn scan(&self, rpc: &Client) -> ScanTxOutResult {
+    pub fn scan(&self, rpc: &Client) -> ScanTxOutResult {
         let public_key = PublicKey::new(self.keypair.public_key());
         let kind = self.address.address_type().unwrap();
 
+	Self::scan_public_key(rpc, public_key, kind)
+    }
+
+    /// Scan the passed public_key
+    pub fn scan_public_key(rpc: &Client, public_key: PublicKey, kind: AddressType) -> ScanTxOutResult {
         let desc = descriptor_base(&public_key, kind);
         let descriptor = ScanTxOutRequest::Single(desc);
         rpc.scan_tx_out_set_blocking(&[descriptor]).unwrap()
