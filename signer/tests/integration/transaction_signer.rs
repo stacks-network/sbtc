@@ -284,7 +284,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
 }
 
 /// Test that [`TxSignerEventLoop::handle_pending_deposit_request`] does
-/// not error when attempting to check the scriptPubKeys of any of the
+/// not error when attempting to check the scriptPubKeys of the
 /// inputs of a deposit.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]

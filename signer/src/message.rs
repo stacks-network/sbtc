@@ -131,7 +131,7 @@ pub struct SignerDepositDecision {
     pub txid: bitcoin::Txid,
     /// Index of the deposit request UTXO.
     pub output_index: u32,
-    /// Whether or not the signer has accepted the deposit request.
+    /// Whether the signer has accepted the deposit request.
     pub accepted: bool,
 }
 
@@ -139,14 +139,14 @@ pub struct SignerDepositDecision {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct SignerWithdrawalDecision {
-    /// ID of the withdraw request.
+    /// ID of the withdrawal request.
     pub request_id: u64,
     /// ID of the Stacks block containing the request.
     pub block_hash: StacksBlockHash,
     /// The stacks transaction ID that lead to the creation of the
     /// withdrawal request.
     pub txid: StacksTxId,
-    /// Whether or not the signer has accepted the deposit request.
+    /// Whether the signer has accepted the deposit request.
     pub accepted: bool,
 }
 
@@ -154,7 +154,7 @@ pub struct SignerWithdrawalDecision {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StacksTransactionSignRequest {
     /// This is the bitcoin aggregate key that was output from DKG. It is used
-    /// to identifyy the signing set for the transaction.
+    /// to identify the signing set for the transaction.
     pub aggregate_key: PublicKey,
     /// The contract call transaction to sign.
     pub contract_call: ContractCall,

@@ -355,7 +355,7 @@ where
     #[tracing::instrument(skip(self))]
     async fn inspect_msg_chain_tip(
         &mut self,
-        msg_sender: keys::PublicKey,
+        msg_sender: PublicKey,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<MsgChainTipReport, Error> {
         let storage = self.context.get_storage();
@@ -466,7 +466,7 @@ where
         let multi_sig = MultisigTx::new_tx(&request.contract_call, &wallet, request.tx_fee);
         let txid = multi_sig.tx().txid();
 
-        // TODO: Make this more robust. The signer that recieves this won't
+        // TODO: Make this more robust. The signer that receives this won't
         // be able to use the signature if it's over the wrong digest, so
         // maybe we should error here.
         debug_assert_eq!(multi_sig.tx().digest(), request.digest);
