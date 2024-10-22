@@ -90,7 +90,7 @@ impl SignerStateMachine {
         let encrypted_shares = storage
             .get_encrypted_dkg_shares(&aggregate_key)
             .await?
-            .ok_or(error::Error::MissingDkgShares)?;
+            .ok_or(error::Error::MissingDkgShares(aggregate_key))?;
 
         let decrypted = wsts::util::decrypt(
             &signer_private_key.to_bytes(),
@@ -250,7 +250,7 @@ impl CoordinatorStateMachine {
         let encrypted_shares = storage
             .get_encrypted_dkg_shares(&aggregate_key)
             .await?
-            .ok_or(Error::MissingDkgShares)?;
+            .ok_or(Error::MissingDkgShares(aggregate_key))?;
 
         let public_dkg_shares: BTreeMap<u32, wsts::net::DkgPublicShares> =
             BTreeMap::decode(encrypted_shares.public_shares.as_slice()).map_err(Error::Codec)?;

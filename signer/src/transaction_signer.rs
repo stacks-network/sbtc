@@ -496,19 +496,18 @@ where
         let public_key = self.signer_pub_key();
 
         let Some(shares) = db.get_encrypted_dkg_shares(&request.aggregate_key).await? else {
-            return Err(Error::MissingDkgShares);
+            return Err(Error::MissingDkgShares(request.aggregate_key));
         };
         // There is one check that applies to all Stacks transactions, and
         // that check is that the current signer is in the signing set
         // associated with the given aggregate key. We do this check here.
         if !shares.signer_set_public_keys.contains(&public_key) {
-            return Err(Error::NoChainTip);
+            return Err(Error::ValidationSignerSet(request.aggregate_key));
         }
 
         let Some(block) = db.get_bitcoin_block(chain_tip).await? else {
-            return Err(Error::NoChainTip);
+            return Err(Error::MissingBitcoinBlock(*chain_tip));
         };
-
 
         let req_ctx = ReqContext {
             chain_tip: block.into(),
