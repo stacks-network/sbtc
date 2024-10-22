@@ -3,6 +3,7 @@
 use bitcoin::absolute::LockTime;
 use bitcoin::script::PushBytes;
 use bitcoin::transaction::Version;
+use bitcoin::Address;
 use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
@@ -23,6 +24,14 @@ use sbtc::testing::deposits::TxSetup;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::AsUtxo;
 use sbtc::testing::regtest::Recipient;
+
+use wsts::{
+    net::SignatureType,
+    state_machine::coordinator::{
+        frost::Coordinator as FrostCoordinator, test::run_dkg, Coordinator,
+    },
+    v2,
+};
 
 /// Test the CreateDepositRequest::validate function.
 ///
@@ -383,4 +392,96 @@ fn op_csv_disabled() {
             if message.ends_with("(Locktime requirement not satisfied)") => {}
         err => panic!("{err}"),
     };
+}
+
+/// This test shows that WSTS can sign taproot inputs
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[test]
+fn wsts_taproot_inputs() {
+    let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
+
+    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let (mut coordinators, mut signers) =
+        run_dkg::<FrostCoordinator<v2::Aggregator>, v2::Signer>(5, 2);
+
+    let aggregate_public_key = coordinators
+        .first_mut()
+        .unwrap()
+        .get_aggregate_public_key()
+        .unwrap();
+
+    let x_data = aggregate_public_key.x().to_bytes();
+    let pk = secp256k1::XOnlyPublicKey::from_slice(&x_data).expect("InvalidPublicKey");
+    let parity = if aggregate_public_key.has_even_y() {
+        secp256k1::Parity::Even
+    } else {
+        secp256k1::Parity::Odd
+    };
+    let _public_key = secp256k1::PublicKey::from_x_only_public_key(pk, parity);
+
+    let address = Address::p2tr(
+        secp256k1::SECP256K1,
+        bitcoin::XOnlyPublicKey::from_slice(&x_data).unwrap(),
+        None,
+        bitcoin::Network::Regtest,
+    );
+
+    //let depositor = Recipient::new(AddressType::P2tr);
+
+    // Start off with some initial UTXOs to work with.
+    let _ = faucet.send_to(50_000_000, &address);
+    faucet.generate_blocks(1);
+
+    // There is only one UTXO under the depositor's name, so let's get it
+    let utxos = Recipient::scan_public_key(
+        rpc,
+        bitcoin::PublicKey::from_slice(aggregate_public_key.compress().as_bytes()).unwrap(),
+        AddressType::P2tr,
+    )
+    .unspents;
+    let utxo = utxos.first().cloned().unwrap();
+    let amount = 30_000_000;
+
+    let script_pubkey = ScriptBuf::builder()
+        .push_opcode(bitcoin::opcodes::OP_TRUE)
+        .into_script();
+
+    let mut tx0 = Transaction {
+        version: Version::ONE,
+        lock_time: LockTime::ZERO,
+        input: vec![TxIn {
+            previous_output: utxo.outpoint(),
+            sequence: Sequence::ZERO,
+            script_sig: ScriptBuf::new(),
+            witness: Witness::new(),
+        }],
+        output: vec![
+            TxOut {
+                value: Amount::from_sat(amount),
+                script_pubkey: ScriptBuf::new_p2sh(&script_pubkey.script_hash()),
+            },
+            TxOut {
+                value: utxo.amount() - Amount::from_sat(amount + fee),
+                script_pubkey: address.script_pubkey(),
+            },
+        ],
+    };
+
+    regtest::wsts_sign_transaction(
+        &mut tx0,
+        0,
+        &[utxo],
+        &mut coordinators,
+        &mut signers,
+        SignatureType::Taproot(None),
+    );
+    rpc.send_raw_transaction(&tx0).expect(&format!(
+        "{}",
+        &hex::encode(aggregate_public_key.compress().as_bytes())
+    ));
+
+    // 2. Confirm the transaction and spend it immediately, proving that
+    //    OP_CSV was disabled.
+    faucet.generate_blocks(1);
 }
