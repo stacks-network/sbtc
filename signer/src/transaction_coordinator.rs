@@ -18,7 +18,7 @@ use wsts::net::SignatureType;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
-use crate::context::TxCoordinatorEvent;
+// use crate::context::TxCoordinatorEvent;
 use crate::context::TxSignerEvent;
 use crate::context::{messaging::SignerEvent, messaging::SignerSignal, Context};
 use crate::ecdsa::SignEcdsa as _;
@@ -261,7 +261,10 @@ where
 
         if let Err(error) = result {
             tracing::warn!(%error, "continuing");
+        } else {
+            tracing::info!("bitcoin transaction submitted successfully!");
         }
+
 
         self.construct_and_sign_stacks_sbtc_response_transactions(
             &bitcoin_chain_tip,
@@ -959,8 +962,8 @@ where
             .sign_ecdsa(&self.private_key)?;
 
         self.network.broadcast(msg.clone()).await?;
-        self.context
-            .signal(TxCoordinatorEvent::MessageGenerated(msg).into())?;
+        // self.context
+        //     .signal(TxCoordinatorEvent::MessageGenerated(msg).into())?;
 
         Ok(())
     }

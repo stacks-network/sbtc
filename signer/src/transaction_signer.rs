@@ -824,8 +824,8 @@ where
             .sign_ecdsa(&self.signer_private_key)?;
 
         self.network.broadcast(msg.clone()).await?;
-        self.context
-            .signal(TxSignerEvent::MessageGenerated(msg).into())?;
+        // self.context
+        //     .signal(TxSignerEvent::MessageGenerated(msg).into())?;
 
         Ok(())
     }

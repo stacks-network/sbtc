@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
+use bitcoin::hex::DisplayHex;
 use bitcoin::Address;
 use bitcoin::AddressType;
 use bitcoin::Transaction;
@@ -829,6 +830,11 @@ async fn sign_bitcoin_transaction() {
     for (_, db, _) in signers.iter() {
         shares = db.get_latest_encrypted_dkg_shares().await.unwrap().unwrap();
     }
+
+    dbg!(shares.aggregate_key.serialize().to_lower_hex_string());
+    dbg!(p256k1::point::Point::from(shares.aggregate_key).compress().data.to_lower_hex_string());
+    dbg!(p256k1::point::Point::from(shares.aggregate_key).x().to_bytes().to_lower_hex_string());
+    dbg!(secp256k1::XOnlyPublicKey::from(shares.aggregate_key).serialize().to_lower_hex_string());
 
     let script_pub_key = shares.aggregate_key.signers_script_pubkey();
     let network = bitcoin::Network::Regtest;
