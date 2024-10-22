@@ -41,10 +41,7 @@ use std::sync::OnceLock;
 use wsts::{
     net::SignatureType,
     state_machine::{
-        coordinator::{
-            test::run_sign,
-            Coordinator as CoordinatorTrait,
-        },
+        coordinator::{test::run_sign, Coordinator as CoordinatorTrait},
         signer::Signer,
         OperationResult,
     },
@@ -456,32 +453,34 @@ pub fn wsts_sign_transaction<U, Coordinator: CoordinatorTrait, SignerType: Signe
         coordinators,
         signers,
         &msg.as_ref().to_vec(),
-	signature_type.clone(),
+        signature_type.clone(),
     );
 
     match signature_type {
-	SignatureType::Schnorr => {
-	    if let OperationResult::SignSchnorr(schnorr_proof) = result {
-		let signature =
-		    secp256k1::schnorr::Signature::from_slice(&schnorr_proof.to_bytes()[..]).expect("");
-		let signature = bitcoin::taproot::Signature { signature, sighash_type };
-		
-		tx.input[input_index].witness = Witness::p2tr_key_spend(&signature);
-	    } else {
-		panic!("Bad OperationResult from WSTS");
-	    }
-	}
-	SignatureType::Taproot(_merkle_root) => {
-	    if let OperationResult::SignTaproot(schnorr_proof) = result {
-		let signature =
-		    secp256k1::schnorr::Signature::from_slice(&schnorr_proof.to_bytes()[..]).expect("");
-		let signature = bitcoin::taproot::Signature { signature, sighash_type };
-		
-		tx.input[input_index].witness = Witness::p2tr_key_spend(&signature);
-	    } else {
-		panic!("Bad OperationResult from WSTS");
-	    }
-	}
-	_ => panic!("Bad OperationResult from WSTS")
+        SignatureType::Schnorr => {
+            if let OperationResult::SignSchnorr(schnorr_proof) = result {
+                let signature =
+                    secp256k1::schnorr::Signature::from_slice(&schnorr_proof.to_bytes()[..])
+                        .expect("");
+                let signature = bitcoin::taproot::Signature { signature, sighash_type };
+
+                tx.input[input_index].witness = Witness::p2tr_key_spend(&signature);
+            } else {
+                panic!("Bad OperationResult from WSTS");
+            }
+        }
+        SignatureType::Taproot(_merkle_root) => {
+            if let OperationResult::SignTaproot(schnorr_proof) = result {
+                let signature =
+                    secp256k1::schnorr::Signature::from_slice(&schnorr_proof.to_bytes()[..])
+                        .expect("");
+                let signature = bitcoin::taproot::Signature { signature, sighash_type };
+
+                tx.input[input_index].witness = Witness::p2tr_key_spend(&signature);
+            } else {
+                panic!("Bad OperationResult from WSTS");
+            }
+        }
+        _ => panic!("Bad OperationResult from WSTS"),
     }
 }
