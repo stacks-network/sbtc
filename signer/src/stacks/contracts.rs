@@ -73,8 +73,8 @@ pub struct ReqContext {
     /// [`AsContractCall::validate`] function, but is here for logging and
     /// tracking purposes.
     pub origin: PublicKey,
-    /// The combined public key of all the signers in the current
-    /// signing set.
+    /// This is the bitcoin aggregate key that was output from DKG. It is
+    /// used to identify the signing set for the transaction.
     pub aggregate_key: PublicKey,
     /// The number of signatures required for an accepted deposit request.
     pub signatures_required: u16,

@@ -153,7 +153,8 @@ pub struct SignerWithdrawalDecision {
 /// Represents a request to sign a Stacks transaction.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StacksTransactionSignRequest {
-    /// The aggregate public key that will sign the transaction.
+    /// This is the bitcoin aggregate key that was output from DKG. It is used
+    /// to identifyy the signing set for the transaction.
     pub aggregate_key: PublicKey,
     /// The contract call transaction to sign.
     pub contract_call: ContractCall,
