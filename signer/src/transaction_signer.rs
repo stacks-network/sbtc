@@ -483,15 +483,12 @@ where
 
     /// Check that the transaction is indeed valid. We specific checks that
     /// are run depend on the transaction being signed.
-    async fn assert_valid_stacks_tx_sign_request(
+    pub async fn assert_valid_stacks_tx_sign_request(
         &self,
         request: &StacksTransactionSignRequest,
         chain_tip: &model::BitcoinBlockHash,
         origin_public_key: &PublicKey,
     ) -> Result<(), Error> {
-        if true {
-            return Ok(());
-        }
         let db = self.context.get_storage();
         let public_key = self.signer_pub_key();
 
