@@ -1325,9 +1325,10 @@ async fn get_signers_script_pubkeys_returns_non_empty_vec_old_rows() {
             , public_shares
             , script_pubkey
             , signer_set_public_keys
+            , signature_share_threshold
             , created_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP - INTERVAL '366 DAYS')
+        VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP - INTERVAL '366 DAYS')
         ON CONFLICT DO NOTHING"#,
     )
     .bind(shares.aggregate_key)
@@ -1336,6 +1337,7 @@ async fn get_signers_script_pubkeys_returns_non_empty_vec_old_rows() {
     .bind(&shares.public_shares)
     .bind(&shares.script_pubkey)
     .bind(&shares.signer_set_public_keys)
+    .bind(shares.signature_share_threshold as i32)
     .execute(db.pool())
     .await
     .unwrap();
