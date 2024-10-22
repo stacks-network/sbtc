@@ -1,5 +1,7 @@
 //! Entries into the deposit table.
 
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -279,17 +281,21 @@ impl DepositEvent {
     pub fn ensure_following_event_is_valid(&self, next_event: &DepositEvent) -> Result<(), Error> {
         // Determine if event is valid.
         if self.stacks_block_height > next_event.stacks_block_height {
-            return Err(Error::InconsistentState(Inconsistency::ItemUpdate(
-                "Attempting to update a deposit with a block height earlier than it should be."
-                    .into(),
-            )));
+            let err_msg = format!(
+                "Attempting to update a deposit with a block height earlier than it should be.\n
+                latest_existing_event:\n{self:?}\n
+                newest_event:\n{next_event:?}"
+            );
+            return Err(Error::InconsistentState(Inconsistency::ItemUpdate(err_msg)));
         } else if self.stacks_block_height == next_event.stacks_block_height
             && self.stacks_block_hash != next_event.stacks_block_hash
         {
-            return Err(Error::InconsistentState(Inconsistency::ItemUpdate(
-                "Attempting to update a deposit with a block height and hash that conflicts with the current history."
-                    .into(),
-            )));
+            let err_msg = format!(
+                "Attempting to update a deposit with a block height and hash that conflicts with its current history.\n
+                latest_existing_event:\n{self:?}\n
+                newest_event:\n{next_event:?}"
+            );
+            return Err(Error::InconsistentState(Inconsistency::ItemUpdate(err_msg)));
         }
 
         Ok(())
@@ -401,26 +407,69 @@ impl From<DepositInfoEntry> for DepositInfo {
 }
 
 /// Validated version of the update deposit request.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash)]
 pub struct ValidatedUpdateDepositsRequest {
-    /// Validated deposit update requests.
-    pub deposits: Vec<ValidatedDepositUpdate>,
+    /// Validated deposit update requests where each update request is in chronoloical order
+    /// of when the update should have occurred, but where the first value of the tuple is the
+    /// index of the update in the original request.
+    ///
+    /// This allows the updates to be executed in chronological order but returned in the order
+    /// that the client sent them.
+    pub deposits: Vec<(usize, ValidatedDepositUpdate)>,
 }
 
-/// Implement try from for the validated depoit requests.
+/// Implement try from for the validated deposit requests.
 impl TryFrom<UpdateDepositsRequestBody> for ValidatedUpdateDepositsRequest {
     type Error = Error;
     fn try_from(update_request: UpdateDepositsRequestBody) -> Result<Self, Self::Error> {
         // Validate all the depoit updates.
-        let deposits = update_request
+        let mut deposits: Vec<(usize, ValidatedDepositUpdate)> = update_request
             .deposits
             .into_iter()
-            .map(|i| i.try_into())
+            .enumerate()
+            .map(|(index, update)| {
+                update
+                    .try_into()
+                    .map(|validated_update| (index, validated_update))
+            })
             .collect::<Result<_, Error>>()?;
+
+        // Order the updates by order of when they occur so that it's as though we got them in
+        // chronological order.
+        deposits.sort_by_key(|(_, update)| update.event.stacks_block_height);
+
         Ok(ValidatedUpdateDepositsRequest { deposits })
     }
 }
 
+impl ValidatedUpdateDepositsRequest {
+    /// Infers all chainstates that need to be present in the API for the
+    /// deposit updates to be valid.
+    pub fn inferred_chainstates(&self) -> Result<Vec<Chainstate>, Error> {
+        // TODO(TBD): Error if the inferred chainstates have conflicting block hashes
+        // for a the same block height.
+        let mut inferred_chainstates = self
+            .deposits
+            .clone()
+            .into_iter()
+            .map(|(_, update)| Chainstate {
+                stacks_block_hash: update.event.stacks_block_hash,
+                stacks_block_height: update.event.stacks_block_height,
+            })
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        // Sort the chainsates in the order that they should come in.
+        inferred_chainstates.sort_by_key(|chainstate| chainstate.stacks_block_height);
+
+        // Return.
+        Ok(inferred_chainstates)
+    }
+}
+
 /// Validated deposit update.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash)]
 pub struct ValidatedDepositUpdate {
     /// Key.
     pub key: DepositEntryKey,

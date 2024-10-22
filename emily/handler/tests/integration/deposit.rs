@@ -456,3 +456,88 @@ async fn update_deposits() {
     expected_deposits.sort_by(arbitrary_deposit_partial_cmp);
     assert_eq!(expected_deposits, updated_deposits);
 }
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn update_deposits_updates_chainstate() {
+    let configuration = clean_setup().await;
+
+    // Arrange.
+    // --------
+    let bitcoin_txid = "bitcoin_txid_1";
+    let bitcoin_tx_output_index = 1;
+
+    // Setup test deposit transaction.
+    let DepositTxnData {
+        recipient: _,
+        reclaim_script,
+        deposit_script,
+    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, DEPOSIT_AMOUNT_SATS);
+
+    let create_request = CreateDepositRequestBody {
+        bitcoin_tx_output_index,
+        bitcoin_txid: bitcoin_txid.into(),
+        deposit_script: deposit_script.clone(),
+        reclaim_script: reclaim_script.clone(),
+    };
+
+    // It's okay to say it's accepted over and over.
+    let update_status: Status = Status::Accepted;
+    let update_status_message: &str = "test_status_message";
+
+    let min_height: i64 = 20;
+    let max_height: i64 = 30;
+    let range = min_height..max_height;
+
+    let mut deposit_updates = Vec::new();
+    for update_block_height in range.clone() {
+        let deposit_update = DepositUpdate {
+            bitcoin_tx_output_index: bitcoin_tx_output_index,
+            bitcoin_txid: bitcoin_txid.into(),
+            fulfillment: None,
+            last_update_block_hash: format!("hash_{}", update_block_height),
+            last_update_height: update_block_height as u64,
+            status: update_status.clone(),
+            status_message: update_status_message.into(),
+        };
+        deposit_updates.push(deposit_update);
+    }
+
+    // Order the, pecularily so that they are not in order.
+    deposit_updates.sort_by_key(|update|
+        (update.last_update_height as i64 - (min_height + (max_height - min_height) / 2)).abs());
+
+    let expected_last_update_height_at_output_index: Vec<(usize, u64)> = deposit_updates
+        .iter()
+        .enumerate()
+        .map(|(index, update)| (index, update.last_update_height))
+        .collect();
+
+    // Create the deposits here.
+    let update_request = UpdateDepositsRequestBody { deposits: deposit_updates };
+
+    // Act.
+    // ----
+
+    // Create deposit.
+    apis::deposit_api::create_deposit(&configuration, create_request)
+        .await
+        .expect("Received an error after making a valid create deposit request api call.");
+
+    // Send it a bunch of updates.
+    let update_deposits_response= apis::deposit_api::update_deposits(&configuration, update_request.clone())
+        .await
+        .expect("Received an error after making a valid update deposits api call.");
+
+    for height in range {
+        let chainstate = apis::chainstate_api::get_chainstate_at_height(&configuration, height as u64)
+            .await
+            .expect("Received an error after making a valid get chainstate at height api call.");
+        assert_eq!(chainstate.stacks_block_height, height as u64);
+        assert_eq!(chainstate.stacks_block_hash, format!("hash_{}", height));
+    }
+
+    for (index, last_update_height) in expected_last_update_height_at_output_index {
+        assert_eq!(update_deposits_response.deposits[index].last_update_height, last_update_height);
+    }
+}

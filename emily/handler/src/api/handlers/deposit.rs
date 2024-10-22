@@ -323,11 +323,23 @@ pub async fn update_deposits(
         api_state.error_if_reorganizing()?;
         // Validate request.
         let validated_request: ValidatedUpdateDepositsRequest = body.try_into()?;
+
+        // Infer the new chainstates that would come from these deposit updates and then
+        // attempt to update the chainstates.
+        let inferred_chainstates = validated_request.inferred_chainstates()?;
+        for chainstate in inferred_chainstates {
+            // TODO(TBD): Determine what happens if this occurs in multiple lambda
+            // instances at once.
+            crate::api::handlers::chainstate::add_chainstate_entry_or_reorg(&context, &chainstate)
+                .await?;
+        }
+
         // Create aggregator.
-        let mut updated_deposits: Vec<Deposit> =
+        let mut updated_deposits: Vec<(usize, Deposit)> =
             Vec::with_capacity(validated_request.deposits.len());
+
         // Loop through all updates and execute.
-        for update in validated_request.deposits {
+        for (index, update) in validated_request.deposits {
             // Get original deposit entry.
             let deposit_entry = accessors::get_deposit_entry(&context, &update.key).await?;
             // Make the update package.
@@ -336,9 +348,14 @@ pub async fn update_deposits(
                 .await?
                 .try_into()?;
             // Append the updated deposit to the list.
-            updated_deposits.push(updated_deposit);
+            updated_deposits.push((index, updated_deposit));
         }
-        let response = UpdateDepositsResponse { deposits: updated_deposits };
+        updated_deposits.sort_by_key(|(index, _)| *index);
+        let deposits = updated_deposits
+            .into_iter()
+            .map(|(_, deposit)| deposit)
+            .collect();
+        let response = UpdateDepositsResponse { deposits };
         Ok(with_status(json(&response), StatusCode::CREATED))
     }
     // Handle and respond.
