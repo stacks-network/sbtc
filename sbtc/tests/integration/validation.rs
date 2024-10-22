@@ -476,7 +476,10 @@ fn wsts_taproot_inputs() {
         &mut signers,
         SignatureType::Taproot(None),
     );
-    rpc.send_raw_transaction(&tx0).unwrap();
+    rpc.send_raw_transaction(&tx0).expect(&format!(
+        "{}",
+        &hex::encode(aggregate_public_key.compress().as_bytes())
+    ));
 
     // 2. Confirm the transaction and spend it immediately, proving that
     //    OP_CSV was disabled.
