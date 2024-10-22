@@ -38,6 +38,18 @@ use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi;
 use secp256k1::SECP256K1;
 use std::sync::OnceLock;
+use wsts::{
+    net::SignatureType,
+    state_machine::{
+        coordinator::{
+            test::run_sign,
+            Coordinator as CoordinatorTrait,
+        },
+        signer::Signer,
+        OperationResult,
+    },
+    traits::Signer as SignerTrait,
+};
 
 /// These must match the username and password in bitcoin.conf
 /// The username for RPC calls in bitcoin-core
@@ -196,11 +208,15 @@ impl Recipient {
         let public_key = PublicKey::new(self.keypair.public_key());
         let kind = self.address.address_type().unwrap();
 
-	Self::scan_public_key(rpc, public_key, kind)
+        Self::scan_public_key(rpc, public_key, kind)
     }
 
     /// Scan the passed public_key
-    pub fn scan_public_key(rpc: &Client, public_key: PublicKey, kind: AddressType) -> ScanTxOutResult {
+    pub fn scan_public_key(
+        rpc: &Client,
+        public_key: PublicKey,
+        kind: AddressType,
+    ) -> ScanTxOutResult {
         let desc = descriptor_base(&public_key, kind);
         let descriptor = ScanTxOutRequest::Single(desc);
         rpc.scan_tx_out_set_blocking(&[descriptor]).unwrap()
@@ -411,4 +427,61 @@ pub fn p2tr_sign_transaction<U>(
     let signature = bitcoin::taproot::Signature { signature, sighash_type };
 
     tx.input[input_index].witness = Witness::p2tr_key_spend(&signature);
+}
+
+/// Provide a signature to the input P2TR UTXO
+pub fn wsts_sign_transaction<U, Coordinator: CoordinatorTrait, SignerType: SignerTrait>(
+    tx: &mut Transaction,
+    input_index: usize,
+    utxos: &[U],
+    coordinators: &mut Vec<Coordinator>,
+    signers: &mut Vec<Signer<SignerType>>,
+    signature_type: SignatureType,
+) where
+    U: AsUtxo,
+{
+    let tx_outs: Vec<TxOut> = utxos.iter().map(AsUtxo::to_tx_out).collect();
+    let prevouts = Prevouts::All(tx_outs.as_slice());
+    let sighash_type = TapSighashType::Default;
+
+    let sighash = SighashCache::new(&*tx)
+        .taproot_key_spend_signature_hash(input_index, &prevouts, sighash_type)
+        .expect("failed to create taproot key-spend sighash");
+    //let tweaked = keypair.tap_tweak(SECP256K1, None);
+
+    let msg = secp256k1::Message::from(sighash);
+
+    //let signature = SECP256K1.sign_schnorr(&msg, &tweaked.to_inner());
+    let result = run_sign::<Coordinator, SignerType>(
+        coordinators,
+        signers,
+        &msg.as_ref().to_vec(),
+	signature_type.clone(),
+    );
+
+    match signature_type {
+	SignatureType::Schnorr => {
+	    if let OperationResult::SignSchnorr(schnorr_proof) = result {
+		let signature =
+		    secp256k1::schnorr::Signature::from_slice(&schnorr_proof.to_bytes()[..]).expect("");
+		let signature = bitcoin::taproot::Signature { signature, sighash_type };
+		
+		tx.input[input_index].witness = Witness::p2tr_key_spend(&signature);
+	    } else {
+		panic!("Bad OperationResult from WSTS");
+	    }
+	}
+	SignatureType::Taproot(_merkle_root) => {
+	    if let OperationResult::SignTaproot(schnorr_proof) = result {
+		let signature =
+		    secp256k1::schnorr::Signature::from_slice(&schnorr_proof.to_bytes()[..]).expect("");
+		let signature = bitcoin::taproot::Signature { signature, sighash_type };
+		
+		tx.input[input_index].witness = Witness::p2tr_key_spend(&signature);
+	    } else {
+		panic!("Bad OperationResult from WSTS");
+	    }
+	}
+	_ => panic!("Bad OperationResult from WSTS")
+    }
 }
