@@ -1,3 +1,5 @@
+CREATE SCHEMA sbtc_signer;
+
 CREATE TYPE sbtc_signer.transaction_type AS ENUM (
    'sbtc_transaction',
    'deposit_request',
@@ -16,6 +18,7 @@ CREATE TABLE sbtc_signer.bitcoin_blocks (
     confirms BYTEA[] NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
+CREATE INDEX ix_bitcoin_blocks_parent_hash ON sbtc_signer.bitcoin_blocks(parent_hash);
 
 CREATE TABLE sbtc_signer.stacks_blocks (
     block_hash BYTEA PRIMARY KEY,
@@ -46,6 +49,7 @@ CREATE TABLE sbtc_signer.deposit_signers (
     PRIMARY KEY (txid, output_index, signer_pub_key),
     FOREIGN KEY (txid, output_index) REFERENCES sbtc_signer.deposit_requests(txid, output_index) ON DELETE CASCADE
 );
+CREATE INDEX ix_deposit_signers_signer_pub_key ON sbtc_signer.deposit_signers(signer_pub_key);
 
 CREATE TABLE sbtc_signer.withdrawal_requests (
     request_id BIGINT NOT NULL,
@@ -77,6 +81,7 @@ CREATE TABLE sbtc_signer.transactions (
     tx_type sbtc_signer.transaction_type NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
+CREATE INDEX ix_transactions_tx_type ON sbtc_signer.transactions(tx_type);
 
 CREATE TABLE sbtc_signer.dkg_shares (
     aggregate_key BYTEA PRIMARY KEY,
@@ -88,15 +93,6 @@ CREATE TABLE sbtc_signer.dkg_shares (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
-CREATE TABLE sbtc_signer.coordinator_broadcasts (
-    broadcast_id SERIAL PRIMARY KEY,
-    txid BYTEA NOT NULL,
-    broadcast_block_height INTEGER NOT NULL,
-    market_fee_rate INTEGER NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE
-);
-
 CREATE TABLE sbtc_signer.bitcoin_transactions (
     txid BYTEA NOT NULL,
     block_hash BYTEA NOT NULL,
@@ -104,6 +100,7 @@ CREATE TABLE sbtc_signer.bitcoin_transactions (
     FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE,
     FOREIGN KEY (block_hash) REFERENCES sbtc_signer.bitcoin_blocks(block_hash) ON DELETE CASCADE
 );
+CREATE INDEX ix_bitcoin_transactions_block_hash ON sbtc_signer.bitcoin_transactions(block_hash);
 
 CREATE TABLE sbtc_signer.stacks_transactions (
     txid BYTEA NOT NULL,
@@ -129,7 +126,6 @@ CREATE TABLE sbtc_signer.deposit_responses (
     deposit_txid BYTEA NOT NULL,
     deposit_output_index INTEGER NOT NULL
 );
-
 CREATE TABLE sbtc_signer.withdrawal_responses (
     response_txid BYTEA NOT NULL,
     withdraw_txid BYTEA NOT NULL,
@@ -180,3 +176,92 @@ CREATE TABLE sbtc_signer.withdrawal_reject_events (
     created_at    TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
+-- Represents a combined transaction package which is broadcasted to the Bitcoin
+-- network. The transaction package is built up of multiple transactions which
+-- are tracked separately in the `packaged_transaction` table. A transaction
+-- package may contain the servicing transactions for both deposit and
+-- withdrawal requests.
+CREATE TABLE sbtc_signer.transaction_packages (
+    -- Internal ID of the package
+    id SERIAL PRIMARY KEY,
+    -- The Bitcoin block hash at which this package was created.
+    created_at_block_hash BYTEA NOT NULL,
+    -- The Bitcoin market fee rate at the time this package was created.
+    market_fee_rate NUMERIC(8,2) NOT NULL,
+    -- Timestamp of when this package was created.
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+-- Represents an individual transaction within a broadcasted transaction
+-- package. Individual deposit and withdrawal requests reference back to these
+-- transactions to keep track of both the overall transaction package as well as
+-- the individual Bitcoin transactions they are related to.
+CREATE TABLE sbtc_signer.packaged_transactions (
+    -- Internal ID of the transaction.
+    id BIGSERIAL PRIMARY KEY,
+    -- The ID of the grouping transaction package.
+    transaction_package_id INTEGER NOT NULL,
+    -- The Bitcoin transaction ID of the transaction.
+    txid BYTEA NOT NULL,
+    -- The signer UTXO being spent in this transaction.
+    utxo_txid BYTEA NOT NULL,
+    utxo_output_index INTEGER NOT NULL,
+    -- The total amount of the transaction.
+    amount BIGINT NOT NULL,
+    -- The fee paid for the transaction.
+    fee BIGINT NOT NULL,
+    -- The timestamp that the transaction was broadcast at. This should be
+    -- set after we know that the transaction was successfully broadcast.
+    broadcast_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NULL,
+
+    FOREIGN KEY (transaction_package_id)
+        REFERENCES sbtc_signer.transaction_packages(id)
+);
+
+-- Represents a single withdrawal request which has been included in a
+-- transaction package. Withdrawal requests have a unique ID so we use that
+-- here to reference the withdrawal request, which can be retrieved from
+-- the `withdrawal_requests` table.
+CREATE TABLE sbtc_signer.swept_withdrawals (
+    id BIGSERIAL PRIMARY KEY,
+    packaged_transaction_id INTEGER NOT NULL,
+    output_index INTEGER NOT NULL,
+    withdrawal_request_id BIGINT NOT NULL,
+    withdrawal_request_block_hash BYTEA NOT NULL,
+
+    FOREIGN KEY (packaged_transaction_id) 
+        REFERENCES sbtc_signer.packaged_transactions(id),
+
+    FOREIGN KEY (withdrawal_request_id, withdrawal_request_block_hash) 
+        REFERENCES sbtc_signer.withdrawal_requests(request_id, block_hash)
+);
+-- Our main index which will cover searches by 'withdrawal_request_id' and 'withdrawal_request_block_hash'
+-- while also restricting the combination to be unique per 'packaged_transaction_id'.
+CREATE UNIQUE INDEX uix_swept_req_id_req_block_hash_pkgd_txid 
+    ON sbtc_signer.swept_withdrawals(withdrawal_request_id, withdrawal_request_block_hash, packaged_transaction_id);
+
+-- Represents a single deposit request which has been included in a
+-- transaction package. Deposit requests do not have a unique ID in the same way
+-- as withdrawal requests, so we reference the Bitcoin transaction ID and output
+-- index instead, which can be retrieved from the `deposit_requests` table.
+CREATE TABLE sbtc_signer.swept_deposits (
+    id BIGSERIAL PRIMARY KEY,
+    packaged_transaction_id INTEGER NOT NULL,
+    output_index INTEGER NOT NULL,
+    deposit_request_txid BYTEA NOT NULL,
+    deposit_request_output_index INTEGER NOT NULL,
+
+    FOREIGN KEY (packaged_transaction_id)
+        REFERENCES sbtc_signer.packaged_transactions(id),
+
+    FOREIGN KEY (deposit_request_txid, deposit_request_output_index) 
+        REFERENCES sbtc_signer.deposit_requests(txid, output_index)
+);
+-- Our main index which will cover searches by 'deposit_request_txid' and 'deposit_request_output_index',
+-- while also restricting the combination to be unique per 'packaged_transaction_id'.
+CREATE UNIQUE INDEX uix_swept_deposits_req_txid_req_output_index_pkgd_txid
+    ON sbtc_signer.swept_deposits(deposit_request_txid, deposit_request_output_index, packaged_transaction_id);
+-- A separate index for the packaged transaction id as it is included last
+-- in the compound unique index.
+CREATE INDEX ix_swept_deposits_packaged_transaction_id 
+    ON sbtc_signer.swept_deposits(packaged_transaction_id);

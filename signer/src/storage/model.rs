@@ -10,9 +10,156 @@ use serde::Deserialize;
 use serde::Serialize;
 use stacks_common::types::chainstate::StacksBlockId;
 
+use crate::bitcoin::utxo::RequestRef;
 use crate::block_observer::Deposit;
 use crate::error::Error;
 use crate::keys::PublicKey;
+
+/// Represents an entire transaction package that has been broadcast to the
+/// Bitcoin network.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct SbtcTransactionPackage {
+    /// The Bitcoin block hash at which this transaction package was broadcast.
+    pub created_at_block_hash: BitcoinBlockHash,
+    /// The market fee rate at the time of creation of this transaction package.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
+    pub market_fee_rate: u64,
+    /// The transactions which were submitted together as part of this
+    /// transaction package.
+    #[sqlx(skip)]
+    pub transactions: Vec<SbtcPackagedTransaction>
+}
+
+impl SbtcTransactionPackage {
+    pub fn from_package<'a, 'b>(
+        chain_tip: bitcoin::BlockHash,
+        market_fee_rate: u64,
+        transactions: &'a [crate::bitcoin::utxo::UnsignedTransaction<'b>],
+    ) -> SbtcTransactionPackage {
+        let mut package = SbtcTransactionPackage {
+            created_at_block_hash: chain_tip.into(),
+            market_fee_rate: market_fee_rate as u64,
+            transactions: Vec::new(),
+        };
+
+        for transaction in transactions {
+            let mut packaged_tx = SbtcPackagedTransaction {
+                id: None,
+                txid: transaction.tx.compute_txid().into(),
+                utxo_txid: transaction.signer_utxo.utxo.outpoint.txid.into(),
+                utxo_output_index: transaction.signer_utxo.utxo.outpoint.vout,
+                amount: transaction.output_amounts(),
+                fee: transaction.tx_fee,
+                fee_rate: transaction.signer_utxo.fee_rate as u64,
+                broadcast_at_block_hash: None,
+                included_in_block_hash: None,
+                swept_deposits: Vec::new(),
+                swept_withdrawals: Vec::new(),
+            };
+
+            let mut vout_pos = 1;
+            for request in &*transaction.requests {
+                match request {
+                    RequestRef::Deposit(deposit) => {
+                        packaged_tx.swept_deposits.push(SweptDeposit {
+                            output_index: vout_pos,
+                            deposit_request_txid: deposit.outpoint.txid.into(),
+                            deposit_request_output_index: deposit.outpoint.vout,
+                        });
+                    }
+                    RequestRef::Withdrawal(withdrawal) => {
+                        packaged_tx.swept_withdrawals.push(SweptWithdrawal {
+                            output_index: vout_pos,
+                            withdrawal_request_id: withdrawal.request_id,
+                            withdrawal_request_block_hash: withdrawal.block_hash.into(),
+                        });
+                    }
+                }
+                vout_pos += 1;
+            }
+
+            package.transactions.push(packaged_tx);
+        }
+
+        package
+    }
+}
+
+/// Represents a single transaction which is part of a transaction package which
+/// has been broadcast to the Bitcoin network.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct SbtcPackagedTransaction {
+    /// The internal id of the packaged transaction.
+    #[sqlx(try_from = "Option<i64>")]
+    pub id: Option<i64>,
+    /// The Bitcoin transaction id.
+    pub txid: BitcoinTxId,
+    /// The transaction id of the signer UTXO consumed by this transaction.
+    pub utxo_txid: BitcoinTxId,
+    /// The index of the signer UTXO consumed by this transaction.
+    #[sqlx(try_from = "i32")]
+    pub utxo_output_index: u32,
+    /// The total amount of this transaction.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
+    pub amount: u64,
+    /// The fee paid for this transaction.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
+    pub fee: u64,
+    /// The fee rate of this transaction in sats/vByte.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
+    pub fee_rate: u64,
+    /// The Bitcoin block hash at which this transaction was broadcast. Note
+    /// that this is not the same as the block hash at which the transaction
+    /// was included (mined). This field is unset until the transaction has
+    /// actually been broadcasted.
+    pub broadcast_at_block_hash: Option<BitcoinBlockHash>,
+    /// The Bitcoin block hash at which this transaction was included (mined).
+    pub included_in_block_hash: Option<BitcoinBlockHash>,
+
+    /// List of deposits which were swept-in by this transaction.
+    #[sqlx(skip)]
+    pub swept_deposits: Vec<SweptDeposit>,
+    /// List of withdrawals which were swept-out by this transaction.
+    #[sqlx(skip)]
+    pub swept_withdrawals: Vec<SweptWithdrawal>,
+}
+
+/// Represents a single deposit which has been swept-in by a Bitcoin transaction
+/// package.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct SweptDeposit {
+    /// The index of the deposit output in the sBTC sweep transaction.
+    #[sqlx(try_from = "i32")]
+    pub output_index: u32,
+    /// The Bitcoin transaction id of the deposit UTXO in the deposit request
+    /// transaction.
+    pub deposit_request_txid: BitcoinTxId,
+    /// The index of the deposit output in the deposit request transaction.
+    #[sqlx(try_from = "i32")]
+    pub deposit_request_output_index: u32,
+}
+
+/// Represents a single withdrawal which has been swept-out by a Bitcoin
+/// transaction package.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct SweptWithdrawal {
+    /// The index of the withdrawal output in the sBTC sweep transaction.
+    #[sqlx(try_from = "i32")]
+    pub output_index: u32,
+    /// The public request id of the withdrawal request serviced by this
+    /// transaction.
+    #[sqlx(try_from = "i64")]
+    pub withdrawal_request_id: u64,
+    pub withdrawal_request_block_hash: StacksBlockHash,
+}
 
 /// Bitcoin block.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
@@ -247,8 +394,6 @@ pub struct SweptDepositRequest {
     /// The transaction ID of the bitcoin transaction that swept in the
     /// funds into the signers' UTXO.
     pub sweep_txid: BitcoinTxId,
-    /// The transaction sweeping in the deposit request UTXO.
-    pub sweep_tx: BitcoinTx,
     /// The block id of the bitcoin block that includes the sweep
     /// transaction.
     pub sweep_block_hash: BitcoinBlockHash,
@@ -261,13 +406,6 @@ pub struct SweptDepositRequest {
     #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
     #[sqlx(try_from = "i32")]
     pub output_index: u32,
-    /// The address of which the sBTC should be minted,
-    /// can be a smart contract address.
-    pub recipient: StacksPrincipal,
-    /// The amount in the deposit UTXO.
-    #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
-    pub amount: u64,
 }
 
 impl SweptDepositRequest {
@@ -287,8 +425,6 @@ pub struct SweptWithdrawalRequest {
     /// The transaction ID of the bitcoin transaction that swept out the
     /// funds to the intended recipient.
     pub sweep_txid: BitcoinTxId,
-    /// The bitcoin transaction fulfilling the withdrawal request.
-    pub sweep_tx: BitcoinTx,
     /// The block id of the stacks block that includes this sweep
     /// transaction.
     pub sweep_block_hash: BitcoinBlockHash,
@@ -298,26 +434,9 @@ pub struct SweptWithdrawalRequest {
     /// public function.
     #[sqlx(try_from = "i64")]
     pub request_id: u64,
-    /// The stacks transaction ID that lead to the creation of the
-    /// withdrawal request.
-    pub txid: StacksTxId,
     /// Stacks block ID of the block that includes the transaction
     /// associated with this withdrawal request.
     pub block_hash: StacksBlockHash,
-    /// The ScriptPubKey that should receive the BTC withdrawal.
-    pub recipient: ScriptPubKey,
-    /// The amount of satoshis to withdraw.
-    #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000"))]
-    pub amount: u64,
-    /// The maximum amount that may be spent as for the bitcoin miner
-    /// transaction fee.
-    #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "100..10000"))]
-    pub max_fee: u64,
-    /// The stacks address that initiated the request. This is populated
-    /// using `tx-sender`.
-    pub sender_address: StacksPrincipal,
 }
 
 /// Persisted DKG shares

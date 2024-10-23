@@ -12,6 +12,14 @@ use crate::stacks::contracts::WithdrawalAcceptValidationError;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The requested deposit request could not be found.
+    #[error("could not find associated deposit request for txid {0} and output index {1}")]
+    MissingDepositRequest(bitcoin::Txid, u32),
+
+    /// The requested withdrawal request could not be found.
+    #[error("could not find associated withdrawal request for request id {0} and stacks block hash {1}")]
+    MissingWithdrawalRequest(u64, stacks_common::types::chainstate::StacksBlockId),
+
     /// The nakamoto start height could not be determined.
     #[error("nakamoto start height could not be determined")]
     MissingNakamotoStartHeight,

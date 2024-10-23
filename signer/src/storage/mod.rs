@@ -15,6 +15,7 @@ pub mod util;
 use std::future::Future;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
+use model::SbtcTransactionPackage;
 
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::error::Error;
@@ -223,6 +224,30 @@ pub trait DbRead {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> impl Future<Output = Result<Vec<model::SweptWithdrawalRequest>, Error>> + Send;
+
+    /// Get the latest transaction package.
+    fn get_latest_transaction_package(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+    ) -> impl Future<Output = Result<Option<SbtcTransactionPackage>, Error>> + Send;
+
+    /// Gets the specified deposit request if it exists. The deposit request is
+    /// identified by its Bitcoin txid and output index in the Bitcoin deposit
+    /// request transaction.
+    fn get_deposit_request(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+    ) -> impl Future<Output = Result<Option<model::DepositRequest>, Error>> + Send;
+
+    /// Gets the specified withdrawal request if it exists. The withdrawal
+    /// request is identified by its smart-contract-generated request ID and the
+    /// Stacks block hash in which the request was made.
+    fn get_withdrawal_request(
+        &self,
+        request_id: u64,
+        block_hash: &model::StacksBlockHash
+    ) -> impl Future<Output = Result<Option<model::WithdrawalRequest>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.
@@ -340,4 +365,66 @@ pub trait DbWrite {
         &self,
         event: &CompletedDepositEvent,
     ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write a complete Bitcoin transaction package to the database.
+    fn write_bitcoin_transaction_package(
+        &self,
+        package: SbtcTransactionPackage
+    ) -> impl Future<Output = Result<u32, Error>> + Send;
+
+    /// Mark a packaged transaction as having been broadcast.
+    fn mark_packaged_transaction_as_broadcast(
+        &self,
+        txid: &model::BitcoinTxId,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+}
+
+/// Convenience trait for storing a transaction package, which is represented
+/// as a vector of [`crate::bitcoin::utxo::UnsignedTransaction`].
+pub trait TransactionPackageExt {
+    fn store(&self, 
+        db: impl DbWrite + Sync + Send, 
+        chain_tip: &bitcoin::BlockHash,
+        market_fee_rate: f64
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+}
+
+impl TransactionPackageExt for Vec<crate::bitcoin::utxo::UnsignedTransaction<'_>> {
+    async fn store(
+        &self, 
+        db: impl DbWrite + Sync + Send, 
+        chain_tip: &bitcoin::BlockHash,
+        market_fee_rate: f64,
+    ) -> Result<(), Error> {
+        let pkg = SbtcTransactionPackage::from_package(
+            *chain_tip, 
+            market_fee_rate as u64, 
+            self);
+
+        db.write_bitcoin_transaction_package(pkg)
+            .await
+            .map(|_| ())
+    }
+}
+
+/// Convenience trait for [`crate::bitcoin::utxo::UnsignedTransaction`] storage
+/// operations.
+pub trait UnsignedTransactionExt {
+    fn mark_as_broadcasted(
+        &self, 
+        db: impl DbWrite + Sync + Send
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+}
+
+impl UnsignedTransactionExt for crate::bitcoin::utxo::UnsignedTransaction<'_> {
+    async fn mark_as_broadcasted(
+        &self, 
+        db: impl DbWrite + Sync + Send
+    ) -> Result<(), Error> {
+        db.mark_packaged_transaction_as_broadcast(
+            &self.tx.compute_txid().into()
+        )
+        .await
+        .map(|_| ())
+    }
 }

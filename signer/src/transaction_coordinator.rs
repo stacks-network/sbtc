@@ -41,6 +41,8 @@ use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
 use crate::storage::model::StacksTxId;
 use crate::storage::DbRead as _;
+use crate::storage::TransactionPackageExt;
+use crate::storage::UnsignedTransactionExt;
 use crate::wsts_state_machine::CoordinatorStateMachine;
 
 use bitcoin::hashes::Hash as _;
@@ -289,7 +291,20 @@ where
             return Ok(());
         };
 
-        let transaction_package = pending_requests.construct_transactions()?;
+        // Construct the transaction package and store it in the database.
+        let transaction_package = pending_requests
+            .construct_transactions()?;
+
+        // We want to know the current market-fee-rate for Bitcoin for historical
+        // reasons when we persist the transaction package.
+        let market_fee_rate = self.context.get_bitcoin_client()
+            .estimate_fee_rate().await?;
+
+        // Persist the transaction package in the database.
+        transaction_package.store(
+            self.context.get_storage_mut(),
+            bitcoin_chain_tip,
+            market_fee_rate).await?;
 
         for mut transaction in transaction_package {
             self.sign_and_broadcast(
@@ -299,6 +314,9 @@ where
                 &mut transaction,
             )
             .await?;
+
+            // Mark the transaction as having been broadcast.
+            transaction.mark_as_broadcasted(self.context.get_storage_mut()).await?;
 
             // TODO: if this (considering also fallback clients) fails, we will
             // need to handle the inconsistency of having the sweep tx confirmed
@@ -441,6 +459,8 @@ where
         bitcoin_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
     ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
+        // Retrieve the Bitcoin sweep transaction from the Bitcoin node.
+        // QUESTION: Shouldn't we be able to get this from `sbtc_signers.transactions`?
         let tx_info = self
             .context
             .get_bitcoin_client()
@@ -450,6 +470,13 @@ where
                 Error::BitcoinTxMissing(req.sweep_txid.into(), Some(req.sweep_block_hash.into()))
             })?;
 
+        // Retrieve the deposit request from the database.
+        let deposit_request = self.context
+            .get_storage()
+            .get_deposit_request(&req.txid, req.output_index)
+            .await?
+            .ok_or(Error::MissingDepositRequest(req.txid.into(), req.output_index))?;
+
         let outpoint = req.deposit_outpoint();
         let assessed_bitcoin_fee = tx_info
             .assess_input_fee(&outpoint)
@@ -458,9 +485,9 @@ where
         // TODO: we should validate the contract call before asking others
         // to sign it.
         let contract_call = ContractCall::CompleteDepositV1(CompleteDepositV1 {
-            amount: req.amount - assessed_bitcoin_fee.to_sat(),
+            amount: deposit_request.amount - assessed_bitcoin_fee.to_sat(),
             outpoint,
-            recipient: req.recipient.into(),
+            recipient: deposit_request.recipient.into(),
             deployer: self.context.config().signer.deployer,
             sweep_txid: req.sweep_txid,
             sweep_block_hash: req.sweep_block_hash,
