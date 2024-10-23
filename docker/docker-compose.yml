@@ -41,7 +41,7 @@ x-postgres: &postgres
 
 x-sbtc-signer: &sbtc-signer
   build: sbtc/signer
-  entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer -c /signer-config.toml --migrate-db'"
+  entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db'"
   depends_on: &sbtc-signer-depends_on
     sbtc-build:
       condition: service_completed_successfully
@@ -70,7 +70,7 @@ x-stacks-signer: &stacks-signer
   volumes:
     - ./stacks/stacks-signer.toml:/data/config.toml.in
   environment: &stacks-signer-environment
-    STACKS_NODE_HOST: stacks:20443
+    STACKS_NODE_HOST: stacks-node:20443
     STACKS_SIGNER_ENDPOINT: 0.0.0.0:30000
   entrypoint:
     - /bin/bash
@@ -197,7 +197,10 @@ services:
   # sBTC Contract Deployer.
   # -----------------------
   contract-deployer:
-    image: hirosystems/clarinet:latest
+    build:
+      context: clarinet
+      args:
+        GIT_BRANCH: v2.10.0
     volumes:
       # - ../contracts:/
       - ../contracts/Clarinet.toml:/Clarinet.toml
@@ -363,7 +366,7 @@ services:
   stacker:
     build: stacker
     environment:
-      STACKS_CORE_RPC_HOST: stacks
+      STACKS_CORE_RPC_HOST: stacks-node
       STACKS_CORE_RPC_PORT: 20443
       STACKING_CYCLES: *STACKING_CYCLES
       STACKING_KEYS: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc01,9bfecf16c9c12792589dd2b843f850d5b89b81a04f8ab91c083bdf6709fbefee01,3ec0ca5770a356d6cd1a9bfcbf6cd151eb1bd85c388cc00648ec4ef5853fdb7401
@@ -380,7 +383,7 @@ services:
   tx-broadcaster:
     build: stacker
     environment:
-      STACKS_CORE_RPC_HOST: stacks
+      STACKS_CORE_RPC_HOST: stacks-node
       STACKS_CORE_RPC_PORT: 20443
       NAKAMOTO_BLOCK_INTERVAL: *NAKAMOTO_BLOCK_INTERVAL
       STACKS_30_HEIGHT: *STACKS_30_HEIGHT
@@ -543,7 +546,7 @@ services:
     stop_grace_period: 5s
     depends_on:
       - mempool-api
-      - mariadbgi
+      - mariadb
       - electrs
     user: "1000:1000"
     restart: on-failure
