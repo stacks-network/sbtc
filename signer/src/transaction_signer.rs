@@ -19,7 +19,6 @@ use crate::context::TxSignerEvent;
 use crate::ecdsa::SignEcdsa as _;
 use crate::ecdsa::Signed;
 use crate::error::Error;
-use crate::keys;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
