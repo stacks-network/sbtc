@@ -3,7 +3,7 @@
 # This Dockerfile is used to create a Docker image that is used to deploy the
 # AWS resources for the Emily service. This Dockerfile is different from the
 # one used in local development because it assumes you're synthesizing a CDK
-# template that can be build without any other resources that are compiled
+# template that can be built without any other resources that are compiled
 # from within this repository.
 #
 # If the environment that you're deploying is meant to host the Emily lambda
