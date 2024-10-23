@@ -340,14 +340,7 @@ impl DepositRequest {
     }
 
     /// Try convert from a model::DepositRequest with some additional info.
-    ///
-    /// TODO(511): derive the signer public key from the public keys in the
-    /// votes.
-    pub fn from_model(
-        request: model::DepositRequest,
-        signers_public_key: XOnlyPublicKey,
-        votes: SignerVotes,
-    ) -> Self {
+    pub fn from_model(request: model::DepositRequest, votes: SignerVotes) -> Self {
         Self {
             outpoint: request.outpoint(),
             max_fee: request.max_fee,
@@ -355,7 +348,7 @@ impl DepositRequest {
             amount: request.amount,
             deposit_script: ScriptBuf::from_bytes(request.spend_script),
             reclaim_script: ScriptBuf::from_bytes(request.reclaim_script),
-            signers_public_key,
+            signers_public_key: request.signer_public_key.into(),
         }
     }
 }
@@ -1067,7 +1060,6 @@ mod tests {
     use stacks_common::types::chainstate::StacksAddress;
     use test_case::test_case;
 
-    use crate::keys::PublicKey;
     use crate::testing;
 
     const X_ONLY_PUBLIC_KEY1: &'static str =
@@ -2196,9 +2188,7 @@ mod tests {
         ];
         let votes = SignerVotes::from(signer_votes.to_vec());
         let request: model::DepositRequest = fake::Faker.fake_with_rng(&mut OsRng);
-        let signers_public_key: PublicKey = fake::Faker.fake_with_rng(&mut OsRng);
-        let deposit_request =
-            DepositRequest::from_model(request, signers_public_key.into(), votes.clone());
+        let deposit_request = DepositRequest::from_model(request, votes.clone());
 
         // One explicit vote against and one implicit vote against.
         assert_eq!(deposit_request.votes_against(), 2);

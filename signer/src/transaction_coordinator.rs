@@ -833,8 +833,6 @@ where
             .get_pending_accepted_withdrawal_requests(bitcoin_chain_tip, context_window, threshold)
             .await?;
 
-        let signers_public_key = bitcoin::XOnlyPublicKey::from(aggregate_key);
-
         let mut deposits: Vec<utxo::DepositRequest> = Vec::new();
 
         for req in pending_deposit_requests {
@@ -844,7 +842,7 @@ where
                 .get_deposit_request_signer_votes(&req.txid, req.output_index, aggregate_key)
                 .await?;
 
-            let deposit = utxo::DepositRequest::from_model(req, signers_public_key, votes);
+            let deposit = utxo::DepositRequest::from_model(req, votes);
             deposits.push(deposit);
         }
 

@@ -262,7 +262,6 @@ impl fake::Dummy<fake::Faker> for PublicKey {
     }
 }
 
-
 impl fake::Dummy<fake::Faker> for PublicKeyXOnly {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
         let pk: PublicKey = fake::Faker.fake_with_rng(rng);
