@@ -321,7 +321,7 @@ async fn update_withdrawals_updates_chainstate() {
         withdrawal_updates.push(withdrawal_update);
     }
 
-    // Order the, pecularily so that they are not in order.
+    // Order the updates pecularily so that they are not in order.
     withdrawal_updates.sort_by_key(|update|
         (update.last_update_height as i64 - (min_height + (max_height - min_height) / 2)).abs());
 
