@@ -9,9 +9,8 @@ RUN apt update && apt install -y ca-certificates pkg-config libssl-dev libclang-
 RUN rustup update stable && rustup default stable && rustup toolchain install stable --component rustfmt
 
 # Altered portion.
-ARG GIT_URL=https://github.com/hirosystems/clarinet
 ARG GIT_BRANCH=v2.10.0
-RUN git clone $(GIT_URL)
+RUN git clone https://github.com/hirosystems/clarinet
 WORKDIR /src/clarinet
 RUN git checkout $(GIT_BRANCH)
 # Altered portion.
