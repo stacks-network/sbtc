@@ -390,13 +390,9 @@ async fn signing_set_validation_check_for_stacks_transactions() {
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
     backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
 
-    // This is all normal happy path things that need to happen in order to
-    // pass validation.
-    setup.store_deposit_tx(&db).await;
-    setup.store_sweep_tx(&db).await;
-    setup.store_dkg_shares(&db).await;
-    setup.store_deposit_request(&db).await;
-    setup.store_deposit_decisions(&db).await;
+    // This is all normal things that need to happen in order to pass
+    // validation.
+    setup.store_happy_path_data(&db).await;
 
     let (mut req, _) = crate::complete_deposit::make_complete_deposit(&setup);
 
