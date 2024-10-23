@@ -504,8 +504,9 @@ async fn update_deposits_updates_chainstate() {
     }
 
     // Order the updates pecularily so that they are not in order.
-    deposit_updates.sort_by_key(|update|
-        (update.last_update_height as i64 - (min_height + (max_height - min_height) / 2)).abs());
+    deposit_updates.sort_by_key(|update| {
+        (update.last_update_height as i64 - (min_height + (max_height - min_height) / 2)).abs()
+    });
 
     let expected_last_update_height_at_output_index: Vec<(usize, u64)> = deposit_updates
         .iter()
@@ -525,19 +526,26 @@ async fn update_deposits_updates_chainstate() {
         .expect("Received an error after making a valid create deposit request api call.");
 
     // Send it a bunch of updates.
-    let update_deposits_response= apis::deposit_api::update_deposits(&configuration, update_request.clone())
-        .await
-        .expect("Received an error after making a valid update deposits api call.");
+    let update_deposits_response =
+        apis::deposit_api::update_deposits(&configuration, update_request.clone())
+            .await
+            .expect("Received an error after making a valid update deposits api call.");
 
     for height in range {
-        let chainstate = apis::chainstate_api::get_chainstate_at_height(&configuration, height as u64)
-            .await
-            .expect("Received an error after making a valid get chainstate at height api call.");
+        let chainstate =
+            apis::chainstate_api::get_chainstate_at_height(&configuration, height as u64)
+                .await
+                .expect(
+                    "Received an error after making a valid get chainstate at height api call.",
+                );
         assert_eq!(chainstate.stacks_block_height, height as u64);
         assert_eq!(chainstate.stacks_block_hash, format!("hash_{}", height));
     }
 
     for (index, last_update_height) in expected_last_update_height_at_output_index {
-        assert_eq!(update_deposits_response.deposits[index].last_update_height, last_update_height);
+        assert_eq!(
+            update_deposits_response.deposits[index].last_update_height,
+            last_update_height
+        );
     }
 }
