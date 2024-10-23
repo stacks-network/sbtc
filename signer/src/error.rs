@@ -159,6 +159,12 @@ pub enum Error {
     #[error("invalid public key: {0}")]
     InvalidPublicKey(#[source] secp256k1::Error),
 
+    /// This occurs when converting a byte slice to our internal x-only
+    /// public key type, which is a thin wrapper around the
+    /// secp256k1::XOnlyPublicKey.
+    #[error("invalid x-only public key: {0}")]
+    InvalidXOnlyPublicKey(#[source] secp256k1::Error),
+
     /// This happens when we tweak our public key by a scalar, and the
     /// result is an invalid public key. I think It is very unlikely that
     /// we will see this one by chance, since the probability that this

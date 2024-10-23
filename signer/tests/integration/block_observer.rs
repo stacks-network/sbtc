@@ -154,7 +154,11 @@ async fn load_latest_deposit_requests_persists_requests_added_long_ago() {
     // Our database shouldn't have any deposit requests. In fact, our
     // database doesn't have any blockchain data at all.
     let db = &ctx.storage;
-    assert!(db.get_bitcoin_canonical_chain_tip().await.unwrap().is_none());
+    assert!(db
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .unwrap()
+        .is_none());
 
     let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
     let deposit_requests = db
@@ -189,12 +193,15 @@ async fn load_latest_deposit_requests_persists_requests_added_long_ago() {
     // Okay now lets check if we have these deposit requests in our
     // database. It should also have bitcoin blockchain data
 
-    assert!(db.get_bitcoin_canonical_chain_tip().await.unwrap().is_some());
+    assert!(db
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .unwrap()
+        .is_some());
     let deposit_requests = db
         .get_pending_deposit_requests(&chain_tip, 20)
         .await
         .unwrap();
-
 
     assert_eq!(deposit_requests.len(), 2);
     let req_outpoints: HashSet<OutPoint> =

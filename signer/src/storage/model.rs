@@ -13,6 +13,7 @@ use stacks_common::types::chainstate::StacksBlockId;
 use crate::block_observer::Deposit;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::keys::PublicKeyXOnly;
 
 /// Bitcoin block.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
@@ -71,6 +72,13 @@ pub struct DepositRequest {
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "100..100_000"))]
     pub max_fee: u64,
+    /// The relative lock time in the reclaim script.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "3..u32::MAX as u64"))]
+    pub lock_time: u64,
+    /// The public key used in the deposit script. The signers public key
+    /// is for Schnorr signatures.
+    pub signer_public_key: PublicKeyXOnly,
     /// The addresses of the input UTXOs funding the deposit request.
     #[cfg_attr(
         feature = "testing",
@@ -96,6 +104,8 @@ impl From<Deposit> for DepositRequest {
             recipient: deposit.info.recipient.into(),
             amount: deposit.info.amount,
             max_fee: deposit.info.max_fee,
+            lock_time: deposit.info.lock_time,
+            signer_public_key: deposit.info.signers_public_key.into(),
             sender_script_pub_keys: sender_script_pub_keys.into_iter().collect(),
         }
     }

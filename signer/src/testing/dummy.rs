@@ -24,6 +24,7 @@ use stacks_common::types::chainstate::StacksAddress;
 
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
+use crate::keys::PublicKeyXOnly;
 use crate::keys::SignerScriptPubKey as _;
 use crate::stacks::events::CompletedDepositEvent;
 use crate::stacks::events::WithdrawalAcceptEvent;
@@ -258,6 +259,13 @@ impl fake::Dummy<fake::Faker> for PublicKey {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
         let sk = secp256k1::SecretKey::new(rng);
         Self::from(secp256k1::PublicKey::from_secret_key_global(&sk))
+    }
+}
+
+impl fake::Dummy<fake::Faker> for PublicKeyXOnly {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
+        let pk: PublicKey = fake::Faker.fake_with_rng(rng);
+        Self::from(secp256k1::XOnlyPublicKey::from(pk))
     }
 }
 
