@@ -465,9 +465,8 @@ where
         let multi_sig = MultisigTx::new_tx(&request.contract_call, &wallet, request.tx_fee);
         let txid = multi_sig.tx().txid();
 
-        // TODO: Make this more robust. The signer that receives this won't
-        // be able to use the signature if it's over the wrong digest, so
-        // maybe we should error here.
+        // TODO(517): Remove the digest field from the request object and
+        // serialize the entire message.
         debug_assert_eq!(multi_sig.tx().digest(), request.digest);
         debug_assert_eq!(txid, request.txid);
 

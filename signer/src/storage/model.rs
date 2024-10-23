@@ -341,6 +341,10 @@ pub struct EncryptedDkgShares {
     pub signer_set_public_keys: Vec<PublicKey>,
     /// The threshold number of signature shares required to generate a
     /// Schnorr signature.
+    ///
+    /// In WSTS each signer may contribute a fixed portion of a single
+    /// signature. This value specifies the total number of portions
+    /// (shares) that are needed in order to construct a signature.
     #[sqlx(try_from = "i32")]
     pub signature_share_threshold: u16,
 }

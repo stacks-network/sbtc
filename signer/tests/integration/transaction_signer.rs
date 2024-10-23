@@ -421,8 +421,9 @@ async fn signing_set_validation_check_for_stacks_transactions() {
         // the moment.
         nonce: 1,
         tx_fee: 100_000,
-        // This can probably be removed, but it's not important to remove
-        // now, we should switch to protobuf messages and remove it then.
+        // TODO(412): This can probably be removed, but it's not important
+        // to remove now, we should switch to protobuf messages and remove
+        // it then.
         digest: [0; 32],
         txid: Faker.fake_with_rng::<StacksTxId, _>(&mut rng).into(),
     };

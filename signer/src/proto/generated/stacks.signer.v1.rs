@@ -70,7 +70,7 @@ pub struct BitcoinTransactionSignRequest {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StacksTransactionSignRequest {
     /// This is the bitcoin aggregate key that was output from DKG. It is used
-    /// to identifyy the signing set for the transaction.
+    /// to identify the signing set for the transaction.
     #[prost(message, optional, tag = "1")]
     pub aggregate_key: ::core::option::Option<super::super::super::crypto::PublicKey>,
     /// The nonce to use for the transaction.
