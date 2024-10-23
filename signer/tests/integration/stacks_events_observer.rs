@@ -2,7 +2,6 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use emily_client::apis::chainstate_api::get_chain_tip;
 use emily_client::apis::testing_api::wipe_databases;
-use hex::ToHex;
 use rand::SeedableRng;
 use signer::api::new_block_handler;
 use signer::api::ApiState;
@@ -19,7 +18,6 @@ use signer::testing::context::ConfigureStacksClient;
 use signer::testing::context::ConfigureStorage;
 use signer::testing::context::TestContext;
 use signer::testing::context::WrappedMock;
-use stacks_common::types::chainstate::StacksBlockId;
 use std::sync::Arc;
 use url::Url;
 
