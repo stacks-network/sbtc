@@ -197,7 +197,10 @@ services:
   # sBTC Contract Deployer.
   # -----------------------
   contract-deployer:
-    image: hirosystems/clarinet:latest
+    build:
+      context: clarinet
+      args:
+        GIT_BRANCH: v2.10.0
     volumes:
       # - ../contracts:/
       - ../contracts/Clarinet.toml:/Clarinet.toml
