@@ -1067,6 +1067,7 @@ impl BitcoinTx {
     ///    greater than their assessed fee.
     /// 7. There is at least 2 blocks and 2 hours of lock-time left before
     ///    the depositor can reclaim their funds.
+    /// 8. Each deposit is on the canonical bitcoin blockchain.
     pub async fn validate<C>(&self, ctx: &C, req_ctx: &BtcContext) -> Result<(), Error>
     where
         C: Context + Send + Sync,
@@ -1074,6 +1075,7 @@ impl BitcoinTx {
         Ok(())
     }
 
+    ///
     pub async fn validate_deposits<C>(&self, ctx: &C, req_ctx: &BtcContext) -> Result<(), Error>
     where
         C: Context + Send + Sync,
@@ -1088,6 +1090,7 @@ impl BitcoinTx {
         Ok(())
     }
 
+    ///
     pub async fn validate_withdrawals<C>(&self, ctx: &C, req_ctx: &BtcContext) -> Result<(), Error>
     where
         C: Context + Send + Sync,

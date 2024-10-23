@@ -72,6 +72,27 @@ pub trait DbRead {
         signer: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Error>> + Send;
 
+    /// This query does the following checks for the deposit request
+    /// identified by the txid and output index:
+    /// 
+    /// 1. Check that the current signer accepted by the deposit request.
+    /// 2. Check that this signer can contribute a share of the final
+    ///    signature.
+    /// 3. Check that the deposit transaction is in a block on the bitcoin
+    ///    blockchain identified by the following chain tip.
+    /// 
+    /// Note that when this signer checked whether it would accept the
+    /// deposit, it included a check for whether it was part of the signing
+    /// set associated with the x-only public key locking the deposit. So
+    /// check (1) also does check (2).
+    fn is_accepted_pending_deposit_request(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+        signer_public_key: &PublicKey,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
+
     /// Get signer decisions for a deposit request
     fn get_deposit_signers(
         &self,

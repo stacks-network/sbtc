@@ -293,6 +293,28 @@ impl super::DbRead for SharedStore {
             .collect())
     }
 
+    async fn is_accepted_pending_deposit_request(
+        &self,
+        _: &model::BitcoinBlockHash,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+        signer_public_key: &PublicKey,
+    ) -> Result<bool, Error> {
+        let store = self.lock().await;
+
+        let vote = store
+            .deposit_request_to_signers
+            .get(&(*txid, output_index))
+            .map(|votes| {
+                votes
+                    .iter()
+                    .any(|vote| &vote.signer_pub_key == signer_public_key)
+            })
+            .unwrap_or(false);
+
+        Ok(vote)
+    }
+
     async fn get_deposit_signers(
         &self,
         txid: &model::BitcoinTxId,

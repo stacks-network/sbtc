@@ -713,6 +713,73 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
+    async fn is_accepted_pending_deposit_request(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+        signer_public_key: &PublicKey,
+    ) -> Result<bool, Error> {
+        // In this query list out the blockchain as far back as is
+        // necessary, if it is on this blockchain it will be on one of the
+        // listed block hashes. We then check if this signer accepted the
+        // deposit request, and whether it was confirmed on the blockchain
+        // that we just listed out.
+        sqlx::query_scalar::<_, bool>(
+            r#"
+            WITH RECURSIVE deposit_tx_furthest_height AS (
+                SELECT bb.block_height
+                FROM sbtc_signer.deposit_requests AS dr
+                JOIN sbtc_signer.bitcoin_transactions USING (txid)
+                JOIN sbtc_signer.bitcoin_blocks AS bb USING (block_hash)
+                WHERE dr.txid = $2
+                  AND dr.output_index = $3
+                ORDER BY 1 ASC
+                LIMIT 1
+            ),
+            block_chain AS (
+                SELECT 
+                    block_hash
+                  , block_height
+                  , parent_hash
+                FROM sbtc_signer.bitcoin_blocks
+                WHERE block_hash = $1
+
+                UNION ALL
+
+                SELECT
+                    child.block_hash
+                  , child.block_height
+                  , child.parent_hash
+                FROM sbtc_signer.bitcoin_blocks AS child
+                JOIN tx_block_chain AS parent
+                  ON child.block_hash = parent.parent_hash
+                CROSS JOIN deposit_tx_furthest_height AS fh
+                WHERE child.block_height >= fh.block_height
+            ),
+            SELECT EXISTS (
+                SELECT TRUE
+                FROM sbtc_signer.deposit_signers AS ds
+                JOIN sbtc_signer.deposit_requests USING (txid, output_index)
+                JOIN sbtc_signer.bitcoin_transactions USING (txid)
+                JOIN sbtc_signer.bitcoin_blocks USING (block_hash)
+                JOIN block_chain USING (block_hash)
+                WHERE ds.is_accepted
+                  AND ds.txid = $2
+                  AND ds.output_index = $3
+                  AND ds.signer_pub_key = $4
+            );
+        "#,
+        )
+        .bind(chain_tip)
+        .bind(txid)
+        .bind(i64::from(output_index))
+        .bind(signer_public_key)
+        .fetch_one(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
     async fn get_deposit_signers(
         &self,
         txid: &model::BitcoinTxId,
