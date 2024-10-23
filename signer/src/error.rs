@@ -17,7 +17,9 @@ pub enum Error {
     MissingDepositRequest(bitcoin::Txid, u32),
 
     /// The requested withdrawal request could not be found.
-    #[error("could not find associated withdrawal request for request id {0} and stacks block hash {1}")]
+    #[error(
+        "could not find associated withdrawal request for request id {0} and stacks block hash {1}"
+    )]
     MissingWithdrawalRequest(u64, stacks_common::types::chainstate::StacksBlockId),
 
     /// The nakamoto start height could not be determined.

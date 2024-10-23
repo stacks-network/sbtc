@@ -27,6 +27,7 @@ use signer::keys::SignerScriptPubKey;
 use signer::storage::model;
 use signer::storage::model::BitcoinTxRef;
 use signer::storage::model::EncryptedDkgShares;
+use signer::storage::model::SbtcTransactionPackage;
 use signer::storage::postgres::PgStore;
 use signer::storage::DbWrite as _;
 
@@ -66,6 +67,8 @@ pub struct TestSweepSetup {
     pub withdrawal_request: utxo::WithdrawalRequest,
     /// The address that initiated with withdrawal request.
     pub withdrawal_sender: PrincipalData,
+    /// Transaction packages that have been broadcast but not yet stored.
+    pub transaction_packages: Vec<SbtcTransactionPackage>,
 }
 
 impl TestSweepSetup {
@@ -135,8 +138,11 @@ impl TestSweepSetup {
 
         // There should only be one transaction here since there is only
         // one deposit request and no withdrawal requests.
-        let txid = {
+        let (txid, sweep_transaction_package) = {
             let mut transactions = requests.construct_transactions().unwrap();
+            // Create the transaction package that we will store.
+            let package = SbtcTransactionPackage::from_package(
+                deposit_block_hash, requests.signer_state.fee_rate as u64, &transactions);
             assert_eq!(transactions.len(), 1);
             let mut unsigned = transactions.pop().unwrap();
 
@@ -144,7 +150,8 @@ impl TestSweepSetup {
             // witness data.
             signer::testing::set_witness_data(&mut unsigned, signer.keypair);
             rpc.send_raw_transaction(&unsigned.tx).unwrap();
-            unsigned.tx.compute_txid()
+            // Return the txid and the transaction package.
+            (unsigned.tx.compute_txid(), package)
         };
 
         // Let's sweep in the transaction
@@ -177,6 +184,7 @@ impl TestSweepSetup {
             aggregated_signer: signer,
             withdrawal_request: requests.withdrawals.pop().unwrap(),
             withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
+            transaction_packages: vec![sweep_transaction_package],
         }
     }
 
@@ -187,6 +195,13 @@ impl TestSweepSetup {
             outpoint: self.deposit_info.outpoint,
             reclaim_script: self.deposit_info.reclaim_script.clone(),
             deposit_script: self.deposit_info.deposit_script.clone(),
+        }
+    }
+
+    // Store all pending transaction packages to the database.
+    pub async fn store_transaction_packages(&mut self, db: &PgStore) {
+        for package in self.transaction_packages.drain(..) {
+            db.write_bitcoin_transaction_package(package.clone()).await.unwrap();
         }
     }
 

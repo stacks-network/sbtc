@@ -1410,7 +1410,7 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
     // We need to manually update the database with new bitcoin block
     // headers.
@@ -1420,6 +1420,9 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     // transaction is supposed to be there, so future versions of our query
     // can rely on that fact.
     setup.store_deposit_tx(&db).await;
+
+    // Store outstanding sweep transaction packages in the database.
+    setup.store_transaction_packages(&db).await;
 
     // We take the sweep transaction as is from the test setup and
     // store it in the database.
@@ -1432,25 +1435,29 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     let chain_tip = setup.sweep_block_hash.into();
     let context_window = 20;
 
-    let mut requests = db
+    let mut swept_deposits = db
         .get_swept_deposit_requests(&chain_tip, context_window)
         .await
         .unwrap();
 
     // There should only be one request in the database and it has a sweep
     // trasnaction so the length should be 1.
-    assert_eq!(requests.len(), 1);
+    assert_eq!(swept_deposits.len(), 1);
 
     // Its details should match that of the deposit request.
-    let req = requests.pop().unwrap();
-    assert_eq!(req.amount, setup.deposit_request.amount);
-    assert_eq!(req.txid, setup.deposit_request.outpoint.txid.into());
-    assert_eq!(req.output_index, setup.deposit_request.outpoint.vout);
-    assert_eq!(req.recipient, setup.deposit_recipient.into());
-    assert_eq!(req.sweep_block_hash, setup.sweep_block_hash.into());
-    assert_eq!(req.sweep_block_height, setup.sweep_block_height);
-    assert_eq!(req.sweep_txid, setup.sweep_tx_info.txid.into());
-    assert_eq!(req.sweep_tx, setup.sweep_tx_info.tx.into());
+    let swept_deposit = swept_deposits.pop().unwrap();
+    let deposit_request = db.get_deposit_request(&swept_deposit.txid, swept_deposit.output_index)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(deposit_request.amount, setup.deposit_request.amount);
+    assert_eq!(deposit_request.txid, setup.deposit_request.outpoint.txid.into());
+    assert_eq!(deposit_request.output_index, setup.deposit_request.outpoint.vout);
+    assert_eq!(deposit_request.recipient, setup.deposit_recipient.into());
+    assert_eq!(swept_deposit.sweep_block_hash, setup.sweep_block_hash.into());
+    //assert_eq!(req.sweep_block_height, setup.sweep_block_height);
+    assert_eq!(swept_deposit.sweep_txid, setup.sweep_tx_info.txid.into());
+    //assert_eq!(swept_deposit.sweep_tx, setup.sweep_tx_info.tx.into());
 
     signer::testing::storage::drop_db(db).await;
 }

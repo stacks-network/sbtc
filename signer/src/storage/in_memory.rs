@@ -671,63 +671,25 @@ impl super::DbRead for SharedStore {
         let store = self.lock().await;
         let bitcoin_blocks = &store.bitcoin_blocks;
         let first = bitcoin_blocks.get(chain_tip);
-        // let tmp = std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
-        //     .take(context_window as usize)
-        //     .filter_map(|block| {
-        //         store.transaction_packages.iter().find_map(|package| {
-        //             if package.created_at_block_hash == block.block_hash {
-        //                 Some((block, package.clone()))
-        //             } else {
-        //                 None
-        //             }
-        //         })
-        //     })
-        //     .map(|(block, package)| {
-        //         package.transactions.iter().map(|tx| {
-        //             tx.swept_withdrawals
-        //                 .iter()
-        //                 .map(|withdrawal: &model::SweptWithdrawal| -> Result<_, Error> {
-        //                     let request = store.withdrawal_requests.get(
-        //                         &(withdrawal.withdrawal_request_id, 
-        //                             withdrawal.withdrawal_request_block_hash
-        //                     )).ok_or(Error::MissingWithdrawalRequest(
-        //                         withdrawal.withdrawal_request_id, 
-        //                         *withdrawal.withdrawal_request_block_hash
-        //                     ))?;
 
-        //                     Ok(model::SweptWithdrawalRequest {
-        //                         request_id: withdrawal.withdrawal_request_id,
-        //                         block_hash: withdrawal.withdrawal_request_block_hash,
-        //                         sweep_block_hash: package.created_at_block_hash,
-        //                         sweep_txid: tx.txid,
-        //                     })
-        //                 })
-        //                 .collect::<Vec<_>>()
-        //         })
-        //         .collect::<Vec<_>>()
-        //     })
-        //     .collect::<Vec<_>>();
-        let tmp = std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
+        std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
             .take(context_window as usize)
             .filter_map(|block| {
-                store.transaction_packages.iter().find_map(|package| {
-                    if package.created_at_block_hash == block.block_hash {
-                        Some((block, package.clone()))
-                    } else {
-                        None
-                    }
-                })
+                store
+                    .bitcoin_block_to_transactions
+                    .get(&block.block_hash)
+                    .and_then(|txs| {
+                        store.transaction_packages.iter().find(|package| {
+                            package
+                                .transactions
+                                .iter()
+                                .any(|packaged_tx| txs.iter().any(|tx| *tx == packaged_tx.txid))
+                        })
+                    })
             })
-            .flat_map(|(block, package)| {
+            .flat_map(|package| {
                 package.transactions.iter().flat_map(|tx| {
                     tx.swept_withdrawals.iter().map(|withdrawal| {
-                        let request = store.withdrawal_requests.get(
-                            &(withdrawal.withdrawal_request_id, withdrawal.withdrawal_request_block_hash)
-                        ).ok_or(Error::MissingWithdrawalRequest(
-                            withdrawal.withdrawal_request_id,
-                            *withdrawal.withdrawal_request_block_hash
-                        ))?;
-
                         Ok(model::SweptWithdrawalRequest {
                             request_id: withdrawal.withdrawal_request_id,
                             block_hash: withdrawal.withdrawal_request_block_hash,
@@ -736,36 +698,9 @@ impl super::DbRead for SharedStore {
                         })
                     })
                 })
-                .collect::<Vec<_>>()
+                //.collect::<Vec<_>>()
             })
-            .collect::<Result<Vec<_>, Error>>()?;
-
-        todo!()
-
-        // Ok((0..context_window)
-        //     // Find all tracked transaction IDs in the context window
-        //     .scan(chain_tip, |block_hash, _| {
-        //         let transaction_ids = store
-        //             .bitcoin_block_to_transactions
-        //             .get(*block_hash)
-        //             .cloned()
-        //             .unwrap_or_else(Vec::new);
-
-        //         let block = store.bitcoin_blocks.get(*block_hash)?;
-        //         *block_hash = &block.parent_hash;
-
-        //         Some(transaction_ids)
-        //     })
-        //     .flatten()
-        //     // Return all deposit requests associated with any of these transaction IDs
-        //     .flat_map(|txid| {
-        //         store
-        //             .deposit_requests
-        //             .values()
-        //             .filter(move |req| req.txid == txid)
-        //             .cloned()
-        //     })
-        //     .collect())
+            .collect::<Result<Vec<_>, Error>>()
     }
 
     async fn get_latest_transaction_package(
@@ -786,6 +721,32 @@ impl super::DbRead for SharedStore {
             });
 
         Ok(package)
+    }
+
+    async fn get_deposit_request(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+    ) -> Result<Option<model::DepositRequest>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .deposit_requests
+            .get(&(*txid, output_index))
+            .cloned())
+    }
+
+    async fn get_withdrawal_request(
+        &self,
+        request_id: u64,
+        block_hash: &model::StacksBlockHash,
+    ) -> Result<Option<model::WithdrawalRequest>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .withdrawal_requests
+            .get(&(request_id, *block_hash))
+            .cloned())
     }
 }
 
@@ -1059,8 +1020,31 @@ impl super::DbWrite for SharedStore {
 
     async fn write_bitcoin_transaction_package(
         &self,
-        package: SbtcTransactionPackage
+        package: SbtcTransactionPackage,
     ) -> Result<u32, Error> {
-        todo!()
+        let mut store = self.lock().await;
+        store.transaction_packages.push(package);
+        Ok(store.transaction_packages.len() as u32)
+    }
+
+    async fn mark_packaged_transaction_as_broadcast(
+        &self,
+        txid: &model::BitcoinTxId,
+    ) -> Result<(), Error> {
+        let mut store = self.lock().await;
+        let package = store
+            .transaction_packages
+            .iter_mut()
+            .find(|package| package.transactions.iter().any(|tx| tx.txid == *txid));
+
+        let Some(package) = package else {
+            return Ok(());
+        };
+
+        if let Some(tx) = package.transactions.iter_mut().find(|tx| tx.txid == *txid) {
+            tx.is_broadcast = true;
+        }
+
+        Ok(())
     }
 }

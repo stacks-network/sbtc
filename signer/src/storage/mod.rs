@@ -246,7 +246,7 @@ pub trait DbRead {
     fn get_withdrawal_request(
         &self,
         request_id: u64,
-        block_hash: &model::StacksBlockHash
+        block_hash: &model::StacksBlockHash,
     ) -> impl Future<Output = Result<Option<model::WithdrawalRequest>, Error>> + Send;
 }
 
@@ -369,7 +369,7 @@ pub trait DbWrite {
     /// Write a complete Bitcoin transaction package to the database.
     fn write_bitcoin_transaction_package(
         &self,
-        package: SbtcTransactionPackage
+        package: SbtcTransactionPackage,
     ) -> impl Future<Output = Result<u32, Error>> + Send;
 
     /// Mark a packaged transaction as having been broadcast.
@@ -382,49 +382,42 @@ pub trait DbWrite {
 /// Convenience trait for storing a transaction package, which is represented
 /// as a vector of [`crate::bitcoin::utxo::UnsignedTransaction`].
 pub trait TransactionPackageExt {
-    fn store(&self, 
-        db: impl DbWrite + Sync + Send, 
+    /// Store the transaction package in the database.
+    fn store(
+        &self,
+        db: impl DbWrite + Sync + Send,
         chain_tip: &bitcoin::BlockHash,
-        market_fee_rate: f64
+        market_fee_rate: f64,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 }
 
 impl TransactionPackageExt for Vec<crate::bitcoin::utxo::UnsignedTransaction<'_>> {
     async fn store(
-        &self, 
-        db: impl DbWrite + Sync + Send, 
+        &self,
+        db: impl DbWrite + Sync + Send,
         chain_tip: &bitcoin::BlockHash,
         market_fee_rate: f64,
     ) -> Result<(), Error> {
-        let pkg = SbtcTransactionPackage::from_package(
-            *chain_tip, 
-            market_fee_rate as u64, 
-            self);
+        let pkg = SbtcTransactionPackage::from_package(*chain_tip, market_fee_rate as u64, self);
 
-        db.write_bitcoin_transaction_package(pkg)
-            .await
-            .map(|_| ())
+        db.write_bitcoin_transaction_package(pkg).await.map(|_| ())
     }
 }
 
 /// Convenience trait for [`crate::bitcoin::utxo::UnsignedTransaction`] storage
 /// operations.
 pub trait UnsignedTransactionExt {
+    /// Mark the transaction as having been broadcast.
     fn mark_as_broadcasted(
-        &self, 
-        db: impl DbWrite + Sync + Send
+        &self,
+        db: impl DbWrite + Sync + Send,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 }
 
 impl UnsignedTransactionExt for crate::bitcoin::utxo::UnsignedTransaction<'_> {
-    async fn mark_as_broadcasted(
-        &self, 
-        db: impl DbWrite + Sync + Send
-    ) -> Result<(), Error> {
-        db.mark_packaged_transaction_as_broadcast(
-            &self.tx.compute_txid().into()
-        )
-        .await
-        .map(|_| ())
+    async fn mark_as_broadcasted(&self, db: impl DbWrite + Sync + Send) -> Result<(), Error> {
+        db.mark_packaged_transaction_as_broadcast(&self.tx.compute_txid().into())
+            .await
+            .map(|_| ())
     }
 }

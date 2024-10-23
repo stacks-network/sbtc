@@ -1,5 +1,3 @@
-CREATE SCHEMA sbtc_signer;
-
 CREATE TYPE sbtc_signer.transaction_type AS ENUM (
    'sbtc_transaction',
    'deposit_request',
@@ -126,6 +124,7 @@ CREATE TABLE sbtc_signer.deposit_responses (
     deposit_txid BYTEA NOT NULL,
     deposit_output_index INTEGER NOT NULL
 );
+
 CREATE TABLE sbtc_signer.withdrawal_responses (
     response_txid BYTEA NOT NULL,
     withdraw_txid BYTEA NOT NULL,
@@ -212,7 +211,7 @@ CREATE TABLE sbtc_signer.packaged_transactions (
     fee BIGINT NOT NULL,
     -- The timestamp that the transaction was broadcast at. This should be
     -- set after we know that the transaction was successfully broadcast.
-    broadcast_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NULL,
+    is_broadcast BOOLEAN NOT NULL DEFAULT FALSE,
 
     FOREIGN KEY (transaction_package_id)
         REFERENCES sbtc_signer.transaction_packages(id)

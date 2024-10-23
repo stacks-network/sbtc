@@ -404,14 +404,19 @@ impl PgStore {
     }
 
     /// Attempts to retrieve an entire transaction package by id.
-    async fn get_transaction_package_by_id(&self, package_id: i64) -> Result<Option<SbtcTransactionPackage>, Error> {
-        let package: Option<SbtcTransactionPackage> = sqlx::query_as("
+    async fn get_transaction_package_by_id(
+        &self,
+        package_id: i64,
+    ) -> Result<Option<SbtcTransactionPackage>, Error> {
+        let package: Option<SbtcTransactionPackage> = sqlx::query_as(
+            "
             SELECT
                 created_at_block_hash
                 , market_fee_rate
             FROM sbtc.transaction_packages
             WHERE id = $1;
-        ")
+        ",
+        )
         .bind(package_id as i64)
         .fetch_optional(&self.0)
         .await
@@ -421,7 +426,8 @@ impl PgStore {
             return Ok(None);
         };
 
-        let transactions: Vec<model::SbtcPackagedTransaction> = sqlx::query_as("
+        let transactions: Vec<model::SbtcPackagedTransaction> = sqlx::query_as(
+            "
             SELECT
                 id
                 , txid
@@ -436,7 +442,8 @@ impl PgStore {
                 sbtc.packaged_transactions
             WHERE
                 transaction_package_id = $1;
-        ")
+        ",
+        )
         .bind(package_id as i64)
         .fetch_all(&self.0)
         .await
@@ -446,10 +453,12 @@ impl PgStore {
             // packaged_transaction.id is not nullable in the database and thus
             // should necessarily be present.
             #[allow(clippy::expect_used)]
-            let transaction_id = transaction.id
+            let transaction_id = transaction
+                .id
                 .expect("BUG: packaged_transactions.id cannot be null");
 
-            transaction.swept_deposits = sqlx::query_as("
+            transaction.swept_deposits = sqlx::query_as(
+                "
                 SELECT
                     txid
                     , output_index
@@ -457,20 +466,23 @@ impl PgStore {
                     sbtc_signer.swept_deposits
                 where
                     packaged_transaction_id = $1;
-            ")
+            ",
+            )
             .bind(transaction_id as i64)
             .fetch_all(&self.0)
             .await
             .map_err(Error::SqlxQuery)?;
 
-            transaction.swept_withdrawals = sqlx::query_as("
+            transaction.swept_withdrawals = sqlx::query_as(
+                "
                 SELECT
                     request_id
                 FROM
                     sbtc_signer.swept_withdrawals
                 where
                     packaged_transaction_id = $1;
-            ")
+            ",
+            )
             .bind(transaction_id as i64)
             .fetch_all(&self.0)
             .await
@@ -1411,7 +1423,6 @@ impl super::DbRead for PgStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Option<SbtcTransactionPackage>, Error> {
-
         let id: Option<i64> = sqlx::query_scalar("
             WITH RECURSIVE bitcoin AS 
             (
@@ -1462,15 +1473,48 @@ impl super::DbRead for PgStore {
         txid: &model::BitcoinTxId,
         output_index: u32,
     ) -> Result<Option<model::DepositRequest>, Error> {
-        todo!()
+        sqlx::query_as("
+            SELECT
+                txid
+              , output_index
+              , spend_script
+              , reclaim_script
+              , recipient
+              , amount
+              , max_fee
+              , sender_script_pub_keys
+            FROM sbtc_signer.deposit_requests
+            WHERE txid = $1 AND output_index = $2
+        ")
+        .bind(txid)
+        .bind(output_index as i64)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
     }
 
     async fn get_withdrawal_request(
         &self,
         request_id: u64,
-        block_hash: &model::StacksBlockHash
+        block_hash: &model::StacksBlockHash,
     ) -> Result<Option<model::WithdrawalRequest>, Error> {
-        todo!()
+        sqlx::query_as("
+            SELECT
+                request_id
+              , txid
+              , block_hash
+              , recipient
+              , amount
+              , max_fee
+              , sender_address
+            FROM sbtc_signer.withdrawal_requests
+            WHERE request_id = $1 AND block_hash = $2
+        ")
+        .bind(request_id as i64)
+        .bind(block_hash)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
     }
 }
 
@@ -2072,12 +2116,10 @@ impl super::DbWrite for PgStore {
 
     async fn write_bitcoin_transaction_package(
         &self,
-        package: SbtcTransactionPackage
+        package: SbtcTransactionPackage,
     ) -> Result<u32, Error> {
         // We're doing multiple inserts here so we wrap them in a transaction.
-        let mut tx = self.0.begin()
-            .await
-            .map_err(Error::SqlxBeginTransaction)?;
+        let mut tx = self.0.begin().await.map_err(Error::SqlxBeginTransaction)?;
 
         // Insert the package and get its id
         let (package_id,): (i64,) = sqlx::query_as(
@@ -2086,7 +2128,7 @@ impl super::DbWrite for PgStore {
                 broadcasted_at_block_hash
             )
             VALUES ($1)
-            RETURNING id"
+            RETURNING id",
         )
         .bind(package.created_at_block_hash)
         .fetch_one(&mut *tx)
@@ -2107,7 +2149,7 @@ impl super::DbWrite for PgStore {
                   , fee
                 ) 
                 VALUES ($1, $2, $3, $4, $5, $6) 
-                RETURNING id"
+                RETURNING id",
             )
             .bind(package_id)
             .bind(transaction.txid)
@@ -2131,7 +2173,7 @@ impl super::DbWrite for PgStore {
                       , deposit_request_txid
                       , deposit_request_output_index
                     )
-                    VALUES ($1, $2, $3, $4)"
+                    VALUES ($1, $2, $3, $4)",
                 )
                 .bind(packaged_tx_id)
                 .bind(deposit.output_index as i32)
@@ -2151,7 +2193,7 @@ impl super::DbWrite for PgStore {
                       , output_index
                       , withdrawal_request_id
                     )
-                    VALUES ($1, $2)"
+                    VALUES ($1, $2)",
                 )
                 .bind(packaged_tx_id)
                 .bind(withdrawal.withdrawal_request_id as i64)
@@ -2161,9 +2203,7 @@ impl super::DbWrite for PgStore {
             }
         }
 
-        tx.commit()
-            .await
-            .map_err(Error::SqlxCommitTransaction)?;
+        tx.commit().await.map_err(Error::SqlxCommitTransaction)?;
 
         Ok(package_id as u32)
     }
@@ -2176,7 +2216,7 @@ impl super::DbWrite for PgStore {
             "
             UPDATE sbtc_signer.packaged_transaction
             SET broadcast_at = CURRENT_TIMESTAMP()
-            WHERE txid = $1"
+            WHERE txid = $1",
         )
         .bind(txid)
         .execute(&self.0)

@@ -292,19 +292,24 @@ where
         };
 
         // Construct the transaction package and store it in the database.
-        let transaction_package = pending_requests
-            .construct_transactions()?;
+        let transaction_package = pending_requests.construct_transactions()?;
 
         // We want to know the current market-fee-rate for Bitcoin for historical
         // reasons when we persist the transaction package.
-        let market_fee_rate = self.context.get_bitcoin_client()
-            .estimate_fee_rate().await?;
+        let market_fee_rate = self
+            .context
+            .get_bitcoin_client()
+            .estimate_fee_rate()
+            .await?;
 
         // Persist the transaction package in the database.
-        transaction_package.store(
-            self.context.get_storage_mut(),
-            bitcoin_chain_tip,
-            market_fee_rate).await?;
+        transaction_package
+            .store(
+                self.context.get_storage_mut(),
+                bitcoin_chain_tip,
+                market_fee_rate,
+            )
+            .await?;
 
         for mut transaction in transaction_package {
             self.sign_and_broadcast(
@@ -316,7 +321,9 @@ where
             .await?;
 
             // Mark the transaction as having been broadcast.
-            transaction.mark_as_broadcasted(self.context.get_storage_mut()).await?;
+            transaction
+                .mark_as_broadcasted(self.context.get_storage_mut())
+                .await?;
 
             // TODO: if this (considering also fallback clients) fails, we will
             // need to handle the inconsistency of having the sweep tx confirmed
@@ -471,11 +478,15 @@ where
             })?;
 
         // Retrieve the deposit request from the database.
-        let deposit_request = self.context
+        let deposit_request = self
+            .context
             .get_storage()
             .get_deposit_request(&req.txid, req.output_index)
             .await?
-            .ok_or(Error::MissingDepositRequest(req.txid.into(), req.output_index))?;
+            .ok_or(Error::MissingDepositRequest(
+                req.txid.into(),
+                req.output_index,
+            ))?;
 
         let outpoint = req.deposit_outpoint();
         let assessed_bitcoin_fee = tx_info

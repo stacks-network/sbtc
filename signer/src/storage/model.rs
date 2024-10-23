@@ -29,10 +29,12 @@ pub struct SbtcTransactionPackage {
     /// The transactions which were submitted together as part of this
     /// transaction package.
     #[sqlx(skip)]
-    pub transactions: Vec<SbtcPackagedTransaction>
+    pub transactions: Vec<SbtcPackagedTransaction>,
 }
 
 impl SbtcTransactionPackage {
+    /// Create a new [`SbtcTransactionPackage`] from a vector of
+    /// [UnsignedTransaction](`crate::bitcoin::utxo::UnsignedTransaction`)s.
     pub fn from_package<'a, 'b>(
         chain_tip: bitcoin::BlockHash,
         market_fee_rate: u64,
@@ -53,8 +55,7 @@ impl SbtcTransactionPackage {
                 amount: transaction.output_amounts(),
                 fee: transaction.tx_fee,
                 fee_rate: transaction.signer_utxo.fee_rate as u64,
-                broadcast_at_block_hash: None,
-                included_in_block_hash: None,
+                is_broadcast: false,
                 swept_deposits: Vec::new(),
                 swept_withdrawals: Vec::new(),
             };
@@ -114,13 +115,10 @@ pub struct SbtcPackagedTransaction {
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
     pub fee_rate: u64,
-    /// The Bitcoin block hash at which this transaction was broadcast. Note
-    /// that this is not the same as the block hash at which the transaction
-    /// was included (mined). This field is unset until the transaction has
-    /// actually been broadcasted.
-    pub broadcast_at_block_hash: Option<BitcoinBlockHash>,
-    /// The Bitcoin block hash at which this transaction was included (mined).
-    pub included_in_block_hash: Option<BitcoinBlockHash>,
+    /// Whether or not this transaction has been successfully broadcast to the
+    /// Bitcoin network.
+    #[cfg_attr(feature = "testing", dummy(default))]
+    pub is_broadcast: bool,
 
     /// List of deposits which were swept-in by this transaction.
     #[sqlx(skip)]
@@ -158,6 +156,8 @@ pub struct SweptWithdrawal {
     /// transaction.
     #[sqlx(try_from = "i64")]
     pub withdrawal_request_id: u64,
+    /// The Stacks block hash of the Stacks block which included the withdrawal
+    /// request transaction.
     pub withdrawal_request_block_hash: StacksBlockHash,
 }
 
