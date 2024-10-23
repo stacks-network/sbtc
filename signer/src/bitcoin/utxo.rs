@@ -30,9 +30,13 @@ use secp256k1::SECP256K1;
 use crate::bitcoin::packaging::compute_optimal_packages;
 use crate::bitcoin::packaging::Weighted;
 use crate::bitcoin::rpc::BitcoinTxInfo;
+use crate::context::Context;
 use crate::error::Error;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
+use crate::storage::model::BitcoinBlockRef;
+use crate::storage::model::BitcoinTx;
+use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::ScriptPubKey;
 use crate::storage::model::SignerVotes;
 use crate::storage::model::StacksBlockHash;
@@ -1032,6 +1036,63 @@ impl bitcoin::consensus::Encodable for Hash160 {
         // implementation of their other types.
         writer.emit_slice(&self.0[..])?;
         Ok(Self::LEN)
+    }
+}
+
+/// The necessary information for validating a bitcoin transaction.
+pub struct BtcContext {
+    /// This signer's current view of the chain tip of the canonical
+    /// bitcoin blockchain. It is the block hash and height of the block on
+    /// the bitcoin blockchain with the greatest height. On ties, we sort
+    /// by the block hash descending and take the first one.
+    pub chain_tip: BitcoinBlockRef,
+    /// How many bitcoin blocks back from the chain tip the signer will
+    /// look for requests.
+    pub context_window: u16,
+    /// The requests
+    pub request_ids: Vec<QualifiedRequestId>,
+}
+
+impl BitcoinTx {
+    /// 1. All deposit requests consumed by the bitcoin transaction are
+    ///    accepted by the signer.
+    /// 2. All withdraw requests fulfilled by the bitcoin transaction are
+    ///    accepted by the signer.
+    /// 3. The apportioned transaction fee for each request does not exceed
+    ///    any max_fee.
+    /// 4. All transaction inputs are spendable by the signers.
+    /// 5. Any transaction outputs that aren't fulfilling withdraw requests
+    ///    are spendable by the signers or unspendable.
+    /// 6. Each deposit request input has an associated amount that is
+    ///    greater than their assessed fee.
+    /// 7. There is at least 2 blocks and 2 hours of lock-time left before
+    ///    the depositor can reclaim their funds.
+    pub async fn validate<C>(&self, ctx: &C, req_ctx: &BtcContext) -> Result<(), Error>
+    where
+        C: Context + Send + Sync,
+    {
+        Ok(())
+    }
+
+    pub async fn validate_deposits<C>(&self, ctx: &C, req_ctx: &BtcContext) -> Result<(), Error>
+    where
+        C: Context + Send + Sync,
+    {
+        // 1. All deposit requests consumed by the bitcoin transaction are
+        //    accepted by the signer.
+
+        for tx_in in self.input.iter().skip(1) {
+            // tx_in.
+        }
+
+        Ok(())
+    }
+
+    pub async fn validate_withdrawals<C>(&self, ctx: &C, req_ctx: &BtcContext) -> Result<(), Error>
+    where
+        C: Context + Send + Sync,
+    {
+        Ok(())
     }
 }
 

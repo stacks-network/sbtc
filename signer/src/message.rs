@@ -7,6 +7,8 @@ use crate::keys::PublicKey;
 use crate::signature::RecoverableEcdsaSignature as _;
 use crate::stacks::contracts::ContractCall;
 use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::BitcoinTx;
+use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksTxId;
 
 /// Messages exchanged between signers
@@ -187,6 +189,15 @@ pub struct BitcoinTransactionSignRequest {
     pub tx: bitcoin::Transaction,
     /// The aggregate key used to sign the transaction,
     pub aggregate_key: PublicKey,
+}
+
+/// Represents a request to sign a Bitcoin transaction.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BitcoinTransactionSignRequest2 {
+    /// The transaction.
+    pub tx: BitcoinTx,
+    /// The withdrawal requests in the transaction.
+    pub withdrawal_requests: Vec<QualifiedRequestId>,
 }
 
 /// Represents an acknowledgment of a signed Bitcoin transaction.

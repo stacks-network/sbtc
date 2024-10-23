@@ -444,6 +444,20 @@ where
         // - Ensure the transaction fee is lower than the minimum
         //    `max_fee` of any request.
 
+        // 1. All deposit requests consumed by the bitcoin transaction are
+        //    accepted by the signer.
+        // 2. All withdraw requests fulfilled by the bitcoin transaction
+        //    are accepted by the signer.
+        // 3. The apportioned transaction fee for each request does not
+        //    exceed any max_fee.
+        // 4. All transaction inputs are spendable by the signers.
+        // 5. Any transaction outputs that aren't fulfilling withdraw
+        //    requests are spendable by the signers or unspendable.
+        // 6. Each deposit request input has an associated amount that is
+        //    greater than their assessed fee.
+        // 7. There is at least 2 blocks and 2 hours of lock-time left
+        //    before the depositor can reclaim their funds.
+
         Ok(true)
     }
 

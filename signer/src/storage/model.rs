@@ -464,7 +464,7 @@ pub enum TransactionType {
 ///
 /// A request-id and a Stacks Block ID is enough to uniquely identify the
 /// request, but we add in the transaction ID for completeness.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct QualifiedRequestId {
     /// The Stacks block ID that includes the transaction that generated
     /// the request.
@@ -617,7 +617,7 @@ impl From<&BitcoinBlock> for BitcoinBlockRef {
 }
 
 /// The Stacks block ID. This is different from the block header hash.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct StacksBlockHash(StacksBlockId);
 
 impl Deref for StacksBlockHash {
