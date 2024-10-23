@@ -7,7 +7,7 @@ members = [
   "blocklist-client",
   ".generated-sources/blocklist-openapi-gen",
   "sbtc",
-  ".generated-sources/emily/client/rust"
+  ".generated-sources/emily/client/rust",
 ]
 
 [profile.dev]
@@ -73,7 +73,8 @@ hex = "0.4.3"
 libp2p = { version = "0.54.1", features = [
     "macros", "kad", "noise", "ping", "tcp",
     "tokio", "yamux", "mdns", "quic", "gossipsub",
-    "relay", "identify", "tls", "dns", "autonat"
+    "relay", "identify", "tls", "dns", "autonat",
+    "secp256k1"
 ] }
 
 [workspace.dependencies.axum]

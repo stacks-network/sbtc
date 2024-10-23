@@ -153,7 +153,9 @@ pub async fn update_chainstate(
 /// Adds the chainstate to the table, and reorganizes the API if there's a
 /// conflict that suggests it needs a reorg in order for this entry to be
 /// consistent.
-async fn add_chainstate_entry_or_reorg(
+///
+/// TODO(TBD): Consider moving this logic into database accessor structures.
+pub async fn add_chainstate_entry_or_reorg(
     context: &EmilyContext,
     chainstate: &Chainstate,
 ) -> Result<(), Error> {

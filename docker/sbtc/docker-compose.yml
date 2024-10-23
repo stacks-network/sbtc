@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+
+  # Builder for the sBTC repository.
+  sbtc-build:
+    build:
+      context: ../.. # Set the context to be root of the project.
+      dockerfile: docker/sbtc/Dockerfile.build
+      args:
+        # GIT_BRANCH:
+        # The branch that we use as a common root for this build. Note
+        # that this branch will be overwritten with the code within this local
+        # repository, but the sources from this branch will be pulled in, compiled,
+        # and then cached so that when the local repository is copied the build
+        # is starting from a place where the dependencies are already compiled.
+        GIT_BRANCH: main
+    image: sbtc-build:latest
+
+  # DynamoDB Tables for the Emily API.
+  emily-dynamodb:
+    image: "amazon/dynamodb-local:latest"
+    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath ."
+    ports:
+      - "8000:8000"
+
+  # Modifies Emily's CDK template and creates DynamoDB Tables.
+  emily-aws-setup:
+    build: emily-aws-setup
+    depends_on:
+      - sbtc-build
+      - emily-dynamodb
+    environment:
+      - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
+
+  # Runs the Emily server.
+  emily-server:
+    build: emily-server
+    depends_on:
+      sbtc-build:
+        condition: service_completed_successfully
+      emily-aws-setup:
+        condition: service_completed_successfully
+    environment:
+      - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
+      - AWS_ACCESS_KEY_ID=xxxxxxxxxxxx
+      - AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxx
+      - AWS_REGION=us-west-2
+      - PORT=3031
+    ports:
+      - "3031:3031"
+
+  # Runs the sBTC signer.
+  signer:
+    build: signer
+    entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer --help'"
+    depends_on:
+      - sbtc-build
+    environment:
+      RUST_LOG: info
+      SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-1:5432/signer
+      SIGNER_SIGNER__PRIVATE_KEY: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc
+      SIGNER_SIGNER__P2P__LISTEN_ON: tcp://0.0.0.0:4122
+      SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-2:4122,tcp://sbtc-signer-3:4122
+
+  # Runs the blocklist client.
+  blocklist-client:
+    build: blocklist-client
+    depends_on:
+      - sbtc-build
+    volumes:
+      - "../../blocklist-client/src/config/default.toml:/src/config/default.toml"
+    environment:
+      BLOCKLIST_CLIENT__SERVER__HOST: 0.0.0.0
+      BLOCKLIST_CLIENT__SERVER__PORT: 3032
+      BLOCKLIST_CLIENT__risk_analysis__API_URL: xxxxx
+      BLOCKLIST_CLIENT__RISK_ANALYSIS__API_KEY: xxxxx
+    ports:
+      - "3032:3032"
+    # TODO(TBD): Add the environment variables or cli arguments that configure
+    # the blocklist client.

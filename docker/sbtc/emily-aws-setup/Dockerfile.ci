@@ -1,0 +1,41 @@
+# Emily AWS Setup Dockerfile for CI/CD.
+#
+# This Dockerfile is used to create a Docker image that is used to deploy the
+# AWS resources for the Emily service. This Dockerfile is different from the
+# one used in local development because it assumes you're synthesizing a CDK
+# template that can be built without any other resources that are compiled
+# from within this repository.
+#
+# If the environment that you're deploying is meant to host the Emily lambda
+# in a SAM CLI lambda simulation, this Dockerfile is not the one you want to
+# use. Instead, use the Dockerfile located at docker/sbtc/emily-aws-setup/Dockerfile
+# which will have the resources to build the emily lambda and apigateway instances.
+FROM node:22.2.0-bookworm-slim AS build
+
+RUN npm install -g pnpm@9
+RUN npm install -g @openapitools/openapi-generator-cli
+
+# Copy over only the relevant files for creating the Emily CDK
+# and running the modification script.
+RUN mkdir -p /code/sbtc/emily/cdk
+COPY ./emily/cdk /code/sbtc/emily/cdk
+COPY ./docker/sbtc/emily-aws-setup/initialize.py /code/sbtc/docker/sbtc/emily-aws-setup/initialize.py
+WORKDIR /code/sbtc/emily/cdk
+
+ARG AWS_STAGE=local
+ARG TABLES_ONLY=true
+RUN pnpm install
+RUN pnpm run synth
+
+# Service.
+# --------
+FROM python:3.12-slim AS emily-aws-setup
+WORKDIR /code
+COPY --from=build /code/sbtc/docker/sbtc/emily-aws-setup/initialize.py /code/initialize.py
+COPY --from=build /code/sbtc/emily/cdk/cdk.out /code/cdk.out
+RUN pip3 install boto3
+ENV LOCAL_LAMBDA_PATH=/zip-is-not-present-in-this-docker-file.zip
+ENV DYNAMODB_ENDPOINT=http://dynamodb:8000
+ENV INPUT_CDK_TEMPLATE=/code/cdk.out/EmilyStack.template.json
+ENV OUTPUT_CDK_TEMPLATE=/code/cdk.out/EmilyStack.devenv.template.json
+ENTRYPOINT ["python3", "/code/initialize.py"]

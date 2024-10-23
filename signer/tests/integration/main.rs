@@ -2,6 +2,7 @@ use std::sync::atomic::AtomicU16;
 
 mod bitcoin_client;
 mod bitcoin_rpc;
+mod block_observer;
 mod complete_deposit;
 mod contracts;
 mod emily;

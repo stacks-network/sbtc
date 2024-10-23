@@ -8,9 +8,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Docker test service setup
-        run: docker compose --file docker-compose.test.yml up --detach
-
       - uses: pnpm/action-setup@v4
 
       - name: Set Node Version
@@ -34,6 +31,9 @@ jobs:
       - name: Run tests
         run: make test
 
+      - name: Docker test service setup
+        run: make integration-env-up-ci
+
       - name: Run integration tests
         run: make integration-test
 
@@ -42,4 +42,10 @@ jobs:
 
       - name: Docker compose down
         if: always()
-        run: docker compose --file docker-compose.test.yml down
+        run: make integration-env-down-ci
+
+      - name: Upload integration test logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          path: ./target/emily-server.log

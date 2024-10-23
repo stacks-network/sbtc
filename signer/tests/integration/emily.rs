@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -217,7 +216,7 @@ async fn deposit_e2e() {
         amount: Amount::from_sat(deposit_config.amount + deposit_config.max_fee + 1),
         height: 0,
     };
-    let (deposit_tx, deposit_request) = make_deposit_request(
+    let (deposit_tx, deposit_request, _) = make_deposit_request(
         &depositor,
         deposit_config.amount,
         depositor_utxo,
@@ -385,9 +384,7 @@ async fn deposit_e2e() {
         bitcoin_blocks: block_stream,
         stacks_client: stacks_client,
         emily_client: emily_client.clone(),
-        deposit_requests: HashMap::new(),
         horizon: 1,
-        network: bitcoin::Network::Regtest,
     };
 
     let block_observer_handle = tokio::spawn(async move { block_observer.run().await });

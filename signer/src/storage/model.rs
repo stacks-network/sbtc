@@ -81,11 +81,12 @@ pub struct DepositRequest {
 
 impl From<Deposit> for DepositRequest {
     fn from(deposit: Deposit) -> Self {
-        let tx_input_iter = deposit.tx.input.into_iter();
+        let tx_input_iter = deposit.tx_info.vin.into_iter();
         // It's most likely the case that each of the inputs "came" from
         // the same Address, so we filter out duplicates.
-        let sender_script_pub_keys: BTreeSet<ScriptPubKey> =
-            tx_input_iter.map(|tx_in| tx_in.script_sig.into()).collect();
+        let sender_script_pub_keys: BTreeSet<ScriptPubKey> = tx_input_iter
+            .map(|tx_in| ScriptPubKey::from_bytes(tx_in.prevout.script_pub_key.hex))
+            .collect();
 
         Self {
             txid: deposit.info.outpoint.txid.into(),
@@ -730,6 +731,13 @@ impl From<bitcoin::ScriptBuf> for ScriptPubKey {
 impl From<ScriptPubKey> for bitcoin::ScriptBuf {
     fn from(value: ScriptPubKey) -> Self {
         value.0
+    }
+}
+
+impl ScriptPubKey {
+    /// Converts byte vector into script.
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+        bitcoin::ScriptBuf::from_bytes(bytes).into()
     }
 }
 

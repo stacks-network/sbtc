@@ -45,6 +45,7 @@ struct SignerArgs {
 }
 
 #[tokio::main]
+#[tracing::instrument(name = "signer")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
     // TODO(497): The whole logging thing should be revisited. We should support
@@ -75,6 +76,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ApiFallbackClient<StacksClient>,
         ApiFallbackClient<EmilyClient>,
     >::init(settings, db)?;
+
+    // TODO: We should first check "another source of truth" for the current
+    // signing set, and only assume we are bootstrapping if that source is
+    // empty.
+    let settings = context.config();
+    for signer in settings.signer.bootstrap_signing_set() {
+        context.state().current_signer_set().add_signer(signer);
+    }
 
     // Wait for the Nakamoto activation height to be reached.
     tracing::info!("waiting for Nakamoto activation height");
@@ -198,7 +207,7 @@ where
 
 /// Runs the shutdown-signal watcher. On Unix systems, this listens for SIGHUP,
 /// SIGTERM, and SIGINT. On other systems, it listens for Ctrl-C.
-#[tracing::instrument(skip(ctx))]
+#[tracing::instrument(skip(ctx), name = "shutdown-watcher")]
 async fn run_shutdown_signal_watcher(ctx: impl Context) -> Result<(), Error> {
     let mut term = ctx.get_termination_handle();
 
@@ -273,7 +282,7 @@ async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
 }
 
 /// Runs the Stacks event observer server.
-#[tracing::instrument(skip(ctx))]
+#[tracing::instrument(skip(ctx), name = "stacks-event-observer")]
 async fn run_stacks_event_observer(ctx: impl Context + 'static) -> Result<(), Error> {
     tracing::info!("initializing the Stacks event observer server");
 
@@ -310,7 +319,6 @@ async fn run_stacks_event_observer(ctx: impl Context + 'static) -> Result<(), Er
 }
 
 /// Run the block observer event-loop.
-#[tracing::instrument(skip(ctx))]
 async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
     let config = ctx.config().clone();
 
@@ -334,16 +342,13 @@ async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
         bitcoin_blocks: stream.to_block_hash_stream(),
         stacks_client,
         emily_client,
-        deposit_requests: HashMap::new(),
         horizon: 1,
-        network: config.signer.network.into(),
     };
 
     block_observer.run().await
 }
 
 /// Run the transaction signer event-loop.
-#[tracing::instrument(skip(ctx))]
 async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
     let config = ctx.config().clone();
     let network = P2PNetwork::new(&ctx);
@@ -363,7 +368,6 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
 }
 
 /// Run the transaction coordinator event-loop.
-#[tracing::instrument(skip(ctx))]
 async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
     let config = ctx.config().clone();
     let network = P2PNetwork::new(&ctx);
