@@ -307,13 +307,17 @@ pub enum Error {
     #[error("key error: {0}")]
     KeyError(#[from] p256k1::keys::Error),
 
+    /// Missing bitcoin block
+    #[error("the database is missing bitcoin block {0}")]
+    MissingBitcoinBlock(crate::storage::model::BitcoinBlockHash),
+
     /// Missing block
     #[error("missing block")]
     MissingBlock,
 
     /// Missing dkg shares
-    #[error("missing dkg shares")]
-    MissingDkgShares,
+    #[error("missing dkg shares for the given aggregate key: {0}")]
+    MissingDkgShares(crate::keys::PublicKey),
 
     /// Missing public key
     #[error("missing public key")]
@@ -409,6 +413,12 @@ pub enum Error {
     /// Could not parse hex txid.
     #[error("could not parse hex txid: {0}")]
     DecodeHexTxid(#[source] bitcoin::hex::HexToArrayError),
+
+    /// This happens during the validation of a stacks transaction when the
+    /// current signer is not a member of the signer set indicated by the
+    /// aggregate key.
+    #[error("current signer not part of signer set indicated by: {0}")]
+    ValidationSignerSet(crate::keys::PublicKey),
 
     /// Could not connect to bitcoin-core with a zeromq subscription
     /// socket.

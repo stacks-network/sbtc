@@ -51,7 +51,8 @@ pub struct TestSweepSetup {
     /// public keys, allowing us to abstract away the fact that there are
     /// many signers needed to sign a transaction.
     pub aggregated_signer: Recipient,
-    /// The public keys of the signer set. It is effectively controlled by the above signer's private key.
+    /// The public keys of the signer set. It is effectively controlled by
+    /// the above signer's private key.
     pub signer_keys: Vec<PublicKey>,
     /// The block hash of the bitcoin block that confirmed the sweep
     /// transaction.
@@ -66,6 +67,12 @@ pub struct TestSweepSetup {
     pub withdrawal_request: utxo::WithdrawalRequest,
     /// The address that initiated with withdrawal request.
     pub withdrawal_sender: PrincipalData,
+    /// This value affects whether a request is considered "accepted".
+    /// During validation, a signer won't sign a transaction if it is not
+    /// considered accepted but the collection of signers. Note that this
+    /// threshold is the bitcoin signature threshold, which for v1 matches
+    /// the signatures required on stacks.
+    pub signatures_required: u16,
 }
 
 impl TestSweepSetup {
@@ -177,6 +184,7 @@ impl TestSweepSetup {
             aggregated_signer: signer,
             withdrawal_request: requests.withdrawals.pop().unwrap(),
             withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
+            signatures_required: 2,
         }
     }
 
@@ -333,8 +341,19 @@ impl TestSweepSetup {
             public_shares: Vec::new(),
             aggregate_key,
             signer_set_public_keys: self.signer_keys.clone(),
+            signature_share_threshold: self.signatures_required,
         };
         db.write_encrypted_dkg_shares(&shares).await.unwrap();
+    }
+
+    // This is all normal happy path things that need to happen in order to
+    // pass validation of a stacks transaction.
+    pub async fn store_happy_path_data(&self, db: &PgStore) {
+        self.store_deposit_tx(&db).await;
+        self.store_sweep_tx(&db).await;
+        self.store_dkg_shares(&db).await;
+        self.store_deposit_request(&db).await;
+        self.store_deposit_decisions(&db).await;
     }
 }
 

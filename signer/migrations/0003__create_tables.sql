@@ -88,6 +88,7 @@ CREATE TABLE sbtc_signer.dkg_shares (
     public_shares BYTEA NOT NULL,
     script_pubkey BYTEA NOT NULL,
     signer_set_public_keys BYTEA[] NOT NULL,
+    signature_share_threshold INTEGER NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 

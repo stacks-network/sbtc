@@ -231,6 +231,7 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         tweaked_aggregate_key: group_key.signers_tweaked_pubkey().unwrap(),
         script_pubkey: group_key.signers_script_pubkey().into(),
         signer_set_public_keys: vec![fake::Faker.fake_with_rng(rng)],
+        signature_share_threshold: 1,
     }
 }
 
@@ -379,6 +380,7 @@ impl fake::Dummy<SignerSetConfig> for EncryptedDkgShares {
             encrypted_private_shares: Vec::new(),
             public_shares: Vec::new(),
             signer_set_public_keys,
+            signature_share_threshold: config.signatures_required,
         }
     }
 }

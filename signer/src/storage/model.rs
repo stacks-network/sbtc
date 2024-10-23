@@ -349,6 +349,14 @@ pub struct EncryptedDkgShares {
     pub public_shares: Bytes,
     /// The set of public keys that were a party to the DKG.
     pub signer_set_public_keys: Vec<PublicKey>,
+    /// The threshold number of signature shares required to generate a
+    /// Schnorr signature.
+    ///
+    /// In WSTS each signer may contribute a fixed portion of a single
+    /// signature. This value specifies the total number of portions
+    /// (shares) that are needed in order to construct a signature.
+    #[sqlx(try_from = "i32")]
+    pub signature_share_threshold: u16,
 }
 
 /// Persisted public DKG shares from other signers
@@ -574,6 +582,12 @@ impl From<BitcoinBlockHash> for bitcoin::BlockHash {
 impl From<[u8; 32]> for BitcoinBlockHash {
     fn from(bytes: [u8; 32]) -> Self {
         Self(bitcoin::BlockHash::from_byte_array(bytes))
+    }
+}
+
+impl std::fmt::Display for BitcoinBlockHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 

@@ -156,6 +156,7 @@ async fn process_complete_deposit() {
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
     setup.store_deposit_tx(&db).await;
     setup.store_sweep_tx(&db).await;
+    setup.store_dkg_shares(&db).await;
     setup.store_deposit_request(&db).await;
     setup.store_deposit_decisions(&db).await;
 
