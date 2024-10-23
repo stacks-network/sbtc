@@ -85,7 +85,7 @@ subscribe_interval = 10
 # The RPC URL(s) of the Stacks node(s) to connect to. At least one must be
 # provided. If multiple nodes are provided they will be tried in order when
 # making requests.
-endpoints = ["http://stacks:20443"]
+endpoints = ["http://stacks-node:20443"]
 
 # This is the start height of the first EPOCH 3.0 block on the stacks
 # blockchain.
