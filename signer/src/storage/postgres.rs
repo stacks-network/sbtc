@@ -1405,7 +1405,7 @@ impl super::DbWrite for PgStore {
         .bind(i64::try_from(deposit_request.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(deposit_request.max_fee).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(deposit_request.lock_time).map_err(Error::ConversionDatabaseInt)?)
-        .bind(&deposit_request.signer_public_key)
+        .bind(deposit_request.signer_public_key)
         .bind(&deposit_request.sender_script_pub_keys)
         .execute(&self.0)
         .await
