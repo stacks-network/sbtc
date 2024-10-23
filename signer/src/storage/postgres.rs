@@ -526,6 +526,8 @@ impl super::DbRead for PgStore {
               , deposit_requests.recipient
               , deposit_requests.amount
               , deposit_requests.max_fee
+              , deposit_requests.lock_time
+              , deposit_requests.signer_public_key
               , deposit_requests.sender_script_pub_keys
             FROM transactions_in_window transactions
             JOIN sbtc_signer.deposit_requests deposit_requests ON
@@ -583,6 +585,8 @@ impl super::DbRead for PgStore {
               , deposit_requests.recipient
               , deposit_requests.amount
               , deposit_requests.max_fee
+              , deposit_requests.lock_time
+              , deposit_requests.signer_public_key
               , deposit_requests.sender_script_pub_keys
             FROM transactions_in_window transactions
             JOIN sbtc_signer.deposit_requests deposit_requests USING(txid)
@@ -692,6 +696,8 @@ impl super::DbRead for PgStore {
               , requests.recipient
               , requests.amount
               , requests.max_fee
+              , requests.lock_time
+              , requests.signer_public_key
               , requests.sender_script_pub_keys
             FROM sbtc_signer.deposit_requests requests
                  JOIN sbtc_signer.deposit_signers signers
@@ -1384,9 +1390,11 @@ impl super::DbWrite for PgStore {
               , recipient
               , amount
               , max_fee
+              , lock_time
+              , signer_public_key
               , sender_script_pub_keys
               )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT DO NOTHING",
         )
         .bind(deposit_request.txid)
@@ -1396,6 +1404,8 @@ impl super::DbWrite for PgStore {
         .bind(&deposit_request.recipient)
         .bind(i64::try_from(deposit_request.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(deposit_request.max_fee).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(deposit_request.lock_time).map_err(Error::ConversionDatabaseInt)?)
+        .bind(&deposit_request.signer_public_key)
         .bind(&deposit_request.sender_script_pub_keys)
         .execute(&self.0)
         .await
