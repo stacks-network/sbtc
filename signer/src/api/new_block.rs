@@ -259,7 +259,7 @@ mod tests {
             .iter()
             .all(|x| x.contract_identifier == fishy_identifier));
 
-        // // Set up the mock expectation for set_chainstate
+        // Set up the mock expectation for set_chainstate
         let chainstate = Chainstate::new(
             new_block_event.index_block_hash.to_string(),
             new_block_event.block_height,
