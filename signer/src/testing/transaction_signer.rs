@@ -185,6 +185,16 @@ where
         let test_data = self.generate_test_data(&mut rng, signer_set);
         Self::write_test_data(&handle.context.get_storage_mut(), &test_data).await;
 
+        let group_key = PublicKey::combine_keys(signer_set).unwrap();
+        store_dummy_dkg_shares(
+            &mut rng,
+            &coordinator_signer_info.signer_private_key.to_bytes(),
+            &handle.context.get_storage_mut(),
+            group_key,
+            signer_set.clone(),
+        )
+        .await;
+
         handle
             .context
             .signal(SignerSignal::Event(SignerEvent::BitcoinBlockObserved))
@@ -343,6 +353,16 @@ where
         let test_data = self.generate_test_data(&mut rng, signer_set);
         for handle in event_loop_handles.iter_mut() {
             test_data.write_to(&handle.context.get_storage_mut()).await;
+
+            let group_key = PublicKey::combine_keys(signer_set).unwrap();
+            store_dummy_dkg_shares(
+                &mut rng,
+                &handle.context.config().signer.private_key.to_bytes(),
+                &handle.context.get_storage_mut(),
+                group_key,
+                signer_set.clone(),
+            )
+            .await;
         }
 
         // For each signer, send a signal to simulate the observation of a new block.
