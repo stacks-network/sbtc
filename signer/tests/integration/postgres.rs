@@ -1421,16 +1421,19 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     // can rely on that fact.
     setup.store_deposit_tx(&db).await;
 
+    // The request needs to be added to the database. This stores
+    // `setup.deposit_request` into the database.
+    setup.store_deposit_request(&db).await;
+
+    // TODO: Create the initial transaction package without the withdrawal
+    setup.store_withdrawal_request(&db).await;
+
     // Store outstanding sweep transaction packages in the database.
     setup.store_transaction_packages(&db).await;
 
     // We take the sweep transaction as is from the test setup and
     // store it in the database.
     setup.store_sweep_tx(&db).await;
-
-    // Lastly, the request needs to be added to the database. This stores
-    // `setup.deposit_request` into the database.
-    setup.store_deposit_request(&db).await;
 
     let chain_tip = setup.sweep_block_hash.into();
     let context_window = 20;
@@ -1446,15 +1449,25 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
 
     // Its details should match that of the deposit request.
     let swept_deposit = swept_deposits.pop().unwrap();
-    let deposit_request = db.get_deposit_request(&swept_deposit.txid, swept_deposit.output_index)
+    let deposit_request = db
+        .get_deposit_request(&swept_deposit.txid, swept_deposit.output_index)
         .await
         .unwrap()
         .unwrap();
     assert_eq!(deposit_request.amount, setup.deposit_request.amount);
-    assert_eq!(deposit_request.txid, setup.deposit_request.outpoint.txid.into());
-    assert_eq!(deposit_request.output_index, setup.deposit_request.outpoint.vout);
+    assert_eq!(
+        deposit_request.txid,
+        setup.deposit_request.outpoint.txid.into()
+    );
+    assert_eq!(
+        deposit_request.output_index,
+        setup.deposit_request.outpoint.vout
+    );
     assert_eq!(deposit_request.recipient, setup.deposit_recipient.into());
-    assert_eq!(swept_deposit.sweep_block_hash, setup.sweep_block_hash.into());
+    assert_eq!(
+        swept_deposit.sweep_block_hash,
+        setup.sweep_block_hash.into()
+    );
     //assert_eq!(req.sweep_block_height, setup.sweep_block_height);
     assert_eq!(swept_deposit.sweep_txid, setup.sweep_tx_info.txid.into());
     //assert_eq!(swept_deposit.sweep_tx, setup.sweep_tx_info.tx.into());

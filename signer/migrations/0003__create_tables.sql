@@ -186,7 +186,7 @@ CREATE TABLE sbtc_signer.transaction_packages (
     -- The Bitcoin block hash at which this package was created.
     created_at_block_hash BYTEA NOT NULL,
     -- The Bitcoin market fee rate at the time this package was created.
-    market_fee_rate NUMERIC(8,2) NOT NULL,
+    market_fee_rate DOUBLE PRECISION NOT NULL,
     -- Timestamp of when this package was created.
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );

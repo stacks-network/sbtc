@@ -294,20 +294,12 @@ where
         // Construct the transaction package and store it in the database.
         let transaction_package = pending_requests.construct_transactions()?;
 
-        // We want to know the current market-fee-rate for Bitcoin for historical
-        // reasons when we persist the transaction package.
-        let market_fee_rate = self
-            .context
-            .get_bitcoin_client()
-            .estimate_fee_rate()
-            .await?;
-
         // Persist the transaction package in the database.
         transaction_package
             .store(
                 self.context.get_storage_mut(),
                 bitcoin_chain_tip,
-                market_fee_rate,
+                pending_requests.signer_state.fee_rate,
             )
             .await?;
 
@@ -1065,6 +1057,9 @@ mod tests {
         }
     }
 
+    // TODO: This now calls bitcoin_client.estimate_fee_rate() twice in order
+    // to store it on the transaction package. Can we get around it in a clean
+    // way?
     #[tokio::test]
     async fn should_be_able_to_coordinate_signing_rounds() {
         test_environment()

@@ -17,15 +17,15 @@ use crate::keys::PublicKey;
 
 /// Represents an entire transaction package that has been broadcast to the
 /// Bitcoin network.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct SbtcTransactionPackage {
     /// The Bitcoin block hash at which this transaction package was broadcast.
     pub created_at_block_hash: BitcoinBlockHash,
     /// The market fee rate at the time of creation of this transaction package.
-    #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
-    pub market_fee_rate: u64,
+    //#[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(default))]
+    pub market_fee_rate: f64,
     /// The transactions which were submitted together as part of this
     /// transaction package.
     #[sqlx(skip)]
@@ -37,12 +37,12 @@ impl SbtcTransactionPackage {
     /// [UnsignedTransaction](`crate::bitcoin::utxo::UnsignedTransaction`)s.
     pub fn from_package<'a, 'b>(
         chain_tip: bitcoin::BlockHash,
-        market_fee_rate: u64,
+        market_fee_rate: f64,
         transactions: &'a [crate::bitcoin::utxo::UnsignedTransaction<'b>],
     ) -> SbtcTransactionPackage {
         let mut package = SbtcTransactionPackage {
             created_at_block_hash: chain_tip.into(),
-            market_fee_rate: market_fee_rate as u64,
+            market_fee_rate,
             transactions: Vec::new(),
         };
 

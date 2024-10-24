@@ -398,7 +398,7 @@ impl TransactionPackageExt for Vec<crate::bitcoin::utxo::UnsignedTransaction<'_>
         chain_tip: &bitcoin::BlockHash,
         market_fee_rate: f64,
     ) -> Result<(), Error> {
-        let pkg = SbtcTransactionPackage::from_package(*chain_tip, market_fee_rate as u64, self);
+        let pkg = SbtcTransactionPackage::from_package(*chain_tip, market_fee_rate, self);
 
         db.write_bitcoin_transaction_package(pkg).await.map(|_| ())
     }

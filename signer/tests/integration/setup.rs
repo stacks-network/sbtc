@@ -142,7 +142,10 @@ impl TestSweepSetup {
             let mut transactions = requests.construct_transactions().unwrap();
             // Create the transaction package that we will store.
             let package = SbtcTransactionPackage::from_package(
-                deposit_block_hash, requests.signer_state.fee_rate as u64, &transactions);
+                deposit_block_hash,
+                requests.signer_state.fee_rate,
+                &transactions,
+            );
             assert_eq!(transactions.len(), 1);
             let mut unsigned = transactions.pop().unwrap();
 
@@ -201,7 +204,9 @@ impl TestSweepSetup {
     // Store all pending transaction packages to the database.
     pub async fn store_transaction_packages(&mut self, db: &PgStore) {
         for package in self.transaction_packages.drain(..) {
-            db.write_bitcoin_transaction_package(package.clone()).await.unwrap();
+            db.write_bitcoin_transaction_package(package.clone())
+                .await
+                .unwrap();
         }
     }
 
