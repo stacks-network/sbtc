@@ -35,10 +35,10 @@ pub struct SweepTransactionPackage {
 impl SweepTransactionPackage {
     /// Create a new [`SbtcTransactionPackage`] from a vector of
     /// [UnsignedTransaction](`crate::bitcoin::utxo::UnsignedTransaction`)s.
-    pub fn from_package<'a, 'b>(
+    pub fn from_package(
         chain_tip: bitcoin::BlockHash,
         market_fee_rate: f64,
-        transactions: &'a [crate::bitcoin::utxo::UnsignedTransaction<'b>],
+        transactions: &[crate::bitcoin::utxo::UnsignedTransaction],
     ) -> SweepTransactionPackage {
         let mut package = SweepTransactionPackage {
             created_at_block_hash: chain_tip.into(),
@@ -74,7 +74,7 @@ impl SweepTransactionPackage {
                         packaged_tx.swept_withdrawals.push(SweptWithdrawal {
                             output_index: vout_pos,
                             withdrawal_request_id: withdrawal.request_id,
-                            withdrawal_request_block_hash: withdrawal.block_hash.into(),
+                            withdrawal_request_block_hash: withdrawal.block_hash,
                         });
                     }
                 }

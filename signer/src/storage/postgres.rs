@@ -417,7 +417,7 @@ impl PgStore {
             WHERE id = $1;
         ",
         )
-        .bind(package_id as i64)
+        .bind(package_id)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -442,7 +442,7 @@ impl PgStore {
                 sweep_package_id = $1;
         ",
         )
-        .bind(package_id as i64)
+        .bind(package_id)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -467,7 +467,7 @@ impl PgStore {
                     sweep_transaction_id = $1;
             ",
             )
-            .bind(transaction_id as i64)
+            .bind(transaction_id)
             .fetch_all(&self.0)
             .await
             .map_err(Error::SqlxQuery)?;
@@ -484,7 +484,7 @@ impl PgStore {
                     packaged_transaction_id = $1;
             ",
             )
-            .bind(transaction_id as i64)
+            .bind(transaction_id)
             .fetch_all(&self.0)
             .await
             .map_err(Error::SqlxQuery)?;
@@ -1368,7 +1368,8 @@ impl super::DbRead for PgStore {
         // - [ ] get_swept_deposit_requests_does_not_return_deposit_requests_with_responses
         // - [ ] get_swept_deposit_requests_response_tx_reorged
 
-        sqlx::query_as::<_, model::SweptDepositRequest>("
+        sqlx::query_as::<_, model::SweptDepositRequest>(
+            "
             WITH RECURSIVE canonical_bitcoin_blockchain AS (
                 SELECT
                     block_hash
@@ -1423,7 +1424,8 @@ impl super::DbRead for PgStore {
                     AND cde.output_index = deposit_req.output_index
             WHERE
                 cde.bitcoin_txid IS NULL
-        ")
+        ",
+        )
         .bind(chain_tip)
         .bind(i32::from(context_window))
         .fetch_all(&self.0)
@@ -1446,9 +1448,9 @@ impl super::DbRead for PgStore {
         //           , 1 AS depth
         //         FROM sbtc_signer.bitcoin_blocks
         //         WHERE block_hash = $1
-            
+
         //         UNION ALL
-            
+
         //         SELECT
         //             parent.block_hash
         //           , parent.parent_hash
@@ -1496,7 +1498,8 @@ impl super::DbRead for PgStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Option<SweepTransactionPackage>, Error> {
-        let id: Option<i64> = sqlx::query_scalar("
+        let id: Option<i64> = sqlx::query_scalar(
+            "
             WITH RECURSIVE bitcoin AS 
             (
                 SELECT
@@ -1522,7 +1525,7 @@ impl super::DbRead for PgStore {
               , tbc.block_hash
             FROM bitcoin AS bit
             JOIN sbtc_signer.sweep_packages AS pkg ON bit.block_hash = pkg.created_at_block_hash
-            ORDER BY tbc.depth ASC;"
+            ORDER BY tbc.depth ASC;",
         )
         .bind(chain_tip)
         .fetch_optional(&self.0)
@@ -2204,7 +2207,7 @@ impl super::DbWrite for PgStore {
             RETURNING id",
         )
         .bind(package.created_at_block_hash)
-        .bind(package.market_fee_rate as f64)
+        .bind(package.market_fee_rate)
         .fetch_one(&mut *tx)
         .await
         .map_err(Error::SqlxQuery)?;

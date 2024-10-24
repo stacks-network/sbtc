@@ -1513,8 +1513,8 @@ async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
     // includes the above deposit request. But remember that this represents a
     // sweep transaction that has been broadcast to the mempool, but not yet
     // observed in a block (we would need to also call `.store_sweep_tx()` for
-    // that). 
-    // 
+    // that).
+    //
     // Note: we need to store the withdrawal request to satisfy FK's since
     // `TestSweepSetup` includes a withdrawal in the sweep transaction by
     // default, but we don't use it.
@@ -1546,7 +1546,7 @@ async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
 /// satisfy that criteria, because it does not check that the `complete-deposit`
 /// contract call is on the Stacks blockchain that is associated with the
 /// canonical bitcoin blockchain.
-/// 
+///
 /// TODO: Activate after #559 is completed and the query is updated.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
@@ -1611,7 +1611,7 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
 /// function return requests where we have already confirmed a
 /// `complete-deposit` contract call transaction on the Stacks blockchain
 /// but that transaction has been reorged while the sweep transaction has not.
-/// 
+///
 /// TODO: after #559 is completed and the query is updated.
 #[ignore = "Query does not check for transactions on canonical Stacks blockchain"]
 #[tokio::test]
