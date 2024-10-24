@@ -74,13 +74,13 @@ pub trait DbRead {
 
     /// This query does the following checks for the deposit request
     /// identified by the txid and output index:
-    /// 
+    ///
     /// 1. Check that the current signer accepted by the deposit request.
     /// 2. Check that this signer can contribute a share of the final
     ///    signature.
     /// 3. Check that the deposit transaction is in a block on the bitcoin
     ///    blockchain identified by the following chain tip.
-    /// 
+    ///
     /// Note that when this signer checked whether it would accept the
     /// deposit, it included a check for whether it was part of the signing
     /// set associated with the x-only public key locking the deposit. So

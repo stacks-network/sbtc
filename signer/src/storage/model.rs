@@ -137,6 +137,38 @@ pub struct DepositSigner {
     pub is_accepted: bool,
 }
 
+///
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DepositRequestStatus {
+    /// We have no record of the deposit request.
+    NoRecord,
+    /// We have a record of the deposit request and it has been confirmed
+    /// on the canonical bitcoin blockchain.
+    Confirmed,
+    /// We have a record of the deposit request and it has not been
+    /// confirmed on the canonical bitcoin blockchain.
+    Unconfirmed,
+}
+
+///
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct DepositRequestReport {
+    /// Whether this signer has a record of the deposit request.
+    pub status: DepositRequestStatus,
+    /// Whether this signer was part of the signing set the locked the
+    /// deposit funds. If the signer is not part of the signing set, then
+    /// we do not do a check of whether we will accept it otherwise.
+    ///
+    /// This is None if we do not have a record of our own vote. This
+    /// should only be None if we do not have a record of our own vote for
+    /// the deposit request.
+    pub can_sign: Option<bool>,
+    /// Whether this signer accepted the deposit request or not. This
+    /// should only be None if we do not have a record of our own vote for
+    /// the deposit request.
+    pub is_accepted: Option<bool>,
+}
+
 /// Withdraw request.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
@@ -477,7 +509,7 @@ pub struct QualifiedRequestId {
 }
 
 /// A bitcoin transaction
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct BitcoinTx(bitcoin::Transaction);
 
 impl Deref for BitcoinTx {
