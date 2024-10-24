@@ -293,26 +293,48 @@ impl super::DbRead for SharedStore {
             .collect())
     }
 
-    async fn is_accepted_pending_deposit_request(
+    async fn get_deposit_request_report(
         &self,
-        _: &model::BitcoinBlockHash,
+        chain_tip: &model::BitcoinBlockHash,
         txid: &model::BitcoinTxId,
         output_index: u32,
         signer_public_key: &PublicKey,
-    ) -> Result<bool, Error> {
-        let store = self.lock().await;
-
-        let vote = store
-            .deposit_request_to_signers
+    ) -> Result<model::DepositRequestReport, Error> {
+        let deposit_request = self
+            .lock()
+            .await
+            .deposit_requests
             .get(&(*txid, output_index))
-            .map(|votes| {
-                votes
-                    .iter()
-                    .any(|vote| &vote.signer_pub_key == signer_public_key)
-            })
-            .unwrap_or(false);
+            .cloned();
+        if deposit_request.is_none() {
+            return Ok(model::DepositRequestReport {
+                status: model::DepositRequestConfirmationStatus::NoRecord,
+                can_sign: None,
+                is_accepted: None,
+            });
+        }
 
-        Ok(vote)
+        let pending_deposit_request = self
+            .get_pending_deposit_requests(chain_tip, 100)
+            .await?
+            .into_iter()
+            .find(|x| &x.txid == txid && x.output_index == output_index);
+        let status = if pending_deposit_request.is_none() {
+            model::DepositRequestConfirmationStatus::Unconfirmed
+        } else {
+            model::DepositRequestConfirmationStatus::Confirmed
+        };
+        let signer_vote = self
+            .get_deposit_signers(txid, output_index)
+            .await?
+            .into_iter()
+            .find(|vote| &vote.signer_pub_key == signer_public_key);
+
+        Ok(model::DepositRequestReport {
+            status,
+            can_sign: signer_vote.as_ref().map(|vote| vote.is_accepted),
+            is_accepted: signer_vote.map(|vote| vote.is_accepted),
+        })
     }
 
     async fn get_deposit_signers(

@@ -147,7 +147,7 @@ pub enum DepositRequestConfirmationStatus {
     Confirmed,
     /// We have a record of the deposit request transaction, and it has not
     /// been confirmed on the canonical bitcoin blockchain.
-    /// 
+    ///
     /// Under normal operation, we will almost certainly have a record of a
     /// deposit request, and we require that the deposit transaction be
     /// confirmed before we write it to our database. But the deposit

@@ -24,8 +24,8 @@ use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
 use crate::storage::model::TransactionType;
 
-use super::model::DepositRequestReport;
 use super::model::DepositRequestConfirmationStatus;
+use super::model::DepositRequestReport;
 use super::util::get_utxo;
 
 /// All migration scripts from the `signer/migrations` directory.
@@ -406,11 +406,11 @@ impl PgStore {
 
     /// Return the least height for which the deposit request was confirmed
     /// on a bitcoin blockchain.
-    /// 
+    ///
     /// Transactions can be confirmed more than once and this function
     /// returns the least height out of all bitcoin blocks for which the
     /// deposit has been confirmed.
-    /// 
+    ///
     /// None is returned if we do not have a record of the deposit request.
     pub async fn get_deposit_request_least_height(
         &self,
@@ -437,95 +437,6 @@ impl PgStore {
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
-    }
-
-    ///
-    pub async fn get_deposit_request_report(
-        &self,
-        chain_tip: &model::BitcoinBlockHash,
-        txid: &model::BitcoinTxId,
-        output_index: u32,
-        signer_public_key: &PublicKey,
-    ) -> Result<DepositRequestReport, Error> {
-        // We first get the lowest height for when the deposit request was
-        // confirmed. This height serves as the stopping criteria for the
-        // recursive part of the subsequent query.
-        let min_height_fut = self.get_deposit_request_least_height(txid, output_index);
-        // None is only returned if we do not have a record of the deposit
-        // request.
-        let Some(min_block_height) = min_height_fut.await? else {
-            return Ok(DepositRequestReport {
-                status: DepositRequestConfirmationStatus::NoRecord,
-                can_sign: None,
-                is_accepted: None,
-            });
-        };
-        // In this query we list out the blockchain as far back as is
-        // necessary; if the deposit request is on the blockchain
-        // identified by the given chain tip, it will be in one of the
-        // listed block hashes. We then check if this signer accepted the
-        // deposit request, and whether it was confirmed on the blockchain
-        // that we just listed out.
-        // 
-        // Note that because of the above query and early exit, we know
-        // that we have a record of the deposit request, so this query will
-        // return exactly one row.
-        let (is_accepted, can_sign, is_confirmed) =
-            sqlx::query_scalar::<_, (Option<bool>, Option<bool>, bool)>(
-                r#"
-                WITH RECURSIVE block_chain AS (
-                    SELECT 
-                        block_hash
-                      , block_height
-                      , parent_hash
-                    FROM sbtc_signer.bitcoin_blocks
-                    WHERE block_hash = $1
-
-                    UNION ALL
-
-                    SELECT
-                        child.block_hash
-                      , child.block_height
-                      , child.parent_hash
-                    FROM sbtc_signer.bitcoin_blocks AS child
-                    JOIN block_chain AS parent
-                      ON child.block_hash = parent.parent_hash
-                    CROSS JOIN deposit_tx_furthest_height AS fh
-                    WHERE child.block_height >= $2
-                ),
-                SELECT
-                    ds.is_accepted
-                  , TRUE AS can_sign
-                  , bc.block_hash IS NOT NULL AS confirmed_on_chain
-                FROM sbtc_signer.deposit_requests AS dr 
-                JOIN sbtc_signer.bitcoin_transactions USING (txid)
-                JOIN sbtc_signer.bitcoin_blocks USING (block_hash)
-                LEFT JOIN block_chain AS bc USING (block_hash)
-                LEFT JOIN sbtc_signer.deposit_signers AS ds
-                  ON dr.txid = ds.txid
-                 AND dr.output_index = ds.output_index
-                 AND ds.signer_pub_key = $5
-                WHERE dr.txid = $3
-                  AND dr.output_index = $4
-                LIMIT 1
-            "#,
-            )
-            .bind(chain_tip)
-            .bind(min_block_height)
-            .bind(txid)
-            .bind(i64::from(output_index))
-            .bind(signer_public_key)
-            .fetch_one(&self.0)
-            .await
-            .map_err(Error::SqlxQuery)?;
-
-        let status = if is_confirmed {
-            DepositRequestConfirmationStatus::Confirmed
-        } else {
-            DepositRequestConfirmationStatus::Unconfirmed
-        };
-
-        Ok(DepositRequestReport { status, can_sign, is_accepted })
     }
 }
 
@@ -839,72 +750,92 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn is_accepted_pending_deposit_request(
+    async fn get_deposit_request_report(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         txid: &model::BitcoinTxId,
         output_index: u32,
         signer_public_key: &PublicKey,
-    ) -> Result<bool, Error> {
-        // In this query list out the blockchain as far back as is
-        // necessary, if it is on this blockchain it will be on one of the
+    ) -> Result<DepositRequestReport, Error> {
+        // We first get the lowest height for when the deposit request was
+        // confirmed. This height serves as the stopping criteria for the
+        // recursive part of the subsequent query.
+        let min_height_fut = self.get_deposit_request_least_height(txid, output_index);
+        // None is only returned if we do not have a record of the deposit
+        // request.
+        let Some(min_block_height) = min_height_fut.await? else {
+            return Ok(DepositRequestReport {
+                status: DepositRequestConfirmationStatus::NoRecord,
+                can_sign: None,
+                is_accepted: None,
+            });
+        };
+        // In this query we list out the blockchain as far back as is
+        // necessary; if the deposit request is on the blockchain
+        // identified by the given chain tip, it will be in one of the
         // listed block hashes. We then check if this signer accepted the
         // deposit request, and whether it was confirmed on the blockchain
         // that we just listed out.
-        sqlx::query_scalar::<_, bool>(
-            r#"
-            WITH RECURSIVE deposit_tx_furthest_height AS (
-                SELECT bb.block_height
-                FROM sbtc_signer.deposit_requests AS dr
-                JOIN sbtc_signer.bitcoin_transactions USING (txid)
-                JOIN sbtc_signer.bitcoin_blocks AS bb USING (block_hash)
-                WHERE dr.txid = $2
-                  AND dr.output_index = $3
-                ORDER BY 1 ASC
-                LIMIT 1
-            ),
-            block_chain AS (
-                SELECT 
-                    block_hash
-                  , block_height
-                  , parent_hash
-                FROM sbtc_signer.bitcoin_blocks
-                WHERE block_hash = $1
+        //
+        // Note that because of the above query and early exit, we know
+        // that we have a record of the deposit request, so this query will
+        // return exactly one row.
+        let (is_accepted, can_sign, is_confirmed) =
+            sqlx::query_scalar::<_, (Option<bool>, Option<bool>, bool)>(
+                r#"
+                WITH RECURSIVE block_chain AS (
+                    SELECT 
+                        block_hash
+                      , block_height
+                      , parent_hash
+                    FROM sbtc_signer.bitcoin_blocks
+                    WHERE block_hash = $1
 
-                UNION ALL
+                    UNION ALL
 
+                    SELECT
+                        child.block_hash
+                      , child.block_height
+                      , child.parent_hash
+                    FROM sbtc_signer.bitcoin_blocks AS child
+                    JOIN block_chain AS parent
+                      ON child.block_hash = parent.parent_hash
+                    CROSS JOIN deposit_tx_furthest_height AS fh
+                    WHERE child.block_height >= $2
+                ),
                 SELECT
-                    child.block_hash
-                  , child.block_height
-                  , child.parent_hash
-                FROM sbtc_signer.bitcoin_blocks AS child
-                JOIN tx_block_chain AS parent
-                  ON child.block_hash = parent.parent_hash
-                CROSS JOIN deposit_tx_furthest_height AS fh
-                WHERE child.block_height >= fh.block_height
-            ),
-            SELECT
-                ds.is_accepted
-              , TRUE AS can_sign
-              , bc.block_hash IS NOT NULL AS confirmed_on_chain
-            FROM sbtc_signer.deposit_requests AS dr 
-            LEFT JOIN sbtc_signer.deposit_signers AS ds USING (txid, output_index)
-            LEFT JOIN sbtc_signer.bitcoin_transactions USING (txid)
-            LEFT JOIN sbtc_signer.bitcoin_blocks USING (block_hash)
-            LEFT JOIN block_chain AS bc USING (block_hash)
-            WHERE dr.txid = $2
-              AND dr.output_index = $3
-              AND ds.signer_pub_key = $4
-            
-        "#,
-        )
-        .bind(chain_tip)
-        .bind(txid)
-        .bind(i64::from(output_index))
-        .bind(signer_public_key)
-        .fetch_one(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)
+                    ds.is_accepted
+                  , TRUE AS can_sign
+                  , bc.block_hash IS NOT NULL AS confirmed_on_chain
+                FROM sbtc_signer.deposit_requests AS dr 
+                JOIN sbtc_signer.bitcoin_transactions USING (txid)
+                JOIN sbtc_signer.bitcoin_blocks USING (block_hash)
+                LEFT JOIN block_chain AS bc USING (block_hash)
+                LEFT JOIN sbtc_signer.deposit_signers AS ds
+                  ON dr.txid = ds.txid
+                 AND dr.output_index = ds.output_index
+                 AND ds.signer_pub_key = $5
+                WHERE dr.txid = $3
+                  AND dr.output_index = $4
+                LIMIT 1
+            "#,
+            )
+            .bind(chain_tip)
+            .bind(min_block_height)
+            .bind(txid)
+            .bind(i64::from(output_index))
+            .bind(signer_public_key)
+            .fetch_one(&self.0)
+            .await
+            .map_err(Error::SqlxQuery)?;
+
+        let status = if is_confirmed {
+            DepositRequestConfirmationStatus::Confirmed
+        } else {
+            DepositRequestConfirmationStatus::Unconfirmed
+        };
+
+        Ok(DepositRequestReport { status, can_sign, is_accepted })
     }
 
     async fn get_deposit_signers(
