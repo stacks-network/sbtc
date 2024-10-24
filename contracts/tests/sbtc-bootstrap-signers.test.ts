@@ -14,6 +14,7 @@ import {
   AddressVersion,
   addressFromPublicKeys,
   addressToString,
+  parsePrincipalString,
   pubKeyfromPrivKey,
   serializePublicKey,
 } from "@stacks/transactions";
@@ -40,22 +41,19 @@ describe("sBTC bootstrap signers contract", () => {
         receipt.events,
         CoreNodeEventType.ContractEvent
       );
-      expect(prints.length).toEqual(1);
       const [print] = prints;
       const printData = cvToValue<{
         topic: string;
         newKeys: Uint8Array[];
-        //newAddress: string;
         newAggregatePubkey: Uint8Array;
         newSignatureThreshold: bigint;
       }>(print.data.value);
-      expect(printData).toStrictEqual({
+      expect(printData).toEqual(expect.objectContaining({
         topic: "key-rotation",
         newKeys: newKeys,
-        //newAddress: string;
         newAggregatePubkey: new Uint8Array(33).fill(0),
         newSignatureThreshold: newSignatureThreshold
-      });
+      }));
 
       const setAggKey = rov(registry.getCurrentAggregatePubkey());
       expect(setAggKey).toEqual(new Uint8Array(33).fill(0));

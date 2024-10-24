@@ -267,7 +267,7 @@
     (print {
       topic: "key-rotation",
       new-keys: new-keys,
-      ;;new-address: new-address,
+      new-address: new-address,
       new-aggregate-pubkey: new-aggregate-pubkey,
       new-signature-threshold: new-signature-threshold
     })
