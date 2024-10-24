@@ -735,6 +735,38 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
+    async fn can_sign_deposit_tx(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+        signer_public_key: &PublicKey,
+    ) -> Result<Option<bool>, Error> {
+        sqlx::query_scalar::<_, bool>(
+            r#"
+            WITH x_only_public_keys AS (
+                -- These are the aggregate public keys that this signer is
+                -- a party on. We lop off the first byte because we want
+                -- x-only aggregate keys here.
+                SELECT substring(aggregate_key FROM 2) AS signers_public_key
+                FROM sbtc_signer.dkg_shares AS ds
+                WHERE $3 = ANY(signer_set_public_keys)
+            ),
+            SELECT TRUE
+            FROM sbtc_signer.deposit_requests AS dr
+            JOIN x_only_public_keys USING (signers_public_key)
+            WHERE dr.txid = $1
+              AND dr.output_index = $2
+            LIMIT 1
+            "#,
+        )
+        .bind(txid)
+        .bind(i32::try_from(output_index).map_err(Error::ConversionDatabaseInt)?)
+        .bind(signer_public_key)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
     async fn get_withdrawal_signers(
         &self,
         request_id: u64,

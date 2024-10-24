@@ -113,7 +113,7 @@ impl From<&PublicKey> for p256k1::point::Point {
         // [^2]: https://github.com/bitcoin-core/secp256k1/blob/v0.3.0/src/field.h#L78-L79
         let x_element = p256k1::field::Element::from(x_part);
         let y_element = p256k1::field::Element::from(y_part);
-        // You cannot always convert two aribtrary elements into a Point,
+        // You cannot always convert two arbitrary elements into a Point,
         // and `p256k1::point::Point::from` assumes that it is being given
         // two elements that from a point in affine coordinates. We have a
         // valid public key, so we know that this assumption is upheld.
@@ -274,6 +274,18 @@ impl From<secp256k1::XOnlyPublicKey> for PublicKeyXOnly {
     }
 }
 
+impl From<PublicKey> for PublicKeyXOnly {
+    fn from(value: PublicKey) -> Self {
+        Self(secp256k1::XOnlyPublicKey::from(value))
+    }
+}
+
+impl From<&PublicKey> for PublicKeyXOnly {
+    fn from(value: &PublicKey) -> Self {
+        Self(secp256k1::XOnlyPublicKey::from(value))
+    }
+}
+
 impl PublicKeyXOnly {
     /// Creates a public key directly from a slice.
     pub fn from_slice(data: &[u8]) -> Result<Self, Error> {
@@ -298,7 +310,7 @@ impl FromStr for PrivateKey {
     type Err = Error;
 
     /// Attempts to parse a [`PrivateKey`] from the hex representation of a
-    /// a secp256k1 private key.
+    /// secp256k1 private key.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let data = hex::decode(s).map_err(Error::DecodeHexBytes)?;
         PrivateKey::from_slice(&data)
