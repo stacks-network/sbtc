@@ -13,6 +13,10 @@ on:
         required: true
         type: boolean
         description: "False if dry running the docker image build"
+      is-latest:
+        required: false
+        type: boolean
+        description: "True if the image is the latest release"
 
 ## Define which docker arch to build for
 env:
@@ -76,12 +80,10 @@ jobs:
           images: |
             ${{ env.docker-org }}/sbtc
           tags: |
-            type=raw,value=${{ matrix.docker_target }}-latest,enable=${{ matrix.docker_target != '' && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) ) && matrix.dist == 'debian' }}
-            type=raw,value=${{ matrix.docker_target }}-${{ inputs.tag }}-${{ matrix.dist }},enable=${{ matrix.docker_target != '' && matrix.dist == 'debian'}}
-            type=raw,value=${{ matrix.docker_target }}-${{ inputs.tag }},enable=${{ matrix.docker_target != '' && matrix.dist == 'debian' }}
-            type=ref,event=tag,enable=${{ matrix.dist == 'debian' }}
-            type=raw,value=${{ matrix.docker_target }}-latest-${{ matrix.dist }},enable=${{ matrix.docker_target != '' && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) ) && matrix.dist == 'alpine' }}
-            type=raw,value=${{ matrix.docker_target }}-${{ inputs.tag }}-${{ matrix.dist }},enable=${{ matrix.docker_target != '' && matrix.dist == 'alpine' }}
+            type=raw,value=${{ matrix.docker_target }}-${{ inputs.tag }}-${{ matrix.dist }}
+            type=raw,value=${{ matrix.docker_target }}-${{ inputs.tag }},enable=${{ matrix.dist == 'debian' }}
+            type=raw,value=${{ matrix.docker_target }}-latest,enable=${{ inputs.is-latest == 'true' && matrix.dist == 'debian' }}
+            type=raw,value=${{ matrix.docker_target }}-latest-${{ matrix.dist }},enable=${{ inputs.is-latest == 'true' }}
 
       ## Build docker image for release
       - name: Build and Push ( ${{ matrix.dist }} ${{ matrix.docker_target }} )
