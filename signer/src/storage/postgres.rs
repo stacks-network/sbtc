@@ -751,9 +751,9 @@ impl super::DbRead for PgStore {
                 FROM sbtc_signer.dkg_shares AS ds
                 WHERE $3 = ANY(signer_set_public_keys)
             )
-            SELECT TRUE
+            SELECT xo.signers_public_key IS NOT NULL
             FROM sbtc_signer.deposit_requests AS dr
-            JOIN x_only_public_keys USING (signers_public_key)
+            LEFT JOIN x_only_public_keys AS xo USING (signers_public_key)
             WHERE dr.txid = $1
               AND dr.output_index = $2
             LIMIT 1

@@ -1582,6 +1582,54 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
     signer::testing::storage::drop_db(db).await;
 }
 
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn can_sign_deposit_tx_rejects_not_in_signer_set() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    let signer_set_public_keys = std::iter::repeat_with(|| fake::Faker.fake_with_rng(&mut rng))
+        .take(3)
+        .collect::<Vec<PublicKey>>();
+    let aggregate_key: PublicKey = fake::Faker.fake_with_rng(&mut rng);
+
+    let mut req: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
+    req.signers_public_key = aggregate_key.into();
+
+    db.write_deposit_request(&req).await.unwrap();
+
+    let mut shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    shares.aggregate_key = aggregate_key;
+    shares.signer_set_public_keys = signer_set_public_keys;
+
+    db.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+    for signer_public_key in shares.signer_set_public_keys.iter() {
+        let can_sign = db
+            .can_sign_deposit_tx(&req.txid, req.output_index, signer_public_key)
+            .await
+            .unwrap();
+
+        assert_eq!(can_sign, Some(true));
+    }
+
+    let not_in_signing_set: PublicKey = fake::Faker.fake_with_rng(&mut rng);
+    let can_sign = db
+        .can_sign_deposit_tx(&req.txid, req.output_index, &not_in_signing_set)
+        .await
+        .unwrap();
+    assert_eq!(can_sign, Some(false));
+
+    let random_txid = fake::Faker.fake_with_rng(&mut rng);
+    let signer_public_key = shares.signer_set_public_keys.first().unwrap();
+    let can_sign = db
+        .can_sign_deposit_tx(&random_txid, req.output_index, signer_public_key)
+        .await
+        .unwrap();
+    assert_eq!(can_sign, None);
+}
+
 /// This function tests that [`DbRead::get_swept_deposit_requests`]
 /// function return requests where we have already confirmed a
 /// `complete-deposit` contract call transaction on the Stacks blockchain
