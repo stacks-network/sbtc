@@ -648,7 +648,7 @@ where
     ///    transaction.
     /// 2. Check if we are a part of the signing set associated with the
     ///    public key locking the funds.
-    /// 
+    ///
     /// If the block list client is not configured then the first check
     /// always passes.
     #[tracing::instrument(skip(self))]
