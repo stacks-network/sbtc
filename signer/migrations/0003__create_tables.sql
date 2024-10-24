@@ -37,7 +37,8 @@ CREATE TABLE sbtc_signer.deposit_requests (
     signers_public_key BYTEA NOT NULL,
     sender_script_pub_keys BYTEA[] NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    PRIMARY KEY (txid, output_index)
+    PRIMARY KEY (txid, output_index),
+    FOREIGN KEY (txid) REFERENCES sbtc_signer.bitcoin_transactions(txid) ON DELETE CASCADE
 );
 
 CREATE TABLE sbtc_signer.deposit_signers (
