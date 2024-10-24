@@ -24,6 +24,30 @@ CREATE TABLE sbtc_signer.stacks_blocks (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
+CREATE TABLE sbtc_signer.transactions (
+    txid BYTEA PRIMARY KEY,
+    tx BYTEA NOT NULL,
+    tx_type sbtc_signer.transaction_type NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE TABLE sbtc_signer.bitcoin_transactions (
+    txid BYTEA NOT NULL,
+    block_hash BYTEA NOT NULL,
+    PRIMARY KEY (txid, block_hash),
+    FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE,
+    FOREIGN KEY (block_hash) REFERENCES sbtc_signer.bitcoin_blocks(block_hash) ON DELETE CASCADE
+);
+
+
+CREATE TABLE sbtc_signer.stacks_transactions (
+    txid BYTEA NOT NULL,
+    block_hash BYTEA NOT NULL,
+    PRIMARY KEY (txid, block_hash),
+    FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE,
+    FOREIGN KEY (block_hash) REFERENCES sbtc_signer.stacks_blocks(block_hash) ON DELETE CASCADE
+);
+
 CREATE TABLE sbtc_signer.deposit_requests (
     txid BYTEA NOT NULL,
     output_index INTEGER NOT NULL,
@@ -38,7 +62,7 @@ CREATE TABLE sbtc_signer.deposit_requests (
     sender_script_pub_keys BYTEA[] NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY (txid, output_index),
-    FOREIGN KEY (txid) REFERENCES sbtc_signer.bitcoin_transactions(txid) ON DELETE CASCADE
+    FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE
 );
 
 CREATE TABLE sbtc_signer.deposit_signers (
@@ -78,13 +102,6 @@ CREATE TABLE sbtc_signer.withdrawal_signers (
     FOREIGN KEY (request_id, block_hash) REFERENCES sbtc_signer.withdrawal_requests(request_id, block_hash) ON DELETE CASCADE
 );
 
-CREATE TABLE sbtc_signer.transactions (
-    txid BYTEA PRIMARY KEY,
-    tx BYTEA NOT NULL,
-    tx_type sbtc_signer.transaction_type NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
-);
-
 CREATE TABLE sbtc_signer.dkg_shares (
     aggregate_key BYTEA PRIMARY KEY,
     tweaked_aggregate_key BYTEA NOT NULL,
@@ -103,22 +120,6 @@ CREATE TABLE sbtc_signer.coordinator_broadcasts (
     market_fee_rate INTEGER NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE
-);
-
-CREATE TABLE sbtc_signer.bitcoin_transactions (
-    txid BYTEA NOT NULL,
-    block_hash BYTEA NOT NULL,
-    PRIMARY KEY (txid, block_hash),
-    FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE,
-    FOREIGN KEY (block_hash) REFERENCES sbtc_signer.bitcoin_blocks(block_hash) ON DELETE CASCADE
-);
-
-CREATE TABLE sbtc_signer.stacks_transactions (
-    txid BYTEA NOT NULL,
-    block_hash BYTEA NOT NULL,
-    PRIMARY KEY (txid, block_hash),
-    FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE,
-    FOREIGN KEY (block_hash) REFERENCES sbtc_signer.stacks_blocks(block_hash) ON DELETE CASCADE
 );
 
 CREATE TABLE sbtc_signer.rotate_keys_transactions (
