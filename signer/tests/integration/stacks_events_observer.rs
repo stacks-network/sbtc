@@ -276,7 +276,7 @@ async fn test_new_blocks_sends_set_chainstate_to_emily_skip_messages() {
     assert_eq!(resp.stacks_block_height, event_1.block_height);
     assert_eq!(resp.stacks_block_hash, event_1.index_block_hash_hex);
 
-    // Now send 2rd block, tip should change
+    // Now send 2nd block, tip should change
     let status_code = new_block_handler(state.clone(), skipped_event.to_payload()).await;
     assert_eq!(status_code, StatusCode::OK);
 
