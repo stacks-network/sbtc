@@ -750,7 +750,7 @@ impl super::DbRead for PgStore {
                 SELECT substring(aggregate_key FROM 2) AS signers_public_key
                 FROM sbtc_signer.dkg_shares AS ds
                 WHERE $3 = ANY(signer_set_public_keys)
-            ),
+            )
             SELECT TRUE
             FROM sbtc_signer.deposit_requests AS dr
             JOIN x_only_public_keys USING (signers_public_key)
