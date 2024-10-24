@@ -120,7 +120,7 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
 
     // Propagate the new block to Emily.
     let chainstate = Chainstate::new(block_id.to_string(), new_block_event.block_height);
-    if let Err(result) = api.ctx.get_emily_client().set_chainstate(&chainstate).await {
+    if let Err(result) = api.ctx.get_emily_client().set_chainstate(chainstate).await {
         tracing::warn!(%result, "Failed to set chainstate in emily");
     }
 

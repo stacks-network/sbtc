@@ -67,7 +67,7 @@ pub trait EmilyInteract: Sync + Send {
     /// Set the chainstate in Emily. This could trigger a reorg.
     fn set_chainstate(
         &self,
-        chainstate_entry: &Chainstate,
+        chainstate_entry: Chainstate,
     ) -> impl std::future::Future<Output = Result<Chainstate, Error>> + Send;
 }
 
@@ -138,8 +138,8 @@ impl EmilyInteract for EmilyClient {
             .collect()
     }
 
-    async fn set_chainstate(&self, chainstate: &Chainstate) -> Result<Chainstate, Error> {
-        chainstate_api::set_chainstate(&self.config, chainstate.clone())
+    async fn set_chainstate(&self, chainstate: Chainstate) -> Result<Chainstate, Error> {
+        chainstate_api::set_chainstate(&self.config, chainstate)
             .await
             .map_err(EmilyClientError::AddChainstateEntry)
             .map_err(Error::EmilyApi)
@@ -196,8 +196,8 @@ impl EmilyInteract for ApiFallbackClient<EmilyClient> {
             .await
     }
 
-    async fn set_chainstate(&self, chainstate: &Chainstate) -> Result<Chainstate, Error> {
-        self.exec(move |client, _| client.set_chainstate(chainstate))
+    async fn set_chainstate(&self, chainstate: Chainstate) -> Result<Chainstate, Error> {
+        self.exec(|client, _| client.set_chainstate(chainstate.clone()))
             .await
     }
 }

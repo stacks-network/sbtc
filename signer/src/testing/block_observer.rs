@@ -19,9 +19,9 @@ use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use clarity::vm::costs::ExecutionCost;
+use emily_client::models::Chainstate;
 use rand::seq::IteratorRandom;
 use sbtc::deposits::CreateDepositRequest;
-use emily_client::models::Chainstate;
 
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::rpc::GetTxResponse;
@@ -356,8 +356,8 @@ impl EmilyInteract for TestHarness {
         unimplemented!()
     }
 
-    async fn set_chainstate(&self, chainstate: &Chainstate) -> Result<Chainstate, Error> {
-        Ok(chainstate.clone())
+    async fn set_chainstate(&self, chainstate: Chainstate) -> Result<Chainstate, Error> {
+        Ok(chainstate)
     }
 }
 

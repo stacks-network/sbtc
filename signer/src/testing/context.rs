@@ -359,7 +359,10 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
             .await
     }
 
-    async fn set_chainstate(&self, chainstate: &emily_client::models::Chainstate) -> Result<emily_client::models::Chainstate, Error> {
+    async fn set_chainstate(
+        &self,
+        chainstate: emily_client::models::Chainstate,
+    ) -> Result<emily_client::models::Chainstate, Error> {
         self.inner.lock().await.set_chainstate(chainstate).await
     }
 }
