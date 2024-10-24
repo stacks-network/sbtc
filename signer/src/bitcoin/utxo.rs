@@ -32,6 +32,7 @@ use crate::bitcoin::packaging::Weighted;
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::context::Context;
 use crate::error::Error;
+use crate::keys::PublicKey;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
 use crate::storage::model::BitcoinBlockRef;
@@ -1051,6 +1052,11 @@ pub struct BtcContext {
     pub context_window: u16,
     /// The requests
     pub request_ids: Vec<QualifiedRequestId>,
+    /// The public key of the signer that created the deposit request
+    /// transaction. This is very unlikely to ever be used in the
+    /// [`BitcoinTx::validate`] function, but is here for logging and
+    /// tracking purposes.
+    pub origin: PublicKey,
 }
 
 impl BitcoinTx {
@@ -1097,6 +1103,50 @@ impl BitcoinTx {
     {
         Ok(())
     }
+}
+
+/// The responses for validation of a sweep transaction on bitcoin.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum BitcoinSweepErrorMsg {
+    /// The signer does not have a record of the deposit request in our
+    /// database.
+    #[error("the signer does not have a record of the deposit request")]
+    UnknownDepositRequest,
+    /// The signer has rejected the deposit request.
+    #[error("the signer has not accepted the deposit request")]
+    RejectedDepositRequest,
+    /// The signer is not part of the signer set that generated the
+    /// aggregate public key used to lock the deposit funds.
+    #[error("the signer is not part of the signing set for the aggregate public key")]
+    CannotSignDepositRequest,
+    /// The deposit transaction has been been confirmed on a bitcoin block
+    /// that is not part of the canonical bitcoin blockchain.
+    #[error("deposit transaction not on canonical bitcoin blockchain")]
+    DepositTxReorged,
+    /// The signers' UTXO is not locked with the latest aggregate public
+    /// key.
+    #[error("signers' UTXO locked with incorrect scriptPubKey")]
+    InvalidSignerUtxo,
+    /// The OP_RETURN UTXO must have an amount of zero and include the
+    /// expected signer bitmap, and merkle tree.
+    #[error("signers' OP_RETRUN output does not match what is expected")]
+    InvalidOpReturnOutput,
+    /// The fee paid to bitcoin miners is 10 times higher than we would
+    /// have paid.
+    #[error("the tx fee is more than 10 times the expected fee")]
+    FeeTooHigh,
+    /// The fee paid to bitcoin miners is less than 1 sat per vByte.
+    #[error("the tx fee is less than 1 SAT per vByte")]
+    FeeTooLow,
+    /// One of the output amounts does not match the amount in the withdrawal request.
+    #[error("the amount in the withdrawal request does not match the amount in our records")]
+    IncorrectWithdrawalAmount,
+    /// One of the output amounts does not match the amount in the withdrawal request.
+    #[error("the signer does not have a recored of the withdrawal request")]
+    UnknownWithdrawalRequest,
+    /// One of the output amounts does not match the amount in the withdrawal request.
+    #[error("the scriptPubKey for a withdrawal UTXO does not match the one in our records")]
+    IncorrectWithdrawalRecipient,
 }
 
 #[cfg(test)]
