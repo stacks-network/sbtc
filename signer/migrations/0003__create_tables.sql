@@ -16,6 +16,8 @@ CREATE TABLE sbtc_signer.bitcoin_blocks (
     confirms BYTEA[] NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
+-- Index to serve queries filtering on `parent_hash`. This is commonly used when
+-- "walking" the chain in recursive CTE's.
 CREATE INDEX ix_bitcoin_blocks_parent_hash ON sbtc_signer.bitcoin_blocks(parent_hash);
 
 CREATE TABLE sbtc_signer.stacks_blocks (
@@ -47,6 +49,7 @@ CREATE TABLE sbtc_signer.deposit_signers (
     PRIMARY KEY (txid, output_index, signer_pub_key),
     FOREIGN KEY (txid, output_index) REFERENCES sbtc_signer.deposit_requests(txid, output_index) ON DELETE CASCADE
 );
+-- Index to serve queries filtering on `signer_pub_key`.
 CREATE INDEX ix_deposit_signers_signer_pub_key ON sbtc_signer.deposit_signers(signer_pub_key);
 
 CREATE TABLE sbtc_signer.withdrawal_requests (
@@ -79,6 +82,7 @@ CREATE TABLE sbtc_signer.transactions (
     tx_type sbtc_signer.transaction_type NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
+-- Index to serve queries filtering on `tx_type`.
 CREATE INDEX ix_transactions_tx_type ON sbtc_signer.transactions(tx_type);
 
 CREATE TABLE sbtc_signer.dkg_shares (
@@ -98,6 +102,8 @@ CREATE TABLE sbtc_signer.bitcoin_transactions (
     FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE,
     FOREIGN KEY (block_hash) REFERENCES sbtc_signer.bitcoin_blocks(block_hash) ON DELETE CASCADE
 );
+-- Index to serve queries which select transactions soley on `block_hash`. The
+-- PK won't help here as it is a compound key where `block_hash` is a 2nd level.
 CREATE INDEX ix_bitcoin_transactions_block_hash ON sbtc_signer.bitcoin_transactions(block_hash);
 
 CREATE TABLE sbtc_signer.stacks_transactions (
@@ -222,10 +228,18 @@ CREATE TABLE sbtc_signer.packaged_transactions (
 -- here to reference the withdrawal request, which can be retrieved from
 -- the `withdrawal_requests` table.
 CREATE TABLE sbtc_signer.swept_withdrawals (
+    -- Internal ID of the swept withdrawal.
     id BIGSERIAL PRIMARY KEY,
+    -- References the `packaged_transaction` in which this withdrawal was
+    -- included.
     packaged_transaction_id INTEGER NOT NULL,
+    -- The index of the sweep output in the packaged transaction.
     output_index INTEGER NOT NULL,
+    -- The ID of the withdrawal request, referencing the `withdrawal_requests`
+    -- table.
     withdrawal_request_id BIGINT NOT NULL,
+    -- The block hash of the withdrawal request, referencing the
+    -- `withdrawal_requests` table.
     withdrawal_request_block_hash BYTEA NOT NULL,
 
     FOREIGN KEY (packaged_transaction_id) 
@@ -234,8 +248,9 @@ CREATE TABLE sbtc_signer.swept_withdrawals (
     FOREIGN KEY (withdrawal_request_id, withdrawal_request_block_hash) 
         REFERENCES sbtc_signer.withdrawal_requests(request_id, block_hash)
 );
--- Our main index which will cover searches by 'withdrawal_request_id' and 'withdrawal_request_block_hash'
--- while also restricting the combination to be unique per 'packaged_transaction_id'.
+-- Our main index which will cover searches by 'withdrawal_request_id' and
+-- 'withdrawal_request_block_hash' while also restricting the combination to be
+-- unique per 'packaged_transaction_id'.
 CREATE UNIQUE INDEX uix_swept_req_id_req_block_hash_pkgd_txid 
     ON sbtc_signer.swept_withdrawals(withdrawal_request_id, withdrawal_request_block_hash, packaged_transaction_id);
 
@@ -244,10 +259,17 @@ CREATE UNIQUE INDEX uix_swept_req_id_req_block_hash_pkgd_txid
 -- as withdrawal requests, so we reference the Bitcoin transaction ID and output
 -- index instead, which can be retrieved from the `deposit_requests` table.
 CREATE TABLE sbtc_signer.swept_deposits (
+    -- Internal ID of the swept deposit.
     id BIGSERIAL PRIMARY KEY,
+    -- References the `packaged_transaction` in which this deposit was included.
     packaged_transaction_id INTEGER NOT NULL,
+    -- The index of the sweep output in the packaged transaction.
     output_index INTEGER NOT NULL,
+    -- The Bitcoin transaction ID of the deposit request, referencing the
+    -- `deposit_requests` table.
     deposit_request_txid BYTEA NOT NULL,
+    -- The output index of the deposit request, referencing the
+    -- `deposit_requests` table.
     deposit_request_output_index INTEGER NOT NULL,
 
     FOREIGN KEY (packaged_transaction_id)
@@ -256,8 +278,9 @@ CREATE TABLE sbtc_signer.swept_deposits (
     FOREIGN KEY (deposit_request_txid, deposit_request_output_index) 
         REFERENCES sbtc_signer.deposit_requests(txid, output_index)
 );
--- Our main index which will cover searches by 'deposit_request_txid' and 'deposit_request_output_index',
--- while also restricting the combination to be unique per 'packaged_transaction_id'.
+-- Our main index which will cover searches by 'deposit_request_txid' and
+-- 'deposit_request_output_index', while also restricting the combination to be
+-- unique per 'packaged_transaction_id'.
 CREATE UNIQUE INDEX uix_swept_deposits_req_txid_req_output_index_pkgd_txid
     ON sbtc_signer.swept_deposits(deposit_request_txid, deposit_request_output_index, packaged_transaction_id);
 -- A separate index for the packaged transaction id as it is included last
