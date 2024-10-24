@@ -649,6 +649,8 @@ where
         request: model::DepositRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
+        let db = self.context.get_storage_mut();
+
         let bitcoin_network = bitcoin::Network::from(self.context.config().signer.network);
         let params = bitcoin_network.params();
         let addresses = request
@@ -660,14 +662,22 @@ where
             })
             .collect::<Result<Vec<bitcoin::Address>, _>>()?;
 
-        let is_accepted = futures::stream::iter(&addresses)
-            .any(|address| async { self.can_accept(&address.to_string()).await })
-            .await;
+        let signer_public_key = self.signer_pub_key();
+
+        let can_sign = db
+            .can_sign_deposit_tx(&request.txid, request.output_index, &signer_public_key)
+            .await?;
+
+        let is_accepted = can_sign &&
+            futures::stream::iter(&addresses)
+                .any(|address| async { self.can_accept(&address.to_string()).await })
+                .await;
 
         let msg = message::SignerDepositDecision {
             txid: request.txid.into(),
             output_index: request.output_index,
             accepted: is_accepted,
+            can_sign,
         };
 
         let signer_decision = model::DepositSigner {
@@ -675,6 +685,7 @@ where
             output_index: request.output_index,
             signer_pub_key: self.signer_pub_key(),
             is_accepted,
+            can_sign,
         };
 
         self.context
@@ -749,6 +760,7 @@ where
             output_index: decision.output_index,
             signer_pub_key,
             is_accepted: decision.accepted,
+            can_sign: decision.can_sign,
         };
 
         self.context

@@ -948,24 +948,28 @@ async fn fetching_deposit_request_votes() {
             output_index,
             signer_pub_key: shares.signer_set_public_keys[0],
             is_accepted: true,
+            can_sign: true,
         },
         model::DepositSigner {
             txid,
             output_index,
             signer_pub_key: shares.signer_set_public_keys[1],
             is_accepted: false,
+            can_sign: true,
         },
         model::DepositSigner {
             txid,
             output_index,
             signer_pub_key: shares.signer_set_public_keys[2],
             is_accepted: true,
+            can_sign: true,
         },
         model::DepositSigner {
             txid,
             output_index,
             signer_pub_key: shares.signer_set_public_keys[3],
             is_accepted: true,
+            can_sign: true,
         },
     ];
 

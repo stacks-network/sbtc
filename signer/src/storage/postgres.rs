@@ -724,7 +724,7 @@ impl super::DbRead for PgStore {
               , output_index
               , signer_pub_key
               , is_accepted
-              , created_at
+              , can_sign
             FROM sbtc_signer.deposit_signers 
             WHERE txid = $1 AND output_index = $2",
         )
@@ -1564,14 +1564,16 @@ impl super::DbWrite for PgStore {
               , output_index
               , signer_pub_key
               , is_accepted
+              , can_sign
               )
-            VALUES ($1, $2, $3, $4)
+            VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT DO NOTHING",
         )
         .bind(decision.txid)
         .bind(i32::try_from(decision.output_index).map_err(Error::ConversionDatabaseInt)?)
         .bind(decision.signer_pub_key)
         .bind(decision.is_accepted)
+        .bind(decision.can_sign)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
