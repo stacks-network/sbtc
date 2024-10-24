@@ -315,8 +315,8 @@ impl super::DbRead for SharedStore {
         signer_public_key: &PublicKey,
     ) -> Result<Option<bool>, Error> {
         let store = self.lock().await;
-        let dr = store.deposit_requests.get(&(*txid, output_index)).cloned();
-        let Some(deposit_request) = dr else {
+        let deposit_request = store.deposit_requests.get(&(*txid, output_index)).cloned();
+        let Some(deposit_request) = deposit_request else {
             return Ok(None);
         };
 

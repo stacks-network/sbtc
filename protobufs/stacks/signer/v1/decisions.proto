@@ -15,6 +15,9 @@ message SignerDepositDecision {
   uint32 output_index = 2;
   // Whether or not the signer has accepted the deposit request.
   bool accepted = 3;
+  // This specifies whether the sending signer can provide signature shares
+  // for the associated deposit request.
+  bool can_sign = 4;
 }
 
 // Represents a decision to accept or reject a deposit request.

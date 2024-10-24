@@ -135,8 +135,8 @@ pub struct DepositSigner {
     pub signer_pub_key: PublicKey,
     /// Signals if the signer is prepared to sign for this request.
     pub is_accepted: bool,
-    /// This specifies whether this signer is a part of the signer set
-    /// associated with the `signers_public_key` in the deposit request.
+    /// This specifies whether the indicated signer_pub_key can sign for
+    /// the associated deposit request.
     pub can_sign: bool,
 }
 

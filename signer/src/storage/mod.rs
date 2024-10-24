@@ -79,9 +79,12 @@ pub trait DbRead {
         output_index: u32,
     ) -> impl Future<Output = Result<Vec<model::DepositSigner>, Error>> + Send;
 
-    /// Returns whether or not the given public key is part of the signer
-    /// set associated with the public key that is locking the deposit
-    /// transaction.
+    /// Returns whether the given `signer_public_key` can provide signature
+    /// shares for the deposit transaction.
+    /// 
+    /// This function works by identifying whether the `signer_public_key`
+    /// was part of the signer set associated with the public key that was
+    /// used to lock the deposit
     ///
     /// This returns None if the deposit request cannot be found in the
     /// database.
