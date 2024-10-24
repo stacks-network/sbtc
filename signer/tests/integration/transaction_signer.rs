@@ -3,7 +3,6 @@ use std::sync::atomic::Ordering;
 
 use fake::Fake as _;
 use fake::Faker;
-use futures::StreamExt;
 use rand::SeedableRng as _;
 
 use signer::context::Context as _;
@@ -32,8 +31,9 @@ use crate::setup::TestSweepSetup;
 use crate::DATABASE_NUM;
 
 async fn test_environment(
-    mut signer_connections: Vec<PgStore>,
+    db: PgStore,
     signing_threshold: u32,
+    num_signers: usize,
 ) -> TestEnvironment<
     TestContext<
         PgStore,
@@ -53,27 +53,22 @@ async fn test_environment(
     };
 
     let context = TestContext::builder()
-        .with_storage(signer_connections.pop().unwrap())
+        .with_storage(db)
         .with_mocked_clients()
         .build();
 
     testing::transaction_signer::TestEnvironment {
         context,
-        num_signers: signer_connections.len(),
+        num_signers,
         context_window,
         signing_threshold,
         test_model_parameters,
     }
 }
 
-async fn create_signer_databases(num_signers: usize) -> Vec<PgStore> {
-    let get_next_num = || DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-
-    futures::stream::repeat_with(get_next_num)
-        .then(|i| signer::testing::storage::new_test_database(i, true))
-        .take(num_signers)
-        .collect()
-        .await
+async fn create_signer_database() -> PgStore {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    signer::testing::storage::new_test_database(db_num, true).await
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -82,21 +77,16 @@ async fn should_store_decisions_for_pending_deposit_requests() {
     let num_signers = 3;
     let signing_threshold = 2;
 
-    let signer_connections = create_signer_databases(num_signers).await;
-    // We need to clone the connections so that we can drop the associated
+    let db = create_signer_database().await;
+    // We need to clone the connection so that we can drop the associated
     // databases later.
-    let cloned_connections = signer_connections.clone();
-
-    test_environment(signer_connections, signing_threshold)
+    test_environment(db.clone(), signing_threshold, num_signers)
         .await
         .assert_should_store_decisions_for_pending_deposit_requests()
         .await;
 
-    // Now drop all of the databases that we just created.
-    let _: Vec<_> = futures::stream::iter(cloned_connections)
-        .then(signer::testing::storage::drop_db)
-        .collect()
-        .await;
+    // Now drop the database that we just created.
+    signer::testing::storage::drop_db(db).await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -105,21 +95,16 @@ async fn should_store_decisions_for_pending_withdraw_requests() {
     let num_signers = 3;
     let signing_threshold = 2;
 
-    let signer_connections = create_signer_databases(num_signers).await;
-    // We need to clone the connections so that we can drop the associated
+    let db = create_signer_database().await;
+    // We need to clone the connection so that we can drop the associated
     // databases later.
-    let cloned_connections = signer_connections.clone();
-
-    test_environment(signer_connections, signing_threshold)
+    test_environment(db.clone(), signing_threshold, num_signers)
         .await
         .assert_should_store_decisions_for_pending_withdraw_requests()
         .await;
 
-    // Now drop all of the databases that we just created.
-    let _: Vec<_> = futures::stream::iter(cloned_connections)
-        .then(signer::testing::storage::drop_db)
-        .collect()
-        .await;
+    // Now drop the database that we just created.
+    signer::testing::storage::drop_db(db).await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -128,21 +113,16 @@ async fn should_store_decisions_received_from_other_signers() {
     let num_signers = 3;
     let signing_threshold = 2;
 
-    let signer_connections = create_signer_databases(num_signers).await;
-    // We need to clone the connections so that we can drop the associated
+    let db = create_signer_database().await;
+    // We need to clone the connection so that we can drop the associated
     // databases later.
-    let cloned_connections = signer_connections.clone();
-
-    test_environment(signer_connections, signing_threshold)
+    test_environment(db.clone(), signing_threshold, num_signers)
         .await
         .assert_should_store_decisions_received_from_other_signers()
         .await;
 
-    // Now drop all of the databases that we just created.
-    let _: Vec<_> = futures::stream::iter(cloned_connections)
-        .then(signer::testing::storage::drop_db)
-        .collect()
-        .await;
+    // Now drop the database that we just created.
+    signer::testing::storage::drop_db(db).await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -151,21 +131,16 @@ async fn should_respond_to_bitcoin_transaction_sign_request() {
     let num_signers = 3;
     let signing_threshold = 2;
 
-    let signer_connections = create_signer_databases(num_signers).await;
-    // We need to clone the connections so that we can drop the associated
+    let db = create_signer_database().await;
+    // We need to clone the connection so that we can drop the associated
     // databases later.
-    let cloned_connections = signer_connections.clone();
-
-    test_environment(signer_connections, signing_threshold)
+    test_environment(db.clone(), signing_threshold, num_signers)
         .await
         .assert_should_respond_to_bitcoin_transaction_sign_requests()
         .await;
 
-    // Now drop all of the databases that we just created.
-    let _: Vec<_> = futures::stream::iter(cloned_connections)
-        .then(signer::testing::storage::drop_db)
-        .collect()
-        .await;
+    // Now drop the database that we just created.
+    signer::testing::storage::drop_db(db).await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -174,21 +149,16 @@ async fn should_be_able_to_participate_in_signing_round() {
     let num_signers = 3;
     let signing_threshold = 2;
 
-    let signer_connections = create_signer_databases(num_signers).await;
-    // We need to clone the connections so that we can drop the associated
+    let db = create_signer_database().await;
+    // We need to clone the connection so that we can drop the associated
     // databases later.
-    let cloned_connections = signer_connections.clone();
-
-    test_environment(signer_connections, signing_threshold)
+    test_environment(db.clone(), signing_threshold, num_signers)
         .await
         .assert_should_be_able_to_participate_in_signing_round()
         .await;
 
-    // Now drop all of the databases that we just created.
-    let _: Vec<_> = futures::stream::iter(cloned_connections)
-        .then(signer::testing::storage::drop_db)
-        .collect()
-        .await;
+    // Now drop the database that we just created.
+    signer::testing::storage::drop_db(db).await;
 }
 
 /// Test that [`TxSignerEventLoop::get_signer_public_keys`] falls back to
@@ -457,7 +427,6 @@ async fn handle_pending_deposit_request_not_in_signing_set() {
 
     testing::storage::drop_db(db).await;
 }
-
 
 /// Test that [`TxSignerEventLoop::assert_valid_stacks_tx_sign_request`]
 /// errors when the signer is not in the signer set.
