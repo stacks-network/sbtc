@@ -19,6 +19,7 @@ use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use clarity::vm::costs::ExecutionCost;
+use emily_client::models::Chainstate;
 use rand::seq::IteratorRandom;
 use sbtc::deposits::CreateDepositRequest;
 
@@ -353,6 +354,10 @@ impl EmilyInteract for TestHarness {
         _stacks_chain_tip: &'a StacksBlock,
     ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
         unimplemented!()
+    }
+
+    async fn set_chainstate(&self, chainstate: Chainstate) -> Result<Chainstate, Error> {
+        Ok(chainstate)
     }
 }
 

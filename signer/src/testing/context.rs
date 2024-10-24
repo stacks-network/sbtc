@@ -358,6 +358,13 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
             .accept_deposits(transaction, stacks_chain_tip)
             .await
     }
+
+    async fn set_chainstate(
+        &self,
+        chainstate: emily_client::models::Chainstate,
+    ) -> Result<emily_client::models::Chainstate, Error> {
+        self.inner.lock().await.set_chainstate(chainstate).await
+    }
 }
 
 /// Struct which holds the current configuration of the context builder.
