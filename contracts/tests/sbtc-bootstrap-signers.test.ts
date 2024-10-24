@@ -14,7 +14,6 @@ import {
   AddressVersion,
   addressFromPublicKeys,
   addressToString,
-  parsePrincipalString,
   pubKeyfromPrivKey,
   serializePublicKey,
 } from "@stacks/transactions";
