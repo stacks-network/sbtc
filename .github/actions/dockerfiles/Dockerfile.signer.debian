@@ -21,4 +21,4 @@ RUN make install && make build
 # Create Docker image to run the signer.
 FROM debian:bookworm-slim AS signer
 COPY --from=build /code/sbtc/target/debug/signer /usr/local/bin/signer
-ENTRYPOINT ["/usr/local/bin/signer --config /signer-config.toml --migrate-db"]
+CMD ["/usr/local/bin/signer --config /signer-config.toml --migrate-db"]
