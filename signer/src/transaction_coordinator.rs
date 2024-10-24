@@ -459,7 +459,7 @@ where
         wallet: &SignerWallet,
     ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
         // Retrieve the Bitcoin sweep transaction from the Bitcoin node.
-        // QUESTION: Shouldn't we be able to get this from `sbtc_signers.transactions`?
+        // QUESTION: Can't we pull this from the db instead of asking bitcore core?
         let tx_info = self
             .context
             .get_bitcoin_client()

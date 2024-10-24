@@ -129,12 +129,14 @@ CREATE TABLE sbtc_signer.rotate_keys_transactions (
     FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE
 );
 
+-- TODO: Unused?
 CREATE TABLE sbtc_signer.deposit_responses (
     response_txid BYTEA NOT NULL,
     deposit_txid BYTEA NOT NULL,
     deposit_output_index INTEGER NOT NULL
 );
 
+-- TODO: Unused?
 CREATE TABLE sbtc_signer.withdrawal_responses (
     response_txid BYTEA NOT NULL,
     withdraw_txid BYTEA NOT NULL,

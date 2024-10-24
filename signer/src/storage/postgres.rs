@@ -1355,18 +1355,18 @@ impl super::DbRead for PgStore {
     ) -> Result<Vec<model::SweptDepositRequest>, Error> {
         // TODO: I think these queries are getting too complex, i.e. they are
         // difficult to read, work with and test. We should consider refactoring
-        // them to smaller queries with less embedded business rules, and then
-        // compose them in Rust. 
+        // them to more but smaller queries with less embedded business rules,
+        // and composing them in a Rust fn.
 
         // TODO: This query needs to be updated to check that the
         // `completed_deposit_event` is in a Stacks block linked to the
         // canonical Bitcoin chain (i.e. confirmed) once #559 is completed.
 
         // The following tests define the criteria for this query:
-        // - get_swept_deposit_requests_returns_swept_deposit_requests
-        // - get_swept_deposit_requests_does_not_return_unswept_deposit_requests
-        // - get_swept_deposit_requests_does_not_return_deposit_requests_with_responses
-        // - get_swept_deposit_requests_response_tx_reorged
+        // - [X] get_swept_deposit_requests_returns_swept_deposit_requests
+        // - [X] get_swept_deposit_requests_does_not_return_unswept_deposit_requests
+        // - [ ] get_swept_deposit_requests_does_not_return_deposit_requests_with_responses
+        // - [ ] get_swept_deposit_requests_response_tx_reorged
 
         sqlx::query_as::<_, model::SweptDepositRequest>("
             WITH RECURSIVE canonical_bitcoin_blockchain AS (
@@ -1404,9 +1404,6 @@ impl super::DbRead for PgStore {
                 sbtc_signer.bitcoin_transactions AS bc_trx
                     ON bc_trx.block_hash = bc_blocks.block_hash
             INNER JOIN 
-                sbtc_signer.transactions AS signer_tx
-                    ON signer_tx.txid = bc_trx.txid
-            INNER JOIN 
                 sbtc_signer.sweep_transactions AS sweep_tx
                     ON bc_trx.txid = sweep_tx.txid
                     AND sweep_tx.is_broadcast = true
@@ -1417,15 +1414,15 @@ impl super::DbRead for PgStore {
                 sbtc_signer.deposit_requests AS deposit_req 
                     ON deposit_req.txid = swept_deposit.deposit_request_txid
                     AND deposit_req.output_index = swept_deposit.deposit_request_output_index
+            -- TODO: This is incorrect, we need to check that the completed 
+            -- deposit event is in a Stacks block that is linked to the canonical 
+            -- Bitcoin chain (#559).
             LEFT JOIN 
                 sbtc_signer.completed_deposit_events AS cde
                     ON cde.bitcoin_txid = deposit_req.txid
                     AND cde.output_index = deposit_req.output_index
             WHERE
                 cde.bitcoin_txid IS NULL
-                AND signer_tx.tx_type = 'sbtc_transaction'
-            ORDER BY
-                signer_tx.created_at DESC
         ")
         .bind(chain_tip)
         .bind(i32::from(context_window))
