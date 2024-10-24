@@ -151,13 +151,19 @@ async fn process_complete_deposit() {
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
     setup.store_deposit_tx(&db).await;
     setup.store_sweep_tx(&db).await;
     setup.store_deposit_request(&db).await;
     setup.store_deposit_decisions(&db).await;
+    // We need this to be able to store the sweep transaction package, since
+    // the `TestSweepSetup` includes a withdrawal by default. It's not used here,
+    // though.
+    setup.store_withdrawal_request(&db).await;
+    // This will store the "broadcasted" sweep transaction package.
+    setup.store_sweep_transaction_packages(&db).await;
 
     // Ensure a stacks tip exists
     let stacks_block = model::StacksBlock {

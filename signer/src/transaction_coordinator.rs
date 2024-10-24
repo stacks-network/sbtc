@@ -296,7 +296,7 @@ where
 
         // Persist the transaction package in the database.
         transaction_package
-            .store(
+            .write_to_db(
                 self.context.get_storage_mut(),
                 bitcoin_chain_tip,
                 pending_requests.signer_state.fee_rate,

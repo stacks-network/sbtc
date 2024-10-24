@@ -21,7 +21,7 @@ use crate::stacks::events::WithdrawalCreateEvent;
 use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
 
-use super::model::SbtcTransactionPackage;
+use super::model::SweepTransactionPackage;
 use super::util::get_utxo;
 
 /// A store wrapped in an Arc<Mutex<...>> for interior mutability
@@ -108,7 +108,7 @@ pub struct Store {
 
     /// sBTC Bitcoin transaction packages which have been broadcast to the
     /// Bitcoin network, but not necessarily confirmed.
-    pub transaction_packages: Vec<SbtcTransactionPackage>,
+    pub transaction_packages: Vec<SweepTransactionPackage>,
 }
 
 impl Store {
@@ -660,53 +660,61 @@ impl super::DbRead for SharedStore {
         _chain_tip: &model::BitcoinBlockHash,
         _context_window: u16,
     ) -> Result<Vec<model::SweptDepositRequest>, Error> {
-        unimplemented!()
+        unimplemented!("can only be tested using integration tests for now.");
     }
 
     async fn get_swept_withdrawal_requests(
         &self,
-        chain_tip: &model::BitcoinBlockHash,
-        context_window: u16,
+        _chain_tip: &model::BitcoinBlockHash,
+        _context_window: u16,
     ) -> Result<Vec<model::SweptWithdrawalRequest>, Error> {
-        let store = self.lock().await;
-        let bitcoin_blocks = &store.bitcoin_blocks;
-        let first = bitcoin_blocks.get(chain_tip);
+        unimplemented!("can only be tested using integration tests for now.");
 
-        std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
-            .take(context_window as usize)
-            .filter_map(|block| {
-                store
-                    .bitcoin_block_to_transactions
-                    .get(&block.block_hash)
-                    .and_then(|txs| {
-                        store.transaction_packages.iter().find(|package| {
-                            package
-                                .transactions
-                                .iter()
-                                .any(|packaged_tx| txs.iter().any(|tx| *tx == packaged_tx.txid))
-                        })
-                    })
-            })
-            .flat_map(|package| {
-                package.transactions.iter().flat_map(|tx| {
-                    tx.swept_withdrawals.iter().map(|withdrawal| {
-                        Ok(model::SweptWithdrawalRequest {
-                            request_id: withdrawal.withdrawal_request_id,
-                            block_hash: withdrawal.withdrawal_request_block_hash,
-                            sweep_block_hash: package.created_at_block_hash,
-                            sweep_txid: tx.txid,
-                        })
-                    })
-                })
-                //.collect::<Vec<_>>()
-            })
-            .collect::<Result<Vec<_>, Error>>()
+        // NOTE: The below is a starting point for how to write this, but it
+        // lacks some of the additional validations that are expected of this
+        // function. For example, we need to ensure that the
+        // 'withdrawal-accept-event' is in a Stacks block which is part of the
+        // canonical Bitcoin chain, which we cannot do yet (#559: link stacks
+        // blocks with bitcoin blocks).
+
+        // let store = self.lock().await;
+        // let bitcoin_blocks = &store.bitcoin_blocks;
+        // let first = bitcoin_blocks.get(chain_tip);
+
+        // std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
+        //     .take(context_window as usize)
+        //     .filter_map(|block| {
+        //         store
+        //             .bitcoin_block_to_transactions
+        //             .get(&block.block_hash)
+        //             .and_then(|txs| {
+        //                 store.transaction_packages.iter().find(|package| {
+        //                     package
+        //                         .transactions
+        //                         .iter()
+        //                         .any(|packaged_tx| txs.iter().any(|tx| *tx == packaged_tx.txid))
+        //                 })
+        //             })
+        //     })
+        //     .flat_map(|package| {
+        //         package.transactions.iter().flat_map(|tx| {
+        //             tx.swept_withdrawals.iter().map(|withdrawal| {
+        //                 Ok(model::SweptWithdrawalRequest {
+        //                     request_id: withdrawal.withdrawal_request_id,
+        //                     block_hash: withdrawal.withdrawal_request_block_hash,
+        //                     sweep_block_hash: package.created_at_block_hash,
+        //                     sweep_txid: tx.txid,
+        //                 })
+        //             })
+        //         })
+        //     })
+        //     .collect::<Result<Vec<_>, Error>>()
     }
 
-    async fn get_latest_transaction_package(
+    async fn get_latest_sweep_transaction_package(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<Option<SbtcTransactionPackage>, Error> {
+    ) -> Result<Option<SweepTransactionPackage>, Error> {
         let store = self.lock().await;
         let bitcoin_blocks = &store.bitcoin_blocks;
         let tx_packages = &store.transaction_packages;
@@ -1018,16 +1026,16 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_bitcoin_transaction_package(
+    async fn write_sweep_transaction_package(
         &self,
-        package: SbtcTransactionPackage,
+        package: SweepTransactionPackage,
     ) -> Result<u32, Error> {
         let mut store = self.lock().await;
         store.transaction_packages.push(package);
         Ok(store.transaction_packages.len() as u32)
     }
 
-    async fn mark_packaged_transaction_as_broadcast(
+    async fn mark_sweep_transaction_as_broadcast(
         &self,
         txid: &model::BitcoinTxId,
     ) -> Result<(), Error> {

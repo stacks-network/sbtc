@@ -26,6 +26,8 @@ CREATE TABLE sbtc_signer.stacks_blocks (
     parent_hash BYTEA NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
+-- Index to serve queries filtering on `parent_hash`. This is commonly used when
+-- "walking" the chain in recursive CTE's.
 
 CREATE TABLE sbtc_signer.deposit_requests (
     txid BYTEA NOT NULL,
@@ -84,6 +86,8 @@ CREATE TABLE sbtc_signer.transactions (
 );
 -- Index to serve queries filtering on `tx_type`.
 CREATE INDEX ix_transactions_tx_type ON sbtc_signer.transactions(tx_type);
+-- Index to serve queries ordering on `created_at`.
+CREATE INDEX ix_transactions_created_at ON sbtc_signer.transactions(created_at);
 
 CREATE TABLE sbtc_signer.dkg_shares (
     aggregate_key BYTEA PRIMARY KEY,
@@ -102,7 +106,7 @@ CREATE TABLE sbtc_signer.bitcoin_transactions (
     FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE,
     FOREIGN KEY (block_hash) REFERENCES sbtc_signer.bitcoin_blocks(block_hash) ON DELETE CASCADE
 );
--- Index to serve queries which select transactions soley on `block_hash`. The
+-- Index to serve queries which filter transactions soley on `block_hash`. The
 -- PK won't help here as it is a compound key where `block_hash` is a 2nd level.
 CREATE INDEX ix_bitcoin_transactions_block_hash ON sbtc_signer.bitcoin_transactions(block_hash);
 
@@ -186,7 +190,7 @@ CREATE TABLE sbtc_signer.withdrawal_reject_events (
 -- are tracked separately in the `packaged_transaction` table. A transaction
 -- package may contain the servicing transactions for both deposit and
 -- withdrawal requests.
-CREATE TABLE sbtc_signer.transaction_packages (
+CREATE TABLE sbtc_signer.sweep_packages (
     -- Internal ID of the package
     id SERIAL PRIMARY KEY,
     -- The Bitcoin block hash at which this package was created.
@@ -201,11 +205,11 @@ CREATE TABLE sbtc_signer.transaction_packages (
 -- package. Individual deposit and withdrawal requests reference back to these
 -- transactions to keep track of both the overall transaction package as well as
 -- the individual Bitcoin transactions they are related to.
-CREATE TABLE sbtc_signer.packaged_transactions (
+CREATE TABLE sbtc_signer.sweep_transactions (
     -- Internal ID of the transaction.
     id BIGSERIAL PRIMARY KEY,
     -- The ID of the grouping transaction package.
-    transaction_package_id INTEGER NOT NULL,
+    sweep_package_id INTEGER NOT NULL,
     -- The Bitcoin transaction ID of the transaction.
     txid BYTEA NOT NULL,
     -- The signer UTXO being spent in this transaction.
@@ -219,8 +223,8 @@ CREATE TABLE sbtc_signer.packaged_transactions (
     -- set after we know that the transaction was successfully broadcast.
     is_broadcast BOOLEAN NOT NULL DEFAULT FALSE,
 
-    FOREIGN KEY (transaction_package_id)
-        REFERENCES sbtc_signer.transaction_packages(id)
+    FOREIGN KEY (sweep_package_id)
+        REFERENCES sbtc_signer.sweep_packages(id)
 );
 
 -- Represents a single withdrawal request which has been included in a
@@ -232,7 +236,7 @@ CREATE TABLE sbtc_signer.swept_withdrawals (
     id BIGSERIAL PRIMARY KEY,
     -- References the `packaged_transaction` in which this withdrawal was
     -- included.
-    packaged_transaction_id INTEGER NOT NULL,
+    sweep_transaction_id INTEGER NOT NULL,
     -- The index of the sweep output in the packaged transaction.
     output_index INTEGER NOT NULL,
     -- The ID of the withdrawal request, referencing the `withdrawal_requests`
@@ -242,17 +246,17 @@ CREATE TABLE sbtc_signer.swept_withdrawals (
     -- `withdrawal_requests` table.
     withdrawal_request_block_hash BYTEA NOT NULL,
 
-    FOREIGN KEY (packaged_transaction_id) 
-        REFERENCES sbtc_signer.packaged_transactions(id),
+    FOREIGN KEY (sweep_transaction_id) 
+        REFERENCES sbtc_signer.sweep_transactions(id),
 
     FOREIGN KEY (withdrawal_request_id, withdrawal_request_block_hash) 
         REFERENCES sbtc_signer.withdrawal_requests(request_id, block_hash)
 );
 -- Our main index which will cover searches by 'withdrawal_request_id' and
 -- 'withdrawal_request_block_hash' while also restricting the combination to be
--- unique per 'packaged_transaction_id'.
+-- unique per 'sweep_transaction_id'.
 CREATE UNIQUE INDEX uix_swept_req_id_req_block_hash_pkgd_txid 
-    ON sbtc_signer.swept_withdrawals(withdrawal_request_id, withdrawal_request_block_hash, packaged_transaction_id);
+    ON sbtc_signer.swept_withdrawals(withdrawal_request_id, withdrawal_request_block_hash, sweep_transaction_id);
 
 -- Represents a single deposit request which has been included in a
 -- transaction package. Deposit requests do not have a unique ID in the same way
@@ -262,7 +266,7 @@ CREATE TABLE sbtc_signer.swept_deposits (
     -- Internal ID of the swept deposit.
     id BIGSERIAL PRIMARY KEY,
     -- References the `packaged_transaction` in which this deposit was included.
-    packaged_transaction_id INTEGER NOT NULL,
+    sweep_transaction_id INTEGER NOT NULL,
     -- The index of the sweep output in the packaged transaction.
     output_index INTEGER NOT NULL,
     -- The Bitcoin transaction ID of the deposit request, referencing the
@@ -272,18 +276,18 @@ CREATE TABLE sbtc_signer.swept_deposits (
     -- `deposit_requests` table.
     deposit_request_output_index INTEGER NOT NULL,
 
-    FOREIGN KEY (packaged_transaction_id)
-        REFERENCES sbtc_signer.packaged_transactions(id),
+    FOREIGN KEY (sweep_transaction_id)
+        REFERENCES sbtc_signer.sweep_transactions(id),
 
     FOREIGN KEY (deposit_request_txid, deposit_request_output_index) 
         REFERENCES sbtc_signer.deposit_requests(txid, output_index)
 );
 -- Our main index which will cover searches by 'deposit_request_txid' and
 -- 'deposit_request_output_index', while also restricting the combination to be
--- unique per 'packaged_transaction_id'.
+-- unique per 'sweep_transaction_id'.
 CREATE UNIQUE INDEX uix_swept_deposits_req_txid_req_output_index_pkgd_txid
-    ON sbtc_signer.swept_deposits(deposit_request_txid, deposit_request_output_index, packaged_transaction_id);
+    ON sbtc_signer.swept_deposits(deposit_request_txid, deposit_request_output_index, sweep_transaction_id);
 -- A separate index for the packaged transaction id as it is included last
 -- in the compound unique index.
-CREATE INDEX ix_swept_deposits_packaged_transaction_id 
-    ON sbtc_signer.swept_deposits(packaged_transaction_id);
+CREATE INDEX ix_swept_deposits_sweep_transaction_id 
+    ON sbtc_signer.swept_deposits(sweep_transaction_id);

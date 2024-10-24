@@ -27,7 +27,6 @@ use signer::keys::SignerScriptPubKey;
 use signer::storage::model;
 use signer::storage::model::BitcoinTxRef;
 use signer::storage::model::EncryptedDkgShares;
-use signer::storage::model::SbtcTransactionPackage;
 use signer::storage::postgres::PgStore;
 use signer::storage::DbWrite as _;
 
@@ -68,7 +67,7 @@ pub struct TestSweepSetup {
     /// The address that initiated with withdrawal request.
     pub withdrawal_sender: PrincipalData,
     /// Transaction packages that have been broadcast but not yet stored.
-    pub transaction_packages: Vec<SbtcTransactionPackage>,
+    pub transaction_packages: Vec<model::SweepTransactionPackage>,
 }
 
 impl TestSweepSetup {
@@ -141,7 +140,7 @@ impl TestSweepSetup {
         let (txid, sweep_transaction_package) = {
             let mut transactions = requests.construct_transactions().unwrap();
             // Create the transaction package that we will store.
-            let package = SbtcTransactionPackage::from_package(
+            let package = model::SweepTransactionPackage::from_package(
                 deposit_block_hash,
                 requests.signer_state.fee_rate,
                 &transactions,
@@ -201,12 +200,21 @@ impl TestSweepSetup {
         }
     }
 
-    // Store all pending transaction packages to the database.
-    pub async fn store_transaction_packages(&mut self, db: &PgStore) {
+    /// Store all pending transaction packages to the database. Note that this
+    /// is kept separate from [`Self::store_sweep_tx`] because this method
+    /// represents the transaction package which was broadcast to the mempool
+    /// (but not necessarily confirmed), while [`Self::store_sweep_tx`]
+    /// represents the sweep transaction which has been observed on-chain.
+    pub async fn store_sweep_transaction_packages(&mut self, db: &PgStore) {
         for package in self.transaction_packages.drain(..) {
-            db.write_bitcoin_transaction_package(package.clone())
+            db.write_sweep_transaction_package(package.clone())
                 .await
                 .unwrap();
+            for transaction in package.transactions {
+                db.mark_sweep_transaction_as_broadcast(&transaction.txid)
+                    .await
+                    .unwrap();
+            }
         }
     }
 

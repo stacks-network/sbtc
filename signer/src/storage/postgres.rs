@@ -24,7 +24,7 @@ use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
 use crate::storage::model::TransactionType;
 
-use super::model::SbtcTransactionPackage;
+use super::model::SweepTransactionPackage;
 use super::util::get_utxo;
 
 /// All migration scripts from the `signer/migrations` directory.
@@ -404,16 +404,16 @@ impl PgStore {
     }
 
     /// Attempts to retrieve an entire transaction package by id.
-    async fn get_transaction_package_by_id(
+    async fn get_sweep_package_by_id(
         &self,
         package_id: i64,
-    ) -> Result<Option<SbtcTransactionPackage>, Error> {
-        let package: Option<SbtcTransactionPackage> = sqlx::query_as(
+    ) -> Result<Option<SweepTransactionPackage>, Error> {
+        let package: Option<SweepTransactionPackage> = sqlx::query_as(
             "
             SELECT
                 created_at_block_hash
                 , market_fee_rate
-            FROM sbtc.transaction_packages
+            FROM sbtc.sweep_packages
             WHERE id = $1;
         ",
         )
@@ -426,7 +426,7 @@ impl PgStore {
             return Ok(None);
         };
 
-        let transactions: Vec<model::SbtcPackagedTransaction> = sqlx::query_as(
+        let transactions: Vec<model::SweepTransaction> = sqlx::query_as(
             "
             SELECT
                 id
@@ -435,13 +435,11 @@ impl PgStore {
                 , utxo_output_index
                 , amount
                 , fee
-                , fee_rate
-                , broadcast_at
-                , included_in_block_hash
+                , is_broadcast
             FROM
-                sbtc.packaged_transactions
+                sbtc.sweep_transactions
             WHERE
-                transaction_package_id = $1;
+                sweep_package_id = $1;
         ",
         )
         .bind(package_id as i64)
@@ -450,22 +448,23 @@ impl PgStore {
         .map_err(Error::SqlxQuery)?;
 
         for mut transaction in transactions {
-            // packaged_transaction.id is not nullable in the database and thus
+            // sweep_transaction.id is not nullable in the database and thus
             // should necessarily be present.
             #[allow(clippy::expect_used)]
             let transaction_id = transaction
                 .id
-                .expect("BUG: packaged_transactions.id cannot be null");
+                .expect("BUG: sweep_transactions.id cannot be null");
 
             transaction.swept_deposits = sqlx::query_as(
                 "
                 SELECT
-                    txid
-                    , output_index
+                    output_index
+                  , deposit_request_txid
+                  , deposit_request_output_index
                 FROM
                     sbtc_signer.swept_deposits
                 where
-                    packaged_transaction_id = $1;
+                    sweep_transaction_id = $1;
             ",
             )
             .bind(transaction_id as i64)
@@ -476,7 +475,9 @@ impl PgStore {
             transaction.swept_withdrawals = sqlx::query_as(
                 "
                 SELECT
-                    request_id
+                    output_index
+                  , withdrawal_request_id
+                  , withdrawal_request_block_hash
                 FROM
                     sbtc_signer.swept_withdrawals
                 where
@@ -1352,11 +1353,22 @@ impl super::DbRead for PgStore {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> Result<Vec<model::SweptDepositRequest>, Error> {
-        // TODO: This query is definitely incorrect. Doing it correctly
-        // will be much easier once
-        // https://github.com/stacks-network/sbtc/issues/585 is completed.
-        sqlx::query_as::<_, model::SweptDepositRequest>(
-            r#"
+        // TODO: I think these queries are getting too complex, i.e. they are
+        // difficult to read, work with and test. We should consider refactoring
+        // them to smaller queries with less embedded business rules, and then
+        // compose them in Rust. 
+
+        // TODO: This query needs to be updated to check that the
+        // `completed_deposit_event` is in a Stacks block linked to the
+        // canonical Bitcoin chain (i.e. confirmed) once #559 is completed.
+
+        // The following tests define the criteria for this query:
+        // - get_swept_deposit_requests_returns_swept_deposit_requests
+        // - get_swept_deposit_requests_does_not_return_unswept_deposit_requests
+        // - get_swept_deposit_requests_does_not_return_deposit_requests_with_responses
+        // - get_swept_deposit_requests_response_tx_reorged
+
+        sqlx::query_as::<_, model::SweptDepositRequest>("
             WITH RECURSIVE canonical_bitcoin_blockchain AS (
                 SELECT
                     block_hash
@@ -1366,9 +1378,9 @@ impl super::DbRead for PgStore {
                   , 1 AS depth
                 FROM sbtc_signer.bitcoin_blocks
                 WHERE block_hash = $1
-            
+
                 UNION ALL
-            
+
                 SELECT
                     parent.block_hash
                   , parent.parent_hash
@@ -1377,38 +1389,102 @@ impl super::DbRead for PgStore {
                   , last.depth + 1
                 FROM sbtc_signer.bitcoin_blocks AS parent
                 JOIN canonical_bitcoin_blockchain AS last
-                  ON parent.block_hash = last.parent_hash
+                    ON parent.block_hash = last.parent_hash
                 WHERE last.depth <= $2
             )
             SELECT
-                t.txid           AS sweep_txid
-              , t.tx             AS sweep_tx
-              , bt.block_hash    AS sweep_block_hash
-              , cbb.block_height AS sweep_block_height
-              , dr.txid
-              , dr.output_index
-              , dr.recipient
-              , dr.amount
-            FROM sbtc_signer.transactions AS t
-            JOIN sbtc_signer.bitcoin_transactions AS bt
-              ON t.txid = bt.txid
-            JOIN canonical_bitcoin_blockchain AS cbb
-              ON bt.block_hash = cbb.block_hash
-            CROSS JOIN sbtc_signer.deposit_requests AS dr
-            LEFT JOIN sbtc_signer.completed_deposit_events AS cde
-              ON cde.bitcoin_txid = dr.txid
-             AND cde.output_index = dr.output_index
-            WHERE cde.bitcoin_txid IS NULL
-              AND t.tx_type = 'sbtc_transaction'
-            ORDER BY t.created_at DESC
-            LIMIT 1
-        "#,
-        )
+                bc_trx.txid AS sweep_txid
+              , bc_trx.block_hash AS sweep_block_hash
+              , bc_blocks.block_height AS sweep_block_height
+              , deposit_req.txid
+              , deposit_req.output_index
+            FROM 
+                canonical_bitcoin_blockchain AS bc_blocks
+            INNER JOIN 
+                sbtc_signer.bitcoin_transactions AS bc_trx
+                    ON bc_trx.block_hash = bc_blocks.block_hash
+            INNER JOIN 
+                sbtc_signer.transactions AS signer_tx
+                    ON signer_tx.txid = bc_trx.txid
+            INNER JOIN 
+                sbtc_signer.sweep_transactions AS sweep_tx
+                    ON bc_trx.txid = sweep_tx.txid
+                    AND sweep_tx.is_broadcast = true
+            INNER JOIN 
+                sbtc_signer.swept_deposits AS swept_deposit 
+                    ON swept_deposit.sweep_transaction_id = sweep_tx.id
+            INNER JOIN 
+                sbtc_signer.deposit_requests AS deposit_req 
+                    ON deposit_req.txid = swept_deposit.deposit_request_txid
+                    AND deposit_req.output_index = swept_deposit.deposit_request_output_index
+            LEFT JOIN 
+                sbtc_signer.completed_deposit_events AS cde
+                    ON cde.bitcoin_txid = deposit_req.txid
+                    AND cde.output_index = deposit_req.output_index
+            WHERE
+                cde.bitcoin_txid IS NULL
+                AND signer_tx.tx_type = 'sbtc_transaction'
+            ORDER BY
+                signer_tx.created_at DESC
+        ")
         .bind(chain_tip)
         .bind(i32::from(context_window))
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
+
+        // TODO: Remove this query later, leaving it here for reference until
+        // the new query is complete after #559.
+        //
+        // This query is definitely incorrect. Doing it correctly
+        // will be much easier once
+        // https://github.com/stacks-network/sbtc/issues/585 is completed.
+        //
+        //     WITH RECURSIVE canonical_bitcoin_blockchain AS (
+        //         SELECT
+        //             block_hash
+        //           , parent_hash
+        //           , block_height
+        //           , confirms
+        //           , 1 AS depth
+        //         FROM sbtc_signer.bitcoin_blocks
+        //         WHERE block_hash = $1
+            
+        //         UNION ALL
+            
+        //         SELECT
+        //             parent.block_hash
+        //           , parent.parent_hash
+        //           , parent.block_height
+        //           , parent.confirms
+        //           , last.depth + 1
+        //         FROM sbtc_signer.bitcoin_blocks AS parent
+        //         JOIN canonical_bitcoin_blockchain AS last
+        //           ON parent.block_hash = last.parent_hash
+        //         WHERE last.depth <= $2
+        //     )
+        //     SELECT
+        //         t.txid           AS sweep_txid
+        //       , t.tx             AS sweep_tx
+        //       , bt.block_hash    AS sweep_block_hash
+        //       , cbb.block_height AS sweep_block_height
+        //       , dr.txid
+        //       , dr.output_index
+        //       , dr.recipient
+        //       , dr.amount
+        //     FROM sbtc_signer.transactions AS t
+        //     JOIN sbtc_signer.bitcoin_transactions AS bt
+        //       ON t.txid = bt.txid
+        //     JOIN canonical_bitcoin_blockchain AS cbb
+        //       ON bt.block_hash = cbb.block_hash
+        //     CROSS JOIN sbtc_signer.deposit_requests AS dr
+        //     LEFT JOIN sbtc_signer.completed_deposit_events AS cde
+        //       ON cde.bitcoin_txid = dr.txid
+        //      AND cde.output_index = dr.output_index
+        //     WHERE cde.bitcoin_txid IS NULL
+        //       AND t.tx_type = 'sbtc_transaction'
+        //     ORDER BY t.created_at DESC
+        //     LIMIT 1
     }
 
     async fn get_swept_withdrawal_requests(
@@ -1419,10 +1495,10 @@ impl super::DbRead for PgStore {
         unimplemented!()
     }
 
-    async fn get_latest_transaction_package(
+    async fn get_latest_sweep_transaction_package(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<Option<SbtcTransactionPackage>, Error> {
+    ) -> Result<Option<SweepTransactionPackage>, Error> {
         let id: Option<i64> = sqlx::query_scalar("
             WITH RECURSIVE bitcoin AS 
             (
@@ -1448,7 +1524,7 @@ impl super::DbRead for PgStore {
               , txs.tx_type
               , tbc.block_hash
             FROM bitcoin AS bit
-            JOIN sbtc_signer.transaction_packages AS pkg ON bit.block_hash = pkg.created_at_block_hash
+            JOIN sbtc_signer.sweep_packages AS pkg ON bit.block_hash = pkg.created_at_block_hash
             ORDER BY tbc.depth ASC;"
         )
         .bind(chain_tip)
@@ -1456,16 +1532,11 @@ impl super::DbRead for PgStore {
         .await
         .map_err(Error::SqlxQuery)?;
 
-        // let id: Option<i64> = sqlx::query_scalar("SELECT MAX(id) FROM sbtc_signer.transaction_packages")
-        //     .fetch_optional(&self.0)
-        //     .await
-        //     .map_err(Error::SqlxQuery)?;
-
         let Some(package_id) = id else {
             return Ok(None);
         };
 
-        self.get_transaction_package_by_id(package_id).await
+        self.get_sweep_package_by_id(package_id).await
     }
 
     async fn get_deposit_request(
@@ -2118,9 +2189,9 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn write_bitcoin_transaction_package(
+    async fn write_sweep_transaction_package(
         &self,
-        package: SbtcTransactionPackage,
+        package: SweepTransactionPackage,
     ) -> Result<u32, Error> {
         // We're doing multiple inserts here so we wrap them in a transaction.
         let mut tx = self.0.begin().await.map_err(Error::SqlxBeginTransaction)?;
@@ -2128,7 +2199,7 @@ impl super::DbWrite for PgStore {
         // Insert the package and get its id
         let package_id: i32 = sqlx::query_scalar(
             "
-            INSERT INTO sbtc_signer.transaction_packages (
+            INSERT INTO sbtc_signer.sweep_packages (
                 created_at_block_hash
               , market_fee_rate
             )
@@ -2146,8 +2217,8 @@ impl super::DbWrite for PgStore {
         for mut transaction in package.transactions {
             let transaction_id: i64 = sqlx::query_scalar(
                 "
-                INSERT INTO sbtc_signer.packaged_transactions (
-                    transaction_package_id
+                INSERT INTO sbtc_signer.sweep_transactions (
+                    sweep_package_id
                   , txid
                   , utxo_txid
                   , utxo_output_index
@@ -2174,7 +2245,7 @@ impl super::DbWrite for PgStore {
                 sqlx::query(
                     "
                     INSERT INTO sbtc_signer.swept_deposits (
-                        packaged_transaction_id
+                        sweep_transaction_id
                       , output_index
                       , deposit_request_txid
                       , deposit_request_output_index
@@ -2192,11 +2263,10 @@ impl super::DbWrite for PgStore {
 
             // Insert the serviced withdrawals.
             for withdrawal in transaction.swept_withdrawals {
-                dbg!(&withdrawal);
                 sqlx::query(
                     "
                     INSERT INTO sbtc_signer.swept_withdrawals (
-                        packaged_transaction_id
+                        sweep_transaction_id
                       , output_index
                       , withdrawal_request_id
                       , withdrawal_request_block_hash
@@ -2218,14 +2288,14 @@ impl super::DbWrite for PgStore {
         Ok(package_id as u32)
     }
 
-    async fn mark_packaged_transaction_as_broadcast(
+    async fn mark_sweep_transaction_as_broadcast(
         &self,
         txid: &model::BitcoinTxId,
     ) -> Result<(), Error> {
         sqlx::query(
             "
-            UPDATE sbtc_signer.packaged_transaction
-            SET broadcast_at = CURRENT_TIMESTAMP()
+            UPDATE sbtc_signer.sweep_transactions
+            SET is_broadcast = true
             WHERE txid = $1",
         )
         .bind(txid)

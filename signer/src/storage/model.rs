@@ -19,35 +19,35 @@ use crate::keys::PublicKey;
 /// Bitcoin network.
 #[derive(Debug, Clone, PartialEq, PartialOrd, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub struct SbtcTransactionPackage {
+pub struct SweepTransactionPackage {
     /// The Bitcoin block hash at which this transaction package was broadcast.
     pub created_at_block_hash: BitcoinBlockHash,
     /// The market fee rate at the time of creation of this transaction package.
-    //#[sqlx(try_from = "i64")]
+    // TODO: How to handle floats with dummy derive?
     #[cfg_attr(feature = "testing", dummy(default))]
     pub market_fee_rate: f64,
     /// The transactions which were submitted together as part of this
     /// transaction package.
     #[sqlx(skip)]
-    pub transactions: Vec<SbtcPackagedTransaction>,
+    pub transactions: Vec<SweepTransaction>,
 }
 
-impl SbtcTransactionPackage {
+impl SweepTransactionPackage {
     /// Create a new [`SbtcTransactionPackage`] from a vector of
     /// [UnsignedTransaction](`crate::bitcoin::utxo::UnsignedTransaction`)s.
     pub fn from_package<'a, 'b>(
         chain_tip: bitcoin::BlockHash,
         market_fee_rate: f64,
         transactions: &'a [crate::bitcoin::utxo::UnsignedTransaction<'b>],
-    ) -> SbtcTransactionPackage {
-        let mut package = SbtcTransactionPackage {
+    ) -> SweepTransactionPackage {
+        let mut package = SweepTransactionPackage {
             created_at_block_hash: chain_tip.into(),
             market_fee_rate,
             transactions: Vec::new(),
         };
 
         for transaction in transactions {
-            let mut packaged_tx = SbtcPackagedTransaction {
+            let mut packaged_tx = SweepTransaction {
                 id: None,
                 txid: transaction.tx.compute_txid().into(),
                 utxo_txid: transaction.signer_utxo.utxo.outpoint.txid.into(),
@@ -92,7 +92,7 @@ impl SbtcTransactionPackage {
 /// has been broadcast to the Bitcoin network.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub struct SbtcPackagedTransaction {
+pub struct SweepTransaction {
     /// The internal id of the packaged transaction.
     #[sqlx(try_from = "Option<i64>")]
     pub id: Option<i64>,
