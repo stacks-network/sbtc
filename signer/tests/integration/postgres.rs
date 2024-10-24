@@ -948,24 +948,28 @@ async fn fetching_deposit_request_votes() {
             output_index,
             signer_pub_key: shares.signer_set_public_keys[0],
             is_accepted: true,
+            can_sign: true,
         },
         model::DepositSigner {
             txid,
             output_index,
             signer_pub_key: shares.signer_set_public_keys[1],
             is_accepted: false,
+            can_sign: true,
         },
         model::DepositSigner {
             txid,
             output_index,
             signer_pub_key: shares.signer_set_public_keys[2],
             is_accepted: true,
+            can_sign: true,
         },
         model::DepositSigner {
             txid,
             output_index,
             signer_pub_key: shares.signer_set_public_keys[3],
             is_accepted: true,
+            can_sign: true,
         },
     ];
 
@@ -1576,6 +1580,67 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
     assert!(requests.is_empty());
 
     signer::testing::storage::drop_db(db).await;
+}
+
+/// This checks that the DbRead::can_sign_deposit_tx implementation for
+/// PgStore operators as it is supposed to. Specifically, it checks that it
+/// returns Some(true) if the caller is part of the signing set,
+/// Some(false) if it isn't and None if the deposit request record cannot
+/// be found.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn can_sign_deposit_tx_rejects_not_in_signer_set() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // Let's create any old aggregate key
+    let aggregate_key: PublicKey = fake::Faker.fake_with_rng(&mut rng);
+
+    // Now for a deposit request where we use the above aggregate key.
+    let mut req: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
+    req.signers_public_key = aggregate_key.into();
+    db.write_deposit_request(&req).await.unwrap();
+
+    // Now we need a row where the aggregate key matches the one we created
+    // above. Also, lets create some signing set.
+    let signer_set_public_keys = std::iter::repeat_with(|| fake::Faker.fake_with_rng(&mut rng))
+        .take(3)
+        .collect::<Vec<PublicKey>>();
+    let mut shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    shares.aggregate_key = aggregate_key;
+    shares.signer_set_public_keys = signer_set_public_keys;
+    db.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+    // For each public key in the signing set, we will correctly say that
+    // the public key can sign for it.
+    for signer_public_key in shares.signer_set_public_keys.iter() {
+        let can_sign = db
+            .can_sign_deposit_tx(&req.txid, req.output_index, signer_public_key)
+            .await
+            .unwrap();
+
+        assert_eq!(can_sign, Some(true));
+    }
+
+    // For some public key not in the signing set, we will return false,
+    // indicating that we cannot sign for the deposit request.
+    let not_in_signing_set: PublicKey = fake::Faker.fake_with_rng(&mut rng);
+    let can_sign = db
+        .can_sign_deposit_tx(&req.txid, req.output_index, &not_in_signing_set)
+        .await
+        .unwrap();
+    assert_eq!(can_sign, Some(false));
+
+    // And lastly, if we do not have a record of the deposit request then
+    // we return None.
+    let random_txid = fake::Faker.fake_with_rng(&mut rng);
+    let signer_public_key = shares.signer_set_public_keys.first().unwrap();
+    let can_sign = db
+        .can_sign_deposit_tx(&random_txid, req.output_index, signer_public_key)
+        .await
+        .unwrap();
+    assert_eq!(can_sign, None);
 }
 
 /// This function tests that [`DbRead::get_swept_deposit_requests`]

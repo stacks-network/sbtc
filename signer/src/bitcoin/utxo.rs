@@ -348,7 +348,7 @@ impl DepositRequest {
             amount: request.amount,
             deposit_script: ScriptBuf::from_bytes(request.spend_script),
             reclaim_script: ScriptBuf::from_bytes(request.reclaim_script),
-            signers_public_key: request.signer_public_key.into(),
+            signers_public_key: request.signers_public_key.into(),
         }
     }
 }

@@ -13,6 +13,10 @@ pub struct SignerDepositDecision {
     /// Whether or not the signer has accepted the deposit request.
     #[prost(bool, tag = "3")]
     pub accepted: bool,
+    /// This specifies whether the sending signer can provide signature shares
+    /// for the associated deposit request.
+    #[prost(bool, tag = "4")]
+    pub can_sign: bool,
 }
 /// Represents a decision to accept or reject a deposit request.
 #[allow(clippy::derive_partial_eq_without_eq)]

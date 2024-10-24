@@ -263,6 +263,7 @@ impl TestSweepSetup {
                 output_index: self.deposit_request.outpoint.vout,
                 signer_pub_key,
                 is_accepted: !is_rejected,
+                can_sign: true,
             });
 
         for decision in deposit_signers {

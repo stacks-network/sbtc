@@ -14,6 +14,7 @@ use tokio::sync::Mutex;
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::keys::PublicKeyXOnly;
 use crate::keys::SignerScriptPubKey as _;
 use crate::stacks::events::CompletedDepositEvent;
 use crate::stacks::events::WithdrawalAcceptEvent;
@@ -305,6 +306,28 @@ impl super::DbRead for SharedStore {
             .get(&(*txid, output_index))
             .cloned()
             .unwrap_or_default())
+    }
+
+    async fn can_sign_deposit_tx(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+        signer_public_key: &PublicKey,
+    ) -> Result<Option<bool>, Error> {
+        let store = self.lock().await;
+        let deposit_request = store.deposit_requests.get(&(*txid, output_index)).cloned();
+        let Some(deposit_request) = deposit_request else {
+            return Ok(None);
+        };
+
+        let can_sign = store
+            .encrypted_dkg_shares
+            .values()
+            .filter(|(_, shares)| shares.signer_set_public_keys.contains(signer_public_key))
+            .map(|(_, shares)| PublicKeyXOnly::from(shares.aggregate_key))
+            .any(|x_only_key| x_only_key == deposit_request.signers_public_key);
+
+        Ok(Some(can_sign))
     }
 
     async fn get_withdrawal_signers(

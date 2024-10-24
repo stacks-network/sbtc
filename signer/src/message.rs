@@ -133,6 +133,9 @@ pub struct SignerDepositDecision {
     pub output_index: u32,
     /// Whether the signer has accepted the deposit request.
     pub accepted: bool,
+    /// This specifies whether the sending signer can provide signature
+    /// shares for the associated deposit request.
+    pub can_sign: bool,
 }
 
 /// Represents a decision related to signer withdrawal.

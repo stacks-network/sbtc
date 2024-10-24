@@ -493,6 +493,7 @@ async fn deposit_e2e() {
                 output_index: deposit_request.outpoint.vout,
                 signer_pub_key: signer_pub_key.clone(),
                 is_accepted: true,
+                can_sign: true,
             })
             .await
             .expect("failed to write deposit decision");

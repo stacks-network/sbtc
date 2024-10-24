@@ -37,6 +37,7 @@ use crate::storage::DbWrite as _;
 use crate::wsts_state_machine;
 
 use futures::StreamExt;
+use futures::TryStreamExt;
 use tokio::sync::Mutex;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
@@ -639,42 +640,52 @@ where
             .await
     }
 
-    /// Reach out to the blocklist client and find out whether we can
-    /// accept the deposit given all of the input `scriptPubKey`s of the
-    /// transaction. If the block list client is not configured then we
-    /// always accept the deposit request.
+    /// Check whether this signer accepts the deposit request. This
+    /// involves:
+    ///
+    /// 1. Reach out to the blocklist client and find out whether we can
+    ///    accept the deposit given all the input `scriptPubKey`s of the
+    ///    transaction.
+    /// 2. Check if we are a part of the signing set associated with the
+    ///    public key locking the funds.
+    ///
+    /// If the block list client is not configured then the first check
+    /// always passes.
     #[tracing::instrument(skip(self))]
     pub async fn handle_pending_deposit_request(
         &mut self,
         request: model::DepositRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
-        let bitcoin_network = bitcoin::Network::from(self.context.config().signer.network);
-        let params = bitcoin_network.params();
-        let addresses = request
-            .sender_script_pub_keys
-            .iter()
-            .map(|script_pubkey| {
-                bitcoin::Address::from_script(script_pubkey, params)
-                    .map_err(|err| Error::BitcoinAddressFromScript(err, request.outpoint()))
-            })
-            .collect::<Result<Vec<bitcoin::Address>, _>>()?;
+        let db = self.context.get_storage_mut();
 
-        let is_accepted = futures::stream::iter(&addresses)
-            .any(|address| async { self.can_accept(&address.to_string()).await })
-            .await;
+        let signer_public_key = self.signer_pub_key();
+        // Let's find out whether or not we can even sign for this deposit
+        // request. If we cannot then we do not even reach out to the
+        // blocklist client.
+        //
+        // We should have a record for the request because of where this
+        // function is in the code path.
+        let can_sign = db
+            .can_sign_deposit_tx(&request.txid, request.output_index, &signer_public_key)
+            .await?
+            .unwrap_or(false);
+
+        let is_accepted = can_sign && self.can_accept_deposit_request(&request).await?;
 
         let msg = message::SignerDepositDecision {
             txid: request.txid.into(),
             output_index: request.output_index,
             accepted: is_accepted,
+            can_sign,
         };
 
         let signer_decision = model::DepositSigner {
             txid: request.txid,
             output_index: request.output_index,
-            signer_pub_key: self.signer_pub_key(),
+            signer_pub_key: signer_public_key,
             is_accepted,
+            can_sign,
         };
 
         self.context
@@ -738,6 +749,36 @@ where
         client.can_accept(address).await.unwrap_or(false)
     }
 
+    async fn can_accept_deposit_request(&self, req: &model::DepositRequest) -> Result<bool, Error> {
+        // If we have not configured a blocklist checker, then we can
+        // return early.
+        let Some(client) = self.blocklist_checker.as_ref() else {
+            return Ok(true);
+        };
+
+        // We turn all the input scriptPubKeys into addresses and check
+        // those with the blocklist client.
+        let bitcoin_network = bitcoin::Network::from(self.context.config().signer.network);
+        let params = bitcoin_network.params();
+        let addresses = req
+            .sender_script_pub_keys
+            .iter()
+            .map(|script_pubkey| bitcoin::Address::from_script(script_pubkey, params))
+            .collect::<Result<Vec<bitcoin::Address>, _>>()
+            .map_err(|err| Error::BitcoinAddressFromScript(err, req.outpoint()))?;
+
+        let responses = futures::stream::iter(&addresses)
+            .then(|address| async { client.can_accept(&address.to_string()).await })
+            .inspect_err(|error| tracing::error!(%error, "blocklist client issue"))
+            .collect::<Vec<_>>()
+            .await;
+
+        // If any of the inputs addresses are fine then we pass the deposit
+        // request.
+        let can_accept = responses.into_iter().any(|res| res.unwrap_or(false));
+        Ok(can_accept)
+    }
+
     #[tracing::instrument(skip(self))]
     async fn persist_received_deposit_decision(
         &mut self,
@@ -749,6 +790,7 @@ where
             output_index: decision.output_index,
             signer_pub_key,
             is_accepted: decision.accepted,
+            can_sign: decision.can_sign,
         };
 
         self.context
