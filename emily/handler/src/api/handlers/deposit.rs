@@ -261,7 +261,7 @@ struct ScriptParameters {
     amount: u64,
     max_fee: u64,
     recipient: String,
-    lock_time: u64,
+    lock_time: u32,
 }
 
 /// Convert scripts to resource parameters.
@@ -377,7 +377,7 @@ mod tests {
     #[test_case(15000, 500_000, 150; "All parameters are normal numbers")]
     #[test_case(0, 0, 0; "All parameters are zeros")]
     fn test_scripts_to_resource_parameters(max_fee: u64, amount_sats: u64, lock_time: u32) {
-        let setup: TxSetup = testing::deposits::tx_setup(lock_time as i64, max_fee, amount_sats);
+        let setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
 
         let deposit_script = setup.deposit.deposit_script().to_hex_string();
         let reclaim_script = setup.reclaim.reclaim_script().to_hex_string();
@@ -386,7 +386,7 @@ mod tests {
             scripts_to_resource_parameters(&deposit_script, &reclaim_script).unwrap();
 
         assert_eq!(script_parameters.max_fee, max_fee);
-        assert_eq!(script_parameters.lock_time, lock_time as u64);
+        assert_eq!(script_parameters.lock_time, lock_time);
 
         // TODO: Test the recipient with an input value.
         assert!(script_parameters.recipient.len() > 0);
