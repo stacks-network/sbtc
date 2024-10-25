@@ -74,8 +74,8 @@ pub struct DepositRequest {
     pub max_fee: u64,
     /// The relative lock time in the reclaim script.
     #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "3..u32::MAX as u64"))]
-    pub lock_time: u64,
+    #[cfg_attr(feature = "testing", dummy(faker = "3..u16::MAX as u32"))]
+    pub lock_time: u32,
     /// The public key used in the deposit script. The signers public key
     /// is for Schnorr signatures.
     pub signer_public_key: PublicKeyXOnly,
@@ -104,7 +104,7 @@ impl From<Deposit> for DepositRequest {
             recipient: deposit.info.recipient.into(),
             amount: deposit.info.amount,
             max_fee: deposit.info.max_fee,
-            lock_time: deposit.info.lock_time,
+            lock_time: deposit.info.lock_time.to_consensus_u32(),
             signer_public_key: deposit.info.signers_public_key.into(),
             sender_script_pub_keys: sender_script_pub_keys.into_iter().collect(),
         }
