@@ -413,7 +413,7 @@ impl PgStore {
     }
 
     /// Attempts to retrieve an entire transaction package by id.
-    /// 
+    ///
     /// TODO: This could be made more efficient and shorter by returning a table
     /// with all the necessary information in one query, and doing a custom
     /// `FromRow` implementation. I just didn't want to spend more time on it
@@ -435,11 +435,11 @@ impl PgStore {
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
-    
+
         let Some(mut package) = package else {
             return Ok(None);
         };
-    
+
         let transactions: Vec<model::SweepTransaction> = sqlx::query_as(
             "
             SELECT
@@ -463,12 +463,12 @@ impl PgStore {
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
-    
+
         let transaction_futures = transactions.into_iter().map(|mut transaction| async {
             let transaction_id = transaction
                 .id
                 .expect("BUG: sweep_transactions.id cannot be null");
-    
+
             let swept_deposits = sqlx::query_as(
                 "
                 SELECT
@@ -487,7 +487,7 @@ impl PgStore {
             .fetch_all(&self.0)
             .await
             .map_err(Error::SqlxQuery)?;
-    
+
             let swept_withdrawals = sqlx::query_as(
                 "
                 SELECT
@@ -506,18 +506,18 @@ impl PgStore {
             .fetch_all(&self.0)
             .await
             .map_err(Error::SqlxQuery)?;
-    
+
             transaction.swept_deposits = swept_deposits;
             transaction.swept_withdrawals = swept_withdrawals;
-    
+
             Ok(transaction) as Result<model::SweepTransaction, Error>
         });
-    
+
         // This lets us at least query the swept deposits & withdrawals concurrently.
         let transactions = try_join_all(transaction_futures).await?;
-    
+
         package.transactions = transactions;
-    
+
         Ok(Some(package))
     }
 }
