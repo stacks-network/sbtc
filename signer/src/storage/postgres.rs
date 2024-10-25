@@ -9,6 +9,7 @@ use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksBlockId;
+use futures::future::try_join_all;
 use futures::StreamExt as _;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::Executor as _;
@@ -412,6 +413,11 @@ impl PgStore {
     }
 
     /// Attempts to retrieve an entire transaction package by id.
+    /// 
+    /// TODO: This could be made more efficient and shorter by returning a table
+    /// with all the necessary information in one query, and doing a custom
+    /// `FromRow` implementation. I just didn't want to spend more time on it
+    /// now.
     async fn get_sweep_package_by_id(
         &self,
         package_id: i32,
@@ -419,8 +425,8 @@ impl PgStore {
         let package: Option<SweepTransactionPackage> = sqlx::query_as(
             "
             SELECT
-                created_at_block_hash
-              , market_fee_rate
+                created_at_block_hash,
+                market_fee_rate
             FROM sweep_packages
             WHERE id = $1;
         ",
@@ -429,22 +435,22 @@ impl PgStore {
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
-
+    
         let Some(mut package) = package else {
             return Ok(None);
         };
-
+    
         let transactions: Vec<model::SweepTransaction> = sqlx::query_as(
             "
             SELECT
-                id
-              , txid
-              , utxo_txid
-              , utxo_output_index
-              , amount
-              , fee
-              , fee_rate
-              , is_broadcast
+                id,
+                txid,
+                utxo_txid,
+                utxo_output_index,
+                amount,
+                fee,
+                fee_rate,
+                is_broadcast
             FROM
                 sweep_transactions
             WHERE
@@ -457,24 +463,21 @@ impl PgStore {
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
-
-        for mut transaction in transactions {
-            // sweep_transaction.id is not nullable in the database and thus
-            // should necessarily be present.
-            #[allow(clippy::expect_used)]
+    
+        let transaction_futures = transactions.into_iter().map(|mut transaction| async {
             let transaction_id = transaction
                 .id
                 .expect("BUG: sweep_transactions.id cannot be null");
-
-            transaction.swept_deposits = sqlx::query_as(
+    
+            let swept_deposits = sqlx::query_as(
                 "
                 SELECT
-                    output_index
-                  , deposit_request_txid
-                  , deposit_request_output_index
+                    output_index,
+                    deposit_request_txid,
+                    deposit_request_output_index
                 FROM
                     swept_deposits
-                where
+                WHERE
                     sweep_transaction_id = $1
                 ORDER BY
                     id ASC;
@@ -484,16 +487,16 @@ impl PgStore {
             .fetch_all(&self.0)
             .await
             .map_err(Error::SqlxQuery)?;
-
-            transaction.swept_withdrawals = sqlx::query_as(
+    
+            let swept_withdrawals = sqlx::query_as(
                 "
                 SELECT
-                    output_index
-                  , withdrawal_request_id
-                  , withdrawal_request_block_hash
+                    output_index,
+                    withdrawal_request_id,
+                    withdrawal_request_block_hash
                 FROM
                     swept_withdrawals
-                where
+                WHERE
                     sweep_transaction_id = $1
                 ORDER BY
                     id ASC;
@@ -503,10 +506,18 @@ impl PgStore {
             .fetch_all(&self.0)
             .await
             .map_err(Error::SqlxQuery)?;
-
-            package.transactions.push(transaction);
-        }
-
+    
+            transaction.swept_deposits = swept_deposits;
+            transaction.swept_withdrawals = swept_withdrawals;
+    
+            Ok(transaction) as Result<model::SweepTransaction, Error>
+        });
+    
+        // This lets us at least query the swept deposits & withdrawals concurrently.
+        let transactions = try_join_all(transaction_futures).await?;
+    
+        package.transactions = transactions;
+    
         Ok(Some(package))
     }
 }
