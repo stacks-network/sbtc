@@ -27,7 +27,6 @@ use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
 use crate::storage::model::TransactionType;
 
-use super::model::SweepTransactionPackage;
 use super::util::get_utxo;
 
 /// All migration scripts from the `signer/migrations` directory.
@@ -421,8 +420,8 @@ impl PgStore {
     async fn get_sweep_package_by_id(
         &self,
         package_id: i32,
-    ) -> Result<Option<SweepTransactionPackage>, Error> {
-        let package: Option<SweepTransactionPackage> = sqlx::query_as(
+    ) -> Result<Option<model::SweepTransactionPackage>, Error> {
+        let package: Option<model::SweepTransactionPackage> = sqlx::query_as(
             "
             SELECT
                 created_at_block_hash,
@@ -1456,7 +1455,7 @@ impl super::DbRead for PgStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
-    ) -> Result<Option<SweepTransactionPackage>, Error> {
+    ) -> Result<Option<model::SweepTransactionPackage>, Error> {
         let id: Option<i32> = sqlx::query_scalar(
             "
             SELECT
@@ -2097,7 +2096,7 @@ impl super::DbWrite for PgStore {
 
     async fn write_sweep_transaction_package(
         &self,
-        package: SweepTransactionPackage,
+        package: model::SweepTransactionPackage,
     ) -> Result<u32, Error> {
         // We're doing multiple inserts here so we wrap them in a transaction.
         let mut tx = self.0.begin().await.map_err(Error::SqlxBeginTransaction)?;
