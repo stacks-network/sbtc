@@ -419,61 +419,6 @@ async fn handle_withdrawal_reject(
     Ok(())
 }
 
-// async fn get_tx_fee(
-//     db: &(impl DbRead + Sync + 'static),
-//     txid: Txid,
-//     block_hash: &BitcoinBlockHash,
-// ) -> Option<u64> {
-//     let btc_txid = BitcoinTxId::from(txid);
-//     let tx = db.get_bitcoin_tx(&btc_txid, block_hash).await.ok()??;
-
-//     let mut set_fetch_txout = JoinSet::new();
-
-//     for txin in tx.input.iter() {
-//         // let db_clone = db.clone();
-//         set_fetch_txout.spawn(async move { fetch_txout(db, txin.previous_output).await });
-//         // .map(|input| fetch_txout(db, input.previous_output)).collect();
-//     }
-
-//     // .0
-//     // .into_iter()
-//     // .map(|txout| txout.value)
-//     // .sum::<u64>()
-//     // .checked_sub(tx.output.iter().map(|txout| txout.value).sum::<u64>())
-//     Some(1)
-// }
-
-// async fn fetch_txout(db: &(impl DbRead + Sync + 'static), out_point: OutPoint) -> Option<TxOut> {
-//     let txid = out_point.txid;
-//     let vout = out_point.vout;
-
-//     let block = fetch_btc_block_from_txid(db, txid.into()).await?;
-//     let tx = db
-//         .get_bitcoin_tx(&txid.into(), &block.block_hash)
-//         .await
-//         .ok()??;
-//     tx.output.get(vout as usize).cloned()
-// }
-
-// async fn fetch_btc_block_from_txid(ctx: impl Context, txid: Txid) -> Result<BitcoinBlockHash, Error> {
-//     let btc_txid = BitcoinTxId::from(txid);
-//     let db = ctx.get_storage();
-
-//     let btc_blocks = db.get_bitcoin_blocks_with_transaction(&btc_txid).await;
-//     if let Err(error) = btc_blocks {
-//         let btc_client = ctx.get_bitcoin_client();
-//         let btc_block = btc_client
-//             .get_tx(&txid)
-//             .await?
-//             .ok_or(Error::BitcoinTxMissing(txid, None))?;
-//         if btc_block.block_hash.is_none() {
-//             return Err(Error::BitcoinTxMissing(txid, btc_block.block_hash));
-//         }
-//         let db = ctx.get_storage_mut();
-//         db.write_bitcoin_block(btc_block)
-//     }
-// }
-
 #[cfg(test)]
 mod tests {
     use super::*;
