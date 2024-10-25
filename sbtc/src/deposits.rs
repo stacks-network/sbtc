@@ -7,6 +7,7 @@ use bitcoin::taproot::LeafVersion;
 use bitcoin::taproot::NodeInfo;
 use bitcoin::taproot::TaprootSpendInfo;
 use bitcoin::Address;
+use bitcoin::locktime::relative::LockTime;
 use bitcoin::Network;
 use bitcoin::OutPoint;
 use bitcoin::Script;
@@ -53,7 +54,7 @@ const STANDARD_SCRIPT_LENGTH: usize =
 /// [^1]: <https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L560-L592>
 /// [^2]: <https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L1737-L1782>
 /// [^3]: <https://github.com/bitcoin/bitcoin/blob/v27.1/src/primitives/transaction.h#L89-L98>
-pub const SEQUENCE_LOCKTIME_DISABLE_FLAG: i64 = 1 << 31;
+pub const SEQUENCE_LOCKTIME_DISABLE_FLAG: u32 = 1 << 31;
 
 /// Script opcodes as the bytes in bitcoin Script.
 ///
@@ -108,7 +109,7 @@ pub struct DepositInfo {
     /// standard address or a contract address.
     pub recipient: PrincipalData,
     /// The relative lock time in the reclaim script.
-    pub lock_time: u64,
+    pub lock_time: LockTime,
 }
 
 impl CreateDepositRequest {
@@ -163,7 +164,7 @@ impl CreateDepositRequest {
             reclaim_script,
             signers_public_key: deposit.signers_public_key,
             recipient: deposit.recipient,
-            lock_time: reclaim.lock_time(),
+            lock_time: reclaim.lock_time,
             amount: tx_out.value.to_sat(),
             outpoint: self.outpoint,
         })
@@ -349,16 +350,17 @@ impl DepositScriptInputs {
 /// deposit script address.
 ///
 /// This struct upholds the invariant that the `lock_time` is a valid and
-/// standard `locktime` in bitcoin-core. So it is positive and less than or
-/// equal to the maximum acceptable value of `2**39 - 1`. We do not check
-/// whether the user supplied script is correct and standard.
+/// standard `locktime` in bitcoin-core. So the value here is a u16. We do
+/// not check whether the user supplied script is correct and standard.
+/// 
+/// Right now we only accept lock-times denominated in bitcoin blocks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReclaimScriptInputs {
     /// This is the lock time used for the OP_CSV opcode in the reclaim
     /// script. It is not allowed to exceed the bounds expected for a
-    /// 5-byte lock-time in bitcoin-core. It is also not allowed to have
+    /// 2-byte lock-time in bitcoin-core. It is also not allowed to have
     /// the [`SEQUENCE_LOCKTIME_DISABLE_FLAG`] bit set.
-    lock_time: i64,
+    lock_time: LockTime,
     /// The reclaim script after the `<locked-time> OP_CSV` part of the
     /// script.
     script: ScriptBuf,
@@ -366,32 +368,30 @@ pub struct ReclaimScriptInputs {
 
 impl ReclaimScriptInputs {
     /// Create a new one
-    pub fn try_new(lock_time: i64, script: ScriptBuf) -> Result<Self, Error> {
-        // We can only use numbers that can be expressed as a 5-byte signed
-        // integer, which has a max of `2**39 - 1`. Negative numbers might
-        // be considered non-standard, so we reject them as well.
-        if lock_time > i64::pow(2, 39) - 1 || lock_time < 0 {
-            return Err(Error::InvalidReclaimScriptLockTime(lock_time));
-        }
-
+    pub fn try_new(lock_time: u32, script: ScriptBuf) -> Result<Self, Error> {
         // OP_CSV checks can be disabled if the lock-time has the disabled
         // lock-time bit set to 1. So we disallow such lock times to ensure
         // that the OP_CSV check is always enabled.
         //
         // <https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L560-L592>
-        if lock_time & SEQUENCE_LOCKTIME_DISABLE_FLAG != 0 {
-            return Err(Error::InvalidReclaimScriptLockTime(lock_time));
+        let lock_time = LockTime::from_consensus(lock_time)
+            .map_err(Error::DisabledLockTime)?;
+
+        // For now we only accept lock-times denominated in bitcoin blocks
+        // units.
+        if matches!(lock_time, LockTime::Time(_)) {
+            return Err(Error::UnsupportedLockTimeUnits(lock_time.to_consensus_u32()));
         }
 
         Ok(Self { lock_time, script })
     }
 
     /// Get the lock time in the reclaim script.
-    pub fn lock_time(&self) -> u64 {
+    pub fn lock_time(&self) -> u32 {
         // We know this number is positive because that is one of the
         // invariants upheld by this struct, and we check for it in
         // `Self::try_new`, so this will never be a lossy conversion.
-        self.lock_time as u64
+        self.lock_time.to_consensus_u32()
     }
 
     /// Return the user supplied part of the script.
@@ -409,7 +409,7 @@ impl ReclaimScriptInputs {
     /// Create the reclaim script from the inputs
     pub fn reclaim_script(&self) -> ScriptBuf {
         let mut lock_script = ScriptBuf::builder()
-            .push_int(self.lock_time)
+            .push_int(self.lock_time().into())
             .push_opcode(opcodes::OP_CSV)
             .into_script()
             .into_bytes();
@@ -454,6 +454,8 @@ impl ReclaimScriptInputs {
             // a range of 0 to 2**39-1). See the following for how the code
             // works in bitcoin-core:
             // https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L531-L573
+            // That said, sBTC only accepts 4 byte unsigned integers. We do
+            // that check below.
             [n, rest @ ..] if *n <= 5 && rest.get(*n as usize) == Some(&OP_CSV) => {
                 // We know the error and panic paths cannot happen because
                 // of the above `if` check.
@@ -464,6 +466,9 @@ impl ReclaimScriptInputs {
             }
             _ => return Err(Error::InvalidReclaimScript),
         };
+
+        let lock_time = u32::try_from(lock_time)
+            .map_err(|_| Error::InvalidReclaimScriptLockTime(lock_time))?;
 
         let script = ScriptBuf::from_bytes(script.to_vec());
         ReclaimScriptInputs::try_new(lock_time, script)
@@ -680,17 +685,14 @@ mod tests {
     #[test_case(0; "sneaky guy setting the lock time to zero")]
     #[test_case(6; "6, a minimal number")]
     #[test_case(15; "15, another minimal number")]
-    #[test_case(0x00000000ff; "1 byte non-minimal")]
-    #[test_case(0x000000ffff; "2 bytes non-minimal")]
-    #[test_case(0x0000ffffff; "3 bytes non-minimal")]
-    #[test_case(0x005f000000; "4 bytes non-minimal")]
-    #[test_case(0x7f0fffffff; "5 bytes non-minimal with locking enabled")]
-    fn reclaim_script_lock_time(lock_time: i64) {
-        let reclaim_script = reclaim_p2pk(lock_time);
+    #[test_case(0x000000ff; "1 byte non-minimal")]
+    #[test_case(0x0000ffff; "2 bytes non-minimal")]
+    fn reclaim_script_lock_time(lock_time: u32) {
+        let reclaim_script = reclaim_p2pk(lock_time as i64);
 
         let extracts = ReclaimScriptInputs::parse(&reclaim_script).unwrap();
-        assert_eq!(extracts.lock_time, lock_time);
-        assert_eq!(extracts.lock_time(), u64::try_from(lock_time).unwrap());
+        assert_eq!(extracts.lock_time, LockTime::from_height(lock_time as u16));
+        assert_eq!(extracts.lock_time(), lock_time);
         assert_eq!(extracts.reclaim_script(), reclaim_script);
 
         // Let's check that ReclaimScriptInputs::reclaim_script and
@@ -737,7 +739,7 @@ mod tests {
             .into_script();
 
         let extracts = ReclaimScriptInputs::parse(&reclaim_script).unwrap();
-        assert_eq!(extracts.lock_time, lock_time);
+        assert_eq!(extracts.lock_time, LockTime::from_consensus(lock_time as u32).unwrap());
         assert_eq!(extracts.reclaim_script(), reclaim_script);
     }
 
@@ -804,7 +806,7 @@ mod tests {
         assert_eq!(parsed.reclaim_script, request.reclaim_script);
         assert_eq!(parsed.amount, amount_sats);
         assert_eq!(parsed.signers_public_key, setup.deposit.signers_public_key);
-        assert_eq!(parsed.lock_time, lock_time as u64);
+        assert_eq!(parsed.lock_time, LockTime::from_height(lock_time as u16));
         assert_eq!(parsed.recipient, setup.deposit.recipient);
     }
 
@@ -840,7 +842,7 @@ mod tests {
 
         // Let's modify the lock time of the reclaim script to look more
         // reasonable in the request.
-        setup.reclaim.lock_time = 150;
+        setup.reclaim.lock_time = LockTime::from_height(150);
 
         let request = CreateDepositRequest {
             outpoint: OutPoint::new(setup.tx.compute_txid(), 0),
