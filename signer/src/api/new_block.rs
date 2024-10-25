@@ -2,21 +2,38 @@
 //! which is for processing new block webhooks from a stacks node.
 //!
 
-use std::sync::OnceLock;
-
 use axum::extract::State;
 use axum::http::StatusCode;
-use emily_client::models::Chainstate;
-
+use bitcoin::Txid;
 use clarity::vm::representations::ContractName;
 use clarity::vm::types::QualifiedContractIdentifier;
 use clarity::vm::types::StandardPrincipalData;
+use emily_client::models::Chainstate;
+use emily_client::models::CreateWithdrawalRequestBody;
+use emily_client::models::DepositUpdate;
+use emily_client::models::Fulfillment;
+use emily_client::models::Status;
+use emily_client::models::WithdrawalParameters;
+use emily_client::models::WithdrawalUpdate;
+use futures::FutureExt;
+use std::sync::OnceLock;
 
+use crate::api::UpdateResult;
 use crate::context::Context;
 use crate::emily_client::EmilyInteract;
+use crate::error::Error;
+use crate::stacks::events::CompletedDepositEvent;
 use crate::stacks::events::RegistryEvent;
 use crate::stacks::events::TxInfo;
+use crate::stacks::events::WithdrawalAcceptEvent;
+use crate::stacks::events::WithdrawalCreateEvent;
+use crate::stacks::events::WithdrawalRejectEvent;
 use crate::stacks::webhooks::NewBlockEvent;
+use crate::storage::model::BitcoinBlock;
+use crate::storage::model::BitcoinTxId;
+use crate::storage::model::StacksBlock;
+use crate::storage::model::StacksBlockHash;
+use crate::storage::DbRead;
 use crate::storage::DbWrite;
 
 use super::ApiState;
@@ -84,24 +101,45 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
         .filter_map(|x| x.contract_event.map(|ev| (ev, x.txid)))
         .filter(|(ev, _)| &ev.contract_identifier == registry_address && ev.topic == "print");
 
-    let db = api.ctx.get_storage_mut();
-
+    let stacks_chaintip = StacksBlock {
+        block_hash: StacksBlockHash::from(new_block_event.index_block_hash),
+        block_height: new_block_event.block_height,
+        parent_hash: StacksBlockHash::from(new_block_event.parent_index_block_hash),
+    };
     let block_id = new_block_event.index_block_hash;
+
+    // Create vectors to store the processed events for Emily.
+    let mut completed_deposits = Vec::new();
+    let mut updated_withdrawals = Vec::new();
+    let mut created_withdrawals = Vec::new();
 
     for (ev, txid) in events {
         let tx_info = TxInfo { txid, block_id };
         let res = match RegistryEvent::try_new(ev.value, tx_info) {
             Ok(RegistryEvent::CompletedDeposit(event)) => {
-                db.write_completed_deposit_event(&event).await
+                handle_completed_deposit(&api.ctx, event, &stacks_chaintip, &mut completed_deposits)
+                    .await
             }
             Ok(RegistryEvent::WithdrawalAccept(event)) => {
-                db.write_withdrawal_accept_event(&event).await
+                handle_withdrawal_accept(
+                    &api.ctx,
+                    event,
+                    &stacks_chaintip,
+                    &mut updated_withdrawals,
+                )
+                .await
             }
             Ok(RegistryEvent::WithdrawalCreate(event)) => {
-                db.write_withdrawal_create_event(&event).await
+                handle_withdrawal_create(&api.ctx, event, &mut created_withdrawals).await
             }
             Ok(RegistryEvent::WithdrawalReject(event)) => {
-                db.write_withdrawal_reject_event(&event).await
+                handle_withdrawal_reject(
+                    &api.ctx,
+                    event,
+                    &stacks_chaintip,
+                    &mut updated_withdrawals,
+                )
+                .await
             }
             Err(error) => {
                 tracing::error!(%error, "Got an error when transforming the event ClarityValue");
@@ -118,14 +156,323 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
         }
     }
 
-    // Propagate the new block to Emily.
+    // Send the updates to Emily.
+    let emily_client = api.ctx.get_emily_client();
     let chainstate = Chainstate::new(block_id.to_string(), new_block_event.block_height);
-    if let Err(result) = api.ctx.get_emily_client().set_chainstate(chainstate).await {
-        tracing::warn!(%result, "Failed to set chainstate in emily");
-    }
 
+    let futures = vec![
+        emily_client
+            .update_deposits(completed_deposits)
+            .map(UpdateResult::Deposit)
+            .boxed(),
+        emily_client
+            .update_withdrawals(updated_withdrawals)
+            .map(UpdateResult::Withdrawal)
+            .boxed(),
+        emily_client
+            .create_withdrawals(created_withdrawals)
+            .map(UpdateResult::CreatedWithdrawal)
+            .boxed(),
+        emily_client
+            .set_chainstate(chainstate)
+            .map(UpdateResult::Chainstate)
+            .boxed(),
+    ];
+    let results = futures::future::join_all(futures).await;
+
+    // Log any errors that occurred while updating Emily.
+    // We don't return a non-success status code here because we rely on
+    // the redundancy of the other sBTC signers to ensure that the update
+    // is sent to Emily.
+    for result in results {
+        if let UpdateResult::Chainstate(Err(error)) = result {
+            tracing::warn!(%error, "Failed to set chainstate in emily");
+        } else if let UpdateResult::Deposit(Err(error)) = result {
+            tracing::warn!(%error, "Failed to update deposits in emily");
+        } else if let UpdateResult::Withdrawal(Err(error)) = result {
+            tracing::warn!(%error, "Failed to update withdrawals in emily");
+        } else if let UpdateResult::CreatedWithdrawal(results) = result {
+            for result in results {
+                if let Err(error) = result {
+                    tracing::warn!(%error, "Failed to create withdrawals in emily");
+                }
+            }
+        }
+    }
     StatusCode::OK
 }
+
+/// Fetches Bitcoin block information based on a transaction ID from the database.
+///
+/// # Parameters
+/// - `tx_id`: The transaction ID used to look up the Bitcoin block data.
+/// - `db`: Database access to retrieve the Bitcoin block information.
+///
+/// # Returns
+///
+/// If the block information is successfully retrieved, it returns `Some(BtcBlockInfo)`.
+/// If no block is found for the provided transaction ID, it returns `None`.
+/// Any database errors encountered during the operation result in an `None`.
+///
+/// # Notes
+///
+/// If an error occurs while writing to the database, the caller should return
+/// a non-success status code to ensure the node retries the webhook event later.
+async fn fetch_btc_block_from_txid(db: &impl DbRead, txid: Txid) -> Option<BitcoinBlock> {
+    let btc_txid = BitcoinTxId::from(txid);
+    let blocks_hashes = db
+        .get_bitcoin_blocks_with_transaction(&btc_txid)
+        .await
+        .ok()?;
+
+    let block_hash = blocks_hashes.last()?;
+    db.get_bitcoin_block(&block_hash).await.ok()?
+}
+
+/// Processes a completed deposit event by updating relevant deposit records
+/// and preparing data to be sent to Emily.
+///
+/// # Parameters
+/// - `ctx`: Shared application context containing configuration and database access.
+/// - `event`: The deposit event to be processed.
+/// - `stacks_chaintip`: Current chaintip information for the Stacks blockchain,
+///   including block height and hash.
+/// - `completed_deposits`: A mutable vector where the processed deposit update
+///   will be stored to be sent to Emily.
+///
+/// # Notes
+///
+/// If an error occurs while writing to the database, the caller should return
+/// a non-success status code to ensure the node retries the webhook event later.
+async fn handle_completed_deposit(
+    ctx: &impl Context,
+    event: CompletedDepositEvent,
+    stacks_chaintip: &StacksBlock,
+    completed_deposits: &mut Vec<DepositUpdate>,
+) -> Result<(), Error> {
+    ctx.get_storage_mut()
+        .write_completed_deposit_event(&event)
+        .await?;
+    // Need to fetch the block to get the block hash and height.
+    if let Some(btc_block) =
+        fetch_btc_block_from_txid(&ctx.get_storage(), event.outpoint.txid).await
+    {
+        completed_deposits.push(DepositUpdate {
+            bitcoin_tx_output_index: event.outpoint.vout,
+            bitcoin_txid: event.outpoint.txid.to_string(),
+            status: Status::Confirmed,
+            fulfillment: Some(Some(Box::new(Fulfillment {
+                bitcoin_block_hash: btc_block.block_hash.to_string(),
+                bitcoin_block_height: btc_block.block_height,
+                bitcoin_tx_index: event.outpoint.vout,
+                bitcoin_txid: event.outpoint.txid.to_string(),
+                btc_fee: 1, // TODO: We need to get the fee from the transaction. Currently missing from the event.
+                stacks_txid: event.txid.to_hex(),
+            }))),
+            status_message: format!("Included in block {}", event.block_id.to_hex()),
+            last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
+            last_update_height: stacks_chaintip.block_height,
+        });
+    }
+    // Just skip the event if we can't find the block.
+    // We rely on the redundancy of the other sBTC signers to
+    // ensure that the update is sent to Emily.
+    else {
+        tracing::warn!(
+            "Could not find bitcoin block for transaction {}",
+            event.outpoint.txid
+        );
+    }
+    Ok(())
+}
+
+/// Handles a withdrawal acceptance event, updating database records and
+/// preparing a response for Emily.
+///
+/// # Parameters
+/// - `ctx`: Shared application context with configuration and database access.
+/// - `event`: The withdrawal acceptance event to be processed.
+/// - `stacks_chaintip`: Current Stacks blockchain chaintip information for
+///   context on block height and hash.
+/// - `updated_withdrawals`: A mutable vector where the processed withdrawal
+///   acceptance update will be stored for later transmission to Emily.
+
+/// # Notes
+///
+/// If an error occurs while writing to the database, the caller should return
+/// a non-success status code to ensure the node retries the webhook event later.
+async fn handle_withdrawal_accept(
+    ctx: &impl Context,
+    event: WithdrawalAcceptEvent,
+    stacks_chaintip: &StacksBlock,
+    updated_withdrawals: &mut Vec<WithdrawalUpdate>,
+) -> Result<(), Error> {
+    ctx.get_storage_mut()
+        .write_withdrawal_accept_event(&event)
+        .await?;
+
+    if let Some(btc_block) =
+        fetch_btc_block_from_txid(&ctx.get_storage(), event.outpoint.txid).await
+    {
+        updated_withdrawals.push(WithdrawalUpdate {
+            request_id: event.request_id,
+            status: Status::Confirmed,
+            fulfillment: Some(Some(Box::new(Fulfillment {
+                bitcoin_block_hash: btc_block.block_hash.to_string(),
+                bitcoin_block_height: btc_block.block_height,
+                bitcoin_tx_index: event.outpoint.vout,
+                bitcoin_txid: event.outpoint.txid.to_string(),
+                btc_fee: event.fee,
+                stacks_txid: event.txid.to_hex(),
+            }))),
+            status_message: format!("Included in block {}", event.block_id.to_hex()),
+            last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
+            last_update_height: stacks_chaintip.block_height,
+        });
+    } else {
+        tracing::warn!(
+            "Could not find bitcoin block for transaction {}",
+            event.outpoint.txid
+        );
+    }
+    Ok(())
+}
+
+/// Processes a withdrawal creation event, adding new withdrawal records to the
+/// database and preparing the data for Emily.
+///
+/// # Parameters
+/// - `ctx`: Shared application context containing configuration and database access.
+/// - `event`: The withdrawal creation event to be processed.
+/// - `created_withdrawals`: A mutable vector where the newly created withdrawal
+///   update will be stored for eventual transmission to Emily.
+///
+/// # Notes
+///
+/// If an error occurs while writing to the database, the caller should return
+/// a non-success status code to ensure the node retries the webhook event later.
+async fn handle_withdrawal_create(
+    ctx: &impl Context,
+    event: WithdrawalCreateEvent,
+    created_withdrawals: &mut Vec<CreateWithdrawalRequestBody>,
+) -> Result<(), Error> {
+    ctx.get_storage_mut()
+        .write_withdrawal_create_event(&event)
+        .await?;
+
+    if let Ok(Some(stx_block)) = ctx
+        .get_storage()
+        .get_stacks_block(&StacksBlockHash::from(event.block_id))
+        .await
+    {
+        created_withdrawals.push(CreateWithdrawalRequestBody {
+            amount: event.amount,
+            parameters: Box::new(WithdrawalParameters { max_fee: event.max_fee }),
+            recipient: event.recipient.to_string(),
+            request_id: event.request_id,
+            stacks_block_hash: event.block_id.to_hex(),
+            stacks_block_height: stx_block.block_height,
+        });
+    } else {
+        tracing::warn!(
+            "Could not find Stacks block for block hash {}",
+            event.block_id.to_hex()
+        );
+    }
+    Ok(())
+}
+
+/// Processes a withdrawal rejection event by updating records and preparing
+/// the response data to be sent to Emily.
+///
+/// # Parameters
+/// - `ctx`: Shared application context containing configuration and database access.
+/// - `event`: The withdrawal rejection event to be processed.
+/// - `stacks_chaintip`: Information about the current chaintip of the Stacks blockchain,
+///   such as block height and hash.
+/// - `updated_withdrawals`: A mutable vector where the processed withdrawal
+///   rejection update will be stored for future transmission to Emily.
+///
+/// # Notes
+///
+/// If an error occurs while writing to the database, the caller should return
+/// a non-success status code to ensure the node retries the webhook event later.
+async fn handle_withdrawal_reject(
+    ctx: &impl Context,
+    event: WithdrawalRejectEvent,
+    stacks_chaintip: &StacksBlock,
+    updated_withdrawals: &mut Vec<WithdrawalUpdate>,
+) -> Result<(), Error> {
+    ctx.get_storage_mut()
+        .write_withdrawal_reject_event(&event)
+        .await?;
+
+    updated_withdrawals.push(WithdrawalUpdate {
+        fulfillment: None,
+        last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
+        last_update_height: stacks_chaintip.block_height,
+        request_id: event.request_id,
+        status: Status::Failed,
+        status_message: "Rejected".to_string(),
+    });
+
+    Ok(())
+}
+
+// async fn get_tx_fee(
+//     db: &(impl DbRead + Sync + 'static),
+//     txid: Txid,
+//     block_hash: &BitcoinBlockHash,
+// ) -> Option<u64> {
+//     let btc_txid = BitcoinTxId::from(txid);
+//     let tx = db.get_bitcoin_tx(&btc_txid, block_hash).await.ok()??;
+
+//     let mut set_fetch_txout = JoinSet::new();
+
+//     for txin in tx.input.iter() {
+//         // let db_clone = db.clone();
+//         set_fetch_txout.spawn(async move { fetch_txout(db, txin.previous_output).await });
+//         // .map(|input| fetch_txout(db, input.previous_output)).collect();
+//     }
+
+//     // .0
+//     // .into_iter()
+//     // .map(|txout| txout.value)
+//     // .sum::<u64>()
+//     // .checked_sub(tx.output.iter().map(|txout| txout.value).sum::<u64>())
+//     Some(1)
+// }
+
+// async fn fetch_txout(db: &(impl DbRead + Sync + 'static), out_point: OutPoint) -> Option<TxOut> {
+//     let txid = out_point.txid;
+//     let vout = out_point.vout;
+
+//     let block = fetch_btc_block_from_txid(db, txid.into()).await?;
+//     let tx = db
+//         .get_bitcoin_tx(&txid.into(), &block.block_hash)
+//         .await
+//         .ok()??;
+//     tx.output.get(vout as usize).cloned()
+// }
+
+// async fn fetch_btc_block_from_txid(ctx: impl Context, txid: Txid) -> Result<BitcoinBlockHash, Error> {
+//     let btc_txid = BitcoinTxId::from(txid);
+//     let db = ctx.get_storage();
+
+//     let btc_blocks = db.get_bitcoin_blocks_with_transaction(&btc_txid).await;
+//     if let Err(error) = btc_blocks {
+//         let btc_client = ctx.get_bitcoin_client();
+//         let btc_block = btc_client
+//             .get_tx(&txid)
+//             .await?
+//             .ok_or(Error::BitcoinTxMissing(txid, None))?;
+//         if btc_block.block_hash.is_none() {
+//             return Err(Error::BitcoinTxMissing(txid, btc_block.block_hash));
+//         }
+//         let db = ctx.get_storage_mut();
+//         db.write_bitcoin_block(btc_block)
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
@@ -133,6 +480,8 @@ mod tests {
 
     use bitcoin::OutPoint;
     use clarity::vm::types::PrincipalData;
+    use emily_client::models::UpdateDepositsResponse;
+    use emily_client::models::UpdateWithdrawalsResponse;
     use fake::Fake;
     use rand::rngs::OsRng;
     use test_case::test_case;
@@ -193,6 +542,22 @@ mod tests {
                 let chainstate = chainstate.clone();
                 Box::pin(async { Ok(chainstate) })
             });
+            client
+                .expect_update_deposits()
+                .times(1)
+                .returning(move |_| {
+                    Box::pin(async { Ok(UpdateDepositsResponse { deposits: vec![] }) })
+                });
+            client
+                .expect_update_withdrawals()
+                .times(1)
+                .returning(move |_| {
+                    Box::pin(async { Ok(UpdateWithdrawalsResponse { withdrawals: vec![] }) })
+                });
+            client
+                .expect_create_withdrawals()
+                .times(1)
+                .returning(move |_| Box::pin(async { vec![] }));
         })
         .await;
 
@@ -264,11 +629,28 @@ mod tests {
             new_block_event.index_block_hash.to_string(),
             new_block_event.block_height,
         );
+
         ctx.with_emily_client(|client| {
             client.expect_set_chainstate().times(1).returning(move |_| {
                 let chainstate = chainstate.clone();
                 Box::pin(async { Ok(chainstate) })
             });
+            client
+                .expect_update_deposits()
+                .times(1)
+                .returning(move |_| {
+                    Box::pin(async { Ok(UpdateDepositsResponse { deposits: vec![] }) })
+                });
+            client
+                .expect_update_withdrawals()
+                .times(1)
+                .returning(move |_| {
+                    Box::pin(async { Ok(UpdateWithdrawalsResponse { withdrawals: vec![] }) })
+                });
+            client
+                .expect_create_withdrawals()
+                .times(1)
+                .returning(move |_| Box::pin(async { vec![] }));
         })
         .await;
         // Okay now to do the check.
