@@ -1387,15 +1387,10 @@ impl super::DbRead for PgStore {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> Result<Vec<model::SweptDepositRequest>, Error> {
-        // TODO: I think these queries are getting too complex, i.e. they are
-        // difficult to understand at a glance, work with and test. We should
-        // consider refactoring them to more but smaller queries with less
-        // embedded business rules, and composing them in Rust.
-
         // TODO: This query needs to be updated to check that the
         // `completed_deposit_event` is in a Stacks block linked to the
         // canonical Bitcoin chain (i.e. confirmed) once #559 is completed.
-
+        
         // The following tests define the criteria for this query:
         // - [X] get_swept_deposit_requests_returns_swept_deposit_requests
         // - [X] get_swept_deposit_requests_does_not_return_unswept_deposit_requests
@@ -2110,7 +2105,7 @@ impl super::DbWrite for PgStore {
         // Insert the package and get its id
         let package_id: i32 = sqlx::query_scalar(
             "
-            INSERT INTO sbtc_signer.sweep_packages (
+            INSERT INTO sweep_packages (
                 created_at_block_hash
               , market_fee_rate
             )
@@ -2128,7 +2123,7 @@ impl super::DbWrite for PgStore {
         for mut transaction in package.transactions {
             let transaction_id: i64 = sqlx::query_scalar(
                 "
-                INSERT INTO sbtc_signer.sweep_transactions (
+                INSERT INTO sweep_transactions (
                     sweep_package_id
                   , txid
                   , utxo_txid
@@ -2157,7 +2152,7 @@ impl super::DbWrite for PgStore {
             for deposit in transaction.swept_deposits {
                 sqlx::query(
                     "
-                    INSERT INTO sbtc_signer.swept_deposits (
+                    INSERT INTO swept_deposits (
                         sweep_transaction_id
                       , output_index
                       , deposit_request_txid
@@ -2178,7 +2173,7 @@ impl super::DbWrite for PgStore {
             for withdrawal in transaction.swept_withdrawals {
                 sqlx::query(
                     "
-                    INSERT INTO sbtc_signer.swept_withdrawals (
+                    INSERT INTO swept_withdrawals (
                         sweep_transaction_id
                       , output_index
                       , withdrawal_request_id
@@ -2207,7 +2202,7 @@ impl super::DbWrite for PgStore {
     ) -> Result<(), Error> {
         sqlx::query(
             "
-            UPDATE sbtc_signer.sweep_transactions
+            UPDATE sweep_transactions
             SET is_broadcast = true
             WHERE txid = $1",
         )
