@@ -3,32 +3,22 @@
 name: Docker Image (Binary)
 
 on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        required: true
-        type: string
-        description: "Version tag for docker images. Requires that a release branch for the tag exists."
-      push-image:
-        required: true
-        type: boolean
-        description: "False if dry running the docker image build"
-      is-latest:
-        required: false
-        type: boolean
-        description: "True if the image is the latest release"
+  push:
+    tags:
+      - '*'
 
 ## Define which docker arch to build for
 env:
   docker_platforms: "linux/amd64"
   docker-org: blockstack
+  latest-release: $(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .tag_name)
 
 concurrency:
   group: docker-image-${{ github.head_ref || github.ref || github.run_id }}
   ## Always cancel duplicate jobs
   cancel-in-progress: true
 
-run-name: "Build and Release sBTC Signer ${{ inputs.tag }} Docker Image"
+run-name: "Build and Release sBTC Signer ${{ github.ref_name }} Docker Image"
 
 jobs:
   image:
@@ -54,12 +44,18 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
+      # Fetch the latest release tag and put into environment variables under
+      # the key `latest_release`.
+      - name: Get latest release tag
+        id: get_latest_release
+        run: |
+          latest_release=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .tag_name)
+          echo "latest_release=$latest_release" >> $GITHUB_ENV
+
       ## Checkout the branch of the release provided.
       ## This requires that a release branch exists for the tag.
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: "release/${{ inputs.tag }}"
 
       ## if the repo owner is not `stacks-network`, default to a docker-org of the repo owner (i.e. github user id)
       ## this allows forks to run the docker push workflows without having to hardcode a dockerhub org (but it does require docker hub user to match github username)
@@ -80,10 +76,10 @@ jobs:
           images: |
             ${{ env.docker-org }}/sbtc
           tags: |
-            type=raw,value=${{ matrix.docker_target }}-${{ inputs.tag }}-${{ matrix.dist }}
-            type=raw,value=${{ matrix.docker_target }}-${{ inputs.tag }},enable=${{ matrix.dist == 'debian' }}
-            type=raw,value=${{ matrix.docker_target }}-latest,enable=${{ inputs.is-latest == 'true' && matrix.dist == 'debian' }}
-            type=raw,value=${{ matrix.docker_target }}-latest-${{ matrix.dist }},enable=${{ inputs.is-latest == 'true' }}
+            type=raw,value=${{ matrix.docker_target }}-${{ github.ref_name }}-${{ matrix.dist }}
+            type=raw,value=${{ matrix.docker_target }}-${{ github.ref_name }},enable=${{ matrix.dist == 'debian' }}
+            type=raw,value=${{ matrix.docker_target }}-latest,enable=${{ env.latest_release == github.ref_name && matrix.dist == 'debian' }}
+            type=raw,value=${{ matrix.docker_target }}-latest-${{ matrix.dist }},enable=${{ env.latest_release == github.ref_name }}
 
       ## Build docker image for release
       - name: Build and Push ( ${{ matrix.dist }} ${{ matrix.docker_target }} )
