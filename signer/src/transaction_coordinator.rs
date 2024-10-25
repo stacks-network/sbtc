@@ -469,16 +469,16 @@ where
                 Error::BitcoinTxMissing(req.sweep_txid.into(), Some(req.sweep_block_hash.into()))
             })?;
 
-        // Retrieve the deposit request from the database.
-        let deposit_request = self
-            .context
-            .get_storage()
-            .get_deposit_request(&req.txid, req.output_index)
-            .await?
-            .ok_or(Error::MissingDepositRequest(
-                req.txid.into(),
-                req.output_index,
-            ))?;
+        // // Retrieve the deposit request from the database.
+        // let deposit_request = self
+        //     .context
+        //     .get_storage()
+        //     .get_deposit_request(&req.txid, req.output_index)
+        //     .await?
+        //     .ok_or(Error::MissingDepositRequest(
+        //         req.txid.into(),
+        //         req.output_index,
+        //     ))?;
 
         let outpoint = req.deposit_outpoint();
         let assessed_bitcoin_fee = tx_info
@@ -488,9 +488,9 @@ where
         // TODO: we should validate the contract call before asking others
         // to sign it.
         let contract_call = ContractCall::CompleteDepositV1(CompleteDepositV1 {
-            amount: deposit_request.amount - assessed_bitcoin_fee.to_sat(),
+            amount: req.amount - assessed_bitcoin_fee.to_sat(),
             outpoint,
-            recipient: deposit_request.recipient.into(),
+            recipient: req.recipient.into(),
             deployer: self.context.config().signer.deployer,
             sweep_txid: req.sweep_txid,
             sweep_block_hash: req.sweep_block_hash,

@@ -141,6 +141,9 @@ impl TestSweepSetup {
             let mut transactions = requests.construct_transactions().unwrap();
             // Create the transaction package that we will store.
             let package = model::SweepTransactionPackage::from_package(
+                // We expect the `sweep_block_hash` to be the block where the
+                // sweep transaction was mined, so we use the deposit block hash
+                // which is a previous block for the sweep broadcast.
                 deposit_block_hash,
                 requests.signer_state.fee_rate,
                 &transactions,
@@ -205,17 +208,23 @@ impl TestSweepSetup {
     /// represents the transaction package which was broadcast to the mempool
     /// (but not necessarily confirmed), while [`Self::store_sweep_tx`]
     /// represents the sweep transaction which has been observed on-chain.
-    pub async fn store_sweep_transaction_packages(&mut self, db: &PgStore) {
+    pub async fn store_sweep_transaction_packages(
+        &mut self,
+        db: &PgStore,
+    ) -> Vec<model::SweepTransactionPackage> {
+        let mut ret = vec![];
         for package in self.transaction_packages.drain(..) {
             db.write_sweep_transaction_package(package.clone())
                 .await
                 .unwrap();
-            for transaction in package.transactions {
+            for transaction in package.transactions.iter() {
                 db.mark_sweep_transaction_as_broadcast(&transaction.txid)
                     .await
                     .unwrap();
             }
+            ret.push(package.clone());
         }
+        ret
     }
 
     /// Store the deposit transaction into the database

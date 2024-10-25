@@ -714,6 +714,7 @@ impl super::DbRead for SharedStore {
     async fn get_latest_sweep_transaction_package(
         &self,
         chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
     ) -> Result<Option<SweepTransactionPackage>, Error> {
         let store = self.lock().await;
         let bitcoin_blocks = &store.bitcoin_blocks;
@@ -721,6 +722,7 @@ impl super::DbRead for SharedStore {
         let first = bitcoin_blocks.get(chain_tip);
 
         let package = std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
+            .take(context_window as usize)
             .find_map(|block| {
                 tx_packages
                     .iter()

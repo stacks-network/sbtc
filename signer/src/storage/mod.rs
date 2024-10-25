@@ -229,6 +229,7 @@ pub trait DbRead {
     fn get_latest_sweep_transaction_package(
         &self,
         chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
     ) -> impl Future<Output = Result<Option<SweepTransactionPackage>, Error>> + Send;
 
     /// Gets the specified deposit request if it exists. The deposit request is

@@ -1,12 +1,12 @@
 CREATE TYPE sbtc_signer.transaction_type AS ENUM (
-   'sbtc_transaction',
-   'deposit_request',
-   'withdraw_request',
-   'deposit_accept',
-   'withdraw_accept',
-   'withdraw_reject',
-   'rotate_keys',
-   'donation'
+    'sbtc_transaction',
+    'deposit_request',
+    'withdraw_request',
+    'deposit_accept',
+    'withdraw_accept',
+    'withdraw_reject',
+    'rotate_keys',
+    'donation'
 );
 
 CREATE TABLE sbtc_signer.bitcoin_blocks (
@@ -221,6 +221,8 @@ CREATE TABLE sbtc_signer.sweep_transactions (
     amount BIGINT NOT NULL,
     -- The fee paid for the transaction.
     fee BIGINT NOT NULL,
+    -- The fee rate in satoshis per vByte used for this transaction.
+    fee_rate DOUBLE PRECISION NOT NULL,
     -- The timestamp that the transaction was broadcast at. This should be
     -- set after we know that the transaction was successfully broadcast.
     is_broadcast BOOLEAN NOT NULL DEFAULT FALSE,

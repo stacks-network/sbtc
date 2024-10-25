@@ -54,7 +54,7 @@ impl SweepTransactionPackage {
                 utxo_output_index: transaction.signer_utxo.utxo.outpoint.vout,
                 amount: transaction.output_amounts(),
                 fee: transaction.tx_fee,
-                fee_rate: transaction.signer_utxo.fee_rate as u64,
+                fee_rate: transaction.signer_utxo.fee_rate,
                 is_broadcast: false,
                 swept_deposits: Vec::new(),
                 swept_withdrawals: Vec::new(),
@@ -90,11 +90,12 @@ impl SweepTransactionPackage {
 
 /// Represents a single transaction which is part of a transaction package which
 /// has been broadcast to the Bitcoin network.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct SweepTransaction {
     /// The internal id of the packaged transaction.
     #[sqlx(try_from = "Option<i64>")]
+    #[cfg_attr(feature = "testing", dummy(default))]
     pub id: Option<i64>,
     /// The Bitcoin transaction id.
     pub txid: BitcoinTxId,
@@ -112,9 +113,8 @@ pub struct SweepTransaction {
     #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
     pub fee: u64,
     /// The fee rate of this transaction in sats/vByte.
-    #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
-    pub fee_rate: u64,
+    #[cfg_attr(feature = "testing", dummy(default))]
+    pub fee_rate: f64,
     /// Whether or not this transaction has been successfully broadcast to the
     /// Bitcoin network.
     #[cfg_attr(feature = "testing", dummy(default))]
@@ -406,6 +406,13 @@ pub struct SweptDepositRequest {
     #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
     #[sqlx(try_from = "i32")]
     pub output_index: u32,
+    /// The address of which the sBTC should be minted,
+    /// can be a smart contract address.
+    pub recipient: StacksPrincipal,
+    /// The amount in the deposit UTXO.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
+    pub amount: u64,
 }
 
 impl SweptDepositRequest {
@@ -434,9 +441,26 @@ pub struct SweptWithdrawalRequest {
     /// public function.
     #[sqlx(try_from = "i64")]
     pub request_id: u64,
+    /// The stacks transaction ID that lead to the creation of the
+    /// withdrawal request.
+    pub txid: StacksTxId,
     /// Stacks block ID of the block that includes the transaction
     /// associated with this withdrawal request.
     pub block_hash: StacksBlockHash,
+    /// The ScriptPubKey that should receive the BTC withdrawal.
+    pub recipient: ScriptPubKey,
+    /// The amount of satoshis to withdraw.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000"))]
+    pub amount: u64,
+    /// The maximum amount that may be spent as for the bitcoin miner
+    /// transaction fee.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..10000"))]
+    pub max_fee: u64,
+    /// The stacks address that initiated the request. This is populated
+    /// using `tx-sender`.
+    pub sender_address: StacksPrincipal,
 }
 
 /// Persisted DKG shares
@@ -532,7 +556,7 @@ impl From<SignerVotes> for BitArray<[u8; 16]> {
 
 /// The types of transactions the signer is interested in.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
-#[sqlx(type_name = "sbtc_signer.transaction_type", rename_all = "snake_case")]
+#[sqlx(type_name = "transaction_type", rename_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 #[strum(serialize_all = "snake_case")]
 pub enum TransactionType {
