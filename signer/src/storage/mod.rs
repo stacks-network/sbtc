@@ -287,6 +287,13 @@ pub trait DbWrite {
         txs: Vec<model::Transaction>,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 
+    /// Write a bitcoin block consensus hash.
+    fn write_bitcoin_consensus_hash(
+        &self,
+        block_hash: &model::BitcoinBlockHash,
+        consensus_hash: &model::ConsensusHash,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
     /// Write a connection between a stacks block and a transaction
     fn write_stacks_transaction(
         &self,

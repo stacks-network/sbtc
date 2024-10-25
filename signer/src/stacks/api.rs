@@ -15,6 +15,7 @@ use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::net::api::getaccount::AccountEntryResponse;
 use blockstack_lib::net::api::getinfo::RPCPeerInfoData;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
+use blockstack_lib::net::api::getsortition::SortitionInfo;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use blockstack_lib::net::api::postfeerate::FeeRateEstimateRequestBody;
 use blockstack_lib::net::api::postfeerate::RPCFeeEstimateResponse;
@@ -32,6 +33,7 @@ use url::Url;
 use crate::config::Settings;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::storage::model::BitcoinBlockHash;
 use crate::storage::DbRead;
 use crate::util::ApiFallbackClient;
 
@@ -125,6 +127,11 @@ pub trait StacksInteract: Send + Sync {
     /// This function is analogous to the GET /v3/tenures/info stacks node
     /// endpoint for retrieving tenure information.
     fn get_tenure_info(&self) -> impl Future<Output = Result<RPCGetTenureInfo, Error>> + Send;
+    /// Get information about the sortition associated to a bitcoin block
+    fn get_sortition_info(
+        &self,
+        bitcoin_block: &BitcoinBlockHash,
+    ) -> impl Future<Output = Result<SortitionInfo, Error>> + Send;
     /// Estimate the priority transaction fees given the input transaction
     /// and the current state of the mempool. The result will be the
     /// estimated total transaction fee in microSTX.
@@ -663,6 +670,44 @@ impl StacksClient {
             .map_err(Error::UnexpectedStacksResponse)
     }
 
+    /// Get information about the sortition related to a bitcoin block.
+    ///
+    /// Uses the GET /v3/sortitions stacks node endpoint for retrieving
+    /// sortition information.
+    #[tracing::instrument(skip(self))]
+    pub async fn get_sortition_info(
+        &self,
+        bitcoin_block: &BitcoinBlockHash,
+    ) -> Result<SortitionInfo, Error> {
+        let path = format!("/v3/sortitions/burn/{}", bitcoin_block);
+        let url = self
+            .endpoint
+            .join(&path)
+            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
+
+        tracing::debug!("Making request to the stacks node for sortition info");
+        let response = self
+            .client
+            .get(url.clone())
+            .timeout(REQUEST_TIMEOUT)
+            .send()
+            .await
+            .map_err(Error::StacksNodeRequest)?;
+
+        response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
+            .json::<Vec<SortitionInfo>>()
+            .await
+            .map_err(Error::UnexpectedStacksResponse)
+            .and_then(|result| {
+                result
+                    .into_iter()
+                    .next()
+                    .ok_or(Error::InvalidStacksResponse("missing sortition info"))
+            })
+    }
+
     /// Get PoX information from the Stacks node.
     #[tracing::instrument(skip(self))]
     pub async fn get_pox_info(&self) -> Result<RPCPoxInfoData, Error> {
@@ -835,6 +880,13 @@ impl StacksInteract for StacksClient {
         self.get_tenure_info().await
     }
 
+    async fn get_sortition_info(
+        &self,
+        bitcoin_block: &BitcoinBlockHash,
+    ) -> Result<SortitionInfo, Error> {
+        self.get_sortition_info(bitcoin_block).await
+    }
+
     /// Estimate the high priority transaction fee for the input
     /// transaction call given the current state of the mempool.
     ///
@@ -922,6 +974,14 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
 
     async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
         self.exec(|client, _| client.get_tenure_info()).await
+    }
+
+    async fn get_sortition_info(
+        &self,
+        bitcoin_block: &BitcoinBlockHash,
+    ) -> Result<SortitionInfo, Error> {
+        self.exec(|client, _| client.get_sortition_info(bitcoin_block))
+            .await
     }
 
     async fn estimate_fees<T>(&self, payload: &T, priority: FeePriority) -> Result<u64, Error>

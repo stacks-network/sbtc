@@ -28,6 +28,7 @@ use crate::error::Error;
 use crate::stacks::api::StacksInteract;
 use crate::storage;
 use crate::storage::model;
+use crate::storage::model::BitcoinBlockHash;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use bitcoin::hashes::Hash as _;
@@ -267,18 +268,25 @@ where
     #[tracing::instrument(skip_all, fields(block_hash = %block.block_hash()))]
     async fn process_bitcoin_block(&mut self, block: bitcoin::Block) -> Result<(), Error> {
         tracing::info!("processing bitcoin block");
-        let info = self.stacks_client.get_tenure_info().await?;
+        let tenure_info = self.stacks_client.get_tenure_info().await?;
 
         tracing::debug!("fetching unknown ancestral blocks from stacks-core");
         let stacks_blocks = crate::stacks::api::fetch_unknown_ancestors(
             &self.stacks_client,
             &self.context.get_storage(),
-            info.tip_block_id,
+            tenure_info.tip_block_id,
         )
         .await?;
 
         self.write_stacks_blocks(&stacks_blocks).await?;
         self.write_bitcoin_block(&block).await?;
+
+        // NOTE: unless we add a delay, `block` may still be unknown to the stack node,
+        // so we set the block parent consensus hash.
+        // This also applies to `get_tenure_info`: adding a ~3 sec delay in devenv
+        // returns a highest tenure.
+        self.write_bitcoin_consensus_hash(&block.header.prev_blockhash.into())
+            .await?;
 
         tracing::debug!("finished processing bitcoin block");
         Ok(())
@@ -425,6 +433,7 @@ where
                 .expect("Failed to get block height"),
             parent_hash: block.header.prev_blockhash.into(),
             confirms: Vec::new(),
+            consensus_hash: None,
         };
 
         self.context
@@ -433,6 +442,24 @@ where
             .await?;
         self.extract_sbtc_transactions(block.block_hash(), &block.txdata)
             .await?;
+
+        Ok(())
+    }
+
+    /// Fetch the consensus hash for a bitcoin block and write it to the database.
+    async fn write_bitcoin_consensus_hash(
+        &mut self,
+        block_hash: &BitcoinBlockHash,
+    ) -> Result<(), Error> {
+        let sortition_info = self.stacks_client.get_sortition_info(block_hash).await;
+        if let Ok(sortition_info) = sortition_info {
+            self.context
+                .get_storage_mut()
+                .write_bitcoin_consensus_hash(block_hash, &sortition_info.consensus_hash.into())
+                .await?;
+        } else {
+            tracing::warn!(?block_hash, "cannot get consensus hash for bitcoin block");
+        }
 
         Ok(())
     }

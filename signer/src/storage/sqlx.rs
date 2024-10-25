@@ -17,6 +17,7 @@ use crate::keys::PublicKeyXOnly;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
+use crate::storage::model::ConsensusHash;
 use crate::storage::model::ScriptPubKey;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
@@ -75,6 +76,33 @@ impl<'r> sqlx::Encode<'r, sqlx::Postgres> for BitcoinBlockHash {
 impl sqlx::postgres::PgHasArrayType for BitcoinBlockHash {
     fn array_type_info() -> sqlx::postgres::PgTypeInfo {
         <[u8; 32] as sqlx::postgres::PgHasArrayType>::array_type_info()
+    }
+}
+
+/// For the [`ConsensusHash`]
+
+impl<'r> sqlx::Decode<'r, sqlx::Postgres> for ConsensusHash {
+    fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
+        let bytes = <[u8; 20] as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
+        Ok(ConsensusHash::from(bytes))
+    }
+}
+
+impl sqlx::Type<sqlx::Postgres> for ConsensusHash {
+    fn type_info() -> sqlx::postgres::PgTypeInfo {
+        <[u8; 20] as sqlx::Type<sqlx::Postgres>>::type_info()
+    }
+}
+
+impl<'r> sqlx::Encode<'r, sqlx::Postgres> for ConsensusHash {
+    fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> Result<IsNull, BoxDynError> {
+        <[u8; 20] as sqlx::Encode<'r, sqlx::Postgres>>::encode_by_ref(&self.to_bytes(), buf)
+    }
+}
+
+impl sqlx::postgres::PgHasArrayType for ConsensusHash {
+    fn array_type_info() -> sqlx::postgres::PgTypeInfo {
+        <[u8; 20] as sqlx::postgres::PgHasArrayType>::array_type_info()
     }
 }
 

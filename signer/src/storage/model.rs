@@ -30,6 +30,9 @@ pub struct BitcoinBlock {
     /// Stacks block confirmed by this block.
     #[cfg_attr(feature = "testing", dummy(default))]
     pub confirms: Vec<StacksBlockHash>,
+    /// Consensus hash of this block
+    #[cfg_attr(feature = "testing", dummy(default))]
+    pub consensus_hash: Option<ConsensusHash>,
 }
 
 /// Stacks block.
@@ -44,6 +47,8 @@ pub struct StacksBlock {
     pub block_height: u64,
     /// Hash of the parent block.
     pub parent_hash: StacksBlockHash,
+    /// Consensus hash of the bitcoin anchor block.
+    pub consensus_hash: ConsensusHash,
 }
 
 /// Deposit request.
@@ -678,6 +683,35 @@ impl From<StacksTxId> for blockstack_lib::burnchains::Txid {
 impl From<[u8; 32]> for StacksTxId {
     fn from(bytes: [u8; 32]) -> Self {
         Self(blockstack_lib::burnchains::Txid(bytes))
+    }
+}
+
+/// Consensus hash
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ConsensusHash(stacks_common::types::chainstate::ConsensusHash);
+
+impl Deref for ConsensusHash {
+    type Target = stacks_common::types::chainstate::ConsensusHash;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<stacks_common::types::chainstate::ConsensusHash> for ConsensusHash {
+    fn from(value: stacks_common::types::chainstate::ConsensusHash) -> Self {
+        Self(value)
+    }
+}
+
+impl From<ConsensusHash> for stacks_common::types::chainstate::ConsensusHash {
+    fn from(value: ConsensusHash) -> Self {
+        value.0
+    }
+}
+
+impl From<[u8; 20]> for ConsensusHash {
+    fn from(bytes: [u8; 20]) -> Self {
+        Self(stacks_common::types::chainstate::ConsensusHash(bytes))
     }
 }
 
