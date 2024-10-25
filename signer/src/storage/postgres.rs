@@ -636,6 +636,8 @@ impl super::DbRead for PgStore {
               , deposit_requests.recipient
               , deposit_requests.amount
               , deposit_requests.max_fee
+              , deposit_requests.lock_time
+              , deposit_requests.signer_public_key
               , deposit_requests.sender_script_pub_keys
             FROM transactions_in_window transactions
             JOIN sbtc_signer.deposit_requests deposit_requests ON
@@ -693,6 +695,8 @@ impl super::DbRead for PgStore {
               , deposit_requests.recipient
               , deposit_requests.amount
               , deposit_requests.max_fee
+              , deposit_requests.lock_time
+              , deposit_requests.signer_public_key
               , deposit_requests.sender_script_pub_keys
             FROM transactions_in_window transactions
             JOIN sbtc_signer.deposit_requests deposit_requests USING(txid)
@@ -802,6 +806,8 @@ impl super::DbRead for PgStore {
               , requests.recipient
               , requests.amount
               , requests.max_fee
+              , requests.lock_time
+              , requests.signer_public_key
               , requests.sender_script_pub_keys
             FROM sbtc_signer.deposit_requests requests
                  JOIN sbtc_signer.deposit_signers signers
@@ -1075,6 +1081,7 @@ impl super::DbRead for PgStore {
               , encrypted_private_shares
               , public_shares
               , signer_set_public_keys
+              , signature_share_threshold
             FROM sbtc_signer.dkg_shares
             WHERE aggregate_key = $1;
             "#,
@@ -1097,6 +1104,7 @@ impl super::DbRead for PgStore {
               , encrypted_private_shares
               , public_shares
               , signer_set_public_keys
+              , signature_share_threshold
             FROM sbtc_signer.dkg_shares
             ORDER BY created_at DESC
             LIMIT 1;
@@ -1576,9 +1584,11 @@ impl super::DbWrite for PgStore {
               , recipient
               , amount
               , max_fee
+              , lock_time
+              , signer_public_key
               , sender_script_pub_keys
               )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT DO NOTHING",
         )
         .bind(deposit_request.txid)
@@ -1588,6 +1598,8 @@ impl super::DbWrite for PgStore {
         .bind(&deposit_request.recipient)
         .bind(i64::try_from(deposit_request.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(deposit_request.max_fee).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(deposit_request.lock_time).map_err(Error::ConversionDatabaseInt)?)
+        .bind(deposit_request.signer_public_key)
         .bind(&deposit_request.sender_script_pub_keys)
         .execute(&self.0)
         .await
@@ -1611,6 +1623,8 @@ impl super::DbWrite for PgStore {
         let mut recipient = Vec::with_capacity(deposit_requests.len());
         let mut amount = Vec::with_capacity(deposit_requests.len());
         let mut max_fee = Vec::with_capacity(deposit_requests.len());
+        let mut lock_time = Vec::with_capacity(deposit_requests.len());
+        let mut signer_public_key = Vec::with_capacity(deposit_requests.len());
         let mut sender_script_pubkeys = Vec::with_capacity(deposit_requests.len());
 
         for req in deposit_requests {
@@ -1622,6 +1636,8 @@ impl super::DbWrite for PgStore {
             recipient.push(req.recipient);
             amount.push(i64::try_from(req.amount).map_err(Error::ConversionDatabaseInt)?);
             max_fee.push(i64::try_from(req.max_fee).map_err(Error::ConversionDatabaseInt)?);
+            lock_time.push(i64::try_from(req.lock_time).map_err(Error::ConversionDatabaseInt)?);
+            signer_public_key.push(req.signer_public_key);
             // We need to join the addresses like this (and later split
             // them), because handling of multidimensional arrays in
             // postgres is tough. The naive approach of doing
@@ -1644,7 +1660,9 @@ impl super::DbWrite for PgStore {
             , recipient       AS (SELECT ROW_NUMBER() OVER (), recipient FROM UNNEST($5::TEXT[]) AS recipient)
             , amount          AS (SELECT ROW_NUMBER() OVER (), amount FROM UNNEST($6::BIGINT[]) AS amount)
             , max_fee         AS (SELECT ROW_NUMBER() OVER (), max_fee FROM UNNEST($7::BIGINT[]) AS max_fee)
-            , script_pub_keys AS (SELECT ROW_NUMBER() OVER (), senders FROM UNNEST($8::VARCHAR[]) AS senders)
+            , lock_time       AS (SELECT ROW_NUMBER() OVER (), lock_time FROM UNNEST($8::BIGINT[]) AS lock_time)
+            , signer_pub_keys AS (SELECT ROW_NUMBER() OVER (), signer_public_key FROM UNNEST($9::BYTEA[]) AS signer_public_key)
+            , script_pub_keys AS (SELECT ROW_NUMBER() OVER (), senders FROM UNNEST($10::VARCHAR[]) AS senders)
             INSERT INTO sbtc_signer.deposit_requests (
                   txid
                 , output_index
@@ -1653,6 +1671,8 @@ impl super::DbWrite for PgStore {
                 , recipient
                 , amount
                 , max_fee
+                , lock_time
+                , signer_public_key
                 , sender_script_pub_keys)
             SELECT
                 txid
@@ -1662,6 +1682,8 @@ impl super::DbWrite for PgStore {
               , recipient
               , amount
               , max_fee
+              , lock_time
+              , signer_public_key
               , ARRAY(SELECT decode(UNNEST(regexp_split_to_array(senders, ',')), 'hex'))
             FROM tx_ids
             JOIN output_index USING (row_number)
@@ -1670,6 +1692,8 @@ impl super::DbWrite for PgStore {
             JOIN recipient USING (row_number)
             JOIN amount USING (row_number)
             JOIN max_fee USING (row_number)
+            JOIN lock_time USING (row_number)
+            JOIN signer_pub_keys USING (row_number)
             JOIN script_pub_keys USING (row_number)
             ON CONFLICT DO NOTHING"#,
         )
@@ -1680,6 +1704,8 @@ impl super::DbWrite for PgStore {
         .bind(recipient)
         .bind(amount)
         .bind(max_fee)
+        .bind(lock_time)
+        .bind(signer_public_key)
         .bind(sender_script_pubkeys)
         .execute(&self.0)
         .await
@@ -1957,8 +1983,9 @@ impl super::DbWrite for PgStore {
               , public_shares
               , script_pubkey
               , signer_set_public_keys
+              , signature_share_threshold
             )
-            VALUES ($1, $2, $3, $4, $5, $6)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT DO NOTHING"#,
         )
         .bind(shares.aggregate_key)
@@ -1967,6 +1994,7 @@ impl super::DbWrite for PgStore {
         .bind(&shares.public_shares)
         .bind(&shares.script_pubkey)
         .bind(&shares.signer_set_public_keys)
+        .bind(i32::from(shares.signature_share_threshold))
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

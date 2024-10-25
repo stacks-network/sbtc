@@ -14,6 +14,7 @@ use crate::bitcoin::utxo::RequestRef;
 use crate::block_observer::Deposit;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::keys::PublicKeyXOnly;
 
 /// Represents an entire transaction package that has been broadcast to the
 /// Bitcoin network.
@@ -218,6 +219,13 @@ pub struct DepositRequest {
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "100..100_000"))]
     pub max_fee: u64,
+    /// The relative lock time in the reclaim script.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "3..u32::MAX as u64"))]
+    pub lock_time: u64,
+    /// The public key used in the deposit script. The signers public key
+    /// is for Schnorr signatures.
+    pub signer_public_key: PublicKeyXOnly,
     /// The addresses of the input UTXOs funding the deposit request.
     #[cfg_attr(
         feature = "testing",
@@ -243,6 +251,8 @@ impl From<Deposit> for DepositRequest {
             recipient: deposit.info.recipient.into(),
             amount: deposit.info.amount,
             max_fee: deposit.info.max_fee,
+            lock_time: deposit.info.lock_time,
+            signer_public_key: deposit.info.signers_public_key.into(),
             sender_script_pub_keys: sender_script_pub_keys.into_iter().collect(),
         }
     }
@@ -482,6 +492,14 @@ pub struct EncryptedDkgShares {
     pub public_shares: Bytes,
     /// The set of public keys that were a party to the DKG.
     pub signer_set_public_keys: Vec<PublicKey>,
+    /// The threshold number of signature shares required to generate a
+    /// Schnorr signature.
+    ///
+    /// In WSTS each signer may contribute a fixed portion of a single
+    /// signature. This value specifies the total number of portions
+    /// (shares) that are needed in order to construct a signature.
+    #[sqlx(try_from = "i32")]
+    pub signature_share_threshold: u16,
 }
 
 /// Persisted public DKG shares from other signers
@@ -707,6 +725,12 @@ impl From<BitcoinBlockHash> for bitcoin::BlockHash {
 impl From<[u8; 32]> for BitcoinBlockHash {
     fn from(bytes: [u8; 32]) -> Self {
         Self(bitcoin::BlockHash::from_byte_array(bytes))
+    }
+}
+
+impl std::fmt::Display for BitcoinBlockHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 

@@ -243,6 +243,52 @@ impl std::fmt::Display for PublicKey {
     }
 }
 
+/// The x-coordinate of a public key for the secp256k1 elliptic curve. It
+/// is used for verification of Taproot signatures and serialized according
+/// to BIP-340.
+#[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct PublicKeyXOnly(secp256k1::XOnlyPublicKey);
+
+impl From<&PublicKeyXOnly> for secp256k1::XOnlyPublicKey {
+    fn from(value: &PublicKeyXOnly) -> Self {
+        value.0
+    }
+}
+
+impl From<PublicKeyXOnly> for secp256k1::XOnlyPublicKey {
+    fn from(value: PublicKeyXOnly) -> Self {
+        value.0
+    }
+}
+
+impl From<&secp256k1::XOnlyPublicKey> for PublicKeyXOnly {
+    fn from(value: &secp256k1::XOnlyPublicKey) -> Self {
+        Self(*value)
+    }
+}
+
+impl From<secp256k1::XOnlyPublicKey> for PublicKeyXOnly {
+    fn from(value: secp256k1::XOnlyPublicKey) -> Self {
+        Self(value)
+    }
+}
+
+impl PublicKeyXOnly {
+    /// Creates a public key directly from a slice.
+    pub fn from_slice(data: &[u8]) -> Result<Self, Error> {
+        secp256k1::XOnlyPublicKey::from_slice(data)
+            .map(Self)
+            .map_err(Error::InvalidXOnlyPublicKey)
+    }
+
+    /// Serializes the key as a byte-encoded pair of values in compressed
+    /// form.
+    pub fn serialize(&self) -> [u8; 32] {
+        self.0.serialize()
+    }
+}
+
 /// A private key type for the secp256k1 elliptic curve.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(transparent)]

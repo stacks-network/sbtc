@@ -53,7 +53,7 @@ services:
   # Runs the sBTC signer.
   signer:
     build: signer
-    entrypoint: "/bin/bash -c '/usr/local/bin/sbtc-signer --help'"
+    entrypoint: "/bin/bash -c '/usr/local/bin/signer --help'"
     depends_on:
       - sbtc-build
     environment:

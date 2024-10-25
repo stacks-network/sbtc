@@ -69,7 +69,8 @@ pub struct BitcoinTransactionSignRequest {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StacksTransactionSignRequest {
-    /// The aggregate public key that will sign the transaction.
+    /// This is the bitcoin aggregate key that was output from DKG. It is used
+    /// to identify the signing set for the transaction.
     #[prost(message, optional, tag = "1")]
     pub aggregate_key: ::core::option::Option<super::super::super::crypto::PublicKey>,
     /// The nonce to use for the transaction.

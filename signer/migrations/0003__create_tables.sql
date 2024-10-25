@@ -37,6 +37,9 @@ CREATE TABLE sbtc_signer.deposit_requests (
     recipient TEXT NOT NULL,
     amount BIGINT NOT NULL,
     max_fee BIGINT NOT NULL,
+    lock_time BIGINT NOT NULL,
+    -- this is an x-only public key, we need column comments
+    signer_public_key BYTEA NOT NULL,
     sender_script_pub_keys BYTEA[] NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY (txid, output_index)
@@ -96,6 +99,7 @@ CREATE TABLE sbtc_signer.dkg_shares (
     public_shares BYTEA NOT NULL,
     script_pubkey BYTEA NOT NULL,
     signer_set_public_keys BYTEA[] NOT NULL,
+    signature_share_threshold INTEGER NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 

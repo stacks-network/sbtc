@@ -85,7 +85,7 @@ subscribe_interval = 10
 # The RPC URL(s) of the Stacks node(s) to connect to. At least one must be
 # provided. If multiple nodes are provided they will be tried in order when
 # making requests.
-endpoints = ["http://stacks:20443"]
+endpoints = ["http://stacks-node:20443"]
 
 # This is the start height of the first EPOCH 3.0 block on the stacks
 # blockchain.
@@ -130,19 +130,35 @@ deployer = "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039"
 # Environment: SIGNER_SIGNER__DB_ENDPOINT
 db_endpoint = ""
 
+# The public keys of the signer sit during the bootstrapping phase of
+# the signers.
+#
+# Required: true
+bootstrap_signing_set = [
+    "035249137286c077ccee65ecc43e724b9b9e5a588e3d7f51e3b62f9624c2a49e46",
+    "031a4d9f4903da97498945a4e01a5023a1d53bc96ad670bfe03adf8a06c52e6380",
+    "02007311430123d4cad97f4f7e86e023b28143130a18099ecf094d36fef0f6135c"
+]
+
+# The number of signatures required for the signers' bootstrapped
+# multi-sig wallet on Stacks.
+#
+# Required: true
+bootstrap_signatures_required = 2
+
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration
 # !!
-# !! The event observer listens for events on the Stacks blockchain. The listen 
-# !! address must be reachable by your Stacks node, and must be configured in the 
+# !! The event observer listens for events on the Stacks blockchain. The listen
+# !! address must be reachable by your Stacks node, and must be configured in the
 # !! node's `event_observer` configuration section.
 # !!
-# !! Note that the event observer endpoint _does not_ support TLS and is served 
+# !! Note that the event observer endpoint _does not_ support TLS and is served
 # !! over HTTP.
 # !! ==============================================================================
 [signer.event_observer]
 # The network interface (ip address) and port to bind the event observer server to.
-# 
+#
 # Format: "<ip>:<port>"
 # Required: true
 # Environment: SIGNER_SIGNER__EVENT_OBSERVER__BIND
@@ -167,14 +183,14 @@ bind = "0.0.0.0:8801"
 # TODO(429): Add well-known seed nodes
 seeds = []
 
-# The local network interface(s) and port(s) to listen on. 
+# The local network interface(s) and port(s) to listen on.
 #
-# You may specify multiple interfaces and ports by adding additional entries to 
-# the list. Entries can be addressed by any of IPv4 address, IPv6 address or 
-# hostname. Note that not all networks have IPv6 enabled, so it is recommended 
+# You may specify multiple interfaces and ports by adding additional entries to
+# the list. Entries can be addressed by any of IPv4 address, IPv6 address or
+# hostname. Note that not all networks have IPv6 enabled, so it is recommended
 # to provide an IPv4 address as well.
 #
-# Specifying a port of `0` will cause the server to bind to a random port, 
+# Specifying a port of `0` will cause the server to bind to a random port,
 # and an IP of `0.0.0.0` will cause the server to listen on all available
 # interfaces.
 #
@@ -196,7 +212,7 @@ listen_on = []
 
 # The publicly accessible network endpoint to advertise to other nodes.
 #
-# If this is not specified then the node will attempt to use other peers on the 
+# If this is not specified then the node will attempt to use other peers on the
 # network to determine its public endpoint. This is the recommended
 # configuration for most users.
 #

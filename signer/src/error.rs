@@ -169,6 +169,12 @@ pub enum Error {
     #[error("invalid public key: {0}")]
     InvalidPublicKey(#[source] secp256k1::Error),
 
+    /// This occurs when converting a byte slice to our internal x-only
+    /// public key type, which is a thin wrapper around the
+    /// secp256k1::XOnlyPublicKey.
+    #[error("invalid x-only public key: {0}")]
+    InvalidXOnlyPublicKey(#[source] secp256k1::Error),
+
     /// This happens when we tweak our public key by a scalar, and the
     /// result is an invalid public key. I think It is very unlikely that
     /// we will see this one by chance, since the probability that this
@@ -311,13 +317,17 @@ pub enum Error {
     #[error("key error: {0}")]
     KeyError(#[from] p256k1::keys::Error),
 
+    /// Missing bitcoin block
+    #[error("the database is missing bitcoin block {0}")]
+    MissingBitcoinBlock(crate::storage::model::BitcoinBlockHash),
+
     /// Missing block
     #[error("missing block")]
     MissingBlock,
 
     /// Missing dkg shares
-    #[error("missing dkg shares")]
-    MissingDkgShares,
+    #[error("missing dkg shares for the given aggregate key: {0}")]
+    MissingDkgShares(crate::keys::PublicKey),
 
     /// Missing public key
     #[error("missing public key")]
@@ -413,6 +423,12 @@ pub enum Error {
     /// Could not parse hex txid.
     #[error("could not parse hex txid: {0}")]
     DecodeHexTxid(#[source] bitcoin::hex::HexToArrayError),
+
+    /// This happens during the validation of a stacks transaction when the
+    /// current signer is not a member of the signer set indicated by the
+    /// aggregate key.
+    #[error("current signer not part of signer set indicated by: {0}")]
+    ValidationSignerSet(crate::keys::PublicKey),
 
     /// Could not connect to bitcoin-core with a zeromq subscription
     /// socket.

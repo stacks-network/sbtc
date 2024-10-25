@@ -81,7 +81,9 @@ To build the sources we recommend you use the `Makefile` commands; they'll build
 - `make lint` - Lints packages
 - `make clean` - Cleans workspace
 - `make test` - Run non-integration tests
-- `make integration-test` - Run integration tests. This needs local services running; use something like `docker compose --file docker-compose.test.yml up --detach` to start the necessary services.
+- `make integration-test` - Run integration tests.
+    - Before running integration tests you must run `make integration-env-up`
+    - After running integration tests you must run `make integration-env-down`
 
 For other commands read the `Makefile` at repository root.
 
