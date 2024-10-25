@@ -458,8 +458,9 @@ where
         bitcoin_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
     ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
-        // Retrieve the Bitcoin sweep transaction from the Bitcoin node.
-        // QUESTION: Can't we pull this from the db instead of asking bitcore core?
+        // Retrieve the Bitcoin sweep transaction from the Bitcoin node. We
+        // can't get it from the database because the transaction is
+        // only in the node's mempool at this point.
         let tx_info = self
             .context
             .get_bitcoin_client()
