@@ -469,17 +469,6 @@ where
                 Error::BitcoinTxMissing(req.sweep_txid.into(), Some(req.sweep_block_hash.into()))
             })?;
 
-        // // Retrieve the deposit request from the database.
-        // let deposit_request = self
-        //     .context
-        //     .get_storage()
-        //     .get_deposit_request(&req.txid, req.output_index)
-        //     .await?
-        //     .ok_or(Error::MissingDepositRequest(
-        //         req.txid.into(),
-        //         req.output_index,
-        //     ))?;
-
         let outpoint = req.deposit_outpoint();
         let assessed_bitcoin_fee = tx_info
             .assess_input_fee(&outpoint)
@@ -1055,9 +1044,6 @@ mod tests {
         }
     }
 
-    // TODO: This now calls bitcoin_client.estimate_fee_rate() twice in order
-    // to store it on the transaction package. Can we get around it in a clean
-    // way?
     #[tokio::test]
     async fn should_be_able_to_coordinate_signing_rounds() {
         test_environment()

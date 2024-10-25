@@ -41,51 +41,65 @@ impl SweepTransactionPackage {
         market_fee_rate: f64,
         transactions: &[crate::bitcoin::utxo::UnsignedTransaction],
     ) -> SweepTransactionPackage {
-        let mut package = SweepTransactionPackage {
+        // NOTE: We use `+1` for the output indexes because while the output
+        // index is 0-indexed, the first output is always the signer's.
+        let transactions = transactions
+            .iter()
+            .map(|transaction| {
+                let swept_deposits = transaction
+                    .requests
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(pos, request)| {
+                        if let RequestRef::Deposit(deposit) = request {
+                            Some(SweptDeposit {
+                                output_index: pos as u32 + 1, // Account for the signer output
+                                deposit_request_txid: deposit.outpoint.txid.into(),
+                                deposit_request_output_index: deposit.outpoint.vout,
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                let swept_withdrawals = transaction
+                    .requests
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(pos, request)| {
+                        if let RequestRef::Withdrawal(withdrawal) = request {
+                            Some(SweptWithdrawal {
+                                output_index: pos as u32 + 1, // Account for the signer's output
+                                withdrawal_request_id: withdrawal.request_id,
+                                withdrawal_request_block_hash: withdrawal.block_hash,
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                SweepTransaction {
+                    id: None,
+                    txid: transaction.tx.compute_txid().into(),
+                    utxo_txid: transaction.signer_utxo.utxo.outpoint.txid.into(),
+                    utxo_output_index: transaction.signer_utxo.utxo.outpoint.vout,
+                    amount: transaction.output_amounts(),
+                    fee: transaction.tx_fee,
+                    fee_rate: transaction.signer_utxo.fee_rate,
+                    is_broadcast: false,
+                    swept_deposits,
+                    swept_withdrawals,
+                }
+            })
+            .collect();
+
+        SweepTransactionPackage {
             created_at_block_hash: chain_tip.into(),
             market_fee_rate,
-            transactions: Vec::new(),
-        };
-
-        for transaction in transactions {
-            let mut packaged_tx = SweepTransaction {
-                id: None,
-                txid: transaction.tx.compute_txid().into(),
-                utxo_txid: transaction.signer_utxo.utxo.outpoint.txid.into(),
-                utxo_output_index: transaction.signer_utxo.utxo.outpoint.vout,
-                amount: transaction.output_amounts(),
-                fee: transaction.tx_fee,
-                fee_rate: transaction.signer_utxo.fee_rate,
-                is_broadcast: false,
-                swept_deposits: Vec::new(),
-                swept_withdrawals: Vec::new(),
-            };
-
-            let mut vout_pos = 1;
-            for request in &*transaction.requests {
-                match request {
-                    RequestRef::Deposit(deposit) => {
-                        packaged_tx.swept_deposits.push(SweptDeposit {
-                            output_index: vout_pos,
-                            deposit_request_txid: deposit.outpoint.txid.into(),
-                            deposit_request_output_index: deposit.outpoint.vout,
-                        });
-                    }
-                    RequestRef::Withdrawal(withdrawal) => {
-                        packaged_tx.swept_withdrawals.push(SweptWithdrawal {
-                            output_index: vout_pos,
-                            withdrawal_request_id: withdrawal.request_id,
-                            withdrawal_request_block_hash: withdrawal.block_hash,
-                        });
-                    }
-                }
-                vout_pos += 1;
-            }
-
-            package.transactions.push(packaged_tx);
+            transactions,
         }
-
-        package
     }
 }
 
