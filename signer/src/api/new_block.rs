@@ -226,7 +226,7 @@ async fn fetch_btc_block_from_txid(db: &impl DbRead, txid: Txid) -> Option<Bitco
         .ok()?;
 
     let block_hash = blocks_hashes.last()?;
-    db.get_bitcoin_block(&block_hash).await.ok()?
+    db.get_bitcoin_block(block_hash).await.ok()?
 }
 
 /// Processes a completed deposit event by updating relevant deposit records

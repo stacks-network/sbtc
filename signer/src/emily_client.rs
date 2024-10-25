@@ -292,7 +292,7 @@ impl EmilyInteract for ApiFallbackClient<EmilyClient> {
             Ok::<Vec<Result<Withdrawal, Error>>, Error>(withdrawals) // Wrap the Vec in Ok to satisfy exec's type constraints
         })
         .await
-        .unwrap_or_else(|err| vec![Err(err.into())])
+        .unwrap_or_else(|err| vec![Err(err)])
     }
 
     async fn update_withdrawals(
