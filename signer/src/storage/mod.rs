@@ -15,7 +15,6 @@ pub mod util;
 use std::future::Future;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
-use model::SweepTransactionPackage;
 
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::error::Error;
@@ -230,7 +229,7 @@ pub trait DbRead {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
-    ) -> impl Future<Output = Result<Option<SweepTransactionPackage>, Error>> + Send;
+    ) -> impl Future<Output = Result<Option<model::SweepTransactionPackage>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.
@@ -352,7 +351,7 @@ pub trait DbWrite {
     /// Write a complete Bitcoin transaction package to the database.
     fn write_sweep_transaction_package(
         &self,
-        package: SweepTransactionPackage,
+        package: model::SweepTransactionPackage,
     ) -> impl Future<Output = Result<u32, Error>> + Send;
 
     /// Mark a packaged transaction as having been broadcast.
@@ -381,8 +380,7 @@ impl TransactionPackageExt for Vec<crate::bitcoin::utxo::UnsignedTransaction<'_>
         chain_tip: &bitcoin::BlockHash,
         market_fee_rate: f64,
     ) -> Result<(), Error> {
-        let pkg = SweepTransactionPackage::from_package(*chain_tip, market_fee_rate, self);
-
+        let pkg = model::SweepTransactionPackage::from_package(*chain_tip, market_fee_rate, self);
         db.write_sweep_transaction_package(pkg).await.map(|_| ())
     }
 }

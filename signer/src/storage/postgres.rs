@@ -1390,7 +1390,7 @@ impl super::DbRead for PgStore {
         // TODO: This query needs to be updated to check that the
         // `completed_deposit_event` is in a Stacks block linked to the
         // canonical Bitcoin chain (i.e. confirmed) once #559 is completed.
-        
+
         // The following tests define the criteria for this query:
         // - [X] get_swept_deposit_requests_returns_swept_deposit_requests
         // - [X] get_swept_deposit_requests_does_not_return_unswept_deposit_requests
