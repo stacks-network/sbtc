@@ -1455,21 +1455,17 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
 
     // Its details should match that of the deposit request.
     let swept_deposit = swept_deposits.pop().unwrap();
-    let deposit_request = db
-        .get_deposit_request(&swept_deposit.txid, swept_deposit.output_index)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(deposit_request.amount, setup.deposit_request.amount);
+
+    assert_eq!(swept_deposit.amount, setup.deposit_request.amount);
     assert_eq!(
-        deposit_request.txid,
+        swept_deposit.txid,
         setup.deposit_request.outpoint.txid.into()
     );
     assert_eq!(
-        deposit_request.output_index,
+        swept_deposit.output_index,
         setup.deposit_request.outpoint.vout
     );
-    assert_eq!(deposit_request.recipient, setup.deposit_recipient.into());
+    assert_eq!(swept_deposit.recipient, setup.deposit_recipient.into());
     assert_eq!(
         swept_deposit.sweep_block_hash,
         setup.sweep_block_hash.into()
@@ -1714,9 +1710,7 @@ async fn should_get_signer_utxo_donations() {
 /// The test sets up two different sweep transactions in the database on
 /// different Bitcoin forks and then checks that the correct sweep transaction
 /// package is returned for each fork.
-///
-/// TODO: This should be expanded to test for multiple sweep packages in the
-/// same fork; right now the `TestSweepSetup` only generates one sweep.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn can_store_and_get_latest_sweep_transaction_package() {
     let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);

@@ -231,24 +231,6 @@ pub trait DbRead {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> impl Future<Output = Result<Option<SweepTransactionPackage>, Error>> + Send;
-
-    /// Gets the specified deposit request if it exists. The deposit request is
-    /// identified by its Bitcoin txid and output index in the Bitcoin deposit
-    /// request transaction.
-    fn get_deposit_request(
-        &self,
-        txid: &model::BitcoinTxId,
-        output_index: u32,
-    ) -> impl Future<Output = Result<Option<model::DepositRequest>, Error>> + Send;
-
-    /// Gets the specified withdrawal request if it exists. The withdrawal
-    /// request is identified by its smart-contract-generated request ID and the
-    /// Stacks block hash in which the request was made.
-    fn get_withdrawal_request(
-        &self,
-        request_id: u64,
-        block_hash: &model::StacksBlockHash,
-    ) -> impl Future<Output = Result<Option<model::WithdrawalRequest>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.

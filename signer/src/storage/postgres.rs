@@ -177,8 +177,6 @@ impl PgStore {
                 tracing::debug!(migration = %key, "Skipping non-SQL migration file");
             }
 
-            eprintln!("Applying migration: {}", key);
-
             // Check if the migration has already been applied. If so, we should
             // be able to safely skip it.
             if self.check_migration_existence(&mut *trx, &key).await? {
@@ -1472,59 +1470,6 @@ impl super::DbRead for PgStore {
         };
 
         self.get_sweep_package_by_id(package_id).await
-    }
-
-    async fn get_deposit_request(
-        &self,
-        txid: &model::BitcoinTxId,
-        output_index: u32,
-    ) -> Result<Option<model::DepositRequest>, Error> {
-        sqlx::query_as(
-            "
-            SELECT
-                txid
-              , output_index
-              , spend_script
-              , reclaim_script
-              , recipient
-              , amount
-              , max_fee
-              , sender_script_pub_keys
-            FROM sbtc_signer.deposit_requests
-            WHERE txid = $1 AND output_index = $2
-        ",
-        )
-        .bind(txid)
-        .bind(output_index as i32)
-        .fetch_optional(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)
-    }
-
-    async fn get_withdrawal_request(
-        &self,
-        request_id: u64,
-        block_hash: &model::StacksBlockHash,
-    ) -> Result<Option<model::WithdrawalRequest>, Error> {
-        sqlx::query_as(
-            "
-            SELECT
-                request_id
-              , txid
-              , block_hash
-              , recipient
-              , amount
-              , max_fee
-              , sender_address
-            FROM sbtc_signer.withdrawal_requests
-            WHERE request_id = $1 AND block_hash = $2
-        ",
-        )
-        .bind(request_id as i64)
-        .bind(block_hash)
-        .fetch_optional(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)
     }
 }
 

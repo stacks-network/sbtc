@@ -732,32 +732,6 @@ impl super::DbRead for SharedStore {
 
         Ok(package)
     }
-
-    async fn get_deposit_request(
-        &self,
-        txid: &model::BitcoinTxId,
-        output_index: u32,
-    ) -> Result<Option<model::DepositRequest>, Error> {
-        Ok(self
-            .lock()
-            .await
-            .deposit_requests
-            .get(&(*txid, output_index))
-            .cloned())
-    }
-
-    async fn get_withdrawal_request(
-        &self,
-        request_id: u64,
-        block_hash: &model::StacksBlockHash,
-    ) -> Result<Option<model::WithdrawalRequest>, Error> {
-        Ok(self
-            .lock()
-            .await
-            .withdrawal_requests
-            .get(&(request_id, *block_hash))
-            .cloned())
-    }
 }
 
 impl super::DbWrite for SharedStore {
