@@ -322,8 +322,9 @@ async fn update_withdrawals_updates_chainstate() {
     }
 
     // Order the updates pecularily so that they are not in order.
-    withdrawal_updates.sort_by_key(|update|
-        (update.last_update_height as i64 - (min_height + (max_height - min_height) / 2)).abs());
+    withdrawal_updates.sort_by_key(|update| {
+        (update.last_update_height as i64 - (min_height + (max_height - min_height) / 2)).abs()
+    });
 
     let expected_last_update_height_at_output_index: Vec<(usize, u64)> = withdrawal_updates
         .iter()
@@ -344,19 +345,26 @@ async fn update_withdrawals_updates_chainstate() {
         .expect("Received an error after making a valid create withdrawal request api call.");
 
     // Send it a bunch of updates.
-    let update_withdrawals_response = apis::withdrawal_api::update_withdrawals(&configuration, update_request)
-        .await
-        .expect("Received an error after making a valid update withdrawals api call.");
+    let update_withdrawals_response =
+        apis::withdrawal_api::update_withdrawals(&configuration, update_request)
+            .await
+            .expect("Received an error after making a valid update withdrawals api call.");
 
     for height in range {
-        let chainstate = apis::chainstate_api::get_chainstate_at_height(&configuration, height as u64)
-            .await
-            .expect("Received an error after making a valid get chainstate at height api call.");
+        let chainstate =
+            apis::chainstate_api::get_chainstate_at_height(&configuration, height as u64)
+                .await
+                .expect(
+                    "Received an error after making a valid get chainstate at height api call.",
+                );
         assert_eq!(chainstate.stacks_block_height, height as u64);
         assert_eq!(chainstate.stacks_block_hash, format!("hash_{}", height));
     }
 
     for (index, last_update_height) in expected_last_update_height_at_output_index {
-        assert_eq!(update_withdrawals_response.withdrawals[index].last_update_height, last_update_height);
+        assert_eq!(
+            update_withdrawals_response.withdrawals[index].last_update_height,
+            last_update_height
+        );
     }
 }
