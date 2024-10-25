@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::stacks::api::StacksInteract;
+use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::StacksBlock;
 use bitcoin::hashes::Hash;
 use bitcoin::BlockHash;
@@ -15,6 +16,7 @@ use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::net::api::getinfo::RPCPeerInfoData;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxEpoch;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
+use blockstack_lib::net::api::getsortition::SortitionInfo;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::types::chainstate::StacksBlockId;
@@ -292,6 +294,13 @@ impl StacksInteract for TestHarness {
             tip_height: self.stacks_blocks.len() as u64,
             reward_cycle: 0,
         })
+    }
+
+    async fn get_sortition_info(
+        &self,
+        _bitcoin_block: &BitcoinBlockHash,
+    ) -> Result<SortitionInfo, Error> {
+        Err(Error::InvalidStacksResponse("dummy"))
     }
 
     async fn estimate_fees<T>(&self, _: &T, _: FeePriority) -> Result<u64, Error>

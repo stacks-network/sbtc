@@ -707,6 +707,7 @@ async fn writing_transactions_postgres() {
         block_height: 15,
         parent_hash: parent_hash.into(),
         confirms: Vec::new(),
+        consensus_hash: None,
     };
 
     // We start by writing the bitcoin block because of the foreign key

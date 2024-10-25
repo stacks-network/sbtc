@@ -300,6 +300,7 @@ impl TestSweepSetup {
             block_hash: self.withdrawal_request.block_hash,
             block_height: self.sweep_block_height,
             parent_hash: Faker.fake_with_rng(&mut OsRng),
+            consensus_hash: Faker.fake_with_rng(&mut OsRng),
         };
         db.write_stacks_block(&block).await.unwrap();
 
@@ -369,6 +370,7 @@ pub async fn backfill_bitcoin_blocks(db: &PgStore, rpc: &Client, chain_tip: &bit
             block_height: block_header.height as u64,
             parent_hash: parent_header_hash.into(),
             confirms: Vec::new(),
+            consensus_hash: None,
         };
 
         db.write_bitcoin_block(&bitcoin_block).await.unwrap();
