@@ -34,7 +34,7 @@ pub struct SweepTransactionPackage {
 }
 
 impl SweepTransactionPackage {
-    /// Create a new [`SbtcTransactionPackage`] from a vector of
+    /// Create a new [`SweepTransactionPackage`] from a vector of
     /// [UnsignedTransaction](`crate::bitcoin::utxo::UnsignedTransaction`)s.
     pub fn from_package(
         chain_tip: bitcoin::BlockHash,
@@ -103,8 +103,8 @@ impl SweepTransactionPackage {
     }
 }
 
-/// Represents a single transaction which is part of a transaction package which
-/// has been broadcast to the Bitcoin network.
+/// Represents a single transaction which is part of a sweep transaction package
+/// which has been broadcast to the Bitcoin network.
 #[derive(Debug, Clone, PartialEq, PartialOrd, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct SweepTransaction {
@@ -143,7 +143,7 @@ pub struct SweepTransaction {
     pub swept_withdrawals: Vec<SweptWithdrawal>,
 }
 
-/// Represents a single deposit which has been swept-in by a Bitcoin transaction
+/// Represents a single deposit which has been swept-in by a sweep transaction
 /// package.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
@@ -159,7 +159,7 @@ pub struct SweptDeposit {
     pub deposit_request_output_index: u32,
 }
 
-/// Represents a single withdrawal which has been swept-out by a Bitcoin
+/// Represents a single withdrawal which has been swept-out by a sweep
 /// transaction package.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
