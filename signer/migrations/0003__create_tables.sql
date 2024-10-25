@@ -193,8 +193,8 @@ CREATE TABLE sbtc_signer.withdrawal_reject_events (
 
 -- Represents a combined transaction package which is broadcasted to the Bitcoin
 -- network. The transaction package is built up of multiple transactions which
--- are tracked separately in the `packaged_transaction` table. A transaction
--- package may contain the servicing transactions for both deposit and
+-- are tracked separately in the `sweep_transactions` table. A transaction
+-- package may contain the sweeping transactions for both deposit and
 -- withdrawal requests.
 CREATE TABLE sbtc_signer.sweep_packages (
     -- Internal ID of the package
@@ -207,7 +207,7 @@ CREATE TABLE sbtc_signer.sweep_packages (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
--- Represents an individual transaction within a broadcasted transaction
+-- Represents an individual transaction within a broadcasted sweep transaction
 -- package. Individual deposit and withdrawal requests reference back to these
 -- transactions to keep track of both the overall transaction package as well as
 -- the individual Bitcoin transactions they are related to.
@@ -235,10 +235,10 @@ CREATE TABLE sbtc_signer.sweep_transactions (
         REFERENCES sbtc_signer.sweep_packages(id)
 );
 
--- Represents a single withdrawal request which has been included in a
--- transaction package. Withdrawal requests have a unique ID so we use that
--- here to reference the withdrawal request, which can be retrieved from
--- the `withdrawal_requests` table.
+-- Represents a single withdrawal request which has been included in a sweep
+-- transaction package. Withdrawal requests have a unique ID so we use that here
+-- to reference the withdrawal request together with its Stacks block hash,
+-- which can be retrieved from the `withdrawal_requests` table.
 CREATE TABLE sbtc_signer.swept_withdrawals (
     -- Internal ID of the swept withdrawal.
     id BIGSERIAL PRIMARY KEY,
@@ -250,7 +250,7 @@ CREATE TABLE sbtc_signer.swept_withdrawals (
     -- The ID of the withdrawal request, referencing the `withdrawal_requests`
     -- table.
     withdrawal_request_id BIGINT NOT NULL,
-    -- The block hash of the withdrawal request, referencing the
+    -- The Stacks block hash of the withdrawal request, referencing the
     -- `withdrawal_requests` table.
     withdrawal_request_block_hash BYTEA NOT NULL,
 
