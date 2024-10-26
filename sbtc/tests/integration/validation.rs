@@ -26,6 +26,7 @@ use sbtc::testing::regtest::AsUtxo;
 use sbtc::testing::regtest::Recipient;
 
 use wsts::{
+    compute,
     net::SignatureType,
     state_machine::coordinator::{
         frost::Coordinator as FrostCoordinator, test::run_dkg, Coordinator,
@@ -410,6 +411,7 @@ fn wsts_taproot_inputs() {
         .unwrap()
         .get_aggregate_public_key()
         .unwrap();
+    let tweaked_public_key = compute::tweaked_public_key(&aggregate_public_key, None);
 
     let x_data = aggregate_public_key.x().to_bytes();
     let pk = secp256k1::XOnlyPublicKey::from_slice(&x_data).expect("InvalidPublicKey");
@@ -418,28 +420,30 @@ fn wsts_taproot_inputs() {
     } else {
         secp256k1::Parity::Odd
     };
-    let _public_key = secp256k1::PublicKey::from_x_only_public_key(pk, parity);
-
+    let _secp_public_key = secp256k1::PublicKey::from_x_only_public_key(pk, parity);
+    let btc_public_key =
+        bitcoin::PublicKey::from_slice(aggregate_public_key.compress().as_bytes()).unwrap();
     let address = Address::p2tr(
         secp256k1::SECP256K1,
         bitcoin::XOnlyPublicKey::from_slice(&x_data).unwrap(),
         None,
         bitcoin::Network::Regtest,
     );
+    let address_tweaked = Address::p2tr_tweaked(
+        bitcoin::key::TweakedPublicKey::dangerous_assume_tweaked(
+            bitcoin::XOnlyPublicKey::from_slice(&tweaked_public_key.x().to_bytes()).unwrap(),
+        ),
+        bitcoin::Network::Regtest,
+    );
 
-    //let depositor = Recipient::new(AddressType::P2tr);
+    assert_eq!(address, address_tweaked);
 
     // Start off with some initial UTXOs to work with.
     let _ = faucet.send_to(50_000_000, &address);
     faucet.generate_blocks(1);
 
     // There is only one UTXO under the depositor's name, so let's get it
-    let utxos = Recipient::scan_public_key(
-        rpc,
-        bitcoin::PublicKey::from_slice(aggregate_public_key.compress().as_bytes()).unwrap(),
-        AddressType::P2tr,
-    )
-    .unspents;
+    let utxos = Recipient::scan_public_key(rpc, btc_public_key, AddressType::P2tr).unspents;
     let utxo = utxos.first().cloned().unwrap();
     let amount = 30_000_000;
 
@@ -475,6 +479,7 @@ fn wsts_taproot_inputs() {
         &mut coordinators,
         &mut signers,
         SignatureType::Taproot(None),
+        //SignatureType::Schnorr,
     );
     rpc.send_raw_transaction(&tx0).expect(&format!(
         "{}",
