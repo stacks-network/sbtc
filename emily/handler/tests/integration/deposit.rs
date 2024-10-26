@@ -70,8 +70,7 @@ struct DepositTxnData {
 
 impl DepositTxnData {
     pub fn new(lock_time: u32, max_fee: u64, amount_sats: u64) -> Self {
-        let test_deposit_tx: TxSetup =
-            testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
+        let test_deposit_tx: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
         let recipient_hex_string =
             hex::encode(&test_deposit_tx.deposit.recipient.serialize_to_vec());
         Self {

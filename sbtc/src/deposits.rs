@@ -1,13 +1,13 @@
 //! This is the transaction analysis module
 //!
 
+use bitcoin::locktime::relative::LockTime;
 use bitcoin::opcodes::all as opcodes;
 use bitcoin::script::PushBytesBuf;
 use bitcoin::taproot::LeafVersion;
 use bitcoin::taproot::NodeInfo;
 use bitcoin::taproot::TaprootSpendInfo;
 use bitcoin::Address;
-use bitcoin::locktime::relative::LockTime;
 use bitcoin::Network;
 use bitcoin::OutPoint;
 use bitcoin::Script;
@@ -350,15 +350,26 @@ impl DepositScriptInputs {
 /// deposit script address.
 ///
 /// This struct upholds the invariant that the `lock_time` is a valid and
-/// standard `locktime` in bitcoin-core. So the value here is a u16. We do
-/// not check whether the user supplied script is correct and standard.
-/// 
-/// Right now we only accept lock-times denominated in bitcoin blocks.
+/// standard `locktime` in bitcoin-core. We do not verify whether the
+/// user-supplied script is correct and standard.
+///
+/// Currently, we only accept lock-times denominated in Bitcoin blocks. This
+/// implies that the 22nd bit in the locktime, counting from the least
+/// significant bit, must be zero.
+///
+/// Note that lock-times used as `OP_CSV` inputs in the reclaim script may
+/// only use the 16 least significant bits for the value of the locktime.
+/// All other bits in the 32-bit locktime must be zero. When we support
+/// time-based lock-times, a user may set the 22nd bit to indicate that the
+/// locktime will be time based, as described in BIP-68.
+///
+/// <https://github.com/bitcoin/bips/blob/17c04f9fa1ecae173d6864b65717e13dfc1880af/bip-0068.mediawiki#specification>
+/// <https://github.com/bitcoin/bips/blob/812907c2b00b92ee31e2b638622a4fe14a428aee/bip-0112.mediawiki#summary>
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReclaimScriptInputs {
-    /// This is the lock time used for the OP_CSV opcode in the reclaim
+    /// This is the lock time used for the `OP_CSV` opcode in the reclaim
     /// script. It is not allowed to exceed the bounds expected for a
-    /// 2-byte lock-time in bitcoin-core. It is also not allowed to have
+    /// 4-byte lock-time in bitcoin-core. It is also not allowed to have
     /// the [`SEQUENCE_LOCKTIME_DISABLE_FLAG`] bit set.
     lock_time: LockTime,
     /// The reclaim script after the `<locked-time> OP_CSV` part of the
@@ -374,13 +385,14 @@ impl ReclaimScriptInputs {
         // that the OP_CSV check is always enabled.
         //
         // <https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L560-L592>
-        let lock_time = LockTime::from_consensus(lock_time)
-            .map_err(Error::DisabledLockTime)?;
+        let lock_time = LockTime::from_consensus(lock_time).map_err(Error::DisabledLockTime)?;
 
-        // For now we only accept lock-times denominated in bitcoin blocks
+        // For now, we only accept lock-times denominated in bitcoin block
         // units.
         if matches!(lock_time, LockTime::Time(_)) {
-            return Err(Error::UnsupportedLockTimeUnits(lock_time.to_consensus_u32()));
+            return Err(Error::UnsupportedLockTimeUnits(
+                lock_time.to_consensus_u32(),
+            ));
         }
 
         Ok(Self { lock_time, script })
@@ -454,7 +466,7 @@ impl ReclaimScriptInputs {
             // a range of 0 to 2**39-1). See the following for how the code
             // works in bitcoin-core:
             // https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L531-L573
-            // That said, sBTC only accepts 4 byte unsigned integers. We do
+            // That said, we only accepts 4-byte unsigned integers, and we
             // that check below.
             [n, rest @ ..] if *n <= 5 && rest.get(*n as usize) == Some(&OP_CSV) => {
                 // We know the error and panic paths cannot happen because
@@ -467,8 +479,8 @@ impl ReclaimScriptInputs {
             _ => return Err(Error::InvalidReclaimScript),
         };
 
-        let lock_time = u32::try_from(lock_time)
-            .map_err(|_| Error::InvalidReclaimScriptLockTime(lock_time))?;
+        let lock_time =
+            u32::try_from(lock_time).map_err(|_| Error::InvalidReclaimScriptLockTime(lock_time))?;
 
         let script = ScriptBuf::from_bytes(script.to_vec());
         ReclaimScriptInputs::try_new(lock_time, script)
@@ -739,7 +751,10 @@ mod tests {
             .into_script();
 
         let extracts = ReclaimScriptInputs::parse(&reclaim_script).unwrap();
-        assert_eq!(extracts.lock_time, LockTime::from_consensus(lock_time as u32).unwrap());
+        assert_eq!(
+            extracts.lock_time,
+            LockTime::from_consensus(lock_time as u32).unwrap()
+        );
         assert_eq!(extracts.reclaim_script(), reclaim_script);
     }
 

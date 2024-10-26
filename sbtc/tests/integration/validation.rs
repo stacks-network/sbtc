@@ -70,8 +70,10 @@ fn tx_validation_from_mempool() {
     assert_eq!(parsed.reclaim_script, request.reclaim_script);
     assert_eq!(parsed.amount, amount_sats);
     assert_eq!(parsed.signers_public_key, setup.deposit.signers_public_key);
-    assert_eq!(parsed.lock_time, bitcoin::relative::LockTime::from_height(lock_time as u16));
     assert_eq!(parsed.recipient, setup.deposit.recipient);
+
+    let lock_time_height = bitcoin::relative::LockTime::from_height(lock_time as u16);
+    assert_eq!(parsed.lock_time, lock_time_height);
 }
 
 /// This validates that we need to reject deposit scripts that do not
