@@ -401,9 +401,6 @@ impl ReclaimScriptInputs {
 
     /// Get the lock time in the reclaim script.
     pub fn lock_time(&self) -> u32 {
-        // We know this number is positive because that is one of the
-        // invariants upheld by this struct, and we check for it in
-        // `Self::try_new`, so this will never be a lossy conversion.
         self.lock_time.to_consensus_u32()
     }
 
@@ -468,7 +465,7 @@ impl ReclaimScriptInputs {
             // works in bitcoin-core:
             // https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L531-L573
             // That said, we only accepts 4-byte unsigned integers, and we
-            // that check below.
+            // check that below.
             [n, rest @ ..] if *n <= 5 && rest.get(*n as usize) == Some(&OP_CSV) => {
                 // We know the error and panic paths cannot happen because
                 // of the above `if` check.
