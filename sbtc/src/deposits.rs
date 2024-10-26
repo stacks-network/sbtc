@@ -357,11 +357,12 @@ impl DepositScriptInputs {
 /// implies that the 22nd bit in the locktime, counting from the least
 /// significant bit, must be zero.
 ///
-/// Note that locktimes used as `OP_CSV` inputs in the reclaim script may
-/// only use the 16 least significant bits for the value of the locktime.
-/// All other bits in the 32-bit locktime must be zero. When we support
-/// time-based locktimes, a user may set the 22nd bit to indicate that the
-/// locktime will be time based, as described in BIP-68.
+/// Note that locktimes used as `OP_CSV` inputs in the reclaim script only
+/// use the 16 least significant bits for the value of the locktime. All
+/// other bits in the 32-bit locktime must be zero or the deposit
+/// transaction will fail validation. When we support time-based locktimes,
+/// a user may set the 22nd bit to indicate that the locktime value is time
+/// based, as described in BIP-68.
 ///
 /// <https://github.com/bitcoin/bips/blob/17c04f9fa1ecae173d6864b65717e13dfc1880af/bip-0068.mediawiki#specification>
 /// <https://github.com/bitcoin/bips/blob/812907c2b00b92ee31e2b638622a4fe14a428aee/bip-0112.mediawiki#summary>
@@ -798,6 +799,15 @@ mod tests {
         let lock_time = 56;
         let reclaim = ReclaimScriptInputs::try_new(lock_time, ScriptBuf::new());
         assert!(reclaim.is_ok());
+    }
+
+    #[test]
+    fn lock_time_as_time() {
+        // We do not support time based lock times. Check that
+        let lock_time = LockTime::from_seconds_ceil(20000).unwrap().to_consensus_u32();
+        let reclaim = ReclaimScriptInputs::try_new(lock_time, ScriptBuf::new()).unwrap_err();
+
+        assert!(matches!(reclaim, Error::UnsupportedLockTimeUnits(_)));
     }
 
     #[test]
