@@ -46,7 +46,7 @@ const STANDARD_SCRIPT_LENGTH: usize =
 ///   112) [^2]. Note: Transaction inputs have an nSequence field that is
 ///   different from the one referenced in the above bullet point.
 /// * If this flag is set, CTxIn::nSequence is NOT interpreted as a
-///   relative lock-time.
+///   relative locktime.
 /// * It skips SequenceLocks() for any input that has it set (BIP 68).
 ///
 /// The last two bullets were taken from [^3].
@@ -350,26 +350,26 @@ impl DepositScriptInputs {
 /// deposit script address.
 ///
 /// This struct upholds the invariant that the `lock_time` is a valid and
-/// standard `locktime` in bitcoin-core. We do not verify whether the
+/// standard locktime in bitcoin-core. We do not verify whether the
 /// user-supplied script is correct and standard.
 ///
-/// Currently, we only accept lock-times denominated in Bitcoin blocks. This
+/// Currently, we only accept locktimes denominated in Bitcoin blocks. This
 /// implies that the 22nd bit in the locktime, counting from the least
 /// significant bit, must be zero.
 ///
-/// Note that lock-times used as `OP_CSV` inputs in the reclaim script may
+/// Note that locktimes used as `OP_CSV` inputs in the reclaim script may
 /// only use the 16 least significant bits for the value of the locktime.
 /// All other bits in the 32-bit locktime must be zero. When we support
-/// time-based lock-times, a user may set the 22nd bit to indicate that the
+/// time-based locktimes, a user may set the 22nd bit to indicate that the
 /// locktime will be time based, as described in BIP-68.
 ///
 /// <https://github.com/bitcoin/bips/blob/17c04f9fa1ecae173d6864b65717e13dfc1880af/bip-0068.mediawiki#specification>
 /// <https://github.com/bitcoin/bips/blob/812907c2b00b92ee31e2b638622a4fe14a428aee/bip-0112.mediawiki#summary>
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReclaimScriptInputs {
-    /// This is the lock time used for the `OP_CSV` opcode in the reclaim
+    /// This is the locktime used for the `OP_CSV` opcode in the reclaim
     /// script. It is not allowed to exceed the bounds expected for a
-    /// 4-byte lock-time in bitcoin-core. It is also not allowed to have
+    /// 4-byte locktime in bitcoin-core. It is also not allowed to have
     /// the [`SEQUENCE_LOCKTIME_DISABLE_FLAG`] bit set.
     lock_time: LockTime,
     /// The reclaim script after the `<locked-time> OP_CSV` part of the
@@ -380,14 +380,14 @@ pub struct ReclaimScriptInputs {
 impl ReclaimScriptInputs {
     /// Create a new one
     pub fn try_new(lock_time: u32, script: ScriptBuf) -> Result<Self, Error> {
-        // OP_CSV checks can be disabled if the lock-time has the disabled
-        // lock-time bit set to 1. So we disallow such lock times to ensure
+        // OP_CSV checks can be disabled if the locktime has the disabled
+        // locktime bit set to 1. So we disallow such locktimes to ensure
         // that the OP_CSV check is always enabled.
         //
         // <https://github.com/bitcoin/bitcoin/blob/v27.1/src/script/interpreter.cpp#L560-L592>
         let lock_time = LockTime::from_consensus(lock_time).map_err(Error::DisabledLockTime)?;
 
-        // For now, we only accept lock-times denominated in bitcoin block
+        // For now, we only accept locktimes denominated in bitcoin block
         // units.
         if matches!(lock_time, LockTime::Time(_)) {
             return Err(Error::UnsupportedLockTimeUnits(
