@@ -354,15 +354,14 @@ impl DepositScriptInputs {
 /// user-supplied script is correct and standard.
 ///
 /// Currently, we only accept locktimes denominated in Bitcoin blocks. This
-/// implies that the 22nd bit in the locktime, counting from the least
-/// significant bit, must be zero.
+/// implies that bit (1 << 22) in the locktime, must be zero.
 ///
 /// Note that locktimes used as `OP_CSV` inputs in the reclaim script only
 /// use the 16 least significant bits for the value of the locktime. All
 /// other bits in the 32-bit locktime must be zero or the deposit
 /// transaction will fail validation. When we support time-based locktimes,
-/// a user may set the 22nd bit to indicate that the locktime value is time
-/// based, as described in BIP-68.
+/// a user may set bit (1 << 22) to indicate that the locktime value is
+/// time based, as described in BIP-68.
 ///
 /// <https://github.com/bitcoin/bips/blob/17c04f9fa1ecae173d6864b65717e13dfc1880af/bip-0068.mediawiki#specification>
 /// <https://github.com/bitcoin/bips/blob/812907c2b00b92ee31e2b638622a4fe14a428aee/bip-0112.mediawiki#summary>
