@@ -424,16 +424,20 @@ mod tests {
     use super::*;
 
     use bitcoin::OutPoint;
+    use bitcoin::ScriptBuf;
+    use bitvec::array::BitArray;
     use clarity::vm::types::PrincipalData;
     use emily_client::models::UpdateDepositsResponse;
     use emily_client::models::UpdateWithdrawalsResponse;
     use fake::Fake;
     use rand::rngs::OsRng;
+    use rand::SeedableRng as _;
     use test_case::test_case;
 
     use crate::storage::in_memory::Store;
     use crate::storage::model::StacksPrincipal;
     use crate::testing::context::*;
+    use crate::testing::storage::model::TestData;
 
     /// These were generated from a stacks node after running the
     /// "complete-deposit standard recipient", "accept-withdrawal",
@@ -606,5 +610,288 @@ mod tests {
         // This event should be filtered out, so the table should still be
         // empty.
         assert!(table_is_empty(db.lock().await));
+    }
+
+    #[tokio::test]
+    async fn test_fetch_btc_block_from_txid_with_existing_txid() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        let ctx = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        let db = ctx.inner_storage();
+
+        let test_params = crate::testing::storage::model::Params {
+            num_bitcoin_blocks: 2,
+            num_stacks_blocks_per_bitcoin_block: 0,
+            num_deposit_requests_per_block: 2,
+            num_withdraw_requests_per_block: 0,
+            num_signers_per_request: 0,
+        };
+
+        let test_data = TestData::generate(&mut rng, &[], &test_params);
+        test_data.write_to(&db).await;
+
+        let txid = test_data.bitcoin_transactions[0].txid;
+        let block = fetch_btc_block_from_txid(&db, *txid).await;
+
+        assert!(block.is_some());
+        let block = block.unwrap();
+        assert_eq!(block.block_height, test_data.bitcoin_blocks[0].block_height);
+        assert_eq!(block.block_hash, test_data.bitcoin_blocks[0].block_hash);
+    }
+
+    #[tokio::test]
+    async fn test_fetch_btc_block_from_txid_with_nonexising_txid() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        let ctx = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        let db = ctx.inner_storage();
+
+        let test_params = crate::testing::storage::model::Params {
+            num_bitcoin_blocks: 2,
+            num_stacks_blocks_per_bitcoin_block: 0,
+            num_deposit_requests_per_block: 2,
+            num_withdraw_requests_per_block: 0,
+            num_signers_per_request: 0,
+        };
+
+        let test_data = TestData::generate(&mut rng, &[], &test_params);
+        test_data.write_to(&db).await;
+
+        let txid: BitcoinTxId = fake::Faker.fake_with_rng(&mut rng);
+
+        let block = fetch_btc_block_from_txid(&db, *txid).await;
+        assert!(block.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_handle_completed_deposit_happy_path() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        let ctx = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        let test_params = crate::testing::storage::model::Params {
+            num_bitcoin_blocks: 2,
+            num_stacks_blocks_per_bitcoin_block: 1,
+            num_deposit_requests_per_block: 2,
+            num_withdraw_requests_per_block: 2,
+            num_signers_per_request: 0,
+        };
+
+        let test_data = TestData::generate(&mut rng, &[], &test_params);
+        test_data.write_to(&ctx.get_storage_mut()).await;
+
+        let txid = test_data.bitcoin_transactions[0].txid;
+
+        let stacks_chaintip = test_data
+            .stacks_blocks
+            .last()
+            .expect("STX block generation failed");
+
+        let mut completed_deposits = Vec::new();
+        let event = CompletedDepositEvent {
+            outpoint: OutPoint { txid: *txid, vout: 0 },
+            txid: *test_data.stacks_transactions[0].txid,
+            block_id: *stacks_chaintip.block_hash,
+            amount: 100,
+        };
+        let expectation = DepositUpdate {
+            bitcoin_tx_output_index: event.outpoint.vout,
+            bitcoin_txid: txid.to_string(),
+            status: Status::Confirmed,
+            fulfillment: Some(Some(Box::new(Fulfillment {
+                bitcoin_block_hash: test_data.bitcoin_blocks[0].block_hash.to_string(),
+                bitcoin_block_height: test_data.bitcoin_blocks[0].block_height,
+                bitcoin_tx_index: event.outpoint.vout,
+                bitcoin_txid: txid.to_string(),
+                btc_fee: 1,
+                stacks_txid: test_data.stacks_transactions[0].txid.to_hex(),
+            }))),
+            status_message: format!("Included in block {}", stacks_chaintip.block_hash.to_hex()),
+            last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
+            last_update_height: stacks_chaintip.block_height,
+        };
+        let res =
+            handle_completed_deposit(&ctx, event, stacks_chaintip, &mut completed_deposits).await;
+
+        assert!(res.is_ok());
+        assert_eq!(completed_deposits.len(), 1);
+        assert_eq!(*completed_deposits.first().unwrap(), expectation);
+    }
+
+    #[tokio::test]
+    async fn test_handle_withdrawal_accept_happy_path() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        let ctx = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        let test_params = crate::testing::storage::model::Params {
+            num_bitcoin_blocks: 2,
+            num_stacks_blocks_per_bitcoin_block: 1,
+            num_deposit_requests_per_block: 2,
+            num_withdraw_requests_per_block: 2,
+            num_signers_per_request: 0,
+        };
+
+        let test_data = TestData::generate(&mut rng, &[], &test_params);
+        test_data.write_to(&ctx.get_storage_mut()).await;
+
+        let txid = test_data.bitcoin_transactions[0].txid;
+
+        let stacks_chaintip = test_data
+            .stacks_blocks
+            .last()
+            .expect("STX block generation failed");
+
+        let event = WithdrawalAcceptEvent {
+            request_id: 1,
+            outpoint: OutPoint { txid: *txid, vout: 0 },
+            txid: *test_data.stacks_transactions[0].txid,
+            block_id: *test_data.stacks_transactions[0].block_hash,
+            fee: 1,
+            signer_bitmap: BitArray::<_>::ZERO,
+        };
+
+        // Expected struct to be added to the accepted_withdrawals vector
+        let expectation = WithdrawalUpdate {
+            request_id: event.request_id,
+            status: Status::Confirmed,
+            fulfillment: Some(Some(Box::new(Fulfillment {
+                bitcoin_block_hash: test_data.bitcoin_blocks[0].block_hash.to_string(),
+                bitcoin_block_height: test_data.bitcoin_blocks[0].block_height,
+                bitcoin_tx_index: event.outpoint.vout,
+                bitcoin_txid: txid.to_string(),
+                btc_fee: event.fee,
+                stacks_txid: test_data.stacks_transactions[0].txid.to_hex(),
+            }))),
+            status_message: format!("Included in block {}", event.block_id.to_hex()),
+            last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
+            last_update_height: stacks_chaintip.block_height,
+        };
+        let mut accepted_withdrawals = Vec::new();
+        let res =
+            handle_withdrawal_accept(&ctx, event, stacks_chaintip, &mut accepted_withdrawals).await;
+
+        assert!(res.is_ok());
+        assert_eq!(accepted_withdrawals.len(), 1);
+        assert_eq!(*accepted_withdrawals.first().unwrap(), expectation);
+    }
+
+    #[tokio::test]
+    async fn test_handle_withdrawal_create_happy_path() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        let ctx = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        let test_params = crate::testing::storage::model::Params {
+            num_bitcoin_blocks: 2,
+            num_stacks_blocks_per_bitcoin_block: 1,
+            num_deposit_requests_per_block: 2,
+            num_withdraw_requests_per_block: 2,
+            num_signers_per_request: 0,
+        };
+
+        let test_data = TestData::generate(&mut rng, &[], &test_params);
+        test_data.write_to(&ctx.get_storage_mut()).await;
+
+        let stx_first_tx = &test_data.stacks_transactions[0];
+        let stx_first_block = &test_data.stacks_blocks[0];
+
+        let event = WithdrawalCreateEvent {
+            request_id: 1,
+            block_id: *stx_first_tx.block_hash,
+            amount: 100,
+            max_fee: 1,
+            recipient: ScriptBuf::default(),
+            txid: *stx_first_tx.txid,
+            sender: PrincipalData::Standard(StandardPrincipalData::transient()),
+            block_height: test_data.bitcoin_blocks[0].block_height,
+        };
+
+        // Expected struct to be added to the created_withdrawals vector
+        let expectation = CreateWithdrawalRequestBody {
+            amount: event.amount,
+            parameters: Box::new(WithdrawalParameters { max_fee: event.max_fee }),
+            recipient: event.recipient.to_string(),
+            request_id: event.request_id,
+            stacks_block_hash: stx_first_block.block_hash.to_hex(),
+            stacks_block_height: stx_first_block.block_height,
+        };
+
+        let mut created_withdrawals = Vec::new();
+        let res = handle_withdrawal_create(&ctx, event, &mut created_withdrawals).await;
+
+        assert!(res.is_ok());
+        assert_eq!(created_withdrawals.len(), 1);
+        assert_eq!(*created_withdrawals.first().unwrap(), expectation);
+    }
+
+    #[tokio::test]
+    async fn test_handle_withdrawal_reject_happy_path() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        let ctx = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        let db = ctx.inner_storage();
+
+        let test_params = crate::testing::storage::model::Params {
+            num_bitcoin_blocks: 2,
+            num_stacks_blocks_per_bitcoin_block: 1,
+            num_deposit_requests_per_block: 2,
+            num_withdraw_requests_per_block: 2,
+            num_signers_per_request: 0,
+        };
+
+        let test_data = TestData::generate(&mut rng, &[], &test_params);
+        test_data.write_to(&db).await;
+
+        let stacks_chaintip = test_data
+            .stacks_blocks
+            .last()
+            .expect("STX block generation failed");
+
+        let event = WithdrawalRejectEvent {
+            request_id: 1,
+            block_id: *stacks_chaintip.block_hash,
+            txid: *test_data.stacks_transactions[0].txid,
+            signer_bitmap: BitArray::<_>::ZERO,
+        };
+
+        // Expected struct to be added to the rejected_withdrawals vector
+        let expectation = WithdrawalUpdate {
+            request_id: event.request_id,
+            status: Status::Failed,
+            fulfillment: None,
+            last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
+            last_update_height: stacks_chaintip.block_height,
+            status_message: "Rejected".to_string(),
+        };
+
+        let mut rejected_withdrawals = Vec::new();
+        let res =
+            handle_withdrawal_reject(&ctx, event, stacks_chaintip, &mut rejected_withdrawals).await;
+
+        assert!(res.is_ok());
+        assert_eq!(rejected_withdrawals.len(), 1);
+        assert_eq!(*rejected_withdrawals.first().unwrap(), expectation);
     }
 }
