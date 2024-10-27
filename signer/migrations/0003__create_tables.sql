@@ -275,8 +275,6 @@ CREATE TABLE sbtc_signer.swept_deposits (
     id BIGSERIAL PRIMARY KEY,
     -- References the `packaged_transaction` in which this deposit was included.
     sweep_transaction_id INTEGER NOT NULL,
-    -- The index of the sweep output in the packaged transaction.
-    output_index INTEGER NOT NULL,
     -- The Bitcoin transaction ID of the deposit request, referencing the
     -- `deposit_requests` table.
     deposit_request_txid BYTEA NOT NULL,

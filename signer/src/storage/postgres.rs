@@ -468,10 +468,10 @@ impl PgStore {
                 .id
                 .expect("BUG: sweep_transactions.id cannot be null");
 
-            let swept_deposits = sqlx::query_as(
-                "
+            let swept_deposits: Vec<bitcoin::OutPoint> =
+                sqlx::query_as::<_, (model::BitcoinTxId, i32)>(
+                    "
                 SELECT
-                    output_index,
                     deposit_request_txid,
                     deposit_request_output_index
                 FROM
@@ -480,12 +480,18 @@ impl PgStore {
                     sweep_transaction_id = $1
                 ORDER BY
                     id ASC;
-            ",
-            )
-            .bind(transaction_id)
-            .fetch_all(&self.0)
-            .await
-            .map_err(Error::SqlxQuery)?;
+                ",
+                )
+                .bind(transaction_id)
+                .fetch_all(&self.0)
+                .await
+                .map_err(Error::SqlxQuery)?
+                .into_iter()
+                .map(|(txid, vout)| bitcoin::OutPoint {
+                    txid: txid.into(),
+                    vout: vout as u32,
+                })
+                .collect();
 
             let swept_withdrawals = sqlx::query_as(
                 "
@@ -2155,16 +2161,14 @@ impl super::DbWrite for PgStore {
                     "
                     INSERT INTO swept_deposits (
                         sweep_transaction_id
-                      , output_index
                       , deposit_request_txid
                       , deposit_request_output_index
                     )
-                    VALUES ($1, $2, $3, $4)",
+                    VALUES ($1, $2, $3)",
                 )
                 .bind(transaction_id)
-                .bind(deposit.output_index as i32)
-                .bind(deposit.deposit_request_txid)
-                .bind(deposit.deposit_request_output_index as i32)
+                .bind(model::BitcoinTxId::from(deposit.txid))
+                .bind(deposit.vout as i32)
                 .execute(&mut *tx)
                 .await
                 .map_err(Error::SqlxQuery)?;

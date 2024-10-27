@@ -19,13 +19,10 @@ use crate::keys::PublicKeyXOnly;
 /// Represents an entire transaction package that has been broadcast to the
 /// Bitcoin network.
 #[derive(Debug, Clone, PartialEq, PartialOrd, sqlx::FromRow)]
-#[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct SweepTransactionPackage {
     /// The Bitcoin block hash at which this transaction package was broadcast.
     pub created_at_block_hash: BitcoinBlockHash,
     /// The market fee rate at the time of creation of this transaction package.
-    // TODO: How to handle floats with dummy derive?
-    #[cfg_attr(feature = "testing", dummy(default))]
     pub market_fee_rate: f64,
     /// The transactions which were submitted together as part of this
     /// transaction package.
@@ -49,14 +46,9 @@ impl SweepTransactionPackage {
                 let swept_deposits = transaction
                     .requests
                     .iter()
-                    .enumerate()
-                    .filter_map(|(pos, request)| {
+                    .filter_map(|request| {
                         if let RequestRef::Deposit(deposit) = request {
-                            Some(SweptDeposit {
-                                output_index: pos as u32 + 1, // Account for the signer output
-                                deposit_request_txid: deposit.outpoint.txid.into(),
-                                deposit_request_output_index: deposit.outpoint.vout,
-                            })
+                            Some(deposit.outpoint)
                         } else {
                             None
                         }
@@ -106,11 +98,9 @@ impl SweepTransactionPackage {
 /// Represents a single transaction which is part of a sweep transaction package
 /// which has been broadcast to the Bitcoin network.
 #[derive(Debug, Clone, PartialEq, PartialOrd, sqlx::FromRow)]
-#[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct SweepTransaction {
     /// The internal id of the packaged transaction.
     #[sqlx(try_from = "Option<i64>")]
-    #[cfg_attr(feature = "testing", dummy(default))]
     pub id: Option<i64>,
     /// The Bitcoin transaction id.
     pub txid: BitcoinTxId,
@@ -121,42 +111,22 @@ pub struct SweepTransaction {
     pub utxo_output_index: u32,
     /// The total amount of this transaction.
     #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
     pub amount: u64,
     /// The fee paid for this transaction.
     #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
     pub fee: u64,
     /// The fee rate of this transaction in sats/vByte.
-    #[cfg_attr(feature = "testing", dummy(default))]
     pub fee_rate: f64,
     /// Whether or not this transaction has been successfully broadcast to the
     /// Bitcoin network.
-    #[cfg_attr(feature = "testing", dummy(default))]
     pub is_broadcast: bool,
 
     /// List of deposits which were swept-in by this transaction.
     #[sqlx(skip)]
-    pub swept_deposits: Vec<SweptDeposit>,
+    pub swept_deposits: Vec<bitcoin::OutPoint>,
     /// List of withdrawals which were swept-out by this transaction.
     #[sqlx(skip)]
     pub swept_withdrawals: Vec<SweptWithdrawal>,
-}
-
-/// Represents a single deposit which has been swept-in by a sweep transaction
-/// package.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
-#[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub struct SweptDeposit {
-    /// The index of the deposit output in the sBTC sweep transaction.
-    #[sqlx(try_from = "i32")]
-    pub output_index: u32,
-    /// The Bitcoin transaction id of the deposit UTXO in the deposit request
-    /// transaction.
-    pub deposit_request_txid: BitcoinTxId,
-    /// The index of the deposit output in the deposit request transaction.
-    #[sqlx(try_from = "i32")]
-    pub deposit_request_output_index: u32,
 }
 
 /// Represents a single withdrawal which has been swept-out by a sweep
