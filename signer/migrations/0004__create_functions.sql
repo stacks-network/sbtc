@@ -1,6 +1,6 @@
--- TVF for fetching a Bitcoin blockchain from a given block hash, only looking
--- back the `max_depth` number of blocks. The most common use case is to fetch
--- the blockchain from the canonical chain tip.
+-- Table-Valued Function (TVF) for fetching a Bitcoin blockchain from a given
+-- block hash, only looking back the `max_depth` number of blocks. The most
+-- common use case is to fetch the blockchain from the canonical chain tip.
 --
 -- - chain_tip: The block hash to start the blockchain from ("chain tip").
 -- - max_depth: The maximum depth of the blockchain to fetch.
