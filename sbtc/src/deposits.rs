@@ -800,7 +800,9 @@ mod tests {
     #[test]
     fn lock_time_as_time() {
         // We do not support time based lock times. Check that
-        let lock_time = LockTime::from_seconds_ceil(20000).unwrap().to_consensus_u32();
+        let lock_time = LockTime::from_seconds_ceil(20000)
+            .unwrap()
+            .to_consensus_u32();
         let reclaim = ReclaimScriptInputs::try_new(lock_time, ScriptBuf::new()).unwrap_err();
 
         assert!(matches!(reclaim, Error::UnsupportedLockTimeUnits(_)));
