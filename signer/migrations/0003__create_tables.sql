@@ -229,7 +229,7 @@ CREATE TABLE sbtc_signer.sweep_transactions (
     fee_rate DOUBLE PRECISION NOT NULL,
     -- The timestamp that the transaction was broadcast at. This should be
     -- set after we know that the transaction was successfully broadcast.
-    is_broadcast BOOLEAN NOT NULL DEFAULT FALSE,
+    is_broadcast BOOLEAN NOT NULL,
 
     FOREIGN KEY (sweep_package_id)
         REFERENCES sbtc_signer.sweep_packages(id)
