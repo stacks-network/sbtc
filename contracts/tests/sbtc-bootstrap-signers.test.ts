@@ -36,6 +36,11 @@ describe("sBTC bootstrap signers contract", () => {
       );
       expect(receipt.value).toEqual(true);
 
+      const expectedPrincipal = constructMultisigAddress(
+        newKeys,
+        newSignatureThreshold,
+      );
+
       const prints = filterEvents(
         receipt.events,
         CoreNodeEventType.ContractEvent
@@ -44,25 +49,22 @@ describe("sBTC bootstrap signers contract", () => {
       const printData = cvToValue<{
         topic: string;
         newKeys: Uint8Array[];
+        newAddress: string;
         newAggregatePubkey: Uint8Array;
         newSignatureThreshold: bigint;
       }>(print.data.value);
-      expect(printData).toEqual(expect.objectContaining({
+      expect(printData).toEqual({
         topic: "key-rotation",
         newKeys: newKeys,
+        newAddress: expectedPrincipal,
         newAggregatePubkey: new Uint8Array(33).fill(0),
         newSignatureThreshold: newSignatureThreshold
-      }));
+      });
 
       const setAggKey = rov(registry.getCurrentAggregatePubkey());
       expect(setAggKey).toEqual(new Uint8Array(33).fill(0));
 
       expect(rov(registry.getCurrentSignerSet())).toStrictEqual(newKeys);
-
-      const expectedPrincipal = constructMultisigAddress(
-        newKeys,
-        newSignatureThreshold,
-      );
       expect(currentSignerAddr()).toEqual(expectedPrincipal);
       expect(rov(registry.getCurrentSignerData())).toStrictEqual({
         currentAggregatePubkey: new Uint8Array(33).fill(0),
