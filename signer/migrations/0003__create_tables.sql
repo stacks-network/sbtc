@@ -219,8 +219,10 @@ CREATE TABLE sbtc_signer.sweep_transactions (
     -- The Bitcoin transaction ID of the transaction.
     txid BYTEA NOT NULL,
     -- The signer UTXO being spent in this transaction.
-    utxo_txid BYTEA NOT NULL,
-    utxo_output_index INTEGER NOT NULL,
+    signer_prevout_txid BYTEA NOT NULL,
+    signer_prevout_output_index INTEGER NOT NULL,
+    signer_prevout_amount BIGINT NOT NULL,
+    signer_prevout_script_pubkey BYTEA NOT NULL,
     -- The total amount of the transaction.
     amount BIGINT NOT NULL,
     -- The fee paid for the transaction.
@@ -234,6 +236,11 @@ CREATE TABLE sbtc_signer.sweep_transactions (
     FOREIGN KEY (sweep_package_id)
         REFERENCES sbtc_signer.sweep_packages(id)
 );
+
+-- Unique index to ensure that the same Bitcoin transaction ID is not included
+-- in multiple sweep transactions, and serve queries filtering on `txid`.
+CREATE UNIQUE INDEX uix_sweep_transactions_txid
+    ON sbtc_signer.sweep_transactions(txid);
 
 -- Represents a single withdrawal request which has been included in a sweep
 -- transaction package. Withdrawal requests have a unique ID so we use that here

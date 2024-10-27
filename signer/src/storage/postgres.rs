@@ -444,8 +444,10 @@ impl PgStore {
             SELECT
                 id,
                 txid,
-                utxo_txid,
-                utxo_output_index,
+                signer_prevout_txid,
+                signer_prevout_output_index,
+                signer_prevout_amount,
+                signer_prevout_script_pubkey,
                 amount,
                 fee,
                 fee_rate,
@@ -2131,20 +2133,24 @@ impl super::DbWrite for PgStore {
                 INSERT INTO sweep_transactions (
                     sweep_package_id
                   , txid
-                  , utxo_txid
-                  , utxo_output_index
+                  , signer_prevout_txid
+                  , signer_prevout_output_index
+                  , signer_prevout_amount
+                  , signer_prevout_script_pubkey
                   , amount
                   , fee
                   , fee_rate
                   , is_broadcast
                 ) 
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
                 RETURNING id",
             )
             .bind(package_id)
             .bind(transaction.txid)
-            .bind(transaction.utxo_txid)
-            .bind(transaction.utxo_output_index as i32)
+            .bind(transaction.signer_prevout_txid)
+            .bind(transaction.signer_prevout_output_index as i32)
+            .bind(transaction.signer_prevout_amount as i64)
+            .bind(transaction.signer_prevout_script_pubkey)
             .bind(transaction.amount as i64)
             .bind(transaction.fee as i64)
             .bind(transaction.fee_rate)

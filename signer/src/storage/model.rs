@@ -15,6 +15,7 @@ use crate::block_observer::Deposit;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
+use crate::keys::SignerScriptPubKey;
 
 /// Represents an entire transaction package that has been broadcast to the
 /// Bitcoin network.
@@ -75,8 +76,14 @@ impl SweepTransactionPackage {
                 SweepTransaction {
                     id: None,
                     txid: transaction.tx.compute_txid().into(),
-                    utxo_txid: transaction.signer_utxo.utxo.outpoint.txid.into(),
-                    utxo_output_index: transaction.signer_utxo.utxo.outpoint.vout,
+                    signer_prevout_txid: transaction
+                        .signer_utxo.utxo.outpoint.txid.into(),
+                    signer_prevout_output_index: transaction
+                        .signer_utxo.utxo.outpoint.vout,
+                    signer_prevout_amount: transaction.signer_utxo.utxo.amount,
+                    signer_prevout_script_pubkey: transaction
+                        .signer_utxo.utxo.public_key
+                        .signers_script_pubkey().into(),
                     amount: transaction.output_amounts(),
                     fee: transaction.tx_fee,
                     fee_rate: transaction.signer_utxo.fee_rate,
@@ -105,10 +112,15 @@ pub struct SweepTransaction {
     /// The Bitcoin transaction id.
     pub txid: BitcoinTxId,
     /// The transaction id of the signer UTXO consumed by this transaction.
-    pub utxo_txid: BitcoinTxId,
+    pub signer_prevout_txid: BitcoinTxId,
     /// The index of the signer UTXO consumed by this transaction.
     #[sqlx(try_from = "i32")]
-    pub utxo_output_index: u32,
+    pub signer_prevout_output_index: u32,
+    /// The amount of the signer UTXO consumed by this transaction.
+    #[sqlx(try_from = "i64")]
+    pub signer_prevout_amount: u64,
+    /// The public key of the signer UTXO consumed by this transaction.
+    pub signer_prevout_script_pubkey: ScriptPubKey,
     /// The total amount of this transaction.
     #[sqlx(try_from = "i64")]
     pub amount: u64,
@@ -127,6 +139,16 @@ pub struct SweepTransaction {
     /// List of withdrawals which were swept-out by this transaction.
     #[sqlx(skip)]
     pub swept_withdrawals: Vec<SweptWithdrawal>,
+}
+
+impl SweepTransaction {
+    /// Return the outpoint of the signer's UTXO consumed by this transaction.
+    pub fn signer_prevout_outpoint(&self) -> bitcoin::OutPoint {
+        bitcoin::OutPoint {
+            txid: self.signer_prevout_txid.into(),
+            vout: self.signer_prevout_output_index,
+        }
+    }
 }
 
 /// Represents a single withdrawal which has been swept-out by a sweep
