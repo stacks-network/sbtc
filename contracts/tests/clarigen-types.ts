@@ -586,8 +586,6 @@ export const contracts = {
               },
             },
           },
-          { name: "burn-height", type: "uint128" },
-          { name: "burn-hash", type: { buffer: { length: 32 } } },
         ],
         outputs: { type: { response: { ok: "uint128", error: "uint128" } } },
       } as TypedAbiFunction<
@@ -603,8 +601,6 @@ export const contracts = {
             }[],
             "deposits"
           >,
-          burnHeight: TypedAbiArg<number | bigint, "burnHeight">,
-          burnHash: TypedAbiArg<Uint8Array, "burnHash">,
         ],
         Response<bigint, bigint>
       >,
@@ -1562,6 +1558,8 @@ export const contracts = {
                   name: "bitcoin-txid",
                   type: { optional: { buffer: { length: 32 } } },
                 },
+                { name: "burn-hash", type: { buffer: { length: 32 } } },
+                { name: "burn-height", type: "uint128" },
                 { name: "fee", type: { optional: "uint128" } },
                 { name: "output-index", type: { optional: "uint128" } },
                 { name: "request-id", type: "uint128" },
@@ -1581,6 +1579,8 @@ export const contracts = {
           withdrawal: TypedAbiArg<
             {
               bitcoinTxid: Uint8Array | null;
+              burnHash: Uint8Array;
+              burnHeight: number | bigint;
               fee: number | bigint | null;
               outputIndex: number | bigint | null;
               requestId: number | bigint;
@@ -1631,6 +1631,8 @@ export const contracts = {
                       name: "bitcoin-txid",
                       type: { optional: { buffer: { length: 32 } } },
                     },
+                    { name: "burn-hash", type: { buffer: { length: 32 } } },
+                    { name: "burn-height", type: "uint128" },
                     { name: "fee", type: { optional: "uint128" } },
                     { name: "output-index", type: { optional: "uint128" } },
                     { name: "request-id", type: "uint128" },
@@ -1642,8 +1644,6 @@ export const contracts = {
               },
             },
           },
-          { name: "burn-height", type: "uint128" },
-          { name: "burn-hash", type: { buffer: { length: 32 } } },
         ],
         outputs: { type: { response: { ok: "uint128", error: "uint128" } } },
       } as TypedAbiFunction<
@@ -1651,6 +1651,8 @@ export const contracts = {
           withdrawals: TypedAbiArg<
             {
               bitcoinTxid: Uint8Array | null;
+              burnHash: Uint8Array;
+              burnHeight: number | bigint;
               fee: number | bigint | null;
               outputIndex: number | bigint | null;
               requestId: number | bigint;
@@ -1659,8 +1661,6 @@ export const contracts = {
             }[],
             "withdrawals"
           >,
-          burnHeight: TypedAbiArg<number | bigint, "burnHeight">,
-          burnHash: TypedAbiArg<Uint8Array, "burnHash">,
         ],
         Response<bigint, bigint>
       >,

@@ -72,8 +72,6 @@
 ;; it then calls into the sbtc-registry contract to update the state of the protocol. 
 (define-public (complete-deposits-wrapper 
         (deposits (list 650 {txid: (buff 32), vout-index: uint, amount: uint, recipient: principal, burn-hash: (buff 32), burn-height: uint}))
-        (burn-height uint)
-        (burn-hash (buff 32))
     )
     (begin
         ;; Check that the caller is the current signer principal
@@ -85,9 +83,6 @@
         (fold complete-individual-deposits-helper deposits (ok u0))
     )
 )
-
-;; read only functions
-;;
 
 ;; private functions
 ;; #[allow(unchecked_data)]
