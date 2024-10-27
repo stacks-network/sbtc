@@ -216,9 +216,9 @@
                                       signer-bitmap: uint, 
                                       bitcoin-txid: (optional (buff 32)), 
                                       output-index: (optional uint), 
-                                      fee: (optional uint)}))
-                                     (burn-height uint)
-                                     (burn-hash (buff 32)))
+                                      fee: (optional uint),
+                                      burn-hash: (buff 32),
+                                      burn-height: uint})))
   (let 
       (
           (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))
@@ -226,9 +226,6 @@
 
       ;; Check that the caller is the current signer principal
       (asserts! (is-eq (get current-signer-principal current-signer-data) tx-sender) ERR_INVALID_CALLER)
-
-      ;; Verify that Bitcoin hasn't forked by comparing the burn hash provided
-      (asserts! (is-eq (some burn-hash) (get-burn-header burn-height)) ERR_INVALID_BURN_HASH)
 
       (fold complete-individual-withdrawal-helper withdrawals (ok u0))
   )
@@ -241,7 +238,9 @@
                                                         signer-bitmap: uint, 
                                                         bitcoin-txid: (optional (buff 32)), 
                                                         output-index: (optional uint), 
-                                                        fee: (optional uint)}) 
+                                                        fee: (optional uint),
+                                                        burn-hash: (buff 32),
+                                                        burn-height: uint}) 
                                                        (helper-response (response uint uint)))
   (match helper-response 
     index
@@ -253,6 +252,8 @@
           (current-output-index (get output-index withdrawal))
           (current-fee (get fee withdrawal))
         ) 
+        ;; Verify that Bitcoin hasn't forked by comparing the burn hash provided
+        (asserts! (is-eq (some (get burn-hash withdrawal)) (get-burn-header (get burn-height withdrawal))) ERR_INVALID_BURN_HASH)
         (if (get status withdrawal)
           ;; accepted
           (begin 

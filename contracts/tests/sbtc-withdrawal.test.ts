@@ -789,10 +789,10 @@ describe("Reject a withdrawal request", () => {
             bitcoinTxid: new Uint8Array(32).fill(1),
             outputIndex: 10n,
             fee: 10n,
+            burnHeight: 10n,
+            burnHash: new Uint8Array(32).fill(0),
           },
         ],
-        burnHeight: 10n,
-        burnHash: new Uint8Array(32).fill(0),
       }),
       deployer
     );
@@ -886,6 +886,8 @@ describe("Complete multiple withdrawals", () => {
             bitcoinTxid: new Uint8Array(32).fill(1),
             outputIndex: 10n,
             fee: defaultMaxFee,
+            burnHeight: 10n,
+            burnHash: new Uint8Array(32).fill(0),
           },
           {
             requestId: 2n,
@@ -894,10 +896,10 @@ describe("Complete multiple withdrawals", () => {
             bitcoinTxid: null,
             outputIndex: null,
             fee: null,
+            burnHeight: 10n,
+            burnHash: new Uint8Array(32).fill(0),
           },
         ],
-        burnHeight: 10n,
-        burnHash: new Uint8Array(32).fill(0),
       }),
       deployer
     );
@@ -945,10 +947,10 @@ describe("optimization tests for completing withdrawals", () => {
             bitcoinTxid: txid,
             outputIndex: 0n,
             fee: 10n,
+            burnHeight,
+            burnHash: burnHash!,
           };
         }),
-        burnHeight,
-        burnHash: burnHash!,
       }),
       deployer
     );
