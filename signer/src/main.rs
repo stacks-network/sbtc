@@ -382,5 +382,5 @@ async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
         dkg_max_duration: Duration::from_secs(10),
     };
 
-    coord.run().await
+    coord.run(Duration::from_secs(15)).await
 }

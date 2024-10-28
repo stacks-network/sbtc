@@ -12,6 +12,7 @@ use futures::FutureExt;
 use futures::StreamExt as _;
 use futures::TryStreamExt;
 use sha2::Digest;
+use tokio::time::sleep;
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::bitcoin::utxo;
@@ -148,7 +149,10 @@ where
 {
     /// Run the coordinator event loop
     #[tracing::instrument(skip(self), name = "tx-coordinator")]
-    pub async fn run(mut self) -> Result<(), Error> {
+    pub async fn run(
+        mut self,
+        delay_to_process_new_blocks: tokio::time::Duration,
+    ) -> Result<(), Error> {
         tracing::info!("starting transaction coordinator event loop");
         let mut term = self.context.get_termination_handle();
         let mut signal_rx = self.context.get_signal_receiver();
@@ -164,7 +168,7 @@ where
                     // signer indicating that it has handled new requests.
                     Ok(SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled))) => {
                         tracing::debug!("received block observer notification");
-                        let _ = self.process_new_blocks().await
+                        let _ = self.process_new_blocks(delay_to_process_new_blocks).await
                             .inspect_err(|error| tracing::error!(?error, "error processing new blocks; skipping this round"));
                     },
                     // If we get an error receiving,
@@ -213,7 +217,10 @@ where
     }
 
     #[tracing::instrument(skip(self))]
-    async fn process_new_blocks(&mut self) -> Result<(), Error> {
+    async fn process_new_blocks(
+        &mut self,
+        with_delay: tokio::time::Duration,
+    ) -> Result<(), Error> {
         let bitcoin_chain_tip = self
             .context
             .get_storage()
@@ -247,6 +254,11 @@ where
             // This function returns the new DKG aggregate key.
             None => self.coordinate_dkg(&bitcoin_chain_tip).await?,
         };
+
+        if with_delay > tokio::time::Duration::ZERO {
+            tracing::debug!("Sleeping before processing new Bitcoin block.");
+            sleep(with_delay).await;
+        }
 
         self.construct_and_sign_bitcoin_sbtc_transactions(
             &bitcoin_chain_tip,

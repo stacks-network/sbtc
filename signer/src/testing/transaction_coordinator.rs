@@ -75,7 +75,7 @@ where
         let is_started = self.is_started.clone();
         let join_handle = tokio::spawn(async move {
             is_started.store(true, Ordering::SeqCst);
-            self.event_loop.run().await
+            self.event_loop.run(tokio::time::Duration::ZERO).await
         });
 
         while !self.is_started.load(Ordering::SeqCst) {
