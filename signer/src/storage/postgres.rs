@@ -1406,7 +1406,7 @@ impl super::DbWrite for PgStore {
         .bind(&deposit_request.recipient)
         .bind(i64::try_from(deposit_request.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(deposit_request.max_fee).map_err(Error::ConversionDatabaseInt)?)
-        .bind(i64::try_from(deposit_request.lock_time).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::from(deposit_request.lock_time))
         .bind(deposit_request.signer_public_key)
         .bind(&deposit_request.sender_script_pub_keys)
         .execute(&self.0)
@@ -1444,7 +1444,7 @@ impl super::DbWrite for PgStore {
             recipient.push(req.recipient);
             amount.push(i64::try_from(req.amount).map_err(Error::ConversionDatabaseInt)?);
             max_fee.push(i64::try_from(req.max_fee).map_err(Error::ConversionDatabaseInt)?);
-            lock_time.push(i64::try_from(req.lock_time).map_err(Error::ConversionDatabaseInt)?);
+            lock_time.push(i64::from(req.lock_time));
             signer_public_key.push(req.signer_public_key);
             // We need to join the addresses like this (and later split
             // them), because handling of multidimensional arrays in

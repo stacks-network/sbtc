@@ -79,7 +79,7 @@ pub struct DepositParameters {
     /// the transaction.
     pub max_fee: u64,
     /// Bitcoin block height at which the reclaim script becomes executable.
-    pub lock_time: u64,
+    pub lock_time: u32,
 }
 
 /// Reduced version of the Deposit data.
