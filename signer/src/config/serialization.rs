@@ -57,15 +57,15 @@ where
 {
     let delay = duration_seconds_deserializer(deserializer)?;
     let delay_secs = delay.as_secs();
-    match delay_secs > MAX_BITCOIN_PROCESSING_DELAY_S {
-        true => Err(serde::de::Error::custom(
+    if delay_secs > MAX_BITCOIN_PROCESSING_DELAY_S {
+        return Err(serde::de::Error::custom(
             SignerConfigError::InvalidBitcoinProcessingDelay(
                 MAX_BITCOIN_PROCESSING_DELAY_S,
                 delay_secs,
             ),
-        )),
-        false => Ok(delay),
-    }
+        ));
+    };
+    Ok(delay)
 }
 
 pub fn p2p_multiaddr_deserializer_vec<'de, D>(deserializer: D) -> Result<Vec<Multiaddr>, D::Error>
