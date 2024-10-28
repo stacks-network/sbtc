@@ -227,13 +227,26 @@ impl Coordinator {
     ) -> wsts::taproot::SchnorrProof {
         let outbound = self
             .wsts_coordinator
-            .start_signing_round(msg, signature_type)
+            .start_signing_round(msg, signature_type.clone())
             .expect("failed to start signing round");
 
         self.send_packet(bitcoin_chain_tip, txid, outbound).await;
 
         match self.loop_until_result(bitcoin_chain_tip, txid).await {
-            wsts::state_machine::OperationResult::SignTaproot(signature) => signature,
+            wsts::state_machine::OperationResult::SignTaproot(signature) => {
+		if let SignatureType::Taproot(_) = signature_type {
+		    signature
+		} else {
+		    panic!("unexpected got SignTaproot but sig type wasn't taproot");
+		}
+	    }
+            wsts::state_machine::OperationResult::SignSchnorr(signature) => {
+		if let SignatureType::Schnorr = signature_type {
+		    signature
+		} else {
+		    panic!("unexpected got SignSchnorr but sig type wasn't schnorr");
+		}
+	    }
             _ => panic!("unexpected operation result"),
         }
     }
