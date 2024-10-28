@@ -127,7 +127,7 @@ where
     /// Assert that a coordinator should be able to coordiante a signing round
     pub async fn assert_should_be_able_to_coordinate_signing_rounds(
         mut self,
-        delay_to_process_new_blocks: tokio::time::Duration,
+        delay_to_process_new_blocks: Duration,
     ) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::InMemoryNetwork::new();

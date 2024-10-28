@@ -1035,7 +1035,7 @@ mod tests {
     #[tokio::test]
     async fn should_be_able_to_coordinate_signing_rounds() {
         test_environment()
-            .assert_should_be_able_to_coordinate_signing_rounds(tokio::time::Duration::ZERO)
+            .assert_should_be_able_to_coordinate_signing_rounds(std::time::Duration::ZERO)
             .await;
     }
 
@@ -1047,14 +1047,14 @@ mod tests {
         // Measure baseline.
         let baseline_start = std::time::Instant::now();
         test_environment()
-            .assert_should_be_able_to_coordinate_signing_rounds(tokio::time::Duration::ZERO)
+            .assert_should_be_able_to_coordinate_signing_rounds(std::time::Duration::ZERO)
             .await;
         // Locally this takes a couple seconds to execute.
         // This truncates the decimals.
-        let baseline_elapsed = tokio::time::Duration::from_secs(baseline_start.elapsed().as_secs());
+        let baseline_elapsed = std::time::Duration::from_secs(baseline_start.elapsed().as_secs());
 
         let delay_i = 3;
-        let delay = tokio::time::Duration::from_secs(delay_i);
+        let delay = std::time::Duration::from_secs(delay_i);
         std::env::set_var(
             "SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY",
             delay_i.to_string(),
