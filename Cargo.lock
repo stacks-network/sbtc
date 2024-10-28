@@ -7631,7 +7631,7 @@ dependencies = [
 [[package]]
 name = "wsts"
 version = "10.0.0"
-source = "git+https://github.com/Trust-Machines/wsts.git?branch=simple-signature-type#d7cf6ed634f5e9b9aea0cb012d61df1c2ba77c28"
+source = "git+https://github.com/Trust-Machines/wsts.git?branch=simple-signature-type#30839f607d99082732ef0566ea8e4ec132407f23"
 dependencies = [
  "aes-gcm",
  "bs58 0.5.1",
