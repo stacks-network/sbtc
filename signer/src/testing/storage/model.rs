@@ -293,6 +293,7 @@ impl TestData {
         num_stacks_blocks: usize,
     ) -> Vec<model::StacksBlock> {
         let mut stacks_block: model::StacksBlock = fake::Faker.fake_with_rng(rng);
+        stacks_block.bitcoin_anchor = new_bitcoin_block.parent_hash;
 
         let stacks_parent_block_summary = self
             .bitcoin_blocks
@@ -316,6 +317,7 @@ impl TestData {
             let mut stacks_block: model::StacksBlock = fake::Faker.fake_with_rng(rng);
             stacks_block.parent_hash = parent.block_hash;
             stacks_block.block_height = parent.block_height + 1;
+            stacks_block.bitcoin_anchor = parent.bitcoin_anchor;
 
             blocks.push(stacks_block);
 

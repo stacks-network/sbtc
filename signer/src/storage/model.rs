@@ -5,10 +5,11 @@ use std::ops::Deref;
 
 use bitcoin::hashes::Hash as _;
 use bitvec::array::BitArray;
+use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use clarity::vm::types::PrincipalData;
 use serde::Deserialize;
 use serde::Serialize;
-use stacks_common::types::chainstate::StacksBlockId;
+use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
 
 use crate::block_observer::Deposit;
 use crate::error::Error;
@@ -30,9 +31,6 @@ pub struct BitcoinBlock {
     /// Stacks block confirmed by this block.
     #[cfg_attr(feature = "testing", dummy(default))]
     pub confirms: Vec<StacksBlockHash>,
-    /// Consensus hash of this block
-    #[cfg_attr(feature = "testing", dummy(default))]
-    pub consensus_hash: Option<ConsensusHash>,
 }
 
 /// Stacks block.
@@ -49,6 +47,21 @@ pub struct StacksBlock {
     pub parent_hash: StacksBlockHash,
     /// Consensus hash of the bitcoin anchor block.
     pub consensus_hash: ConsensusHash,
+    /// The bitcoin block this stacks block is build upon (matching `consensus_hash`)
+    pub bitcoin_anchor: BitcoinBlockHash,
+}
+
+impl StacksBlock {
+    /// Construct a StacksBlock from a NakamotoBlock and its bitcoin anchor
+    pub fn from_nakamoto_block(block: &NakamotoBlock, bitcoin_anchor: &BitcoinBlockHash) -> Self {
+        Self {
+            block_hash: block.block_id().into(),
+            block_height: block.header.chain_length,
+            parent_hash: block.header.parent_block_id.into(),
+            consensus_hash: block.header.consensus_hash.into(),
+            bitcoin_anchor: *bitcoin_anchor,
+        }
+    }
 }
 
 /// Deposit request.
@@ -590,6 +603,12 @@ impl From<[u8; 32]> for BitcoinBlockHash {
     }
 }
 
+impl From<BurnchainHeaderHash> for BitcoinBlockHash {
+    fn from(value: BurnchainHeaderHash) -> Self {
+        value.to_bitcoin_hash().to_bytes().into()
+    }
+}
+
 impl std::fmt::Display for BitcoinBlockHash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
@@ -712,6 +731,12 @@ impl From<ConsensusHash> for stacks_common::types::chainstate::ConsensusHash {
 impl From<[u8; 20]> for ConsensusHash {
     fn from(bytes: [u8; 20]) -> Self {
         Self(stacks_common::types::chainstate::ConsensusHash(bytes))
+    }
+}
+
+impl std::fmt::Display for ConsensusHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 

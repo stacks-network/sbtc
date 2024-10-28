@@ -17,6 +17,7 @@
 //! - Update signer set transactions
 //! - Set aggregate key transactions
 
+use std::collections::HashMap;
 use std::future::Future;
 
 use crate::bitcoin::rpc::BitcoinTxInfo;
@@ -281,13 +282,6 @@ where
         self.write_stacks_blocks(&stacks_blocks).await?;
         self.write_bitcoin_block(&block).await?;
 
-        // NOTE: unless we add a delay, `block` may still be unknown to the stack node,
-        // so we set the block parent consensus hash.
-        // This also applies to `get_tenure_info`: adding a ~3 sec delay in devenv
-        // returns a highest tenure.
-        self.write_bitcoin_consensus_hash(&block.header.prev_blockhash.into())
-            .await?;
-
         tracing::debug!("finished processing bitcoin block");
         Ok(())
     }
@@ -412,10 +406,33 @@ where
     ) -> Result<(), Error> {
         let deployer = &self.context.config().signer.deployer;
         let txs = storage::postgres::extract_relevant_transactions(blocks, deployer);
+
+        let unique_consensus_hashes = blocks
+            .iter()
+            .map(|block| block.header.consensus_hash)
+            .collect::<HashSet<_>>();
+        let mut consensus_hashes = HashMap::new();
+        for consensus_hash in unique_consensus_hashes {
+            let anchor_block: BitcoinBlockHash = self
+                .stacks_client
+                .get_sortition_info(&consensus_hash.into())
+                .await?
+                .burn_block_hash
+                .into();
+            consensus_hashes.insert(consensus_hash, anchor_block);
+        }
+
         let headers = blocks
             .iter()
-            .map(model::StacksBlock::try_from)
-            .collect::<Result<_, _>>()?;
+            .map(|block| {
+                Ok(model::StacksBlock::from_nakamoto_block(
+                    block,
+                    consensus_hashes
+                        .get(&block.header.consensus_hash)
+                        .ok_or(Error::MissingBlock)?,
+                ))
+            })
+            .collect::<Result<_, Error>>()?;
 
         let storage = self.context.get_storage_mut();
         storage.write_stacks_block_headers(headers).await?;
@@ -433,7 +450,6 @@ where
                 .expect("Failed to get block height"),
             parent_hash: block.header.prev_blockhash.into(),
             confirms: Vec::new(),
-            consensus_hash: None,
         };
 
         self.context
@@ -442,24 +458,6 @@ where
             .await?;
         self.extract_sbtc_transactions(block.block_hash(), &block.txdata)
             .await?;
-
-        Ok(())
-    }
-
-    /// Fetch the consensus hash for a bitcoin block and write it to the database.
-    async fn write_bitcoin_consensus_hash(
-        &mut self,
-        block_hash: &BitcoinBlockHash,
-    ) -> Result<(), Error> {
-        let sortition_info = self.stacks_client.get_sortition_info(block_hash).await;
-        if let Ok(sortition_info) = sortition_info {
-            self.context
-                .get_storage_mut()
-                .write_bitcoin_consensus_hash(block_hash, &sortition_info.consensus_hash.into())
-                .await?;
-        } else {
-            tracing::warn!(?block_hash, "cannot get consensus hash for bitcoin block");
-        }
 
         Ok(())
     }

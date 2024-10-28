@@ -203,9 +203,8 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWr
     let txs = storage::postgres::extract_relevant_transactions(&blocks, &settings.signer.deployer);
     let headers = blocks
         .iter()
-        .map(model::StacksBlock::try_from)
-        .collect::<Result<_, _>>()
-        .unwrap();
+        .map(|block| StacksBlock::from_nakamoto_block(block, &[0; 32].into()))
+        .collect::<Vec<_>>();
     store.write_stacks_block_headers(headers).await.unwrap();
     store.write_stacks_transactions(txs).await.unwrap();
 
@@ -237,9 +236,8 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWr
     // idempotent operation.
     let headers = blocks
         .iter()
-        .map(model::StacksBlock::try_from)
-        .collect::<Result<_, _>>()
-        .unwrap();
+        .map(|block| StacksBlock::from_nakamoto_block(block, &[0; 32].into()))
+        .collect::<Vec<_>>();
     store.write_stacks_block_headers(headers).await.unwrap();
 
     let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_blocks";
@@ -294,9 +292,8 @@ async fn checking_stacks_blocks_exists_works() {
     // Okay now to save these blocks.
     let headers = blocks
         .iter()
-        .map(model::StacksBlock::try_from)
-        .collect::<Result<_, _>>()
-        .unwrap();
+        .map(|block| StacksBlock::from_nakamoto_block(block, &[0; 32].into()))
+        .collect::<Vec<_>>();
     store.write_stacks_block_headers(headers).await.unwrap();
 
     // Now each of them should exist.
@@ -707,7 +704,6 @@ async fn writing_transactions_postgres() {
         block_height: 15,
         parent_hash: parent_hash.into(),
         confirms: Vec::new(),
-        consensus_hash: None,
     };
 
     // We start by writing the bitcoin block because of the foreign key

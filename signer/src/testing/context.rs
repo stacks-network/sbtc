@@ -28,7 +28,7 @@ use crate::{
     },
     storage::{
         in_memory::{SharedStore, Store},
-        model::{BitcoinBlockHash, StacksBlock},
+        model::{ConsensusHash, StacksBlock},
         DbRead, DbWrite,
     },
 };
@@ -325,12 +325,12 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
 
     async fn get_sortition_info(
         &self,
-        bitcoin_block: &BitcoinBlockHash,
+        consensus_hash: &ConsensusHash,
     ) -> Result<SortitionInfo, Error> {
         self.inner
             .lock()
             .await
-            .get_sortition_info(bitcoin_block)
+            .get_sortition_info(consensus_hash)
             .await
     }
 

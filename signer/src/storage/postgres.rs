@@ -97,18 +97,6 @@ pub fn extract_relevant_transactions(
 #[derive(Debug, Clone)]
 pub struct PgStore(sqlx::PgPool);
 
-impl TryFrom<&NakamotoBlock> for model::StacksBlock {
-    type Error = Error;
-    fn try_from(block: &NakamotoBlock) -> Result<Self, Error> {
-        Ok(Self {
-            block_hash: block.block_id().into(),
-            block_height: block.header.chain_length,
-            parent_hash: block.header.parent_block_id.into(),
-            consensus_hash: block.header.consensus_hash.into(),
-        })
-    }
-}
-
 impl PgStore {
     /// Connect to the Postgres database at `url`.
     pub async fn connect(url: &str) -> Result<Self, Error> {
@@ -421,7 +409,6 @@ impl super::DbRead for PgStore {
               , block_height
               , parent_hash
               , confirms
-              , consensus_hash
             FROM sbtc_signer.bitcoin_blocks
             WHERE block_hash = $1;",
         )
@@ -441,6 +428,7 @@ impl super::DbRead for PgStore {
               , block_height
               , parent_hash
               , consensus_hash
+              , bitcoin_anchor
             FROM sbtc_signer.stacks_blocks
             WHERE block_hash = $1;",
         )
@@ -459,7 +447,6 @@ impl super::DbRead for PgStore {
               , block_height
               , parent_hash
               , confirms
-              , consensus_hash
              FROM sbtc_signer.bitcoin_blocks
              ORDER BY block_height DESC, block_hash DESC
              LIMIT 1",
@@ -474,17 +461,36 @@ impl super::DbRead for PgStore {
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Option<model::StacksBlock>, Error> {
+        // TODO: stop recursion after the first bitcoin block having stacks block anchored
         sqlx::query_as::<_, model::StacksBlock>(
             r#"
-             SELECT
-                 stacks_blocks.block_hash
-               , stacks_blocks.block_height
-               , stacks_blocks.parent_hash
-               , stacks_blocks.consensus_hash
-             FROM sbtc_signer.stacks_blocks stacks_blocks
-             JOIN sbtc_signer.bitcoin_blocks bitcoin_blocks
-                 ON bitcoin_blocks.consensus_hash = stacks_blocks.consensus_hash
-             WHERE bitcoin_blocks.block_hash = $1
+            WITH RECURSIVE context_window AS (
+                SELECT 
+                    block_hash
+                  , block_height
+                  , parent_hash
+                FROM sbtc_signer.bitcoin_blocks
+                WHERE block_hash = $1
+
+                UNION ALL
+
+                SELECT
+                    parent.block_hash
+                  , parent.block_height
+                  , parent.parent_hash
+                FROM sbtc_signer.bitcoin_blocks AS parent
+                JOIN context_window AS child
+                  ON parent.block_hash = child.parent_hash
+            )
+            SELECT
+                stacks_blocks.block_hash
+              , stacks_blocks.block_height
+              , stacks_blocks.parent_hash
+              , stacks_blocks.consensus_hash
+              , stacks_blocks.bitcoin_anchor
+            FROM context_window bitcoin_blocks
+            JOIN sbtc_signer.stacks_blocks stacks_blocks
+                ON bitcoin_blocks.block_hash = stacks_blocks.bitcoin_anchor
             ORDER BY block_height DESC, block_hash DESC
             LIMIT 1;
             "#,
@@ -1349,16 +1355,14 @@ impl super::DbWrite for PgStore {
               , block_height
               , parent_hash
               , confirms
-              , consensus_hash
               )
-            VALUES ($1, $2, $3, $4, $5)
+            VALUES ($1, $2, $3, $4)
             ON CONFLICT DO NOTHING",
         )
         .bind(block.block_hash)
         .bind(i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?)
         .bind(block.parent_hash)
         .bind(&block.confirms)
-        .bind(block.consensus_hash)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1373,14 +1377,16 @@ impl super::DbWrite for PgStore {
               , block_height
               , parent_hash
               , consensus_hash
+              , bitcoin_anchor
               )
-            VALUES ($1, $2, $3, $4)
+            VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT DO NOTHING",
         )
         .bind(block.block_hash)
         .bind(i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?)
         .bind(block.parent_hash)
         .bind(block.consensus_hash)
+        .bind(block.bitcoin_anchor)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1682,25 +1688,6 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn write_bitcoin_consensus_hash(
-        &self,
-        block_hash: &model::BitcoinBlockHash,
-        consensus_hash: &model::ConsensusHash,
-    ) -> Result<(), Error> {
-        sqlx::query(
-            "UPDATE sbtc_signer.bitcoin_blocks
-            SET consensus_hash = $2
-            WHERE block_hash = $1 ",
-        )
-        .bind(block_hash)
-        .bind(consensus_hash)
-        .execute(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
-        Ok(())
-    }
-
     async fn write_stacks_transaction(
         &self,
         stacks_transaction: &model::StacksTransaction,
@@ -1764,6 +1751,7 @@ impl super::DbWrite for PgStore {
         let mut parent_block_ids = Vec::with_capacity(blocks.len());
         let mut chain_lengths = Vec::<i64>::with_capacity(blocks.len());
         let mut consensus_hashes = Vec::with_capacity(blocks.len());
+        let mut bitcoin_anchors = Vec::with_capacity(blocks.len());
 
         for block in blocks {
             block_ids.push(block.block_hash);
@@ -1772,6 +1760,7 @@ impl super::DbWrite for PgStore {
                 i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?;
             chain_lengths.push(block_height);
             consensus_hashes.push(block.consensus_hash);
+            bitcoin_anchors.push(block.bitcoin_anchor);
         }
 
         sqlx::query(
@@ -1792,22 +1781,29 @@ impl super::DbWrite for PgStore {
                 SELECT ROW_NUMBER() OVER (), consensus_hash
                 FROM UNNEST($4::bytea[]) AS consensus_hash
             )
-            INSERT INTO sbtc_signer.stacks_blocks (block_hash, block_height, parent_hash, consensus_hash)
+            , bitcoin_anchors AS (
+                SELECT ROW_NUMBER() OVER (), bitcoin_anchor
+                FROM UNNEST($5::bytea[]) AS bitcoin_anchor
+            )
+            INSERT INTO sbtc_signer.stacks_blocks (block_hash, block_height, parent_hash, consensus_hash, bitcoin_anchor)
             SELECT
                 block_id
               , chain_length
               , parent_block_id
               , consensus_hash
+              , bitcoin_anchor
             FROM block_ids 
             JOIN parent_block_ids USING (row_number)
             JOIN chain_lengths USING (row_number)
             JOIN consensus_hashes USING (row_number)
+            JOIN bitcoin_anchors USING (row_number)
             ON CONFLICT DO NOTHING"#,
         )
         .bind(&block_ids)
         .bind(&parent_block_ids)
         .bind(&chain_lengths)
         .bind(&consensus_hashes)
+        .bind(&bitcoin_anchors)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

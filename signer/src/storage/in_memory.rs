@@ -812,14 +812,6 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_bitcoin_consensus_hash(
-        &self,
-        _block_hash: &model::BitcoinBlockHash,
-        _consensus_hash: &model::ConsensusHash,
-    ) -> Result<(), Error> {
-        Err(Error::InvalidStacksResponse("dummy"))
-    }
-
     async fn write_stacks_transaction(
         &self,
         stacks_transaction: &model::StacksTransaction,

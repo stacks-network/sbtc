@@ -166,6 +166,7 @@ async fn process_complete_deposit() {
         block_height: setup.sweep_block_height,
         parent_hash: Faker.fake_with_rng(&mut OsRng),
         consensus_hash: Faker.fake_with_rng(&mut OsRng),
+        bitcoin_anchor: setup.sweep_block_hash.into(),
     };
     db.write_stacks_block(&stacks_block).await.unwrap();
 

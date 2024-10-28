@@ -33,7 +33,7 @@ use url::Url;
 use crate::config::Settings;
 use crate::error::Error;
 use crate::keys::PublicKey;
-use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::ConsensusHash;
 use crate::storage::DbRead;
 use crate::util::ApiFallbackClient;
 
@@ -127,10 +127,10 @@ pub trait StacksInteract: Send + Sync {
     /// This function is analogous to the GET /v3/tenures/info stacks node
     /// endpoint for retrieving tenure information.
     fn get_tenure_info(&self) -> impl Future<Output = Result<RPCGetTenureInfo, Error>> + Send;
-    /// Get information about the sortition associated to a bitcoin block
+    /// Get information about the sortition associated to a consensus hash
     fn get_sortition_info(
         &self,
-        bitcoin_block: &BitcoinBlockHash,
+        consensus_hash: &ConsensusHash,
     ) -> impl Future<Output = Result<SortitionInfo, Error>> + Send;
     /// Estimate the priority transaction fees given the input transaction
     /// and the current state of the mempool. The result will be the
@@ -670,16 +670,16 @@ impl StacksClient {
             .map_err(Error::UnexpectedStacksResponse)
     }
 
-    /// Get information about the sortition related to a bitcoin block.
+    /// Get information about the sortition related to a consensus hash.
     ///
     /// Uses the GET /v3/sortitions stacks node endpoint for retrieving
     /// sortition information.
     #[tracing::instrument(skip(self))]
     pub async fn get_sortition_info(
         &self,
-        bitcoin_block: &BitcoinBlockHash,
+        consensus_hash: &ConsensusHash,
     ) -> Result<SortitionInfo, Error> {
-        let path = format!("/v3/sortitions/burn/{}", bitcoin_block);
+        let path = format!("/v3/sortitions/consensus/{}", consensus_hash);
         let url = self
             .endpoint
             .join(&path)
@@ -882,9 +882,9 @@ impl StacksInteract for StacksClient {
 
     async fn get_sortition_info(
         &self,
-        bitcoin_block: &BitcoinBlockHash,
+        consensus_hash: &ConsensusHash,
     ) -> Result<SortitionInfo, Error> {
-        self.get_sortition_info(bitcoin_block).await
+        self.get_sortition_info(consensus_hash).await
     }
 
     /// Estimate the high priority transaction fee for the input
@@ -978,9 +978,9 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
 
     async fn get_sortition_info(
         &self,
-        bitcoin_block: &BitcoinBlockHash,
+        consensus_hash: &ConsensusHash,
     ) -> Result<SortitionInfo, Error> {
-        self.exec(|client, _| client.get_sortition_info(bitcoin_block))
+        self.exec(|client, _| client.get_sortition_info(consensus_hash))
             .await
     }
 
@@ -1021,6 +1021,7 @@ impl TryFrom<&Settings> for ApiFallbackClient<StacksClient> {
 mod tests {
     use crate::keys::{PrivateKey, PublicKey};
     use crate::storage::in_memory::Store;
+    use crate::storage::model::StacksBlock;
     use crate::storage::DbWrite;
     use crate::testing::storage::DATABASE_NUM;
 
@@ -1053,9 +1054,8 @@ mod tests {
         let blocks = blocks.unwrap();
         let headers = blocks
             .iter()
-            .map(TryFrom::try_from)
-            .collect::<Result<_, _>>()
-            .unwrap();
+            .map(|block| StacksBlock::from_nakamoto_block(block, &[0; 32].into()))
+            .collect::<Vec<_>>();
         db.write_stacks_block_headers(headers).await.unwrap();
 
         crate::testing::storage::drop_db(db).await;

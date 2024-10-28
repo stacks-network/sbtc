@@ -9,6 +9,7 @@ use bitcoincore_rpc::RpcApi as _;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
+use blockstack_lib::net::api::getsortition::SortitionInfo;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use futures::StreamExt;
 use rand::SeedableRng as _;
@@ -17,6 +18,8 @@ use signer::error::Error;
 use signer::logging::setup_logging;
 use stacks_common::types::chainstate::ConsensusHash;
 use stacks_common::types::chainstate::StacksBlockId;
+use stacks_common::types::chainstate::BurnchainHeaderHash;
+use stacks_common::types::chainstate::SortitionId;
 
 use signer::bitcoin::zmq::BitcoinCoreMessageStream;
 use signer::block_observer::BlockObserver;
@@ -73,7 +76,7 @@ async fn load_latest_deposit_requests_persists_requests_added_long_ago() {
         ];
         client
             .expect_get_deposits()
-            .once()
+            .times(1..)
             .returning(move || Box::pin(std::future::ready(Ok(emily_client_response.clone()))));
     })
     .await;
@@ -111,6 +114,23 @@ async fn load_latest_deposit_requests_persists_requests_added_long_ago() {
         client.expect_get_pox_info().returning(|| {
             let response = serde_json::from_str::<RPCPoxInfoData>(GET_POX_INFO_JSON)
                 .map_err(Error::JsonSerialize);
+            Box::pin(std::future::ready(response))
+        });
+
+        client.expect_get_sortition_info().returning(move |_| {
+            let response = Ok(SortitionInfo {
+                burn_block_hash: BurnchainHeaderHash([0; 32]),
+                burn_block_height: 0,
+                burn_header_timestamp: 0,
+                sortition_id: SortitionId([0; 32]),
+                parent_sortition_id: SortitionId([0; 32]),
+                consensus_hash: ConsensusHash([0; 20]),
+                was_sortition: true,
+                miner_pk_hash160: None,
+                stacks_parent_ch: None,
+                last_sortition_ch: None,
+                committed_block_hash: None,
+            });
             Box::pin(std::future::ready(response))
         });
     })
@@ -291,12 +311,12 @@ async fn link_blocks() {
         .expect("missing bitcoin tip");
 
     // Currently we link with one bitcoin block delay
-    assert!(ctx
+    let stacks_tip = ctx
         .get_storage()
         .get_stacks_chain_tip(&bitcoin_tip_hash)
         .await
         .expect("error getting stacks tip")
-        .is_none());
+        .expect("missing stacks tip");
 
     let bitcoin_tip_block = ctx
         .get_storage()
@@ -304,11 +324,8 @@ async fn link_blocks() {
         .await
         .expect("missing parent block")
         .expect("missing parent block");
-    ctx.get_storage()
-        .get_stacks_chain_tip(&bitcoin_tip_block.parent_hash)
-        .await
-        .expect("error getting stacks tip")
-        .expect("missing stacks tip");
+
+    assert_eq!(stacks_tip.bitcoin_anchor, bitcoin_tip_block.parent_hash);
 
     testing::storage::drop_db(db).await;
 }
