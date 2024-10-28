@@ -24,7 +24,8 @@ use crate::stacks::wallet::SignerWallet;
 mod error;
 mod serialization;
 
-pub const MAX_BITCOIN_PROCESSING_DELAY_S: u64 = 300;
+/// Maximum configurable delay (in seconds) before processing new Bitcoin blocks.
+pub const MAX_BITCOIN_PROCESSING_DELAY_SECONDS: u64 = 300;
 
 /// Trait for validating configuration values.
 trait Validatable {
@@ -269,10 +270,10 @@ impl Validatable for SignerConfig {
         }
 
         let delay_secs = cfg.signer.bitcoin_processing_delay.as_secs();
-        if delay_secs > MAX_BITCOIN_PROCESSING_DELAY_S {
+        if delay_secs > MAX_BITCOIN_PROCESSING_DELAY_SECONDS {
             return Err(ConfigError::Message(
                 SignerConfigError::InvalidBitcoinProcessingDelay(
-                    MAX_BITCOIN_PROCESSING_DELAY_S,
+                    MAX_BITCOIN_PROCESSING_DELAY_SECONDS,
                     delay_secs,
                 )
                 .to_string(),
@@ -655,14 +656,14 @@ mod tests {
     fn invalid_bitcoin_processing_delay_returns_correct_error() {
         clear_env();
 
-        let delay = MAX_BITCOIN_PROCESSING_DELAY_S + 1;
+        let delay = MAX_BITCOIN_PROCESSING_DELAY_SECONDS + 1;
         std::env::set_var("SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY", delay.to_string());
 
         let settings = Settings::new_from_default_config();
         assert!(settings.is_err());
         assert!(matches!(
             settings.unwrap_err(),
-            ConfigError::Message(msg) if msg == SignerConfigError::InvalidBitcoinProcessingDelay(MAX_BITCOIN_PROCESSING_DELAY_S, delay).to_string()
+            ConfigError::Message(msg) if msg == SignerConfigError::InvalidBitcoinProcessingDelay(MAX_BITCOIN_PROCESSING_DELAY_SECONDS, delay).to_string()
         ));
     }
 
