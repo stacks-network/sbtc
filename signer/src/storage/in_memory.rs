@@ -192,6 +192,36 @@ impl super::DbRead for SharedStore {
             .map(|block| block.block_hash))
     }
 
+    async fn get_ancestral_bitcoin_blocks(
+        &self,
+        block_hash: &model::BitcoinBlockHash,
+        limit: u16,
+    ) -> Result<Vec<model::BitcoinBlock>, Error> {
+        let store = self.lock().await;
+        let mut blocks: Vec<model::BitcoinBlock> = Vec::<_>::new();
+        let mut maybe_block = store.bitcoin_blocks.get(block_hash);
+        for _ in 0..limit {
+            if let Some(block) = maybe_block {
+                blocks.push(block.clone());
+                maybe_block = store.bitcoin_blocks.get(&block.parent_hash);
+            } else {
+                break;
+            }
+        }
+        Ok(blocks)
+    }
+
+    async fn get_latest_canonical_bitcoin_blocks(
+        &self,
+        limit: u16,
+    ) -> Result<Vec<model::BitcoinBlock>, Error> {
+        let chain_tip = self.get_bitcoin_canonical_chain_tip().await?;
+        match chain_tip {
+            Some(chain_tip) => self.get_ancestral_bitcoin_blocks(&chain_tip, limit).await,
+            None => Ok(Vec::new()),
+        }
+    }
+
     async fn get_stacks_chain_tip(
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,

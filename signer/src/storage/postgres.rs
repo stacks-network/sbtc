@@ -490,6 +490,56 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
+    /// Get the ancestral bitcoin blocks for the given block hash.
+    async fn get_ancestral_bitcoin_blocks(
+        &self,
+        block_hash: &model::BitcoinBlockHash,
+        limit: u16,
+    ) -> Result<Vec<model::BitcoinBlock>, Error> {
+        sqlx::query_as::<_, model::BitcoinBlock>(
+            r#"
+            WITH RECURSIVE context_window AS (
+                -- Anchor member: Initialize the recursion with the chain tip
+                SELECT block_hash, block_height, parent_hash, confirms, 1 AS depth
+                FROM sbtc_signer.bitcoin_blocks
+                WHERE block_hash = $1
+
+                UNION ALL
+
+                -- Recursive member: Fetch the parent block using the last block's parent_hash
+                SELECT parent.block_hash, parent.block_height, parent.parent_hash,
+                        parent.confirms, last.depth + 1
+                FROM sbtc_signer.bitcoin_blocks parent
+                JOIN context_window last ON parent.block_hash = last.parent_hash
+                WHERE last.depth < $2
+            )
+            SELECT
+                block_hash
+                , block_height
+                , parent_hash
+                , confirms
+            FROM context_window
+            "#,
+        )
+        .bind(block_hash)
+        .bind(i32::from(limit))
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    /// Get the latest canonical Bitcoin blocks.
+    async fn get_latest_canonical_bitcoin_blocks(
+        &self,
+        limit: u16,
+    ) -> Result<Vec<model::BitcoinBlock>, Error> {
+        let chain_tip = self.get_bitcoin_canonical_chain_tip().await?;
+        match chain_tip {
+            Some(chain_tip) => self.get_ancestral_bitcoin_blocks(&chain_tip, limit).await,
+            None => Ok(Vec::new()),
+        }
+    }
+
     async fn get_pending_deposit_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,

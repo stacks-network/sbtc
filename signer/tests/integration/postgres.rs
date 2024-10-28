@@ -1200,6 +1200,91 @@ async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
     signer::testing::storage::drop_db(pg_store).await;
 }
 
+/// In this test we test that the `block_in_canonical_bitcoin_blockchain`
+/// correctly provides the canonical block chain.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn should_be_able_to_query_canonical_bitcoin_blocks() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let mut store = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(31415);
+
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 20,
+        num_stacks_blocks_per_bitcoin_block: 3,
+        num_deposit_requests_per_block: 5,
+        num_withdraw_requests_per_block: 5,
+        num_signers_per_request: 0,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, 7);
+
+    let persisted_model = TestData::generate(&mut rng, &signer_set, &test_model_params);
+    let not_persisted_model = TestData::generate(&mut rng, &signer_set, &test_model_params);
+
+    // Write all blocks for the persisted model to the database
+    persisted_model.write_to(&mut store).await;
+
+    // Assert that we can query each of the persisted blocks
+    for block in &persisted_model.bitcoin_blocks {
+        let persisted_block = store
+            .get_bitcoin_block(&block.block_hash)
+            .await
+            .expect("failed to execute query")
+            .expect("block doesn't exist in database");
+
+        assert_eq!(&persisted_block, block)
+    }
+
+    // Assert that we can't find any blocks that haven't been persisted
+    for block in &not_persisted_model.bitcoin_blocks {
+        let result = store
+            .get_bitcoin_block(&block.block_hash)
+            .await
+            .expect("failed_to_execute_query");
+        assert!(result.is_none());
+    }
+
+    let requested_count = 10;
+    let latest_canonical_bitcoin_blocks: Vec<model::BitcoinBlock> = store
+        .get_latest_canonical_bitcoin_blocks(requested_count)
+        .await
+        .expect("failed_to_execute_query");
+
+    // Note that the expected count is based on the number of blocks generated that
+    // are in the same canonical fork based on the random seed above. If you change
+    // the random seed, you may need to update the expected count.
+    let expected_count = 7;
+    assert_eq!(
+        latest_canonical_bitcoin_blocks.len(),
+        expected_count as usize
+    );
+
+    let bitcoin_chain_tip = store
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .expect("failed to get canonical chain tip")
+        .expect("no chain tip");
+
+    assert_eq!(
+        latest_canonical_bitcoin_blocks.first().unwrap().block_hash,
+        bitcoin_chain_tip
+    );
+    // Ensure that the latest canonical blocks are in descending order.
+    latest_canonical_bitcoin_blocks
+        .windows(2)
+        .for_each(|window| {
+            if let [child, parent] = window {
+                assert_eq!(child.block_height, parent.block_height + 1);
+                assert_eq!(child.parent_hash, parent.block_hash);
+            } else {
+                panic!("Expected a window of size 2");
+            }
+        });
+
+    signer::testing::storage::drop_db(store).await;
+}
+
 /// For this test we check that the `get_bitcoin_tx` function returns a
 /// transaction when the transaction exists in the block, and returns None
 /// otherwise.

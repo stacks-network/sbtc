@@ -43,6 +43,19 @@ pub trait DbRead {
         &self,
     ) -> impl Future<Output = Result<Option<model::BitcoinBlockHash>, Error>> + Send;
 
+    /// Get the latest canonical bitcoin blocks.
+    fn get_latest_canonical_bitcoin_blocks(
+        &self,
+        limit: u16,
+    ) -> impl Future<Output = Result<Vec<model::BitcoinBlock>, Error>> + Send;
+
+    /// Get the ancestral bitcoin blocks of the given block hash.
+    fn get_ancestral_bitcoin_blocks(
+        &self,
+        block_hash: &model::BitcoinBlockHash,
+        limit: u16,
+    ) -> impl Future<Output = Result<Vec<model::BitcoinBlock>, Error>> + Send;
+
     /// Get the stacks chain tip, defined as the highest stacks block
     /// confirmed by the bitcoin chain tip.
     fn get_stacks_chain_tip(
