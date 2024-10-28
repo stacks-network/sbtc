@@ -71,14 +71,11 @@ where
         }
     }
 
-    pub async fn start(
-        self,
-        delay_to_process_new_blocks: tokio::time::Duration,
-    ) -> RunningEventLoopHandle<C> {
+    pub async fn start(self) -> RunningEventLoopHandle<C> {
         let is_started = self.is_started.clone();
         let join_handle = tokio::spawn(async move {
             is_started.store(true, Ordering::SeqCst);
-            self.event_loop.run(delay_to_process_new_blocks).await
+            self.event_loop.run().await
         });
 
         while !self.is_started.load(Ordering::SeqCst) {
@@ -233,7 +230,7 @@ where
         );
 
         // Start the tx coordinator run loop.
-        let handle = event_loop_harness.start(delay_to_process_new_blocks).await;
+        let handle = event_loop_harness.start().await;
 
         // Start the in-memory signer set.
         let _signers_handle = tokio::spawn(async move {

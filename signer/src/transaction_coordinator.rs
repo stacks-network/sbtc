@@ -149,10 +149,7 @@ where
 {
     /// Run the coordinator event loop
     #[tracing::instrument(skip(self), name = "tx-coordinator")]
-    pub async fn run(
-        mut self,
-        delay_to_process_new_blocks: tokio::time::Duration,
-    ) -> Result<(), Error> {
+    pub async fn run(mut self) -> Result<(), Error> {
         tracing::info!("starting transaction coordinator event loop");
         let mut term = self.context.get_termination_handle();
         let mut signal_rx = self.context.get_signal_receiver();
@@ -168,7 +165,7 @@ where
                     // signer indicating that it has handled new requests.
                     Ok(SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled))) => {
                         tracing::debug!("received block observer notification");
-                        let _ = self.process_new_blocks(delay_to_process_new_blocks).await
+                        let _ = self.process_new_blocks().await
                             .inspect_err(|error| tracing::error!(?error, "error processing new blocks; skipping this round"));
                     },
                     // If we get an error receiving,
@@ -217,10 +214,7 @@ where
     }
 
     #[tracing::instrument(skip(self))]
-    async fn process_new_blocks(
-        &mut self,
-        with_delay: tokio::time::Duration,
-    ) -> Result<(), Error> {
+    async fn process_new_blocks(&mut self) -> Result<(), Error> {
         let bitcoin_chain_tip = self
             .context
             .get_storage()
@@ -255,9 +249,10 @@ where
             None => self.coordinate_dkg(&bitcoin_chain_tip).await?,
         };
 
-        if with_delay > tokio::time::Duration::ZERO {
+        let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
+        if bitcoin_processing_delay > tokio::time::Duration::ZERO {
             tracing::debug!("Sleeping before processing new Bitcoin block.");
-            sleep(with_delay).await;
+            sleep(bitcoin_processing_delay).await;
         }
 
         self.construct_and_sign_bitcoin_sbtc_transactions(
@@ -1055,14 +1050,20 @@ mod tests {
             .assert_should_be_able_to_coordinate_signing_rounds(tokio::time::Duration::ZERO)
             .await;
         // Locally this takes a couple seconds to execute.
-        let baseline_elapsed = baseline_start.elapsed();
+        // This truncates the decimals.
+        let baseline_elapsed = tokio::time::Duration::from_secs(baseline_start.elapsed().as_secs());
 
+        let delay_i = 3;
+        let delay = tokio::time::Duration::from_secs(delay_i);
+        std::env::set_var(
+            "SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY",
+            delay_i.to_string(),
+        );
         let start = std::time::Instant::now();
-        let delay = tokio::time::Duration::from_secs(5);
         test_environment()
             .assert_should_be_able_to_coordinate_signing_rounds(delay)
             .await;
-        assert!(start.elapsed() > delay + baseline_elapsed);
+        more_asserts::assert_gt!(start.elapsed(), delay + baseline_elapsed);
     }
 
     #[tokio::test]

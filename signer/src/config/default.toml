@@ -148,6 +148,11 @@ bootstrap_signing_set = [
 # 
 # Required: true Environment: SIGNER_SIGNER__BOOTSTRAP_SIGNATURES_REQUIRED
 bootstrap_signatures_required = 2
+
+# Seconds to wait before processing a new Bitcoin block.
+# Required: true Environment: SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY
+bitcoin_processing_delay = 0
+
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration
 # !!

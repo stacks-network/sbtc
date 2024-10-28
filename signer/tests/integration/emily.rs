@@ -403,7 +403,7 @@ async fn deposit_e2e() {
         dkg_max_duration: Duration::from_secs(10),
     };
     let tx_coordinator_handle =
-        tokio::spawn(async move { tx_coordinator.run(tokio::time::Duration::ZERO).await });
+        tokio::spawn(async move { tx_coordinator.run().await });
 
     // There shouldn't be any request yet
     assert!(context
