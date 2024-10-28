@@ -1,3 +1,4 @@
+# TODO(715): Provide sane/safe configuration defaults. Re-review all of them!
 # TODO(429): Add documentation for all configuration parameters.
 
 # !! ==============================================================================
@@ -91,6 +92,7 @@ endpoints = ["http://localhost:20443"]
 
 # This is the start height of the first EPOCH 3.0 block on the stacks
 # blockchain.
+# TODO(715): Update to 867867
 nakamoto_start_height = 31
 
 # !! ==============================================================================
@@ -108,6 +110,7 @@ nakamoto_start_height = 31
 # Format: "<hex-encoded-private-key>" (64 or 66 hex-characters)
 # Required: true
 # Environment: SIGNER_SIGNER__PRIVATE_KEY
+# TODO(715): Remove default value.
 private_key = "41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc"
 
 # Specifies which network to use when constructing and sending transactions
@@ -119,11 +122,13 @@ private_key = "41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc"
 # Required: true
 # Possible values: mainnet, testnet, regtest
 # Environment: SIGNER_SIGNER__NETWORK
+# TODO(715): Change to mainnet.
 network = "regtest"
 
 # The address that deployed the sbtc smart contracts.
 #
 # Required: true
+# TODO(715): Change after SCs have been deployed.
 deployer = "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS"
 
 # The signer database endpoint (pgsql connection string)
@@ -136,6 +141,7 @@ db_endpoint = "postgresql://postgres:postgres@localhost:5432/signer"
 # peers who are approved to be in the sBTC signer set.
 #
 # Required: true Environment: SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET
+# TODO(715): Change after initial signing set has been determined.
 bootstrap_signing_set = [
     "035249137286c077ccee65ecc43e724b9b9e5a588e3d7f51e3b62f9624c2a49e46",
     "031a4d9f4903da97498945a4e01a5023a1d53bc96ad670bfe03adf8a06c52e6380",
@@ -147,7 +153,14 @@ bootstrap_signing_set = [
 # `bootstrap_signing_set`. Must be strictly positive.
 # 
 # Required: true Environment: SIGNER_SIGNER__BOOTSTRAP_SIGNATURES_REQUIRED
+# TODO(715): Change as specified by sBTC SIP.
 bootstrap_signatures_required = 2
+
+# Seconds to wait before processing a new Bitcoin block.
+# Required: true Environment: SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY
+# TODO(715): Add default delay (15 seconds? see #701)
+bitcoin_processing_delay = 0
+
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration
 # !!
@@ -183,6 +196,7 @@ bind = "0.0.0.0:8801"
 # Environment: SIGNER_SIGNER__P2P__SEEDS
 # Environment Example: tcp://seed-1:4122,tcp://seed-2:4122
 # TODO(429): Add well-known seed nodes
+# TODO(715): Add well-known seed nodes
 seeds = []
 
 # The local network interface(s) and port(s) to listen on. 

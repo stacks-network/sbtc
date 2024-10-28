@@ -6,11 +6,14 @@ use std::sync::OnceLock;
 
 use axum::extract::State;
 use axum::http::StatusCode;
+use emily_client::models::Chainstate;
+
 use clarity::vm::representations::ContractName;
 use clarity::vm::types::QualifiedContractIdentifier;
 use clarity::vm::types::StandardPrincipalData;
 
 use crate::context::Context;
+use crate::emily_client::EmilyInteract;
 use crate::stacks::events::RegistryEvent;
 use crate::stacks::events::TxInfo;
 use crate::stacks::webhooks::NewBlockEvent;
@@ -115,6 +118,12 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
         }
     }
 
+    // Propagate the new block to Emily.
+    let chainstate = Chainstate::new(block_id.to_string(), new_block_event.block_height);
+    if let Err(result) = api.ctx.get_emily_client().set_chainstate(chainstate).await {
+        tracing::warn!(%result, "Failed to set chainstate in emily");
+    }
+
     StatusCode::OK
 }
 
@@ -158,7 +167,7 @@ mod tests {
     where
         F: Fn(tokio::sync::MutexGuard<'_, Store>) -> bool,
     {
-        let ctx = TestContext::builder()
+        let mut ctx = TestContext::builder()
             .with_in_memory_storage()
             .with_mocked_clients()
             .build();
@@ -172,6 +181,20 @@ mod tests {
 
         let state = State(api);
         let body = body_str.to_string();
+
+        let new_block_event = serde_json::from_str::<NewBlockEvent>(&body).unwrap();
+        // Set up the mock expectation for set_chainstate
+        let chainstate = Chainstate::new(
+            new_block_event.index_block_hash.to_string(),
+            new_block_event.block_height,
+        );
+        ctx.with_emily_client(|client| {
+            client.expect_set_chainstate().times(1).returning(move |_| {
+                let chainstate = chainstate.clone();
+                Box::pin(async { Ok(chainstate) })
+            });
+        })
+        .await;
 
         let res = new_block_handler(state, body).await;
         assert_eq!(res, StatusCode::OK);
@@ -189,7 +212,7 @@ mod tests {
     where
         F: Fn(tokio::sync::MutexGuard<'_, Store>) -> bool,
     {
-        let ctx = TestContext::builder()
+        let mut ctx = TestContext::builder()
             .with_in_memory_storage()
             .with_mocked_clients()
             .build();
@@ -236,6 +259,18 @@ mod tests {
             .iter()
             .all(|x| x.contract_identifier == fishy_identifier));
 
+        // Set up the mock expectation for set_chainstate
+        let chainstate = Chainstate::new(
+            new_block_event.index_block_hash.to_string(),
+            new_block_event.block_height,
+        );
+        ctx.with_emily_client(|client| {
+            client.expect_set_chainstate().times(1).returning(move |_| {
+                let chainstate = chainstate.clone();
+                Box::pin(async { Ok(chainstate) })
+            });
+        })
+        .await;
         // Okay now to do the check.
         let state = State(api.clone());
         let res = new_block_handler(state, body).await;
