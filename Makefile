@@ -187,7 +187,7 @@ run-signer:
 
 install-git-hooks:
 	mkdir -p .git/hooks
-	cp -r ./devenv/hooks/pre-commit-make-lint.sh .git/hooks/
+	ln -s ../../devenv/hooks/pre-commit-make-lint.sh .git/hooks/
 
 .PHONY: install-git-hooks
 
