@@ -376,7 +376,7 @@ async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
         network,
         context: ctx,
         context_window: 10000,
-        private_key: private_key,
+        private_key,
         signing_round_max_duration: Duration::from_secs(10),
         threshold: 2,
         dkg_max_duration: Duration::from_secs(10),
