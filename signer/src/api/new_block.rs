@@ -13,12 +13,14 @@ use emily_client::models::CreateWithdrawalRequestBody;
 use emily_client::models::DepositUpdate;
 use emily_client::models::Fulfillment;
 use emily_client::models::Status;
+use emily_client::models::UpdateDepositsResponse;
+use emily_client::models::UpdateWithdrawalsResponse;
+use emily_client::models::Withdrawal;
 use emily_client::models::WithdrawalParameters;
 use emily_client::models::WithdrawalUpdate;
 use futures::FutureExt;
 use std::sync::OnceLock;
 
-use crate::api::UpdateResult;
 use crate::context::Context;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
@@ -49,6 +51,15 @@ use super::SBTC_REGISTRY_CONTRACT_NAME;
 ///
 /// See https://github.com/stacks-network/sbtc/issues/501.
 static SBTC_REGISTRY_IDENTIFIER: OnceLock<QualifiedContractIdentifier> = OnceLock::new();
+
+/// An enum representing the result of the event processing.
+/// This is used to send the results of the events to Emily.
+enum UpdateResult {
+    Deposit(Result<UpdateDepositsResponse, Error>),
+    Withdrawal(Result<UpdateWithdrawalsResponse, Error>),
+    CreatedWithdrawal(Vec<Result<Withdrawal, Error>>),
+    Chainstate(Result<Chainstate, Error>),
+}
 
 /// A handler of `POST /new_block` webhook events.
 ///
@@ -186,19 +197,24 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
     // the redundancy of the other sBTC signers to ensure that the update
     // is sent to Emily.
     for future in futures {
-        let result = future.await;
-        if let UpdateResult::Chainstate(Err(error)) = result {
-            tracing::warn!(%error, "Failed to set chainstate in emily");
-        } else if let UpdateResult::Deposit(Err(error)) = result {
-            tracing::warn!(%error, "Failed to update deposits in emily");
-        } else if let UpdateResult::Withdrawal(Err(error)) = result {
-            tracing::warn!(%error, "Failed to update withdrawals in emily");
-        } else if let UpdateResult::CreatedWithdrawal(results) = result {
-            for result in results {
-                if let Err(error) = result {
-                    tracing::warn!(%error, "Failed to create withdrawals in emily");
+        match future.await {
+            UpdateResult::Chainstate(Err(error)) => {
+                tracing::warn!(%error, "Failed to set chainstate in Emily");
+            }
+            UpdateResult::Deposit(Err(error)) => {
+                tracing::warn!(%error, "Failed to update deposits in Emily");
+            }
+            UpdateResult::Withdrawal(Err(error)) => {
+                tracing::warn!(%error, "Failed to update withdrawals in Emily");
+            }
+            UpdateResult::CreatedWithdrawal(results) => {
+                for result in results {
+                    if let Err(error) = result {
+                        tracing::warn!(%error, "Failed to create withdrawals in Emily");
+                    }
                 }
             }
+            _ => {} // Ignore successful results.
         }
     }
     StatusCode::OK
