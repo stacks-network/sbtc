@@ -117,30 +117,23 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
         let tx_info = TxInfo { txid, block_id };
         let res = match RegistryEvent::try_new(ev.value, tx_info) {
             Ok(RegistryEvent::CompletedDeposit(event)) => {
-                handle_completed_deposit(&api.ctx, event, &stacks_chaintip, &mut completed_deposits)
+                handle_completed_deposit(&api.ctx, event, &stacks_chaintip)
                     .await
+                    .map(|x| completed_deposits.push(x))
             }
             Ok(RegistryEvent::WithdrawalAccept(event)) => {
-                handle_withdrawal_accept(
-                    &api.ctx,
-                    event,
-                    &stacks_chaintip,
-                    &mut updated_withdrawals,
-                )
-                .await
-            }
-            Ok(RegistryEvent::WithdrawalCreate(event)) => {
-                handle_withdrawal_create(&api.ctx, event, &mut created_withdrawals).await
+                handle_withdrawal_accept(&api.ctx, event, &stacks_chaintip)
+                    .await
+                    .map(|x| updated_withdrawals.push(x))
             }
             Ok(RegistryEvent::WithdrawalReject(event)) => {
-                handle_withdrawal_reject(
-                    &api.ctx,
-                    event,
-                    &stacks_chaintip,
-                    &mut updated_withdrawals,
-                )
-                .await
+                handle_withdrawal_reject(&api.ctx, event, &stacks_chaintip)
+                    .await
+                    .map(|x| updated_withdrawals.push(x))
             }
+            Ok(RegistryEvent::WithdrawalCreate(event)) => handle_withdrawal_create(&api.ctx, event)
+                .await
+                .map(|x| created_withdrawals.push(x)),
             Err(error) => {
                 tracing::error!(%error, "Got an error when transforming the event ClarityValue");
                 return StatusCode::OK;
@@ -150,16 +143,21 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
         // issue that will resolve itself if we try again in a few moments.
         // So we return a non success status code so that the node retries
         // in a second.
-        if let Err(error) = res {
+        if let Err(Error::SqlxQuery(error)) = res {
             tracing::error!(%error, "Got an error when writing event to database");
             return StatusCode::INTERNAL_SERVER_ERROR;
+        // If we got an error processing the event, we log the error and
+        // return a success status code so that the node does not retry the
+        // webhook. We rely on the redundancy of the other sBTC signers to
+        // ensure that the update is sent to Emily.
+        } else if let Err(error) = res {
+            tracing::error!(%error, "Got an error when processing event");
         }
     }
 
     // Send the updates to Emily.
     let emily_client = api.ctx.get_emily_client();
     let chainstate = Chainstate::new(block_id.to_string(), new_block_event.block_height);
-
     let futures = vec![
         emily_client
             .update_deposits(completed_deposits)
@@ -178,13 +176,17 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
             .map(UpdateResult::Chainstate)
             .boxed(),
     ];
-    let results = futures::future::join_all(futures).await;
+    // TODO: Ideally, we would use `futures::future::join_all` here, but Emily
+    // randomly returns a `VersionConflict` error when we send multiple
+    // requests that may update the chainstate.
+    // let results = futures::future::join_all(futures).await;
 
     // Log any errors that occurred while updating Emily.
     // We don't return a non-success status code here because we rely on
     // the redundancy of the other sBTC signers to ensure that the update
     // is sent to Emily.
-    for result in results {
+    for future in futures {
+        let result = future.await;
         if let UpdateResult::Chainstate(Err(error)) = result {
             tracing::warn!(%error, "Failed to set chainstate in emily");
         } else if let UpdateResult::Deposit(Err(error)) = result {
@@ -205,28 +207,31 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
 /// Fetches Bitcoin block information based on a transaction ID from the database.
 ///
 /// # Parameters
-/// - `tx_id`: The transaction ID used to look up the Bitcoin block data.
+/// - `txid`: The transaction ID used to look up the Bitcoin block data.
 /// - `db`: Database access to retrieve the Bitcoin block information.
 ///
 /// # Returns
-///
-/// If the block information is successfully retrieved, it returns `Some(BtcBlockInfo)`.
-/// If no block is found for the provided transaction ID, it returns `None`.
-/// Any database errors encountered during the operation result in an `None`.
+/// Returns a `Result` which:
+/// - On success, contains the `BitcoinBlock` information.
+/// - On failure, returns an `Error`, either because no block was found for the provided transaction ID
+///   or due to an error in database access.
 ///
 /// # Notes
-///
-/// If an error occurs while writing to the database, the caller should return
-/// a non-success status code to ensure the node retries the webhook event later.
-async fn fetch_btc_block_from_txid(db: &impl DbRead, txid: Txid) -> Option<BitcoinBlock> {
+/// - If the transaction is missing from any blocks, it returns an `Error::BitcoinTxMissing`.
+/// - In case of database access errors, the caller should handle the error appropriately.
+async fn fetch_bitcoin_block_from_txid(
+    db: &impl DbRead,
+    txid: Txid,
+) -> Result<BitcoinBlock, Error> {
     let btc_txid = BitcoinTxId::from(txid);
-    let blocks_hashes = db
-        .get_bitcoin_blocks_with_transaction(&btc_txid)
-        .await
-        .ok()?;
+    let blocks_hashes = db.get_bitcoin_blocks_with_transaction(&btc_txid).await?;
 
-    let block_hash = blocks_hashes.last()?;
-    db.get_bitcoin_block(block_hash).await.ok()?
+    let block_hash = blocks_hashes
+        .last()
+        .ok_or(Error::BitcoinTxMissing(txid, None))?;
+    db.get_bitcoin_block(block_hash)
+        .await?
+        .ok_or(Error::BitcoinTxMissing(txid, Some(**block_hash)))
 }
 
 /// Processes a completed deposit event by updating relevant deposit records
@@ -237,53 +242,39 @@ async fn fetch_btc_block_from_txid(db: &impl DbRead, txid: Txid) -> Option<Bitco
 /// - `event`: The deposit event to be processed.
 /// - `stacks_chaintip`: Current chaintip information for the Stacks blockchain,
 ///   including block height and hash.
-/// - `completed_deposits`: A mutable vector where the processed deposit update
-///   will be stored to be sent to Emily.
 ///
-/// # Notes
-///
-/// If an error occurs while writing to the database, the caller should return
-/// a non-success status code to ensure the node retries the webhook event later.
+/// # Returns
+/// - `Result<DepositUpdate, Error>`: On success, returns a `DepositUpdate` struct containing
+///   information on the completed deposit to be sent to Emily. If a database error occurs or
+///   required block information is missing, returns an `Error`.
 async fn handle_completed_deposit(
     ctx: &impl Context,
     event: CompletedDepositEvent,
     stacks_chaintip: &StacksBlock,
-    completed_deposits: &mut Vec<DepositUpdate>,
-) -> Result<(), Error> {
+) -> Result<DepositUpdate, Error> {
     ctx.get_storage_mut()
         .write_completed_deposit_event(&event)
         .await?;
     // Need to fetch the block to get the block hash and height.
-    if let Some(btc_block) =
-        fetch_btc_block_from_txid(&ctx.get_storage(), event.outpoint.txid).await
-    {
-        completed_deposits.push(DepositUpdate {
-            bitcoin_tx_output_index: event.outpoint.vout,
+    let bitcoin_block =
+        fetch_bitcoin_block_from_txid(&ctx.get_storage(), event.outpoint.txid).await?;
+
+    Ok(DepositUpdate {
+        bitcoin_tx_output_index: event.outpoint.vout,
+        bitcoin_txid: event.outpoint.txid.to_string(),
+        status: Status::Confirmed,
+        fulfillment: Some(Some(Box::new(Fulfillment {
+            bitcoin_block_hash: bitcoin_block.block_hash.to_string(),
+            bitcoin_block_height: bitcoin_block.block_height,
+            bitcoin_tx_index: event.outpoint.vout,
             bitcoin_txid: event.outpoint.txid.to_string(),
-            status: Status::Confirmed,
-            fulfillment: Some(Some(Box::new(Fulfillment {
-                bitcoin_block_hash: btc_block.block_hash.to_string(),
-                bitcoin_block_height: btc_block.block_height,
-                bitcoin_tx_index: event.outpoint.vout,
-                bitcoin_txid: event.outpoint.txid.to_string(),
-                btc_fee: 1, // TODO: We need to get the fee from the transaction. Currently missing from the event.
-                stacks_txid: event.txid.to_hex(),
-            }))),
-            status_message: format!("Included in block {}", event.block_id.to_hex()),
-            last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
-            last_update_height: stacks_chaintip.block_height,
-        });
-    }
-    // Just skip the event if we can't find the block.
-    // We rely on the redundancy of the other sBTC signers to
-    // ensure that the update is sent to Emily.
-    else {
-        tracing::warn!(
-            "Could not find bitcoin block for transaction {}",
-            event.outpoint.txid
-        );
-    }
-    Ok(())
+            btc_fee: 1, // TODO: We need to get the fee from the transaction. Currently missing from the event.
+            stacks_txid: event.txid.to_hex(),
+        }))),
+        status_message: format!("Included in block {}", event.block_id.to_hex()),
+        last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
+        last_update_height: stacks_chaintip.block_height,
+    })
 }
 
 /// Handles a withdrawal acceptance event, updating database records and
@@ -294,48 +285,37 @@ async fn handle_completed_deposit(
 /// - `event`: The withdrawal acceptance event to be processed.
 /// - `stacks_chaintip`: Current Stacks blockchain chaintip information for
 ///   context on block height and hash.
-/// - `updated_withdrawals`: A mutable vector where the processed withdrawal
-///   acceptance update will be stored for later transmission to Emily.
-
-/// # Notes
 ///
-/// If an error occurs while writing to the database, the caller should return
-/// a non-success status code to ensure the node retries the webhook event later.
+/// # Returns
+/// - `Result<WithdrawalUpdate, Error>`: On success, returns a `WithdrawalUpdate` struct
+///   for Emily containing relevant withdrawal information. Returns an `Error` if a database
+///   operation fails or if Bitcoin block information is missing.
 async fn handle_withdrawal_accept(
     ctx: &impl Context,
     event: WithdrawalAcceptEvent,
     stacks_chaintip: &StacksBlock,
-    updated_withdrawals: &mut Vec<WithdrawalUpdate>,
-) -> Result<(), Error> {
+) -> Result<WithdrawalUpdate, Error> {
     ctx.get_storage_mut()
         .write_withdrawal_accept_event(&event)
         .await?;
 
-    if let Some(btc_block) =
-        fetch_btc_block_from_txid(&ctx.get_storage(), event.outpoint.txid).await
-    {
-        updated_withdrawals.push(WithdrawalUpdate {
-            request_id: event.request_id,
-            status: Status::Confirmed,
-            fulfillment: Some(Some(Box::new(Fulfillment {
-                bitcoin_block_hash: btc_block.block_hash.to_string(),
-                bitcoin_block_height: btc_block.block_height,
-                bitcoin_tx_index: event.outpoint.vout,
-                bitcoin_txid: event.outpoint.txid.to_string(),
-                btc_fee: event.fee,
-                stacks_txid: event.txid.to_hex(),
-            }))),
-            status_message: format!("Included in block {}", event.block_id.to_hex()),
-            last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
-            last_update_height: stacks_chaintip.block_height,
-        });
-    } else {
-        tracing::warn!(
-            "Could not find bitcoin block for transaction {}",
-            event.outpoint.txid
-        );
-    }
-    Ok(())
+    let bitcoin_block =
+        fetch_bitcoin_block_from_txid(&ctx.get_storage(), event.outpoint.txid).await?;
+    Ok(WithdrawalUpdate {
+        request_id: event.request_id,
+        status: Status::Confirmed,
+        fulfillment: Some(Some(Box::new(Fulfillment {
+            bitcoin_block_hash: bitcoin_block.block_hash.to_string(),
+            bitcoin_block_height: bitcoin_block.block_height,
+            bitcoin_tx_index: event.outpoint.vout,
+            bitcoin_txid: event.outpoint.txid.to_string(),
+            btc_fee: event.fee,
+            stacks_txid: event.txid.to_hex(),
+        }))),
+        status_message: format!("Included in block {}", event.block_id.to_hex()),
+        last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
+        last_update_height: stacks_chaintip.block_height,
+    })
 }
 
 /// Processes a withdrawal creation event, adding new withdrawal records to the
@@ -344,42 +324,33 @@ async fn handle_withdrawal_accept(
 /// # Parameters
 /// - `ctx`: Shared application context containing configuration and database access.
 /// - `event`: The withdrawal creation event to be processed.
-/// - `created_withdrawals`: A mutable vector where the newly created withdrawal
-///   update will be stored for eventual transmission to Emily.
 ///
-/// # Notes
-///
-/// If an error occurs while writing to the database, the caller should return
-/// a non-success status code to ensure the node retries the webhook event later.
+/// # Returns
+/// - `Result<CreateWithdrawalRequestBody, Error>`: On success, returns a `CreateWithdrawalRequestBody`
+///   with withdrawal information. If database access fails or Stacks block data is missing,
+///   returns an `Error`.
 async fn handle_withdrawal_create(
     ctx: &impl Context,
     event: WithdrawalCreateEvent,
-    created_withdrawals: &mut Vec<CreateWithdrawalRequestBody>,
-) -> Result<(), Error> {
+) -> Result<CreateWithdrawalRequestBody, Error> {
     ctx.get_storage_mut()
         .write_withdrawal_create_event(&event)
         .await?;
 
-    if let Ok(Some(stx_block)) = ctx
+    let stacks_block = ctx
         .get_storage()
         .get_stacks_block(&StacksBlockHash::from(event.block_id))
-        .await
-    {
-        created_withdrawals.push(CreateWithdrawalRequestBody {
-            amount: event.amount,
-            parameters: Box::new(WithdrawalParameters { max_fee: event.max_fee }),
-            recipient: event.recipient.to_string(),
-            request_id: event.request_id,
-            stacks_block_hash: event.block_id.to_hex(),
-            stacks_block_height: stx_block.block_height,
-        });
-    } else {
-        tracing::warn!(
-            "Could not find Stacks block for block hash {}",
-            event.block_id.to_hex()
-        );
-    }
-    Ok(())
+        .await?
+        .ok_or(Error::MissingBlock)?;
+
+    Ok(CreateWithdrawalRequestBody {
+        amount: event.amount,
+        parameters: Box::new(WithdrawalParameters { max_fee: event.max_fee }),
+        recipient: event.recipient.to_string(),
+        request_id: event.request_id,
+        stacks_block_hash: event.block_id.to_hex(),
+        stacks_block_height: stacks_block.block_height,
+    })
 }
 
 /// Processes a withdrawal rejection event by updating records and preparing
@@ -390,33 +361,27 @@ async fn handle_withdrawal_create(
 /// - `event`: The withdrawal rejection event to be processed.
 /// - `stacks_chaintip`: Information about the current chaintip of the Stacks blockchain,
 ///   such as block height and hash.
-/// - `updated_withdrawals`: A mutable vector where the processed withdrawal
-///   rejection update will be stored for future transmission to Emily.
 ///
-/// # Notes
-///
-/// If an error occurs while writing to the database, the caller should return
-/// a non-success status code to ensure the node retries the webhook event later.
+/// # Returns
+/// - `Result<WithdrawalUpdate, Error>`: Returns a `WithdrawalUpdate` with rejection information.
+///   In case of a database error, returns an `Error`.
 async fn handle_withdrawal_reject(
     ctx: &impl Context,
     event: WithdrawalRejectEvent,
     stacks_chaintip: &StacksBlock,
-    updated_withdrawals: &mut Vec<WithdrawalUpdate>,
-) -> Result<(), Error> {
+) -> Result<WithdrawalUpdate, Error> {
     ctx.get_storage_mut()
         .write_withdrawal_reject_event(&event)
         .await?;
 
-    updated_withdrawals.push(WithdrawalUpdate {
+    Ok(WithdrawalUpdate {
         fulfillment: None,
         last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
         last_update_height: stacks_chaintip.block_height,
         request_id: event.request_id,
         status: Status::Failed,
         status_message: "Rejected".to_string(),
-    });
-
-    Ok(())
+    })
 }
 
 #[cfg(test)]
@@ -612,8 +577,10 @@ mod tests {
         assert!(table_is_empty(db.lock().await));
     }
 
+    /// Test fetching a Bitcoin block from an existing transaction ID.
+    /// This ensures that a valid block is returned when the transaction exists in the database.
     #[tokio::test]
-    async fn test_fetch_btc_block_from_txid_with_existing_txid() {
+    async fn test_fetch_bitcoin_block_from_txid_with_existing_txid() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
         let ctx = TestContext::builder()
@@ -634,43 +601,40 @@ mod tests {
         let test_data = TestData::generate(&mut rng, &[], &test_params);
         test_data.write_to(&db).await;
 
+        // Fetch the block containing the specific transaction.
         let txid = test_data.bitcoin_transactions[0].txid;
-        let block = fetch_btc_block_from_txid(&db, *txid).await;
+        let block = fetch_bitcoin_block_from_txid(&db, *txid).await;
 
-        assert!(block.is_some());
-        let block = block.unwrap();
-        assert_eq!(block.block_height, test_data.bitcoin_blocks[0].block_height);
-        assert_eq!(block.block_hash, test_data.bitcoin_blocks[0].block_hash);
+        // Check that the block was found and the fields match.
+        assert!(block.is_ok());
+        assert_eq!(block.unwrap(), test_data.bitcoin_blocks[0]);
     }
 
+    /// Test fetching a Bitcoin block from a non-existing transaction ID.
+    /// Ensures that a missing transaction results in an error.
     #[tokio::test]
-    async fn test_fetch_btc_block_from_txid_with_nonexising_txid() {
+    async fn test_fetch_bitcoin_block_from_txid_with_nonexisting_txid() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
         let ctx = TestContext::builder()
             .with_in_memory_storage()
             .with_mocked_clients()
             .build();
-
-        let db = ctx.inner_storage();
-
-        let test_params = crate::testing::storage::model::Params {
-            num_bitcoin_blocks: 2,
-            num_stacks_blocks_per_bitcoin_block: 0,
-            num_deposit_requests_per_block: 2,
-            num_withdraw_requests_per_block: 0,
-            num_signers_per_request: 0,
-        };
-
-        let test_data = TestData::generate(&mut rng, &[], &test_params);
-        test_data.write_to(&db).await;
 
         let txid: BitcoinTxId = fake::Faker.fake_with_rng(&mut rng);
 
-        let block = fetch_btc_block_from_txid(&db, *txid).await;
-        assert!(block.is_none());
+        // Attempt to fetch a block for a non-existent transaction ID.
+        let block = fetch_bitcoin_block_from_txid(&ctx.inner_storage(), *txid).await;
+        assert!(block.is_err());
+        assert!(
+            matches!(block, Err(Error::BitcoinTxMissing(_txid, _))),
+            "Expected Error::BitcoinTxMissing"
+        );
     }
 
+    /// Tests the happy path for handling a completed deposit event.
+    /// This function validates that a completed deposit is correctly processed,
+    /// including verifying the successful database update.
     #[tokio::test]
     async fn test_handle_completed_deposit_happy_path() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -687,9 +651,9 @@ mod tests {
             num_withdraw_requests_per_block: 2,
             num_signers_per_request: 0,
         };
-
+        let db = ctx.inner_storage();
         let test_data = TestData::generate(&mut rng, &[], &test_params);
-        test_data.write_to(&ctx.get_storage_mut()).await;
+        test_data.write_to(&db).await;
 
         let txid = test_data.bitcoin_transactions[0].txid;
 
@@ -697,10 +661,9 @@ mod tests {
             .stacks_blocks
             .last()
             .expect("STX block generation failed");
-
-        let mut completed_deposits = Vec::new();
+        let outpoint = OutPoint { txid: *txid, vout: 0 };
         let event = CompletedDepositEvent {
-            outpoint: OutPoint { txid: *txid, vout: 0 },
+            outpoint: outpoint.clone(),
             txid: *test_data.stacks_transactions[0].txid,
             block_id: *stacks_chaintip.block_hash,
             amount: 100,
@@ -721,14 +684,18 @@ mod tests {
             last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
             last_update_height: stacks_chaintip.block_height,
         };
-        let res =
-            handle_completed_deposit(&ctx, event, stacks_chaintip, &mut completed_deposits).await;
+        let res = handle_completed_deposit(&ctx, event, stacks_chaintip).await;
 
         assert!(res.is_ok());
-        assert_eq!(completed_deposits.len(), 1);
-        assert_eq!(*completed_deposits.first().unwrap(), expectation);
+        assert_eq!(res.unwrap(), expectation);
+        let db = db.lock().await;
+        assert_eq!(db.completed_deposit_events.len(), 1);
+        assert!(db.completed_deposit_events.get(&outpoint).is_some());
     }
 
+    /// Tests the happy path for handling a withdrawal acceptance event.
+    /// This function validates that when a withdrawal is accepted, the handler
+    /// correctly updates the database and returns the expected response.
     #[tokio::test]
     async fn test_handle_withdrawal_accept_happy_path() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -746,8 +713,10 @@ mod tests {
             num_signers_per_request: 0,
         };
 
+        let db = ctx.inner_storage();
+
         let test_data = TestData::generate(&mut rng, &[], &test_params);
-        test_data.write_to(&ctx.get_storage_mut()).await;
+        test_data.write_to(&db).await;
 
         let txid = test_data.bitcoin_transactions[0].txid;
 
@@ -781,15 +750,21 @@ mod tests {
             last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
             last_update_height: stacks_chaintip.block_height,
         };
-        let mut accepted_withdrawals = Vec::new();
-        let res =
-            handle_withdrawal_accept(&ctx, event, stacks_chaintip, &mut accepted_withdrawals).await;
+        let res = handle_withdrawal_accept(&ctx, event, stacks_chaintip).await;
 
         assert!(res.is_ok());
-        assert_eq!(accepted_withdrawals.len(), 1);
-        assert_eq!(*accepted_withdrawals.first().unwrap(), expectation);
+        assert_eq!(res.unwrap(), expectation);
+        let db = db.lock().await;
+        assert_eq!(db.withdrawal_accept_events.len(), 1);
+        assert!(db
+            .withdrawal_accept_events
+            .get(&expectation.request_id)
+            .is_some());
     }
 
+    /// Tests the happy path for handling the creation of a withdrawal request.
+    /// This test confirms that when a withdrawal is created, the system updates
+    /// the database correctly and returns the expected response.
     #[tokio::test]
     async fn test_handle_withdrawal_create_happy_path() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -807,8 +782,9 @@ mod tests {
             num_signers_per_request: 0,
         };
 
+        let db = ctx.inner_storage();
         let test_data = TestData::generate(&mut rng, &[], &test_params);
-        test_data.write_to(&ctx.get_storage_mut()).await;
+        test_data.write_to(&db).await;
 
         let stx_first_tx = &test_data.stacks_transactions[0];
         let stx_first_block = &test_data.stacks_blocks[0];
@@ -834,14 +810,21 @@ mod tests {
             stacks_block_height: stx_first_block.block_height,
         };
 
-        let mut created_withdrawals = Vec::new();
-        let res = handle_withdrawal_create(&ctx, event, &mut created_withdrawals).await;
+        let res = handle_withdrawal_create(&ctx, event).await;
 
         assert!(res.is_ok());
-        assert_eq!(created_withdrawals.len(), 1);
-        assert_eq!(*created_withdrawals.first().unwrap(), expectation);
+        assert_eq!(res.unwrap(), expectation);
+        let db = db.lock().await;
+        assert_eq!(db.withdrawal_create_events.len(), 1);
+        assert!(db
+            .withdrawal_create_events
+            .get(&expectation.request_id)
+            .is_some());
     }
 
+    // Tests the happy path for handling a withdrawal rejection event.
+    /// This function checks that a rejected withdrawal transaction is processed
+    /// correctly, including updating the database and returning the expected response.
     #[tokio::test]
     async fn test_handle_withdrawal_reject_happy_path() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -886,12 +869,149 @@ mod tests {
             status_message: "Rejected".to_string(),
         };
 
-        let mut rejected_withdrawals = Vec::new();
-        let res =
-            handle_withdrawal_reject(&ctx, event, stacks_chaintip, &mut rejected_withdrawals).await;
+        let res = handle_withdrawal_reject(&ctx, event, stacks_chaintip).await;
 
         assert!(res.is_ok());
-        assert_eq!(rejected_withdrawals.len(), 1);
-        assert_eq!(*rejected_withdrawals.first().unwrap(), expectation);
+        assert_eq!(res.unwrap(), expectation);
+        let db = db.lock().await;
+        assert_eq!(db.withdrawal_reject_events.len(), 1);
+        assert!(db
+            .withdrawal_reject_events
+            .get(&expectation.request_id)
+            .is_some());
+    }
+
+    /// Tests the scenario where a completed deposit is accepted but the transaction
+    /// is previously unseen in the database. This validates that the handler can
+    /// correctly update the database even if no data for Emily will be returned.
+    #[tokio::test]
+    async fn test_handle_completed_deposit_accept_unseen_tx() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        let ctx = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        let test_params = crate::testing::storage::model::Params {
+            num_bitcoin_blocks: 1,
+            num_stacks_blocks_per_bitcoin_block: 1,
+            num_deposit_requests_per_block: 1,
+            num_withdraw_requests_per_block: 1,
+            num_signers_per_request: 0,
+        };
+        let test_data = TestData::generate(&mut rng, &[], &test_params);
+
+        let db = ctx.inner_storage();
+        let outpoint = OutPoint {
+            txid: *test_data.bitcoin_transactions[0].txid,
+            vout: 0,
+        };
+        let event = CompletedDepositEvent {
+            outpoint: outpoint.clone(),
+            txid: *test_data.stacks_transactions[0].txid,
+            block_id: *test_data.stacks_blocks[0].block_hash,
+            amount: 100,
+        };
+
+        let res = handle_completed_deposit(&ctx, event, &test_data.stacks_blocks[0]).await;
+        assert!(res.is_err());
+        assert!(
+            matches!(res, Err(Error::BitcoinTxMissing(_txid, _))),
+            "Expected Error::BitcoinTxMissing"
+        );
+        let db = db.lock().await;
+        // The new event should still be in the database.
+        assert_eq!(db.completed_deposit_events.len(), 1);
+        assert!(db.completed_deposit_events.get(&outpoint).is_some());
+    }
+
+    #[tokio::test]
+    async fn test_handle_withdrawal_accept_unseen_tx() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        let ctx = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        let test_params = crate::testing::storage::model::Params {
+            num_bitcoin_blocks: 1,
+            num_stacks_blocks_per_bitcoin_block: 1,
+            num_deposit_requests_per_block: 1,
+            num_withdraw_requests_per_block: 1,
+            num_signers_per_request: 0,
+        };
+        let test_data = TestData::generate(&mut rng, &[], &test_params);
+
+        let db = ctx.inner_storage();
+        let txid = test_data.bitcoin_transactions[0].txid;
+        let event = WithdrawalAcceptEvent {
+            request_id: 1,
+            outpoint: OutPoint { txid: *txid, vout: 0 },
+            txid: *test_data.stacks_transactions[0].txid,
+            block_id: *test_data.stacks_transactions[0].block_hash,
+            fee: 1,
+            signer_bitmap: BitArray::<_>::ZERO,
+        };
+
+        let res = handle_withdrawal_accept(&ctx, event, &test_data.stacks_blocks[0]).await;
+        assert!(res.is_err());
+        assert!(
+            matches!(res, Err(Error::BitcoinTxMissing(_txid, _))),
+            "Expected Error::BitcoinTxMissing"
+        );
+        let db = db.lock().await;
+        // The new event should still be in the database.
+        assert_eq!(db.withdrawal_accept_events.len(), 1);
+        assert!(db.withdrawal_accept_events.get(&1).is_some());
+    }
+
+    /// Tests the scenario where a withdrawal is created but the transaction
+    /// is previously unseen in the database. This validates that the handler can
+    ///
+    #[tokio::test]
+    async fn test_handle_withdrawal_create_unseen_tx() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        let ctx = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        let test_params = crate::testing::storage::model::Params {
+            num_bitcoin_blocks: 1,
+            num_stacks_blocks_per_bitcoin_block: 1,
+            num_deposit_requests_per_block: 1,
+            num_withdraw_requests_per_block: 1,
+            num_signers_per_request: 0,
+        };
+        let test_data = TestData::generate(&mut rng, &[], &test_params);
+
+        let db = ctx.inner_storage();
+        let stx_first_tx = &test_data.stacks_transactions[0];
+
+        let event = WithdrawalCreateEvent {
+            request_id: 1,
+            block_id: *stx_first_tx.block_hash,
+            amount: 100,
+            max_fee: 1,
+            recipient: ScriptBuf::default(),
+            txid: *stx_first_tx.txid,
+            sender: PrincipalData::Standard(StandardPrincipalData::transient()),
+            block_height: test_data.bitcoin_blocks[0].block_height,
+        };
+
+        let res = handle_withdrawal_create(&ctx, event).await;
+
+        assert!(res.is_err());
+        assert!(
+            matches!(res, Err(Error::MissingBlock)),
+            "Expected Error::MissingBlock"
+        );
+        let db = db.lock().await;
+        // The new event should still be in the database.
+        assert_eq!(db.withdrawal_create_events.len(), 1);
+        assert!(db.withdrawal_create_events.get(&1).is_some());
     }
 }
