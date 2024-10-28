@@ -64,17 +64,14 @@ impl SweepTransactionPackage {
                 let swept_withdrawals = transaction
                     .requests
                     .iter()
-                    .filter_map(|request| {
-                        if let RequestRef::Withdrawal(withdrawal) = request {
-                            withdrawal_index += 1;
+                    .filter_map(|request| request.as_withdrawal())
+                    .map(|withdrawal| {
+                        withdrawal_index += 1;
 
-                            Some(SweptWithdrawal {
-                                output_index: withdrawal_index,
-                                withdrawal_request_id: withdrawal.request_id,
-                                withdrawal_request_block_hash: withdrawal.block_hash,
-                            })
-                        } else {
-                            None
+                        SweptWithdrawal {
+                            output_index: withdrawal_index,
+                            withdrawal_request_id: withdrawal.request_id,
+                            withdrawal_request_block_hash: withdrawal.block_hash,
                         }
                     })
                     .collect();
@@ -82,14 +79,15 @@ impl SweepTransactionPackage {
                 SweepTransaction {
                     id: None,
                     txid: transaction.tx.compute_txid().into(),
-                    signer_prevout_txid: transaction
-                        .signer_utxo.utxo.outpoint.txid.into(),
-                    signer_prevout_output_index: transaction
-                        .signer_utxo.utxo.outpoint.vout,
+                    signer_prevout_txid: transaction.signer_utxo.utxo.outpoint.txid.into(),
+                    signer_prevout_output_index: transaction.signer_utxo.utxo.outpoint.vout,
                     signer_prevout_amount: transaction.signer_utxo.utxo.amount,
                     signer_prevout_script_pubkey: transaction
-                        .signer_utxo.utxo.public_key
-                        .signers_script_pubkey().into(),
+                        .signer_utxo
+                        .utxo
+                        .public_key
+                        .signers_script_pubkey()
+                        .into(),
                     amount: transaction.output_amounts(),
                     fee: transaction.tx_fee,
                     fee_rate: transaction.signer_utxo.fee_rate,
