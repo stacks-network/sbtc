@@ -1040,8 +1040,29 @@ mod tests {
     #[tokio::test]
     async fn should_be_able_to_coordinate_signing_rounds() {
         test_environment()
-            .assert_should_be_able_to_coordinate_signing_rounds()
+            .assert_should_be_able_to_coordinate_signing_rounds(tokio::time::Duration::ZERO)
             .await;
+    }
+
+    #[tokio::test]
+    async fn should_wait_before_processing_bitcoin_blocks() {
+        // NOTE: Above test `should_be_able_to_coordinate_signing_rounds`
+        // could be removed as redundant now.
+
+        // Measure baseline.
+        let baseline_start = std::time::Instant::now();
+        test_environment()
+            .assert_should_be_able_to_coordinate_signing_rounds(tokio::time::Duration::ZERO)
+            .await;
+        // Locally this takes a couple seconds to execute.
+        let baseline_elapsed = baseline_start.elapsed();
+
+        let start = std::time::Instant::now();
+        let delay = tokio::time::Duration::from_secs(5);
+        test_environment()
+            .assert_should_be_able_to_coordinate_signing_rounds(delay)
+            .await;
+        assert!(start.elapsed() > delay + baseline_elapsed);
     }
 
     #[tokio::test]

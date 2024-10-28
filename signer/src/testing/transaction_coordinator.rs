@@ -71,11 +71,14 @@ where
         }
     }
 
-    pub async fn start(self) -> RunningEventLoopHandle<C> {
+    pub async fn start(
+        self,
+        delay_to_process_new_blocks: tokio::time::Duration,
+    ) -> RunningEventLoopHandle<C> {
         let is_started = self.is_started.clone();
         let join_handle = tokio::spawn(async move {
             is_started.store(true, Ordering::SeqCst);
-            self.event_loop.run(tokio::time::Duration::ZERO).await
+            self.event_loop.run(delay_to_process_new_blocks).await
         });
 
         while !self.is_started.load(Ordering::SeqCst) {
@@ -125,7 +128,10 @@ where
     Stacks: StacksInteract + Clone + Sync + Send + 'static,
 {
     /// Assert that a coordinator should be able to coordiante a signing round
-    pub async fn assert_should_be_able_to_coordinate_signing_rounds(mut self) {
+    pub async fn assert_should_be_able_to_coordinate_signing_rounds(
+        mut self,
+        delay_to_process_new_blocks: tokio::time::Duration,
+    ) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
@@ -227,7 +233,7 @@ where
         );
 
         // Start the tx coordinator run loop.
-        let handle = event_loop_harness.start().await;
+        let handle = event_loop_harness.start(delay_to_process_new_blocks).await;
 
         // Start the in-memory signer set.
         let _signers_handle = tokio::spawn(async move {
@@ -243,12 +249,14 @@ where
             .expect("failed to signal");
 
         // Await the `wait_for_tx_task` to receive the first transaction broadcasted.
-        let broadcasted_tx =
-            tokio::time::timeout(Duration::from_secs(10), wait_for_transaction_task)
-                .await
-                .unwrap()
-                .expect("failed to receive message")
-                .expect("no message received");
+        let broadcasted_tx = tokio::time::timeout(
+            delay_to_process_new_blocks + Duration::from_secs(10),
+            wait_for_transaction_task,
+        )
+        .await
+        .unwrap()
+        .expect("failed to receive message")
+        .expect("no message received");
 
         // Extract the first script pubkey from the broadcasted transaction.
         let first_script_pubkey = broadcasted_tx
