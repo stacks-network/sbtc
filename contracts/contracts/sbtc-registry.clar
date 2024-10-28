@@ -170,6 +170,8 @@
     (output-index uint)
     (signer-bitmap uint)
     (fee uint)
+    (burn-hash (buff 32))
+    (burn-height uint)
   )
   (begin 
     (try! (is-protocol-caller))
@@ -196,6 +198,8 @@
 (define-public (complete-withdrawal-reject
     (request-id uint) 
     (signer-bitmap uint)
+    (burn-hash (buff 32))
+    (burn-height uint)
   )
   (begin 
     (try! (is-protocol-caller))
