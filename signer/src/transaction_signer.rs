@@ -550,7 +550,7 @@ where
 	    }
 	    wsts::net::Message::DkgPrivateShares(dkg_private_shares) => {
                 let public_keys = &self.wsts_state_machines[&msg.txid].public_keys;
-		let signer_public_key = PublicKey::from(&public_keys.signers[&dkg_public_shares.signer_id]);
+		let signer_public_key = PublicKey::from(&public_keys.signers[&dkg_private_shares.signer_id]);
 		if signer_public_key != msg_public_key {
 		    return Err(Error::InvalidSignature);
 		}
