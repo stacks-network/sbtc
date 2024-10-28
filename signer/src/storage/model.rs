@@ -39,8 +39,6 @@ impl SweepTransactionPackage {
         market_fee_rate: f64,
         transactions: &[crate::bitcoin::utxo::UnsignedTransaction],
     ) -> SweepTransactionPackage {
-        // NOTE: We use `+1` for the output indexes because while the output
-        // index is 0-indexed, the first output is always the signer's.
         let transactions = transactions
             .iter()
             .map(|transaction| {
@@ -56,14 +54,22 @@ impl SweepTransactionPackage {
                     })
                     .collect();
 
+                // We need to keep track of the withdrawal index separately
+                // because deposits are not outputs but are interleaved in the
+                // `transaction.requests`. Note that the first output is always
+                // the signer's output, so we start at zero here and preemtively
+                // increment the index before assigning it to the withdrawal
+                // record.
+                let mut withdrawal_index = 0;
                 let swept_withdrawals = transaction
                     .requests
                     .iter()
-                    .enumerate()
-                    .filter_map(|(pos, request)| {
+                    .filter_map(|request| {
                         if let RequestRef::Withdrawal(withdrawal) = request {
+                            withdrawal_index += 1;
+
                             Some(SweptWithdrawal {
-                                output_index: pos as u32 + 1, // Account for the signer's output
+                                output_index: withdrawal_index,
                                 withdrawal_request_id: withdrawal.request_id,
                                 withdrawal_request_block_hash: withdrawal.block_hash,
                             })
