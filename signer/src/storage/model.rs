@@ -60,7 +60,7 @@ impl SweepTransactionPackage {
                 // the signer's output, so we start at zero here and preemtively
                 // increment the index before assigning it to the withdrawal
                 // record.
-                let mut withdrawal_index = 0;
+                let mut withdrawal_index = 1;
                 let swept_withdrawals = transaction
                     .requests
                     .iter()
