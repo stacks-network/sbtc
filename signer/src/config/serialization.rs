@@ -9,8 +9,6 @@ use crate::keys::PrivateKey;
 
 use super::error::SignerConfigError;
 
-pub const MAX_BITCOIN_PROCESSING_DELAY_S: u64 = 300;
-
 /// A deserializer for the url::Url type. This will return an empty [`Vec`] if
 /// there are no URLs to deserialize.
 pub fn url_deserializer_vec<'de, D>(deserializer: D) -> Result<Vec<url::Url>, D::Error>
@@ -46,26 +44,6 @@ where
     Ok(std::time::Duration::from_secs(
         u64::deserialize(deserializer).map_err(serde::de::Error::custom)?,
     ))
-}
-
-/// A deserializer for Bitcoin processing delay, capping its max value.
-pub fn bitcoin_processing_delay_deserializer<'de, D>(
-    deserializer: D,
-) -> Result<std::time::Duration, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let delay = duration_seconds_deserializer(deserializer)?;
-    let delay_secs = delay.as_secs();
-    if delay_secs > MAX_BITCOIN_PROCESSING_DELAY_S {
-        return Err(serde::de::Error::custom(
-            SignerConfigError::InvalidBitcoinProcessingDelay(
-                MAX_BITCOIN_PROCESSING_DELAY_S,
-                delay_secs,
-            ),
-        ));
-    };
-    Ok(delay)
 }
 
 pub fn p2p_multiaddr_deserializer_vec<'de, D>(deserializer: D) -> Result<Vec<Multiaddr>, D::Error>
