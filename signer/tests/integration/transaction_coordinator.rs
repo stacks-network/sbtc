@@ -278,8 +278,7 @@ async fn process_complete_deposit() {
         signing_round_max_duration: Duration::from_secs(10),
         dkg_max_duration: Duration::from_secs(10),
     };
-    let tx_coordinator_handle =
-        tokio::spawn(async move { tx_coordinator.run().await });
+    let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
 
     // TODO: here signers use all the same storage, should we use separate ones?
     let event_loop_handles: Vec<_> = signer_info
