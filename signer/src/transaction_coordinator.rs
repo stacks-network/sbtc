@@ -239,6 +239,12 @@ where
             return Ok(());
         }
 
+        let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
+        if bitcoin_processing_delay > std::time::Duration::ZERO {
+            tracing::debug!("Sleeping before processing new Bitcoin block.");
+            sleep(bitcoin_processing_delay).await;
+        }
+
         tracing::debug!("We are the coordinator, we may need to coordinate DKG");
         // If Self::get_signer_set_and_aggregate_key did not return an
         // aggregate key, then we know that we have not run DKG yet. Since
@@ -248,12 +254,6 @@ where
             // This function returns the new DKG aggregate key.
             None => self.coordinate_dkg(&bitcoin_chain_tip).await?,
         };
-
-        let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
-        if bitcoin_processing_delay > tokio::time::Duration::ZERO {
-            tracing::debug!("Sleeping before processing new Bitcoin block.");
-            sleep(bitcoin_processing_delay).await;
-        }
 
         self.construct_and_sign_bitcoin_sbtc_transactions(
             &bitcoin_chain_tip,
