@@ -11,7 +11,7 @@ use std::path::Path;
 use url::Url;
 
 use crate::config::error::SignerConfigError;
-use crate::config::serialization::duration_seconds_deserializer;
+use crate::config::serialization::bitcoin_processing_delay_deserializer;
 use crate::config::serialization::p2p_multiaddr_deserializer_vec;
 use crate::config::serialization::parse_stacks_address;
 use crate::config::serialization::private_key_deserializer;
@@ -238,7 +238,7 @@ pub struct SignerConfig {
     /// The number of seconds the coordinator will wait
     /// before processing a new Bitcoin block
     /// (allowing it to propagate to the others signers)
-    #[serde(deserialize_with = "duration_seconds_deserializer")]
+    #[serde(deserialize_with = "bitcoin_processing_delay_deserializer")]
     pub bitcoin_processing_delay: std::time::Duration,
 }
 
@@ -393,6 +393,8 @@ impl Validatable for StacksConfig {
 mod tests {
     use std::net::SocketAddr;
     use std::str::FromStr;
+
+    use serialization::MAX_BITCOIN_PROCESSING_DELAY_S;
 
     use crate::config::serialization::try_parse_p2p_multiaddr;
 
@@ -635,6 +637,21 @@ mod tests {
         assert!(matches!(
             settings.unwrap_err(),
             ConfigError::Message(msg) if msg == SignerConfigError::InvalidStacksPrivateKeyLength(4).to_string()
+        ));
+    }
+
+    #[test]
+    fn invalid_bitcoin_processing_delay_returns_correct_error() {
+        clear_env();
+
+        let delay = MAX_BITCOIN_PROCESSING_DELAY_S + 1;
+        std::env::set_var("SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY", delay.to_string());
+
+        let settings = Settings::new_from_default_config();
+        assert!(settings.is_err());
+        assert!(matches!(
+            settings.unwrap_err(),
+            ConfigError::Message(msg) if msg == SignerConfigError::InvalidBitcoinProcessingDelay(MAX_BITCOIN_PROCESSING_DELAY_S, delay).to_string()
         ));
     }
 

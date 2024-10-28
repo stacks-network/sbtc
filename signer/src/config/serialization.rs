@@ -9,6 +9,8 @@ use crate::keys::PrivateKey;
 
 use super::error::SignerConfigError;
 
+pub const MAX_BITCOIN_PROCESSING_DELAY_S: u64 = 300;
+
 /// A deserializer for the url::Url type. This will return an empty [`Vec`] if
 /// there are no URLs to deserialize.
 pub fn url_deserializer_vec<'de, D>(deserializer: D) -> Result<Vec<url::Url>, D::Error>
@@ -35,13 +37,35 @@ where
 
 /// A deserializer for the std::time::Duration type.
 /// Serde includes a default deserializer, but it expects a struct.
-pub fn duration_seconds_deserializer<'de, D>(deserializer: D) -> Result<std::time::Duration, D::Error>
+pub fn duration_seconds_deserializer<'de, D>(
+    deserializer: D,
+) -> Result<std::time::Duration, D::Error>
 where
     D: Deserializer<'de>,
 {
     Ok(std::time::Duration::from_secs(
         u64::deserialize(deserializer).map_err(serde::de::Error::custom)?,
     ))
+}
+
+/// A deserializer for Bitcoin processing delay, capping its max value.
+pub fn bitcoin_processing_delay_deserializer<'de, D>(
+    deserializer: D,
+) -> Result<std::time::Duration, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let delay = duration_seconds_deserializer(deserializer)?;
+    let delay_secs = delay.as_secs();
+    match delay_secs > MAX_BITCOIN_PROCESSING_DELAY_S {
+        true => Err(serde::de::Error::custom(
+            SignerConfigError::InvalidBitcoinProcessingDelay(
+                MAX_BITCOIN_PROCESSING_DELAY_S,
+                delay_secs,
+            ),
+        )),
+        false => Ok(delay),
+    }
 }
 
 pub fn p2p_multiaddr_deserializer_vec<'de, D>(deserializer: D) -> Result<Vec<Multiaddr>, D::Error>
