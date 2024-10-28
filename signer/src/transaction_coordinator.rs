@@ -265,7 +265,6 @@ where
             tracing::info!("bitcoin transaction submitted successfully!");
         }
 
-
         self.construct_and_sign_stacks_sbtc_response_transactions(
             &bitcoin_chain_tip,
             &aggregate_key,
