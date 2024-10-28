@@ -420,6 +420,7 @@ impl super::DbRead for PgStore {
               , block_height
               , parent_hash
               , confirms
+              , time_mined
             FROM sbtc_signer.bitcoin_blocks
             WHERE block_hash = $1;",
         )
@@ -456,6 +457,7 @@ impl super::DbRead for PgStore {
               , block_height
               , parent_hash
               , confirms
+              , time_mined
              FROM sbtc_signer.bitcoin_blocks
              ORDER BY block_height DESC, block_hash DESC
              LIMIT 1",
@@ -500,7 +502,7 @@ impl super::DbRead for PgStore {
             r#"
             WITH RECURSIVE context_window AS (
                 -- Anchor member: Initialize the recursion with the chain tip
-                SELECT block_hash, block_height, parent_hash, confirms, 1 AS depth
+                SELECT block_hash, block_height, parent_hash, confirms, time_mined, 1 AS depth
                 FROM sbtc_signer.bitcoin_blocks
                 WHERE block_hash = $1
 
@@ -508,7 +510,7 @@ impl super::DbRead for PgStore {
 
                 -- Recursive member: Fetch the parent block using the last block's parent_hash
                 SELECT parent.block_hash, parent.block_height, parent.parent_hash,
-                        parent.confirms, last.depth + 1
+                        parent.confirms, parent.time_mined, last.depth + 1
                 FROM sbtc_signer.bitcoin_blocks parent
                 JOIN context_window last ON parent.block_hash = last.parent_hash
                 WHERE last.depth < $2
@@ -518,6 +520,7 @@ impl super::DbRead for PgStore {
                 , block_height
                 , parent_hash
                 , confirms
+                , time_mined
             FROM context_window
             "#,
         )
@@ -775,7 +778,7 @@ impl super::DbRead for PgStore {
               , signer_pub_key
               , is_accepted
               , created_at
-            FROM sbtc_signer.deposit_signers 
+            FROM sbtc_signer.deposit_signers
             WHERE txid = $1 AND output_index = $2",
         )
         .bind(txid)
@@ -1329,6 +1332,7 @@ impl super::DbRead for PgStore {
                   , parent_hash
                   , block_height
                   , confirms
+                  , time_mined
                   , 1 AS depth
                 FROM sbtc_signer.bitcoin_blocks
                 WHERE block_hash = $1
@@ -1340,6 +1344,7 @@ impl super::DbRead for PgStore {
                   , parent.parent_hash
                   , parent.block_height
                   , parent.confirms
+                  , parent.time_mined
                   , last.depth + 1
                 FROM sbtc_signer.bitcoin_blocks AS parent
                 JOIN canonical_bitcoin_blockchain AS last
@@ -1394,6 +1399,7 @@ impl super::DbWrite for PgStore {
               , block_height
               , parent_hash
               , confirms
+              , time_mined
               )
             VALUES ($1, $2, $3, $4)
             ON CONFLICT DO NOTHING",
@@ -1402,6 +1408,7 @@ impl super::DbWrite for PgStore {
         .bind(i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?)
         .bind(block.parent_hash)
         .bind(&block.confirms)
+        .bind(i32::try_from(block.time_mined).map_err(Error::ConversionDatabaseInt)?)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

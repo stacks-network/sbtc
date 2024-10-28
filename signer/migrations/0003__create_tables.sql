@@ -14,6 +14,7 @@ CREATE TABLE sbtc_signer.bitcoin_blocks (
     block_height BIGINT NOT NULL,
     parent_hash BYTEA NOT NULL,
     confirms BYTEA[] NOT NULL,
+    time_mined INTEGER NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 

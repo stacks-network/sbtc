@@ -30,6 +30,10 @@ pub struct BitcoinBlock {
     /// Stacks block confirmed by this block.
     #[cfg_attr(feature = "testing", dummy(default))]
     pub confirms: Vec<StacksBlockHash>,
+    /// Time the block was mined.
+    #[sqlx(try_from = "i32")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..u16::MAX as u32"))]
+    pub time_mined: u32,
 }
 
 /// Stacks block.

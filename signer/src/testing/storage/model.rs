@@ -282,6 +282,9 @@ impl TestData {
 
         block.parent_hash = parent_block_summary.block_hash;
         block.block_height = parent_block_summary.block_height + 1;
+        if let Some(parent_block) = self.get_bitcoin_block(&block.parent_hash) {
+            block.time_mined = parent_block.time_mined + 600;
+        }
 
         block
     }

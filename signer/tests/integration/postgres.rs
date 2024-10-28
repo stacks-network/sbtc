@@ -707,6 +707,7 @@ async fn writing_transactions_postgres() {
         block_height: 15,
         parent_hash: parent_hash.into(),
         confirms: Vec::new(),
+        time_mined: 0,
     };
 
     // We start by writing the bitcoin block because of the foreign key
@@ -1207,7 +1208,7 @@ async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
 async fn should_be_able_to_query_canonical_bitcoin_blocks() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let mut store = testing::storage::new_test_database(db_num, true).await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(31415);
+    let mut rng = rand::rngs::StdRng::seed_from_u64(314159);
 
     let test_model_params = testing::storage::model::Params {
         num_bitcoin_blocks: 20,

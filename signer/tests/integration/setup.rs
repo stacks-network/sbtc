@@ -369,6 +369,7 @@ pub async fn backfill_bitcoin_blocks(db: &PgStore, rpc: &Client, chain_tip: &bit
             block_height: block_header.height as u64,
             parent_hash: parent_header_hash.into(),
             confirms: Vec::new(),
+            time_mined: block_header.time as u32,
         };
 
         db.write_bitcoin_block(&bitcoin_block).await.unwrap();

@@ -425,6 +425,7 @@ where
                 .expect("Failed to get block height"),
             parent_hash: block.header.prev_blockhash.into(),
             confirms: Vec::new(),
+            time_mined: block.header.time,
         };
 
         self.context

@@ -251,7 +251,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
     // tables...
     let stacks_chain_tip = db.get_stacks_chain_tip(&chain_tip).await.unwrap().unwrap();
 
-    let rotate_keys: RotateKeysTransaction = Faker.fake_with_rng(&mut rng);
+    let mut rotate_keys: RotateKeysTransaction = Faker.fake_with_rng(&mut rng);
     let transaction = model::Transaction {
         txid: rotate_keys.txid.into_bytes(),
         tx: Vec::new(),
@@ -271,13 +271,16 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
 
     // Alright, now that we have a rotate-keys transaction, we can check if
     // it is preferred over the config.
-    let signer_set: Vec<PublicKey> = coord
+    let mut signer_set: Vec<PublicKey> = coord
         .get_signer_public_keys(&chain_tip)
         .await
         .unwrap()
         .into_iter()
         .collect();
 
+    // Sort the two lists so the comparison is easier.
+    signer_set.sort_by_key(|k| k.to_string());
+    rotate_keys.signer_set.sort_by_key(|k| k.to_string());
     assert_eq!(rotate_keys.signer_set, signer_set);
 
     testing::storage::drop_db(db).await;
