@@ -33,6 +33,7 @@ use rand::SeedableRng as _;
 use sha2::Digest as _;
 use tokio::sync::broadcast;
 use tokio::time::error::Elapsed;
+use wsts::curve::point::Point;
 use wsts::net::SignatureType;
 
 use super::context::*;
@@ -666,25 +667,47 @@ where
         let mut hasher = sha2::Sha256::new();
         hasher.update("sign here please");
         let msg: [u8; 32] = hasher.finalize().into(); // TODO(296): Compute proper sighash from transaction
+        let signature_type = SignatureType::Schnorr;
+        // XXX Taproot not working here
+        //let signature_type = SignatureType::Taproot(Some(msg));
 
         coordinator
             .request_sign_transaction(bitcoin_chain_tip, tx, aggregate_key)
             .await;
 
         let signature = coordinator
-            .run_signing_round(bitcoin_chain_tip, txid, &msg, SignatureType::Schnorr)
+            .run_signing_round(bitcoin_chain_tip, txid, &msg, signature_type.clone())
             .await;
 
         // Let's check the signature using the secp256k1 types.
         let sig = secp256k1::schnorr::Signature::from_slice(&signature.to_bytes()).unwrap();
         let msg_digest = secp256k1::Message::from_digest(msg);
-        let pk = aggregate_key.signers_tweaked_pubkey().unwrap();
-        let x_only_pk = secp256k1::XOnlyPublicKey::from(&pk);
-        sig.verify(&msg_digest, &x_only_pk).unwrap();
+        match signature_type {
+            SignatureType::Schnorr => {
+                let x_only_pk = secp256k1::XOnlyPublicKey::from(&aggregate_key);
+                sig.verify(&msg_digest, &x_only_pk).unwrap();
+            }
+            SignatureType::Taproot(_) => {
+                let pk = aggregate_key.signers_tweaked_pubkey().unwrap();
+                let x_only_pk = secp256k1::XOnlyPublicKey::from(&pk);
+                sig.verify(&msg_digest, &x_only_pk).unwrap();
+            }
+            _ => (),
+        }
 
         // Let's check using the p256k1 types
-        let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&aggregate_key.into(), None);
-        assert!(signature.verify(&tweaked_aggregate_key.x(), &msg));
+        match signature_type {
+            SignatureType::Schnorr => {
+                let public_key = Point::from(&aggregate_key);
+                assert!(signature.verify(&public_key.x(), &msg));
+            }
+            SignatureType::Taproot(_) => {
+                let tweaked_aggregate_key =
+                    wsts::compute::tweaked_public_key(&aggregate_key.into(), None);
+                assert!(signature.verify(&tweaked_aggregate_key.x(), &msg));
+            }
+            _ => (),
+        }
     }
 
     async fn write_test_data<S>(storage: &S, test_data: &TestData)

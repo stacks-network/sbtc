@@ -234,19 +234,19 @@ impl Coordinator {
 
         match self.loop_until_result(bitcoin_chain_tip, txid).await {
             wsts::state_machine::OperationResult::SignTaproot(signature) => {
-		if let SignatureType::Taproot(_) = signature_type {
-		    signature
-		} else {
-		    panic!("unexpected got SignTaproot but sig type wasn't taproot");
-		}
-	    }
+                if let SignatureType::Taproot(_) = signature_type {
+                    signature
+                } else {
+                    panic!("unexpected got SignTaproot but sig type wasn't taproot");
+                }
+            }
             wsts::state_machine::OperationResult::SignSchnorr(signature) => {
-		if let SignatureType::Schnorr = signature_type {
-		    signature
-		} else {
-		    panic!("unexpected got SignSchnorr but sig type wasn't schnorr");
-		}
-	    }
+                if let SignatureType::Schnorr = signature_type {
+                    signature
+                } else {
+                    panic!("unexpected got SignSchnorr but sig type wasn't schnorr");
+                }
+            }
             _ => panic!("unexpected operation result"),
         }
     }
