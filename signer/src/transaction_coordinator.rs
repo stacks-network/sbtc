@@ -12,6 +12,7 @@ use futures::FutureExt;
 use futures::StreamExt as _;
 use futures::TryStreamExt;
 use sha2::Digest;
+use tokio::time::sleep;
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::bitcoin::utxo;
@@ -236,6 +237,12 @@ where
         if !self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys) {
             tracing::debug!("We are not the coordinator, so nothing to do");
             return Ok(());
+        }
+
+        let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
+        if bitcoin_processing_delay > std::time::Duration::ZERO {
+            tracing::debug!("Sleeping before processing new Bitcoin block.");
+            sleep(bitcoin_processing_delay).await;
         }
 
         tracing::debug!("We are the coordinator, we may need to coordinate DKG");
@@ -1028,8 +1035,35 @@ mod tests {
     #[tokio::test]
     async fn should_be_able_to_coordinate_signing_rounds() {
         test_environment()
-            .assert_should_be_able_to_coordinate_signing_rounds()
+            .assert_should_be_able_to_coordinate_signing_rounds(std::time::Duration::ZERO)
             .await;
+    }
+
+    #[tokio::test]
+    async fn should_wait_before_processing_bitcoin_blocks() {
+        // NOTE: Above test `should_be_able_to_coordinate_signing_rounds`
+        // could be removed as redundant now.
+
+        // Measure baseline.
+        let baseline_start = std::time::Instant::now();
+        test_environment()
+            .assert_should_be_able_to_coordinate_signing_rounds(std::time::Duration::ZERO)
+            .await;
+        // Locally this takes a couple seconds to execute.
+        // This truncates the decimals.
+        let baseline_elapsed = std::time::Duration::from_secs(baseline_start.elapsed().as_secs());
+
+        let delay_i = 3;
+        let delay = std::time::Duration::from_secs(delay_i);
+        std::env::set_var(
+            "SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY",
+            delay_i.to_string(),
+        );
+        let start = std::time::Instant::now();
+        test_environment()
+            .assert_should_be_able_to_coordinate_signing_rounds(delay)
+            .await;
+        more_asserts::assert_gt!(start.elapsed(), delay + baseline_elapsed);
     }
 
     #[tokio::test]
