@@ -445,7 +445,7 @@ pub struct DepositTxConfig {
     /// bit set to 1 or the else the [`ReclaimScriptInputs::try_new`]
     /// function will return an error.
     #[dummy(faker = "2..250")]
-    pub lock_time: i64,
+    pub lock_time: u32,
 }
 
 impl fake::Dummy<DepositTxConfig> for BitcoinTx {

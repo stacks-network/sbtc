@@ -9,12 +9,12 @@ mod emily;
 mod postgres;
 mod rbf;
 mod setup;
+mod stacks_events_observer;
 mod transaction_coordinator;
 mod transaction_signer;
 mod utxo_construction;
 mod withdrawal_accept;
 mod zmq;
-
 /// This is needed to make sure that each test has as many isolated
 /// databases as it needs.
 pub static DATABASE_NUM: AtomicU16 = AtomicU16::new(0);

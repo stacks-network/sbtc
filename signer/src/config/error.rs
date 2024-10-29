@@ -56,4 +56,7 @@ pub enum SignerConfigError {
     /// Unsupported database driver
     #[error("Unsupported database driver: {0}. Supported drivers are: 'postgresql'.")]
     UnsupportedDatabaseDriver(String),
+
+    #[error("The provided Bitcoin processing delay must be small than {0}s, got {1}s")]
+    InvalidBitcoinProcessingDelay(u64, u64),
 }

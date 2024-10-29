@@ -70,8 +70,10 @@ fn tx_validation_from_mempool() {
     assert_eq!(parsed.reclaim_script, request.reclaim_script);
     assert_eq!(parsed.amount, amount_sats);
     assert_eq!(parsed.signers_public_key, setup.deposit.signers_public_key);
-    assert_eq!(parsed.lock_time, lock_time as u64);
     assert_eq!(parsed.recipient, setup.deposit.recipient);
+
+    let lock_time_height = bitcoin::relative::LockTime::from_height(lock_time as u16);
+    assert_eq!(parsed.lock_time, lock_time_height);
 }
 
 /// This validates that we need to reject deposit scripts that do not
@@ -223,7 +225,7 @@ fn op_csv_disabled() {
     // We're going to create a P2SH UTXO with this script. Anyone can spend
     // this script immediately, since the lock-time disables OP_CSV.
     let script_pubkey = ScriptBuf::builder()
-        .push_int(lock_time)
+        .push_int(lock_time as i64)
         .push_opcode(bitcoin::opcodes::all::OP_CSV)
         .push_opcode(bitcoin::opcodes::all::OP_DROP)
         .push_opcode(bitcoin::opcodes::OP_TRUE)
@@ -310,7 +312,7 @@ fn op_csv_disabled() {
     // The script_pubkey script function above is quite simple, it should
     // produce this:
     let script_pubkey2 = ScriptBuf::builder()
-        .push_int(lock_time)
+        .push_int(lock_time as i64)
         .push_opcode(bitcoin::opcodes::all::OP_CSV)
         .push_opcode(bitcoin::opcodes::all::OP_DROP)
         .push_opcode(bitcoin::opcodes::OP_TRUE)

@@ -1413,7 +1413,7 @@
         "properties": {
           "lockTime": {
             "type": "integer",
-            "format": "int64",
+            "format": "int32",
             "description": "Bitcoin block height at which the reclaim script becomes executable.",
             "minimum": 0
           },
