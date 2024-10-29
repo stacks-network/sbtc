@@ -308,6 +308,8 @@ describe("Accepting a withdrawal request", () => {
         signerBitmap: 0n,
         outputIndex: 10n,
         fee: 1n,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -341,6 +343,8 @@ describe("Accepting a withdrawal request", () => {
         signerBitmap: 0n,
         outputIndex: 10n,
         fee: 1n,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       alice
     );
@@ -374,6 +378,8 @@ describe("Accepting a withdrawal request", () => {
         signerBitmap: 0n,
         outputIndex: 10n,
         fee: 1n,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -384,6 +390,8 @@ describe("Accepting a withdrawal request", () => {
         signerBitmap: 0n,
         outputIndex: 10n,
         fee: 1n,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -417,6 +425,8 @@ describe("Accepting a withdrawal request", () => {
         signerBitmap: 0n,
         outputIndex: 10n,
         fee: 11n,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -450,6 +460,8 @@ describe("Accepting a withdrawal request", () => {
         signerBitmap: 2n,
         outputIndex: 10n,
         fee: defaultMaxFee + 10n,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -509,6 +521,8 @@ describe("Accepting a withdrawal request", () => {
         signerBitmap: 0n,
         outputIndex: 10n,
         fee: defaultMaxFee,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -574,6 +588,8 @@ describe("Accepting a withdrawal request", () => {
       withdrawal.rejectWithdrawalRequest({
         requestId: 1n,
         signerBitmap: 1234567n,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -650,6 +666,8 @@ describe("Accepting a withdrawal request", () => {
         signerBitmap: 0n,
         outputIndex: 10n,
         fee: 9n,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -683,6 +701,8 @@ describe("Reject a withdrawal request", () => {
       withdrawal.rejectWithdrawalRequest({
         requestId: 2n,
         signerBitmap: 0n,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       alice
     );
@@ -713,6 +733,8 @@ describe("Reject a withdrawal request", () => {
       withdrawal.rejectWithdrawalRequest({
         requestId: 1n,
         signerBitmap: 0n,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       alice
     );
@@ -746,6 +768,8 @@ describe("Reject a withdrawal request", () => {
         signerBitmap: 0n,
         outputIndex: 10n,
         fee: 10n,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -753,6 +777,8 @@ describe("Reject a withdrawal request", () => {
       withdrawal.rejectWithdrawalRequest({
         requestId: 1n,
         signerBitmap: 0n,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -796,7 +822,9 @@ describe("Reject a withdrawal request", () => {
       }),
       deployer
     );
-    expect(receipt.value).toEqual(errors.withdrawal.ERR_INVALID_BURN_HASH);
+    // Magic number below comes from: (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index)))
+    // Where index is 1 in this case & ERR_WITHDRAWAL_INDEX_PREFIX is 507
+    expect(receipt.value).toEqual(517n);
   });
   test("Successfully reject a requested withdrawal", () => {
     // Alice initiates withdrawalrequest
@@ -826,6 +854,8 @@ describe("Reject a withdrawal request", () => {
         signerBitmap: 0n,
         outputIndex: 10n,
         fee: defaultMaxFee,
+        burnHash: new Uint8Array(32).fill(0),
+        burnHeight: 0n,
       }),
       deployer
     );
@@ -903,7 +933,9 @@ describe("Complete multiple withdrawals", () => {
       }),
       deployer
     );
-    expect(receipt.value).toEqual(errors.withdrawal.ERR_INVALID_BURN_HASH);
+    // Magic number below comes from: (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index)))
+    // Where index is 1 in this case & ERR_WITHDRAWAL_INDEX_PREFIX is 507
+    expect(receipt.value).toEqual(517n);
   });
 });
 
