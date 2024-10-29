@@ -34,7 +34,7 @@ pub struct SweepTransaction {
     pub signer_prevout_amount: u64,
     /// The public key of the signer UTXO consumed by this transaction.
     pub signer_prevout_script_pubkey: ScriptPubKey,
-    /// The total amount of this transaction.
+    /// The total **output** amount of this transaction.
     #[sqlx(try_from = "i64")]
     pub amount: u64,
     /// The fee paid for this transaction.

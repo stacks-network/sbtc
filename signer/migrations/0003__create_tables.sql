@@ -189,7 +189,7 @@ CREATE TABLE sbtc_signer.sweep_transactions (
     signer_prevout_output_index INTEGER NOT NULL,
     signer_prevout_amount BIGINT NOT NULL,
     signer_prevout_script_pubkey BYTEA NOT NULL,
-    -- The total amount of the transaction.
+    -- The total _output_ amount of the transaction.
     amount BIGINT NOT NULL,
     -- The fee paid for the transaction.
     fee BIGINT NOT NULL,
@@ -206,7 +206,7 @@ CREATE TABLE sbtc_signer.sweep_transactions (
 -- to reference the withdrawal request together with its Stacks block hash,
 -- which can be retrieved from the `withdrawal_requests` table.
 CREATE TABLE sbtc_signer.swept_withdrawals (
-    sweep_transaction_txid BYTEA PRIMARY KEY NOT NULL,
+    sweep_transaction_txid BYTEA NOT NULL,
     -- The index of the sweep output in the sweep transaction.
     output_index INTEGER NOT NULL,
     -- The ID of the withdrawal request, referencing the `withdrawal_requests`
@@ -215,6 +215,8 @@ CREATE TABLE sbtc_signer.swept_withdrawals (
     -- The Stacks block hash of the withdrawal request, referencing the
     -- `withdrawal_requests` table.
     withdrawal_request_block_hash BYTEA NOT NULL,
+
+    PRIMARY KEY (sweep_transaction_txid, output_index),
 
     FOREIGN KEY (sweep_transaction_txid) 
         REFERENCES sbtc_signer.sweep_transactions(txid),
@@ -243,6 +245,8 @@ CREATE TABLE sbtc_signer.swept_deposits (
     -- The output index of the deposit request, referencing the
     -- `deposit_requests` table.
     deposit_request_output_index INTEGER NOT NULL,
+
+    PRIMARY KEY (sweep_transaction_txid, input_index),
 
     FOREIGN KEY (sweep_transaction_txid)
         REFERENCES sbtc_signer.sweep_transactions(txid),
