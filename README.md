@@ -103,6 +103,14 @@ Once running, the following services are available:
 - Stacks explorer at [localhost:3020](http://localhost:3020)
 - Mempool.space Bitcoin explorer at [localhost:8083](http://localhost:8083)
 
+### Git hooks
+
+[`./devenv/hooks`](./devenv/hooks) contains Git hooks you can install to run
+`pre-commit` checks. You can (optionally) run `make install-git-hooks` to
+install them. Be advised: under the hood, the hooks will run `make lint`, which
+relies on `clippy` and `rust fmt` and might need to download and compile
+dependencies.
+
 ### Operating Systems
 
 This project currently supports development on UNIX-based operating systems but
