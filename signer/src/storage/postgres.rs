@@ -360,7 +360,7 @@ impl PgStore {
             break;
         }
 
-        // `utxo_block` is the heighest block containing a valid utxo
+        // `utxo_block` is the highest block containing a valid utxo
         let Some(utxo_block) = utxo_block else {
             return Ok(None);
         };
@@ -1132,7 +1132,7 @@ impl super::DbRead for PgStore {
             break;
         }
 
-        // `utxo_block` is the heighest block containing a valid utxo
+        // `utxo_block` is the highest block containing a valid utxo
         let Some(utxo_block) = utxo_block else {
             // if no sbtc tx exists, consider donations
             return self

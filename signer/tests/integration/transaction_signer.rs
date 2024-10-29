@@ -42,7 +42,7 @@ async fn test_environment(
         WrappedMock<MockEmilyInteract>,
     >,
 > {
-    let context_window = 3;
+    let context_window = 6;
 
     let test_model_parameters = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
