@@ -10,6 +10,7 @@ pub fn compile_protos() {
     let protos = [
         "protobufs/bitcoin/bitcoin.proto",
         "protobufs/crypto/common.proto",
+        "protobufs/crypto/wsts/state.proto",
         "protobufs/crypto/wsts/wsts.proto",
         "protobufs/stacks/common.proto",
         "protobufs/stacks/signer/v1/decisions.proto",
