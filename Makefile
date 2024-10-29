@@ -181,3 +181,13 @@ run-signer:
 	RUST_LOG=info SIGNER_SIGNER__DB_ENDPOINT="postgres://devenv:devenv@localhost:$$POSTGRES_PORT/signer" cargo run --bin signer -- -c ./signer/src/config/default.toml --migrate-db
 
 .PHONY: run-signer
+
+# Git hooks
+# ----------------------------------------------------
+
+install-git-hooks:
+	mkdir -p .git/hooks
+	ln -s ../../devenv/hooks/pre-commit-make-lint.sh .git/hooks/
+
+.PHONY: install-git-hooks
+
