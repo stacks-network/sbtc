@@ -701,6 +701,8 @@ impl StacksClient {
             .await
             .map_err(Error::UnexpectedStacksResponse)
             .and_then(|result| {
+                // For `consensus` lookups we expect to get a list with a single element
+                // https://github.com/stacks-network/stacks-core/blob/40059a57cd27e740c5e9d91a833fb2c975b0bf0b/docs/rpc/openapi.yaml#L693
                 result
                     .into_iter()
                     .next()
