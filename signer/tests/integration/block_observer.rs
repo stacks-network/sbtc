@@ -16,10 +16,10 @@ use rand::SeedableRng as _;
 use sbtc::testing::regtest;
 use signer::error::Error;
 use signer::logging::setup_logging;
-use stacks_common::types::chainstate::ConsensusHash;
-use stacks_common::types::chainstate::StacksBlockId;
 use stacks_common::types::chainstate::BurnchainHeaderHash;
+use stacks_common::types::chainstate::ConsensusHash;
 use stacks_common::types::chainstate::SortitionId;
+use stacks_common::types::chainstate::StacksBlockId;
 
 use signer::bitcoin::zmq::BitcoinCoreMessageStream;
 use signer::block_observer::BlockObserver;
@@ -310,7 +310,6 @@ async fn link_blocks() {
         .expect("missing bitcoin tip")
         .expect("missing bitcoin tip");
 
-    // Currently we link with one bitcoin block delay
     let stacks_tip = ctx
         .get_storage()
         .get_stacks_chain_tip(&bitcoin_tip_hash)

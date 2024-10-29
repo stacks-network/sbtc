@@ -28,9 +28,6 @@ pub struct BitcoinBlock {
     pub block_height: u64,
     /// Hash of the parent block.
     pub parent_hash: BitcoinBlockHash,
-    /// Stacks block confirmed by this block.
-    #[cfg_attr(feature = "testing", dummy(default))]
-    pub confirms: Vec<StacksBlockHash>,
 }
 
 /// Stacks block.

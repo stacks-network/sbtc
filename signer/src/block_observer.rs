@@ -449,7 +449,6 @@ where
                 .bip34_block_height()
                 .expect("Failed to get block height"),
             parent_hash: block.header.prev_blockhash.into(),
-            confirms: Vec::new(),
         };
 
         self.context

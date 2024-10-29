@@ -375,7 +375,7 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
     let num_signers = 7;
-    let context_window = 3;
+    let context_window = 5;
     let test_model_params = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
         num_stacks_blocks_per_bitcoin_block: 3,
@@ -405,12 +405,27 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
         chain_tip
     );
 
+    assert_eq!(
+        in_memory_store
+            .get_stacks_chain_tip(&chain_tip)
+            .await
+            .expect("failed to get stacks chain tip")
+            .expect("no chain tip"),
+        pg_store
+            .get_stacks_chain_tip(&chain_tip)
+            .await
+            .expect("failed to get stacks chain tip")
+            .expect("no chain tip"),
+    );
+
     let mut pending_withdraw_requests = in_memory_store
         .get_pending_withdrawal_requests(&chain_tip, context_window)
         .await
         .expect("failed to get pending deposit requests");
 
     pending_withdraw_requests.sort();
+
+    assert!(!pending_withdraw_requests.is_empty());
 
     let mut pg_pending_withdraw_requests = pg_store
         .get_pending_withdrawal_requests(&chain_tip, context_window)
@@ -501,7 +516,7 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
     let num_signers = 15;
-    let context_window = 3;
+    let context_window = 5;
     let test_model_params = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
         num_stacks_blocks_per_bitcoin_block: 3,
@@ -703,7 +718,6 @@ async fn writing_transactions_postgres() {
         block_hash: block_hash.into(),
         block_height: 15,
         parent_hash: parent_hash.into(),
-        confirms: Vec::new(),
     };
 
     // We start by writing the bitcoin block because of the foreign key

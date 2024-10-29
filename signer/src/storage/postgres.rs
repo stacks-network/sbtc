@@ -408,7 +408,6 @@ impl super::DbRead for PgStore {
                 block_hash
               , block_height
               , parent_hash
-              , confirms
             FROM sbtc_signer.bitcoin_blocks
             WHERE block_hash = $1;",
         )
@@ -446,7 +445,6 @@ impl super::DbRead for PgStore {
                 block_hash
               , block_height
               , parent_hash
-              , confirms
              FROM sbtc_signer.bitcoin_blocks
              ORDER BY block_height DESC, block_hash DESC
              LIMIT 1",
@@ -461,7 +459,9 @@ impl super::DbRead for PgStore {
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Option<model::StacksBlock>, Error> {
-        // TODO: stop recursion after the first bitcoin block having stacks block anchored
+        // TODO: stop recursion after the first bitcoin block having stacks block anchored?
+        // Note that in tests generated data we may get a taller stacks chain anchored to a
+        // bitcoin block that may not be the first one we encounter having stacks block anchored
         sqlx::query_as::<_, model::StacksBlock>(
             r#"
             WITH RECURSIVE context_window AS (
@@ -783,7 +783,6 @@ impl super::DbRead for PgStore {
                 SELECT 
                     block_hash
                   , parent_hash
-                  , confirms
                   , 1 AS depth
                 FROM sbtc_signer.bitcoin_blocks
                 WHERE block_hash = $1
@@ -793,19 +792,10 @@ impl super::DbRead for PgStore {
                 SELECT
                     parent.block_hash
                   , parent.parent_hash
-                  , parent.confirms
                   , last.depth + 1
                 FROM sbtc_signer.bitcoin_blocks parent
                 JOIN extended_context_window last ON parent.block_hash = last.parent_hash
                 WHERE last.depth <= $3
-            ),
-            last_bitcoin_block AS (
-                SELECT
-                    block_hash
-                  , confirms
-                FROM extended_context_window
-                ORDER BY depth DESC
-                LIMIT 1
             ),
             stacks_context_window AS (
                 SELECT
@@ -824,9 +814,8 @@ impl super::DbRead for PgStore {
                 FROM sbtc_signer.stacks_blocks parent
                 JOIN stacks_context_window last
                         ON parent.block_hash = last.parent_hash
-                LEFT JOIN last_bitcoin_block block
-                        ON block.confirms @> ARRAY[parent.block_hash]
-                WHERE block.block_hash IS NULL
+                JOIN extended_context_window block
+                        ON block.block_hash = parent.bitcoin_anchor
             )
             SELECT
                 wr.request_id
@@ -863,7 +852,6 @@ impl super::DbRead for PgStore {
                 SELECT 
                     block_hash
                   , parent_hash
-                  , confirms
                   , 1 AS depth
                 FROM sbtc_signer.bitcoin_blocks
                 WHERE block_hash = $1
@@ -873,19 +861,10 @@ impl super::DbRead for PgStore {
                 SELECT
                     parent.block_hash
                   , parent.parent_hash
-                  , parent.confirms
                   , last.depth + 1
                 FROM sbtc_signer.bitcoin_blocks parent
                 JOIN extended_context_window last ON parent.block_hash = last.parent_hash
                 WHERE last.depth <= $3
-            ),
-            last_bitcoin_block AS (
-                SELECT
-                    block_hash
-                  , confirms
-                FROM extended_context_window
-                ORDER BY depth DESC
-                LIMIT 1
             ),
             stacks_context_window AS (
                 SELECT
@@ -904,9 +883,8 @@ impl super::DbRead for PgStore {
                 FROM sbtc_signer.stacks_blocks parent
                 JOIN stacks_context_window last
                         ON parent.block_hash = last.parent_hash
-                LEFT JOIN last_bitcoin_block block
-                        ON block.confirms @> ARRAY[parent.block_hash]
-                WHERE block.block_hash IS NULL
+                JOIN extended_context_window block
+                        ON block.block_hash = parent.bitcoin_anchor
             )
             SELECT
                 wr.request_id
@@ -1289,7 +1267,6 @@ impl super::DbRead for PgStore {
                     block_hash
                   , parent_hash
                   , block_height
-                  , confirms
                   , 1 AS depth
                 FROM sbtc_signer.bitcoin_blocks
                 WHERE block_hash = $1
@@ -1300,7 +1277,6 @@ impl super::DbRead for PgStore {
                     parent.block_hash
                   , parent.parent_hash
                   , parent.block_height
-                  , parent.confirms
                   , last.depth + 1
                 FROM sbtc_signer.bitcoin_blocks AS parent
                 JOIN canonical_bitcoin_blockchain AS last
@@ -1354,15 +1330,13 @@ impl super::DbWrite for PgStore {
               ( block_hash
               , block_height
               , parent_hash
-              , confirms
               )
-            VALUES ($1, $2, $3, $4)
+            VALUES ($1, $2, $3)
             ON CONFLICT DO NOTHING",
         )
         .bind(block.block_hash)
         .bind(i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?)
         .bind(block.parent_hash)
-        .bind(&block.confirms)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
