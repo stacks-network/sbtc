@@ -28,7 +28,7 @@ use crate::transaction_signer;
 use crate::ecdsa::SignEcdsa as _;
 use crate::network::MessageTransfer as _;
 
-use futures::StreamExt as _;
+use hashbrown::HashSet;
 use rand::SeedableRng as _;
 use sha2::Digest as _;
 use tokio::sync::broadcast;
@@ -756,40 +756,29 @@ where
             .expect("storage failure")
             .expect("missing block");
 
-        let context_window_end_block = futures::stream::iter(0..context_window)
-            .fold(chain_tip.clone(), |block, _| async move {
-                let storage = self.context.get_storage();
-                storage
-                    .get_bitcoin_block(&block.parent_hash)
-                    .await
-                    .expect("storage failure")
-                    .unwrap_or(block)
-            })
-            .await;
+        let storage = self.context.get_storage();
+        let mut context_window_end_block = chain_tip.clone();
+        let mut context_window_bitcoin_blocks = HashSet::new();
+        for _ in 0..context_window {
+            context_window_bitcoin_blocks.insert(context_window_end_block.block_hash);
+            context_window_end_block = storage
+                .get_bitcoin_block(&context_window_end_block.parent_hash)
+                .await
+                .expect("storage failure")
+                .unwrap_or(context_window_end_block);
+        }
 
-        let stacks_chain_tip = futures::stream::iter(chain_tip.confirms)
-            .then(|stacks_block_hash| async move {
-                let storage = self.context.get_storage();
-                storage
-                    .get_stacks_block(&stacks_block_hash)
-                    .await
-                    .expect("missing block")
-            })
-            .collect::<Vec<_>>()
+        let stacks_chain_tip = storage
+            .get_stacks_chain_tip(&canoncial_tip_block_hash)
             .await
-            .into_iter()
-            .flatten()
-            .max_by_key(|block| (block.block_height, block.block_hash))
-            .expect("missing stacks block");
+            .expect("storage failure")
+            .expect("missing block");
 
         let mut cursor = Some(stacks_chain_tip);
         let mut context_window_block_hashes = Vec::new();
 
         while let Some(stacks_block) = cursor {
-            if context_window_end_block
-                .confirms
-                .contains(&stacks_block.block_hash)
-            {
+            if !context_window_bitcoin_blocks.contains(&stacks_block.bitcoin_anchor) {
                 break;
             }
 

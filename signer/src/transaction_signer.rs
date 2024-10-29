@@ -945,7 +945,7 @@ mod tests {
 
         testing::transaction_signer::TestEnvironment {
             context,
-            context_window: 3,
+            context_window: 6,
             num_signers: 7,
             signing_threshold: 5,
             test_model_parameters,

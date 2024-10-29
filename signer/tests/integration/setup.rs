@@ -301,21 +301,9 @@ impl TestSweepSetup {
             block_hash: self.withdrawal_request.block_hash,
             block_height: self.sweep_block_height,
             parent_hash: Faker.fake_with_rng(&mut OsRng),
+            bitcoin_anchor: self.sweep_block_hash.into(),
         };
         db.write_stacks_block(&block).await.unwrap();
-
-        sqlx::query(
-            r#"
-            UPDATE sbtc_signer.bitcoin_blocks
-            SET confirms = array_append(confirms, $1)
-            WHERE block_height = $2;
-            "#,
-        )
-        .bind(&self.withdrawal_request.block_hash)
-        .bind(self.sweep_block_height as i64)
-        .execute(db.pool())
-        .await
-        .unwrap();
 
         let withdrawal_request = model::WithdrawalRequest {
             request_id: self.withdrawal_request.request_id,
@@ -369,7 +357,6 @@ pub async fn backfill_bitcoin_blocks(db: &PgStore, rpc: &Client, chain_tip: &bit
             block_hash: block_header.hash.into(),
             block_height: block_header.height as u64,
             parent_hash: parent_header_hash.into(),
-            confirms: Vec::new(),
         };
 
         db.write_bitcoin_block(&bitcoin_block).await.unwrap();

@@ -42,7 +42,7 @@ async fn test_environment(
         WrappedMock<MockEmilyInteract>,
     >,
 > {
-    let context_window = 3;
+    let context_window = 6;
 
     let test_model_parameters = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
@@ -216,7 +216,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
     let config_signer_set = ctx.config().signer.bootstrap_signing_set();
     assert_eq!(bootstrap_signer_set, config_signer_set);
 
-    // Okay not we write a rotate-keys transaction into the database. To do
+    // Okay now we write a rotate-keys transaction into the database. To do
     // that we need the stacks chain tip, and a something in 3 different
     // tables...
     let stacks_chain_tip = db.get_stacks_chain_tip(&chain_tip).await.unwrap().unwrap();
@@ -248,7 +248,10 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
         .into_iter()
         .collect();
 
-    assert_eq!(rotate_keys.signer_set, signer_set);
+    let mut rotate_keys_signer_set = rotate_keys.signer_set.clone();
+    rotate_keys_signer_set.sort();
+
+    assert_eq!(rotate_keys_signer_set, signer_set);
 
     testing::storage::drop_db(db).await;
 }

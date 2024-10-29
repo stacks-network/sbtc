@@ -17,6 +17,7 @@
 //! - Update signer set transactions
 //! - Set aggregate key transactions
 
+use std::collections::HashMap;
 use std::future::Future;
 
 use crate::bitcoin::rpc::BitcoinTxInfo;
@@ -28,6 +29,7 @@ use crate::error::Error;
 use crate::stacks::api::StacksInteract;
 use crate::storage;
 use crate::storage::model;
+use crate::storage::model::BitcoinBlockHash;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use bitcoin::hashes::Hash as _;
@@ -267,13 +269,13 @@ where
     #[tracing::instrument(skip_all, fields(block_hash = %block.block_hash()))]
     async fn process_bitcoin_block(&mut self, block: bitcoin::Block) -> Result<(), Error> {
         tracing::info!("processing bitcoin block");
-        let info = self.stacks_client.get_tenure_info().await?;
+        let tenure_info = self.stacks_client.get_tenure_info().await?;
 
         tracing::debug!("fetching unknown ancestral blocks from stacks-core");
         let stacks_blocks = crate::stacks::api::fetch_unknown_ancestors(
             &self.stacks_client,
             &self.context.get_storage(),
-            info.tip_block_id,
+            tenure_info.tip_block_id,
         )
         .await?;
 
@@ -404,10 +406,33 @@ where
     ) -> Result<(), Error> {
         let deployer = &self.context.config().signer.deployer;
         let txs = storage::postgres::extract_relevant_transactions(blocks, deployer);
+
+        let unique_consensus_hashes = blocks
+            .iter()
+            .map(|block| block.header.consensus_hash)
+            .collect::<HashSet<_>>();
+        let mut consensus_hashes = HashMap::new();
+        for consensus_hash in unique_consensus_hashes {
+            let anchor_block: BitcoinBlockHash = self
+                .stacks_client
+                .get_sortition_info(&consensus_hash)
+                .await?
+                .burn_block_hash
+                .into();
+            consensus_hashes.insert(consensus_hash, anchor_block);
+        }
+
         let headers = blocks
             .iter()
-            .map(model::StacksBlock::try_from)
-            .collect::<Result<_, _>>()?;
+            .map(|block| {
+                Ok(model::StacksBlock::from_nakamoto_block(
+                    block,
+                    consensus_hashes
+                        .get(&block.header.consensus_hash)
+                        .ok_or(Error::MissingBlock)?,
+                ))
+            })
+            .collect::<Result<_, Error>>()?;
 
         let storage = self.context.get_storage_mut();
         storage.write_stacks_block_headers(headers).await?;
@@ -424,7 +449,6 @@ where
                 .bip34_block_height()
                 .expect("Failed to get block height"),
             parent_hash: block.header.prev_blockhash.into(),
-            confirms: Vec::new(),
         };
 
         self.context

@@ -77,8 +77,9 @@ pub struct Store {
     pub stacks_block_to_withdrawal_requests:
         HashMap<model::StacksBlockHash, Vec<WithdrawalRequestPk>>,
 
-    /// Stacks blocks under nakamoto
-    pub stacks_nakamoto_blocks: HashMap<model::StacksBlockHash, model::StacksBlock>,
+    /// Bitcoin anchor to stacks blocks
+    pub bitcoin_anchor_to_stacks_blocks:
+        HashMap<model::BitcoinBlockHash, Vec<model::StacksBlockHash>>,
 
     /// Encrypted DKG shares
     pub encrypted_dkg_shares: BTreeMap<PublicKey, (OffsetDateTime, model::EncryptedDkgShares)>,
@@ -202,12 +203,14 @@ impl super::DbRead for SharedStore {
             return Ok(None);
         };
 
-        Ok(bitcoin_chain_tip
-            .confirms
-            .iter()
-            .filter_map(|stacks_block_hash| store.stacks_blocks.get(stacks_block_hash))
-            .max_by_key(|block| (block.block_height, &block.block_hash))
-            .cloned())
+        Ok(std::iter::successors(Some(bitcoin_chain_tip), |block| {
+            store.bitcoin_blocks.get(&block.parent_hash)
+        })
+        .filter_map(|block| store.bitcoin_anchor_to_stacks_blocks.get(&block.block_hash))
+        .flatten()
+        .filter_map(|stacks_block_hash| store.stacks_blocks.get(stacks_block_hash))
+        .max_by_key(|block| (block.block_height, &block.block_hash))
+        .cloned())
     }
 
     async fn get_pending_deposit_requests(
@@ -375,9 +378,12 @@ impl super::DbRead for SharedStore {
                 store.stacks_blocks.get(&stacks_block.parent_hash)
             })
             .take_while(|stacks_block| {
-                !context_window_end_block
-                    .as_ref()
-                    .is_some_and(|block| block.confirms.contains(&stacks_block.block_hash))
+                !context_window_end_block.as_ref().is_some_and(|block| {
+                    store
+                        .bitcoin_blocks
+                        .get(&stacks_block.bitcoin_anchor)
+                        .is_some_and(|anchor| anchor.block_height <= block.block_height)
+                })
             })
             .flat_map(|stacks_block| {
                 store
@@ -442,7 +448,7 @@ impl super::DbRead for SharedStore {
         Ok(self
             .lock()
             .await
-            .stacks_nakamoto_blocks
+            .stacks_blocks
             .contains_key(&block_id.into()))
     }
 
@@ -714,11 +720,13 @@ impl super::DbWrite for SharedStore {
     }
 
     async fn write_stacks_block(&self, block: &model::StacksBlock) -> Result<(), Error> {
-        self.lock()
-            .await
-            .stacks_blocks
-            .insert(block.block_hash, block.clone());
-
+        let mut store = self.lock().await;
+        store.stacks_blocks.insert(block.block_hash, block.clone());
+        store
+            .bitcoin_anchor_to_stacks_blocks
+            .entry(block.bitcoin_anchor)
+            .or_default()
+            .push(block.block_hash);
         Ok(())
     }
 
@@ -878,9 +886,12 @@ impl super::DbWrite for SharedStore {
     ) -> Result<(), Error> {
         let mut store = self.lock().await;
         blocks.iter().for_each(|block| {
+            store.stacks_blocks.insert(block.block_hash, block.clone());
             store
-                .stacks_nakamoto_blocks
-                .insert(block.block_hash, block.clone());
+                .bitcoin_anchor_to_stacks_blocks
+                .entry(block.bitcoin_anchor)
+                .or_default()
+                .push(block.block_hash);
         });
 
         Ok(())
