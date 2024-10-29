@@ -7,6 +7,10 @@ use bitcoin::Txid;
 /// Errors
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// This happens when we realize that the lock-time in the reclaim
+    /// script disables the OP_CSV check.
+    #[error("invalid lock-time: {0}")]
+    DisabledLockTime(#[source] bitcoin::locktime::relative::DisabledLockTimeError),
     /// The end of the deposit script has a fixed format that is very
     /// similar to a P2PK check_sig script, the script violated that format
     #[error("script is CHECKSIG part of script")]
@@ -38,6 +42,10 @@ pub enum Error {
     /// Could not parse the Stacks principal address.
     #[error("could not parse the stacks principal address: {0}")]
     ParseStacksAddress(#[source] stacks_common::codec::Error),
+    /// This happens when the lock-time is given in time units instead of
+    /// block units.
+    #[error("lock-time given in time units, but only block units are supported: {0}")]
+    UnsupportedLockTimeUnits(u32),
     /// Failed to extract the outpoint from the bitcoin::Transaction.
     #[error("could not get outpoint {1} from BTC transaction: {0}")]
     OutpointIndex(

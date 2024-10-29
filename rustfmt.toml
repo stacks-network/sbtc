@@ -1,3 +1,8 @@
 edition = "2021"
 struct_lit_width = 30
 # imports_granularity = "Item"
+
+# TODO(719): Enable me once rustfmt 2.0.0 ships
+# ignore = [
+#     ".generated-sources", 
+# ]
