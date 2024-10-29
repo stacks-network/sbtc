@@ -423,15 +423,15 @@ impl PgStore {
         let transaction: Option<model::SweepTransaction> = sqlx::query_as(
             "
             SELECT
-                txid,
-                signer_prevout_txid,
-                signer_prevout_output_index,
-                signer_prevout_amount,
-                signer_prevout_script_pubkey,
-                amount,
-                fee,
-                created_at_block_hash,
-                market_fee_rate
+                txid
+              , signer_prevout_txid
+              , signer_prevout_output_index
+              , signer_prevout_amount
+              , signer_prevout_script_pubkey
+              , amount
+              , fee
+              , created_at_block_hash
+              , market_fee_rate
             FROM
                 sweep_transactions
             WHERE
@@ -450,9 +450,9 @@ impl PgStore {
         let swept_deposits = sqlx::query_as(
             "
             SELECT
-                input_index,
-                deposit_request_txid,
-                deposit_request_output_index
+                input_index
+              , deposit_request_txid
+              , deposit_request_output_index
             FROM
                 swept_deposits
             WHERE
@@ -469,9 +469,9 @@ impl PgStore {
         let swept_withdrawals = sqlx::query_as(
             "
             SELECT
-                output_index,
-                withdrawal_request_id,
-                withdrawal_request_block_hash
+                output_index
+              , withdrawal_request_id
+              , withdrawal_request_block_hash
             FROM
                 swept_withdrawals
             WHERE
@@ -2083,15 +2083,23 @@ impl super::DbWrite for PgStore {
               , created_at_block_hash
               , market_fee_rate
             ) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT DO NOTHING;
+        ",
         )
         .bind(transaction.txid)
         .bind(transaction.signer_prevout_txid)
-        .bind(transaction.signer_prevout_output_index as i32)
-        .bind(transaction.signer_prevout_amount as i64)
+        .bind(
+            i32::try_from(transaction.signer_prevout_output_index)
+                .map_err(Error::ConversionDatabaseInt)?,
+        )
+        .bind(
+            i64::try_from(transaction.signer_prevout_amount)
+                .map_err(Error::ConversionDatabaseInt)?,
+        )
         .bind(transaction.signer_prevout_script_pubkey.clone())
-        .bind(transaction.amount as i64)
-        .bind(transaction.fee as i64)
+        .bind(i64::try_from(transaction.amount).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(transaction.fee).map_err(Error::ConversionDatabaseInt)?)
         .bind(transaction.created_at_block_hash)
         .bind(transaction.market_fee_rate)
         .execute(&mut *tx)
@@ -2108,12 +2116,17 @@ impl super::DbWrite for PgStore {
                   , deposit_request_txid
                   , deposit_request_output_index
                 )
-                VALUES ($1, $2, $3, $4)",
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT DO NOTHING;
+            ",
             )
             .bind(transaction.txid)
-            .bind(deposit.input_index as i32)
+            .bind(i32::try_from(deposit.input_index).map_err(Error::ConversionDatabaseInt)?)
             .bind(deposit.deposit_request_txid)
-            .bind(deposit.deposit_request_output_index as i32)
+            .bind(
+                i32::try_from(deposit.deposit_request_output_index)
+                    .map_err(Error::ConversionDatabaseInt)?,
+            )
             .execute(&mut *tx)
             .await
             .map_err(Error::SqlxQuery)?;
@@ -2129,11 +2142,16 @@ impl super::DbWrite for PgStore {
                   , withdrawal_request_id
                   , withdrawal_request_block_hash
                 )
-                VALUES ($1, $2, $3, $4)",
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT DO NOTHING;
+            ",
             )
             .bind(transaction.txid)
-            .bind(withdrawal.output_index as i32)
-            .bind(withdrawal.withdrawal_request_id as i64)
+            .bind(i32::try_from(withdrawal.output_index).map_err(Error::ConversionDatabaseInt)?)
+            .bind(
+                i64::try_from(withdrawal.withdrawal_request_id)
+                    .map_err(Error::ConversionDatabaseInt)?,
+            )
             .bind(withdrawal.withdrawal_request_block_hash)
             .execute(&mut *tx)
             .await

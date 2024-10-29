@@ -28,17 +28,21 @@ pub struct SweepTransaction {
     pub signer_prevout_txid: BitcoinTxId,
     /// The index of the signer UTXO consumed by this transaction.
     #[sqlx(try_from = "i32")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
     pub signer_prevout_output_index: u32,
     /// The amount of the signer UTXO consumed by this transaction.
     #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u64"))]
     pub signer_prevout_amount: u64,
     /// The public key of the signer UTXO consumed by this transaction.
     pub signer_prevout_script_pubkey: ScriptPubKey,
     /// The total **output** amount of this transaction.
     #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u64"))]
     pub amount: u64,
     /// The fee paid for this transaction.
     #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u64"))]
     pub fee: u64,
     /// The Bitcoin block hash at which this transaction was created.
     pub created_at_block_hash: BitcoinBlockHash,
@@ -123,6 +127,7 @@ impl SweepTransaction {
 pub struct SweptDeposit {
     /// The index of the deposit input in the sBTC sweep transaction.
     #[sqlx(try_from = "i32")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
     pub input_index: u32,
     /// The Bitcoin txid of the deposit request UTXO being swept-in by this
     /// transaction.
@@ -130,6 +135,7 @@ pub struct SweptDeposit {
     /// The Bitcoin output index of the deposit request UTXO being swept-in by
     /// this transaction.
     #[sqlx(try_from = "i32")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
     pub deposit_request_output_index: u32,
 }
 
@@ -149,10 +155,12 @@ impl From<SweptDeposit> for bitcoin::OutPoint {
 pub struct SweptWithdrawal {
     /// The index of the withdrawal output in the sBTC sweep transaction.
     #[sqlx(try_from = "i32")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
     pub output_index: u32,
     /// The public request id of the withdrawal request serviced by this
     /// transaction.
     #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
     pub withdrawal_request_id: u64,
     /// The Stacks block hash of the Stacks block which included the withdrawal
     /// request transaction.
@@ -167,7 +175,7 @@ pub struct BitcoinBlock {
     pub block_hash: BitcoinBlockHash,
     /// Block height.
     #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
     pub block_height: u64,
     /// Hash of the parent block.
     pub parent_hash: BitcoinBlockHash,
