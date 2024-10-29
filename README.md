@@ -81,7 +81,9 @@ To build the sources we recommend you use the `Makefile` commands; they'll build
 - `make lint` - Lints packages
 - `make clean` - Cleans workspace
 - `make test` - Run non-integration tests
-- `make integration-test` - Run integration tests. This needs local services running; use something like `docker compose --file docker-compose.test.yml up --detach` to start the necessary services.
+- `make integration-test` - Run integration tests.
+    - Before running integration tests you must run `make integration-env-up`
+    - After running integration tests you must run `make integration-env-down`
 
 For other commands read the `Makefile` at repository root.
 
@@ -100,6 +102,14 @@ Once running, the following services are available:
 - 3 Nakamoto signers at [localhost:30000](http://localhost:30000), [localhost:30001](http://localhost:30001), and [localhost:30002](http://localhost:30002)
 - Stacks explorer at [localhost:3020](http://localhost:3020)
 - Mempool.space Bitcoin explorer at [localhost:8083](http://localhost:8083)
+
+### Git hooks
+
+[`./devenv/hooks`](./devenv/hooks) contains Git hooks you can install to run
+`pre-commit` checks. You can (optionally) run `make install-git-hooks` to
+install them. Be advised: under the hood, the hooks will run `make lint`, which
+relies on `clippy` and `rust fmt` and might need to download and compile
+dependencies.
 
 ### Operating Systems
 

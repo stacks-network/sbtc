@@ -106,6 +106,8 @@ pub async fn get_deposits_for_transaction(
         bitcoin_txid: String,
         query: GetDepositsForTransactionQuery,
     ) -> Result<impl warp::reply::Reply, Error> {
+        // TODO(506): Reverse this order of deposits so that the transactions are returned
+        // in ascending index order.
         let (entries, next_token) = accessors::get_deposit_entries_for_transaction(
             &context,
             &bitcoin_txid,
@@ -235,6 +237,7 @@ pub async fn create_deposit(
             status,
             last_update_block_hash: stacks_block_hash,
             last_update_height: stacks_block_height,
+            amount: script_parameters.amount,
             reclaim_script: body.reclaim_script,
             deposit_script: body.deposit_script,
             ..Default::default()
@@ -255,9 +258,10 @@ pub async fn create_deposit(
 
 /// Parameters from the deposit and reclaim scripts.
 struct ScriptParameters {
+    amount: u64,
     max_fee: u64,
     recipient: String,
-    lock_time: u64,
+    lock_time: u32,
 }
 
 /// Convert scripts to resource parameters.
@@ -278,6 +282,8 @@ fn scripts_to_resource_parameters(
     let recipient_hex_string = hex::encode(&recipient_bytes);
 
     Ok(ScriptParameters {
+        // TODO(TBD): Get the amount from some script related data somehow.
+        amount: 0,
         max_fee: deposit_script_inputs.max_fee,
         recipient: recipient_hex_string,
         lock_time: reclaim_script_inputs.lock_time(),
@@ -317,11 +323,23 @@ pub async fn update_deposits(
         api_state.error_if_reorganizing()?;
         // Validate request.
         let validated_request: ValidatedUpdateDepositsRequest = body.try_into()?;
+
+        // Infer the new chainstates that would come from these deposit updates and then
+        // attempt to update the chainstates.
+        let inferred_chainstates = validated_request.inferred_chainstates()?;
+        for chainstate in inferred_chainstates {
+            // TODO(TBD): Determine what happens if this occurs in multiple lambda
+            // instances at once.
+            crate::api::handlers::chainstate::add_chainstate_entry_or_reorg(&context, &chainstate)
+                .await?;
+        }
+
         // Create aggregator.
-        let mut updated_deposits: Vec<Deposit> =
+        let mut updated_deposits: Vec<(usize, Deposit)> =
             Vec::with_capacity(validated_request.deposits.len());
+
         // Loop through all updates and execute.
-        for update in validated_request.deposits {
+        for (index, update) in validated_request.deposits {
             // Get original deposit entry.
             let deposit_entry = accessors::get_deposit_entry(&context, &update.key).await?;
             // Make the update package.
@@ -330,9 +348,14 @@ pub async fn update_deposits(
                 .await?
                 .try_into()?;
             // Append the updated deposit to the list.
-            updated_deposits.push(updated_deposit);
+            updated_deposits.push((index, updated_deposit));
         }
-        let response = UpdateDepositsResponse { deposits: updated_deposits };
+        updated_deposits.sort_by_key(|(index, _)| *index);
+        let deposits = updated_deposits
+            .into_iter()
+            .map(|(_, deposit)| deposit)
+            .collect();
+        let response = UpdateDepositsResponse { deposits };
         Ok(with_status(json(&response), StatusCode::CREATED))
     }
     // Handle and respond.
@@ -354,7 +377,7 @@ mod tests {
     #[test_case(15000, 500_000, 150; "All parameters are normal numbers")]
     #[test_case(0, 0, 0; "All parameters are zeros")]
     fn test_scripts_to_resource_parameters(max_fee: u64, amount_sats: u64, lock_time: u32) {
-        let setup: TxSetup = testing::deposits::tx_setup(lock_time as i64, max_fee, amount_sats);
+        let setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
 
         let deposit_script = setup.deposit.deposit_script().to_hex_string();
         let reclaim_script = setup.reclaim.reclaim_script().to_hex_string();
@@ -363,7 +386,7 @@ mod tests {
             scripts_to_resource_parameters(&deposit_script, &reclaim_script).unwrap();
 
         assert_eq!(script_parameters.max_fee, max_fee);
-        assert_eq!(script_parameters.lock_time, lock_time as u64);
+        assert_eq!(script_parameters.lock_time, lock_time);
 
         // TODO: Test the recipient with an input value.
         assert!(script_parameters.recipient.len() > 0);

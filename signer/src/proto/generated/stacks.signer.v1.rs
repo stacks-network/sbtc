@@ -13,6 +13,10 @@ pub struct SignerDepositDecision {
     /// Whether or not the signer has accepted the deposit request.
     #[prost(bool, tag = "3")]
     pub accepted: bool,
+    /// This specifies whether the sending signer can provide signature shares
+    /// for the associated deposit request.
+    #[prost(bool, tag = "4")]
+    pub can_sign: bool,
 }
 /// Represents a decision to accept or reject a deposit request.
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -69,7 +73,8 @@ pub struct BitcoinTransactionSignRequest {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StacksTransactionSignRequest {
-    /// The aggregate public key that will sign the transaction.
+    /// This is the bitcoin aggregate key that was output from DKG. It is used
+    /// to identify the signing set for the transaction.
     #[prost(message, optional, tag = "1")]
     pub aggregate_key: ::core::option::Option<super::super::super::crypto::PublicKey>,
     /// The nonce to use for the transaction.

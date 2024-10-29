@@ -79,6 +79,22 @@ pub trait DbRead {
         output_index: u32,
     ) -> impl Future<Output = Result<Vec<model::DepositSigner>, Error>> + Send;
 
+    /// Returns whether the given `signer_public_key` can provide signature
+    /// shares for the deposit transaction.
+    ///
+    /// This function works by identifying whether the `signer_public_key`
+    /// was part of the signer set associated with the public key that was
+    /// used to lock the deposit
+    ///
+    /// This returns None if the deposit request cannot be found in the
+    /// database.
+    fn can_sign_deposit_tx(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+        signer_public_key: &PublicKey,
+    ) -> impl Future<Output = Result<Option<bool>, Error>> + Send;
+
     /// Get signer decisions for a withdrawal request
     fn get_withdrawal_signers(
         &self,

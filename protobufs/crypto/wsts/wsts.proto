@@ -1,0 +1,302 @@
+syntax = "proto3";
+
+package crypto.wsts;
+
+import "crypto/common.proto";
+
+// DKG begin message from coordinator to signers
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L123-L128>
+message DkgBegin {
+  // DKG round ID
+  uint64 dkg_id = 1;
+}
+
+message DkgPublicShares {
+  map<uint32, SignerDkgPublicShares> shares = 1;
+}
+
+// DKG public shares message from a signer to all signers and coordinator
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L137-L146>
+message SignerDkgPublicShares {
+  // DKG round ID
+  uint64 dkg_id = 1;
+  // Signer ID
+  uint32 signer_id = 2;
+  // List of (signer_id, commitment)
+  repeated PartyCommitment commitments = 3;
+}
+
+// The public polynomial committed to by one of the party members who are
+// participating in distributed key generation.
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L144-L145>
+message PartyCommitment {
+  // The specific party that submitted the public polynomial.
+  uint32 signer_id = 1;
+  // The public polynomial of the associated party. Each polynomial
+  // includes a proof of ownership of the underlying private private
+  // polynomial.
+  PolyCommitment commitment = 2;
+}
+
+// DKG private begin message from signer to all signers and coordinator
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L162-L171>
+message DkgPrivateBegin {
+  // DKG round ID
+  uint64 dkg_id = 1;
+  // Signer IDs who responded in time for this DKG round
+  repeated uint32 signer_ids = 2;
+  // Key IDs who responded in time for this DKG round
+  repeated uint32 key_ids = 3;
+}
+
+// DKG private shares message from signer to all signers and coordinator
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L185-L195>
+message DkgPrivateShares {
+  // DKG round ID
+  uint64 dkg_id = 1;
+  // Signer ID
+  uint32 signer_id = 2;
+  // List of (src_signer_id, Map(dst_key_id, encrypted_share))
+  repeated PrivateShare shares = 3;
+}
+
+// This was created
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L193-L194>
+message PrivateShare {
+  // The ID of the signer that created the secret share.
+  uint32 source_signer_id = 1;
+  // The encrypted private shares to send to another parties.
+  repeated SecretShare encrypted_shares = 2;
+}
+
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L193-L194>
+message SecretShare {
+  // The signer ID associated with the secret share. This is the only
+  // signer who will be able to decrypt the encrypted_secret_share field.
+  uint32 signer_id = 1;
+  // This is the private polynomial evaluated at the `signer_id` and then
+  // encrypted in such a way that only the public key associated with the
+  // above `signer_id` can decrypt it.
+  bytes encrypted_secret_share = 2;
+}
+
+// DKG end begin message from signer to all signers and coordinator
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L222-L231>
+message DkgEndBegin {
+  // DKG round ID
+  uint64 dkg_id = 1;
+  // Signer IDs who responded in time for this DKG round
+  repeated uint32 signer_ids = 2;
+  // Key IDs who responded in time for this DKG round
+  repeated uint32 key_ids = 3;
+}
+
+// DKG end message from signers to coordinator
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L246-L255>
+message DkgEnd {
+  // DKG round ID
+  uint64 dkg_id = 1;
+  // Signer ID
+  uint32 signer_id = 2;
+  // DKG status for this Signer after receiving public/private shares
+  DkgStatus status = 3;
+}
+
+// Nonce request message from coordinator to signers
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L265-L280>
+message NonceRequest {
+  // DKG round ID
+  uint64 dkg_id = 1;
+  // Signing round ID
+  uint64 sign_id = 2;
+  // Signing round iteration ID
+  uint64 sign_iter_id = 3;
+  // The message to sign
+  bytes message = 4;
+  // Whether to make a taproot signature
+  bool is_taproot = 5;
+  // Taproot merkle root. This field is optional
+  MerkleRoot merkle_root = 6;
+}
+
+// Nonce response message from signers to coordinator
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L309-L326>
+message NonceResponse {
+  // DKG round ID
+  uint64 dkg_id = 1;
+  // Signing round ID
+  uint64 sign_id = 2;
+  // Signing round iteration ID
+  uint64 sign_iter_id = 3;
+  // Signer ID
+  uint32 signer_id = 4;
+  // Key IDs
+  repeated uint32 key_ids = 5;
+  // Public nonces
+  repeated PublicNonce nonces = 6;
+  // Bytes being signed.
+  bytes message = 7;
+}
+
+// Signature share request message from coordinator to signers
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L370-L387>
+message SignatureShareRequest {
+  // DKG round ID
+  uint64 dkg_id = 1;
+  // Signing round ID
+  uint64 sign_id = 2;
+  // Signing round iteration ID
+  uint64 sign_iter_id = 3;
+  // Nonces responses used for this signature
+  repeated NonceResponse nonce_responses = 4;
+  // Bytes to sign.
+  bytes message = 5;
+  // Whether to make a taproot signature
+  bool is_taproot = 6;
+  // Taproot merkle root. This field is optional
+  MerkleRoot merkle_root = 7;
+}
+
+// Signature share response message from signers to coordinator
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L422-L435>
+message SignatureShareResponse {
+  // DKG round ID
+  uint64 dkg_id = 1;
+  // Signing round ID
+  uint64 sign_id = 2;
+  // Signing round iteration ID
+  uint64 sign_iter_id = 3;
+  // Signer ID
+  uint32 signer_id = 4;
+  // Signature shares from this Signer
+  repeated SignatureShare signature_shares = 5;
+}
+
+// A commitment to a polynomial, with a Schnorr proof of ownership bound to the ID
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/10760178d88c779d9377641e360656b27c05a771/src/common.rs#L25-L32>
+message PolyCommitment {
+  // The party ID with a Schnorr proof
+  ProofIdentifier id = 1;
+  // The public polynomial which commits to the secret polynomial
+  repeated crypto.Point poly = 2;
+}
+
+// This type maps to the `ID` type in WSTS, which encapsulates the ID and a
+// Schnorr proof of ownership of the polynomial.
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/7435dec216aab547133de0dc2915e49875630c84/src/schnorr.rs#L12-L23>
+message ProofIdentifier {
+  // The ID
+  crypto.Scalar id = 1;
+  // The public Schnorr response, kG
+  crypto.Point schnorr_response = 2;
+  // The aggregate of the Schnorr committed values, kca
+  crypto.Scalar aggregate_commitment = 3;
+}
+
+// Final DKG status after receiving public and private shares
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L72-L79>
+// combined with this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L57-L70>
+message DkgStatus {
+  oneof mode {
+    // DKG completed successfully
+    Success success = 1;
+    // Signer was in the wrong internal state to complete DKG
+    BadState bad_state = 2;
+    // DKG public shares were missing from these signer_ids
+    MissingPublicShares missing_public_shares = 3;
+    // DKG public shares were bad from these signer_ids
+    BadPublicShares bad_public_shares = 4;
+    // DKG private shares were missing from these signer_ids
+    MissingPrivateShares missing_private_shares = 5;
+    // DKG private shares were bad from these signer_ids
+    BadPrivateShares bad_private_shares = 6;
+  }
+}
+
+// The next 6 types map to the above enum values, all from
+// <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L57-L70>
+
+// DKG completed successfully
+message Success {}
+
+// Signer was in the wrong internal state to complete DKG
+message BadState {}
+
+// DKG public shares were bad from these signer_ids.
+message MissingPublicShares {
+  // In WSTS this is a HashSet<u32>, so these should be unique, duplicates
+  // will be ignored at the application level.
+  map<uint32, crypto.SetValueZst> signer_ids = 1;
+}
+
+// DKG public shares were bad from these signer_ids.
+message BadPublicShares {
+  // In WSTS this is a HashSet<u32>, so these should be unique, duplicates
+  // will be ignored at the application level.
+  map<uint32, crypto.SetValueZst> signer_ids = 1;
+}
+
+// DKG private shares were missing from these signer_ids.
+message MissingPrivateShares {
+  // In WSTS this is a HashSet<u32>, so these should be unique, duplicates
+  // will be ignored at the application level.
+  map<uint32, crypto.SetValueZst> signer_ids = 1;
+}
+
+// DKG private shares were bad from these signer_ids.
+message BadPrivateShares {
+  map<uint32, BadPrivateShare> shares = 1;
+}
+
+// A bad private share
+message BadPrivateShare {
+  // The DH shared key between these participants
+  crypto.Point shared_key = 1;
+  // Proof that the shared key is a valid DH tuple as per Chaum-Pedersen.
+  TupleProof tuple_proof = 2;
+}
+
+// A Chaum-Pedersen proof that (G, A=a*G, B=b*G, K=(a*b)*G) is a
+// Diffie-Hellman tuple.
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/10760178d88c779d9377641e360656b27c05a771/src/common.rs#L163-L172>
+message TupleProof {
+  // This is a commitment to both the random commitment in the Schnorr
+  // proof and the private key used for the signature. It represents r*B.
+  crypto.Point combined_commitment = 1;
+  // The Schnorr proof using the commitment of the above Point.
+  SchnorrProof signature = 2;
+}
+
+message SchnorrProof {
+  // This is R, where R = r*G for a random scalar r.
+  crypto.Point random_commitment = 1;
+  // This is z, where z = r + a*s where s = H(G,A,B,K,R) as per Fiat-Shamir
+  crypto.Scalar response = 2;
+}
+
+// A merkle root is a 256 bit hash
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/10760178d88c779d9377641e360656b27c05a771/src/common.rs#L22-L23>
+message MerkleRoot {
+  // The root of the merkle tree
+  crypto.Uint256 root = 1;
+}
+
+// A commitment to the private nonce
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/10760178d88c779d9377641e360656b27c05a771/src/common.rs#L94-L102>
+message PublicNonce {
+  // A commitment to the private nonce's first value
+  crypto.Point nonce_d = 1;
+  // A commitment to the private nonce's second value
+  crypto.Point nonce_e = 2;
+}
+
+// A share of the party signature with related values
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/10760178d88c779d9377641e360656b27c05a771/src/common.rs#L120-L129>
+message SignatureShare {
+  // The ID of the party
+  uint32 id = 1;
+  // The party signature, z_i
+  crypto.Scalar signature_share = 2;
+  // The key IDs of the party
+  repeated uint32 key_ids = 3;
+}

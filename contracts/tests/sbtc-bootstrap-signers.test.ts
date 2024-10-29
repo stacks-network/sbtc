@@ -8,7 +8,7 @@ import {
   signers,
 } from "./helpers";
 import { test, expect, describe } from "vitest";
-import { txOk, txErr, rov } from "@clarigen/test";
+import { txOk, txErr, rov, filterEvents } from "@clarigen/test";
 import {
   AddressHashMode,
   AddressVersion,
@@ -19,6 +19,7 @@ import {
 } from "@stacks/transactions";
 import { p2ms, p2sh } from "@scure/btc-signer";
 import { b58ToC32 } from "c32check";
+import { CoreNodeEventType, cvToValue } from "@clarigen/core";
 
 describe("sBTC bootstrap signers contract", () => {
   describe("Rotate keys tests", () => {
@@ -35,17 +36,36 @@ describe("sBTC bootstrap signers contract", () => {
       );
       expect(receipt.value).toEqual(true);
 
-      const setAggKey = rov(registry.getCurrentAggregatePubkey());
-      expect(setAggKey).toEqual(new Uint8Array(33).fill(0));
-
-      expect(rov(registry.getCurrentSignerSet())).toStrictEqual(newKeys);
-
       const expectedPrincipal = constructMultisigAddress(
         newKeys,
         newSignatureThreshold,
       );
-      expect(currentSignerAddr()).toEqual(expectedPrincipal);
 
+      const prints = filterEvents(
+        receipt.events,
+        CoreNodeEventType.ContractEvent
+      );
+      const [print] = prints;
+      const printData = cvToValue<{
+        topic: string;
+        newKeys: Uint8Array[];
+        newAddress: string;
+        newAggregatePubkey: Uint8Array;
+        newSignatureThreshold: bigint;
+      }>(print.data.value);
+      expect(printData).toEqual({
+        topic: "key-rotation",
+        newKeys: newKeys,
+        newAddress: expectedPrincipal,
+        newAggregatePubkey: new Uint8Array(33).fill(0),
+        newSignatureThreshold: newSignatureThreshold
+      });
+
+      const setAggKey = rov(registry.getCurrentAggregatePubkey());
+      expect(setAggKey).toEqual(new Uint8Array(33).fill(0));
+
+      expect(rov(registry.getCurrentSignerSet())).toStrictEqual(newKeys);
+      expect(currentSignerAddr()).toEqual(expectedPrincipal);
       expect(rov(registry.getCurrentSignerData())).toStrictEqual({
         currentAggregatePubkey: new Uint8Array(33).fill(0),
         currentSignerSet: newKeys,

@@ -5,14 +5,16 @@ use std::ops::Deref;
 
 use bitcoin::hashes::Hash as _;
 use bitvec::array::BitArray;
+use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use clarity::vm::types::PrincipalData;
 use serde::Deserialize;
 use serde::Serialize;
-use stacks_common::types::chainstate::StacksBlockId;
+use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
 
 use crate::block_observer::Deposit;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::keys::PublicKeyXOnly;
 
 /// Bitcoin block.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
@@ -26,9 +28,6 @@ pub struct BitcoinBlock {
     pub block_height: u64,
     /// Hash of the parent block.
     pub parent_hash: BitcoinBlockHash,
-    /// Stacks block confirmed by this block.
-    #[cfg_attr(feature = "testing", dummy(default))]
-    pub confirms: Vec<StacksBlockHash>,
 }
 
 /// Stacks block.
@@ -43,6 +42,20 @@ pub struct StacksBlock {
     pub block_height: u64,
     /// Hash of the parent block.
     pub parent_hash: StacksBlockHash,
+    /// The bitcoin block this stacks block is build upon (matching consensus hash)
+    pub bitcoin_anchor: BitcoinBlockHash,
+}
+
+impl StacksBlock {
+    /// Construct a StacksBlock from a NakamotoBlock and its bitcoin anchor
+    pub fn from_nakamoto_block(block: &NakamotoBlock, bitcoin_anchor: &BitcoinBlockHash) -> Self {
+        Self {
+            block_hash: block.block_id().into(),
+            block_height: block.header.chain_length,
+            parent_hash: block.header.parent_block_id.into(),
+            bitcoin_anchor: *bitcoin_anchor,
+        }
+    }
 }
 
 /// Deposit request.
@@ -71,6 +84,13 @@ pub struct DepositRequest {
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "100..100_000"))]
     pub max_fee: u64,
+    /// The relative lock time in the reclaim script.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "3..u16::MAX as u32"))]
+    pub lock_time: u32,
+    /// The public key used in the deposit script. The signers public key
+    /// is for Schnorr signatures.
+    pub signers_public_key: PublicKeyXOnly,
     /// The addresses of the input UTXOs funding the deposit request.
     #[cfg_attr(
         feature = "testing",
@@ -81,11 +101,12 @@ pub struct DepositRequest {
 
 impl From<Deposit> for DepositRequest {
     fn from(deposit: Deposit) -> Self {
-        let tx_input_iter = deposit.tx.input.into_iter();
+        let tx_input_iter = deposit.tx_info.vin.into_iter();
         // It's most likely the case that each of the inputs "came" from
         // the same Address, so we filter out duplicates.
-        let sender_script_pub_keys: BTreeSet<ScriptPubKey> =
-            tx_input_iter.map(|tx_in| tx_in.script_sig.into()).collect();
+        let sender_script_pub_keys: BTreeSet<ScriptPubKey> = tx_input_iter
+            .map(|tx_in| ScriptPubKey::from_bytes(tx_in.prevout.script_pub_key.hex))
+            .collect();
 
         Self {
             txid: deposit.info.outpoint.txid.into(),
@@ -95,6 +116,8 @@ impl From<Deposit> for DepositRequest {
             recipient: deposit.info.recipient.into(),
             amount: deposit.info.amount,
             max_fee: deposit.info.max_fee,
+            lock_time: deposit.info.lock_time.to_consensus_u32(),
+            signers_public_key: deposit.info.signers_public_key.into(),
             sender_script_pub_keys: sender_script_pub_keys.into_iter().collect(),
         }
     }
@@ -124,6 +147,9 @@ pub struct DepositSigner {
     pub signer_pub_key: PublicKey,
     /// Signals if the signer is prepared to sign for this request.
     pub is_accepted: bool,
+    /// This specifies whether the indicated signer_pub_key can sign for
+    /// the associated deposit request.
+    pub can_sign: bool,
 }
 
 /// Withdraw request.
@@ -338,6 +364,14 @@ pub struct EncryptedDkgShares {
     pub public_shares: Bytes,
     /// The set of public keys that were a party to the DKG.
     pub signer_set_public_keys: Vec<PublicKey>,
+    /// The threshold number of signature shares required to generate a
+    /// Schnorr signature.
+    ///
+    /// In WSTS each signer may contribute a fixed portion of a single
+    /// signature. This value specifies the total number of portions
+    /// (shares) that are needed in order to construct a signature.
+    #[sqlx(try_from = "i32")]
+    pub signature_share_threshold: u16,
 }
 
 /// Persisted public DKG shares from other signers
@@ -566,6 +600,18 @@ impl From<[u8; 32]> for BitcoinBlockHash {
     }
 }
 
+impl From<BurnchainHeaderHash> for BitcoinBlockHash {
+    fn from(value: BurnchainHeaderHash) -> Self {
+        value.to_bitcoin_hash().to_bytes().into()
+    }
+}
+
+impl std::fmt::Display for BitcoinBlockHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 /// A struct that references a specific bitcoin block is identifier and its
 /// position in the blockchain.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -730,6 +776,13 @@ impl From<bitcoin::ScriptBuf> for ScriptPubKey {
 impl From<ScriptPubKey> for bitcoin::ScriptBuf {
     fn from(value: ScriptPubKey) -> Self {
         value.0
+    }
+}
+
+impl ScriptPubKey {
+    /// Converts byte vector into script.
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+        bitcoin::ScriptBuf::from_bytes(bytes).into()
     }
 }
 

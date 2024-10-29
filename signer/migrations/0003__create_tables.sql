@@ -13,7 +13,6 @@ CREATE TABLE sbtc_signer.bitcoin_blocks (
     block_hash BYTEA PRIMARY KEY,
     block_height BIGINT NOT NULL,
     parent_hash BYTEA NOT NULL,
-    confirms BYTEA[] NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
@@ -21,6 +20,7 @@ CREATE TABLE sbtc_signer.stacks_blocks (
     block_hash BYTEA PRIMARY KEY,
     block_height BIGINT NOT NULL,
     parent_hash BYTEA NOT NULL,
+    bitcoin_anchor BYTEA NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
@@ -32,6 +32,9 @@ CREATE TABLE sbtc_signer.deposit_requests (
     recipient TEXT NOT NULL,
     amount BIGINT NOT NULL,
     max_fee BIGINT NOT NULL,
+    lock_time BIGINT NOT NULL,
+    -- this is an x-only public key, we need column comments
+    signers_public_key BYTEA NOT NULL,
     sender_script_pub_keys BYTEA[] NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY (txid, output_index)
@@ -41,7 +44,10 @@ CREATE TABLE sbtc_signer.deposit_signers (
     txid BYTEA NOT NULL,
     output_index INTEGER NOT NULL,
     signer_pub_key BYTEA NOT NULL,
-    is_accepted BOOL NOT NULL,
+    -- this specifies whether the signer is a part of the signer set
+    -- associated with the deposit_request.signers_public_key
+    can_sign BOOLEAN NOT NULL,
+    is_accepted BOOLEAN NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY (txid, output_index, signer_pub_key),
     FOREIGN KEY (txid, output_index) REFERENCES sbtc_signer.deposit_requests(txid, output_index) ON DELETE CASCADE
@@ -65,7 +71,7 @@ CREATE TABLE sbtc_signer.withdrawal_signers (
     txid BYTEA NOT NULL,
     block_hash BYTEA NOT NULL,
     signer_pub_key BYTEA NOT NULL,
-    is_accepted BOOL NOT NULL,
+    is_accepted BOOLEAN NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY (request_id, block_hash, signer_pub_key),
     FOREIGN KEY (request_id, block_hash) REFERENCES sbtc_signer.withdrawal_requests(request_id, block_hash) ON DELETE CASCADE
@@ -85,6 +91,7 @@ CREATE TABLE sbtc_signer.dkg_shares (
     public_shares BYTEA NOT NULL,
     script_pubkey BYTEA NOT NULL,
     signer_set_public_keys BYTEA[] NOT NULL,
+    signature_share_threshold INTEGER NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 

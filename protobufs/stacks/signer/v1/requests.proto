@@ -16,7 +16,8 @@ message BitcoinTransactionSignRequest {
 
 // Represents a request to sign a Stacks transaction.
 message StacksTransactionSignRequest {
-  // The aggregate public key that will sign the transaction.
+  // This is the bitcoin aggregate key that was output from DKG. It is used
+  // to identify the signing set for the transaction.
   crypto.PublicKey aggregate_key = 1;
   // The nonce to use for the transaction.
   uint64 nonce = 2;

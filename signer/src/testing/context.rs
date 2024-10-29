@@ -3,21 +3,23 @@
 use std::{ops::Deref, sync::Arc};
 
 use bitcoin::Txid;
+use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::{
     chainstate::{nakamoto::NakamotoBlock, stacks::StacksTransaction},
     net::api::{
-        getinfo::RPCPeerInfoData, getpoxinfo::RPCPoxInfoData, gettenureinfo::RPCGetTenureInfo,
+        getinfo::RPCPeerInfoData, getpoxinfo::RPCPoxInfoData, getsortition::SortitionInfo,
+        gettenureinfo::RPCGetTenureInfo,
     },
 };
 use clarity::types::chainstate::{StacksAddress, StacksBlockId};
-use tokio::sync::Mutex;
+use tokio::sync::{broadcast, Mutex};
 
 use crate::{
     bitcoin::{
         rpc::GetTxResponse, utxo::UnsignedTransaction, BitcoinInteract, MockBitcoinInteract,
     },
     config::Settings,
-    context::{Context, SignerContext},
+    context::{Context, SignerContext, SignerSignal, SignerState, TerminationHandle},
     emily_client::{EmilyInteract, MockEmilyInteract},
     error::Error,
     keys::PublicKey,
@@ -174,31 +176,33 @@ where
         self.inner.config()
     }
 
-    fn get_signal_receiver(
-        &self,
-    ) -> tokio::sync::broadcast::Receiver<crate::context::SignerSignal> {
+    fn state(&self) -> &SignerState {
+        self.inner.state()
+    }
+
+    fn get_signal_receiver(&self) -> broadcast::Receiver<SignerSignal> {
         self.inner.get_signal_receiver()
     }
 
-    fn get_signal_sender(&self) -> tokio::sync::broadcast::Sender<crate::context::SignerSignal> {
+    fn get_signal_sender(&self) -> broadcast::Sender<SignerSignal> {
         self.inner.get_signal_sender()
     }
 
-    fn signal(&self, signal: crate::context::SignerSignal) -> Result<(), Error> {
+    fn signal(&self, signal: SignerSignal) -> Result<(), Error> {
         self.inner.signal(signal)
     }
 
-    fn get_termination_handle(&self) -> crate::context::TerminationHandle {
+    fn get_termination_handle(&self) -> TerminationHandle {
         self.inner.get_termination_handle()
     }
 
-    fn get_storage(&self) -> impl crate::storage::DbRead + Clone + Sync + Send + 'static {
+    fn get_storage(&self) -> impl DbRead + Clone + Sync + Send + 'static {
         self.inner.get_storage()
     }
 
     fn get_storage_mut(
         &self,
-    ) -> impl crate::storage::DbRead + crate::storage::DbWrite + Clone + Sync + Send + 'static {
+    ) -> impl crate::storage::DbRead + DbWrite + Clone + Sync + Send + 'static {
         self.inner.get_storage_mut()
     }
 
@@ -320,6 +324,17 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
         self.inner.lock().await.get_tenure_info().await
     }
 
+    async fn get_sortition_info(
+        &self,
+        consensus_hash: &ConsensusHash,
+    ) -> Result<SortitionInfo, Error> {
+        self.inner
+            .lock()
+            .await
+            .get_sortition_info(consensus_hash)
+            .await
+    }
+
     async fn estimate_fees<T>(&self, payload: &T, priority: FeePriority) -> Result<u64, Error>
     where
         T: AsTxPayload + Send + Sync,
@@ -369,6 +384,13 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
             .await
             .confirm_deposit(deposit, sbtc_txid, stacks_chain_tip, btc_fee)
             .await
+    }
+
+    async fn set_chainstate(
+        &self,
+        chainstate: emily_client::models::Chainstate,
+    ) -> Result<emily_client::models::Chainstate, Error> {
+        self.inner.lock().await.set_chainstate(chainstate).await
     }
 }
 
@@ -436,6 +458,16 @@ where
         ContextBuilder {
             config: ContextConfig { settings, ..config },
         }
+    }
+
+    /// Modify the current [`Settings`] using the provided closure.
+    fn modify_settings(
+        self,
+        f: impl FnOnce(&mut Settings),
+    ) -> ContextBuilder<Storage, Bitcoin, Stacks, Emily> {
+        let mut config = self.get_config();
+        f(&mut config.settings);
+        ContextBuilder { config }
     }
 }
 

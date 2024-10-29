@@ -1,6 +1,11 @@
 name: Buf CI
 on: [push]
 
+concurrency:
+  # limit concurrency of entire workflow runs for a specific branch
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   buf:
     name: Run protobuf lints
@@ -18,6 +23,6 @@ jobs:
           buf lint
 
       - name: Check the format
-        run: | 
+        run: |
           cd protobufs
           buf format --diff --exit-code

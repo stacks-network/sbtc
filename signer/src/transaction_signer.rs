@@ -19,7 +19,6 @@ use crate::context::TxSignerEvent;
 use crate::ecdsa::SignEcdsa as _;
 use crate::ecdsa::Signed;
 use crate::error::Error;
-use crate::keys;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
@@ -33,13 +32,12 @@ use crate::stacks::contracts::ReqContext;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
-use crate::storage::model::BitcoinBlockRef;
 use crate::storage::DbRead as _;
 use crate::storage::DbWrite as _;
 use crate::wsts_state_machine;
 
-use clarity::types::chainstate::StacksAddress;
 use futures::StreamExt;
+use futures::TryStreamExt;
 use tokio::sync::Mutex;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
@@ -143,7 +141,7 @@ where
     Rng: rand::RngCore + rand::CryptoRng,
 {
     /// Run the signer event loop
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self), name = "tx-signer")]
     pub async fn run(mut self) -> Result<(), Error> {
         let mut signal_rx = self.context.get_signal_receiver();
         let mut term = self.context.get_termination_handle();
@@ -317,8 +315,12 @@ where
                 true,
                 ChainTipStatus::Canonical,
             ) => {
-                self.handle_stacks_transaction_sign_request(request, &msg.bitcoin_chain_tip)
-                    .await?;
+                self.handle_stacks_transaction_sign_request(
+                    request,
+                    &msg.bitcoin_chain_tip,
+                    &msg.signer_pub_key,
+                )
+                .await?;
             }
 
             (
@@ -353,7 +355,7 @@ where
     #[tracing::instrument(skip(self))]
     async fn inspect_msg_chain_tip(
         &mut self,
-        msg_sender: keys::PublicKey,
+        msg_sender: PublicKey,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<MsgChainTipReport, Error> {
         let storage = self.context.get_storage();
@@ -451,8 +453,9 @@ where
         &mut self,
         request: &StacksTransactionSignRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
+        origin_public_key: &PublicKey,
     ) -> Result<(), Error> {
-        self.assert_valid_stacks_tx_sign_request(request, bitcoin_chain_tip)
+        self.assert_valid_stacks_tx_sign_request(request, bitcoin_chain_tip, origin_public_key)
             .await?;
 
         // We need to set the nonce in order to get the exact transaction
@@ -463,9 +466,8 @@ where
         let multi_sig = MultisigTx::new_tx(&request.contract_call, &wallet, request.tx_fee);
         let txid = multi_sig.tx().txid();
 
-        // TODO: Make this more robust. The signer that recieves this won't
-        // be able to use the signature if it's over the wrong digest, so
-        // maybe we should error here.
+        // TODO(517): Remove the digest field from the request object and
+        // serialize the entire message.
         debug_assert_eq!(multi_sig.tx().digest(), request.digest);
         debug_assert_eq!(txid, request.txid);
 
@@ -478,31 +480,39 @@ where
         Ok(())
     }
 
-    async fn assert_valid_stacks_tx_sign_request(
+    /// Check that the transaction is indeed valid. We specific checks that
+    /// are run depend on the transaction being signed.
+    pub async fn assert_valid_stacks_tx_sign_request(
         &self,
         request: &StacksTransactionSignRequest,
         chain_tip: &model::BitcoinBlockHash,
+        origin_public_key: &PublicKey,
     ) -> Result<(), Error> {
-        if true {
-            return Ok(());
-        }
-        // TODO(255): Finish the implementation
-        let req_ctx = ReqContext {
-            chain_tip: BitcoinBlockRef {
-                block_hash: *chain_tip,
-                // This is wrong
-                block_height: 0,
-            },
-            context_window: self.context_window,
-            // This is wrong
-            origin: self.signer_pub_key(),
-            // This is wrong
-            aggregate_key: self.signer_pub_key(),
-            signatures_required: self.threshold as u16,
-            // This is wrong
-            deployer: StacksAddress::burn_address(false),
+        let db = self.context.get_storage();
+        let public_key = self.signer_pub_key();
+
+        let Some(shares) = db.get_encrypted_dkg_shares(&request.aggregate_key).await? else {
+            return Err(Error::MissingDkgShares(request.aggregate_key));
         };
-        // TODO: Maybe check the transaction fee in the request?
+        // There is one check that applies to all Stacks transactions, and
+        // that check is that the current signer is in the signing set
+        // associated with the given aggregate key. We do this check here.
+        if !shares.signer_set_public_keys.contains(&public_key) {
+            return Err(Error::ValidationSignerSet(request.aggregate_key));
+        }
+
+        let Some(block) = db.get_bitcoin_block(chain_tip).await? else {
+            return Err(Error::MissingBitcoinBlock(*chain_tip));
+        };
+
+        let req_ctx = ReqContext {
+            chain_tip: block.into(),
+            context_window: self.context_window,
+            origin: *origin_public_key,
+            aggregate_key: request.aggregate_key,
+            signatures_required: shares.signature_share_threshold,
+            deployer: self.context.config().signer.deployer,
+        };
         let ctx = &self.context;
         match &request.contract_call {
             ContractCall::AcceptWithdrawalV1(contract) => contract.validate(ctx, &req_ctx).await,
@@ -630,38 +640,52 @@ where
             .await
     }
 
+    /// Check whether this signer accepts the deposit request. This
+    /// involves:
+    ///
+    /// 1. Reach out to the blocklist client and find out whether we can
+    ///    accept the deposit given all the input `scriptPubKey`s of the
+    ///    transaction.
+    /// 2. Check if we are a part of the signing set associated with the
+    ///    public key locking the funds.
+    ///
+    /// If the block list client is not configured then the first check
+    /// always passes.
     #[tracing::instrument(skip(self))]
-    async fn handle_pending_deposit_request(
+    pub async fn handle_pending_deposit_request(
         &mut self,
         request: model::DepositRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
-        let bitcoin_network = bitcoin::Network::from(self.context.config().signer.network);
-        let params = bitcoin_network.params();
-        let addresses = request
-            .sender_script_pub_keys
-            .iter()
-            .map(|script_pubkey| {
-                bitcoin::Address::from_script(script_pubkey, params)
-                    .map_err(|err| Error::BitcoinAddressFromScript(err, request.outpoint()))
-            })
-            .collect::<Result<Vec<bitcoin::Address>, _>>()?;
+        let db = self.context.get_storage_mut();
 
-        let is_accepted = futures::stream::iter(&addresses)
-            .any(|address| async { self.can_accept(&address.to_string()).await })
-            .await;
+        let signer_public_key = self.signer_pub_key();
+        // Let's find out whether or not we can even sign for this deposit
+        // request. If we cannot then we do not even reach out to the
+        // blocklist client.
+        //
+        // We should have a record for the request because of where this
+        // function is in the code path.
+        let can_sign = db
+            .can_sign_deposit_tx(&request.txid, request.output_index, &signer_public_key)
+            .await?
+            .unwrap_or(false);
+
+        let is_accepted = can_sign && self.can_accept_deposit_request(&request).await?;
 
         let msg = message::SignerDepositDecision {
             txid: request.txid.into(),
             output_index: request.output_index,
             accepted: is_accepted,
+            can_sign,
         };
 
         let signer_decision = model::DepositSigner {
             txid: request.txid,
             output_index: request.output_index,
-            signer_pub_key: self.signer_pub_key(),
+            signer_pub_key: signer_public_key,
             is_accepted,
+            can_sign,
         };
 
         self.context
@@ -725,6 +749,36 @@ where
         client.can_accept(address).await.unwrap_or(false)
     }
 
+    async fn can_accept_deposit_request(&self, req: &model::DepositRequest) -> Result<bool, Error> {
+        // If we have not configured a blocklist checker, then we can
+        // return early.
+        let Some(client) = self.blocklist_checker.as_ref() else {
+            return Ok(true);
+        };
+
+        // We turn all the input scriptPubKeys into addresses and check
+        // those with the blocklist client.
+        let bitcoin_network = bitcoin::Network::from(self.context.config().signer.network);
+        let params = bitcoin_network.params();
+        let addresses = req
+            .sender_script_pub_keys
+            .iter()
+            .map(|script_pubkey| bitcoin::Address::from_script(script_pubkey, params))
+            .collect::<Result<Vec<bitcoin::Address>, _>>()
+            .map_err(|err| Error::BitcoinAddressFromScript(err, req.outpoint()))?;
+
+        let responses = futures::stream::iter(&addresses)
+            .then(|address| async { client.can_accept(&address.to_string()).await })
+            .inspect_err(|error| tracing::error!(%error, "blocklist client issue"))
+            .collect::<Vec<_>>()
+            .await;
+
+        // If any of the inputs addresses are fine then we pass the deposit
+        // request.
+        let can_accept = responses.into_iter().any(|res| res.unwrap_or(false));
+        Ok(can_accept)
+    }
+
     #[tracing::instrument(skip(self))]
     async fn persist_received_deposit_decision(
         &mut self,
@@ -736,6 +790,7 @@ where
             output_index: decision.output_index,
             signer_pub_key,
             is_accepted: decision.accepted,
+            can_sign: decision.can_sign,
         };
 
         self.context
@@ -744,8 +799,7 @@ where
             .await?;
 
         self.context
-            .signal(TxSignerEvent::ReceivedDepositDecision.into())
-            .expect("failed to send signal");
+            .signal(TxSignerEvent::ReceivedDepositDecision.into())?;
 
         Ok(())
     }
@@ -770,8 +824,7 @@ where
             .await?;
 
         self.context
-            .signal(TxSignerEvent::ReceivedWithdrawalDecision.into())
-            .expect("failed to send signal");
+            .signal(TxSignerEvent::ReceivedWithdrawalDecision.into())?;
 
         Ok(())
     }
@@ -892,7 +945,7 @@ mod tests {
 
         testing::transaction_signer::TestEnvironment {
             context,
-            context_window: 3,
+            context_window: 6,
             num_signers: 7,
             signing_threshold: 5,
             test_model_parameters,

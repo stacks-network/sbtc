@@ -12,13 +12,14 @@ use futures::FutureExt;
 use futures::StreamExt as _;
 use futures::TryStreamExt;
 use sha2::Digest;
+use tokio::time::sleep;
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
 use crate::context::TxCoordinatorEvent;
 use crate::context::TxSignerEvent;
-use crate::context::{messaging::SignerEvent, messaging::SignerSignal, Context};
+use crate::context::{Context, SignerEvent, SignerSignal};
 use crate::ecdsa::SignEcdsa as _;
 use crate::ecdsa::Signed;
 use crate::emily_client::EmilyInteract;
@@ -147,7 +148,7 @@ where
     N: network::MessageTransfer,
 {
     /// Run the coordinator event loop
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self), name = "tx-coordinator")]
     pub async fn run(mut self) -> Result<(), Error> {
         tracing::info!("starting transaction coordinator event loop");
         let mut term = self.context.get_termination_handle();
@@ -238,6 +239,12 @@ where
             return Ok(());
         }
 
+        let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
+        if bitcoin_processing_delay > std::time::Duration::ZERO {
+            tracing::debug!("Sleeping before processing new Bitcoin block.");
+            sleep(bitcoin_processing_delay).await;
+        }
+
         tracing::debug!("We are the coordinator, we may need to coordinate DKG");
         // If Self::get_signer_set_and_aggregate_key did not return an
         // aggregate key, then we know that we have not run DKG yet. Since
@@ -278,7 +285,7 @@ where
             .get_storage()
             .get_stacks_chain_tip(bitcoin_chain_tip)
             .await?
-            .ok_or(Error::NoChainTip)?;
+            .ok_or(Error::NoStacksChainTip)?;
 
         let pending_requests_fut =
             self.get_pending_requests(bitcoin_chain_tip, aggregate_key, signer_public_keys);
@@ -784,23 +791,16 @@ where
     #[tracing::instrument(skip(self))]
     async fn get_btc_state(
         &mut self,
+        chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &PublicKey,
     ) -> Result<utxo::SignerBtcState, Error> {
         let bitcoin_client = self.context.get_bitcoin_client();
         let fee_rate = bitcoin_client.estimate_fee_rate().await?;
-        let Some(chain_tip) = self
-            .context
-            .get_storage()
-            .get_bitcoin_canonical_chain_tip()
-            .await?
-        else {
-            return Err(Error::NoChainTip);
-        };
 
         let utxo = self
             .context
             .get_storage()
-            .get_signer_utxo(&chain_tip, aggregate_key, self.context_window)
+            .get_signer_utxo(chain_tip, aggregate_key, self.context_window)
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
         let last_fees = bitcoin_client.get_last_fee(utxo.outpoint).await?;
@@ -840,8 +840,6 @@ where
             .get_pending_accepted_withdrawal_requests(bitcoin_chain_tip, context_window, threshold)
             .await?;
 
-        let signers_public_key = bitcoin::XOnlyPublicKey::from(aggregate_key);
-
         let mut deposits: Vec<utxo::DepositRequest> = Vec::new();
 
         for req in pending_deposit_requests {
@@ -851,7 +849,7 @@ where
                 .get_deposit_request_signer_votes(&req.txid, req.output_index, aggregate_key)
                 .await?;
 
-            let deposit = utxo::DepositRequest::from_model(req, signers_public_key, votes);
+            let deposit = utxo::DepositRequest::from_model(req, votes);
             deposits.push(deposit);
         }
 
@@ -880,7 +878,7 @@ where
         Ok(Some(utxo::SbtcRequests {
             deposits,
             withdrawals,
-            signer_state: self.get_btc_state(aggregate_key).await?,
+            signer_state: self.get_btc_state(bitcoin_chain_tip, aggregate_key).await?,
             accept_threshold: threshold,
             num_signers,
         }))
@@ -1037,8 +1035,35 @@ mod tests {
     #[tokio::test]
     async fn should_be_able_to_coordinate_signing_rounds() {
         test_environment()
-            .assert_should_be_able_to_coordinate_signing_rounds()
+            .assert_should_be_able_to_coordinate_signing_rounds(std::time::Duration::ZERO)
             .await;
+    }
+
+    #[tokio::test]
+    async fn should_wait_before_processing_bitcoin_blocks() {
+        // NOTE: Above test `should_be_able_to_coordinate_signing_rounds`
+        // could be removed as redundant now.
+
+        // Measure baseline.
+        let baseline_start = std::time::Instant::now();
+        test_environment()
+            .assert_should_be_able_to_coordinate_signing_rounds(std::time::Duration::ZERO)
+            .await;
+        // Locally this takes a couple seconds to execute.
+        // This truncates the decimals.
+        let baseline_elapsed = std::time::Duration::from_secs(baseline_start.elapsed().as_secs());
+
+        let delay_i = 3;
+        let delay = std::time::Duration::from_secs(delay_i);
+        std::env::set_var(
+            "SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY",
+            delay_i.to_string(),
+        );
+        let start = std::time::Instant::now();
+        test_environment()
+            .assert_should_be_able_to_coordinate_signing_rounds(delay)
+            .await;
+        more_asserts::assert_gt!(start.elapsed(), delay + baseline_elapsed);
     }
 
     #[tokio::test]

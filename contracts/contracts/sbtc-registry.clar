@@ -263,7 +263,15 @@
     ;; Update the current signature threshold
     (var-set current-signature-threshold new-signature-threshold)
     ;; Update the current aggregate pubkey
-    (ok (var-set current-aggregate-pubkey new-aggregate-pubkey))
+    (var-set current-aggregate-pubkey new-aggregate-pubkey)
+    (print {
+      topic: "key-rotation",
+      new-keys: new-keys,
+      new-address: new-address,
+      new-aggregate-pubkey: new-aggregate-pubkey,
+      new-signature-threshold: new-signature-threshold
+    })
+    (ok true)
   )
 )
 

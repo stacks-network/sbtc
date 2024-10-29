@@ -1,0 +1,24 @@
+FROM rust:1.81.0-slim-bookworm as build
+
+# Install dependencies.
+RUN apt-get update
+RUN apt-get install -y --no-install-recommends \
+    libclang-dev \
+    git \
+    pkg-config \
+    libssl-dev \
+    make \
+    protobuf-compiler \
+    npm \
+    default-jre
+RUN npm install -g pnpm@9
+RUN npm install -g @openapitools/openapi-generator-cli
+
+WORKDIR /code/sbtc
+COPY . .
+RUN make install && make build
+
+# Create Docker image to run the signer.
+FROM debian:bookworm-slim AS signer
+COPY --from=build /code/sbtc/target/debug/signer /usr/local/bin/signer
+CMD ["/usr/local/bin/signer --config /signer-config.toml --migrate-db"]

@@ -1,6 +1,11 @@
 name: Contract tests
 on: [push]
 
+concurrency:
+  # limit concurrency of entire workflow runs for a specific branch
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   contract_tests:
     name: Contract tests

@@ -113,7 +113,7 @@ impl From<&PublicKey> for p256k1::point::Point {
         // [^2]: https://github.com/bitcoin-core/secp256k1/blob/v0.3.0/src/field.h#L78-L79
         let x_element = p256k1::field::Element::from(x_part);
         let y_element = p256k1::field::Element::from(y_part);
-        // You cannot always convert two aribtrary elements into a Point,
+        // You cannot always convert two arbitrary elements into a Point,
         // and `p256k1::point::Point::from` assumes that it is being given
         // two elements that from a point in affine coordinates. We have a
         // valid public key, so we know that this assumption is upheld.
@@ -196,6 +196,14 @@ impl From<&stacks_common::util::secp256k1::Secp256k1PublicKey> for PublicKey {
     }
 }
 
+impl From<PublicKey> for libp2p::identity::PeerId {
+    fn from(value: PublicKey) -> Self {
+        let key = libp2p::identity::secp256k1::PublicKey::try_from_bytes(&value.0.serialize())
+            .expect("BUG: rust-secp256k1 public keys should map to libp2p public keys");
+        libp2p::identity::PeerId::from_public_key(&key.into())
+    }
+}
+
 impl PublicKey {
     /// Creates a public key directly from a slice.
     pub fn from_slice(data: &[u8]) -> Result<Self, Error> {
@@ -235,6 +243,64 @@ impl std::fmt::Display for PublicKey {
     }
 }
 
+/// The x-coordinate of a public key for the secp256k1 elliptic curve. It
+/// is used for verification of Taproot signatures and serialized according
+/// to BIP-340.
+#[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct PublicKeyXOnly(secp256k1::XOnlyPublicKey);
+
+impl From<&PublicKeyXOnly> for secp256k1::XOnlyPublicKey {
+    fn from(value: &PublicKeyXOnly) -> Self {
+        value.0
+    }
+}
+
+impl From<PublicKeyXOnly> for secp256k1::XOnlyPublicKey {
+    fn from(value: PublicKeyXOnly) -> Self {
+        value.0
+    }
+}
+
+impl From<&secp256k1::XOnlyPublicKey> for PublicKeyXOnly {
+    fn from(value: &secp256k1::XOnlyPublicKey) -> Self {
+        Self(*value)
+    }
+}
+
+impl From<secp256k1::XOnlyPublicKey> for PublicKeyXOnly {
+    fn from(value: secp256k1::XOnlyPublicKey) -> Self {
+        Self(value)
+    }
+}
+
+impl From<PublicKey> for PublicKeyXOnly {
+    fn from(value: PublicKey) -> Self {
+        Self(secp256k1::XOnlyPublicKey::from(value))
+    }
+}
+
+impl From<&PublicKey> for PublicKeyXOnly {
+    fn from(value: &PublicKey) -> Self {
+        Self(secp256k1::XOnlyPublicKey::from(value))
+    }
+}
+
+impl PublicKeyXOnly {
+    /// Creates a public key directly from a slice.
+    pub fn from_slice(data: &[u8]) -> Result<Self, Error> {
+        secp256k1::XOnlyPublicKey::from_slice(data)
+            .map(Self)
+            .map_err(Error::InvalidXOnlyPublicKey)
+    }
+
+    /// Serializes the key as a byte-encoded pair of values in compressed
+    /// form.
+    pub fn serialize(&self) -> [u8; 32] {
+        self.0.serialize()
+    }
+}
+
 /// A private key type for the secp256k1 elliptic curve.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(transparent)]
@@ -244,7 +310,7 @@ impl FromStr for PrivateKey {
     type Err = Error;
 
     /// Attempts to parse a [`PrivateKey`] from the hex representation of a
-    /// a secp256k1 private key.
+    /// secp256k1 private key.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let data = hex::decode(s).map_err(Error::DecodeHexBytes)?;
         PrivateKey::from_slice(&data)
@@ -260,6 +326,14 @@ impl From<secp256k1::SecretKey> for PrivateKey {
 impl From<PrivateKey> for secp256k1::SecretKey {
     fn from(value: PrivateKey) -> Self {
         value.0
+    }
+}
+
+impl From<PrivateKey> for libp2p::identity::Keypair {
+    fn from(value: PrivateKey) -> Self {
+        let secret = libp2p::identity::secp256k1::SecretKey::try_from_bytes(value.0.secret_bytes())
+            .expect("BUG: secp256k1::SecretKey should be valid");
+        libp2p::identity::secp256k1::Keypair::from(secret).into()
     }
 }
 

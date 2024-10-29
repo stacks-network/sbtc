@@ -24,6 +24,7 @@ use stacks_common::types::chainstate::StacksAddress;
 
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
+use crate::keys::PublicKeyXOnly;
 use crate::keys::SignerScriptPubKey as _;
 use crate::stacks::events::CompletedDepositEvent;
 use crate::stacks::events::WithdrawalAcceptEvent;
@@ -230,6 +231,7 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         tweaked_aggregate_key: group_key.signers_tweaked_pubkey().unwrap(),
         script_pubkey: group_key.signers_script_pubkey().into(),
         signer_set_public_keys: vec![fake::Faker.fake_with_rng(rng)],
+        signature_share_threshold: 1,
     }
 }
 
@@ -258,6 +260,13 @@ impl fake::Dummy<fake::Faker> for PublicKey {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
         let sk = secp256k1::SecretKey::new(rng);
         Self::from(secp256k1::PublicKey::from_secret_key_global(&sk))
+    }
+}
+
+impl fake::Dummy<fake::Faker> for PublicKeyXOnly {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
+        let pk: PublicKey = fake::Faker.fake_with_rng(rng);
+        Self::from(secp256k1::XOnlyPublicKey::from(pk))
     }
 }
 
@@ -371,6 +380,7 @@ impl fake::Dummy<SignerSetConfig> for EncryptedDkgShares {
             encrypted_private_shares: Vec::new(),
             public_shares: Vec::new(),
             signer_set_public_keys,
+            signature_share_threshold: config.signatures_required,
         }
     }
 }
@@ -435,7 +445,7 @@ pub struct DepositTxConfig {
     /// bit set to 1 or the else the [`ReclaimScriptInputs::try_new`]
     /// function will return an error.
     #[dummy(faker = "2..250")]
-    pub lock_time: i64,
+    pub lock_time: u32,
 }
 
 impl fake::Dummy<DepositTxConfig> for BitcoinTx {

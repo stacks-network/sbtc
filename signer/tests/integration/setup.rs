@@ -1,4 +1,3 @@
-use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoin::AddressType;
 use bitcoin::OutPoint;
@@ -10,6 +9,8 @@ use clarity::vm::types::PrincipalData;
 use fake::Fake;
 use fake::Faker;
 use rand::rngs::OsRng;
+use sbtc::deposits::CreateDepositRequest;
+use sbtc::deposits::DepositInfo;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::Faucet;
 use sbtc::testing::regtest::Recipient;
@@ -19,6 +20,7 @@ use signer::bitcoin::utxo;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
 use signer::bitcoin::utxo::SignerUtxo;
+use signer::block_observer::Deposit;
 use signer::config::Settings;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey;
@@ -37,17 +39,20 @@ pub struct TestSweepSetup {
     /// The block hash of the bitcoin block that confirms the deposit
     /// transaction.
     pub deposit_block_hash: bitcoin::BlockHash,
+    /// The full validated deposit info
+    pub deposit_info: DepositInfo,
     /// Where the corresponding sBTC will be minted.
     pub deposit_recipient: PrincipalData,
     /// The deposit request, and a bitmap for how the signers voted on it.
     pub deposit_request: utxo::DepositRequest,
     /// The bitcoin transaction that the user made as a deposit for sBTC.
-    pub deposit_tx: bitcoin::Transaction,
+    pub deposit_tx_info: BitcoinTxInfo,
     /// The signer object. It's public key represents the group of signers'
     /// public keys, allowing us to abstract away the fact that there are
     /// many signers needed to sign a transaction.
     pub aggregated_signer: Recipient,
-    /// The public keys of the signer set. It is effectively controlled by the above signer's private key.
+    /// The public keys of the signer set. It is effectively controlled by
+    /// the above signer's private key.
     pub signer_keys: Vec<PublicKey>,
     /// The block hash of the bitcoin block that confirmed the sweep
     /// transaction.
@@ -62,6 +67,12 @@ pub struct TestSweepSetup {
     pub withdrawal_request: utxo::WithdrawalRequest,
     /// The address that initiated with withdrawal request.
     pub withdrawal_sender: PrincipalData,
+    /// This value affects whether a request is considered "accepted".
+    /// During validation, a signer won't sign a transaction if it is not
+    /// considered accepted but the collection of signers. Note that this
+    /// threshold is the bitcoin signature threshold, which for v1 matches
+    /// the signatures required on stacks.
+    pub signatures_required: u16,
 }
 
 impl TestSweepSetup {
@@ -99,7 +110,7 @@ impl TestSweepSetup {
 
         more_asserts::assert_lt!(amount, 50_000_000);
 
-        let (deposit_tx, deposit_request) =
+        let (deposit_tx, deposit_request, deposit_info) =
             make_deposit_request(&depositor, amount, depositor_utxo, signers_public_key);
         rpc.send_raw_transaction(&deposit_tx).unwrap();
         let deposit_block_hash = faucet.generate_blocks(1).pop().unwrap();
@@ -155,11 +166,17 @@ impl TestSweepSetup {
             .unwrap()
             .unwrap();
 
+        let deposit_tx_info = client
+            .get_tx_info(&deposit_tx.compute_txid(), &deposit_block_hash)
+            .unwrap()
+            .unwrap();
+
         TestSweepSetup {
             deposit_block_hash,
+            deposit_info,
             deposit_recipient: PrincipalData::from(StacksAddress::burn_address(false)),
             deposit_request: requests.deposits.pop().unwrap(),
-            deposit_tx,
+            deposit_tx_info,
             sweep_tx_info,
             sweep_block_height,
             sweep_block_hash,
@@ -167,17 +184,25 @@ impl TestSweepSetup {
             aggregated_signer: signer,
             withdrawal_request: requests.withdrawals.pop().unwrap(),
             withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
+            signatures_required: 2,
+        }
+    }
+
+    /// Return the expected deposit request that our internal EmilyClient
+    /// should return for the deposit here.
+    pub fn emily_deposit_request(&self) -> CreateDepositRequest {
+        CreateDepositRequest {
+            outpoint: self.deposit_info.outpoint,
+            reclaim_script: self.deposit_info.reclaim_script.clone(),
+            deposit_script: self.deposit_info.deposit_script.clone(),
         }
     }
 
     /// Store the deposit transaction into the database
     pub async fn store_deposit_tx(&self, db: &PgStore) {
-        let mut tx = Vec::new();
-        self.deposit_tx.consensus_encode(&mut tx).unwrap();
-
         let deposit_tx = model::Transaction {
-            tx,
-            txid: self.deposit_tx.compute_txid().to_byte_array(),
+            tx: bitcoin::consensus::serialize(&self.deposit_tx_info.tx),
+            txid: self.deposit_tx_info.txid.to_byte_array(),
             tx_type: model::TransactionType::SbtcTransaction,
             block_hash: self.deposit_block_hash.to_byte_array(),
         };
@@ -193,11 +218,8 @@ impl TestSweepSetup {
     /// Store the transaction that swept the deposit into the signers' UTXO
     /// into the database
     pub async fn store_sweep_tx(&self, db: &PgStore) {
-        let mut tx = Vec::new();
-        self.sweep_tx_info.tx.consensus_encode(&mut tx).unwrap();
-
         let sweep_tx = model::Transaction {
-            tx,
+            tx: bitcoin::consensus::serialize(&self.sweep_tx_info.tx),
             txid: self.sweep_tx_info.txid.to_byte_array(),
             tx_type: model::TransactionType::SbtcTransaction,
             block_hash: self.sweep_block_hash.to_byte_array(),
@@ -214,17 +236,11 @@ impl TestSweepSetup {
 
     /// Store the deposit request in the database.
     pub async fn store_deposit_request(&self, db: &PgStore) {
-        let deposit_request = model::DepositRequest {
-            txid: self.deposit_request.outpoint.txid.into(),
-            output_index: self.deposit_request.outpoint.vout,
-            spend_script: self.deposit_request.deposit_script.clone().into(),
-            reclaim_script: self.deposit_request.reclaim_script.clone().into(),
-            recipient: self.deposit_recipient.clone().into(),
-            amount: self.deposit_request.amount,
-            max_fee: self.deposit_request.max_fee,
-            sender_script_pub_keys: Vec::new(),
+        let deposit = Deposit {
+            tx_info: self.deposit_tx_info.clone(),
+            info: self.deposit_info.clone(),
         };
-
+        let deposit_request = model::DepositRequest::from(deposit);
         db.write_deposit_request(&deposit_request).await.unwrap();
     }
 
@@ -247,6 +263,7 @@ impl TestSweepSetup {
                 output_index: self.deposit_request.outpoint.vout,
                 signer_pub_key,
                 is_accepted: !is_rejected,
+                can_sign: true,
             });
 
         for decision in deposit_signers {
@@ -284,21 +301,9 @@ impl TestSweepSetup {
             block_hash: self.withdrawal_request.block_hash,
             block_height: self.sweep_block_height,
             parent_hash: Faker.fake_with_rng(&mut OsRng),
+            bitcoin_anchor: self.sweep_block_hash.into(),
         };
         db.write_stacks_block(&block).await.unwrap();
-
-        sqlx::query(
-            r#"
-            UPDATE sbtc_signer.bitcoin_blocks
-            SET confirms = array_append(confirms, $1)
-            WHERE block_height = $2;
-            "#,
-        )
-        .bind(&self.withdrawal_request.block_hash)
-        .bind(self.sweep_block_height as i64)
-        .execute(db.pool())
-        .await
-        .unwrap();
 
         let withdrawal_request = model::WithdrawalRequest {
             request_id: self.withdrawal_request.request_id,
@@ -325,8 +330,19 @@ impl TestSweepSetup {
             public_shares: Vec::new(),
             aggregate_key,
             signer_set_public_keys: self.signer_keys.clone(),
+            signature_share_threshold: self.signatures_required,
         };
         db.write_encrypted_dkg_shares(&shares).await.unwrap();
+    }
+
+    // This is all normal happy path things that need to happen in order to
+    // pass validation of a stacks transaction.
+    pub async fn store_happy_path_data(&self, db: &PgStore) {
+        self.store_deposit_tx(&db).await;
+        self.store_sweep_tx(&db).await;
+        self.store_dkg_shares(&db).await;
+        self.store_deposit_request(&db).await;
+        self.store_deposit_decisions(&db).await;
     }
 }
 
@@ -341,7 +357,6 @@ pub async fn backfill_bitcoin_blocks(db: &PgStore, rpc: &Client, chain_tip: &bit
             block_hash: block_header.hash.into(),
             block_height: block_header.height as u64,
             parent_hash: parent_header_hash.into(),
-            confirms: Vec::new(),
         };
 
         db.write_bitcoin_block(&bitcoin_block).await.unwrap();
