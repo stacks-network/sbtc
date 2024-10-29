@@ -160,6 +160,10 @@
       (requested-amount (get amount request))
       (requester (get sender request))
     )
+
+      ;; Verify that Bitcoin hasn't forked by comparing the burn hash provided
+      (asserts! (is-eq (some burn-hash) (get-burn-header burn-height)) ERR_INVALID_BURN_HASH)
+
       ;; Check that the caller is the current signer principal
       (asserts! (is-eq (get current-signer-principal current-signer-data) tx-sender) ERR_INVALID_CALLER)
 
@@ -168,9 +172,6 @@
 
       ;; Check that fee is not higher than requesters max fee
       (asserts! (<= fee requested-max-fee) ERR_FEE_TOO_HIGH)
-
-      ;; Verify that Bitcoin hasn't forked by comparing the burn hash provided
-      (asserts! (is-eq (some burn-hash) (get-burn-header burn-height)) ERR_INVALID_BURN_HASH)
 
       ;; Burn the locked-sbtc
       (try! (contract-call? .sbtc-token protocol-burn-locked (+ requested-amount requested-max-fee) requester))
