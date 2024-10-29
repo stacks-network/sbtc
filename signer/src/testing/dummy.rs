@@ -36,7 +36,6 @@ use crate::codec::Encode;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
-use crate::storage::model::ConsensusHash;
 use crate::storage::model::EncryptedDkgShares;
 use crate::storage::model::RotateKeysTransaction;
 use crate::storage::model::ScriptPubKey;
@@ -401,12 +400,6 @@ impl fake::Dummy<fake::Faker> for BitcoinBlockHash {
 impl fake::Dummy<fake::Faker> for StacksBlockHash {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         From::<[u8; 32]>::from(config.fake_with_rng(rng))
-    }
-}
-
-impl fake::Dummy<fake::Faker> for ConsensusHash {
-    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        From::<[u8; 20]>::from(config.fake_with_rng(rng))
     }
 }
 

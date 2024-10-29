@@ -5,6 +5,7 @@ use std::future::Future;
 use std::time::Duration;
 
 use blockstack_lib::burnchains::Txid;
+use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::chainstate::stacks::TokenTransferMemo;
@@ -33,7 +34,6 @@ use url::Url;
 use crate::config::Settings;
 use crate::error::Error;
 use crate::keys::PublicKey;
-use crate::storage::model::ConsensusHash;
 use crate::storage::DbRead;
 use crate::util::ApiFallbackClient;
 

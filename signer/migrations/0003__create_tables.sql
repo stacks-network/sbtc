@@ -20,7 +20,6 @@ CREATE TABLE sbtc_signer.stacks_blocks (
     block_hash BYTEA PRIMARY KEY,
     block_height BIGINT NOT NULL,
     parent_hash BYTEA NOT NULL,
-    consensus_hash BYTEA NOT NULL,
     bitcoin_anchor BYTEA NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );

@@ -3,6 +3,7 @@
 use std::{ops::Deref, sync::Arc};
 
 use bitcoin::Txid;
+use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::{
     chainstate::{nakamoto::NakamotoBlock, stacks::StacksTransaction},
     net::api::{
@@ -28,7 +29,7 @@ use crate::{
     },
     storage::{
         in_memory::{SharedStore, Store},
-        model::{ConsensusHash, StacksBlock},
+        model::StacksBlock,
         DbRead, DbWrite,
     },
 };

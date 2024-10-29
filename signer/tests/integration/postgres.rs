@@ -375,7 +375,7 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
     let num_signers = 7;
-    let context_window = 5;
+    let context_window = 7;
     let test_model_params = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
         num_stacks_blocks_per_bitcoin_block: 3,

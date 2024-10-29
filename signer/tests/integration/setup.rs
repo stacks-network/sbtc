@@ -300,7 +300,6 @@ impl TestSweepSetup {
             block_hash: self.withdrawal_request.block_hash,
             block_height: self.sweep_block_height,
             parent_hash: Faker.fake_with_rng(&mut OsRng),
-            consensus_hash: Faker.fake_with_rng(&mut OsRng),
             bitcoin_anchor: self.sweep_block_hash.into(),
         };
         db.write_stacks_block(&block).await.unwrap();

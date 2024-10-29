@@ -415,7 +415,7 @@ where
         for consensus_hash in unique_consensus_hashes {
             let anchor_block: BitcoinBlockHash = self
                 .stacks_client
-                .get_sortition_info(&consensus_hash.into())
+                .get_sortition_info(&consensus_hash)
                 .await?
                 .burn_block_hash
                 .into();

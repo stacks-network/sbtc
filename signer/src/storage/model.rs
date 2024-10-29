@@ -42,9 +42,7 @@ pub struct StacksBlock {
     pub block_height: u64,
     /// Hash of the parent block.
     pub parent_hash: StacksBlockHash,
-    /// Consensus hash of the bitcoin anchor block.
-    pub consensus_hash: ConsensusHash,
-    /// The bitcoin block this stacks block is build upon (matching `consensus_hash`)
+    /// The bitcoin block this stacks block is build upon (matching consensus hash)
     pub bitcoin_anchor: BitcoinBlockHash,
 }
 
@@ -55,7 +53,6 @@ impl StacksBlock {
             block_hash: block.block_id().into(),
             block_height: block.header.chain_length,
             parent_hash: block.header.parent_block_id.into(),
-            consensus_hash: block.header.consensus_hash.into(),
             bitcoin_anchor: *bitcoin_anchor,
         }
     }
@@ -699,41 +696,6 @@ impl From<StacksTxId> for blockstack_lib::burnchains::Txid {
 impl From<[u8; 32]> for StacksTxId {
     fn from(bytes: [u8; 32]) -> Self {
         Self(blockstack_lib::burnchains::Txid(bytes))
-    }
-}
-
-/// Consensus hash
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ConsensusHash(stacks_common::types::chainstate::ConsensusHash);
-
-impl Deref for ConsensusHash {
-    type Target = stacks_common::types::chainstate::ConsensusHash;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<stacks_common::types::chainstate::ConsensusHash> for ConsensusHash {
-    fn from(value: stacks_common::types::chainstate::ConsensusHash) -> Self {
-        Self(value)
-    }
-}
-
-impl From<ConsensusHash> for stacks_common::types::chainstate::ConsensusHash {
-    fn from(value: ConsensusHash) -> Self {
-        value.0
-    }
-}
-
-impl From<[u8; 20]> for ConsensusHash {
-    fn from(bytes: [u8; 20]) -> Self {
-        Self(stacks_common::types::chainstate::ConsensusHash(bytes))
-    }
-}
-
-impl std::fmt::Display for ConsensusHash {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
     }
 }
 

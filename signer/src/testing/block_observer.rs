@@ -300,7 +300,7 @@ impl StacksInteract for TestHarness {
 
     async fn get_sortition_info(
         &self,
-        _consensus_hash: &model::ConsensusHash,
+        _consensus_hash: &ConsensusHash,
     ) -> Result<SortitionInfo, Error> {
         let bitcoin_block = self.bitcoin_blocks.last().unwrap();
         Ok(SortitionInfo {
