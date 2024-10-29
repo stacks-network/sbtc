@@ -81,7 +81,7 @@ pub trait DbRead {
 
     /// Returns whether the given `signer_public_key` can provide signature
     /// shares for the deposit transaction.
-    /// 
+    ///
     /// This function works by identifying whether the `signer_public_key`
     /// was part of the signer set associated with the public key that was
     /// used to lock the deposit
