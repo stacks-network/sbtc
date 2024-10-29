@@ -1463,7 +1463,6 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     assert_eq!(req.sweep_block_hash, setup.sweep_block_hash.into());
     assert_eq!(req.sweep_block_height, setup.sweep_block_height);
     assert_eq!(req.sweep_txid, setup.sweep_tx_info.txid.into());
-    //assert_eq!(swept_deposit.sweep_tx, setup.sweep_tx_info.tx.into());
 
     signer::testing::storage::drop_db(db).await;
 }
