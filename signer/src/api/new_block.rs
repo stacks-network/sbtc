@@ -265,8 +265,8 @@ async fn handle_completed_deposit(
         bitcoin_txid: event.outpoint.txid.to_string(),
         status: Status::Confirmed,
         fulfillment: Some(Some(Box::new(Fulfillment {
-            bitcoin_block_hash: bitcoin_block_hash,
-            bitcoin_block_height: bitcoin_block_height,
+            bitcoin_block_hash,
+            bitcoin_block_height,
             bitcoin_tx_index: event.outpoint.vout,
             bitcoin_txid: event.outpoint.txid.to_string(),
             btc_fee: 1, // TODO (#712): We need to get the fee from the transaction. Currently missing from the event.
