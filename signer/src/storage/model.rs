@@ -78,7 +78,7 @@ pub struct DepositRequest {
     pub lock_time: u32,
     /// The public key used in the deposit script. The signers public key
     /// is for Schnorr signatures.
-    pub signer_public_key: PublicKeyXOnly,
+    pub signers_public_key: PublicKeyXOnly,
     /// The addresses of the input UTXOs funding the deposit request.
     #[cfg_attr(
         feature = "testing",
@@ -105,7 +105,7 @@ impl From<Deposit> for DepositRequest {
             amount: deposit.info.amount,
             max_fee: deposit.info.max_fee,
             lock_time: deposit.info.lock_time.to_consensus_u32(),
-            signer_public_key: deposit.info.signers_public_key.into(),
+            signers_public_key: deposit.info.signers_public_key.into(),
             sender_script_pub_keys: sender_script_pub_keys.into_iter().collect(),
         }
     }
@@ -135,6 +135,9 @@ pub struct DepositSigner {
     pub signer_pub_key: PublicKey,
     /// Signals if the signer is prepared to sign for this request.
     pub is_accepted: bool,
+    /// This specifies whether the indicated signer_pub_key can sign for
+    /// the associated deposit request.
+    pub can_sign: bool,
 }
 
 /// Withdraw request.

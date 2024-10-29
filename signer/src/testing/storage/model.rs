@@ -366,6 +366,7 @@ impl DepositData {
             let mut raw_transaction: model::Transaction = deposit_config.fake_with_rng(rng);
             raw_transaction.block_hash = *bitcoin_block.block_hash.as_ref();
             deposit_request.txid = raw_transaction.txid.into();
+            deposit_request.signers_public_key = deposit_config.aggregate_key.into();
 
             let deposit_signers: Vec<_> = signer_keys
                 .iter()
@@ -376,6 +377,7 @@ impl DepositData {
                     output_index: deposit_request.output_index,
                     signer_pub_key,
                     is_accepted: fake::Faker.fake_with_rng(rng),
+                    can_sign: true,
                 })
                 .collect();
 
