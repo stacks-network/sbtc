@@ -21,7 +21,6 @@ use crate::stacks::events::WithdrawalCreateEvent;
 use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
 
-use super::model::SweepTransactionPackage;
 use super::util::get_utxo;
 
 /// A store wrapped in an Arc<Mutex<...>> for interior mutability
@@ -106,9 +105,9 @@ pub struct Store {
     /// more than one completed-deposit event because of reorgs.
     pub completed_deposit_events: HashMap<OutPoint, CompletedDepositEvent>,
 
-    /// sBTC Bitcoin transaction packages which have been broadcast to the
+    /// sBTC Bitcoin sweep transactions which have been broadcast to the
     /// Bitcoin network, but not necessarily confirmed.
-    pub transaction_packages: Vec<SweepTransactionPackage>,
+    pub sweep_transactions: Vec<model::SweepTransaction>,
 }
 
 impl Store {
@@ -711,22 +710,22 @@ impl super::DbRead for SharedStore {
         //     .collect::<Result<Vec<_>, Error>>()
     }
 
-    async fn get_latest_sweep_transaction_package(
+    async fn get_latest_sweep_transaction(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
-    ) -> Result<Option<SweepTransactionPackage>, Error> {
+    ) -> Result<Option<model::SweepTransaction>, Error> {
         let store = self.lock().await;
         let bitcoin_blocks = &store.bitcoin_blocks;
-        let tx_packages = &store.transaction_packages;
+        let sweep_txs = &store.sweep_transactions;
         let first = bitcoin_blocks.get(chain_tip);
 
         let package = std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
             .take(context_window as usize)
             .find_map(|block| {
-                tx_packages
+                sweep_txs
                     .iter()
-                    .find(|package| package.created_at_block_hash == block.block_hash)
+                    .find(|tx| tx.created_at_block_hash == block.block_hash)
                     .cloned()
             });
 
@@ -1002,32 +1001,9 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_sweep_transaction_package(
-        &self,
-        package: SweepTransactionPackage,
-    ) -> Result<u32, Error> {
+    async fn write_sweep_transaction(&self, tx: &model::SweepTransaction) -> Result<(), Error> {
         let mut store = self.lock().await;
-        store.transaction_packages.push(package);
-        Ok(store.transaction_packages.len() as u32)
-    }
-
-    async fn mark_sweep_transaction_as_broadcast(
-        &self,
-        txid: &model::BitcoinTxId,
-    ) -> Result<(), Error> {
-        let mut store = self.lock().await;
-        let package = store
-            .transaction_packages
-            .iter_mut()
-            .find(|package| package.transactions.iter().any(|tx| tx.txid == *txid));
-
-        let Some(package) = package else {
-            return Ok(());
-        };
-
-        if let Some(tx) = package.transactions.iter_mut().find(|tx| tx.txid == *txid) {
-            tx.is_broadcast = true;
-        }
+        store.sweep_transactions.push(tx.clone());
 
         Ok(())
     }

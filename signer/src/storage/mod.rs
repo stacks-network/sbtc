@@ -225,11 +225,11 @@ pub trait DbRead {
     ) -> impl Future<Output = Result<Vec<model::SweptWithdrawalRequest>, Error>> + Send;
 
     /// Get the latest sweep transaction package.
-    fn get_latest_sweep_transaction_package(
+    fn get_latest_sweep_transaction(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
-    ) -> impl Future<Output = Result<Option<model::SweepTransactionPackage>, Error>> + Send;
+    ) -> impl Future<Output = Result<Option<model::SweepTransaction>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.
@@ -349,56 +349,33 @@ pub trait DbWrite {
     ) -> impl Future<Output = Result<(), Error>> + Send;
 
     /// Write a complete Bitcoin transaction package to the database.
-    fn write_sweep_transaction_package(
+    fn write_sweep_transaction(
         &self,
-        package: model::SweepTransactionPackage,
-    ) -> impl Future<Output = Result<u32, Error>> + Send;
-
-    /// Mark a packaged transaction as having been broadcast.
-    fn mark_sweep_transaction_as_broadcast(
-        &self,
-        txid: &model::BitcoinTxId,
+        tx: &model::SweepTransaction,
     ) -> impl Future<Output = Result<(), Error>> + Send;
-}
-
-/// Convenience trait for storing a transaction package, which is represented
-/// as a vector of [`crate::bitcoin::utxo::UnsignedTransaction`].
-pub trait TransactionPackageExt {
-    /// Store the transaction package in the database.
-    fn write_to_db(
-        &self,
-        db: impl DbWrite + Sync + Send,
-        chain_tip: &bitcoin::BlockHash,
-        market_fee_rate: f64,
-    ) -> impl Future<Output = Result<(), Error>> + Send;
-}
-
-impl TransactionPackageExt for Vec<crate::bitcoin::utxo::UnsignedTransaction<'_>> {
-    async fn write_to_db(
-        &self,
-        db: impl DbWrite + Sync + Send,
-        chain_tip: &bitcoin::BlockHash,
-        market_fee_rate: f64,
-    ) -> Result<(), Error> {
-        let pkg = model::SweepTransactionPackage::from_package(*chain_tip, market_fee_rate, self);
-        db.write_sweep_transaction_package(pkg).await.map(|_| ())
-    }
 }
 
 /// Convenience trait for [`crate::bitcoin::utxo::UnsignedTransaction`] storage
 /// operations.
 pub trait UnsignedTransactionExt {
-    /// Mark the transaction as having been broadcast.
-    fn mark_as_broadcasted(
+    /// Write the transaction to the database as a sweep transaction.
+    fn store_as_sweep_transaction(
         &self,
-        db: impl DbWrite + Sync + Send,
-    ) -> impl Future<Output = Result<(), Error>> + Send;
+        db: &impl DbWrite,
+        chain_tip: &model::BitcoinBlockHash,
+    ) -> impl Future<Output = Result<(), Error>>;
 }
 
 impl UnsignedTransactionExt for crate::bitcoin::utxo::UnsignedTransaction<'_> {
-    async fn mark_as_broadcasted(&self, db: impl DbWrite + Sync + Send) -> Result<(), Error> {
-        db.mark_sweep_transaction_as_broadcast(&self.tx.compute_txid().into())
-            .await
-            .map(|_| ())
+    async fn store_as_sweep_transaction(
+        &self,
+        db: &impl DbWrite,
+        chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<(), Error> {
+        let sweep_tx = model::SweepTransaction::from_unsigned_at_block(chain_tip, self);
+
+        db.write_sweep_transaction(&sweep_tx).await?;
+
+        Ok(())
     }
 }

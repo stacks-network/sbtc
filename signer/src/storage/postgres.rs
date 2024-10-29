@@ -9,7 +9,6 @@ use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksBlockId;
-use futures::future::try_join_all;
 use futures::StreamExt as _;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::Executor as _;
@@ -417,32 +416,13 @@ impl PgStore {
     /// with all the necessary information in one query, and doing a custom
     /// `FromRow` implementation. I just didn't want to spend more time on it
     /// now.
-    async fn get_sweep_package_by_id(
+    async fn get_sweep_transaction_by_txid(
         &self,
-        package_id: i32,
-    ) -> Result<Option<model::SweepTransactionPackage>, Error> {
-        let package: Option<model::SweepTransactionPackage> = sqlx::query_as(
+        sweep_txid: &model::BitcoinTxId,
+    ) -> Result<Option<model::SweepTransaction>, Error> {
+        let transaction: Option<model::SweepTransaction> = sqlx::query_as(
             "
             SELECT
-                created_at_block_hash,
-                market_fee_rate
-            FROM sweep_packages
-            WHERE id = $1;
-        ",
-        )
-        .bind(package_id)
-        .fetch_optional(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
-        let Some(mut package) = package else {
-            return Ok(None);
-        };
-
-        let transactions: Vec<model::SweepTransaction> = sqlx::query_as(
-            "
-            SELECT
-                id,
                 txid,
                 signer_prevout_txid,
                 signer_prevout_output_index,
@@ -450,82 +430,65 @@ impl PgStore {
                 signer_prevout_script_pubkey,
                 amount,
                 fee,
-                fee_rate,
-                is_broadcast
+                created_at_block_hash,
+                market_fee_rate
             FROM
                 sweep_transactions
             WHERE
-                sweep_package_id = $1
-            ORDER BY
-                id ASC;
+                txid = $1;
         ",
         )
-        .bind(package_id)
+        .bind(sweep_txid)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        let Some(mut transaction) = transaction else {
+            return Ok(None);
+        };
+
+        let swept_deposits = sqlx::query_as(
+            "
+            SELECT
+                input_index,
+                deposit_request_txid,
+                deposit_request_output_index
+            FROM
+                swept_deposits
+            WHERE
+                sweep_transaction_txid = $1
+            ORDER BY
+                input_index ASC;
+            ",
+        )
+        .bind(sweep_txid)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
-        let transaction_futures = transactions.into_iter().map(|mut transaction| async {
-            let transaction_id = transaction
-                .id
-                .expect("BUG: sweep_transactions.id cannot be null");
+        let swept_withdrawals = sqlx::query_as(
+            "
+            SELECT
+                output_index,
+                withdrawal_request_id,
+                withdrawal_request_block_hash
+            FROM
+                swept_withdrawals
+            WHERE
+                sweep_transaction_txid = $1
+            ORDER BY
+                output_index ASC;
+        ",
+        )
+        .bind(sweep_txid)
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
 
-            let swept_deposits: Vec<bitcoin::OutPoint> =
-                sqlx::query_as::<_, (model::BitcoinTxId, i32)>(
-                    "
-                SELECT
-                    deposit_request_txid,
-                    deposit_request_output_index
-                FROM
-                    swept_deposits
-                WHERE
-                    sweep_transaction_id = $1
-                ORDER BY
-                    id ASC;
-                ",
-                )
-                .bind(transaction_id)
-                .fetch_all(&self.0)
-                .await
-                .map_err(Error::SqlxQuery)?
-                .into_iter()
-                .map(|(txid, vout)| bitcoin::OutPoint {
-                    txid: txid.into(),
-                    vout: vout as u32,
-                })
-                .collect();
+        transaction.swept_deposits = swept_deposits;
+        transaction.swept_withdrawals = swept_withdrawals;
 
-            let swept_withdrawals = sqlx::query_as(
-                "
-                SELECT
-                    output_index,
-                    withdrawal_request_id,
-                    withdrawal_request_block_hash
-                FROM
-                    swept_withdrawals
-                WHERE
-                    sweep_transaction_id = $1
-                ORDER BY
-                    id ASC;
-            ",
-            )
-            .bind(transaction_id)
-            .fetch_all(&self.0)
-            .await
-            .map_err(Error::SqlxQuery)?;
-
-            transaction.swept_deposits = swept_deposits;
-            transaction.swept_withdrawals = swept_withdrawals;
-
-            Ok(transaction) as Result<model::SweepTransaction, Error>
-        });
-
-        // This lets us at least query the swept deposits & withdrawals concurrently.
-        let transactions = try_join_all(transaction_futures).await?;
-
-        package.transactions = transactions;
-
-        Ok(Some(package))
+        Ok(Some(transaction))
     }
 }
 
@@ -1422,10 +1385,9 @@ impl super::DbRead for PgStore {
             INNER JOIN 
                 sweep_transactions AS sweep_tx
                     ON bc_trx.txid = sweep_tx.txid
-                    AND sweep_tx.is_broadcast = true
             INNER JOIN 
                 swept_deposits AS swept_deposit 
-                    ON swept_deposit.sweep_transaction_id = sweep_tx.id
+                    ON swept_deposit.sweep_transaction_txid = sweep_tx.txid
             INNER JOIN 
                 deposit_requests AS deposit_req 
                     ON deposit_req.txid = swept_deposit.deposit_request_txid
@@ -1459,30 +1421,29 @@ impl super::DbRead for PgStore {
         unimplemented!()
     }
 
-    async fn get_latest_sweep_transaction_package(
+    async fn get_latest_sweep_transaction(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
-    ) -> Result<Option<model::SweepTransactionPackage>, Error> {
-        let id: Option<i32> = sqlx::query_scalar(
+    ) -> Result<Option<model::SweepTransaction>, Error> {
+        let Some((txid,)): Option<(model::BitcoinTxId,)> = sqlx::query_as(
             "
             SELECT
-                pkg.id
+                tx.txid
             FROM bitcoin_blockchain_of($1, $2) AS bitcoin
-            JOIN sweep_packages AS pkg ON bitcoin.block_hash = pkg.created_at_block_hash
-            ORDER BY pkg.id DESC",
+            JOIN sweep_transactions AS tx ON bitcoin.block_hash = tx.created_at_block_hash
+            ORDER BY tx.created_at DESC",
         )
         .bind(chain_tip)
         .bind(context_window as i32)
         .fetch_optional(&self.0)
         .await
-        .map_err(Error::SqlxQuery)?;
-
-        let Some(package_id) = id else {
+        .map_err(Error::SqlxQuery)?
+        else {
             return Ok(None);
         };
 
-        self.get_sweep_package_by_id(package_id).await
+        self.get_sweep_transaction_by_txid(&txid).await
     }
 }
 
@@ -2102,125 +2063,84 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn write_sweep_transaction_package(
+    async fn write_sweep_transaction(
         &self,
-        package: model::SweepTransactionPackage,
-    ) -> Result<u32, Error> {
+        transaction: &model::SweepTransaction,
+    ) -> Result<(), Error> {
         // We're doing multiple inserts here so we wrap them in a transaction.
         let mut tx = self.0.begin().await.map_err(Error::SqlxBeginTransaction)?;
 
-        // Insert the package and get its id
-        let package_id: i32 = sqlx::query_scalar(
+        sqlx::query(
             "
-            INSERT INTO sweep_packages (
-                created_at_block_hash
+            INSERT INTO sweep_transactions (
+                txid
+              , signer_prevout_txid
+              , signer_prevout_output_index
+              , signer_prevout_amount
+              , signer_prevout_script_pubkey
+              , amount
+              , fee
+              , created_at_block_hash
               , market_fee_rate
-            )
-            VALUES ($1, $2)
-            RETURNING id",
+            ) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         )
-        .bind(package.created_at_block_hash)
-        .bind(package.market_fee_rate)
-        .fetch_one(&mut *tx)
+        .bind(transaction.txid)
+        .bind(transaction.signer_prevout_txid)
+        .bind(transaction.signer_prevout_output_index as i32)
+        .bind(transaction.signer_prevout_amount as i64)
+        .bind(transaction.signer_prevout_script_pubkey.clone())
+        .bind(transaction.amount as i64)
+        .bind(transaction.fee as i64)
+        .bind(transaction.created_at_block_hash)
+        .bind(transaction.market_fee_rate)
+        .execute(&mut *tx)
         .await
         .map_err(Error::SqlxQuery)?;
 
-        // Now, for each transaction in the package, insert it and get its
-        // id. Then insert the swept deposits and serviced withdrawals.
-        for mut transaction in package.transactions {
-            let transaction_id: i64 = sqlx::query_scalar(
+        // Insert the swept deposits.
+        for deposit in transaction.swept_deposits.iter() {
+            sqlx::query(
                 "
-                INSERT INTO sweep_transactions (
-                    sweep_package_id
-                  , txid
-                  , signer_prevout_txid
-                  , signer_prevout_output_index
-                  , signer_prevout_amount
-                  , signer_prevout_script_pubkey
-                  , amount
-                  , fee
-                  , fee_rate
-                  , is_broadcast
-                ) 
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
-                RETURNING id",
+                INSERT INTO swept_deposits (
+                    sweep_transaction_txid
+                  , input_index
+                  , deposit_request_txid
+                  , deposit_request_output_index
+                )
+                VALUES ($1, $2, $3, $4)",
             )
-            .bind(package_id)
             .bind(transaction.txid)
-            .bind(transaction.signer_prevout_txid)
-            .bind(transaction.signer_prevout_output_index as i32)
-            .bind(transaction.signer_prevout_amount as i64)
-            .bind(transaction.signer_prevout_script_pubkey)
-            .bind(transaction.amount as i64)
-            .bind(transaction.fee as i64)
-            .bind(transaction.fee_rate)
-            .bind(transaction.is_broadcast)
-            .fetch_one(&mut *tx)
+            .bind(deposit.input_index as i32)
+            .bind(deposit.deposit_request_txid)
+            .bind(deposit.deposit_request_output_index as i32)
+            .execute(&mut *tx)
             .await
             .map_err(Error::SqlxQuery)?;
+        }
 
-            transaction.id = Some(transaction_id);
-
-            // Insert the swept deposits.
-            for deposit in transaction.swept_deposits {
-                sqlx::query(
-                    "
-                    INSERT INTO swept_deposits (
-                        sweep_transaction_id
-                      , deposit_request_txid
-                      , deposit_request_output_index
-                    )
-                    VALUES ($1, $2, $3)",
+        // Insert the serviced withdrawals.
+        for withdrawal in transaction.swept_withdrawals.iter() {
+            sqlx::query(
+                "
+                INSERT INTO swept_withdrawals (
+                    sweep_transaction_txid
+                  , output_index
+                  , withdrawal_request_id
+                  , withdrawal_request_block_hash
                 )
-                .bind(transaction_id)
-                .bind(model::BitcoinTxId::from(deposit.txid))
-                .bind(deposit.vout as i32)
-                .execute(&mut *tx)
-                .await
-                .map_err(Error::SqlxQuery)?;
-            }
-
-            // Insert the serviced withdrawals.
-            for withdrawal in transaction.swept_withdrawals {
-                sqlx::query(
-                    "
-                    INSERT INTO swept_withdrawals (
-                        sweep_transaction_id
-                      , output_index
-                      , withdrawal_request_id
-                      , withdrawal_request_block_hash
-                    )
-                    VALUES ($1, $2, $3, $4)",
-                )
-                .bind(transaction_id)
-                .bind(withdrawal.output_index as i32)
-                .bind(withdrawal.withdrawal_request_id as i64)
-                .bind(withdrawal.withdrawal_request_block_hash)
-                .execute(&mut *tx)
-                .await
-                .map_err(Error::SqlxQuery)?;
-            }
+                VALUES ($1, $2, $3, $4)",
+            )
+            .bind(transaction.txid)
+            .bind(withdrawal.output_index as i32)
+            .bind(withdrawal.withdrawal_request_id as i64)
+            .bind(withdrawal.withdrawal_request_block_hash)
+            .execute(&mut *tx)
+            .await
+            .map_err(Error::SqlxQuery)?;
         }
 
         tx.commit().await.map_err(Error::SqlxCommitTransaction)?;
-
-        Ok(package_id as u32)
-    }
-
-    async fn mark_sweep_transaction_as_broadcast(
-        &self,
-        txid: &model::BitcoinTxId,
-    ) -> Result<(), Error> {
-        sqlx::query(
-            "
-            UPDATE sweep_transactions
-            SET is_broadcast = true
-            WHERE txid = $1",
-        )
-        .bind(txid)
-        .execute(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
 
         Ok(())
     }
