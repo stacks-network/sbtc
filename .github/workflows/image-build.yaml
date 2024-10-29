@@ -91,4 +91,4 @@ jobs:
           tags: ${{ steps.docker_metadata.outputs.tags }}
           labels: ${{ steps.docker_metadata.outputs.labels }}
           target: ${{ matrix.docker_target }}
-          push: ${{ inputs.push-image }}
+          push: true
