@@ -30,6 +30,7 @@ use crate::stacks::events::WithdrawalAcceptEvent;
 use crate::stacks::events::WithdrawalCreateEvent;
 use crate::stacks::events::WithdrawalRejectEvent;
 use crate::stacks::webhooks::NewBlockEvent;
+use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::StacksBlock;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::DbWrite;
@@ -112,6 +113,7 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
         block_hash: StacksBlockHash::from(new_block_event.index_block_hash),
         block_height: new_block_event.block_height,
         parent_hash: StacksBlockHash::from(new_block_event.parent_index_block_hash),
+        bitcoin_anchor: BitcoinBlockHash::from(new_block_event.burn_block_hash),
     };
     let block_id = new_block_event.index_block_hash;
     let bitcoin_block_hash = new_block_event.burn_block_hash.to_hex();

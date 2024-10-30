@@ -30,7 +30,7 @@ pub struct TxSetup {
 
 /// The BTC transaction that is in this TxSetup is consistent with
 /// the deposit and reclaim scripts.
-pub fn tx_setup(lock_time: i64, max_fee: u64, amount: u64) -> TxSetup {
+pub fn tx_setup(lock_time: u32, max_fee: u64, amount: u64) -> TxSetup {
     let secret_key = SecretKey::new(&mut OsRng);
 
     let deposit = DepositScriptInputs {

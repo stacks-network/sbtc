@@ -15,7 +15,7 @@ const BLOCK_HASH: &'static str = "";
 const BLOCK_HEIGHT: u64 = 0;
 const INITIAL_DEPOSIT_STATUS_MESSAGE: &'static str = "Just received deposit";
 
-const DEPOSIT_LOCK_TIME: u64 = 12345;
+const DEPOSIT_LOCK_TIME: u32 = 12345;
 const DEPOSIT_MAX_FEE: u64 = 30;
 
 // TODO(TBD): This is the only value that will work at the moment because the
@@ -69,9 +69,8 @@ struct DepositTxnData {
 }
 
 impl DepositTxnData {
-    pub fn new(lock_time: u64, max_fee: u64, amount_sats: u64) -> Self {
-        let test_deposit_tx: TxSetup =
-            testing::deposits::tx_setup(lock_time as i64, max_fee, amount_sats);
+    pub fn new(lock_time: u32, max_fee: u64, amount_sats: u64) -> Self {
+        let test_deposit_tx: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
         let recipient_hex_string =
             hex::encode(&test_deposit_tx.deposit.recipient.serialize_to_vec());
         Self {

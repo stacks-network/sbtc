@@ -97,17 +97,6 @@ pub fn extract_relevant_transactions(
 #[derive(Debug, Clone)]
 pub struct PgStore(sqlx::PgPool);
 
-impl TryFrom<&NakamotoBlock> for model::StacksBlock {
-    type Error = Error;
-    fn try_from(block: &NakamotoBlock) -> Result<Self, Error> {
-        Ok(Self {
-            block_hash: block.block_id().into(),
-            block_height: block.header.chain_length,
-            parent_hash: block.header.parent_block_id.into(),
-        })
-    }
-}
-
 impl PgStore {
     /// Connect to the Postgres database at `url`.
     pub async fn connect(url: &str) -> Result<Self, Error> {
@@ -371,7 +360,7 @@ impl PgStore {
             break;
         }
 
-        // `utxo_block` is the heighest block containing a valid utxo
+        // `utxo_block` is the highest block containing a valid utxo
         let Some(utxo_block) = utxo_block else {
             return Ok(None);
         };
@@ -419,7 +408,6 @@ impl super::DbRead for PgStore {
                 block_hash
               , block_height
               , parent_hash
-              , confirms
             FROM sbtc_signer.bitcoin_blocks
             WHERE block_hash = $1;",
         )
@@ -438,6 +426,7 @@ impl super::DbRead for PgStore {
                 block_hash
               , block_height
               , parent_hash
+              , bitcoin_anchor
             FROM sbtc_signer.stacks_blocks
             WHERE block_hash = $1;",
         )
@@ -455,7 +444,6 @@ impl super::DbRead for PgStore {
                 block_hash
               , block_height
               , parent_hash
-              , confirms
              FROM sbtc_signer.bitcoin_blocks
              ORDER BY block_height DESC, block_hash DESC
              LIMIT 1",
@@ -470,16 +458,37 @@ impl super::DbRead for PgStore {
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Option<model::StacksBlock>, Error> {
+        // TODO: stop recursion after the first bitcoin block having stacks block anchored?
+        // Note that in tests generated data we may get a taller stacks chain anchored to a
+        // bitcoin block that may not be the first one we encounter having stacks block anchored
         sqlx::query_as::<_, model::StacksBlock>(
             r#"
-             SELECT
-                 stacks_blocks.block_hash
-               , stacks_blocks.block_height
-               , stacks_blocks.parent_hash
-             FROM sbtc_signer.stacks_blocks stacks_blocks
-             JOIN sbtc_signer.bitcoin_blocks bitcoin_blocks
-                 ON bitcoin_blocks.confirms @> ARRAY[stacks_blocks.block_hash]
-             WHERE bitcoin_blocks.block_hash = $1
+            WITH RECURSIVE context_window AS (
+                SELECT 
+                    block_hash
+                  , block_height
+                  , parent_hash
+                FROM sbtc_signer.bitcoin_blocks
+                WHERE block_hash = $1
+
+                UNION ALL
+
+                SELECT
+                    parent.block_hash
+                  , parent.block_height
+                  , parent.parent_hash
+                FROM sbtc_signer.bitcoin_blocks AS parent
+                JOIN context_window AS child
+                  ON parent.block_hash = child.parent_hash
+            )
+            SELECT
+                stacks_blocks.block_hash
+              , stacks_blocks.block_height
+              , stacks_blocks.parent_hash
+              , stacks_blocks.bitcoin_anchor
+            FROM context_window bitcoin_blocks
+            JOIN sbtc_signer.stacks_blocks stacks_blocks
+                ON bitcoin_blocks.block_hash = stacks_blocks.bitcoin_anchor
             ORDER BY block_height DESC, block_hash DESC
             LIMIT 1;
             "#,
@@ -527,7 +536,7 @@ impl super::DbRead for PgStore {
               , deposit_requests.amount
               , deposit_requests.max_fee
               , deposit_requests.lock_time
-              , deposit_requests.signer_public_key
+              , deposit_requests.signers_public_key
               , deposit_requests.sender_script_pub_keys
             FROM transactions_in_window transactions
             JOIN sbtc_signer.deposit_requests deposit_requests ON
@@ -586,7 +595,7 @@ impl super::DbRead for PgStore {
               , deposit_requests.amount
               , deposit_requests.max_fee
               , deposit_requests.lock_time
-              , deposit_requests.signer_public_key
+              , deposit_requests.signers_public_key
               , deposit_requests.sender_script_pub_keys
             FROM transactions_in_window transactions
             JOIN sbtc_signer.deposit_requests deposit_requests USING(txid)
@@ -697,7 +706,7 @@ impl super::DbRead for PgStore {
               , requests.amount
               , requests.max_fee
               , requests.lock_time
-              , requests.signer_public_key
+              , requests.signers_public_key
               , requests.sender_script_pub_keys
             FROM sbtc_signer.deposit_requests requests
                  JOIN sbtc_signer.deposit_signers signers
@@ -724,13 +733,45 @@ impl super::DbRead for PgStore {
               , output_index
               , signer_pub_key
               , is_accepted
-              , created_at
+              , can_sign
             FROM sbtc_signer.deposit_signers 
             WHERE txid = $1 AND output_index = $2",
         )
         .bind(txid)
         .bind(i32::try_from(output_index).map_err(Error::ConversionDatabaseInt)?)
         .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn can_sign_deposit_tx(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+        signer_public_key: &PublicKey,
+    ) -> Result<Option<bool>, Error> {
+        sqlx::query_scalar::<_, bool>(
+            r#"
+            WITH x_only_public_keys AS (
+                -- These are the aggregate public keys that this signer is
+                -- a party on. We lop off the first byte because we want
+                -- x-only aggregate keys here.
+                SELECT substring(aggregate_key FROM 2) AS signers_public_key
+                FROM sbtc_signer.dkg_shares AS ds
+                WHERE $3 = ANY(signer_set_public_keys)
+            )
+            SELECT xo.signers_public_key IS NOT NULL
+            FROM sbtc_signer.deposit_requests AS dr
+            LEFT JOIN x_only_public_keys AS xo USING (signers_public_key)
+            WHERE dr.txid = $1
+              AND dr.output_index = $2
+            LIMIT 1
+            "#,
+        )
+        .bind(txid)
+        .bind(i32::try_from(output_index).map_err(Error::ConversionDatabaseInt)?)
+        .bind(signer_public_key)
+        .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }
@@ -772,7 +813,6 @@ impl super::DbRead for PgStore {
                 SELECT 
                     block_hash
                   , parent_hash
-                  , confirms
                   , 1 AS depth
                 FROM sbtc_signer.bitcoin_blocks
                 WHERE block_hash = $1
@@ -782,19 +822,10 @@ impl super::DbRead for PgStore {
                 SELECT
                     parent.block_hash
                   , parent.parent_hash
-                  , parent.confirms
                   , last.depth + 1
                 FROM sbtc_signer.bitcoin_blocks parent
                 JOIN extended_context_window last ON parent.block_hash = last.parent_hash
                 WHERE last.depth <= $3
-            ),
-            last_bitcoin_block AS (
-                SELECT
-                    block_hash
-                  , confirms
-                FROM extended_context_window
-                ORDER BY depth DESC
-                LIMIT 1
             ),
             stacks_context_window AS (
                 SELECT
@@ -813,9 +844,8 @@ impl super::DbRead for PgStore {
                 FROM sbtc_signer.stacks_blocks parent
                 JOIN stacks_context_window last
                         ON parent.block_hash = last.parent_hash
-                LEFT JOIN last_bitcoin_block block
-                        ON block.confirms @> ARRAY[parent.block_hash]
-                WHERE block.block_hash IS NULL
+                JOIN extended_context_window block
+                        ON block.block_hash = parent.bitcoin_anchor
             )
             SELECT
                 wr.request_id
@@ -852,7 +882,6 @@ impl super::DbRead for PgStore {
                 SELECT 
                     block_hash
                   , parent_hash
-                  , confirms
                   , 1 AS depth
                 FROM sbtc_signer.bitcoin_blocks
                 WHERE block_hash = $1
@@ -862,19 +891,10 @@ impl super::DbRead for PgStore {
                 SELECT
                     parent.block_hash
                   , parent.parent_hash
-                  , parent.confirms
                   , last.depth + 1
                 FROM sbtc_signer.bitcoin_blocks parent
                 JOIN extended_context_window last ON parent.block_hash = last.parent_hash
                 WHERE last.depth <= $3
-            ),
-            last_bitcoin_block AS (
-                SELECT
-                    block_hash
-                  , confirms
-                FROM extended_context_window
-                ORDER BY depth DESC
-                LIMIT 1
             ),
             stacks_context_window AS (
                 SELECT
@@ -893,9 +913,8 @@ impl super::DbRead for PgStore {
                 FROM sbtc_signer.stacks_blocks parent
                 JOIN stacks_context_window last
                         ON parent.block_hash = last.parent_hash
-                LEFT JOIN last_bitcoin_block block
-                        ON block.confirms @> ARRAY[parent.block_hash]
-                WHERE block.block_hash IS NULL
+                JOIN extended_context_window block
+                        ON block.block_hash = parent.bitcoin_anchor
             )
             SELECT
                 wr.request_id
@@ -1143,7 +1162,7 @@ impl super::DbRead for PgStore {
             break;
         }
 
-        // `utxo_block` is the heighest block containing a valid utxo
+        // `utxo_block` is the highest block containing a valid utxo
         let Some(utxo_block) = utxo_block else {
             // if no sbtc tx exists, consider donations
             return self
@@ -1278,7 +1297,6 @@ impl super::DbRead for PgStore {
                     block_hash
                   , parent_hash
                   , block_height
-                  , confirms
                   , 1 AS depth
                 FROM sbtc_signer.bitcoin_blocks
                 WHERE block_hash = $1
@@ -1289,7 +1307,6 @@ impl super::DbRead for PgStore {
                     parent.block_hash
                   , parent.parent_hash
                   , parent.block_height
-                  , parent.confirms
                   , last.depth + 1
                 FROM sbtc_signer.bitcoin_blocks AS parent
                 JOIN canonical_bitcoin_blockchain AS last
@@ -1343,15 +1360,13 @@ impl super::DbWrite for PgStore {
               ( block_hash
               , block_height
               , parent_hash
-              , confirms
               )
-            VALUES ($1, $2, $3, $4)
+            VALUES ($1, $2, $3)
             ON CONFLICT DO NOTHING",
         )
         .bind(block.block_hash)
         .bind(i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?)
         .bind(block.parent_hash)
-        .bind(&block.confirms)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1365,13 +1380,15 @@ impl super::DbWrite for PgStore {
               ( block_hash
               , block_height
               , parent_hash
+              , bitcoin_anchor
               )
-            VALUES ($1, $2, $3)
+            VALUES ($1, $2, $3, $4)
             ON CONFLICT DO NOTHING",
         )
         .bind(block.block_hash)
         .bind(i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?)
         .bind(block.parent_hash)
+        .bind(block.bitcoin_anchor)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1393,7 +1410,7 @@ impl super::DbWrite for PgStore {
               , amount
               , max_fee
               , lock_time
-              , signer_public_key
+              , signers_public_key
               , sender_script_pub_keys
               )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -1406,8 +1423,8 @@ impl super::DbWrite for PgStore {
         .bind(&deposit_request.recipient)
         .bind(i64::try_from(deposit_request.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(deposit_request.max_fee).map_err(Error::ConversionDatabaseInt)?)
-        .bind(i64::try_from(deposit_request.lock_time).map_err(Error::ConversionDatabaseInt)?)
-        .bind(deposit_request.signer_public_key)
+        .bind(i64::from(deposit_request.lock_time))
+        .bind(deposit_request.signers_public_key)
         .bind(&deposit_request.sender_script_pub_keys)
         .execute(&self.0)
         .await
@@ -1432,7 +1449,7 @@ impl super::DbWrite for PgStore {
         let mut amount = Vec::with_capacity(deposit_requests.len());
         let mut max_fee = Vec::with_capacity(deposit_requests.len());
         let mut lock_time = Vec::with_capacity(deposit_requests.len());
-        let mut signer_public_key = Vec::with_capacity(deposit_requests.len());
+        let mut signers_public_key = Vec::with_capacity(deposit_requests.len());
         let mut sender_script_pubkeys = Vec::with_capacity(deposit_requests.len());
 
         for req in deposit_requests {
@@ -1444,8 +1461,8 @@ impl super::DbWrite for PgStore {
             recipient.push(req.recipient);
             amount.push(i64::try_from(req.amount).map_err(Error::ConversionDatabaseInt)?);
             max_fee.push(i64::try_from(req.max_fee).map_err(Error::ConversionDatabaseInt)?);
-            lock_time.push(i64::try_from(req.lock_time).map_err(Error::ConversionDatabaseInt)?);
-            signer_public_key.push(req.signer_public_key);
+            lock_time.push(i64::from(req.lock_time));
+            signers_public_key.push(req.signers_public_key);
             // We need to join the addresses like this (and later split
             // them), because handling of multidimensional arrays in
             // postgres is tough. The naive approach of doing
@@ -1469,7 +1486,7 @@ impl super::DbWrite for PgStore {
             , amount          AS (SELECT ROW_NUMBER() OVER (), amount FROM UNNEST($6::BIGINT[]) AS amount)
             , max_fee         AS (SELECT ROW_NUMBER() OVER (), max_fee FROM UNNEST($7::BIGINT[]) AS max_fee)
             , lock_time       AS (SELECT ROW_NUMBER() OVER (), lock_time FROM UNNEST($8::BIGINT[]) AS lock_time)
-            , signer_pub_keys AS (SELECT ROW_NUMBER() OVER (), signer_public_key FROM UNNEST($9::BYTEA[]) AS signer_public_key)
+            , signer_pub_keys AS (SELECT ROW_NUMBER() OVER (), signers_public_key FROM UNNEST($9::BYTEA[]) AS signers_public_key)
             , script_pub_keys AS (SELECT ROW_NUMBER() OVER (), senders FROM UNNEST($10::VARCHAR[]) AS senders)
             INSERT INTO sbtc_signer.deposit_requests (
                   txid
@@ -1480,7 +1497,7 @@ impl super::DbWrite for PgStore {
                 , amount
                 , max_fee
                 , lock_time
-                , signer_public_key
+                , signers_public_key
                 , sender_script_pub_keys)
             SELECT
                 txid
@@ -1491,7 +1508,7 @@ impl super::DbWrite for PgStore {
               , amount
               , max_fee
               , lock_time
-              , signer_public_key
+              , signers_public_key
               , ARRAY(SELECT decode(UNNEST(regexp_split_to_array(senders, ',')), 'hex'))
             FROM tx_ids
             JOIN output_index USING (row_number)
@@ -1513,7 +1530,7 @@ impl super::DbWrite for PgStore {
         .bind(amount)
         .bind(max_fee)
         .bind(lock_time)
-        .bind(signer_public_key)
+        .bind(signers_public_key)
         .bind(sender_script_pubkeys)
         .execute(&self.0)
         .await
@@ -1564,14 +1581,16 @@ impl super::DbWrite for PgStore {
               , output_index
               , signer_pub_key
               , is_accepted
+              , can_sign
               )
-            VALUES ($1, $2, $3, $4)
+            VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT DO NOTHING",
         )
         .bind(decision.txid)
         .bind(i32::try_from(decision.output_index).map_err(Error::ConversionDatabaseInt)?)
         .bind(decision.signer_pub_key)
         .bind(decision.is_accepted)
+        .bind(decision.can_sign)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -1735,6 +1754,7 @@ impl super::DbWrite for PgStore {
         let mut block_ids = Vec::with_capacity(blocks.len());
         let mut parent_block_ids = Vec::with_capacity(blocks.len());
         let mut chain_lengths = Vec::<i64>::with_capacity(blocks.len());
+        let mut bitcoin_anchors = Vec::with_capacity(blocks.len());
 
         for block in blocks {
             block_ids.push(block.block_hash);
@@ -1742,6 +1762,7 @@ impl super::DbWrite for PgStore {
             let block_height =
                 i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?;
             chain_lengths.push(block_height);
+            bitcoin_anchors.push(block.bitcoin_anchor);
         }
 
         sqlx::query(
@@ -1758,19 +1779,26 @@ impl super::DbWrite for PgStore {
                 SELECT ROW_NUMBER() OVER (), chain_length
                 FROM UNNEST($3::bigint[]) AS chain_length
             )
-            INSERT INTO sbtc_signer.stacks_blocks (block_hash, block_height, parent_hash)
+            , bitcoin_anchors AS (
+                SELECT ROW_NUMBER() OVER (), bitcoin_anchor
+                FROM UNNEST($4::bytea[]) AS bitcoin_anchor
+            )
+            INSERT INTO sbtc_signer.stacks_blocks (block_hash, block_height, parent_hash, bitcoin_anchor)
             SELECT
                 block_id
               , chain_length
               , parent_block_id
+              , bitcoin_anchor
             FROM block_ids 
             JOIN parent_block_ids USING (row_number)
             JOIN chain_lengths USING (row_number)
+            JOIN bitcoin_anchors USING (row_number)
             ON CONFLICT DO NOTHING"#,
         )
         .bind(&block_ids)
         .bind(&parent_block_ids)
         .bind(&chain_lengths)
+        .bind(&bitcoin_anchors)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

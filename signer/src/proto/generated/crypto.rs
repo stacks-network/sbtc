@@ -45,3 +45,30 @@ pub struct RecoverableSignature {
     #[prost(int32, tag = "3")]
     pub recovery_id: i32,
 }
+/// Scalar maps to a nonnegative number less than the order of the secp256k1
+/// curve.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Scalar {
+    #[prost(message, optional, tag = "1")]
+    pub value: ::core::option::Option<Uint256>,
+}
+/// Represents a point on the secp256k1 elliptic curve. A Point is either a
+/// public key, like the crypto.PublicKey type, or the point at infinity.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Point {
+    /// The x-coordinate of the point.
+    #[prost(message, optional, tag = "1")]
+    pub x_coordinate: ::core::option::Option<Uint256>,
+    /// Represents the parity bit of the point. True means the parity is
+    /// odd, while false means the parity is even.
+    #[prost(bool, tag = "2")]
+    pub parity_is_odd: bool,
+}
+/// A message type only used for values of maps when a set is desired. The
+/// "Zst" in the end stands for Zero-sized type, because this will be turned
+/// into a zero-sized type in Rust.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetValueZst {}

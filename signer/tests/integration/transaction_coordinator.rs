@@ -165,22 +165,9 @@ async fn process_complete_deposit() {
         block_hash: Faker.fake_with_rng(&mut OsRng),
         block_height: setup.sweep_block_height,
         parent_hash: Faker.fake_with_rng(&mut OsRng),
+        bitcoin_anchor: setup.sweep_block_hash.into(),
     };
     db.write_stacks_block(&stacks_block).await.unwrap();
-
-    sqlx::query(
-        r#"
-        UPDATE sbtc_signer.bitcoin_blocks
-        SET confirms = array_append(confirms, $1)
-        WHERE block_height = $2;
-        "#,
-    )
-    .bind(&stacks_block.block_hash)
-    .bind(setup.sweep_block_height as i64)
-    .execute(db.pool())
-    .await
-    .unwrap();
-    //
 
     let mut context = TestContext::builder()
         .with_storage(db.clone())

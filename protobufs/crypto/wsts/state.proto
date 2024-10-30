@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package crypto.wsts;
+
+import "crypto/common.proto";
+
+// https://github.com/Trust-Machines/wsts/blob/91a37c8a097e6fa5d5a67519a72567bc82560c0d/src/traits.rs#L25-L42
+// The saved state required to reconstruct a WSTS signer object. This is
+// the protobuf version of the state object. It is encrypted and stored in
+// the database.
+message SignerState {
+  // The signer ID
+  uint32 id = 1;
+  // The key IDs this signer controls
+  repeated uint32 key_ids = 2;
+  // The total number of keys
+  uint32 num_keys = 3;
+  // The total number of parties
+  uint32 num_parties = 4;
+  // The threshold for signing
+  uint32 threshold = 5;
+  // The aggregate group public key
+  crypto.Point group_key = 6;
+  // The party IDs and associated state for this signer
+  repeated PartyState parties = 7;
+}
+
+// The saved state required to reconstruct a party
+// https://github.com/Trust-Machines/wsts/blob/91a37c8a097e6fa5d5a67519a72567bc82560c0d/src/traits.rs#L14-L23
+message PartyState {
+  uint32 key_id = 1;
+  // The party's private polynomial
+  Polynomial polynomial = 2;
+  // The key IDS and associate private keys for this party
+  repeated PrivateKeyShare private_keys = 3;
+  // The nonce being used by this party
+  PrivateNonce nonce = 4;
+}
+
+// A polynomial.
+// https://github.com/Trust-Machines/wsts/blob/91a37c8a097e6fa5d5a67519a72567bc82560c0d/src/traits.rs#L14-L23
+message Polynomial {
+  // The coefficients of a polynomial.
+  repeated Scalar data = 1;
+}
+
+// The private key share received from another signer
+message PrivateKeyShare {
+  // The identifier for the private key share. It is unique across all keys
+  // in a DKG round.
+  uint32 key_id = 1;
+  // The private key share.
+  Scalar private_key = 2;
+}
+
+// A nonce
+// https://github.com/Trust-Machines/wsts/blob/10760178d88c779d9377641e360656b27c05a771/src/common.rs#L51-L58
+message PrivateNonce {
+  // A nonce's first value
+  crypto.Scalar nonce_d = 1;
+  // A nonce's second value
+  crypto.Scalar nonce_e = 2;
+}

@@ -203,9 +203,8 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWr
     let txs = storage::postgres::extract_relevant_transactions(&blocks, &settings.signer.deployer);
     let headers = blocks
         .iter()
-        .map(model::StacksBlock::try_from)
-        .collect::<Result<_, _>>()
-        .unwrap();
+        .map(|block| StacksBlock::from_nakamoto_block(block, &[0; 32].into()))
+        .collect::<Vec<_>>();
     store.write_stacks_block_headers(headers).await.unwrap();
     store.write_stacks_transactions(txs).await.unwrap();
 
@@ -237,9 +236,8 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWr
     // idempotent operation.
     let headers = blocks
         .iter()
-        .map(model::StacksBlock::try_from)
-        .collect::<Result<_, _>>()
-        .unwrap();
+        .map(|block| StacksBlock::from_nakamoto_block(block, &[0; 32].into()))
+        .collect::<Vec<_>>();
     store.write_stacks_block_headers(headers).await.unwrap();
 
     let sql = "SELECT COUNT(*) FROM sbtc_signer.stacks_blocks";
@@ -294,9 +292,8 @@ async fn checking_stacks_blocks_exists_works() {
     // Okay now to save these blocks.
     let headers = blocks
         .iter()
-        .map(model::StacksBlock::try_from)
-        .collect::<Result<_, _>>()
-        .unwrap();
+        .map(|block| StacksBlock::from_nakamoto_block(block, &[0; 32].into()))
+        .collect::<Vec<_>>();
     store.write_stacks_block_headers(headers).await.unwrap();
 
     // Now each of them should exist.
@@ -378,7 +375,7 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
     let num_signers = 7;
-    let context_window = 3;
+    let context_window = 7;
     let test_model_params = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
         num_stacks_blocks_per_bitcoin_block: 3,
@@ -408,12 +405,27 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
         chain_tip
     );
 
+    assert_eq!(
+        in_memory_store
+            .get_stacks_chain_tip(&chain_tip)
+            .await
+            .expect("failed to get stacks chain tip")
+            .expect("no chain tip"),
+        pg_store
+            .get_stacks_chain_tip(&chain_tip)
+            .await
+            .expect("failed to get stacks chain tip")
+            .expect("no chain tip"),
+    );
+
     let mut pending_withdraw_requests = in_memory_store
         .get_pending_withdrawal_requests(&chain_tip, context_window)
         .await
         .expect("failed to get pending deposit requests");
 
     pending_withdraw_requests.sort();
+
+    assert!(!pending_withdraw_requests.is_empty());
 
     let mut pg_pending_withdraw_requests = pg_store
         .get_pending_withdrawal_requests(&chain_tip, context_window)
@@ -504,7 +516,7 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
     let num_signers = 15;
-    let context_window = 3;
+    let context_window = 5;
     let test_model_params = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
         num_stacks_blocks_per_bitcoin_block: 3,
@@ -706,7 +718,6 @@ async fn writing_transactions_postgres() {
         block_hash: block_hash.into(),
         block_height: 15,
         parent_hash: parent_hash.into(),
-        confirms: Vec::new(),
     };
 
     // We start by writing the bitcoin block because of the foreign key
@@ -948,24 +959,28 @@ async fn fetching_deposit_request_votes() {
             output_index,
             signer_pub_key: shares.signer_set_public_keys[0],
             is_accepted: true,
+            can_sign: true,
         },
         model::DepositSigner {
             txid,
             output_index,
             signer_pub_key: shares.signer_set_public_keys[1],
             is_accepted: false,
+            can_sign: true,
         },
         model::DepositSigner {
             txid,
             output_index,
             signer_pub_key: shares.signer_set_public_keys[2],
             is_accepted: true,
+            can_sign: true,
         },
         model::DepositSigner {
             txid,
             output_index,
             signer_pub_key: shares.signer_set_public_keys[3],
             is_accepted: true,
+            can_sign: true,
         },
     ];
 
@@ -1576,6 +1591,67 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
     assert!(requests.is_empty());
 
     signer::testing::storage::drop_db(db).await;
+}
+
+/// This checks that the DbRead::can_sign_deposit_tx implementation for
+/// PgStore operators as it is supposed to. Specifically, it checks that it
+/// returns Some(true) if the caller is part of the signing set,
+/// Some(false) if it isn't and None if the deposit request record cannot
+/// be found.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn can_sign_deposit_tx_rejects_not_in_signer_set() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // Let's create any old aggregate key
+    let aggregate_key: PublicKey = fake::Faker.fake_with_rng(&mut rng);
+
+    // Now for a deposit request where we use the above aggregate key.
+    let mut req: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
+    req.signers_public_key = aggregate_key.into();
+    db.write_deposit_request(&req).await.unwrap();
+
+    // Now we need a row where the aggregate key matches the one we created
+    // above. Also, lets create some signing set.
+    let signer_set_public_keys = std::iter::repeat_with(|| fake::Faker.fake_with_rng(&mut rng))
+        .take(3)
+        .collect::<Vec<PublicKey>>();
+    let mut shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    shares.aggregate_key = aggregate_key;
+    shares.signer_set_public_keys = signer_set_public_keys;
+    db.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+    // For each public key in the signing set, we will correctly say that
+    // the public key can sign for it.
+    for signer_public_key in shares.signer_set_public_keys.iter() {
+        let can_sign = db
+            .can_sign_deposit_tx(&req.txid, req.output_index, signer_public_key)
+            .await
+            .unwrap();
+
+        assert_eq!(can_sign, Some(true));
+    }
+
+    // For some public key not in the signing set, we will return false,
+    // indicating that we cannot sign for the deposit request.
+    let not_in_signing_set: PublicKey = fake::Faker.fake_with_rng(&mut rng);
+    let can_sign = db
+        .can_sign_deposit_tx(&req.txid, req.output_index, &not_in_signing_set)
+        .await
+        .unwrap();
+    assert_eq!(can_sign, Some(false));
+
+    // And lastly, if we do not have a record of the deposit request then
+    // we return None.
+    let random_txid = fake::Faker.fake_with_rng(&mut rng);
+    let signer_public_key = shares.signer_set_public_keys.first().unwrap();
+    let can_sign = db
+        .can_sign_deposit_tx(&random_txid, req.output_index, signer_public_key)
+        .await
+        .unwrap();
+    assert_eq!(can_sign, None);
 }
 
 /// This function tests that [`DbRead::get_swept_deposit_requests`]
