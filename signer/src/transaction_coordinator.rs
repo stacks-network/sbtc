@@ -299,10 +299,9 @@ where
         let transaction_package = pending_requests.construct_transactions()?;
 
         for mut transaction in transaction_package {
-
             // TODO: `send_message()` the sweep transaction info to the network
             // replacing the storage method coming in #585.
-            
+
             self.sign_and_broadcast(
                 bitcoin_chain_tip,
                 aggregate_key,
