@@ -338,6 +338,15 @@ where
                     .await?;
             }
 
+            (
+                message::Payload::SweepTransactionInfo(sweep_tx),
+                true,
+                ChainTipStatus::Canonical,
+            ) => {
+                tracing::info!(txid = %sweep_tx.txid, "received sweep transaction info");
+                // TODO: Store the sweep transaction once #585 is implemented
+            }
+
             // Message types ignored by the transaction signer
             (message::Payload::StacksTransactionSignature(_), _, _)
             | (message::Payload::BitcoinTransactionSignAck(_), _, _) => (),
@@ -346,6 +355,8 @@ where
             _ => {
                 tracing::warn!(?msg, ?chain_tip_report, "unexpected message");
             }
+
+            
         };
 
         Ok(())
