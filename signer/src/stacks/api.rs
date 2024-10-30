@@ -41,15 +41,9 @@ use super::contracts::AsTxPayload;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// The default fee in microSTX for a stacks transaction if the stacks node
-/// does not return any fee estimations for the transaction. This should
-/// never happen, since it's hard coded to return three estimates in
-/// stacks-core.
-const DEFAULT_TX_FEE: u64 = 1_000_000;
-
 /// The max fee in microSTX for a stacks transaction. Used as a backstop in
 /// case the stacks node returns wonky values. This is 10 STX.
-const MAX_TX_FEE: u64 = DEFAULT_TX_FEE * 10;
+const MAX_TX_FEE: u64 = 10_000_000;
 
 /// This is a dummy STX transfer payload used only for estimating STX
 /// transfer costs.
@@ -902,11 +896,23 @@ impl StacksInteract for StacksClient {
     where
         T: AsTxPayload + Send + Sync,
     {
+        // Consensus serialize the transaction payload to bytes. This is the
+        // method that the stacks node uses to determine transaction size when
+        // verifying admittance into the mempool.
+        let mut payload_bytes = Vec::new();
+        payload
+            .tx_payload()
+            .consensus_serialize(&mut payload_bytes)
+            .map_err(Error::StacksCodec)?;
+        // In Stacks core, the minimum fee is 1 mSTX per byte, so we double
+        // that here as a precaution and cap it at our maximum fee.
+        let default_min_fee = (payload_bytes.len() as u64 * 2).min(MAX_TX_FEE);
+
         // If we cannot get an estimate for the transaction, try the
         // generic STX transfer since we should always be able to get the
         // STX transfer fee estimate. If that fails then we bail, maybe we
         // should try another node.
-        let mut resp = self
+        let resp = self
             .get_fee_estimate(payload)
             .or_else(|err| async move {
                 tracing::warn!("could not estimate contract call fees: {err}");
@@ -915,7 +921,12 @@ impl StacksInteract for StacksClient {
                 // dummy transfer payload will do.
                 self.get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD).await
             })
-            .await?;
+            .await;
+
+        let Ok(mut resp) = resp else {
+            tracing::warn!("could not estimate STX fees using the Stacks node, falling back to transaction-size-based estimation");
+            return Ok(default_min_fee);
+        };
 
         // As of this writing the RPC response includes exactly 3 estimates
         // (the low, medium, and high priority estimates). It's note worthy
@@ -933,7 +944,7 @@ impl StacksInteract for StacksClient {
             FeePriority::High => resp.estimations.last().map(|est| est.fee),
         };
 
-        Ok(fee_estimate.unwrap_or(DEFAULT_TX_FEE).min(MAX_TX_FEE))
+        Ok(fee_estimate.unwrap_or(default_min_fee))
     }
 
     async fn get_pox_info(&self) -> Result<RPCPoxInfoData, Error> {
@@ -1389,6 +1400,45 @@ mod tests {
         // Assert that the response is what we expect
         let expected: DataVarResponse = serde_json::from_str(&raw_json_response).unwrap();
         assert_eq!(&resp, &expected.data);
+        mock.assert();
+    }
+
+    // Check that if we don't get valid responses from the Stacks node for both
+    // the transaction and STX transfer fee estimation requests, we fallback to
+    // estimating the fee based on the size of the transaction payload.
+    #[tokio::test]
+    async fn estimate_fees_fallback_works() {
+        let mut stacks_node_server = mockito::Server::new_async().await;
+
+        // Setup a mock which will fail both the transaction and STX transfer
+        // estimation request attempts.
+        let mock = stacks_node_server
+            .mock("POST", "/v2/fees/transaction")
+            .with_status(400)
+            .expect(2)
+            .create();
+
+        // Setup our Stacks client. We use a regular client here because we're
+        // testing the `get_fee_estimate` method.
+        let client = StacksClient::new(
+            url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
+            20,
+        )
+        .unwrap();
+
+        let mut payload_bytes = vec![];
+        DUMMY_STX_TRANSFER_PAYLOAD
+            .consensus_serialize(&mut payload_bytes)
+            .expect("failed to serialize payload");
+        let expected_fee = (payload_bytes.len() as u64 * 2).min(MAX_TX_FEE);
+
+        let resp = client
+            .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::High)
+            .await
+            .unwrap();
+
+        assert_eq!(resp, expected_fee);
+
         mock.assert();
     }
 
