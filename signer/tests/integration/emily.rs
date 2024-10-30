@@ -162,6 +162,30 @@ where
     coinbase_tx
 }
 
+const DUMMY_TENURE_INFO: RPCGetTenureInfo = RPCGetTenureInfo {
+    consensus_hash: ConsensusHash([0; 20]),
+    tenure_start_block_id: StacksBlockId([0; 32]),
+    parent_consensus_hash: ConsensusHash([0; 20]),
+    parent_tenure_start_block_id: StacksBlockId([0; 32]),
+    tip_block_id: StacksBlockId([0; 32]),
+    tip_height: 0,
+    reward_cycle: 0,
+};
+
+const DUMMY_SORTITION_INFO: SortitionInfo = SortitionInfo {
+    burn_block_hash: BurnchainHeaderHash([0; 32]),
+    burn_block_height: 0,
+    burn_header_timestamp: 0,
+    sortition_id: SortitionId([0; 32]),
+    parent_sortition_id: SortitionId([0; 32]),
+    consensus_hash: ConsensusHash([0; 20]),
+    was_sortition: true,
+    miner_pk_hash160: None,
+    stacks_parent_ch: None,
+    last_sortition_ch: None,
+    committed_block_hash: None,
+};
+
 /// End to end test for deposits via Emily: a deposit request is created on Emily,
 /// then is picked up by the block observer, inserted into the storage and accepted.
 /// After a signing round, the sweep tx for the request is broadcasted and we check
@@ -382,19 +406,10 @@ async fn deposit_flow() {
     // Also mock stacks client (to return no new blocks)
     context
         .with_stacks_client(|client| {
-            client.expect_get_tenure_info().once().returning(move || {
-                Box::pin(async move {
-                    Ok(RPCGetTenureInfo {
-                        consensus_hash: ConsensusHash([0; 20]),
-                        tenure_start_block_id: StacksBlockId([0; 32]),
-                        parent_consensus_hash: ConsensusHash([0; 20]),
-                        parent_tenure_start_block_id: StacksBlockId::first_mined(),
-                        tip_block_id: StacksBlockId([0; 32]),
-                        tip_height: 0,
-                        reward_cycle: 0,
-                    })
-                })
-            });
+            client
+                .expect_get_tenure_info()
+                .once()
+                .returning(move || Box::pin(async move { Ok(DUMMY_TENURE_INFO.clone()) }));
 
             client.expect_get_block().once().returning(move |_| {
                 Box::pin(async move {
@@ -427,16 +442,7 @@ async fn deposit_flow() {
                         bitcoin_chain_tip.block_hash.as_byte_array(),
                     )
                     .unwrap(),
-                    burn_block_height: 0,
-                    burn_header_timestamp: 0,
-                    sortition_id: SortitionId([0; 32]),
-                    parent_sortition_id: SortitionId([0; 32]),
-                    consensus_hash: ConsensusHash([0; 20]),
-                    was_sortition: true,
-                    miner_pk_hash160: None,
-                    stacks_parent_ch: None,
-                    last_sortition_ch: None,
-                    committed_block_hash: None,
+                    ..DUMMY_SORTITION_INFO.clone()
                 });
                 Box::pin(std::future::ready(response))
             });
