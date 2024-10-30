@@ -41,6 +41,9 @@ use super::contracts::AsTxPayload;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// The multiplier to use when estimating the fee based on payload-size.
+const TX_FEE_PAYLOAD_SIZE_MULTIPLIER: u64 = 2;
+
 /// The max fee in microSTX for a stacks transaction. Used as a backstop in
 /// case the stacks node returns wonky values. This is 10 STX.
 const MAX_TX_FEE: u64 = 10_000_000;
@@ -906,7 +909,8 @@ impl StacksInteract for StacksClient {
             .map_err(Error::StacksCodec)?;
         // In Stacks core, the minimum fee is 1 mSTX per byte, so we double
         // that here as a precaution and cap it at our maximum fee.
-        let default_min_fee = (payload_bytes.len() as u64 * 2).min(MAX_TX_FEE);
+        let default_min_fee =
+            (payload_bytes.len() as u64 * TX_FEE_PAYLOAD_SIZE_MULTIPLIER).min(MAX_TX_FEE);
 
         // If we cannot get an estimate for the transaction, try the
         // generic STX transfer since we should always be able to get the
@@ -1430,7 +1434,8 @@ mod tests {
         DUMMY_STX_TRANSFER_PAYLOAD
             .consensus_serialize(&mut payload_bytes)
             .expect("failed to serialize payload");
-        let expected_fee = (payload_bytes.len() as u64 * 2).min(MAX_TX_FEE);
+        let expected_fee =
+            (payload_bytes.len() as u64 * TX_FEE_PAYLOAD_SIZE_MULTIPLIER).min(MAX_TX_FEE);
 
         let resp = client
             .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::High)
