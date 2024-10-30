@@ -948,7 +948,19 @@ impl StacksInteract for StacksClient {
             FeePriority::High => resp.estimations.last().map(|est| est.fee),
         };
 
-        Ok(fee_estimate.unwrap_or(default_min_fee))
+        let fee_estimate = fee_estimate.unwrap_or(default_min_fee);
+        let fee = if fee_estimate < default_min_fee {
+            tracing::warn!(
+                fee_estimate,
+                default_min_fee,
+                "Estimated fee is lower than the default minimum fee; using transaction-size-based estimation instead"
+            );
+            default_min_fee
+        } else {
+            fee_estimate
+        };
+
+        Ok(fee.min(MAX_TX_FEE))
     }
 
     async fn get_pox_info(&self) -> Result<RPCPoxInfoData, Error> {
