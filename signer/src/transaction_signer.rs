@@ -520,9 +520,16 @@ where
         msg_public_key: PublicKey,
     ) -> Result<(), Error> {
         tracing::info!("handling message");
+        let chain_tip_report = self
+            .inspect_msg_chain_tip(msg_public_key, bitcoin_chain_tip)
+            .await?;
+
         match &msg.inner {
             wsts::net::Message::DkgBegin(_) => {
-                // XXX check that this came from the coordinator
+                if !chain_tip_report.sender_is_coordinator {
+                    return Err(Error::NotChainTipCoordinator);
+                }
+
                 let signer_public_keys = self.get_signer_public_keys(bitcoin_chain_tip).await?;
 
                 let state_machine = wsts_state_machine::SignerStateMachine::new(
@@ -535,7 +542,10 @@ where
                     .await?;
             }
             wsts::net::Message::DkgPrivateBegin(_) => {
-                // XXX check that this came from the coordinator
+                if !chain_tip_report.sender_is_coordinator {
+                    return Err(Error::NotChainTipCoordinator);
+                }
+
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
@@ -560,13 +570,19 @@ where
                     .await?;
             }
             wsts::net::Message::DkgEndBegin(_) => {
-                // XXX check that this came from the coordinator
+                if !chain_tip_report.sender_is_coordinator {
+                    return Err(Error::NotChainTipCoordinator);
+                }
+
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
                 self.store_dkg_shares(&msg.txid).await?;
             }
             wsts::net::Message::NonceRequest(_) => {
-                // XXX check that this came from the coordinator
+                if !chain_tip_report.sender_is_coordinator {
+                    return Err(Error::NotChainTipCoordinator);
+                }
+
                 // TODO(296): Validate that message is the appropriate sighash
                 if !self.wsts_state_machines.contains_key(&msg.txid) {
                     let (maybe_aggregate_key, _) = self
@@ -589,7 +605,10 @@ where
                     .await?;
             }
             wsts::net::Message::SignatureShareRequest(_) => {
-                // XXX check that this came from the coordinator
+                if !chain_tip_report.sender_is_coordinator {
+                    return Err(Error::NotChainTipCoordinator);
+                }
+
                 // TODO(296): Validate that message is the appropriate sighash
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;

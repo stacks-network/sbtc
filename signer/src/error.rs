@@ -425,6 +425,10 @@ pub enum Error {
     /// Wsts state machine returned unexpected operation result
     #[error("unexpected operation result")]
     UnexpectedOperationResult,
+
+    /// Received coordinator message wasn't from coordinator for this chain tip
+    #[error("not chain tip coordinator")]
+    NotChainTipCoordinator,
 }
 
 impl From<std::convert::Infallible> for Error {
