@@ -42,6 +42,7 @@ use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
 use crate::storage::model::StacksTxId;
 use crate::storage::DbRead as _;
+use crate::storage::UnsignedTransactionExt;
 use crate::wsts_state_machine::CoordinatorStateMachine;
 
 use bitcoin::hashes::Hash as _;
@@ -296,9 +297,15 @@ where
             return Ok(());
         };
 
+        // Construct the transaction package and store it in the database.
         let transaction_package = pending_requests.construct_transactions()?;
 
         for mut transaction in transaction_package {
+            // Store the transaction in the database before we broadcast.
+            transaction
+                .store_as_sweep_transaction(&self.context.get_storage_mut(), bitcoin_chain_tip)
+                .await?;
+
             self.sign_and_broadcast(
                 bitcoin_chain_tip,
                 aggregate_key,
@@ -448,6 +455,9 @@ where
         bitcoin_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
     ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
+        // Retrieve the Bitcoin sweep transaction from the Bitcoin node. We
+        // can't get it from the database because the transaction is
+        // only in the node's mempool at this point.
         let tx_info = self
             .context
             .get_bitcoin_client()

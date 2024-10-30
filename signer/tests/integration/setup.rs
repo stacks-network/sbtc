@@ -73,6 +73,8 @@ pub struct TestSweepSetup {
     /// threshold is the bitcoin signature threshold, which for v1 matches
     /// the signatures required on stacks.
     pub signatures_required: u16,
+    /// Sweep transactions that have been broadcast but not yet stored.
+    pub sweep_transactions: Vec<model::SweepTransaction>,
 }
 
 impl TestSweepSetup {
@@ -142,16 +144,25 @@ impl TestSweepSetup {
 
         // There should only be one transaction here since there is only
         // one deposit request and no withdrawal requests.
-        let txid = {
+        let (txid, sweep_transaction) = {
             let mut transactions = requests.construct_transactions().unwrap();
             assert_eq!(transactions.len(), 1);
             let mut unsigned = transactions.pop().unwrap();
+            // Create the transaction package that we will store.
+            let sweep_tx = model::SweepTransaction::from_unsigned_at_block(
+                // We expect the `sweep_block_hash` to be the block where the
+                // sweep transaction was mined, so we use the deposit block hash
+                // which is a previous block for the sweep broadcast.
+                &deposit_block_hash,
+                &unsigned,
+            );
 
             // Add the signature and/or other required information to the
             // witness data.
             signer::testing::set_witness_data(&mut unsigned, signer.keypair);
             rpc.send_raw_transaction(&unsigned.tx).unwrap();
-            unsigned.tx.compute_txid()
+            // Return the txid and the sweep transaction.
+            (unsigned.tx.compute_txid(), sweep_tx)
         };
 
         // Let's sweep in the transaction
@@ -185,6 +196,7 @@ impl TestSweepSetup {
             withdrawal_request: requests.withdrawals.pop().unwrap(),
             withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
             signatures_required: 2,
+            sweep_transactions: vec![sweep_transaction],
         }
     }
 
@@ -196,6 +208,20 @@ impl TestSweepSetup {
             reclaim_script: self.deposit_info.reclaim_script.clone(),
             deposit_script: self.deposit_info.deposit_script.clone(),
         }
+    }
+
+    /// Store all pending transaction packages to the database. Note that this
+    /// is kept separate from [`Self::store_sweep_tx`] because this method
+    /// represents the transaction package which was broadcast to the mempool
+    /// (but not necessarily confirmed), while [`Self::store_sweep_tx`]
+    /// represents the sweep transaction which has been observed on-chain.
+    pub async fn store_sweep_transactions(&mut self, db: &PgStore) -> Vec<model::SweepTransaction> {
+        let mut ret = vec![];
+        for tx in self.sweep_transactions.drain(..) {
+            db.write_sweep_transaction(&tx).await.unwrap();
+            ret.push(tx.clone());
+        }
+        ret
     }
 
     /// Store the deposit transaction into the database

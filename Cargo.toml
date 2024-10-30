@@ -53,7 +53,7 @@ serde_bytes = "0.11"
 serde_dynamo = {version = "4.2", features = ["aws-sdk-dynamodb+1"] }
 serde_json = "1.0"
 sha2 = "0.10"
-sqlx = { version = "0.8.1", default-features = false, features = [ "postgres", "runtime-tokio", "tls-rustls", "derive", "macros" ] }
+sqlx = { version = "0.8.2", default-features = false, features = [ "postgres", "runtime-tokio", "tls-rustls", "derive", "macros" ] }
 stackslib = { git = "https://github.com/stacks-network/stacks-core", rev = "c87c0eb6c050688340b975b0b42fb0a1ae378afa" }
 stacks-common = { git = "https://github.com/stacks-network/stacks-core", rev = "c87c0eb6c050688340b975b0b42fb0a1ae378afa" }
 strum = { version = "0.26", features = ["derive"] }

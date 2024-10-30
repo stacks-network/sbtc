@@ -239,6 +239,13 @@ pub trait DbRead {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> impl Future<Output = Result<Vec<model::SweptWithdrawalRequest>, Error>> + Send;
+
+    /// Get the latest sweep transaction package.
+    fn get_latest_sweep_transaction(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+    ) -> impl Future<Output = Result<Option<model::SweepTransaction>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.
@@ -356,4 +363,35 @@ pub trait DbWrite {
         &self,
         event: &CompletedDepositEvent,
     ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write a complete Bitcoin transaction package to the database.
+    fn write_sweep_transaction(
+        &self,
+        tx: &model::SweepTransaction,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+}
+
+/// Convenience trait for [`crate::bitcoin::utxo::UnsignedTransaction`] storage
+/// operations.
+pub trait UnsignedTransactionExt {
+    /// Write the transaction to the database as a sweep transaction.
+    fn store_as_sweep_transaction(
+        &self,
+        db: &impl DbWrite,
+        chain_tip: &model::BitcoinBlockHash,
+    ) -> impl Future<Output = Result<(), Error>>;
+}
+
+impl UnsignedTransactionExt for crate::bitcoin::utxo::UnsignedTransaction<'_> {
+    async fn store_as_sweep_transaction(
+        &self,
+        db: &impl DbWrite,
+        chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<(), Error> {
+        let sweep_tx = model::SweepTransaction::from_unsigned_at_block(chain_tip, self);
+
+        db.write_sweep_transaction(&sweep_tx).await?;
+
+        Ok(())
+    }
 }
