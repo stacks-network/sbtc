@@ -17,13 +17,18 @@ use bitcoincore_rpc_json::Utxo;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
+use blockstack_lib::net::api::getsortition::SortitionInfo;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
+use clarity::types::chainstate::BurnchainHeaderHash;
 use clarity::types::chainstate::ConsensusHash;
+use clarity::types::chainstate::SortitionId;
 use clarity::types::chainstate::StacksBlockId;
 use emily_client::apis::deposit_api;
+use emily_client::apis::testing_api::wipe_databases;
 use emily_client::models::CreateDepositRequestBody;
 use sbtc::testing::regtest::Recipient;
 use sha2::Digest as _;
+use signer::bitcoin::rpc::BitcoinTxInfo;
 use signer::bitcoin::rpc::GetTxResponse;
 use signer::block_observer;
 use signer::context::Context;
@@ -143,17 +148,35 @@ where
     coinbase_tx
 }
 
+const DUMMY_TENURE_INFO: RPCGetTenureInfo = RPCGetTenureInfo {
+    consensus_hash: ConsensusHash([0; 20]),
+    tenure_start_block_id: StacksBlockId([0; 32]),
+    parent_consensus_hash: ConsensusHash([0; 20]),
+    parent_tenure_start_block_id: StacksBlockId([0; 32]),
+    tip_block_id: StacksBlockId([0; 32]),
+    tip_height: 0,
+    reward_cycle: 0,
+};
+
+const DUMMY_SORTITION_INFO: SortitionInfo = SortitionInfo {
+    burn_block_hash: BurnchainHeaderHash([0; 32]),
+    burn_block_height: 0,
+    burn_header_timestamp: 0,
+    sortition_id: SortitionId([0; 32]),
+    parent_sortition_id: SortitionId([0; 32]),
+    consensus_hash: ConsensusHash([0; 20]),
+    was_sortition: true,
+    miner_pk_hash160: None,
+    stacks_parent_ch: None,
+    last_sortition_ch: None,
+    committed_block_hash: None,
+};
+
 /// End to end test for deposits via Emily: a deposit request is created on Emily,
 /// then is picked up by the block observer, inserted into the storage and accepted.
 /// After a signing round, the sweep tx for the request is broadcasted and we check
 /// that Emily is informed about it.
-///
-/// To run this test, concurrently run:
-///  - make emily-integration-env-up
-///  - AWS_ACCESS_KEY_ID=foo AWS_SECRET_ACCESS_KEY=bar AWS_REGION=us-west-2 make emily-server
-///  - docker compose --file docker-compose.test.yml up
-/// then, once everything is up and running, run this test.
-#[ignore = "This is an integration test that requires manually running emily"]
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn deposit_e2e() {
     let num_signers = 7;
@@ -169,6 +192,11 @@ async fn deposit_e2e() {
     let emily_client =
         EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
     let stacks_client = WrappedMock::default();
+
+    // Wipe the Emily database to start fresh
+    wipe_databases(&emily_client.config())
+        .await
+        .expect("Wiping Emily database in test setup failed.");
 
     let mut context = TestContext::builder()
         .with_storage(db.clone())
@@ -213,7 +241,7 @@ async fn deposit_e2e() {
         vout: 0,
         script_pub_key: ScriptBuf::new(),
         descriptor: "".to_string(),
-        amount: Amount::from_sat(deposit_config.amount + deposit_config.max_fee + 1),
+        amount: Amount::from_sat(deposit_config.amount + deposit_config.max_fee),
         height: 0,
     };
     let (deposit_tx, deposit_request, _) = make_deposit_request(
@@ -297,10 +325,11 @@ async fn deposit_e2e() {
                 });
 
             // Return the deposit tx
-            client.expect_get_tx().returning(move |txid| {
-                let res = if *txid == deposit_tx.compute_txid() {
+            let deposit_tx_ = deposit_tx.clone();
+            client.expect_get_tx().once().returning(move |txid| {
+                let res = if *txid == deposit_tx_.compute_txid() {
                     Ok(Some(GetTxResponse {
-                        tx: deposit_tx.clone(),
+                        tx: deposit_tx_.clone(),
                         block_hash: Some(deposit_block_hash),
                         confirmations: None,
                         block_time: None,
@@ -313,6 +342,35 @@ async fn deposit_e2e() {
                 };
                 Box::pin(async move { res })
             });
+
+            // Return the deposit tx
+            client
+                .expect_get_tx_info()
+                .once()
+                .returning(move |txid, block_hash| {
+                    let res = if *txid == deposit_tx.compute_txid() {
+                        Ok(Some(BitcoinTxInfo {
+                            in_active_chain: true,
+                            fee: bitcoin::Amount::from_sat(deposit_config.max_fee),
+                            tx: deposit_tx.clone(),
+                            txid: deposit_tx.compute_txid(),
+                            hash: deposit_tx.compute_wtxid(),
+                            size: deposit_tx.total_size() as u64,
+                            vsize: deposit_tx.vsize() as u64,
+                            vin: Vec::new(),
+                            vout: Vec::new(),
+                            block_hash: *block_hash,
+                            confirmations: 0,
+                            block_time: 0,
+                        }))
+                    } else {
+                        // We may get queried for unrelated txids if Emily state
+                        // was not reset; returning an error will ignore those
+                        // deposit requests (as desired).
+                        Err(Error::BitcoinTxMissing(txid.clone(), None))
+                    };
+                    Box::pin(async move { res })
+                });
 
             // Return the deposit tx block, when the block observer will query us for it
             // when processing the new block; as its parent is already in storage
@@ -334,19 +392,10 @@ async fn deposit_e2e() {
     // Also mock stacks client (to return no new blocks)
     context
         .with_stacks_client(|client| {
-            client.expect_get_tenure_info().once().returning(move || {
-                Box::pin(async move {
-                    Ok(RPCGetTenureInfo {
-                        consensus_hash: ConsensusHash([0; 20]),
-                        tenure_start_block_id: StacksBlockId([0; 32]),
-                        parent_consensus_hash: ConsensusHash([0; 20]),
-                        parent_tenure_start_block_id: StacksBlockId::first_mined(),
-                        tip_block_id: StacksBlockId([0; 32]),
-                        tip_height: 0,
-                        reward_cycle: 0,
-                    })
-                })
-            });
+            client
+                .expect_get_tenure_info()
+                .once()
+                .returning(move || Box::pin(async move { Ok(DUMMY_TENURE_INFO.clone()) }));
 
             client.expect_get_block().once().returning(move |_| {
                 Box::pin(async move {
@@ -372,6 +421,17 @@ async fn deposit_e2e() {
                 .expect_get_account()
                 .once()
                 .returning(|_| Box::pin(async move { Err(Error::InvalidStacksResponse("mock")) }));
+
+            client.expect_get_sortition_info().returning(move |_| {
+                let response = Ok(SortitionInfo {
+                    burn_block_hash: BurnchainHeaderHash::from_bytes_be(
+                        bitcoin_chain_tip.block_hash.as_byte_array(),
+                    )
+                    .unwrap(),
+                    ..DUMMY_SORTITION_INFO.clone()
+                });
+                Box::pin(std::future::ready(response))
+            });
         })
         .await;
 
@@ -443,42 +503,12 @@ async fn deposit_e2e() {
         .unwrap()
         .is_empty());
 
-    // Add a stacks block in the current bitcoin tip, otherwise `get_last_key_rotation`
-    // will not get the signer keys and the txcoord process_new_blocks will fail.
-    // TODO: remove after #559 is fixed
-    assert!(context
-        .get_storage()
-        .get_last_key_rotation(&deposit_block_hash.into())
-        .await
-        .unwrap()
-        .is_none());
-
     let stacks_tip = context
         .get_storage()
         .get_stacks_chain_tip(&bitcoin_chain_tip.block_hash)
         .await
         .unwrap()
         .unwrap();
-    sqlx::query(
-        r#"
-        UPDATE sbtc_signer.bitcoin_blocks
-        SET confirms = array_append(confirms, $1)
-        WHERE block_hash = $2;
-        "#,
-    )
-    .bind(&stacks_tip.block_hash)
-    .bind(&model::BitcoinBlockHash::from(deposit_block_hash))
-    .execute(db.pool())
-    .await
-    .unwrap();
-
-    assert!(context
-        .get_storage()
-        .get_last_key_rotation(&deposit_block_hash.into())
-        .await
-        .unwrap()
-        .is_some());
-    //
 
     // We also need to accept the request, so let's pick some signer to accept it
     let public_keys = signer_info[0]
