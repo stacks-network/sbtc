@@ -604,7 +604,7 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
     // Modify the lock times of the deposit requests to be definitely okay to accept because
     // it's the largest possible lock time.
     for deposit in test_data.deposit_requests.iter_mut() {
-        deposit.lock_time = i32::MAX as u32;
+        deposit.lock_time = u16::MAX as u32;
     }
 
     test_data.write_to(&mut pg_store).await;
