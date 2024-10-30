@@ -902,11 +902,8 @@ impl StacksInteract for StacksClient {
         // Consensus serialize the transaction payload to bytes. This is the
         // method that the stacks node uses to determine transaction size when
         // verifying admittance into the mempool.
-        let mut payload_bytes = Vec::new();
-        payload
-            .tx_payload()
-            .consensus_serialize(&mut payload_bytes)
-            .map_err(Error::StacksCodec)?;
+        let payload_bytes = payload.tx_payload().serialize_to_vec();
+
         // In Stacks core, the minimum fee is 1 mSTX per byte, so we double
         // that here as a precaution and cap it at our maximum fee.
         let default_min_fee =
@@ -1442,10 +1439,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut payload_bytes = vec![];
-        DUMMY_STX_TRANSFER_PAYLOAD
-            .consensus_serialize(&mut payload_bytes)
-            .expect("failed to serialize payload");
+        let payload_bytes = DUMMY_STX_TRANSFER_PAYLOAD.serialize_to_vec();
         let expected_fee =
             (payload_bytes.len() as u64 * TX_FEE_PAYLOAD_SIZE_MULTIPLIER).min(MAX_TX_FEE);
 
