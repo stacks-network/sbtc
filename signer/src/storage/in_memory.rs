@@ -265,13 +265,13 @@ impl super::DbRead for SharedStore {
             .get_bitcoin_block(chain_tip)
             .await?
             .map(|block| block.block_height as i32 + MINIMUM_RECLAIM_PROXIMITY_TO_CHAIN_TIP as i32)
-            .ok_or(Error::MissingBitcoinBlock(chain_tip.clone()))?;
+            .ok_or(Error::MissingBitcoinBlock(*chain_tip))?;
 
         let chain_tip_ref = self
             .get_bitcoin_block(chain_tip)
             .await?
             .map(|block| model::BitcoinBlockRef {
-                block_hash: chain_tip.clone(),
+                block_hash: *chain_tip,
                 block_height: block.block_height,
             })
             .unwrap();
@@ -304,23 +304,12 @@ impl super::DbRead for SharedStore {
                 }
             }
             let canonical_bitcoin_block_with_transaction =
-                maybe_canonical_bitcoin_block_with_transaction.expect(
-                    format!(
-                        "No canonical block found for transaction {:?}",
-                        deposit_request.txid
-                    )
-                    .as_str(),
-                );
+                maybe_canonical_bitcoin_block_with_transaction
+                    .ok_or(Error::MissingBlock)?;
             let inclusion_height = self
                 .get_bitcoin_block(&canonical_bitcoin_block_with_transaction)
                 .await?
-                .expect(
-                    format!(
-                        "No block found for block {}",
-                        canonical_bitcoin_block_with_transaction
-                    )
-                    .as_str(),
-                )
+                .ok_or(Error::MissingBlock)?
                 .block_height;
             if deposit_request.lock_time + inclusion_height as u32
                 >= minimum_acceptable_reclaim_unlock_time as u32

@@ -656,7 +656,7 @@ impl super::DbRead for PgStore {
             .get_bitcoin_block(chain_tip)
             .await?
             .map(|block| block.block_height as i32 + MINIMUM_RECLAIM_PROXIMITY_TO_CHAIN_TIP as i32)
-            .ok_or(Error::MissingBitcoinBlock(chain_tip.clone()))?;
+            .ok_or(Error::MissingBitcoinBlock(*chain_tip))?;
 
         sqlx::query_as::<_, model::DepositRequest>(
             r#"
