@@ -5,10 +5,11 @@ use std::ops::Deref;
 
 use bitcoin::hashes::Hash as _;
 use bitvec::array::BitArray;
+use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use clarity::vm::types::PrincipalData;
 use serde::Deserialize;
 use serde::Serialize;
-use stacks_common::types::chainstate::StacksBlockId;
+use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
 
 use crate::bitcoin::utxo::UnsignedTransaction;
 use crate::block_observer::Deposit;
@@ -179,9 +180,6 @@ pub struct BitcoinBlock {
     pub block_height: u64,
     /// Hash of the parent block.
     pub parent_hash: BitcoinBlockHash,
-    /// Stacks block confirmed by this block.
-    #[cfg_attr(feature = "testing", dummy(default))]
-    pub confirms: Vec<StacksBlockHash>,
 }
 
 /// Stacks block.
@@ -196,6 +194,20 @@ pub struct StacksBlock {
     pub block_height: u64,
     /// Hash of the parent block.
     pub parent_hash: StacksBlockHash,
+    /// The bitcoin block this stacks block is build upon (matching consensus hash)
+    pub bitcoin_anchor: BitcoinBlockHash,
+}
+
+impl StacksBlock {
+    /// Construct a StacksBlock from a NakamotoBlock and its bitcoin anchor
+    pub fn from_nakamoto_block(block: &NakamotoBlock, bitcoin_anchor: &BitcoinBlockHash) -> Self {
+        Self {
+            block_hash: block.block_id().into(),
+            block_height: block.header.chain_length,
+            parent_hash: block.header.parent_block_id.into(),
+            bitcoin_anchor: *bitcoin_anchor,
+        }
+    }
 }
 
 /// Deposit request.
@@ -230,7 +242,7 @@ pub struct DepositRequest {
     pub lock_time: u32,
     /// The public key used in the deposit script. The signers public key
     /// is for Schnorr signatures.
-    pub signer_public_key: PublicKeyXOnly,
+    pub signers_public_key: PublicKeyXOnly,
     /// The addresses of the input UTXOs funding the deposit request.
     #[cfg_attr(
         feature = "testing",
@@ -257,7 +269,7 @@ impl From<Deposit> for DepositRequest {
             amount: deposit.info.amount,
             max_fee: deposit.info.max_fee,
             lock_time: deposit.info.lock_time.to_consensus_u32(),
-            signer_public_key: deposit.info.signers_public_key.into(),
+            signers_public_key: deposit.info.signers_public_key.into(),
             sender_script_pub_keys: sender_script_pub_keys.into_iter().collect(),
         }
     }
@@ -287,6 +299,9 @@ pub struct DepositSigner {
     pub signer_pub_key: PublicKey,
     /// Signals if the signer is prepared to sign for this request.
     pub is_accepted: bool,
+    /// This specifies whether the indicated signer_pub_key can sign for
+    /// the associated deposit request.
+    pub can_sign: bool,
 }
 
 /// Withdraw request.
@@ -730,6 +745,12 @@ impl From<BitcoinBlockHash> for bitcoin::BlockHash {
 impl From<[u8; 32]> for BitcoinBlockHash {
     fn from(bytes: [u8; 32]) -> Self {
         Self(bitcoin::BlockHash::from_byte_array(bytes))
+    }
+}
+
+impl From<BurnchainHeaderHash> for BitcoinBlockHash {
+    fn from(value: BurnchainHeaderHash) -> Self {
+        value.to_bitcoin_hash().to_bytes().into()
     }
 }
 

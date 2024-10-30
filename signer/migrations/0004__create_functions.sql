@@ -11,8 +11,7 @@ CREATE FUNCTION sbtc_signer.bitcoin_blockchain_of (
 RETURNS TABLE (
     block_hash BYTEA,
     parent_hash BYTEA,
-    block_height BIGINT,
-    confirms BYTEA[]
+    block_height BIGINT
 ) 
 AS $$
 BEGIN
@@ -22,7 +21,6 @@ BEGIN
             blocks.block_hash,
             blocks.parent_hash,
             blocks.block_height,
-            blocks.confirms,
             1 AS depth
         FROM sbtc_signer.bitcoin_blocks as blocks
         WHERE blocks.block_hash = chain_tip
@@ -33,7 +31,6 @@ BEGIN
             parent.block_hash,
             parent.parent_hash,
             parent.block_height,
-            parent.confirms,
             last.depth + 1
         FROM sbtc_signer.bitcoin_blocks AS parent
         JOIN blockchain AS last
@@ -43,8 +40,7 @@ BEGIN
     SELECT
         blocks.block_hash,
         blocks.parent_hash,
-        blocks.block_height,
-        blocks.confirms
+        blocks.block_height
     FROM blockchain as blocks;
 END;
 $$ LANGUAGE plpgsql;
