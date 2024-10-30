@@ -12,6 +12,7 @@ use time::OffsetDateTime;
 use tokio::sync::Mutex;
 
 use crate::bitcoin::utxo::SignerUtxo;
+use crate::config::MINIMUM_RECLAIM_PROXIMITY_TO_CHAIN_TIP;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
@@ -259,11 +260,78 @@ impl super::DbRead for SharedStore {
         let pending_deposit_requests = self
             .get_pending_deposit_requests(chain_tip, context_window)
             .await?;
-        let store = self.lock().await;
+
+        let minimum_acceptable_reclaim_unlock_time = self
+            .get_bitcoin_block(chain_tip)
+            .await?
+            .map(|block| block.block_height as i32 + MINIMUM_RECLAIM_PROXIMITY_TO_CHAIN_TIP as i32)
+            .ok_or(Error::MissingBitcoinBlock(chain_tip.clone()))?;
+
+        let chain_tip_ref = self
+            .get_bitcoin_block(chain_tip)
+            .await?
+            .map(|block| model::BitcoinBlockRef {
+                block_hash: chain_tip.clone(),
+                block_height: block.block_height,
+            })
+            .unwrap();
+
+        // Get only the pending deposit requests that cannot be reclaimed too close to the
+        // current chain tip.
+        let mut acceptable_pending_deposit_requests: Vec<_> = Vec::new();
+        for deposit_request in pending_deposit_requests.iter() {
+            let mut maybe_canonical_bitcoin_block_with_transaction: Option<
+                model::BitcoinBlockHash,
+            > = None;
+            let bitcoin_blocks_with_transaction = self
+                .get_bitcoin_blocks_with_transaction(&deposit_request.txid)
+                .await?;
+            for block_hash in bitcoin_blocks_with_transaction {
+                let block_ref = self
+                    .get_bitcoin_block(&block_hash)
+                    .await?
+                    .map(|block| model::BitcoinBlockRef {
+                        block_hash,
+                        block_height: block.block_height,
+                    })
+                    .unwrap();
+                if self
+                    .in_canonical_bitcoin_blockchain(&chain_tip_ref, &block_ref)
+                    .await?
+                {
+                    maybe_canonical_bitcoin_block_with_transaction = Some(block_hash);
+                    break;
+                }
+            }
+            let canonical_bitcoin_block_with_transaction =
+                maybe_canonical_bitcoin_block_with_transaction.expect(
+                    format!(
+                        "No canonical block found for transaction {:?}",
+                        deposit_request.txid
+                    )
+                    .as_str(),
+                );
+            let inclusion_height = self
+                .get_bitcoin_block(&canonical_bitcoin_block_with_transaction)
+                .await?
+                .expect(
+                    format!(
+                        "No block found for block {}",
+                        canonical_bitcoin_block_with_transaction
+                    )
+                    .as_str(),
+                )
+                .block_height;
+            if deposit_request.lock_time + inclusion_height as u32
+                >= minimum_acceptable_reclaim_unlock_time as u32
+            {
+                acceptable_pending_deposit_requests.push(deposit_request.clone());
+            }
+        }
 
         let threshold = threshold as usize;
-
-        Ok(pending_deposit_requests
+        let store = self.lock().await;
+        Ok(acceptable_pending_deposit_requests
             .into_iter()
             .filter(|deposit_request| {
                 store
