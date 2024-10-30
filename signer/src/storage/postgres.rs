@@ -681,8 +681,8 @@ impl super::DbRead for PgStore {
             ),
             transactions_in_window AS (
                 SELECT
-                      transactions.txid
-                    , blocks_in_window.block_height
+                    transactions.txid
+                  , blocks_in_window.block_height
                 FROM context_window blocks_in_window
                 JOIN sbtc_signer.bitcoin_transactions transactions ON
                     transactions.block_hash = blocks_in_window.block_hash
