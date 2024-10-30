@@ -56,6 +56,10 @@ const CONTRACT_FUNCTION_NAMES: [(&str, TransactionType); 5] = [
     ("rotate-keys-wrapper", TransactionType::RotateKeys),
 ];
 
+/// The minimum number of blocks between the hight at which the reclaim script path can
+/// be spent and the current chain tip for the deposit to be considered acceptable.
+pub const MINIMUM_RECLAIM_PROXIMITY_TO_CHAIN_TIP: u16 = 10;
+
 /// Returns the mapping between functions in a contract call and the
 /// transaction type.
 fn contract_transaction_kinds() -> &'static HashMap<&'static str, TransactionType> {
@@ -648,6 +652,15 @@ impl super::DbRead for PgStore {
         // TODO(543): Make sure we get only pending deposits, don't include
         // ones where we have a completed-deposit event on the canonical
         // stacks blockchain.
+
+        // Get the minimum acceptable reclaim unlock height for the deposit request
+        // by adding the minimum reclaim proximity to the chain tip.
+        let minimum_acceptable_reclaim_unlock_time = self
+            .get_bitcoin_block(chain_tip)
+            .await?
+            .map(|block| block.block_height as i32 + MINIMUM_RECLAIM_PROXIMITY_TO_CHAIN_TIP as i32)
+            .ok_or(Error::MissingBitcoinBlock(chain_tip.clone()))?;
+
         sqlx::query_as::<_, model::DepositRequest>(
             r#"
             WITH RECURSIVE context_window AS (
@@ -670,7 +683,9 @@ impl super::DbRead for PgStore {
                 WHERE last.depth < $2
             ),
             transactions_in_window AS (
-                SELECT transactions.txid
+                SELECT
+                      transactions.txid
+                    , blocks_in_window.block_height
                 FROM context_window blocks_in_window
                 JOIN sbtc_signer.bitcoin_transactions transactions ON
                     transactions.block_hash = blocks_in_window.block_hash
@@ -691,6 +706,7 @@ impl super::DbRead for PgStore {
             JOIN sbtc_signer.deposit_signers signers USING(txid, output_index)
             WHERE
                 signers.is_accepted
+                AND (transactions.block_height + deposit_requests.lock_time) > $4
             GROUP BY deposit_requests.txid, deposit_requests.output_index
             HAVING COUNT(signers.txid) >= $3
             "#,
@@ -698,6 +714,7 @@ impl super::DbRead for PgStore {
         .bind(chain_tip)
         .bind(i32::from(context_window))
         .bind(i32::from(threshold))
+        .bind(minimum_acceptable_reclaim_unlock_time)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
