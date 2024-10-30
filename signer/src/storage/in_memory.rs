@@ -304,8 +304,7 @@ impl super::DbRead for SharedStore {
                 }
             }
             let canonical_bitcoin_block_with_transaction =
-                maybe_canonical_bitcoin_block_with_transaction
-                    .ok_or(Error::MissingBlock)?;
+                maybe_canonical_bitcoin_block_with_transaction.ok_or(Error::MissingBlock)?;
             let inclusion_height = self
                 .get_bitcoin_block(&canonical_bitcoin_block_with_transaction)
                 .await?
