@@ -27,6 +27,7 @@ use crate::config::NetworkKind;
 use crate::config::SignerConfig;
 use crate::context::Context;
 use crate::error::Error;
+use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::signature::RecoverableEcdsaSignature as _;
 use crate::signature::SighashDigest as _;
@@ -386,6 +387,46 @@ impl MultisigTx {
 
         self.tx
     }
+}
+
+/// Get the number of bytes for a fully signed stacks trasnaction with the
+/// given payload.
+///
+/// This function is very unlikely to fail in practice.
+pub fn get_full_tx_size<T>(payload: &T, wallet: &SignerWallet) -> Result<u64, Error>
+where
+    T: AsTxPayload,
+{
+    use rand::SeedableRng as _;
+    use stacks_common::codec::StacksMessageCodec as _;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(1);
+    // We need some private keys, that we control, so let's create them.
+    let private_keys = std::iter::repeat_with(|| PrivateKey::new(&mut rng))
+        .take(wallet.public_keys().len())
+        .collect::<Vec<PrivateKey>>();
+
+    let public_keys: Vec<_> = private_keys
+        .iter()
+        .map(PublicKey::from_private_key)
+        .collect();
+
+    // This will only fail if we get very unlucky with private keys that we
+    // generate.
+    let wallet = SignerWallet::new(
+        &public_keys,
+        wallet.signatures_required,
+        wallet.network_kind,
+        0,
+    )?;
+
+    let mut multisig_tx = MultisigTx::new_tx(payload, &wallet, 0);
+    for private_key in private_keys.iter() {
+        let signature = crate::signature::sign_stacks_tx(multisig_tx.tx(), private_key);
+        // This won't fail, since this is a proper signature
+        multisig_tx.add_signature(signature)?;
+    }
+
+    Ok(multisig_tx.finalize_transaction().serialize_to_vec().len() as u64)
 }
 
 #[cfg(test)]
