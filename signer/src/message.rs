@@ -35,6 +35,8 @@ pub enum Payload {
     BitcoinTransactionSignAck(BitcoinTransactionSignAck),
     /// Contains all variants for DKG and WSTS signing rounds
     WstsMessage(WstsMessage),
+    /// Information about a new sweep transaction
+    SweepTransactionInfo(SweepTransactionInfo),
 }
 
 impl std::fmt::Display for Payload {
@@ -68,6 +70,7 @@ impl std::fmt::Display for Payload {
                 }
                 write!(f, ")")
             }
+            Self::SweepTransactionInfo(_) => write!(f, "SweepTransactionInfo(..)"),
         }
     }
 }
@@ -148,7 +151,7 @@ pub struct SweepTransactionInfo {
     /// List of deposits which were swept-in by this transaction.
     pub swept_deposits: Vec<SweptDeposit>,
     /// List of withdrawals which were swept-out by this transaction.
-    pub swept_withdrawals: Vec<SweptWithdrawal>
+    pub swept_withdrawals: Vec<SweptWithdrawal>,
 }
 
 /// Represents information about a deposit request being swept-in by a sweep transaction.
@@ -280,7 +283,43 @@ impl wsts::net::Signable for Payload {
             Self::BitcoinTransactionSignAck(msg) => msg.hash(hasher),
             Self::StacksTransactionSignRequest(msg) => msg.hash(hasher),
             Self::StacksTransactionSignature(msg) => msg.hash(hasher),
+            Self::SweepTransactionInfo(msg) => msg.hash(hasher),
         }
+    }
+}
+
+impl wsts::net::Signable for SweepTransactionInfo {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        hasher.update("SWEEP_TRANSACTION_INFO");
+        hasher.update(self.txid);
+        hasher.update(self.signer_prevout_txid);
+        hasher.update(self.signer_prevout_output_index.to_be_bytes());
+        hasher.update(self.amount.to_be_bytes());
+        hasher.update(self.fee.to_be_bytes());
+        hasher.update(self.created_at_block_hash.as_ref());
+        hasher.update(self.market_fee_rate.to_be_bytes());
+        for deposit in &self.swept_deposits {
+            deposit.hash(hasher);
+        }
+        for withdrawal in &self.swept_withdrawals {
+            withdrawal.hash(hasher);
+        }
+    }
+}
+
+impl wsts::net::Signable for SweptDeposit {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        hasher.update(self.input_index.to_be_bytes());
+        hasher.update(self.deposit_request_txid);
+        hasher.update(self.deposit_request_output_index.to_be_bytes());
+    }
+}
+
+impl wsts::net::Signable for SweptWithdrawal {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        hasher.update(self.output_index.to_be_bytes());
+        hasher.update(self.withdrawal_request_id.to_be_bytes());
+        hasher.update(self.withdrawal_request_block_hash);
     }
 }
 
