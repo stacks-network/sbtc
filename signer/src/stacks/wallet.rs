@@ -401,8 +401,9 @@ where
     use stacks_common::codec::StacksMessageCodec as _;
     let mut rng = rand::rngs::StdRng::seed_from_u64(1);
     // We need some private keys, that we control, so let's create them.
+    let num_signers = wallet.public_keys().len();
     let private_keys = std::iter::repeat_with(|| PrivateKey::new(&mut rng))
-        .take(wallet.public_keys().len())
+        .take(num_signers)
         .collect::<Vec<PrivateKey>>();
 
     let public_keys: Vec<_> = private_keys
@@ -420,7 +421,7 @@ where
     )?;
 
     let mut multisig_tx = MultisigTx::new_tx(payload, &wallet, 0);
-    for private_key in private_keys.iter() {
+    for private_key in private_keys.iter().take(wallet.signatures_required as usize) {
         let signature = crate::signature::sign_stacks_tx(multisig_tx.tx(), private_key);
         // This won't fail, since this is a proper signature
         multisig_tx.add_signature(signature)?;
