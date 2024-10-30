@@ -789,16 +789,12 @@ export const contracts = {
         args: [
           { name: "request-id", type: "uint128" },
           { name: "signer-bitmap", type: "uint128" },
-          { name: "burn-hash", type: { buffer: { length: 32 } } },
-          { name: "burn-height", type: "uint128" },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
         [
           requestId: TypedAbiArg<number | bigint, "requestId">,
           signerBitmap: TypedAbiArg<number | bigint, "signerBitmap">,
-          burnHash: TypedAbiArg<Uint8Array, "burnHash">,
-          burnHeight: TypedAbiArg<number | bigint, "burnHeight">,
         ],
         Response<boolean, bigint>
       >,
@@ -1713,16 +1709,12 @@ export const contracts = {
         args: [
           { name: "request-id", type: "uint128" },
           { name: "signer-bitmap", type: "uint128" },
-          { name: "burn-hash", type: { buffer: { length: 32 } } },
-          { name: "burn-height", type: "uint128" },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
         [
           requestId: TypedAbiArg<number | bigint, "requestId">,
           signerBitmap: TypedAbiArg<number | bigint, "signerBitmap">,
-          burnHash: TypedAbiArg<Uint8Array, "burnHash">,
-          burnHeight: TypedAbiArg<number | bigint, "burnHeight">,
         ],
         Response<boolean, bigint>
       >,

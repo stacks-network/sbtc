@@ -482,6 +482,8 @@ describe("Accepting a withdrawal request", () => {
       outputIndex: bigint;
       topic: string;
       fee: bigint;
+      burnHash: Uint8Array;
+      burnHeight: bigint;
     }>(print.data.value);
 
     expect(printData).toStrictEqual({
@@ -491,6 +493,8 @@ describe("Accepting a withdrawal request", () => {
       outputIndex: 10n,
       topic: "withdrawal-accept",
       fee: defaultMaxFee + 10n,
+      burnHash: new Uint8Array(32).fill(0),
+      burnHeight: 0n,
     });
   });
   test("accept withdrawal sets withdrawal-status to true", () => {
@@ -588,8 +592,6 @@ describe("Accepting a withdrawal request", () => {
       withdrawal.rejectWithdrawalRequest({
         requestId: 1n,
         signerBitmap: 1234567n,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
       }),
       deployer
     );
@@ -701,8 +703,6 @@ describe("Reject a withdrawal request", () => {
       withdrawal.rejectWithdrawalRequest({
         requestId: 2n,
         signerBitmap: 0n,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
       }),
       alice
     );
@@ -733,8 +733,6 @@ describe("Reject a withdrawal request", () => {
       withdrawal.rejectWithdrawalRequest({
         requestId: 1n,
         signerBitmap: 0n,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
       }),
       alice
     );
@@ -777,8 +775,6 @@ describe("Reject a withdrawal request", () => {
       withdrawal.rejectWithdrawalRequest({
         requestId: 1n,
         signerBitmap: 0n,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
       }),
       deployer
     );

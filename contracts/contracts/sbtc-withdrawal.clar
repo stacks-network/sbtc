@@ -190,7 +190,7 @@
 )
 
 ;; Reject a withdrawal request
-(define-public (reject-withdrawal-request (request-id uint) (signer-bitmap uint) (burn-hash (buff 32)) (burn-height uint))
+(define-public (reject-withdrawal-request (request-id uint) (signer-bitmap uint))
   (let
      (
       (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
@@ -206,19 +206,16 @@
     ;; Check that request status is currently-pending
     (asserts! (is-none (get status withdrawal)) ERR_ALREADY_PROCESSED)
 
-    ;; Verify that Bitcoin hasn't forked by comparing the burn hash provided
-    (asserts! (is-eq (some burn-hash) (get-burn-header burn-height)) ERR_INVALID_BURN_HASH)
-
     ;; Burn sbtc-locked & re-mint sbtc to original requester
     (try! (contract-call? .sbtc-token protocol-unlock (+ requested-amount requested-max-fee) requester))
 
     ;; Call into registry to confirm accepted withdrawal
-    (try! (contract-call? .sbtc-registry complete-withdrawal-reject request-id signer-bitmap burn-hash burn-height))
+    (try! (contract-call? .sbtc-registry complete-withdrawal-reject request-id signer-bitmap))
 
     (ok true)
   )
 )
-;; Reject multiple withdrawal requests
+;; Complete multiple withdrawal requests
 (define-public (complete-withdrawals (withdrawals (list 600 
                                       {request-id: uint, 
                                       status: bool, 
@@ -270,7 +267,7 @@
             (unwrap! (accept-withdrawal-request (get request-id withdrawal) (unwrap-panic current-bitcoin-txid) current-signer-bitmap (unwrap-panic current-output-index) (unwrap-panic current-fee) (get burn-hash withdrawal) (get burn-height withdrawal)) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
           )
           ;; rejected
-          (unwrap! (reject-withdrawal-request (get request-id withdrawal) current-signer-bitmap (get burn-hash withdrawal) (get burn-height withdrawal)) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
+          (unwrap! (reject-withdrawal-request (get request-id withdrawal) current-signer-bitmap) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
         )
         (ok (+ index u1))
       )
