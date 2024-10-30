@@ -737,6 +737,10 @@ where
                 continue;
             }
 
+            if !msg.verify() {
+                return Err(Error::InvalidSignature);
+            }
+
             let Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
                 continue;
             };
@@ -746,6 +750,63 @@ where
                 sig: Vec::new(),
             };
 
+            let msg_public_key = msg.signer_pub_key.clone();
+            let public_keys = &coordinator_state_machine.get_config().signer_public_keys;
+            // check that messages were signed by correct key
+            /*
+                        match &packet.msg {
+                            wsts::net::Message::DkgBegin(_) => {}
+                            wsts::net::Message::DkgPrivateBegin(_) => {}
+                            wsts::net::Message::DkgPublicShares(dkg_public_shares) => {
+                                let signer_public_key = PublicKey::try_from(
+                                    &public_keys[&dkg_public_shares.signer_id],
+                                )
+                                .map_err(|_| Error::InvalidPublicKey(secp256k1::Error::InvalidPublicKey))?;
+                                if signer_public_key != msg_public_key {
+                                    return Err(Error::InvalidSignature);
+                                }
+                    }
+                            wsts::net::Message::DkgPrivateShares(dkg_private_shares) => {
+                                let signer_public_key = PublicKey::try_from(
+                                    &public_keys[&dkg_private_shares.signer_id],
+                                )
+                                .map_err(|_| Error::InvalidPublicKey(secp256k1::Error::InvalidPublicKey))?;
+                                if signer_public_key != msg_public_key {
+                                    return Err(Error::InvalidSignature);
+                                }
+                            }
+                            wsts::net::Message::DkgEndBegin(_) => {}
+                            wsts::net::Message::NonceRequest(_) => {}
+                            wsts::net::Message::SignatureShareRequest(_) => {}
+                            wsts::net::Message::DkgEnd(dkg_end) => {
+                                let signer_public_key = PublicKey::try_from(&public_keys[&dkg_end.signer_id])
+                                    .map_err(|_| {
+                                    Error::InvalidPublicKey(secp256k1::Error::InvalidPublicKey)
+                                })?;
+                                if signer_public_key != msg_public_key {
+                                    return Err(Error::InvalidSignature);
+                                }
+                            }
+                            wsts::net::Message::NonceResponse(nonce_response) => {
+                                let signer_public_key = PublicKey::try_from(
+                                    &public_keys[&nonce_response.signer_id],
+                                )
+                                .map_err(|_| Error::InvalidPublicKey(secp256k1::Error::InvalidPublicKey))?;
+                                if signer_public_key != msg_public_key {
+                                    return Err(Error::InvalidSignature);
+                                }
+                            }
+                            wsts::net::Message::SignatureShareResponse(sig_share_response) => {
+                                let signer_public_key = PublicKey::try_from(
+                                    &public_keys[&sig_share_response.signer_id],
+                                )
+                                .map_err(|_| Error::InvalidPublicKey(secp256k1::Error::InvalidPublicKey))?;
+                                if signer_public_key != msg_public_key {
+                                    return Err(Error::InvalidSignature);
+                                }
+                            }
+                        }
+            */
             let (outbound_packet, operation_result) =
                 match coordinator_state_machine.process_message(&packet) {
                     Ok(val) => val,
