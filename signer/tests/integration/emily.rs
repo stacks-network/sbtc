@@ -178,7 +178,7 @@ const DUMMY_SORTITION_INFO: SortitionInfo = SortitionInfo {
 /// that Emily is informed about it.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-async fn deposit_e2e() {
+async fn deposit_flow() {
     let num_signers = 7;
     let signing_threshold = 5;
     let context_window = 10;
@@ -415,11 +415,10 @@ async fn deposit_e2e() {
                 })
             });
 
-            // The coordinator will try to further process the deposit to submit
+            // The coordinator may try to further process the deposit to submit
             // the stacks tx, but we are not interested (for the current test iteration).
             client
                 .expect_get_account()
-                .once()
                 .returning(|_| Box::pin(async move { Err(Error::InvalidStacksResponse("mock")) }));
 
             client.expect_get_sortition_info().returning(move |_| {
@@ -483,7 +482,7 @@ async fn deposit_e2e() {
         .await
         .unwrap();
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Ensure we picked up the new tip
     assert_eq!(
