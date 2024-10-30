@@ -251,6 +251,7 @@ impl EmilyInteract for ApiFallbackClient<EmilyClient> {
         btc_fee: bitcoin::Amount,
     ) -> Result<UpdateDepositsResponse, Error> {
         self.exec(|client, _| client.confirm_deposit(deposit, sbtc_txid, stacks_chain_tip, btc_fee))
+            .await
     }
 
     async fn set_chainstate(&self, chainstate: Chainstate) -> Result<Chainstate, Error> {

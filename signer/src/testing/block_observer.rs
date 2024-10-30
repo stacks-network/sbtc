@@ -4,10 +4,10 @@ use std::collections::HashMap;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::stacks::api::StacksInteract;
+use crate::storage::model;
 use crate::storage::model::StacksBlock;
 use crate::storage::model::StacksTxId;
 use crate::storage::model::SweptDepositRequest;
-use crate::storage::model;
 use bitcoin::hashes::Hash;
 use bitcoin::BlockHash;
 use bitcoin::Txid;

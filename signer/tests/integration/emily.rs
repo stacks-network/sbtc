@@ -1,4 +1,7 @@
+use std::collections::HashMap;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use bitcoin::block::Header;
@@ -7,6 +10,7 @@ use bitcoin::hashes::Hash as _;
 use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::Block;
+use bitcoin::BlockHash;
 use bitcoin::CompactTarget;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
@@ -22,8 +26,8 @@ use blockstack_lib::net::api::getsortition::SortitionInfo;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use clarity::types::chainstate::BurnchainHeaderHash;
 use clarity::types::chainstate::ConsensusHash;
-use clarity::types::chainstate::StacksAddress;
 use clarity::types::chainstate::SortitionId;
+use clarity::types::chainstate::StacksAddress;
 use clarity::types::chainstate::StacksBlockId;
 use clarity::vm::types::PrincipalData;
 use emily_client::apis::deposit_api;
@@ -46,12 +50,20 @@ use signer::block_observer;
 use signer::context::Context;
 use signer::context::SignerEvent;
 use signer::context::TxSignerEvent;
+use signer::ecdsa::SignEcdsa as _;
 use signer::emily_client::EmilyClient;
 use signer::emily_client::EmilyInteract;
 use signer::error::Error;
 use signer::keys;
 use signer::keys::SignerScriptPubKey as _;
+use signer::message;
 use signer::network;
+use signer::network::MessageTransfer as _;
+use signer::signature::sign_stacks_tx;
+use signer::stacks::api::AccountInfo;
+use signer::stacks::api::SubmitTxResponse;
+use signer::stacks::wallet::MultisigTx;
+use signer::stacks::wallet::SignerWallet;
 use signer::storage::model;
 use signer::storage::model::DepositSigner;
 use signer::storage::model::SweptDepositRequest;
@@ -193,6 +205,7 @@ const DUMMY_SORTITION_INFO: SortitionInfo = SortitionInfo {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn deposit_flow() {
+    signer::logging::setup_logging("info", true);
     let num_signers = 7;
     let signing_threshold = 5;
     let context_window = 10;
@@ -247,6 +260,7 @@ async fn deposit_flow() {
     // Setup deposit request
     let deposit_config = DepositTxConfig {
         aggregate_key,
+        amount: 500_000_000,
         ..fake::Faker.fake_with_rng(&mut rng)
     };
     let depositor = Recipient::new(AddressType::P2tr);
@@ -255,7 +269,7 @@ async fn deposit_flow() {
         vout: 0,
         script_pub_key: ScriptBuf::new(),
         descriptor: "".to_string(),
-        amount: Amount::from_sat(deposit_config.amount + deposit_config.max_fee),
+        amount: Amount::from_sat(deposit_config.amount * 2),
         height: 0,
     };
     let (deposit_tx, deposit_request, _) = make_deposit_request(
@@ -320,14 +334,33 @@ async fn deposit_flow() {
     let wait_for_transaction_task =
         tokio::spawn(async move { wait_for_transaction_rx.recv().await });
 
+    let bitcoin_txs = Arc::new(Mutex::new(HashMap::<Txid, (Transaction, BlockHash)>::from(
+        [(
+            deposit_tx.compute_txid(),
+            (deposit_tx.clone(), deposit_block_hash.clone()),
+        )],
+    )));
+
     context
         .with_bitcoin_client(|client| {
             // Setup the bitcoin client mock to broadcast the transaction to our
             // channel.
+            let bitcoin_txs_ = bitcoin_txs.clone();
             client
                 .expect_broadcast_transaction()
                 .once()
                 .returning(move |tx| {
+                    bitcoin_txs_
+                        .lock()
+                        .unwrap()
+                        .insert(tx.compute_txid(), (tx.clone(), BlockHash::all_zeros()));
+                    // Hacky thing around the wrong query in get_swept_deposit_requests
+                    bitcoin_txs_.lock().unwrap().insert(
+                        signers_utxo_tx.compute_txid(),
+                        (tx.clone(), BlockHash::all_zeros()),
+                    );
+
+                    dbg!(tx);
                     let tx = tx.clone();
                     let broadcasted_transaction_tx = broadcasted_transaction_tx.clone();
                     Box::pin(async move {
@@ -339,50 +372,49 @@ async fn deposit_flow() {
                 });
 
             // Return the deposit tx
-            let deposit_tx_ = deposit_tx.clone();
+            let bitcoin_txs_ = bitcoin_txs.clone();
             client.expect_get_tx().once().returning(move |txid| {
-                let res = if *txid == deposit_tx_.compute_txid() {
+                let res = if let Some((tx, block_hash)) = bitcoin_txs_.lock().unwrap().get(txid) {
                     Ok(Some(GetTxResponse {
-                        tx: deposit_tx_.clone(),
-                        block_hash: Some(deposit_block_hash),
+                        tx: tx.clone(),
+                        block_hash: Some(block_hash.clone()),
                         confirmations: None,
                         block_time: None,
                     }))
                 } else {
-                    // We may get queried for unrelated txids if Emily state
-                    // was not reset; returning an error will ignore those
-                    // deposit requests (as desired).
                     Err(Error::BitcoinTxMissing(txid.clone(), None))
                 };
+
                 Box::pin(async move { res })
             });
 
             // Return the deposit tx
+            let bitcoin_txs_ = bitcoin_txs.clone();
             client
                 .expect_get_tx_info()
-                .once()
-                .returning(move |txid, block_hash| {
-                    let res = if *txid == deposit_tx.compute_txid() {
+                // TODO(587): restore `once` once we process each request once
+                .times(1..)
+                .returning(move |txid, _| {
+                    let res = if let Some((tx, block_hash)) = bitcoin_txs_.lock().unwrap().get(txid)
+                    {
                         Ok(Some(BitcoinTxInfo {
                             in_active_chain: true,
                             fee: bitcoin::Amount::from_sat(deposit_config.max_fee),
-                            tx: deposit_tx.clone(),
-                            txid: deposit_tx.compute_txid(),
-                            hash: deposit_tx.compute_wtxid(),
-                            size: deposit_tx.total_size() as u64,
-                            vsize: deposit_tx.vsize() as u64,
+                            tx: tx.clone(),
+                            txid: tx.compute_txid(),
+                            hash: tx.compute_wtxid(),
+                            size: tx.total_size() as u64,
+                            vsize: tx.vsize() as u64,
                             vin: Vec::new(),
                             vout: Vec::new(),
-                            block_hash: *block_hash,
+                            block_hash: block_hash.clone(),
                             confirmations: 0,
                             block_time: 0,
                         }))
                     } else {
-                        // We may get queried for unrelated txids if Emily state
-                        // was not reset; returning an error will ignore those
-                        // deposit requests (as desired).
                         Err(Error::BitcoinTxMissing(txid.clone(), None))
                     };
+
                     Box::pin(async move { res })
                 });
 
@@ -429,12 +461,16 @@ async fn deposit_flow() {
                 })
             });
 
-            // The coordinator will try to further process the deposit to submit
-            // the stacks tx, but we are not interested (for the current test iteration).
-            client
-                .expect_get_account()
-                .once()
-                .returning(|_| Box::pin(async move { Err(Error::InvalidStacksResponse("mock")) }));
+            client.expect_get_account().once().returning(|_| {
+                Box::pin(async move {
+                    Ok(AccountInfo {
+                        balance: 0,
+                        locked: 0,
+                        unlock_height: 0,
+                        nonce: 12,
+                    })
+                })
+            });
 
             client.expect_get_sortition_info().returning(move |_| {
                 let response = Ok(SortitionInfo {
@@ -445,6 +481,18 @@ async fn deposit_flow() {
                     ..DUMMY_SORTITION_INFO.clone()
                 });
                 Box::pin(std::future::ready(response))
+            });
+
+            // Dummy value
+            client
+                .expect_estimate_fees()
+                .once()
+                .returning(move |_, _| Box::pin(async move { Ok(25505) }));
+
+            client.expect_submit_tx().once().returning(|tx| {
+                dbg!(&tx);
+                let res = Ok(SubmitTxResponse::Acceptance(tx.txid()));
+                Box::pin(async move { res })
             });
         })
         .await;
@@ -544,10 +592,45 @@ async fn deposit_flow() {
     }
 
     // Start the in-memory signer set.
+    let context_ = context.clone();
     let _signers_handle = tokio::spawn(async move {
-        testing_signer_set
-            .participate_in_signing_rounds_forever()
-            .await
+        // Round for signers utxo
+        testing_signer_set.participate_in_signing_round().await;
+        // Round for deposit utxo
+        testing_signer_set.participate_in_signing_round().await;
+
+        // Now the signers must sign the sbtc mint tx, but since we don't have
+        // a simple way to coordinate a stacks tx signature round we mock it
+        let mut network = network.connect();
+        loop {
+            let msg = network.receive().await.expect("network error");
+            let bitcoin_chain_tip = msg.bitcoin_chain_tip;
+
+            let message::Payload::StacksTransactionSignRequest(request) = msg.inner.payload else {
+                continue;
+            };
+
+            let wallet = SignerWallet::load(&context_, &bitcoin_chain_tip)
+                .await
+                .expect("missing wallet");
+            wallet.set_nonce(request.nonce);
+
+            let multi_sig = MultisigTx::new_tx(&request.contract_call, &wallet, request.tx_fee);
+            let txid = multi_sig.tx().txid();
+
+            for signer in &signer_info {
+                let signature = sign_stacks_tx(multi_sig.tx(), &signer.signer_private_key);
+                let msg = message::StacksTransactionSignature { txid, signature };
+
+                let payload: message::Payload = msg.into();
+                let msg = payload
+                    .to_message(bitcoin_chain_tip)
+                    .sign_ecdsa(&signer.signer_private_key)
+                    .expect("cannot sign");
+
+                network.broadcast(msg.clone()).await.expect("network error");
+            }
+        }
     });
 
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -578,7 +661,7 @@ async fn deposit_flow() {
         .expect("no message received");
 
     // Ensure we have time to send the emily api call before stopping everything
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    tokio::time::sleep(Duration::from_millis(10000)).await;
 
     // Stop the event loops
     tx_coordinator_handle.abort();
@@ -618,16 +701,16 @@ async fn deposit_flow() {
 }
 
 /// Test Emily interactions by directly invoking Emily client
-///
-/// To run this test, concurrently run:
-///  - make emily-integration-env-up
-///  - AWS_ACCESS_KEY_ID=foo AWS_SECRET_ACCESS_KEY=bar AWS_REGION=us-west-2 make emily-server
-/// then, once Emily is up and running, run this test.
-#[ignore = "This is an integration test that requires manually running emily"]
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn deposit_flow_client() {
     let emily_client =
         EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
+
+    // Wipe the Emily database to start fresh
+    wipe_databases(&emily_client.config())
+        .await
+        .expect("Wiping Emily database in test setup failed.");
 
     let deposit_txid = testing::dummy::txid(&fake::Faker, &mut OsRng);
     let deposit_vout = 7;

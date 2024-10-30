@@ -7,6 +7,7 @@
 
 use std::collections::BTreeSet;
 
+use bitcoin::Amount;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use futures::FutureExt;
 use futures::StreamExt as _;
@@ -368,6 +369,13 @@ where
             return Ok(());
         }
 
+        let stacks_chain_tip = self
+            .context
+            .get_storage()
+            .get_stacks_chain_tip(chain_tip)
+            .await?
+            .ok_or(Error::NoStacksChainTip)?;
+
         // We need to know the nonce to use, so we reach out to our stacks
         // node for the account information for our multi-sig address.
         //
@@ -379,7 +387,7 @@ where
         for req in deposit_requests {
             let outpoint = req.deposit_outpoint();
             let sign_request_fut =
-                self.construct_deposit_stacks_sign_request(req, bitcoin_aggregate_key, &wallet);
+                self.construct_deposit_stacks_sign_request(req.clone(), bitcoin_aggregate_key, &wallet);
 
             let (sign_request, multi_tx) = match sign_request_fut.await {
                 Ok(res) => res,
@@ -395,11 +403,31 @@ where
             // transaction because someone else is now the coordinator, and
             // all of the signers are now ignoring us.
             let process_request_fut =
-                self.process_sign_request(sign_request, chain_tip, multi_tx, &wallet);
+                self.process_sign_request(sign_request.clone(), chain_tip, multi_tx, &wallet);
 
             match process_request_fut.await {
                 Ok(txid) => {
-                    tracing::info!(%txid, "successfully submitted complete-deposit transaction")
+                    tracing::info!(%txid, "successfully submitted complete-deposit transaction");
+
+                    if let ContractCall::CompleteDepositV1(CompleteDepositV1 {
+                        amount: sbtc_amount,
+                        ..
+                    }) = sign_request.contract_call
+                    {
+                        let fee = Amount::from_sat(req.amount - sbtc_amount);
+                        if let Err(error) = self
+                            .context
+                            .get_emily_client()
+                            .confirm_deposit(&req, &txid, &stacks_chain_tip, fee)
+                            .await
+                        {
+                            tracing::error!(%error,txid = %outpoint.txid,
+                                vout = %outpoint.vout, "could not update emily for complete-deposit transaction");
+                        }
+                    } else {
+                        tracing::error!(txid = %outpoint.txid,
+                            vout = %outpoint.vout, "unexpected contract call");
+                    }
                 }
                 Err(error) => {
                     tracing::warn!(
@@ -427,7 +455,6 @@ where
         let tx = self
             .sign_stacks_transaction(sign_request, multi_tx, chain_tip, wallet)
             .await?;
-
         match self.context.get_stacks_client().submit_tx(&tx).await {
             Ok(SubmitTxResponse::Acceptance(txid)) => Ok(txid.into()),
             Ok(SubmitTxResponse::Rejection(err)) => Err(err.into()),
