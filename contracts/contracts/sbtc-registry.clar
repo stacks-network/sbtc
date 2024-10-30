@@ -183,7 +183,9 @@
       bitcoin-txid: bitcoin-txid,
       signer-bitmap: signer-bitmap,
       output-index: output-index,
-      fee: fee
+      fee: fee,
+      burn-hash: burn-hash,
+      burn-height: burn-height,
     })
     (ok true)
   )
@@ -198,8 +200,6 @@
 (define-public (complete-withdrawal-reject
     (request-id uint) 
     (signer-bitmap uint)
-    (burn-hash (buff 32))
-    (burn-height uint)
   )
   (begin 
     (try! (is-protocol-caller))
