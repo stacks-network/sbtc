@@ -8,12 +8,18 @@ use bitcoin::Txid;
 use emily_client::apis::chainstate_api;
 use emily_client::apis::configuration::Configuration as EmilyApiConfig;
 use emily_client::apis::deposit_api;
+use emily_client::apis::withdrawal_api;
 use emily_client::apis::Error as EmilyError;
 use emily_client::models::Chainstate;
+use emily_client::models::CreateWithdrawalRequestBody;
 use emily_client::models::DepositUpdate;
 use emily_client::models::Status;
 use emily_client::models::UpdateDepositsRequestBody;
 use emily_client::models::UpdateDepositsResponse;
+use emily_client::models::UpdateWithdrawalsRequestBody;
+use emily_client::models::UpdateWithdrawalsResponse;
+use emily_client::models::Withdrawal;
+use emily_client::models::WithdrawalUpdate;
 use sbtc::deposits::CreateDepositRequest;
 use url::Url;
 
@@ -42,6 +48,14 @@ pub enum EmilyClientError {
     #[error("error updating deposits: {0}")]
     UpdateDeposits(EmilyError<deposit_api::UpdateDepositsError>),
 
+    /// An error occurred while creating withdrawals
+    #[error("error creating withdrawals: {0}")]
+    CreateWithdrawal(EmilyError<withdrawal_api::CreateWithdrawalError>),
+
+    /// An error occurred while updating withdrawals
+    #[error("error updating withdrawals: {0}")]
+    UpdateWithdrawals(EmilyError<withdrawal_api::UpdateWithdrawalsError>),
+
     /// An error occurred while adding a chainstate entry
     #[error("error adding chainstate entry: {0}")]
     AddChainstateEntry(EmilyError<chainstate_api::SetChainstateError>),
@@ -63,6 +77,24 @@ pub trait EmilyInteract: Sync + Send {
         transaction: &'a UnsignedTransaction<'a>,
         stacks_chain_tip: &'a StacksBlock,
     ) -> impl std::future::Future<Output = Result<UpdateDepositsResponse, Error>> + Send;
+
+    /// Update the status of deposits in Emily.
+    fn update_deposits(
+        &self,
+        update_deposits: Vec<DepositUpdate>,
+    ) -> impl std::future::Future<Output = Result<UpdateDepositsResponse, Error>> + Send;
+
+    /// Create withdrawals in Emily.
+    fn create_withdrawals(
+        &self,
+        create_withdrawals: Vec<CreateWithdrawalRequestBody>,
+    ) -> impl std::future::Future<Output = Vec<Result<Withdrawal, Error>>> + Send;
+
+    /// Update the status of withdrawals in Emily.
+    fn update_withdrawals(
+        &self,
+        update_withdrawals: Vec<WithdrawalUpdate>,
+    ) -> impl std::future::Future<Output = Result<UpdateWithdrawalsResponse, Error>> + Send;
 
     /// Set the chainstate in Emily. This could trigger a reorg.
     fn set_chainstate(
@@ -138,10 +170,18 @@ impl EmilyInteract for EmilyClient {
             .collect()
     }
 
-    async fn set_chainstate(&self, chainstate: Chainstate) -> Result<Chainstate, Error> {
-        chainstate_api::set_chainstate(&self.config, chainstate)
+    async fn update_deposits(
+        &self,
+        update_deposits: Vec<DepositUpdate>,
+    ) -> Result<UpdateDepositsResponse, Error> {
+        if update_deposits.is_empty() {
+            return Ok(UpdateDepositsResponse { deposits: vec![] });
+        }
+
+        let update_request = UpdateDepositsRequestBody { deposits: update_deposits };
+        deposit_api::update_deposits(&self.config, update_request)
             .await
-            .map_err(EmilyClientError::AddChainstateEntry)
+            .map_err(EmilyClientError::UpdateDeposits)
             .map_err(Error::EmilyApi)
     }
 
@@ -167,15 +207,54 @@ impl EmilyInteract for EmilyClient {
             })
             .collect();
 
-        if update_request.is_empty() {
-            return Ok(UpdateDepositsResponse { deposits: vec![] });
+        self.update_deposits(update_request).await
+    }
+
+    async fn create_withdrawals(
+        &self,
+        create_withdrawals: Vec<CreateWithdrawalRequestBody>,
+    ) -> Vec<Result<Withdrawal, Error>> {
+        if create_withdrawals.is_empty() {
+            return vec![];
         }
 
-        let update_request = UpdateDepositsRequestBody { deposits: update_request };
+        let futures = create_withdrawals
+            .into_iter()
+            .map(|withdrawal| withdrawal_api::create_withdrawal(&self.config, withdrawal));
 
-        deposit_api::update_deposits(&self.config, update_request)
+        let results = futures::future::join_all(futures).await;
+
+        results
+            .into_iter()
+            .map(|result| {
+                result
+                    .map_err(EmilyClientError::CreateWithdrawal)
+                    .map_err(Error::EmilyApi)
+            })
+            .collect()
+    }
+
+    async fn update_withdrawals(
+        &self,
+        update_withdrawals: Vec<WithdrawalUpdate>,
+    ) -> Result<UpdateWithdrawalsResponse, Error> {
+        if update_withdrawals.is_empty() {
+            return Ok(UpdateWithdrawalsResponse { withdrawals: vec![] });
+        }
+
+        let update_request = UpdateWithdrawalsRequestBody {
+            withdrawals: update_withdrawals,
+        };
+        withdrawal_api::update_withdrawals(&self.config, update_request)
             .await
-            .map_err(EmilyClientError::UpdateDeposits)
+            .map_err(EmilyClientError::UpdateWithdrawals)
+            .map_err(Error::EmilyApi)
+    }
+
+    async fn set_chainstate(&self, chainstate: Chainstate) -> Result<Chainstate, Error> {
+        chainstate_api::set_chainstate(&self.config, chainstate)
+            .await
+            .map_err(EmilyClientError::AddChainstateEntry)
             .map_err(Error::EmilyApi)
     }
 }
@@ -187,12 +266,40 @@ impl EmilyInteract for ApiFallbackClient<EmilyClient> {
         self.exec(|client, _| client.get_deposits())
     }
 
+    async fn update_deposits(
+        &self,
+        update_deposits: Vec<DepositUpdate>,
+    ) -> Result<UpdateDepositsResponse, Error> {
+        self.exec(|client, _| client.update_deposits(update_deposits.clone()))
+            .await
+    }
+
     async fn accept_deposits<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
         stacks_chain_tip: &'a StacksBlock,
     ) -> Result<UpdateDepositsResponse, Error> {
         self.exec(|client, _| client.accept_deposits(transaction, stacks_chain_tip))
+            .await
+    }
+
+    async fn create_withdrawals(
+        &self,
+        create_withdrawals: Vec<CreateWithdrawalRequestBody>,
+    ) -> Vec<Result<Withdrawal, Error>> {
+        self.exec(|client, _| async {
+            let withdrawals = client.create_withdrawals(create_withdrawals.clone()).await;
+            Ok::<Vec<Result<Withdrawal, Error>>, Error>(withdrawals) // Wrap the Vec in Ok to satisfy exec's type constraints
+        })
+        .await
+        .unwrap_or_else(|err| vec![Err(err)])
+    }
+
+    async fn update_withdrawals(
+        &self,
+        update_withdrawals: Vec<WithdrawalUpdate>,
+    ) -> Result<UpdateWithdrawalsResponse, Error> {
+        self.exec(|client, _| client.update_withdrawals(update_withdrawals.clone()))
             .await
     }
 
