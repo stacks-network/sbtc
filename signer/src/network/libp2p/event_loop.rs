@@ -4,7 +4,7 @@ use std::time::Duration;
 use futures::StreamExt;
 use libp2p::swarm::SwarmEvent;
 use libp2p::{autonat, gossipsub, identify, mdns, Swarm};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use crate::codec::{Decode, Encode};
 use crate::context::{Context, P2PEvent, SignerCommand, SignerSignal};
@@ -33,7 +33,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
     // app signalling channel and pushes them into the outbound message queue.
     // This queue is then polled by the `poll_swarm` event loop to publish the
     // messages to the network.
-    let outbox = RwLock::new(Vec::<Msg>::new());
+    let outbox = Mutex::new(Vec::<Msg>::new());
     let poll_outbound = async {
         tracing::debug!("P2P outbound message polling started");
         loop {
@@ -43,7 +43,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                 continue;
             };
 
-            outbox.write().await.push(payload);
+            outbox.lock().await.push(payload);
         }
     };
 
@@ -65,7 +65,6 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
 
             // Handle the event if one was received.
             if let Some(event) = event {
-                //let swarm = &mut *swarm.lock().await;
                 let mut swarm = swarm.lock().await;
 
                 match event {
@@ -153,7 +152,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
             }
 
             // Drain the outbox and publish the messages to the network.
-            let outbox = outbox.write().await.drain(..).collect::<Vec<_>>();
+            let outbox = outbox.lock().await.drain(..).collect::<Vec<_>>();
             for payload in outbox {
                 tracing::info!("publishing message");
                 let msg_id = payload.id();
@@ -178,14 +177,14 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                     .behaviour_mut()
                     .gossipsub
                     .publish(topic.clone(), encoded_msg)
-                    .map_err(|error| {
+                    .inspect_err(|error| {
                         // An error occurred while attempting to publish.
                         // Log the error and send a failure signal to the application
                         // so that it can handle the failure as needed.
                         tracing::warn!(%error, ?msg_id, "Failed to publish message");
                         let _ = signal_tx.send(P2PEvent::PublishFailure(msg_id).into());
                     })
-                    .map(|_| {
+                    .inspect(|_| {
                         // The message was published successfully. Log the success
                         // and send a success signal to the application so that it can
                         // handle the success as needed.
