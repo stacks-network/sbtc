@@ -24,6 +24,10 @@ use crate::stacks::wallet::SignerWallet;
 mod error;
 mod serialization;
 
+/// The minimum number of blocks between the hight at which the reclaim script path can
+/// be spent and the current chain tip for the deposit to be considered acceptable.
+pub const MINIMUM_RECLAIM_PROXIMITY_TO_CHAIN_TIP: u16 = 10;
+
 /// Maximum configurable delay (in seconds) before processing new Bitcoin blocks.
 pub const MAX_BITCOIN_PROCESSING_DELAY_SECONDS: u64 = 300;
 

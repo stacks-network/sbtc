@@ -16,6 +16,7 @@ use rand::seq::SliceRandom;
 
 use signer::bitcoin::MockBitcoinInteract;
 use signer::config::Settings;
+use signer::config::MINIMUM_RECLAIM_PROXIMITY_TO_CHAIN_TIP;
 use signer::context::Context;
 use signer::emily_client::MockEmilyInteract;
 use signer::error::Error;
@@ -46,7 +47,6 @@ use signer::storage::model::StacksBlockHash;
 use signer::storage::model::StacksTxId;
 use signer::storage::model::WithdrawalSigner;
 use signer::storage::postgres::PgStore;
-use signer::storage::postgres::MINIMUM_RECLAIM_PROXIMITY_TO_CHAIN_TIP;
 use signer::storage::DbRead;
 use signer::storage::DbWrite;
 use signer::testing;

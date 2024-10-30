@@ -16,6 +16,7 @@ use sqlx::PgExecutor;
 use stacks_common::types::chainstate::StacksAddress;
 
 use crate::bitcoin::utxo::SignerUtxo;
+use crate::config::MINIMUM_RECLAIM_PROXIMITY_TO_CHAIN_TIP;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::SignerScriptPubKey as _;
@@ -55,10 +56,6 @@ const CONTRACT_FUNCTION_NAMES: [(&str, TransactionType); 5] = [
     ("reject-withdrawal-request", TransactionType::WithdrawReject),
     ("rotate-keys-wrapper", TransactionType::RotateKeys),
 ];
-
-/// The minimum number of blocks between the hight at which the reclaim script path can
-/// be spent and the current chain tip for the deposit to be considered acceptable.
-pub const MINIMUM_RECLAIM_PROXIMITY_TO_CHAIN_TIP: u16 = 10;
 
 /// Returns the mapping between functions in a contract call and the
 /// transaction type.
