@@ -133,3 +133,15 @@ export function constructMultisigAddress(
     )
   );
 }
+
+export function getCurrentBurnInfo() {
+  if (simnet.blockHeight === 1) {
+    simnet.mineEmptyBlocks(1);
+  }
+  const burnHeight = simnet.blockHeight - 1;
+  const burnHash = rov(deposit.getBurnHeader(burnHeight));
+  if (burnHash === null) {
+    throw new Error("No burn header found for current height");
+  }
+  return { burnHeight: burnHeight, burnHash };
+}

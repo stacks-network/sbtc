@@ -170,6 +170,8 @@
     (output-index uint)
     (signer-bitmap uint)
     (fee uint)
+    (burn-hash (buff 32))
+    (burn-height uint)
   )
   (begin 
     (try! (is-protocol-caller))
@@ -181,7 +183,9 @@
       bitcoin-txid: bitcoin-txid,
       signer-bitmap: signer-bitmap,
       output-index: output-index,
-      fee: fee
+      fee: fee,
+      burn-hash: burn-hash,
+      burn-height: burn-height,
     })
     (ok true)
   )
@@ -223,6 +227,8 @@
     (vout-index uint)
     (amount uint)
     (recipient principal)
+    (burn-hash (buff 32))
+    (burn-height uint)
   )
   (begin
     (try! (is-protocol-caller))
@@ -234,7 +240,9 @@
       topic: "completed-deposit",
       bitcoin-txid: txid,
       output-index: vout-index,
-      amount: amount
+      amount: amount,
+      burn-hash: burn-hash,
+      burn-height: burn-height,
     })
     (ok true)
   )

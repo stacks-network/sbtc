@@ -34,3 +34,24 @@ message RecoverableSignature {
   // must be one of the values 0-3.
   int32 recovery_id = 3;
 }
+
+// Scalar maps to a nonnegative number less than the order of the secp256k1
+// curve.
+message Scalar {
+  Uint256 value = 1;
+}
+
+// Represents a point on the secp256k1 elliptic curve. A Point is either a
+// public key, like the crypto.PublicKey type, or the point at infinity.
+message Point {
+  // The x-coordinate of the point.
+  Uint256 x_coordinate = 1;
+  // Represents the parity bit of the point. True means the parity is
+  // odd, while false means the parity is even.
+  bool parity_is_odd = 2;
+}
+
+// A message type only used for values of maps when a set is desired. The
+// "Zst" in the end stands for Zero-sized type, because this will be turned
+// into a zero-sized type in Rust.
+message SetValueZst {}

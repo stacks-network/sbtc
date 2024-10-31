@@ -4,6 +4,9 @@ pub mod bitcoin {
 }
 pub mod crypto {
     include!("crypto.rs");
+    pub mod wsts {
+        include!("crypto.wsts.rs");
+    }
 }
 pub mod stacks {
     include!("stacks.rs");

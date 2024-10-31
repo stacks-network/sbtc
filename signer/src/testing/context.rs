@@ -3,11 +3,12 @@
 use std::{ops::Deref, sync::Arc};
 
 use bitcoin::Txid;
+use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::{
     chainstate::{nakamoto::NakamotoBlock, stacks::StacksTransaction},
     net::api::{
         getcontractsrc::ContractSrcResponse, getinfo::RPCPeerInfoData, getpoxinfo::RPCPoxInfoData,
-        gettenureinfo::RPCGetTenureInfo,
+        getsortition::SortitionInfo, gettenureinfo::RPCGetTenureInfo,
     },
 };
 use clarity::types::chainstate::{StacksAddress, StacksBlockId};
@@ -323,6 +324,17 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
         self.inner.lock().await.get_tenure_info().await
     }
 
+    async fn get_sortition_info(
+        &self,
+        consensus_hash: &ConsensusHash,
+    ) -> Result<SortitionInfo, Error> {
+        self.inner
+            .lock()
+            .await
+            .get_sortition_info(consensus_hash)
+            .await
+    }
+
     async fn estimate_fees<T>(&self, payload: &T, priority: FeePriority) -> Result<u64, Error>
     where
         T: AsTxPayload + Send + Sync,
@@ -360,6 +372,17 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
         self.inner.lock().await.get_deposits().await
     }
 
+    async fn update_deposits(
+        &self,
+        update_deposits: Vec<emily_client::models::DepositUpdate>,
+    ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
+        self.inner
+            .lock()
+            .await
+            .update_deposits(update_deposits)
+            .await
+    }
+
     async fn accept_deposits<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
@@ -369,6 +392,28 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
             .lock()
             .await
             .accept_deposits(transaction, stacks_chain_tip)
+            .await
+    }
+
+    async fn create_withdrawals(
+        &self,
+        create_withdrawals: Vec<emily_client::models::CreateWithdrawalRequestBody>,
+    ) -> Vec<Result<emily_client::models::Withdrawal, Error>> {
+        self.inner
+            .lock()
+            .await
+            .create_withdrawals(create_withdrawals)
+            .await
+    }
+
+    async fn update_withdrawals(
+        &self,
+        update_withdrawals: Vec<emily_client::models::WithdrawalUpdate>,
+    ) -> Result<emily_client::models::UpdateWithdrawalsResponse, Error> {
+        self.inner
+            .lock()
+            .await
+            .update_withdrawals(update_withdrawals)
             .await
     }
 
