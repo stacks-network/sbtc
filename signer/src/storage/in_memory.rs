@@ -303,6 +303,65 @@ impl super::DbRead for SharedStore {
             .collect())
     }
 
+    async fn get_deposit_request_report(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+        signer_public_key: &PublicKey,
+    ) -> Result<Option<DepositRequestReport>, Error> {
+        let deposit_request = self
+            .lock()
+            .await
+            .deposit_requests
+            .get(&(*txid, output_index))
+            .cloned();
+        let Some(deposit_request) = deposit_request else {
+            return Ok(None);
+        };
+
+        let pending_deposit_request = self
+            .get_pending_deposit_requests(chain_tip, 100)
+            .await?
+            .into_iter()
+            .find(|x| &x.txid == txid && x.output_index == output_index);
+        let status = match pending_deposit_request {
+            None => DepositRequestStatus::Unconfirmed,
+            Some(req) => {
+                let store = self.lock().await;
+                let Some(block_hashes) = store
+                    .bitcoin_transactions_to_blocks
+                    .get(&req.txid)
+                    .and_then(|hashes| hashes.first())
+                else {
+                    return Ok(None);
+                };
+
+                let block_height = store
+                    .bitcoin_blocks
+                    .get(block_hashes)
+                    .map_or(0, |block| block.block_height);
+
+                DepositRequestStatus::Confirmed(block_height)
+            }
+        };
+        let signer_vote = self
+            .get_deposit_signers(txid, output_index)
+            .await?
+            .into_iter()
+            .find(|vote| &vote.signer_pub_key == signer_public_key);
+
+        Ok(Some(DepositRequestReport {
+            status,
+            can_sign: signer_vote.as_ref().map(|vote| vote.is_accepted),
+            is_accepted: signer_vote.map(|vote| vote.is_accepted),
+            amount: deposit_request.amount,
+            lock_time: bitcoin::relative::LockTime::from_consensus(deposit_request.lock_time)
+                .map_err(Error::DisabledLockTime)?,
+            outpoint: bitcoin::OutPoint::new((*txid).into(), output_index),
+        }))
+    }
+
     async fn get_deposit_signers(
         &self,
         txid: &model::BitcoinTxId,
