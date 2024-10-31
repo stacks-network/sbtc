@@ -16,7 +16,6 @@ use sqlx::PgExecutor;
 use stacks_common::types::chainstate::StacksAddress;
 
 use crate::bitcoin::utxo::SignerUtxo;
-use crate::config::MINIMUM_RECLAIM_PROXIMITY_TO_CHAIN_TIP;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::SignerScriptPubKey as _;
@@ -26,6 +25,7 @@ use crate::stacks::events::WithdrawalCreateEvent;
 use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
 use crate::storage::model::TransactionType;
+use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
 use super::util::get_utxo;
 
@@ -655,7 +655,7 @@ impl super::DbRead for PgStore {
         let minimum_acceptable_reclaim_unlock_time = self
             .get_bitcoin_block(chain_tip)
             .await?
-            .map(|block| block.block_height as i32 + MINIMUM_RECLAIM_PROXIMITY_TO_CHAIN_TIP as i32)
+            .map(|block| block.block_height as i32 + DEPOSIT_LOCKTIME_BLOCK_BUFFER as i32)
             .ok_or(Error::MissingBitcoinBlock(*chain_tip))?;
 
         sqlx::query_as::<_, model::DepositRequest>(

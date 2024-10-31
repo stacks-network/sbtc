@@ -16,7 +16,6 @@ use rand::seq::SliceRandom;
 
 use signer::bitcoin::MockBitcoinInteract;
 use signer::config::Settings;
-use signer::config::MINIMUM_RECLAIM_PROXIMITY_TO_CHAIN_TIP;
 use signer::context::Context;
 use signer::emily_client::MockEmilyInteract;
 use signer::error::Error;
@@ -57,6 +56,7 @@ use signer::testing::wallet::ContractCallWrapper;
 use fake::Fake;
 use rand::SeedableRng;
 use signer::testing::context::*;
+use signer::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use test_case::test_case;
 
 use crate::setup::TestSweepSetup;
@@ -722,7 +722,7 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
 
         let minimum_acceptable_unlock_time_for_this_deposit = bitcoin_chain_tip_height as u32
             - height_included as u32
-            + MINIMUM_RECLAIM_PROXIMITY_TO_CHAIN_TIP as u32;
+            + DEPOSIT_LOCKTIME_BLOCK_BUFFER as u32;
         if should_be_out_of_bounds {
             deposit_request.lock_time = minimum_acceptable_unlock_time_for_this_deposit - 1;
         } else {

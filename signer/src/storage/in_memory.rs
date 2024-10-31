@@ -278,7 +278,7 @@ impl super::DbRead for SharedStore {
         // let minimum_acceptable_unlock_height = store.bitcoin_blocks
         //     .get(chain_tip)
         //     .map(|block| {
-        //         block.block_height as u32 + MINIMUM_RECLAIM_PROXIMITY_TO_CHAIN_TIP as u32
+        //         block.block_height as u32 + DEPOSIT_LOCKTIME_BLOCK_BUFFER as u32
         //     })
         //     .unwrap();
         //

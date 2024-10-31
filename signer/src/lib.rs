@@ -55,4 +55,4 @@ const MAX_KEYS: u16 = 128;
 /// depositer can reclaim the deposit transaction. Signers will not attempt
 /// to sweep in the deposited funds if the number of blocks left is less
 /// than or equal to this value.
-const DEPOSIT_LOCKTIME_BLOCK_BUFFER: u16 = 3;
+pub const DEPOSIT_LOCKTIME_BLOCK_BUFFER: u16 = 3;
