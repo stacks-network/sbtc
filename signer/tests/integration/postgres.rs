@@ -2007,3 +2007,94 @@ async fn deposit_report_with_deposit_request_and_deposit_signer() {
 
     signer::testing::storage::drop_db(db).await;
 }
+
+/// Check that when we have a vote, we get the fields with the right
+/// values.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn deposit_report_with_deposit_request_spent() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // We only want the blockchain to be generated
+    let num_signers = 3;
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 10,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
+    test_data.write_to(&db).await;
+
+    let deposit_request: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let txid = &deposit_request.txid;
+    let output_index = deposit_request.output_index;
+    let signer_public_key = &signer_set[0];
+
+    let tx = model::Transaction {
+        txid: deposit_request.txid.into_bytes(),
+        tx: Vec::new(),
+        tx_type: model::TransactionType::DepositRequest,
+        block_hash: chain_tip.into_bytes(),
+    };
+    let tx_ref = model::BitcoinTxRef {
+        txid: deposit_request.txid,
+        block_hash: chain_tip,
+    };
+
+    db.write_deposit_request(&deposit_request).await.unwrap();
+    db.write_transaction(&tx).await.unwrap();
+    db.write_bitcoin_transaction(&tx_ref).await.unwrap();
+
+    let mut decision: model::DepositSigner = fake::Faker.fake_with_rng(&mut rng);
+    decision.output_index = deposit_request.output_index;
+    decision.txid = deposit_request.txid;
+    decision.signer_pub_key = *signer_public_key;
+
+    db.write_deposit_signer_decision(&decision).await.unwrap();
+
+    let mut sweep_tx: model::SweepTransaction = fake::Faker.fake_with_rng(&mut rng);
+    sweep_tx.created_at_block_hash = chain_tip;
+    sweep_tx.swept_deposits.push(model::SweptDeposit {
+        input_index: 1,
+        deposit_request_output_index: deposit_request.output_index,
+        deposit_request_txid: deposit_request.txid,
+    });
+
+    let sweep_tx_model = model::Transaction {
+        tx_type: model::TransactionType::SbtcTransaction,
+        txid: sweep_tx.txid.to_byte_array(),
+        tx: Vec::new(),
+        block_hash: chain_tip.to_byte_array(),
+    };
+    let sweep_tx_ref = model::BitcoinTxRef {
+        txid: sweep_tx.txid,
+        block_hash: chain_tip,
+    };
+    db.write_transaction(&sweep_tx_model).await.unwrap();
+    db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
+    db.write_sweep_transaction(&sweep_tx).await.unwrap();
+
+    let report = db
+        .get_deposit_request_report(&chain_tip, txid, output_index, signer_public_key)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(report.amount, deposit_request.amount);
+    assert_eq!(
+        report.lock_time.to_consensus_u32(),
+        deposit_request.lock_time
+    );
+    assert_eq!(report.is_accepted, Some(decision.is_accepted));
+    assert_eq!(report.can_sign, Some(decision.can_sign));
+    assert_eq!(report.status, DepositRequestStatus::Spent(sweep_tx.txid));
+
+    signer::testing::storage::drop_db(db).await;
+}
