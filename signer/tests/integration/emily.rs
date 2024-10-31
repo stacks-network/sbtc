@@ -401,6 +401,7 @@ async fn deposit_e2e() {
         threshold: signing_threshold as u16,
         signing_round_max_duration: Duration::from_secs(10),
         dkg_max_duration: Duration::from_secs(10),
+        sbtc_contracts_deployed: false, // TODO: Should we deploy the contracts for this test?
     };
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
 

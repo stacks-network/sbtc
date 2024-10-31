@@ -65,6 +65,7 @@ where
                 threshold,
                 signing_round_max_duration: Duration::from_secs(10),
                 dkg_max_duration: Duration::from_secs(10),
+                sbtc_contracts_deployed: true,
             },
             context,
             is_started: Arc::new(AtomicBool::new(false)),

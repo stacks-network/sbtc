@@ -26,8 +26,9 @@ use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
 use crate::network;
 use crate::signature::SighashDigest as _;
-use crate::stacks::contracts::AsContractCall;
+use crate::stacks::contracts::AsContractCall as _;
 use crate::stacks::contracts::ContractCall;
+use crate::stacks::contracts::ContractTx;
 use crate::stacks::contracts::ReqContext;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
@@ -462,7 +463,7 @@ where
         let wallet = SignerWallet::load(&self.context, bitcoin_chain_tip).await?;
         wallet.set_nonce(request.nonce);
 
-        let multi_sig = MultisigTx::new_tx(&request.contract_call, &wallet, request.tx_fee);
+        let multi_sig = MultisigTx::new_tx(&request.contract_tx, &wallet, request.tx_fee);
         let txid = multi_sig.tx().txid();
 
         // TODO(517): Remove the digest field from the request object and
@@ -513,11 +514,20 @@ where
             deployer: self.context.config().signer.deployer,
         };
         let ctx = &self.context;
-        match &request.contract_call {
-            ContractCall::AcceptWithdrawalV1(contract) => contract.validate(ctx, &req_ctx).await,
-            ContractCall::CompleteDepositV1(contract) => contract.validate(ctx, &req_ctx).await,
-            ContractCall::RejectWithdrawalV1(contract) => contract.validate(ctx, &req_ctx).await,
-            ContractCall::RotateKeysV1(contract) => contract.validate(ctx, &req_ctx).await,
+        match &request.contract_tx {
+            ContractTx::ContractCall(ContractCall::AcceptWithdrawalV1(contract)) => {
+                contract.validate(ctx, &req_ctx).await
+            }
+            ContractTx::ContractCall(ContractCall::CompleteDepositV1(contract)) => {
+                contract.validate(ctx, &req_ctx).await
+            }
+            ContractTx::ContractCall(ContractCall::RejectWithdrawalV1(contract)) => {
+                contract.validate(ctx, &req_ctx).await
+            }
+            ContractTx::ContractCall(ContractCall::RotateKeysV1(contract)) => {
+                contract.validate(ctx, &req_ctx).await
+            }
+            ContractTx::ContractDeploy(_contract_deploy) => todo!(),
         }
     }
 

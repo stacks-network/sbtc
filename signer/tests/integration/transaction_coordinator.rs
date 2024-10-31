@@ -277,6 +277,7 @@ async fn process_complete_deposit() {
         threshold: signing_threshold as u16,
         signing_round_max_duration: Duration::from_secs(10),
         dkg_max_duration: Duration::from_secs(10),
+        sbtc_contracts_deployed: true, // Skip contract deployment
     };
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
 
@@ -373,6 +374,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
         signing_round_max_duration: Duration::from_secs(10),
         threshold: 2,
         dkg_max_duration: Duration::from_secs(10),
+        sbtc_contracts_deployed: true, // Skip contract deployment
     };
 
     // We need stacks blocks for the rotate-keys transactions.
@@ -537,6 +539,7 @@ async fn run_dkg_from_scratch() {
         signing_round_max_duration: Duration::from_secs(10),
         threshold: ctx.config().signer.bootstrap_signatures_required,
         dkg_max_duration: Duration::from_secs(10),
+        sbtc_contracts_deployed: true, // Skip contract deployment
     });
 
     let tx_signer_processes = signers.iter().map(|(context, _, kp)| TxSignerEventLoop {

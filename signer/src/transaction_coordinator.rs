@@ -12,6 +12,7 @@ use futures::FutureExt;
 use futures::StreamExt as _;
 use futures::TryStreamExt;
 use sha2::Digest;
+use tokio::sync::OnceCell;
 use tokio::time::sleep;
 use tokio_stream::wrappers::BroadcastStream;
 
@@ -35,8 +36,15 @@ use crate::signature::SighashDigest;
 use crate::stacks::api::FeePriority;
 use crate::stacks::api::StacksInteract;
 use crate::stacks::api::SubmitTxResponse;
+use crate::stacks::contracts::AsTxPayload;
 use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::ContractCall;
+use crate::stacks::contracts::ContractDeploy;
+use crate::stacks::contracts::SbtcBootstrapContract;
+use crate::stacks::contracts::SbtcDepositContract;
+use crate::stacks::contracts::SbtcRegistryContract;
+use crate::stacks::contracts::SbtcTokenContract;
+use crate::stacks::contracts::SbtcWithdrawalContract;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
@@ -140,6 +148,8 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     /// The maximum duration of distributed key generation before the
     /// coordinator will time out and return an error.
     pub dkg_max_duration: std::time::Duration,
+    /// Whether the coordinator has already deployed the contracts.
+    pub sbtc_contracts_deployed: bool,
 }
 
 impl<C, N> TxCoordinatorEventLoop<C, N>
@@ -254,6 +264,20 @@ where
             // This function returns the new DKG aggregate key.
             None => self.coordinate_dkg(&bitcoin_chain_tip).await?,
         };
+
+        if !self.sbtc_contracts_deployed {
+            match self
+                .deploy_smart_contracts(&bitcoin_chain_tip, &aggregate_key)
+                .await
+            {
+                Ok(()) => self.sbtc_contracts_deployed = true,
+                Err(error) => {
+                    // No need to continue if the contracts are not deployed.
+                    tracing::error!(%error, "could not deploy smart contracts");
+                    return Err(error);
+                }
+            };
+        }
 
         self.construct_and_sign_bitcoin_sbtc_transactions(
             &bitcoin_chain_tip,
@@ -487,7 +511,7 @@ where
 
         let sign_request = StacksTransactionSignRequest {
             aggregate_key: *bitcoin_aggregate_key,
-            contract_call,
+            contract_tx: contract_call.into(),
             nonce: tx.get_origin_nonce(),
             tx_fee: tx.get_tx_fee(),
             digest: tx.digest(),
@@ -957,6 +981,145 @@ where
         self.context
             .signal(TxCoordinatorEvent::MessageGenerated(msg).into())?;
 
+        Ok(())
+    }
+
+    /// Deploy an sBTC smart contract to the stacks node
+    async fn deploy_smart_contract(
+        &mut self,
+        contract_deploy: ContractDeploy,
+        chain_tip: &model::BitcoinBlockHash,
+        bitcoin_aggregate_key: &PublicKey,
+    ) -> Result<(), Error> {
+        let wallet = SignerWallet::load(&self.context, chain_tip).await?;
+        let stacks = self.context.get_stacks_client();
+
+        // If we get an Ok response then we know the contract has been
+        // deployed already, and deploying it would probably be harmful (it
+        // appears to stall subsequent transactions for some reason).
+        if stacks
+            .get_contract_source(&contract_deploy, wallet.address())
+            .await
+            .is_ok()
+        {
+            return Err(Error::ContractAlreadyDeployed);
+        }
+
+        // We need to know the nonce to use, so we reach out to our stacks
+        // node for the account information for our multi-sig address.
+        //
+        // Note that the wallet object will automatically increment the
+        // nonce for each transaction that it creates.
+        let account = stacks.get_account(wallet.address()).await?;
+        wallet.set_nonce(account.nonce);
+
+        let sign_request_fut = self.construct_deploy_contracts_stacks_sign_request(
+            contract_deploy,
+            bitcoin_aggregate_key,
+            &wallet,
+        );
+
+        let (sign_request, multi_tx) = sign_request_fut.await?;
+        // {
+        //     Ok(res) => res,
+        //     Err(error) => {
+        //         tracing::error!(%error, "could not construct a transaction completing the contract deploy request");
+        //     }
+        // };
+
+        // If we fail to sign the transaction for some reason, we
+        // decrement the nonce by one, and try the next transaction.
+        // This is not a fatal error, since we could fail to sign the
+        // transaction because someone else is now the coordinator, and
+        // all of the signers are now ignoring us.
+        let process_request_fut =
+            self.process_sign_request(sign_request, chain_tip, multi_tx, &wallet);
+
+        match process_request_fut.await {
+            Ok(txid) => {
+                tracing::info!(%txid, "successfully submitted contract deploy transaction");
+                Ok(())
+            }
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    "could not process the stacks sign request for a contract deploy"
+                );
+                wallet.set_nonce(wallet.get_nonce().saturating_sub(1));
+                Err(error)
+            }
+        }
+    }
+
+    async fn construct_deploy_contracts_stacks_sign_request(
+        &self,
+        contract_deploy: ContractDeploy,
+        bitcoin_aggregate_key: &PublicKey,
+        wallet: &SignerWallet,
+    ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
+        // TODO: we should validate the contract call before asking others
+        // to sign it.
+        // let contract_deploy = ContractDeploy(deploy);
+        // Complete deposit requests should be done as soon as possible, so
+        // we set the fee rate to the high priority fee.
+        let tx_fee = self
+            .context
+            .get_stacks_client()
+            .estimate_fees(&contract_deploy.tx_payload(), FeePriority::High)
+            .await?;
+        let multi_tx = MultisigTx::new_tx(&contract_deploy, wallet, tx_fee);
+        let tx = multi_tx.tx();
+
+        let sign_request = StacksTransactionSignRequest {
+            aggregate_key: *bitcoin_aggregate_key,
+            contract_tx: contract_deploy.into(),
+            nonce: tx.get_origin_nonce(),
+            tx_fee: tx.get_tx_fee(),
+            digest: tx.digest(),
+            txid: tx.txid(),
+        };
+
+        Ok((sign_request, multi_tx))
+    }
+
+    /// Deploy all sBTC smart contracts to the stacks node.
+    /// If the contracts are already deployed, the function will return Ok(()).
+    /// If a contract fails to deploy, the function will return an error.
+    #[tracing::instrument(skip(self))]
+    pub async fn deploy_smart_contracts(
+        &mut self,
+        chain_tip: &model::BitcoinBlockHash,
+        bitcoin_aggregate_key: &PublicKey,
+    ) -> Result<(), Error> {
+        static SBTC_DEPLOYMENT: OnceCell<()> = OnceCell::const_new();
+        SBTC_DEPLOYMENT
+            .get_or_try_init(|| {
+                async {
+                    // The registry and token contracts need to be deployed in this order.
+                    for contract in &[
+                        ContractDeploy::SbtcRegistry(SbtcRegistryContract),
+                        ContractDeploy::SbtcToken(SbtcTokenContract),
+                        ContractDeploy::SbtcDeposit(SbtcDepositContract),
+                        ContractDeploy::SbtcWithdrawal(SbtcWithdrawalContract),
+                        ContractDeploy::SbtcBootstrap(SbtcBootstrapContract),
+                    ] {
+                        match self
+                            .deploy_smart_contract(
+                                contract.clone(),
+                                chain_tip,
+                                bitcoin_aggregate_key,
+                            )
+                            .await
+                        {
+                            Ok(()) => (),
+                            Err(Error::ContractAlreadyDeployed) => (), // We don't need to deploy it again
+                            Err(e) => return Err(e), // The next coordinator will retry
+                        }
+                    }
+                    Ok(())
+                }
+            })
+            .await?;
         Ok(())
     }
 }

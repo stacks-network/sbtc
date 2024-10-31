@@ -31,6 +31,7 @@ use blockstack_lib::chainstate::stacks::TransactionContractCall;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::chainstate::stacks::TransactionPostCondition;
 use blockstack_lib::chainstate::stacks::TransactionPostConditionMode;
+use blockstack_lib::chainstate::stacks::TransactionSmartContract;
 use blockstack_lib::clarity::vm::types::BuffData;
 use blockstack_lib::clarity::vm::types::ListData;
 use blockstack_lib::clarity::vm::types::ListTypeData;
@@ -41,6 +42,7 @@ use blockstack_lib::clarity::vm::ClarityName;
 use blockstack_lib::clarity::vm::ContractName;
 use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::types::chainstate::StacksAddress;
+use blockstack_lib::util_lib::strings::StacksString;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
@@ -52,6 +54,8 @@ use crate::storage::model::BitcoinBlockRef;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::ScriptPubKey;
 use crate::storage::DbRead;
+
+use super::api::StacksInteract;
 
 /// This struct is used as supplemental data to help validate a request to
 /// sign a contract call transaction.
@@ -176,6 +180,43 @@ pub trait AsContractCall {
         C: Context + Send + Sync;
 }
 
+/// An enum representing all Contract transaction types that the signers can make.
+/// Mainly used for creating StacksTransactionSignRequest messages.
+#[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum ContractTx {
+    /// A contract call transaction.
+    ContractCall(ContractCall),
+    /// A contract deploy transaction.
+    ContractDeploy(ContractDeploy),
+}
+
+impl AsTxPayload for ContractTx {
+    fn tx_payload(&self) -> TransactionPayload {
+        match self {
+            ContractTx::ContractCall(call) => call.tx_payload(),
+            ContractTx::ContractDeploy(deploy) => deploy.tx_payload(),
+        }
+    }
+    fn post_conditions(&self) -> StacksTxPostConditions {
+        match self {
+            ContractTx::ContractCall(call) => call.post_conditions(),
+            ContractTx::ContractDeploy(deploy) => deploy.post_conditions(),
+        }
+    }
+}
+
+impl From<ContractCall> for ContractTx {
+    fn from(val: ContractCall) -> Self {
+        ContractTx::ContractCall(val)
+    }
+}
+
+impl From<ContractDeploy> for ContractTx {
+    fn from(val: ContractDeploy) -> Self {
+        ContractTx::ContractDeploy(val)
+    }
+}
+
 /// An enum representing all contract calls that the signers can make.
 #[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ContractCall {
@@ -195,20 +236,19 @@ pub enum ContractCall {
 
 impl AsTxPayload for ContractCall {
     fn tx_payload(&self) -> TransactionPayload {
-        let contract_call = match self {
-            ContractCall::AcceptWithdrawalV1(contract) => contract.as_contract_call(),
-            ContractCall::CompleteDepositV1(contract) => contract.as_contract_call(),
-            ContractCall::RejectWithdrawalV1(contract) => contract.as_contract_call(),
-            ContractCall::RotateKeysV1(contract) => contract.as_contract_call(),
-        };
-        TransactionPayload::ContractCall(contract_call)
+        match self {
+            ContractCall::AcceptWithdrawalV1(contract) => contract.tx_payload(),
+            ContractCall::CompleteDepositV1(contract) => contract.tx_payload(),
+            ContractCall::RejectWithdrawalV1(contract) => contract.tx_payload(),
+            ContractCall::RotateKeysV1(contract) => contract.tx_payload(),
+        }
     }
     fn post_conditions(&self) -> StacksTxPostConditions {
         match self {
-            ContractCall::AcceptWithdrawalV1(contract) => contract.post_conditions(),
-            ContractCall::CompleteDepositV1(contract) => contract.post_conditions(),
-            ContractCall::RejectWithdrawalV1(contract) => contract.post_conditions(),
-            ContractCall::RotateKeysV1(contract) => contract.post_conditions(),
+            ContractCall::AcceptWithdrawalV1(contract) => AsContractCall::post_conditions(contract),
+            ContractCall::CompleteDepositV1(contract) => AsContractCall::post_conditions(contract),
+            ContractCall::RejectWithdrawalV1(contract) => AsContractCall::post_conditions(contract),
+            ContractCall::RotateKeysV1(contract) => AsContractCall::post_conditions(contract),
         }
     }
 }
@@ -244,6 +284,15 @@ pub struct CompleteDepositV1 {
     pub sweep_block_hash: BitcoinBlockHash,
     /// The block height associated with the above bitcoin block hash.
     pub sweep_block_height: u64,
+}
+
+impl AsTxPayload for CompleteDepositV1 {
+    fn tx_payload(&self) -> TransactionPayload {
+        TransactionPayload::ContractCall(self.as_contract_call())
+    }
+    fn post_conditions(&self) -> StacksTxPostConditions {
+        AsContractCall::post_conditions(self)
+    }
 }
 
 impl AsContractCall for CompleteDepositV1 {
@@ -568,6 +617,15 @@ pub struct AcceptWithdrawalV1 {
     pub sweep_block_height: u64,
 }
 
+impl AsTxPayload for AcceptWithdrawalV1 {
+    fn tx_payload(&self) -> TransactionPayload {
+        TransactionPayload::ContractCall(self.as_contract_call())
+    }
+    fn post_conditions(&self) -> StacksTxPostConditions {
+        AsContractCall::post_conditions(self)
+    }
+}
+
 impl AsContractCall for AcceptWithdrawalV1 {
     const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
     const FUNCTION_NAME: &'static str = "accept-withdrawal-request";
@@ -881,6 +939,15 @@ pub struct RejectWithdrawalV1 {
     pub deployer: StacksAddress,
 }
 
+impl AsTxPayload for RejectWithdrawalV1 {
+    fn tx_payload(&self) -> TransactionPayload {
+        TransactionPayload::ContractCall(self.as_contract_call())
+    }
+    fn post_conditions(&self) -> StacksTxPostConditions {
+        AsContractCall::post_conditions(self)
+    }
+}
+
 impl AsContractCall for RejectWithdrawalV1 {
     const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
     const FUNCTION_NAME: &'static str = "reject-withdrawal-request";
@@ -959,6 +1026,15 @@ impl RotateKeysV1 {
     }
 }
 
+impl AsTxPayload for RotateKeysV1 {
+    fn tx_payload(&self) -> TransactionPayload {
+        TransactionPayload::ContractCall(self.as_contract_call())
+    }
+    fn post_conditions(&self) -> StacksTxPostConditions {
+        AsContractCall::post_conditions(self)
+    }
+}
+
 impl AsContractCall for RotateKeysV1 {
     const CONTRACT_NAME: &'static str = "sbtc-bootstrap-signers";
     const FUNCTION_NAME: &'static str = "rotate-keys-wrapper";
@@ -1016,6 +1092,132 @@ impl AsContractCall for RotateKeysV1 {
         // TODO(255): Add validation implementation
         Ok(())
     }
+}
+
+/// A trait for deploying the smart contract
+pub trait AsContractDeploy {
+    /// The name of the clarity smart contract that relates to this struct.
+    const CONTRACT_NAME: &'static str;
+    /// The actual body of the clarity contract.
+    const CONTRACT_BODY: &'static str;
+    /// Convert this struct to a Stacks contract deployment.
+    fn as_smart_contract(&self) -> TransactionSmartContract {
+        TransactionSmartContract {
+            name: ContractName::from(Self::CONTRACT_NAME),
+            code_body: StacksString::from_str(Self::CONTRACT_BODY).unwrap(),
+        }
+    }
+}
+
+/// A wrapper type for smart contract deployment that implements
+/// AsTxPayload. This is analogous to the
+/// [`ContractCallWrapper`] struct.
+#[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum ContractDeploy {
+    /// The sbtc-token contract.
+    /// This contract needs to be deployed before any other contract.
+    SbtcToken(SbtcTokenContract),
+    /// The sbtc-registry contract.
+    /// This contract needs to be deployed right after the sbtc-token contract.
+    SbtcRegistry(SbtcRegistryContract),
+    /// The sbtc-deposit contract.
+    /// Can be deployed after the sbtc-registry contract.
+    SbtcDeposit(SbtcDepositContract),
+    /// The sbtc-withdrawal contract.
+    /// Can be deployed after the sbtc-registry contract.
+    SbtcWithdrawal(SbtcWithdrawalContract),
+    /// The sbtc-bootstrap-signers contract.
+    /// Can be deployed after the sbtc-registry contract.
+    SbtcBootstrap(SbtcBootstrapContract),
+}
+
+impl AsTxPayload for ContractDeploy {
+    fn tx_payload(&self) -> TransactionPayload {
+        let contract = match self {
+            ContractDeploy::SbtcToken(contract) => contract.as_smart_contract(),
+            ContractDeploy::SbtcRegistry(contract) => contract.as_smart_contract(),
+            ContractDeploy::SbtcDeposit(contract) => contract.as_smart_contract(),
+            ContractDeploy::SbtcWithdrawal(contract) => contract.as_smart_contract(),
+            ContractDeploy::SbtcBootstrap(contract) => contract.as_smart_contract(),
+        };
+        TransactionPayload::SmartContract(contract, None)
+    }
+    fn post_conditions(&self) -> StacksTxPostConditions {
+        StacksTxPostConditions {
+            post_condition_mode: TransactionPostConditionMode::Allow,
+            post_conditions: Vec::new(),
+        }
+    }
+}
+
+impl ContractDeploy {
+    /// Validates that the contract deploy satisfies the following criteria:
+    /// 1. The contract is not already deployed on the chain.
+    /// 2. TODO: What other criteria should be validated?
+    pub async fn validate<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
+    where
+        C: Context + Send + Sync,
+    {
+        let wallet = SignerWallet::load(ctx, &req_ctx.chain_tip.block_hash).await?;
+        match ctx
+            .get_stacks_client()
+            .get_contract_source(self, wallet.address())
+            .await
+        {
+            Ok(_) => Err(Error::ContractAlreadyDeployed),
+            Err(_) => Ok(()),
+        }
+    }
+}
+
+/// The smart contract data for the sbtc-token contract.
+#[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SbtcTokenContract;
+
+impl AsContractDeploy for SbtcTokenContract {
+    const CONTRACT_NAME: &'static str = "sbtc-token";
+    const CONTRACT_BODY: &'static str =
+        include_str!("../../../contracts/contracts/sbtc-token.clar");
+}
+
+/// The smart contract data for the sbtc-registry contract.
+#[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SbtcRegistryContract;
+
+impl AsContractDeploy for SbtcRegistryContract {
+    const CONTRACT_NAME: &'static str = "sbtc-registry";
+    const CONTRACT_BODY: &'static str =
+        include_str!("../../../contracts/contracts/sbtc-registry.clar");
+}
+
+/// The smart contract data for the sbtc-stacks contract.
+#[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SbtcDepositContract;
+
+impl AsContractDeploy for SbtcDepositContract {
+    const CONTRACT_NAME: &'static str = "sbtc-deposit";
+    const CONTRACT_BODY: &'static str =
+        include_str!("../../../contracts/contracts/sbtc-deposit.clar");
+}
+
+/// The smart contract data for the sbtc-withdrawal contract.
+#[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SbtcWithdrawalContract;
+
+impl AsContractDeploy for SbtcWithdrawalContract {
+    const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
+    const CONTRACT_BODY: &'static str =
+        include_str!("../../../contracts/contracts/sbtc-withdrawal.clar");
+}
+
+/// The smart contract data for the sbtc-bootstrap-signers contract.
+#[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SbtcBootstrapContract;
+
+impl AsContractDeploy for SbtcBootstrapContract {
+    const CONTRACT_NAME: &'static str = "sbtc-bootstrap-signers";
+    const CONTRACT_BODY: &'static str =
+        include_str!("../../../contracts/contracts/sbtc-bootstrap-signers.clar");
 }
 
 #[cfg(test)]

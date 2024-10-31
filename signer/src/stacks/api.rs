@@ -13,6 +13,7 @@ use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::types::StandardPrincipalData;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::net::api::getaccount::AccountEntryResponse;
+use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
 use blockstack_lib::net::api::getinfo::RPCPeerInfoData;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
@@ -32,10 +33,17 @@ use url::Url;
 use crate::config::Settings;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::stacks::contracts::AsContractDeploy;
 use crate::storage::DbRead;
 use crate::util::ApiFallbackClient;
 
 use super::contracts::AsTxPayload;
+use super::contracts::ContractDeploy;
+use super::contracts::SbtcBootstrapContract;
+use super::contracts::SbtcDepositContract;
+use super::contracts::SbtcRegistryContract;
+use super::contracts::SbtcTokenContract;
+use super::contracts::SbtcWithdrawalContract;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -145,6 +153,19 @@ pub trait StacksInteract: Send + Sync {
 
     /// Get information about the current node.
     fn get_node_info(&self) -> impl Future<Output = Result<RPCPeerInfoData, Error>> + Send;
+
+    /// Get the source of the a deployed smart contract.
+    ///
+    /// # Notes
+    ///
+    /// This is useful just to know whether a contract has been deployed
+    /// already or not. If the smart contract has not been deployed yet,
+    /// the stacks node returns a 404 Not Found.
+    fn get_contract_source(
+        &self,
+        contract_deploy: &ContractDeploy,
+        address: &StacksAddress,
+    ) -> impl Future<Output = Result<ContractSrcResponse, Error>> + Send;
 }
 
 /// A trait for getting the start height of the first EPOCH 3.0 block on the
@@ -889,6 +910,39 @@ impl StacksInteract for StacksClient {
     async fn get_node_info(&self) -> Result<RPCPeerInfoData, Error> {
         self.get_node_info().await
     }
+
+    async fn get_contract_source(
+        &self,
+        contract_deploy: &ContractDeploy,
+        address: &StacksAddress,
+    ) -> Result<ContractSrcResponse, Error> {
+        let contract_name = match contract_deploy {
+            ContractDeploy::SbtcToken(_) => SbtcTokenContract::CONTRACT_NAME,
+            ContractDeploy::SbtcRegistry(_) => SbtcRegistryContract::CONTRACT_NAME,
+            ContractDeploy::SbtcDeposit(_) => SbtcDepositContract::CONTRACT_NAME,
+            ContractDeploy::SbtcWithdrawal(_) => SbtcWithdrawalContract::CONTRACT_NAME,
+            ContractDeploy::SbtcBootstrap(_) => SbtcBootstrapContract::CONTRACT_NAME,
+        };
+
+        let path = format!("/v2/contracts/source/{}/{}?proof=0", address, contract_name);
+
+        let url = self.endpoint.join(&path).unwrap();
+
+        let response = self
+            .client
+            .get(url)
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await
+            .map_err(Error::StacksNodeRequest)?;
+
+        response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
+            .json()
+            .await
+            .map_err(Error::UnexpectedStacksResponse)
+    }
 }
 
 impl StacksInteract for ApiFallbackClient<StacksClient> {
@@ -938,6 +992,15 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
 
     async fn get_node_info(&self) -> Result<RPCPeerInfoData, Error> {
         self.exec(|client, _| client.get_node_info()).await
+    }
+
+    async fn get_contract_source(
+        &self,
+        contract_deploy: &ContractDeploy,
+        address: &StacksAddress,
+    ) -> Result<ContractSrcResponse, Error> {
+        self.exec(|client, _| client.get_contract_source(contract_deploy, address))
+            .await
     }
 }
 

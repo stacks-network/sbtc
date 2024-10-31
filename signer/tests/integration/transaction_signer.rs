@@ -14,6 +14,7 @@ use signer::keys::PublicKey;
 use signer::message::StacksTransactionSignRequest;
 use signer::network::InMemoryNetwork;
 use signer::stacks::api::MockStacksInteract;
+use signer::stacks::contracts::ContractCall;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::RotateKeysTransaction;
@@ -412,7 +413,7 @@ async fn signing_set_validation_check_for_stacks_transactions() {
     // Let's create a proper sign request.
     let request = StacksTransactionSignRequest {
         aggregate_key: setup.aggregated_signer.keypair.public_key().into(),
-        contract_call: signer::stacks::contracts::ContractCall::CompleteDepositV1(req),
+        contract_tx: ContractCall::CompleteDepositV1(req).into(),
         // The nonce and tx_fee aren't really validated against anything at
         // the moment.
         nonce: 1,

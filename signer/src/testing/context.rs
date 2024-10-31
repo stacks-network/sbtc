@@ -6,7 +6,8 @@ use bitcoin::Txid;
 use blockstack_lib::{
     chainstate::{nakamoto::NakamotoBlock, stacks::StacksTransaction},
     net::api::{
-        getinfo::RPCPeerInfoData, getpoxinfo::RPCPoxInfoData, gettenureinfo::RPCGetTenureInfo,
+        getcontractsrc::ContractSrcResponse, getinfo::RPCPeerInfoData, getpoxinfo::RPCPoxInfoData,
+        gettenureinfo::RPCGetTenureInfo,
     },
 };
 use clarity::types::chainstate::{StacksAddress, StacksBlockId};
@@ -23,7 +24,7 @@ use crate::{
     keys::PublicKey,
     stacks::{
         api::{AccountInfo, FeePriority, MockStacksInteract, StacksInteract, SubmitTxResponse},
-        contracts::AsTxPayload,
+        contracts::{AsTxPayload, ContractDeploy},
     },
     storage::{
         in_memory::{SharedStore, Store},
@@ -339,6 +340,18 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
 
     async fn get_node_info(&self) -> Result<RPCPeerInfoData, Error> {
         self.inner.lock().await.get_node_info().await
+    }
+
+    async fn get_contract_source(
+        &self,
+        contract_deploy: &ContractDeploy,
+        address: &StacksAddress,
+    ) -> Result<ContractSrcResponse, Error> {
+        self.inner
+            .lock()
+            .await
+            .get_contract_source(contract_deploy, address)
+            .await
     }
 }
 

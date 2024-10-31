@@ -441,6 +441,10 @@ pub enum Error {
     /// Wsts state machine returned unexpected operation result
     #[error("unexpected operation result")]
     UnexpectedOperationResult,
+
+    /// The contract is already deployed
+    #[error("contract already deployed")]
+    ContractAlreadyDeployed,
 }
 
 impl From<std::convert::Infallible> for Error {
