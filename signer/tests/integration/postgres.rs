@@ -484,7 +484,11 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
     );
 
     let mut pending_accepted_deposit_requests = in_memory_store
-        .get_pending_accepted_deposit_requests_ignoring_lock_time(&chain_tip, context_window, threshold)
+        .get_pending_accepted_deposit_requests_ignoring_lock_time(
+            &chain_tip,
+            context_window,
+            threshold,
+        )
         .await
         .expect("failed to get pending deposit requests");
 
@@ -493,7 +497,11 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
     assert!(!pending_accepted_deposit_requests.is_empty());
 
     let mut pg_pending_accepted_deposit_requests = pg_store
-        .get_pending_accepted_deposit_requests_ignoring_lock_time(&chain_tip, context_window, threshold)
+        .get_pending_accepted_deposit_requests_ignoring_lock_time(
+            &chain_tip,
+            context_window,
+            threshold,
+        )
         .await
         .expect("failed to get pending deposit requests");
 
@@ -633,7 +641,11 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
         .expect("failed to get pending deposit requests from pg store.");
 
     let mut in_memory_pending_accepted_deposit_requests = in_memory_store
-        .get_pending_accepted_deposit_requests_ignoring_lock_time(&chain_tip, context_window, threshold)
+        .get_pending_accepted_deposit_requests_ignoring_lock_time(
+            &chain_tip,
+            context_window,
+            threshold,
+        )
         .await
         .expect("failed to get pending deposit requests from in memory store.");
 

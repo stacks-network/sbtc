@@ -809,7 +809,7 @@ impl super::DbRead for SharedStore {
     }
 
     #[cfg(feature = "testing")]
-    async fn get_pending_accepted_deposit_requests_ignoring_lock_time (
+    async fn get_pending_accepted_deposit_requests_ignoring_lock_time(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
@@ -838,7 +838,6 @@ impl super::DbRead for SharedStore {
             })
             .collect())
     }
-
 }
 
 impl super::DbWrite for SharedStore {
