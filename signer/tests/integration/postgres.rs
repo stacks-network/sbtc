@@ -2156,7 +2156,6 @@ async fn deposit_report_with_deposit_request_spent() {
     signer::testing::storage::drop_db(db).await;
 }
 
-
 /// Check that if the deposit has been included in a sweep transaaction
 /// that gets reorged, then the deposit report states that the deposit is
 /// confirmed and not spent.
