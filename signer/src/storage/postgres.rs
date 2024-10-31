@@ -1382,10 +1382,14 @@ impl super::DbRead for PgStore {
         // - [X] get_swept_deposit_requests_does_not_return_deposit_requests_with_responses
         // - [X] get_swept_deposit_requests_response_tx_reorged
 
+        let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
+            return Ok(Vec::new());
+        };
+
         sqlx::query_as::<_, model::SweptDepositRequest>(
             "
-            WITH bc_blocks AS (
-                SELECT * FROM bitcoin_blockchain_of($1, $2)
+            WITH s_blocks AS (
+                SELECT * FROM stacks_blockchain_of($3, $1, $2)
             )
             SELECT
                 bc_trx.txid AS sweep_txid
@@ -1395,7 +1399,7 @@ impl super::DbRead for PgStore {
               , deposit_req.output_index
               , deposit_req.recipient
               , deposit_req.amount
-            FROM bc_blocks
+            FROM bitcoin_blockchain_of($1, $2) AS bc_blocks
             INNER JOIN 
                 bitcoin_transactions AS bc_trx
                     ON bc_trx.block_hash = bc_blocks.block_hash
@@ -1414,11 +1418,8 @@ impl super::DbRead for PgStore {
                     ON cde.bitcoin_txid = deposit_req.txid
                     AND cde.output_index = deposit_req.output_index
             LEFT JOIN
-                stacks_blocks AS cde_stacks
-                    ON cde_stacks.block_hash = cde.block_hash
-            LEFT JOIN
-                bc_blocks AS cde_bc
-                    ON cde_bc.block_hash = cde_stacks.bitcoin_anchor
+                s_blocks
+                    ON s_blocks.block_hash = cde.block_hash
             GROUP BY
                 bc_trx.txid
               , bc_trx.block_hash
@@ -1428,11 +1429,12 @@ impl super::DbRead for PgStore {
               , deposit_req.recipient
               , deposit_req.amount
             HAVING
-                COUNT(cde_bc.block_hash) = 0
+                COUNT(s_blocks.block_hash) = 0
         ",
         )
         .bind(chain_tip)
         .bind(i32::from(context_window))
+        .bind(stacks_chain_tip.block_hash)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
