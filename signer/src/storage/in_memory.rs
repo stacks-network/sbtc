@@ -12,6 +12,8 @@ use time::OffsetDateTime;
 use tokio::sync::Mutex;
 
 use crate::bitcoin::utxo::SignerUtxo;
+use crate::bitcoin::validation::DepositRequestReport;
+use crate::bitcoin::validation::DepositRequestStatus;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
