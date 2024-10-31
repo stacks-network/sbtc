@@ -339,8 +339,11 @@ where
             }
 
             (message::Payload::SweepTransactionInfo(sweep_tx), true, ChainTipStatus::Canonical) => {
-                tracing::info!(txid = %sweep_tx.txid, "received sweep transaction info");
-                // TODO: Store the sweep transaction once #585 is implemented
+                tracing::info!(txid = %sweep_tx.txid, chain_tip = %sweep_tx.created_at_block_hash, "received sweep transaction info; storing it");
+                self.context
+                    .get_storage_mut()
+                    .write_sweep_transaction(&sweep_tx.into())
+                    .await?;
             }
 
             // Message types ignored by the transaction signer

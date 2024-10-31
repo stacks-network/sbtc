@@ -4,6 +4,7 @@ use secp256k1::ecdsa::RecoverableSignature;
 use sha2::Digest;
 
 use crate::keys::PublicKey;
+use crate::keys::SignerScriptPubKey as _;
 use crate::signature::RecoverableEcdsaSignature as _;
 use crate::stacks::contracts::ContractCall;
 use crate::storage::model::BitcoinBlockHash;
@@ -127,6 +128,12 @@ impl From<WstsMessage> for Payload {
     }
 }
 
+impl From<SweepTransactionInfo> for Payload {
+    fn from(value: SweepTransactionInfo) -> Self {
+        Self::SweepTransactionInfo(value)
+    }
+}
+
 /// Represents information about a new sweep transaction.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SweepTransactionInfo {
@@ -152,6 +159,61 @@ pub struct SweepTransactionInfo {
     pub swept_deposits: Vec<SweptDeposit>,
     /// List of withdrawals which were swept-out by this transaction.
     pub swept_withdrawals: Vec<SweptWithdrawal>,
+}
+
+impl SweepTransactionInfo {
+    /// Creates a [`SweepTransactionInfo`] from an [`UnsignedTransaction`] and a
+    /// Bitcoin block hash.
+    pub fn from_unsigned_at_block(
+        block_hash: &bitcoin::BlockHash,
+        unsigned: &crate::bitcoin::utxo::UnsignedTransaction,
+    ) -> SweepTransactionInfo {
+        let swept_deposits = unsigned
+            .requests
+            .iter()
+            .filter_map(|request| request.as_deposit())
+            .enumerate()
+            .map(|(index, request)| {
+                SweptDeposit {
+                    input_index: index as u32 + 1, // Account for the signer's UTXO
+                    deposit_request_txid: request.outpoint.txid,
+                    deposit_request_output_index: request.outpoint.vout,
+                }
+            })
+            .collect();
+
+        let swept_withdrawals = unsigned
+            .requests
+            .iter()
+            .filter_map(|request| request.as_withdrawal())
+            .enumerate()
+            .map(|(index, withdrawal)| {
+                SweptWithdrawal {
+                    output_index: index as u32 + 2, // Account for the signer's UTXO and OP_RETURN
+                    withdrawal_request_id: withdrawal.request_id,
+                    withdrawal_request_block_hash: *withdrawal.block_hash.as_bytes(),
+                }
+            })
+            .collect();
+
+        SweepTransactionInfo {
+            txid: unsigned.tx.compute_txid(),
+            signer_prevout_txid: unsigned.signer_utxo.utxo.outpoint.txid,
+            signer_prevout_output_index: unsigned.signer_utxo.utxo.outpoint.vout,
+            signer_prevout_amount: unsigned.signer_utxo.utxo.amount,
+            signer_prevout_script_pubkey: unsigned
+                .signer_utxo
+                .utxo
+                .public_key
+                .signers_script_pubkey(),
+            amount: unsigned.output_amounts(),
+            fee: unsigned.tx_fee,
+            market_fee_rate: unsigned.signer_utxo.fee_rate,
+            created_at_block_hash: BitcoinBlockHash::from(*block_hash),
+            swept_deposits,
+            swept_withdrawals,
+        }
+    }
 }
 
 /// Represents information about a deposit request being swept-in by a sweep transaction.

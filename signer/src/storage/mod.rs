@@ -370,28 +370,3 @@ pub trait DbWrite {
         tx: &model::SweepTransaction,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 }
-
-/// Convenience trait for [`crate::bitcoin::utxo::UnsignedTransaction`] storage
-/// operations.
-pub trait UnsignedTransactionExt {
-    /// Write the transaction to the database as a sweep transaction.
-    fn store_as_sweep_transaction(
-        &self,
-        db: &impl DbWrite,
-        chain_tip: &model::BitcoinBlockHash,
-    ) -> impl Future<Output = Result<(), Error>>;
-}
-
-impl UnsignedTransactionExt for crate::bitcoin::utxo::UnsignedTransaction<'_> {
-    async fn store_as_sweep_transaction(
-        &self,
-        db: &impl DbWrite,
-        chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<(), Error> {
-        let sweep_tx = model::SweepTransaction::from_unsigned_at_block(chain_tip, self);
-
-        db.write_sweep_transaction(&sweep_tx).await?;
-
-        Ok(())
-    }
-}
