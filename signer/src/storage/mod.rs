@@ -80,16 +80,15 @@ pub trait DbRead {
     /// 2. Check that this signer can contribute a share of the final
     ///    signature.
     /// 3. Check that the deposit transaction is in a block on the bitcoin
-    ///    blockchain identified by the following chain tip.
-    /// 4. Return the locktime embedded of the reclaim script in the
+    ///    blockchain identified by the given chain tip.
+    /// 4. Check that the deposit has not been included by a sweep
+    ///    transaction that has been confirmed by block on the bitcoin
+    ///    blockchain identified by the given chain tip.
+    /// 5. Return the locktime embedded of the reclaim script in the
     ///    deposit request. It does not check of the value.
     ///
-    /// Note that when a signer checks whether it would accept the deposit,
-    /// it included a check for whether it was part of the signing set
-    /// associated with the x-only public key locking the deposit. So check
-    /// (1) also does check (2) but we break it out for more fine grained
-    /// reporting. Ok(None) is returned if we do not have a record of the
-    /// deposit request.
+    ///  `Ok(None)` is returned if we do not have a record of the deposit
+    /// request.
     fn get_deposit_request_report(
         &self,
         chain_tip: &model::BitcoinBlockHash,
