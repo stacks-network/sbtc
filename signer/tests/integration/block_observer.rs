@@ -9,12 +9,16 @@ use bitcoincore_rpc::RpcApi as _;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
+use blockstack_lib::net::api::getsortition::SortitionInfo;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use futures::StreamExt;
 use rand::SeedableRng as _;
 use sbtc::testing::regtest;
 use signer::error::Error;
+use signer::logging::setup_logging;
+use stacks_common::types::chainstate::BurnchainHeaderHash;
 use stacks_common::types::chainstate::ConsensusHash;
+use stacks_common::types::chainstate::SortitionId;
 use stacks_common::types::chainstate::StacksBlockId;
 
 use signer::bitcoin::zmq::BitcoinCoreMessageStream;
@@ -22,12 +26,14 @@ use signer::block_observer::BlockObserver;
 use signer::context::Context as _;
 use signer::context::SignerEvent;
 use signer::context::SignerSignal;
+use signer::stacks::api::StacksClient;
 use signer::storage::DbRead as _;
 use signer::testing;
 use signer::testing::context::TestContext;
 use signer::testing::context::*;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::wrappers::ReceiverStream;
+use url::Url;
 
 use crate::setup::TestSweepSetup;
 use crate::zmq::BITCOIN_CORE_ZMQ_ENDPOINT;
@@ -70,7 +76,7 @@ async fn load_latest_deposit_requests_persists_requests_added_long_ago() {
         ];
         client
             .expect_get_deposits()
-            .once()
+            .times(1..)
             .returning(move || Box::pin(std::future::ready(Ok(emily_client_response.clone()))));
     })
     .await;
@@ -108,6 +114,23 @@ async fn load_latest_deposit_requests_persists_requests_added_long_ago() {
         client.expect_get_pox_info().returning(|| {
             let response = serde_json::from_str::<RPCPoxInfoData>(GET_POX_INFO_JSON)
                 .map_err(Error::JsonSerialize);
+            Box::pin(std::future::ready(response))
+        });
+
+        client.expect_get_sortition_info().returning(move |_| {
+            let response = Ok(SortitionInfo {
+                burn_block_hash: BurnchainHeaderHash([0; 32]),
+                burn_block_height: 0,
+                burn_header_timestamp: 0,
+                sortition_id: SortitionId([0; 32]),
+                parent_sortition_id: SortitionId([0; 32]),
+                consensus_hash: ConsensusHash([0; 20]),
+                was_sortition: true,
+                miner_pk_hash160: None,
+                stacks_parent_ch: None,
+                last_sortition_ch: None,
+                committed_block_hash: None,
+            });
             Box::pin(std::future::ready(response))
         });
     })
@@ -209,4 +232,99 @@ async fn load_latest_deposit_requests_persists_requests_added_long_ago() {
 
     assert!(req_outpoints.contains(&setup0.deposit_info.outpoint));
     assert!(req_outpoints.contains(&setup1.deposit_info.outpoint));
+}
+
+/// Integration test for bitcoin and stack blocks link.
+///
+/// To run this test first run:
+///  - docker compose -f docker/docker-compose.yml up
+/// and wait for nakamoto to kick in.
+#[ignore = "This is an integration test that requires devenv running"]
+#[tokio::test]
+async fn link_blocks() {
+    setup_logging("info", true);
+
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let nakamoto_start_height = 30;
+    let stacks_client = StacksClient::new(
+        Url::parse("http://localhost:20443").unwrap(),
+        nakamoto_start_height,
+    )
+    .unwrap();
+
+    let mut ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_stacks_client(stacks_client.clone())
+        .with_mocked_emily_client()
+        .build();
+
+    // No need for deposits here
+    ctx.with_emily_client(|client| {
+        client
+            .expect_get_deposits()
+            .returning(move || Box::pin(std::future::ready(Ok(vec![]))));
+    })
+    .await;
+
+    let zmq_stream =
+        BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
+            .await
+            .unwrap();
+    let (sender, receiver) = tokio::sync::mpsc::channel(100);
+
+    tokio::spawn(async move {
+        let mut stream = zmq_stream.to_block_hash_stream();
+        while let Some(block) = stream.next().await {
+            sender.send(block).await.unwrap();
+        }
+    });
+
+    let block_observer = BlockObserver {
+        context: ctx.clone(),
+        stacks_client: ctx.stacks_client.clone(),
+        emily_client: ctx.emily_client.clone(),
+        bitcoin_blocks: ReceiverStream::new(receiver),
+        horizon: 10,
+    };
+
+    let mut signal_rx = ctx.get_signal_receiver();
+    let block_observer_handle = tokio::spawn(async move { block_observer.run().await });
+
+    // Wait for new block; when running in devenv, it should take <30s
+    loop {
+        let signal = signal_rx.recv().await.expect("failed to get signal");
+        if let SignerSignal::Event(SignerEvent::BitcoinBlockObserved) = signal {
+            break;
+        }
+    }
+    block_observer_handle.abort();
+
+    // Check blocks are linked
+    let bitcoin_tip_hash = ctx
+        .get_storage()
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .expect("missing bitcoin tip")
+        .expect("missing bitcoin tip");
+
+    let stacks_tip = ctx
+        .get_storage()
+        .get_stacks_chain_tip(&bitcoin_tip_hash)
+        .await
+        .expect("error getting stacks tip")
+        .expect("missing stacks tip");
+
+    let bitcoin_tip_block = ctx
+        .get_storage()
+        .get_bitcoin_block(&bitcoin_tip_hash)
+        .await
+        .expect("missing parent block")
+        .expect("missing parent block");
+
+    assert_eq!(stacks_tip.bitcoin_anchor, bitcoin_tip_block.parent_hash);
+
+    testing::storage::drop_db(db).await;
 }

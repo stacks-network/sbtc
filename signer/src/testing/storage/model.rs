@@ -82,14 +82,10 @@ impl TestData {
     where
         R: rand::RngCore,
     {
-        let mut block = self.generate_bitcoin_block(rng, parent);
+        let block = self.generate_bitcoin_block(rng, parent);
 
         let stacks_blocks =
             self.generate_stacks_blocks(rng, &block, params.num_stacks_blocks_per_bitcoin_block);
-
-        block
-            .confirms
-            .push(stacks_blocks.last().unwrap().block_hash);
 
         let deposit_data = DepositData::generate(
             rng,
@@ -293,16 +289,19 @@ impl TestData {
         num_stacks_blocks: usize,
     ) -> Vec<model::StacksBlock> {
         let mut stacks_block: model::StacksBlock = fake::Faker.fake_with_rng(rng);
+        stacks_block.bitcoin_anchor = new_bitcoin_block.parent_hash;
 
         let stacks_parent_block_summary = self
             .bitcoin_blocks
             .iter()
             .find(|b| b.block_hash == new_bitcoin_block.parent_hash)
-            .and_then(|b| b.confirms.choose(rng))
-            .and_then(|block_hash| {
-                self.stacks_blocks
+            .and_then(|b| {
+                let cands = self
+                    .stacks_blocks
                     .iter()
-                    .find(|b| &b.block_hash == block_hash)
+                    .filter(|stacks_block| stacks_block.bitcoin_anchor == b.block_hash)
+                    .collect::<Vec<_>>();
+                cands.choose(rng).cloned()
             })
             .map(StacksBlockSummary::summarize)
             .unwrap_or_else(|| StacksBlockSummary::hallucinate_parent(&stacks_block));
@@ -316,6 +315,7 @@ impl TestData {
             let mut stacks_block: model::StacksBlock = fake::Faker.fake_with_rng(rng);
             stacks_block.parent_hash = parent.block_hash;
             stacks_block.block_height = parent.block_height + 1;
+            stacks_block.bitcoin_anchor = parent.bitcoin_anchor;
 
             blocks.push(stacks_block);
 

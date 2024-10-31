@@ -2,9 +2,6 @@
 
 use std::collections::HashMap;
 
-use crate::bitcoin::BitcoinInteract;
-use crate::stacks::api::StacksInteract;
-use crate::storage::model::StacksBlock;
 use bitcoin::hashes::Hash;
 use bitcoin::BlockHash;
 use bitcoin::Txid;
@@ -15,23 +12,31 @@ use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::net::api::getinfo::RPCPeerInfoData;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxEpoch;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
+use blockstack_lib::net::api::getsortition::SortitionInfo;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::types::chainstate::StacksBlockId;
+use clarity::types::chainstate::BurnchainHeaderHash;
+use clarity::types::chainstate::SortitionId;
 use clarity::vm::costs::ExecutionCost;
 use emily_client::models::Chainstate;
+use emily_client::models::CreateWithdrawalRequestBody;
+use emily_client::models::Withdrawal;
 use rand::seq::IteratorRandom;
 use sbtc::deposits::CreateDepositRequest;
 
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::utxo;
+use crate::bitcoin::BitcoinInteract;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::stacks::api::AccountInfo;
 use crate::stacks::api::FeePriority;
+use crate::stacks::api::StacksInteract;
 use crate::stacks::api::SubmitTxResponse;
+use crate::storage::model;
 use crate::testing::dummy;
 use crate::util::ApiFallbackClient;
 
@@ -295,6 +300,29 @@ impl StacksInteract for TestHarness {
         })
     }
 
+    async fn get_sortition_info(
+        &self,
+        _consensus_hash: &ConsensusHash,
+    ) -> Result<SortitionInfo, Error> {
+        let bitcoin_block = self.bitcoin_blocks.last().unwrap();
+        Ok(SortitionInfo {
+            burn_block_hash: BurnchainHeaderHash::from_bytes_be(
+                bitcoin_block.block_hash().as_byte_array(),
+            )
+            .ok_or(Error::MissingBlock)?,
+            burn_block_height: 0,
+            burn_header_timestamp: 0,
+            sortition_id: SortitionId([0; 32]),
+            parent_sortition_id: SortitionId([0; 32]),
+            consensus_hash: ConsensusHash([0; 20]),
+            was_sortition: true,
+            miner_pk_hash160: None,
+            stacks_parent_ch: None,
+            last_sortition_ch: None,
+            committed_block_hash: None,
+        })
+    }
+
     async fn estimate_fees<T>(&self, _: &T, _: FeePriority) -> Result<u64, Error>
     where
         T: crate::stacks::contracts::AsTxPayload,
@@ -348,11 +376,32 @@ impl EmilyInteract for TestHarness {
         Ok(self.pending_deposits.clone())
     }
 
+    async fn update_deposits(
+        &self,
+        _update_deposits: Vec<emily_client::models::DepositUpdate>,
+    ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
+        unimplemented!()
+    }
+
     async fn accept_deposits<'a>(
         &'a self,
         _transaction: &'a utxo::UnsignedTransaction<'a>,
-        _stacks_chain_tip: &'a StacksBlock,
+        _stacks_chain_tip: &'a model::StacksBlock,
     ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
+        unimplemented!()
+    }
+
+    async fn create_withdrawals(
+        &self,
+        _create_withdrawals: Vec<CreateWithdrawalRequestBody>,
+    ) -> Vec<Result<Withdrawal, Error>> {
+        unimplemented!()
+    }
+
+    async fn update_withdrawals(
+        &self,
+        _update_withdrawals: Vec<emily_client::models::WithdrawalUpdate>,
+    ) -> Result<emily_client::models::UpdateWithdrawalsResponse, Error> {
         unimplemented!()
     }
 
