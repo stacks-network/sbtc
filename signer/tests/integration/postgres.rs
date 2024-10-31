@@ -674,17 +674,16 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
     // Prepare some datastructures to filter the deposit requests that we're going to put out of bounds
     // and to check against later.
     pending_accepted_deposit_requests.shuffle(&mut rng);
-    let mut out_of_bounds_requests: HashSet<(BitcoinTxId, u32)> = HashSet::new();
-    let mut in_bounds_requests: HashSet<(BitcoinTxId, u32)> = HashSet::new();
-    for (i, deposit_request) in pending_accepted_deposit_requests.into_iter().enumerate() {
-        let unique_deposit_id: (BitcoinTxId, u32) =
-            (deposit_request.txid, deposit_request.output_index);
-        if i < num_deposits_in_bounds {
-            in_bounds_requests.insert(unique_deposit_id);
-        } else {
-            out_of_bounds_requests.insert(unique_deposit_id);
-        }
-    }
+    let mut unique_deposit_ids = pending_accepted_deposit_requests
+        .into_iter()
+        .map(|deposit_request| (deposit_request.txid, deposit_request.output_index));
+
+    // Take the first several deposit requests to be in bounds and the rest to be out of bounds.
+    let in_bounds_requests: HashSet<(BitcoinTxId, u32)> = unique_deposit_ids
+        .by_ref()
+        .take(num_deposits_in_bounds)
+        .collect();
+    let out_of_bounds_requests: HashSet<(BitcoinTxId, u32)> = unique_deposit_ids.collect();
 
     // Alter all the deposit test data to make sure that the lock times are JUST BARELY in bounds.
     let mut expected_pending_deposit_requests: Vec<model::DepositRequest> = Vec::new();
