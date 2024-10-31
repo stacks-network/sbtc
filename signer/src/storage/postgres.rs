@@ -16,6 +16,8 @@ use sqlx::PgExecutor;
 use stacks_common::types::chainstate::StacksAddress;
 
 use crate::bitcoin::utxo::SignerUtxo;
+use crate::bitcoin::validation::DepositRequestReport;
+use crate::bitcoin::validation::DepositRequestStatus;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::SignerScriptPubKey as _;
@@ -92,6 +94,27 @@ pub fn extract_relevant_transactions(
             _ => None,
         })
         .collect()
+}
+
+/// A convenience struct for retrieving a deposit request report
+#[derive(sqlx::FromRow)]
+struct StatusSummary {
+    /// The current signer may not have a record of their vote for
+    /// the deposit. When that happens the `is_accepted` and
+    /// `can_sign` fields will be None.
+    is_accepted: Option<bool>,
+    /// Whether this signer is a member of the signing set that generated
+    /// the public key locking the deposit.
+    can_sign: Option<bool>,
+    /// The height of the block that confirmed the deposit request
+    /// transaction.
+    block_height: Option<i64>,
+    /// The bitcoin consensus encoded locktime in the reclaim script.
+    #[sqlx(try_from = "i64")]
+    lock_time: u32,
+    /// The amount associated with the deposit UTXO in sats.
+    #[sqlx(try_from = "i64")]
+    amount: u64,
 }
 
 /// A wrapper around a [`sqlx::PgPool`] which implements
@@ -397,6 +420,170 @@ impl PgStore {
         .collect::<Result<Vec<bitcoin::Transaction>, _>>()?;
 
         get_utxo(aggregate_key, sbtc_txs)
+    }
+
+    /// Return the least height for which the deposit request was confirmed
+    /// on a bitcoin blockchain.
+    ///
+    /// Transactions can be confirmed on more than one blockchain and this
+    /// function returns the least height out of all bitcoin blocks for
+    /// which the deposit has been confirmed.
+    ///
+    /// None is returned if we do not have a record of the deposit request.
+    pub async fn get_deposit_request_least_height(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+    ) -> Result<Option<i64>, Error> {
+        // Before the deposit request is written a signer also stores the
+        // bitcoin transaction and (after #731) the bitcoin block
+        // confirming the deposit to the database. So this will return zero
+        // rows only when we cannot find the deposit request.
+        sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT block_height
+            FROM sbtc_signer.deposit_requests AS dr
+            JOIN sbtc_signer.bitcoin_transactions USING (txid)
+            JOIN sbtc_signer.bitcoin_blocks USING (block_hash)
+            WHERE dr.txid = $1
+              AND dr.output_index = $2
+            ORDER BY block_height
+            LIMIT 1
+            "#,
+        )
+        .bind(txid)
+        .bind(i32::try_from(output_index).map_err(Error::ConversionDatabaseInt)?)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    /// Check whether the deposit transaction has been included in a
+    /// bitcoin sweep transaction that has been confirmed on the bitcoin
+    /// blockchain identified by the given chain tip.
+    async fn is_deposit_swept(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+        min_block_height: u64,
+    ) -> Result<bool, Error> {
+        sqlx::query_scalar::<_, bool>(
+            r#"
+            WITH RECURSIVE block_chain AS (
+                SELECT 
+                    block_hash
+                    , block_height
+                    , parent_hash
+                FROM sbtc_signer.bitcoin_blocks
+                WHERE block_hash = $1
+
+                UNION ALL
+
+                SELECT
+                    child.block_hash
+                    , child.block_height
+                    , child.parent_hash
+                FROM sbtc_signer.bitcoin_blocks AS child
+                JOIN block_chain AS parent
+                    ON child.block_hash = parent.parent_hash
+                CROSS JOIN deposit_tx_furthest_height AS fh
+                WHERE child.block_height >= $2
+            )
+            SELECT EXISTS (
+                SELECT TRUE
+                FROM sbtc_signer.swept_deposits AS sd
+                JOIN sbtc_signer.bitcoin_transactions AS bt
+                  ON bt.txid = sd.sweep_transaction_txid
+                JOIN block_chain USING (block_hash)
+                WHERE sd.deposit_request_txid = $3
+                  AND sd.deposit_request_output_index = $4
+            )
+            "#,
+        )
+        .bind(chain_tip)
+        .bind(i64::try_from(min_block_height).map_err(Error::ConversionDatabaseInt)?)
+        .bind(txid)
+        .bind(i32::try_from(output_index).map_err(Error::ConversionDatabaseInt)?)
+        .fetch_one(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    /// Fetch a status summary of a deposit request.
+    ///
+    /// In this query we list out the blockchain as far back as is the
+    /// given `min_block_height`. We then check if this signer accepted the
+    /// deposit request, and whether it was confirmed on the blockchain
+    /// that we just listed out.
+    ///
+    /// None is returned if deposit request or the associated transaction
+    /// is not in the database.
+    async fn get_deposit_request_status_summary(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+        signer_public_key: &PublicKey,
+    ) -> Result<Option<StatusSummary>, Error> {
+        // We first get the lowest height for when the deposit request was
+        // confirmed. This height serves as the stopping criteria for the
+        // recursive part of the subsequent query.
+        let min_block_height_fut = self.get_deposit_request_least_height(txid, output_index);
+        // None is only returned if we do not have a record of the deposit
+        // request or the deposit transaction.
+        let Some(min_block_height) = min_block_height_fut.await? else {
+            return Ok(None);
+        };
+        sqlx::query_as::<_, StatusSummary>(
+            r#"
+            WITH RECURSIVE block_chain AS (
+                SELECT 
+                    block_hash
+                  , block_height
+                  , parent_hash
+                FROM sbtc_signer.bitcoin_blocks
+                WHERE block_hash = $1
+
+                UNION ALL
+
+                SELECT
+                    child.block_hash
+                  , child.block_height
+                  , child.parent_hash
+                FROM sbtc_signer.bitcoin_blocks AS child
+                JOIN block_chain AS parent
+                  ON child.block_hash = parent.parent_hash
+                CROSS JOIN deposit_tx_furthest_height AS fh
+                WHERE child.block_height >= $2
+            )
+            SELECT
+                ds.is_accepted
+              , ds.can_sign
+              , dr.amount
+              , dr.lock_time
+              , bc.block_height
+            FROM sbtc_signer.deposit_requests AS dr 
+            JOIN sbtc_signer.bitcoin_transactions USING (txid)
+            JOIN sbtc_signer.bitcoin_blocks USING (block_hash)
+            LEFT JOIN block_chain AS bc USING (block_hash)
+            LEFT JOIN sbtc_signer.deposit_signers AS ds
+              ON dr.txid = ds.txid
+             AND dr.output_index = ds.output_index
+             AND ds.signer_pub_key = $5
+            WHERE dr.txid = $3
+              AND dr.output_index = $4
+            LIMIT 1
+            "#,
+        )
+        .bind(chain_tip)
+        .bind(min_block_height)
+        .bind(txid)
+        .bind(i32::try_from(output_index).map_err(Error::ConversionDatabaseInt)?)
+        .bind(signer_public_key)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
     }
 
     /// Attempts to retrieve an entire transaction package by id.
@@ -809,6 +996,59 @@ impl super::DbRead for PgStore {
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_deposit_request_report(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+        signer_public_key: &PublicKey,
+    ) -> Result<Option<DepositRequestReport>, Error> {
+        // Now fetch the deposit summary
+        let summary_fut = self.get_deposit_request_status_summary(
+            chain_tip,
+            txid,
+            output_index,
+            signer_public_key,
+        );
+        let Some(summary) = summary_fut.await? else {
+            return Ok(None);
+        };
+
+        // Last map the block_height variable to a status enum.
+        let status = match summary.block_height.map(u64::try_from) {
+            // Now that we know that it has been confirmed, check to see if
+            // it has been swept in a bitcoin transaction that has been
+            // confirmed already.
+            Some(Ok(block_height)) => {
+                let is_deposit_spent =
+                    self.is_deposit_swept(chain_tip, txid, output_index, block_height);
+
+                if is_deposit_spent.await? {
+                    DepositRequestStatus::Spent
+                } else {
+                    DepositRequestStatus::Confirmed(block_height)
+                }
+            }
+            // If we didn't grab the block height in the above query, then
+            // we know that the deposit transaction is not on the
+            // blockchain identified by the chain tip.
+            None => DepositRequestStatus::Unconfirmed,
+            // Block heights are stored as BIGINTs after conversion from
+            // u64s, so converting back to u64s is actually safe.
+            Some(Err(error)) => return Err(Error::ConversionDatabaseInt(error)),
+        };
+
+        Ok(Some(DepositRequestReport {
+            status,
+            can_sign: summary.can_sign,
+            is_accepted: summary.is_accepted,
+            amount: summary.amount,
+            lock_time: bitcoin::relative::LockTime::from_consensus(summary.lock_time)
+                .map_err(Error::DisabledLockTime)?,
+            outpoint: bitcoin::OutPoint::new((*txid).into(), output_index),
+        }))
     }
 
     async fn get_deposit_signers(
