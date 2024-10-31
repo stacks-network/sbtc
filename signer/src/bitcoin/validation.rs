@@ -9,6 +9,7 @@ use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTx;
+use crate::storage::model::BitcoinTxId;
 use crate::storage::model::QualifiedRequestId;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
@@ -16,40 +17,38 @@ use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 #[derive(Debug, Clone)]
 pub struct BitcoinTxContext {
     /// This signer's current view of the chain tip of the canonical
-    /// bitcoin blockchain. It is the block hash and height of the block on
-    /// the bitcoin blockchain with the greatest height. On ties, we sort
-    /// by the block hash descending and take the first one.
+    /// bitcoin blockchain. It is the block hash of the block on the
+    /// bitcoin blockchain with the greatest height. On ties, we sort by
+    /// the block hash descending and take the first one.
     pub chain_tip: BitcoinBlockHash,
     /// The block height of the bitcoin chain tip identified by the
     /// `chain_tip` field.
     pub chain_tip_height: u64,
-    /// How many bitcoin blocks back from the chain tip the signer will
-    /// look for requests.
+    /// The transaction that is being validated.
     pub tx: BitcoinTx,
-    /// The requests
+    /// The withdrawal requests associated with the outputs in the current
+    /// transaction.
     pub request_ids: Vec<QualifiedRequestId>,
-    /// The public key of the signer that created the deposit request
-    /// transaction. This is very unlikely to ever be used in the
+    /// The public key of the signer that created the bitcoin transaction.
+    /// This is very unlikely to ever be used in the
     /// [`BitcoinTx::validate`] function, but is here for logging and
     /// tracking purposes.
     pub origin: PublicKey,
 }
 
 impl BitcoinTxContext {
-    /// 1. All deposit requests consumed by the bitcoin transaction are
-    ///    accepted by the signer.
-    /// 2. All withdraw requests fulfilled by the bitcoin transaction are
-    ///    accepted by the signer.
-    /// 3. The apportioned transaction fee for each request does not exceed
-    ///    any max_fee.
-    /// 4. All transaction inputs are spendable by the signers.
-    /// 5. Any transaction outputs that aren't fulfilling withdraw requests
-    ///    are spendable by the signers or unspendable.
-    /// 6. Each deposit request input has an associated amount that is
-    ///    greater than their assessed fee.
-    /// 7. There is at least 2 blocks and 2 hours of lock-time left before
-    ///    the depositor can reclaim their funds.
-    /// 8. Each deposit is on the canonical bitcoin blockchain.
+    /// Validate the current bitcoin transaction.
+    /// 
+    /// It does the following:
+    /// 1. Validate the signer input.
+    /// 2. Validate the other inputs assuming that they are all deposit
+    ///    request inputs.
+    /// 3. Validate the signer outputs. These are the first two outputs of
+    ///    the transaction.
+    /// 4. Validate the remaining outputs. These are assumed to be
+    ///    associated with withdrawal requests.
+    /// 5. Validate that the fees associated with the requests are within
+    ///    bounds of the max-fee.
     pub async fn validate<C>(&self, ctx: &C) -> Result<(), Error>
     where
         C: Context + Send + Sync,
@@ -129,8 +128,8 @@ pub enum BitcoinDepositInputError {
     #[error("deposit transaction not on canonical bitcoin blockchain; {0}")]
     TxNotOnBestChain(OutPoint),
     /// The deposit UTXO has already been spent.
-    #[error("deposit transaction used as input in confirmed sweep transaction; {0}")]
-    DepositUtxoSpent(OutPoint),
+    #[error("deposit used as input in confirmed sweep transaction; deposit: {0}, txid: {1}")]
+    DepositUtxoSpent(OutPoint, BitcoinTxId),
     /// Given the current time and block height, it would be imprudent to
     /// attempt to sweep in a deposit request with the given lock-time.
     #[error("lock-time expiration is too soon; {0}")]
@@ -157,7 +156,7 @@ pub enum BitcoinDepositInputError {
 #[derive(Debug, thiserror::Error, PartialEq, Eq, Copy, Clone)]
 pub enum BitcoinSweepErrorMsg {
     /// The error has something to do with the inputs.
-    #[error("the assessed fee for a deposit would exceed their max-fee")]
+    #[error("deposit error; {0}")]
     Deposit(#[from] BitcoinDepositInputError),
 }
 
@@ -167,10 +166,9 @@ pub enum BitcoinSweepErrorMsg {
 pub struct BitcoinValidationError {
     /// The specific error that happened during validation.
     pub error: BitcoinSweepErrorMsg,
-    /// The additional information that was used when trying to
-    /// validate the complete-deposit contract call. This includes the
-    /// public key of the signer that was attempting to generate the
-    /// `complete-deposit` transaction.
+    /// The additional information that was used when trying to validate
+    /// the bitcoin transaction. This includes the public key of the signer
+    /// that was attempting to generate the transaction.
     pub context: BitcoinTxContext,
 }
 
@@ -194,11 +192,11 @@ pub enum DepositRequestStatus {
     /// been confirmed on the canonical bitcoin blockchain. We have not
     /// spent these funds. The integer is the height of the block
     /// confirming the deposit request.
-    Confirmed(u64),
+    Confirmed(u64, BitcoinBlockHash),
     /// We have a record of the deposit request being included as an input
     /// in another bitcoin transaction that has been confirmed on the
     /// canonical bitcoin blockchain.
-    Spent,
+    Spent(BitcoinTxId),
     /// We have a record of the deposit request transaction, and it has not
     /// been confirmed on the canonical bitcoin blockchain.
     ///
@@ -250,12 +248,12 @@ impl DepositRequestReport {
             // This means that we have a record of the deposit UTXO being
             // spent in a sweep transaction that has been confirmed on the
             // canonical bitcoin blockchain.
-            DepositRequestStatus::Spent => {
-                return Err(BitcoinDepositInputError::DepositUtxoSpent(self.outpoint));
+            DepositRequestStatus::Spent(txid) => {
+                return Err(BitcoinDepositInputError::DepositUtxoSpent(self.outpoint, txid));
             }
             // The deposit has been confirmed on the canonical bitcoin
             // blockchain and remains unspent by us.
-            DepositRequestStatus::Confirmed(block_height) => block_height,
+            DepositRequestStatus::Confirmed(block_height, _) => block_height,
         };
 
         match self.can_sign {
@@ -324,19 +322,19 @@ mod tests {
     } ; "deposit-reorged")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Spent,
+            status: DepositRequestStatus::Spent(BitcoinTxId::from([1; 32])),
             can_sign: Some(true),
             is_accepted: Some(true),
             amount: 0,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
         },
-        error: Some(BitcoinDepositInputError::DepositUtxoSpent(OutPoint::null())),
+        error: Some(BitcoinDepositInputError::DepositUtxoSpent(OutPoint::null(), BitcoinTxId::from([1; 32]))),
         chain_tip_height: 2,
     } ; "deposit-spent")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Confirmed(0),
+            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: None,
             is_accepted: Some(true),
             amount: 0,
@@ -348,7 +346,7 @@ mod tests {
     } ; "deposit-no-vote")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Confirmed(0),
+            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(false),
             is_accepted: Some(true),
             amount: 0,
@@ -360,7 +358,7 @@ mod tests {
     } ; "cannot-sign-for-deposit")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Confirmed(0),
+            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             is_accepted: Some(false),
             amount: 0,
@@ -372,7 +370,7 @@ mod tests {
     } ; "rejected-deposit")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Confirmed(0),
+            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             is_accepted: Some(true),
             amount: 0,
@@ -384,7 +382,7 @@ mod tests {
     } ; "lock-time-expires-soon-1")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Confirmed(0),
+            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             is_accepted: Some(true),
             amount: 0,
@@ -396,7 +394,7 @@ mod tests {
     } ; "lock-time-expires-soon-2")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Confirmed(0),
+            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             is_accepted: Some(true),
             amount: 0,
@@ -408,7 +406,7 @@ mod tests {
     } ; "lock-time-in-time-units-2")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Confirmed(0),
+            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             is_accepted: Some(true),
             amount: 0,
