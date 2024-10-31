@@ -38,7 +38,7 @@ pub struct BitcoinTxContext {
 
 impl BitcoinTxContext {
     /// Validate the current bitcoin transaction.
-    /// 
+    ///
     /// It does the following:
     /// 1. Validate the signer input.
     /// 2. Validate the other inputs assuming that they are all deposit
@@ -249,7 +249,10 @@ impl DepositRequestReport {
             // spent in a sweep transaction that has been confirmed on the
             // canonical bitcoin blockchain.
             DepositRequestStatus::Spent(txid) => {
-                return Err(BitcoinDepositInputError::DepositUtxoSpent(self.outpoint, txid));
+                return Err(BitcoinDepositInputError::DepositUtxoSpent(
+                    self.outpoint,
+                    txid,
+                ));
             }
             // The deposit has been confirmed on the canonical bitcoin
             // blockchain and remains unspent by us.
