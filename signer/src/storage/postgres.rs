@@ -650,16 +650,16 @@ impl super::DbRead for PgStore {
         // ones where we have a completed-deposit event on the canonical
         // stacks blockchain.
 
-        // Get the minimum acceptable reclaim unlock height for the deposit request
-        // by adding the minimum reclaim proximity to the chain tip.
+        // Add one to the acceptable unlock height because the chain tip is at height one less
+        // than the height of the next block, which is the block for which we are assessing
+        // the threshold.
         let minimum_acceptable_unlock_height = self
             .get_bitcoin_block(chain_tip)
             .await?
-            // Add one to the acceptable unlock height because the chain tip is at height one less
-            // than the height of the next block, which is the block for which we are assessing
-            // the threshold.
-            .map(|block| block.block_height as i32 + DEPOSIT_LOCKTIME_BLOCK_BUFFER as i32 + 1)
-            .ok_or(Error::MissingBitcoinBlock(*chain_tip))?;
+            .ok_or(Error::MissingBitcoinBlock(*chain_tip))?
+            .block_height as i32
+            + DEPOSIT_LOCKTIME_BLOCK_BUFFER as i32
+            + 1;
 
         sqlx::query_as::<_, model::DepositRequest>(
             r#"
