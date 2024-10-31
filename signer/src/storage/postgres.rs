@@ -216,7 +216,7 @@ impl PgStore {
             // Note: db_name + key are PK so we can only get max 1 row.
             r#"
             SELECT COUNT(*) FROM public.__sbtc_migrations
-                WHERE 
+                WHERE
                     key = $1
             ;
             "#,
@@ -293,7 +293,7 @@ impl PgStore {
                 txid
               , tx
               , tx_type
-            FROM tx_ids 
+            FROM tx_ids
             JOIN txs USING (row_number)
             JOIN transaction_types USING (row_number)
             ON CONFLICT DO NOTHING"#,
@@ -326,9 +326,9 @@ impl PgStore {
                   , 1 AS depth
                 FROM sbtc_signer.bitcoin_blocks
                 WHERE block_hash = $1
-                
+
                 UNION ALL
-                
+
                 SELECT
                     parent.block_hash
                   , parent.parent_hash
@@ -554,7 +554,7 @@ impl super::DbRead for PgStore {
         sqlx::query_as::<_, model::StacksBlock>(
             r#"
             WITH RECURSIVE context_window AS (
-                SELECT 
+                SELECT
                     block_hash
                   , block_height
                   , parent_hash
@@ -601,9 +601,9 @@ impl super::DbRead for PgStore {
                 SELECT block_hash, block_height, parent_hash, created_at, 1 AS depth
                 FROM sbtc_signer.bitcoin_blocks
                 WHERE block_hash = $1
-                
+
                 UNION ALL
-                
+
                 -- Recursive member: Fetch the parent block using the last block's parent_hash
                 SELECT parent.block_hash, parent.block_height, parent.parent_hash,
                        parent.created_at, last.depth + 1
@@ -665,9 +665,9 @@ impl super::DbRead for PgStore {
                 SELECT block_hash, block_height, parent_hash, created_at, 1 AS depth
                 FROM sbtc_signer.bitcoin_blocks
                 WHERE block_hash = $1
-                
+
                 UNION ALL
-                
+
                 -- Recursive member: Fetch the parent block using the last block's parent_hash
                 SELECT
                     parent.block_hash
@@ -703,7 +703,7 @@ impl super::DbRead for PgStore {
             JOIN sbtc_signer.deposit_signers signers USING(txid, output_index)
             WHERE
                 signers.is_accepted
-                AND (transactions.block_height + deposit_requests.lock_time) > $4
+                AND (transactions.block_height + deposit_requests.lock_time) >= $4
             GROUP BY deposit_requests.txid, deposit_requests.output_index
             HAVING COUNT(signers.txid) >= $3
             "#,
@@ -837,7 +837,7 @@ impl super::DbRead for PgStore {
               , signer_pub_key
               , is_accepted
               , can_sign
-            FROM sbtc_signer.deposit_signers 
+            FROM sbtc_signer.deposit_signers
             WHERE txid = $1 AND output_index = $2",
         )
         .bind(txid)
@@ -913,7 +913,7 @@ impl super::DbRead for PgStore {
         sqlx::query_as::<_, model::WithdrawalRequest>(
             r#"
             WITH RECURSIVE extended_context_window AS (
-                SELECT 
+                SELECT
                     block_hash
                   , parent_hash
                   , 1 AS depth
@@ -982,7 +982,7 @@ impl super::DbRead for PgStore {
         sqlx::query_as::<_, model::WithdrawalRequest>(
             r#"
             WITH RECURSIVE extended_context_window AS (
-                SELECT 
+                SELECT
                     block_hash
                   , parent_hash
                   , 1 AS depth
@@ -1222,9 +1222,9 @@ impl super::DbRead for PgStore {
                   , 1 AS depth
                 FROM sbtc_signer.bitcoin_blocks
                 WHERE block_hash = $1
-                
+
                 UNION ALL
-                
+
                 SELECT
                     parent.block_hash
                   , parent.parent_hash
@@ -1311,7 +1311,7 @@ impl super::DbRead for PgStore {
         sqlx::query_scalar::<_, bool>(
             r#"
             WITH RECURSIVE tx_block_chain AS (
-                SELECT 
+                SELECT
                     block_hash
                   , block_height
                   , parent_hash
@@ -1410,25 +1410,25 @@ impl super::DbRead for PgStore {
               , deposit_req.output_index
               , deposit_req.recipient
               , deposit_req.amount
-            FROM 
+            FROM
                 bitcoin_blockchain_of($1, $2) AS bc_blocks
-            INNER JOIN 
+            INNER JOIN
                 bitcoin_transactions AS bc_trx
                     ON bc_trx.block_hash = bc_blocks.block_hash
-            INNER JOIN 
+            INNER JOIN
                 sweep_transactions AS sweep_tx
                     ON bc_trx.txid = sweep_tx.txid
-            INNER JOIN 
-                swept_deposits AS swept_deposit 
+            INNER JOIN
+                swept_deposits AS swept_deposit
                     ON swept_deposit.sweep_transaction_txid = sweep_tx.txid
-            INNER JOIN 
-                deposit_requests AS deposit_req 
+            INNER JOIN
+                deposit_requests AS deposit_req
                     ON deposit_req.txid = swept_deposit.deposit_request_txid
                     AND deposit_req.output_index = swept_deposit.deposit_request_output_index
-            -- TODO: The following left join is incorrect, we need to check that 
-            -- the completed deposit event is in a Stacks block that is linked 
+            -- TODO: The following left join is incorrect, we need to check that
+            -- the completed deposit event is in a Stacks block that is linked
             -- to the canonical Bitcoin chain (#559).
-            LEFT JOIN 
+            LEFT JOIN
                 completed_deposit_events AS cde
                     ON cde.bitcoin_txid = deposit_req.txid
                     AND cde.output_index = deposit_req.output_index
@@ -1477,6 +1477,71 @@ impl super::DbRead for PgStore {
         };
 
         self.get_sweep_transaction_by_txid(&txid).await
+    }
+
+    #[cfg(feature = "testing")]
+    async fn get_pending_accepted_deposit_requests_ignoring_lock_time (
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        threshold: u16,
+    ) -> Result<Vec<model::DepositRequest>, Error> {
+        // TODO(TBD): Delete this function once we figure out what's wrong with
+        // get_pending_accepted_deposit_requests with the lock time check in the
+        // in memory database.
+        sqlx::query_as::<_, model::DepositRequest>(
+            r#"
+            WITH RECURSIVE context_window AS (
+                -- Anchor member: Initialize the recursion with the chain tip
+                SELECT block_hash, block_height, parent_hash, created_at, 1 AS depth
+                FROM sbtc_signer.bitcoin_blocks
+                WHERE block_hash = $1
+
+                UNION ALL
+
+                -- Recursive member: Fetch the parent block using the last block's parent_hash
+                SELECT
+                    parent.block_hash
+                  , parent.block_height
+                  , parent.parent_hash
+                  , parent.created_at
+                  , last.depth + 1
+                FROM sbtc_signer.bitcoin_blocks parent
+                JOIN context_window last ON parent.block_hash = last.parent_hash
+                WHERE last.depth < $2
+            ),
+            transactions_in_window AS (
+                SELECT transactions.txid
+                FROM context_window blocks_in_window
+                JOIN sbtc_signer.bitcoin_transactions transactions ON
+                    transactions.block_hash = blocks_in_window.block_hash
+            )
+            SELECT
+                deposit_requests.txid
+              , deposit_requests.output_index
+              , deposit_requests.spend_script
+              , deposit_requests.reclaim_script
+              , deposit_requests.recipient
+              , deposit_requests.amount
+              , deposit_requests.max_fee
+              , deposit_requests.lock_time
+              , deposit_requests.signers_public_key
+              , deposit_requests.sender_script_pub_keys
+            FROM transactions_in_window transactions
+            JOIN sbtc_signer.deposit_requests deposit_requests USING(txid)
+            JOIN sbtc_signer.deposit_signers signers USING(txid, output_index)
+            WHERE
+                signers.is_accepted
+            GROUP BY deposit_requests.txid, deposit_requests.output_index
+            HAVING COUNT(signers.txid) >= $3
+            "#,
+        )
+        .bind(chain_tip)
+        .bind(i32::from(context_window))
+        .bind(i32::from(threshold))
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
     }
 }
 
@@ -1774,7 +1839,7 @@ impl super::DbWrite for PgStore {
 
     async fn write_bitcoin_transaction(&self, tx_ref: &model::BitcoinTxRef) -> Result<(), Error> {
         sqlx::query(
-            "INSERT INTO sbtc_signer.bitcoin_transactions (txid, block_hash) 
+            "INSERT INTO sbtc_signer.bitcoin_transactions (txid, block_hash)
             VALUES ($1, $2)
             ON CONFLICT DO NOTHING",
         )
@@ -1806,7 +1871,7 @@ impl super::DbWrite for PgStore {
             SELECT
                 txid
               , block_id
-            FROM tx_ids 
+            FROM tx_ids
             JOIN block_ids USING (row_number)
             ON CONFLICT DO NOTHING"#,
         )
@@ -1824,7 +1889,7 @@ impl super::DbWrite for PgStore {
         stacks_transaction: &model::StacksTransaction,
     ) -> Result<(), Error> {
         sqlx::query(
-            "INSERT INTO sbtc_signer.stacks_transactions (txid, block_hash) 
+            "INSERT INTO sbtc_signer.stacks_transactions (txid, block_hash)
             VALUES ($1, $2)
             ON CONFLICT DO NOTHING",
         )
@@ -1857,7 +1922,7 @@ impl super::DbWrite for PgStore {
             SELECT
                 txid
               , block_id
-            FROM tx_ids 
+            FROM tx_ids
             JOIN block_ids USING (row_number)
             ON CONFLICT DO NOTHING"#,
         )
@@ -1916,7 +1981,7 @@ impl super::DbWrite for PgStore {
               , chain_length
               , parent_block_id
               , bitcoin_anchor
-            FROM block_ids 
+            FROM block_ids
             JOIN parent_block_ids USING (row_number)
             JOIN chain_lengths USING (row_number)
             JOIN bitcoin_anchors USING (row_number)
@@ -2059,7 +2124,7 @@ impl super::DbWrite for PgStore {
             "
         INSERT INTO sbtc_signer.withdrawal_accept_events (
             txid
-          , block_hash 
+          , block_hash
           , request_id
           , signer_bitmap
           , bitcoin_txid
@@ -2126,7 +2191,7 @@ impl super::DbWrite for PgStore {
               , fee
               , created_at_block_hash
               , market_fee_rate
-            ) 
+            )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             ON CONFLICT DO NOTHING;
         ",

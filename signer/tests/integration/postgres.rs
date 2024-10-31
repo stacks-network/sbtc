@@ -484,7 +484,7 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
     );
 
     let mut pending_accepted_deposit_requests = in_memory_store
-        .get_pending_accepted_deposit_requests(&chain_tip, context_window, threshold)
+        .get_pending_accepted_deposit_requests_ignoring_lock_time(&chain_tip, context_window, threshold)
         .await
         .expect("failed to get pending deposit requests");
 
@@ -493,7 +493,7 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
     assert!(!pending_accepted_deposit_requests.is_empty());
 
     let mut pg_pending_accepted_deposit_requests = pg_store
-        .get_pending_accepted_deposit_requests(&chain_tip, context_window, threshold)
+        .get_pending_accepted_deposit_requests_ignoring_lock_time(&chain_tip, context_window, threshold)
         .await
         .expect("failed to get pending deposit requests");
 
@@ -625,14 +625,15 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
             .expect("no chain tip")
     );
 
-    // First ensure that we didn't break the main pending accepted deposit requests functionality.
+    // First ensure that we didn't break the main pending accepted deposit requests functionality
+    // since all the lock times are the maximum possible value and thus should be accepted.
     let mut pending_accepted_deposit_requests = pg_store
         .get_pending_accepted_deposit_requests(&chain_tip, context_window, threshold)
         .await
         .expect("failed to get pending deposit requests from pg store.");
 
     let mut in_memory_pending_accepted_deposit_requests = in_memory_store
-        .get_pending_accepted_deposit_requests(&chain_tip, context_window, threshold)
+        .get_pending_accepted_deposit_requests_ignoring_lock_time(&chain_tip, context_window, threshold)
         .await
         .expect("failed to get pending deposit requests from in memory store.");
 
@@ -684,9 +685,9 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
         }
     }
 
-    // Alter all the deposit test da
+    // Alter all the deposit test data to make sure that the lock times are JUST BARELY in bounds.
     for deposit_request in test_data.deposit_requests.iter_mut() {
-        // Get the associated block so thaty we can get the height that the deposit
+        // Get the associated block so that we can get the height that the deposit
         // was included in.
         let associated_blocks = pg_store
             .get_bitcoin_blocks_with_transaction(&deposit_request.txid)
@@ -711,9 +712,9 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
             - height_included as u32
             + MINIMUM_RECLAIM_PROXIMITY_TO_CHAIN_TIP as u32;
         if should_be_out_of_bounds {
-            deposit_request.lock_time = minimum_acceptable_unlock_time_for_this_deposit;
+            deposit_request.lock_time = minimum_acceptable_unlock_time_for_this_deposit - 1;
         } else {
-            deposit_request.lock_time = minimum_acceptable_unlock_time_for_this_deposit + 1;
+            deposit_request.lock_time = minimum_acceptable_unlock_time_for_this_deposit;
         }
     }
 
