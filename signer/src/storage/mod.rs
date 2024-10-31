@@ -246,22 +246,6 @@ pub trait DbRead {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> impl Future<Output = Result<Option<model::SweepTransaction>, Error>> + Send;
-
-    /// Get pending deposit requests that have been accepted by at least
-    /// `signatures_required` signers and has no responses. This version will
-    /// ignore the lock time of the deposit request when deciding what can be
-    /// accepted.
-    ///
-    /// TODO(TBD): Delete this function once we figure out what's wrong with
-    /// get_pending_accepted_deposit_requests with the lock time check in the
-    /// in memory database.
-    #[cfg(feature = "testing")]
-    fn get_pending_accepted_deposit_requests_ignoring_lock_time(
-        &self,
-        chain_tip: &model::BitcoinBlockHash,
-        context_window: u16,
-        signatures_required: u16,
-    ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.

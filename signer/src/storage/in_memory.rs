@@ -7,6 +7,7 @@ use futures::StreamExt as _;
 use futures::TryStreamExt as _;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
@@ -21,6 +22,7 @@ use crate::stacks::events::WithdrawalAcceptEvent;
 use crate::stacks::events::WithdrawalCreateEvent;
 use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
+use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
 use super::util::get_utxo;
 
@@ -252,76 +254,66 @@ impl super::DbRead for SharedStore {
 
     async fn get_pending_accepted_deposit_requests(
         &self,
-        _chain_tip: &model::BitcoinBlockHash,
-        _context_window: u16,
-        _threshold: u16,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        threshold: u16,
     ) -> Result<Vec<model::DepositRequest>, Error> {
-        unimplemented!("can only be tested using integration tests for now.");
+        let pending_deposit_requests = self
+            .get_pending_deposit_requests(chain_tip, context_window)
+            .await?;
 
-        // NOTE: The below is a starting point for how to write this, but
-        // for some unholy reason there is a transaction that has no associated
-        // block in the store that shows up when some of the other functions
-        // in this struct are called that should require it be tied to a block.
-        // There might be a bug somewhere else, or somewhere here, but at this
-        // point I've accepted my (our?) fate and am moving on to other things.
-        //
-        // The function `get_pending_accepted_deposit_requests_ignoring_lock_time`
-        // will keep us covered for tests that used to use this function.
+        let threshold = threshold as usize;
+        let store = self.lock().await;
 
-        // let pending_deposit_requests = self
-        //     .get_pending_deposit_requests(chain_tip, context_window)
-        //     .await?;
-        //
-        // let threshold = threshold as usize;
-        // let store = self.lock().await;
-        //
-        // let minimum_acceptable_unlock_height = store.bitcoin_blocks
-        //     .get(chain_tip)
-        //     .map(|block| {
-        //         block.block_height as u32 + DEPOSIT_LOCKTIME_BLOCK_BUFFER as u32
-        //     })
-        //     .unwrap();
-        //
-        // let canonical_bitcoin_blocks = (0..context_window)
-        //     // Find all tracked transaction IDs in the context window
-        //     .scan(chain_tip, |block_hash, _| {
-        //         let block = store.bitcoin_blocks.get(*block_hash)?;
-        //         *block_hash = &block.parent_hash;
-        //         Some(*block_hash)
-        //     })
-        //     .collect::<HashSet<_>>();
-        //
-        // println!("Going through pending deposits...");
-        // Ok(pending_deposit_requests
-        //     .into_iter()
-        //     .filter(|deposit_request| {
-        //         store.bitcoin_transactions_to_blocks
-        //             .get(&deposit_request.txid)
-        //             .unwrap_or(&Vec::new())
-        //             .into_iter()
-        //             .filter(|block_hash| canonical_bitcoin_blocks.contains(block_hash))
-        //             .map(|block_hash| store.bitcoin_blocks.get(block_hash))
-        //             .flatten()
-        //             .map(|block_included: &model::BitcoinBlock| {
-        //                 let unlock_height = block_included.block_height as u32 + deposit_request.lock_time;
-        //                 unlock_height >= minimum_acceptable_unlock_height
-        //             })
-        //             .take(1)
-        //             .collect::<Vec<_>>()
-        //             .first()
-        //             .cloned()
-        //             .unwrap_or(true)
-        //     })
-        //     .filter(|deposit_request| {
-        //         store
-        //             .deposit_request_to_signers
-        //             .get(&(deposit_request.txid, deposit_request.output_index))
-        //             .map(|signers| {
-        //                 signers.iter().filter(|signer| signer.is_accepted).count() >= threshold
-        //             })
-        //             .unwrap_or_default()
-        //     })
-        //     .collect())
+        // Add one to the acceptable unlock height because the chain tip is at height one less
+        // than the height of the next block, which is the block for which we are assessing
+        // the threshold.
+        let minimum_acceptable_unlock_height =
+            store.bitcoin_blocks.get(chain_tip).unwrap().block_height as u32
+                + DEPOSIT_LOCKTIME_BLOCK_BUFFER as u32
+                + 1;
+
+        let canonical_bitcoin_blocks = (0..context_window)
+            // Find all tracked transaction IDs in the context window
+            .scan(chain_tip, |block_hash, _| {
+                let canonical_block_hash = Some(*block_hash);
+                let block = store.bitcoin_blocks.get(*block_hash)?;
+                *block_hash = &block.parent_hash;
+                canonical_block_hash
+            })
+            .collect::<HashSet<_>>();
+
+        Ok(pending_deposit_requests
+            .into_iter()
+            .filter(|deposit_request| {
+                store
+                    .bitcoin_transactions_to_blocks
+                    .get(&deposit_request.txid)
+                    .unwrap_or(&Vec::new())
+                    .iter()
+                    .filter(|block_hash| canonical_bitcoin_blocks.contains(block_hash))
+                    .filter_map(|block_hash| store.bitcoin_blocks.get(block_hash))
+                    .map(|block_included: &model::BitcoinBlock| {
+                        let unlock_height =
+                            block_included.block_height as u32 + deposit_request.lock_time;
+                        unlock_height >= minimum_acceptable_unlock_height
+                    })
+                    .take(1)
+                    .collect::<Vec<_>>()
+                    .first()
+                    .cloned()
+                    .unwrap_or(true)
+            })
+            .filter(|deposit_request| {
+                store
+                    .deposit_request_to_signers
+                    .get(&(deposit_request.txid, deposit_request.output_index))
+                    .map(|signers| {
+                        signers.iter().filter(|signer| signer.is_accepted).count() >= threshold
+                    })
+                    .unwrap_or_default()
+            })
+            .collect())
     }
 
     async fn get_accepted_deposit_requests(
@@ -806,37 +798,6 @@ impl super::DbRead for SharedStore {
             });
 
         Ok(package)
-    }
-
-    #[cfg(feature = "testing")]
-    async fn get_pending_accepted_deposit_requests_ignoring_lock_time(
-        &self,
-        chain_tip: &model::BitcoinBlockHash,
-        context_window: u16,
-        threshold: u16,
-    ) -> Result<Vec<model::DepositRequest>, Error> {
-        // TODO(TBD): Delete this function once we figure out what's wrong with
-        // get_pending_accepted_deposit_requests with the lock time check in the
-        // in memory database.
-        let pending_deposit_requests = self
-            .get_pending_deposit_requests(chain_tip, context_window)
-            .await?;
-        let store = self.lock().await;
-
-        let threshold = threshold as usize;
-
-        Ok(pending_deposit_requests
-            .into_iter()
-            .filter(|deposit_request| {
-                store
-                    .deposit_request_to_signers
-                    .get(&(deposit_request.txid, deposit_request.output_index))
-                    .map(|signers| {
-                        signers.iter().filter(|signer| signer.is_accepted).count() >= threshold
-                    })
-                    .unwrap_or_default()
-            })
-            .collect())
     }
 }
 

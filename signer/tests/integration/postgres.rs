@@ -484,11 +484,7 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
     );
 
     let mut pending_accepted_deposit_requests = in_memory_store
-        .get_pending_accepted_deposit_requests_ignoring_lock_time(
-            &chain_tip,
-            context_window,
-            threshold,
-        )
+        .get_pending_accepted_deposit_requests(&chain_tip, context_window, threshold)
         .await
         .expect("failed to get pending deposit requests");
 
@@ -497,11 +493,7 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
     assert!(!pending_accepted_deposit_requests.is_empty());
 
     let mut pg_pending_accepted_deposit_requests = pg_store
-        .get_pending_accepted_deposit_requests_ignoring_lock_time(
-            &chain_tip,
-            context_window,
-            threshold,
-        )
+        .get_pending_accepted_deposit_requests(&chain_tip, context_window, threshold)
         .await
         .expect("failed to get pending deposit requests");
 
@@ -615,6 +607,7 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
         deposit.lock_time = u16::MAX as u32;
     }
 
+    // Take 1 ------------------------------------------------------------------
     test_data.write_to(&mut pg_store).await;
     test_data.write_to(&mut in_memory_store).await;
 
@@ -641,11 +634,7 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
         .expect("failed to get pending deposit requests from pg store.");
 
     let mut in_memory_pending_accepted_deposit_requests = in_memory_store
-        .get_pending_accepted_deposit_requests_ignoring_lock_time(
-            &chain_tip,
-            context_window,
-            threshold,
-        )
+        .get_pending_accepted_deposit_requests(&chain_tip, context_window, threshold)
         .await
         .expect("failed to get pending deposit requests from in memory store.");
 
@@ -669,6 +658,12 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
         .expect("no chain tip block")
         .block_height;
 
+    // Add one to the acceptable unlock height because the chain tip is at height one less
+    // than the height of the next block, which is the block for which we are assessing
+    // the threshold.
+    let minimum_acceptable_unlock_height =
+        bitcoin_chain_tip_height as u32 + DEPOSIT_LOCKTIME_BLOCK_BUFFER as u32 + 1;
+
     // Okay, mess with the test data and make sure that some of the pending accepted deposit requests
     // are outside of the reclaim bounds.
     let percent_of_original_requests_expected_to_be_in_bounds = 0.42;
@@ -679,25 +674,20 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
     // Prepare some datastructures to filter the deposit requests that we're going to put out of bounds
     // and to check against later.
     pending_accepted_deposit_requests.shuffle(&mut rng);
-    let mut expected_pending_deposit_requests_in_bounds: Vec<model::DepositRequest> = Vec::new();
-    let mut pending_deposit_requests_out_of_bounds: HashSet<(BitcoinTxId, u32)> = HashSet::new();
-
-    for i in 0..pending_accepted_deposit_requests.len() {
+    let mut out_of_bounds_requests: HashSet<(BitcoinTxId, u32)> = HashSet::new();
+    let mut in_bounds_requests: HashSet<(BitcoinTxId, u32)> = HashSet::new();
+    for (i, deposit_request) in pending_accepted_deposit_requests.into_iter().enumerate() {
+        let unique_deposit_id: (BitcoinTxId, u32) =
+            (deposit_request.txid, deposit_request.output_index);
         if i < num_deposits_in_bounds {
-            // Add the deposit request to the set of deposit requests that we expect to be in bounds.
-            expected_pending_deposit_requests_in_bounds
-                .push(pending_accepted_deposit_requests[i].clone());
+            in_bounds_requests.insert(unique_deposit_id);
         } else {
-            // Add the deposit request identification information to the set of deposit requests
-            // that we're going to put out of bounds. We'll filter on this later.
-            pending_deposit_requests_out_of_bounds.insert((
-                pending_accepted_deposit_requests[i].txid,
-                pending_accepted_deposit_requests[i].output_index,
-            ));
+            out_of_bounds_requests.insert(unique_deposit_id);
         }
     }
 
     // Alter all the deposit test data to make sure that the lock times are JUST BARELY in bounds.
+    let mut expected_pending_deposit_requests: Vec<model::DepositRequest> = Vec::new();
     for deposit_request in test_data.deposit_requests.iter_mut() {
         // Get the associated block so that we can get the height that the deposit
         // was included in.
@@ -705,11 +695,13 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
             .get_bitcoin_blocks_with_transaction(&deposit_request.txid)
             .await
             .expect("failed to get bitcoin blocks with transaction");
+
         assert_eq!(
             associated_blocks.len(),
             1,
             "Deposit found in multiple Bitcoin blocks - this test is not designed to handle this."
         );
+
         let height_included = pg_store
             .get_bitcoin_block(associated_blocks.first().unwrap())
             .await
@@ -717,52 +709,58 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
             .expect("Block included needs to exists")
             .block_height;
 
-        let should_be_out_of_bounds = pending_deposit_requests_out_of_bounds
-            .contains(&(deposit_request.txid, deposit_request.output_index));
+        let minimum_acceptable_unlock_time_for_this_deposit =
+            minimum_acceptable_unlock_height - height_included as u32;
 
-        let minimum_acceptable_unlock_time_for_this_deposit = bitcoin_chain_tip_height as u32
-            - height_included as u32
-            + DEPOSIT_LOCKTIME_BLOCK_BUFFER as u32;
-        if should_be_out_of_bounds {
+        let unique_deposit_id: (BitcoinTxId, u32) =
+            (deposit_request.txid, deposit_request.output_index);
+
+        if out_of_bounds_requests.contains(&unique_deposit_id) {
+            // Make the block the request can be reclaimed at one lower than the minimum.
             deposit_request.lock_time = minimum_acceptable_unlock_time_for_this_deposit - 1;
-        } else {
+        } else if in_bounds_requests.contains(&unique_deposit_id) {
+            // Make the block the request can be reclaimed at one lower at the minimum and
+            // track that it's one of the expected acceptable deposits.
             deposit_request.lock_time = minimum_acceptable_unlock_time_for_this_deposit;
+            expected_pending_deposit_requests.push(deposit_request.clone());
         }
     }
 
-    // Alright, take 2... but this time some of the deposit requests are outside of the reclaim bounds.
+    // Take 2 ------------------------------------------------------------------
+    // This time some of the deposit requests are outside of the reclaim bounds.
     // We should only get the ones that are within the reclaim bounds.
     signer::testing::storage::drop_db(pg_store).await;
     pg_store = testing::storage::new_test_database(db_num, true).await;
-    test_data.write_to(&mut pg_store).await;
+    in_memory_store = storage::in_memory::Store::new_shared();
 
-    pending_accepted_deposit_requests = pg_store
+    // Initialize the data.
+    test_data.write_to(&mut pg_store).await;
+    test_data.write_to(&mut in_memory_store).await;
+
+    let mut pending_accepted_deposit_requests_in_memory = in_memory_store
+        .get_pending_accepted_deposit_requests(&chain_tip, context_window, threshold)
+        .await
+        .expect("failed to get pending deposit requests");
+
+    let mut pending_accepted_deposit_requests_pg_store = pg_store
         .get_pending_accepted_deposit_requests(&chain_tip, context_window, threshold)
         .await
         .expect("failed to get pending deposit requests");
 
     // Sort the deposit requests so that we can compare them.
-    pending_accepted_deposit_requests.sort();
-    expected_pending_deposit_requests_in_bounds.sort();
-
-    // Only get the identying information for the deposit requests that are in bounds
-    // because we altered the lock times of the accepted deposit requests in the test
-    // data to make it JUST BARELY in bounds.
-    let pending_accepted_deposit_request_identifiers: Vec<_> = pending_accepted_deposit_requests
-        .iter()
-        .map(|deposit_request| (deposit_request.txid, deposit_request.output_index))
-        .collect();
-
-    let expected_pending_accepted_deposit_request_identifiers: Vec<_> =
-        expected_pending_deposit_requests_in_bounds
-            .iter()
-            .map(|deposit_request| (deposit_request.txid, deposit_request.output_index))
-            .collect();
+    pending_accepted_deposit_requests_pg_store.sort();
+    pending_accepted_deposit_requests_in_memory.sort();
+    expected_pending_deposit_requests.sort();
 
     assert_eq!(
-        pending_accepted_deposit_request_identifiers,
-        expected_pending_accepted_deposit_request_identifiers
+        expected_pending_deposit_requests, pending_accepted_deposit_requests_pg_store,
+        "Pending accepted deposits from the PG store do not match the expected output."
     );
+    assert_eq!(
+        expected_pending_deposit_requests, pending_accepted_deposit_requests_in_memory,
+        "Pending accepted deposits from the in memory store does not match the expected output."
+    );
+
     signer::testing::storage::drop_db(pg_store).await;
 }
 

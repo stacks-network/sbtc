@@ -652,10 +652,13 @@ impl super::DbRead for PgStore {
 
         // Get the minimum acceptable reclaim unlock height for the deposit request
         // by adding the minimum reclaim proximity to the chain tip.
-        let minimum_acceptable_reclaim_unlock_time = self
+        let minimum_acceptable_unlock_height = self
             .get_bitcoin_block(chain_tip)
             .await?
-            .map(|block| block.block_height as i32 + DEPOSIT_LOCKTIME_BLOCK_BUFFER as i32)
+            // Add one to the acceptable unlock height because the chain tip is at height one less
+            // than the height of the next block, which is the block for which we are assessing
+            // the threshold.
+            .map(|block| block.block_height as i32 + DEPOSIT_LOCKTIME_BLOCK_BUFFER as i32 + 1)
             .ok_or(Error::MissingBitcoinBlock(*chain_tip))?;
 
         sqlx::query_as::<_, model::DepositRequest>(
@@ -711,7 +714,7 @@ impl super::DbRead for PgStore {
         .bind(chain_tip)
         .bind(i32::from(context_window))
         .bind(i32::from(threshold))
-        .bind(minimum_acceptable_reclaim_unlock_time)
+        .bind(minimum_acceptable_unlock_height)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -1477,71 +1480,6 @@ impl super::DbRead for PgStore {
         };
 
         self.get_sweep_transaction_by_txid(&txid).await
-    }
-
-    #[cfg(feature = "testing")]
-    async fn get_pending_accepted_deposit_requests_ignoring_lock_time(
-        &self,
-        chain_tip: &model::BitcoinBlockHash,
-        context_window: u16,
-        threshold: u16,
-    ) -> Result<Vec<model::DepositRequest>, Error> {
-        // TODO(TBD): Delete this function once we figure out what's wrong with
-        // get_pending_accepted_deposit_requests with the lock time check in the
-        // in memory database.
-        sqlx::query_as::<_, model::DepositRequest>(
-            r#"
-            WITH RECURSIVE context_window AS (
-                -- Anchor member: Initialize the recursion with the chain tip
-                SELECT block_hash, block_height, parent_hash, created_at, 1 AS depth
-                FROM sbtc_signer.bitcoin_blocks
-                WHERE block_hash = $1
-
-                UNION ALL
-
-                -- Recursive member: Fetch the parent block using the last block's parent_hash
-                SELECT
-                    parent.block_hash
-                  , parent.block_height
-                  , parent.parent_hash
-                  , parent.created_at
-                  , last.depth + 1
-                FROM sbtc_signer.bitcoin_blocks parent
-                JOIN context_window last ON parent.block_hash = last.parent_hash
-                WHERE last.depth < $2
-            ),
-            transactions_in_window AS (
-                SELECT transactions.txid
-                FROM context_window blocks_in_window
-                JOIN sbtc_signer.bitcoin_transactions transactions ON
-                    transactions.block_hash = blocks_in_window.block_hash
-            )
-            SELECT
-                deposit_requests.txid
-              , deposit_requests.output_index
-              , deposit_requests.spend_script
-              , deposit_requests.reclaim_script
-              , deposit_requests.recipient
-              , deposit_requests.amount
-              , deposit_requests.max_fee
-              , deposit_requests.lock_time
-              , deposit_requests.signers_public_key
-              , deposit_requests.sender_script_pub_keys
-            FROM transactions_in_window transactions
-            JOIN sbtc_signer.deposit_requests deposit_requests USING(txid)
-            JOIN sbtc_signer.deposit_signers signers USING(txid, output_index)
-            WHERE
-                signers.is_accepted
-            GROUP BY deposit_requests.txid, deposit_requests.output_index
-            HAVING COUNT(signers.txid) >= $3
-            "#,
-        )
-        .bind(chain_tip)
-        .bind(i32::from(context_window))
-        .bind(i32::from(threshold))
-        .fetch_all(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)
     }
 }
 
