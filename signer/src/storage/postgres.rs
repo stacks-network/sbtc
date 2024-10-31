@@ -460,9 +460,12 @@ impl PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    /// Return the txid of the bitcoin transaction that sweep in the
+    /// Return the txid of the bitcoin transaction that swept in the
     /// deposit UTXO. The sweep transaction must be confirmed on the
     /// blockchain identified by the given chain tip.
+    ///
+    /// This query only looks back at transactions that are confirmed at or
+    /// after the given `min_block_height`.
     async fn get_deposit_sweep_txid(
         &self,
         chain_tip: &model::BitcoinBlockHash,
@@ -494,10 +497,10 @@ impl PgStore {
             SELECT sd.sweep_transaction_txid
             FROM sbtc_signer.swept_deposits AS sd
             JOIN sbtc_signer.bitcoin_transactions AS bt
-                ON bt.txid = sd.sweep_transaction_txid
+              ON bt.txid = sd.sweep_transaction_txid
             JOIN block_chain USING (block_hash)
             WHERE sd.deposit_request_txid = $3
-                AND sd.deposit_request_output_index = $4
+              AND sd.deposit_request_output_index = $4
             LIMIT 1
             "#,
         )
@@ -512,13 +515,15 @@ impl PgStore {
 
     /// Fetch a status summary of a deposit request.
     ///
-    /// In this query we list out the blockchain as far back as is the
-    /// given `min_block_height`. We then check if this signer accepted the
-    /// deposit request, and whether it was confirmed on the blockchain
+    /// In this query we list out the blockchain identified by the chain
+    /// tip as far back as necessary. We then check if this signer accepted
+    /// the deposit request, and whether it was confirmed on the blockchain
     /// that we just listed out.
     ///
-    /// None is returned if deposit request or the associated transaction
-    /// is not in the database.
+    /// `None` is returned if deposit request in the database (we always
+    /// write the associated transaction to the database for each deposit
+    /// so that cannot be the reason for why the query here returns
+    /// `None`).
     async fn get_deposit_request_status_summary(
         &self,
         chain_tip: &model::BitcoinBlockHash,
@@ -526,7 +531,7 @@ impl PgStore {
         output_index: u32,
         signer_public_key: &PublicKey,
     ) -> Result<Option<StatusSummary>, Error> {
-        // We first get the lowest height for when the deposit request was
+        // We first get the least height for when the deposit request was
         // confirmed. This height serves as the stopping criteria for the
         // recursive part of the subsequent query.
         let min_block_height_fut = self.get_deposit_request_least_height(txid, output_index);
@@ -1015,15 +1020,20 @@ impl super::DbRead for PgStore {
             return Ok(None);
         };
 
+        // The block height and block hash are always None or not None at
+        // the same time.
         let block_info = summary
             .block_height
             .map(u64::try_from)
             .zip(summary.block_hash);
-        // Last map the block_height variable to a status enum.
+
+        // Lastly we map the block_height variable to a status enum.
         let status = match block_info {
             // Now that we know that it has been confirmed, check to see if
             // it has been swept in a bitcoin transaction that has been
-            // confirmed already.
+            // confirmed already. We use the height of when the deposit was
+            // confirmed for the min height for when a sweep transaction
+            // could be confirmed. We could also use block_height + 1.
             Some((Ok(block_height), block_hash)) => {
                 let deposit_sweep_txid =
                     self.get_deposit_sweep_txid(chain_tip, txid, output_index, block_height);
