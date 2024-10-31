@@ -1399,7 +1399,8 @@ impl super::DbRead for PgStore {
               , deposit_req.output_index
               , deposit_req.recipient
               , deposit_req.amount
-            FROM bitcoin_blockchain_of($1, $2) AS bc_blocks
+            FROM 
+                bitcoin_blockchain_of($1, $2) AS bc_blocks
             INNER JOIN 
                 bitcoin_transactions AS bc_trx
                     ON bc_trx.block_hash = bc_blocks.block_hash
