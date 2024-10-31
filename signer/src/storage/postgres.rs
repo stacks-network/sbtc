@@ -1376,18 +1376,17 @@ impl super::DbRead for PgStore {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> Result<Vec<model::SweptDepositRequest>, Error> {
-        // TODO: This query needs to be updated to check that the
-        // `completed_deposit_event` is in a Stacks block linked to the
-        // canonical Bitcoin chain (i.e. confirmed) once #559 is completed.
-
         // The following tests define the criteria for this query:
         // - [X] get_swept_deposit_requests_returns_swept_deposit_requests
         // - [X] get_swept_deposit_requests_does_not_return_unswept_deposit_requests
-        // - [ ] get_swept_deposit_requests_does_not_return_deposit_requests_with_responses (needs #559)
-        // - [ ] get_swept_deposit_requests_response_tx_reorged (needs #559)
+        // - [X] get_swept_deposit_requests_does_not_return_deposit_requests_with_responses
+        // - [X] get_swept_deposit_requests_response_tx_reorged
 
         sqlx::query_as::<_, model::SweptDepositRequest>(
             "
+            WITH bc_blocks AS (
+                SELECT * FROM bitcoin_blockchain_of($1, $2)
+            )
             SELECT
                 bc_trx.txid AS sweep_txid
               , bc_trx.block_hash AS sweep_block_hash
@@ -1396,8 +1395,7 @@ impl super::DbRead for PgStore {
               , deposit_req.output_index
               , deposit_req.recipient
               , deposit_req.amount
-            FROM 
-                bitcoin_blockchain_of($1, $2) AS bc_blocks
+            FROM bc_blocks
             INNER JOIN 
                 bitcoin_transactions AS bc_trx
                     ON bc_trx.block_hash = bc_blocks.block_hash
@@ -1411,15 +1409,26 @@ impl super::DbRead for PgStore {
                 deposit_requests AS deposit_req 
                     ON deposit_req.txid = swept_deposit.deposit_request_txid
                     AND deposit_req.output_index = swept_deposit.deposit_request_output_index
-            -- TODO: The following left join is incorrect, we need to check that 
-            -- the completed deposit event is in a Stacks block that is linked 
-            -- to the canonical Bitcoin chain (#559).
             LEFT JOIN 
                 completed_deposit_events AS cde
                     ON cde.bitcoin_txid = deposit_req.txid
                     AND cde.output_index = deposit_req.output_index
-            WHERE
-                cde.bitcoin_txid IS NULL
+            LEFT JOIN
+                stacks_blocks AS cde_stacks
+                    ON cde_stacks.block_hash = cde.block_hash
+            LEFT JOIN
+                bc_blocks AS cde_bc
+                    ON cde_bc.block_hash = cde_stacks.bitcoin_anchor
+            GROUP BY
+                bc_trx.txid
+              , bc_trx.block_hash
+              , bc_blocks.block_height
+              , deposit_req.txid
+              , deposit_req.output_index
+              , deposit_req.recipient
+              , deposit_req.amount
+            HAVING
+                COUNT(cde_bc.block_hash) = 0
         ",
         )
         .bind(chain_tip)
