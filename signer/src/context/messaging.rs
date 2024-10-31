@@ -82,6 +82,12 @@ pub enum TxCoordinatorEvent {
     MessageGenerated(crate::network::Msg),
 }
 
+impl From<SignerCommand> for SignerSignal {
+    fn from(command: SignerCommand) -> Self {
+        SignerSignal::Command(command)
+    }
+}
+
 impl From<TxCoordinatorEvent> for SignerSignal {
     fn from(event: TxCoordinatorEvent) -> Self {
         SignerSignal::Event(SignerEvent::TxCoordinator(event))

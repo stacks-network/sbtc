@@ -77,7 +77,7 @@ impl From<&crate::message::SweepTransactionInfo> for SweepTransaction {
             amount: info.amount,
             fee: info.fee,
             market_fee_rate: info.market_fee_rate,
-            created_at_block_hash: info.created_at_block_hash,
+            created_at_block_hash: info.created_at_block_hash.into(),
             swept_deposits: info.swept_deposits.iter().map(Into::into).collect(),
             swept_withdrawals: info.swept_withdrawals.iter().map(Into::into).collect(),
         }

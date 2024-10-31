@@ -152,7 +152,7 @@ pub struct SweepTransactionInfo {
     /// The fee paid for this transaction.
     pub fee: u64,
     /// The Bitcoin block hash at which this transaction was created.
-    pub created_at_block_hash: BitcoinBlockHash,
+    pub created_at_block_hash: bitcoin::BlockHash,
     /// The market fee rate at the time of this transaction.
     pub market_fee_rate: f64,
     /// List of deposits which were swept-in by this transaction.
@@ -209,7 +209,7 @@ impl SweepTransactionInfo {
             amount: unsigned.output_amounts(),
             fee: unsigned.tx_fee,
             market_fee_rate: unsigned.signer_utxo.fee_rate,
-            created_at_block_hash: BitcoinBlockHash::from(*block_hash),
+            created_at_block_hash: *block_hash,
             swept_deposits,
             swept_withdrawals,
         }
@@ -358,7 +358,7 @@ impl wsts::net::Signable for SweepTransactionInfo {
         hasher.update(self.signer_prevout_output_index.to_be_bytes());
         hasher.update(self.amount.to_be_bytes());
         hasher.update(self.fee.to_be_bytes());
-        hasher.update(self.created_at_block_hash.as_ref());
+        hasher.update(self.created_at_block_hash);
         hasher.update(self.market_fee_rate.to_be_bytes());
         for deposit in &self.swept_deposits {
             deposit.hash(hasher);
