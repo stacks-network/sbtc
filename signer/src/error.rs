@@ -39,6 +39,11 @@ pub enum Error {
     #[error("transaction is missing, txid: {0}, block hash {1:?}")]
     BitcoinTxMissing(bitcoin::Txid, Option<bitcoin::BlockHash>),
 
+    /// This is the error that is returned when validating a bitcoin
+    /// trasnaction.
+    #[error("bitcoin validation error: {0}")]
+    BitcoinValidation(#[from] Box<crate::bitcoin::validation::BitcoinValidationError>),
+
     /// Received an error in call to estimatesmartfee RPC call
     #[error("failed to get fee estimate from bitcoin-core for target {1}. {0}")]
     EstimateSmartFee(#[source] bitcoincore_rpc::Error, u16),
