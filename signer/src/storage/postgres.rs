@@ -473,8 +473,8 @@ impl PgStore {
             WITH RECURSIVE block_chain AS (
                 SELECT 
                     block_hash
-                    , block_height
-                    , parent_hash
+                  , block_height
+                  , parent_hash
                 FROM sbtc_signer.bitcoin_blocks
                 WHERE block_hash = $1
 
@@ -482,12 +482,11 @@ impl PgStore {
 
                 SELECT
                     child.block_hash
-                    , child.block_height
-                    , child.parent_hash
+                  , child.block_height
+                  , child.parent_hash
                 FROM sbtc_signer.bitcoin_blocks AS child
                 JOIN block_chain AS parent
-                    ON child.block_hash = parent.parent_hash
-                CROSS JOIN deposit_tx_furthest_height AS fh
+                  ON child.block_hash = parent.parent_hash
                 WHERE child.block_height >= $2
             )
             SELECT EXISTS (
@@ -554,7 +553,6 @@ impl PgStore {
                 FROM sbtc_signer.bitcoin_blocks AS child
                 JOIN block_chain AS parent
                   ON child.block_hash = parent.parent_hash
-                CROSS JOIN deposit_tx_furthest_height AS fh
                 WHERE child.block_height >= $2
             )
             SELECT
@@ -565,7 +563,6 @@ impl PgStore {
               , bc.block_height
             FROM sbtc_signer.deposit_requests AS dr 
             JOIN sbtc_signer.bitcoin_transactions USING (txid)
-            JOIN sbtc_signer.bitcoin_blocks USING (block_hash)
             LEFT JOIN block_chain AS bc USING (block_hash)
             LEFT JOIN sbtc_signer.deposit_signers AS ds
               ON dr.txid = ds.txid
@@ -1530,7 +1527,7 @@ impl super::DbRead for PgStore {
         chain_tip: &model::BitcoinBlockRef,
         block_ref: &model::BitcoinBlockRef,
     ) -> Result<bool, Error> {
-        let heigh_diff = chain_tip
+        let height_diff = chain_tip
             .block_height
             .saturating_sub(block_ref.block_height);
 
@@ -1567,7 +1564,7 @@ impl super::DbRead for PgStore {
         )
         .bind(chain_tip.block_hash)
         .bind(block_ref.block_hash)
-        .bind(i64::try_from(heigh_diff).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(height_diff).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(block_ref.block_height).map_err(Error::ConversionDatabaseInt)?)
         .fetch_one(&self.0)
         .await
