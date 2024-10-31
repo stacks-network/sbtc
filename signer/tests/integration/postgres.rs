@@ -13,6 +13,7 @@ use blockstack_lib::types::chainstate::StacksAddress;
 use futures::StreamExt;
 use rand::seq::SliceRandom;
 
+use signer::bitcoin::validation::DepositRequestStatus;
 use signer::bitcoin::MockBitcoinInteract;
 use signer::config::Settings;
 use signer::context::Context;

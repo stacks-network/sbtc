@@ -109,6 +109,8 @@ struct StatusSummary {
     /// The height of the block that confirmed the deposit request
     /// transaction.
     block_height: Option<i64>,
+    /// The block hash that confirmed the deposit request.
+    block_hash: Option<model::BitcoinBlockHash>,
     /// The bitcoin consensus encoded locktime in the reclaim script.
     #[sqlx(try_from = "i64")]
     lock_time: u32,
@@ -458,17 +460,17 @@ impl PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    /// Check whether the deposit transaction has been included in a
-    /// bitcoin sweep transaction that has been confirmed on the bitcoin
+    /// Return the txid of the bitcoin transaction that sweep in the
+    /// deposit UTXO. The sweep transaction must be confirmed on the
     /// blockchain identified by the given chain tip.
-    async fn is_deposit_swept(
+    async fn get_deposit_sweep_txid(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         txid: &model::BitcoinTxId,
         output_index: u32,
         min_block_height: u64,
-    ) -> Result<bool, Error> {
-        sqlx::query_scalar::<_, bool>(
+    ) -> Result<Option<model::BitcoinTxId>, Error> {
+        sqlx::query_scalar::<_, model::BitcoinTxId>(
             r#"
             WITH RECURSIVE block_chain AS (
                 SELECT 
@@ -489,22 +491,21 @@ impl PgStore {
                   ON child.block_hash = parent.parent_hash
                 WHERE child.block_height >= $2
             )
-            SELECT EXISTS (
-                SELECT TRUE
-                FROM sbtc_signer.swept_deposits AS sd
-                JOIN sbtc_signer.bitcoin_transactions AS bt
-                  ON bt.txid = sd.sweep_transaction_txid
-                JOIN block_chain USING (block_hash)
-                WHERE sd.deposit_request_txid = $3
-                  AND sd.deposit_request_output_index = $4
-            )
+            SELECT sd.sweep_transaction_txid
+            FROM sbtc_signer.swept_deposits AS sd
+            JOIN sbtc_signer.bitcoin_transactions AS bt
+                ON bt.txid = sd.sweep_transaction_txid
+            JOIN block_chain USING (block_hash)
+            WHERE sd.deposit_request_txid = $3
+                AND sd.deposit_request_output_index = $4
+            LIMIT 1
             "#,
         )
         .bind(chain_tip)
         .bind(i64::try_from(min_block_height).map_err(Error::ConversionDatabaseInt)?)
         .bind(txid)
         .bind(i32::try_from(output_index).map_err(Error::ConversionDatabaseInt)?)
-        .fetch_one(&self.0)
+        .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }
@@ -561,6 +562,7 @@ impl PgStore {
               , dr.amount
               , dr.lock_time
               , bc.block_height
+              , bc.block_hash
             FROM sbtc_signer.deposit_requests AS dr 
             JOIN sbtc_signer.bitcoin_transactions USING (txid)
             LEFT JOIN block_chain AS bc USING (block_hash)
@@ -1013,19 +1015,22 @@ impl super::DbRead for PgStore {
             return Ok(None);
         };
 
+        let block_info = summary
+            .block_height
+            .map(u64::try_from)
+            .zip(summary.block_hash);
         // Last map the block_height variable to a status enum.
-        let status = match summary.block_height.map(u64::try_from) {
+        let status = match block_info {
             // Now that we know that it has been confirmed, check to see if
             // it has been swept in a bitcoin transaction that has been
             // confirmed already.
-            Some(Ok(block_height)) => {
-                let is_deposit_spent =
-                    self.is_deposit_swept(chain_tip, txid, output_index, block_height);
+            Some((Ok(block_height), block_hash)) => {
+                let deposit_sweep_txid =
+                    self.get_deposit_sweep_txid(chain_tip, txid, output_index, block_height);
 
-                if is_deposit_spent.await? {
-                    DepositRequestStatus::Spent
-                } else {
-                    DepositRequestStatus::Confirmed(block_height)
+                match deposit_sweep_txid.await? {
+                    Some(txid) => DepositRequestStatus::Spent(txid),
+                    None => DepositRequestStatus::Confirmed(block_height, block_hash),
                 }
             }
             // If we didn't grab the block height in the above query, then
@@ -1034,7 +1039,7 @@ impl super::DbRead for PgStore {
             None => DepositRequestStatus::Unconfirmed,
             // Block heights are stored as BIGINTs after conversion from
             // u64s, so converting back to u64s is actually safe.
-            Some(Err(error)) => return Err(Error::ConversionDatabaseInt(error)),
+            Some((Err(error), _)) => return Err(Error::ConversionDatabaseInt(error)),
         };
 
         Ok(Some(DepositRequestReport {

@@ -337,12 +337,12 @@ impl super::DbRead for SharedStore {
                     return Ok(None);
                 };
 
-                let block_height = store
-                    .bitcoin_blocks
-                    .get(block_hashes)
-                    .map_or(0, |block| block.block_height);
-
-                DepositRequestStatus::Confirmed(block_height)
+                match store.bitcoin_blocks.get(block_hashes) {
+                    Some(block) => {
+                        DepositRequestStatus::Confirmed(block.block_height, block.block_hash)
+                    }
+                    None => return Ok(None),
+                }
             }
         };
         let signer_vote = self
