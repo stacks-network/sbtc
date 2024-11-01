@@ -12,7 +12,7 @@ use crate::context::EmilyContext;
 use crate::database::accessors;
 use crate::database::entries::withdrawal::{
     ValidatedUpdateWithdrawalRequest, WithdrawalEntry, WithdrawalEntryKey, WithdrawalEvent,
-    WithdrawalParametersEntry, WithdrawalUpdatePackage,
+    WithdrawalParametersEntry,
 };
 use crate::database::entries::StatusEntry;
 use warp::http::StatusCode;

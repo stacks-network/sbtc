@@ -4,7 +4,6 @@ use aws_sdk_dynamodb::types::AttributeValue;
 use serde_dynamo::Item;
 use tracing::{info, warn};
 
-use crate::api::models::deposit::Deposit;
 use crate::common::error::{Error, Inconsistency};
 
 use crate::{api::models::common::Status, context::EmilyContext};
@@ -150,7 +149,7 @@ pub async fn pull_and_update_deposit_with_retry(
 ) -> Result<DepositEntry, Error> {
     for _ in 0..retries {
         // Get original deposit entry.
-        let deposit_entry = get_deposit_entry(&context, &update.key).await?;
+        let deposit_entry = get_deposit_entry(context, &update.key).await?;
         // Return the existing entry if no update is necessary.
         if update.is_unnecessary(&deposit_entry) {
             return Ok(deposit_entry);
@@ -159,7 +158,7 @@ pub async fn pull_and_update_deposit_with_retry(
         let update_package: DepositUpdatePackage =
             DepositUpdatePackage::try_from(&deposit_entry, update.clone())?;
         // Attempt to update the deposit.
-        match update_deposit(&context, &update_package).await {
+        match update_deposit(context, &update_package).await {
             Err(Error::VersionConflict) => {
                 // Retry.
                 continue;
@@ -170,7 +169,7 @@ pub async fn pull_and_update_deposit_with_retry(
         }
     }
     // Failed to update due to a version conflict
-    return Err(Error::VersionConflict);
+    Err(Error::VersionConflict)
 }
 
 /// Updates a deposit.
@@ -347,7 +346,7 @@ pub async fn pull_and_update_withdrawal_with_retry(
 ) -> Result<WithdrawalEntry, Error> {
     for _ in 0..retries {
         // Get original withdrawal entry.
-        let entry = get_withdrawal_entry(&context, &update.request_id).await?;
+        let entry = get_withdrawal_entry(context, &update.request_id).await?;
         // Return the existing entry if no update is necessary.
         if update.is_unnecessary(&entry) {
             return Ok(entry);
@@ -355,7 +354,7 @@ pub async fn pull_and_update_withdrawal_with_retry(
         // Make the update package.
         let update_package = WithdrawalUpdatePackage::try_from(&entry, update.clone())?;
         // Attempt to update the deposit.
-        match update_withdrawal(&context, &update_package).await {
+        match update_withdrawal(context, &update_package).await {
             Err(Error::VersionConflict) => {
                 // Retry.
                 continue;
@@ -366,7 +365,7 @@ pub async fn pull_and_update_withdrawal_with_retry(
         }
     }
     // Failed to update due to a version conflict
-    return Err(Error::VersionConflict);
+    Err(Error::VersionConflict)
 }
 
 /// Updates a withdrawal based on the update package.

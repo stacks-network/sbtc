@@ -22,7 +22,7 @@ use crate::common::error::Error;
 use crate::context::EmilyContext;
 use crate::database::accessors;
 use crate::database::entries::deposit::{
-    DepositEntry, DepositEntryKey, DepositEvent, DepositParametersEntry, DepositUpdatePackage,
+    DepositEntry, DepositEntryKey, DepositEvent, DepositParametersEntry,
     ValidatedUpdateDepositsRequest,
 };
 
