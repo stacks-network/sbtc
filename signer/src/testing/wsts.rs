@@ -19,9 +19,9 @@ use wsts::state_machine::coordinator::frost;
 use crate::ecdsa::SignEcdsa as _;
 use crate::network::MessageTransfer as _;
 
+use wsts::net::SignatureType;
 use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::StateMachine as _;
-use wsts::net::SignatureType;
 
 /// Signer info
 #[derive(Debug, Clone)]
