@@ -197,17 +197,15 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
             .map(UpdateResult::Chainstate)
             .boxed(),
     ];
-    // TODO: Ideally, we would use `futures::future::join_all` here, but Emily
-    // randomly returns a `VersionConflict` error when we send multiple
-    // requests that may update the chainstate.
-    // let results = futures::future::join_all(futures).await;
+
+    let results = futures::future::join_all(futures).await;
 
     // Log any errors that occurred while updating Emily.
     // We don't return a non-success status code here because we rely on
     // the redundancy of the other sBTC signers to ensure that the update
     // is sent to Emily.
-    for future in futures {
-        match future.await {
+    for result in results {
+        match result {
             UpdateResult::Chainstate(Err(error)) => {
                 tracing::warn!(%error, "Failed to set chainstate in Emily");
             }
