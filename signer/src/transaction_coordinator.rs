@@ -274,7 +274,7 @@ where
 
     /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
     /// fulfilling pending deposit and withdraw requests.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, signer_public_keys, aggregate_key))]
     async fn construct_and_sign_bitcoin_sbtc_transactions(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -674,7 +674,7 @@ where
 
     /// Set up a WSTS coordinator state machine and run DKG with the other
     /// signers in the signing set.
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(skip(self))]
     async fn coordinate_dkg(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
