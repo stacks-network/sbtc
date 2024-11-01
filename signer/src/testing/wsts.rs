@@ -233,7 +233,8 @@ impl Coordinator {
         self.send_packet(bitcoin_chain_tip, txid, outbound).await;
 
         match self.loop_until_result(bitcoin_chain_tip, txid).await {
-            wsts::state_machine::OperationResult::SignTaproot(signature) => signature,
+            wsts::state_machine::OperationResult::SignTaproot(signature)
+            | wsts::state_machine::OperationResult::SignSchnorr(signature) => signature,
             _ => panic!("unexpected operation result"),
         }
     }

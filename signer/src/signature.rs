@@ -2,6 +2,8 @@
 //! signatures.
 //!
 
+use std::ops::Deref;
+
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::chainstate::stacks::TransactionAuthFlags;
 use blockstack_lib::chainstate::stacks::TransactionSpendingCondition;
@@ -15,6 +17,13 @@ use crate::keys::PublicKey;
 /// A BIP 340-341 Schnorr proof.
 #[derive(Debug, Clone, Copy)]
 pub struct TaprootSignature(bitcoin::taproot::Signature);
+
+impl Deref for TaprootSignature {
+    type Target = bitcoin::taproot::Signature;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 impl From<&bitcoin::taproot::Signature> for TaprootSignature {
     fn from(value: &bitcoin::taproot::Signature) -> Self {

@@ -12,7 +12,6 @@ use crate::context::TxSignerEvent;
 use crate::error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
-use crate::keys::SignerScriptPubKey as _;
 use crate::message;
 use crate::message::Payload;
 use crate::network;
@@ -698,13 +697,12 @@ where
         // Let's check the signature using the secp256k1 types.
         let sig = secp256k1::schnorr::Signature::from_slice(&signature.to_bytes()).unwrap();
         let msg_digest = secp256k1::Message::from_digest(msg);
-        let pk = aggregate_key.signers_tweaked_pubkey().unwrap();
-        let x_only_pk = secp256k1::XOnlyPublicKey::from(&pk);
+        // let pk = aggregate_key;
+        let x_only_pk = secp256k1::XOnlyPublicKey::from(&aggregate_key);
         sig.verify(&msg_digest, &x_only_pk).unwrap();
 
         // Let's check using the p256k1 types
-        let tweaked_aggregate_key = wsts::compute::tweaked_public_key(&aggregate_key.into(), None);
-        assert!(signature.verify(&tweaked_aggregate_key.x(), &msg));
+        assert!(signature.verify(&p256k1::point::Point::from(aggregate_key).x(), &msg));
     }
 
     async fn write_test_data<S>(storage: &S, test_data: &TestData)
