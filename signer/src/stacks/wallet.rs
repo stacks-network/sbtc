@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
+use std::sync::Mutex;
 
 use blockstack_lib::address::C32_ADDRESS_VERSION_MAINNET_MULTISIG;
 use blockstack_lib::address::C32_ADDRESS_VERSION_TESTNET_MULTISIG;
@@ -20,6 +21,7 @@ use blockstack_lib::core::CHAIN_ID_MAINNET;
 use blockstack_lib::core::CHAIN_ID_TESTNET;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::util::secp256k1::Secp256k1PublicKey;
+use rand::rngs::OsRng;
 use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Message;
 
@@ -46,6 +48,11 @@ use crate::MAX_KEYS;
 /// read-only function. This mode matches the code there.
 const MULTISIG_ADDRESS_HASH_MODE: OrderIndependentMultisigHashMode =
     OrderIndependentMultisigHashMode::P2SH;
+
+/// A set of dummy private keys which are used for creating "dummy" transactions
+/// for transaction size estimation. We store these keys in a `static` to avoid
+/// generating new private keys for every transaction size estimation.
+static DUMMY_PRIVATE_KEYS: Mutex<Vec<PrivateKey>> = Mutex::new(Vec::new());
 
 /// Requisite info for the signers' multi-sig wallet on Stacks.
 #[derive(Debug)]
@@ -397,14 +404,33 @@ pub fn get_full_tx_size<T>(payload: &T, wallet: &SignerWallet) -> Result<u64, Er
 where
     T: AsTxPayload,
 {
-    use rand::SeedableRng as _;
     use stacks_common::codec::StacksMessageCodec as _;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(1);
-    // We need some private keys, that we control, so let's create them.
     let num_signers = wallet.public_keys().len();
-    let private_keys = std::iter::repeat_with(|| PrivateKey::new(&mut rng))
+
+    // We need some dummy private keys to sign the transaction. We check if we've
+    // already generated enough dummy keys, and if not, we generate more. This
+    // is to ensure that always have enough dummy keys even if the signing set
+    // grows.
+    let mut dummy_keys = DUMMY_PRIVATE_KEYS
+        .lock()
+        .expect("BUG! DUMMY_PRIVATE_KEYS lock poisoned");
+
+    // Generate more keys if we don't have enough.
+    if dummy_keys.len() < num_signers {
+        let new_keys = std::iter::repeat_with(|| PrivateKey::new(&mut OsRng))
+            .take(num_signers - dummy_keys.len())
+            .collect::<Vec<PrivateKey>>();
+        dummy_keys.extend(new_keys);
+    }
+
+    // We only need the first `num_signers` keys.
+    let private_keys = dummy_keys
+        .iter()
         .take(num_signers)
-        .collect::<Vec<PrivateKey>>();
+        .cloned()
+        .collect::<Vec<_>>();
+
+    drop(dummy_keys);
 
     let public_keys: Vec<_> = private_keys
         .iter()
@@ -421,7 +447,10 @@ where
     )?;
 
     let mut multisig_tx = MultisigTx::new_tx(payload, &wallet, 0);
-    for private_key in private_keys.iter().take(wallet.signatures_required as usize) {
+    for private_key in private_keys
+        .iter()
+        .take(wallet.signatures_required as usize)
+    {
         let signature = crate::signature::sign_stacks_tx(multisig_tx.tx(), private_key);
         // This won't fail, since this is a proper signature
         multisig_tx.add_signature(signature)?;
@@ -432,6 +461,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use blockstack_lib::chainstate::stacks::TransactionPayload;
     use blockstack_lib::clarity::vm::Value as ClarityValue;
     use fake::Fake;
     use rand::rngs::OsRng;
@@ -440,6 +470,7 @@ mod tests {
     use secp256k1::Keypair;
     use secp256k1::SECP256K1;
 
+    use clarity::codec::StacksMessageCodec as _;
     use test_case::test_case;
 
     use crate::context::Context;
@@ -728,5 +759,36 @@ mod tests {
 
         // Let's try to load the wallet from our test config.
         SignerWallet::load_boostrap_wallet(&ctx.config().signer).unwrap();
+    }
+
+    #[test_case(1, 1)]
+    #[test_case(2, 3)]
+    #[test_case(11, 15)]
+    fn can_get_full_tx_size(signatures_required: u16, num_keys: u16) {
+        const BASE_TX_SIZE: u64 = 55;
+        const SIGNATURE_SIZE: u64 = 66;
+        const PUBKEY_SIZE: u64 = 34;
+
+        let network_kind = NetworkKind::Regtest;
+
+        let public_keys = std::iter::repeat_with(|| Keypair::new_global(&mut OsRng))
+            .map(|kp| kp.public_key().into())
+            .take(num_keys as usize)
+            .collect::<Vec<_>>();
+
+        let wallet = SignerWallet::new(&public_keys, signatures_required, network_kind, 0).unwrap();
+
+        let payload = TransactionPayload::ContractCall(TestContractCall.as_contract_call());
+
+        let payload_size = payload.tx_payload().serialize_to_vec().len() as u64;
+
+        let expected_size = BASE_TX_SIZE
+            + payload_size
+            + (signatures_required as u64 * SIGNATURE_SIZE)
+            + ((num_keys - signatures_required) as u64 * PUBKEY_SIZE);
+
+        let size = get_full_tx_size(&payload, &wallet).unwrap();
+
+        assert_eq!(size, expected_size);
     }
 }
