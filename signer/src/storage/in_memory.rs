@@ -273,14 +273,11 @@ impl super::DbRead for SharedStore {
                 + DEPOSIT_LOCKTIME_BLOCK_BUFFER as u32
                 + 1;
 
-        let canonical_bitcoin_blocks = (0..context_window)
-            // Find all tracked transaction IDs in the context window
-            .scan(chain_tip, |block_hash, _| {
-                let canonical_block_hash = Some(*block_hash);
-                let block = store.bitcoin_blocks.get(*block_hash)?;
-                *block_hash = &block.parent_hash;
-                canonical_block_hash
+        // Get all canonical blocks in the context window.
+        let canonical_bitcoin_blocks = std::iter::successors(Some(chain_tip), |block_hash| {
+                store.bitcoin_blocks.get(block_hash).map(|block| &block.parent_hash)
             })
+            .take(context_window as usize)
             .collect::<HashSet<_>>();
 
         Ok(pending_deposit_requests

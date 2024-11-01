@@ -578,6 +578,10 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
 /// This test ensures that the postgres store will only return the pending accepted deposit requests
 /// if they are within the reclaim bounds. If they can be reclaimed too close to the current chain tip
 /// they should not appear in the accepted pending deposit requests list.
+///
+///
+/// TODO(#751): Add a test to ensure that the locktime buffer is interpreted the same way during
+/// DepositRequestReport validation and the get pending accepted deposits database accessor function.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bounds() {
