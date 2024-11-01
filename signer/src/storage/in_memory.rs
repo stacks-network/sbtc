@@ -275,10 +275,13 @@ impl super::DbRead for SharedStore {
 
         // Get all canonical blocks in the context window.
         let canonical_bitcoin_blocks = std::iter::successors(Some(chain_tip), |block_hash| {
-                store.bitcoin_blocks.get(block_hash).map(|block| &block.parent_hash)
-            })
-            .take(context_window as usize)
-            .collect::<HashSet<_>>();
+            store
+                .bitcoin_blocks
+                .get(block_hash)
+                .map(|block| &block.parent_hash)
+        })
+        .take(context_window as usize)
+        .collect::<HashSet<_>>();
 
         Ok(pending_deposit_requests
             .into_iter()
