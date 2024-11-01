@@ -508,6 +508,18 @@ impl TryFrom<DepositUpdate> for ValidatedDepositUpdate {
     }
 }
 
+impl ValidatedDepositUpdate {
+    /// Returns true if the update is not necessary.
+    pub fn is_unnecessary(&self, entry: &DepositEntry) -> bool {
+        entry
+            .history
+            .iter()
+            .rev()
+            .take_while(|event| event.stacks_block_height >= self.event.stacks_block_height)
+            .any(|event| event == &self.event)
+    }
+}
+
 /// Packaged deposit update.
 pub struct DepositUpdatePackage {
     /// Key.
@@ -538,5 +550,81 @@ impl DepositUpdatePackage {
             version: entry.version,
             event: update.event,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deposit_update_should_be_unnecessary_when_event_is_present() {
+        let event = DepositEvent {
+            status: StatusEntry::Accepted,
+            message: "".to_string(),
+            stacks_block_height: 1,
+            stacks_block_hash: "".to_string(),
+        };
+
+        let deposit = DepositEntry {
+            key: Default::default(),
+            version: 0,
+            recipient: "".to_string(),
+            amount: 0,
+            parameters: Default::default(),
+            status: Status::Pending,
+            reclaim_script: "".to_string(),
+            deposit_script: "".to_string(),
+            last_update_height: 0,
+            last_update_block_hash: "".to_string(),
+            fulfillment: None,
+            history: vec![
+                DepositEvent {
+                    status: StatusEntry::Pending,
+                    message: "".to_string(),
+                    stacks_block_height: 0,
+                    stacks_block_hash: "".to_string(),
+                },
+                event.clone(),
+            ],
+        };
+
+        let update = ValidatedDepositUpdate { key: Default::default(), event };
+
+        assert!(update.is_unnecessary(&deposit));
+    }
+
+    #[test]
+    fn deposit_update_should_be_necessary_when_event_is_not_present() {
+        let event = DepositEvent {
+            status: StatusEntry::Accepted,
+            message: "".to_string(),
+            stacks_block_height: 1,
+            stacks_block_hash: "".to_string(),
+        };
+
+        let deposit = DepositEntry {
+            key: Default::default(),
+            version: 0,
+            recipient: "".to_string(),
+            amount: 0,
+            parameters: Default::default(),
+            status: Status::Pending,
+            reclaim_script: "".to_string(),
+            deposit_script: "".to_string(),
+            last_update_height: 0,
+            last_update_block_hash: "".to_string(),
+            fulfillment: None,
+            history: vec![DepositEvent {
+                status: StatusEntry::Pending,
+                message: "".to_string(),
+                stacks_block_height: 0,
+                stacks_block_hash: "".to_string(),
+            }],
+        };
+
+        let update = ValidatedDepositUpdate { key: Default::default(), event };
+
+        assert!(!update.is_unnecessary(&deposit));
     }
 }
