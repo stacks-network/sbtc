@@ -553,6 +553,14 @@ where
                     .await?;
                 self.store_dkg_shares(&msg.txid).await?;
             }
+            // Clippy complains about how we could refactor this to use the
+            // `std::collections::hash_map::Entry` type here to make things
+            // more idiomatic. The issue with that approach is that it
+            // requires a mutable reference of the `wsts_state_machines`
+            // self to be taken at the same time as an immunable reference.
+            // The compiler will complain about this so we silence the
+            // warning.
+            #[allow(clippy::map_entry)]
             wsts::net::Message::NonceRequest(_) => {
                 // TODO(296): Validate that message is the appropriate sighash
                 if !self.wsts_state_machines.contains_key(&msg.txid) {
