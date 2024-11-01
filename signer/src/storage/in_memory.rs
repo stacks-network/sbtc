@@ -298,11 +298,8 @@ impl super::DbRead for SharedStore {
                             block_included.block_height as u32 + deposit_request.lock_time;
                         unlock_height >= minimum_acceptable_unlock_height
                     })
-                    .take(1)
-                    .collect::<Vec<_>>()
-                    .first()
-                    .cloned()
-                    .unwrap_or(true)
+                    .next()
+                    .unwrap_or(false)
             })
             .filter(|deposit_request| {
                 store

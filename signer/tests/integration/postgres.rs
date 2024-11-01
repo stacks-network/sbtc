@@ -718,7 +718,7 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
             // Make the block the request can be reclaimed at one lower than the minimum.
             deposit_request.lock_time = minimum_acceptable_unlock_time_for_this_deposit - 1;
         } else if in_bounds_requests.contains(&unique_deposit_id) {
-            // Make the block the request can be reclaimed at one lower at the minimum and
+            // Make the block the request can be reclaimed at one lower than the minimum and
             // track that it's one of the expected acceptable deposits.
             deposit_request.lock_time = minimum_acceptable_unlock_time_for_this_deposit;
             expected_pending_deposit_requests.push(deposit_request.clone());
