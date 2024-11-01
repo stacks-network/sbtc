@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use fake::Fake as _;
 use fake::Faker;
@@ -270,12 +272,22 @@ async fn should_store_sweep_transaction_info_from_other_signers() {
         num_signers_per_request: 0,
     };
     let test_data = TestData::generate(&mut rng, &[], &test_params);
-    let bitcoin_chain_tip = test_data.bitcoin_blocks.last().unwrap().block_hash;
 
     // Write the same test data to each signer's storage
     for signer in signers.iter() {
         test_data.write_to(&signer.context.get_storage_mut()).await;
     }
+
+    // Get the bitcoin chain tip from the first signer's storage
+    let bitcoin_chain_tip = signers
+        .first()
+        .unwrap()
+        .context
+        .get_storage()
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .expect("failed to get bitcoin chain tip")
+        .expect("no bitcoin chain tip found");
 
     // Find the coordinator signer
     let coordinator_signer_info = signer_info
@@ -291,10 +303,24 @@ async fn should_store_sweep_transaction_info_from_other_signers() {
         .expect("could not determine coordinator");
 
     // Start the event loops for each signer
+    let handle_count = AtomicU8::new(0);
     let handles = signers
         .into_iter()
-        .map(|signer| tokio::spawn(signer.run()))
+        .map(|signer| {
+            let handle = tokio::spawn(signer.run());
+            handle_count.fetch_add(1, Ordering::SeqCst);
+            handle
+        })
         .collect::<Vec<_>>();
+
+    // Wait for the signers to start
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while handle_count.load(Ordering::SeqCst) < num_signers as u8 {
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("failed to start event loops");
 
     // Give the event loops some time to start up
     // NOTE: We could remove this kind of sleep if we had a startup-event or something.

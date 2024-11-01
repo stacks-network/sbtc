@@ -356,6 +356,8 @@ impl wsts::net::Signable for SweepTransactionInfo {
         hasher.update(self.txid);
         hasher.update(self.signer_prevout_txid);
         hasher.update(self.signer_prevout_output_index.to_be_bytes());
+        hasher.update(self.signer_prevout_amount.to_be_bytes());
+        hasher.update(self.signer_prevout_script_pubkey.as_bytes());
         hasher.update(self.amount.to_be_bytes());
         hasher.update(self.fee.to_be_bytes());
         hasher.update(self.created_at_block_hash);
