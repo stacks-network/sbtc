@@ -33,6 +33,7 @@ use rand::SeedableRng as _;
 use sha2::Digest as _;
 use tokio::sync::broadcast;
 use tokio::time::error::Elapsed;
+use wsts::net::SignatureType;
 
 use super::context::*;
 
@@ -691,7 +692,7 @@ where
             .await;
 
         let signature = coordinator
-            .run_signing_round(bitcoin_chain_tip, txid, &msg)
+            .run_signing_round(bitcoin_chain_tip, txid, &msg, SignatureType::Schnorr)
             .await;
 
         // Let's check the signature using the secp256k1 types.

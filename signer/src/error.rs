@@ -340,6 +340,12 @@ pub enum Error {
     #[error("missing signer utxo")]
     MissingSignerUtxo,
 
+    /// This should never happen. It arrises when a signer gets a message
+    /// that requires DKG to have been run at some point but it hasn't
+    /// been.
+    #[error("DKG has not been run")]
+    NoDkgShares,
+
     /// Too many signer utxos
     #[error("too many signer utxos")]
     TooManySignerUtxos,
