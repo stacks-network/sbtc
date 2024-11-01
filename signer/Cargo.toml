@@ -50,7 +50,8 @@ tracing.workspace = true
 tracing-attributes.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
-wsts.workspace = true
+# wsts.workspace = true
+wsts = { git = "https://github.com/Trust-Machines/wsts.git", branch = "simple-signature-type" }
 zeromq.workspace = true
 hex.workspace = true
 cfg-if = "1.0"
