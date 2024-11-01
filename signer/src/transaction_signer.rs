@@ -157,6 +157,11 @@ where
         // separate main run-loops since they don't have anything to do
         // with each other.
         let signer_event_loop = async {
+            if let Err(err) = self.context.signal(TxSignerEvent::EventLoopStarted.into()) {
+                tracing::error!(%err, "error signalling event loop start");
+                return;
+            };
+
             tracing::debug!("signer event loop started");
             while !should_shutdown() {
                 // Collect all events which have been signalled into this loop

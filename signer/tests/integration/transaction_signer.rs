@@ -1,13 +1,16 @@
 use std::collections::HashMap;
-use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use fake::Fake as _;
 use fake::Faker;
+use futures::future::join_all;
 use rand::SeedableRng as _;
 
-use signer::context::Context as _;
+use signer::context::Context;
+use signer::context::SignerEvent;
+use signer::context::SignerSignal;
+use signer::context::TxSignerEvent;
 use signer::ecdsa::SignEcdsa as _;
 use signer::emily_client::MockEmilyInteract;
 use signer::error::Error;
@@ -16,7 +19,7 @@ use signer::keys::PublicKey;
 use signer::message;
 use signer::message::StacksTransactionSignRequest;
 use signer::network::InMemoryNetwork;
-use signer::network::MessageTransfer as _;
+use signer::network::MessageTransfer;
 use signer::stacks::api::MockStacksInteract;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
@@ -302,29 +305,38 @@ async fn should_store_sweep_transaction_info_from_other_signers() {
         })
         .expect("could not determine coordinator");
 
-    // Start the event loops for each signer
-    let handle_count = AtomicU8::new(0);
-    let handles = signers
-        .into_iter()
+    // Start listening for the signers' `EventLoopStarted` signals with a 1s
+    // timeout. We use `join_all` to wait for all signers to signal their start.
+    let wait_for_signers = signers
+        .iter()
         .map(|signer| {
-            let handle = tokio::spawn(signer.run());
-            handle_count.fetch_add(1, Ordering::SeqCst);
-            handle
+            let ctx = signer.context.clone();
+            tokio::spawn(async move {
+                tokio::time::timeout(Duration::from_secs(1), async {
+                    let mut recv = ctx.get_signal_receiver();
+                    while let Ok(signal) = recv.recv().await {
+                        if let SignerSignal::Event(SignerEvent::TxSigner(
+                            TxSignerEvent::EventLoopStarted,
+                        )) = signal
+                        {
+                            break;
+                        }
+                    }
+                })
+                .await
+                .expect("failed to start event loop");
+            })
         })
         .collect::<Vec<_>>();
 
-    // Wait for the signers to start
-    tokio::time::timeout(Duration::from_secs(3), async {
-        while handle_count.load(Ordering::SeqCst) < num_signers as u8 {
-            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .expect("failed to start event loops");
+    // Start the event loops for each signer
+    let handles = signers
+        .into_iter()
+        .map(|signer| tokio::spawn(signer.run()))
+        .collect::<Vec<_>>();
 
-    // Give the event loops some time to start up
-    // NOTE: We could remove this kind of sleep if we had a startup-event or something.
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    // Wait for all signers to signal that they have started
+    join_all(wait_for_signers).await;
 
     // Create a `SweepTransactionInfo` message and broadcast it to the network
     let sweep_tx_info = sweep_transaction_info(

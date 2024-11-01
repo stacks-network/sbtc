@@ -72,6 +72,9 @@ pub enum TxSignerEvent {
     /// Event which occurs when the transaction signer has sent a message to
     /// the P2P network.
     MessageGenerated(crate::network::Msg),
+    /// Event which occurs when the transaction signer has started its event
+    /// loop.
+    EventLoopStarted,
 }
 
 /// Events that can be triggered from the transaction coordinator.
