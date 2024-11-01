@@ -21,6 +21,7 @@ use crate::network::MessageTransfer as _;
 
 use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::StateMachine as _;
+use wsts::net::SignatureType;
 
 /// Signer info
 #[derive(Debug, Clone)]
@@ -222,10 +223,11 @@ impl Coordinator {
         bitcoin_chain_tip: model::BitcoinBlockHash,
         txid: bitcoin::Txid,
         msg: &[u8],
+        signature_type: SignatureType,
     ) -> wsts::taproot::SchnorrProof {
         let outbound = self
             .wsts_coordinator
-            .start_signing_round(msg, true, None)
+            .start_signing_round(msg, signature_type)
             .expect("failed to start signing round");
 
         self.send_packet(bitcoin_chain_tip, txid, outbound).await;

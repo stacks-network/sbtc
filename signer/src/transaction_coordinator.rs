@@ -14,6 +14,7 @@ use futures::TryStreamExt;
 use sha2::Digest;
 use tokio::time::sleep;
 use tokio_stream::wrappers::BroadcastStream;
+use wsts::net::SignatureType;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
@@ -26,6 +27,7 @@ use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
+use crate::signature::TaprootSignature;
 use crate::message;
 use crate::message::Payload;
 use crate::message::SignerMessage;
@@ -587,15 +589,11 @@ where
                 &mut coordinator_state_machine,
                 txid,
                 &msg,
+                SignatureType::Taproot(None),
             )
             .await?;
 
-        let signature = bitcoin::taproot::Signature {
-            signature: secp256k1::schnorr::Signature::from_slice(&signature.to_bytes())
-                .map_err(|_| Error::TypeConversion)?,
-            sighash_type: bitcoin::TapSighashType::Default,
-        };
-        let signer_witness = bitcoin::Witness::p2tr_key_spend(&signature);
+        let signer_witness = bitcoin::Witness::p2tr_key_spend(&signature.into());
 
         let mut deposit_witness = Vec::new();
 
@@ -608,16 +606,11 @@ where
                     &mut coordinator_state_machine,
                     txid,
                     &msg,
+                    SignatureType::Schnorr,
                 )
                 .await?;
 
-            let signature = bitcoin::taproot::Signature {
-                signature: secp256k1::schnorr::Signature::from_slice(&signature.to_bytes())
-                    .map_err(|_| Error::TypeConversion)?,
-                sighash_type: bitcoin::TapSighashType::Default,
-            };
-
-            let witness = deposit.construct_witness_data(signature);
+            let witness = deposit.construct_witness_data(signature.into());
 
             deposit_witness.push(witness);
         }
@@ -650,9 +643,10 @@ where
         coordinator_state_machine: &mut CoordinatorStateMachine,
         txid: bitcoin::Txid,
         msg: &[u8],
-    ) -> Result<wsts::taproot::SchnorrProof, Error> {
+        signature_type: SignatureType,
+    ) -> Result<TaprootSignature, Error> {
         let outbound = coordinator_state_machine
-            .start_signing_round(msg, true, None)
+            .start_signing_round(msg, signature_type)
             .map_err(Error::wsts_coordinator)?;
 
         let msg = message::WstsMessage { txid, inner: outbound.msg };
@@ -667,7 +661,9 @@ where
             .map_err(|_| Error::CoordinatorTimeout(max_duration.as_secs()))??;
 
         match operation_result {
-            WstsOperationResult::SignTaproot(signature) => Ok(signature),
+            WstsOperationResult::SignTaproot(sig) | WstsOperationResult::SignSchnorr(sig) => {
+                Ok(sig.into())
+            }
             _ => Err(Error::UnexpectedOperationResult),
         }
     }
@@ -798,7 +794,7 @@ where
         given_key_is_coordinator(self.pub_key(), bitcoin_chain_tip, signer_public_keys)
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, aggregate_key))]
     async fn get_btc_state(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
@@ -820,7 +816,7 @@ where
             utxo,
             public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
             last_fees,
-            magic_bytes: [0, 0], //TODO(#472): Use the correct magic bytes.
+            magic_bytes: [b'T', b'3'], //TODO(#472): Use the correct magic bytes.
         })
     }
 
@@ -828,7 +824,7 @@ where
     /// time as well. We need to do this because deposit requests are locked
     /// using OP_CSV, which lock up coins based on block height or
     /// multiples of 512 seconds measure by the median time past.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, aggregate_key, signer_public_keys))]
     async fn get_pending_requests(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
