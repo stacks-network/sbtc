@@ -94,17 +94,19 @@ fn sweep_transaction_info<R: rand::RngCore>(
         signer_prevout_script_pubkey: bitcoin::ScriptBuf::default(),
         swept_deposits: deposit_requests
             .iter()
-            .map(|req| message::SweptDeposit {
+            .enumerate()
+            .map(|(ix, req)| message::SweptDeposit {
                 deposit_request_output_index: req.output_index,
                 deposit_request_txid: *req.txid,
-                input_index: 1,
+                input_index: ix as u32 + 1,
             })
             .collect(),
         swept_withdrawals: withdrawal_requests
             .iter()
-            .map(|req| message::SweptWithdrawal {
+            .enumerate()
+            .map(|(ix, req)| message::SweptWithdrawal {
                 withdrawal_request_id: req.request_id,
-                output_index: 1,
+                output_index: ix as u32 + 2,
                 withdrawal_request_block_hash: *req.block_hash.as_bytes(),
             })
             .collect(),
@@ -258,7 +260,8 @@ async fn should_store_sweep_transaction_info_from_other_signers() {
         })
         .collect();
 
-    // Generate test data
+    // Generate test data. We'll generate two blocks and include all outstanding
+    // deposit and withdraw requests in the sweep transaction info we broadcast.
     let test_params = testing::storage::model::Params {
         num_bitcoin_blocks: 2,
         num_stacks_blocks_per_bitcoin_block: 1,
@@ -331,7 +334,7 @@ async fn should_store_sweep_transaction_info_from_other_signers() {
             .expect("failed to get sweep transaction")
             .expect("no sweep transaction found");
 
-        assert_eq!(*retrieved_tx.txid, sweep_tx_info.txid);
+        assert_eq!(retrieved_tx, (&sweep_tx_info).into());
     }
 
     // Stop the event loops

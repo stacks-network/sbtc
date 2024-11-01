@@ -300,6 +300,7 @@ where
             sender_is_coordinator = chain_tip_report.sender_is_coordinator,
             chain_tip_status = ?chain_tip_report.chain_tip_status,
             msg_chain_tip = %msg.bitcoin_chain_tip,
+            ?msg.inner.payload,
             "handling message"
         );
 
