@@ -45,9 +45,15 @@ pub const GET_POX_INFO_JSON: &str =
 /// The [`BlockObserver::load_latest_deposit_requests`] function is
 /// supposed to fetch all deposit requests from Emily and persist the ones
 /// that pass validation, regardless of when they were confirmed.
+/// 
+/// The "eight blocks ago" version of this test is kind of fragile.
+/// Increasing the `blocks_ago` without increasing the horizon will lead to
+/// a test failure.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[test_case::test_case(1, 10; "one block ago")]
+#[test_case::test_case(8, 10; "eight blocks ago")]
 #[tokio::test]
-async fn load_latest_deposit_requests_persists_requests_added_long_ago() {
+async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u64, horizon: usize) {
     // We start with the typical setup with a fresh database and context
     // with a real bitcoin core client and a real connection to our
     // database.
@@ -136,6 +142,8 @@ async fn load_latest_deposit_requests_persists_requests_added_long_ago() {
     })
     .await;
 
+    faucet.generate_blocks(blocks_ago);
+
     // We only proceed with the test after the BlockObserver "process" has
     // started, and we use this counter to notify us when that happens.
     let start_count = Arc::new(AtomicU8::new(0));
@@ -161,7 +169,7 @@ async fn load_latest_deposit_requests_persists_requests_added_long_ago() {
         stacks_client: ctx.stacks_client.clone(),
         emily_client: ctx.emily_client.clone(),
         bitcoin_blocks: ReceiverStream::new(receiver),
-        horizon: 10,
+        horizon,
     };
 
     tokio::spawn(async move {
@@ -185,7 +193,7 @@ async fn load_latest_deposit_requests_persists_requests_added_long_ago() {
 
     let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
     let deposit_requests = db
-        .get_pending_deposit_requests(&chain_tip_info.hash.into(), 20)
+        .get_pending_deposit_requests(&chain_tip_info.hash.into(), 100)
         .await
         .unwrap();
 
@@ -222,7 +230,7 @@ async fn load_latest_deposit_requests_persists_requests_added_long_ago() {
         .unwrap()
         .is_some());
     let deposit_requests = db
-        .get_pending_deposit_requests(&chain_tip, 20)
+        .get_pending_deposit_requests(&chain_tip, 100)
         .await
         .unwrap();
 
