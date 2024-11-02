@@ -1405,9 +1405,6 @@ impl super::DbRead for PgStore {
 
         sqlx::query_as::<_, model::SweptDepositRequest>(
             "
-            WITH s_blocks AS (
-                SELECT * FROM stacks_blockchain_of($3, $1, $2)
-            )
             SELECT
                 bc_trx.txid AS sweep_txid
               , bc_trx.block_hash AS sweep_block_hash
@@ -1436,8 +1433,8 @@ impl super::DbRead for PgStore {
                     ON cde.bitcoin_txid = deposit_req.txid
                     AND cde.output_index = deposit_req.output_index
             LEFT JOIN
-                s_blocks
-                    ON s_blocks.block_hash = cde.block_hash
+                stacks_blockchain_of($3, $1, $2) sb
+                    ON sb.block_hash = cde.block_hash
             GROUP BY
                 bc_trx.txid
               , bc_trx.block_hash
@@ -1447,7 +1444,7 @@ impl super::DbRead for PgStore {
               , deposit_req.recipient
               , deposit_req.amount
             HAVING
-                COUNT(s_blocks.block_hash) = 0
+                COUNT(sb.block_hash) = 0
         ",
         )
         .bind(chain_tip)
