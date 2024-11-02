@@ -1030,12 +1030,6 @@ where
         );
 
         let (sign_request, multi_tx) = sign_request_fut.await?;
-        // {
-        //     Ok(res) => res,
-        //     Err(error) => {
-        //         tracing::error!(%error, "could not construct a transaction completing the contract deploy request");
-        //     }
-        // };
 
         // If we fail to sign the transaction for some reason, we
         // decrement the nonce by one, and try the next transaction.
@@ -1209,6 +1203,13 @@ mod tests {
     async fn should_be_able_to_coordinate_signing_rounds() {
         test_environment()
             .assert_should_be_able_to_coordinate_signing_rounds(std::time::Duration::ZERO)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn should_be_able_to_skip_deploy_sbtc_contracts() {
+        test_environment()
+            .assert_skips_deploy_sbtc_contracts()
             .await;
     }
 

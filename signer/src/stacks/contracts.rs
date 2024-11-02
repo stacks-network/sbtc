@@ -57,6 +57,8 @@ use crate::storage::DbRead;
 
 use super::api::StacksInteract;
 
+// use super::api::StacksInteract;
+
 /// This struct is used as supplemental data to help validate a request to
 /// sign a contract call transaction.
 ///
@@ -1159,9 +1161,7 @@ impl AsTxPayload for ContractDeploy {
 }
 
 impl ContractDeploy {
-    /// Validates that the contract deploy satisfies the following criteria:
-    /// 1. The contract is not already deployed on the chain.
-    /// 2. TODO: What other criteria should be validated?
+    /// Validates that The contract is not already deployed on the chain.
     pub async fn validate<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
     where
         C: Context + Send + Sync,

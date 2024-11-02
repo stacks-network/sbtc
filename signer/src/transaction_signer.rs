@@ -528,7 +528,9 @@ where
             ContractTx::ContractCall(ContractCall::RotateKeysV1(contract)) => {
                 contract.validate(ctx, &req_ctx).await
             }
-            ContractTx::ContractDeploy(_contract_deploy) => todo!(),
+            ContractTx::ContractDeploy(contract_deploy) => {
+                contract_deploy.validate(ctx, &req_ctx).await
+            }
         }
     }
 

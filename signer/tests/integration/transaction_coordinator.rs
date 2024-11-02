@@ -21,6 +21,7 @@ use sha2::Digest as _;
 use signer::context::Context;
 use signer::context::SignerEvent;
 use signer::context::TxSignerEvent;
+use signer::error::Error;
 use signer::keys;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey as _;
@@ -29,7 +30,13 @@ use signer::network::in_memory::InMemoryNetwork;
 use signer::stacks::api::AccountInfo;
 use signer::stacks::api::SubmitTxResponse;
 use signer::stacks::contracts::AsContractCall as _;
+use signer::stacks::contracts::AsContractDeploy;
 use signer::stacks::contracts::CompleteDepositV1;
+use signer::stacks::contracts::SbtcBootstrapContract;
+use signer::stacks::contracts::SbtcDepositContract;
+use signer::stacks::contracts::SbtcRegistryContract;
+use signer::stacks::contracts::SbtcTokenContract;
+use signer::stacks::contracts::SbtcWithdrawalContract;
 use signer::storage::model;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::RotateKeysTransaction;
@@ -183,28 +190,6 @@ async fn process_complete_deposit() {
         .build();
 
     let nonce = 12;
-    // Mock required stacks client functions
-    context
-        .with_stacks_client(|client| {
-            client.expect_get_account().once().returning(move |_| {
-                Box::pin(async move {
-                    Ok(AccountInfo {
-                        balance: 0,
-                        locked: 0,
-                        unlock_height: 0,
-                        // The nonce is used to create the stacks tx
-                        nonce,
-                    })
-                })
-            });
-
-            // Dummy value
-            client
-                .expect_estimate_fees()
-                .once()
-                .returning(move |_, _| Box::pin(async move { Ok(25505) }));
-        })
-        .await;
 
     let num_signers = 7;
     let signing_threshold = 5;
@@ -238,13 +223,46 @@ async fn process_complete_deposit() {
 
     // This task logs all transactions broadcasted by the coordinator.
     let mut wait_for_transaction_rx = broadcasted_transaction_tx.subscribe();
-    let wait_for_transaction_task =
-        tokio::spawn(async move { wait_for_transaction_rx.recv().await });
-
+    let wait_for_transaction_task = tokio::spawn(async move {
+        let mut results = vec![];
+        results.push(wait_for_transaction_rx.recv().await);
+        results.push(wait_for_transaction_rx.recv().await);
+        results.push(wait_for_transaction_rx.recv().await);
+        results.push(wait_for_transaction_rx.recv().await);
+        results.push(wait_for_transaction_rx.recv().await);
+        results.push(wait_for_transaction_rx.recv().await);
+        results
+    });
+    let mut tx_coordinator_context = context.clone();
     // Setup the stacks client mock to broadcast the transaction to our channel.
-    context
+    tx_coordinator_context
         .with_stacks_client(|client| {
-            client.expect_submit_tx().once().returning(move |tx| {
+            let nonce = nonce.clone();
+            // We expect the contract source to be fetched 5 times, once for each contract.
+            // Each time it will return an error, since the contracts are not deployed.
+            // In reality, the error returned is `Error::StacksNodeResponse(reqwest::Error)`.
+            // But for simplicity, we just return `Error::UnexpectedOperationResult`.
+            client
+                .expect_get_contract_source()
+                .times(5)
+                .returning(|_, _| Box::pin(async { Err(Error::UnexpectedOperationResult) }));
+
+            client
+                .expect_estimate_fees()
+                .times(6)
+                .returning(|_, _| Box::pin(async { Ok(123000) }));
+
+            client.expect_get_account().times(6).returning(move |_| {
+                Box::pin(async move {
+                    Ok(AccountInfo {
+                        balance: 1_000_000,
+                        locked: 0,
+                        unlock_height: 0,
+                        nonce: nonce,
+                    })
+                })
+            });
+            client.expect_submit_tx().times(6).returning(move |tx| {
                 let tx = tx.clone();
                 let txid = tx.txid();
                 let broadcasted_transaction_tx = broadcasted_transaction_tx.clone();
@@ -263,16 +281,26 @@ async fn process_complete_deposit() {
 
     // Bootstrap the tx coordinator event loop
     let tx_coordinator = transaction_coordinator::TxCoordinatorEventLoop {
-        context: context.clone(),
+        context: tx_coordinator_context,
         network: network.connect(),
         private_key,
         context_window,
         threshold: signing_threshold as u16,
         signing_round_max_duration: Duration::from_secs(10),
         dkg_max_duration: Duration::from_secs(10),
-        sbtc_contracts_deployed: true, // Skip contract deployment
+        sbtc_contracts_deployed: false,
     };
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
+
+    context
+        .with_stacks_client(|client| {
+            // TxSigners will validate the contract source before signing
+            // the transaction. We expect the contract source to be fetched
+            client
+                .expect_get_contract_source()
+                .returning(|_, _| Box::pin(async { Err(Error::UnexpectedOperationResult) }));
+        })
+        .await;
 
     // TODO: here signers use all the same storage, should we use separate ones?
     let event_loop_handles: Vec<_> = signer_info
@@ -300,12 +328,58 @@ async fn process_complete_deposit() {
         .signal(SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled).into())
         .expect("failed to signal");
 
-    // Await the `wait_for_tx_task` to receive the first transaction broadcasted.
-    let broadcasted_tx = tokio::time::timeout(Duration::from_secs(10), wait_for_transaction_task)
+    let broadcasted_txs = tokio::time::timeout(Duration::from_secs(10), wait_for_transaction_task)
         .await
         .unwrap()
-        .expect("failed to receive message")
-        .expect("no message received");
+        .expect("failed to receive message");
+
+    for (i, (name, body)) in [
+        (
+            SbtcRegistryContract::CONTRACT_NAME,
+            SbtcRegistryContract::CONTRACT_BODY,
+        ),
+        (
+            SbtcTokenContract::CONTRACT_NAME,
+            SbtcTokenContract::CONTRACT_BODY,
+        ),
+        (
+            SbtcDepositContract::CONTRACT_NAME,
+            SbtcDepositContract::CONTRACT_BODY,
+        ),
+        (
+            SbtcWithdrawalContract::CONTRACT_NAME,
+            SbtcWithdrawalContract::CONTRACT_BODY,
+        ),
+        (
+            SbtcBootstrapContract::CONTRACT_NAME,
+            SbtcBootstrapContract::CONTRACT_BODY,
+        ),
+    ]
+    .iter()
+    .enumerate()
+    {
+        let broadcasted_tx = broadcasted_txs
+            .get(i)
+            .expect("expected a tx")
+            .as_ref()
+            .expect("no message received")
+            .clone();
+        // Await the `wait_for_tx_task` to receive the first transaction broadcasted.
+        broadcasted_tx.verify().unwrap();
+        assert_eq!(broadcasted_tx.get_origin_nonce(), nonce);
+        let TransactionPayload::SmartContract(contract, _) = broadcasted_tx.payload else {
+            panic!("unexpected tx payload")
+        };
+        assert_eq!(contract.name.to_string(), name.to_string());
+        assert_eq!(contract.code_body.to_string(), body.to_string());
+    }
+
+    let broadcasted_tx = broadcasted_txs
+        .get(5)
+        .expect("expected a tx")
+        .as_ref()
+        .expect("no message received")
+        .clone();
 
     // Stop event loops
     tx_coordinator_handle.abort();
