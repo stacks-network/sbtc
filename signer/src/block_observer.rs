@@ -291,11 +291,6 @@ where
     ///    to the database.
     /// 3. Write the deposit transaction and the extracted deposit info
     ///    into the database.
-    ///
-    /// Since this function writes to the `bitcoin_transactions` table, we
-    /// must make sure that we have the bitcoin block header info in the
-    /// database. So, this function must be called after
-    /// [`BlockObserver::process_bitcoin_block`]
     async fn store_deposit_requests(&self, requests: Vec<Deposit>) -> Result<(), Error> {
         // We need to check to see if we have a record of the bitcoin block
         // that contains the deposit request in our database. If we don't
