@@ -20,7 +20,7 @@ pub enum Error {
     #[error("emily API error: {0}")]
     EmilyApi(#[from] EmilyClientError),
 
-    /// Attemmpt to fetch a bitcoin blockhash ended in an unexpected error.
+    /// Attempt to fetch a bitcoin blockhash ended in an unexpected error.
     /// This is not triggered if the block is missing.
     #[error("bitcoin-core getblock RPC error for hash {1}: {0}")]
     BitcoinCoreGetBlock(#[source] bitcoincore_rpc::Error, bitcoin::BlockHash),
@@ -33,9 +33,9 @@ pub enum Error {
     #[error("could not create RPC client to {1}: {0}")]
     BitcoinCoreRpcClient(#[source] bitcoincore_rpc::Error, String),
 
-    /// The bitcoin tranaction was not found in the mempool or on the
+    /// The bitcoin transaction was not found in the mempool or on the
     /// bitcoin blockchain. This is thrown when we expect the transaction
-    /// to exist in bitcoin core but it does not.
+    /// to exist in bitcoin core, but it does not.
     #[error("transaction is missing, txid: {0}, block hash {1:?}")]
     BitcoinTxMissing(bitcoin::Txid, Option<bitcoin::BlockHash>),
 
@@ -60,7 +60,7 @@ pub enum Error {
     #[error("bitcoin RPC error: {0}")]
     BitcoinCoreRpc(#[from] bitcoincore_rpc::Error),
 
-    /// An error propogated from the sBTC library.
+    /// An error propagated from the sBTC library.
     #[error("sBTC lib error: {0}")]
     SbtcLib(#[from] sbtc::error::Error),
 
@@ -340,8 +340,8 @@ pub enum Error {
     #[error("missing signer utxo")]
     MissingSignerUtxo,
 
-    /// This should never happen. It arrises when a signer gets a message
-    /// that requires DKG to have been run at some point but it hasn't
+    /// This should never happen. It arises when a signer gets a message
+    /// that requires DKG to have been run at some point, but it hasn't
     /// been.
     #[error("DKG has not been run")]
     NoDkgShares,

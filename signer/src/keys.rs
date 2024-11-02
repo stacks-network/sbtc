@@ -609,7 +609,7 @@ mod tests {
         // If we are given a public key that is `odd` then negate it to
         // make it even. This is what happens under the hood in
         // `wsts::compute::tweaked_public_key`.
-        if public_key.0.x_only_public_key().1 == secp256k1::Parity::Odd {
+        if public_key.0.x_only_public_key().1 == Parity::Odd {
             public_key = public_key.0.negate(SECP256K1).into();
         }
         let tweaked_aggregate_key1 = wsts::compute::tweaked_public_key(&public_key.into(), None);
