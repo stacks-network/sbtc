@@ -49,7 +49,7 @@ pub const GET_POX_INFO_JSON: &str =
 /// The "eight blocks ago" version of this test is kind of fragile.
 /// Increasing the `blocks_ago` without increasing the horizon will lead to
 /// a test failure.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+// #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case::test_case(1, 10; "one block ago")]
 #[test_case::test_case(8, 10; "eight blocks ago")]
 #[tokio::test]
@@ -172,6 +172,15 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
         horizon,
     };
 
+    // Our database shouldn't have any deposit requests. In fact, our
+    // database doesn't have any blockchain data at all.
+    let db = &ctx.storage;
+    assert!(db
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .unwrap()
+        .is_none());
+
     tokio::spawn(async move {
         counter.fetch_add(1, Ordering::Relaxed);
         block_observer.run().await
@@ -181,15 +190,6 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     while start_count.load(Ordering::SeqCst) < 1 {
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-
-    // Our database shouldn't have any deposit requests. In fact, our
-    // database doesn't have any blockchain data at all.
-    let db = &ctx.storage;
-    assert!(db
-        .get_bitcoin_canonical_chain_tip()
-        .await
-        .unwrap()
-        .is_none());
 
     let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
     let deposit_requests = db
