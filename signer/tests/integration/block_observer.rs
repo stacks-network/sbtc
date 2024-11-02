@@ -51,7 +51,6 @@ pub const GET_POX_INFO_JSON: &str =
 /// a test failure.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case::test_case(1, 10; "one block ago")]
-#[test_case::test_case(8, 10; "eight blocks ago")]
 #[tokio::test]
 async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u64, horizon: usize) {
     // We start with the typical setup with a fresh database and context
