@@ -237,7 +237,7 @@ where
                 .get_bitcoin_client()
                 .get_block(&block_hash)
                 .await?
-                .ok_or(Error::MissingBlock)?;
+                .ok_or(Error::MissingBitcoinBlock(block_hash.into()))?;
 
             block_hash = block.header.prev_blockhash;
             blocks.push(block);
@@ -550,6 +550,13 @@ mod tests {
     async fn validated_confirmed_deposits_get_added_to_state() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let mut test_harness = TestHarness::generate(&mut rng, 20, 0..5);
+        // We want the test harness to fetch a block from our
+        // "bitcoin-core", which in this case is the test harness. So we
+        // use a block hash that the test harness knows about.
+        let block_hash = test_harness
+            .bitcoin_blocks()
+            .first()
+            .map(|block| block.block_hash());
 
         let lock_time = 150;
         let max_fee = 32000;
@@ -574,7 +581,7 @@ mod tests {
         // from bitcoin-core's blockchain. The stubs out that response.
         let get_tx_resp0 = GetTxResponse {
             tx: tx_setup0.tx.clone(),
-            block_hash: Some(bitcoin::BlockHash::all_zeros()),
+            block_hash,
             confirmations: None,
             block_time: None,
         };
@@ -676,7 +683,13 @@ mod tests {
         let mut rng = rand::rngs::StdRng::seed_from_u64(365);
         let mut test_harness = TestHarness::generate(&mut rng, 20, 0..5);
 
-        let block_hash = BlockHash::from_byte_array([1u8; 32]);
+        // We want the test harness to fetch a block from our
+        // "bitcoin-core", which in this case is the test harness. So we
+        // use a block hash that the test harness knows about.
+        let block_hash = test_harness
+            .bitcoin_blocks()
+            .first()
+            .map(|block| block.block_hash());
         let lock_time = 150;
         let max_fee = 32000;
         let amount = 500_000;
@@ -700,7 +713,7 @@ mod tests {
         // response.
         let get_tx_resp0 = GetTxResponse {
             tx: tx_setup0.tx.clone(),
-            block_hash: Some(block_hash.clone()),
+            block_hash,
             confirmations: None,
             block_time: None,
         };
