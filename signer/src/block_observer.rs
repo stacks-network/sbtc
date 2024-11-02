@@ -129,13 +129,8 @@ where
         let mut term = self.context.get_termination_handle();
 
         let run = async {
-            while let Some(new_block_hash) = self.bitcoin_blocks.next().await {
-                tracing::info!(
-                    ?new_block_hash,
-                    "new bitcoin block observed on bitcoin core block hash stream"
-                );
-
-                let new_block_hash = match new_block_hash {
+            while let Some(block_hash) = self.bitcoin_blocks.next().await {
+                let block_hash = match block_hash {
                     Ok(hash) => hash,
                     Err(error) => {
                         tracing::warn!(%error, "error decoding new bitcoin block hash from stream");
@@ -143,13 +138,12 @@ where
                     }
                 };
 
-                tracing::info!(%new_block_hash, "observed new bitcoin block from stream");
+                tracing::info!(%block_hash, "observed new bitcoin block from stream");
 
-                let next_blocks_to_process = match self.next_blocks_to_process(new_block_hash).await
-                {
+                let next_blocks_to_process = match self.next_blocks_to_process(block_hash).await {
                     Ok(blocks) => blocks,
                     Err(error) => {
-                        tracing::warn!(%error, block_hash = %new_block_hash, "could not get next blocks to process");
+                        tracing::warn!(%error, %block_hash, "could not get next blocks to process");
                         continue;
                     }
                 };
@@ -221,19 +215,20 @@ where
 
         self.store_deposit_requests(deposit_requests).await?;
 
+        tracing::debug!("finished processing deposit requests");
         Ok(())
     }
 
     #[tracing::instrument(skip(self))]
     async fn next_blocks_to_process(
-        &mut self,
+        &self,
         mut block_hash: bitcoin::BlockHash,
     ) -> Result<Vec<bitcoin::Block>, Error> {
         let mut blocks = Vec::new();
 
         for _ in 0..self.horizon {
-            if self.have_already_processed_block(block_hash).await? {
-                tracing::debug!(?block_hash, "already processed block");
+            if self.have_already_processed_block(&block_hash).await? {
+                tracing::debug!(%block_hash, "already processed block");
                 break;
             }
 
@@ -255,8 +250,8 @@ where
 
     #[tracing::instrument(skip(self))]
     async fn have_already_processed_block(
-        &mut self,
-        block_hash: bitcoin::BlockHash,
+        &self,
+        block_hash: &bitcoin::BlockHash,
     ) -> Result<bool, Error> {
         Ok(self
             .context
@@ -267,7 +262,7 @@ where
     }
 
     #[tracing::instrument(skip_all, fields(block_hash = %block.block_hash()))]
-    async fn process_bitcoin_block(&mut self, block: bitcoin::Block) -> Result<(), Error> {
+    async fn process_bitcoin_block(&self, block: bitcoin::Block) -> Result<(), Error> {
         tracing::info!("processing bitcoin block");
         let tenure_info = self.stacks_client.get_tenure_info().await?;
 
@@ -293,7 +288,7 @@ where
     /// must make sure that we have the bitcoin block header info in the
     /// database. So, this function must be called after
     /// [`BlockObserver::process_bitcoin_block`]
-    async fn store_deposit_requests(&mut self, requests: Vec<Deposit>) -> Result<(), Error> {
+    async fn store_deposit_requests(&self, requests: Vec<Deposit>) -> Result<(), Error> {
         let (deposit_requests, deposit_request_txs) = requests
             .into_iter()
             .map(|deposit| {
@@ -401,7 +396,7 @@ where
     }
 
     async fn write_stacks_blocks(
-        &mut self,
+        &self,
         blocks: &[nakamoto::NakamotoBlock],
     ) -> Result<(), Error> {
         let deployer = &self.context.config().signer.deployer;
@@ -442,14 +437,8 @@ where
 
     /// Write the bitcoin block to the database. We also write any
     /// transactions that are spend to any of the signers `scriptPubKey`s
-    async fn write_bitcoin_block(&mut self, block: &bitcoin::Block) -> Result<(), Error> {
-        let db_block = model::BitcoinBlock {
-            block_hash: block.block_hash().into(),
-            block_height: block
-                .bip34_block_height()
-                .expect("Failed to get block height"),
-            parent_hash: block.header.prev_blockhash.into(),
-        };
+    async fn write_bitcoin_block(&self, block: &bitcoin::Block) -> Result<(), Error> {
+        let db_block = model::BitcoinBlock::from(block);
 
         self.context
             .get_storage_mut()
