@@ -284,11 +284,26 @@ where
     /// For each of the deposit requests, persist the corresponding
     /// transaction and the parsed deposit info into the database.
     ///
+    /// This function does three things:
+    /// 1. For all deposit requests, check to see if there are bitcoin
+    ///    blocks that we do not have in our database.
+    /// 2. If we do not have a record of the bitcoin block then write it
+    ///    to the database.
+    /// 3. Write the deposit transaction and the extracted deposit info
+    ///    into the database.
+    ///
     /// Since this function writes to the `bitcoin_transactions` table, we
     /// must make sure that we have the bitcoin block header info in the
     /// database. So, this function must be called after
     /// [`BlockObserver::process_bitcoin_block`]
     async fn store_deposit_requests(&self, requests: Vec<Deposit>) -> Result<(), Error> {
+        // We need to check to see if we have a record of the bitcoin block
+        // that contains the deposit request in our database. If we don't
+        // then write them to our database.
+        self.store_deposit_request_blocks(&requests).await?;
+
+        // Okay now we write the deposit requests and the transactions to
+        // the database.
         let (deposit_requests, deposit_request_txs) = requests
             .into_iter()
             .map(|deposit| {
@@ -305,14 +320,40 @@ where
             .into_iter()
             .unzip();
 
-        self.context
-            .get_storage_mut()
-            .write_bitcoin_transactions(deposit_request_txs)
-            .await?;
-        self.context
-            .get_storage_mut()
-            .write_deposit_requests(deposit_requests)
-            .await?;
+        let db = self.context.get_storage_mut();
+        db.write_bitcoin_transactions(deposit_request_txs).await?;
+        db.write_deposit_requests(deposit_requests).await?;
+
+        Ok(())
+    }
+
+    /// This function does three things:
+    /// 1. For all deposit requests, check to see if there are bitcoin
+    ///    blocks that we do not have in our database.
+    /// 2. If we do not have a record of the bitcoin block then write it
+    ///    to the database.
+    async fn store_deposit_request_blocks(&self, requests: &[Deposit]) -> Result<(), Error> {
+        let db = self.context.get_storage_mut();
+        let mut deposit_blocks = Vec::new();
+
+        // We need to check to see if we have a record of the bitcoin block
+        // that contains the deposit request in our database.
+        for deposit in requests.iter() {
+            let blocks = self
+                .next_blocks_to_process(deposit.tx_info.block_hash)
+                .await?
+                .into_iter()
+                .map(model::BitcoinBlock::from);
+            deposit_blocks.extend(blocks);
+        }
+
+        // We now get the distinct blocks and write them to the database.
+        deposit_blocks.sort_by_key(|block| (block.block_height, block.block_hash));
+        deposit_blocks.dedup();
+
+        for block in deposit_blocks {
+            db.write_bitcoin_block(&block).await?;
+        }
 
         Ok(())
     }
@@ -395,10 +436,7 @@ where
         Ok(())
     }
 
-    async fn write_stacks_blocks(
-        &self,
-        blocks: &[nakamoto::NakamotoBlock],
-    ) -> Result<(), Error> {
+    async fn write_stacks_blocks(&self, blocks: &[nakamoto::NakamotoBlock]) -> Result<(), Error> {
         let deployer = &self.context.config().signer.deployer;
         let txs = storage::postgres::extract_relevant_transactions(blocks, deployer);
 
