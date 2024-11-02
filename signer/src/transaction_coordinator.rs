@@ -276,13 +276,14 @@ where
 
     /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
     /// fulfilling pending deposit and withdraw requests.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, aggregate_key, signer_public_keys))]
     async fn construct_and_sign_bitcoin_sbtc_transactions(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<(), Error> {
+        tracing::info!("Fetching the stacks chain tip");
         let stacks_chain_tip = self
             .context
             .get_storage()
@@ -347,7 +348,7 @@ where
     /// 4. Broadcast this sign-request to the network and wait for
     ///    responses.
     /// 5. If there are enough signatures then broadcast the transaction.
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(skip(self, bitcoin_aggregate_key))]
     async fn construct_and_sign_stacks_sbtc_response_transactions(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
@@ -561,7 +562,7 @@ where
 
     /// Coordinate a signing round for the given request
     /// and broadcast it once it's signed.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn sign_and_broadcast(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -628,10 +629,14 @@ where
                 tx_in.witness = witness;
             });
 
+        tracing::info!("broadcasing bitcoin trasnaction");
+
         self.context
             .get_bitcoin_client()
             .broadcast_transaction(&transaction.tx)
             .await?;
+
+        tracing::info!("bitcoin trasnaction accepted by bitcoin-core");
 
         Ok(())
     }
@@ -670,7 +675,7 @@ where
 
     /// Set up a WSTS coordinator state machine and run DKG with the other
     /// signers in the signing set.
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(skip(self))]
     async fn coordinate_dkg(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,

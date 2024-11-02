@@ -522,7 +522,7 @@ where
         }
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, msg))]
     async fn handle_wsts_message(
         &mut self,
         msg: &message::WstsMessage,
@@ -605,7 +605,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, msg))]
     async fn relay_message(
         &mut self,
         txid: bitcoin::Txid,
