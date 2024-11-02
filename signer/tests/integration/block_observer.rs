@@ -45,7 +45,7 @@ pub const GET_POX_INFO_JSON: &str =
 /// The [`BlockObserver::load_latest_deposit_requests`] function is
 /// supposed to fetch all deposit requests from Emily and persist the ones
 /// that pass validation, regardless of when they were confirmed.
-/// 
+///
 /// The "eight blocks ago" version of this test is kind of fragile.
 /// Increasing the `blocks_ago` without increasing the horizon will lead to
 /// a test failure.
