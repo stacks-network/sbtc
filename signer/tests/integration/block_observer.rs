@@ -49,7 +49,7 @@ pub const GET_POX_INFO_JSON: &str =
 /// The "eight blocks ago" version of this test is kind of fragile.
 /// Increasing the `blocks_ago` without increasing the horizon will lead to
 /// a test failure.
-// #[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case::test_case(1, 10; "one block ago")]
 #[test_case::test_case(8, 10; "eight blocks ago")]
 #[tokio::test]
