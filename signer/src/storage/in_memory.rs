@@ -7,6 +7,7 @@ use futures::StreamExt as _;
 use futures::TryStreamExt as _;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
@@ -21,6 +22,7 @@ use crate::stacks::events::WithdrawalAcceptEvent;
 use crate::stacks::events::WithdrawalCreateEvent;
 use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
+use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
 use super::util::get_utxo;
 
@@ -259,12 +261,46 @@ impl super::DbRead for SharedStore {
         let pending_deposit_requests = self
             .get_pending_deposit_requests(chain_tip, context_window)
             .await?;
-        let store = self.lock().await;
 
         let threshold = threshold as usize;
+        let store = self.lock().await;
+
+        // Add one to the acceptable unlock height because the chain tip is at height one less
+        // than the height of the next block, which is the block for which we are assessing
+        // the threshold.
+        let minimum_acceptable_unlock_height =
+            store.bitcoin_blocks.get(chain_tip).unwrap().block_height as u32
+                + DEPOSIT_LOCKTIME_BLOCK_BUFFER as u32
+                + 1;
+
+        // Get all canonical blocks in the context window.
+        let canonical_bitcoin_blocks = std::iter::successors(Some(chain_tip), |block_hash| {
+            store
+                .bitcoin_blocks
+                .get(block_hash)
+                .map(|block| &block.parent_hash)
+        })
+        .take(context_window as usize)
+        .collect::<HashSet<_>>();
 
         Ok(pending_deposit_requests
             .into_iter()
+            .filter(|deposit_request| {
+                store
+                    .bitcoin_transactions_to_blocks
+                    .get(&deposit_request.txid)
+                    .unwrap_or(&Vec::new())
+                    .iter()
+                    .filter(|block_hash| canonical_bitcoin_blocks.contains(block_hash))
+                    .filter_map(|block_hash| store.bitcoin_blocks.get(block_hash))
+                    .map(|block_included: &model::BitcoinBlock| {
+                        let unlock_height =
+                            block_included.block_height as u32 + deposit_request.lock_time;
+                        unlock_height >= minimum_acceptable_unlock_height
+                    })
+                    .next()
+                    .unwrap_or(false)
+            })
             .filter(|deposit_request| {
                 store
                     .deposit_request_to_signers

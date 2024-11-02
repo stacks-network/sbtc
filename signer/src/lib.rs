@@ -47,3 +47,18 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// 4. The rotate-keys-wrapper public function in one of the clarity
 ///    contracts takes a maximum of 128 keys.
 const MAX_KEYS: u16 = 128;
+
+/// Each deposit has a reclaim script spend path that can be executed after
+/// some "time". Right now this "time", the locktime, can only be
+/// denominated in bitcoin blocks. Once locktime number of blocks have been
+/// added to the blockchain after the deposit has been confirmed, the
+/// depositer can reclaim the deposit transaction. Signers will not attempt
+/// to sweep in the deposited funds if the number of blocks left is less
+/// than or equal to this value.
+///
+/// If the current chain tip is at height 1000, the reclaim script on a
+/// deposit can be spent on or after block 1001, and this constant value is
+/// set to 1, then the signers WOULD NOT attempt to sweep the deposit. If
+/// it were spendable on block 1002, then the signers WOULD attempt to sweep
+/// the deposit.
+pub const DEPOSIT_LOCKTIME_BLOCK_BUFFER: u16 = 3;

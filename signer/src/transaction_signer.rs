@@ -614,10 +614,6 @@ where
         Ok(())
     }
 
-    /// TODO(#380): This function needs to filter deposit requests based on
-    /// time as well. We need to do this because deposit requests are locked
-    /// using OP_CSV, which lock up coins based on block height or
-    /// multiples of 512 seconds measure by the median time past.
     #[tracing::instrument(skip(self))]
     async fn get_pending_deposit_requests(
         &mut self,
