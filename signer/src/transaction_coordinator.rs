@@ -1068,11 +1068,6 @@ where
         bitcoin_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
     ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
-        // TODO: we should validate the contract call before asking others
-        // to sign it.
-        // let contract_deploy = ContractDeploy(deploy);
-        // Complete deposit requests should be done as soon as possible, so
-        // we set the fee rate to the high priority fee.
         let tx_fee = self
             .context
             .get_stacks_client()
