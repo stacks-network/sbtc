@@ -8,15 +8,20 @@ use std::time::Duration;
 use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoin::Transaction;
+use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
+use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
 use fake::Fake as _;
 use fake::Faker;
 use futures::StreamExt;
+use mockito;
 use rand::rngs::OsRng;
 use rand::SeedableRng as _;
+use reqwest;
 use sbtc::testing::regtest;
 use secp256k1::Keypair;
 use sha2::Digest as _;
+use test_case::test_case;
 
 use signer::context::Context;
 use signer::context::SignerEvent;
@@ -28,9 +33,10 @@ use signer::keys::SignerScriptPubKey as _;
 use signer::network;
 use signer::network::in_memory::InMemoryNetwork;
 use signer::stacks::api::AccountInfo;
+use signer::stacks::api::MockStacksInteract;
 use signer::stacks::api::SubmitTxResponse;
 use signer::stacks::contracts::AsContractCall as _;
-use signer::stacks::contracts::AsContractDeploy;
+use signer::stacks::contracts::AsContractDeploy as _;
 use signer::stacks::contracts::CompleteDepositV1;
 use signer::stacks::contracts::SbtcBootstrapContract;
 use signer::stacks::contracts::SbtcDepositContract;
@@ -45,6 +51,7 @@ use signer::storage::DbRead as _;
 use signer::storage::DbWrite as _;
 use signer::testing;
 use signer::testing::context::TestContext;
+use signer::testing::context::WrappedMock;
 use signer::testing::context::*;
 use signer::testing::storage::model::TestData;
 use signer::testing::transaction_signer::TxSignerEventLoopHarness;
@@ -52,6 +59,7 @@ use signer::testing::wsts::SignerSet;
 use signer::transaction_coordinator;
 use signer::transaction_coordinator::TxCoordinatorEventLoop;
 use signer::transaction_signer::TxSignerEventLoop;
+use tokio::sync::broadcast::Sender;
 
 use crate::complete_deposit::make_complete_deposit;
 use crate::setup::backfill_bitcoin_blocks;
@@ -151,9 +159,316 @@ where
         .unwrap();
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+const CONTRACT_DEPLOY_INFO: [(&str, &str); 5] = [
+    (
+        SbtcRegistryContract::CONTRACT_NAME,
+        SbtcRegistryContract::CONTRACT_BODY,
+    ),
+    (
+        SbtcTokenContract::CONTRACT_NAME,
+        SbtcTokenContract::CONTRACT_BODY,
+    ),
+    (
+        SbtcDepositContract::CONTRACT_NAME,
+        SbtcDepositContract::CONTRACT_BODY,
+    ),
+    (
+        SbtcWithdrawalContract::CONTRACT_NAME,
+        SbtcWithdrawalContract::CONTRACT_BODY,
+    ),
+    (
+        SbtcBootstrapContract::CONTRACT_NAME,
+        SbtcBootstrapContract::CONTRACT_BODY,
+    ),
+];
+
+async fn mock_reqwests_status_code_error(status_code: usize) -> reqwest::Error {
+    let mut server: mockito::ServerGuard = mockito::Server::new_async().await;
+    let _mock = server.mock("GET", "/").with_status(status_code).create();
+    reqwest::get(server.url())
+        .await
+        .unwrap()
+        .error_for_status()
+        .expect_err("expected error")
+}
+
+fn mock_deploy_all_contracts(
+    nonce: u64,
+    broadcasted_transaction_tx: Sender<StacksTransaction>,
+) -> Box<dyn FnOnce(&mut MockStacksInteract)> {
+    Box::new(move |client: &mut MockStacksInteract| {
+        let nonce = nonce.clone();
+        // We expect the contract source to be fetched 5 times, once for each contract.
+        // Each time it will return an error, since the contracts are not deployed.
+        client
+            .expect_get_contract_source()
+            .times(5)
+            .returning(|_, _| {
+                Box::pin(async {
+                    Err(Error::StacksNodeResponse(
+                        mock_reqwests_status_code_error(404).await,
+                    ))
+                })
+            });
+        // All the following functions, `estimate_fees`, `get_account` and `submit_tx`
+        // are only called 5 times for the contracts to be deployed and 1 for the deposit tx
+        client
+            .expect_estimate_fees()
+            .times(6)
+            .returning(|_, _| Box::pin(async { Ok(100) }));
+
+        client.expect_get_account().times(6).returning(move |_| {
+            Box::pin(async move {
+                Ok(AccountInfo {
+                    balance: 1_000_000,
+                    locked: 0,
+                    unlock_height: 0,
+                    nonce: nonce,
+                })
+            })
+        });
+
+        client.expect_submit_tx().times(6).returning(move |tx| {
+            let tx = tx.clone();
+            let txid = tx.txid();
+            let broadcasted_transaction_tx = broadcasted_transaction_tx.clone();
+            Box::pin(async move {
+                broadcasted_transaction_tx
+                    .send(tx)
+                    .expect("Failed to send result");
+                Ok(SubmitTxResponse::Acceptance(txid))
+            })
+        });
+    })
+}
+
+fn mock_deploy_remaining_contracts_when_some_already_deployed(
+    nonce: u64,
+    broadcasted_transaction_tx: Sender<StacksTransaction>,
+) -> Box<dyn FnOnce(&mut MockStacksInteract)> {
+    Box::new(move |client: &mut MockStacksInteract| {
+        let nonce = nonce.clone();
+        // We expect the contract source to be fetched 5 times, once for each contract.
+        // The first two times, it will return an ContractSrcResponse, meaning that
+        // the contract was already deployed.
+        client
+            .expect_get_contract_source()
+            .times(2)
+            .returning(|_, _| {
+                Box::pin(async {
+                    Ok(ContractSrcResponse {
+                        source: "".to_string(),
+                        publish_height: 1,
+                        marf_proof: None,
+                    })
+                })
+            });
+        // The remaining 3 times, it will return an error, meaning that the contracts were not deployed.
+        client
+            .expect_get_contract_source()
+            .times(3)
+            .returning(|_, _| {
+                Box::pin(async {
+                    Err(Error::StacksNodeResponse(
+                        mock_reqwests_status_code_error(404).await,
+                    ))
+                })
+            });
+
+        // All the following functions, `estimate_fees`, `get_account` and `submit_tx`
+        // are only called for the 3 contracts to be deployed and once for the deposit tx
+        client
+            .expect_estimate_fees()
+            .times(4)
+            .returning(|_, _| Box::pin(async { Ok(100) }));
+
+        client.expect_get_account().times(4).returning(move |_| {
+            Box::pin(async move {
+                Ok(AccountInfo {
+                    balance: 1_000_000,
+                    locked: 0,
+                    unlock_height: 0,
+                    nonce: nonce,
+                })
+            })
+        });
+        client.expect_submit_tx().times(4).returning(move |tx| {
+            let tx = tx.clone();
+            let txid = tx.txid();
+            let broadcasted_transaction_tx = broadcasted_transaction_tx.clone();
+            Box::pin(async move {
+                broadcasted_transaction_tx
+                    .send(tx)
+                    .expect("Failed to send result");
+                Ok(SubmitTxResponse::Acceptance(txid))
+            })
+        });
+    })
+}
+
+fn mock_deploy_none_when_already_deployed(
+    nonce: u64,
+    broadcasted_transaction_tx: Sender<StacksTransaction>,
+) -> Box<dyn FnOnce(&mut MockStacksInteract)> {
+    Box::new(move |client: &mut MockStacksInteract| {
+        // We expect the contract source to be fetched 5 times, once for each contract.
+        // Each time it will return an ContractSrcResponse, meaning that the contract
+        // was already deployed.
+        client
+            .expect_get_contract_source()
+            .times(5)
+            .returning(|_, _| {
+                Box::pin(async {
+                    Ok(ContractSrcResponse {
+                        source: "".to_string(),
+                        publish_height: 1,
+                        marf_proof: None,
+                    })
+                })
+            });
+        // All the following functions, `estimate_fees`, `get_account` and `submit_tx`
+        // are only called once for the deposit tx, since the contracts were already deployed.
+        client
+            .expect_estimate_fees()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok(100) }));
+
+        client.expect_get_account().times(1).returning(move |_| {
+            Box::pin(async move {
+                Ok(AccountInfo {
+                    balance: 1_000_000,
+                    locked: 0,
+                    unlock_height: 0,
+                    nonce: nonce,
+                })
+            })
+        });
+
+        client.expect_submit_tx().times(1).returning(move |tx| {
+            let tx = tx.clone();
+            let txid = tx.txid();
+            let broadcasted_transaction_tx = broadcasted_transaction_tx.clone();
+            Box::pin(async move {
+                broadcasted_transaction_tx
+                    .send(tx)
+                    .expect("Failed to send result");
+                Ok(SubmitTxResponse::Acceptance(txid))
+            })
+        });
+    })
+}
+
+fn mock_recover_and_deploy_all_contracts_after_failure(
+    nonce: u64,
+    broadcasted_transaction_tx: Sender<StacksTransaction>,
+) -> Box<dyn FnOnce(&mut MockStacksInteract)> {
+    Box::new(move |client: &mut MockStacksInteract| {
+        let nonce = nonce.clone();
+        // For the two contract we will return 404.
+        // Meaning that the contract are not deployed yet.
+        client
+            .expect_get_contract_source()
+            .times(2)
+            .returning(|_, _| {
+                Box::pin(async {
+                    Err(Error::StacksNodeResponse(
+                        mock_reqwests_status_code_error(404).await,
+                    ))
+                })
+            });
+        // While deploying the first contract, the estimate fees will be called once successfully
+        client
+            .expect_estimate_fees()
+            .once()
+            .returning(|_, _| Box::pin(async { Ok(100) }));
+
+        // In the process of deploying the second contract, the coordinator
+        // will fail to estimate fees and it will abort the deployment
+        // It will try again from scratch when It'll receive a second signal.
+        client.expect_estimate_fees().times(1).returning(|_, _| {
+            Box::pin(async {
+                Err(Error::UnexpectedStacksResponse(
+                    mock_reqwests_status_code_error(500).await,
+                ))
+            })
+        });
+
+        // The coordinator should try again from scratch.
+        // For the first contract we will return the contract source as if it was already deployed.
+        client
+            .expect_get_contract_source()
+            .once()
+            .returning(|_, _| {
+                Box::pin(async {
+                    Ok(ContractSrcResponse {
+                        source: "".to_string(),
+                        publish_height: 1,
+                        marf_proof: None,
+                    })
+                })
+            });
+
+        // For the following 4 contracts we will return 404.
+        // So the coordinator will try to deploy them.
+        client
+            .expect_get_contract_source()
+            .times(4)
+            .returning(|_, _| {
+                Box::pin(async {
+                    Err(Error::StacksNodeResponse(
+                        mock_reqwests_status_code_error(404).await,
+                    ))
+                })
+            });
+
+        // All the following functions, `estimate_fees`, `get_account` and `submit_tx`
+        // are only called 5 times for the contracts to be deployed and 1 for the deposit tx
+        client
+            .expect_estimate_fees()
+            .times(5)
+            .returning(|_, _| Box::pin(async { Ok(100) }));
+
+        // `get_account` will be called 7 times, 2 for the first try to deploy the contracts,
+        // 4 for the second try and 1 for the deposit tx
+        client.expect_get_account().times(7).returning(move |_| {
+            Box::pin(async move {
+                Ok(AccountInfo {
+                    balance: 1_000_000,
+                    locked: 0,
+                    unlock_height: 0,
+                    nonce: nonce,
+                })
+            })
+        });
+        // `submit_tx` will be called 6 times for the contracts to be deployed and 1 for the deposit tx
+        client.expect_submit_tx().times(6).returning(move |tx| {
+            let tx = tx.clone();
+            let txid = tx.txid();
+            let broadcasted_transaction_tx = broadcasted_transaction_tx.clone();
+            Box::pin(async move {
+                broadcasted_transaction_tx
+                    .send(tx)
+                    .expect("Failed to send result");
+                Ok(SubmitTxResponse::Acceptance(txid))
+            })
+        });
+    })
+}
+
+#[ignore = "These tests take ~10 seconds per test case to run"]
+#[test_case(6, &CONTRACT_DEPLOY_INFO, mock_deploy_all_contracts; "deploy-all-contracts")]
+#[test_case(4, &CONTRACT_DEPLOY_INFO[2..], mock_deploy_remaining_contracts_when_some_already_deployed; "deploy-remaining-contracts-when-some-already-deployed")]
+#[test_case(1, &[], mock_deploy_none_when_already_deployed; "deploy-none-when-already-deployed")]
+#[test_case(6, &CONTRACT_DEPLOY_INFO, mock_recover_and_deploy_all_contracts_after_failure; "recover-and-deploy-all-contracts-after-failure")]
 #[tokio::test]
-async fn process_complete_deposit() {
+async fn process_complete_deposit(
+    num_messages: usize,
+    deployed_contracts_data: &[(&str, &str)],
+    stacks_client_mock: impl FnOnce(
+        u64,
+        Sender<StacksTransaction>,
+    ) -> Box<dyn FnOnce(&mut MockStacksInteract)>,
+) {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
@@ -196,7 +511,8 @@ async fn process_complete_deposit() {
     let context_window = 10;
 
     let network = network::in_memory::InMemoryNetwork::new();
-    let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
+    let signer_info: Vec<testing::wsts::SignerInfo> =
+        testing::wsts::generate_signer_info(&mut rng, num_signers);
 
     let mut testing_signer_set =
         testing::wsts::SignerSet::new(&signer_info, signing_threshold, || network.connect());
@@ -218,62 +534,50 @@ async fn process_complete_deposit() {
         1
     );
 
+    // Mock the stacks client for the TxSigners that will validate
+    // the contract source before signing the transaction.
+    context
+        .with_stacks_client(|client| {
+            client
+                .expect_get_contract_source()
+                .times(num_signers * (num_messages - 1))
+                .returning(|_, _| {
+                    Box::pin(async {
+                        Err(Error::StacksNodeResponse(
+                            mock_reqwests_status_code_error(404).await,
+                        ))
+                    })
+                });
+        })
+        .await;
+
     let (broadcasted_transaction_tx, _broadcasted_transaction_rxeiver) =
         tokio::sync::broadcast::channel(1);
 
     // This task logs all transactions broadcasted by the coordinator.
     let mut wait_for_transaction_rx = broadcasted_transaction_tx.subscribe();
     let wait_for_transaction_task = tokio::spawn(async move {
-        let mut results = vec![];
-        results.push(wait_for_transaction_rx.recv().await);
-        results.push(wait_for_transaction_rx.recv().await);
-        results.push(wait_for_transaction_rx.recv().await);
-        results.push(wait_for_transaction_rx.recv().await);
-        results.push(wait_for_transaction_rx.recv().await);
-        results.push(wait_for_transaction_rx.recv().await);
+        let mut results = Vec::with_capacity(num_messages);
+        for _ in 0..num_messages {
+            results.push(wait_for_transaction_rx.recv().await);
+        }
         results
     });
-    let mut tx_coordinator_context = context.clone();
-    // Setup the stacks client mock to broadcast the transaction to our channel.
+
+    // Create a new context for the tx coordinator. This is necessary because
+    // the tx signers and the tx coordinator will use a different stacks mock client.
+    // Note that cloning the context will `Arc::clone` the stacks client, so we are
+    // instantiating a new one instead
+    let mut tx_coordinator_context = TestContext::new(
+        context.config().clone(),
+        context.storage.clone(),
+        context.bitcoin_client.clone(),
+        WrappedMock::default(),
+        context.emily_client.clone(),
+    );
+    // Mock the stacks client for the TxCoordinator that will deploy the contracts.
     tx_coordinator_context
-        .with_stacks_client(|client| {
-            let nonce = nonce.clone();
-            // We expect the contract source to be fetched 5 times, once for each contract.
-            // Each time it will return an error, since the contracts are not deployed.
-            // In reality, the error returned is `Error::StacksNodeResponse(reqwest::Error)`.
-            // But for simplicity, we just return `Error::UnexpectedOperationResult`.
-            client
-                .expect_get_contract_source()
-                .times(5)
-                .returning(|_, _| Box::pin(async { Err(Error::UnexpectedOperationResult) }));
-
-            client
-                .expect_estimate_fees()
-                .times(6)
-                .returning(|_, _| Box::pin(async { Ok(123000) }));
-
-            client.expect_get_account().times(6).returning(move |_| {
-                Box::pin(async move {
-                    Ok(AccountInfo {
-                        balance: 1_000_000,
-                        locked: 0,
-                        unlock_height: 0,
-                        nonce: nonce,
-                    })
-                })
-            });
-            client.expect_submit_tx().times(6).returning(move |tx| {
-                let tx = tx.clone();
-                let txid = tx.txid();
-                let broadcasted_transaction_tx = broadcasted_transaction_tx.clone();
-                Box::pin(async move {
-                    broadcasted_transaction_tx
-                        .send(tx)
-                        .expect("Failed to send result");
-                    Ok(SubmitTxResponse::Acceptance(txid))
-                })
-            });
-        })
+        .with_stacks_client(stacks_client_mock(nonce, broadcasted_transaction_tx))
         .await;
 
     // Get the private key of the coordinator of the signer set.
@@ -281,7 +585,7 @@ async fn process_complete_deposit() {
 
     // Bootstrap the tx coordinator event loop
     let tx_coordinator = transaction_coordinator::TxCoordinatorEventLoop {
-        context: tx_coordinator_context,
+        context: tx_coordinator_context.clone(),
         network: network.connect(),
         private_key,
         context_window,
@@ -291,16 +595,6 @@ async fn process_complete_deposit() {
         sbtc_contracts_deployed: false,
     };
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
-
-    context
-        .with_stacks_client(|client| {
-            // TxSigners will validate the contract source before signing
-            // the transaction. We expect the contract source to be fetched
-            client
-                .expect_get_contract_source()
-                .returning(|_, _| Box::pin(async { Err(Error::UnexpectedOperationResult) }));
-        })
-        .await;
 
     // TODO: here signers use all the same storage, should we use separate ones?
     let event_loop_handles: Vec<_> = signer_info
@@ -324,40 +618,22 @@ async fn process_complete_deposit() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Wake coordinator up
-    context
+    tx_coordinator_context
+        .signal(SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled).into())
+        .expect("failed to signal");
+    // Send a second signal to pick up the request after an error
+    // used in the recover-and-deploy-all-contracts-after-failure test case
+    tx_coordinator_context
         .signal(SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled).into())
         .expect("failed to signal");
 
-    let broadcasted_txs = tokio::time::timeout(Duration::from_secs(10), wait_for_transaction_task)
+    let broadcasted_txs = tokio::time::timeout(Duration::from_secs(15), wait_for_transaction_task)
         .await
         .unwrap()
         .expect("failed to receive message");
 
-    for (i, (name, body)) in [
-        (
-            SbtcRegistryContract::CONTRACT_NAME,
-            SbtcRegistryContract::CONTRACT_BODY,
-        ),
-        (
-            SbtcTokenContract::CONTRACT_NAME,
-            SbtcTokenContract::CONTRACT_BODY,
-        ),
-        (
-            SbtcDepositContract::CONTRACT_NAME,
-            SbtcDepositContract::CONTRACT_BODY,
-        ),
-        (
-            SbtcWithdrawalContract::CONTRACT_NAME,
-            SbtcWithdrawalContract::CONTRACT_BODY,
-        ),
-        (
-            SbtcBootstrapContract::CONTRACT_NAME,
-            SbtcBootstrapContract::CONTRACT_BODY,
-        ),
-    ]
-    .iter()
-    .enumerate()
-    {
+    // Check that the contracts were deployed
+    for (i, (name, body)) in deployed_contracts_data.iter().enumerate() {
         let broadcasted_tx = broadcasted_txs
             .get(i)
             .expect("expected a tx")
@@ -375,7 +651,7 @@ async fn process_complete_deposit() {
     }
 
     let broadcasted_tx = broadcasted_txs
-        .get(5)
+        .get(deployed_contracts_data.len())
         .expect("expected a tx")
         .as_ref()
         .expect("no message received")

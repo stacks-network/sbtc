@@ -12,7 +12,6 @@ use futures::FutureExt;
 use futures::StreamExt as _;
 use futures::TryStreamExt;
 use sha2::Digest;
-use tokio::sync::OnceCell;
 use tokio::time::sleep;
 use tokio_stream::wrappers::BroadcastStream;
 
@@ -1007,13 +1006,21 @@ where
         // If we get an Ok response then we know the contract has been
         // deployed already, and deploying it would probably be harmful (it
         // appears to stall subsequent transactions for some reason).
-        if stacks
+        // If we get a 404 response then we know the contract has not been
+        // deployed yet, and we can proceed with deploying it.
+        match stacks
             .get_contract_source(&contract_deploy, wallet.address())
             .await
-            .is_ok()
         {
-            return Err(Error::ContractAlreadyDeployed);
-        }
+            Ok(_) => return Err(Error::ContractAlreadyDeployed),
+            Err(Error::StacksNodeResponse(error))
+                if error.status() == Some(reqwest::StatusCode::NOT_FOUND) =>
+            {
+                // The contract is not deployed yet, so we can proceed
+                tracing::info!("Contract not deployed yet, proceeding with deployment")
+            }
+            Err(error) => return Err(error),
+        };
 
         // We need to know the nonce to use, so we reach out to our stacks
         // node for the account information for our multi-sig address.
@@ -1095,35 +1102,23 @@ where
         chain_tip: &model::BitcoinBlockHash,
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
-        static SBTC_DEPLOYMENT: OnceCell<()> = OnceCell::const_new();
-        SBTC_DEPLOYMENT
-            .get_or_try_init(|| {
-                async {
-                    // The registry and token contracts need to be deployed in this order.
-                    for contract in &[
-                        ContractDeploy::SbtcRegistry(SbtcRegistryContract),
-                        ContractDeploy::SbtcToken(SbtcTokenContract),
-                        ContractDeploy::SbtcDeposit(SbtcDepositContract),
-                        ContractDeploy::SbtcWithdrawal(SbtcWithdrawalContract),
-                        ContractDeploy::SbtcBootstrap(SbtcBootstrapContract),
-                    ] {
-                        match self
-                            .deploy_smart_contract(
-                                contract.clone(),
-                                chain_tip,
-                                bitcoin_aggregate_key,
-                            )
-                            .await
-                        {
-                            Ok(()) => (),
-                            Err(Error::ContractAlreadyDeployed) => (), // We don't need to deploy it again
-                            Err(e) => return Err(e), // The next coordinator will retry
-                        }
-                    }
-                    Ok(())
-                }
-            })
-            .await?;
+        for contract in &[
+            ContractDeploy::SbtcRegistry(SbtcRegistryContract),
+            ContractDeploy::SbtcToken(SbtcTokenContract),
+            ContractDeploy::SbtcDeposit(SbtcDepositContract),
+            ContractDeploy::SbtcWithdrawal(SbtcWithdrawalContract),
+            ContractDeploy::SbtcBootstrap(SbtcBootstrapContract),
+        ] {
+            match self
+                .deploy_smart_contract(contract.clone(), chain_tip, bitcoin_aggregate_key)
+                .await
+            {
+                Ok(()) => (),
+                Err(Error::ContractAlreadyDeployed) => (), // We don't need to deploy it again
+                Err(e) => return Err(e),                   // The next coordinator will retry
+            }
+        }
+
         Ok(())
     }
 }
