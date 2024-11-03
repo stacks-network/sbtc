@@ -49,8 +49,8 @@ pub enum Error {
     EstimateSmartFee(#[source] bitcoincore_rpc::Error, u16),
 
     /// Received an error in response to estimatesmartfee RPC call
-    #[error("failed to get fee estimate from bitcoin-core for target {1}. {0:?}")]
-    EstimateSmartFeeResponse(Option<Vec<String>>, u16),
+    #[error("failed to get fee estimate from bitcoin-core in target blocks {1}. errors: {0}")]
+    EstimateSmartFeeResponse(String, u16),
 
     /// Error from the fallback client.
     #[error("fallback client error: {0}")]
