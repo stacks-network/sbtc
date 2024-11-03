@@ -15,6 +15,7 @@ pub mod fees;
 pub mod packaging;
 pub mod rpc;
 pub mod utxo;
+pub mod validation;
 pub mod zmq;
 
 /// Represents the ability to interact with the bitcoin blockchain

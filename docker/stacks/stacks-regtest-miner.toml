@@ -143,3 +143,11 @@ amount = 10000000000000000
 [[ustx_balance]]
 address = "ST1MDWBDVDGAANEH9001HGXQA6XRNK7PX7A7X8M6R" # Stacker 3 (Charlie)
 amount = 10000000000000000
+
+[[ustx_balance]]
+# This is a 2-3 multi-sig address controlled using the above three
+# addresses. The above three accounts are also in the
+# `docker/sbtc/signer/README.md` file, and the resulting multi-sig address
+# below was created using the SignerWallet struct.
+address = "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS"
+amount = 10000000000000000

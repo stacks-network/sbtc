@@ -699,6 +699,12 @@ impl From<[u8; 32]> for BitcoinTxId {
     }
 }
 
+impl std::fmt::Display for BitcoinTxId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 /// Bitcoin block hash
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
