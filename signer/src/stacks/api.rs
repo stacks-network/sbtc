@@ -19,13 +19,13 @@ use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::getsortition::SortitionInfo;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use blockstack_lib::net::api::postfeerate::FeeRateEstimateRequestBody;
+use blockstack_lib::net::api::postfeerate::RPCFeeEstimate;
 use blockstack_lib::net::api::postfeerate::RPCFeeEstimateResponse;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use clarity::types::StacksEpochId;
 use clarity::vm::types::{BuffData, ListData, SequenceData};
 use clarity::vm::{ClarityName, ContractName, Value};
-use futures::TryFutureExt;
 use reqwest::header::CONTENT_LENGTH;
 use reqwest::header::CONTENT_TYPE;
 use serde::{Deserialize, Deserializer};
@@ -43,7 +43,7 @@ use super::wallet::SignerWallet;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The multiplier to use when estimating the fee based on payload-size.
-const TX_FEE_PAYLOAD_SIZE_MULTIPLIER: u64 = 2;
+const TX_FEE_TX_SIZE_MULTIPLIER: u64 = 2;
 
 /// The max fee in microSTX for a stacks transaction. Used as a backstop in
 /// case the stacks node returns wonky values. This is 10 STX.
@@ -56,6 +56,42 @@ const DUMMY_STX_TRANSFER_PAYLOAD: TransactionPayload = TransactionPayload::Token
     0,
     TokenTransferMemo([0; 34]),
 );
+
+trait ExtractFee {
+    fn extract_fee(&self, priority: FeePriority) -> Option<RPCFeeEstimate>;
+}
+
+impl ExtractFee for RPCFeeEstimateResponse {
+    fn extract_fee(&self, priority: FeePriority) -> Option<RPCFeeEstimate> {
+        // As of this writing the RPC response includes exactly 3 estimates
+        // (the low, medium, and high priority estimates). It's noteworthy
+        // if this changes so we log it but the code here is robust to such
+        // a change.
+        let num_estimates = self.estimations.len();
+        if num_estimates != 3 {
+            tracing::info!("Unexpected number of fee estimates: {num_estimates}");
+        }
+
+        // Use pattern matching to directly access the low, medium, and high estimates
+        match priority {
+            FeePriority::Low => self
+                .estimations
+                .iter()
+                .min_by_key(|estimate| estimate.fee)
+                .cloned(),
+            FeePriority::Medium => {
+                let mut sorted_estimations = self.estimations.clone();
+                sorted_estimations.sort_by_key(|estimate| estimate.fee);
+                sorted_estimations.get(num_estimates / 2).cloned()
+            }
+            FeePriority::High => self
+                .estimations
+                .iter()
+                .max_by_key(|estimate| estimate.fee)
+                .cloned(),
+        }
+    }
+}
 
 /// An enum representing the types of estimates returns by the stacks node.
 ///
@@ -906,65 +942,77 @@ impl StacksInteract for StacksClient {
     where
         T: AsTxPayload + Send + Sync,
     {
-        // Consensus serialize the transaction payload to bytes. This is the
-        // method that the stacks node uses to determine transaction size when
-        // verifying admittance into the mempool.
-        let payload_bytes = payload.tx_payload().serialize_to_vec();
+        let transaction_size = super::wallet::get_full_tx_size(payload, wallet)?;
 
-        // In Stacks core, the minimum fee is 1 mSTX per byte, so we double
-        // that here as a precaution and cap it at our maximum fee.
-        let default_min_fee =
-            (payload_bytes.len() as u64 * TX_FEE_PAYLOAD_SIZE_MULTIPLIER).min(MAX_TX_FEE);
+        // In Stacks core, the minimum fee is 1 mSTX per byte, so take the
+        // transaction size and multiply it by the TX_FEE_TX_SIZE_MULTIPLIER
+        // here to ensure that 1) we'll be accepted in the mempool, 2) that we
+        // have a decent margin above the absolute minimum fee.
+        let default_min_fee = (transaction_size * TX_FEE_TX_SIZE_MULTIPLIER).min(MAX_TX_FEE);
 
-        // If we cannot get an estimate for the transaction, try the
-        // generic STX transfer since we should always be able to get the
-        // STX transfer fee estimate. If that fails then we bail, maybe we
-        // should try another node.
-        let resp = self
-            .get_fee_estimate(payload)
-            .or_else(|err| async move {
-                tracing::warn!("could not estimate contract call fees: {err}");
-                // Estimating STX transfers is simple since the estimate
-                // doesn't depend on the recipient, amount, or memo. So a
-                // dummy transfer payload will do.
-                self.get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD).await
-            })
-            .await;
+        // Estimate attempt #1 - actual payload
+        //
+        // First we attempt to estimate the fee using the actual transaction
+        // payload.
+        let tx_fee_estimate_response = self.get_fee_estimate(payload).await;
 
-        let Ok(mut resp) = resp else {
-            tracing::warn!("could not estimate STX fees using the Stacks node, falling back to transaction-size-based estimation");
-            return Ok(default_min_fee);
-        };
+        // If we get a valid response, then we use the fee estimate we received,
+        // falling back to our calculated default minimum fee if for some reason
+        // the estimate was malformed or didn't contain a fee for the specified
+        // priority.
+        match tx_fee_estimate_response {
+            Ok(resp) => {
+                let estimate = resp.extract_fee(priority).map(|estimate| estimate.fee);
 
-        // As of this writing the RPC response includes exactly 3 estimates
-        // (the low, medium, and high priority estimates). It's note worthy
-        // if this changes so we log it but the code here is robust to such
-        // a change.
-        let num_estimates = resp.estimations.len();
-        if num_estimates != 3 {
-            tracing::info!("Unexpected number of fee estimates: {num_estimates}");
+                // If we got a valid estimate, then we use it.
+                if let Some(estimate) = estimate {
+                    return Ok(estimate.min(MAX_TX_FEE));
+                }
+
+                tracing::warn!(
+                    "received a fee estimate response, but it did not contain a fee for the specified priority, falling back to STX transfer fee estimation"
+                );
+            }
+            Err(error) => {
+                tracing::warn!(%error, "could not estimate contract call fees using the transaction, falling back to STX transfer fee estimation");
+            }
         }
-        // Now we sort them and take the low, middle, and high fees
-        resp.estimations.sort_by_key(|estimate| estimate.fee);
-        let fee_estimate = match priority {
-            FeePriority::Low => resp.estimations.first().map(|est| est.fee),
-            FeePriority::Medium => resp.estimations.get(num_estimates / 2).map(|est| est.fee),
-            FeePriority::High => resp.estimations.last().map(|est| est.fee),
-        };
 
-        let fee_estimate = fee_estimate.unwrap_or(default_min_fee);
-        let fee = if fee_estimate < default_min_fee {
-            tracing::warn!(
-                fee_estimate,
-                default_min_fee,
-                "Estimated fee is lower than the default minimum fee; using transaction-size-based estimation instead"
-            );
-            default_min_fee
-        } else {
-            fee_estimate
-        };
+        // Estimate attempt #2 - STX transfer
+        //
+        // Estimating STX transfers is simple since the estimate
+        // doesn't depend on the recipient, amount, or memo. So a
+        // dummy transfer payload will do.
+        let stx_transfer_estimate_response =
+            self.get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD).await;
 
-        Ok(fee.min(MAX_TX_FEE))
+        // If we get a valid response, then we use the fee estimate we received,
+        // falling back to our calculated default minimum fee if for some reason
+        // either we received an error or the estimate was malformed/didn't
+        // contain a fee for the specified priority.
+        match stx_transfer_estimate_response {
+            Ok(resp) => {
+                let rate = resp.extract_fee(priority).map(|estimate| estimate.fee_rate);
+
+                // If for some reason we couldn't get the rate for the specified
+                // priority, then we fall back to the default minimum fee.
+                let Some(rate) = rate else {
+                    return Ok(default_min_fee);
+                };
+
+                let estimate = ((rate * transaction_size as f64) as u64)
+                    .min(MAX_TX_FEE) // Ensure we don't exceed our maximum fee
+                    .max(transaction_size); // Ensure we don't go below the absolute minimum fee
+
+                Ok(estimate)
+            }
+            Err(error) => {
+                tracing::warn!(%error, "could not estimate STX fees using the Stacks node, falling back to transaction-size-based estimation");
+                // Fallback to our calculated minimum fee if we couldn't get an estimate
+                // from a Stacks node.
+                Ok(default_min_fee)
+            }
+        }
     }
 
     async fn get_pox_info(&self) -> Result<RPCPoxInfoData, Error> {
@@ -1059,6 +1107,7 @@ impl TryFrom<&Settings> for ApiFallbackClient<StacksClient> {
 mod tests {
     use crate::config::NetworkKind;
     use crate::keys::{PrivateKey, PublicKey};
+    use crate::stacks::wallet::get_full_tx_size;
     use crate::storage::in_memory::Store;
     use crate::storage::model::StacksBlock;
     use crate::storage::DbWrite;
@@ -1467,9 +1516,8 @@ mod tests {
         )
         .unwrap();
 
-        let payload_bytes = DUMMY_STX_TRANSFER_PAYLOAD.serialize_to_vec();
-        let expected_fee =
-            (payload_bytes.len() as u64 * TX_FEE_PAYLOAD_SIZE_MULTIPLIER).min(MAX_TX_FEE);
+        let expected_fee = get_full_tx_size(&DUMMY_STX_TRANSFER_PAYLOAD, &wallet).unwrap()
+            * TX_FEE_TX_SIZE_MULTIPLIER;
 
         let resp = client
             .estimate_fees(&wallet, &DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::High)
