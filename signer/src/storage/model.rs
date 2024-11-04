@@ -761,13 +761,17 @@ impl From<[u8; 32]> for BitcoinBlockHash {
 
 impl From<BurnchainHeaderHash> for BitcoinBlockHash {
     fn from(value: BurnchainHeaderHash) -> Self {
-        value.into_bytes().into()
+        let mut bytes = value.into_bytes();
+        bytes.reverse();
+        bytes.into()
     }
 }
 
 impl From<BitcoinBlockHash> for BurnchainHeaderHash {
     fn from(value: BitcoinBlockHash) -> Self {
-        BurnchainHeaderHash(value.to_byte_array())
+        let mut bytes = value.to_byte_array();
+        bytes.reverse();
+        BurnchainHeaderHash(bytes)
     }
 }
 
