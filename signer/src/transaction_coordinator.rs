@@ -727,6 +727,13 @@ where
         coordinator_state_machine: &mut CoordinatorStateMachine,
         txid: bitcoin::Txid,
     ) -> Result<WstsOperationResult, Error> {
+        // this assumes that the signer set doesn't change for the duration of this call,
+        // but we're already assuming that the bitcoin chain tip doesn't change
+        // alternately we could hit the DB every time we get a new message
+        let (_, signer_set) = self
+            .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
+            .await?;
+
         loop {
             // Let's get the next message from the network or the
             // TxSignerEventLoop.
@@ -738,7 +745,8 @@ where
             }
 
             if !msg.verify() {
-                return Err(Error::InvalidSignature);
+                tracing::warn!(?msg, "invalid signature");
+                continue;
             }
 
             let Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
@@ -751,62 +759,81 @@ where
             };
 
             let msg_public_key = msg.signer_pub_key.clone();
+
+            let sender_is_coordinator =
+                given_key_is_coordinator(msg_public_key, bitcoin_chain_tip, &signer_set);
+
             let public_keys = &coordinator_state_machine.get_config().signer_public_keys;
+            let public_key_point = p256k1::point::Point::from(msg_public_key);
             // check that messages were signed by correct key
-            /*
-                        match &packet.msg {
-                            wsts::net::Message::DkgBegin(_) => {}
-                            wsts::net::Message::DkgPrivateBegin(_) => {}
-                            wsts::net::Message::DkgPublicShares(dkg_public_shares) => {
-                                let signer_public_key = PublicKey::try_from(
-                                    &public_keys[&dkg_public_shares.signer_id],
-                                )
-                                .map_err(|_| Error::InvalidPublicKey(secp256k1::Error::InvalidPublicKey))?;
-                                if signer_public_key != msg_public_key {
-                                    return Err(Error::InvalidSignature);
-                                }
+            match &packet.msg {
+                wsts::net::Message::DkgBegin(_)
+                | wsts::net::Message::DkgPrivateBegin(_)
+                | wsts::net::Message::DkgEndBegin(_)
+                | wsts::net::Message::NonceRequest(_)
+                | wsts::net::Message::SignatureShareRequest(_) => {
+                    if !sender_is_coordinator {
+                        tracing::warn!(
+                            ?packet,
+                            reason = "got coordinator message from sender who is not coordinator",
+                            "ignoring packet"
+                        );
+                        continue;
                     }
-                            wsts::net::Message::DkgPrivateShares(dkg_private_shares) => {
-                                let signer_public_key = PublicKey::try_from(
-                                    &public_keys[&dkg_private_shares.signer_id],
-                                )
-                                .map_err(|_| Error::InvalidPublicKey(secp256k1::Error::InvalidPublicKey))?;
-                                if signer_public_key != msg_public_key {
-                                    return Err(Error::InvalidSignature);
-                                }
-                            }
-                            wsts::net::Message::DkgEndBegin(_) => {}
-                            wsts::net::Message::NonceRequest(_) => {}
-                            wsts::net::Message::SignatureShareRequest(_) => {}
-                            wsts::net::Message::DkgEnd(dkg_end) => {
-                                let signer_public_key = PublicKey::try_from(&public_keys[&dkg_end.signer_id])
-                                    .map_err(|_| {
-                                    Error::InvalidPublicKey(secp256k1::Error::InvalidPublicKey)
-                                })?;
-                                if signer_public_key != msg_public_key {
-                                    return Err(Error::InvalidSignature);
-                                }
-                            }
-                            wsts::net::Message::NonceResponse(nonce_response) => {
-                                let signer_public_key = PublicKey::try_from(
-                                    &public_keys[&nonce_response.signer_id],
-                                )
-                                .map_err(|_| Error::InvalidPublicKey(secp256k1::Error::InvalidPublicKey))?;
-                                if signer_public_key != msg_public_key {
-                                    return Err(Error::InvalidSignature);
-                                }
-                            }
-                            wsts::net::Message::SignatureShareResponse(sig_share_response) => {
-                                let signer_public_key = PublicKey::try_from(
-                                    &public_keys[&sig_share_response.signer_id],
-                                )
-                                .map_err(|_| Error::InvalidPublicKey(secp256k1::Error::InvalidPublicKey))?;
-                                if signer_public_key != msg_public_key {
-                                    return Err(Error::InvalidSignature);
-                                }
-                            }
-                        }
-            */
+                }
+
+                wsts::net::Message::DkgPublicShares(dkg_public_shares) => {
+                    if &public_key_point != &public_keys[&dkg_public_shares.signer_id] {
+                        tracing::warn!(
+                            ?packet,
+                            reason = "message was signed by the wrong signer",
+                            "ignoring packet"
+                        );
+                        continue;
+                    }
+                }
+                wsts::net::Message::DkgPrivateShares(dkg_private_shares) => {
+                    if &public_key_point != &public_keys[&dkg_private_shares.signer_id] {
+                        tracing::warn!(
+                            ?packet,
+                            reason = "message was signed by the wrong signer",
+                            "ignoring packet"
+                        );
+                        continue;
+                    }
+                }
+                wsts::net::Message::DkgEnd(dkg_end) => {
+                    if &public_key_point != &public_keys[&dkg_end.signer_id] {
+                        tracing::warn!(
+                            ?packet,
+                            reason = "message was signed by the wrong signer",
+                            "ignoring packet"
+                        );
+                        continue;
+                    }
+                }
+                wsts::net::Message::NonceResponse(nonce_response) => {
+                    if &public_key_point != &public_keys[&nonce_response.signer_id] {
+                        tracing::warn!(
+                            ?packet,
+                            reason = "message was signed by the wrong signer",
+                            "ignoring packet"
+                        );
+                        continue;
+                    }
+                }
+                wsts::net::Message::SignatureShareResponse(sig_share_response) => {
+                    if &public_key_point != &public_keys[&sig_share_response.signer_id] {
+                        tracing::warn!(
+                            ?packet,
+                            reason = "message was signed by the wrong signer",
+                            "ignoring packet"
+                        );
+                        continue;
+                    }
+                }
+            }
+
             let (outbound_packet, operation_result) =
                 match coordinator_state_machine.process_message(&packet) {
                     Ok(val) => val,
