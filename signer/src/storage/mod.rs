@@ -239,6 +239,13 @@ pub trait DbRead {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> impl Future<Output = Result<Vec<model::SweptWithdrawalRequest>, Error>> + Send;
+
+    /// Get the latest sweep transaction package.
+    fn get_latest_sweep_transaction(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+    ) -> impl Future<Output = Result<Option<model::SweepTransaction>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.
@@ -355,5 +362,11 @@ pub trait DbWrite {
     fn write_completed_deposit_event(
         &self,
         event: &CompletedDepositEvent,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write a complete Bitcoin transaction package to the database.
+    fn write_sweep_transaction(
+        &self,
+        tx: &model::SweepTransaction,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 }

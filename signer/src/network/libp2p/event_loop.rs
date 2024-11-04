@@ -245,7 +245,7 @@ fn handle_autonat_client_event(
                     peer_id = %server,
                     %tested_addr,
                     %bytes_sent,
-                    "AutoNAT (client) test successful, however the server is not a known signer; ignoring"
+                    "AutoNAT (client) test failed, however the server is not a known signer; ignoring"
                 );
                 return;
             }

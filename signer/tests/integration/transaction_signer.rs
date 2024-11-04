@@ -1,17 +1,25 @@
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use fake::Fake as _;
 use fake::Faker;
+use futures::future::join_all;
 use rand::SeedableRng as _;
 
-use signer::context::Context as _;
+use signer::context::Context;
+use signer::context::SignerEvent;
+use signer::context::SignerSignal;
+use signer::context::TxSignerEvent;
+use signer::ecdsa::SignEcdsa as _;
 use signer::emily_client::MockEmilyInteract;
 use signer::error::Error;
 use signer::keys::PrivateKey;
 use signer::keys::PublicKey;
+use signer::message;
 use signer::message::StacksTransactionSignRequest;
 use signer::network::InMemoryNetwork;
+use signer::network::MessageTransfer;
 use signer::stacks::api::MockStacksInteract;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
@@ -23,8 +31,10 @@ use signer::testing;
 use signer::testing::context::*;
 use signer::testing::storage::model::TestData;
 use signer::testing::transaction_signer::TestEnvironment;
+use signer::transaction_coordinator;
 use signer::transaction_signer::TxSignerEventLoop;
 use signer::{bitcoin::MockBitcoinInteract, storage::postgres::PgStore};
+use test_log::test;
 
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::TestSweepSetup;
@@ -69,6 +79,43 @@ async fn test_environment(
 async fn create_signer_database() -> PgStore {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     signer::testing::storage::new_test_database(db_num, true).await
+}
+
+fn sweep_transaction_info<R: rand::RngCore>(
+    rng: &mut R,
+    created_at_block_hash: bitcoin::BlockHash,
+    deposit_requests: &[model::DepositRequest],
+    withdrawal_requests: &[model::WithdrawalRequest],
+) -> message::SweepTransactionInfo {
+    message::SweepTransactionInfo {
+        txid: testing::dummy::txid(&fake::Faker, rng),
+        created_at_block_hash,
+        amount: 100,
+        fee: 1,
+        market_fee_rate: 1.2,
+        signer_prevout_txid: testing::dummy::txid(&fake::Faker, rng),
+        signer_prevout_amount: 1,
+        signer_prevout_output_index: 0,
+        signer_prevout_script_pubkey: bitcoin::ScriptBuf::default(),
+        swept_deposits: deposit_requests
+            .iter()
+            .enumerate()
+            .map(|(ix, req)| message::SweptDeposit {
+                deposit_request_output_index: req.output_index,
+                deposit_request_txid: *req.txid,
+                input_index: ix as u32 + 1,
+            })
+            .collect(),
+        swept_withdrawals: withdrawal_requests
+            .iter()
+            .enumerate()
+            .map(|(ix, req)| message::SweptWithdrawal {
+                withdrawal_request_id: req.request_id,
+                output_index: ix as u32 + 2,
+                withdrawal_request_block_hash: *req.block_hash.as_bytes(),
+            })
+            .collect(),
+    }
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -159,6 +206,184 @@ async fn should_be_able_to_participate_in_signing_round() {
 
     // Now drop the database that we just created.
     signer::testing::storage::drop_db(db).await;
+}
+
+/// Test that transaction signers can receive [`SweepTransactionInfo`] messages
+/// from other signers and store the information in their respective databases.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[test(tokio::test)]
+async fn should_store_sweep_transaction_info_from_other_signers() {
+    let num_signers = 3;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+    let network = InMemoryNetwork::new();
+    let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
+    let signer_set_pubkeys = &signer_info.first().unwrap().signer_public_keys;
+    let mut coord_network = network.connect();
+
+    // Instantiate a new database for each signer. This must be done sequentially,
+    // it fails if done concurrently.
+    let mut signer_dbs: Vec<PgStore> = vec![];
+    for _ in signer_info.iter() {
+        signer_dbs.push(create_signer_database().await);
+    }
+
+    // A closure to build a new context for each signer which will use one of the
+    // databases pre-created above.
+    let build_context = |index: usize, private_key| {
+        TestContext::builder()
+            .with_storage(signer_dbs[index].clone())
+            .with_mocked_clients()
+            .modify_settings(|settings| {
+                settings.signer.private_key = private_key;
+                settings.signer.bootstrap_signing_set =
+                    signer_set_pubkeys.iter().cloned().collect();
+            })
+            .build()
+    };
+
+    // Create a new event-loop for each signer, based on the number of signers
+    // defined in `self.num_signers`. Note that it is important that each
+    // signer has its own context (and thus storage and signalling channel).
+    //
+    // Each signer also gets its own `MpscBroadcaster` instance, which is
+    // backed by the `network` instance, simulating a network connection.
+    let signers: Vec<_> = signer_info
+        .iter()
+        .enumerate()
+        .map(|(index, signer_info)| {
+            let context = build_context(index, signer_info.signer_private_key);
+            TxSignerEventLoop {
+                network: network.connect(),
+                context: context.clone(),
+                context_window: 10000,
+                blocklist_checker: Some(()),
+                wsts_state_machines: HashMap::new(),
+                signer_private_key: context.config().signer.private_key,
+                threshold: 2,
+                rng: rand::rngs::StdRng::seed_from_u64(51),
+            }
+        })
+        .collect();
+
+    // Generate test data. We'll generate two blocks and include all outstanding
+    // deposit and withdraw requests in the sweep transaction info we broadcast.
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 2,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 2,
+        num_withdraw_requests_per_block: 2,
+        num_signers_per_request: 0,
+    };
+    let test_data = TestData::generate(&mut rng, &[], &test_params);
+
+    // Write the same test data to each signer's storage
+    for signer in signers.iter() {
+        test_data.write_to(&signer.context.get_storage_mut()).await;
+    }
+
+    // Get the bitcoin chain tip from the first signer's storage
+    let bitcoin_chain_tip = signers
+        .first()
+        .unwrap()
+        .context
+        .get_storage()
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .expect("failed to get bitcoin chain tip")
+        .expect("no bitcoin chain tip found");
+
+    // Find the coordinator signer
+    let coordinator_signer_info = signer_info
+        .iter()
+        .find(|signer| {
+            let pk = PublicKey::from_private_key(&signer.signer_private_key);
+            transaction_coordinator::given_key_is_coordinator(
+                pk,
+                &bitcoin_chain_tip,
+                signer_set_pubkeys,
+            )
+        })
+        .expect("could not determine coordinator");
+
+    // Start listening for the signers' `EventLoopStarted` signals with a 1s
+    // timeout. We use `join_all` to wait for all signers to signal their start.
+    let wait_for_signers = signers
+        .iter()
+        .map(|signer| {
+            let ctx = signer.context.clone();
+            tokio::spawn(async move {
+                tokio::time::timeout(Duration::from_secs(1), async {
+                    let mut recv = ctx.get_signal_receiver();
+                    while let Ok(signal) = recv.recv().await {
+                        if let SignerSignal::Event(SignerEvent::TxSigner(
+                            TxSignerEvent::EventLoopStarted,
+                        )) = signal
+                        {
+                            break;
+                        }
+                    }
+                })
+                .await
+                .expect("failed to start event loop");
+            })
+        })
+        .collect::<Vec<_>>();
+
+    // Start the event loops for each signer
+    let handles = signers
+        .into_iter()
+        .map(|signer| tokio::spawn(signer.run()))
+        .collect::<Vec<_>>();
+
+    // Wait for all signers to signal that they have started
+    join_all(wait_for_signers).await;
+
+    // Create a `SweepTransactionInfo` message and broadcast it to the network
+    let sweep_tx_info = sweep_transaction_info(
+        &mut rng,
+        *bitcoin_chain_tip,
+        &test_data.deposit_requests,
+        &test_data.withdraw_requests,
+    );
+
+    // Convert the `SweepTransactionInfo` into a `Payload` and sign it using
+    // the coordinator's keys.
+    let payload: message::Payload = sweep_tx_info.clone().into();
+    let msg = payload
+        .to_message(bitcoin_chain_tip)
+        .sign_ecdsa(&coordinator_signer_info.signer_private_key)
+        .expect("failed to sign message");
+
+    // Broadcast the message to the network
+    coord_network
+        .broadcast(msg)
+        .await
+        .expect("broadcast failed");
+
+    // Give the event loops some time to process the message
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    // Ensure that the sweep transaction info has been stored in each signer's
+    // database and is the "latest" sweep transaction.
+    for db in signer_dbs.iter() {
+        let retrieved_tx = db
+            .get_latest_sweep_transaction(&bitcoin_chain_tip, 10)
+            .await
+            .expect("failed to get sweep transaction")
+            .expect("no sweep transaction found");
+
+        assert_eq!(retrieved_tx, (&sweep_tx_info).into());
+    }
+
+    // Stop the event loops
+    handles.into_iter().for_each(|handle| {
+        handle.abort();
+    });
+
+    // Drop the databases
+    for db in signer_dbs {
+        signer::testing::storage::drop_db(db).await;
+    }
 }
 
 /// Test that [`TxSignerEventLoop::get_signer_public_keys`] falls back to

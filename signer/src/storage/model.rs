@@ -16,6 +16,140 @@ use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 
+/// Represents a single transaction which is part of a sweep transaction package
+/// which has been broadcast to the Bitcoin network.
+#[derive(Debug, Clone, PartialEq, PartialOrd, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct SweepTransaction {
+    /// The Bitcoin transaction id.
+    pub txid: BitcoinTxId,
+    /// The transaction id of the signer UTXO consumed by this transaction.
+    pub signer_prevout_txid: BitcoinTxId,
+    /// The index of the signer UTXO consumed by this transaction.
+    #[sqlx(try_from = "i32")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
+    pub signer_prevout_output_index: u32,
+    /// The amount of the signer UTXO consumed by this transaction.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u64"))]
+    pub signer_prevout_amount: u64,
+    /// The public key of the signer UTXO consumed by this transaction.
+    pub signer_prevout_script_pubkey: ScriptPubKey,
+    /// The total **output** amount of this transaction.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u64"))]
+    pub amount: u64,
+    /// The fee paid for this transaction.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u64"))]
+    pub fee: u64,
+    /// The Bitcoin block hash at which this transaction was created.
+    pub created_at_block_hash: BitcoinBlockHash,
+    /// The market fee rate at the time of this transaction.
+    pub market_fee_rate: f64,
+
+    /// List of deposits which were swept-in by this transaction.
+    #[sqlx(skip)]
+    pub swept_deposits: Vec<SweptDeposit>,
+    /// List of withdrawals which were swept-out by this transaction.
+    #[sqlx(skip)]
+    pub swept_withdrawals: Vec<SweptWithdrawal>,
+}
+
+impl SweepTransaction {
+    /// Return the outpoint of the signer's UTXO consumed by this transaction.
+    pub fn signer_prevout_outpoint(&self) -> bitcoin::OutPoint {
+        bitcoin::OutPoint {
+            txid: self.signer_prevout_txid.into(),
+            vout: self.signer_prevout_output_index,
+        }
+    }
+}
+
+impl From<&crate::message::SweepTransactionInfo> for SweepTransaction {
+    fn from(info: &crate::message::SweepTransactionInfo) -> Self {
+        Self {
+            txid: info.txid.into(),
+            signer_prevout_txid: info.signer_prevout_txid.into(),
+            signer_prevout_output_index: info.signer_prevout_output_index,
+            signer_prevout_amount: info.signer_prevout_amount,
+            signer_prevout_script_pubkey: info.signer_prevout_script_pubkey.clone().into(),
+            amount: info.amount,
+            fee: info.fee,
+            market_fee_rate: info.market_fee_rate,
+            created_at_block_hash: info.created_at_block_hash.into(),
+            swept_deposits: info.swept_deposits.iter().map(Into::into).collect(),
+            swept_withdrawals: info.swept_withdrawals.iter().map(Into::into).collect(),
+        }
+    }
+}
+
+/// Represents a single deposit which has been swept-in by a sweep transaction.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct SweptDeposit {
+    /// The index of the deposit input in the sBTC sweep transaction.
+    #[sqlx(try_from = "i32")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
+    pub input_index: u32,
+    /// The Bitcoin txid of the deposit request UTXO being swept-in by this
+    /// transaction.
+    pub deposit_request_txid: BitcoinTxId,
+    /// The Bitcoin output index of the deposit request UTXO being swept-in by
+    /// this transaction.
+    #[sqlx(try_from = "i32")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
+    pub deposit_request_output_index: u32,
+}
+
+impl From<SweptDeposit> for bitcoin::OutPoint {
+    fn from(deposit: SweptDeposit) -> Self {
+        bitcoin::OutPoint {
+            txid: deposit.deposit_request_txid.into(),
+            vout: deposit.deposit_request_output_index,
+        }
+    }
+}
+
+impl From<&crate::message::SweptDeposit> for SweptDeposit {
+    fn from(deposit: &crate::message::SweptDeposit) -> Self {
+        Self {
+            input_index: deposit.input_index,
+            deposit_request_txid: deposit.deposit_request_txid.into(),
+            deposit_request_output_index: deposit.deposit_request_output_index,
+        }
+    }
+}
+
+/// Represents a single withdrawal which has been swept-out by a sweep
+/// transaction.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct SweptWithdrawal {
+    /// The index of the withdrawal output in the sBTC sweep transaction.
+    #[sqlx(try_from = "i32")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
+    pub output_index: u32,
+    /// The public request id of the withdrawal request serviced by this
+    /// transaction.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
+    pub withdrawal_request_id: u64,
+    /// The Stacks block hash of the Stacks block which included the withdrawal
+    /// request transaction.
+    pub withdrawal_request_block_hash: StacksBlockHash,
+}
+
+impl From<&crate::message::SweptWithdrawal> for SweptWithdrawal {
+    fn from(withdrawal: &crate::message::SweptWithdrawal) -> Self {
+        Self {
+            output_index: withdrawal.output_index,
+            withdrawal_request_id: withdrawal.withdrawal_request_id,
+            withdrawal_request_block_hash: withdrawal.withdrawal_request_block_hash.into(),
+        }
+    }
+}
+
 /// Bitcoin block.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
@@ -24,7 +158,7 @@ pub struct BitcoinBlock {
     pub block_hash: BitcoinBlockHash,
     /// Block height.
     #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
     pub block_height: u64,
     /// Hash of the parent block.
     pub parent_hash: BitcoinBlockHash,
@@ -272,8 +406,6 @@ pub struct SweptDepositRequest {
     /// The transaction ID of the bitcoin transaction that swept in the
     /// funds into the signers' UTXO.
     pub sweep_txid: BitcoinTxId,
-    /// The transaction sweeping in the deposit request UTXO.
-    pub sweep_tx: BitcoinTx,
     /// The block id of the bitcoin block that includes the sweep
     /// transaction.
     pub sweep_block_hash: BitcoinBlockHash,
@@ -312,8 +444,6 @@ pub struct SweptWithdrawalRequest {
     /// The transaction ID of the bitcoin transaction that swept out the
     /// funds to the intended recipient.
     pub sweep_txid: BitcoinTxId,
-    /// The bitcoin transaction fulfilling the withdrawal request.
-    pub sweep_tx: BitcoinTx,
     /// The block id of the stacks block that includes this sweep
     /// transaction.
     pub sweep_block_hash: BitcoinBlockHash,
@@ -446,7 +576,7 @@ impl From<SignerVotes> for BitArray<[u8; 16]> {
 
 /// The types of transactions the signer is interested in.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
-#[sqlx(type_name = "sbtc_signer.transaction_type", rename_all = "snake_case")]
+#[sqlx(type_name = "transaction_type", rename_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 #[strum(serialize_all = "snake_case")]
 pub enum TransactionType {
@@ -548,6 +678,12 @@ impl From<BitcoinTxId> for bitcoin::Txid {
 impl From<[u8; 32]> for BitcoinTxId {
     fn from(bytes: [u8; 32]) -> Self {
         Self(bitcoin::Txid::from_byte_array(bytes))
+    }
+}
+
+impl std::fmt::Display for BitcoinTxId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 

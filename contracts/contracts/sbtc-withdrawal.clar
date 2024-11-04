@@ -13,10 +13,11 @@
 ;; The withdrawal request was already processed
 (define-constant ERR_ALREADY_PROCESSED (err u505))
 ;; The paid fee was higher than requested
-(define-constant ERR_FEE_TOO_HIGH (err u505))
+(define-constant ERR_FEE_TOO_HIGH (err u506))
 ;; The returned index marks the failed transaction in list
 (define-constant ERR_WITHDRAWAL_INDEX_PREFIX (unwrap-err! ERR_WITHDRAWAL_INDEX (err true)))
-(define-constant ERR_WITHDRAWAL_INDEX (err u506))
+(define-constant ERR_WITHDRAWAL_INDEX (err u507))
+(define-constant ERR_INVALID_BURN_HASH (err u508))
 
 ;; Maximum value of an address version as a uint
 (define-constant MAX_ADDRESS_VERSION u6)
@@ -124,6 +125,10 @@
 ;;
 ;; To specify this address type in the recipient, the `version` is 0x06 and
 ;; the `hashbytes` is the "tweaked" public key.
+(define-read-only (get-burn-header (height uint))
+    ;; (get-burn-block-info? header-hash height)
+    (get-tenure-info? burnchain-header-hash height)
+)
 (define-public (initiate-withdrawal-request (amount uint)
                                             (recipient { version: (buff 1), hashbytes: (buff 32) })
                                             (max-fee uint)
@@ -144,7 +149,9 @@
                                           (bitcoin-txid (buff 32)) 
                                           (signer-bitmap uint)
                                           (output-index uint)
-                                          (fee uint))
+                                          (fee uint)
+                                          (burn-hash (buff 32))
+                                          (burn-height uint))
   (let 
     (
       (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
@@ -153,6 +160,10 @@
       (requested-amount (get amount request))
       (requester (get sender request))
     )
+
+      ;; Verify that Bitcoin hasn't forked by comparing the burn hash provided
+      (asserts! (is-eq (some burn-hash) (get-burn-header burn-height)) ERR_INVALID_BURN_HASH)
+
       ;; Check that the caller is the current signer principal
       (asserts! (is-eq (get current-signer-principal current-signer-data) tx-sender) ERR_INVALID_CALLER)
 
@@ -172,7 +183,7 @@
       )
 
       ;; Call into registry to confirm accepted withdrawal
-      (try! (contract-call? .sbtc-registry complete-withdrawal-accept request-id bitcoin-txid output-index signer-bitmap fee))
+      (try! (contract-call? .sbtc-registry complete-withdrawal-accept request-id bitcoin-txid output-index signer-bitmap fee burn-hash burn-height))
 
       (ok true)
   )
@@ -204,14 +215,16 @@
     (ok true)
   )
 )
-;; Reject multiple withdrawal requests
+;; Complete multiple withdrawal requests
 (define-public (complete-withdrawals (withdrawals (list 600 
-                                     {request-id: uint, 
-                                     status: bool, 
-                                     signer-bitmap: uint, 
-                                     bitcoin-txid: (optional (buff 32)), 
-                                     output-index: (optional uint), 
-                                     fee: (optional uint)})))
+                                      {request-id: uint, 
+                                      status: bool, 
+                                      signer-bitmap: uint, 
+                                      bitcoin-txid: (optional (buff 32)), 
+                                      output-index: (optional uint), 
+                                      fee: (optional uint),
+                                      burn-hash: (buff 32),
+                                      burn-height: uint})))
   (let 
       (
           (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))
@@ -231,7 +244,9 @@
                                                         signer-bitmap: uint, 
                                                         bitcoin-txid: (optional (buff 32)), 
                                                         output-index: (optional uint), 
-                                                        fee: (optional uint)}) 
+                                                        fee: (optional uint),
+                                                        burn-hash: (buff 32),
+                                                        burn-height: uint}) 
                                                        (helper-response (response uint uint)))
   (match helper-response 
     index
@@ -249,7 +264,7 @@
             (asserts! 
               (and (is-some current-bitcoin-txid) (is-some current-output-index) (is-some current-fee)) 
               (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
-            (unwrap! (accept-withdrawal-request (get request-id withdrawal) (unwrap-panic current-bitcoin-txid) current-signer-bitmap (unwrap-panic current-output-index) (unwrap-panic current-fee)) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
+            (unwrap! (accept-withdrawal-request (get request-id withdrawal) (unwrap-panic current-bitcoin-txid) current-signer-bitmap (unwrap-panic current-output-index) (unwrap-panic current-fee) (get burn-hash withdrawal) (get burn-height withdrawal)) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
           )
           ;; rejected
           (unwrap! (reject-withdrawal-request (get request-id withdrawal) current-signer-bitmap) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))

@@ -30,6 +30,7 @@ use crate::message;
 use crate::message::Payload;
 use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
+use crate::message::SweepTransactionInfo;
 use crate::network;
 use crate::signature::SighashDigest;
 use crate::stacks::api::FeePriority;
@@ -273,7 +274,7 @@ where
 
     /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
     /// fulfilling pending deposit and withdraw requests.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, signer_public_keys, aggregate_key))]
     async fn construct_and_sign_bitcoin_sbtc_transactions(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -296,9 +297,16 @@ where
             return Ok(());
         };
 
+        // Construct the transaction package and store it in the database.
         let transaction_package = pending_requests.construct_transactions()?;
 
         for mut transaction in transaction_package {
+            self.send_message(
+                SweepTransactionInfo::from_unsigned_at_block(bitcoin_chain_tip, &transaction),
+                bitcoin_chain_tip,
+            )
+            .await?;
+
             self.sign_and_broadcast(
                 bitcoin_chain_tip,
                 aggregate_key,
@@ -448,6 +456,9 @@ where
         bitcoin_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
     ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
+        // Retrieve the Bitcoin sweep transaction from the Bitcoin node. We
+        // can't get it from the database because the transaction is
+        // only in the node's mempool at this point.
         let tx_info = self
             .context
             .get_bitcoin_client()
@@ -664,7 +675,7 @@ where
 
     /// Set up a WSTS coordinator state machine and run DKG with the other
     /// signers in the signing set.
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(skip(self))]
     async fn coordinate_dkg(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
@@ -814,7 +825,7 @@ where
         })
     }
 
-    /// TODO(#380): This function needs to filter deposit requests based on
+    /// TODO(#742): This function needs to filter deposit requests based on
     /// time as well. We need to do this because deposit requests are locked
     /// using OP_CSV, which lock up coins based on block height or
     /// multiples of 512 seconds measure by the median time past.

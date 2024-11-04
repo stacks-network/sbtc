@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::io::Read;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -55,6 +56,7 @@ use signer::testing::wallet::ContractCallWrapper;
 use fake::Fake;
 use rand::SeedableRng;
 use signer::testing::context::*;
+use signer::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use test_case::test_case;
 
 use crate::setup::TestSweepSetup;
@@ -570,6 +572,198 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
         pending_accepted_withdraw_requests,
         pg_pending_accepted_withdraw_requests
     );
+    signer::testing::storage::drop_db(pg_store).await;
+}
+
+/// This test ensures that the postgres store will only return the pending accepted deposit requests
+/// if they are within the reclaim bounds. If they can be reclaimed too close to the current chain tip
+/// they should not appear in the accepted pending deposit requests list.
+///
+///
+/// TODO(#751): Add a test to ensure that the locktime buffer is interpreted the same way during
+/// DepositRequestReport validation and the get pending accepted deposits database accessor function.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bounds() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let mut pg_store = testing::storage::new_test_database(db_num, true).await;
+    let mut in_memory_store = storage::in_memory::Store::new_shared();
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+    let num_signers = 7;
+    let context_window = 9;
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 10,
+        num_stacks_blocks_per_bitcoin_block: 3,
+        num_deposit_requests_per_block: 5,
+        num_withdraw_requests_per_block: 5,
+        num_signers_per_request: num_signers,
+    };
+    let threshold = 4;
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let mut test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
+
+    // Modify the lock times of the deposit requests to be definitely okay to accept because
+    // it's the largest possible lock time.
+    for deposit in test_data.deposit_requests.iter_mut() {
+        deposit.lock_time = u16::MAX as u32;
+    }
+
+    // Take 1 ------------------------------------------------------------------
+    test_data.write_to(&mut pg_store).await;
+    test_data.write_to(&mut in_memory_store).await;
+
+    let chain_tip = in_memory_store
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .expect("failed to get canonical chain tip")
+        .expect("no chain tip");
+
+    assert_eq!(
+        chain_tip,
+        pg_store
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("failed to get canonical chain tip")
+            .expect("no chain tip")
+    );
+
+    // First ensure that we didn't break the main pending accepted deposit requests functionality
+    // since all the lock times are the maximum possible value and thus should be accepted.
+    let mut pending_accepted_deposit_requests = pg_store
+        .get_pending_accepted_deposit_requests(&chain_tip, context_window, threshold)
+        .await
+        .expect("failed to get pending deposit requests from pg store.");
+
+    let mut in_memory_pending_accepted_deposit_requests = in_memory_store
+        .get_pending_accepted_deposit_requests(&chain_tip, context_window, threshold)
+        .await
+        .expect("failed to get pending deposit requests from in memory store.");
+
+    pending_accepted_deposit_requests.sort();
+    in_memory_pending_accepted_deposit_requests.sort();
+    assert_eq!(
+        pending_accepted_deposit_requests, in_memory_pending_accepted_deposit_requests,
+        "Basic pending accepted deposit requests functionality is broken."
+    );
+
+    // Every single accepted deposit request that is valid should be returned. If any of these aren't
+    // returned after we modify the lock times then we know that the reclaim bounds are what kicked
+    // them out.
+
+    // Now get the height of the Bitcoin chain tip, we're going to use this to put some of the
+    // accepted deposit requests outside of the reclaim bounds.
+    let bitcoin_chain_tip_height = pg_store
+        .get_bitcoin_block(&chain_tip)
+        .await
+        .expect("failed to get bitcoin block")
+        .expect("no chain tip block")
+        .block_height;
+
+    // Add one to the acceptable unlock height because the chain tip is at height one less
+    // than the height of the next block, which is the block for which we are assessing
+    // the threshold.
+    let minimum_acceptable_unlock_height =
+        bitcoin_chain_tip_height as u32 + DEPOSIT_LOCKTIME_BLOCK_BUFFER as u32 + 1;
+
+    // Okay, mess with the test data and make sure that some of the pending accepted deposit requests
+    // are outside of the reclaim bounds.
+    let percent_of_original_requests_expected_to_be_in_bounds = 0.42;
+    let num_deposits_in_bounds = (pending_accepted_deposit_requests.len() as f64
+        * percent_of_original_requests_expected_to_be_in_bounds)
+        .floor() as usize;
+
+    // Prepare some datastructures to filter the deposit requests that we're going to put out of bounds
+    // and to check against later.
+    pending_accepted_deposit_requests.shuffle(&mut rng);
+    let mut unique_deposit_ids = pending_accepted_deposit_requests
+        .into_iter()
+        .map(|deposit_request| (deposit_request.txid, deposit_request.output_index));
+
+    // Take the first several deposit requests to be in bounds and the rest to be out of bounds.
+    let in_bounds_requests: HashSet<(BitcoinTxId, u32)> = unique_deposit_ids
+        .by_ref()
+        .take(num_deposits_in_bounds)
+        .collect();
+    let out_of_bounds_requests: HashSet<(BitcoinTxId, u32)> = unique_deposit_ids.collect();
+
+    // Alter all the deposit test data to make sure that the lock times are JUST BARELY in bounds.
+    let mut expected_pending_deposit_requests: Vec<model::DepositRequest> = Vec::new();
+    for deposit_request in test_data.deposit_requests.iter_mut() {
+        // Get the associated block so that we can get the height that the deposit
+        // was included in.
+        let associated_blocks = pg_store
+            .get_bitcoin_blocks_with_transaction(&deposit_request.txid)
+            .await
+            .expect("failed to get bitcoin blocks with transaction");
+
+        assert_eq!(
+            associated_blocks.len(),
+            1,
+            "Deposit found in multiple Bitcoin blocks - this test is not designed to handle this."
+        );
+
+        let height_included = pg_store
+            .get_bitcoin_block(associated_blocks.first().unwrap())
+            .await
+            .expect("Failed getting block from storage")
+            .expect("Block included needs to exists")
+            .block_height;
+
+        let minimum_acceptable_unlock_time_for_this_deposit =
+            minimum_acceptable_unlock_height - height_included as u32;
+
+        let unique_deposit_id: (BitcoinTxId, u32) =
+            (deposit_request.txid, deposit_request.output_index);
+
+        if out_of_bounds_requests.contains(&unique_deposit_id) {
+            // Make the block the request can be reclaimed at one lower than the minimum.
+            deposit_request.lock_time = minimum_acceptable_unlock_time_for_this_deposit - 1;
+        } else if in_bounds_requests.contains(&unique_deposit_id) {
+            // Make the block the request can be reclaimed at one lower than the minimum and
+            // track that it's one of the expected acceptable deposits.
+            deposit_request.lock_time = minimum_acceptable_unlock_time_for_this_deposit;
+            expected_pending_deposit_requests.push(deposit_request.clone());
+        }
+    }
+
+    // Take 2 ------------------------------------------------------------------
+    // This time some of the deposit requests are outside of the reclaim bounds.
+    // We should only get the ones that are within the reclaim bounds.
+    signer::testing::storage::drop_db(pg_store).await;
+    pg_store = testing::storage::new_test_database(db_num, true).await;
+    in_memory_store = storage::in_memory::Store::new_shared();
+
+    // Initialize the data.
+    test_data.write_to(&mut pg_store).await;
+    test_data.write_to(&mut in_memory_store).await;
+
+    let mut pending_accepted_deposit_requests_in_memory = in_memory_store
+        .get_pending_accepted_deposit_requests(&chain_tip, context_window, threshold)
+        .await
+        .expect("failed to get pending deposit requests");
+
+    let mut pending_accepted_deposit_requests_pg_store = pg_store
+        .get_pending_accepted_deposit_requests(&chain_tip, context_window, threshold)
+        .await
+        .expect("failed to get pending deposit requests");
+
+    // Sort the deposit requests so that we can compare them.
+    pending_accepted_deposit_requests_pg_store.sort();
+    pending_accepted_deposit_requests_in_memory.sort();
+    expected_pending_deposit_requests.sort();
+
+    assert_eq!(
+        expected_pending_deposit_requests, pending_accepted_deposit_requests_pg_store,
+        "Pending accepted deposits from the PG store do not match the expected output."
+    );
+    assert_eq!(
+        expected_pending_deposit_requests, pending_accepted_deposit_requests_in_memory,
+        "Pending accepted deposits from the in memory store does not match the expected output."
+    );
+
     signer::testing::storage::drop_db(pg_store).await;
 }
 
@@ -1428,7 +1622,7 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
     // We need to manually update the database with new bitcoin block
     // headers.
@@ -1439,13 +1633,22 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     // can rely on that fact.
     setup.store_deposit_tx(&db).await;
 
+    // The request needs to be added to the database. This stores
+    // `setup.deposit_request` into the database.
+    setup.store_deposit_request(&db).await;
+
+    // TODO: Create the initial transaction sweep package without any
+    // withdrawals and have a separate method for creating that sweep (since
+    // it's not realistic to have the withdrawal in the same sweep as the
+    // deposit). Then we wouldn't have to do this.
+    setup.store_withdrawal_request(&db).await;
+
+    // Store outstanding sweep transaction packages in the database.
+    setup.store_sweep_transactions(&db).await;
+
     // We take the sweep transaction as is from the test setup and
     // store it in the database.
     setup.store_sweep_tx(&db).await;
-
-    // Lastly, the request needs to be added to the database. This stores
-    // `setup.deposit_request` into the database.
-    setup.store_deposit_request(&db).await;
 
     let chain_tip = setup.sweep_block_hash.into();
     let context_window = 20;
@@ -1461,6 +1664,7 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
 
     // Its details should match that of the deposit request.
     let req = requests.pop().unwrap();
+
     assert_eq!(req.amount, setup.deposit_request.amount);
     assert_eq!(req.txid, setup.deposit_request.outpoint.txid.into());
     assert_eq!(req.output_index, setup.deposit_request.outpoint.vout);
@@ -1468,20 +1672,14 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     assert_eq!(req.sweep_block_hash, setup.sweep_block_hash.into());
     assert_eq!(req.sweep_block_height, setup.sweep_block_height);
     assert_eq!(req.sweep_txid, setup.sweep_tx_info.txid.into());
-    assert_eq!(req.sweep_tx, setup.sweep_tx_info.tx.into());
 
     signer::testing::storage::drop_db(db).await;
 }
 
 /// This function tests that deposit requests that do not have a confirmed
-/// response bitcoin transaction are not returned from
+/// response (sweep) bitcoin transaction are not returned from
 /// [`DbRead::get_swept_deposit_requests`].
-///
-/// We need to update the query before we can activate this test. Right now
-/// we do not associate deposit transactions with their sweep transaction,
-/// so the query is very dumb. We should fix this once
-/// https://github.com/stacks-network/sbtc/issues/585 gets completed.
-#[ignore = "Underlying query has not been completed"]
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
     let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
@@ -1494,7 +1692,7 @@ async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
     // We need to manually update the database with new bitcoin block
     // headers.
@@ -1508,6 +1706,18 @@ async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
     // The request needs to be added to the database. This stores
     // `setup.deposit_request` into the database.
     setup.store_deposit_request(&db).await;
+
+    // Store outstanding sweep transaction packages in the database, which
+    // includes the above deposit request. But remember that this represents a
+    // sweep transaction that has been broadcast to the mempool, but not yet
+    // observed in a block (we would need to also call `.store_sweep_tx()` for
+    // that).
+    //
+    // Note: we need to store the withdrawal request to satisfy FK's since
+    // `TestSweepSetup` includes a withdrawal in the sweep transaction by
+    // default, but we don't use it.
+    setup.store_withdrawal_request(&db).await;
+    setup.store_sweep_transactions(&db).await;
 
     // We are supposed to store a sweep transaction, but we haven't, so the
     // deposit request is not considered swept.
@@ -1525,15 +1735,17 @@ async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
     signer::testing::storage::drop_db(db).await;
 }
 
-/// This function tests that [`DbRead::get_swept_deposit_requests`]
-/// function does not return requests where we have already confirmed a
+/// This function tests that [`DbRead::get_swept_deposit_requests`] function
+/// does not return requests where we have already confirmed a
 /// `complete-deposit` contract call transaction on the canonical Stacks
 /// blockchain.
 ///
 /// Right now the query in [`DbRead::get_swept_deposit_requests`] does not
-/// satisfy that criteria, because it does not check that the
-/// `complete-deposit` contract call is on the Stacks blockchain that is
-/// associated with the canonical bitcoin blockchain.
+/// satisfy that criteria, because it does not check that the `complete-deposit`
+/// contract call is on the Stacks blockchain that is associated with the
+/// canonical bitcoin blockchain.
+///
+/// TODO: Activate after #559 is completed and the query is updated.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_responses() {
@@ -1658,6 +1870,8 @@ async fn can_sign_deposit_tx_rejects_not_in_signer_set() {
 /// function return requests where we have already confirmed a
 /// `complete-deposit` contract call transaction on the Stacks blockchain
 /// but that transaction has been reorged while the sweep transaction has not.
+///
+/// TODO: after #559 is completed and the query is updated.
 #[ignore = "Query does not check for transactions on canonical Stacks blockchain"]
 #[tokio::test]
 async fn get_swept_deposit_requests_response_tx_reorged() {}
@@ -1748,4 +1962,102 @@ async fn should_get_signer_utxo_donations() {
         .await;
 
     signer::testing::storage::drop_db(store).await;
+}
+
+/// This test checks that the `get_latest_sweep_transaction_package` function
+/// returns the correct sweep transaction package for a given blockchain tip.
+///
+/// The test sets up two different sweep transactions in the database on
+/// different Bitcoin forks and then checks that the correct sweep transaction
+/// package is returned for each fork.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn can_store_and_get_latest_sweep_transaction() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+
+    // ** TEST SETUP 1 **
+
+    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    setup.store_deposit_tx(&db).await;
+    setup.store_deposit_request(&db).await;
+    setup.store_withdrawal_request(&db).await;
+    let first_sweep_block_hash = setup.sweep_block_hash;
+    // We'll use this to verify fork-functionality later.
+    // Store outstanding sweep transaction packages in the database and get the
+    // expected sweep package for asserts later on.
+    let expected1 = setup.store_sweep_transactions(&db).await.pop().unwrap();
+
+    // ** TEST SETUP 2 **
+
+    // Do the above all over again, but with a different sweep transaction so that
+    // we get multiple in the database.
+    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    setup.store_deposit_tx(&db).await;
+    setup.store_deposit_request(&db).await;
+    setup.store_withdrawal_request(&db).await;
+
+    // Make a bunch of noise on the chain.
+    for block in faucet.generate_blocks(10) {
+        let mut sweep = fake::Faker.fake_with_rng::<model::SweepTransaction, _>(&mut rng);
+        sweep.created_at_block_hash = block.into();
+        sweep.swept_deposits = vec![];
+        sweep.swept_withdrawals = vec![];
+        db.write_sweep_transaction(&sweep)
+            .await
+            .expect("failed to insert dummy sweep transaction");
+        crate::setup::backfill_bitcoin_blocks(&db, rpc, &block).await;
+    }
+
+    // Store outstanding sweep transactions in the database and get the
+    // expected sweep package for asserts later on.
+    let expected2 = setup.store_sweep_transactions(&db).await.pop().unwrap();
+
+    // Make a bunch more noise on the chain.
+    for block in faucet.generate_blocks(10) {
+        let mut sweep = fake::Faker.fake_with_rng::<model::SweepTransaction, _>(&mut rng);
+        sweep.created_at_block_hash = block.into();
+        sweep.swept_deposits = vec![];
+        sweep.swept_withdrawals = vec![];
+        db.write_sweep_transaction(&sweep)
+            .await
+            .expect("failed to insert dummy sweep transaction");
+        crate::setup::backfill_bitcoin_blocks(&db, rpc, &block).await;
+    }
+
+    // ** TEST 1 **
+    // Assert that if we request the latest sweep tx for the first
+    // blockchain tip, we get the first sweep tx.
+    let tx1 = db
+        .get_latest_sweep_transaction(&first_sweep_block_hash.into(), 50)
+        .await
+        .expect("failed to get latest sweep transaction package (on fork)");
+
+    let Some(tx1) = tx1 else {
+        panic!("expected to find a sweep transaction package");
+    };
+
+    assert_eq!(tx1, expected1);
+
+    // ** TEST 2 **
+    // Assert that if we request the latest sweep tx for the second
+    // blockchain tip, we get the second sweep tx.
+    //
+    // This test also verifies that the sweep tx pre-insert is identical to
+    // the sweep tx when retrieved from the database.
+    let tx2 = db
+        .get_latest_sweep_transaction(&setup.sweep_block_hash.into(), 50)
+        .await
+        .expect("failed to get latest sweep transaction package");
+
+    let Some(tx2) = tx2 else {
+        panic!("expected to find a sweep transaction package");
+    };
+
+    assert_eq!(tx2, expected2);
 }
