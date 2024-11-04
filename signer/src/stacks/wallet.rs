@@ -51,11 +51,9 @@ const MULTISIG_ADDRESS_HASH_MODE: OrderIndependentMultisigHashMode =
 
 /// A set of dummy private keys which are used for creating "dummy" transactions
 /// for Stacks transaction size estimation.
-static DUMMY_PRIVATE_KEYS: LazyLock<Vec<crate::keys::PrivateKey>> = LazyLock::new(|| {
+static DUMMY_PRIVATE_KEYS: LazyLock<[PrivateKey; 128]> = LazyLock::new(|| {
     let mut rng = rand::rngs::StdRng::seed_from_u64(1);
-    std::iter::repeat_with(|| PrivateKey::new(&mut rng))
-        .take(128)
-        .collect::<Vec<PrivateKey>>()
+    std::array::from_fn(|_| PrivateKey::new(&mut rng))
 });
 
 /// Requisite info for the signers' multi-sig wallet on Stacks.
@@ -415,7 +413,7 @@ where
     let private_keys = DUMMY_PRIVATE_KEYS
         .iter()
         .take(num_signers)
-        .cloned()
+        .copied()
         .collect::<Vec<_>>();
 
     let public_keys: Vec<_> = private_keys
