@@ -1161,25 +1161,38 @@ impl AsTxPayload for ContractDeploy {
 }
 
 impl ContractDeploy {
+    /// Get the name of the smart contract
+    pub fn contract_name(&self) -> &'static str {
+        match self {
+            ContractDeploy::SbtcToken(_) => SbtcTokenContract::CONTRACT_NAME,
+            ContractDeploy::SbtcRegistry(_) => SbtcRegistryContract::CONTRACT_NAME,
+            ContractDeploy::SbtcDeposit(_) => SbtcDepositContract::CONTRACT_NAME,
+            ContractDeploy::SbtcWithdrawal(_) => SbtcWithdrawalContract::CONTRACT_NAME,
+            ContractDeploy::SbtcBootstrap(_) => SbtcBootstrapContract::CONTRACT_NAME,
+        }
+    }
     /// Validates that The contract is not already deployed on the chain.
     pub async fn validate<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
     where
         C: Context + Send + Sync,
     {
-        let wallet = SignerWallet::load(ctx, &req_ctx.chain_tip.block_hash).await?;
-        match ctx
+        let contract_name = self.contract_name();
+        let contract_source = ctx
             .get_stacks_client()
-            .get_contract_source(self, wallet.address())
-            .await
-        {
-            Ok(_) => Err(Error::ContractAlreadyDeployed),
-            Err(_) => Ok(()),
+            .get_contract_source(&req_ctx.deployer, contract_name)
+            .await;
+
+        match contract_source {
+            Ok(_) => Err(Error::ContractAlreadyDeployed(contract_name)),
+            Err(Error::StacksNodeResponse(error))
+                if error.status() == Some(reqwest::StatusCode::NOT_FOUND) => Ok(()),
+            Err(err) => Err(err),
         }
     }
 }
 
 /// The smart contract data for the sbtc-token contract.
-#[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SbtcTokenContract;
 
 impl AsContractDeploy for SbtcTokenContract {
@@ -1189,7 +1202,7 @@ impl AsContractDeploy for SbtcTokenContract {
 }
 
 /// The smart contract data for the sbtc-registry contract.
-#[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SbtcRegistryContract;
 
 impl AsContractDeploy for SbtcRegistryContract {
@@ -1199,7 +1212,7 @@ impl AsContractDeploy for SbtcRegistryContract {
 }
 
 /// The smart contract data for the sbtc-stacks contract.
-#[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SbtcDepositContract;
 
 impl AsContractDeploy for SbtcDepositContract {
@@ -1209,7 +1222,7 @@ impl AsContractDeploy for SbtcDepositContract {
 }
 
 /// The smart contract data for the sbtc-withdrawal contract.
-#[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SbtcWithdrawalContract;
 
 impl AsContractDeploy for SbtcWithdrawalContract {
@@ -1219,7 +1232,7 @@ impl AsContractDeploy for SbtcWithdrawalContract {
 }
 
 /// The smart contract data for the sbtc-bootstrap-signers contract.
-#[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SbtcBootstrapContract;
 
 impl AsContractDeploy for SbtcBootstrapContract {

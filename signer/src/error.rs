@@ -447,9 +447,9 @@ pub enum Error {
     #[error("unexpected operation result")]
     UnexpectedOperationResult,
 
-    /// The contract is already deployed
-    #[error("contract already deployed")]
-    ContractAlreadyDeployed,
+    /// The smart contract has already been deployed
+    #[error("smart contract already deployed, contract name: {0}")]
+    ContractAlreadyDeployed(&'static str),
 }
 
 impl From<std::convert::Infallible> for Error {
