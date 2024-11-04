@@ -24,6 +24,7 @@ use signer::block_observer::Deposit;
 use signer::config::Settings;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey;
+use signer::message;
 use signer::storage::model;
 use signer::storage::model::BitcoinTxRef;
 use signer::storage::model::EncryptedDkgShares;
@@ -149,7 +150,7 @@ impl TestSweepSetup {
             assert_eq!(transactions.len(), 1);
             let mut unsigned = transactions.pop().unwrap();
             // Create the transaction package that we will store.
-            let sweep_tx = model::SweepTransaction::from_unsigned_at_block(
+            let sweep_tx = message::SweepTransactionInfo::from_unsigned_at_block(
                 // We expect the `sweep_block_hash` to be the block where the
                 // sweep transaction was mined, so we use the deposit block hash
                 // which is a previous block for the sweep broadcast.
@@ -196,7 +197,7 @@ impl TestSweepSetup {
             withdrawal_request: requests.withdrawals.pop().unwrap(),
             withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
             signatures_required: 2,
-            sweep_transactions: vec![sweep_transaction],
+            sweep_transactions: vec![(&sweep_transaction).into()],
         }
     }
 

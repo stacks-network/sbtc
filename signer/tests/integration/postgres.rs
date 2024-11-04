@@ -1740,12 +1740,9 @@ async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
 /// `complete-deposit` contract call transaction on the canonical Stacks
 /// blockchain.
 ///
-/// Right now the query in [`DbRead::get_swept_deposit_requests`] does not
-/// satisfy that criteria, because it does not check that the `complete-deposit`
-/// contract call is on the Stacks blockchain that is associated with the
-/// canonical bitcoin blockchain.
-///
-/// TODO: Activate after #559 is completed and the query is updated.
+/// We use two sweep setups: we add confirming events to both but for one
+/// of them the event is not in the canonical chain, then we push another event
+/// (on the canonical chain) resulting in both being confirmed on the canonical chain.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_responses() {
@@ -1759,39 +1756,92 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let mut setup_fork = TestSweepSetup::new_setup(&rpc, &faucet, 2_000_000, &mut rng);
+    let mut setup_canonical = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let context_window = 20;
+
+    // Adding a block, we will use it to store the complete deposit event later
+    let chain_tip: BitcoinBlockHash = faucet.generate_blocks(1).pop().unwrap().into();
 
     // We need to manually update the database with new bitcoin block
     // headers.
-    crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    crate::setup::backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
 
-    // This isn't technically required right now, but the deposit
-    // transaction is supposed to be there, so future versions of our query
-    // can rely on that fact.
-    setup.store_deposit_tx(&db).await;
+    for setup in [&mut setup_fork, &mut setup_canonical] {
+        // This isn't technically required right now, but the deposit
+        // transaction is supposed to be there, so future versions of our query
+        // can rely on that fact.
+        setup.store_deposit_tx(&db).await;
 
-    // We take the sweep transaction as is from the test setup and
-    // store it in the database.
-    setup.store_sweep_tx(&db).await;
+        // We take the sweep transaction as is from the test setup and
+        // store it in the database.
+        setup.store_sweep_tx(&db).await;
 
-    // The request needs to be added to the database. This stores
-    // `setup.deposit_request` into the database.
-    setup.store_deposit_request(&db).await;
+        // The request needs to be added to the database. This stores
+        // `setup.deposit_request` into the database.
+        setup.store_deposit_request(&db).await;
 
-    // Here we store an event that signals that the deposit request has been confirmed.
+        // TODO: Create the initial transaction sweep package without any
+        // withdrawals and have a separate method for creating that sweep (since
+        // it's not realistic to have the withdrawal in the same sweep as the
+        // deposit). Then we wouldn't have to do this.
+        setup.store_withdrawal_request(&db).await;
+
+        // Store outstanding sweep transaction packages in the database.
+        setup.store_sweep_transactions(&db).await;
+    }
+
+    // Setup the stacks blocks
+    let stacks_tip = db.get_stacks_chain_tip(&chain_tip).await.unwrap().unwrap();
+
+    let setup_fork_event_block = StacksBlock {
+        block_hash: fake::Faker.fake_with_rng(&mut rng),
+        block_height: stacks_tip.block_height + 1,
+        parent_hash: stacks_tip.block_hash,
+        // For `setup_fork`, the stacks block is not in the canonical chain
+        bitcoin_anchor: fake::Faker.fake_with_rng(&mut rng),
+    };
+    let setup_canonical_event_block = StacksBlock {
+        block_hash: fake::Faker.fake_with_rng(&mut rng),
+        block_height: stacks_tip.block_height + 1,
+        parent_hash: stacks_tip.block_hash,
+        // For `setup_canonical`, the stacks block is in the canonical chain
+        bitcoin_anchor: chain_tip,
+    };
+    db.write_stacks_block_headers(vec![
+        setup_fork_event_block.clone(),
+        setup_canonical_event_block.clone(),
+    ])
+    .await
+    .unwrap();
+
+    // First, let's check we get both deposits
+    let requests = db
+        .get_swept_deposit_requests(&chain_tip, context_window)
+        .await
+        .unwrap();
+
+    assert_eq!(requests.len(), 2);
+
+    // Here we store some events that signals that the deposit request has been confirmed.
+    // For `setup_canonical`, the event block is on the canonical chain
     let event = CompletedDepositEvent {
         txid: fake::Faker.fake_with_rng::<StacksTxId, _>(&mut rng).into(),
-        block_id: fake::Faker
-            .fake_with_rng::<StacksBlockHash, _>(&mut rng)
-            .into(),
-        amount: setup.deposit_request.amount,
-        outpoint: setup.deposit_request.outpoint,
+        block_id: *setup_canonical_event_block.block_hash,
+        amount: setup_canonical.deposit_request.amount,
+        outpoint: setup_canonical.deposit_request.outpoint,
     };
-
     db.write_completed_deposit_event(&event).await.unwrap();
 
-    let chain_tip = setup.sweep_block_hash.into();
-    let context_window = 20;
+    // For `setup_fork`, the event block is not on the canonical chain
+    let event = CompletedDepositEvent {
+        txid: fake::Faker.fake_with_rng::<StacksTxId, _>(&mut rng).into(),
+        block_id: *setup_fork_event_block.block_hash,
+        amount: setup_fork.deposit_request.amount,
+        outpoint: setup_fork.deposit_request.outpoint,
+    };
+    db.write_completed_deposit_event(&event).await.unwrap();
 
     let requests = db
         .get_swept_deposit_requests(&chain_tip, context_window)
@@ -1800,6 +1850,34 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
 
     // The only deposit request has a confirmed complete-deposit
     // transaction on the canonical stacks blockchain.
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].amount, setup_fork.deposit_info.amount);
+
+    // Finally, we mine again on a block in the canonical chain
+    let setup_fork_event_block = StacksBlock {
+        block_hash: fake::Faker.fake_with_rng(&mut rng),
+        block_height: setup_canonical_event_block.block_height + 1,
+        parent_hash: setup_canonical_event_block.block_hash,
+        bitcoin_anchor: chain_tip,
+    };
+    db.write_stacks_block(&setup_fork_event_block)
+        .await
+        .unwrap();
+
+    let event = CompletedDepositEvent {
+        txid: fake::Faker.fake_with_rng::<StacksTxId, _>(&mut rng).into(),
+        block_id: *setup_fork_event_block.block_hash,
+        amount: setup_fork.deposit_request.amount,
+        outpoint: setup_fork.deposit_request.outpoint,
+    };
+    db.write_completed_deposit_event(&event).await.unwrap();
+
+    let requests = db
+        .get_swept_deposit_requests(&chain_tip, context_window)
+        .await
+        .unwrap();
+
+    // Now both are confirmed
     assert!(requests.is_empty());
 
     signer::testing::storage::drop_db(db).await;
@@ -1870,11 +1948,103 @@ async fn can_sign_deposit_tx_rejects_not_in_signer_set() {
 /// function return requests where we have already confirmed a
 /// `complete-deposit` contract call transaction on the Stacks blockchain
 /// but that transaction has been reorged while the sweep transaction has not.
-///
-/// TODO: after #559 is completed and the query is updated.
-#[ignore = "Query does not check for transactions on canonical Stacks blockchain"]
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-async fn get_swept_deposit_requests_response_tx_reorged() {}
+async fn get_swept_deposit_requests_response_tx_reorged() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // This query doesn't *need* bitcoind (it's just a query), we just need
+    // the transaction data in the database. We use the [`TestSweepSetup`]
+    // structure because it has helper functions for generating and storing
+    // sweep transactions, and the [`TestSweepSetup`] structure correctly
+    // sets up the database.
+    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+
+    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let context_window = 20;
+
+    // Adding a block, we will use it to store the complete deposit event later
+    let chain_tip: BitcoinBlockHash = faucet.generate_blocks(1).pop().unwrap().into();
+
+    // We need to manually update the database with new bitcoin block
+    // headers.
+    crate::setup::backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+
+    // This isn't technically required right now, but the deposit
+    // transaction is supposed to be there, so future versions of our query
+    // can rely on that fact.
+    setup.store_deposit_tx(&db).await;
+
+    // We take the sweep transaction as is from the test setup and
+    // store it in the database.
+    setup.store_sweep_tx(&db).await;
+
+    // The request needs to be added to the database. This stores
+    // `setup.deposit_request` into the database.
+    setup.store_deposit_request(&db).await;
+
+    // TODO: Create the initial transaction sweep package without any
+    // withdrawals and have a separate method for creating that sweep (since
+    // it's not realistic to have the withdrawal in the same sweep as the
+    // deposit). Then we wouldn't have to do this.
+    setup.store_withdrawal_request(&db).await;
+
+    // Store outstanding sweep transaction packages in the database.
+    setup.store_sweep_transactions(&db).await;
+
+    let stacks_tip = db
+        .get_stacks_chain_tip(&chain_tip.into())
+        .await
+        .unwrap()
+        .unwrap();
+
+    // First, let's check we get the deposit
+    let requests = db
+        .get_swept_deposit_requests(&chain_tip.into(), context_window)
+        .await
+        .unwrap();
+    assert_eq!(requests.len(), 1);
+
+    // Now we push the event to a stacks block anchored to the chain tip
+    let original_event_block = StacksBlock {
+        block_hash: fake::Faker.fake_with_rng(&mut rng),
+        block_height: stacks_tip.block_height + 1,
+        parent_hash: stacks_tip.block_hash,
+        bitcoin_anchor: chain_tip.into(),
+    };
+    db.write_stacks_block(&original_event_block).await.unwrap();
+
+    let event = CompletedDepositEvent {
+        txid: fake::Faker.fake_with_rng::<StacksTxId, _>(&mut rng).into(),
+        block_id: *original_event_block.block_hash,
+        amount: setup.deposit_request.amount,
+        outpoint: setup.deposit_request.outpoint,
+    };
+    db.write_completed_deposit_event(&event).await.unwrap();
+
+    // The deposit should be confirmed now
+    let requests = db
+        .get_swept_deposit_requests(&chain_tip.into(), context_window)
+        .await
+        .unwrap();
+
+    assert!(requests.is_empty());
+
+    // Now assume we have a reorg: the new bitcoin chain is `sweep_block_hash`
+    // and the complete deposit event is no longer in the canonical chain.
+    // The deposit should no longer be confirmed.
+    let requests = db
+        .get_swept_deposit_requests(&setup.sweep_block_hash.into(), context_window)
+        .await
+        .unwrap();
+
+    assert_eq!(requests.len(), 1);
+
+    signer::testing::storage::drop_db(db).await;
+}
 
 async fn transaction_coordinator_test_environment(
     store: PgStore,

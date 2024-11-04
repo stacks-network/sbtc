@@ -7,13 +7,14 @@ use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::{
     chainstate::{nakamoto::NakamotoBlock, stacks::StacksTransaction},
     net::api::{
-        getinfo::RPCPeerInfoData, getpoxinfo::RPCPoxInfoData, getsortition::SortitionInfo,
-        gettenureinfo::RPCGetTenureInfo,
+        getcontractsrc::ContractSrcResponse, getinfo::RPCPeerInfoData, getpoxinfo::RPCPoxInfoData,
+        getsortition::SortitionInfo, gettenureinfo::RPCGetTenureInfo,
     },
 };
 use clarity::types::chainstate::{StacksAddress, StacksBlockId};
 use tokio::sync::{broadcast, Mutex};
 
+use crate::stacks::wallet::SignerWallet;
 use crate::{
     bitcoin::{
         rpc::GetTxResponse, utxo::UnsignedTransaction, BitcoinInteract, MockBitcoinInteract,
@@ -335,14 +336,19 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
             .await
     }
 
-    async fn estimate_fees<T>(&self, payload: &T, priority: FeePriority) -> Result<u64, Error>
+    async fn estimate_fees<T>(
+        &self,
+        wallet: &SignerWallet,
+        payload: &T,
+        priority: FeePriority,
+    ) -> Result<u64, Error>
     where
         T: AsTxPayload + Send + Sync,
     {
         self.inner
             .lock()
             .await
-            .estimate_fees(payload, priority)
+            .estimate_fees(wallet, payload, priority)
             .await
     }
 
@@ -352,6 +358,18 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
 
     async fn get_node_info(&self) -> Result<RPCPeerInfoData, Error> {
         self.inner.lock().await.get_node_info().await
+    }
+
+    async fn get_contract_source(
+        &self,
+        address: &StacksAddress,
+        contract_name: &str,
+    ) -> Result<ContractSrcResponse, Error> {
+        self.inner
+            .lock()
+            .await
+            .get_contract_source(address, contract_name)
+            .await
     }
 }
 

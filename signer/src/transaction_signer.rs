@@ -26,9 +26,10 @@ use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
 use crate::network;
 use crate::signature::SighashDigest as _;
-use crate::stacks::contracts::AsContractCall;
+use crate::stacks::contracts::AsContractCall as _;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::ReqContext;
+use crate::stacks::contracts::StacksTx;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
@@ -157,6 +158,12 @@ where
         // separate main run-loops since they don't have anything to do
         // with each other.
         let signer_event_loop = async {
+            if let Err(err) = self.context.signal(TxSignerEvent::EventLoopStarted.into()) {
+                tracing::error!(%err, "error signalling event loop start");
+                return;
+            };
+
+            tracing::debug!("signer event loop started");
             while !should_shutdown() {
                 // Collect all events which have been signalled into this loop
                 // iteration for processing.
@@ -295,6 +302,14 @@ where
             .inspect_msg_chain_tip(msg.signer_pub_key, &msg.bitcoin_chain_tip)
             .await?;
 
+        tracing::trace!(
+            sender_is_coordinator = chain_tip_report.sender_is_coordinator,
+            chain_tip_status = ?chain_tip_report.chain_tip_status,
+            msg_chain_tip = %msg.bitcoin_chain_tip,
+            ?msg.inner.payload,
+            "handling message"
+        );
+
         match (
             &msg.inner.payload,
             chain_tip_report.sender_is_coordinator,
@@ -335,6 +350,27 @@ where
 
             (message::Payload::WstsMessage(wsts_msg), _, _) => {
                 self.handle_wsts_message(wsts_msg, &msg.bitcoin_chain_tip)
+                    .await?;
+            }
+
+            (
+                message::Payload::SweepTransactionInfo(sweep_tx),
+                is_coordinator,
+                ChainTipStatus::Canonical,
+            ) => {
+                if !is_coordinator {
+                    tracing::warn!("received sweep transaction info from non-coordinator");
+                    return Ok(());
+                }
+
+                tracing::debug!(
+                    txid = %sweep_tx.txid,
+                    sweep_broadcast_at = %sweep_tx.created_at_block_hash,
+                    "received sweep transaction info; storing it"
+                );
+                self.context
+                    .get_storage_mut()
+                    .write_sweep_transaction(&sweep_tx.into())
                     .await?;
             }
 
@@ -463,7 +499,7 @@ where
         let wallet = SignerWallet::load(&self.context, bitcoin_chain_tip).await?;
         wallet.set_nonce(request.nonce);
 
-        let multi_sig = MultisigTx::new_tx(&request.contract_call, &wallet, request.tx_fee);
+        let multi_sig = MultisigTx::new_tx(&request.contract_tx, &wallet, request.tx_fee);
         let txid = multi_sig.tx().txid();
 
         // TODO(517): Remove the digest field from the request object and
@@ -514,11 +550,20 @@ where
             deployer: self.context.config().signer.deployer,
         };
         let ctx = &self.context;
-        match &request.contract_call {
-            ContractCall::AcceptWithdrawalV1(contract) => contract.validate(ctx, &req_ctx).await,
-            ContractCall::CompleteDepositV1(contract) => contract.validate(ctx, &req_ctx).await,
-            ContractCall::RejectWithdrawalV1(contract) => contract.validate(ctx, &req_ctx).await,
-            ContractCall::RotateKeysV1(contract) => contract.validate(ctx, &req_ctx).await,
+        match &request.contract_tx {
+            StacksTx::ContractCall(ContractCall::AcceptWithdrawalV1(contract)) => {
+                contract.validate(ctx, &req_ctx).await
+            }
+            StacksTx::ContractCall(ContractCall::CompleteDepositV1(contract)) => {
+                contract.validate(ctx, &req_ctx).await
+            }
+            StacksTx::ContractCall(ContractCall::RejectWithdrawalV1(contract)) => {
+                contract.validate(ctx, &req_ctx).await
+            }
+            StacksTx::ContractCall(ContractCall::RotateKeysV1(contract)) => {
+                contract.validate(ctx, &req_ctx).await
+            }
+            StacksTx::SmartContract(smart_contract) => smart_contract.validate(ctx, &req_ctx).await,
         }
     }
 

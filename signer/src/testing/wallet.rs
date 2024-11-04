@@ -3,10 +3,6 @@
 use std::sync::LazyLock;
 
 use blockstack_lib::chainstate::stacks::TransactionPayload;
-use blockstack_lib::chainstate::stacks::TransactionPostConditionMode;
-use blockstack_lib::chainstate::stacks::TransactionSmartContract;
-use blockstack_lib::clarity::vm::ContractName;
-use blockstack_lib::util_lib::strings::StacksString;
 use clarity::vm::types::TupleData;
 use clarity::vm::ClarityName;
 use clarity::vm::Value as ClarityValue;
@@ -110,38 +106,6 @@ impl<T: AsContractCall> AsTxPayload for ContractCallWrapper<T> {
     }
     fn post_conditions(&self) -> StacksTxPostConditions {
         self.0.post_conditions()
-    }
-}
-
-/// A trait for deploying the smart contract
-pub trait AsContractDeploy {
-    /// The name of the clarity smart contract that relates to this struct.
-    const CONTRACT_NAME: &'static str;
-    /// The actual body of the clarity contract.
-    const CONTRACT_BODY: &'static str;
-    /// Convert this struct to a Stacks contract deployment.
-    fn as_smart_contract(&self) -> TransactionSmartContract {
-        TransactionSmartContract {
-            name: ContractName::from(Self::CONTRACT_NAME),
-            code_body: StacksString::from_str(Self::CONTRACT_BODY).unwrap(),
-        }
-    }
-}
-
-/// A wrapper type for smart contract deployment that implements
-/// AsTxPayload. This is analogous to the
-/// [`ContractCallWrapper`] struct.
-pub struct ContractDeploy<T>(pub T);
-
-impl<T: AsContractDeploy> AsTxPayload for ContractDeploy<T> {
-    fn tx_payload(&self) -> TransactionPayload {
-        TransactionPayload::SmartContract(self.0.as_smart_contract(), None)
-    }
-    fn post_conditions(&self) -> StacksTxPostConditions {
-        StacksTxPostConditions {
-            post_condition_mode: TransactionPostConditionMode::Allow,
-            post_conditions: Vec::new(),
-        }
     }
 }
 

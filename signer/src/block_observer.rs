@@ -322,7 +322,7 @@ where
         Ok(())
     }
 
-    /// This function does three things:
+    /// This function does two things:
     /// 1. For all deposit requests, check to see if there are bitcoin
     ///    blocks that we do not have in our database.
     /// 2. If we do not have a record of the bitcoin block then write it
