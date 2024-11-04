@@ -903,6 +903,7 @@ async fn sign_bitcoin_transaction() {
 
     faucet.generate_blocks(1);
 
+    // TODO: 
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     let (ctx, _, _) = signers.first().unwrap();

@@ -697,7 +697,6 @@ where
         // Let's check the signature using the secp256k1 types.
         let sig = secp256k1::schnorr::Signature::from_slice(&signature.to_bytes()).unwrap();
         let msg_digest = secp256k1::Message::from_digest(msg);
-        // let pk = aggregate_key;
         let x_only_pk = secp256k1::XOnlyPublicKey::from(&aggregate_key);
         sig.verify(&msg_digest, &x_only_pk).unwrap();
 

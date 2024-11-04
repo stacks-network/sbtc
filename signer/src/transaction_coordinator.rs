@@ -276,14 +276,14 @@ where
 
     /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
     /// fulfilling pending deposit and withdraw requests.
-    #[tracing::instrument(skip(self, aggregate_key, signer_public_keys))]
+    #[tracing::instrument(skip_all, fields(bitcoin_chain_tip))]
     async fn construct_and_sign_bitcoin_sbtc_transactions(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<(), Error> {
-        tracing::info!("Fetching the stacks chain tip");
+        tracing::debug!("Fetching the stacks chain tip");
         let stacks_chain_tip = self
             .context
             .get_storage()
@@ -629,14 +629,14 @@ where
                 tx_in.witness = witness;
             });
 
-        tracing::info!("broadcasing bitcoin trasnaction");
+        tracing::info!("broadcasing bitcoin transaction");
 
         self.context
             .get_bitcoin_client()
             .broadcast_transaction(&transaction.tx)
             .await?;
 
-        tracing::info!("bitcoin trasnaction accepted by bitcoin-core");
+        tracing::info!("bitcoin transaction accepted by bitcoin-core");
 
         Ok(())
     }
