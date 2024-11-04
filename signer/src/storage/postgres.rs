@@ -1393,15 +1393,15 @@ impl super::DbRead for PgStore {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> Result<Vec<model::SweptDepositRequest>, Error> {
-        // TODO: This query needs to be updated to check that the
-        // `completed_deposit_event` is in a Stacks block linked to the
-        // canonical Bitcoin chain (i.e. confirmed) once #559 is completed.
-
         // The following tests define the criteria for this query:
         // - [X] get_swept_deposit_requests_returns_swept_deposit_requests
         // - [X] get_swept_deposit_requests_does_not_return_unswept_deposit_requests
-        // - [ ] get_swept_deposit_requests_does_not_return_deposit_requests_with_responses (needs #559)
-        // - [ ] get_swept_deposit_requests_response_tx_reorged (needs #559)
+        // - [X] get_swept_deposit_requests_does_not_return_deposit_requests_with_responses
+        // - [X] get_swept_deposit_requests_response_tx_reorged
+
+        let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
+            return Ok(Vec::new());
+        };
 
         sqlx::query_as::<_, model::SweptDepositRequest>(
             "
@@ -1428,19 +1428,28 @@ impl super::DbRead for PgStore {
                 deposit_requests AS deposit_req
                     ON deposit_req.txid = swept_deposit.deposit_request_txid
                     AND deposit_req.output_index = swept_deposit.deposit_request_output_index
-            -- TODO: The following left join is incorrect, we need to check that
-            -- the completed deposit event is in a Stacks block that is linked
-            -- to the canonical Bitcoin chain (#559).
-            LEFT JOIN
+            LEFT JOIN 
                 completed_deposit_events AS cde
                     ON cde.bitcoin_txid = deposit_req.txid
                     AND cde.output_index = deposit_req.output_index
-            WHERE
-                cde.bitcoin_txid IS NULL
+            LEFT JOIN
+                stacks_blockchain_of($3, $1, $2) sb
+                    ON sb.block_hash = cde.block_hash
+            GROUP BY
+                bc_trx.txid
+              , bc_trx.block_hash
+              , bc_blocks.block_height
+              , deposit_req.txid
+              , deposit_req.output_index
+              , deposit_req.recipient
+              , deposit_req.amount
+            HAVING
+                COUNT(sb.block_hash) = 0
         ",
         )
         .bind(chain_tip)
         .bind(i32::from(context_window))
+        .bind(stacks_chain_tip.block_hash)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
