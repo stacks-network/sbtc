@@ -1122,7 +1122,7 @@ pub trait AsContractDeploy {
 /// A wrapper type for smart contract deployment that implements
 /// AsTxPayload. This is analogous to the
 /// [`ContractCallWrapper`] struct.
-#[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ContractDeploy {
     /// The sbtc-token contract.
     /// This contract needs to be deployed before any other contract.
@@ -1171,23 +1171,43 @@ impl ContractDeploy {
             ContractDeploy::SbtcBootstrap(_) => SbtcBootstrapContract::CONTRACT_NAME,
         }
     }
-    /// Validates that The contract is not already deployed on the chain.
-    pub async fn validate<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
+
+    /// Check whether this smart contract has been deployed.
+    pub async fn is_deployed<C>(&self, ctx: &C, deployer: &StacksAddress) -> Result<bool, Error>
     where
         C: Context + Send + Sync,
     {
         let contract_name = self.contract_name();
         let contract_source = ctx
             .get_stacks_client()
-            .get_contract_source(&req_ctx.deployer, contract_name)
+            .get_contract_source(deployer, contract_name)
             .await;
 
+        // If we get an Ok response then we know the contract has been
+        // deployed already and we can return early. If we get a 404
+        // response then we know the contract has not been deployed yet,
+        // and we can proceed with deploying it.
         match contract_source {
-            Ok(_) => Err(Error::ContractAlreadyDeployed(contract_name)),
+            Ok(_) => Ok(true),
             Err(Error::StacksNodeResponse(error))
-                if error.status() == Some(reqwest::StatusCode::NOT_FOUND) => Ok(()),
+                if error.status() == Some(reqwest::StatusCode::NOT_FOUND) =>
+            {
+                Ok(false)
+            }
             Err(err) => Err(err),
         }
+    }
+
+    /// Validates that The contract is not already deployed on the chain.
+    pub async fn validate<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
+    where
+        C: Context + Send + Sync,
+    {
+        if self.is_deployed(ctx, &req_ctx.deployer).await? {
+            return Err(Error::ContractAlreadyDeployed(self.contract_name()));
+        }
+
+        Ok(())
     }
 }
 
