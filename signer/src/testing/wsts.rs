@@ -19,6 +19,7 @@ use wsts::state_machine::coordinator::frost;
 use crate::ecdsa::SignEcdsa as _;
 use crate::network::MessageTransfer as _;
 
+use wsts::net::SignatureType;
 use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::StateMachine as _;
 
@@ -222,16 +223,18 @@ impl Coordinator {
         bitcoin_chain_tip: model::BitcoinBlockHash,
         txid: bitcoin::Txid,
         msg: &[u8],
+        signature_type: SignatureType,
     ) -> wsts::taproot::SchnorrProof {
         let outbound = self
             .wsts_coordinator
-            .start_signing_round(msg, true, None)
+            .start_signing_round(msg, signature_type)
             .expect("failed to start signing round");
 
         self.send_packet(bitcoin_chain_tip, txid, outbound).await;
 
         match self.loop_until_result(bitcoin_chain_tip, txid).await {
-            wsts::state_machine::OperationResult::SignTaproot(signature) => signature,
+            wsts::state_machine::OperationResult::SignTaproot(signature)
+            | wsts::state_machine::OperationResult::SignSchnorr(signature) => signature,
             _ => panic!("unexpected operation result"),
         }
     }

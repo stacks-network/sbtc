@@ -14,6 +14,7 @@ use futures::TryStreamExt;
 use sha2::Digest;
 use tokio::time::sleep;
 use tokio_stream::wrappers::BroadcastStream;
+use wsts::net::SignatureType;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
@@ -33,6 +34,7 @@ use crate::message::StacksTransactionSignRequest;
 use crate::message::SweepTransactionInfo;
 use crate::network;
 use crate::signature::SighashDigest;
+use crate::signature::TaprootSignature;
 use crate::stacks::api::FeePriority;
 use crate::stacks::api::StacksInteract;
 use crate::stacks::api::SubmitTxResponse;
@@ -293,13 +295,14 @@ where
 
     /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
     /// fulfilling pending deposit and withdraw requests.
-    #[tracing::instrument(skip(self, signer_public_keys, aggregate_key))]
+    #[tracing::instrument(skip_all, fields(bitcoin_chain_tip))]
     async fn construct_and_sign_bitcoin_sbtc_transactions(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<(), Error> {
+        tracing::debug!("Fetching the stacks chain tip");
         let stacks_chain_tip = self
             .context
             .get_storage()
@@ -365,7 +368,7 @@ where
     /// 4. Broadcast this sign-request to the network and wait for
     ///    responses.
     /// 5. If there are enough signatures then broadcast the transaction.
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(skip(self, bitcoin_aggregate_key))]
     async fn construct_and_sign_stacks_sbtc_response_transactions(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
@@ -579,7 +582,7 @@ where
 
     /// Coordinate a signing round for the given request
     /// and broadcast it once it's signed.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn sign_and_broadcast(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -607,15 +610,11 @@ where
                 &mut coordinator_state_machine,
                 txid,
                 &msg,
+                SignatureType::Taproot(None),
             )
             .await?;
 
-        let signature = bitcoin::taproot::Signature {
-            signature: secp256k1::schnorr::Signature::from_slice(&signature.to_bytes())
-                .map_err(|_| Error::TypeConversion)?,
-            sighash_type: bitcoin::TapSighashType::Default,
-        };
-        let signer_witness = bitcoin::Witness::p2tr_key_spend(&signature);
+        let signer_witness = bitcoin::Witness::p2tr_key_spend(&signature.into());
 
         let mut deposit_witness = Vec::new();
 
@@ -628,16 +627,11 @@ where
                     &mut coordinator_state_machine,
                     txid,
                     &msg,
+                    SignatureType::Schnorr,
                 )
                 .await?;
 
-            let signature = bitcoin::taproot::Signature {
-                signature: secp256k1::schnorr::Signature::from_slice(&signature.to_bytes())
-                    .map_err(|_| Error::TypeConversion)?,
-                sighash_type: bitcoin::TapSighashType::Default,
-            };
-
-            let witness = deposit.construct_witness_data(signature);
+            let witness = deposit.construct_witness_data(signature.into());
 
             deposit_witness.push(witness);
         }
@@ -655,10 +649,14 @@ where
                 tx_in.witness = witness;
             });
 
+        tracing::info!("broadcasing bitcoin transaction");
+
         self.context
             .get_bitcoin_client()
             .broadcast_transaction(&transaction.tx)
             .await?;
+
+        tracing::info!("bitcoin transaction accepted by bitcoin-core");
 
         Ok(())
     }
@@ -670,9 +668,10 @@ where
         coordinator_state_machine: &mut CoordinatorStateMachine,
         txid: bitcoin::Txid,
         msg: &[u8],
-    ) -> Result<wsts::taproot::SchnorrProof, Error> {
+        signature_type: SignatureType,
+    ) -> Result<TaprootSignature, Error> {
         let outbound = coordinator_state_machine
-            .start_signing_round(msg, true, None)
+            .start_signing_round(msg, signature_type)
             .map_err(Error::wsts_coordinator)?;
 
         let msg = message::WstsMessage { txid, inner: outbound.msg };
@@ -687,7 +686,9 @@ where
             .map_err(|_| Error::CoordinatorTimeout(max_duration.as_secs()))??;
 
         match operation_result {
-            WstsOperationResult::SignTaproot(signature) => Ok(signature),
+            WstsOperationResult::SignTaproot(sig) | WstsOperationResult::SignSchnorr(sig) => {
+                Ok(sig.into())
+            }
             _ => Err(Error::UnexpectedOperationResult),
         }
     }
@@ -818,7 +819,7 @@ where
         given_key_is_coordinator(self.pub_key(), bitcoin_chain_tip, signer_public_keys)
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, aggregate_key))]
     async fn get_btc_state(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
@@ -840,7 +841,7 @@ where
             utxo,
             public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
             last_fees,
-            magic_bytes: [0, 0], //TODO(#472): Use the correct magic bytes.
+            magic_bytes: [b'T', b'3'], //TODO(#472): Use the correct magic bytes.
         })
     }
 
@@ -848,7 +849,7 @@ where
     /// time as well. We need to do this because deposit requests are locked
     /// using OP_CSV, which lock up coins based on block height or
     /// multiples of 512 seconds measure by the median time past.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, aggregate_key, signer_public_keys))]
     async fn get_pending_requests(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -1059,7 +1060,7 @@ where
         let tx_fee = self
             .context
             .get_stacks_client()
-            .estimate_fees(&contract_deploy.tx_payload(), FeePriority::High)
+            .estimate_fees(wallet, &contract_deploy.tx_payload(), FeePriority::High)
             .await?;
         let multi_tx = MultisigTx::new_tx(&contract_deploy, wallet, tx_fee);
         let tx = multi_tx.tx();
