@@ -266,10 +266,10 @@ where
         };
 
         if !self.sbtc_contracts_deployed {
-            match self
+            let contract_deployments = self
                 .deploy_smart_contracts(&bitcoin_chain_tip, &aggregate_key)
-                .await
-            {
+                .await;
+            match contract_deployments {
                 Ok(()) => self.sbtc_contracts_deployed = true,
                 Err(error) => {
                     // No need to continue if the contracts are not deployed.
@@ -1000,34 +1000,28 @@ where
         chain_tip: &model::BitcoinBlockHash,
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
-        let wallet = SignerWallet::load(&self.context, chain_tip).await?;
-        let stacks = self.context.get_stacks_client();
+        let ctx = &self.context;
+        let wallet = SignerWallet::load(ctx, chain_tip).await?;
 
-        // If we get an Ok response then we know the contract has been
-        // deployed already, and deploying it would probably be harmful (it
-        // appears to stall subsequent transactions for some reason).
-        // If we get a 404 response then we know the contract has not been
-        // deployed yet, and we can proceed with deploying it.
-        match stacks
-            .get_contract_source(&contract_deploy, wallet.address())
-            .await
-        {
-            Ok(_) => return Err(Error::ContractAlreadyDeployed),
-            Err(Error::StacksNodeResponse(error))
-                if error.status() == Some(reqwest::StatusCode::NOT_FOUND) =>
-            {
-                // The contract is not deployed yet, so we can proceed
-                tracing::info!("Contract not deployed yet, proceeding with deployment")
-            }
-            Err(error) => return Err(error),
-        };
+        // Maybe this smart contract has already been deployed, let's check
+        // that first.
+        let deployer = self.context.config().signer.deployer;
+        if contract_deploy.is_deployed(ctx, &deployer).await? {
+            return Ok(());
+        }
+
+        // The contract is not deployed yet, so we can proceed
+        tracing::info!("Contract not deployed yet, proceeding with deployment");
 
         // We need to know the nonce to use, so we reach out to our stacks
         // node for the account information for our multi-sig address.
         //
         // Note that the wallet object will automatically increment the
         // nonce for each transaction that it creates.
-        let account = stacks.get_account(wallet.address()).await?;
+        let account = ctx
+            .get_stacks_client()
+            .get_account(wallet.address())
+            .await?;
         wallet.set_nonce(account.nonce);
 
         let sign_request_fut = self.construct_deploy_contracts_stacks_sign_request(
@@ -1097,21 +1091,16 @@ where
         chain_tip: &model::BitcoinBlockHash,
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
-        for contract in &[
+        const SMART_CONTRACTS: [ContractDeploy; 5] = [
             ContractDeploy::SbtcRegistry(SbtcRegistryContract),
             ContractDeploy::SbtcToken(SbtcTokenContract),
             ContractDeploy::SbtcDeposit(SbtcDepositContract),
             ContractDeploy::SbtcWithdrawal(SbtcWithdrawalContract),
             ContractDeploy::SbtcBootstrap(SbtcBootstrapContract),
-        ] {
-            match self
-                .deploy_smart_contract(contract.clone(), chain_tip, bitcoin_aggregate_key)
-                .await
-            {
-                Ok(()) => (),
-                Err(Error::ContractAlreadyDeployed) => (), // We don't need to deploy it again
-                Err(e) => return Err(e),                   // The next coordinator will retry
-            }
+        ];
+        for contract in SMART_CONTRACTS {
+            self.deploy_smart_contract(contract, chain_tip, bitcoin_aggregate_key)
+                .await?;
         }
 
         Ok(())
