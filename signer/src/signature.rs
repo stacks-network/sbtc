@@ -2,6 +2,8 @@
 //! signatures.
 //!
 
+use std::ops::Deref;
+
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::chainstate::stacks::TransactionAuthFlags;
 use blockstack_lib::chainstate::stacks::TransactionSpendingCondition;
@@ -11,6 +13,48 @@ use serde::Deserialize;
 use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
+
+/// A BIP 340-341 Schnorr proof.
+#[derive(Debug, Clone, Copy)]
+pub struct TaprootSignature(bitcoin::taproot::Signature);
+
+impl Deref for TaprootSignature {
+    type Target = bitcoin::taproot::Signature;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<&bitcoin::taproot::Signature> for TaprootSignature {
+    fn from(value: &bitcoin::taproot::Signature) -> Self {
+        Self(*value)
+    }
+}
+
+impl From<bitcoin::taproot::Signature> for TaprootSignature {
+    fn from(value: bitcoin::taproot::Signature) -> Self {
+        Self(value)
+    }
+}
+
+impl From<TaprootSignature> for bitcoin::taproot::Signature {
+    fn from(value: TaprootSignature) -> Self {
+        value.0
+    }
+}
+
+impl From<wsts::taproot::SchnorrProof> for TaprootSignature {
+    fn from(sig: wsts::taproot::SchnorrProof) -> Self {
+        // This `expect()` is fine since the only requirement for a Schnorr
+        // signature is that it be 64 bytes long. We know this is the case
+        // because [`wsts::taproot::SchnorrProof::to_bytes`] always returns
+        // a 64 byte array.
+        let signature = secp256k1::schnorr::Signature::from_slice(&sig.to_bytes())
+            .expect("We know to_bytes returns 64 bytes");
+        let sighash_type = bitcoin::TapSighashType::Default;
+        Self(bitcoin::taproot::Signature { signature, sighash_type })
+    }
+}
 
 /// For creating signatures.
 pub trait SighashDigest {

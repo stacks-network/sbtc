@@ -291,7 +291,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip_all, fields(msg = %msg.inner.payload))]
+    #[tracing::instrument(skip_all)]
     async fn handle_signer_message(&mut self, msg: &network::Msg) -> Result<(), Error> {
         if !msg.verify() {
             tracing::warn!("unable to verify message");
@@ -427,7 +427,7 @@ where
         })
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, request))]
     async fn handle_bitcoin_transaction_sign_request(
         &mut self,
         request: &message::BitcoinTransactionSignRequest,
@@ -567,7 +567,7 @@ where
         }
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, msg))]
     async fn handle_wsts_message(
         &mut self,
         msg: &message::WstsMessage,
@@ -598,8 +598,31 @@ where
                     .await?;
                 self.store_dkg_shares(&msg.txid).await?;
             }
+            // Clippy complains about how we could refactor this to use the
+            // `std::collections::hash_map::Entry` type here to make things
+            // more idiomatic. The issue with that approach is that it
+            // requires a mutable reference of the `wsts_state_machines`
+            // self to be taken at the same time as an immunable reference.
+            // The compiler will complain about this so we silence the
+            // warning.
+            #[allow(clippy::map_entry)]
             wsts::net::Message::NonceRequest(_) => {
                 // TODO(296): Validate that message is the appropriate sighash
+                if !self.wsts_state_machines.contains_key(&msg.txid) {
+                    let (maybe_aggregate_key, _) = self
+                        .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
+                        .await?;
+
+                    let state_machine = wsts_state_machine::SignerStateMachine::load(
+                        &self.context.get_storage_mut(),
+                        maybe_aggregate_key.ok_or(Error::NoDkgShares)?,
+                        self.threshold,
+                        self.signer_private_key,
+                    )
+                    .await?;
+
+                    self.wsts_state_machines.insert(msg.txid, state_machine);
+                }
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
@@ -627,7 +650,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, msg))]
     async fn relay_message(
         &mut self,
         txid: bitcoin::Txid,
@@ -903,6 +926,50 @@ where
             .signal(TxSignerEvent::MessageGenerated(msg).into())?;
 
         Ok(())
+    }
+
+    /// Return the signing set that can make sBTC related contract calls
+    /// along with the current aggregate key to use for locking UTXOs on
+    /// bitcoin.
+    ///
+    /// The aggregate key fetched here is the one confirmed on the
+    /// canonical Stacks blockchain as part of a `rotate-keys` contract
+    /// call. It will be the public key that is the result of a DKG run. If
+    /// there are no rotate-keys transactions on the canonical stacks
+    /// blockchain, then we fall back on the last known DKG shares row in
+    /// our database, and return None as the aggregate key if no DKG shares
+    /// can be found, implying that this signer has not participated in
+    /// DKG.
+    #[tracing::instrument(skip(self))]
+    pub async fn get_signer_set_and_aggregate_key(
+        &self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<(Option<PublicKey>, BTreeSet<PublicKey>), Error> {
+        let db = self.context.get_storage();
+
+        // We are supposed to submit a rotate-keys transaction after
+        // running DKG, but that transaction may not have been submitted
+        // yet (if we have just run DKG) or it may not have been confirmed
+        // on the canonical Stacks blockchain.
+        //
+        // If the signers have already run DKG, then we know that all
+        // participating signers should have the same view of the latest
+        // aggregate key, so we can fall back on the stored DKG shares for
+        // getting the current aggregate key and associated signing set.
+        match db.get_last_key_rotation(bitcoin_chain_tip).await? {
+            Some(last_key) => {
+                let aggregate_key = last_key.aggregate_key;
+                let signer_set = last_key.signer_set.into_iter().collect();
+                Ok((Some(aggregate_key), signer_set))
+            }
+            None => match db.get_latest_encrypted_dkg_shares().await? {
+                Some(shares) => {
+                    let signer_set = shares.signer_set_public_keys.into_iter().collect();
+                    Ok((Some(shares.aggregate_key), signer_set))
+                }
+                None => Ok((None, self.context.config().signer.bootstrap_signing_set())),
+            },
+        }
     }
 
     /// Get the set of public keys for the current signing set.

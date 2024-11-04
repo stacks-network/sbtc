@@ -646,10 +646,6 @@ impl super::DbRead for PgStore {
         context_window: u16,
         threshold: u16,
     ) -> Result<Vec<model::DepositRequest>, Error> {
-        // TODO(543): Make sure we get only pending deposits, don't include
-        // ones where we have a completed-deposit event on the canonical
-        // stacks blockchain.
-
         // Add one to the acceptable unlock height because the chain tip is at height one less
         // than the height of the next block, which is the block for which we are assessing
         // the threshold.
@@ -663,24 +659,8 @@ impl super::DbRead for PgStore {
 
         sqlx::query_as::<_, model::DepositRequest>(
             r#"
-            WITH RECURSIVE context_window AS (
-                -- Anchor member: Initialize the recursion with the chain tip
-                SELECT block_hash, block_height, parent_hash, created_at, 1 AS depth
-                FROM sbtc_signer.bitcoin_blocks
-                WHERE block_hash = $1
-
-                UNION ALL
-
-                -- Recursive member: Fetch the parent block using the last block's parent_hash
-                SELECT
-                    parent.block_hash
-                  , parent.block_height
-                  , parent.parent_hash
-                  , parent.created_at
-                  , last.depth + 1
-                FROM sbtc_signer.bitcoin_blocks parent
-                JOIN context_window last ON parent.block_hash = last.parent_hash
-                WHERE last.depth < $2
+            WITH context_window AS (
+                SELECT * FROM bitcoin_blockchain_of($1, $2)
             ),
             transactions_in_window AS (
                 SELECT
@@ -689,26 +669,52 @@ impl super::DbRead for PgStore {
                 FROM context_window blocks_in_window
                 JOIN sbtc_signer.bitcoin_transactions transactions ON
                     transactions.block_hash = blocks_in_window.block_hash
+            ),
+            -- First we get all the deposits that are accepted by enough signers
+            accepted_deposits AS (
+                SELECT
+                    deposit_requests.txid
+                  , deposit_requests.output_index
+                  , deposit_requests.spend_script
+                  , deposit_requests.reclaim_script
+                  , deposit_requests.recipient
+                  , deposit_requests.amount
+                  , deposit_requests.max_fee
+                  , deposit_requests.lock_time
+                  , deposit_requests.signers_public_key
+                  , deposit_requests.sender_script_pub_keys
+                FROM transactions_in_window transactions
+                JOIN sbtc_signer.deposit_requests deposit_requests USING(txid)
+                JOIN sbtc_signer.deposit_signers signers USING(txid, output_index)
+                WHERE
+                    signers.is_accepted
+                    AND (transactions.block_height + deposit_requests.lock_time) >= $4
+                GROUP BY deposit_requests.txid, deposit_requests.output_index
+                HAVING COUNT(signers.txid) >= $3
             )
-            SELECT
-                deposit_requests.txid
-              , deposit_requests.output_index
-              , deposit_requests.spend_script
-              , deposit_requests.reclaim_script
-              , deposit_requests.recipient
-              , deposit_requests.amount
-              , deposit_requests.max_fee
-              , deposit_requests.lock_time
-              , deposit_requests.signers_public_key
-              , deposit_requests.sender_script_pub_keys
-            FROM transactions_in_window transactions
-            JOIN sbtc_signer.deposit_requests deposit_requests USING(txid)
-            JOIN sbtc_signer.deposit_signers signers USING(txid, output_index)
-            WHERE
-                signers.is_accepted
-                AND (transactions.block_height + deposit_requests.lock_time) >= $4
-            GROUP BY deposit_requests.txid, deposit_requests.output_index
-            HAVING COUNT(signers.txid) >= $3
+            -- Then we only consider the ones not swept yet (in the canonical chain)
+            SELECT accepted_deposits.*
+            FROM accepted_deposits
+            LEFT JOIN
+                swept_deposits AS swept_deposit
+                    ON swept_deposit.deposit_request_txid = accepted_deposits.txid
+                    AND swept_deposit.deposit_request_output_index = accepted_deposits.output_index
+            LEFT JOIN
+                transactions_in_window
+                    ON swept_deposit.sweep_transaction_txid = transactions_in_window.txid
+            GROUP BY
+                accepted_deposits.txid
+              , accepted_deposits.output_index
+              , accepted_deposits.spend_script
+              , accepted_deposits.reclaim_script
+              , accepted_deposits.recipient
+              , accepted_deposits.amount
+              , accepted_deposits.max_fee
+              , accepted_deposits.lock_time
+              , accepted_deposits.signers_public_key
+              , accepted_deposits.sender_script_pub_keys
+            HAVING
+                COUNT(transactions_in_window.txid) = 0
             "#,
         )
         .bind(chain_tip)
@@ -1413,6 +1419,7 @@ impl super::DbRead for PgStore {
               , deposit_req.output_index
               , deposit_req.recipient
               , deposit_req.amount
+              , deposit_req.max_fee
             FROM
                 bitcoin_blockchain_of($1, $2) AS bc_blocks
             INNER JOIN

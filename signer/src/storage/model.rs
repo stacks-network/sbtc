@@ -443,6 +443,11 @@ pub struct SweptDepositRequest {
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
     pub amount: u64,
+    /// The maximum portion of the deposited amount that may
+    /// be used to pay for transaction fees.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..100_000"))]
+    pub max_fee: u64,
 }
 
 impl SweptDepositRequest {
@@ -756,7 +761,13 @@ impl From<[u8; 32]> for BitcoinBlockHash {
 
 impl From<BurnchainHeaderHash> for BitcoinBlockHash {
     fn from(value: BurnchainHeaderHash) -> Self {
-        value.to_bitcoin_hash().to_bytes().into()
+        value.into_bytes().into()
+    }
+}
+
+impl From<BitcoinBlockHash> for BurnchainHeaderHash {
+    fn from(value: BitcoinBlockHash) -> Self {
+        BurnchainHeaderHash(value.to_byte_array())
     }
 }
 
@@ -942,3 +953,26 @@ impl ScriptPubKey {
 
 /// Arbitrary bytes
 pub type Bytes = Vec<u8>;
+
+#[cfg(test)]
+mod tests {
+    use fake::Fake;
+    use rand::SeedableRng;
+
+    use super::*;
+
+    #[test]
+    fn conversion_bitcoin_header_hashes() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
+
+        let block_hash: BitcoinBlockHash = fake::Faker.fake_with_rng(&mut rng);
+        let stacks_hash = BurnchainHeaderHash::from(block_hash);
+        let round_trip = BitcoinBlockHash::from(stacks_hash);
+        assert_eq!(block_hash, round_trip);
+
+        let stacks_hash = BurnchainHeaderHash(fake::Faker.fake_with_rng(&mut rng));
+        let block_hash = BitcoinBlockHash::from(stacks_hash);
+        let round_trip = BurnchainHeaderHash::from(block_hash);
+        assert_eq!(stacks_hash, round_trip);
+    }
+}
