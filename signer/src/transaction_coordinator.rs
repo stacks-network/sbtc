@@ -30,6 +30,7 @@ use crate::message;
 use crate::message::Payload;
 use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
+use crate::message::SweepTransactionInfo;
 use crate::network;
 use crate::signature::SighashDigest;
 use crate::stacks::api::FeePriority;
@@ -42,7 +43,6 @@ use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
 use crate::storage::model::StacksTxId;
 use crate::storage::DbRead as _;
-use crate::storage::UnsignedTransactionExt;
 use crate::wsts_state_machine::CoordinatorStateMachine;
 
 use bitcoin::hashes::Hash as _;
@@ -274,7 +274,7 @@ where
 
     /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
     /// fulfilling pending deposit and withdraw requests.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, signer_public_keys, aggregate_key))]
     async fn construct_and_sign_bitcoin_sbtc_transactions(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -301,10 +301,11 @@ where
         let transaction_package = pending_requests.construct_transactions()?;
 
         for mut transaction in transaction_package {
-            // Store the transaction in the database before we broadcast.
-            transaction
-                .store_as_sweep_transaction(&self.context.get_storage_mut(), bitcoin_chain_tip)
-                .await?;
+            self.send_message(
+                SweepTransactionInfo::from_unsigned_at_block(bitcoin_chain_tip, &transaction),
+                bitcoin_chain_tip,
+            )
+            .await?;
 
             self.sign_and_broadcast(
                 bitcoin_chain_tip,
@@ -674,7 +675,7 @@ where
 
     /// Set up a WSTS coordinator state machine and run DKG with the other
     /// signers in the signing set.
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(skip(self))]
     async fn coordinate_dkg(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,

@@ -311,7 +311,10 @@ impl BitcoinCoreClient {
         // is in BTC/kvB, so we need to convert that to sats/vb.
         let sats_per_vbyte = match resp.fee_rate {
             Some(fee_rate) => fee_rate.to_float_in(Denomination::Satoshi) / 1000.,
-            None => return Err(Error::EstimateSmartFeeResponse(resp.errors, num_blocks)),
+            None => {
+                let errors = resp.errors.unwrap_or_default().join(",");
+                return Err(Error::EstimateSmartFeeResponse(errors, num_blocks));
+            }
         };
 
         Ok(FeeEstimate { sats_per_vbyte })

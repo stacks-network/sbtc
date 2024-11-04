@@ -122,7 +122,7 @@ network = "regtest"
 # The address that deployed the sbtc smart contracts.
 #
 # Required: true
-deployer = "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039"
+deployer = "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS"
 
 # The signer database endpoint (pgsql connection string)
 #
@@ -134,6 +134,7 @@ db_endpoint = ""
 # the signers.
 #
 # Required: true
+# Environment: SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET
 bootstrap_signing_set = [
     "035249137286c077ccee65ecc43e724b9b9e5a588e3d7f51e3b62f9624c2a49e46",
     "031a4d9f4903da97498945a4e01a5023a1d53bc96ad670bfe03adf8a06c52e6380",

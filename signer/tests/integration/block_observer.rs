@@ -46,8 +46,9 @@ pub const GET_POX_INFO_JSON: &str =
 /// supposed to fetch all deposit requests from Emily and persist the ones
 /// that pass validation, regardless of when they were confirmed.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[test_case::test_case(1, 10; "one block ago")]
 #[tokio::test]
-async fn load_latest_deposit_requests_persists_requests_added_long_ago() {
+async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u64, horizon: usize) {
     // We start with the typical setup with a fresh database and context
     // with a real bitcoin core client and a real connection to our
     // database.
@@ -136,6 +137,8 @@ async fn load_latest_deposit_requests_persists_requests_added_long_ago() {
     })
     .await;
 
+    faucet.generate_blocks(blocks_ago);
+
     // We only proceed with the test after the BlockObserver "process" has
     // started, and we use this counter to notify us when that happens.
     let start_count = Arc::new(AtomicU8::new(0));
@@ -161,8 +164,17 @@ async fn load_latest_deposit_requests_persists_requests_added_long_ago() {
         stacks_client: ctx.stacks_client.clone(),
         emily_client: ctx.emily_client.clone(),
         bitcoin_blocks: ReceiverStream::new(receiver),
-        horizon: 10,
+        horizon,
     };
+
+    // Our database shouldn't have any deposit requests. In fact, our
+    // database doesn't have any blockchain data at all.
+    let db = &ctx.storage;
+    assert!(db
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .unwrap()
+        .is_none());
 
     tokio::spawn(async move {
         counter.fetch_add(1, Ordering::Relaxed);
@@ -174,18 +186,9 @@ async fn load_latest_deposit_requests_persists_requests_added_long_ago() {
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 
-    // Our database shouldn't have any deposit requests. In fact, our
-    // database doesn't have any blockchain data at all.
-    let db = &ctx.storage;
-    assert!(db
-        .get_bitcoin_canonical_chain_tip()
-        .await
-        .unwrap()
-        .is_none());
-
     let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
     let deposit_requests = db
-        .get_pending_deposit_requests(&chain_tip_info.hash.into(), 20)
+        .get_pending_deposit_requests(&chain_tip_info.hash.into(), 100)
         .await
         .unwrap();
 
@@ -222,7 +225,7 @@ async fn load_latest_deposit_requests_persists_requests_added_long_ago() {
         .unwrap()
         .is_some());
     let deposit_requests = db
-        .get_pending_deposit_requests(&chain_tip, 20)
+        .get_pending_deposit_requests(&chain_tip, 100)
         .await
         .unwrap();
 

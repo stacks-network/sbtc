@@ -72,6 +72,9 @@ pub enum TxSignerEvent {
     /// Event which occurs when the transaction signer has sent a message to
     /// the P2P network.
     MessageGenerated(crate::network::Msg),
+    /// Event which occurs when the transaction signer has started its event
+    /// loop.
+    EventLoopStarted,
 }
 
 /// Events that can be triggered from the transaction coordinator.
@@ -80,6 +83,12 @@ pub enum TxCoordinatorEvent {
     /// Event which occurs when the transaction coordinator has sent a message
     /// to the P2P network.
     MessageGenerated(crate::network::Msg),
+}
+
+impl From<SignerCommand> for SignerSignal {
+    fn from(command: SignerCommand) -> Self {
+        SignerSignal::Command(command)
+    }
 }
 
 impl From<TxCoordinatorEvent> for SignerSignal {

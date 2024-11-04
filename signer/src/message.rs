@@ -4,6 +4,7 @@ use secp256k1::ecdsa::RecoverableSignature;
 use sha2::Digest;
 
 use crate::keys::PublicKey;
+use crate::keys::SignerScriptPubKey as _;
 use crate::signature::RecoverableEcdsaSignature as _;
 use crate::stacks::contracts::ContractCall;
 use crate::storage::model::BitcoinBlockHash;
@@ -35,6 +36,8 @@ pub enum Payload {
     BitcoinTransactionSignAck(BitcoinTransactionSignAck),
     /// Contains all variants for DKG and WSTS signing rounds
     WstsMessage(WstsMessage),
+    /// Information about a new sweep transaction
+    SweepTransactionInfo(SweepTransactionInfo),
 }
 
 impl std::fmt::Display for Payload {
@@ -68,6 +71,7 @@ impl std::fmt::Display for Payload {
                 }
                 write!(f, ")")
             }
+            Self::SweepTransactionInfo(_) => write!(f, "SweepTransactionInfo(..)"),
         }
     }
 }
@@ -122,6 +126,120 @@ impl From<WstsMessage> for Payload {
     fn from(value: WstsMessage) -> Self {
         Self::WstsMessage(value)
     }
+}
+
+impl From<SweepTransactionInfo> for Payload {
+    fn from(value: SweepTransactionInfo) -> Self {
+        Self::SweepTransactionInfo(value)
+    }
+}
+
+/// Represents information about a new sweep transaction.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SweepTransactionInfo {
+    /// The Bitcoin transaction id of the sweep transaction.
+    pub txid: bitcoin::Txid,
+    /// The transaction id of the signer UTXO consumed by this transaction.
+    pub signer_prevout_txid: bitcoin::Txid,
+    /// The index of the signer UTXO consumed by this transaction.
+    pub signer_prevout_output_index: u32,
+    /// The amount of the signer UTXO consumed by this transaction.
+    pub signer_prevout_amount: u64,
+    /// The public key of the signer UTXO consumed by this transaction.
+    pub signer_prevout_script_pubkey: bitcoin::ScriptBuf,
+    /// The total **output** amount of this transaction.
+    pub amount: u64,
+    /// The fee paid for this transaction.
+    pub fee: u64,
+    /// The Bitcoin block hash at which this transaction was created.
+    pub created_at_block_hash: bitcoin::BlockHash,
+    /// The market fee rate at the time of this transaction.
+    pub market_fee_rate: f64,
+    /// List of deposits which were swept-in by this transaction.
+    pub swept_deposits: Vec<SweptDeposit>,
+    /// List of withdrawals which were swept-out by this transaction.
+    pub swept_withdrawals: Vec<SweptWithdrawal>,
+}
+
+impl SweepTransactionInfo {
+    /// Creates a [`SweepTransactionInfo`] from an [`UnsignedTransaction`] and a
+    /// Bitcoin block hash.
+    pub fn from_unsigned_at_block(
+        block_hash: &bitcoin::BlockHash,
+        unsigned: &crate::bitcoin::utxo::UnsignedTransaction,
+    ) -> SweepTransactionInfo {
+        let swept_deposits = unsigned
+            .requests
+            .iter()
+            .filter_map(|request| request.as_deposit())
+            .enumerate()
+            .map(|(index, request)| {
+                SweptDeposit {
+                    input_index: index as u32 + 1, // Account for the signer's UTXO
+                    deposit_request_txid: request.outpoint.txid,
+                    deposit_request_output_index: request.outpoint.vout,
+                }
+            })
+            .collect();
+
+        let swept_withdrawals = unsigned
+            .requests
+            .iter()
+            .filter_map(|request| request.as_withdrawal())
+            .enumerate()
+            .map(|(index, withdrawal)| {
+                SweptWithdrawal {
+                    output_index: index as u32 + 2, // Account for the signer's UTXO and OP_RETURN
+                    withdrawal_request_id: withdrawal.request_id,
+                    withdrawal_request_block_hash: *withdrawal.block_hash.as_bytes(),
+                }
+            })
+            .collect();
+
+        SweepTransactionInfo {
+            txid: unsigned.tx.compute_txid(),
+            signer_prevout_txid: unsigned.signer_utxo.utxo.outpoint.txid,
+            signer_prevout_output_index: unsigned.signer_utxo.utxo.outpoint.vout,
+            signer_prevout_amount: unsigned.signer_utxo.utxo.amount,
+            signer_prevout_script_pubkey: unsigned
+                .signer_utxo
+                .utxo
+                .public_key
+                .signers_script_pubkey(),
+            amount: unsigned.output_amounts(),
+            fee: unsigned.tx_fee,
+            market_fee_rate: unsigned.signer_utxo.fee_rate,
+            created_at_block_hash: *block_hash,
+            swept_deposits,
+            swept_withdrawals,
+        }
+    }
+}
+
+/// Represents information about a deposit request being swept-in by a sweep transaction.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SweptDeposit {
+    /// The index of the deposit input in the sBTC sweep transaction.
+    pub input_index: u32,
+    /// The Bitcoin txid of the deposit request UTXO being swept-in by this
+    /// transaction.
+    pub deposit_request_txid: bitcoin::Txid,
+    /// The Bitcoin output index of the deposit request UTXO being swept-in by
+    /// this transaction.
+    pub deposit_request_output_index: u32,
+}
+
+/// Represents information about a withdrawal request being swept-out by a sweep transaction.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SweptWithdrawal {
+    /// The index of the withdrawal output in the sBTC sweep transaction.
+    pub output_index: u32,
+    /// The public request id of the withdrawal request serviced by this
+    /// transaction.
+    pub withdrawal_request_id: u64,
+    /// The Stacks block hash of the Stacks block which included the withdrawal
+    /// request transaction.
+    pub withdrawal_request_block_hash: StacksBlockHash,
 }
 
 /// Represents a decision related to signer deposit
@@ -227,7 +345,45 @@ impl wsts::net::Signable for Payload {
             Self::BitcoinTransactionSignAck(msg) => msg.hash(hasher),
             Self::StacksTransactionSignRequest(msg) => msg.hash(hasher),
             Self::StacksTransactionSignature(msg) => msg.hash(hasher),
+            Self::SweepTransactionInfo(msg) => msg.hash(hasher),
         }
+    }
+}
+
+impl wsts::net::Signable for SweepTransactionInfo {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        hasher.update("SWEEP_TRANSACTION_INFO");
+        hasher.update(self.txid);
+        hasher.update(self.signer_prevout_txid);
+        hasher.update(self.signer_prevout_output_index.to_be_bytes());
+        hasher.update(self.signer_prevout_amount.to_be_bytes());
+        hasher.update(self.signer_prevout_script_pubkey.as_bytes());
+        hasher.update(self.amount.to_be_bytes());
+        hasher.update(self.fee.to_be_bytes());
+        hasher.update(self.created_at_block_hash);
+        hasher.update(self.market_fee_rate.to_be_bytes());
+        for deposit in &self.swept_deposits {
+            deposit.hash(hasher);
+        }
+        for withdrawal in &self.swept_withdrawals {
+            withdrawal.hash(hasher);
+        }
+    }
+}
+
+impl wsts::net::Signable for SweptDeposit {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        hasher.update(self.input_index.to_be_bytes());
+        hasher.update(self.deposit_request_txid);
+        hasher.update(self.deposit_request_output_index.to_be_bytes());
+    }
+}
+
+impl wsts::net::Signable for SweptWithdrawal {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        hasher.update(self.output_index.to_be_bytes());
+        hasher.update(self.withdrawal_request_id.to_be_bytes());
+        hasher.update(self.withdrawal_request_block_hash);
     }
 }
 
