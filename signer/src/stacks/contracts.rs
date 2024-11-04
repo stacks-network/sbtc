@@ -1116,37 +1116,38 @@ impl AsContractCall for RotateKeysV1 {
 }
 
 /// A wrapper type for smart contract deployment that implements
-/// AsTxPayload. This is analogous to the
-/// [`ContractCallWrapper`] struct.
+/// AsTxPayload. This is analogous to the [`ContractCall`] struct.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ContractDeploy {
-    /// The sbtc-token contract.
-    /// This contract needs to be deployed before any other contract.
-    SbtcToken,
-    /// The sbtc-registry contract.
-    /// This contract needs to be deployed right after the sbtc-token contract.
+    /// The sbtc-registry contract. This contract needs to be deployed
+    /// before any other contract.
     SbtcRegistry,
-    /// The sbtc-deposit contract.
-    /// Can be deployed after the sbtc-registry contract.
+    /// The sbtc-token contract. This contract needs to be deployed right
+    /// after the sbtc-registry contract.
+    SbtcToken,
+    /// The sbtc-deposit contract. Can be deployed after the sbtc-token
+    /// contract.
     SbtcDeposit,
-    /// The sbtc-withdrawal contract.
-    /// Can be deployed after the sbtc-registry contract.
+    /// The sbtc-withdrawal contract. Can be deployed after the sbtc-token
+    /// contract.
     SbtcWithdrawal,
-    /// The sbtc-bootstrap-signers contract.
-    /// Can be deployed after the sbtc-registry contract.
+    /// The sbtc-bootstrap-signers contract. Can be deployed after the
+    /// sbtc-token contract.
     SbtcBootstrap,
 }
 
 impl AsTxPayload for ContractDeploy {
     fn tx_payload(&self) -> TransactionPayload {
+        // The variables below are all effectively constant. Since we
+        // exercise this code path in our tests, we know that this will
+        // never panic in production.
+
         // The ContractName::from calls are more dangerous than they
         // appear. Under the hood they call their TryFrom::try_from
-        // implementation and then unwraps them(!). We check that this is
-        // fine in our tests.
+        // implementation and then unwraps them(!).
         let name = ContractName::from(self.contract_name());
-        // This checks that the characters are ascii and printable. This
-        // shouldn't error because we test the contracts using clarigen,
-        // but we test for this case in our unit tests as well.
+        // StacksString::from_str checks that string characters are ascii
+        // and printable.
         let code_body = StacksString::from_str(self.contract_body())
             .expect("BUG! the clarity contracts source is invalid");
 
