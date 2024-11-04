@@ -1,7 +1,6 @@
 services:
 
   bitcoind:
-    container_name: bitcoind
     image: lncm/bitcoind:v25.0
     volumes:
       - ../signer/tests/service-configs/bitcoin.conf:/data/.bitcoin/bitcoin.conf:ro
@@ -27,7 +26,6 @@ services:
 
   postgres:
     image: postgres:16.3
-    container_name: postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres

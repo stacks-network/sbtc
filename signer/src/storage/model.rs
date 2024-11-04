@@ -164,6 +164,24 @@ pub struct BitcoinBlock {
     pub parent_hash: BitcoinBlockHash,
 }
 
+impl From<&bitcoin::Block> for BitcoinBlock {
+    fn from(block: &bitcoin::Block) -> Self {
+        BitcoinBlock {
+            block_hash: block.block_hash().into(),
+            block_height: block
+                .bip34_block_height()
+                .expect("Failed to get block height"),
+            parent_hash: block.header.prev_blockhash.into(),
+        }
+    }
+}
+
+impl From<bitcoin::Block> for BitcoinBlock {
+    fn from(block: bitcoin::Block) -> Self {
+        BitcoinBlock::from(&block)
+    }
+}
+
 /// Stacks block.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
