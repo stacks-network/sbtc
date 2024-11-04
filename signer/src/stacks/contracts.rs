@@ -1139,11 +1139,18 @@ pub enum ContractDeploy {
 
 impl AsTxPayload for ContractDeploy {
     fn tx_payload(&self) -> TransactionPayload {
-        let contract = TransactionSmartContract {
-            name: ContractName::from(self.contract_name()),
-            code_body: StacksString::from_str(self.contract_body()).unwrap(),
-        };
+        // The ContractName::from calls are more dangerous than they
+        // appear. Under the hood they call their TryFrom::try_from
+        // implementation and then unwraps them(!). We check that this is
+        // fine in our tests.
+        let name = ContractName::from(self.contract_name());
+        // This checks that the charaters are ascii and printable. This
+        // shouldn't error because we test the contracts using clarigen,
+        // but we test for this case in our unit tests as well.
+        let code_body = StacksString::from_str(self.contract_body())
+            .expect("BUG! the clarity contracts source is invalid");
 
+        let contract = TransactionSmartContract { name, code_body };
         TransactionPayload::SmartContract(contract, Some(ClarityVersion::Clarity3))
     }
     fn post_conditions(&self) -> StacksTxPostConditions {
@@ -1303,5 +1310,16 @@ mod tests {
         // This is to check that this function doesn't implicitly panic. If
         // it doesn't panic now, it can never panic at runtime.
         let _ = call.as_contract_call();
+    }
+
+    #[test_case::test_case(ContractDeploy::SbtcBootstrap; "sbtc-bootstrap")]
+    #[test_case::test_case(ContractDeploy::SbtcRegistry; "sbtc-registry")]
+    #[test_case::test_case(ContractDeploy::SbtcDeposit; "sbtc-deposit")]
+    #[test_case::test_case(ContractDeploy::SbtcWithdrawal; "sbtc-withdrawal")]
+    #[test_case::test_case(ContractDeploy::SbtcToken; "sbtc-token")]
+    fn smart_contract_deploy_payloads_dont_panic(deploy: ContractDeploy) {
+        // This is to check that this function doesn't implicitly panic. If
+        // it doesn't panic now, it can never panic at runtime.
+        let _ = deploy.tx_payload();
     }
 }
