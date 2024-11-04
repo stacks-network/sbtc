@@ -7,6 +7,7 @@ use std::time::Duration;
 use blockstack_lib::burnchains::Txid;
 use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
+use blockstack_lib::chainstate::stacks::db::blocks::MINIMUM_TX_FEE_RATE_PER_BYTE;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::chainstate::stacks::TokenTransferMemo;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
@@ -43,7 +44,7 @@ use super::wallet::SignerWallet;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The multiplier to use when estimating the fee based on payload-size.
-const TX_FEE_TX_SIZE_MULTIPLIER: u64 = 2;
+const TX_FEE_TX_SIZE_MULTIPLIER: u64 = 2 * MINIMUM_TX_FEE_RATE_PER_BYTE;
 
 /// The max fee in microSTX for a stacks transaction. Used as a backstop in
 /// case the stacks node returns wonky values. This is 10 STX.
