@@ -6,7 +6,7 @@ use sha2::Digest;
 use crate::keys::PublicKey;
 use crate::keys::SignerScriptPubKey as _;
 use crate::signature::RecoverableEcdsaSignature as _;
-use crate::stacks::contracts::ContractCall;
+use crate::stacks::contracts::StacksTx;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::StacksTxId;
 
@@ -278,7 +278,7 @@ pub struct StacksTransactionSignRequest {
     /// to identify the signing set for the transaction.
     pub aggregate_key: PublicKey,
     /// The contract call transaction to sign.
-    pub contract_call: ContractCall,
+    pub contract_tx: StacksTx,
     /// The nonce to use for the transaction.
     pub nonce: u64,
     /// The transaction fee in microSTX.

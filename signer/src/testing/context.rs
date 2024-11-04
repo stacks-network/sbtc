@@ -7,8 +7,8 @@ use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::{
     chainstate::{nakamoto::NakamotoBlock, stacks::StacksTransaction},
     net::api::{
-        getinfo::RPCPeerInfoData, getpoxinfo::RPCPoxInfoData, getsortition::SortitionInfo,
-        gettenureinfo::RPCGetTenureInfo,
+        getcontractsrc::ContractSrcResponse, getinfo::RPCPeerInfoData, getpoxinfo::RPCPoxInfoData,
+        getsortition::SortitionInfo, gettenureinfo::RPCGetTenureInfo,
     },
 };
 use clarity::types::chainstate::{StacksAddress, StacksBlockId};
@@ -358,6 +358,18 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
 
     async fn get_node_info(&self) -> Result<RPCPeerInfoData, Error> {
         self.inner.lock().await.get_node_info().await
+    }
+
+    async fn get_contract_source(
+        &self,
+        address: &StacksAddress,
+        contract_name: &str,
+    ) -> Result<ContractSrcResponse, Error> {
+        self.inner
+            .lock()
+            .await
+            .get_contract_source(address, contract_name)
+            .await
     }
 }
 

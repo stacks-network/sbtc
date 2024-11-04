@@ -99,11 +99,12 @@ impl fake::Dummy<fake::Faker> for message::StacksTransactionSignRequest {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let private_key = PrivateKey::new(rng);
         Self {
-            contract_call: ContractCall::RejectWithdrawalV1(RejectWithdrawalV1 {
+            contract_tx: ContractCall::RejectWithdrawalV1(RejectWithdrawalV1 {
                 request_id: 1,
                 signer_bitmap: BitArray::ZERO,
                 deployer: StacksAddress::burn_address(false),
-            }),
+            })
+            .into(),
             tx_fee: 123,
             nonce: 1,
             aggregate_key: PublicKey::from_private_key(&private_key),

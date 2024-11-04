@@ -460,6 +460,7 @@ async fn deposit_flow() {
         threshold: signing_threshold as u16,
         signing_round_max_duration: Duration::from_secs(10),
         dkg_max_duration: Duration::from_secs(10),
+        sbtc_contracts_deployed: true,
     };
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
 

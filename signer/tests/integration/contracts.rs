@@ -4,7 +4,6 @@ use std::sync::OnceLock;
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::clarity::vm::types::PrincipalData;
-use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
 use blockstack_lib::types::chainstate::StacksAddress;
 use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Keypair;
@@ -14,6 +13,8 @@ use signer::stacks::contracts::AcceptWithdrawalV1;
 use signer::stacks::contracts::AsContractCall;
 use signer::stacks::contracts::RejectWithdrawalV1;
 use signer::stacks::contracts::RotateKeysV1;
+use signer::stacks::contracts::SmartContract;
+use signer::stacks::contracts::SMART_CONTRACTS;
 use signer::stacks::wallet::SignerWallet;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
@@ -30,53 +31,11 @@ use signer::stacks::wallet::MultisigTx;
 use signer::storage::in_memory::Store;
 use signer::storage::postgres;
 use signer::testing;
-use signer::testing::wallet::AsContractDeploy;
-use signer::testing::wallet::ContractDeploy;
 use signer::testing::wallet::InitiateWithdrawalRequest;
 
 use test_case::test_case;
 
 const TX_FEE: u64 = 123000;
-
-pub struct SbtcTokenContract;
-
-impl AsContractDeploy for SbtcTokenContract {
-    const CONTRACT_NAME: &'static str = "sbtc-token";
-    const CONTRACT_BODY: &'static str =
-        include_str!("../../../contracts/contracts/sbtc-token.clar");
-}
-
-pub struct SbtcRegistryContract;
-
-impl AsContractDeploy for SbtcRegistryContract {
-    const CONTRACT_NAME: &'static str = "sbtc-registry";
-    const CONTRACT_BODY: &'static str =
-        include_str!("../../../contracts/contracts/sbtc-registry.clar");
-}
-
-pub struct SbtcDepositContract;
-
-impl AsContractDeploy for SbtcDepositContract {
-    const CONTRACT_NAME: &'static str = "sbtc-deposit";
-    const CONTRACT_BODY: &'static str =
-        include_str!("../../../contracts/contracts/sbtc-deposit.clar");
-}
-
-pub struct SbtcWithdrawalContract;
-
-impl AsContractDeploy for SbtcWithdrawalContract {
-    const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
-    const CONTRACT_BODY: &'static str =
-        include_str!("../../../contracts/contracts/sbtc-withdrawal.clar");
-}
-
-pub struct SbtcBootstrapContract;
-
-impl AsContractDeploy for SbtcBootstrapContract {
-    const CONTRACT_NAME: &'static str = "sbtc-bootstrap-signers";
-    const CONTRACT_BODY: &'static str =
-        include_str!("../../../contracts/contracts/sbtc-bootstrap-signers.clar");
-}
 
 fn make_signatures(tx: &StacksTransaction, keys: &[Keypair]) -> Vec<RecoverableSignature> {
     keys.iter()
@@ -95,17 +54,15 @@ pub struct SignerStxState {
 
 impl SignerStxState {
     /// Deploy an sBTC smart contract to the stacks node
-    async fn deploy_smart_contract<T>(&self, deploy: T)
-    where
-        T: AsContractDeploy,
-    {
-        // If we get an Ok response then we know the contract has been
-        // deployed already, and deploying it would probably be harmful (it
-        // appears to stall subsequent transactions for some reason).
-        if self.get_contract_source::<T>().await.is_ok() {
+    async fn deploy_smart_contract(&self, contract: SmartContract) {
+        // If the smart contract has been deployed already then there is
+        // nothing to do;
+        let deployer = self.wallet.address();
+        let is_deployed_fut = contract.is_deployed(&self.stacks_client, deployer);
+        if is_deployed_fut.await.unwrap() {
             return;
         }
-        let mut unsigned = MultisigTx::new_tx(&ContractDeploy(deploy), &self.wallet, TX_FEE);
+        let mut unsigned = MultisigTx::new_tx(&contract, &self.wallet, TX_FEE);
         for signature in make_signatures(unsigned.tx(), &self.keys) {
             unsigned.add_signature(signature).unwrap();
         }
@@ -116,36 +73,6 @@ impl SignerStxState {
             SubmitTxResponse::Acceptance(_) => (),
             SubmitTxResponse::Rejection(err) => panic!("{}", serde_json::to_string(&err).unwrap()),
         }
-    }
-
-    /// Get the source of the a deployed smart contract.
-    ///
-    /// # Notes
-    ///
-    /// This is useful just to know whether a contract has been deployed
-    /// already or not. If the smart contract has not been deployed yet,
-    /// the stacks node returns a 404 Not Found.
-    async fn get_contract_source<T>(&self) -> Result<ContractSrcResponse, reqwest::Error>
-    where
-        T: AsContractDeploy,
-    {
-        let path = format!(
-            "/v2/contracts/source/{}/{}?proof=0",
-            self.wallet.address(),
-            T::CONTRACT_NAME
-        );
-
-        let client = self.stacks_client.get_client();
-        let url = client.endpoint.join(&path).unwrap();
-
-        let response = client
-            .client
-            .get(url)
-            .timeout(std::time::Duration::from_secs(10))
-            .send()
-            .await?;
-
-        response.error_for_status()?.json().await
     }
 }
 
@@ -183,14 +110,9 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
 
     SBTC_DEPLOYMENT
         .get_or_init(|| async {
-            // The registry and token contracts need to be deployed first
-            // and second respectively. The rest can be deployed in any
-            // order.
-            signer.deploy_smart_contract(SbtcRegistryContract).await;
-            signer.deploy_smart_contract(SbtcTokenContract).await;
-            signer.deploy_smart_contract(SbtcDepositContract).await;
-            signer.deploy_smart_contract(SbtcWithdrawalContract).await;
-            signer.deploy_smart_contract(SbtcBootstrapContract).await;
+            for contract in SMART_CONTRACTS {
+                signer.deploy_smart_contract(contract).await;
+            }
         })
         .await;
 
@@ -295,8 +217,7 @@ async fn estimate_tx_fees() {
     signer::logging::setup_logging("info", false);
     let client = stacks_client();
 
-    let contract = SbtcRegistryContract;
-    let payload = ContractDeploy(contract);
+    let payload = SmartContract::SbtcRegistry;
 
     let _ = client
         .get_client()

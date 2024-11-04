@@ -15,6 +15,7 @@ use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::types::StandardPrincipalData;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::net::api::getaccount::AccountEntryResponse;
+use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
 use blockstack_lib::net::api::getinfo::RPCPeerInfoData;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::getsortition::SortitionInfo;
@@ -188,6 +189,19 @@ pub trait StacksInteract: Send + Sync {
 
     /// Get information about the current node.
     fn get_node_info(&self) -> impl Future<Output = Result<RPCPeerInfoData, Error>> + Send;
+
+    /// Get the source of the a deployed smart contract.
+    ///
+    /// # Notes
+    ///
+    /// This is useful just to know whether a contract has been deployed
+    /// already or not. If the smart contract has not been deployed yet,
+    /// the stacks node returns a 404 Not Found.
+    fn get_contract_source(
+        &self,
+        address: &StacksAddress,
+        contract_name: &str,
+    ) -> impl Future<Output = Result<ContractSrcResponse, Error>> + Send;
 }
 
 /// A trait for getting the start height of the first EPOCH 3.0 block on the
@@ -460,6 +474,43 @@ impl StacksClient {
             .await
             .map_err(Error::UnexpectedStacksResponse)
             .and_then(AccountInfo::try_from)
+    }
+
+    /// Get the source of the a deployed smart contract.
+    ///
+    /// # Notes
+    ///
+    /// This is done by makes a `GET
+    /// /v2/contracts/source/<deployer-address>/<contract-name>?proof=0`
+    /// request to the stacks node. This is useful just to know whether a
+    /// contract has been deployed already or not. If the smart contract
+    /// has not been deployed yet, the stacks node returns a 404 Not Found.
+    #[tracing::instrument(skip_all)]
+    pub async fn get_contract_source(
+        &self,
+        address: &StacksAddress,
+        contract_name: &str,
+    ) -> Result<ContractSrcResponse, Error> {
+        let path = format!("/v2/contracts/source/{}/{}?proof=0", address, contract_name);
+        let url = self
+            .endpoint
+            .join(&path)
+            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
+
+        let response = self
+            .client
+            .get(url)
+            .timeout(REQUEST_TIMEOUT)
+            .send()
+            .await
+            .map_err(Error::StacksNodeRequest)?;
+
+        response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
+            .json()
+            .await
+            .map_err(Error::UnexpectedStacksResponse)
     }
 
     /// Submit a transaction to a Stacks node.
@@ -1027,6 +1078,21 @@ impl StacksInteract for StacksClient {
     async fn get_node_info(&self) -> Result<RPCPeerInfoData, Error> {
         self.get_node_info().await
     }
+
+    /// Get the source of the a deployed smart contract.
+    ///
+    /// # Notes
+    ///
+    /// This is useful just to know whether a contract has been deployed
+    /// already or not. If the smart contract has not been deployed yet,
+    /// the stacks node returns a 404 Not Found.
+    async fn get_contract_source(
+        &self,
+        address: &StacksAddress,
+        contract_name: &str,
+    ) -> Result<ContractSrcResponse, Error> {
+        self.get_contract_source(address, contract_name).await
+    }
 }
 
 impl StacksInteract for ApiFallbackClient<StacksClient> {
@@ -1089,6 +1155,15 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
 
     async fn get_node_info(&self) -> Result<RPCPeerInfoData, Error> {
         self.exec(|client, _| client.get_node_info()).await
+    }
+
+    async fn get_contract_source(
+        &self,
+        address: &StacksAddress,
+        contract_name: &str,
+    ) -> Result<ContractSrcResponse, Error> {
+        self.exec(|client, _| StacksClient::get_contract_source(client, address, contract_name))
+            .await
     }
 }
 

@@ -17,8 +17,11 @@ use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::keys::SignerScriptPubKey;
 use crate::network;
-use crate::stacks::api::StacksInteract;
+use crate::stacks::api::AccountInfo;
+use crate::stacks::api::MockStacksInteract;
+use crate::stacks::api::SubmitTxResponse;
 use crate::storage::model;
+use crate::storage::model::StacksTxId;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use crate::testing;
@@ -26,6 +29,9 @@ use crate::testing::storage::model::TestData;
 use crate::testing::wsts::SignerSet;
 use crate::transaction_coordinator;
 
+use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
+use fake::Fake as _;
+use fake::Faker;
 use rand::SeedableRng as _;
 use sha2::Digest as _;
 
@@ -55,6 +61,7 @@ where
         context_window: u16,
         private_key: PrivateKey,
         threshold: u16,
+        sbtc_contracts_deployed: bool,
     ) -> Self {
         Self {
             event_loop: transaction_coordinator::TxCoordinatorEventLoop {
@@ -63,6 +70,7 @@ where
                 private_key,
                 context_window,
                 threshold,
+                sbtc_contracts_deployed,
                 signing_round_max_duration: Duration::from_secs(10),
                 dkg_max_duration: Duration::from_secs(10),
             },
@@ -111,18 +119,17 @@ pub struct TestEnvironment<Context> {
     pub test_model_parameters: testing::storage::model::Params,
 }
 
-impl<Storage, Stacks>
+impl<Storage>
     TestEnvironment<
         TestContext<
             Storage,
             WrappedMock<MockBitcoinInteract>, // We specify this explicitly to gain access to the mock client
-            Stacks,
+            WrappedMock<MockStacksInteract>, // We specify this explicitly to gain access to the mock client
             WrappedMock<MockEmilyInteract>, // We specify this explicitly to gain access to the mock client
         >,
     >
 where
     Storage: DbRead + DbWrite + Clone + Sync + Send + 'static,
-    Stacks: StacksInteract + Clone + Sync + Send + 'static,
 {
     /// Assert that a coordinator should be able to coordiante a signing round
     pub async fn assert_should_be_able_to_coordinate_signing_rounds(
@@ -230,6 +237,7 @@ where
             self.context_window,
             private_key,
             self.signing_threshold,
+            true,
         );
 
         // Start the tx coordinator run loop.
@@ -257,6 +265,191 @@ where
         .unwrap()
         .expect("failed to receive message")
         .expect("no message received");
+
+        // Extract the first script pubkey from the broadcasted transaction.
+        let first_script_pubkey = broadcasted_tx
+            .tx_out(0)
+            .expect("missing tx output")
+            .script_pubkey
+            .clone();
+
+        // Stop the event loop
+        handle.join_handle.abort();
+
+        // Perform assertions
+        assert_eq!(first_script_pubkey, aggregate_key.signers_script_pubkey());
+    }
+
+    /// Assert that a coordinator should be able to skip the deployment the sbtc contracts
+    /// if they are already deployed.
+    pub async fn assert_skips_deploy_sbtc_contracts(mut self) {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let network = network::InMemoryNetwork::new();
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
+
+        let mut testing_signer_set =
+            testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
+                network.connect()
+            });
+
+        let (aggregate_key, bitcoin_chain_tip, mut test_data) = self
+            .prepare_database_and_run_dkg(&mut rng, &mut testing_signer_set)
+            .await;
+
+        let original_test_data = test_data.clone();
+
+        let tx_1 = bitcoin::Transaction {
+            output: vec![bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(1_337_000_000_000),
+                script_pubkey: aggregate_key.signers_script_pubkey(),
+            }],
+            ..EMPTY_BITCOIN_TX
+        };
+        test_data.push_bitcoin_txs(
+            &bitcoin_chain_tip,
+            vec![(model::TransactionType::SbtcTransaction, tx_1.clone())],
+        );
+
+        test_data.remove(original_test_data);
+        self.write_test_data(&test_data).await;
+
+        self.context
+            .with_bitcoin_client(|client| {
+                client
+                    .expect_estimate_fee_rate()
+                    .times(1)
+                    .returning(|| Box::pin(async { Ok(1.3) }));
+
+                client
+                    .expect_get_last_fee()
+                    .once()
+                    .returning(|_| Box::pin(async { Ok(None) }));
+            })
+            .await;
+
+        self.context
+            .with_emily_client(|client| {
+                client
+                    .expect_accept_deposits()
+                    .times(1..)
+                    .returning(|_, _| {
+                        Box::pin(async {
+                            Ok(emily_client::models::UpdateDepositsResponse { deposits: vec![] })
+                        })
+                    });
+            })
+            .await;
+
+        // Create a channel to log all transactions broadcasted by the coordinator.
+        // The receiver is created by this method but not used as it is held as a
+        // handle to ensure that the channel is alive until the end of the test.
+        // This is because the coordinator will produce multiple transactions after
+        // the first, and it will panic trying to send to the channel if it is closed
+        // (even though we don't use those transactions).
+        let (broadcasted_transaction_tx, _broadcasted_transaction_rxeiver) =
+            tokio::sync::broadcast::channel(1);
+
+        // This task logs all transactions broadcasted by the coordinator.
+        let mut wait_for_transaction_rx = broadcasted_transaction_tx.subscribe();
+        let wait_for_transaction_task =
+            tokio::spawn(async move { wait_for_transaction_rx.recv().await });
+
+        // Setup the bitcoin client mock to broadcast the transaction to our
+        // channel.
+        self.context
+            .with_bitcoin_client(|client| {
+                client
+                    .expect_broadcast_transaction()
+                    .times(1..)
+                    .returning(move |tx| {
+                        let tx = tx.clone();
+                        let broadcasted_transaction_tx = broadcasted_transaction_tx.clone();
+                        Box::pin(async move {
+                            broadcasted_transaction_tx
+                                .send(tx)
+                                .expect("Failed to send result");
+                            Ok(())
+                        })
+                    });
+            })
+            .await;
+
+        self.context
+            .with_stacks_client(|client| {
+                // Each call to get the contract source will return a ContractSrcResponse
+                // meaning the contract is already deployed.
+                client
+                    .expect_get_contract_source()
+                    .times(5)
+                    .returning(|_, _| {
+                        Box::pin(async {
+                            Ok(ContractSrcResponse {
+                                source: "".to_string(),
+                                publish_height: 1,
+                                marf_proof: None,
+                            })
+                        })
+                    });
+
+                client
+                    .expect_estimate_fees()
+                    .times(5)
+                    .returning(|_, _| Box::pin(async { Ok(123000) }));
+
+                client.expect_get_account().times(5).returning(|_| {
+                    Box::pin(async {
+                        Ok(AccountInfo {
+                            balance: 1_000_000,
+                            locked: 0,
+                            unlock_height: 0,
+                            nonce: 1,
+                        })
+                    })
+                });
+                client.expect_submit_tx().times(5).returning(|_| {
+                    Box::pin(async {
+                        Ok(SubmitTxResponse::Acceptance(*Faker.fake::<StacksTxId>()))
+                    })
+                });
+            })
+            .await;
+
+        // Get the private key of the coordinator of the signer set.
+        let private_key = Self::select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info);
+
+        // Bootstrap the tx coordinator within an event loop harness.
+        let event_loop_harness = TxCoordinatorEventLoopHarness::create(
+            self.context.clone(),
+            network.connect(),
+            self.context_window,
+            private_key,
+            self.signing_threshold,
+            false, // Force the coordinator to deploy the contracts
+        );
+
+        // Start the tx coordinator run loop.
+        let handle = event_loop_harness.start().await;
+
+        // Start the in-memory signer set.
+        let _signers_handle = tokio::spawn(async move {
+            testing_signer_set
+                .participate_in_signing_rounds_forever()
+                .await
+        });
+
+        // Signal `TxSignerEvent::NewRequestsHandled` to trigger the coordinator.
+        handle
+            .context
+            .signal(TxSignerEvent::NewRequestsHandled.into())
+            .expect("failed to signal");
+
+        // Await the `wait_for_tx_task` to receive the first transaction broadcasted.
+        let broadcasted_tx =
+            tokio::time::timeout(Duration::from_secs(10), wait_for_transaction_task)
+                .await
+                .unwrap()
+                .expect("failed to receive message")
+                .expect("no message received");
 
         // Extract the first script pubkey from the broadcasted transaction.
         let first_script_pubkey = broadcasted_tx

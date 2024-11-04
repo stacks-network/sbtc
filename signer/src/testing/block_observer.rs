@@ -9,6 +9,7 @@ use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
+use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
 use blockstack_lib::net::api::getinfo::RPCPeerInfoData;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxEpoch;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
@@ -369,6 +370,18 @@ impl StacksInteract for TestHarness {
         };
 
         Ok(result)
+    }
+
+    async fn get_contract_source(
+        &self,
+        _address: &StacksAddress,
+        _contract_name: &str,
+    ) -> Result<ContractSrcResponse, Error> {
+        Ok(ContractSrcResponse {
+            source: "contract source".to_string(),
+            publish_height: 1000,
+            marf_proof: None,
+        })
     }
 }
 
