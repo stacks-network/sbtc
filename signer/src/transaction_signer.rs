@@ -157,6 +157,12 @@ where
         // separate main run-loops since they don't have anything to do
         // with each other.
         let signer_event_loop = async {
+            if let Err(err) = self.context.signal(TxSignerEvent::EventLoopStarted.into()) {
+                tracing::error!(%err, "error signalling event loop start");
+                return;
+            };
+
+            tracing::debug!("signer event loop started");
             while !should_shutdown() {
                 // Collect all events which have been signalled into this loop
                 // iteration for processing.
@@ -284,7 +290,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all, fields(msg = %msg.inner.payload))]
     async fn handle_signer_message(&mut self, msg: &network::Msg) -> Result<(), Error> {
         if !msg.verify() {
             tracing::warn!("unable to verify message");
@@ -294,6 +300,14 @@ where
         let chain_tip_report = self
             .inspect_msg_chain_tip(msg.signer_pub_key, &msg.bitcoin_chain_tip)
             .await?;
+
+        tracing::trace!(
+            sender_is_coordinator = chain_tip_report.sender_is_coordinator,
+            chain_tip_status = ?chain_tip_report.chain_tip_status,
+            msg_chain_tip = %msg.bitcoin_chain_tip,
+            ?msg.inner.payload,
+            "handling message"
+        );
 
         match (
             &msg.inner.payload,
@@ -335,6 +349,27 @@ where
 
             (message::Payload::WstsMessage(wsts_msg), _, _) => {
                 self.handle_wsts_message(wsts_msg, &msg.bitcoin_chain_tip)
+                    .await?;
+            }
+
+            (
+                message::Payload::SweepTransactionInfo(sweep_tx),
+                is_coordinator,
+                ChainTipStatus::Canonical,
+            ) => {
+                if !is_coordinator {
+                    tracing::warn!("received sweep transaction info from non-coordinator");
+                    return Ok(());
+                }
+
+                tracing::debug!(
+                    txid = %sweep_tx.txid,
+                    sweep_broadcast_at = %sweep_tx.created_at_block_hash,
+                    "received sweep transaction info; storing it"
+                );
+                self.context
+                    .get_storage_mut()
+                    .write_sweep_transaction(&sweep_tx.into())
                     .await?;
             }
 
