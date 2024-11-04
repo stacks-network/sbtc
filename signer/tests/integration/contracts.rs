@@ -54,15 +54,15 @@ pub struct SignerStxState {
 
 impl SignerStxState {
     /// Deploy an sBTC smart contract to the stacks node
-    async fn deploy_smart_contract(&self, deploy: ContractDeploy) {
+    async fn deploy_smart_contract(&self, contract: ContractDeploy) {
         // If the smart contract has been deployed already then there is
         // nothing to do;
         let deployer = self.wallet.address();
-        let is_deployed_fut = deploy.is_deployed(&self.stacks_client, deployer);
+        let is_deployed_fut = contract.is_deployed(&self.stacks_client, deployer);
         if is_deployed_fut.await.unwrap() {
             return;
         }
-        let mut unsigned = MultisigTx::new_tx(&deploy, &self.wallet, TX_FEE);
+        let mut unsigned = MultisigTx::new_tx(&contract, &self.wallet, TX_FEE);
         for signature in make_signatures(unsigned.tx(), &self.keys) {
             unsigned.add_signature(signature).unwrap();
         }
@@ -110,8 +110,8 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
 
     SBTC_DEPLOYMENT
         .get_or_init(|| async {
-            for deploy in SMART_CONTRACTS {
-                signer.deploy_smart_contract(deploy).await;
+            for contract in SMART_CONTRACTS {
+                signer.deploy_smart_contract(contract).await;
             }
         })
         .await;

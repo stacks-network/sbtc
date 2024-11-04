@@ -1173,6 +1173,7 @@ impl ContractDeploy {
             ContractDeploy::SbtcBootstrap => "sbtc-bootstrap-signers",
         }
     }
+
     /// The actual body of the clarity contract.
     pub const fn contract_body(self) -> &'static str {
         match self {
