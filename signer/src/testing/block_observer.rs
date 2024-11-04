@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::stacks::api::StacksInteract;
+use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
 use bitcoin::hashes::Hash;
 use bitcoin::BlockHash;
@@ -321,7 +322,7 @@ impl StacksInteract for TestHarness {
         })
     }
 
-    async fn estimate_fees<T>(&self, _: &T, _: FeePriority) -> Result<u64, Error>
+    async fn estimate_fees<T>(&self, _: &SignerWallet, _: &T, _: FeePriority) -> Result<u64, Error>
     where
         T: crate::stacks::contracts::AsTxPayload,
     {

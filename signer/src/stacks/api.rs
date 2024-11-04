@@ -38,6 +38,7 @@ use crate::storage::DbRead;
 use crate::util::ApiFallbackClient;
 
 use super::contracts::AsTxPayload;
+use super::wallet::SignerWallet;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -138,6 +139,7 @@ pub trait StacksInteract: Send + Sync {
     #[cfg_attr(any(test, feature = "testing"), mockall::concretize)]
     fn estimate_fees<T>(
         &self,
+        wallet: &SignerWallet,
         payload: &T,
         priority: FeePriority,
     ) -> impl Future<Output = Result<u64, Error>> + Send
@@ -895,7 +897,12 @@ impl StacksInteract for StacksClient {
     /// have enough information to provide an estimate, we then get the
     /// current high priority fee for an STX transfer and use that as an
     /// estimate for the transaction fee.
-    async fn estimate_fees<T>(&self, payload: &T, priority: FeePriority) -> Result<u64, Error>
+    async fn estimate_fees<T>(
+        &self,
+        wallet: &SignerWallet,
+        payload: &T,
+        priority: FeePriority,
+    ) -> Result<u64, Error>
     where
         T: AsTxPayload + Send + Sync,
     {
@@ -1010,11 +1017,16 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
             .await
     }
 
-    async fn estimate_fees<T>(&self, payload: &T, priority: FeePriority) -> Result<u64, Error>
+    async fn estimate_fees<T>(
+        &self,
+        wallet: &SignerWallet,
+        payload: &T,
+        priority: FeePriority,
+    ) -> Result<u64, Error>
     where
         T: AsTxPayload + Send + Sync,
     {
-        self.exec(|client, _| StacksClient::estimate_fees(client, payload, priority))
+        self.exec(|client, _| StacksClient::estimate_fees(client, wallet, payload, priority))
             .await
     }
 
@@ -1045,6 +1057,7 @@ impl TryFrom<&Settings> for ApiFallbackClient<StacksClient> {
 
 #[cfg(test)]
 mod tests {
+    use crate::config::NetworkKind;
     use crate::keys::{PrivateKey, PublicKey};
     use crate::storage::in_memory::Store;
     use crate::storage::model::StacksBlock;
@@ -1056,12 +1069,25 @@ mod tests {
         BuffData, BufferLength, ListData, ListTypeData, SequenceData, SequenceSubtype,
         TypeSignature,
     };
+    use rand::rngs::OsRng;
+    use secp256k1::Keypair;
     use test_case::test_case;
     use test_log::test;
 
     use super::*;
     use std::io::Read;
     use std::sync::atomic::Ordering;
+
+    fn generate_wallet(num_keys: u16, signatures_required: u16) -> SignerWallet {
+        let network_kind = NetworkKind::Regtest;
+
+        let public_keys = std::iter::repeat_with(|| Keypair::new_global(&mut OsRng))
+            .map(|kp| kp.public_key().into())
+            .take(num_keys as usize)
+            .collect::<Vec<_>>();
+
+        SignerWallet::new(&public_keys, signatures_required, network_kind, 0).unwrap()
+    }
 
     #[ignore = "This is an integration test that hasn't been setup for CI yet"]
     #[test(tokio::test)]
@@ -1419,8 +1445,10 @@ mod tests {
     // Check that if we don't get valid responses from the Stacks node for both
     // the transaction and STX transfer fee estimation requests, we fallback to
     // estimating the fee based on the size of the transaction payload.
+    #[test_case(15, 11)]
     #[tokio::test]
-    async fn estimate_fees_fallback_works() {
+    async fn estimate_fees_fallback_works(num_keys: u16, signatures_required: u16) {
+        let wallet = generate_wallet(num_keys, signatures_required);
         let mut stacks_node_server = mockito::Server::new_async().await;
 
         // Setup a mock which will fail both the transaction and STX transfer
@@ -1444,7 +1472,7 @@ mod tests {
             (payload_bytes.len() as u64 * TX_FEE_PAYLOAD_SIZE_MULTIPLIER).min(MAX_TX_FEE);
 
         let resp = client
-            .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::High)
+            .estimate_fees(&wallet, &DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::High)
             .await
             .unwrap();
 
@@ -1456,6 +1484,7 @@ mod tests {
     /// Check that everything works as expected in the happy path case.
     #[tokio::test]
     async fn get_fee_estimate_works() {
+        let wallet = generate_wallet(1, 1);
         // The following was taken from a locally running stacks node for
         // the cost of a contract deploy.
         let raw_json_response = r#"{
@@ -1502,19 +1531,19 @@ mod tests {
         // Now lets check that the interface function returns the requested
         // priority fees.
         let fee = client
-            .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::Low)
+            .estimate_fees(&wallet, &DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::Low)
             .await
             .unwrap();
         assert_eq!(fee, 7679);
 
         let fee = client
-            .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::Medium)
+            .estimate_fees(&wallet, &DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::Medium)
             .await
             .unwrap();
         assert_eq!(fee, 7680);
 
         let fee = client
-            .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::High)
+            .estimate_fees(&wallet, &DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::High)
             .await
             .unwrap();
         assert_eq!(fee, 25505);

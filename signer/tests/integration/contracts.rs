@@ -319,7 +319,7 @@ async fn estimate_tx_fees() {
     // transaction.
 
     let fee = client
-        .estimate_fees(&payload, FeePriority::Medium)
+        .estimate_fees(&testing::wallet::WALLET.0, &payload, FeePriority::Medium)
         .await
         .unwrap();
     more_asserts::assert_gt!(fee, 0);
