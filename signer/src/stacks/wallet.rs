@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::sync::Mutex;
+use std::sync::LazyLock;
 
 use blockstack_lib::address::C32_ADDRESS_VERSION_MAINNET_MULTISIG;
 use blockstack_lib::address::C32_ADDRESS_VERSION_TESTNET_MULTISIG;
@@ -21,7 +21,7 @@ use blockstack_lib::core::CHAIN_ID_MAINNET;
 use blockstack_lib::core::CHAIN_ID_TESTNET;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::util::secp256k1::Secp256k1PublicKey;
-use rand::rngs::OsRng;
+use rand::SeedableRng as _;
 use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Message;
 
@@ -50,9 +50,13 @@ const MULTISIG_ADDRESS_HASH_MODE: OrderIndependentMultisigHashMode =
     OrderIndependentMultisigHashMode::P2SH;
 
 /// A set of dummy private keys which are used for creating "dummy" transactions
-/// for transaction size estimation. We store these keys in a `static` to avoid
-/// generating new private keys for every transaction size estimation.
-static DUMMY_PRIVATE_KEYS: Mutex<Vec<PrivateKey>> = Mutex::new(Vec::new());
+/// for Stacks transaction size estimation.
+static DUMMY_PRIVATE_KEYS: LazyLock<Vec<crate::keys::PrivateKey>> = LazyLock::new(|| {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(1);
+    std::iter::repeat_with(|| PrivateKey::new(&mut rng))
+        .take(128)
+        .collect::<Vec<PrivateKey>>()
+});
 
 /// Requisite info for the signers' multi-sig wallet on Stacks.
 #[derive(Debug)]
@@ -407,30 +411,12 @@ where
     use stacks_common::codec::StacksMessageCodec as _;
     let num_signers = wallet.public_keys().len();
 
-    // We need some dummy private keys to sign the transaction. We check if we've
-    // already generated enough dummy keys, and if not, we generate more. This
-    // is to ensure that always have enough dummy keys even if the signing set
-    // grows.
-    let mut dummy_keys = DUMMY_PRIVATE_KEYS
-        .lock()
-        .expect("BUG! DUMMY_PRIVATE_KEYS lock poisoned");
-
-    // Generate more keys if we don't have enough.
-    if dummy_keys.len() < num_signers {
-        let new_keys = std::iter::repeat_with(|| PrivateKey::new(&mut OsRng))
-            .take(num_signers - dummy_keys.len())
-            .collect::<Vec<PrivateKey>>();
-        dummy_keys.extend(new_keys);
-    }
-
     // We only need the first `num_signers` keys.
-    let private_keys = dummy_keys
+    let private_keys = DUMMY_PRIVATE_KEYS
         .iter()
         .take(num_signers)
         .cloned()
         .collect::<Vec<_>>();
-
-    drop(dummy_keys);
 
     let public_keys: Vec<_> = private_keys
         .iter()
