@@ -394,7 +394,7 @@ where
                 client
                     .expect_estimate_fees()
                     .times(5)
-                    .returning(|_, _| Box::pin(async { Ok(123000) }));
+                    .returning(|_, _, _| Box::pin(async { Ok(123000) }));
 
                 client.expect_get_account().times(5).returning(|_| {
                     Box::pin(async {
