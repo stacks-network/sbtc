@@ -195,7 +195,7 @@ where
     /// network or from.
     async fn receive_message(&mut self) -> Signed<SignerMessage> {
         let signal_rx = self.context.get_signal_receiver();
-        // Turn the reciever into a stream that returns messages that have
+        // Turn the receiver into a stream that returns messages that have
         // been sent by the TxSignerEventLoop.
         let stream1 = BroadcastStream::new(signal_rx)
             .filter_map(|msg| async move { msg.ok()?.tx_signer_generated() });
@@ -419,7 +419,7 @@ where
             // decrement the nonce by one, and try the next transaction.
             // This is not a fatal error, since we could fail to sign the
             // transaction because someone else is now the coordinator, and
-            // all of the signers are now ignoring us.
+            // all the signers are now ignoring us.
             let process_request_fut =
                 self.process_sign_request(sign_request, chain_tip, multi_tx, &wallet);
 
@@ -1029,7 +1029,7 @@ where
         // decrement the nonce by one, and try the next transaction.
         // This is not a fatal error, since we could fail to sign the
         // transaction because someone else is now the coordinator, and
-        // all of the signers are now ignoring us.
+        // all the signers are now ignoring us.
         let process_request_fut =
             self.process_sign_request(sign_request, chain_tip, multi_tx, &wallet);
 

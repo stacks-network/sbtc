@@ -1144,7 +1144,7 @@ impl AsTxPayload for ContractDeploy {
         // implementation and then unwraps them(!). We check that this is
         // fine in our tests.
         let name = ContractName::from(self.contract_name());
-        // This checks that the charaters are ascii and printable. This
+        // This checks that the characters are ascii and printable. This
         // shouldn't error because we test the contracts using clarigen,
         // but we test for this case in our unit tests as well.
         let code_body = StacksString::from_str(self.contract_body())
