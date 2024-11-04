@@ -679,7 +679,7 @@ async fn signing_set_validation_check_for_stacks_transactions() {
 
     // This confirms a deposit transaction, and has a nice helper function
     // for storing a real deposit.
-    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+    let mut setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
 
     // Let's get the blockchain data into the database.
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();

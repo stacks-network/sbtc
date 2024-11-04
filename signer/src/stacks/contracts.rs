@@ -382,7 +382,7 @@ impl CompleteDepositV1 {
     /// 1. That the smart contract deployer matches the deployer in our
     ///    context.
     /// 2. That the signer has a record of the deposit request in its list
-    ///    of pending and accepted deposit requests.
+    ///    of swept deposit requests.
     /// 5. That the recipients in the transaction matches that of the
     ///    deposit request.
     /// 6. That the amount to mint does not exceed the deposit amount.
@@ -401,21 +401,14 @@ impl CompleteDepositV1 {
             return Err(DepositErrorMsg::DeployerMismatch.into_error(req_ctx, self));
         }
         // 2. Check that the signer has a record of the deposit request
-        //    from our list of pending and accepted deposit requests.
-        //
-        // Check that this is actually a pending and accepted deposit
-        // request.
+        //    from our list of swept deposit requests.
         let deposit_requests = db
-            .get_pending_accepted_deposit_requests(
-                &req_ctx.chain_tip.block_hash,
-                req_ctx.context_window,
-                req_ctx.signatures_required,
-            )
+            .get_swept_deposit_requests(&req_ctx.chain_tip.block_hash, req_ctx.context_window)
             .await?;
 
         let deposit_request = deposit_requests
             .into_iter()
-            .find(|req| req.outpoint() == self.outpoint)
+            .find(|req| req.deposit_outpoint() == self.outpoint)
             .ok_or_else(|| DepositErrorMsg::RequestMissing.into_error(req_ctx, self))?;
 
         // 5. Check that the recipients in the transaction matches that of

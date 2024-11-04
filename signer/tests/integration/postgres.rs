@@ -575,6 +575,85 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
     signer::testing::storage::drop_db(pg_store).await;
 }
 
+/// This tests that when fetching pending accepted deposits we ingore swept ones.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn should_not_return_swept_deposits_as_pending_accepted() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // This query doesn't *need* bitcoind (it's just a query), we just need
+    // the transaction data in the database. We use the [`TestSweepSetup`]
+    // structure because it has helper functions for generating and storing
+    // sweep transactions, and the [`TestSweepSetup`] structure correctly
+    // sets up the database.
+    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let chain_tip = setup.sweep_block_hash.into();
+    let context_window = 20;
+    let threshold = 4;
+
+    // We need to manually update the database with new bitcoin block
+    // headers.
+    crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+
+    // This isn't technically required right now, but the deposit
+    // transaction is supposed to be there, so future versions of our query
+    // can rely on that fact.
+    setup.store_deposit_tx(&db).await;
+
+    // The request needs to be added to the database. This stores
+    // `setup.deposit_request` into the database.
+    setup.store_deposit_request(&db).await;
+
+    // TODO: Create the initial transaction sweep package without any
+    // withdrawals and have a separate method for creating that sweep (since
+    // it's not realistic to have the withdrawal in the same sweep as the
+    // deposit). Then we wouldn't have to do this.
+    setup.store_withdrawal_request(&db).await;
+
+    // Store decisions to make it "accepted"
+    setup.store_deposit_decisions(&db).await;
+
+    let requests = db
+        .get_pending_accepted_deposit_requests(&chain_tip, context_window, threshold)
+        .await
+        .unwrap();
+
+    assert_eq!(requests.len(), 1);
+
+    // Store outstanding sweep transaction packages in the database.
+    setup.store_sweep_transactions(&db).await;
+
+    // We take the sweep transaction as is from the test setup and
+    // store it in the database.
+    setup.store_sweep_tx(&db).await;
+
+    let requests = db
+        .get_pending_accepted_deposit_requests(&chain_tip, context_window, threshold)
+        .await
+        .unwrap();
+
+    assert!(requests.is_empty());
+
+    // Ensure that we only consider sweep tx in the canonical chain
+    let requests = db
+        .get_pending_accepted_deposit_requests(
+            // this excludes the sweep tx block
+            &setup.deposit_block_hash.into(),
+            context_window,
+            threshold,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(requests.len(), 1);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
 /// This test ensures that the postgres store will only return the pending accepted deposit requests
 /// if they are within the reclaim bounds. If they can be reclaimed too close to the current chain tip
 /// they should not appear in the accepted pending deposit requests list.

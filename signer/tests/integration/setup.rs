@@ -364,12 +364,14 @@ impl TestSweepSetup {
 
     // This is all normal happy path things that need to happen in order to
     // pass validation of a stacks transaction.
-    pub async fn store_happy_path_data(&self, db: &PgStore) {
+    pub async fn store_happy_path_data(&mut self, db: &PgStore) {
         self.store_deposit_tx(&db).await;
         self.store_sweep_tx(&db).await;
         self.store_dkg_shares(&db).await;
         self.store_deposit_request(&db).await;
         self.store_deposit_decisions(&db).await;
+        self.store_withdrawal_request(&db).await;
+        self.store_sweep_transactions(&db).await;
     }
 }
 
