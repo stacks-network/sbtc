@@ -202,7 +202,7 @@ async fn process_complete_deposit() {
             client
                 .expect_estimate_fees()
                 .once()
-                .returning(move |_, _| Box::pin(async move { Ok(25505) }));
+                .returning(move |_, _, _| Box::pin(async move { Ok(25505) }));
         })
         .await;
 

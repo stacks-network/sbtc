@@ -36,6 +36,7 @@ use crate::stacks::api::AccountInfo;
 use crate::stacks::api::FeePriority;
 use crate::stacks::api::StacksInteract;
 use crate::stacks::api::SubmitTxResponse;
+use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
 use crate::testing::dummy;
 use crate::util::ApiFallbackClient;
@@ -323,7 +324,7 @@ impl StacksInteract for TestHarness {
         })
     }
 
-    async fn estimate_fees<T>(&self, _: &T, _: FeePriority) -> Result<u64, Error>
+    async fn estimate_fees<T>(&self, _: &SignerWallet, _: &T, _: FeePriority) -> Result<u64, Error>
     where
         T: crate::stacks::contracts::AsTxPayload,
     {
