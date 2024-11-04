@@ -37,7 +37,6 @@ use crate::stacks::api::AccountInfo;
 use crate::stacks::api::FeePriority;
 use crate::stacks::api::StacksInteract;
 use crate::stacks::api::SubmitTxResponse;
-use crate::stacks::contracts::ContractDeploy;
 use crate::storage::model;
 use crate::testing::dummy;
 use crate::util::ApiFallbackClient;
@@ -374,8 +373,8 @@ impl StacksInteract for TestHarness {
 
     async fn get_contract_source(
         &self,
-        _contract_deploy: &ContractDeploy,
         _address: &StacksAddress,
+        _contract_name: &str,
     ) -> Result<ContractSrcResponse, Error> {
         Ok(ContractSrcResponse {
             source: "contract source".to_string(),

@@ -25,7 +25,7 @@ use crate::{
     keys::PublicKey,
     stacks::{
         api::{AccountInfo, FeePriority, MockStacksInteract, StacksInteract, SubmitTxResponse},
-        contracts::{AsTxPayload, ContractDeploy},
+        contracts::AsTxPayload,
     },
     storage::{
         in_memory::{SharedStore, Store},
@@ -356,13 +356,13 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
 
     async fn get_contract_source(
         &self,
-        contract_deploy: &ContractDeploy,
         address: &StacksAddress,
+        contract_name: &str,
     ) -> Result<ContractSrcResponse, Error> {
         self.inner
             .lock()
             .await
-            .get_contract_source(contract_deploy, address)
+            .get_contract_source(address, contract_name)
             .await
     }
 }
