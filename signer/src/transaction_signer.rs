@@ -528,8 +528,8 @@ where
             ContractTx::ContractCall(ContractCall::RotateKeysV1(contract)) => {
                 contract.validate(ctx, &req_ctx).await
             }
-            ContractTx::ContractDeploy(contract_deploy) => {
-                contract_deploy.validate(ctx, &req_ctx).await
+            ContractTx::SmartContract(smart_contract) => {
+                smart_contract.validate(ctx, &req_ctx).await
             }
         }
     }

@@ -21,7 +21,7 @@ use reqwest;
 use sbtc::testing::regtest;
 use secp256k1::Keypair;
 use sha2::Digest as _;
-use signer::stacks::contracts::ContractDeploy;
+use signer::stacks::contracts::SmartContract;
 use test_case::test_case;
 
 use signer::context::Context;
@@ -576,7 +576,7 @@ async fn process_complete_deposit() {
 #[test_case(&SMART_CONTRACTS, mock_recover_and_deploy_all_contracts_after_failure; "recover-and-deploy-all-contracts-after-failure")]
 #[tokio::test]
 async fn deploy_smart_contracts_coordinator<F>(
-    smart_contracts: &[ContractDeploy],
+    smart_contracts: &[SmartContract],
     stacks_client_mock: F,
 ) where
     F: FnOnce(u64, Sender<StacksTransaction>) -> Box<dyn FnOnce(&mut MockStacksInteract)>,

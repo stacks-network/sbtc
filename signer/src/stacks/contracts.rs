@@ -62,12 +62,12 @@ use super::api::StacksInteract;
 ///
 /// The registry and token contracts need to be deployed first and second
 /// respectively. The rest can be deployed in any order.
-pub const SMART_CONTRACTS: [ContractDeploy; 5] = [
-    ContractDeploy::SbtcRegistry,
-    ContractDeploy::SbtcToken,
-    ContractDeploy::SbtcDeposit,
-    ContractDeploy::SbtcWithdrawal,
-    ContractDeploy::SbtcBootstrap,
+pub const SMART_CONTRACTS: [SmartContract; 5] = [
+    SmartContract::SbtcRegistry,
+    SmartContract::SbtcToken,
+    SmartContract::SbtcDeposit,
+    SmartContract::SbtcWithdrawal,
+    SmartContract::SbtcBootstrap,
 ];
 
 /// This struct is used as supplemental data to help validate a request to
@@ -199,21 +199,21 @@ pub trait AsContractCall {
 pub enum ContractTx {
     /// A contract call transaction.
     ContractCall(ContractCall),
-    /// A contract deploy transaction.
-    ContractDeploy(ContractDeploy),
+    /// A smart contract transaction used for deploying smart contract.
+    SmartContract(SmartContract),
 }
 
 impl AsTxPayload for ContractTx {
     fn tx_payload(&self) -> TransactionPayload {
         match self {
             ContractTx::ContractCall(call) => call.tx_payload(),
-            ContractTx::ContractDeploy(deploy) => deploy.tx_payload(),
+            ContractTx::SmartContract(deploy) => deploy.tx_payload(),
         }
     }
     fn post_conditions(&self) -> StacksTxPostConditions {
         match self {
             ContractTx::ContractCall(call) => call.post_conditions(),
-            ContractTx::ContractDeploy(deploy) => deploy.post_conditions(),
+            ContractTx::SmartContract(deploy) => deploy.post_conditions(),
         }
     }
 }
@@ -224,9 +224,9 @@ impl From<ContractCall> for ContractTx {
     }
 }
 
-impl From<ContractDeploy> for ContractTx {
-    fn from(val: ContractDeploy) -> Self {
-        ContractTx::ContractDeploy(val)
+impl From<SmartContract> for ContractTx {
+    fn from(val: SmartContract) -> Self {
+        ContractTx::SmartContract(val)
     }
 }
 
@@ -1116,9 +1116,9 @@ impl AsContractCall for RotateKeysV1 {
 }
 
 /// A wrapper type for smart contract deployment that implements
-/// AsTxPayload. This is analogous to the [`ContractCall`] struct.
+/// AsTxPayload.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum ContractDeploy {
+pub enum SmartContract {
     /// The sbtc-registry contract. This contract needs to be deployed
     /// before any other contract.
     SbtcRegistry,
@@ -1136,7 +1136,7 @@ pub enum ContractDeploy {
     SbtcBootstrap,
 }
 
-impl AsTxPayload for ContractDeploy {
+impl AsTxPayload for SmartContract {
     fn tx_payload(&self) -> TransactionPayload {
         // The variables below are all effectively constant. Since we
         // exercise this code path in our tests, we know that this will
@@ -1162,34 +1162,34 @@ impl AsTxPayload for ContractDeploy {
     }
 }
 
-impl ContractDeploy {
+impl SmartContract {
     /// The name of the clarity smart contract that relates to this struct.
     pub const fn contract_name(self) -> &'static str {
         match self {
-            ContractDeploy::SbtcToken => "sbtc-token",
-            ContractDeploy::SbtcRegistry => "sbtc-registry",
-            ContractDeploy::SbtcDeposit => "sbtc-deposit",
-            ContractDeploy::SbtcWithdrawal => "sbtc-withdrawal",
-            ContractDeploy::SbtcBootstrap => "sbtc-bootstrap-signers",
+            SmartContract::SbtcToken => "sbtc-token",
+            SmartContract::SbtcRegistry => "sbtc-registry",
+            SmartContract::SbtcDeposit => "sbtc-deposit",
+            SmartContract::SbtcWithdrawal => "sbtc-withdrawal",
+            SmartContract::SbtcBootstrap => "sbtc-bootstrap-signers",
         }
     }
 
     /// The actual body of the clarity contract.
     pub const fn contract_body(self) -> &'static str {
         match self {
-            ContractDeploy::SbtcToken => {
+            SmartContract::SbtcToken => {
                 include_str!("../../../contracts/contracts/sbtc-token.clar")
             }
-            ContractDeploy::SbtcRegistry => {
+            SmartContract::SbtcRegistry => {
                 include_str!("../../../contracts/contracts/sbtc-registry.clar")
             }
-            ContractDeploy::SbtcDeposit => {
+            SmartContract::SbtcDeposit => {
                 include_str!("../../../contracts/contracts/sbtc-deposit.clar")
             }
-            ContractDeploy::SbtcWithdrawal => {
+            SmartContract::SbtcWithdrawal => {
                 include_str!("../../../contracts/contracts/sbtc-withdrawal.clar")
             }
-            ContractDeploy::SbtcBootstrap => {
+            SmartContract::SbtcBootstrap => {
                 include_str!("../../../contracts/contracts/sbtc-bootstrap-signers.clar")
             }
         }
@@ -1314,14 +1314,14 @@ mod tests {
         let _ = call.as_contract_call();
     }
 
-    #[test_case::test_case(ContractDeploy::SbtcBootstrap; "sbtc-bootstrap")]
-    #[test_case::test_case(ContractDeploy::SbtcRegistry; "sbtc-registry")]
-    #[test_case::test_case(ContractDeploy::SbtcDeposit; "sbtc-deposit")]
-    #[test_case::test_case(ContractDeploy::SbtcWithdrawal; "sbtc-withdrawal")]
-    #[test_case::test_case(ContractDeploy::SbtcToken; "sbtc-token")]
-    fn smart_contract_deploy_payloads_dont_panic(deploy: ContractDeploy) {
+    #[test_case::test_case(SmartContract::SbtcBootstrap; "sbtc-bootstrap")]
+    #[test_case::test_case(SmartContract::SbtcRegistry; "sbtc-registry")]
+    #[test_case::test_case(SmartContract::SbtcDeposit; "sbtc-deposit")]
+    #[test_case::test_case(SmartContract::SbtcWithdrawal; "sbtc-withdrawal")]
+    #[test_case::test_case(SmartContract::SbtcToken; "sbtc-token")]
+    fn smart_contract_deploy_payloads_dont_panic(smart_contract: SmartContract) {
         // This is to check that this function doesn't implicitly panic. If
         // it doesn't panic now, it can never panic at runtime.
-        let _ = deploy.tx_payload();
+        let _ = smart_contract.tx_payload();
     }
 }

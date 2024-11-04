@@ -38,7 +38,7 @@ use crate::stacks::api::SubmitTxResponse;
 use crate::stacks::contracts::AsTxPayload;
 use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::ContractCall;
-use crate::stacks::contracts::ContractDeploy;
+use crate::stacks::contracts::SmartContract;
 use crate::stacks::contracts::SMART_CONTRACTS;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
@@ -992,7 +992,7 @@ where
     /// Deploy an sBTC smart contract to the stacks node
     async fn deploy_smart_contract(
         &mut self,
-        contract_deploy: ContractDeploy,
+        contract_deploy: SmartContract,
         chain_tip: &model::BitcoinBlockHash,
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
@@ -1051,7 +1051,7 @@ where
 
     async fn construct_deploy_contracts_stacks_sign_request(
         &self,
-        contract_deploy: ContractDeploy,
+        contract_deploy: SmartContract,
         bitcoin_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
     ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {

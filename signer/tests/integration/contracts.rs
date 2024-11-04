@@ -11,7 +11,7 @@ use signer::config::Settings;
 use signer::stacks::api::StacksInteract;
 use signer::stacks::contracts::AcceptWithdrawalV1;
 use signer::stacks::contracts::AsContractCall;
-use signer::stacks::contracts::ContractDeploy;
+use signer::stacks::contracts::SmartContract;
 use signer::stacks::contracts::RejectWithdrawalV1;
 use signer::stacks::contracts::RotateKeysV1;
 use signer::stacks::contracts::SMART_CONTRACTS;
@@ -54,7 +54,7 @@ pub struct SignerStxState {
 
 impl SignerStxState {
     /// Deploy an sBTC smart contract to the stacks node
-    async fn deploy_smart_contract(&self, contract: ContractDeploy) {
+    async fn deploy_smart_contract(&self, contract: SmartContract) {
         // If the smart contract has been deployed already then there is
         // nothing to do;
         let deployer = self.wallet.address();
@@ -217,7 +217,7 @@ async fn estimate_tx_fees() {
     signer::logging::setup_logging("info", false);
     let client = stacks_client();
 
-    let payload = ContractDeploy::SbtcRegistry;
+    let payload = SmartContract::SbtcRegistry;
 
     let _ = client
         .get_client()
