@@ -21,6 +21,7 @@ use reqwest;
 use sbtc::testing::regtest;
 use secp256k1::Keypair;
 use sha2::Digest as _;
+use signer::stacks::contracts::ContractDeploy;
 use test_case::test_case;
 
 use signer::context::Context;
@@ -36,13 +37,7 @@ use signer::stacks::api::AccountInfo;
 use signer::stacks::api::MockStacksInteract;
 use signer::stacks::api::SubmitTxResponse;
 use signer::stacks::contracts::AsContractCall as _;
-use signer::stacks::contracts::AsContractDeploy as _;
 use signer::stacks::contracts::CompleteDepositV1;
-use signer::stacks::contracts::SbtcBootstrapContract;
-use signer::stacks::contracts::SbtcDepositContract;
-use signer::stacks::contracts::SbtcRegistryContract;
-use signer::stacks::contracts::SbtcTokenContract;
-use signer::stacks::contracts::SbtcWithdrawalContract;
 use signer::storage::model;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::RotateKeysTransaction;
@@ -161,24 +156,24 @@ where
 
 const CONTRACT_DEPLOY_INFO: [(&str, &str); 5] = [
     (
-        SbtcRegistryContract::CONTRACT_NAME,
-        SbtcRegistryContract::CONTRACT_BODY,
+        ContractDeploy::SbtcRegistry.contract_name(),
+        ContractDeploy::SbtcRegistry.contract_body(),
     ),
     (
-        SbtcTokenContract::CONTRACT_NAME,
-        SbtcTokenContract::CONTRACT_BODY,
+        ContractDeploy::SbtcToken.contract_name(),
+        ContractDeploy::SbtcToken.contract_body(),
     ),
     (
-        SbtcDepositContract::CONTRACT_NAME,
-        SbtcDepositContract::CONTRACT_BODY,
+        ContractDeploy::SbtcDeposit.contract_name(),
+        ContractDeploy::SbtcDeposit.contract_body(),
     ),
     (
-        SbtcWithdrawalContract::CONTRACT_NAME,
-        SbtcWithdrawalContract::CONTRACT_BODY,
+        ContractDeploy::SbtcWithdrawal.contract_name(),
+        ContractDeploy::SbtcWithdrawal.contract_body(),
     ),
     (
-        SbtcBootstrapContract::CONTRACT_NAME,
-        SbtcBootstrapContract::CONTRACT_BODY,
+        ContractDeploy::SbtcBootstrap.contract_name(),
+        ContractDeploy::SbtcBootstrap.contract_body(),
     ),
 ];
 

@@ -14,7 +14,6 @@ use signer::stacks::contracts::AsContractCall;
 use signer::stacks::contracts::ContractDeploy;
 use signer::stacks::contracts::RejectWithdrawalV1;
 use signer::stacks::contracts::RotateKeysV1;
-use signer::stacks::contracts::SbtcRegistryContract;
 use signer::stacks::contracts::SMART_CONTRACTS;
 use signer::stacks::wallet::SignerWallet;
 use signer::storage::model::BitcoinBlockHash;
@@ -218,8 +217,7 @@ async fn estimate_tx_fees() {
     signer::logging::setup_logging("info", false);
     let client = stacks_client();
 
-    let contract = SbtcRegistryContract;
-    let payload = ContractDeploy::SbtcRegistry(contract);
+    let payload = ContractDeploy::SbtcRegistry;
 
     let _ = client
         .get_client()

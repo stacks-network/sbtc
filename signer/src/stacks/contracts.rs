@@ -63,11 +63,11 @@ use super::api::StacksInteract;
 /// The registry and token contracts need to be deployed first and second
 /// respectively. The rest can be deployed in any order.
 pub const SMART_CONTRACTS: [ContractDeploy; 5] = [
-    ContractDeploy::SbtcRegistry(SbtcRegistryContract),
-    ContractDeploy::SbtcToken(SbtcTokenContract),
-    ContractDeploy::SbtcDeposit(SbtcDepositContract),
-    ContractDeploy::SbtcWithdrawal(SbtcWithdrawalContract),
-    ContractDeploy::SbtcBootstrap(SbtcBootstrapContract),
+    ContractDeploy::SbtcRegistry,
+    ContractDeploy::SbtcToken,
+    ContractDeploy::SbtcDeposit,
+    ContractDeploy::SbtcWithdrawal,
+    ContractDeploy::SbtcBootstrap,
 ];
 
 /// This struct is used as supplemental data to help validate a request to
@@ -1115,21 +1115,6 @@ impl AsContractCall for RotateKeysV1 {
     }
 }
 
-/// A trait for deploying the smart contract
-pub trait AsContractDeploy {
-    /// The name of the clarity smart contract that relates to this struct.
-    const CONTRACT_NAME: &'static str;
-    /// The actual body of the clarity contract.
-    const CONTRACT_BODY: &'static str;
-    /// Convert this struct to a Stacks contract deployment.
-    fn as_smart_contract(&self) -> TransactionSmartContract {
-        TransactionSmartContract {
-            name: ContractName::from(Self::CONTRACT_NAME),
-            code_body: StacksString::from_str(Self::CONTRACT_BODY).unwrap(),
-        }
-    }
-}
-
 /// A wrapper type for smart contract deployment that implements
 /// AsTxPayload. This is analogous to the
 /// [`ContractCallWrapper`] struct.
@@ -1137,30 +1122,28 @@ pub trait AsContractDeploy {
 pub enum ContractDeploy {
     /// The sbtc-token contract.
     /// This contract needs to be deployed before any other contract.
-    SbtcToken(SbtcTokenContract),
+    SbtcToken,
     /// The sbtc-registry contract.
     /// This contract needs to be deployed right after the sbtc-token contract.
-    SbtcRegistry(SbtcRegistryContract),
+    SbtcRegistry,
     /// The sbtc-deposit contract.
     /// Can be deployed after the sbtc-registry contract.
-    SbtcDeposit(SbtcDepositContract),
+    SbtcDeposit,
     /// The sbtc-withdrawal contract.
     /// Can be deployed after the sbtc-registry contract.
-    SbtcWithdrawal(SbtcWithdrawalContract),
+    SbtcWithdrawal,
     /// The sbtc-bootstrap-signers contract.
     /// Can be deployed after the sbtc-registry contract.
-    SbtcBootstrap(SbtcBootstrapContract),
+    SbtcBootstrap,
 }
 
 impl AsTxPayload for ContractDeploy {
     fn tx_payload(&self) -> TransactionPayload {
-        let contract = match self {
-            ContractDeploy::SbtcToken(contract) => contract.as_smart_contract(),
-            ContractDeploy::SbtcRegistry(contract) => contract.as_smart_contract(),
-            ContractDeploy::SbtcDeposit(contract) => contract.as_smart_contract(),
-            ContractDeploy::SbtcWithdrawal(contract) => contract.as_smart_contract(),
-            ContractDeploy::SbtcBootstrap(contract) => contract.as_smart_contract(),
+        let contract = TransactionSmartContract {
+            name: ContractName::from(self.contract_name()),
+            code_body: StacksString::from_str(self.contract_body()).unwrap(),
         };
+
         TransactionPayload::SmartContract(contract, Some(ClarityVersion::Clarity3))
     }
     fn post_conditions(&self) -> StacksTxPostConditions {
@@ -1172,14 +1155,34 @@ impl AsTxPayload for ContractDeploy {
 }
 
 impl ContractDeploy {
-    /// Get the name of the smart contract
-    pub fn contract_name(&self) -> &'static str {
+    /// The name of the clarity smart contract that relates to this struct.
+    pub const fn contract_name(self) -> &'static str {
         match self {
-            ContractDeploy::SbtcToken(_) => SbtcTokenContract::CONTRACT_NAME,
-            ContractDeploy::SbtcRegistry(_) => SbtcRegistryContract::CONTRACT_NAME,
-            ContractDeploy::SbtcDeposit(_) => SbtcDepositContract::CONTRACT_NAME,
-            ContractDeploy::SbtcWithdrawal(_) => SbtcWithdrawalContract::CONTRACT_NAME,
-            ContractDeploy::SbtcBootstrap(_) => SbtcBootstrapContract::CONTRACT_NAME,
+            ContractDeploy::SbtcToken => "sbtc-token",
+            ContractDeploy::SbtcRegistry => "sbtc-registry",
+            ContractDeploy::SbtcDeposit => "sbtc-deposit",
+            ContractDeploy::SbtcWithdrawal => "sbtc-withdrawal",
+            ContractDeploy::SbtcBootstrap => "sbtc-bootstrap-signers",
+        }
+    }
+    /// The actual body of the clarity contract.
+    pub const fn contract_body(self) -> &'static str {
+        match self {
+            ContractDeploy::SbtcToken => {
+                include_str!("../../../contracts/contracts/sbtc-token.clar")
+            }
+            ContractDeploy::SbtcRegistry => {
+                include_str!("../../../contracts/contracts/sbtc-registry.clar")
+            }
+            ContractDeploy::SbtcDeposit => {
+                include_str!("../../../contracts/contracts/sbtc-deposit.clar")
+            }
+            ContractDeploy::SbtcWithdrawal => {
+                include_str!("../../../contracts/contracts/sbtc-withdrawal.clar")
+            }
+            ContractDeploy::SbtcBootstrap => {
+                include_str!("../../../contracts/contracts/sbtc-bootstrap-signers.clar")
+            }
         }
     }
 
@@ -1218,56 +1221,6 @@ impl ContractDeploy {
 
         Ok(())
     }
-}
-
-/// The smart contract data for the sbtc-token contract.
-#[derive(Copy, Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SbtcTokenContract;
-
-impl AsContractDeploy for SbtcTokenContract {
-    const CONTRACT_NAME: &'static str = "sbtc-token";
-    const CONTRACT_BODY: &'static str =
-        include_str!("../../../contracts/contracts/sbtc-token.clar");
-}
-
-/// The smart contract data for the sbtc-registry contract.
-#[derive(Copy, Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SbtcRegistryContract;
-
-impl AsContractDeploy for SbtcRegistryContract {
-    const CONTRACT_NAME: &'static str = "sbtc-registry";
-    const CONTRACT_BODY: &'static str =
-        include_str!("../../../contracts/contracts/sbtc-registry.clar");
-}
-
-/// The smart contract data for the sbtc-stacks contract.
-#[derive(Copy, Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SbtcDepositContract;
-
-impl AsContractDeploy for SbtcDepositContract {
-    const CONTRACT_NAME: &'static str = "sbtc-deposit";
-    const CONTRACT_BODY: &'static str =
-        include_str!("../../../contracts/contracts/sbtc-deposit.clar");
-}
-
-/// The smart contract data for the sbtc-withdrawal contract.
-#[derive(Copy, Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SbtcWithdrawalContract;
-
-impl AsContractDeploy for SbtcWithdrawalContract {
-    const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
-    const CONTRACT_BODY: &'static str =
-        include_str!("../../../contracts/contracts/sbtc-withdrawal.clar");
-}
-
-/// The smart contract data for the sbtc-bootstrap-signers contract.
-#[derive(Copy, Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SbtcBootstrapContract;
-
-impl AsContractDeploy for SbtcBootstrapContract {
-    const CONTRACT_NAME: &'static str = "sbtc-bootstrap-signers";
-    const CONTRACT_BODY: &'static str =
-        include_str!("../../../contracts/contracts/sbtc-bootstrap-signers.clar");
 }
 
 #[cfg(test)]
