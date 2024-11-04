@@ -1162,7 +1162,8 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
         address: &StacksAddress,
         contract_name: &str,
     ) -> Result<ContractSrcResponse, Error> {
-        self.exec(|client, _| StacksClient::get_contract_source(client, address, contract_name))
+        self.get_client()
+            .get_contract_source(address, contract_name)
             .await
     }
 }
