@@ -119,6 +119,11 @@ private_key = ""
 # Environment: SIGNER_SIGNER__NETWORK
 network = "regtest"
 
+# Seconds to wait before processing a new Bitcoin block.
+# Required: true Environment: SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY
+# TODO(715): Add default delay (15 seconds? see #701)
+bitcoin_processing_delay = 3
+
 # The address that deployed the sbtc smart contracts.
 #
 # Required: true

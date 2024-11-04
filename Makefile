@@ -148,6 +148,9 @@ $(EMILY_OPENAPI_SPEC): $(INSTALL_TARGET) $(EMILY_HANDLER_SOURCE_FILES)
 # Devenv
 # ----------------------------------------------------
 
+devenv-up-verbose:
+	docker compose -f docker/docker-compose.yml --profile bitcoin-mempool up
+
 devenv-up:
 	docker compose -f docker/docker-compose.yml --profile bitcoin-mempool up --detach
 

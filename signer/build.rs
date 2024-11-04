@@ -1,5 +1,5 @@
 fn main() {
-    compile_protos();
+    // compile_protos();
 }
 
 pub fn compile_protos() {
