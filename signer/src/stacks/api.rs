@@ -35,17 +35,10 @@ use url::Url;
 use crate::config::Settings;
 use crate::error::Error;
 use crate::keys::PublicKey;
-use crate::stacks::contracts::AsContractDeploy;
 use crate::storage::DbRead;
 use crate::util::ApiFallbackClient;
 
 use super::contracts::AsTxPayload;
-use super::contracts::ContractDeploy;
-use super::contracts::SbtcBootstrapContract;
-use super::contracts::SbtcDepositContract;
-use super::contracts::SbtcRegistryContract;
-use super::contracts::SbtcTokenContract;
-use super::contracts::SbtcWithdrawalContract;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -170,8 +163,8 @@ pub trait StacksInteract: Send + Sync {
     /// the stacks node returns a 404 Not Found.
     fn get_contract_source(
         &self,
-        contract_deploy: &ContractDeploy,
         address: &StacksAddress,
+        contract_name: &str,
     ) -> impl Future<Output = Result<ContractSrcResponse, Error>> + Send;
 }
 
@@ -445,6 +438,43 @@ impl StacksClient {
             .await
             .map_err(Error::UnexpectedStacksResponse)
             .and_then(AccountInfo::try_from)
+    }
+
+    /// Get the source of the a deployed smart contract.
+    ///
+    /// # Notes
+    ///
+    /// This is done by makes a `GET
+    /// /v2/contracts/source/<deployer-address>/<contract-name>?proof=0`
+    /// request to the stacks node. This is useful just to know whether a
+    /// contract has been deployed already or not. If the smart contract
+    /// has not been deployed yet, the stacks node returns a 404 Not Found.
+    #[tracing::instrument(skip_all)]
+    pub async fn get_contract_source(
+        &self,
+        address: &StacksAddress,
+        contract_name: &str,
+    ) -> Result<ContractSrcResponse, Error> {
+        let path = format!("/v2/contracts/source/{}/{}?proof=0", address, contract_name);
+        let url = self
+            .endpoint
+            .join(&path)
+            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
+
+        let response = self
+            .client
+            .get(url)
+            .timeout(REQUEST_TIMEOUT)
+            .send()
+            .await
+            .map_err(Error::StacksNodeRequest)?;
+
+        response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
+            .json()
+            .await
+            .map_err(Error::UnexpectedStacksResponse)
     }
 
     /// Submit a transaction to a Stacks node.
@@ -965,37 +995,19 @@ impl StacksInteract for StacksClient {
         self.get_node_info().await
     }
 
+    /// Get the source of the a deployed smart contract.
+    ///
+    /// # Notes
+    ///
+    /// This is useful just to know whether a contract has been deployed
+    /// already or not. If the smart contract has not been deployed yet,
+    /// the stacks node returns a 404 Not Found.
     async fn get_contract_source(
         &self,
-        contract_deploy: &ContractDeploy,
         address: &StacksAddress,
+        contract_name: &str,
     ) -> Result<ContractSrcResponse, Error> {
-        let contract_name = match contract_deploy {
-            ContractDeploy::SbtcToken(_) => SbtcTokenContract::CONTRACT_NAME,
-            ContractDeploy::SbtcRegistry(_) => SbtcRegistryContract::CONTRACT_NAME,
-            ContractDeploy::SbtcDeposit(_) => SbtcDepositContract::CONTRACT_NAME,
-            ContractDeploy::SbtcWithdrawal(_) => SbtcWithdrawalContract::CONTRACT_NAME,
-            ContractDeploy::SbtcBootstrap(_) => SbtcBootstrapContract::CONTRACT_NAME,
-        };
-
-        let path = format!("/v2/contracts/source/{}/{}?proof=0", address, contract_name);
-
-        let url = self.endpoint.join(&path).unwrap();
-
-        let response = self
-            .client
-            .get(url)
-            .timeout(std::time::Duration::from_secs(10))
-            .send()
-            .await
-            .map_err(Error::StacksNodeRequest)?;
-
-        response
-            .error_for_status()
-            .map_err(Error::StacksNodeResponse)?
-            .json()
-            .await
-            .map_err(Error::UnexpectedStacksResponse)
+        self.get_contract_source(address, contract_name).await
     }
 }
 
@@ -1058,10 +1070,10 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
 
     async fn get_contract_source(
         &self,
-        contract_deploy: &ContractDeploy,
         address: &StacksAddress,
+        contract_name: &str,
     ) -> Result<ContractSrcResponse, Error> {
-        self.exec(|client, _| client.get_contract_source(contract_deploy, address))
+        self.exec(|client, _| StacksClient::get_contract_source(client, address, contract_name))
             .await
     }
 }
