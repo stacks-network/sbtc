@@ -28,8 +28,8 @@ use crate::network;
 use crate::signature::SighashDigest as _;
 use crate::stacks::contracts::AsContractCall as _;
 use crate::stacks::contracts::ContractCall;
-use crate::stacks::contracts::ContractTx;
 use crate::stacks::contracts::ReqContext;
+use crate::stacks::contracts::StacksTx;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
@@ -516,21 +516,19 @@ where
         };
         let ctx = &self.context;
         match &request.contract_tx {
-            ContractTx::ContractCall(ContractCall::AcceptWithdrawalV1(contract)) => {
+            StacksTx::ContractCall(ContractCall::AcceptWithdrawalV1(contract)) => {
                 contract.validate(ctx, &req_ctx).await
             }
-            ContractTx::ContractCall(ContractCall::CompleteDepositV1(contract)) => {
+            StacksTx::ContractCall(ContractCall::CompleteDepositV1(contract)) => {
                 contract.validate(ctx, &req_ctx).await
             }
-            ContractTx::ContractCall(ContractCall::RejectWithdrawalV1(contract)) => {
+            StacksTx::ContractCall(ContractCall::RejectWithdrawalV1(contract)) => {
                 contract.validate(ctx, &req_ctx).await
             }
-            ContractTx::ContractCall(ContractCall::RotateKeysV1(contract)) => {
+            StacksTx::ContractCall(ContractCall::RotateKeysV1(contract)) => {
                 contract.validate(ctx, &req_ctx).await
             }
-            ContractTx::SmartContract(smart_contract) => {
-                smart_contract.validate(ctx, &req_ctx).await
-            }
+            StacksTx::SmartContract(smart_contract) => smart_contract.validate(ctx, &req_ctx).await,
         }
     }
 

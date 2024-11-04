@@ -196,37 +196,37 @@ pub trait AsContractCall {
 /// An enum representing all Contract transaction types that the signers can make.
 /// Mainly used for creating StacksTransactionSignRequest messages.
 #[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum ContractTx {
+pub enum StacksTx {
     /// A contract call transaction.
     ContractCall(ContractCall),
     /// A smart contract transaction used for deploying smart contract.
     SmartContract(SmartContract),
 }
 
-impl AsTxPayload for ContractTx {
+impl AsTxPayload for StacksTx {
     fn tx_payload(&self) -> TransactionPayload {
         match self {
-            ContractTx::ContractCall(call) => call.tx_payload(),
-            ContractTx::SmartContract(deploy) => deploy.tx_payload(),
+            StacksTx::ContractCall(call) => call.tx_payload(),
+            StacksTx::SmartContract(deploy) => deploy.tx_payload(),
         }
     }
     fn post_conditions(&self) -> StacksTxPostConditions {
         match self {
-            ContractTx::ContractCall(call) => call.post_conditions(),
-            ContractTx::SmartContract(deploy) => deploy.post_conditions(),
+            StacksTx::ContractCall(call) => call.post_conditions(),
+            StacksTx::SmartContract(deploy) => deploy.post_conditions(),
         }
     }
 }
 
-impl From<ContractCall> for ContractTx {
+impl From<ContractCall> for StacksTx {
     fn from(val: ContractCall) -> Self {
-        ContractTx::ContractCall(val)
+        StacksTx::ContractCall(val)
     }
 }
 
-impl From<SmartContract> for ContractTx {
+impl From<SmartContract> for StacksTx {
     fn from(val: SmartContract) -> Self {
-        ContractTx::SmartContract(val)
+        StacksTx::SmartContract(val)
     }
 }
 
