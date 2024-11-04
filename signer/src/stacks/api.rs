@@ -957,9 +957,7 @@ impl StacksInteract for StacksClient {
         let tx_fee_estimate_response = self.get_fee_estimate(payload).await;
 
         // If we get a valid response, then we use the fee estimate we received,
-        // falling back to our calculated default minimum fee if for some reason
-        // the estimate was malformed or didn't contain a fee for the specified
-        // priority.
+        // just ensuring that it doesn't exceed our maximum fee.
         match tx_fee_estimate_response {
             Ok(resp) => {
                 let estimate = resp.extract_fee(priority).map(|estimate| estimate.fee);
