@@ -1007,7 +1007,7 @@ impl StacksInteract for StacksClient {
 
                 let estimate = ((rate * transaction_size as f64) as u64)
                     .min(MAX_TX_FEE) // Ensure we don't exceed our maximum fee
-                    .max(transaction_size); // Ensure we don't go below the absolute minimum fee
+                    .max(transaction_size * MINIMUM_TX_FEE_RATE_PER_BYTE); // Ensure we don't go below the absolute minimum fee
 
                 Ok(estimate)
             }
