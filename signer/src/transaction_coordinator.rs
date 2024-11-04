@@ -1059,7 +1059,7 @@ where
         let tx_fee = self
             .context
             .get_stacks_client()
-            .estimate_fees(&contract_deploy.tx_payload(), FeePriority::High)
+            .estimate_fees(wallet, &contract_deploy.tx_payload(), FeePriority::High)
             .await?;
         let multi_tx = MultisigTx::new_tx(&contract_deploy, wallet, tx_fee);
         let tx = multi_tx.tx();

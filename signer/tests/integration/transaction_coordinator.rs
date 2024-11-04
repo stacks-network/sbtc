@@ -189,7 +189,7 @@ fn mock_deploy_all_contracts(
         client
             .expect_estimate_fees()
             // .times(6)
-            .returning(|_, _| Box::pin(async { Ok(100) }));
+            .returning(|_, _, _| Box::pin(async { Ok(100) }));
 
         client.expect_get_account().returning(move |_| {
             Box::pin(async move {
@@ -256,7 +256,7 @@ fn mock_deploy_remaining_contracts_when_some_already_deployed(
         client
             .expect_estimate_fees()
             .times(3)
-            .returning(|_, _| Box::pin(async { Ok(100) }));
+            .returning(|_, _, _| Box::pin(async { Ok(100) }));
 
         client.expect_get_account().times(3).returning(move |_| {
             Box::pin(async move {
@@ -304,12 +304,12 @@ fn mock_recover_and_deploy_all_contracts_after_failure(
         client
             .expect_estimate_fees()
             .once()
-            .returning(|_, _| Box::pin(async { Ok(100) }));
+            .returning(|_, _, _| Box::pin(async { Ok(100) }));
 
         // In the process of deploying the second contract, the coordinator
         // will fail to estimate fees and it will abort the deployment It
         // will try again from scratch when It'll receive a second signal.
-        client.expect_estimate_fees().times(1).returning(|_, _| {
+        client.expect_estimate_fees().times(1).returning(|_, _, _| {
             Box::pin(async {
                 Err(Error::UnexpectedStacksResponse(
                     mock_reqwests_status_code_error(500).await,
@@ -350,7 +350,7 @@ fn mock_recover_and_deploy_all_contracts_after_failure(
         client
             .expect_estimate_fees()
             .times(4)
-            .returning(|_, _| Box::pin(async { Ok(100) }));
+            .returning(|_, _, _| Box::pin(async { Ok(100) }));
 
         // `get_account` will be called 6 times, 2 for the first try to
         // deploy the contracts, 4 for the second try
