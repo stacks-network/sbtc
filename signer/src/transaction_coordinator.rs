@@ -39,11 +39,7 @@ use crate::stacks::contracts::AsTxPayload;
 use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::ContractDeploy;
-use crate::stacks::contracts::SbtcBootstrapContract;
-use crate::stacks::contracts::SbtcDepositContract;
-use crate::stacks::contracts::SbtcRegistryContract;
-use crate::stacks::contracts::SbtcTokenContract;
-use crate::stacks::contracts::SbtcWithdrawalContract;
+use crate::stacks::contracts::SMART_CONTRACTS;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
@@ -1000,13 +996,13 @@ where
         chain_tip: &model::BitcoinBlockHash,
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
-        let ctx = &self.context;
-        let wallet = SignerWallet::load(ctx, chain_tip).await?;
+        let wallet = SignerWallet::load(&self.context, chain_tip).await?;
+        let stacks = self.context.get_stacks_client();
 
         // Maybe this smart contract has already been deployed, let's check
         // that first.
         let deployer = self.context.config().signer.deployer;
-        if contract_deploy.is_deployed(ctx, &deployer).await? {
+        if contract_deploy.is_deployed(&stacks, &deployer).await? {
             return Ok(());
         }
 
@@ -1018,10 +1014,7 @@ where
         //
         // Note that the wallet object will automatically increment the
         // nonce for each transaction that it creates.
-        let account = ctx
-            .get_stacks_client()
-            .get_account(wallet.address())
-            .await?;
+        let account = stacks.get_account(wallet.address()).await?;
         wallet.set_nonce(account.nonce);
 
         let sign_request_fut = self.construct_deploy_contracts_stacks_sign_request(
@@ -1091,13 +1084,6 @@ where
         chain_tip: &model::BitcoinBlockHash,
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
-        const SMART_CONTRACTS: [ContractDeploy; 5] = [
-            ContractDeploy::SbtcRegistry(SbtcRegistryContract),
-            ContractDeploy::SbtcToken(SbtcTokenContract),
-            ContractDeploy::SbtcDeposit(SbtcDepositContract),
-            ContractDeploy::SbtcWithdrawal(SbtcWithdrawalContract),
-            ContractDeploy::SbtcBootstrap(SbtcBootstrapContract),
-        ];
         for contract in SMART_CONTRACTS {
             self.deploy_smart_contract(contract, chain_tip, bitcoin_aggregate_key)
                 .await?;

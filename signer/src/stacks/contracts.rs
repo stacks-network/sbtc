@@ -43,6 +43,7 @@ use blockstack_lib::clarity::vm::ContractName;
 use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::util_lib::strings::StacksString;
+use clarity::vm::ClarityVersion;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
@@ -57,7 +58,17 @@ use crate::storage::DbRead;
 
 use super::api::StacksInteract;
 
-// use super::api::StacksInteract;
+/// The collection sBTC smart contract objects.
+///
+/// The registry and token contracts need to be deployed first and second
+/// respectively. The rest can be deployed in any order.
+pub const SMART_CONTRACTS: [ContractDeploy; 5] = [
+    ContractDeploy::SbtcRegistry(SbtcRegistryContract),
+    ContractDeploy::SbtcToken(SbtcTokenContract),
+    ContractDeploy::SbtcDeposit(SbtcDepositContract),
+    ContractDeploy::SbtcWithdrawal(SbtcWithdrawalContract),
+    ContractDeploy::SbtcBootstrap(SbtcBootstrapContract),
+];
 
 /// This struct is used as supplemental data to help validate a request to
 /// sign a contract call transaction.
@@ -1150,7 +1161,7 @@ impl AsTxPayload for ContractDeploy {
             ContractDeploy::SbtcWithdrawal(contract) => contract.as_smart_contract(),
             ContractDeploy::SbtcBootstrap(contract) => contract.as_smart_contract(),
         };
-        TransactionPayload::SmartContract(contract, None)
+        TransactionPayload::SmartContract(contract, Some(ClarityVersion::Clarity3))
     }
     fn post_conditions(&self) -> StacksTxPostConditions {
         StacksTxPostConditions {
@@ -1173,15 +1184,12 @@ impl ContractDeploy {
     }
 
     /// Check whether this smart contract has been deployed.
-    pub async fn is_deployed<C>(&self, ctx: &C, deployer: &StacksAddress) -> Result<bool, Error>
+    pub async fn is_deployed<S>(&self, stacks: &S, deployer: &StacksAddress) -> Result<bool, Error>
     where
-        C: Context + Send + Sync,
+        S: StacksInteract + Send + Sync,
     {
         let contract_name = self.contract_name();
-        let contract_source = ctx
-            .get_stacks_client()
-            .get_contract_source(deployer, contract_name)
-            .await;
+        let contract_source = stacks.get_contract_source(deployer, contract_name).await;
 
         // If we get an Ok response then we know the contract has been
         // deployed already and we can return early. If we get a 404
@@ -1203,7 +1211,8 @@ impl ContractDeploy {
     where
         C: Context + Send + Sync,
     {
-        if self.is_deployed(ctx, &req_ctx.deployer).await? {
+        let stacks = ctx.get_stacks_client();
+        if self.is_deployed(&stacks, &req_ctx.deployer).await? {
             return Err(Error::ContractAlreadyDeployed(self.contract_name()));
         }
 
