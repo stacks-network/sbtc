@@ -507,7 +507,11 @@ impl StacksClient {
     /// The docs for this RPC can be found here:
     /// https://docs.stacks.co/stacks-101/api#v2-fees-transaction
     #[tracing::instrument(skip_all)]
-    pub async fn get_fee_estimate<T>(&self, payload: &T) -> Result<RPCFeeEstimateResponse, Error>
+    pub async fn get_fee_estimate<T>(
+        &self,
+        payload: &T,
+        tx_size: Option<u64>,
+    ) -> Result<RPCFeeEstimateResponse, Error>
     where
         T: AsTxPayload + Send,
     {
@@ -519,7 +523,7 @@ impl StacksClient {
 
         let tx_payload = payload.tx_payload().serialize_to_vec();
         let request_body = FeeRateEstimateRequestBody {
-            estimated_len: None,
+            estimated_len: tx_size,
             transaction_payload: blockstack_lib::util::hash::to_hex(&tx_payload),
         };
         let body = serde_json::to_string(&request_body).map_err(Error::JsonSerialize)?;
@@ -954,7 +958,8 @@ impl StacksInteract for StacksClient {
         //
         // First we attempt to estimate the fee using the actual transaction
         // payload.
-        let tx_fee_estimate_response = self.get_fee_estimate(payload).await;
+        let tx_size = Some(transaction_size);
+        let tx_fee_estimate_response = self.get_fee_estimate(payload, tx_size).await;
 
         // If we get a valid response, then we use the fee estimate we received,
         // just ensuring that it doesn't exceed our maximum fee.
@@ -981,8 +986,9 @@ impl StacksInteract for StacksClient {
         // Estimating STX transfers is simple since the estimate
         // doesn't depend on the recipient, amount, or memo. So a
         // dummy transfer payload will do.
-        let stx_transfer_estimate_response =
-            self.get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD).await;
+        let stx_transfer_estimate_response = self
+            .get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD, None)
+            .await;
 
         // If we get a valid response, then we use the fee estimate we received,
         // falling back to our calculated default minimum fee if for some reason
@@ -1567,7 +1573,7 @@ mod tests {
         )
         .unwrap();
         let resp = client
-            .get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD)
+            .get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD, None)
             .await
             .unwrap();
         let expected: RPCFeeEstimateResponse = serde_json::from_str(raw_json_response).unwrap();

@@ -300,7 +300,7 @@ async fn estimate_tx_fees() {
 
     let _ = client
         .get_client()
-        .get_fee_estimate(&payload)
+        .get_fee_estimate(&payload, None)
         .await
         .unwrap();
 
