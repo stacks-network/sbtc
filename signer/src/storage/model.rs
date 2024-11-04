@@ -443,6 +443,11 @@ pub struct SweptDepositRequest {
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
     pub amount: u64,
+    /// The maximum portion of the deposited amount that may
+    /// be used to pay for transaction fees.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..100_000"))]
+    pub max_fee: u64,
 }
 
 impl SweptDepositRequest {

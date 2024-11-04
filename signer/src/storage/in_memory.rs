@@ -796,15 +796,6 @@ impl super::DbRead for SharedStore {
 
         Ok(package)
     }
-
-    /// Get a deposit request.
-    async fn get_deposit_request(
-        &self,
-        _txid: &model::BitcoinTxId,
-        _output_index: u32,
-    ) -> Result<Option<model::DepositRequest>, Error> {
-        unimplemented!("can only be tested using integration tests for now.");
-    }
 }
 
 impl super::DbWrite for SharedStore {

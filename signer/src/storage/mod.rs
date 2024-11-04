@@ -246,13 +246,6 @@ pub trait DbRead {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> impl Future<Output = Result<Option<model::SweepTransaction>, Error>> + Send;
-
-    /// Get a deposit request.
-    fn get_deposit_request(
-        &self,
-        txid: &model::BitcoinTxId,
-        output_index: u32,
-    ) -> impl Future<Output = Result<Option<model::DepositRequest>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.

@@ -726,36 +726,6 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn get_deposit_request(
-        &self,
-        txid: &model::BitcoinTxId,
-        output_index: u32,
-    ) -> Result<Option<model::DepositRequest>, Error> {
-        sqlx::query_as::<_, model::DepositRequest>(
-            r#"
-            SELECT
-                deposit_requests.txid
-              , deposit_requests.output_index
-              , deposit_requests.spend_script
-              , deposit_requests.reclaim_script
-              , deposit_requests.recipient
-              , deposit_requests.amount
-              , deposit_requests.max_fee
-              , deposit_requests.lock_time
-              , deposit_requests.signers_public_key
-              , deposit_requests.sender_script_pub_keys
-            FROM deposit_requests 
-            WHERE txid = $1 AND output_index = $2
-            LIMIT 1
-            "#,
-        )
-        .bind(txid)
-        .bind(i64::from(output_index))
-        .fetch_optional(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)
-    }
-
     async fn get_deposit_request_signer_votes(
         &self,
         txid: &model::BitcoinTxId,
@@ -1449,6 +1419,7 @@ impl super::DbRead for PgStore {
               , deposit_req.output_index
               , deposit_req.recipient
               , deposit_req.amount
+              , deposit_req.max_fee
             FROM
                 bitcoin_blockchain_of($1, $2) AS bc_blocks
             INNER JOIN

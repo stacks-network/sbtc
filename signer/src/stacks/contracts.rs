@@ -349,11 +349,6 @@ impl CompleteDepositV1 {
             .find(|req| req.deposit_outpoint() == self.outpoint)
             .ok_or_else(|| DepositErrorMsg::RequestMissing.into_error(req_ctx, self))?;
 
-        let deposit_request = db
-            .get_deposit_request(&deposit_request.txid, deposit_request.output_index)
-            .await?
-            .ok_or_else(|| DepositErrorMsg::RequestMissing.into_error(req_ctx, self))?;
-
         // 5. Check that the recipients in the transaction matches that of
         //    the deposit request.
         if &self.recipient != deposit_request.recipient.deref() {
