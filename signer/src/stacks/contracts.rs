@@ -43,6 +43,7 @@ use blockstack_lib::clarity::vm::ContractName;
 use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::util_lib::strings::StacksString;
+use clarity::types::chainstate::BurnchainHeaderHash;
 use clarity::vm::ClarityVersion;
 
 use crate::bitcoin::BitcoinInteract;
@@ -320,15 +321,19 @@ impl AsContractCall for CompleteDepositV1 {
     fn as_contract_args(&self) -> Vec<ClarityValue> {
         let txid_data = self.outpoint.txid.to_byte_array().to_vec();
         let txid = BuffData { data: txid_data };
-        let burn_hash_data = self.sweep_block_hash.to_byte_array().to_vec();
-        let burn_hash = BuffData { data: burn_hash_data };
+        // We first convert it into this type because the BitcoinBlockHash
+        // has the underlying bytes in that type are reversed from what the
+        // stacks-node expects.
+        let burn_hash = BurnchainHeaderHash::from(self.sweep_block_hash);
+        let burn_hash_data = burn_hash.into_bytes().to_vec();
+        let burn_hash_buff = BuffData { data: burn_hash_data };
 
         vec![
             ClarityValue::Sequence(SequenceData::Buffer(txid)),
             ClarityValue::UInt(self.outpoint.vout as u128),
             ClarityValue::UInt(self.amount as u128),
             ClarityValue::Principal(self.recipient.clone()),
-            ClarityValue::Sequence(SequenceData::Buffer(burn_hash)),
+            ClarityValue::Sequence(SequenceData::Buffer(burn_hash_buff)),
             ClarityValue::UInt(self.sweep_block_height as u128),
         ]
     }
@@ -646,8 +651,12 @@ impl AsContractCall for AcceptWithdrawalV1 {
     fn as_contract_args(&self) -> Vec<ClarityValue> {
         let txid_data = self.outpoint.txid.to_byte_array().to_vec();
         let txid = BuffData { data: txid_data };
-        let burn_hash_data = self.sweep_block_hash.to_byte_array().to_vec();
-        let burn_hash = BuffData { data: burn_hash_data };
+        // We first convert it into this type because the BitcoinBlockHash
+        // has the underlying bytes in that type are reversed from what the
+        // stacks-node expects.
+        let burn_hash = BurnchainHeaderHash::from(self.sweep_block_hash);
+        let burn_hash_data = burn_hash.into_bytes().to_vec();
+        let burn_hash_buff = BuffData { data: burn_hash_data };
 
         vec![
             ClarityValue::UInt(self.request_id as u128),
@@ -655,7 +664,7 @@ impl AsContractCall for AcceptWithdrawalV1 {
             ClarityValue::UInt(self.signer_bitmap.load_le()),
             ClarityValue::UInt(self.outpoint.vout as u128),
             ClarityValue::UInt(self.tx_fee as u128),
-            ClarityValue::Sequence(SequenceData::Buffer(burn_hash)),
+            ClarityValue::Sequence(SequenceData::Buffer(burn_hash_buff)),
             ClarityValue::UInt(self.sweep_block_height as u128),
         ]
     }
