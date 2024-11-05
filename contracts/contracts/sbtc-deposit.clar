@@ -28,8 +28,12 @@
 ;; bootstrap signer set address - it cannot be called by users directly.
 ;; This function handles the validation & minting of sBTC, it then calls
 ;; into the sbtc-registry contract to update the state of the protocol
-(define-public (complete-deposit-wrapper (txid (buff 32)) (vout-index uint) (amount uint) (recipient principal) (burn-hash (buff 32)) (burn-height uint) 
-    )
+(define-public (complete-deposit-wrapper (txid (buff 32))
+                                         (vout-index uint)
+                                         (amount uint)
+                                         (recipient principal)
+                                         (burn-hash (buff 32))
+                                         (burn-height uint))
     (let 
         (
             (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))
