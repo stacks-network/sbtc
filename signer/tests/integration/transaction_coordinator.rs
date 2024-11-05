@@ -33,6 +33,7 @@ use sbtc::testing::regtest;
 use sbtc::testing::regtest::Recipient;
 use secp256k1::Keypair;
 use sha2::Digest as _;
+use signer::network::in_memory2::WanNetwork;
 use signer::stacks::contracts::SmartContract;
 use signer::storage::model::BitcoinTx;
 use stacks_common::types::chainstate::BurnchainHeaderHash;
@@ -1082,6 +1083,8 @@ async fn sign_bitcoin_transaction() {
         .await
         .unwrap();
 
+    let network = WanNetwork::default();
+
     let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
 
     // 1. Create a database, an associated context, and a Keypair for each of
@@ -1102,13 +1105,13 @@ async fn sign_bitcoin_transaction() {
         //    This ensures that they participate in DKG.
         backfill_bitcoin_blocks(&db, rpc, &chain_tip_info.hash).await;
 
-        signers.push((ctx, db, kp));
+        let network = network.connect().await;
+
+        signers.push((ctx, db, kp, network));
     }
 
-    let network = InMemoryNetwork::new();
-
     // 3. Check that there are no DKG shares in the database.
-    for (ctx, _, _) in signers.iter_mut() {
+    for (ctx, _, _, _) in signers.iter_mut() {
         ctx.with_stacks_client(|client| {
             client.expect_get_tenure_info().returning(move || {
                 let response = Ok(RPCGetTenureInfo {
@@ -1186,9 +1189,9 @@ async fn sign_bitcoin_transaction() {
     // we use this counter to notify us when that happens.
     let start_count = Arc::new(AtomicU8::new(0));
 
-    for (ctx, _, kp) in signers.iter() {
+    for (ctx, _, kp, network) in signers.iter() {
         let ev = TxCoordinatorEventLoop {
-            network: network.connect(),
+            network: network.spawn(),
             context: ctx.clone(),
             context_window: 10000,
             private_key: kp.secret_key().into(),
@@ -1205,9 +1208,9 @@ async fn sign_bitcoin_transaction() {
         });
     }
 
-    for (context, _, kp) in signers.iter() {
+    for (context, _, kp, network) in signers.iter() {
         let ev = TxSignerEventLoop {
-            network: network.connect(),
+            network: network.spawn(),
             threshold: context.config().signer.bootstrap_signatures_required as u32,
             context: context.clone(),
             context_window: 10000,
@@ -1223,7 +1226,7 @@ async fn sign_bitcoin_transaction() {
         });
     }
 
-    for (ctx, _, _) in signers.iter() {
+    for (ctx, _, _, _) in signers.iter() {
         let counter = start_count.clone();
 
         let zmq_stream =
@@ -1266,7 +1269,7 @@ async fn sign_bitcoin_transaction() {
     tokio::time::sleep(Duration::from_secs(3)).await;
 
     let mut shares: EncryptedDkgShares = Faker.fake_with_rng(&mut rng);
-    for (_, db, _) in signers.iter() {
+    for (_, db, _, _) in signers.iter() {
         shares = db.get_latest_encrypted_dkg_shares().await.unwrap().unwrap();
     }
 
@@ -1308,7 +1311,7 @@ async fn sign_bitcoin_transaction() {
 
     tokio::time::sleep(Duration::from_secs(5)).await;
 
-    let (ctx, _, _) = signers.first().unwrap();
+    let (ctx, _, _, _) = signers.first().unwrap();
     let mut txids = ctx.bitcoin_client.inner_client().get_raw_mempool().unwrap();
     assert_eq!(txids.len(), 1);
 
@@ -1340,7 +1343,7 @@ async fn sign_bitcoin_transaction() {
     .unwrap();
 
     let script = tx.output[0].script_pubkey.clone().into();
-    for (_, db, _) in signers {
+    for (_, db, _, _) in signers {
         assert!(db.is_signer_script_pub_key(&script).await.unwrap());
         testing::storage::drop_db(db).await;
     }

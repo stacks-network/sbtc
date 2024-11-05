@@ -7,6 +7,9 @@
 #[cfg(any(test, feature = "testing"))]
 pub mod in_memory;
 
+#[cfg(any(test, feature = "testing"))]
+pub mod in_memory2;
+
 pub mod libp2p;
 
 use std::future::Future;
