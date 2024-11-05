@@ -29,7 +29,11 @@ pub async fn assert_clients_can_exchange_messages<C: network::MessageTransfer + 
         client_2_messages.clone(),
     );
 
-    let handle_2 = spawn_client_task(client_2, client_2_messages, client_1_messages);
+    let handle_2 = spawn_client_task(
+        client_2, 
+        client_2_messages, 
+        client_1_messages
+    );
 
     handle_1.await.unwrap();
     handle_2.await.unwrap();
