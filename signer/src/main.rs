@@ -342,7 +342,7 @@ async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
         bitcoin_blocks: stream.to_block_hash_stream(),
         stacks_client,
         emily_client,
-        horizon: 1,
+        horizon: 20,
     };
 
     block_observer.run().await
