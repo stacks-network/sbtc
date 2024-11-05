@@ -59,9 +59,9 @@
     )
 )
 
+;; Return the bitcoin header hash of the bitcoin block at the given height.
 (define-read-only (get-burn-header (height uint))
-    ;; (get-burn-block-info? header-hash height)
-    (get-tenure-info? burnchain-header-hash height)
+    (get-burn-block-info? header-hash height)
 )
 
 ;; Accept multiple new deposit requests

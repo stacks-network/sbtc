@@ -125,10 +125,6 @@
 ;;
 ;; To specify this address type in the recipient, the `version` is 0x06 and
 ;; the `hashbytes` is the "tweaked" public key.
-(define-read-only (get-burn-header (height uint))
-    ;; (get-burn-block-info? header-hash height)
-    (get-tenure-info? burnchain-header-hash height)
-)
 (define-public (initiate-withdrawal-request (amount uint)
                                             (recipient { version: (buff 1), hashbytes: (buff 32) })
                                             (max-fee uint)
@@ -302,4 +298,9 @@
       ERR_INVALID_ADDR_HASHBYTES)
     (ok true)
   )
+)
+
+;; Return the bitcoin header hash of the bitcoin block at the given height.
+(define-read-only (get-burn-header (height uint))
+    (get-burn-block-info? header-hash height)
 )
