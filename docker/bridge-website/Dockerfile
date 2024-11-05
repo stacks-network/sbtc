@@ -7,7 +7,7 @@ RUN apt-get install -y \
 
 RUN mkdir /code
 WORKDIR /code
-RUN git clone https://github.com/Strata-Labs/sbtc-bridge
+RUN git clone https://github.com/stacks-network/sbtc-bridge
 WORKDIR /code/sbtc-bridge
 RUN npm install
 
