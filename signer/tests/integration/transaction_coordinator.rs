@@ -529,6 +529,7 @@ async fn process_complete_deposit() {
         signing_round_max_duration: Duration::from_secs(10),
         dkg_max_duration: Duration::from_secs(10),
         sbtc_contracts_deployed: true,
+        is_epoch3: true,
     };
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
 
@@ -695,6 +696,7 @@ async fn deploy_smart_contracts_coordinator<F>(
         signing_round_max_duration: Duration::from_secs(10),
         dkg_max_duration: Duration::from_secs(10),
         sbtc_contracts_deployed: false,
+        is_epoch3: true,
     };
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
 
@@ -790,6 +792,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
         threshold: 2,
         dkg_max_duration: Duration::from_secs(10),
         sbtc_contracts_deployed: true, // Skip contract deployment
+        is_epoch3: true,
     };
 
     // We need stacks blocks for the rotate-keys transactions.
@@ -955,6 +958,7 @@ async fn run_dkg_from_scratch() {
         threshold: ctx.config().signer.bootstrap_signatures_required,
         dkg_max_duration: Duration::from_secs(10),
         sbtc_contracts_deployed: true, // Skip contract deployment
+        is_epoch3: true,
     });
 
     let tx_signer_processes = signers.iter().map(|(context, _, kp)| TxSignerEventLoop {
@@ -1192,6 +1196,7 @@ async fn sign_bitcoin_transaction() {
             threshold: ctx.config().signer.bootstrap_signatures_required,
             dkg_max_duration: Duration::from_secs(10),
             sbtc_contracts_deployed: true,
+            is_epoch3: true,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
