@@ -40,6 +40,9 @@ exec_run() {
   docker compose -f "$DOCKER_COMPOSE_PATH" --profile sbtc-postgres down
   docker compose -f "$DOCKER_COMPOSE_PATH" --profile sbtc-postgres up --detach
 
+  # Wait for the postgres instances to start (can get ssl handshake errors etc. otherwise)
+  sleep 1
+
   # Setup the bootstrap signer set.
   i=1
   BOOTSTRAP_SIGNER_SET=""

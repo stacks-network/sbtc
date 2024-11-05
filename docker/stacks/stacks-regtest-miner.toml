@@ -21,14 +21,30 @@ microblock_frequency = 1000
 # max_microblocks = 10
 
 [miner]
-min_tx_fee = 1
 first_attempt_time_ms = 180_000
 subsequent_attempt_time_ms = 360_000
-wait_for_block_download = false
 microblock_attempt_time_ms = 10
-#self_signing_seed = 1
 mining_key = "19ec1c3e31d139c989a23a27eac60d1abfad5277d3ae9604242514c738258efa01"
 block_reward_recipient = "STQM73RQC4EX0A07KWG1J5ECZJYBZS4SJ4ERC6WN" # priv: 6ad9cadb42d4edbfbe0c5bfb3b8a4125ddced021c4174f829b714ccbf527f02001
+#nakamoto_attempt_time_ms=
+#probability_pick_no_estimate_tx=
+#segwit=
+#nonce_cache_size=
+#candidate_retry_cache_size=
+#unprocessed_block_deadline_secs=
+#wait_on_interim_blocks_ms=
+#min_tx_count=
+#only_increase_tx_count=
+#unconfirmed_commits_helper=
+#target_win_probability=
+#activated_vrf_key_path=
+#fast_rampup=
+#underperform_stop_threshold=
+#txs_to_consider=
+#filter_origins=
+#max_reorg_depth=
+#pre_nakamoto_mock_signing=
+#min_time_between_blocks_ms=
 
 [connection_options]
 # inv_sync_interval = 10
@@ -43,28 +59,23 @@ auth_token = "12345"
 # Add stacks-api as an event observer
 [[events_observer]]
 endpoint = "stacks-api:3700"
-retry_count = 255
-include_data_events = false
 events_keys = ["*"]
 
 # Add sbtc-signer as an event observers
 [[events_observer]]
 endpoint = "host.docker.internal:8801"
-retry_count = 255
 events_keys = [
     "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry::print",
 ]
 
 [[events_observer]]
 endpoint = "host.docker.internal:8802"
-retry_count = 255
 events_keys = [
     "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry::print",
 ]
 
 [[events_observer]]
 endpoint = "host.docker.internal:8803"
-retry_count = 255
 events_keys = [
     "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry::print",
 ]
