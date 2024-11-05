@@ -1,6 +1,10 @@
 //! New version of the in-memory network
 
-use std::{collections::VecDeque, sync::{Arc, RwLock}, time::Duration};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
 use tokio::sync::broadcast::Sender;
 
@@ -10,13 +14,13 @@ use super::{MessageTransfer, Msg, MsgId};
 
 /// In-memory representation of a WAN network between different signers.
 pub struct WanNetwork {
-    tx: Sender<Msg>
+    tx: Sender<Msg>,
 }
 
 impl WanNetwork {
     /// Create a new in-memory WAN network
-    pub fn new() -> Self {
-        let (tx, _) = tokio::sync::broadcast::channel(10_000);
+    pub fn new(capacity: usize) -> Self {
+        let (tx, _) = tokio::sync::broadcast::channel(capacity);
         Self { tx }
     }
 
@@ -26,6 +30,12 @@ impl WanNetwork {
         let network = SignerNetwork::new(self.tx.clone());
         network.start().await;
         network
+    }
+}
+
+impl Default for WanNetwork {
+    fn default() -> Self {
+        Self::new(10_000)
     }
 }
 
@@ -81,10 +91,10 @@ impl SignerNetwork {
 }
 
 /// Inner state of the in-memory signer network
-pub struct InnerSignerNetwork {
+struct InnerSignerNetwork {
     wan_tx: Sender<Msg>,
     signer_tx: Sender<Msg>,
-    sent: RwLock<VecDeque<MsgId>>
+    sent: RwLock<VecDeque<MsgId>>,
 }
 
 impl InnerSignerNetwork {
@@ -93,16 +103,17 @@ impl InnerSignerNetwork {
         // We create a new broadcast channel for this signer's network.
         let (signer_tx, _) = tokio::sync::broadcast::channel(1_000);
 
-        Self { 
-            wan_tx, 
+        Self {
+            wan_tx,
             signer_tx,
-            sent: RwLock::new(VecDeque::new()) 
+            sent: RwLock::new(VecDeque::new()),
         }
     }
 
     /// Sends a message to the WAN network.
     fn send(&self, msg: &Msg) -> Result<(), Error> {
-        self.dedup_buffer(msg);        
+        self.dedup_buffer(msg);
+        // Send the message out to the WAN.
         let _ = self.wan_tx.send(msg.clone());
         Ok(())
     }
@@ -161,7 +172,7 @@ mod tests {
 
     #[tokio::test]
     async fn signer_2_can_receive_messages_from_signer_1() {
-        let network = WanNetwork::new();
+        let network = WanNetwork::new(100);
 
         let signer_1 = network.connect().await;
         let signer_2 = network.connect().await;
@@ -172,12 +183,11 @@ mod tests {
         let msg = Msg::random(&mut OsRng);
 
         tokio::spawn(async {
-            tokio::time::timeout(
-                Duration::from_secs(1), 
-                async move {
-                    client_2.receive().await.unwrap();
-                }
-            ).await.expect("client 2 did not receive message in time")
+            tokio::time::timeout(Duration::from_secs(1), async move {
+                client_2.receive().await.unwrap();
+            })
+            .await
+            .expect("client 2 did not receive message in time")
         });
 
         client_1.broadcast(msg).await.unwrap();
@@ -185,7 +195,7 @@ mod tests {
 
     #[tokio::test]
     async fn signer_2_can_receive_messages_from_signer_1_concurrent_send() {
-        let network = WanNetwork::new();
+        let network = WanNetwork::new(1_000);
 
         let signer_1 = network.connect().await;
         let signer_2 = network.connect().await;
@@ -197,15 +207,14 @@ mod tests {
         let recv_count = Arc::new(AtomicU16::new(0));
         let recv_count_clone = Arc::clone(&recv_count);
         let client2_handle = tokio::spawn(async {
-            tokio::time::timeout(
-                Duration::from_secs(3), 
-                async move {
-                    while recv_count_clone.load(Ordering::SeqCst) < 200 {
-                        client_2.receive().await.unwrap();
-                        recv_count_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    }
+            tokio::time::timeout(Duration::from_secs(3), async move {
+                while recv_count_clone.load(Ordering::SeqCst) < 200 {
+                    client_2.receive().await.unwrap();
+                    recv_count_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 }
-            ).await.expect("client 2 did not receive all messages in time")
+            })
+            .await
+            .expect("client 2 did not receive all messages in time")
         });
 
         let send1_handle = tokio::spawn(async move {
@@ -222,12 +231,11 @@ mod tests {
 
         join_all([send1_handle, send2_handle, client2_handle]).await;
         assert_eq!(recv_count.load(Ordering::SeqCst), 200);
-
     }
 
     #[tokio::test]
     async fn network_instance_does_not_receive_messages_from_same_signer_network() {
-        let network = WanNetwork::new();
+        let network = WanNetwork::new(100);
 
         let client = network.connect().await;
 
@@ -237,12 +245,11 @@ mod tests {
         let msg = Msg::random(&mut OsRng);
 
         tokio::spawn(async {
-            tokio::time::timeout(
-                Duration::from_secs(1), 
-                async move {
-                    client_b.receive().await.unwrap();
-                }
-            ).await.expect_err("client received its own message")
+            tokio::time::timeout(Duration::from_secs(1), async move {
+                client_b.receive().await.unwrap();
+            })
+            .await
+            .expect_err("client received its own message")
         });
 
         client_a.broadcast(msg).await.unwrap();
@@ -250,7 +257,7 @@ mod tests {
 
     #[tokio::test]
     async fn two_clients_can_exchange_messages_simple() {
-        let network = WanNetwork::new();
+        let network = WanNetwork::new(100);
 
         let client_1 = network.connect().await;
         let client_2 = network.connect().await;
@@ -262,23 +269,21 @@ mod tests {
         let msg = Msg::random(&mut OsRng);
 
         tokio::spawn(async {
-            tokio::time::timeout(
-                Duration::from_secs(1), 
-                async move {
-                    client_2.receive().await.unwrap();
-                }
-            ).await.expect("client 2 did not receive message in time")
+            tokio::time::timeout(Duration::from_secs(1), async move {
+                client_2.receive().await.unwrap();
+            })
+            .await
+            .expect("client 2 did not receive message in time")
         });
 
         client_1.broadcast(msg.clone()).await.unwrap();
 
         tokio::spawn(async {
-            tokio::time::timeout(
-                Duration::from_secs(1), 
-                async move {
-                    client_1.receive().await.unwrap();
-                }
-            ).await.expect("client 1 did not receive message in time")
+            tokio::time::timeout(Duration::from_secs(1), async move {
+                client_1.receive().await.unwrap();
+            })
+            .await
+            .expect("client 1 did not receive message in time")
         });
 
         client_2b.broadcast(msg).await.unwrap();
@@ -286,7 +291,7 @@ mod tests {
 
     #[tokio::test]
     async fn two_clients_can_exchange_messages_advanced() {
-        let network = WanNetwork::new();
+        let network = WanNetwork::new(100);
 
         let client_1 = network.connect().await;
         let client_2 = network.connect().await;
@@ -294,7 +299,6 @@ mod tests {
         let instance_1 = client_1.spawn();
         let instance_2 = client_2.spawn();
 
-        crate::testing::network::assert_clients_can_exchange_messages(instance_1, instance_2)
-            .await;
+        crate::testing::network::assert_clients_can_exchange_messages(instance_1, instance_2).await;
     }
 }
