@@ -15,7 +15,7 @@ pub struct WanNetwork {
 }
 
 impl WanNetwork {
-    /// Create a new in-memory WAN network
+    /// Create a new in-memory WAN network with the specified channel capacity.
     pub fn new(capacity: usize) -> Self {
         let (tx, _) = tokio::sync::broadcast::channel(capacity);
         Self { tx }
@@ -36,40 +36,35 @@ impl Default for WanNetwork {
     }
 }
 
-/// In-memory representation of the network for a single signer. This is used in
-/// tests to simulate the disperate signer components which each take their own
-/// `MessageTransfer` instance, but in reality are all connected to the same
-/// in-memory network and should behave as such.
-pub struct SignerNetwork(Arc<InnerSignerNetwork>);
+/// Represents a single signer's network within the in-memory WAN network. This
+/// network can send and receive messages to and from other signers and instances
+/// [`Self::spawn`]'d from this instance will not receive messages sent from this
+/// same network.
+pub struct SignerNetwork {
+    wan_tx: Sender<Msg>,
+    signer_tx: Sender<Msg>,
+    sent: Arc<RwLock<VecDeque<MsgId>>>,
+}
 
 impl Clone for SignerNetwork {
     fn clone(&self) -> Self {
-        Self(Arc::clone(&self.0))
+        Self {
+            wan_tx: self.wan_tx.clone(),
+            signer_tx: self.signer_tx.clone(),
+            sent: Arc::clone(&self.sent),
+        }
     }
 }
 
 impl SignerNetwork {
-    /// Spawns a new instance of the in-memory signer network.
-    pub fn spawn(&self) -> SignerNetworkInstance {
-        SignerNetworkInstance {
-            signer_network: self.clone(),
-            instance_rx: self.0.signer_tx.subscribe(),
-        }
-    }
-
-    /// Create a new in-memory signer network
-    fn new(wan_tx: Sender<Msg>) -> Self {
-        Self(Arc::new(InnerSignerNetwork::new(wan_tx)))
-    }
-
     /// Start the in-memory signer network
-    pub async fn start(&self) {
+    async fn start(&self) {
         // We listen to the WAN network and forward messages to the signer network.
-        let mut rx = self.0.wan_tx.subscribe();
+        let mut rx = self.wan_tx.subscribe();
         // We clone the sender to the signer network to be able to send messages
-        let tx = self.0.signer_tx.clone();
+        let tx = self.signer_tx.clone();
         // We clone the inner state to be able to check if a message has been sent
-        let inner = Arc::clone(&self.0);
+        let sent = Arc::clone(&self.sent);
 
         // We spawn a task that listens to the WAN network and forwards messages
         // to the signer network, but only if this signer instance isn't the
@@ -78,7 +73,7 @@ impl SignerNetwork {
             let mut interval = tokio::time::interval(Duration::from_millis(5));
             loop {
                 while let Ok(msg) = rx.try_recv() {
-                    if inner.sent.read().await.contains(&msg.id()) {
+                    if sent.read().await.contains(&msg.id()) {
                         continue;
                     }
                     tx.send(msg).unwrap();
@@ -87,25 +82,16 @@ impl SignerNetwork {
             }
         });
     }
-}
 
-/// Inner state of the in-memory signer network
-struct InnerSignerNetwork {
-    wan_tx: Sender<Msg>,
-    signer_tx: Sender<Msg>,
-    sent: RwLock<VecDeque<MsgId>>,
-}
-
-impl InnerSignerNetwork {
     /// Create a new in-memory signer network.
-    pub fn new(wan_tx: Sender<Msg>) -> Self {
+    fn new(wan_tx: Sender<Msg>) -> Self {
         // We create a new broadcast channel for this signer's network.
         let (signer_tx, _) = tokio::sync::broadcast::channel(1_000);
 
         Self {
             wan_tx,
             signer_tx,
-            sent: RwLock::new(VecDeque::new()),
+            sent: Arc::new(RwLock::new(VecDeque::new())),
         }
     }
 
@@ -125,6 +111,14 @@ impl InnerSignerNetwork {
             sent_buffer.pop_front();
         }
     }
+
+    /// Spawns a new instance of the in-memory signer network.
+    pub fn spawn(&self) -> SignerNetworkInstance {
+        SignerNetworkInstance {
+            signer_network: self.clone(),
+            instance_rx: self.signer_tx.subscribe(),
+        }
+    }
 }
 
 /// Represents a single instance of the in-memory signer network. This is used
@@ -140,14 +134,14 @@ impl Clone for SignerNetworkInstance {
     fn clone(&self) -> Self {
         Self {
             signer_network: self.signer_network.clone(),
-            instance_rx: self.signer_network.0.signer_tx.subscribe(),
+            instance_rx: self.signer_network.signer_tx.subscribe(),
         }
     }
 }
 
 impl MessageTransfer for SignerNetworkInstance {
     async fn broadcast(&mut self, msg: Msg) -> Result<(), Error> {
-        self.signer_network.0.send(&msg).await
+        self.signer_network.send(&msg).await
     }
 
     async fn receive(&mut self) -> Result<Msg, Error> {
