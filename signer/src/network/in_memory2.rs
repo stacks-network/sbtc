@@ -1,12 +1,9 @@
 //! New version of the in-memory network
 
-use std::{
-    collections::VecDeque,
-    sync::{Arc, RwLock},
-    time::Duration,
-};
+use std::{collections::VecDeque, sync::Arc, time::Duration};
 
 use tokio::sync::broadcast::Sender;
+use tokio::sync::RwLock;
 
 use crate::error::Error;
 
@@ -78,13 +75,15 @@ impl SignerNetwork {
         // to the signer network, but only if this signer instance isn't the
         // sender.
         tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_millis(5));
             loop {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-                let msg = rx.recv().await.unwrap();
-                if inner.sent.read().unwrap().contains(&msg.id()) {
-                    continue;
+                while let Ok(msg) = rx.try_recv() {
+                    if inner.sent.read().await.contains(&msg.id()) {
+                        continue;
+                    }
+                    tx.send(msg).unwrap();
                 }
-                tx.send(msg).unwrap();
+                interval.tick().await;
             }
         });
     }
@@ -111,16 +110,16 @@ impl InnerSignerNetwork {
     }
 
     /// Sends a message to the WAN network.
-    fn send(&self, msg: &Msg) -> Result<(), Error> {
-        self.dedup_buffer(msg);
+    async fn send(&self, msg: &Msg) -> Result<(), Error> {
+        self.dedup_buffer(msg).await;
         // Send the message out to the WAN.
         let _ = self.wan_tx.send(msg.clone());
         Ok(())
     }
 
     /// Buffer a message to prevent it from being received by the same signer.
-    fn dedup_buffer(&self, msg: &Msg) {
-        let mut sent_buffer = self.sent.write().unwrap();
+    async fn dedup_buffer(&self, msg: &Msg) {
+        let mut sent_buffer = self.sent.write().await;
         sent_buffer.push_back(msg.id());
         if sent_buffer.len() > 500 {
             sent_buffer.pop_front();
@@ -148,15 +147,16 @@ impl Clone for SignerNetworkInstance {
 
 impl MessageTransfer for SignerNetworkInstance {
     async fn broadcast(&mut self, msg: Msg) -> Result<(), Error> {
-        self.signer_network.0.send(&msg)
+        self.signer_network.0.send(&msg).await
     }
 
     async fn receive(&mut self) -> Result<Msg, Error> {
+        let mut interval = tokio::time::interval(Duration::from_millis(5));
         loop {
             if let Ok(msg) = self.instance_rx.recv().await {
                 return Ok(msg);
             }
-            tokio::time::sleep(Duration::from_millis(5)).await;
+            interval.tick().await;
         }
     }
 }
