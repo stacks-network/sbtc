@@ -997,8 +997,8 @@ where
         contract_deploy: SmartContract,
         chain_tip: &model::BitcoinBlockHash,
         bitcoin_aggregate_key: &PublicKey,
+        wallet: &SignerWallet,
     ) -> Result<(), Error> {
-        let wallet = SignerWallet::load(&self.context, chain_tip).await?;
         let stacks = self.context.get_stacks_client();
 
         // Maybe this smart contract has already been deployed, let's check
@@ -1011,18 +1011,10 @@ where
         // The contract is not deployed yet, so we can proceed
         tracing::info!("Contract not deployed yet, proceeding with deployment");
 
-        // We need to know the nonce to use, so we reach out to our stacks
-        // node for the account information for our multi-sig address.
-        //
-        // Note that the wallet object will automatically increment the
-        // nonce for each transaction that it creates.
-        let account = stacks.get_account(wallet.address()).await?;
-        wallet.set_nonce(account.nonce);
-
         let sign_request_fut = self.construct_deploy_contracts_stacks_sign_request(
             contract_deploy,
             bitcoin_aggregate_key,
-            &wallet,
+            wallet,
         );
 
         let (sign_request, multi_tx) = sign_request_fut.await?;
@@ -1033,7 +1025,7 @@ where
         // transaction because someone else is now the coordinator, and
         // all the signers are now ignoring us.
         let process_request_fut =
-            self.process_sign_request(sign_request, chain_tip, multi_tx, &wallet);
+            self.process_sign_request(sign_request, chain_tip, multi_tx, wallet);
 
         match process_request_fut.await {
             Ok(txid) => {
@@ -1086,8 +1078,19 @@ where
         chain_tip: &model::BitcoinBlockHash,
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
+        let wallet = SignerWallet::load(&self.context, chain_tip).await?;
+        let stacks = self.context.get_stacks_client();
+
+        // We need to know the nonce to use, so we reach out to our stacks
+        // node for the account information for our multi-sig address.
+        //
+        // Note that the wallet object will automatically increment the
+        // nonce for each transaction that it creates.
+        let account = stacks.get_account(wallet.address()).await?;
+        wallet.set_nonce(account.nonce);
+
         for contract in SMART_CONTRACTS {
-            self.deploy_smart_contract(contract, chain_tip, bitcoin_aggregate_key)
+            self.deploy_smart_contract(contract, chain_tip, bitcoin_aggregate_key, &wallet)
                 .await?;
         }
 
