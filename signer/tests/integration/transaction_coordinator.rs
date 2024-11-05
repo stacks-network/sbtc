@@ -1196,7 +1196,7 @@ async fn sign_bitcoin_transaction() {
             threshold: ctx.config().signer.bootstrap_signatures_required,
             dkg_max_duration: Duration::from_secs(10),
             sbtc_contracts_deployed: true,
-            is_epoch3: true
+            is_epoch3: true,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
