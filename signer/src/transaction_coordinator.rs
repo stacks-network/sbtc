@@ -230,7 +230,7 @@ where
         if self.is_epoch3 {
             return Ok(true);
         }
-        tracing::info!("Checked for whether we are in Epoch 3 or later");
+        tracing::debug!("Checked for whether we are in Epoch 3 or later");
         let pox_info = self.context.get_stacks_client().get_pox_info().await?;
 
         let Some(nakamoto_start_height) = pox_info.nakamoto_start_height() else {
@@ -240,7 +240,7 @@ where
         let is_epoch3 = pox_info.current_burnchain_block_height > nakamoto_start_height;
         if is_epoch3 {
             self.is_epoch3 = is_epoch3;
-            tracing::info!("We are in Epoch 3 or later; time to do work");
+            tracing::debug!("We are in Epoch 3 or later; time to do work");
         }
         Ok(is_epoch3)
     }
