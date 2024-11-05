@@ -213,7 +213,6 @@ fn mock_deploy_all_contracts(
         // deployed and 1 for the deposit tx
         client
             .expect_estimate_fees()
-            // .times(6)
             .returning(|_, _, _| Box::pin(async { Ok(100) }));
 
         client.expect_get_account().returning(move |_| {
