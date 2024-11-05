@@ -38,6 +38,9 @@ x-postgres: &postgres
     POSTGRES_USER: postgres
     POSTGRES_PASSWORD: postgres
     POSTGRES_DB: signer
+  profiles:
+    - sbtc-signer
+    - sbtc-postgres
 
 x-sbtc-signer: &sbtc-signer
   build: sbtc/signer
@@ -45,20 +48,13 @@ x-sbtc-signer: &sbtc-signer
   depends_on: &sbtc-signer-depends_on
     sbtc-build:
       condition: service_completed_successfully
-    stacks-node:
-      condition: service_started
-    bitcoin:
-      condition: service_started
-    bitcoin-miner:
-      condition: service_started
   environment: &sbtc-signer-environment
     RUST_LOG: info
-    SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-1:5432/signer
-    SIGNER_SIGNER__PRIVATE_KEY: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc
     SIGNER_SIGNER__P2P__LISTEN_ON: tcp://0.0.0.0:4122
-    SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-2:4122,tcp://sbtc-signer-3:4122
   volumes:
     - ./sbtc/signer/signer-config.toml:/signer-config.toml
+  profiles:
+    - sbtc-signer
 
 x-stacks-signer: &stacks-signer
   build:
@@ -79,6 +75,8 @@ x-stacks-signer: &stacks-signer
       set -e
       envsubst < config.toml.in > config.toml
       exec stacks-signer run --config config.toml
+  profiles:
+    - default
 
 # Services.
 # ------------------------------------------------------------------------------
@@ -98,6 +96,9 @@ services:
         # is starting from a place where the dependencies are already compiled.
         GIT_BRANCH: main
     image: sbtc-build:latest
+    profiles:
+      - default
+      - sbtc-signer
 
   # Emily API.
   # ----------
@@ -107,6 +108,8 @@ services:
     command: "-jar DynamoDBLocal.jar -sharedDb -dbPath ."
     ports:
       - "8000:8000"
+    profiles:
+      - default
 
   # Modifies Emily's CDK template and creates DynamoDB Tables.
   emily-aws-setup:
@@ -116,6 +119,8 @@ services:
       - emily-dynamodb
     environment:
       - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
+    profiles:
+      - default
 
   # Runs the Emily server.
   emily-server:
@@ -131,6 +136,8 @@ services:
       - PORT=3031
     ports:
       - "3031:3031"
+    profiles:
+      - default
 
   # sBTC Signers.
   # ------------------
@@ -153,6 +160,8 @@ services:
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-1:5432/signer
       SIGNER_SIGNER__PRIVATE_KEY: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc
       SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-2:4122,tcp://sbtc-signer-3:4122
+    ports:
+      - "8801:8801"
 
   # sbtc signer 2 ----
   postgres-2:
@@ -173,6 +182,8 @@ services:
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-2:5432/signer
       SIGNER_SIGNER__PRIVATE_KEY: 9bfecf16c9c12792589dd2b843f850d5b89b81a04f8ab91c083bdf6709fbefee01
       SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-1:4122,tcp://sbtc-signer-3:4122
+    ports:
+      - "8802:8801"
 
   # sbtc signer 3 ----
   postgres-3:
@@ -193,31 +204,9 @@ services:
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-3:5432/signer
       SIGNER_SIGNER__PRIVATE_KEY: 3ec0ca5770a356d6cd1a9bfcbf6cd151eb1bd85c388cc00648ec4ef5853fdb7401
       SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-1:4122,tcp://sbtc-signer-2:4122
+    ports:
+      - "8803:8801"
 
-  # sBTC Contract Deployer.
-  # -----------------------
-  contract-deployer:
-    build:
-      context: clarinet
-      args:
-        GIT_BRANCH: v2.10.0
-    volumes:
-      # - ../contracts:/
-      - ../contracts/Clarinet.toml:/Clarinet.toml
-      - ../contracts/contracts:/contracts
-      - ../contracts/settings:/settings
-      - ../contracts/deployments:/deployments
-    depends_on:
-      - stacks-node
-      - stacks-api
-    entrypoint:
-      - /bin/bash
-      - -c
-      - |
-        set -e
-        echo "Sleeping for 15 seconds before starting deployment..."
-        sleep 15
-        clarinet deployments apply -p /deployments/default.devnet-docker.yaml --no-dashboard -m /Clarinet.toml -d
 
   # Blocklist client.
   # -----------------
@@ -230,6 +219,8 @@ services:
     # the blocklist client.
     ports:
       - "3032:3032"
+    profiles:
+      - default
 
   # sBTC Bridge Website.
   # --------------------
@@ -244,6 +235,8 @@ services:
       - bitcoin
     ports:
       - "3010:3000"
+    profiles:
+      - default
 
   # Bitcoin / Burnchain.
   # --------------------
@@ -260,6 +253,9 @@ services:
       - |
         set -e
         bitcoind
+    profiles:
+      - default
+      - bitcoin-mempool
 
   bitcoin-miner:
     build: bitcoin
@@ -317,6 +313,9 @@ services:
           sleep $${SLEEP_DURATION} &
           wait || exit 0
         done
+    profiles:
+      - default
+      - bitcoin-mempool
 
   # Stacks Blockchain.
   # ------------------
@@ -362,6 +361,10 @@ services:
         envsubst < config.toml.in > config.toml
         bitcoin-cli -rpcwait -rpcconnect=bitcoin getmininginfo
         exec stacks-node start --config config.toml
+    profiles:
+      - default
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   stacker:
     build: stacker
@@ -379,6 +382,8 @@ services:
       SERVICE_NAME: stacker
     depends_on:
       - stacks-node
+    profiles:
+      - default
 
   tx-broadcaster:
     build: stacker
@@ -400,6 +405,8 @@ services:
       - |
         set -e
         exec npx tsx /root/tx-broadcaster.ts
+    profiles:
+      - default
 
   stacks-signer-1:
     <<: *stacks-signer
@@ -443,6 +450,8 @@ services:
       - |
         set -e
         exec npx tsx /root/monitor.ts
+    profiles:
+      - default
 
   # Stacks / Hiro API.
   # ------------------
@@ -453,6 +462,8 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+    profiles:
+      - default
 
   stacks-api:
     image: stacks-api:latest
@@ -486,6 +497,8 @@ services:
       STACKS_CORE_RPC_HOST: "stacks-node"
       STACKS_CORE_RPC_PORT: 20443
       API_DOCS_URL: http://localhost:3999/doc
+    profiles:
+      - default
 
   stacks-explorer:
     image: stacks-explorer
@@ -505,6 +518,8 @@ services:
       - postgres-stacks-api
     environment:
       NEXT_PUBLIC_MAINNET_API_SERVER: "http://stacks-api:3999"
+    profiles:
+      - default
 
   # Mempool.
   # --------

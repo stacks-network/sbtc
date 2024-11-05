@@ -148,14 +148,23 @@ $(EMILY_OPENAPI_SPEC): $(INSTALL_TARGET) $(EMILY_HANDLER_SOURCE_FILES)
 # Devenv
 # ----------------------------------------------------
 
-devenv-up-verbose:
-	docker compose -f docker/docker-compose.yml --profile bitcoin-mempool up
+devenv-no-sbtc-up:
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool up
+
+devenv-no-sbtc-down:
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool down
 
 devenv-up:
-	docker compose -f docker/docker-compose.yml --profile bitcoin-mempool up --detach
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer up --detach
 
 devenv-down:
-	docker compose -f docker/docker-compose.yml --profile bitcoin-mempool down
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer down
+
+devenv-sbtc-up:
+	docker compose -f docker/docker-compose.yml --profile sbtc-signer up --build
+
+devenv-sbtc-down:
+	docker compose -f docker/docker-compose.yml --profile sbtc-signer down
 
 # Blocklist Client API
 # ----------------------------------------------------

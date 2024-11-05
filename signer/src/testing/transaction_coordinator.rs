@@ -73,6 +73,7 @@ where
                 sbtc_contracts_deployed,
                 signing_round_max_duration: Duration::from_secs(10),
                 dkg_max_duration: Duration::from_secs(10),
+                is_epoch3: true,
             },
             context,
             is_started: Arc::new(AtomicBool::new(false)),

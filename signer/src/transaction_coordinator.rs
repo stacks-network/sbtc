@@ -36,6 +36,7 @@ use crate::network;
 use crate::signature::SighashDigest;
 use crate::signature::TaprootSignature;
 use crate::stacks::api::FeePriority;
+use crate::stacks::api::GetNakamotoStartHeight;
 use crate::stacks::api::StacksInteract;
 use crate::stacks::api::SubmitTxResponse;
 use crate::stacks::contracts::AsTxPayload;
@@ -148,6 +149,10 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     pub dkg_max_duration: std::time::Duration,
     /// Whether the coordinator has already deployed the contracts.
     pub sbtc_contracts_deployed: bool,
+    /// An indicator for whether the Stacks blockchain has reached Nakamoto
+    /// 3. If we are not in Nakamoto 3 or later then the coordinator does
+    /// not do any work.
+    pub is_epoch3: bool,
 }
 
 impl<C, N> TxCoordinatorEventLoop<C, N>
@@ -221,8 +226,31 @@ where
             .await
     }
 
+    async fn is_epoch3(&mut self) -> Result<bool, Error> {
+        if self.is_epoch3 {
+            return Ok(true);
+        }
+        tracing::debug!("Checked for whether we are in Epoch 3 or later");
+        let pox_info = self.context.get_stacks_client().get_pox_info().await?;
+
+        let Some(nakamoto_start_height) = pox_info.nakamoto_start_height() else {
+            return Ok(false);
+        };
+
+        let is_epoch3 = pox_info.current_burnchain_block_height > nakamoto_start_height;
+        if is_epoch3 {
+            self.is_epoch3 = is_epoch3;
+            tracing::debug!("We are in Epoch 3 or later; time to do work");
+        }
+        Ok(is_epoch3)
+    }
+
     #[tracing::instrument(skip(self))]
     async fn process_new_blocks(&mut self) -> Result<(), Error> {
+        if !self.is_epoch3().await? {
+            return Ok(());
+        }
+
         let bitcoin_chain_tip = self
             .context
             .get_storage()

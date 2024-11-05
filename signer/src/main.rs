@@ -20,9 +20,7 @@ use signer::emily_client::EmilyClient;
 use signer::error::Error;
 use signer::network::libp2p::SignerSwarmBuilder;
 use signer::network::P2PNetwork;
-use signer::stacks::api::GetNakamotoStartHeight;
 use signer::stacks::api::StacksClient;
-use signer::stacks::api::StacksInteract;
 use signer::storage::postgres::PgStore;
 use signer::transaction_coordinator;
 use signer::transaction_signer;
@@ -85,11 +83,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         context.state().current_signer_set().add_signer(signer);
     }
 
-    // Wait for the Nakamoto activation height to be reached.
-    tracing::info!("waiting for Nakamoto activation height");
-    wait_for_nakamoto(&context).await;
-    tracing::info!("Nakamoto activation height reached, starting the signer");
-
     // Run the application components concurrently. We're `join!`ing them
     // here so that every component can shut itself down gracefully when
     // the shutdown signal is received.
@@ -114,76 +107,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     Ok(())
-}
-
-/// A helper method that waits for the Nakamoto activation height to be reached.
-#[tracing::instrument(skip(ctx))]
-async fn wait_for_nakamoto(ctx: &impl Context) {
-    let mut term = ctx.get_termination_handle();
-
-    let client = ctx.get_stacks_client();
-
-    let wait = async {
-        let mut nakamoto_height: Option<u64> = None;
-        let mut current_burnchain_height: Option<u64> = None;
-
-        // Wait for 1) the Stacks node to be reachable, and 2) the Nakamoto start height to be discovered
-        // (i.e. that /v2/pox returns a valid response with the Nakamoto start height, also indicating
-        // node liveliness).
-        while nakamoto_height.is_none() {
-            match client.get_pox_info().await {
-                Ok(info) => {
-                    if let Some(nakamoto_start_height) = info.nakamoto_start_height() {
-                        tracing::info!(
-                            %nakamoto_start_height,
-                            "Nakamoto start height discovered"
-                        );
-                        nakamoto_height = Some(nakamoto_start_height);
-                        current_burnchain_height = Some(info.current_burnchain_block_height);
-                        break;
-                    } else {
-                        tracing::warn!("Nakamoto start height not yet discovered (it does not exist in the PoX configuration, you may need to update your Stacks node), retrying in 10s");
-                        tokio::time::sleep(Duration::from_secs(10)).await;
-                    }
-                }
-                Err(error) => {
-                    tracing::warn!(%error, "failed to get pox info from Stacks node(s) while trying to discover nakamoto activation height, node(s) may not be ready yet. retrying in 3s");
-                    tokio::time::sleep(Duration::from_secs(3)).await;
-                }
-            }
-        }
-
-        // Now we have the Nakamoto start height, wait for the burnchain to catch up to it.
-        while current_burnchain_height <= nakamoto_height {
-            match client.get_pox_info().await {
-                Ok(info) => {
-                    current_burnchain_height = Some(info.current_burnchain_block_height);
-                    tracing::info!(
-                        current_burnchain_height = current_burnchain_height
-                            .map_or_else(|| "<none>".into(), |x| x.to_string()),
-                        nakamoto_start_height =
-                            nakamoto_height.map_or_else(|| "<none>".into(), |x| x.to_string()),
-                        "waiting for burnchain to catch up to Nakamoto start height"
-                    );
-
-                    tokio::time::sleep(Duration::from_secs(3)).await;
-                }
-                Err(error) => {
-                    tracing::warn!(%error, "failed to get pox info from Stacks node(s) while waiting for nakamoto activation height, node(s) may not be ready yet. retrying in 3s");
-                    tokio::time::sleep(Duration::from_secs(3)).await;
-                }
-            }
-        }
-    };
-
-    tokio::select! {
-        _ = term.wait_for_shutdown() => {
-            tracing::info!("termination signal received, cancelling waiting for Nakamoto start height");
-        },
-        _ = wait => {
-            tracing::info!("burnchain has caught up to Nakamoto activation height");
-        }
-    }
 }
 
 /// A helper method that captures errors from the provided future and sends a
@@ -282,9 +205,10 @@ async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
 }
 
 /// Runs the Stacks event observer server.
-#[tracing::instrument(skip(ctx), name = "stacks-event-observer")]
+#[tracing::instrument(skip_all, name = "stacks-event-observer")]
 async fn run_stacks_event_observer(ctx: impl Context + 'static) -> Result<(), Error> {
-    tracing::info!("initializing the Stacks event observer server");
+    let socket_addr = ctx.config().signer.event_observer.bind;
+    tracing::info!(%socket_addr, "initializing the Stacks event observer server");
 
     let state = ApiState { ctx: ctx.clone() };
 
@@ -295,7 +219,7 @@ async fn run_stacks_event_observer(ctx: impl Context + 'static) -> Result<(), Er
         .with_state(state);
 
     // Bind to the configured address and port
-    let listener = tokio::net::TcpListener::bind(ctx.config().signer.event_observer.bind)
+    let listener = tokio::net::TcpListener::bind(socket_addr)
         .await
         .expect("failed to retrieve event observer bind address from config");
 
@@ -381,6 +305,7 @@ async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
         threshold: 2,
         dkg_max_duration: Duration::from_secs(10),
         sbtc_contracts_deployed: false,
+        is_epoch3: false,
     };
 
     coord.run().await

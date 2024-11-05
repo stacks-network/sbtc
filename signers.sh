@@ -37,13 +37,8 @@ exec_run() {
   printf "${GRAY}Running ${NC}${BOLD}$*${NC} signers\n"
 
   # Turn all the relevant postgres instances off and on.
-  i=1
-  while [ $i -le "$1" ]
-  do
-    docker compose -f "$DOCKER_COMPOSE_PATH" down postgres-"$i"
-    docker compose -f "$DOCKER_COMPOSE_PATH" up postgres-"$i -d"
-    i=$((i + 1))
-  done
+  docker compose -f "$DOCKER_COMPOSE_PATH" --profile sbtc-postgres down
+  docker compose -f "$DOCKER_COMPOSE_PATH" --profile sbtc-postgres up --detach
 
   # Setup the bootstrap signer set.
   i=1
@@ -69,7 +64,7 @@ exec_run() {
       . "$ENV_PATH/signer-$i.env" \
       && export RUST_LOG="$LOG_SETTINGS" \
       && export SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET="$BOOTSTRAP_SIGNER_SET" \
-      && cargo run --bin sbtc-signer -- --config "$SIGNER_CONFIG" --migrate-db > "$PWD/target/signer-$i.log" 2>&1 \
+      && cargo run --bin signer -- --config "$SIGNER_CONFIG" --migrate-db > "$PWD/target/signer-$i.log" 2>&1 \
       &
     )
     i=$((i + 1))
@@ -94,7 +89,7 @@ main() {
     ;;
     # Stop all running signers by killing the processes.
     "stop")
-      ps -ef | awk  '/[s]btc-signer/{print $2}' | xargs kill -9
+      ps -ef | awk  '/[s]igner/{print $2}' | xargs kill -9
     ;;
     *)
       printf "${RED}ERROR:${NC} Unknown command: $1\n"
