@@ -518,6 +518,7 @@ where
 
     /// Check that the transaction is indeed valid. We specific checks that
     /// are run depend on the transaction being signed.
+    #[tracing::instrument(skip_all, fields(origin = %origin_public_key, txid = %request.txid), err)]
     pub async fn assert_valid_stacks_tx_sign_request(
         &self,
         request: &StacksTransactionSignRequest,
@@ -550,21 +551,27 @@ where
             deployer: self.context.config().signer.deployer,
         };
         let ctx = &self.context;
+        tracing::info!("running validation on stacks transaction");
         match &request.contract_tx {
             StacksTx::ContractCall(ContractCall::AcceptWithdrawalV1(contract)) => {
-                contract.validate(ctx, &req_ctx).await
+                contract.validate(ctx, &req_ctx).await?
             }
             StacksTx::ContractCall(ContractCall::CompleteDepositV1(contract)) => {
-                contract.validate(ctx, &req_ctx).await
+                contract.validate(ctx, &req_ctx).await?
             }
             StacksTx::ContractCall(ContractCall::RejectWithdrawalV1(contract)) => {
-                contract.validate(ctx, &req_ctx).await
+                contract.validate(ctx, &req_ctx).await?
             }
             StacksTx::ContractCall(ContractCall::RotateKeysV1(contract)) => {
-                contract.validate(ctx, &req_ctx).await
+                contract.validate(ctx, &req_ctx).await?
             }
-            StacksTx::SmartContract(smart_contract) => smart_contract.validate(ctx, &req_ctx).await,
-        }
+            StacksTx::SmartContract(smart_contract) => {
+                smart_contract.validate(ctx, &req_ctx).await?
+            }
+        };
+
+        tracing::info!("stacks validation finished successfully");
+        Ok(())
     }
 
     #[tracing::instrument(skip(self, msg))]
