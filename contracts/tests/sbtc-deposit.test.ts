@@ -14,14 +14,16 @@ import { CoreNodeEventType, cvToValue } from "@clarigen/core";
 describe("sBTC deposit contract", () => {
   describe("complete deposit contract setup (err 300)", () => {
     test("Fail complete-deposit-wrapper invalid txid length", () => {
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
+
       const receipt = txErr(
         deposit.completeDepositWrapper({
           txid: new Uint8Array(31).fill(0),
           voutIndex: 0,
           amount: 1000n,
           recipient: deployer,
-          burnHash: new Uint8Array(32).fill(0),
-          burnHeight: 0n,
+          burnHash,
+          burnHeight,
         }),
         deployer
       );
@@ -29,14 +31,16 @@ describe("sBTC deposit contract", () => {
     });
 
     test("Fail complete-deposit-wrapper invalid low amount", () => {
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
+
       const receipt = txErr(
         deposit.completeDepositWrapper({
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
           amount: 10n,
           recipient: deployer,
-          burnHash: new Uint8Array(32).fill(0),
-          burnHeight: 0n,
+          burnHash,
+          burnHeight,
         }),
         deployer
       );
@@ -46,14 +50,16 @@ describe("sBTC deposit contract", () => {
     });
 
     test("Fail complete-deposit-wrapper replay deposit (err 301)", () => {
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
+
       const receipt0 = txOk(
         deposit.completeDepositWrapper({
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
           amount: 1000n,
           recipient: deployer,
-          burnHash: new Uint8Array(32).fill(0),
-          burnHeight: 0n,
+          burnHash,
+          burnHeight,
         }),
         deployer
       );
@@ -64,8 +70,8 @@ describe("sBTC deposit contract", () => {
           voutIndex: 0,
           amount: 1000n,
           recipient: deployer,
-          burnHash: new Uint8Array(32).fill(0),
-          burnHeight: 0n,
+          burnHash,
+          burnHeight,
         }),
         deployer
       );
@@ -73,14 +79,16 @@ describe("sBTC deposit contract", () => {
     });
 
     test("Fail complete-deposit-wrapper Bitcoin forked", () => {
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
+
       const receipt0 = txOk(
         deposit.completeDepositWrapper({
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
           amount: 1000n,
           recipient: deployer,
-          burnHash: new Uint8Array(32).fill(0),
-          burnHeight: 0n,
+          burnHash,
+          burnHeight,
         }),
         deployer
       );
@@ -93,7 +101,7 @@ describe("sBTC deposit contract", () => {
           amount: 1000n,
           recipient: deployer,
           burnHash: new Uint8Array(32).fill(1),
-          burnHeight: 0n,
+          burnHeight,
         }),
         deployer
       );
@@ -101,14 +109,16 @@ describe("sBTC deposit contract", () => {
     });
 
     test("Call complete-deposit-wrapper placeholder, check print", () => {
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
+
       const receipt = txOk(
         deposit.completeDepositWrapper({
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
           amount: 1000n,
           recipient: deployer,
-          burnHash: new Uint8Array(32).fill(0),
-          burnHeight: 0n,
+          burnHash,
+          burnHeight,
         }),
         deployer
       );
@@ -128,20 +138,22 @@ describe("sBTC deposit contract", () => {
         bitcoinTxid: new Uint8Array(32).fill(0),
         outputIndex: 0n,
         amount: 1000n,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight: BigInt(burnHeight),
       });
     });
 
     test("Call get-complete-deposit placeholder", () => {
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
+
       txOk(
         deposit.completeDepositWrapper({
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
           amount: 1000n,
           recipient: deployer,
-          burnHash: new Uint8Array(32).fill(0),
-          burnHeight: 0n,
+          burnHash,
+          burnHeight,
         }),
         deployer
       );
@@ -160,6 +172,8 @@ describe("sBTC deposit contract", () => {
   });
   describe("complete many deposits", () => {
     test("fail multiple deposits, first one fails due to txid length", () => {
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
+
       const receipt = txErr(
         deposit.completeDepositsWrapper({
           deposits: [
@@ -168,16 +182,16 @@ describe("sBTC deposit contract", () => {
               voutIndex: 0,
               amount: 1000n,
               recipient: deployer,
-              burnHash: new Uint8Array(32).fill(0),
-              burnHeight: 0n,
+              burnHash,
+              burnHeight,
             },
             {
               txid: new Uint8Array(32).fill(1),
               voutIndex: 0,
               amount: 1000n,
               recipient: deployer,
-              burnHash: new Uint8Array(32).fill(0),
-              burnHeight: 0n,
+              burnHash,
+              burnHeight,
             },
           ],
           ...getCurrentBurnInfo(),
@@ -188,6 +202,8 @@ describe("sBTC deposit contract", () => {
       expect(receipt.value).toEqual(313n);
     });
     test("fail multiple deposits, second one fails due to low amount", () => {
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
+
       const receipt = txErr(
         deposit.completeDepositsWrapper({
           deposits: [
@@ -196,16 +212,16 @@ describe("sBTC deposit contract", () => {
               voutIndex: 0,
               amount: 1000n,
               recipient: deployer,
-              burnHash: new Uint8Array(32).fill(0),
-              burnHeight: 0n,
+              burnHash,
+              burnHeight,
             },
             {
               txid: new Uint8Array(32).fill(1),
               voutIndex: 0,
               amount: 100n,
               recipient: deployer,
-              burnHash: new Uint8Array(32).fill(0),
-              burnHeight: 0n,
+              burnHash,
+              burnHeight,
             },
           ],
           ...getCurrentBurnInfo(),
@@ -216,6 +232,8 @@ describe("sBTC deposit contract", () => {
       expect(receipt.value).toEqual(314n);
     });
     test("fail multiple deposits, third one fails due to invalid caller", () => {
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
+
       const receipt = txErr(
         deposit.completeDepositsWrapper({
           deposits: [
@@ -224,24 +242,24 @@ describe("sBTC deposit contract", () => {
               voutIndex: 0,
               amount: 1000n,
               recipient: deployer,
-              burnHash: new Uint8Array(32).fill(0),
-              burnHeight: 0n,
+              burnHash,
+              burnHeight,
             },
             {
               txid: new Uint8Array(32).fill(1),
               voutIndex: 0,
               amount: 1000n,
               recipient: deployer,
-              burnHash: new Uint8Array(32).fill(0),
-              burnHeight: 0n,
+              burnHash,
+              burnHeight,
             },
             {
               txid: new Uint8Array(32).fill(2),
               voutIndex: 0,
               amount: 100n,
               recipient: alice,
-              burnHash: new Uint8Array(32).fill(0),
-              burnHeight: 0n,
+              burnHash,
+              burnHeight,
             },
           ],
           ...getCurrentBurnInfo(),
@@ -252,6 +270,8 @@ describe("sBTC deposit contract", () => {
       expect(receipt.value).toEqual(315n);
     });
     test("complete multiple deposits successfully", () => {
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
+
       const receipt = txOk(
         deposit.completeDepositsWrapper({
           deposits: [
@@ -260,16 +280,16 @@ describe("sBTC deposit contract", () => {
               voutIndex: 0,
               amount: 1000n,
               recipient: deployer,
-              burnHash: new Uint8Array(32).fill(0),
-              burnHeight: 0n,
+              burnHash,
+              burnHeight,
             },
             {
               txid: new Uint8Array(32).fill(1),
               voutIndex: 0,
               amount: 1000n,
               recipient: deployer,
-              burnHash: new Uint8Array(32).fill(0),
-              burnHeight: 0n,
+              burnHash,
+              burnHeight,
             },
           ],
           ...getCurrentBurnInfo(),
@@ -283,6 +303,8 @@ describe("sBTC deposit contract", () => {
 
 describe("optimization tests", () => {
   test("test maximum deposts that can be processed", () => {
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
+
     const totalAmount = 1000000n;
     const runs = 650;
     const txids = randomPublicKeys(runs).map((pk) => pk.slice(0, 32));
@@ -293,8 +315,8 @@ describe("optimization tests", () => {
           voutIndex: 0,
           amount: totalAmount / BigInt(runs),
           recipient: deployer,
-          burnHash: new Uint8Array(32).fill(0),
-          burnHeight: 0n,
+          burnHash,
+          burnHeight,
         })),
         ...getCurrentBurnInfo(),
       }),
