@@ -362,6 +362,8 @@ services:
         envsubst < config.toml.in > config.toml
         bitcoin-cli -rpcwait -rpcconnect=bitcoin getmininginfo
         exec stacks-node start --config config.toml
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   stacker:
     build: stacker
