@@ -34,7 +34,9 @@ use sbtc::testing::regtest::Recipient;
 use secp256k1::Keypair;
 use sha2::Digest as _;
 use signer::network::in_memory2::WanNetwork;
+use signer::stacks::api::TenureBlocks;
 use signer::stacks::contracts::SmartContract;
+use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTx;
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 use stacks_common::types::chainstate::ConsensusHash;
@@ -1135,7 +1137,11 @@ async fn sign_bitcoin_transaction() {
             });
 
             client.expect_get_tenure().returning(|_| {
-                let response = Ok(Vec::new());
+                let response = Ok(TenureBlocks {
+                    blocks: Vec::new(),
+                    anchor_block_hash: BitcoinBlockHash::from([0; 32]),
+                    anchor_block_height: 0,
+                });
                 Box::pin(std::future::ready(response))
             });
 
