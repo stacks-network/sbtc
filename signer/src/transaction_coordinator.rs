@@ -6,6 +6,7 @@
 //! For more details, see the [`TxCoordinatorEventLoop`] documentation.
 
 use std::collections::BTreeSet;
+use std::time::Duration;
 
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use futures::FutureExt;
@@ -164,32 +165,31 @@ where
     #[tracing::instrument(skip(self), name = "tx-coordinator")]
     pub async fn run(mut self) -> Result<(), Error> {
         tracing::info!("starting transaction coordinator event loop");
-        let mut term = self.context.get_termination_handle();
+        let term = self.context.get_termination_handle();
         let mut signal_rx = self.context.get_signal_receiver();
 
         loop {
-            tokio::select! {
-                _ = term.wait_for_shutdown() => {
-                    tracing::info!("received termination signal");
+            if term.shutdown_signalled() {
+                break;
+            }
+
+            match tokio::time::timeout(Duration::from_millis(100), signal_rx.recv()).await {
+                Ok(Ok(SignerSignal::Event(SignerEvent::TxSigner(
+                    TxSignerEvent::NewRequestsHandled,
+                )))) => {
+                    tracing::debug!("received signal; processing new blocks");
+                    let _ = self.process_new_blocks().await.inspect_err(|error| {
+                        tracing::error!(?error, "error processing new blocks; skipping this round")
+                    });
+                }
+                Ok(Err(_)) => {
+                    tracing::debug!(
+                        "error receiving signal; application is probably shutting down"
+                    );
                     break;
-                },
-                signal = signal_rx.recv() => match signal {
-                    // We're only interested in notifications from the transaction
-                    // signer indicating that it has handled new requests.
-                    Ok(SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled))) => {
-                        tracing::debug!("received block observer notification");
-                        let _ = self.process_new_blocks().await
-                            .inspect_err(|error| tracing::error!(?error, "error processing new blocks; skipping this round"));
-                    },
-                    // If we get an error receiving,
-                    Err(error) => {
-                        tracing::error!(?error, "error receiving signal; application is probably shutting down");
-                        break;
-                    },
-                    // Otherwise, we've received some other signal that we're not interested
-                    // in, so we just continue.
-                    _ => {}
-                },
+                }
+                Ok(_) => continue,  // Signal we're not interested in
+                Err(_) => continue, // Timeout timed-out
             }
         }
 
