@@ -226,12 +226,12 @@ impl GetNakamotoStartHeight for RPCPoxInfoData {
     }
 }
 
-/// This struct represents a subset of the Stacks blocks that were created
-/// during a tenure.
+/// This struct represents a non-empty subset of the Stacks blocks that
+/// were created during a tenure.
 #[derive(Debug)]
 pub struct TenureBlocks {
-    /// The Stacks blocks that were created during a tenure. This is always
-    /// non-empty.
+    /// The subset of Stacks blocks that were created during a tenure. This
+    /// is always non-empty.
     blocks: Vec<NakamotoBlock>,
     /// The bitcoin block that this tenure builds off of.
     pub anchor_block_hash: BitcoinBlockHash,
@@ -262,7 +262,7 @@ impl TenureBlocks {
         &self.blocks
     }
 
-    /// Get all of the blocks contained in this object.
+    /// Return all of the blocks contained in this object.
     ///
     /// # Note
     ///
@@ -271,7 +271,7 @@ impl TenureBlocks {
         self.blocks
     }
 
-    /// Return a vector of Stacks blocks from the this tenure.
+    /// Return an iterator of Stacks blocks from the this tenure.
     pub fn as_stacks_blocks(&self) -> impl Iterator<Item = StacksBlock> + '_ {
         let bitcoin_anchor = &self.anchor_block_hash;
         self.blocks

@@ -1135,10 +1135,9 @@ async fn sign_bitcoin_transaction() {
                 Box::pin(std::future::ready(response))
             });
 
-            client.expect_get_tenure().returning(|_| {
-                let response = Ok(TenureBlocks::nearly_empty());
-                Box::pin(std::future::ready(response))
-            });
+            client
+                .expect_get_tenure()
+                .returning(|_| Box::pin(std::future::ready(TenureBlocks::nearly_empty())));
 
             client.expect_get_pox_info().returning(|| {
                 let response = serde_json::from_str::<RPCPoxInfoData>(GET_POX_INFO_JSON)

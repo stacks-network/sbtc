@@ -11,7 +11,8 @@ use stacks_common::types::chainstate::SortitionId;
 use crate::error::Error;
 use crate::stacks::api::TenureBlocks;
 
-const DUMMY_SORTITION_INFO: SortitionInfo = SortitionInfo {
+/// Some dummy sortition info
+pub const DUMMY_SORTITION_INFO: SortitionInfo = SortitionInfo {
     burn_block_hash: BurnchainHeaderHash([0; 32]),
     burn_block_height: 0,
     burn_header_timestamp: 0,
@@ -27,12 +28,12 @@ const DUMMY_SORTITION_INFO: SortitionInfo = SortitionInfo {
 
 impl TenureBlocks {
     /// Create a TenureBlocks struct that is basically empty.
-    pub fn nearly_empty() -> Self {
+    pub fn nearly_empty() -> Result<Self, Error> {
         let block = NakamotoBlock {
             header: NakamotoBlockHeader::empty(),
             txs: Vec::new(),
         };
-        Self::try_new(vec![block], DUMMY_SORTITION_INFO).unwrap()
+        Self::try_new(vec![block], DUMMY_SORTITION_INFO)
     }
 
     /// Create TenureBlocks with some dummy sortition info.
