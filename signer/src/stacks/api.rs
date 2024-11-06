@@ -1377,13 +1377,14 @@ mod tests {
             .expect(1)
             .create();
 
-        let path = format!("/Users/dan/repos/sbtc/signer/tests/fixtures/stacksapi-v3-sortitions.json");
+        let path = format!("tests/fixtures/stacksapi-v3-sortitions.json");
         let mut file = std::fs::File::open(path).unwrap();
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).unwrap();
 
+        let called_endpoint = "/v3/sortitions/consensus/f9fff2c4c5e5f55788bbd62f6b41aeba99d982fd";
         stacks_node_server
-            .mock("GET", "/v3/sortitions/consensus/f9fff2c4c5e5f55788bbd62f6b41aeba99d982fd")
+            .mock("GET", called_endpoint)
             .with_status(200)
             .with_header("content-type", "application/octet-stream")
             .with_header("transfer-encoding", "chunked")
