@@ -915,11 +915,6 @@ where
     while let Some(tenure) = blocks.last() {
         // We won't get anymore Nakamoto blocks before this point, so
         // time to stop.
-        //
-        // TODO: This check is technically incorrect. The nakamoto start height
-        // is the _bitcoin block height_ at which Stacks epoch 3.0 activates.
-        // stacks.get_block() will fail if it's requested a pre-nakamoto block,
-        // but I'm not sure about the stacks.get_tenure() down below.
         if tenure.anchor_block_height <= nakamoto_start_height {
             tracing::info!(
                 %nakamoto_start_height,
