@@ -232,7 +232,7 @@ impl GetNakamotoStartHeight for RPCPoxInfoData {
 pub struct TenureBlocks {
     /// The Stacks blocks that were created during a tenure. This is always
     /// non-empty.
-    pub blocks: Vec<NakamotoBlock>,
+    blocks: Vec<NakamotoBlock>,
     /// The bitcoin block that this tenure builds off of.
     pub anchor_block_hash: BitcoinBlockHash,
     /// The height of the bitcoin block associated with the above block
@@ -241,6 +241,36 @@ pub struct TenureBlocks {
 }
 
 impl TenureBlocks {
+    /// Create a new one
+    pub fn try_new(blocks: Vec<NakamotoBlock>, info: SortitionInfo) -> Result<Self, Error> {
+        if blocks.is_empty() {
+            return Err(Error::EmptyStacksTenure);
+        }
+        Ok(Self {
+            blocks,
+            anchor_block_hash: info.burn_block_hash.into(),
+            anchor_block_height: info.burn_block_height,
+        })
+    }
+
+    /// Get all of the blocks contained in this object.
+    ///
+    /// # Note
+    ///
+    /// The struct need not contain all of the blocks in a tenure.
+    pub fn blocks(&self) -> &[NakamotoBlock] {
+        &self.blocks
+    }
+
+    /// Get all of the blocks contained in this object.
+    ///
+    /// # Note
+    ///
+    /// The struct need not contain all of the blocks in a tenure.
+    pub fn into_blocks(self) -> Vec<NakamotoBlock> {
+        self.blocks
+    }
+
     /// Return a vector of Stacks blocks from the this tenure.
     pub fn as_stacks_blocks(&self) -> impl Iterator<Item = StacksBlock> + '_ {
         let bitcoin_anchor = &self.anchor_block_hash;
@@ -709,15 +739,11 @@ impl StacksClient {
             return Err(Error::EmptyStacksTenure);
         };
 
-        let sortition_info = self
+        let info = self
             .get_sortition_info(&block.header.consensus_hash)
             .await?;
 
-        Ok(TenureBlocks {
-            blocks: tenure_blocks,
-            anchor_block_hash: sortition_info.burn_block_hash.into(),
-            anchor_block_height: sortition_info.burn_block_height,
-        })
+        TenureBlocks::try_new(tenure_blocks, info)
     }
 
     /// Make a GET /v3/tenures/<block-id> request for Nakamoto ancestor
@@ -923,9 +949,9 @@ where
             );
             break;
         }
-        // Tenure blocks are always non-empty, so no need to worr about the
-        // early break.
-        let Some(block) = tenure.blocks.last() else {
+        // Tenure blocks are always non-empty, and this invariant is upheld
+        // by the type. So no need to worry about the early break.
+        let Some(block) = tenure.blocks().last() else {
             break;
         };
         // We've seen this parent already, so time to stop.

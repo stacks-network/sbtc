@@ -40,7 +40,6 @@ use crate::stacks::api::SubmitTxResponse;
 use crate::stacks::api::TenureBlocks;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
-use crate::storage::model::BitcoinBlockHash;
 use crate::testing::dummy;
 use crate::util::ApiFallbackClient;
 
@@ -279,11 +278,7 @@ impl StacksInteract for TestHarness {
             .cloned()
             .collect();
 
-        Ok(TenureBlocks {
-            blocks,
-            anchor_block_hash: BitcoinBlockHash::from(block_id.0),
-            anchor_block_height: stx_block.header.chain_length,
-        })
+        TenureBlocks::from_blocks(blocks)
     }
     async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
         let (_, _, btc_block_id) = self.stacks_blocks.last().unwrap();

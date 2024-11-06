@@ -17,7 +17,6 @@ use sbtc::testing::regtest;
 use signer::error::Error;
 use signer::logging::setup_logging;
 use signer::stacks::api::TenureBlocks;
-use signer::storage::model::BitcoinBlockHash;
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 use stacks_common::types::chainstate::ConsensusHash;
 use stacks_common::types::chainstate::SortitionId;
@@ -110,11 +109,7 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
         });
 
         client.expect_get_tenure().returning(|_| {
-            let response = Ok(TenureBlocks {
-                blocks: Vec::new(),
-                anchor_block_hash: BitcoinBlockHash::from([0; 32]),
-                anchor_block_height: 0,
-            });
+            let response = Ok(TenureBlocks::nearly_empty());
             Box::pin(std::future::ready(response))
         });
 

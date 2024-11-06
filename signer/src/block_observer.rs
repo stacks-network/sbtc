@@ -434,7 +434,7 @@ where
         let txs = tenures
             .iter()
             .flat_map(|tenure| {
-                storage::postgres::extract_relevant_transactions(&tenure.blocks, deployer)
+                storage::postgres::extract_relevant_transactions(tenure.blocks(), deployer)
             })
             .collect::<Vec<_>>();
 

@@ -201,7 +201,7 @@ async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: Contr
 
     let blocks = tenures
         .into_iter()
-        .flat_map(|tenure| tenure.blocks)
+        .flat_map(|tenure| tenure.into_blocks())
         .collect::<Vec<_>>();
 
     let transactions = postgres::extract_relevant_transactions(&blocks, &signer.wallet.address());
