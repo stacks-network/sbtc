@@ -474,7 +474,7 @@ fn get_node_info_data() -> RPCPeerInfoData {
         "burn_block_height": 2083,
         "stable_pox_consensus": "11fc12900b1f1369098f1099bcb2708ea78ea3b4",
         "stable_burn_block_height": 2082,
-        "server_version": "stacks-node 0.0.1 (:c87c0eb6c050688340b975b0b42fb0a1ae378afa, debug build, linux [x86_64])",
+        "server_version": "stacks-node 0.0.1 (:b26f406fc0bfd271a5cd5b54ccb064e7d3a0650a, debug build, linux [x86_64])",
         "network_id": 2147483648,
         "parent_network_id": 3669344250,
         "stacks_tip_height": 9520,
