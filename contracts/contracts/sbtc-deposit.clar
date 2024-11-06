@@ -28,8 +28,12 @@
 ;; bootstrap signer set address - it cannot be called by users directly.
 ;; This function handles the validation & minting of sBTC, it then calls
 ;; into the sbtc-registry contract to update the state of the protocol
-(define-public (complete-deposit-wrapper (txid (buff 32)) (vout-index uint) (amount uint) (recipient principal) (burn-hash (buff 32)) (burn-height uint) 
-    )
+(define-public (complete-deposit-wrapper (txid (buff 32))
+                                         (vout-index uint)
+                                         (amount uint)
+                                         (recipient principal)
+                                         (burn-hash (buff 32))
+                                         (burn-height uint))
     (let 
         (
             (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))
@@ -59,9 +63,9 @@
     )
 )
 
+;; Return the bitcoin header hash of the bitcoin block at the given height.
 (define-read-only (get-burn-header (height uint))
-    ;; (get-burn-block-info? header-hash height)
-    (get-tenure-info? burnchain-header-hash height)
+    (get-burn-block-info? header-hash height)
 )
 
 ;; Accept multiple new deposit requests

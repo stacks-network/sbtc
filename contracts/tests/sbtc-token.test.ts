@@ -1,4 +1,4 @@
-import { alice, bob, deployer, deposit, errors, token } from "./helpers";
+import { alice, bob, deployer, deposit, errors, getCurrentBurnInfo, token } from "./helpers";
 import { test, expect, describe } from "vitest";
 import { txOk, filterEvents, rov, txErr } from "@clarigen/test";
 import { CoreNodeEventType, cvToValue } from "@clarigen/core";
@@ -6,14 +6,15 @@ import { CoreNodeEventType, cvToValue } from "@clarigen/core";
 describe("sBTC token contract", () => {
   describe("token basics", () => {
     test("Mint sbtc token, check Alice balance", () => {
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
       const receipt = txOk(
         deposit.completeDepositWrapper({
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
           amount: 1000n,
           recipient: alice,
-          burnHash: new Uint8Array(32).fill(0),
-          burnHeight: 0n,
+          burnHash,
+          burnHeight,
         }),
         deployer
       );
@@ -33,8 +34,8 @@ describe("sBTC token contract", () => {
         bitcoinTxid: new Uint8Array(32).fill(0),
         outputIndex: 0n,
         amount: 1000n,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight: BigInt(burnHeight),
       });
       const receipt1 = rov(
         token.getBalance({
@@ -46,14 +47,15 @@ describe("sBTC token contract", () => {
     });
 
     test("Mint & transfer sbtc token, check Bob balance", () => {
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
       const receipt = txOk(
         deposit.completeDepositWrapper({
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
           amount: 1000n,
           recipient: alice,
-          burnHash: new Uint8Array(32).fill(0),
-          burnHeight: 0n,
+          burnHash,
+          burnHeight,
         }),
         deployer
       );
@@ -73,8 +75,8 @@ describe("sBTC token contract", () => {
         bitcoinTxid: new Uint8Array(32).fill(0),
         outputIndex: 0n,
         amount: 1000n,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight: BigInt(burnHeight)
       });
       const receipt1 = txOk(
         token.transfer({
