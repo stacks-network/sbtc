@@ -36,6 +36,8 @@ use url::Url;
 use crate::config::Settings;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::StacksBlock;
 use crate::storage::DbRead;
 use crate::util::ApiFallbackClient;
 
@@ -157,7 +159,7 @@ pub trait StacksInteract: Send + Sync {
     fn get_tenure(
         &self,
         block_id: StacksBlockId,
-    ) -> impl Future<Output = Result<Vec<NakamotoBlock>, Error>> + Send;
+    ) -> impl Future<Output = Result<TenureBlocks, Error>> + Send;
     /// Get information about the current tenure.
     ///
     /// This function is analogous to the GET /v3/tenures/info stacks node
@@ -221,6 +223,30 @@ impl GetNakamotoStartHeight for RPCPoxInfoData {
                 None
             }
         })
+    }
+}
+
+/// This struct represents a subset of the Stacks blocks that were created
+/// during a tenure.
+#[derive(Debug)]
+pub struct TenureBlocks {
+    /// The Stacks blocks that were created during a tenure. This is always
+    /// non-empty.
+    pub blocks: Vec<NakamotoBlock>,
+    /// The bitcoin block that this tenure builds off of.
+    pub anchor_block_hash: BitcoinBlockHash,
+    /// The height of the bitcoin block associated with the above block
+    /// hash.
+    pub anchor_block_height: u64,
+}
+
+impl TenureBlocks {
+    /// Return a vector of Stacks blocks from the this tenure.
+    pub fn as_stacks_blocks(&self) -> impl Iterator<Item = StacksBlock> + '_ {
+        let bitcoin_anchor = &self.anchor_block_hash;
+        self.blocks
+            .iter()
+            .map(|block| StacksBlock::from_nakamoto_block(block, bitcoin_anchor))
     }
 }
 
@@ -648,7 +674,7 @@ impl StacksClient {
     /// If the given block ID does not exist or is an ID for a non-Nakamoto
     /// block then a Result::Err is returned.
     #[tracing::instrument(skip(self))]
-    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<TenureBlocks, Error> {
         tracing::debug!("Making initial request for Nakamoto blocks within the tenure");
         let mut tenure_blocks = self.get_tenure_raw(block_id).await?;
         let mut prev_last_block_id = block_id;
@@ -676,7 +702,22 @@ impl StacksClient {
             tenure_blocks.extend(blocks.into_iter().skip(1))
         }
 
-        Ok(tenure_blocks)
+        // If Self::get_tenure_raw returns with Ok(_) then the Vec will
+        // include at least 1 Nakamoto block. Since we bail if there is an
+        // error, this vector has a last element.
+        let Some(block) = tenure_blocks.last() else {
+            return Err(Error::EmptyStacksTenure);
+        };
+
+        let sortition_info = self
+            .get_sortition_info(&block.header.consensus_hash)
+            .await?;
+
+        Ok(TenureBlocks {
+            blocks: tenure_blocks,
+            anchor_block_hash: sortition_info.burn_block_hash.into(),
+            anchor_block_height: sortition_info.burn_block_height,
+        })
     }
 
     /// Make a GET /v3/tenures/<block-id> request for Nakamoto ancestor
@@ -860,18 +901,18 @@ pub async fn fetch_unknown_ancestors<S, D>(
     stacks: &S,
     db: &D,
     block_id: StacksBlockId,
-) -> Result<Vec<NakamotoBlock>, Error>
+) -> Result<Vec<TenureBlocks>, Error>
 where
     S: StacksInteract,
     D: DbRead + Send + Sync,
 {
-    let mut blocks = vec![stacks.get_block(block_id).await?];
+    let mut blocks = vec![stacks.get_tenure(block_id).await?];
     let pox_info = stacks.get_pox_info().await?;
     let nakamoto_start_height = pox_info
         .nakamoto_start_height()
         .ok_or(Error::MissingNakamotoStartHeight)?;
 
-    while let Some(block) = blocks.last() {
+    while let Some(tenure) = blocks.last() {
         // We won't get anymore Nakamoto blocks before this point, so
         // time to stop.
         //
@@ -879,22 +920,27 @@ where
         // is the _bitcoin block height_ at which Stacks epoch 3.0 activates.
         // stacks.get_block() will fail if it's requested a pre-nakamoto block,
         // but I'm not sure about the stacks.get_tenure() down below.
-        if block.header.chain_length <= nakamoto_start_height {
+        if tenure.anchor_block_height <= nakamoto_start_height {
             tracing::info!(
                 %nakamoto_start_height,
-                last_chain_length = %block.header.chain_length,
+                last_chain_length = %tenure.anchor_block_height,
                 "Stopping, since we have fetched all Nakamoto blocks"
             );
             break;
         }
+        // Tenure blocks are always non-empty, so no need to worr about the
+        // early break.
+        let Some(block) = tenure.blocks.last() else {
+            break;
+        };
         // We've seen this parent already, so time to stop.
         if db.stacks_block_exists(block.header.parent_block_id).await? {
             tracing::info!("Parent block known in the database");
             break;
         }
         // There are more blocks to fetch, so let's get them.
-        let mut tenure_blocks = stacks.get_tenure(block.header.parent_block_id).await?;
-        blocks.append(&mut tenure_blocks);
+        let tenure_blocks = stacks.get_tenure(block.header.parent_block_id).await?;
+        blocks.push(tenure_blocks);
     }
 
     Ok(blocks)
@@ -965,7 +1011,7 @@ impl StacksInteract for StacksClient {
         self.get_block(block_id).await
     }
 
-    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<TenureBlocks, Error> {
         self.get_tenure(block_id).await
     }
 
@@ -1120,7 +1166,7 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
         self.exec(|client, _| client.get_block(block_id)).await
     }
 
-    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<TenureBlocks, Error> {
         self.exec(|client, _| client.get_tenure(block_id)).await
     }
 
@@ -1196,7 +1242,6 @@ mod tests {
     use crate::keys::{PrivateKey, PublicKey};
     use crate::stacks::wallet::get_full_tx_size;
     use crate::storage::in_memory::Store;
-    use crate::storage::model::StacksBlock;
     use crate::storage::DbWrite;
     use crate::testing::storage::DATABASE_NUM;
 
@@ -1237,12 +1282,12 @@ mod tests {
         let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
 
         let info = client.get_tenure_info().await.unwrap();
-        let blocks = fetch_unknown_ancestors(&client, &db, info.tip_block_id).await;
+        let tenures = fetch_unknown_ancestors(&client, &db, info.tip_block_id).await;
 
-        let blocks = blocks.unwrap();
+        let blocks = tenures.unwrap();
         let headers = blocks
             .iter()
-            .map(|block| StacksBlock::from_nakamoto_block(block, &[0; 32].into()))
+            .flat_map(TenureBlocks::as_stacks_blocks)
             .collect::<Vec<_>>();
         db.write_stacks_block_headers(headers).await.unwrap();
 
@@ -1341,7 +1386,7 @@ mod tests {
 
         let block_id = StacksBlockId::from_hex(TENURE_END_BLOCK_ID).unwrap();
         // The moment of truth, do the requests succeed?
-        let blocks = client.get_tenure(block_id).await.unwrap();
+        let blocks = client.get_tenure(block_id).await.unwrap().blocks;
         assert!(blocks.len() > 1);
 
         // We know that the blocks are ordered as a chain, and we know the
