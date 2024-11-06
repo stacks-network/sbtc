@@ -37,8 +37,10 @@ use crate::stacks::api::AccountInfo;
 use crate::stacks::api::FeePriority;
 use crate::stacks::api::StacksInteract;
 use crate::stacks::api::SubmitTxResponse;
+use crate::stacks::api::TenureBlocks;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
+use crate::storage::model::BitcoinBlockHash;
 use crate::testing::dummy;
 use crate::util::ApiFallbackClient;
 
@@ -260,7 +262,7 @@ impl StacksInteract for TestHarness {
             .cloned()
             .ok_or(Error::MissingBlock)
     }
-    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<TenureBlocks, Error> {
         let (stx_block_id, stx_block, btc_block_id) = self
             .stacks_blocks
             .iter()
@@ -277,7 +279,11 @@ impl StacksInteract for TestHarness {
             .cloned()
             .collect();
 
-        Ok(blocks)
+        Ok(TenureBlocks {
+            blocks,
+            anchor_block_hash: BitcoinBlockHash::from(block_id.0),
+            anchor_block_height: stx_block.header.chain_length,
+        })
     }
     async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
         let (_, _, btc_block_id) = self.stacks_blocks.last().unwrap();
