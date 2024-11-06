@@ -1377,6 +1377,20 @@ mod tests {
             .expect(1)
             .create();
 
+        let path = format!("/Users/dan/repos/sbtc/signer/tests/fixtures/stacksapi-v3-sortitions.json");
+        let mut file = std::fs::File::open(path).unwrap();
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).unwrap();
+
+        stacks_node_server
+            .mock("GET", "/v3/sortitions/consensus/f9fff2c4c5e5f55788bbd62f6b41aeba99d982fd")
+            .with_status(200)
+            .with_header("content-type", "application/octet-stream")
+            .with_header("transfer-encoding", "chunked")
+            .with_chunked_body(move |w| w.write_all(&buf))
+            .expect(1)
+            .create();
+
         // The StacksClient::get_blocks call should make at least two
         // requests to the stacks node if there are two or more Nakamoto
         // blocks within the same tenure. Our test setup has 23 blocks
