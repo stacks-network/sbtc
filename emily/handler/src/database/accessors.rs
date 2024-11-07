@@ -142,6 +142,8 @@ pub async fn get_deposit_entries_for_transaction(
 
 /// Pulls in a deposit entry and then updates it, retrying the specified number
 /// of times when there's a version conflict.
+///
+/// TODO(792): Combine this with the withdrawal version.
 pub async fn pull_and_update_deposit_with_retry(
     context: &EmilyContext,
     update: ValidatedDepositUpdate,
@@ -339,6 +341,8 @@ pub async fn get_all_withdrawal_entries_modified_after_height_with_status(
 
 /// Pulls in a withdrawal entry and then updates it, retrying the specified number
 /// of times when there's a version conflict.
+///
+/// TODO(792): Combine this with the deposit version.
 pub async fn pull_and_update_withdrawal_with_retry(
     context: &EmilyContext,
     update: ValidatedWithdrawalUpdate,

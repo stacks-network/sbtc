@@ -555,7 +555,14 @@ mod tests {
     #[test]
     fn withdrawal_update_should_be_unnecessary_when_event_is_present() {
         // Arrange
-        let withdrawal_event_to_update = WithdrawalEvent {
+        let pending = WithdrawalEvent {
+            status: StatusEntry::Pending,
+            message: "message".to_string(),
+            stacks_block_height: 1,
+            stacks_block_hash: "hash".to_string(),
+        };
+
+        let failed = WithdrawalEvent {
             status: StatusEntry::Failed,
             message: "message".to_string(),
             stacks_block_height: 2,
@@ -575,22 +582,10 @@ mod tests {
             status: Status::Pending,
             last_update_height: 1,
             last_update_block_hash: "hash".to_string(),
-            history: vec![
-                WithdrawalEvent {
-                    status: StatusEntry::Pending,
-                    message: "message".to_string(),
-                    stacks_block_height: 1,
-                    stacks_block_hash: "hash".to_string(),
-                },
-                // Place the event that will be in the update.
-                withdrawal_event_to_update.clone(),
-            ],
+            history: vec![pending, failed.clone()],
         };
 
-        let withdrawal_update = ValidatedWithdrawalUpdate {
-            request_id: 1,
-            event: withdrawal_event_to_update,
-        };
+        let withdrawal_update = ValidatedWithdrawalUpdate { request_id: 1, event: failed };
 
         // Act
         let is_unnecessary = withdrawal_update.is_unnecessary(&withdrawal_entry);
@@ -602,10 +597,10 @@ mod tests {
     #[test]
     fn withdrawal_update_should_be_necessary_when_event_is_not_present() {
         // Arrange
-        let withdrawal_event_to_update = WithdrawalEvent {
-            status: StatusEntry::Failed,
+        let pending = WithdrawalEvent {
+            status: StatusEntry::Pending,
             message: "message".to_string(),
-            stacks_block_height: 2,
+            stacks_block_height: 1,
             stacks_block_hash: "hash".to_string(),
         };
 
@@ -622,18 +617,10 @@ mod tests {
             status: Status::Pending,
             last_update_height: 1,
             last_update_block_hash: "hash".to_string(),
-            history: vec![WithdrawalEvent {
-                status: StatusEntry::Pending,
-                message: "message".to_string(),
-                stacks_block_height: 1,
-                stacks_block_hash: "hash".to_string(),
-            }],
+            history: vec![pending.clone()],
         };
 
-        let withdrawal_update = ValidatedWithdrawalUpdate {
-            request_id: 1,
-            event: withdrawal_event_to_update,
-        };
+        let withdrawal_update = ValidatedWithdrawalUpdate { request_id: 1, event: pending };
 
         // Act
         let is_unnecessary = withdrawal_update.is_unnecessary(&withdrawal_entry);

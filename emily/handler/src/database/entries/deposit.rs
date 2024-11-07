@@ -559,7 +559,14 @@ mod tests {
 
     #[test]
     fn deposit_update_should_be_unnecessary_when_event_is_present() {
-        let event = DepositEvent {
+        let pending = DepositEvent {
+            status: StatusEntry::Pending,
+            message: "".to_string(),
+            stacks_block_height: 0,
+            stacks_block_hash: "".to_string(),
+        };
+
+        let accepted = DepositEvent {
             status: StatusEntry::Accepted,
             message: "".to_string(),
             stacks_block_height: 1,
@@ -578,28 +585,23 @@ mod tests {
             last_update_height: 0,
             last_update_block_hash: "".to_string(),
             fulfillment: None,
-            history: vec![
-                DepositEvent {
-                    status: StatusEntry::Pending,
-                    message: "".to_string(),
-                    stacks_block_height: 0,
-                    stacks_block_hash: "".to_string(),
-                },
-                event.clone(),
-            ],
+            history: vec![pending, accepted.clone()],
         };
 
-        let update = ValidatedDepositUpdate { key: Default::default(), event };
+        let update = ValidatedDepositUpdate {
+            key: Default::default(),
+            event: accepted,
+        };
 
         assert!(update.is_unnecessary(&deposit));
     }
 
     #[test]
     fn deposit_update_should_be_necessary_when_event_is_not_present() {
-        let event = DepositEvent {
-            status: StatusEntry::Accepted,
+        let pending = DepositEvent {
+            status: StatusEntry::Pending,
             message: "".to_string(),
-            stacks_block_height: 1,
+            stacks_block_height: 0,
             stacks_block_hash: "".to_string(),
         };
 
@@ -615,15 +617,13 @@ mod tests {
             last_update_height: 0,
             last_update_block_hash: "".to_string(),
             fulfillment: None,
-            history: vec![DepositEvent {
-                status: StatusEntry::Pending,
-                message: "".to_string(),
-                stacks_block_height: 0,
-                stacks_block_hash: "".to_string(),
-            }],
+            history: vec![pending.clone()],
         };
 
-        let update = ValidatedDepositUpdate { key: Default::default(), event };
+        let update = ValidatedDepositUpdate {
+            key: Default::default(),
+            event: pending,
+        };
 
         assert!(!update.is_unnecessary(&deposit));
     }
