@@ -192,7 +192,7 @@ pub trait StacksInteract: Send + Sync {
     /// Get information about the current node.
     fn get_node_info(&self) -> impl Future<Output = Result<RPCPeerInfoData, Error>> + Send;
 
-    /// Get the source of the a deployed smart contract.
+    /// Get the source of a deployed smart contract.
     ///
     /// # Notes
     ///
@@ -253,25 +253,25 @@ impl TenureBlocks {
         })
     }
 
-    /// Get all of the blocks contained in this object.
+    /// Get all the blocks contained in this object.
     ///
     /// # Note
     ///
-    /// The struct need not contain all of the blocks in a tenure.
+    /// The struct need not contain all the blocks in a tenure.
     pub fn blocks(&self) -> &[NakamotoBlock] {
         &self.blocks
     }
 
-    /// Return all of the blocks contained in this object.
+    /// Return all the blocks contained in this object.
     ///
     /// # Note
     ///
-    /// The struct need not contain all of the blocks in a tenure.
+    /// The struct need not contain all the blocks in a tenure.
     pub fn into_blocks(self) -> Vec<NakamotoBlock> {
         self.blocks
     }
 
-    /// Return an iterator of Stacks blocks from the this tenure.
+    /// Return an iterator of Stacks blocks included in this object.
     pub fn as_stacks_blocks(&self) -> impl Iterator<Item = StacksBlock> + '_ {
         let bitcoin_anchor = &self.anchor_block_hash;
         self.blocks
@@ -532,7 +532,7 @@ impl StacksClient {
             .and_then(AccountInfo::try_from)
     }
 
-    /// Get the source of the a deployed smart contract.
+    /// Get the source of a deployed smart contract.
     ///
     /// # Notes
     ///
@@ -734,7 +734,7 @@ impl StacksClient {
 
         // If Self::get_tenure_raw returns with Ok(_) then the Vec will
         // include at least 1 Nakamoto block. Since we bail if there is an
-        // error, this vector has a last element.
+        // error, this vector has at least one element.
         let Some(block) = tenure_blocks.last() else {
             return Err(Error::EmptyStacksTenure);
         };
@@ -1146,7 +1146,7 @@ impl StacksInteract for StacksClient {
         self.get_node_info().await
     }
 
-    /// Get the source of the a deployed smart contract.
+    /// Get the source of a deployed smart contract.
     ///
     /// # Notes
     ///
