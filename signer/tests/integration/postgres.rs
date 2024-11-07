@@ -2413,7 +2413,7 @@ async fn deposit_report_with_only_deposit_request() {
     assert!(report.is_accepted.is_none());
     assert!(report.can_sign.is_none());
     // The transaction is not on the canonical bitcoin blockchain, so it
-    // shows up as uncofirmed.
+    // shows up as unconfirmed.
     assert_eq!(report.status, DepositRequestStatus::Unconfirmed);
 
     testing::storage::drop_db(db).await;
@@ -2425,9 +2425,9 @@ async fn deposit_report_with_only_deposit_request() {
 /// that the votes are accurately reflected in the report.
 ///
 /// The difference between this test and
-/// `deposit_report_with_only_deposit_request` is that we write the signer
-/// decision to the database here and check that it gets reproduced in the
-/// report.
+/// [`deposit_report_with_only_deposit_request`] is that we write the
+/// signer decision to the database here and check that it gets reproduced
+/// in the report.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn deposit_report_with_deposit_request_reorged() {
