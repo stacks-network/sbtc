@@ -15,7 +15,7 @@ describe("sBTC token contract", () => {
           recipient: alice,
           burnHash,
           burnHeight,
-          sweepTxid: new Uint8Array(32).fill(0),
+          sweepTxid: new Uint8Array(32).fill(1),
         }),
         deployer
       );
@@ -37,6 +37,7 @@ describe("sBTC token contract", () => {
         amount: 1000n,
         burnHash,
         burnHeight: BigInt(burnHeight),
+        sweepTxid: new Uint8Array(32).fill(1),
       });
       const receipt1 = rov(
         token.getBalance({
@@ -78,7 +79,8 @@ describe("sBTC token contract", () => {
         outputIndex: 0n,
         amount: 1000n,
         burnHash,
-        burnHeight: BigInt(burnHeight)
+        burnHeight: BigInt(burnHeight),
+        sweepTxid: new Uint8Array(32).fill(1),
       });
       const receipt1 = txOk(
         token.transfer({

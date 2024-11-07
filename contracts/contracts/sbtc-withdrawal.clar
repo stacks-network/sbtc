@@ -180,7 +180,7 @@
       )
 
       ;; Call into registry to confirm accepted withdrawal
-      (try! (contract-call? .sbtc-registry complete-withdrawal-accept request-id bitcoin-txid output-index signer-bitmap fee burn-hash burn-height))
+      (try! (contract-call? .sbtc-registry complete-withdrawal-accept request-id bitcoin-txid output-index signer-bitmap fee burn-hash burn-height sweep-txid))
 
       (ok true)
   )
