@@ -161,6 +161,7 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
 #[test_case(ContractCallWrapper(RotateKeysV1::new(
     &testing::wallet::WALLET.0,
     *testing::wallet::WALLET.0.address(),
+    &signer::keys::PublicKey::from_slice(&[0x02; 33]).unwrap()
 )); "rotate-keys")]
 #[tokio::test]
 async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: ContractCallWrapper<T>) {

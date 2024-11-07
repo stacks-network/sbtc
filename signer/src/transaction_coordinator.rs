@@ -42,6 +42,7 @@ use crate::stacks::api::SubmitTxResponse;
 use crate::stacks::contracts::AsTxPayload;
 use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::ContractCall;
+use crate::stacks::contracts::RotateKeysV1;
 use crate::stacks::contracts::SmartContract;
 use crate::stacks::contracts::SMART_CONTRACTS;
 use crate::stacks::wallet::MultisigTx;
@@ -284,25 +285,57 @@ where
         tracing::debug!("We are the coordinator, we may need to coordinate DKG");
         // If Self::get_signer_set_and_aggregate_key did not return an
         // aggregate key, then we know that we have not run DKG yet. Since
-        // we are the signer, we should coordinate DKG.
+        // we are the coordinator, we should coordinate DKG.
         let aggregate_key = match maybe_aggregate_key {
             Some(key) => key,
             // This function returns the new DKG aggregate key.
-            None => self.coordinate_dkg(&bitcoin_chain_tip).await?,
+            None => {
+                self.coordinate_dkg(&bitcoin_chain_tip).await?;
+                let (maybe_aggregate_key, _) = self
+                    .get_signer_set_and_aggregate_key(&bitcoin_chain_tip)
+                    .await?;
+                maybe_aggregate_key.ok_or(Error::NoDkgShares)?
+            }
         };
 
+        let mut just_deployed_contracts = false;
         if !self.sbtc_contracts_deployed {
             let contract_deployments = self
                 .deploy_smart_contracts(&bitcoin_chain_tip, &aggregate_key)
                 .await;
             match contract_deployments {
-                Ok(()) => self.sbtc_contracts_deployed = true,
+                Ok(()) => {
+                    just_deployed_contracts = true;
+                    self.sbtc_contracts_deployed = true;
+                }
                 Err(error) => {
                     // No need to continue if the contracts are not deployed.
                     tracing::error!(%error, "could not deploy smart contracts");
                     return Err(error);
                 }
             };
+        }
+
+        // If we have just deployed the smart contracts, trying to broadcast the
+        // key rotation tx would result in transaction rejected, reason: NoSuchContract
+        if self.sbtc_contracts_deployed && !just_deployed_contracts {
+            let last_key_rotation = self
+                .context
+                .get_storage()
+                .get_last_key_rotation(&bitcoin_chain_tip)
+                .await?;
+            if last_key_rotation.is_none() {
+                // We don't have a key rotation but we have an aggregate_key from DKG,
+                // so we need to broadcast a rotate key tx
+                let wallet = self.get_signer_wallet(&bitcoin_chain_tip).await?;
+
+                self.construct_and_sign_rotate_key_transaction(
+                    &bitcoin_chain_tip,
+                    &aggregate_key,
+                    &wallet,
+                )
+                .await?;
+            }
         }
 
         self.construct_and_sign_bitcoin_sbtc_transactions(
@@ -472,6 +505,46 @@ where
         }
 
         Ok(())
+    }
+
+    /// Construct and coordinate signing round for a `rotate-keys-wrapper` transaction.
+    #[tracing::instrument(skip_all, fields(bitcoin_chain_tip))]
+    async fn construct_and_sign_rotate_key_transaction(
+        &mut self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        bitcoin_aggregate_key: &PublicKey,
+        wallet: &SignerWallet,
+    ) -> Result<StacksTxId, Error> {
+        // TODO: we should validate the contract call before asking others
+        // to sign it.
+        let contract_call = ContractCall::RotateKeysV1(RotateKeysV1::new(
+            wallet,
+            self.context.config().signer.deployer,
+            bitcoin_aggregate_key,
+        ));
+
+        // Rotate key transactions should be done as soon as possible, so
+        // we set the fee rate to the high priority fee.
+        let tx_fee = self
+            .context
+            .get_stacks_client()
+            .estimate_fees(wallet, &contract_call, FeePriority::High)
+            .await?;
+
+        let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
+        let tx = multi_tx.tx();
+
+        let sign_request = StacksTransactionSignRequest {
+            aggregate_key: *bitcoin_aggregate_key,
+            contract_tx: contract_call.into(),
+            nonce: tx.get_origin_nonce(),
+            tx_fee: tx.get_tx_fee(),
+            digest: tx.digest(),
+            txid: tx.txid(),
+        };
+
+        self.process_sign_request(sign_request, bitcoin_chain_tip, multi_tx, wallet)
+            .await
     }
 
     /// Sign and broadcast the stacks transaction
@@ -1106,23 +1179,31 @@ where
         chain_tip: &model::BitcoinBlockHash,
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
-        let wallet = SignerWallet::load(&self.context, chain_tip).await?;
-        let stacks = self.context.get_stacks_client();
-
-        // We need to know the nonce to use, so we reach out to our stacks
-        // node for the account information for our multi-sig address.
-        //
-        // Note that the wallet object will automatically increment the
-        // nonce for each transaction that it creates.
-        let account = stacks.get_account(wallet.address()).await?;
-        wallet.set_nonce(account.nonce);
-
+        let wallet = self.get_signer_wallet(chain_tip).await?;
         for contract in SMART_CONTRACTS {
             self.deploy_smart_contract(contract, chain_tip, bitcoin_aggregate_key, &wallet)
                 .await?;
         }
 
         Ok(())
+    }
+
+    async fn get_signer_wallet(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<SignerWallet, Error> {
+        let wallet = SignerWallet::load(&self.context, chain_tip).await?;
+
+        // We need to know the nonce to use, so we reach out to our stacks
+        // node for the account information for our multi-sig address.
+        //
+        // Note that the wallet object will automatically increment the
+        // nonce for each transaction that it creates.
+        let stacks = self.context.get_stacks_client();
+        let account = stacks.get_account(wallet.address()).await?;
+        wallet.set_nonce(account.nonce);
+
+        Ok(wallet)
     }
 }
 
