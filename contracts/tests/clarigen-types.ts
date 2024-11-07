@@ -503,6 +503,7 @@ export const contracts = {
                 { name: "burn-hash", type: { buffer: { length: 32 } } },
                 { name: "burn-height", type: "uint128" },
                 { name: "recipient", type: "principal" },
+                { name: "sweep-txid", type: { buffer: { length: 32 } } },
                 { name: "txid", type: { buffer: { length: 32 } } },
                 { name: "vout-index", type: "uint128" },
               ],
@@ -522,6 +523,7 @@ export const contracts = {
               burnHash: Uint8Array;
               burnHeight: number | bigint;
               recipient: string;
+              sweepTxid: Uint8Array;
               txid: Uint8Array;
               voutIndex: number | bigint;
             },
@@ -544,6 +546,7 @@ export const contracts = {
           { name: "recipient", type: "principal" },
           { name: "burn-hash", type: { buffer: { length: 32 } } },
           { name: "burn-height", type: "uint128" },
+          { name: "sweep-txid", type: { buffer: { length: 32 } } },
         ],
         outputs: {
           type: {
@@ -561,6 +564,7 @@ export const contracts = {
           recipient: TypedAbiArg<string, "recipient">,
           burnHash: TypedAbiArg<Uint8Array, "burnHash">,
           burnHeight: TypedAbiArg<number | bigint, "burnHeight">,
+          sweepTxid: TypedAbiArg<Uint8Array, "sweepTxid">,
         ],
         Response<Response<boolean, bigint>, bigint>
       >,
@@ -578,6 +582,7 @@ export const contracts = {
                     { name: "burn-hash", type: { buffer: { length: 32 } } },
                     { name: "burn-height", type: "uint128" },
                     { name: "recipient", type: "principal" },
+                    { name: "sweep-txid", type: { buffer: { length: 32 } } },
                     { name: "txid", type: { buffer: { length: 32 } } },
                     { name: "vout-index", type: "uint128" },
                   ],
@@ -596,6 +601,7 @@ export const contracts = {
               burnHash: Uint8Array;
               burnHeight: number | bigint;
               recipient: string;
+              sweepTxid: Uint8Array;
               txid: Uint8Array;
               voutIndex: number | bigint;
             }[],
@@ -1569,6 +1575,10 @@ export const contracts = {
                 { name: "request-id", type: "uint128" },
                 { name: "signer-bitmap", type: "uint128" },
                 { name: "status", type: "bool" },
+                {
+                  name: "sweep-txid",
+                  type: { optional: { buffer: { length: 32 } } },
+                },
               ],
             },
           },
@@ -1590,6 +1600,7 @@ export const contracts = {
               requestId: number | bigint;
               signerBitmap: number | bigint;
               status: boolean;
+              sweepTxid: Uint8Array | null;
             },
             "withdrawal"
           >,
@@ -1611,6 +1622,7 @@ export const contracts = {
           { name: "fee", type: "uint128" },
           { name: "burn-hash", type: { buffer: { length: 32 } } },
           { name: "burn-height", type: "uint128" },
+          { name: "sweep-txid", type: { buffer: { length: 32 } } },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
@@ -1622,6 +1634,7 @@ export const contracts = {
           fee: TypedAbiArg<number | bigint, "fee">,
           burnHash: TypedAbiArg<Uint8Array, "burnHash">,
           burnHeight: TypedAbiArg<number | bigint, "burnHeight">,
+          sweepTxid: TypedAbiArg<Uint8Array, "sweepTxid">,
         ],
         Response<boolean, bigint>
       >,
@@ -1646,6 +1659,10 @@ export const contracts = {
                     { name: "request-id", type: "uint128" },
                     { name: "signer-bitmap", type: "uint128" },
                     { name: "status", type: "bool" },
+                    {
+                      name: "sweep-txid",
+                      type: { optional: { buffer: { length: 32 } } },
+                    },
                   ],
                 },
                 length: 600,
@@ -1666,6 +1683,7 @@ export const contracts = {
               requestId: number | bigint;
               signerBitmap: number | bigint;
               status: boolean;
+              sweepTxid: Uint8Array | null;
             }[],
             "withdrawals"
           >,

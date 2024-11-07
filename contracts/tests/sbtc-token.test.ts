@@ -15,6 +15,7 @@ describe("sBTC token contract", () => {
           recipient: alice,
           burnHash,
           burnHeight,
+          sweepTxid: new Uint8Array(32).fill(0),
         }),
         deployer
       );
@@ -56,6 +57,7 @@ describe("sBTC token contract", () => {
           recipient: alice,
           burnHash,
           burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
         }),
         deployer
       );

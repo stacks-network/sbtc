@@ -147,7 +147,8 @@
                                           (output-index uint)
                                           (fee uint)
                                           (burn-hash (buff 32))
-                                          (burn-height uint))
+                                          (burn-height uint)
+                                          (sweep-txid (buff 32)))
   (let 
     (
       (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
@@ -220,7 +221,8 @@
                                       output-index: (optional uint), 
                                       fee: (optional uint),
                                       burn-hash: (buff 32),
-                                      burn-height: uint})))
+                                      burn-height: uint,
+                                      sweep-txid: (optional (buff 32))})))
   (let 
       (
           (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))
@@ -242,7 +244,8 @@
                                                         output-index: (optional uint), 
                                                         fee: (optional uint),
                                                         burn-hash: (buff 32),
-                                                        burn-height: uint}) 
+                                                        burn-height: uint,
+                                                        sweep-txid: (optional (buff 32))}) 
                                                        (helper-response (response uint uint)))
   (match helper-response 
     index
@@ -260,7 +263,7 @@
             (asserts! 
               (and (is-some current-bitcoin-txid) (is-some current-output-index) (is-some current-fee)) 
               (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
-            (unwrap! (accept-withdrawal-request (get request-id withdrawal) (unwrap-panic current-bitcoin-txid) current-signer-bitmap (unwrap-panic current-output-index) (unwrap-panic current-fee) (get burn-hash withdrawal) (get burn-height withdrawal)) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
+            (unwrap! (accept-withdrawal-request (get request-id withdrawal) (unwrap-panic current-bitcoin-txid) current-signer-bitmap (unwrap-panic current-output-index) (unwrap-panic current-fee) (get burn-hash withdrawal) (get burn-height withdrawal) (unwrap-panic (get sweep-txid withdrawal))) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
           )
           ;; rejected
           (unwrap! (reject-withdrawal-request (get request-id withdrawal) current-signer-bitmap) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
