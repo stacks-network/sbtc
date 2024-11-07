@@ -24,6 +24,7 @@ describe("sBTC deposit contract", () => {
           recipient: deployer,
           burnHash,
           burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
         }),
         deployer
       );
@@ -41,6 +42,7 @@ describe("sBTC deposit contract", () => {
           recipient: deployer,
           burnHash,
           burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
         }),
         deployer
       );
@@ -60,6 +62,7 @@ describe("sBTC deposit contract", () => {
           recipient: deployer,
           burnHash,
           burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
         }),
         deployer
       );
@@ -72,6 +75,7 @@ describe("sBTC deposit contract", () => {
           recipient: deployer,
           burnHash,
           burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
         }),
         deployer
       );
@@ -89,6 +93,7 @@ describe("sBTC deposit contract", () => {
           recipient: deployer,
           burnHash,
           burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
         }),
         deployer
       );
@@ -102,6 +107,7 @@ describe("sBTC deposit contract", () => {
           recipient: deployer,
           burnHash: new Uint8Array(32).fill(1),
           burnHeight,
+          sweepTxid: new Uint8Array(32).fill(2),
         }),
         deployer
       );
@@ -119,6 +125,7 @@ describe("sBTC deposit contract", () => {
           recipient: deployer,
           burnHash,
           burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
         }),
         deployer
       );
@@ -154,6 +161,7 @@ describe("sBTC deposit contract", () => {
           recipient: deployer,
           burnHash,
           burnHeight,
+          sweepTxid: new Uint8Array(32).fill(2),
         }),
         deployer
       );
@@ -184,6 +192,7 @@ describe("sBTC deposit contract", () => {
               recipient: deployer,
               burnHash,
               burnHeight,
+              sweepTxid: new Uint8Array(32).fill(1),
             },
             {
               txid: new Uint8Array(32).fill(1),
@@ -192,6 +201,7 @@ describe("sBTC deposit contract", () => {
               recipient: deployer,
               burnHash,
               burnHeight,
+              sweepTxid: new Uint8Array(32).fill(1),
             },
           ],
           ...getCurrentBurnInfo(),
@@ -214,6 +224,7 @@ describe("sBTC deposit contract", () => {
               recipient: deployer,
               burnHash,
               burnHeight,
+              sweepTxid: new Uint8Array(32).fill(1),
             },
             {
               txid: new Uint8Array(32).fill(1),
@@ -222,6 +233,7 @@ describe("sBTC deposit contract", () => {
               recipient: deployer,
               burnHash,
               burnHeight,
+              sweepTxid: new Uint8Array(32).fill(1),
             },
           ],
           ...getCurrentBurnInfo(),
@@ -244,6 +256,7 @@ describe("sBTC deposit contract", () => {
               recipient: deployer,
               burnHash,
               burnHeight,
+              sweepTxid: new Uint8Array(32).fill(1),
             },
             {
               txid: new Uint8Array(32).fill(1),
@@ -252,6 +265,7 @@ describe("sBTC deposit contract", () => {
               recipient: deployer,
               burnHash,
               burnHeight,
+              sweepTxid: new Uint8Array(32).fill(1),
             },
             {
               txid: new Uint8Array(32).fill(2),
@@ -260,6 +274,7 @@ describe("sBTC deposit contract", () => {
               recipient: alice,
               burnHash,
               burnHeight,
+              sweepTxid: new Uint8Array(32).fill(1),
             },
           ],
           ...getCurrentBurnInfo(),
@@ -282,6 +297,7 @@ describe("sBTC deposit contract", () => {
               recipient: deployer,
               burnHash,
               burnHeight,
+              sweepTxid: new Uint8Array(32).fill(1),
             },
             {
               txid: new Uint8Array(32).fill(1),
@@ -290,6 +306,7 @@ describe("sBTC deposit contract", () => {
               recipient: deployer,
               burnHash,
               burnHeight,
+              sweepTxid: new Uint8Array(32).fill(1),
             },
           ],
           ...getCurrentBurnInfo(),
@@ -317,6 +334,7 @@ describe("optimization tests", () => {
           recipient: deployer,
           burnHash,
           burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
         })),
         ...getCurrentBurnInfo(),
       }),
