@@ -195,9 +195,14 @@ async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: Contr
     let info = client.get_tenure_info().await.unwrap();
     let storage = Store::new_shared();
 
-    let blocks = stacks::api::fetch_unknown_ancestors(&client, &storage, info.tip_block_id)
+    let tenures = stacks::api::fetch_unknown_ancestors(&client, &storage, info.tip_block_id)
         .await
         .unwrap();
+
+    let blocks = tenures
+        .into_iter()
+        .flat_map(|tenure| tenure.into_blocks())
+        .collect::<Vec<_>>();
 
     let transactions = postgres::extract_relevant_transactions(&blocks, &signer.wallet.address());
     assert!(!transactions.is_empty());

@@ -16,6 +16,7 @@ use rand::SeedableRng as _;
 use sbtc::testing::regtest;
 use signer::error::Error;
 use signer::logging::setup_logging;
+use signer::stacks::api::TenureBlocks;
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 use stacks_common::types::chainstate::ConsensusHash;
 use stacks_common::types::chainstate::SortitionId;
@@ -107,10 +108,9 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
             Box::pin(std::future::ready(response))
         });
 
-        client.expect_get_tenure().returning(|_| {
-            let response = Ok(Vec::new());
-            Box::pin(std::future::ready(response))
-        });
+        client
+            .expect_get_tenure()
+            .returning(|_| Box::pin(std::future::ready(TenureBlocks::nearly_empty())));
 
         client.expect_get_pox_info().returning(|| {
             let response = serde_json::from_str::<RPCPoxInfoData>(GET_POX_INFO_JSON)

@@ -17,7 +17,6 @@
 //! - Update signer set transactions
 //! - Set aggregate key transactions
 
-use std::collections::HashMap;
 use std::future::Future;
 use std::time::Duration;
 
@@ -28,16 +27,15 @@ use crate::context::SignerEvent;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::stacks::api::StacksInteract;
+use crate::stacks::api::TenureBlocks;
 use crate::storage;
 use crate::storage::model;
-use crate::storage::model::BitcoinBlockHash;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use bitcoin::hashes::Hash as _;
 use bitcoin::BlockHash;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
-use blockstack_lib::chainstate::nakamoto;
 use futures::stream::StreamExt;
 use sbtc::deposits::CreateDepositRequest;
 use sbtc::deposits::DepositInfo;
@@ -429,36 +427,19 @@ where
         Ok(())
     }
 
-    async fn write_stacks_blocks(&self, blocks: &[nakamoto::NakamotoBlock]) -> Result<(), Error> {
+    async fn write_stacks_blocks(&self, tenures: &[TenureBlocks]) -> Result<(), Error> {
         let deployer = &self.context.config().signer.deployer;
-        let txs = storage::postgres::extract_relevant_transactions(blocks, deployer);
-
-        let unique_consensus_hashes = blocks
+        let txs = tenures
             .iter()
-            .map(|block| block.header.consensus_hash)
-            .collect::<HashSet<_>>();
-        let mut consensus_hashes = HashMap::new();
-        for consensus_hash in unique_consensus_hashes {
-            let anchor_block: BitcoinBlockHash = self
-                .stacks_client
-                .get_sortition_info(&consensus_hash)
-                .await?
-                .burn_block_hash
-                .into();
-            consensus_hashes.insert(consensus_hash, anchor_block);
-        }
-
-        let headers = blocks
-            .iter()
-            .map(|block| {
-                Ok(model::StacksBlock::from_nakamoto_block(
-                    block,
-                    consensus_hashes
-                        .get(&block.header.consensus_hash)
-                        .ok_or(Error::MissingBlock)?,
-                ))
+            .flat_map(|tenure| {
+                storage::postgres::extract_relevant_transactions(tenure.blocks(), deployer)
             })
-            .collect::<Result<_, Error>>()?;
+            .collect::<Vec<_>>();
+
+        let headers = tenures
+            .iter()
+            .flat_map(TenureBlocks::as_stacks_blocks)
+            .collect::<Vec<_>>();
 
         let storage = self.context.get_storage_mut();
         storage.write_stacks_block_headers(headers).await?;

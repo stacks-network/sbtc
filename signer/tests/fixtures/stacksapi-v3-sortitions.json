@@ -1,0 +1,15 @@
+[
+    {
+        "burn_block_hash": "0x31b0f8c03daab94ffbd49fef21de4db3e8ad9c79a49481eb50debcbc146301ba",
+        "burn_block_height": 245,
+        "burn_header_timestamp": 1730916467,
+        "sortition_id": "0x54aeb326b22bf7be52fa908af4f3eae3ac0be378522d14d497275c42abef53ff",
+        "parent_sortition_id": "0xcbff5b55f39f0d735a0122c972ca9cc47922191ec897d47c766ed96da928ec21",
+        "consensus_hash": "0xc6baa8978455ef2ba7459356645798c209e3263a",
+        "was_sortition": true,
+        "miner_pk_hash160": "0xb6c8b1779e32f9468ff4ed56d0669a5943313ca2",
+        "stacks_parent_ch": "0xd8ac51c935a4ab9fdcfaf121d6e25ab89620b262",
+        "last_sortition_ch": "0xd8ac51c935a4ab9fdcfaf121d6e25ab89620b262",
+        "committed_block_hash": "0x8080e1b66c199d9bf5b9058b9cd99923c8031d3ccc8bdb19fac135e05bf5e4a9"
+    }
+]

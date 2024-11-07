@@ -34,6 +34,7 @@ use sbtc::testing::regtest::Recipient;
 use secp256k1::Keypair;
 use sha2::Digest as _;
 use signer::network::in_memory2::WanNetwork;
+use signer::stacks::api::TenureBlocks;
 use signer::stacks::contracts::SmartContract;
 use signer::storage::model::BitcoinTx;
 use stacks_common::types::chainstate::BurnchainHeaderHash;
@@ -1110,8 +1111,13 @@ async fn sign_bitcoin_transaction() {
         signers.push((ctx, db, kp, network));
     }
 
-    // 3. Check that there are no DKG shares in the database.
+    let (broadcast_stacks_tx, _rx) = tokio::sync::broadcast::channel(1);
+
+    let mut stacks_tx_receiver = broadcast_stacks_tx.subscribe();
+    let stacks_tx_receiver_task = tokio::spawn(async move { stacks_tx_receiver.recv().await });
+
     for (ctx, _, _, _) in signers.iter_mut() {
+        let broadcast_stacks_tx = broadcast_stacks_tx.clone();
         ctx.with_stacks_client(|client| {
             client.expect_get_tenure_info().returning(move || {
                 let response = Ok(RPCGetTenureInfo {
@@ -1134,9 +1140,11 @@ async fn sign_bitcoin_transaction() {
                 Box::pin(std::future::ready(response))
             });
 
-            client.expect_get_tenure().returning(|_| {
-                let response = Ok(Vec::new());
-                Box::pin(std::future::ready(response))
+            let chain_tip = model::BitcoinBlockHash::from(chain_tip_info.hash);
+            client.expect_get_tenure().returning(move |_| {
+                let mut tenure = TenureBlocks::nearly_empty().unwrap();
+                tenure.anchor_block_hash = chain_tip;
+                Box::pin(std::future::ready(Ok(tenure)))
             });
 
             client.expect_get_pox_info().returning(|| {
@@ -1161,7 +1169,6 @@ async fn sign_bitcoin_transaction() {
                 });
                 Box::pin(std::future::ready(response))
             });
-            let chain_tip = model::BitcoinBlockHash::from(chain_tip_info.hash);
             client.expect_get_sortition_info().returning(move |_| {
                 let response = Ok(SortitionInfo {
                     burn_block_hash: BurnchainHeaderHash::from(chain_tip),
@@ -1177,6 +1184,19 @@ async fn sign_bitcoin_transaction() {
                     committed_block_hash: None,
                 });
                 Box::pin(std::future::ready(response))
+            });
+
+            // Only the client that corresponds to the coordinator will
+            // submit a transaction so we don't make explicit the
+            // expectation here.
+            client.expect_submit_tx().returning(move |tx| {
+                let tx = tx.clone();
+                let txid = tx.txid();
+                let broadcast_stacks_tx = broadcast_stacks_tx.clone();
+                Box::pin(async move {
+                    broadcast_stacks_tx.send(tx).unwrap();
+                    Ok(SubmitTxResponse::Acceptance(txid))
+                })
             });
         })
         .await;
@@ -1319,6 +1339,28 @@ async fn sign_bitcoin_transaction() {
 
     tokio::time::sleep(Duration::from_secs(2)).await;
 
+    // Let's check that the contract call transaction was made.
+    let broadcast_stacks_txs =
+        tokio::time::timeout(Duration::from_secs(10), stacks_tx_receiver_task)
+            .await
+            .unwrap()
+            .expect("failed to receive message")
+            .unwrap();
+
+    let TransactionPayload::ContractCall(contract_call) = broadcast_stacks_txs.payload else {
+        panic!("expected a contract call, got something else");
+    };
+
+    assert_eq!(
+        contract_call.contract_name.as_str(),
+        CompleteDepositV1::CONTRACT_NAME
+    );
+    assert_eq!(
+        contract_call.function_name.as_str(),
+        CompleteDepositV1::FUNCTION_NAME
+    );
+
+    // Now lets check the bitcoin transaction
     let txid = txids.pop().unwrap();
     let tx_info = ctx
         .bitcoin_client

@@ -16,6 +16,7 @@ use clarity::types::chainstate::{StacksAddress, StacksBlockId};
 use tokio::sync::{broadcast, Mutex};
 use tokio::time::error::Elapsed;
 
+use crate::stacks::api::TenureBlocks;
 use crate::stacks::wallet::SignerWallet;
 use crate::{
     bitcoin::{
@@ -337,7 +338,7 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
         self.inner.lock().await.get_block(block_id).await
     }
 
-    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<TenureBlocks, Error> {
         self.inner.lock().await.get_tenure(block_id).await
     }
 

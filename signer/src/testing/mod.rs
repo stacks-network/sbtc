@@ -8,6 +8,7 @@ pub mod context;
 pub mod dummy;
 pub mod message;
 pub mod network;
+pub mod stacks;
 pub mod storage;
 pub mod transaction_coordinator;
 pub mod transaction_signer;
