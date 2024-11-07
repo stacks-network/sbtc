@@ -17,7 +17,7 @@ pub struct ServerConfig {
     /// Host.
     pub host: String,
     /// Port.
-    pub port: u16,
+    pub port: Option<u16>,
 }
 
 /// Statically configured settings.
@@ -42,10 +42,12 @@ impl Settings {
         if self.server.host.is_empty() {
             return Err(ConfigError::Message("Host cannot be empty".to_string()));
         }
-        if !(1..=65535).contains(&self.server.port) {
-            return Err(ConfigError::Message(
-                "Port must be between 1 and 65535".to_string(),
-            ));
+        if let Some(port) = self.server.port {
+            if !(1..=65535).contains(&port) {
+                return Err(ConfigError::Message(
+                    "Port must be between 1 and 65535".to_string(),
+                ));
+            }
         }
         Ok(())
     }

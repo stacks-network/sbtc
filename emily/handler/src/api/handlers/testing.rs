@@ -20,7 +20,8 @@ use crate::database::accessors;
         (status = 404, description = "Address not found"),
         (status = 405, description = "Method not allowed"),
         (status = 500, description = "Internal server error")
-    )
+    ),
+    security(("ApiGatewayKey" = []))
 )]
 pub async fn wipe_databases(context: EmilyContext) -> impl warp::reply::Reply {
     // Internal handler so `?` can be used correctly while still returning a reply.

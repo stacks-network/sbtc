@@ -303,7 +303,8 @@ fn scripts_to_resource_parameters(
         (status = 404, description = "Address not found", body = ErrorResponse),
         (status = 405, description = "Method not allowed", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
-    )
+    ),
+    security(("ApiGatewayKey" = []))
 )]
 pub async fn update_deposits(
     context: EmilyContext,

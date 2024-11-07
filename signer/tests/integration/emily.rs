@@ -175,7 +175,7 @@ async fn deposit_flow() {
     let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
 
     let emily_client =
-        EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
+        EmilyClient::try_from(&Url::parse("https://6wnzcw1fsi.execute-api.us-west-2.amazonaws.com/dev").unwrap()).unwrap();
     let stacks_client = WrappedMock::default();
 
     // Wipe the Emily database to start fresh

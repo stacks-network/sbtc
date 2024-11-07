@@ -14,7 +14,13 @@ pub type StandardError = TestError<ErrorResponse>;
 /// Setup test.
 pub async fn clean_setup() -> Configuration {
     let mut configuration = Configuration::default();
-    configuration.base_path = format!("http://{}:{}", SETTINGS.server.host, SETTINGS.server.port);
+
+    configuration.base_path = if let Some(port) = &SETTINGS.server.port {
+        format!("http://{}:{}", SETTINGS.server.host, port)
+    } else {
+        SETTINGS.server.host.to_string()
+    };
+
     apis::testing_api::wipe_databases(&configuration)
         .await
         .expect("Failed to wipe databases during test clean setup.");

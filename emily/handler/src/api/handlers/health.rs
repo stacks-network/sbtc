@@ -15,7 +15,8 @@ use crate::common::error::Error;
         (status = 404, description = "Address not found", body = ErrorResponse),
         (status = 405, description = "Method not allowed", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
-    )
+    ),
+    security(("ApiGatewayKey" = []))
 )]
 pub async fn get_health() -> impl warp::reply::Reply {
     Error::NotImplemented

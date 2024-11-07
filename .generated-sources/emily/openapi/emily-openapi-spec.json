@@ -134,6 +134,11 @@
             }
           }
         },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
         "x-amazon-apigateway-integration": {
           "httpMethod": "POST",
           "type": "aws_proxy",
@@ -210,6 +215,11 @@
             }
           }
         },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
         "x-amazon-apigateway-integration": {
           "httpMethod": "POST",
           "type": "aws_proxy",
@@ -543,6 +553,11 @@
             }
           }
         },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
         "x-amazon-apigateway-integration": {
           "httpMethod": "POST",
           "type": "aws_proxy",
@@ -799,6 +814,11 @@
             }
           }
         },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
         "x-amazon-apigateway-integration": {
           "httpMethod": "POST",
           "type": "aws_proxy",
@@ -832,6 +852,11 @@
             "description": "Internal server error"
           }
         },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
         "x-amazon-apigateway-integration": {
           "httpMethod": "POST",
           "type": "aws_proxy",
@@ -1008,6 +1033,11 @@
             }
           }
         },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
         "x-amazon-apigateway-integration": {
           "httpMethod": "POST",
           "type": "aws_proxy",
@@ -1084,6 +1114,11 @@
             }
           }
         },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
         "x-amazon-apigateway-integration": {
           "httpMethod": "POST",
           "type": "aws_proxy",
@@ -1866,6 +1901,14 @@
             "description": "The status message of the withdrawal."
           }
         }
+      }
+    },
+    "securitySchemes": {
+      "ApiGatewayKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-api-key",
+        "description": "AWS Apigateway key"
       }
     }
   }

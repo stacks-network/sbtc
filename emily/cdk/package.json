@@ -6,6 +6,7 @@
   },
   "scripts": {
     "synth": "tsc && npx aws-cdk synth -q --no-staging",
+    "deploy": "npx aws-cdk deploy",
     "watch": "tsc -w",
     "test": "jest",
     "clean": "rm -rf node_modules .cdk.staging cdk.out .generated-sources"

@@ -73,30 +73,30 @@ services:
         GIT_BRANCH: main
     image: sbtc-build:latest
 
-  emily-dynamodb:
-    image: "amazon/dynamodb-local:latest"
-    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath ."
-    ports:
-      - "8000:8000"
+  # emily-dynamodb:
+  #   image: "amazon/dynamodb-local:latest"
+  #   command: "-jar DynamoDBLocal.jar -sharedDb -dbPath ."
+  #   ports:
+  #     - "8000:8000"
 
-  emily-aws-setup:
-    build: sbtc/emily-aws-setup
-    depends_on:
-      - sbtc-build
-      - emily-dynamodb
-    environment:
-      - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
+  # emily-aws-setup:
+  #   build: sbtc/emily-aws-setup
+  #   depends_on:
+  #     - sbtc-build
+  #     - emily-dynamodb
+  #   environment:
+  #     - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
 
-  emily-server:
-    build: sbtc/emily-server
-    depends_on:
-      sbtc-build:
-        condition: service_completed_successfully
-      emily-aws-setup:
-        condition: service_completed_successfully
-    environment:
-      - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
-      - HOST=0.0.0.0
-      - PORT=3031
-    ports:
-      - "3031:3031"
+  # emily-server:
+  #   build: sbtc/emily-server
+  #   depends_on:
+  #     sbtc-build:
+  #       condition: service_completed_successfully
+  #     emily-aws-setup:
+  #       condition: service_completed_successfully
+  #   environment:
+  #     - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
+  #     - HOST=0.0.0.0
+  #     - PORT=3031
+  #   ports:
+  #     - "3031:3031"
