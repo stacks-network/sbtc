@@ -1,5 +1,6 @@
 //! Test Context implementation
 
+use std::time::Duration;
 use std::{ops::Deref, sync::Arc};
 
 use bitcoin::Txid;
@@ -13,7 +14,9 @@ use blockstack_lib::{
 };
 use clarity::types::chainstate::{StacksAddress, StacksBlockId};
 use tokio::sync::{broadcast, Mutex};
+use tokio::time::error::Elapsed;
 
+use crate::stacks::api::TenureBlocks;
 use crate::stacks::wallet::SignerWallet;
 use crate::{
     bitcoin::{
@@ -63,10 +66,10 @@ pub struct TestContext<Storage, Bitcoin, Stacks, Emily> {
 
 impl<Storage, Bitcoin, Stacks, Emily> TestContext<Storage, Bitcoin, Stacks, Emily>
 where
-    Storage: DbRead + DbWrite + Clone + Sync + Send,
-    Bitcoin: BitcoinInteract + Clone + Send + Sync,
-    Stacks: StacksInteract + Clone + Send + Sync,
-    Emily: EmilyInteract + Clone + Send + Sync,
+    Storage: DbRead + DbWrite + Clone + Sync + Send + 'static,
+    Bitcoin: BitcoinInteract + Clone + Send + Sync + 'static,
+    Stacks: StacksInteract + Clone + Send + Sync + 'static,
+    Emily: EmilyInteract + Clone + Send + Sync + 'static,
 {
     /// Create a new test context.
     pub fn new(
@@ -111,6 +114,24 @@ where
     /// Get an instance of the raw inner Emily client.
     pub fn inner_emily_client(&self) -> Emily {
         self.emily_client.clone()
+    }
+
+    /// Wait for a specific signal to be received.
+    pub async fn wait_for_signal(
+        &self,
+        timeout: Duration,
+        predicate: impl Fn(&SignerSignal) -> bool,
+    ) -> Result<(), Elapsed> {
+        let mut recv = self.get_signal_receiver();
+        tokio::time::timeout(timeout, async {
+            loop {
+                match recv.try_recv() {
+                    Ok(signal) if predicate(&signal) => break,
+                    _ => tokio::time::sleep(Duration::from_millis(10)).await,
+                }
+            }
+        })
+        .await
     }
 }
 
@@ -328,7 +349,7 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
         self.inner.lock().await.get_block(block_id).await
     }
 
-    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<TenureBlocks, Error> {
         self.inner.lock().await.get_tenure(block_id).await
     }
 
@@ -754,10 +775,10 @@ impl<Storage, Bitcoin, Stacks, Emily> BuildContext<Storage, Bitcoin, Stacks, Emi
     for ContextBuilder<Storage, Bitcoin, Stacks, Emily>
 where
     Self: BuilderState<Storage, Bitcoin, Stacks, Emily>,
-    Storage: DbRead + DbWrite + Clone + Sync + Send,
-    Bitcoin: BitcoinInteract + Clone + Send + Sync,
-    Stacks: StacksInteract + Clone + Send + Sync,
-    Emily: EmilyInteract + Clone + Send + Sync,
+    Storage: DbRead + DbWrite + Clone + Sync + Send + 'static,
+    Bitcoin: BitcoinInteract + Clone + Send + Sync + 'static,
+    Stacks: StacksInteract + Clone + Send + Sync + 'static,
+    Emily: EmilyInteract + Clone + Send + Sync + 'static,
 {
     fn build(self) -> TestContext<Storage, Bitcoin, Stacks, Emily> {
         let config = self.get_config();

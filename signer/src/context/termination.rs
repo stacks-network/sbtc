@@ -25,6 +25,11 @@ impl TerminationHandle {
         Self(tx, rx)
     }
 
+    /// Check if a shutdown signal has been signalled.
+    pub fn shutdown_signalled(&self) -> bool {
+        *self.1.borrow()
+    }
+
     /// Signal the application to shutdown.
     pub fn signal_shutdown(&self) {
         // We ignore the result here, as if all receivers have been dropped,

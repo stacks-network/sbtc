@@ -14,14 +14,11 @@ use bitcoin::TxMerkleNode;
 use bitcoin::Txid;
 use bitcoincore_rpc_json::Utxo;
 
-use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
-use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::getsortition::SortitionInfo;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use clarity::types::chainstate::BurnchainHeaderHash;
 use clarity::types::chainstate::ConsensusHash;
-use clarity::types::chainstate::SortitionId;
 use clarity::types::chainstate::StacksBlockId;
 use emily_client::apis::deposit_api;
 use emily_client::apis::testing_api::wipe_databases;
@@ -39,6 +36,7 @@ use signer::error::Error;
 use signer::keys;
 use signer::keys::SignerScriptPubKey as _;
 use signer::network;
+use signer::stacks::api::TenureBlocks;
 use signer::storage::model;
 use signer::storage::model::DepositSigner;
 use signer::storage::model::TransactionType;
@@ -54,6 +52,7 @@ use signer::testing::context::TestContext;
 use signer::testing::context::WrappedMock;
 use signer::testing::dummy;
 use signer::testing::dummy::DepositTxConfig;
+use signer::testing::stacks::DUMMY_SORTITION_INFO;
 use signer::testing::storage::model::TestData;
 
 use fake::Fake as _;
@@ -156,20 +155,6 @@ const DUMMY_TENURE_INFO: RPCGetTenureInfo = RPCGetTenureInfo {
     tip_block_id: StacksBlockId([0; 32]),
     tip_height: 0,
     reward_cycle: 0,
-};
-
-const DUMMY_SORTITION_INFO: SortitionInfo = SortitionInfo {
-    burn_block_hash: BurnchainHeaderHash([0; 32]),
-    burn_block_height: 0,
-    burn_header_timestamp: 0,
-    sortition_id: SortitionId([0; 32]),
-    parent_sortition_id: SortitionId([0; 32]),
-    consensus_hash: ConsensusHash([0; 20]),
-    was_sortition: true,
-    miner_pk_hash160: None,
-    stacks_parent_ch: None,
-    last_sortition_ch: None,
-    committed_block_hash: None,
 };
 
 /// End to end test for deposits via Emily: a deposit request is created on Emily,
@@ -397,14 +382,10 @@ async fn deposit_flow() {
                 .once()
                 .returning(move || Box::pin(async move { Ok(DUMMY_TENURE_INFO.clone()) }));
 
-            client.expect_get_block().once().returning(move |_| {
-                Box::pin(async move {
-                    Ok(NakamotoBlock {
-                        header: NakamotoBlockHeader::empty(),
-                        txs: vec![],
-                    })
-                })
-            });
+            client
+                .expect_get_tenure()
+                .once()
+                .returning(|_| Box::pin(std::future::ready(TenureBlocks::nearly_empty())));
 
             client.expect_get_pox_info().once().returning(|| {
                 let raw_json_response =

@@ -44,6 +44,10 @@ pub enum Error {
     #[error("bitcoin validation error: {0}")]
     BitcoinValidation(#[from] Box<crate::bitcoin::validation::BitcoinValidationError>),
 
+    /// This should never happen
+    #[error("observed a tenure identified by a StacksBlockId with with no blocks")]
+    EmptyStacksTenure,
+
     /// Received an error in call to estimatesmartfee RPC call
     #[error("failed to get fee estimate from bitcoin-core for target {1}. {0}")]
     EstimateSmartFee(#[source] bitcoincore_rpc::Error, u16),
