@@ -2628,19 +2628,22 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
     // canonical bitcoin blockchain.
     let deposit_request: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
     let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let chain_tip_block = db.get_bitcoin_block(&chain_tip).await.unwrap().unwrap();
     let txid = &deposit_request.txid;
     let output_index = deposit_request.output_index;
     let signer_public_key = &signer_set[0];
 
+    // We confirm it on the parent block of the chain tip because later we
+    // change the chain tip and test certain conditions.
     let tx = model::Transaction {
         txid: deposit_request.txid.into_bytes(),
         tx: Vec::new(),
         tx_type: model::TransactionType::DepositRequest,
-        block_hash: chain_tip.into_bytes(),
+        block_hash: chain_tip_block.parent_hash.into_bytes(),
     };
     let tx_ref = model::BitcoinTxRef {
         txid: deposit_request.txid,
-        block_hash: chain_tip,
+        block_hash: chain_tip_block.parent_hash,
     };
 
     db.write_deposit_request(&deposit_request).await.unwrap();
@@ -2658,10 +2661,14 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
     // Okay now let's pretend that the deposit has been swept, but the
     // sweep gets reorged. For that we need a row in the `sweep_*` tables,
     // and records in the `transactions` and `bitcoin_transactions` tables,
-    // but we'll use a random block for what confirms the sweep transaction
-    // so that it is not on the canonical bitcoin blockchain.
-    let random_block: model::BitcoinBlock = fake::Faker.fake_with_rng(&mut rng);
+    // but we'll use a random block that appears at the same height as the
+    // current chain tip for what confirms the sweep transaction. This way
+    // it is not on the canonical bitcoin blockchain identified by the
+    // chain tip.
     let mut sweep_tx: model::SweepTransaction = fake::Faker.fake_with_rng(&mut rng);
+    let mut alt_chain_tip_block: model::BitcoinBlock = chain_tip_block.clone();
+    alt_chain_tip_block.block_hash = fake::Faker.fake_with_rng(&mut rng);
+
     sweep_tx.created_at_block_hash = chain_tip;
     sweep_tx.swept_withdrawals = Vec::new();
     sweep_tx.swept_deposits = vec![model::SweptDeposit {
@@ -2674,13 +2681,13 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
         tx_type: model::TransactionType::SbtcTransaction,
         txid: sweep_tx.txid.to_byte_array(),
         tx: Vec::new(),
-        block_hash: random_block.block_hash.to_byte_array(),
+        block_hash: alt_chain_tip_block.block_hash.to_byte_array(),
     };
     let sweep_tx_ref = model::BitcoinTxRef {
         txid: sweep_tx.txid,
-        block_hash: random_block.block_hash,
+        block_hash: alt_chain_tip_block.block_hash,
     };
-    db.write_bitcoin_block(&random_block).await.unwrap();
+    db.write_bitcoin_block(&alt_chain_tip_block).await.unwrap();
     db.write_transaction(&sweep_tx_model).await.unwrap();
     db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
     db.write_sweep_transaction(&sweep_tx).await.unwrap();
@@ -2698,8 +2705,28 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
     assert_eq!(report.is_accepted, Some(decision.is_accepted));
     assert_eq!(report.can_sign, Some(decision.can_sign));
 
-    let block = db.get_bitcoin_block(&chain_tip).await.unwrap().unwrap();
-    let expected_status = DepositRequestStatus::Confirmed(block.block_height, block.block_hash);
+    let confirmed_height = chain_tip_block.block_height - 1;
+    let confirmed_block_hash = chain_tip_block.parent_hash;
+    let expected_status = DepositRequestStatus::Confirmed(confirmed_height, confirmed_block_hash);
+    assert_eq!(report.status, expected_status);
+
+    // If we use the chain tip that confirms the sweep transaction, then we
+    // see that the report tells us that it is now spent.
+    let alt_chain_tip = alt_chain_tip_block.block_hash;
+    let report = db
+        .get_deposit_request_report(&alt_chain_tip, txid, output_index, signer_public_key)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let report_lock_time = report.lock_time.to_consensus_u32();
+
+    assert_eq!(report.amount, deposit_request.amount);
+    assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert_eq!(report.is_accepted, Some(decision.is_accepted));
+    assert_eq!(report.can_sign, Some(decision.can_sign));
+
+    let expected_status = DepositRequestStatus::Spent(sweep_tx.txid);
     assert_eq!(report.status, expected_status);
 
     signer::testing::storage::drop_db(db).await;
