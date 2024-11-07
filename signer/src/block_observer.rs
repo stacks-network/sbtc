@@ -19,6 +19,7 @@
 
 use std::collections::HashMap;
 use std::future::Future;
+use std::time::Duration;
 
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::BitcoinInteract;
@@ -126,56 +127,53 @@ where
     /// Run the block observer
     #[tracing::instrument(skip(self), name = "block-observer")]
     pub async fn run(mut self) -> Result<(), Error> {
-        let mut term = self.context.get_termination_handle();
+        let term = self.context.get_termination_handle();
 
-        let run = async {
-            while let Some(block_hash) = self.bitcoin_blocks.next().await {
-                let block_hash = match block_hash {
-                    Ok(hash) => hash,
-                    Err(error) => {
-                        tracing::warn!(%error, "error decoding new bitcoin block hash from stream");
-                        continue;
-                    }
-                };
-
-                tracing::info!(%block_hash, "observed new bitcoin block from stream");
-
-                let next_blocks_to_process = match self.next_blocks_to_process(block_hash).await {
-                    Ok(blocks) => blocks,
-                    Err(error) => {
-                        tracing::warn!(%error, %block_hash, "could not get next blocks to process");
-                        continue;
-                    }
-                };
-
-                for block in next_blocks_to_process {
-                    if let Err(error) = self.process_bitcoin_block(block).await {
-                        tracing::warn!(%error, "could not process bitcoin block");
-                    }
-                }
-
-                tracing::info!("loading latest deposit requests from Emily");
-                if let Err(error) = self.load_latest_deposit_requests().await {
-                    tracing::warn!(%error, "could not load latest deposit requests from Emily");
-                }
-
-                self.context
-                    .signal(SignerEvent::BitcoinBlockObserved.into())?;
+        loop {
+            if term.shutdown_signalled() {
+                break;
             }
 
-            Ok::<_, Error>(())
-        };
+            // Bitcoin blocks will generally arrive in ~19 minute intervals, so
+            // we don't need to be so aggresive in our timeout here.
+            let poll = tokio::time::timeout(Duration::from_millis(100), self.bitcoin_blocks.next());
 
-        tokio::select! {
-            _ = term.wait_for_shutdown() => {
-                tracing::info!("block observer received shutdown signal");
-            },
-            result = run => {
-                result?;
-            }
+            match poll.await {
+                Ok(Some(Ok(block_hash))) => {
+                    tracing::info!(%block_hash, "observed new bitcoin block from stream");
+
+                    let next_blocks_to_process = match self.next_blocks_to_process(block_hash).await
+                    {
+                        Ok(blocks) => blocks,
+                        Err(error) => {
+                            tracing::warn!(%error, %block_hash, "could not get next blocks to process");
+                            continue;
+                        }
+                    };
+
+                    for block in next_blocks_to_process {
+                        if let Err(error) = self.process_bitcoin_block(block).await {
+                            tracing::warn!(%error, "could not process bitcoin block");
+                        }
+                    }
+
+                    tracing::info!("loading latest deposit requests from Emily");
+                    if let Err(error) = self.load_latest_deposit_requests().await {
+                        tracing::warn!(%error, "could not load latest deposit requests from Emily");
+                    }
+
+                    self.context
+                        .signal(SignerEvent::BitcoinBlockObserved.into())?;
+                }
+                Ok(Some(Err(error))) => {
+                    tracing::warn!(%error, "error decoding new bitcoin block hash from stream");
+                    continue;
+                }
+                _ => continue,
+            };
         }
 
-        tracing::info!("shutting down block observer");
+        tracing::info!("block observer has stopped");
 
         Ok(())
     }
@@ -494,43 +492,52 @@ mod tests {
     use model::BitcoinTxId;
     use model::ScriptPubKey;
     use rand::SeedableRng;
+    use test_log::test;
 
     use crate::bitcoin::rpc::GetTxResponse;
-    use crate::config::Settings;
-    use crate::context::SignerContext;
+    use crate::context::SignerSignal;
     use crate::keys::PublicKey;
     use crate::keys::SignerScriptPubKey as _;
     use crate::storage;
     use crate::testing::block_observer::TestHarness;
+    use crate::testing::context::*;
 
     use super::*;
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn should_be_able_to_extract_bitcoin_blocks_given_a_block_header_stream() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let storage = storage::in_memory::Store::new_shared();
         let test_harness = TestHarness::generate(&mut rng, 20, 0..5);
-        let ctx = SignerContext::new(
-            Settings::new_from_default_config().unwrap(),
-            storage.clone(),
-            test_harness.clone(),
-            test_harness.clone(),
-            test_harness.clone(),
-        );
+        let ctx = TestContext::builder()
+            .with_storage(storage.clone())
+            .with_stacks_client(test_harness.clone())
+            .with_emily_client(test_harness.clone())
+            .with_bitcoin_client(test_harness.clone())
+            .build();
+
         // There must be at least one signal receiver alive when the block observer
         // later tries to send a signal, hence this line.
         let _signal_rx = ctx.get_signal_receiver();
         let block_hash_stream = test_harness.spawn_block_hash_stream();
 
         let block_observer = BlockObserver {
-            context: ctx,
+            context: ctx.clone(),
             stacks_client: test_harness.clone(),
             emily_client: test_harness.clone(),
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
         };
 
-        block_observer.run().await.expect("block observer failed");
+        let handle = tokio::spawn(block_observer.run());
+        ctx.wait_for_signal(Duration::from_secs(3), |signal| {
+            matches!(
+                signal,
+                SignerSignal::Event(SignerEvent::BitcoinBlockObserved)
+            )
+        })
+        .await
+        .expect("block observer failed to complete within timeout");
 
         for block in test_harness.bitcoin_blocks() {
             let persisted = storage
@@ -541,6 +548,8 @@ mod tests {
 
             assert_eq!(persisted.block_hash, block.block_hash().into())
         }
+
+        handle.abort();
     }
 
     /// Test that `BlockObserver::load_latest_deposit_requests` takes
@@ -640,13 +649,12 @@ mod tests {
         // Now we finish setting up the block observer.
         let storage = storage::in_memory::Store::new_shared();
         let block_hash_stream = test_harness.spawn_block_hash_stream();
-        let ctx = SignerContext::new(
-            Settings::new_from_default_config().unwrap(),
-            storage.clone(),
-            test_harness.clone(),
-            test_harness.clone(),
-            test_harness.clone(),
-        );
+        let ctx = TestContext::builder()
+            .with_storage(storage.clone())
+            .with_stacks_client(test_harness.clone())
+            .with_emily_client(test_harness.clone())
+            .with_bitcoin_client(test_harness.clone())
+            .build();
 
         let mut block_observer = BlockObserver {
             context: ctx,
@@ -728,13 +736,12 @@ mod tests {
         // Now we finish setting up the block observer.
         let storage = storage::in_memory::Store::new_shared();
         let block_hash_stream = test_harness.spawn_block_hash_stream();
-        let ctx = SignerContext::new(
-            Settings::new_from_default_config().unwrap(),
-            storage.clone(),
-            test_harness.clone(),
-            test_harness.clone(),
-            test_harness.clone(),
-        );
+        let ctx = TestContext::builder()
+            .with_storage(storage.clone())
+            .with_stacks_client(test_harness.clone())
+            .with_emily_client(test_harness.clone())
+            .with_bitcoin_client(test_harness.clone())
+            .build();
 
         let mut block_observer = BlockObserver {
             context: ctx,
@@ -802,13 +809,12 @@ mod tests {
         };
         storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 
-        let ctx = SignerContext::new(
-            Settings::new_from_default_config().unwrap(),
-            storage.clone(),
-            test_harness.clone(),
-            test_harness.clone(),
-            test_harness.clone(),
-        );
+        let ctx = TestContext::builder()
+            .with_storage(storage.clone())
+            .with_stacks_client(test_harness.clone())
+            .with_emily_client(test_harness.clone())
+            .with_bitcoin_client(test_harness.clone())
+            .build();
 
         // Now let's create two transactions, one spending to the signers
         // and another not spending to the signers. We use
