@@ -751,6 +751,7 @@ export const contracts = {
           { name: "recipient", type: "principal" },
           { name: "burn-hash", type: { buffer: { length: 32 } } },
           { name: "burn-height", type: "uint128" },
+          { name: "sweep-txid", type: { buffer: { length: 32 } } },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
@@ -761,6 +762,7 @@ export const contracts = {
           recipient: TypedAbiArg<string, "recipient">,
           burnHash: TypedAbiArg<Uint8Array, "burnHash">,
           burnHeight: TypedAbiArg<number | bigint, "burnHeight">,
+          sweepTxid: TypedAbiArg<Uint8Array, "sweepTxid">,
         ],
         Response<boolean, bigint>
       >,
@@ -775,6 +777,7 @@ export const contracts = {
           { name: "fee", type: "uint128" },
           { name: "burn-hash", type: { buffer: { length: 32 } } },
           { name: "burn-height", type: "uint128" },
+          { name: "sweep-txid", type: { buffer: { length: 32 } } },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
@@ -786,6 +789,7 @@ export const contracts = {
           fee: TypedAbiArg<number | bigint, "fee">,
           burnHash: TypedAbiArg<Uint8Array, "burnHash">,
           burnHeight: TypedAbiArg<number | bigint, "burnHeight">,
+          sweepTxid: TypedAbiArg<Uint8Array, "sweepTxid">,
         ],
         Response<boolean, bigint>
       >,
