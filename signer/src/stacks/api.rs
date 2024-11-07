@@ -257,7 +257,7 @@ impl TenureBlocks {
     ///
     /// # Note
     ///
-    /// The struct need not contain all the blocks in a tenure.
+    /// The struct doesn't need to contain all the blocks in a tenure.
     pub fn blocks(&self) -> &[NakamotoBlock] {
         &self.blocks
     }
@@ -266,7 +266,7 @@ impl TenureBlocks {
     ///
     /// # Note
     ///
-    /// The struct need not contain all the blocks in a tenure.
+    /// The struct doesn't need to contain all the blocks in a tenure.
     pub fn into_blocks(self) -> Vec<NakamotoBlock> {
         self.blocks
     }

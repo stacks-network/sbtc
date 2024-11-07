@@ -1116,7 +1116,6 @@ async fn sign_bitcoin_transaction() {
     let mut stacks_tx_receiver = broadcast_stacks_tx.subscribe();
     let stacks_tx_receiver_task = tokio::spawn(async move { stacks_tx_receiver.recv().await });
 
-    // 3. Check that there are no DKG shares in the database.
     for (ctx, _, _, _) in signers.iter_mut() {
         let broadcast_stacks_tx = broadcast_stacks_tx.clone();
         ctx.with_stacks_client(|client| {
