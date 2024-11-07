@@ -521,6 +521,7 @@ describe("Accepting a withdrawal request", () => {
       fee: defaultMaxFee + 10n,
       burnHash,
       burnHeight: BigInt(burnHeight),
+      sweepTxid: new Uint8Array(32).fill(1),
     });
   });
   test("accept withdrawal sets withdrawal-status to true", () => {

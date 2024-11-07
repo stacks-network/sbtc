@@ -147,6 +147,7 @@ describe("sBTC deposit contract", () => {
         amount: 1000n,
         burnHash,
         burnHeight: BigInt(burnHeight),
+        sweepTxid: new Uint8Array(32).fill(1),
       });
     });
 
