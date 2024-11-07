@@ -515,6 +515,10 @@ async fn process_complete_deposit() {
                     Ok(SubmitTxResponse::Acceptance(txid))
                 })
             });
+
+            client
+                .expect_get_current_signers_aggregate_key()
+                .returning(move |_| Box::pin(std::future::ready(Ok(Some(aggregate_key)))));
         })
         .await;
 
@@ -916,12 +920,10 @@ async fn run_dkg_from_scratch() {
     };
     let test_data = TestData::generate(&mut rng, &[], &test_params);
 
-    let (broadcasted_transaction_tx, _) = tokio::sync::broadcast::channel(1);
+    let (broadcast_stacks_tx, _rx) = tokio::sync::broadcast::channel(1);
 
-    // This task logs all transactions broadcasted by the coordinator.
-    let mut wait_for_transaction_rx = broadcasted_transaction_tx.subscribe();
-    let wait_for_transaction_task =
-        tokio::spawn(async move { wait_for_transaction_rx.recv().await });
+    let mut stacks_tx_receiver = broadcast_stacks_tx.subscribe();
+    let stacks_tx_receiver_task = tokio::spawn(async move { stacks_tx_receiver.recv().await });
 
     let iter: Vec<(Keypair, TestData)> = signer_key_pairs
         .iter()
@@ -933,7 +935,7 @@ async fn run_dkg_from_scratch() {
     //    the signers in the signing set.
     let signers: Vec<(_, PgStore, Keypair)> = futures::stream::iter(iter)
         .then(|(kp, data)| {
-            let broadcasted_transaction_tx = broadcasted_transaction_tx.clone();
+            let broadcast_stacks_tx = broadcast_stacks_tx.clone();
             async move {
                 let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
                 let db = testing::storage::new_test_database(db_num, true).await;
@@ -957,17 +959,23 @@ async fn run_dkg_from_scratch() {
                             })
                         })
                     });
+
                     client.expect_submit_tx().returning(move |tx| {
                         let tx = tx.clone();
                         let txid = tx.txid();
-                        let broadcasted_transaction_tx = broadcasted_transaction_tx.clone();
+                        let broadcast_stacks_tx = broadcast_stacks_tx.clone();
                         Box::pin(async move {
-                            broadcasted_transaction_tx
-                                .send(tx)
-                                .expect("Failed to send result");
+                            broadcast_stacks_tx.send(tx).expect("Failed to send result");
                             Ok(SubmitTxResponse::Acceptance(txid))
                         })
                     });
+
+                    client
+                        .expect_get_current_signers_aggregate_key()
+                        .returning(move |_| {
+                            // We want to test the tx submission
+                            Box::pin(std::future::ready(Ok(None)))
+                        });
                 })
                 .await;
 
@@ -1048,12 +1056,13 @@ async fn run_dkg_from_scratch() {
             .unwrap();
     });
 
-    // Await the `wait_for_tx_task` to receive the first transaction broadcasted.
-    let broadcasted_tx = tokio::time::timeout(Duration::from_secs(10), wait_for_transaction_task)
-        .await
-        .unwrap()
-        .expect("failed to receive message")
-        .expect("no message received");
+    // Await the `stacks_tx_receiver_task` to receive the first transaction broadcasted.
+    let broadcast_stacks_txs =
+        tokio::time::timeout(Duration::from_secs(10), stacks_tx_receiver_task)
+            .await
+            .unwrap()
+            .expect("failed to receive message")
+            .expect("no message received");
 
     let mut aggregate_keys = BTreeSet::new();
 
@@ -1081,9 +1090,9 @@ async fn run_dkg_from_scratch() {
     assert_eq!(aggregate_keys.len(), 1);
 
     // 8. Check that the coordinator broadcast a rotate key tx
-    broadcasted_tx.verify().unwrap();
+    broadcast_stacks_txs.verify().unwrap();
 
-    let TransactionPayload::ContractCall(contract_call) = broadcasted_tx.payload else {
+    let TransactionPayload::ContractCall(contract_call) = broadcast_stacks_txs.payload else {
         panic!("unexpected tx payload")
     };
     assert_eq!(

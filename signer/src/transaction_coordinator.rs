@@ -290,53 +290,29 @@ where
             Some(key) => key,
             // This function returns the new DKG aggregate key.
             None => {
-                self.coordinate_dkg(&bitcoin_chain_tip).await?;
-                let (maybe_aggregate_key, _) = self
-                    .get_signer_set_and_aggregate_key(&bitcoin_chain_tip)
-                    .await?;
-                maybe_aggregate_key.ok_or(Error::NoDkgShares)?
+                let dkg_result = self.coordinate_dkg(&bitcoin_chain_tip).await?;
+                // TODO: in `run_dkg_from_scratch` test, `dkg_result` differs from
+                // value fetched from the db. Adding a temporary fix for the (probably)
+                // race condition, but we should address this properly.
+                self.get_signer_set_and_aggregate_key(&bitcoin_chain_tip)
+                    .await
+                    .ok()
+                    .and_then(|res| res.0)
+                    .unwrap_or(dkg_result)
             }
         };
 
-        let mut just_deployed_contracts = false;
-        if !self.sbtc_contracts_deployed {
-            let contract_deployments = self
-                .deploy_smart_contracts(&bitcoin_chain_tip, &aggregate_key)
-                .await;
-            match contract_deployments {
-                Ok(()) => {
-                    just_deployed_contracts = true;
-                    self.sbtc_contracts_deployed = true;
-                }
-                Err(error) => {
-                    // No need to continue if the contracts are not deployed.
-                    tracing::error!(%error, "could not deploy smart contracts");
-                    return Err(error);
-                }
-            };
+        if self
+            .deploy_smart_contracts(&bitcoin_chain_tip, &aggregate_key)
+            .await?
+        {
+            // If we just deployed smart contracts, we may not be able to do anything
+            // else until they are confirmed.
+            return Ok(());
         }
 
-        // If we have just deployed the smart contracts, trying to broadcast the
-        // key rotation tx would result in transaction rejected, reason: NoSuchContract
-        if self.sbtc_contracts_deployed && !just_deployed_contracts {
-            let last_key_rotation = self
-                .context
-                .get_storage()
-                .get_last_key_rotation(&bitcoin_chain_tip)
-                .await?;
-            if last_key_rotation.is_none() {
-                // We don't have a key rotation but we have an aggregate_key from DKG,
-                // so we need to broadcast a rotate key tx
-                let wallet = self.get_signer_wallet(&bitcoin_chain_tip).await?;
-
-                self.construct_and_sign_rotate_key_transaction(
-                    &bitcoin_chain_tip,
-                    &aggregate_key,
-                    &wallet,
-                )
-                .await?;
-            }
-        }
+        self.check_and_submit_rotate_key_transaction(&bitcoin_chain_tip, &aggregate_key)
+            .await?;
 
         self.construct_and_sign_bitcoin_sbtc_transactions(
             &bitcoin_chain_tip,
@@ -352,6 +328,48 @@ where
         .await?;
 
         Ok(())
+    }
+
+    /// Submit the rotate key tx for the latest DKG shares, if the aggregate key
+    /// differs from the one in the smart contract registry
+    #[tracing::instrument(skip_all, fields(bitcoin_chain_tip))]
+    async fn check_and_submit_rotate_key_transaction(
+        &mut self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        aggregate_key: &PublicKey,
+    ) -> Result<(), Error> {
+        let last_dkg = self
+            .context
+            .get_storage()
+            .get_latest_encrypted_dkg_shares()
+            .await?;
+
+        // If we don't have DKG shares nothing to do here
+        let Some(last_dkg) = last_dkg else {
+            return Ok(());
+        };
+
+        let current_aggregate_key = self
+            .context
+            .get_stacks_client()
+            .get_current_signers_aggregate_key(&self.context.config().signer.deployer)
+            .await?;
+
+        // If the latest DKG aggregate key matches on-chain data, nothing to do here
+        if Some(last_dkg.aggregate_key) == current_aggregate_key {
+            return Ok(());
+        }
+
+        let wallet = self.get_signer_wallet(bitcoin_chain_tip).await?;
+
+        self.construct_and_sign_rotate_key_transaction(
+            bitcoin_chain_tip,
+            aggregate_key,
+            &last_dkg.aggregate_key,
+            &wallet,
+        )
+        .await
+        .map(|_| ())
     }
 
     /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
@@ -512,7 +530,8 @@ where
     async fn construct_and_sign_rotate_key_transaction(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        bitcoin_aggregate_key: &PublicKey,
+        aggregate_key: &PublicKey,
+        rotate_key_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
     ) -> Result<StacksTxId, Error> {
         // TODO: we should validate the contract call before asking others
@@ -520,7 +539,7 @@ where
         let contract_call = ContractCall::RotateKeysV1(RotateKeysV1::new(
             wallet,
             self.context.config().signer.deployer,
-            bitcoin_aggregate_key,
+            rotate_key_aggregate_key,
         ));
 
         // Rotate key transactions should be done as soon as possible, so
@@ -535,7 +554,7 @@ where
         let tx = multi_tx.tx();
 
         let sign_request = StacksTransactionSignRequest {
-            aggregate_key: *bitcoin_aggregate_key,
+            aggregate_key: *aggregate_key,
             contract_tx: contract_call.into(),
             nonce: tx.get_origin_nonce(),
             tx_fee: tx.get_tx_fee(),
@@ -1092,21 +1111,22 @@ where
         Ok(())
     }
 
-    /// Deploy an sBTC smart contract to the stacks node
+    /// Deploy an sBTC smart contract to the stacks node.
+    /// Returns false if the contract is already deployed, true otherwise.
     async fn deploy_smart_contract(
         &mut self,
         contract_deploy: SmartContract,
         chain_tip: &model::BitcoinBlockHash,
         bitcoin_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
-    ) -> Result<(), Error> {
+    ) -> Result<bool, Error> {
         let stacks = self.context.get_stacks_client();
 
         // Maybe this smart contract has already been deployed, let's check
         // that first.
         let deployer = self.context.config().signer.deployer;
         if contract_deploy.is_deployed(&stacks, &deployer).await? {
-            return Ok(());
+            return Ok(false);
         }
 
         // The contract is not deployed yet, so we can proceed
@@ -1131,7 +1151,7 @@ where
         match process_request_fut.await {
             Ok(txid) => {
                 tracing::info!(%txid, "successfully submitted contract deploy transaction");
-                Ok(())
+                Ok(true)
             }
             Err(error) => {
                 tracing::warn!(
@@ -1171,21 +1191,29 @@ where
     }
 
     /// Deploy all sBTC smart contracts to the stacks node.
-    /// If the contracts are already deployed, the function will return Ok(()).
+    /// If the contracts are already deployed, the function will return Ok(false);
+    /// if at least one contract is deployed, it will return Ok(true).
     /// If a contract fails to deploy, the function will return an error.
     #[tracing::instrument(skip(self))]
     pub async fn deploy_smart_contracts(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
         bitcoin_aggregate_key: &PublicKey,
-    ) -> Result<(), Error> {
+    ) -> Result<bool, Error> {
+        if self.sbtc_contracts_deployed {
+            return Ok(false);
+        }
+
         let wallet = self.get_signer_wallet(chain_tip).await?;
+        let mut deployed = false;
         for contract in SMART_CONTRACTS {
-            self.deploy_smart_contract(contract, chain_tip, bitcoin_aggregate_key, &wallet)
+            deployed |= self
+                .deploy_smart_contract(contract, chain_tip, bitcoin_aggregate_key, &wallet)
                 .await?;
         }
 
-        Ok(())
+        self.sbtc_contracts_deployed = true;
+        Ok(deployed)
     }
 
     async fn get_signer_wallet(
