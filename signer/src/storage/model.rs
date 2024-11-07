@@ -11,12 +11,10 @@ use serde::Deserialize;
 use serde::Serialize;
 use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
 
-use crate::bitcoin::utxo::UnsignedTransaction;
 use crate::block_observer::Deposit;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
-use crate::keys::SignerScriptPubKey as _;
 
 /// Represents a single transaction which is part of a sweep transaction package
 /// which has been broadcast to the Bitcoin network.
@@ -66,58 +64,22 @@ impl SweepTransaction {
             vout: self.signer_prevout_output_index,
         }
     }
+}
 
-    /// Creates a [`SweepTransaction`] from an [`UnsignedTransaction`] and a
-    /// Bitcoin block hash.
-    pub fn from_unsigned_at_block(
-        block_hash: &bitcoin::BlockHash,
-        unsigned: &UnsignedTransaction,
-    ) -> SweepTransaction {
-        let swept_deposits = unsigned
-            .requests
-            .iter()
-            .filter_map(|request| request.as_deposit())
-            .enumerate()
-            .map(|(index, request)| {
-                SweptDeposit {
-                    input_index: index as u32 + 1, // Account for the signer's UTXO
-                    deposit_request_txid: request.outpoint.txid.into(),
-                    deposit_request_output_index: request.outpoint.vout,
-                }
-            })
-            .collect();
-
-        let swept_withdrawals = unsigned
-            .requests
-            .iter()
-            .filter_map(|request| request.as_withdrawal())
-            .enumerate()
-            .map(|(index, withdrawal)| {
-                SweptWithdrawal {
-                    output_index: index as u32 + 2, // Account for the signer's UTXO and OP_RETURN
-                    withdrawal_request_id: withdrawal.request_id,
-                    withdrawal_request_block_hash: withdrawal.block_hash,
-                }
-            })
-            .collect();
-
-        SweepTransaction {
-            txid: unsigned.tx.compute_txid().into(),
-            signer_prevout_txid: unsigned.signer_utxo.utxo.outpoint.txid.into(),
-            signer_prevout_output_index: unsigned.signer_utxo.utxo.outpoint.vout,
-            signer_prevout_amount: unsigned.signer_utxo.utxo.amount,
-            signer_prevout_script_pubkey: unsigned
-                .signer_utxo
-                .utxo
-                .public_key
-                .signers_script_pubkey()
-                .into(),
-            amount: unsigned.output_amounts(),
-            fee: unsigned.tx_fee,
-            market_fee_rate: unsigned.signer_utxo.fee_rate,
-            created_at_block_hash: BitcoinBlockHash::from(*block_hash),
-            swept_deposits,
-            swept_withdrawals,
+impl From<&crate::message::SweepTransactionInfo> for SweepTransaction {
+    fn from(info: &crate::message::SweepTransactionInfo) -> Self {
+        Self {
+            txid: info.txid.into(),
+            signer_prevout_txid: info.signer_prevout_txid.into(),
+            signer_prevout_output_index: info.signer_prevout_output_index,
+            signer_prevout_amount: info.signer_prevout_amount,
+            signer_prevout_script_pubkey: info.signer_prevout_script_pubkey.clone().into(),
+            amount: info.amount,
+            fee: info.fee,
+            market_fee_rate: info.market_fee_rate,
+            created_at_block_hash: info.created_at_block_hash.into(),
+            swept_deposits: info.swept_deposits.iter().map(Into::into).collect(),
+            swept_withdrawals: info.swept_withdrawals.iter().map(Into::into).collect(),
         }
     }
 }
@@ -149,6 +111,16 @@ impl From<SweptDeposit> for bitcoin::OutPoint {
     }
 }
 
+impl From<&crate::message::SweptDeposit> for SweptDeposit {
+    fn from(deposit: &crate::message::SweptDeposit) -> Self {
+        Self {
+            input_index: deposit.input_index,
+            deposit_request_txid: deposit.deposit_request_txid.into(),
+            deposit_request_output_index: deposit.deposit_request_output_index,
+        }
+    }
+}
+
 /// Represents a single withdrawal which has been swept-out by a sweep
 /// transaction.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
@@ -168,6 +140,16 @@ pub struct SweptWithdrawal {
     pub withdrawal_request_block_hash: StacksBlockHash,
 }
 
+impl From<&crate::message::SweptWithdrawal> for SweptWithdrawal {
+    fn from(withdrawal: &crate::message::SweptWithdrawal) -> Self {
+        Self {
+            output_index: withdrawal.output_index,
+            withdrawal_request_id: withdrawal.withdrawal_request_id,
+            withdrawal_request_block_hash: withdrawal.withdrawal_request_block_hash.into(),
+        }
+    }
+}
+
 /// Bitcoin block.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
@@ -180,6 +162,24 @@ pub struct BitcoinBlock {
     pub block_height: u64,
     /// Hash of the parent block.
     pub parent_hash: BitcoinBlockHash,
+}
+
+impl From<&bitcoin::Block> for BitcoinBlock {
+    fn from(block: &bitcoin::Block) -> Self {
+        BitcoinBlock {
+            block_hash: block.block_hash().into(),
+            block_height: block
+                .bip34_block_height()
+                .expect("Failed to get block height"),
+            parent_hash: block.header.prev_blockhash.into(),
+        }
+    }
+}
+
+impl From<bitcoin::Block> for BitcoinBlock {
+    fn from(block: bitcoin::Block) -> Self {
+        BitcoinBlock::from(&block)
+    }
 }
 
 /// Stacks block.
@@ -443,6 +443,11 @@ pub struct SweptDepositRequest {
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
     pub amount: u64,
+    /// The maximum portion of the deposited amount that may
+    /// be used to pay for transaction fees.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..100_000"))]
+    pub max_fee: u64,
 }
 
 impl SweptDepositRequest {
@@ -756,7 +761,17 @@ impl From<[u8; 32]> for BitcoinBlockHash {
 
 impl From<BurnchainHeaderHash> for BitcoinBlockHash {
     fn from(value: BurnchainHeaderHash) -> Self {
-        value.to_bitcoin_hash().to_bytes().into()
+        let mut bytes = value.into_bytes();
+        bytes.reverse();
+        bytes.into()
+    }
+}
+
+impl From<BitcoinBlockHash> for BurnchainHeaderHash {
+    fn from(value: BitcoinBlockHash) -> Self {
+        let mut bytes = value.to_byte_array();
+        bytes.reverse();
+        BurnchainHeaderHash(bytes)
     }
 }
 
@@ -942,3 +957,26 @@ impl ScriptPubKey {
 
 /// Arbitrary bytes
 pub type Bytes = Vec<u8>;
+
+#[cfg(test)]
+mod tests {
+    use fake::Fake;
+    use rand::SeedableRng;
+
+    use super::*;
+
+    #[test]
+    fn conversion_bitcoin_header_hashes() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
+
+        let block_hash: BitcoinBlockHash = fake::Faker.fake_with_rng(&mut rng);
+        let stacks_hash = BurnchainHeaderHash::from(block_hash);
+        let round_trip = BitcoinBlockHash::from(stacks_hash);
+        assert_eq!(block_hash, round_trip);
+
+        let stacks_hash = BurnchainHeaderHash(fake::Faker.fake_with_rng(&mut rng));
+        let block_hash = BitcoinBlockHash::from(stacks_hash);
+        let round_trip = BurnchainHeaderHash::from(block_hash);
+        assert_eq!(stacks_hash, round_trip);
+    }
+}

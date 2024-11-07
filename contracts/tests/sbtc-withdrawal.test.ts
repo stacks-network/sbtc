@@ -76,14 +76,16 @@ describe("Validating recipient address", () => {
 
 describe("initiating a withdrawal request", () => {
   test("alice can initiate a request", () => {
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     txOk(
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
         amount: defaultAmount + (defaultMaxFee + 1n),
         recipient: alice,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -141,14 +143,16 @@ describe("initiating a withdrawal request", () => {
   });
 
   test("Tokens are converted to locked sBTC", () => {
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     txOk(
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -179,14 +183,16 @@ describe("initiating a withdrawal request", () => {
   });
 
   test("Recipient is validated when initiating an address", () => {
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     txOk(
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
         amount: 4000n,
         recipient: alice,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -225,14 +231,16 @@ describe("initiating a withdrawal request", () => {
   });
 
   test("withdrawal amount of less than or equal to dust limit is rejected", () => {
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     txOk(
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
         amount: 4000n,
         recipient: alice,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -249,14 +257,16 @@ describe("initiating a withdrawal request", () => {
 });
 
 test("max-fee must be accounted for", () => {
+  const { burnHeight, burnHash } = getCurrentBurnInfo();
   txOk(
     deposit.completeDepositWrapper({
       txid: new Uint8Array(32).fill(0),
       voutIndex: 0,
       amount: 4000n,
       recipient: alice,
-      burnHash: new Uint8Array(32).fill(0),
-      burnHeight: 0n,
+      burnHash,
+      burnHeight,
+      sweepTxid: new Uint8Array(32).fill(1),
     }),
     deployer
   );
@@ -282,14 +292,16 @@ test("max-fee must be accounted for", () => {
 describe("Accepting a withdrawal request", () => {
   test("Fails with non-existant request-id", () => {
     // Alice initiates withdrawalrequest
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     txOk(
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -308,8 +320,9 @@ describe("Accepting a withdrawal request", () => {
         signerBitmap: 0n,
         outputIndex: 10n,
         fee: 1n,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -317,14 +330,16 @@ describe("Accepting a withdrawal request", () => {
   });
   test("Fails when called by non-signer", () => {
     // Alice initiates withdrawalrequest
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     txOk(
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -343,8 +358,9 @@ describe("Accepting a withdrawal request", () => {
         signerBitmap: 0n,
         outputIndex: 10n,
         fee: 1n,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       alice
     );
@@ -352,14 +368,16 @@ describe("Accepting a withdrawal request", () => {
   });
   test("Fails when replay is attempted", () => {
     // Alice initiates withdrawalrequest
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     txOk(
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -378,8 +396,9 @@ describe("Accepting a withdrawal request", () => {
         signerBitmap: 0n,
         outputIndex: 10n,
         fee: 1n,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -390,8 +409,9 @@ describe("Accepting a withdrawal request", () => {
         signerBitmap: 0n,
         outputIndex: 10n,
         fee: 1n,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -399,14 +419,16 @@ describe("Accepting a withdrawal request", () => {
   });
   test("Fails when fee is too high", () => {
     // Alice initiates withdrawalrequest
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     txOk(
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -425,8 +447,9 @@ describe("Accepting a withdrawal request", () => {
         signerBitmap: 0n,
         outputIndex: 10n,
         fee: 11n,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -434,14 +457,16 @@ describe("Accepting a withdrawal request", () => {
   });
   test("Request is successfully accepted with max fee", () => {
     // Alice initiates withdrawalrequest
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     txOk(
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
         amount: defaultAmount + (defaultMaxFee + 10n),
         recipient: alice,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -460,8 +485,9 @@ describe("Accepting a withdrawal request", () => {
         signerBitmap: 2n,
         outputIndex: 10n,
         fee: defaultMaxFee + 10n,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -493,20 +519,23 @@ describe("Accepting a withdrawal request", () => {
       outputIndex: 10n,
       topic: "withdrawal-accept",
       fee: defaultMaxFee + 10n,
-      burnHash: new Uint8Array(32).fill(0),
-      burnHeight: 0n,
+      burnHash,
+      burnHeight: BigInt(burnHeight),
+      sweepTxid: new Uint8Array(32).fill(1),
     });
   });
   test("accept withdrawal sets withdrawal-status to true", () => {
     // Alice initiates withdrawalrequest
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     txOk(
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight: BigInt(burnHeight),
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -525,8 +554,9 @@ describe("Accepting a withdrawal request", () => {
         signerBitmap: 0n,
         outputIndex: 10n,
         fee: defaultMaxFee,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -553,14 +583,16 @@ describe("Accepting a withdrawal request", () => {
     expect(rovOk(token.getBalanceAvailable(alice))).toEqual(0n);
     expect(rovOk(token.getBalanceLocked(alice))).toEqual(0n);
     // Alice initiates withdrawalrequest
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     txOk(
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -641,6 +673,7 @@ describe("Accepting a withdrawal request", () => {
     });
   });
   test("Request is successfully accepted with fee less than max", () => {
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     // Alice initiates withdrawalrequest
     txOk(
       deposit.completeDepositWrapper({
@@ -648,8 +681,9 @@ describe("Accepting a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -668,8 +702,9 @@ describe("Accepting a withdrawal request", () => {
         signerBitmap: 0n,
         outputIndex: 10n,
         fee: 9n,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -679,6 +714,7 @@ describe("Accepting a withdrawal request", () => {
 
 describe("Reject a withdrawal request", () => {
   test("Fails with non-existant request-id", () => {
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     // Alice initiates withdrawalrequest
     txOk(
       deposit.completeDepositWrapper({
@@ -686,8 +722,9 @@ describe("Reject a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -709,6 +746,7 @@ describe("Reject a withdrawal request", () => {
     expect(receipt.value).toEqual(errors.withdrawal.ERR_INVALID_REQUEST);
   });
   test("Fails when called by a non-signer", () => {
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     // Alice initiates withdrawalrequest
     txOk(
       deposit.completeDepositWrapper({
@@ -716,8 +754,9 @@ describe("Reject a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -739,6 +778,7 @@ describe("Reject a withdrawal request", () => {
     expect(receipt.value).toEqual(errors.withdrawal.ERR_INVALID_CALLER);
   });
   test("Fails when request id is replayed", () => {
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     // Alice initiates withdrawalrequest
     txOk(
       deposit.completeDepositWrapper({
@@ -746,8 +786,9 @@ describe("Reject a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -766,8 +807,9 @@ describe("Reject a withdrawal request", () => {
         signerBitmap: 0n,
         outputIndex: 10n,
         fee: 10n,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -781,6 +823,7 @@ describe("Reject a withdrawal request", () => {
     expect(receipt.value).toEqual(errors.withdrawal.ERR_ALREADY_PROCESSED);
   });
   test("Fails when Bitcoin forks", () => {
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     // Alice initiates withdrawalrequest
     txOk(
       deposit.completeDepositWrapper({
@@ -788,8 +831,9 @@ describe("Reject a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -813,6 +857,7 @@ describe("Reject a withdrawal request", () => {
             fee: 10n,
             burnHeight: 10n,
             burnHash: new Uint8Array(32).fill(0),
+            sweepTxid: new Uint8Array(32).fill(1),
           },
         ],
       }),
@@ -822,7 +867,8 @@ describe("Reject a withdrawal request", () => {
     // Where index is 1 in this case & ERR_WITHDRAWAL_INDEX_PREFIX is 507
     expect(receipt.value).toEqual(517n);
   });
-  test("Successfully reject a requested withdrawal", () => {
+  test("accept-withdrawal fails when Bitcoin forks", () => {
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     // Alice initiates withdrawalrequest
     txOk(
       deposit.completeDepositWrapper({
@@ -830,8 +876,48 @@ describe("Reject a withdrawal request", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
+      }),
+      deployer
+    );
+    txOk(
+      withdrawal.initiateWithdrawalRequest({
+        amount: 1000n,
+        recipient: alicePoxAddr,
+        maxFee: defaultMaxFee,
+      }),
+      alice
+    );
+    const receipt = txErr(
+      withdrawal.acceptWithdrawalRequest({
+          requestId: 1n,
+          signerBitmap: 1n,
+          bitcoinTxid: new Uint8Array(32).fill(1),
+          outputIndex: 10n,
+          fee: 10n,
+          burnHash: new Uint8Array(32).fill(2),
+          burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
+      }),
+      deployer
+    );
+
+    expect(receipt.value).toEqual(errors.withdrawal.ERR_INVALID_BURN_HASH);
+  });
+  test("Successfully reject a requested withdrawal", () => {
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
+    // Alice initiates withdrawalrequest
+    txOk(
+      deposit.completeDepositWrapper({
+        txid: new Uint8Array(32).fill(0),
+        voutIndex: 0,
+        amount: defaultAmount + defaultMaxFee,
+        recipient: alice,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -850,8 +936,9 @@ describe("Reject a withdrawal request", () => {
         signerBitmap: 0n,
         outputIndex: 10n,
         fee: defaultMaxFee,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -861,6 +948,7 @@ describe("Reject a withdrawal request", () => {
 
 describe("Complete multiple withdrawals", () => {
   test("Successfully pass in two withdrawals, one accept, one reject", () => {
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     // Alice setup
     txOk(
       deposit.completeDepositWrapper({
@@ -868,8 +956,9 @@ describe("Complete multiple withdrawals", () => {
         voutIndex: 0,
         amount: defaultAmount + defaultMaxFee,
         recipient: alice,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -888,8 +977,9 @@ describe("Complete multiple withdrawals", () => {
         voutIndex: 1,
         amount: defaultAmount + defaultMaxFee,
         recipient: bob,
-        burnHash: new Uint8Array(32).fill(0),
-        burnHeight: 0n,
+        burnHash,
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -914,6 +1004,7 @@ describe("Complete multiple withdrawals", () => {
             fee: defaultMaxFee,
             burnHeight: 10n,
             burnHash: new Uint8Array(32).fill(0),
+            sweepTxid: new Uint8Array(32).fill(1),
           },
           {
             requestId: 2n,
@@ -924,6 +1015,7 @@ describe("Complete multiple withdrawals", () => {
             fee: null,
             burnHeight: 10n,
             burnHash: new Uint8Array(32).fill(0),
+            sweepTxid: null,
           },
         ],
       }),
@@ -937,6 +1029,7 @@ describe("Complete multiple withdrawals", () => {
 
 describe("optimization tests for completing withdrawals", () => {
   test("maximizing the number of withdrawal completions in one tx", () => {
+    const { burnHeight, burnHash } = getCurrentBurnInfo();
     const totalAmount = 1000000n;
     const runs = 300;
     const perAmount = totalAmount / BigInt(runs);
@@ -950,8 +1043,9 @@ describe("optimization tests for completing withdrawals", () => {
           voutIndex: 0,
           amount: perAmount + maxFee,
           recipient: alice,
-          burnHash: new Uint8Array(32).fill(0),
-          burnHeight: 0n,
+          burnHash,
+          burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
         }),
         deployer
       );
@@ -964,7 +1058,7 @@ describe("optimization tests for completing withdrawals", () => {
         alice
       );
     }
-    const { burnHeight, burnHash } = getCurrentBurnInfo();
+
     txOk(
       withdrawal.completeWithdrawals({
         withdrawals: txids.map((txid, index) => {
@@ -977,6 +1071,7 @@ describe("optimization tests for completing withdrawals", () => {
             fee: 10n,
             burnHeight,
             burnHash: burnHash!,
+            sweepTxid: new Uint8Array(32).fill(1),
           };
         }),
       }),

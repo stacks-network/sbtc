@@ -7,6 +7,7 @@ use std::time::Duration;
 use blockstack_lib::burnchains::Txid;
 use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
+use blockstack_lib::chainstate::stacks::db::blocks::MINIMUM_TX_FEE_RATE_PER_BYTE;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::chainstate::stacks::TokenTransferMemo;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
@@ -14,18 +15,19 @@ use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::types::StandardPrincipalData;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::net::api::getaccount::AccountEntryResponse;
+use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
 use blockstack_lib::net::api::getinfo::RPCPeerInfoData;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::getsortition::SortitionInfo;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use blockstack_lib::net::api::postfeerate::FeeRateEstimateRequestBody;
+use blockstack_lib::net::api::postfeerate::RPCFeeEstimate;
 use blockstack_lib::net::api::postfeerate::RPCFeeEstimateResponse;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use clarity::types::StacksEpochId;
 use clarity::vm::types::{BuffData, ListData, SequenceData};
 use clarity::vm::{ClarityName, ContractName, Value};
-use futures::TryFutureExt;
 use reqwest::header::CONTENT_LENGTH;
 use reqwest::header::CONTENT_TYPE;
 use serde::{Deserialize, Deserializer};
@@ -34,22 +36,22 @@ use url::Url;
 use crate::config::Settings;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::StacksBlock;
 use crate::storage::DbRead;
 use crate::util::ApiFallbackClient;
 
 use super::contracts::AsTxPayload;
+use super::wallet::SignerWallet;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// The default fee in microSTX for a stacks transaction if the stacks node
-/// does not return any fee estimations for the transaction. This should
-/// never happen, since it's hard coded to return three estimates in
-/// stacks-core.
-const DEFAULT_TX_FEE: u64 = 1_000_000;
+/// The multiplier to use when estimating the fee based on payload-size.
+const TX_FEE_TX_SIZE_MULTIPLIER: u64 = 2 * MINIMUM_TX_FEE_RATE_PER_BYTE;
 
 /// The max fee in microSTX for a stacks transaction. Used as a backstop in
 /// case the stacks node returns wonky values. This is 10 STX.
-const MAX_TX_FEE: u64 = DEFAULT_TX_FEE * 10;
+const MAX_TX_FEE: u64 = 10_000_000;
 
 /// This is a dummy STX transfer payload used only for estimating STX
 /// transfer costs.
@@ -58,6 +60,42 @@ const DUMMY_STX_TRANSFER_PAYLOAD: TransactionPayload = TransactionPayload::Token
     0,
     TokenTransferMemo([0; 34]),
 );
+
+trait ExtractFee {
+    fn extract_fee(&self, priority: FeePriority) -> Option<RPCFeeEstimate>;
+}
+
+impl ExtractFee for RPCFeeEstimateResponse {
+    fn extract_fee(&self, priority: FeePriority) -> Option<RPCFeeEstimate> {
+        // As of this writing the RPC response includes exactly 3 estimates
+        // (the low, medium, and high priority estimates). It's noteworthy
+        // if this changes so we log it but the code here is robust to such
+        // a change.
+        let num_estimates = self.estimations.len();
+        if num_estimates != 3 {
+            tracing::info!("Unexpected number of fee estimates: {num_estimates}");
+        }
+
+        // Use pattern matching to directly access the low, medium, and high estimates
+        match priority {
+            FeePriority::Low => self
+                .estimations
+                .iter()
+                .min_by_key(|estimate| estimate.fee)
+                .cloned(),
+            FeePriority::Medium => {
+                let mut sorted_estimations = self.estimations.clone();
+                sorted_estimations.sort_by_key(|estimate| estimate.fee);
+                sorted_estimations.get(num_estimates / 2).cloned()
+            }
+            FeePriority::High => self
+                .estimations
+                .iter()
+                .max_by_key(|estimate| estimate.fee)
+                .cloned(),
+        }
+    }
+}
 
 /// An enum representing the types of estimates returns by the stacks node.
 ///
@@ -121,7 +159,7 @@ pub trait StacksInteract: Send + Sync {
     fn get_tenure(
         &self,
         block_id: StacksBlockId,
-    ) -> impl Future<Output = Result<Vec<NakamotoBlock>, Error>> + Send;
+    ) -> impl Future<Output = Result<TenureBlocks, Error>> + Send;
     /// Get information about the current tenure.
     ///
     /// This function is analogous to the GET /v3/tenures/info stacks node
@@ -141,6 +179,7 @@ pub trait StacksInteract: Send + Sync {
     #[cfg_attr(any(test, feature = "testing"), mockall::concretize)]
     fn estimate_fees<T>(
         &self,
+        wallet: &SignerWallet,
         payload: &T,
         priority: FeePriority,
     ) -> impl Future<Output = Result<u64, Error>> + Send
@@ -152,6 +191,19 @@ pub trait StacksInteract: Send + Sync {
 
     /// Get information about the current node.
     fn get_node_info(&self) -> impl Future<Output = Result<RPCPeerInfoData, Error>> + Send;
+
+    /// Get the source of a deployed smart contract.
+    ///
+    /// # Notes
+    ///
+    /// This is useful just to know whether a contract has been deployed
+    /// already or not. If the smart contract has not been deployed yet,
+    /// the stacks node returns a 404 Not Found.
+    fn get_contract_source(
+        &self,
+        address: &StacksAddress,
+        contract_name: &str,
+    ) -> impl Future<Output = Result<ContractSrcResponse, Error>> + Send;
 }
 
 /// A trait for getting the start height of the first EPOCH 3.0 block on the
@@ -171,6 +223,60 @@ impl GetNakamotoStartHeight for RPCPoxInfoData {
                 None
             }
         })
+    }
+}
+
+/// This struct represents a non-empty subset of the Stacks blocks that
+/// were created during a tenure.
+#[derive(Debug)]
+pub struct TenureBlocks {
+    /// The subset of Stacks blocks that were created during a tenure. This
+    /// is always non-empty.
+    blocks: Vec<NakamotoBlock>,
+    /// The bitcoin block that this tenure builds off of.
+    pub anchor_block_hash: BitcoinBlockHash,
+    /// The height of the bitcoin block associated with the above block
+    /// hash.
+    pub anchor_block_height: u64,
+}
+
+impl TenureBlocks {
+    /// Create a new one
+    pub fn try_new(blocks: Vec<NakamotoBlock>, info: SortitionInfo) -> Result<Self, Error> {
+        if blocks.is_empty() {
+            return Err(Error::EmptyStacksTenure);
+        }
+        Ok(Self {
+            blocks,
+            anchor_block_hash: info.burn_block_hash.into(),
+            anchor_block_height: info.burn_block_height,
+        })
+    }
+
+    /// Get all the blocks contained in this object.
+    ///
+    /// # Note
+    ///
+    /// The struct doesn't need to contain all the blocks in a tenure.
+    pub fn blocks(&self) -> &[NakamotoBlock] {
+        &self.blocks
+    }
+
+    /// Return all the blocks contained in this object.
+    ///
+    /// # Note
+    ///
+    /// The struct doesn't need to contain all the blocks in a tenure.
+    pub fn into_blocks(self) -> Vec<NakamotoBlock> {
+        self.blocks
+    }
+
+    /// Return an iterator of Stacks blocks included in this object.
+    pub fn as_stacks_blocks(&self) -> impl Iterator<Item = StacksBlock> + '_ {
+        let bitcoin_anchor = &self.anchor_block_hash;
+        self.blocks
+            .iter()
+            .map(|block| StacksBlock::from_nakamoto_block(block, bitcoin_anchor))
     }
 }
 
@@ -426,6 +532,43 @@ impl StacksClient {
             .and_then(AccountInfo::try_from)
     }
 
+    /// Get the source of a deployed smart contract.
+    ///
+    /// # Notes
+    ///
+    /// This is done by makes a `GET
+    /// /v2/contracts/source/<deployer-address>/<contract-name>?proof=0`
+    /// request to the stacks node. This is useful just to know whether a
+    /// contract has been deployed already or not. If the smart contract
+    /// has not been deployed yet, the stacks node returns a 404 Not Found.
+    #[tracing::instrument(skip_all)]
+    pub async fn get_contract_source(
+        &self,
+        address: &StacksAddress,
+        contract_name: &str,
+    ) -> Result<ContractSrcResponse, Error> {
+        let path = format!("/v2/contracts/source/{}/{}?proof=0", address, contract_name);
+        let url = self
+            .endpoint
+            .join(&path)
+            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
+
+        let response = self
+            .client
+            .get(url)
+            .timeout(REQUEST_TIMEOUT)
+            .send()
+            .await
+            .map_err(Error::StacksNodeRequest)?;
+
+        response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
+            .json()
+            .await
+            .map_err(Error::UnexpectedStacksResponse)
+    }
+
     /// Submit a transaction to a Stacks node.
     ///
     /// This is done by making a POST /v2/transactions request to a Stacks
@@ -472,7 +615,11 @@ impl StacksClient {
     /// The docs for this RPC can be found here:
     /// https://docs.stacks.co/stacks-101/api#v2-fees-transaction
     #[tracing::instrument(skip_all)]
-    pub async fn get_fee_estimate<T>(&self, payload: &T) -> Result<RPCFeeEstimateResponse, Error>
+    pub async fn get_fee_estimate<T>(
+        &self,
+        payload: &T,
+        tx_size: Option<u64>,
+    ) -> Result<RPCFeeEstimateResponse, Error>
     where
         T: AsTxPayload + Send,
     {
@@ -484,7 +631,7 @@ impl StacksClient {
 
         let tx_payload = payload.tx_payload().serialize_to_vec();
         let request_body = FeeRateEstimateRequestBody {
-            estimated_len: None,
+            estimated_len: tx_size,
             transaction_payload: blockstack_lib::util::hash::to_hex(&tx_payload),
         };
         let body = serde_json::to_string(&request_body).map_err(Error::JsonSerialize)?;
@@ -557,7 +704,7 @@ impl StacksClient {
     /// If the given block ID does not exist or is an ID for a non-Nakamoto
     /// block then a Result::Err is returned.
     #[tracing::instrument(skip(self))]
-    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<TenureBlocks, Error> {
         tracing::debug!("Making initial request for Nakamoto blocks within the tenure");
         let mut tenure_blocks = self.get_tenure_raw(block_id).await?;
         let mut prev_last_block_id = block_id;
@@ -585,7 +732,18 @@ impl StacksClient {
             tenure_blocks.extend(blocks.into_iter().skip(1))
         }
 
-        Ok(tenure_blocks)
+        // If Self::get_tenure_raw returns with Ok(_) then the Vec will
+        // include at least 1 Nakamoto block. Since we bail if there is an
+        // error, this vector has at least one element.
+        let Some(block) = tenure_blocks.last() else {
+            return Err(Error::EmptyStacksTenure);
+        };
+
+        let info = self
+            .get_sortition_info(&block.header.consensus_hash)
+            .await?;
+
+        TenureBlocks::try_new(tenure_blocks, info)
     }
 
     /// Make a GET /v3/tenures/<block-id> request for Nakamoto ancestor
@@ -769,41 +927,41 @@ pub async fn fetch_unknown_ancestors<S, D>(
     stacks: &S,
     db: &D,
     block_id: StacksBlockId,
-) -> Result<Vec<NakamotoBlock>, Error>
+) -> Result<Vec<TenureBlocks>, Error>
 where
     S: StacksInteract,
     D: DbRead + Send + Sync,
 {
-    let mut blocks = vec![stacks.get_block(block_id).await?];
+    let mut blocks = vec![stacks.get_tenure(block_id).await?];
     let pox_info = stacks.get_pox_info().await?;
     let nakamoto_start_height = pox_info
         .nakamoto_start_height()
         .ok_or(Error::MissingNakamotoStartHeight)?;
 
-    while let Some(block) = blocks.last() {
+    while let Some(tenure) = blocks.last() {
         // We won't get anymore Nakamoto blocks before this point, so
         // time to stop.
-        //
-        // TODO: This check is technically incorrect. The nakamoto start height
-        // is the _bitcoin block height_ at which Stacks epoch 3.0 activates.
-        // stacks.get_block() will fail if it's requested a pre-nakamoto block,
-        // but I'm not sure about the stacks.get_tenure() down below.
-        if block.header.chain_length <= nakamoto_start_height {
+        if tenure.anchor_block_height <= nakamoto_start_height {
             tracing::info!(
                 %nakamoto_start_height,
-                last_chain_length = %block.header.chain_length,
+                last_chain_length = %tenure.anchor_block_height,
                 "Stopping, since we have fetched all Nakamoto blocks"
             );
             break;
         }
+        // Tenure blocks are always non-empty, and this invariant is upheld
+        // by the type. So no need to worry about the early break.
+        let Some(block) = tenure.blocks().last() else {
+            break;
+        };
         // We've seen this parent already, so time to stop.
         if db.stacks_block_exists(block.header.parent_block_id).await? {
             tracing::info!("Parent block known in the database");
             break;
         }
         // There are more blocks to fetch, so let's get them.
-        let mut tenure_blocks = stacks.get_tenure(block.header.parent_block_id).await?;
-        blocks.append(&mut tenure_blocks);
+        let tenure_blocks = stacks.get_tenure(block.header.parent_block_id).await?;
+        blocks.push(tenure_blocks);
     }
 
     Ok(blocks)
@@ -874,7 +1032,7 @@ impl StacksInteract for StacksClient {
         self.get_block(block_id).await
     }
 
-    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<TenureBlocks, Error> {
         self.get_tenure(block_id).await
     }
 
@@ -898,42 +1056,86 @@ impl StacksInteract for StacksClient {
     /// have enough information to provide an estimate, we then get the
     /// current high priority fee for an STX transfer and use that as an
     /// estimate for the transaction fee.
-    async fn estimate_fees<T>(&self, payload: &T, priority: FeePriority) -> Result<u64, Error>
+    async fn estimate_fees<T>(
+        &self,
+        wallet: &SignerWallet,
+        payload: &T,
+        priority: FeePriority,
+    ) -> Result<u64, Error>
     where
         T: AsTxPayload + Send + Sync,
     {
-        // If we cannot get an estimate for the transaction, try the
-        // generic STX transfer since we should always be able to get the
-        // STX transfer fee estimate. If that fails then we bail, maybe we
-        // should try another node.
-        let mut resp = self
-            .get_fee_estimate(payload)
-            .or_else(|err| async move {
-                tracing::warn!("could not estimate contract call fees: {err}");
-                // Estimating STX transfers is simple since the estimate
-                // doesn't depend on the recipient, amount, or memo. So a
-                // dummy transfer payload will do.
-                self.get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD).await
-            })
-            .await?;
+        let transaction_size = super::wallet::get_full_tx_size(payload, wallet)?;
 
-        // As of this writing the RPC response includes exactly 3 estimates
-        // (the low, medium, and high priority estimates). It's note worthy
-        // if this changes so we log it but the code here is robust to such
-        // a change.
-        let num_estimates = resp.estimations.len();
-        if num_estimates != 3 {
-            tracing::info!("Unexpected number of fee estimates: {num_estimates}");
+        // In Stacks core, the minimum fee is 1 mSTX per byte, so take the
+        // transaction size and multiply it by the TX_FEE_TX_SIZE_MULTIPLIER
+        // here to ensure that 1) we'll be accepted in the mempool, 2) that we
+        // have a decent margin above the absolute minimum fee.
+        let default_min_fee = (transaction_size * TX_FEE_TX_SIZE_MULTIPLIER).min(MAX_TX_FEE);
+
+        // Estimate attempt #1 - actual payload
+        //
+        // First we attempt to estimate the fee using the actual transaction
+        // payload.
+        let tx_size = Some(transaction_size);
+        let tx_fee_estimate_response = self.get_fee_estimate(payload, tx_size).await;
+
+        // If we get a valid response, then we use the fee estimate we received,
+        // just ensuring that it doesn't exceed our maximum fee.
+        match tx_fee_estimate_response {
+            Ok(resp) => {
+                let estimate = resp.extract_fee(priority).map(|estimate| estimate.fee);
+
+                // If we got a valid estimate, then we use it.
+                if let Some(estimate) = estimate {
+                    return Ok(estimate.min(MAX_TX_FEE));
+                }
+
+                tracing::warn!(
+                    "received a fee estimate response, but it did not contain a fee for the specified priority, falling back to STX transfer fee estimation"
+                );
+            }
+            Err(error) => {
+                tracing::warn!(%error, "could not estimate contract call fees using the transaction, falling back to STX transfer fee estimation");
+            }
         }
-        // Now we sort them and take the low, middle, and high fees
-        resp.estimations.sort_by_key(|estimate| estimate.fee);
-        let fee_estimate = match priority {
-            FeePriority::Low => resp.estimations.first().map(|est| est.fee),
-            FeePriority::Medium => resp.estimations.get(num_estimates / 2).map(|est| est.fee),
-            FeePriority::High => resp.estimations.last().map(|est| est.fee),
-        };
 
-        Ok(fee_estimate.unwrap_or(DEFAULT_TX_FEE).min(MAX_TX_FEE))
+        // Estimate attempt #2 - STX transfer
+        //
+        // Estimating STX transfers is simple since the estimate
+        // doesn't depend on the recipient, amount, or memo. So a
+        // dummy transfer payload will do.
+        let stx_transfer_estimate_response = self
+            .get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD, None)
+            .await;
+
+        // If we get a valid response, then we use the fee estimate we received,
+        // falling back to our calculated default minimum fee if for some reason
+        // either we received an error or the estimate was malformed/didn't
+        // contain a fee for the specified priority.
+        match stx_transfer_estimate_response {
+            Ok(resp) => {
+                let rate = resp.extract_fee(priority).map(|estimate| estimate.fee_rate);
+
+                // If for some reason we couldn't get the rate for the specified
+                // priority, then we fall back to the default minimum fee.
+                let Some(rate) = rate else {
+                    return Ok(default_min_fee);
+                };
+
+                let estimate = ((rate * transaction_size as f64) as u64)
+                    .min(MAX_TX_FEE) // Ensure we don't exceed our maximum fee
+                    .max(transaction_size * MINIMUM_TX_FEE_RATE_PER_BYTE); // Ensure we don't go below the absolute minimum fee
+
+                Ok(estimate)
+            }
+            Err(error) => {
+                tracing::warn!(%error, "could not estimate STX fees using the Stacks node, falling back to transaction-size-based estimation");
+                // Fallback to our calculated minimum fee if we couldn't get an estimate
+                // from a Stacks node.
+                Ok(default_min_fee)
+            }
+        }
     }
 
     async fn get_pox_info(&self) -> Result<RPCPoxInfoData, Error> {
@@ -942,6 +1144,21 @@ impl StacksInteract for StacksClient {
 
     async fn get_node_info(&self) -> Result<RPCPeerInfoData, Error> {
         self.get_node_info().await
+    }
+
+    /// Get the source of a deployed smart contract.
+    ///
+    /// # Notes
+    ///
+    /// This is useful just to know whether a contract has been deployed
+    /// already or not. If the smart contract has not been deployed yet,
+    /// the stacks node returns a 404 Not Found.
+    async fn get_contract_source(
+        &self,
+        address: &StacksAddress,
+        contract_name: &str,
+    ) -> Result<ContractSrcResponse, Error> {
+        self.get_contract_source(address, contract_name).await
     }
 }
 
@@ -970,7 +1187,7 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
         self.exec(|client, _| client.get_block(block_id)).await
     }
 
-    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<TenureBlocks, Error> {
         self.exec(|client, _| client.get_tenure(block_id)).await
     }
 
@@ -986,11 +1203,16 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
             .await
     }
 
-    async fn estimate_fees<T>(&self, payload: &T, priority: FeePriority) -> Result<u64, Error>
+    async fn estimate_fees<T>(
+        &self,
+        wallet: &SignerWallet,
+        payload: &T,
+        priority: FeePriority,
+    ) -> Result<u64, Error>
     where
         T: AsTxPayload + Send + Sync,
     {
-        self.exec(|client, _| StacksClient::estimate_fees(client, payload, priority))
+        self.exec(|client, _| StacksClient::estimate_fees(client, wallet, payload, priority))
             .await
     }
 
@@ -1000,6 +1222,22 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
 
     async fn get_node_info(&self) -> Result<RPCPeerInfoData, Error> {
         self.exec(|client, _| client.get_node_info()).await
+    }
+
+    async fn get_contract_source(
+        &self,
+        address: &StacksAddress,
+        contract_name: &str,
+    ) -> Result<ContractSrcResponse, Error> {
+        // TODO: We need to properly catch catch certain errors and let
+        // them pass. In particular, this error is fine:
+        // ```rust
+        // Error::StacksNodeResponse(error)
+        //      if error.status() == Some(reqwest::StatusCode::NOT_FOUND)
+        // ```
+        self.get_client()
+            .get_contract_source(address, contract_name)
+            .await
     }
 }
 
@@ -1021,9 +1259,10 @@ impl TryFrom<&Settings> for ApiFallbackClient<StacksClient> {
 
 #[cfg(test)]
 mod tests {
+    use crate::config::NetworkKind;
     use crate::keys::{PrivateKey, PublicKey};
+    use crate::stacks::wallet::get_full_tx_size;
     use crate::storage::in_memory::Store;
-    use crate::storage::model::StacksBlock;
     use crate::storage::DbWrite;
     use crate::testing::storage::DATABASE_NUM;
 
@@ -1032,12 +1271,25 @@ mod tests {
         BuffData, BufferLength, ListData, ListTypeData, SequenceData, SequenceSubtype,
         TypeSignature,
     };
+    use rand::rngs::OsRng;
+    use secp256k1::Keypair;
     use test_case::test_case;
     use test_log::test;
 
     use super::*;
     use std::io::Read;
     use std::sync::atomic::Ordering;
+
+    fn generate_wallet(num_keys: u16, signatures_required: u16) -> SignerWallet {
+        let network_kind = NetworkKind::Regtest;
+
+        let public_keys = std::iter::repeat_with(|| Keypair::new_global(&mut OsRng))
+            .map(|kp| kp.public_key().into())
+            .take(num_keys as usize)
+            .collect::<Vec<_>>();
+
+        SignerWallet::new(&public_keys, signatures_required, network_kind, 0).unwrap()
+    }
 
     #[ignore = "This is an integration test that hasn't been setup for CI yet"]
     #[test(tokio::test)]
@@ -1051,12 +1303,12 @@ mod tests {
         let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
 
         let info = client.get_tenure_info().await.unwrap();
-        let blocks = fetch_unknown_ancestors(&client, &db, info.tip_block_id).await;
+        let tenures = fetch_unknown_ancestors(&client, &db, info.tip_block_id).await;
 
-        let blocks = blocks.unwrap();
+        let blocks = tenures.unwrap();
         let headers = blocks
             .iter()
-            .map(|block| StacksBlock::from_nakamoto_block(block, &[0; 32].into()))
+            .flat_map(TenureBlocks::as_stacks_blocks)
             .collect::<Vec<_>>();
         db.write_stacks_block_headers(headers).await.unwrap();
 
@@ -1125,6 +1377,21 @@ mod tests {
             .expect(1)
             .create();
 
+        let path = format!("tests/fixtures/stacksapi-v3-sortitions.json");
+        let mut file = std::fs::File::open(path).unwrap();
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).unwrap();
+
+        let called_endpoint = "/v3/sortitions/consensus/f9fff2c4c5e5f55788bbd62f6b41aeba99d982fd";
+        stacks_node_server
+            .mock("GET", called_endpoint)
+            .with_status(200)
+            .with_header("content-type", "application/octet-stream")
+            .with_header("transfer-encoding", "chunked")
+            .with_chunked_body(move |w| w.write_all(&buf))
+            .expect(1)
+            .create();
+
         // The StacksClient::get_blocks call should make at least two
         // requests to the stacks node if there are two or more Nakamoto
         // blocks within the same tenure. Our test setup has 23 blocks
@@ -1155,7 +1422,7 @@ mod tests {
 
         let block_id = StacksBlockId::from_hex(TENURE_END_BLOCK_ID).unwrap();
         // The moment of truth, do the requests succeed?
-        let blocks = client.get_tenure(block_id).await.unwrap();
+        let blocks = client.get_tenure(block_id).await.unwrap().blocks;
         assert!(blocks.len() > 1);
 
         // We know that the blocks are ordered as a chain, and we know the
@@ -1392,9 +1659,48 @@ mod tests {
         mock.assert();
     }
 
+    // Check that if we don't get valid responses from the Stacks node for both
+    // the transaction and STX transfer fee estimation requests, we fallback to
+    // estimating the fee based on the size of the transaction payload.
+    #[test_case(15, 11)]
+    #[tokio::test]
+    async fn estimate_fees_fallback_works(num_keys: u16, signatures_required: u16) {
+        let wallet = generate_wallet(num_keys, signatures_required);
+        let mut stacks_node_server = mockito::Server::new_async().await;
+
+        // Setup a mock which will fail both the transaction and STX transfer
+        // estimation request attempts.
+        let mock = stacks_node_server
+            .mock("POST", "/v2/fees/transaction")
+            .with_status(400)
+            .expect(2)
+            .create();
+
+        // Setup our Stacks client. We use a regular client here because we're
+        // testing the `get_fee_estimate` method.
+        let client = StacksClient::new(
+            url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
+            20,
+        )
+        .unwrap();
+
+        let expected_fee = get_full_tx_size(&DUMMY_STX_TRANSFER_PAYLOAD, &wallet).unwrap()
+            * TX_FEE_TX_SIZE_MULTIPLIER;
+
+        let resp = client
+            .estimate_fees(&wallet, &DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::High)
+            .await
+            .unwrap();
+
+        assert_eq!(resp, expected_fee);
+
+        mock.assert();
+    }
+
     /// Check that everything works as expected in the happy path case.
     #[tokio::test]
     async fn get_fee_estimate_works() {
+        let wallet = generate_wallet(1, 1);
         // The following was taken from a locally running stacks node for
         // the cost of a contract deploy.
         let raw_json_response = r#"{
@@ -1431,7 +1737,7 @@ mod tests {
         )
         .unwrap();
         let resp = client
-            .get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD)
+            .get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD, None)
             .await
             .unwrap();
         let expected: RPCFeeEstimateResponse = serde_json::from_str(raw_json_response).unwrap();
@@ -1441,19 +1747,19 @@ mod tests {
         // Now lets check that the interface function returns the requested
         // priority fees.
         let fee = client
-            .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::Low)
+            .estimate_fees(&wallet, &DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::Low)
             .await
             .unwrap();
         assert_eq!(fee, 7679);
 
         let fee = client
-            .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::Medium)
+            .estimate_fees(&wallet, &DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::Medium)
             .await
             .unwrap();
         assert_eq!(fee, 7680);
 
         let fee = client
-            .estimate_fees(&DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::High)
+            .estimate_fees(&wallet, &DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::High)
             .await
             .unwrap();
         assert_eq!(fee, 25505);

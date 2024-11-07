@@ -31,6 +31,7 @@ use blockstack_lib::chainstate::stacks::TransactionContractCall;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::chainstate::stacks::TransactionPostCondition;
 use blockstack_lib::chainstate::stacks::TransactionPostConditionMode;
+use blockstack_lib::chainstate::stacks::TransactionSmartContract;
 use blockstack_lib::clarity::vm::types::BuffData;
 use blockstack_lib::clarity::vm::types::ListData;
 use blockstack_lib::clarity::vm::types::ListTypeData;
@@ -41,6 +42,9 @@ use blockstack_lib::clarity::vm::ClarityName;
 use blockstack_lib::clarity::vm::ContractName;
 use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::types::chainstate::StacksAddress;
+use blockstack_lib::util_lib::strings::StacksString;
+use clarity::types::chainstate::BurnchainHeaderHash;
+use clarity::vm::ClarityVersion;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
@@ -52,6 +56,20 @@ use crate::storage::model::BitcoinBlockRef;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::ScriptPubKey;
 use crate::storage::DbRead;
+
+use super::api::StacksInteract;
+
+/// The collection sBTC smart contract objects.
+///
+/// The registry and token contracts need to be deployed first and second
+/// respectively. The rest can be deployed in any order.
+pub const SMART_CONTRACTS: [SmartContract; 5] = [
+    SmartContract::SbtcRegistry,
+    SmartContract::SbtcToken,
+    SmartContract::SbtcDeposit,
+    SmartContract::SbtcWithdrawal,
+    SmartContract::SbtcBootstrap,
+];
 
 /// This struct is used as supplemental data to help validate a request to
 /// sign a contract call transaction.
@@ -176,6 +194,43 @@ pub trait AsContractCall {
         C: Context + Send + Sync;
 }
 
+/// An enum representing all Contract transaction types that the signers can make.
+/// Mainly used for creating StacksTransactionSignRequest messages.
+#[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum StacksTx {
+    /// A contract call transaction.
+    ContractCall(ContractCall),
+    /// A smart contract transaction used for deploying smart contract.
+    SmartContract(SmartContract),
+}
+
+impl AsTxPayload for StacksTx {
+    fn tx_payload(&self) -> TransactionPayload {
+        match self {
+            StacksTx::ContractCall(call) => call.tx_payload(),
+            StacksTx::SmartContract(deploy) => deploy.tx_payload(),
+        }
+    }
+    fn post_conditions(&self) -> StacksTxPostConditions {
+        match self {
+            StacksTx::ContractCall(call) => call.post_conditions(),
+            StacksTx::SmartContract(deploy) => deploy.post_conditions(),
+        }
+    }
+}
+
+impl From<ContractCall> for StacksTx {
+    fn from(val: ContractCall) -> Self {
+        StacksTx::ContractCall(val)
+    }
+}
+
+impl From<SmartContract> for StacksTx {
+    fn from(val: SmartContract) -> Self {
+        StacksTx::SmartContract(val)
+    }
+}
+
 /// An enum representing all contract calls that the signers can make.
 #[derive(Clone, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ContractCall {
@@ -195,20 +250,19 @@ pub enum ContractCall {
 
 impl AsTxPayload for ContractCall {
     fn tx_payload(&self) -> TransactionPayload {
-        let contract_call = match self {
-            ContractCall::AcceptWithdrawalV1(contract) => contract.as_contract_call(),
-            ContractCall::CompleteDepositV1(contract) => contract.as_contract_call(),
-            ContractCall::RejectWithdrawalV1(contract) => contract.as_contract_call(),
-            ContractCall::RotateKeysV1(contract) => contract.as_contract_call(),
-        };
-        TransactionPayload::ContractCall(contract_call)
+        match self {
+            ContractCall::AcceptWithdrawalV1(contract) => contract.tx_payload(),
+            ContractCall::CompleteDepositV1(contract) => contract.tx_payload(),
+            ContractCall::RejectWithdrawalV1(contract) => contract.tx_payload(),
+            ContractCall::RotateKeysV1(contract) => contract.tx_payload(),
+        }
     }
     fn post_conditions(&self) -> StacksTxPostConditions {
         match self {
-            ContractCall::AcceptWithdrawalV1(contract) => contract.post_conditions(),
-            ContractCall::CompleteDepositV1(contract) => contract.post_conditions(),
-            ContractCall::RejectWithdrawalV1(contract) => contract.post_conditions(),
-            ContractCall::RotateKeysV1(contract) => contract.post_conditions(),
+            ContractCall::AcceptWithdrawalV1(contract) => AsContractCall::post_conditions(contract),
+            ContractCall::CompleteDepositV1(contract) => AsContractCall::post_conditions(contract),
+            ContractCall::RejectWithdrawalV1(contract) => AsContractCall::post_conditions(contract),
+            ContractCall::RotateKeysV1(contract) => AsContractCall::post_conditions(contract),
         }
     }
 }
@@ -246,6 +300,15 @@ pub struct CompleteDepositV1 {
     pub sweep_block_height: u64,
 }
 
+impl AsTxPayload for CompleteDepositV1 {
+    fn tx_payload(&self) -> TransactionPayload {
+        TransactionPayload::ContractCall(self.as_contract_call())
+    }
+    fn post_conditions(&self) -> StacksTxPostConditions {
+        AsContractCall::post_conditions(self)
+    }
+}
+
 impl AsContractCall for CompleteDepositV1 {
     const CONTRACT_NAME: &'static str = "sbtc-deposit";
     const FUNCTION_NAME: &'static str = "complete-deposit-wrapper";
@@ -258,15 +321,19 @@ impl AsContractCall for CompleteDepositV1 {
     fn as_contract_args(&self) -> Vec<ClarityValue> {
         let txid_data = self.outpoint.txid.to_byte_array().to_vec();
         let txid = BuffData { data: txid_data };
-        let burn_hash_data = self.sweep_block_hash.to_byte_array().to_vec();
-        let burn_hash = BuffData { data: burn_hash_data };
+        // We first convert it into this type because the BitcoinBlockHash
+        // has the underlying bytes in that type are reversed from what the
+        // stacks-node expects.
+        let burn_hash = BurnchainHeaderHash::from(self.sweep_block_hash);
+        let burn_hash_data = burn_hash.into_bytes().to_vec();
+        let burn_hash_buff = BuffData { data: burn_hash_data };
 
         vec![
             ClarityValue::Sequence(SequenceData::Buffer(txid)),
             ClarityValue::UInt(self.outpoint.vout as u128),
             ClarityValue::UInt(self.amount as u128),
             ClarityValue::Principal(self.recipient.clone()),
-            ClarityValue::Sequence(SequenceData::Buffer(burn_hash)),
+            ClarityValue::Sequence(SequenceData::Buffer(burn_hash_buff)),
             ClarityValue::UInt(self.sweep_block_height as u128),
         ]
     }
@@ -320,7 +387,7 @@ impl CompleteDepositV1 {
     /// 1. That the smart contract deployer matches the deployer in our
     ///    context.
     /// 2. That the signer has a record of the deposit request in its list
-    ///    of pending and accepted deposit requests.
+    ///    of swept deposit requests.
     /// 5. That the recipients in the transaction matches that of the
     ///    deposit request.
     /// 6. That the amount to mint does not exceed the deposit amount.
@@ -339,21 +406,14 @@ impl CompleteDepositV1 {
             return Err(DepositErrorMsg::DeployerMismatch.into_error(req_ctx, self));
         }
         // 2. Check that the signer has a record of the deposit request
-        //    from our list of pending and accepted deposit requests.
-        //
-        // Check that this is actually a pending and accepted deposit
-        // request.
+        //    from our list of swept deposit requests.
         let deposit_requests = db
-            .get_pending_accepted_deposit_requests(
-                &req_ctx.chain_tip.block_hash,
-                req_ctx.context_window,
-                req_ctx.signatures_required,
-            )
+            .get_swept_deposit_requests(&req_ctx.chain_tip.block_hash, req_ctx.context_window)
             .await?;
 
         let deposit_request = deposit_requests
             .into_iter()
-            .find(|req| req.outpoint() == self.outpoint)
+            .find(|req| req.deposit_outpoint() == self.outpoint)
             .ok_or_else(|| DepositErrorMsg::RequestMissing.into_error(req_ctx, self))?;
 
         // 5. Check that the recipients in the transaction matches that of
@@ -572,6 +632,15 @@ pub struct AcceptWithdrawalV1 {
     pub sweep_block_height: u64,
 }
 
+impl AsTxPayload for AcceptWithdrawalV1 {
+    fn tx_payload(&self) -> TransactionPayload {
+        TransactionPayload::ContractCall(self.as_contract_call())
+    }
+    fn post_conditions(&self) -> StacksTxPostConditions {
+        AsContractCall::post_conditions(self)
+    }
+}
+
 impl AsContractCall for AcceptWithdrawalV1 {
     const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
     const FUNCTION_NAME: &'static str = "accept-withdrawal-request";
@@ -582,8 +651,12 @@ impl AsContractCall for AcceptWithdrawalV1 {
     fn as_contract_args(&self) -> Vec<ClarityValue> {
         let txid_data = self.outpoint.txid.to_byte_array().to_vec();
         let txid = BuffData { data: txid_data };
-        let burn_hash_data = self.sweep_block_hash.to_byte_array().to_vec();
-        let burn_hash = BuffData { data: burn_hash_data };
+        // We first convert it into this type because the BitcoinBlockHash
+        // has the underlying bytes in that type are reversed from what the
+        // stacks-node expects.
+        let burn_hash = BurnchainHeaderHash::from(self.sweep_block_hash);
+        let burn_hash_data = burn_hash.into_bytes().to_vec();
+        let burn_hash_buff = BuffData { data: burn_hash_data };
 
         vec![
             ClarityValue::UInt(self.request_id as u128),
@@ -591,7 +664,7 @@ impl AsContractCall for AcceptWithdrawalV1 {
             ClarityValue::UInt(self.signer_bitmap.load_le()),
             ClarityValue::UInt(self.outpoint.vout as u128),
             ClarityValue::UInt(self.tx_fee as u128),
-            ClarityValue::Sequence(SequenceData::Buffer(burn_hash)),
+            ClarityValue::Sequence(SequenceData::Buffer(burn_hash_buff)),
             ClarityValue::UInt(self.sweep_block_height as u128),
         ]
     }
@@ -889,6 +962,15 @@ pub struct RejectWithdrawalV1 {
     pub deployer: StacksAddress,
 }
 
+impl AsTxPayload for RejectWithdrawalV1 {
+    fn tx_payload(&self) -> TransactionPayload {
+        TransactionPayload::ContractCall(self.as_contract_call())
+    }
+    fn post_conditions(&self) -> StacksTxPostConditions {
+        AsContractCall::post_conditions(self)
+    }
+}
+
 impl AsContractCall for RejectWithdrawalV1 {
     const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
     const FUNCTION_NAME: &'static str = "reject-withdrawal-request";
@@ -967,6 +1049,15 @@ impl RotateKeysV1 {
     }
 }
 
+impl AsTxPayload for RotateKeysV1 {
+    fn tx_payload(&self) -> TransactionPayload {
+        TransactionPayload::ContractCall(self.as_contract_call())
+    }
+    fn post_conditions(&self) -> StacksTxPostConditions {
+        AsContractCall::post_conditions(self)
+    }
+}
+
 impl AsContractCall for RotateKeysV1 {
     const CONTRACT_NAME: &'static str = "sbtc-bootstrap-signers";
     const FUNCTION_NAME: &'static str = "rotate-keys-wrapper";
@@ -1022,6 +1113,123 @@ impl AsContractCall for RotateKeysV1 {
         C: Context + Send + Sync,
     {
         // TODO(255): Add validation implementation
+        Ok(())
+    }
+}
+
+/// A wrapper type for smart contract deployment that implements
+/// AsTxPayload.
+#[derive(Clone, Copy, Debug, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum SmartContract {
+    /// The sbtc-registry contract. This contract needs to be deployed
+    /// before any other contract.
+    SbtcRegistry,
+    /// The sbtc-token contract. This contract needs to be deployed right
+    /// after the sbtc-registry contract.
+    SbtcToken,
+    /// The sbtc-deposit contract. Can be deployed after the sbtc-token
+    /// contract.
+    SbtcDeposit,
+    /// The sbtc-withdrawal contract. Can be deployed after the sbtc-token
+    /// contract.
+    SbtcWithdrawal,
+    /// The sbtc-bootstrap-signers contract. Can be deployed after the
+    /// sbtc-token contract.
+    SbtcBootstrap,
+}
+
+impl AsTxPayload for SmartContract {
+    fn tx_payload(&self) -> TransactionPayload {
+        // The variables below are all effectively constant. Since we
+        // exercise this code path in our tests, we know that this will
+        // never panic in production.
+
+        // The ContractName::from calls are more dangerous than they
+        // appear. Under the hood they call their TryFrom::try_from
+        // implementation and then unwraps them(!).
+        let name = ContractName::from(self.contract_name());
+        // StacksString::from_str checks that string characters are ascii
+        // and printable.
+        let code_body = StacksString::from_str(self.contract_body())
+            .expect("BUG! the clarity contracts source is invalid");
+
+        let contract = TransactionSmartContract { name, code_body };
+        TransactionPayload::SmartContract(contract, Some(ClarityVersion::Clarity3))
+    }
+    fn post_conditions(&self) -> StacksTxPostConditions {
+        StacksTxPostConditions {
+            post_condition_mode: TransactionPostConditionMode::Allow,
+            post_conditions: Vec::new(),
+        }
+    }
+}
+
+impl SmartContract {
+    /// The name of the clarity smart contract that relates to this struct.
+    pub const fn contract_name(self) -> &'static str {
+        match self {
+            SmartContract::SbtcToken => "sbtc-token",
+            SmartContract::SbtcRegistry => "sbtc-registry",
+            SmartContract::SbtcDeposit => "sbtc-deposit",
+            SmartContract::SbtcWithdrawal => "sbtc-withdrawal",
+            SmartContract::SbtcBootstrap => "sbtc-bootstrap-signers",
+        }
+    }
+
+    /// The actual body of the clarity contract.
+    pub const fn contract_body(self) -> &'static str {
+        match self {
+            SmartContract::SbtcToken => {
+                include_str!("../../../contracts/contracts/sbtc-token.clar")
+            }
+            SmartContract::SbtcRegistry => {
+                include_str!("../../../contracts/contracts/sbtc-registry.clar")
+            }
+            SmartContract::SbtcDeposit => {
+                include_str!("../../../contracts/contracts/sbtc-deposit.clar")
+            }
+            SmartContract::SbtcWithdrawal => {
+                include_str!("../../../contracts/contracts/sbtc-withdrawal.clar")
+            }
+            SmartContract::SbtcBootstrap => {
+                include_str!("../../../contracts/contracts/sbtc-bootstrap-signers.clar")
+            }
+        }
+    }
+
+    /// Check whether this smart contract has been deployed.
+    pub async fn is_deployed<S>(&self, stacks: &S, deployer: &StacksAddress) -> Result<bool, Error>
+    where
+        S: StacksInteract + Send + Sync,
+    {
+        let contract_name = self.contract_name();
+        let contract_source = stacks.get_contract_source(deployer, contract_name).await;
+
+        // If we get an Ok response then we know the contract has been
+        // deployed already and we can return early. If we get a 404
+        // response then we know the contract has not been deployed yet,
+        // and we can proceed with deploying it.
+        match contract_source {
+            Ok(_) => Ok(true),
+            Err(Error::StacksNodeResponse(error))
+                if error.status() == Some(reqwest::StatusCode::NOT_FOUND) =>
+            {
+                Ok(false)
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Validates that The contract is not already deployed on the chain.
+    pub async fn validate<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
+    where
+        C: Context + Send + Sync,
+    {
+        let stacks = ctx.get_stacks_client();
+        if self.is_deployed(&stacks, &req_ctx.deployer).await? {
+            return Err(Error::ContractAlreadyDeployed(self.contract_name()));
+        }
+
         Ok(())
     }
 }
@@ -1106,5 +1314,16 @@ mod tests {
         // This is to check that this function doesn't implicitly panic. If
         // it doesn't panic now, it can never panic at runtime.
         let _ = call.as_contract_call();
+    }
+
+    #[test_case::test_case(SmartContract::SbtcBootstrap; "sbtc-bootstrap")]
+    #[test_case::test_case(SmartContract::SbtcRegistry; "sbtc-registry")]
+    #[test_case::test_case(SmartContract::SbtcDeposit; "sbtc-deposit")]
+    #[test_case::test_case(SmartContract::SbtcWithdrawal; "sbtc-withdrawal")]
+    #[test_case::test_case(SmartContract::SbtcToken; "sbtc-token")]
+    fn smart_contract_deploy_payloads_dont_panic(smart_contract: SmartContract) {
+        // This is to check that this function doesn't implicitly panic. If
+        // it doesn't panic now, it can never panic at runtime.
+        let _ = smart_contract.tx_payload();
     }
 }

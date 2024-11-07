@@ -9,6 +9,7 @@ use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
+use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
 use blockstack_lib::net::api::getinfo::RPCPeerInfoData;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxEpoch;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
@@ -36,6 +37,8 @@ use crate::stacks::api::AccountInfo;
 use crate::stacks::api::FeePriority;
 use crate::stacks::api::StacksInteract;
 use crate::stacks::api::SubmitTxResponse;
+use crate::stacks::api::TenureBlocks;
+use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
 use crate::testing::dummy;
 use crate::util::ApiFallbackClient;
@@ -258,7 +261,7 @@ impl StacksInteract for TestHarness {
             .cloned()
             .ok_or(Error::MissingBlock)
     }
-    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<Vec<NakamotoBlock>, Error> {
+    async fn get_tenure(&self, block_id: StacksBlockId) -> Result<TenureBlocks, Error> {
         let (stx_block_id, stx_block, btc_block_id) = self
             .stacks_blocks
             .iter()
@@ -275,7 +278,7 @@ impl StacksInteract for TestHarness {
             .cloned()
             .collect();
 
-        Ok(blocks)
+        TenureBlocks::from_blocks(blocks)
     }
     async fn get_tenure_info(&self) -> Result<RPCGetTenureInfo, Error> {
         let (_, _, btc_block_id) = self.stacks_blocks.last().unwrap();
@@ -323,7 +326,7 @@ impl StacksInteract for TestHarness {
         })
     }
 
-    async fn estimate_fees<T>(&self, _: &T, _: FeePriority) -> Result<u64, Error>
+    async fn estimate_fees<T>(&self, _: &SignerWallet, _: &T, _: FeePriority) -> Result<u64, Error>
     where
         T: crate::stacks::contracts::AsTxPayload,
     {
@@ -368,6 +371,18 @@ impl StacksInteract for TestHarness {
         };
 
         Ok(result)
+    }
+
+    async fn get_contract_source(
+        &self,
+        _address: &StacksAddress,
+        _contract_name: &str,
+    ) -> Result<ContractSrcResponse, Error> {
+        Ok(ContractSrcResponse {
+            source: "contract source".to_string(),
+            publish_height: 1000,
+            marf_proof: None,
+        })
     }
 }
 
@@ -460,7 +475,7 @@ fn get_node_info_data() -> RPCPeerInfoData {
         "burn_block_height": 2083,
         "stable_pox_consensus": "11fc12900b1f1369098f1099bcb2708ea78ea3b4",
         "stable_burn_block_height": 2082,
-        "server_version": "stacks-node 0.0.1 (:c87c0eb6c050688340b975b0b42fb0a1ae378afa, debug build, linux [x86_64])",
+        "server_version": "stacks-node 0.0.1 (:b26f406fc0bfd271a5cd5b54ccb064e7d3a0650a, debug build, linux [x86_64])",
         "network_id": 2147483648,
         "parent_network_id": 3669344250,
         "stacks_tip_height": 9520,

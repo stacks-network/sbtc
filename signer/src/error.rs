@@ -20,7 +20,7 @@ pub enum Error {
     #[error("emily API error: {0}")]
     EmilyApi(#[from] EmilyClientError),
 
-    /// Attemmpt to fetch a bitcoin blockhash ended in an unexpected error.
+    /// Attempt to fetch a bitcoin blockhash ended in an unexpected error.
     /// This is not triggered if the block is missing.
     #[error("bitcoin-core getblock RPC error for hash {1}: {0}")]
     BitcoinCoreGetBlock(#[source] bitcoincore_rpc::Error, bitcoin::BlockHash),
@@ -33,9 +33,9 @@ pub enum Error {
     #[error("could not create RPC client to {1}: {0}")]
     BitcoinCoreRpcClient(#[source] bitcoincore_rpc::Error, String),
 
-    /// The bitcoin tranaction was not found in the mempool or on the
+    /// The bitcoin transaction was not found in the mempool or on the
     /// bitcoin blockchain. This is thrown when we expect the transaction
-    /// to exist in bitcoin core but it does not.
+    /// to exist in bitcoin core, but it does not.
     #[error("transaction is missing, txid: {0}, block hash {1:?}")]
     BitcoinTxMissing(bitcoin::Txid, Option<bitcoin::BlockHash>),
 
@@ -44,13 +44,17 @@ pub enum Error {
     #[error("bitcoin validation error: {0}")]
     BitcoinValidation(#[from] Box<crate::bitcoin::validation::BitcoinValidationError>),
 
+    /// This should never happen
+    #[error("observed a tenure identified by a StacksBlockId with with no blocks")]
+    EmptyStacksTenure,
+
     /// Received an error in call to estimatesmartfee RPC call
     #[error("failed to get fee estimate from bitcoin-core for target {1}. {0}")]
     EstimateSmartFee(#[source] bitcoincore_rpc::Error, u16),
 
     /// Received an error in response to estimatesmartfee RPC call
-    #[error("failed to get fee estimate from bitcoin-core for target {1}. {0:?}")]
-    EstimateSmartFeeResponse(Option<Vec<String>>, u16),
+    #[error("failed to get fee estimate from bitcoin-core in target blocks {1}. errors: {0}")]
+    EstimateSmartFeeResponse(String, u16),
 
     /// Error from the fallback client.
     #[error("fallback client error: {0}")]
@@ -60,7 +64,7 @@ pub enum Error {
     #[error("bitcoin RPC error: {0}")]
     BitcoinCoreRpc(#[from] bitcoincore_rpc::Error),
 
-    /// An error propogated from the sBTC library.
+    /// An error propagated from the sBTC library.
     #[error("sBTC lib error: {0}")]
     SbtcLib(#[from] sbtc::error::Error),
 
@@ -345,6 +349,12 @@ pub enum Error {
     #[error("missing signer utxo")]
     MissingSignerUtxo,
 
+    /// This should never happen. It arises when a signer gets a message
+    /// that requires DKG to have been run at some point, but it hasn't
+    /// been.
+    #[error("DKG has not been run")]
+    NoDkgShares,
+
     /// Too many signer utxos
     #[error("too many signer utxos")]
     TooManySignerUtxos,
@@ -451,6 +461,10 @@ pub enum Error {
     /// Wsts state machine returned unexpected operation result
     #[error("unexpected operation result")]
     UnexpectedOperationResult,
+
+    /// The smart contract has already been deployed
+    #[error("smart contract already deployed, contract name: {0}")]
+    ContractAlreadyDeployed(&'static str),
 }
 
 impl From<std::convert::Infallible> for Error {

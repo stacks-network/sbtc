@@ -172,6 +172,7 @@
     (fee uint)
     (burn-hash (buff 32))
     (burn-height uint)
+    (sweep-txid (buff 32))
   )
   (begin 
     (try! (is-protocol-caller))
@@ -186,6 +187,7 @@
       fee: fee,
       burn-hash: burn-hash,
       burn-height: burn-height,
+      sweep-txid: sweep-txid,
     })
     (ok true)
   )
@@ -229,6 +231,7 @@
     (recipient principal)
     (burn-hash (buff 32))
     (burn-height uint)
+    (sweep-txid (buff 32))
   )
   (begin
     (try! (is-protocol-caller))
@@ -243,6 +246,7 @@
       amount: amount,
       burn-hash: burn-hash,
       burn-height: burn-height,
+      sweep-txid: sweep-txid,
     })
     (ok true)
   )

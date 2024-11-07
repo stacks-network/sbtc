@@ -26,9 +26,10 @@ use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
 use crate::network;
 use crate::signature::SighashDigest as _;
-use crate::stacks::contracts::AsContractCall;
+use crate::stacks::contracts::AsContractCall as _;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::ReqContext;
+use crate::stacks::contracts::StacksTx;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
@@ -157,6 +158,12 @@ where
         // separate main run-loops since they don't have anything to do
         // with each other.
         let signer_event_loop = async {
+            if let Err(err) = self.context.signal(TxSignerEvent::EventLoopStarted.into()) {
+                tracing::error!(%err, "error signalling event loop start");
+                return;
+            };
+
+            tracing::debug!("signer event loop started");
             while !should_shutdown() {
                 // Collect all events which have been signalled into this loop
                 // iteration for processing.
@@ -284,7 +291,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn handle_signer_message(&mut self, msg: &network::Msg) -> Result<(), Error> {
         if !msg.verify() {
             tracing::warn!("unable to verify message");
@@ -294,6 +301,14 @@ where
         let chain_tip_report = self
             .inspect_msg_chain_tip(msg.signer_pub_key, &msg.bitcoin_chain_tip)
             .await?;
+
+        tracing::trace!(
+            sender_is_coordinator = chain_tip_report.sender_is_coordinator,
+            chain_tip_status = ?chain_tip_report.chain_tip_status,
+            msg_chain_tip = %msg.bitcoin_chain_tip,
+            ?msg.inner.payload,
+            "handling message"
+        );
 
         match (
             &msg.inner.payload,
@@ -335,6 +350,27 @@ where
 
             (message::Payload::WstsMessage(wsts_msg), _, _) => {
                 self.handle_wsts_message(wsts_msg, &msg.bitcoin_chain_tip)
+                    .await?;
+            }
+
+            (
+                message::Payload::SweepTransactionInfo(sweep_tx),
+                is_coordinator,
+                ChainTipStatus::Canonical,
+            ) => {
+                if !is_coordinator {
+                    tracing::warn!("received sweep transaction info from non-coordinator");
+                    return Ok(());
+                }
+
+                tracing::debug!(
+                    txid = %sweep_tx.txid,
+                    sweep_broadcast_at = %sweep_tx.created_at_block_hash,
+                    "received sweep transaction info; storing it"
+                );
+                self.context
+                    .get_storage_mut()
+                    .write_sweep_transaction(&sweep_tx.into())
                     .await?;
             }
 
@@ -391,7 +427,7 @@ where
         })
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, request))]
     async fn handle_bitcoin_transaction_sign_request(
         &mut self,
         request: &message::BitcoinTransactionSignRequest,
@@ -463,7 +499,7 @@ where
         let wallet = SignerWallet::load(&self.context, bitcoin_chain_tip).await?;
         wallet.set_nonce(request.nonce);
 
-        let multi_sig = MultisigTx::new_tx(&request.contract_call, &wallet, request.tx_fee);
+        let multi_sig = MultisigTx::new_tx(&request.contract_tx, &wallet, request.tx_fee);
         let txid = multi_sig.tx().txid();
 
         // TODO(517): Remove the digest field from the request object and
@@ -482,6 +518,7 @@ where
 
     /// Check that the transaction is indeed valid. We specific checks that
     /// are run depend on the transaction being signed.
+    #[tracing::instrument(skip_all, fields(origin = %origin_public_key, txid = %request.txid), err)]
     pub async fn assert_valid_stacks_tx_sign_request(
         &self,
         request: &StacksTransactionSignRequest,
@@ -514,15 +551,30 @@ where
             deployer: self.context.config().signer.deployer,
         };
         let ctx = &self.context;
-        match &request.contract_call {
-            ContractCall::AcceptWithdrawalV1(contract) => contract.validate(ctx, &req_ctx).await,
-            ContractCall::CompleteDepositV1(contract) => contract.validate(ctx, &req_ctx).await,
-            ContractCall::RejectWithdrawalV1(contract) => contract.validate(ctx, &req_ctx).await,
-            ContractCall::RotateKeysV1(contract) => contract.validate(ctx, &req_ctx).await,
-        }
+        tracing::info!("running validation on stacks transaction");
+        match &request.contract_tx {
+            StacksTx::ContractCall(ContractCall::AcceptWithdrawalV1(contract)) => {
+                contract.validate(ctx, &req_ctx).await?
+            }
+            StacksTx::ContractCall(ContractCall::CompleteDepositV1(contract)) => {
+                contract.validate(ctx, &req_ctx).await?
+            }
+            StacksTx::ContractCall(ContractCall::RejectWithdrawalV1(contract)) => {
+                contract.validate(ctx, &req_ctx).await?
+            }
+            StacksTx::ContractCall(ContractCall::RotateKeysV1(contract)) => {
+                contract.validate(ctx, &req_ctx).await?
+            }
+            StacksTx::SmartContract(smart_contract) => {
+                smart_contract.validate(ctx, &req_ctx).await?
+            }
+        };
+
+        tracing::info!("stacks validation finished successfully");
+        Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, msg))]
     async fn handle_wsts_message(
         &mut self,
         msg: &message::WstsMessage,
@@ -553,8 +605,31 @@ where
                     .await?;
                 self.store_dkg_shares(&msg.txid).await?;
             }
+            // Clippy complains about how we could refactor this to use the
+            // `std::collections::hash_map::Entry` type here to make things
+            // more idiomatic. The issue with that approach is that it
+            // requires a mutable reference of the `wsts_state_machines`
+            // self to be taken at the same time as an immunable reference.
+            // The compiler will complain about this so we silence the
+            // warning.
+            #[allow(clippy::map_entry)]
             wsts::net::Message::NonceRequest(_) => {
                 // TODO(296): Validate that message is the appropriate sighash
+                if !self.wsts_state_machines.contains_key(&msg.txid) {
+                    let (maybe_aggregate_key, _) = self
+                        .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
+                        .await?;
+
+                    let state_machine = wsts_state_machine::SignerStateMachine::load(
+                        &self.context.get_storage_mut(),
+                        maybe_aggregate_key.ok_or(Error::NoDkgShares)?,
+                        self.threshold,
+                        self.signer_private_key,
+                    )
+                    .await?;
+
+                    self.wsts_state_machines.insert(msg.txid, state_machine);
+                }
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
@@ -582,7 +657,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, msg))]
     async fn relay_message(
         &mut self,
         txid: bitcoin::Txid,
@@ -614,10 +689,6 @@ where
         Ok(())
     }
 
-    /// TODO(#380): This function needs to filter deposit requests based on
-    /// time as well. We need to do this because deposit requests are locked
-    /// using OP_CSV, which lock up coins based on block height or
-    /// multiples of 512 seconds measure by the median time past.
     #[tracing::instrument(skip(self))]
     async fn get_pending_deposit_requests(
         &mut self,
@@ -862,6 +933,50 @@ where
             .signal(TxSignerEvent::MessageGenerated(msg).into())?;
 
         Ok(())
+    }
+
+    /// Return the signing set that can make sBTC related contract calls
+    /// along with the current aggregate key to use for locking UTXOs on
+    /// bitcoin.
+    ///
+    /// The aggregate key fetched here is the one confirmed on the
+    /// canonical Stacks blockchain as part of a `rotate-keys` contract
+    /// call. It will be the public key that is the result of a DKG run. If
+    /// there are no rotate-keys transactions on the canonical stacks
+    /// blockchain, then we fall back on the last known DKG shares row in
+    /// our database, and return None as the aggregate key if no DKG shares
+    /// can be found, implying that this signer has not participated in
+    /// DKG.
+    #[tracing::instrument(skip(self))]
+    pub async fn get_signer_set_and_aggregate_key(
+        &self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<(Option<PublicKey>, BTreeSet<PublicKey>), Error> {
+        let db = self.context.get_storage();
+
+        // We are supposed to submit a rotate-keys transaction after
+        // running DKG, but that transaction may not have been submitted
+        // yet (if we have just run DKG) or it may not have been confirmed
+        // on the canonical Stacks blockchain.
+        //
+        // If the signers have already run DKG, then we know that all
+        // participating signers should have the same view of the latest
+        // aggregate key, so we can fall back on the stored DKG shares for
+        // getting the current aggregate key and associated signing set.
+        match db.get_last_key_rotation(bitcoin_chain_tip).await? {
+            Some(last_key) => {
+                let aggregate_key = last_key.aggregate_key;
+                let signer_set = last_key.signer_set.into_iter().collect();
+                Ok((Some(aggregate_key), signer_set))
+            }
+            None => match db.get_latest_encrypted_dkg_shares().await? {
+                Some(shares) => {
+                    let signer_set = shares.signer_set_public_keys.into_iter().collect();
+                    Ok((Some(shares.aggregate_key), signer_set))
+                }
+                None => Ok((None, self.context.config().signer.bootstrap_signing_set())),
+            },
+        }
     }
 
     /// Get the set of public keys for the current signing set.

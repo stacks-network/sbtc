@@ -17,8 +17,8 @@
 //! - Update signer set transactions
 //! - Set aggregate key transactions
 
-use std::collections::HashMap;
 use std::future::Future;
+use std::time::Duration;
 
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::BitcoinInteract;
@@ -27,16 +27,15 @@ use crate::context::SignerEvent;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::stacks::api::StacksInteract;
+use crate::stacks::api::TenureBlocks;
 use crate::storage;
 use crate::storage::model;
-use crate::storage::model::BitcoinBlockHash;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use bitcoin::hashes::Hash as _;
 use bitcoin::BlockHash;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
-use blockstack_lib::chainstate::nakamoto;
 use futures::stream::StreamExt;
 use sbtc::deposits::CreateDepositRequest;
 use sbtc::deposits::DepositInfo;
@@ -126,62 +125,53 @@ where
     /// Run the block observer
     #[tracing::instrument(skip(self), name = "block-observer")]
     pub async fn run(mut self) -> Result<(), Error> {
-        let mut term = self.context.get_termination_handle();
+        let term = self.context.get_termination_handle();
 
-        let run = async {
-            while let Some(new_block_hash) = self.bitcoin_blocks.next().await {
-                tracing::info!(
-                    ?new_block_hash,
-                    "new bitcoin block observed on bitcoin core block hash stream"
-                );
-
-                let new_block_hash = match new_block_hash {
-                    Ok(hash) => hash,
-                    Err(error) => {
-                        tracing::warn!(%error, "error decoding new bitcoin block hash from stream");
-                        continue;
-                    }
-                };
-
-                tracing::info!(%new_block_hash, "observed new bitcoin block from stream");
-
-                let next_blocks_to_process = match self.next_blocks_to_process(new_block_hash).await
-                {
-                    Ok(blocks) => blocks,
-                    Err(error) => {
-                        tracing::warn!(%error, block_hash = %new_block_hash, "could not get next blocks to process");
-                        continue;
-                    }
-                };
-
-                for block in next_blocks_to_process {
-                    if let Err(error) = self.process_bitcoin_block(block).await {
-                        tracing::warn!(%error, "could not process bitcoin block");
-                    }
-                }
-
-                tracing::info!("loading latest deposit requests from Emily");
-                if let Err(error) = self.load_latest_deposit_requests().await {
-                    tracing::warn!(%error, "could not load latest deposit requests from Emily");
-                }
-
-                self.context
-                    .signal(SignerEvent::BitcoinBlockObserved.into())?;
+        loop {
+            if term.shutdown_signalled() {
+                break;
             }
 
-            Ok::<_, Error>(())
-        };
+            // Bitcoin blocks will generally arrive in ~19 minute intervals, so
+            // we don't need to be so aggresive in our timeout here.
+            let poll = tokio::time::timeout(Duration::from_millis(100), self.bitcoin_blocks.next());
 
-        tokio::select! {
-            _ = term.wait_for_shutdown() => {
-                tracing::info!("block observer received shutdown signal");
-            },
-            result = run => {
-                result?;
-            }
+            match poll.await {
+                Ok(Some(Ok(block_hash))) => {
+                    tracing::info!(%block_hash, "observed new bitcoin block from stream");
+
+                    let next_blocks_to_process = match self.next_blocks_to_process(block_hash).await
+                    {
+                        Ok(blocks) => blocks,
+                        Err(error) => {
+                            tracing::warn!(%error, %block_hash, "could not get next blocks to process");
+                            continue;
+                        }
+                    };
+
+                    for block in next_blocks_to_process {
+                        if let Err(error) = self.process_bitcoin_block(block).await {
+                            tracing::warn!(%error, "could not process bitcoin block");
+                        }
+                    }
+
+                    tracing::info!("loading latest deposit requests from Emily");
+                    if let Err(error) = self.load_latest_deposit_requests().await {
+                        tracing::warn!(%error, "could not load latest deposit requests from Emily");
+                    }
+
+                    self.context
+                        .signal(SignerEvent::BitcoinBlockObserved.into())?;
+                }
+                Ok(Some(Err(error))) => {
+                    tracing::warn!(%error, "error decoding new bitcoin block hash from stream");
+                    continue;
+                }
+                _ => continue,
+            };
         }
 
-        tracing::info!("shutting down block observer");
+        tracing::info!("block observer has stopped");
 
         Ok(())
     }
@@ -221,19 +211,20 @@ where
 
         self.store_deposit_requests(deposit_requests).await?;
 
+        tracing::debug!("finished processing deposit requests");
         Ok(())
     }
 
     #[tracing::instrument(skip(self))]
     async fn next_blocks_to_process(
-        &mut self,
+        &self,
         mut block_hash: bitcoin::BlockHash,
     ) -> Result<Vec<bitcoin::Block>, Error> {
         let mut blocks = Vec::new();
 
         for _ in 0..self.horizon {
-            if self.have_already_processed_block(block_hash).await? {
-                tracing::debug!(?block_hash, "already processed block");
+            if self.have_already_processed_block(&block_hash).await? {
+                tracing::debug!(%block_hash, "already processed block");
                 break;
             }
 
@@ -242,7 +233,7 @@ where
                 .get_bitcoin_client()
                 .get_block(&block_hash)
                 .await?
-                .ok_or(Error::MissingBlock)?;
+                .ok_or(Error::MissingBitcoinBlock(block_hash.into()))?;
 
             block_hash = block.header.prev_blockhash;
             blocks.push(block);
@@ -255,8 +246,8 @@ where
 
     #[tracing::instrument(skip(self))]
     async fn have_already_processed_block(
-        &mut self,
-        block_hash: bitcoin::BlockHash,
+        &self,
+        block_hash: &bitcoin::BlockHash,
     ) -> Result<bool, Error> {
         Ok(self
             .context
@@ -267,7 +258,7 @@ where
     }
 
     #[tracing::instrument(skip_all, fields(block_hash = %block.block_hash()))]
-    async fn process_bitcoin_block(&mut self, block: bitcoin::Block) -> Result<(), Error> {
+    async fn process_bitcoin_block(&self, block: bitcoin::Block) -> Result<(), Error> {
         tracing::info!("processing bitcoin block");
         let tenure_info = self.stacks_client.get_tenure_info().await?;
 
@@ -289,11 +280,21 @@ where
     /// For each of the deposit requests, persist the corresponding
     /// transaction and the parsed deposit info into the database.
     ///
-    /// Since this function writes to the `bitcoin_transactions` table, we
-    /// must make sure that we have the bitcoin block header info in the
-    /// database. So, this function must be called after
-    /// [`BlockObserver::process_bitcoin_block`]
-    async fn store_deposit_requests(&mut self, requests: Vec<Deposit>) -> Result<(), Error> {
+    /// This function does three things:
+    /// 1. For all deposit requests, check to see if there are bitcoin
+    ///    blocks that we do not have in our database.
+    /// 2. If we do not have a record of the bitcoin block then write it
+    ///    to the database.
+    /// 3. Write the deposit transaction and the extracted deposit info
+    ///    into the database.
+    async fn store_deposit_requests(&self, requests: Vec<Deposit>) -> Result<(), Error> {
+        // We need to check to see if we have a record of the bitcoin block
+        // that contains the deposit request in our database. If we don't
+        // then write them to our database.
+        self.store_deposit_request_blocks(&requests).await?;
+
+        // Okay now we write the deposit requests and the transactions to
+        // the database.
         let (deposit_requests, deposit_request_txs) = requests
             .into_iter()
             .map(|deposit| {
@@ -310,14 +311,40 @@ where
             .into_iter()
             .unzip();
 
-        self.context
-            .get_storage_mut()
-            .write_bitcoin_transactions(deposit_request_txs)
-            .await?;
-        self.context
-            .get_storage_mut()
-            .write_deposit_requests(deposit_requests)
-            .await?;
+        let db = self.context.get_storage_mut();
+        db.write_bitcoin_transactions(deposit_request_txs).await?;
+        db.write_deposit_requests(deposit_requests).await?;
+
+        Ok(())
+    }
+
+    /// This function does two things:
+    /// 1. For all deposit requests, check to see if there are bitcoin
+    ///    blocks that we do not have in our database.
+    /// 2. If we do not have a record of the bitcoin block then write it
+    ///    to the database.
+    async fn store_deposit_request_blocks(&self, requests: &[Deposit]) -> Result<(), Error> {
+        let db = self.context.get_storage_mut();
+        let mut deposit_blocks = Vec::new();
+
+        // We need to check to see if we have a record of the bitcoin block
+        // that contains the deposit request in our database.
+        for deposit in requests.iter() {
+            let blocks = self
+                .next_blocks_to_process(deposit.tx_info.block_hash)
+                .await?
+                .into_iter()
+                .map(model::BitcoinBlock::from);
+            deposit_blocks.extend(blocks);
+        }
+
+        // We now get the distinct blocks and write them to the database.
+        deposit_blocks.sort_by_key(|block| (block.block_height, block.block_hash));
+        deposit_blocks.dedup();
+
+        for block in deposit_blocks {
+            db.write_bitcoin_block(&block).await?;
+        }
 
         Ok(())
     }
@@ -400,39 +427,19 @@ where
         Ok(())
     }
 
-    async fn write_stacks_blocks(
-        &mut self,
-        blocks: &[nakamoto::NakamotoBlock],
-    ) -> Result<(), Error> {
+    async fn write_stacks_blocks(&self, tenures: &[TenureBlocks]) -> Result<(), Error> {
         let deployer = &self.context.config().signer.deployer;
-        let txs = storage::postgres::extract_relevant_transactions(blocks, deployer);
-
-        let unique_consensus_hashes = blocks
+        let txs = tenures
             .iter()
-            .map(|block| block.header.consensus_hash)
-            .collect::<HashSet<_>>();
-        let mut consensus_hashes = HashMap::new();
-        for consensus_hash in unique_consensus_hashes {
-            let anchor_block: BitcoinBlockHash = self
-                .stacks_client
-                .get_sortition_info(&consensus_hash)
-                .await?
-                .burn_block_hash
-                .into();
-            consensus_hashes.insert(consensus_hash, anchor_block);
-        }
-
-        let headers = blocks
-            .iter()
-            .map(|block| {
-                Ok(model::StacksBlock::from_nakamoto_block(
-                    block,
-                    consensus_hashes
-                        .get(&block.header.consensus_hash)
-                        .ok_or(Error::MissingBlock)?,
-                ))
+            .flat_map(|tenure| {
+                storage::postgres::extract_relevant_transactions(tenure.blocks(), deployer)
             })
-            .collect::<Result<_, Error>>()?;
+            .collect::<Vec<_>>();
+
+        let headers = tenures
+            .iter()
+            .flat_map(TenureBlocks::as_stacks_blocks)
+            .collect::<Vec<_>>();
 
         let storage = self.context.get_storage_mut();
         storage.write_stacks_block_headers(headers).await?;
@@ -442,14 +449,8 @@ where
 
     /// Write the bitcoin block to the database. We also write any
     /// transactions that are spend to any of the signers `scriptPubKey`s
-    async fn write_bitcoin_block(&mut self, block: &bitcoin::Block) -> Result<(), Error> {
-        let db_block = model::BitcoinBlock {
-            block_hash: block.block_hash().into(),
-            block_height: block
-                .bip34_block_height()
-                .expect("Failed to get block height"),
-            parent_hash: block.header.prev_blockhash.into(),
-        };
+    async fn write_bitcoin_block(&self, block: &bitcoin::Block) -> Result<(), Error> {
+        let db_block = model::BitcoinBlock::from(block);
 
         self.context
             .get_storage_mut()
@@ -472,43 +473,52 @@ mod tests {
     use model::BitcoinTxId;
     use model::ScriptPubKey;
     use rand::SeedableRng;
+    use test_log::test;
 
     use crate::bitcoin::rpc::GetTxResponse;
-    use crate::config::Settings;
-    use crate::context::SignerContext;
+    use crate::context::SignerSignal;
     use crate::keys::PublicKey;
     use crate::keys::SignerScriptPubKey as _;
     use crate::storage;
     use crate::testing::block_observer::TestHarness;
+    use crate::testing::context::*;
 
     use super::*;
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn should_be_able_to_extract_bitcoin_blocks_given_a_block_header_stream() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let storage = storage::in_memory::Store::new_shared();
         let test_harness = TestHarness::generate(&mut rng, 20, 0..5);
-        let ctx = SignerContext::new(
-            Settings::new_from_default_config().unwrap(),
-            storage.clone(),
-            test_harness.clone(),
-            test_harness.clone(),
-            test_harness.clone(),
-        );
+        let ctx = TestContext::builder()
+            .with_storage(storage.clone())
+            .with_stacks_client(test_harness.clone())
+            .with_emily_client(test_harness.clone())
+            .with_bitcoin_client(test_harness.clone())
+            .build();
+
         // There must be at least one signal receiver alive when the block observer
         // later tries to send a signal, hence this line.
         let _signal_rx = ctx.get_signal_receiver();
         let block_hash_stream = test_harness.spawn_block_hash_stream();
 
         let block_observer = BlockObserver {
-            context: ctx,
+            context: ctx.clone(),
             stacks_client: test_harness.clone(),
             emily_client: test_harness.clone(),
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
         };
 
-        block_observer.run().await.expect("block observer failed");
+        let handle = tokio::spawn(block_observer.run());
+        ctx.wait_for_signal(Duration::from_secs(3), |signal| {
+            matches!(
+                signal,
+                SignerSignal::Event(SignerEvent::BitcoinBlockObserved)
+            )
+        })
+        .await
+        .expect("block observer failed to complete within timeout");
 
         for block in test_harness.bitcoin_blocks() {
             let persisted = storage
@@ -519,6 +529,8 @@ mod tests {
 
             assert_eq!(persisted.block_hash, block.block_hash().into())
         }
+
+        handle.abort();
     }
 
     /// Test that `BlockObserver::load_latest_deposit_requests` takes
@@ -528,6 +540,13 @@ mod tests {
     async fn validated_confirmed_deposits_get_added_to_state() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let mut test_harness = TestHarness::generate(&mut rng, 20, 0..5);
+        // We want the test harness to fetch a block from our
+        // "bitcoin-core", which in this case is the test harness. So we
+        // use a block hash that the test harness knows about.
+        let block_hash = test_harness
+            .bitcoin_blocks()
+            .first()
+            .map(|block| block.block_hash());
 
         let lock_time = 150;
         let max_fee = 32000;
@@ -552,7 +571,7 @@ mod tests {
         // from bitcoin-core's blockchain. The stubs out that response.
         let get_tx_resp0 = GetTxResponse {
             tx: tx_setup0.tx.clone(),
-            block_hash: Some(bitcoin::BlockHash::all_zeros()),
+            block_hash,
             confirmations: None,
             block_time: None,
         };
@@ -611,13 +630,12 @@ mod tests {
         // Now we finish setting up the block observer.
         let storage = storage::in_memory::Store::new_shared();
         let block_hash_stream = test_harness.spawn_block_hash_stream();
-        let ctx = SignerContext::new(
-            Settings::new_from_default_config().unwrap(),
-            storage.clone(),
-            test_harness.clone(),
-            test_harness.clone(),
-            test_harness.clone(),
-        );
+        let ctx = TestContext::builder()
+            .with_storage(storage.clone())
+            .with_stacks_client(test_harness.clone())
+            .with_emily_client(test_harness.clone())
+            .with_bitcoin_client(test_harness.clone())
+            .build();
 
         let mut block_observer = BlockObserver {
             context: ctx,
@@ -654,7 +672,13 @@ mod tests {
         let mut rng = rand::rngs::StdRng::seed_from_u64(365);
         let mut test_harness = TestHarness::generate(&mut rng, 20, 0..5);
 
-        let block_hash = BlockHash::from_byte_array([1u8; 32]);
+        // We want the test harness to fetch a block from our
+        // "bitcoin-core", which in this case is the test harness. So we
+        // use a block hash that the test harness knows about.
+        let block_hash = test_harness
+            .bitcoin_blocks()
+            .first()
+            .map(|block| block.block_hash());
         let lock_time = 150;
         let max_fee = 32000;
         let amount = 500_000;
@@ -678,7 +702,7 @@ mod tests {
         // response.
         let get_tx_resp0 = GetTxResponse {
             tx: tx_setup0.tx.clone(),
-            block_hash: Some(block_hash.clone()),
+            block_hash,
             confirmations: None,
             block_time: None,
         };
@@ -693,13 +717,12 @@ mod tests {
         // Now we finish setting up the block observer.
         let storage = storage::in_memory::Store::new_shared();
         let block_hash_stream = test_harness.spawn_block_hash_stream();
-        let ctx = SignerContext::new(
-            Settings::new_from_default_config().unwrap(),
-            storage.clone(),
-            test_harness.clone(),
-            test_harness.clone(),
-            test_harness.clone(),
-        );
+        let ctx = TestContext::builder()
+            .with_storage(storage.clone())
+            .with_stacks_client(test_harness.clone())
+            .with_emily_client(test_harness.clone())
+            .with_bitcoin_client(test_harness.clone())
+            .build();
 
         let mut block_observer = BlockObserver {
             context: ctx,
@@ -767,13 +790,12 @@ mod tests {
         };
         storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 
-        let ctx = SignerContext::new(
-            Settings::new_from_default_config().unwrap(),
-            storage.clone(),
-            test_harness.clone(),
-            test_harness.clone(),
-            test_harness.clone(),
-        );
+        let ctx = TestContext::builder()
+            .with_storage(storage.clone())
+            .with_stacks_client(test_harness.clone())
+            .with_emily_client(test_harness.clone())
+            .with_bitcoin_client(test_harness.clone())
+            .build();
 
         // Now let's create two transactions, one spending to the signers
         // and another not spending to the signers. We use

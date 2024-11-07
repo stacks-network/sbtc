@@ -125,10 +125,6 @@
 ;;
 ;; To specify this address type in the recipient, the `version` is 0x06 and
 ;; the `hashbytes` is the "tweaked" public key.
-(define-read-only (get-burn-header (height uint))
-    ;; (get-burn-block-info? header-hash height)
-    (get-tenure-info? burnchain-header-hash height)
-)
 (define-public (initiate-withdrawal-request (amount uint)
                                             (recipient { version: (buff 1), hashbytes: (buff 32) })
                                             (max-fee uint)
@@ -151,7 +147,8 @@
                                           (output-index uint)
                                           (fee uint)
                                           (burn-hash (buff 32))
-                                          (burn-height uint))
+                                          (burn-height uint)
+                                          (sweep-txid (buff 32)))
   (let 
     (
       (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
@@ -183,7 +180,7 @@
       )
 
       ;; Call into registry to confirm accepted withdrawal
-      (try! (contract-call? .sbtc-registry complete-withdrawal-accept request-id bitcoin-txid output-index signer-bitmap fee burn-hash burn-height))
+      (try! (contract-call? .sbtc-registry complete-withdrawal-accept request-id bitcoin-txid output-index signer-bitmap fee burn-hash burn-height sweep-txid))
 
       (ok true)
   )
@@ -224,7 +221,8 @@
                                       output-index: (optional uint), 
                                       fee: (optional uint),
                                       burn-hash: (buff 32),
-                                      burn-height: uint})))
+                                      burn-height: uint,
+                                      sweep-txid: (optional (buff 32))})))
   (let 
       (
           (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))
@@ -246,7 +244,8 @@
                                                         output-index: (optional uint), 
                                                         fee: (optional uint),
                                                         burn-hash: (buff 32),
-                                                        burn-height: uint}) 
+                                                        burn-height: uint,
+                                                        sweep-txid: (optional (buff 32))}) 
                                                        (helper-response (response uint uint)))
   (match helper-response 
     index
@@ -264,7 +263,7 @@
             (asserts! 
               (and (is-some current-bitcoin-txid) (is-some current-output-index) (is-some current-fee)) 
               (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
-            (unwrap! (accept-withdrawal-request (get request-id withdrawal) (unwrap-panic current-bitcoin-txid) current-signer-bitmap (unwrap-panic current-output-index) (unwrap-panic current-fee) (get burn-hash withdrawal) (get burn-height withdrawal)) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
+            (unwrap! (accept-withdrawal-request (get request-id withdrawal) (unwrap-panic current-bitcoin-txid) current-signer-bitmap (unwrap-panic current-output-index) (unwrap-panic current-fee) (get burn-hash withdrawal) (get burn-height withdrawal) (unwrap-panic (get sweep-txid withdrawal))) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
           )
           ;; rejected
           (unwrap! (reject-withdrawal-request (get request-id withdrawal) current-signer-bitmap) (err (+ ERR_WITHDRAWAL_INDEX_PREFIX (+ u10 index))))
@@ -302,4 +301,9 @@
       ERR_INVALID_ADDR_HASHBYTES)
     (ok true)
   )
+)
+
+;; Return the bitcoin header hash of the bitcoin block at the given height.
+(define-read-only (get-burn-header (height uint))
+    (get-burn-block-info? header-hash height)
 )
