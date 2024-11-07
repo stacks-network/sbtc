@@ -302,14 +302,8 @@ where
             }
         };
 
-        if self
-            .deploy_smart_contracts(&bitcoin_chain_tip, &aggregate_key)
-            .await?
-        {
-            // If we just deployed smart contracts, we may not be able to do anything
-            // else until they are confirmed.
-            return Ok(());
-        }
+        self.deploy_smart_contracts(&bitcoin_chain_tip, &aggregate_key)
+            .await?;
 
         self.check_and_submit_rotate_key_transaction(&bitcoin_chain_tip, &aggregate_key)
             .await?;
@@ -338,6 +332,10 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
+        if !self.all_smart_contracts_deployed().await? {
+            return Ok(());
+        }
+
         let last_dkg = self
             .context
             .get_storage()
@@ -361,10 +359,14 @@ where
         }
 
         let wallet = self.get_signer_wallet(bitcoin_chain_tip).await?;
+        // current_aggregate_key define which wallet can sign stacks tx interacting
+        // with the registry smart contract; fallbacks to `aggregate_key` if it's
+        // the first rotate key tx.
+        let signing_key = &current_aggregate_key.unwrap_or(*aggregate_key);
 
         self.construct_and_sign_rotate_key_transaction(
             bitcoin_chain_tip,
-            aggregate_key,
+            signing_key,
             &last_dkg.aggregate_key,
             &wallet,
         )
@@ -1112,21 +1114,20 @@ where
     }
 
     /// Deploy an sBTC smart contract to the stacks node.
-    /// Returns false if the contract is already deployed, true otherwise.
     async fn deploy_smart_contract(
         &mut self,
         contract_deploy: SmartContract,
         chain_tip: &model::BitcoinBlockHash,
         bitcoin_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
-    ) -> Result<bool, Error> {
+    ) -> Result<(), Error> {
         let stacks = self.context.get_stacks_client();
 
         // Maybe this smart contract has already been deployed, let's check
         // that first.
         let deployer = self.context.config().signer.deployer;
         if contract_deploy.is_deployed(&stacks, &deployer).await? {
-            return Ok(false);
+            return Ok(());
         }
 
         // The contract is not deployed yet, so we can proceed
@@ -1151,7 +1152,7 @@ where
         match process_request_fut.await {
             Ok(txid) => {
                 tracing::info!(%txid, "successfully submitted contract deploy transaction");
-                Ok(true)
+                Ok(())
             }
             Err(error) => {
                 tracing::warn!(
@@ -1190,30 +1191,43 @@ where
         Ok((sign_request, multi_tx))
     }
 
-    /// Deploy all sBTC smart contracts to the stacks node.
-    /// If the contracts are already deployed, the function will return Ok(false);
-    /// if at least one contract is deployed, it will return Ok(true).
+    /// Deploy all sBTC smart contracts to the stacks node (if not already deployed).
     /// If a contract fails to deploy, the function will return an error.
     #[tracing::instrument(skip(self))]
     pub async fn deploy_smart_contracts(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
         bitcoin_aggregate_key: &PublicKey,
-    ) -> Result<bool, Error> {
-        if self.sbtc_contracts_deployed {
-            return Ok(false);
+    ) -> Result<(), Error> {
+        if self.all_smart_contracts_deployed().await? {
+            return Ok(());
         }
 
         let wallet = self.get_signer_wallet(chain_tip).await?;
-        let mut deployed = false;
         for contract in SMART_CONTRACTS {
-            deployed |= self
-                .deploy_smart_contract(contract, chain_tip, bitcoin_aggregate_key, &wallet)
+            self.deploy_smart_contract(contract, chain_tip, bitcoin_aggregate_key, &wallet)
                 .await?;
         }
 
+        Ok(())
+    }
+
+    async fn all_smart_contracts_deployed(&mut self) -> Result<bool, Error> {
+        if self.sbtc_contracts_deployed {
+            return Ok(true);
+        }
+
+        let stacks = self.context.get_stacks_client();
+        let deployer = self.context.config().signer.deployer;
+
+        for contract in SMART_CONTRACTS {
+            if !contract.is_deployed(&stacks, &deployer).await? {
+                return Ok(false);
+            }
+        }
+
         self.sbtc_contracts_deployed = true;
-        Ok(deployed)
+        Ok(true)
     }
 
     async fn get_signer_wallet(
