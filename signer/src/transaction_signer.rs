@@ -349,7 +349,7 @@ where
             }
 
             (message::Payload::WstsMessage(wsts_msg), _, _) => {
-                self.handle_wsts_message(wsts_msg, &msg.bitcoin_chain_tip)
+                self.handle_wsts_message(wsts_msg, &msg.bitcoin_chain_tip, msg.signer_pub_key)
                     .await?;
             }
 
@@ -579,10 +579,19 @@ where
         &mut self,
         msg: &message::WstsMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
+        msg_public_key: PublicKey,
     ) -> Result<(), Error> {
         tracing::info!("handling message");
+        let chain_tip_report = self
+            .inspect_msg_chain_tip(msg_public_key, bitcoin_chain_tip)
+            .await?;
+
         match &msg.inner {
             wsts::net::Message::DkgBegin(_) => {
+                if !chain_tip_report.sender_is_coordinator {
+                    return Err(Error::NotChainTipCoordinator);
+                }
+
                 let signer_public_keys = self.get_signer_public_keys(bitcoin_chain_tip).await?;
 
                 let state_machine = wsts_state_machine::SignerStateMachine::new(
@@ -594,13 +603,38 @@ where
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
-            wsts::net::Message::DkgPublicShares(_)
-            | wsts::net::Message::DkgPrivateBegin(_)
-            | wsts::net::Message::DkgPrivateShares(_) => {
+            wsts::net::Message::DkgPrivateBegin(_) => {
+                if !chain_tip_report.sender_is_coordinator {
+                    return Err(Error::NotChainTipCoordinator);
+                }
+
+                self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
+                    .await?;
+            }
+            wsts::net::Message::DkgPublicShares(dkg_public_shares) => {
+                let public_keys = &self.wsts_state_machines[&msg.txid].public_keys;
+                let signer_public_key =
+                    PublicKey::from(&public_keys.signers[&dkg_public_shares.signer_id]);
+                if signer_public_key != msg_public_key {
+                    return Err(Error::InvalidSignature);
+                }
+                self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
+                    .await?;
+            }
+            wsts::net::Message::DkgPrivateShares(dkg_private_shares) => {
+                let public_keys = &self.wsts_state_machines[&msg.txid].public_keys;
+                let signer_public_key =
+                    PublicKey::from(&public_keys.signers[&dkg_private_shares.signer_id]);
+                if signer_public_key != msg_public_key {
+                    return Err(Error::InvalidSignature);
+                }
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
             wsts::net::Message::DkgEndBegin(_) => {
+                if !chain_tip_report.sender_is_coordinator {
+                    return Err(Error::NotChainTipCoordinator);
+                }
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
                 self.store_dkg_shares(&msg.txid).await?;
@@ -614,6 +648,9 @@ where
             // warning.
             #[allow(clippy::map_entry)]
             wsts::net::Message::NonceRequest(_) => {
+                if !chain_tip_report.sender_is_coordinator {
+                    return Err(Error::NotChainTipCoordinator);
+                }
                 // TODO(296): Validate that message is the appropriate sighash
                 if !self.wsts_state_machines.contains_key(&msg.txid) {
                     let (maybe_aggregate_key, _) = self
@@ -634,6 +671,10 @@ where
                     .await?;
             }
             wsts::net::Message::SignatureShareRequest(_) => {
+                if !chain_tip_report.sender_is_coordinator {
+                    return Err(Error::NotChainTipCoordinator);
+                }
+
                 // TODO(296): Validate that message is the appropriate sighash
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
