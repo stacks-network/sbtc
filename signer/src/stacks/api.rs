@@ -129,6 +129,16 @@ pub trait StacksInteract: Send + Sync {
         &self,
         contract_principal: &StacksAddress,
     ) -> impl Future<Output = Result<Vec<PublicKey>, Error>> + Send;
+
+    /// Retrieve the current signers' aggregate key from the `sbtc-registry` contract.
+    ///
+    /// This is done by making a `GET /v2/data_var/<contract-principal>/sbtc-registry/current-aggregate-pubkey`
+    /// request.
+    fn get_current_signers_aggregate_key(
+        &self,
+        contract_principal: &StacksAddress,
+    ) -> impl Future<Output = Result<Option<PublicKey>, Error>> + Send;
+
     /// Get the latest account info for the given address.
     fn get_account(
         &self,
@@ -1020,6 +1030,34 @@ impl StacksInteract for StacksClient {
         }
     }
 
+    async fn get_current_signers_aggregate_key(
+        &self,
+        contract_principal: &StacksAddress,
+    ) -> Result<Option<PublicKey>, Error> {
+        let result = self
+            .get_data_var(
+                contract_principal,
+                &ContractName::from("sbtc-registry"),
+                &ClarityName::from("current-aggregate-pubkey"),
+            )
+            .await?;
+
+        // Check the result and return the aggregate key.
+        match result {
+            Value::Sequence(SequenceData::Buffer(BuffData { data })) => {
+                // The initial value of the data var is all zeros
+                if data.iter().all(|v| *v == 0) {
+                    Ok(None)
+                } else {
+                    PublicKey::from_slice(&data).map(Some)
+                }
+            }
+            _ => Err(Error::InvalidStacksResponse(
+                "expected a buffer but got something else",
+            )),
+        }
+    }
+
     async fn get_account(&self, address: &StacksAddress) -> Result<AccountInfo, Error> {
         self.get_account(address).await
     }
@@ -1169,6 +1207,20 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
     ) -> Result<Vec<PublicKey>, Error> {
         self.exec(|client, retry| async move {
             let result = client.get_current_signer_set(contract_principal).await;
+            retry.abort_if(|| matches!(result, Err(Error::InvalidStacksResponse(_))));
+            result
+        })
+        .await
+    }
+
+    async fn get_current_signers_aggregate_key(
+        &self,
+        contract_principal: &StacksAddress,
+    ) -> Result<Option<PublicKey>, Error> {
+        self.exec(|client, retry| async move {
+            let result = client
+                .get_current_signers_aggregate_key(contract_principal)
+                .await;
             retry.abort_if(|| matches!(result, Err(Error::InvalidStacksResponse(_))));
             result
         })
@@ -1595,6 +1647,62 @@ mod tests {
 
         // Assert that the response is what we expect
         assert_eq!(&resp, &public_keys);
+        mock.assert();
+    }
+
+    #[test_case(|url| StacksClient::new(url, 20).unwrap(), false; "stacks-client-some")]
+    #[test_case(|url| StacksClient::new(url, 20).unwrap(), true; "stacks-client-none")]
+    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(), false; "fallback-client-some")]
+    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(), true; "fallback-client-none")]
+    #[tokio::test]
+    async fn get_current_signers_aggregate_key_works<F, C>(client: F, return_none: bool)
+    where
+        C: StacksInteract,
+        F: Fn(Url) -> C,
+    {
+        let aggregate_key = generate_pubkeys(1).into_iter().next().unwrap();
+
+        let data;
+        let expected;
+        if return_none {
+            data = [0; 33].to_vec();
+            expected = None;
+        } else {
+            data = aggregate_key.serialize().to_vec();
+            expected = Some(aggregate_key);
+        }
+        let aggregate_key_clarity = Value::Sequence(SequenceData::Buffer(BuffData { data }));
+
+        // The format of the response JSON is `{"data": "0x<serialized-value>"}` (excluding the proof).
+        let raw_json_response = format!(
+            r#"{{"data":"0x{}"}}"#,
+            Value::serialize_to_hex(&aggregate_key_clarity).expect("failed to serialize value")
+        );
+
+        // Setup our mock server
+        let mut stacks_node_server = mockito::Server::new_async().await;
+        let mock = stacks_node_server
+            .mock("GET", "/v2/data_var/ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM/sbtc-registry/current-aggregate-pubkey?proof=0")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(&raw_json_response)
+            .expect(1)
+            .create();
+
+        // Setup our Stacks client
+        let client = client(url::Url::parse(stacks_node_server.url().as_str()).unwrap());
+
+        // Make the request to the mock server
+        let resp = client
+            .get_current_signers_aggregate_key(
+                &StacksAddress::from_string("ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM")
+                    .expect("failed to parse stacks address"),
+            )
+            .await
+            .unwrap();
+
+        // Assert that the response is what we expect
+        assert_eq!(resp, expected);
         mock.assert();
     }
 

@@ -412,6 +412,10 @@ async fn deposit_flow() {
                 });
                 Box::pin(std::future::ready(response))
             });
+
+            client
+                .expect_get_current_signers_aggregate_key()
+                .returning(move |_| Box::pin(std::future::ready(Ok(Some(aggregate_key)))));
         })
         .await;
 
@@ -540,8 +544,9 @@ async fn deposit_flow() {
         .expect("failed to signal");
 
     // Await the `wait_for_tx_task` to receive the first transaction broadcasted.
-    let broadcasted_tx = wait_for_transaction_task
+    let broadcasted_tx = tokio::time::timeout(Duration::from_secs(10), wait_for_transaction_task)
         .await
+        .unwrap()
         .expect("failed to receive message")
         .expect("no message received");
 

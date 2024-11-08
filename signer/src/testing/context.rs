@@ -326,6 +326,17 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
             .await
     }
 
+    async fn get_current_signers_aggregate_key(
+        &self,
+        contract_principal: &StacksAddress,
+    ) -> Result<Option<PublicKey>, Error> {
+        self.inner
+            .lock()
+            .await
+            .get_current_signers_aggregate_key(contract_principal)
+            .await
+    }
+
     async fn get_account(&self, address: &StacksAddress) -> Result<AccountInfo, Error> {
         self.inner.lock().await.get_account(address).await
     }

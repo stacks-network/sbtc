@@ -1011,7 +1011,7 @@ pub struct RotateKeysV1 {
     /// The new set of public keys for all known signers during this
     /// PoX cycle.
     new_keys: BTreeSet<PublicKey>,
-    /// The aggregate key created by combining the above public keys.
+    /// The signers bitcoin aggregate key
     aggregate_key: PublicKey,
     /// The address that deployed the contract.
     deployer: StacksAddress,
@@ -1022,9 +1022,13 @@ pub struct RotateKeysV1 {
 impl RotateKeysV1 {
     /// Create a new instance of a RotateKeysV1 transaction object where
     /// the new keys will match those provided by the input wallet.
-    pub fn new(wallet: &SignerWallet, deployer: StacksAddress) -> Self {
+    pub fn new(
+        wallet: &SignerWallet,
+        deployer: StacksAddress,
+        bitcoin_aggregate_key: &PublicKey,
+    ) -> Self {
         Self {
-            aggregate_key: *wallet.stacks_aggregate_key(),
+            aggregate_key: *bitcoin_aggregate_key,
             new_keys: wallet.public_keys().clone(),
             deployer,
             signatures_required: wallet.signatures_required(),
@@ -1239,6 +1243,7 @@ impl SmartContract {
 
 #[cfg(test)]
 mod tests {
+    use fake::Fake as _;
     use rand::rngs::StdRng;
     use rand::SeedableRng as _;
     use secp256k1::SecretKey;
@@ -1311,8 +1316,9 @@ mod tests {
         let public_keys = secret_keys.map(|sk| sk.public_key(SECP256K1).into());
         let wallet = SignerWallet::new(&public_keys, 2, NetworkKind::Testnet, 0).unwrap();
         let deployer = StacksAddress::burn_address(false);
+        let aggregate_key: PublicKey = fake::Faker.fake_with_rng(&mut rng);
 
-        let call = RotateKeysV1::new(&wallet, deployer);
+        let call = RotateKeysV1::new(&wallet, deployer, &aggregate_key);
 
         // This is to check that this function doesn't implicitly panic. If
         // it doesn't panic now, it can never panic at runtime.
