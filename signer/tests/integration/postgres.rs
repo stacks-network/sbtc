@@ -2357,7 +2357,7 @@ async fn deposit_report_with_only_deposit_request() {
     let output_index = deposit_request.output_index;
     let signer_public_key = &signer_set[0];
 
-    // The deposit request is not in our database so we should get None
+    // The deposit request is not in our database, so we should get None
     // here.
     let report = db
         .get_deposit_request_report(&chain_tip, txid, output_index, signer_public_key)
@@ -2500,7 +2500,7 @@ async fn deposit_report_with_deposit_request_reorged() {
     signer::testing::storage::drop_db(db).await;
 }
 
-/// Check that if the deposit has been included in a sweep transaaction
+/// Check that if the deposit has been included in a sweep transaction
 /// then the deposit report states that the deposit has been spent in the
 /// status.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -2599,7 +2599,7 @@ async fn deposit_report_with_deposit_request_spent() {
     signer::testing::storage::drop_db(db).await;
 }
 
-/// Check that if the deposit has been included in a sweep transaaction
+/// Check that if the deposit has been included in a sweep transaction
 /// that gets reorged, then the deposit report states that the deposit is
 /// confirmed and not spent.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -2733,7 +2733,7 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
 }
 
 /// Check when we have a deposit that has been confirmed on the canonical
-/// bitcoin and hasn't been spend, that the deposit report has the
+/// bitcoin and hasn't been spent, that the deposit report has the
 /// appropriate "Confirmed" status.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
