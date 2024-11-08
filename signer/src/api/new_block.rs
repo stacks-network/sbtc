@@ -14,7 +14,6 @@ use emily_client::models::Fulfillment;
 use emily_client::models::Status;
 use emily_client::models::UpdateDepositsResponse;
 use emily_client::models::UpdateWithdrawalsResponse;
-use emily_client::models::Withdrawal;
 use emily_client::models::WithdrawalParameters;
 use emily_client::models::WithdrawalUpdate;
 use futures::FutureExt;
@@ -54,8 +53,6 @@ static SBTC_REGISTRY_IDENTIFIER: OnceLock<QualifiedContractIdentifier> = OnceLoc
 enum UpdateResult {
     Deposit(Result<UpdateDepositsResponse, Error>),
     Withdrawal(Result<UpdateWithdrawalsResponse, Error>),
-    CreatedWithdrawal(Vec<Result<Withdrawal, Error>>),
-    Chainstate(Result<Chainstate, Error>),
 }
 
 /// A handler of `POST /new_block` webhook events.
@@ -179,6 +176,27 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
     // Send the updates to Emily.
     let emily_client = api.ctx.get_emily_client();
     let chainstate = Chainstate::new(block_id.to_string(), new_block_event.block_height);
+
+    // Create chainstate first so that we're sure that Emily is viewing the chain state
+    // the same way.
+    if let Err(error) = emily_client.set_chainstate(chainstate).await {
+        tracing::error!(%error, "Failed to set chainstate in Emily");
+    }
+
+    // Create any new withdrawal instances. We do this before performing any updates
+    // because a withdrawal needs to exist in the Emily API database in order for it
+    // to be updated.
+    emily_client
+        .create_withdrawals(created_withdrawals)
+        .await
+        .into_iter()
+        .for_each(|create_withdrawal_result| {
+            if let Err(error) = create_withdrawal_result {
+                tracing::error!(%error, "Failed to create withdrawal in Emily");
+            }
+        });
+
+    // Execute updates in parallel.
     let futures = vec![
         emily_client
             .update_deposits(completed_deposits)
@@ -188,41 +206,21 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
             .update_withdrawals(updated_withdrawals)
             .map(UpdateResult::Withdrawal)
             .boxed(),
-        emily_client
-            .create_withdrawals(created_withdrawals)
-            .map(UpdateResult::CreatedWithdrawal)
-            .boxed(),
-        emily_client
-            .set_chainstate(chainstate)
-            .map(UpdateResult::Chainstate)
-            .boxed(),
     ];
-    // TODO: Ideally, we would use `futures::future::join_all` here, but Emily
-    // randomly returns a `VersionConflict` error when we send multiple
-    // requests that may update the chainstate.
-    // let results = futures::future::join_all(futures).await;
+
+    let results = futures::future::join_all(futures).await;
 
     // Log any errors that occurred while updating Emily.
     // We don't return a non-success status code here because we rely on
     // the redundancy of the other sBTC signers to ensure that the update
     // is sent to Emily.
-    for future in futures {
-        match future.await {
-            UpdateResult::Chainstate(Err(error)) => {
-                tracing::warn!(%error, "Failed to set chainstate in Emily");
-            }
+    for result in results {
+        match result {
             UpdateResult::Deposit(Err(error)) => {
                 tracing::warn!(%error, "Failed to update deposits in Emily");
             }
             UpdateResult::Withdrawal(Err(error)) => {
                 tracing::warn!(%error, "Failed to update withdrawals in Emily");
-            }
-            UpdateResult::CreatedWithdrawal(results) => {
-                for result in results {
-                    if let Err(error) = result {
-                        tracing::warn!(%error, "Failed to create withdrawals in Emily");
-                    }
-                }
             }
             _ => {} // Ignore successful results.
         }

@@ -493,6 +493,18 @@ impl TryFrom<WithdrawalUpdate> for ValidatedWithdrawalUpdate {
     }
 }
 
+impl ValidatedWithdrawalUpdate {
+    /// Returns true if the update is not necessary.
+    pub fn is_unnecessary(&self, entry: &WithdrawalEntry) -> bool {
+        entry
+            .history
+            .iter()
+            .rev()
+            .take_while(|event| event.stacks_block_height >= self.event.stacks_block_height)
+            .any(|event| event == &self.event)
+    }
+}
+
 /// Packaged withdrawal update.
 pub struct WithdrawalUpdatePackage {
     /// Key.
@@ -526,5 +538,101 @@ impl WithdrawalUpdatePackage {
             version: entry.version,
             event: update.event,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::database::entries::StatusEntry;
+    use crate::{
+        api::models::common::Status,
+        database::entries::withdrawal::{
+            ValidatedWithdrawalUpdate, WithdrawalEntry, WithdrawalEntryKey, WithdrawalEvent,
+            WithdrawalParametersEntry,
+        },
+    };
+
+    #[test]
+    fn withdrawal_update_should_be_unnecessary_when_event_is_present() {
+        // Arrange
+        let pending = WithdrawalEvent {
+            status: StatusEntry::Pending,
+            message: "message".to_string(),
+            stacks_block_height: 1,
+            stacks_block_hash: "hash".to_string(),
+        };
+
+        let failed = WithdrawalEvent {
+            status: StatusEntry::Failed,
+            message: "message".to_string(),
+            stacks_block_height: 2,
+            stacks_block_hash: "hash".to_string(),
+        };
+
+        let withdrawal_entry = WithdrawalEntry {
+            key: WithdrawalEntryKey {
+                request_id: 1,
+                stacks_block_hash: "hash".to_string(),
+            },
+            stacks_block_height: 1,
+            version: 1,
+            recipient: "recipient".to_string(),
+            amount: 1,
+            parameters: WithdrawalParametersEntry { max_fee: 1 },
+            status: Status::Pending,
+            last_update_height: 1,
+            last_update_block_hash: "hash".to_string(),
+            history: vec![pending, failed.clone()],
+        };
+
+        let withdrawal_update = ValidatedWithdrawalUpdate { request_id: 1, event: failed };
+
+        // Act
+        let is_unnecessary = withdrawal_update.is_unnecessary(&withdrawal_entry);
+
+        // Assert
+        assert!(is_unnecessary);
+    }
+
+    #[test]
+    fn withdrawal_update_should_be_necessary_when_event_is_not_present() {
+        // Arrange
+        let pending = WithdrawalEvent {
+            status: StatusEntry::Pending,
+            message: "message".to_string(),
+            stacks_block_height: 1,
+            stacks_block_hash: "hash".to_string(),
+        };
+
+        let failed = WithdrawalEvent {
+            status: StatusEntry::Failed,
+            message: "message".to_string(),
+            stacks_block_height: 2,
+            stacks_block_hash: "hash".to_string(),
+        };
+
+        let withdrawal_entry = WithdrawalEntry {
+            key: WithdrawalEntryKey {
+                request_id: 1,
+                stacks_block_hash: "hash".to_string(),
+            },
+            stacks_block_height: 1,
+            version: 1,
+            recipient: "recipient".to_string(),
+            amount: 1,
+            parameters: WithdrawalParametersEntry { max_fee: 1 },
+            status: Status::Pending,
+            last_update_height: 1,
+            last_update_block_hash: "hash".to_string(),
+            history: vec![pending.clone()],
+        };
+
+        let withdrawal_update = ValidatedWithdrawalUpdate { request_id: 1, event: failed };
+
+        // Act
+        let is_unnecessary = withdrawal_update.is_unnecessary(&withdrawal_entry);
+
+        // Assert
+        assert!(!is_unnecessary);
     }
 }
