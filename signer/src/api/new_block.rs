@@ -401,8 +401,8 @@ async fn handle_key_rotation(
 ) -> Result<(), Error> {
     let key_rotation_tx = RotateKeysTransaction {
         txid: stacks_txid,
-        aggregate_key: event.new_aggregate_pubkey,
-        signer_set: event.new_keys,
+        aggregate_key: event.new_aggregate_pubkey.into(),
+        signer_set: event.new_keys.into_iter().map(Into::into).collect(),
         signatures_required: event.new_signature_threshold,
     };
     ctx.get_storage_mut()
@@ -424,6 +424,7 @@ mod tests {
     use fake::Fake;
     use rand::rngs::OsRng;
     use rand::SeedableRng as _;
+    use secp256k1::SECP256K1;
     use test_case::test_case;
 
     use crate::storage::in_memory::Store;
@@ -880,10 +881,11 @@ mod tests {
         let db = ctx.inner_storage();
 
         let txid: StacksTxId = fake::Faker.fake_with_rng(&mut OsRng);
-
         let event = KeyRotationEvent {
-            new_aggregate_pubkey: fake::Faker.fake_with_rng(&mut OsRng),
-            new_keys: vec![fake::Faker.fake_with_rng(&mut OsRng)],
+            new_aggregate_pubkey: SECP256K1.generate_keypair(&mut OsRng).1,
+            new_keys: (0..3)
+                .map(|_| SECP256K1.generate_keypair(&mut OsRng).1)
+                .collect(),
             new_address: PrincipalData::Standard(StandardPrincipalData::transient()),
             new_signature_threshold: 3,
         };

@@ -23,13 +23,11 @@ use blockstack_lib::burnchains::Txid as StacksTxid;
 use clarity::vm::types::CharType;
 use clarity::vm::types::PrincipalData;
 use clarity::vm::types::SequenceData;
-use clarity::vm::types::SequencedValue;
 use clarity::vm::types::TupleData;
 use clarity::vm::ClarityName;
 use clarity::vm::Value as ClarityValue;
+use secp256k1::PublicKey;
 use stacks_common::types::chainstate::StacksBlockId;
-
-use crate::keys::PublicKey;
 
 /// An error when trying to parse an sBTC event into a concrete type.
 #[derive(Debug, thiserror::Error)]
@@ -54,7 +52,7 @@ pub enum EventError {
     /// This error is thrown when trying to convert a public key from a
     /// Clarity buffer into a proper public key. It should never be thrown.
     #[error("Could not convert a public key in clarity event into the expected public key {0}")]
-    ClarityPublicKeyConversion(#[source] crate::error::Error),
+    ClarityPublicKeyConversion(#[source] secp256k1::Error),
     /// This should never happen, but happens when one of the given topics
     /// is not on the list of expected topics.
     #[error("Got an unexpected event topic: {0}")]
@@ -283,15 +281,12 @@ impl RawTupleData {
     /// Extract the list value from the given field
     fn remove_list(&mut self, field: &'static str) -> Result<Vec<ClarityValue>, EventError> {
         match self.data_map.remove(field) {
-            Some(ClarityValue::Sequence(SequenceData::List(mut list))) => {
-                Ok(list.drained_items())
-                // Ok(list)
-            }
+            Some(ClarityValue::Sequence(SequenceData::List(list))) => Ok(list.data),
             _ => Err(EventError::TupleEventField(field, self.tx_info)),
         }
     }
 
-    /// This function if for transforming the print events of the
+    /// This function is for transforming the print events of the
     /// complete-deposit function in the sbtc-registry.
     ///
     /// # Notes
@@ -333,7 +328,7 @@ impl RawTupleData {
         }))
     }
 
-    /// This function if for transforming the print events of the
+    /// This function is for transforming the print events of the
     /// `complete-withdrawal-accept` function in the sbtc-registry.
     ///
     /// # Notes
@@ -526,7 +521,7 @@ impl RawTupleData {
         }
     }
 
-    /// This function if for transforming the print events of the
+    /// This function is for transforming the print events of the
     /// `complete-withdrawal-accept` function in the sbtc-registry.
     ///
     /// # Notes
@@ -574,7 +569,7 @@ impl RawTupleData {
         }))
     }
 
-    /// This function if for transforming the print events of the
+    /// This function is for transforming the print events of the
     /// `complete-withdrawal-reject` function in the sbtc-registry.
     ///
     /// # Notes
@@ -606,7 +601,7 @@ impl RawTupleData {
         }))
     }
 
-    /// This function if for transforming the print events of the
+    /// This function is for transforming the print events of the
     /// `rotate-keys` function in the sbtc-registry.
     ///
     /// # Notes
@@ -662,7 +657,6 @@ mod tests {
     use clarity::vm::types::ListData;
     use clarity::vm::types::ListTypeData;
     use clarity::vm::types::BUFF_33;
-    use fake::Fake;
     use rand::rngs::OsRng;
     use secp256k1::SECP256K1;
 
@@ -870,14 +864,12 @@ mod tests {
 
     #[test]
     fn test_key_rotation_event() {
-        let new_keys: Vec<PublicKey> = vec![
-            fake::Faker.fake_with_rng(&mut OsRng),
-            fake::Faker.fake_with_rng(&mut OsRng),
-            fake::Faker.fake_with_rng(&mut OsRng),
-        ];
+        let new_keys: Vec<PublicKey> = (0..3)
+            .map(|_| SECP256K1.generate_keypair(&mut OsRng).1)
+            .collect();
         let new_address =
             PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap();
-        let new_aggregate_pubkey: PublicKey = fake::Faker.fake_with_rng(&mut OsRng);
+        let new_aggregate_pubkey = SECP256K1.generate_keypair(&mut OsRng).1;
         let new_signature_threshold = 2;
 
         let event = [
