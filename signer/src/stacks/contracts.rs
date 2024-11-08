@@ -321,6 +321,8 @@ impl AsContractCall for CompleteDepositV1 {
     fn as_contract_args(&self) -> Vec<ClarityValue> {
         let txid_data = self.outpoint.txid.to_byte_array().to_vec();
         let txid = BuffData { data: txid_data };
+        let sweep_txid_data = self.sweep_txid.to_byte_array().to_vec();
+        let sweep_txid = BuffData { data: sweep_txid_data };
         // We first convert it into this type because the BitcoinBlockHash
         // has the underlying bytes in that type are reversed from what the
         // stacks-node expects.
@@ -335,6 +337,7 @@ impl AsContractCall for CompleteDepositV1 {
             ClarityValue::Principal(self.recipient.clone()),
             ClarityValue::Sequence(SequenceData::Buffer(burn_hash_buff)),
             ClarityValue::UInt(self.sweep_block_height as u128),
+            ClarityValue::Sequence(SequenceData::Buffer(sweep_txid)),
         ]
     }
     /// Validates that the Complete deposit request satisfies the following
