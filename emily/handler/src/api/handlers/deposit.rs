@@ -22,7 +22,7 @@ use crate::common::error::Error;
 use crate::context::EmilyContext;
 use crate::database::accessors;
 use crate::database::entries::deposit::{
-    DepositEntry, DepositEntryKey, DepositEvent, DepositParametersEntry, DepositUpdatePackage,
+    DepositEntry, DepositEntryKey, DepositEvent, DepositParametersEntry,
     ValidatedUpdateDepositsRequest,
 };
 
@@ -340,16 +340,11 @@ pub async fn update_deposits(
 
         // Loop through all updates and execute.
         for (index, update) in validated_request.deposits {
-            // Get original deposit entry.
-            let deposit_entry = accessors::get_deposit_entry(&context, &update.key).await?;
-            // Make the update package.
-            let update_package = DepositUpdatePackage::try_from(&deposit_entry, update)?;
-            let updated_deposit = accessors::update_deposit(&context, &update_package)
-                .await?
-                .try_into()?;
-            // Append the updated deposit to the list.
-            updated_deposits.push((index, updated_deposit));
+            let updated_deposit =
+                accessors::pull_and_update_deposit_with_retry(&context, update, 15).await?;
+            updated_deposits.push((index, updated_deposit.try_into()?));
         }
+
         updated_deposits.sort_by_key(|(index, _)| *index);
         let deposits = updated_deposits
             .into_iter()

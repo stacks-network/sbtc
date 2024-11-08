@@ -432,6 +432,7 @@ async fn test_new_blocks_sends_update_deposits_to_emily() {
 
     let resp = new_block_handler(state.clone(), body).await;
     assert_eq!(resp, StatusCode::OK);
+
     // Check that the chain tip is updated
     let resp = get_chain_tip(&emily_context).await.unwrap();
     assert_eq!(resp.stacks_block_height, new_block_event.block_height);
@@ -439,6 +440,7 @@ async fn test_new_blocks_sends_update_deposits_to_emily() {
         resp.stacks_block_hash,
         new_block_event.index_block_hash.to_hex()
     );
+
     // Check that the deposit is confirmed
     let resp = get_deposit(
         &emily_context,
@@ -447,6 +449,7 @@ async fn test_new_blocks_sends_update_deposits_to_emily() {
     )
     .await;
     assert!(resp.is_ok());
+
     let resp = resp.unwrap();
     assert_eq!(resp.bitcoin_txid, bitcoin_txid);
     assert_eq!(resp.status, Status::Confirmed);
