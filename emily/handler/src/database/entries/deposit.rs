@@ -605,6 +605,13 @@ mod tests {
             stacks_block_hash: "".to_string(),
         };
 
+        let accepted = DepositEvent {
+            status: StatusEntry::Accepted,
+            message: "".to_string(),
+            stacks_block_height: 1,
+            stacks_block_hash: "".to_string(),
+        };
+
         let deposit = DepositEntry {
             key: Default::default(),
             version: 0,
@@ -622,7 +629,7 @@ mod tests {
 
         let update = ValidatedDepositUpdate {
             key: Default::default(),
-            event: pending,
+            event: accepted,
         };
 
         assert!(!update.is_unnecessary(&deposit));

@@ -604,6 +604,13 @@ mod tests {
             stacks_block_hash: "hash".to_string(),
         };
 
+        let failed = WithdrawalEvent {
+            status: StatusEntry::Failed,
+            message: "message".to_string(),
+            stacks_block_height: 2,
+            stacks_block_hash: "hash".to_string(),
+        };
+
         let withdrawal_entry = WithdrawalEntry {
             key: WithdrawalEntryKey {
                 request_id: 1,
@@ -620,7 +627,7 @@ mod tests {
             history: vec![pending.clone()],
         };
 
-        let withdrawal_update = ValidatedWithdrawalUpdate { request_id: 1, event: pending };
+        let withdrawal_update = ValidatedWithdrawalUpdate { request_id: 1, event: failed };
 
         // Act
         let is_unnecessary = withdrawal_update.is_unnecessary(&withdrawal_entry);
