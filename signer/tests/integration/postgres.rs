@@ -14,6 +14,7 @@ use blockstack_lib::types::chainstate::StacksAddress;
 use futures::StreamExt;
 use rand::seq::SliceRandom;
 
+use signer::bitcoin::validation::DepositRequestStatus;
 use signer::bitcoin::MockBitcoinInteract;
 use signer::config::Settings;
 use signer::context::Context;
@@ -2310,4 +2311,502 @@ async fn can_store_and_get_latest_sweep_transaction() {
     };
 
     assert_eq!(tx2, expected2);
+}
+
+/// The following tests check the [`DbRead::get_deposit_request_report`]
+/// function and all follow a similar pattern. The pattern is:
+/// 1. Generate a random blockchain and write it to the database.
+/// 2. Generate a random deposit request and write it to the database.
+///    Write the associated deposit transaction as well, sometimes this
+///    transaction will be on the canonical bitcoin blockchain, sometimes
+///    not.
+/// 3. Maybe generate a random deposit vote for the current signer and
+///    store that in the database.
+/// 4. Maybe generate a sweep transaction and put that in our database.
+/// 5. Check that the report comes out right depending on where the various
+///    transactions are confirmed.
+
+/// Check the expected report if the deposit request and transaction are in
+/// the database, but this signers vote is missing and the transaction is
+/// confirmed on the wrong blockchain.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn deposit_report_with_only_deposit_request() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(20);
+
+    // We only want the blockchain to be generated
+    let num_signers = 3;
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 10,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
+    test_data.write_to(&db).await;
+
+    // Let's create a deposit request, we'll write it to the database
+    // later.
+    let deposit_request: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let txid = &deposit_request.txid;
+    let output_index = deposit_request.output_index;
+    let signer_public_key = &signer_set[0];
+
+    // The deposit request is not in our database, so we should get None
+    // here.
+    let report = db
+        .get_deposit_request_report(&chain_tip, txid, output_index, signer_public_key)
+        .await
+        .unwrap();
+
+    assert!(report.is_none());
+
+    // We're going to write the deposit request to the database. We also
+    // write the deposit transaction to the database. For that transaction
+    // we want to test what happens if it is not on the canonical bitcoin
+    // transaction.
+    let random_block: model::BitcoinBlock = fake::Faker.fake_with_rng(&mut rng);
+    let tx = model::Transaction {
+        txid: deposit_request.txid.into_bytes(),
+        tx: Vec::new(),
+        tx_type: model::TransactionType::DepositRequest,
+        block_hash: random_block.block_hash.into_bytes(),
+    };
+    let tx_ref = model::BitcoinTxRef {
+        txid: deposit_request.txid,
+        block_hash: random_block.block_hash,
+    };
+
+    db.write_deposit_request(&deposit_request).await.unwrap();
+
+    // Sanity check, that if the transaction is not in our database then
+    // the report comes back empty.
+    let report = db
+        .get_deposit_request_report(&chain_tip, txid, output_index, signer_public_key)
+        .await
+        .unwrap();
+
+    assert!(report.is_none());
+
+    db.write_bitcoin_block(&random_block).await.unwrap();
+    db.write_transaction(&tx).await.unwrap();
+    db.write_bitcoin_transaction(&tx_ref).await.unwrap();
+
+    // The result shouldn't be Ok(None), since we have a deposit request,
+    // but only the amount and locktime should be present, everything else
+    // should be None.
+    let report = db
+        .get_deposit_request_report(&chain_tip, txid, output_index, signer_public_key)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let report_lock_time = report.lock_time.to_consensus_u32();
+
+    assert_eq!(report.amount, deposit_request.amount);
+    assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert!(report.is_accepted.is_none());
+    assert!(report.can_sign.is_none());
+    // The transaction is not on the canonical bitcoin blockchain, so it
+    // shows up as unconfirmed.
+    assert_eq!(report.status, DepositRequestStatus::Unconfirmed);
+
+    testing::storage::drop_db(db).await;
+}
+
+/// Check that if the deposit has been confirmed on a block that is not on
+/// the canonical bitcoin blockchain then the deposit reports the status as
+/// unconfirmed. We also check that if this signer has voted on the request
+/// that the votes are accurately reflected in the report.
+///
+/// The difference between this test and
+/// [`deposit_report_with_only_deposit_request`] is that we write the
+/// signer decision to the database here and check that it gets reproduced
+/// in the report.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn deposit_report_with_deposit_request_reorged() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(21);
+
+    // We only want the blockchain to be generated
+    let num_signers = 3;
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 10,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
+    test_data.write_to(&db).await;
+
+    // Let's write the deposit request and associated transaction to our
+    // database. The deposit transaction will be confirmed, but on a block
+    // that is not on the canonical bitcoin blockchain.
+    let deposit_request: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let txid = &deposit_request.txid;
+    let output_index = deposit_request.output_index;
+    let signer_public_key = &signer_set[0];
+
+    let random_block: model::BitcoinBlock = fake::Faker.fake_with_rng(&mut rng);
+    let tx = model::Transaction {
+        txid: deposit_request.txid.into_bytes(),
+        tx: Vec::new(),
+        tx_type: model::TransactionType::DepositRequest,
+        block_hash: random_block.block_hash.into_bytes(),
+    };
+    let tx_ref = model::BitcoinTxRef {
+        txid: deposit_request.txid,
+        block_hash: random_block.block_hash,
+    };
+
+    db.write_deposit_request(&deposit_request).await.unwrap();
+    db.write_bitcoin_block(&random_block).await.unwrap();
+    db.write_transaction(&tx).await.unwrap();
+    db.write_bitcoin_transaction(&tx_ref).await.unwrap();
+
+    // Time to record the signers' vote.
+    let mut decision: model::DepositSigner = fake::Faker.fake_with_rng(&mut rng);
+    decision.output_index = deposit_request.output_index;
+    decision.txid = deposit_request.txid;
+    decision.signer_pub_key = *signer_public_key;
+
+    db.write_deposit_signer_decision(&decision).await.unwrap();
+
+    let report = db
+        .get_deposit_request_report(&chain_tip, txid, output_index, signer_public_key)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let report_lock_time = report.lock_time.to_consensus_u32();
+
+    assert_eq!(report.amount, deposit_request.amount);
+    assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert_eq!(report.is_accepted, Some(decision.is_accepted));
+    assert_eq!(report.can_sign, Some(decision.can_sign));
+    assert_eq!(report.status, DepositRequestStatus::Unconfirmed);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+/// Check that if the deposit has been included in a sweep transaction
+/// then the deposit report states that the deposit has been spent in the
+/// status.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn deposit_report_with_deposit_request_spent() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(22);
+
+    // We only want the blockchain to be generated
+    let num_signers = 3;
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 10,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
+    test_data.write_to(&db).await;
+
+    // Let's write the deposit request and associated trasnaction to the
+    // database. Here the deposit transaction will be confirmed on the
+    // canonical bitcoin blockchain.
+    let deposit_request: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let txid = &deposit_request.txid;
+    let output_index = deposit_request.output_index;
+    let signer_public_key = &signer_set[0];
+
+    let tx = model::Transaction {
+        txid: deposit_request.txid.into_bytes(),
+        tx: Vec::new(),
+        tx_type: model::TransactionType::DepositRequest,
+        block_hash: chain_tip.into_bytes(),
+    };
+    let tx_ref = model::BitcoinTxRef {
+        txid: deposit_request.txid,
+        block_hash: chain_tip,
+    };
+
+    db.write_deposit_request(&deposit_request).await.unwrap();
+    db.write_transaction(&tx).await.unwrap();
+    db.write_bitcoin_transaction(&tx_ref).await.unwrap();
+
+    // Write the decision to the database
+    let mut decision: model::DepositSigner = fake::Faker.fake_with_rng(&mut rng);
+    decision.output_index = deposit_request.output_index;
+    decision.txid = deposit_request.txid;
+    decision.signer_pub_key = *signer_public_key;
+
+    db.write_deposit_signer_decision(&decision).await.unwrap();
+
+    // Okay now let's pretend that the deposit has been swept. For that we
+    // need a row in the `sweep_*` tables, and records in the `transactions`
+    // and `bitcoin_transactions` tables.
+    let mut sweep_tx: model::SweepTransaction = fake::Faker.fake_with_rng(&mut rng);
+    sweep_tx.created_at_block_hash = chain_tip;
+    sweep_tx.swept_withdrawals = Vec::new();
+    sweep_tx.swept_deposits = vec![model::SweptDeposit {
+        input_index: 1,
+        deposit_request_output_index: deposit_request.output_index,
+        deposit_request_txid: deposit_request.txid,
+    }];
+
+    let sweep_tx_model = model::Transaction {
+        tx_type: model::TransactionType::SbtcTransaction,
+        txid: sweep_tx.txid.to_byte_array(),
+        tx: Vec::new(),
+        block_hash: chain_tip.to_byte_array(),
+    };
+    let sweep_tx_ref = model::BitcoinTxRef {
+        txid: sweep_tx.txid,
+        block_hash: chain_tip,
+    };
+    db.write_transaction(&sweep_tx_model).await.unwrap();
+    db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
+    db.write_sweep_transaction(&sweep_tx).await.unwrap();
+
+    let report = db
+        .get_deposit_request_report(&chain_tip, txid, output_index, signer_public_key)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let report_lock_time = report.lock_time.to_consensus_u32();
+
+    assert_eq!(report.amount, deposit_request.amount);
+    assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert_eq!(report.is_accepted, Some(decision.is_accepted));
+    assert_eq!(report.can_sign, Some(decision.can_sign));
+    assert_eq!(report.status, DepositRequestStatus::Spent(sweep_tx.txid));
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+/// Check that if the deposit has been included in a sweep transaction
+/// that gets reorged, then the deposit report states that the deposit is
+/// confirmed and not spent.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(23);
+
+    // We only want the blockchain to be generated
+    let num_signers = 3;
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 10,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
+    test_data.write_to(&db).await;
+
+    // Let's write the deposit request and associated trasnaction to the
+    // database. Here the deposit transaction will be confirmed on the
+    // canonical bitcoin blockchain.
+    let deposit_request: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let chain_tip_block = db.get_bitcoin_block(&chain_tip).await.unwrap().unwrap();
+    let txid = &deposit_request.txid;
+    let output_index = deposit_request.output_index;
+    let signer_public_key = &signer_set[0];
+
+    // We confirm it on the parent block of the chain tip because later we
+    // change the chain tip and test certain conditions.
+    let tx = model::Transaction {
+        txid: deposit_request.txid.into_bytes(),
+        tx: Vec::new(),
+        tx_type: model::TransactionType::DepositRequest,
+        block_hash: chain_tip_block.parent_hash.into_bytes(),
+    };
+    let tx_ref = model::BitcoinTxRef {
+        txid: deposit_request.txid,
+        block_hash: chain_tip_block.parent_hash,
+    };
+
+    db.write_deposit_request(&deposit_request).await.unwrap();
+    db.write_transaction(&tx).await.unwrap();
+    db.write_bitcoin_transaction(&tx_ref).await.unwrap();
+
+    // Write the decision to the database
+    let mut decision: model::DepositSigner = fake::Faker.fake_with_rng(&mut rng);
+    decision.output_index = deposit_request.output_index;
+    decision.txid = deposit_request.txid;
+    decision.signer_pub_key = *signer_public_key;
+
+    db.write_deposit_signer_decision(&decision).await.unwrap();
+
+    // Okay now let's pretend that the deposit has been swept, but the
+    // sweep gets reorged. For that we need a row in the `sweep_*` tables,
+    // and records in the `transactions` and `bitcoin_transactions` tables,
+    // but we'll use a random block that appears at the same height as the
+    // current chain tip for what confirms the sweep transaction. This way
+    // it is not on the canonical bitcoin blockchain identified by the
+    // chain tip.
+    let mut sweep_tx: model::SweepTransaction = fake::Faker.fake_with_rng(&mut rng);
+    let mut alt_chain_tip_block: model::BitcoinBlock = chain_tip_block.clone();
+    alt_chain_tip_block.block_hash = fake::Faker.fake_with_rng(&mut rng);
+
+    sweep_tx.created_at_block_hash = chain_tip;
+    sweep_tx.swept_withdrawals = Vec::new();
+    sweep_tx.swept_deposits = vec![model::SweptDeposit {
+        input_index: 1,
+        deposit_request_output_index: deposit_request.output_index,
+        deposit_request_txid: deposit_request.txid,
+    }];
+
+    let sweep_tx_model = model::Transaction {
+        tx_type: model::TransactionType::SbtcTransaction,
+        txid: sweep_tx.txid.to_byte_array(),
+        tx: Vec::new(),
+        block_hash: alt_chain_tip_block.block_hash.to_byte_array(),
+    };
+    let sweep_tx_ref = model::BitcoinTxRef {
+        txid: sweep_tx.txid,
+        block_hash: alt_chain_tip_block.block_hash,
+    };
+    db.write_bitcoin_block(&alt_chain_tip_block).await.unwrap();
+    db.write_transaction(&sweep_tx_model).await.unwrap();
+    db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
+    db.write_sweep_transaction(&sweep_tx).await.unwrap();
+
+    let report = db
+        .get_deposit_request_report(&chain_tip, txid, output_index, signer_public_key)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let report_lock_time = report.lock_time.to_consensus_u32();
+
+    assert_eq!(report.amount, deposit_request.amount);
+    assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert_eq!(report.is_accepted, Some(decision.is_accepted));
+    assert_eq!(report.can_sign, Some(decision.can_sign));
+
+    let confirmed_height = chain_tip_block.block_height - 1;
+    let confirmed_block_hash = chain_tip_block.parent_hash;
+    let expected_status = DepositRequestStatus::Confirmed(confirmed_height, confirmed_block_hash);
+    assert_eq!(report.status, expected_status);
+
+    // If we use the chain tip that confirms the sweep transaction, then we
+    // see that the report tells us that it is now spent.
+    let alt_chain_tip = alt_chain_tip_block.block_hash;
+    let report = db
+        .get_deposit_request_report(&alt_chain_tip, txid, output_index, signer_public_key)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let report_lock_time = report.lock_time.to_consensus_u32();
+
+    assert_eq!(report.amount, deposit_request.amount);
+    assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert_eq!(report.is_accepted, Some(decision.is_accepted));
+    assert_eq!(report.can_sign, Some(decision.can_sign));
+
+    let expected_status = DepositRequestStatus::Spent(sweep_tx.txid);
+    assert_eq!(report.status, expected_status);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+/// Check when we have a deposit that has been confirmed on the canonical
+/// bitcoin and hasn't been spent, that the deposit report has the
+/// appropriate "Confirmed" status.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn deposit_report_with_deposit_request_confirmed() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(24);
+
+    // We only want the blockchain to be generated
+    let num_signers = 3;
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 10,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
+    test_data.write_to(&db).await;
+
+    // Let's write the deposit request and associated transaction to the
+    // database. The transaction will be on the canonical bitcoin
+    // blockchain.
+    let deposit_request: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let txid = &deposit_request.txid;
+    let output_index = deposit_request.output_index;
+    let signer_public_key = &signer_set[0];
+
+    let tx = model::Transaction {
+        txid: deposit_request.txid.into_bytes(),
+        tx: Vec::new(),
+        tx_type: model::TransactionType::DepositRequest,
+        block_hash: chain_tip.into_bytes(),
+    };
+    let tx_ref = model::BitcoinTxRef {
+        txid: deposit_request.txid,
+        block_hash: chain_tip,
+    };
+
+    db.write_deposit_request(&deposit_request).await.unwrap();
+    db.write_transaction(&tx).await.unwrap();
+    db.write_bitcoin_transaction(&tx_ref).await.unwrap();
+
+    // Write this signer's vote to the database.
+    let mut decision: model::DepositSigner = fake::Faker.fake_with_rng(&mut rng);
+    decision.output_index = deposit_request.output_index;
+    decision.txid = deposit_request.txid;
+    decision.signer_pub_key = *signer_public_key;
+
+    db.write_deposit_signer_decision(&decision).await.unwrap();
+
+    let report = db
+        .get_deposit_request_report(&chain_tip, txid, output_index, signer_public_key)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let report_lock_time = report.lock_time.to_consensus_u32();
+
+    // This is all happy path stuff, with fields filled in and a confirmed
+    // status.
+    assert_eq!(report.amount, deposit_request.amount);
+    assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert_eq!(report.is_accepted, Some(decision.is_accepted));
+    assert_eq!(report.can_sign, Some(decision.can_sign));
+
+    let block = db.get_bitcoin_block(&chain_tip).await.unwrap().unwrap();
+    let expected_status = DepositRequestStatus::Confirmed(block.block_height, block.block_hash);
+    assert_eq!(report.status, expected_status);
+
+    signer::testing::storage::drop_db(db).await;
 }

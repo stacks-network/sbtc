@@ -163,6 +163,11 @@ pub enum Error {
     #[error("invalid aggregate key: {0}")]
     InvalidAggregateKey(#[source] secp256k1::Error),
 
+    /// This happens when we realize that the lock-time in the reclaim
+    /// script disables the OP_CSV check.
+    #[error("invalid lock-time: {0}")]
+    DisabledLockTime(#[source] bitcoin::locktime::relative::DisabledLockTimeError),
+
     /// This occurs when converting a byte slice to our internal public key
     /// type, which is a thin wrapper around the secp256k1::PublicKey.
     #[error("invalid public key: {0}")]
