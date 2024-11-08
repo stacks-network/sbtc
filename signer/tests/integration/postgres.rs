@@ -2420,7 +2420,7 @@ async fn deposit_report_with_only_deposit_request() {
 }
 
 /// Check that if the deposit has been confirmed on a block that is not on
-/// the canonical bitcoin blockchain that the deposit reports the status as
+/// the canonical bitcoin blockchain then the deposit reports the status as
 /// unconfirmed. We also check that if this signer has voted on the request
 /// that the votes are accurately reflected in the report.
 ///
@@ -2501,7 +2501,7 @@ async fn deposit_report_with_deposit_request_reorged() {
 }
 
 /// Check that if the deposit has been included in a sweep transaaction
-/// that the deposit report states that the deposit has been spent in the
+/// then the deposit report states that the deposit has been spent in the
 /// status.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
