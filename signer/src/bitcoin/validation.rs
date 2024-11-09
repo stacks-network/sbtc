@@ -297,10 +297,33 @@ impl DepositRequestReport {
 
         Ok(())
     }
+
+    /// Validate that the fees assessed to the deposit prevout is below the
+    /// max fee.
+    fn validate_fee<F>(&self, tx: &F, tx_fee: u64) -> Result<(), BitcoinDepositInputError>
+    where
+        F: FeeAssessment,
+    {
+        let tx_fee = Amount::from_sat(tx_fee);
+        let Some(assessed_fee) = tx.assess_input_fee(&self.outpoint, tx_fee) else {
+            return Err(BitcoinDepositInputError::Unknown(self.outpoint));
+        };
+
+        if assessed_fee.to_sat() > self.max_fee {
+            return Err(BitcoinDepositInputError::FeeTooHigh(self.outpoint));
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use bitcoin::hashes::Hash as _;
+    use bitcoin::ScriptBuf;
+    use bitcoin::Sequence;
+    use bitcoin::TxIn;
+    use bitcoin::Txid;
+    use bitcoin::Witness;
     use test_case::test_case;
 
     use super::*;
@@ -441,6 +464,65 @@ mod tests {
                 assert_eq!(error, expected_error);
             }
             None => mapping.report.validate(mapping.chain_tip_height).unwrap(),
+        }
+    }
+
+    const TX_FEE: u64 = 10000;
+
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            is_accepted: Some(true),
+            amount: 0,
+            max_fee: TX_FEE,
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::new(Txid::from_byte_array([1; 32]), 0),
+        },
+        error: Some(BitcoinDepositInputError::Unknown(OutPoint::new(Txid::from_byte_array([1; 32]), 0))),
+        chain_tip_height: 2,
+    } ; "unknown-prevout")]
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            is_accepted: Some(true),
+            amount: 0,
+            max_fee: TX_FEE,
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::null(),
+        },
+        error: None,
+        chain_tip_height: 2,
+    } ; "at-the-border")]
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            is_accepted: Some(true),
+            amount: 0,
+            max_fee: TX_FEE - 1,
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::null(),
+        },
+        error: Some(BitcoinDepositInputError::FeeTooHigh(OutPoint::null())),
+        chain_tip_height: 2,
+    } ; "one-sat-too-high-fee")]
+    fn deposit_report_fee_validation(mapping: DepositReportErrorMapping) {
+        let mut tx = crate::testing::btc::base_signer_transaction();
+        tx.input.push(TxIn {
+            previous_output: OutPoint::null(),
+            script_sig: ScriptBuf::new(),
+            sequence: Sequence::ZERO,
+            witness: Witness::new(),
+        });
+
+        match mapping.error {
+            Some(expected_error) => {
+                let error = mapping.report.validate_fee(&tx, TX_FEE).unwrap_err();
+                assert_eq!(error, expected_error);
+            }
+            None => mapping.report.validate_fee(&tx, TX_FEE).unwrap(),
         }
     }
 }
