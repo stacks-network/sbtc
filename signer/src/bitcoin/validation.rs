@@ -111,7 +111,7 @@ impl BitcoinTxContext {
 /// The responses for validation of a sweep transaction on bitcoin.
 #[derive(Debug, thiserror::Error, PartialEq, Eq, Copy, Clone)]
 pub enum BitcoinDepositInputError {
-    /// The assessed exceeds the max-fee in the deposit request.
+    /// The assessed fee exceeds the max-fee in the deposit request.
     #[error("the assessed fee for a deposit would exceed their max-fee; {0}")]
     FeeTooHigh(OutPoint),
     /// The signer is not part of the signer set that generated the
