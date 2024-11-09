@@ -349,8 +349,13 @@ where
             }
 
             (message::Payload::WstsMessage(wsts_msg), _, _) => {
-                self.handle_wsts_message(wsts_msg, &msg.bitcoin_chain_tip, msg.signer_pub_key)
-                    .await?;
+                self.handle_wsts_message(
+                    wsts_msg,
+                    &msg.bitcoin_chain_tip,
+                    msg.signer_pub_key,
+                    &chain_tip_report,
+                )
+                .await?;
             }
 
             (
@@ -580,11 +585,9 @@ where
         msg: &message::WstsMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         msg_public_key: PublicKey,
+        chain_tip_report: &MsgChainTipReport,
     ) -> Result<(), Error> {
         tracing::info!("handling message");
-        let chain_tip_report = self
-            .inspect_msg_chain_tip(msg_public_key, bitcoin_chain_tip)
-            .await?;
 
         match &msg.inner {
             wsts::net::Message::DkgBegin(_) => {
