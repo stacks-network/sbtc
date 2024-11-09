@@ -5,6 +5,8 @@ use bitcoin::Amount;
 use bitcoin::OutPoint;
 
 use crate::bitcoin::utxo::FeeAssessment;
+use crate::bitcoin::utxo::Fees;
+use crate::bitcoin::utxo::SignerBtcState;
 use crate::context::Context;
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -12,6 +14,7 @@ use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::QualifiedRequestId;
+use crate::storage::DbRead as _;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
 /// The necessary information for validating a bitcoin transaction.
@@ -22,11 +25,19 @@ pub struct BitcoinTxContext {
     /// bitcoin blockchain with the greatest height. On ties, we sort by
     /// the block hash descending and take the first one.
     pub chain_tip: BitcoinBlockHash,
+    /// How many bitcoin blocks back from the chain tip the signer will
+    /// look for requests.
+    pub context_window: u16,
     /// The block height of the bitcoin chain tip identified by the
     /// `chain_tip` field.
     pub chain_tip_height: u64,
     /// The transaction that is being validated.
     pub tx: BitcoinTx,
+    /// The current market fee rate in sat/vByte.
+    pub fee_rate: f64,
+    /// The total fee amount and the fee rate for the last transaction that
+    /// used this UTXO as an input.
+    pub last_fee: Option<Fees>,
     /// The withdrawal requests associated with the outputs in the current
     /// transaction.
     pub request_ids: Vec<QualifiedRequestId>,
@@ -35,34 +46,20 @@ pub struct BitcoinTxContext {
     /// [`BitcoinTx::validate`] function, but is here for logging and
     /// tracking purposes.
     pub origin: PublicKey,
+    /// Two byte prefix for BTC transactions that are related to the Stacks
+    /// blockchain.
+    pub magic_bytes: [u8; 2],
 }
 
 impl BitcoinTxContext {
     /// Validate the current bitcoin transaction.
-    ///
-    /// It does the following:
-    /// 1. Validate the signer input.
-    /// 2. Validate the other inputs assuming that they are all deposit
-    ///    request inputs.
-    /// 3. Validate the signer outputs. These are the first two outputs of
-    ///    the transaction.
-    /// 4. Validate the remaining outputs. These are assumed to be
-    ///    associated with withdrawal requests.
-    /// 5. Validate that the fees associated with the requests are within
-    ///    bounds of the max-fee.
     pub async fn validate<C>(&self, ctx: &C) -> Result<(), Error>
     where
         C: Context + Send + Sync,
     {
-        let signer_amount = self.validate_signer_input(ctx).await?;
-        let deposit_amounts = self.validate_deposits(ctx).await?;
+        self.validate_deposits(ctx).await?;
 
-        self.validate_signer_outputs(ctx).await?;
         self.validate_withdrawals(ctx).await?;
-
-        let input_amounts = signer_amount + deposit_amounts;
-
-        self.validate_fees(input_amounts)?;
         Ok(())
     }
 
@@ -78,33 +75,48 @@ impl BitcoinTxContext {
         unimplemented!()
     }
 
-    /// Validate the signer outputs.
-    ///
-    /// Each sweep transaction has two signer outputs, the new UTXO with
-    /// all the signers' funds and an `OP_RETURN` TXO. This function
-    /// validates both of them.
-    async fn validate_signer_outputs<C>(&self, _ctx: &C) -> Result<(), Error>
-    where
-        C: Context + Send + Sync,
-    {
-        unimplemented!()
-    }
-
-    /// Validate each of the prevouts that correspond to deposits. This
-    /// should be every input except for the first one.
-    async fn validate_deposits<C>(&self, _ctx: &C) -> Result<Amount, Error>
-    where
-        C: Context + Send + Sync,
-    {
-        unimplemented!()
-    }
-
     /// Validate the withdrawal UTXOs
     async fn validate_withdrawals<C>(&self, _ctx: &C) -> Result<(), Error>
     where
         C: Context + Send + Sync,
     {
-        unimplemented!()
+        if !self.request_ids.is_empty() {
+            return Err(Error::MissingBlock);
+        }
+
+        Ok(())
+    }
+
+    /// Fetch the signers' BTC state.
+    /// 
+    /// The returned state is the essential information for the signers
+    /// UTXO, and information about the current fees and any fees paid for
+    /// transactions currently in the mempool.
+    pub async fn get_btc_state<C>(&self, ctx: &C) -> Result<SignerBtcState, Error>
+    where
+        C: Context + Send + Sync,
+    {
+        // We need to know the signers UTXO, so let's fetch that.
+        let db = ctx.get_storage();
+        let utxo = db
+            .get_signer_utxo(&self.chain_tip, self.context_window)
+            .await?
+            .ok_or(Error::MissingSignerUtxo)?;
+
+        // If we are here, then we know that we have run DKG. Why? Well,
+        // users cannot deposit if they don't have an aggregate key to lock
+        // their funds with, and that requires DKG.
+        let Some(dkg_shares) = db.get_latest_encrypted_dkg_shares().await? else {
+            return Err(Error::NoDkgShares);
+        };
+
+        Ok(SignerBtcState {
+            fee_rate: self.fee_rate,
+            utxo,
+            public_key: bitcoin::XOnlyPublicKey::from(dkg_shares.aggregate_key),
+            last_fees: self.last_fee,
+            magic_bytes: self.magic_bytes,
+        })
     }
 }
 
