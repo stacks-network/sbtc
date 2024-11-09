@@ -23,6 +23,7 @@ use crate::context::Context;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::stacks::events::CompletedDepositEvent;
+use crate::stacks::events::KeyRotationEvent;
 use crate::stacks::events::RegistryEvent;
 use crate::stacks::events::TxInfo;
 use crate::stacks::events::WithdrawalAcceptEvent;
@@ -30,8 +31,10 @@ use crate::stacks::events::WithdrawalCreateEvent;
 use crate::stacks::events::WithdrawalRejectEvent;
 use crate::stacks::webhooks::NewBlockEvent;
 use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::RotateKeysTransaction;
 use crate::storage::model::StacksBlock;
 use crate::storage::model::StacksBlockHash;
+use crate::storage::model::StacksTxId;
 use crate::storage::DbWrite;
 
 use super::ApiState;
@@ -151,6 +154,9 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
                 handle_withdrawal_create(&api.ctx, event, stacks_chaintip.block_height)
                     .await
                     .map(|x| created_withdrawals.push(x))
+            }
+            Ok(RegistryEvent::KeyRotation(event)) => {
+                handle_key_rotation(&api.ctx, event, tx_info.txid.into()).await
             }
             Err(error) => {
                 tracing::error!(%error, "Got an error when transforming the event ClarityValue");
@@ -388,6 +394,23 @@ async fn handle_withdrawal_reject(
     })
 }
 
+async fn handle_key_rotation(
+    ctx: &impl Context,
+    event: KeyRotationEvent,
+    stacks_txid: StacksTxId,
+) -> Result<(), Error> {
+    let key_rotation_tx = RotateKeysTransaction {
+        txid: stacks_txid,
+        aggregate_key: event.new_aggregate_pubkey.into(),
+        signer_set: event.new_keys.into_iter().map(Into::into).collect(),
+        signatures_required: event.new_signature_threshold,
+    };
+    ctx.get_storage_mut()
+        .write_rotate_keys_transaction(&key_rotation_tx)
+        .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -401,6 +424,7 @@ mod tests {
     use fake::Fake;
     use rand::rngs::OsRng;
     use rand::SeedableRng as _;
+    use secp256k1::SECP256K1;
     use test_case::test_case;
 
     use crate::storage::in_memory::Store;
@@ -425,10 +449,13 @@ mod tests {
     const WITHDRAWAL_REJECT_WEBHOOK: &str =
         include_str!("../../tests/fixtures/withdrawal-reject-event.json");
 
+    const ROTATE_KEYS_WEBHOOK: &str = include_str!("../../tests/fixtures/rotate-keys-event.json");
+
     #[test_case(COMPLETED_DEPOSIT_WEBHOOK, |db| db.completed_deposit_events.get(&OutPoint::null()).is_none(); "completed-deposit")]
     #[test_case(WITHDRAWAL_CREATE_WEBHOOK, |db| db.withdrawal_create_events.get(&1).is_none(); "withdrawal-create")]
     #[test_case(WITHDRAWAL_ACCEPT_WEBHOOK, |db| db.withdrawal_accept_events.get(&1).is_none(); "withdrawal-accept")]
     #[test_case(WITHDRAWAL_REJECT_WEBHOOK, |db| db.withdrawal_reject_events.get(&2).is_none(); "withdrawal-reject")]
+    #[test_case(ROTATE_KEYS_WEBHOOK, |db| db.rotate_keys_transactions.is_empty(); "rotate-keys")]
     #[tokio::test]
     async fn test_events<F>(body_str: &str, table_is_empty: F)
     where
@@ -490,6 +517,7 @@ mod tests {
     #[test_case(WITHDRAWAL_CREATE_WEBHOOK, |db| db.withdrawal_create_events.get(&1).is_none(); "withdrawal-create")]
     #[test_case(WITHDRAWAL_ACCEPT_WEBHOOK, |db| db.withdrawal_accept_events.get(&1).is_none(); "withdrawal-accept")]
     #[test_case(WITHDRAWAL_REJECT_WEBHOOK, |db| db.withdrawal_reject_events.get(&2).is_none(); "withdrawal-reject")]
+    #[test_case(ROTATE_KEYS_WEBHOOK, |db| db.rotate_keys_transactions.is_empty(); "rotate-keys")]
     #[tokio::test]
     async fn test_fishy_events<F>(body_str: &str, table_is_empty: F)
     where
@@ -838,5 +866,35 @@ mod tests {
             .withdrawal_reject_events
             .get(&expectation.request_id)
             .is_some());
+    }
+
+    /// Tests handling a key rotation event.
+    /// This function validates that a key rotation event is correctly processed,
+    /// including updating the database with the new key rotation transaction.
+    #[tokio::test]
+    async fn test_handle_key_rotation() {
+        let ctx = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        let db = ctx.inner_storage();
+
+        let txid: StacksTxId = fake::Faker.fake_with_rng(&mut OsRng);
+        let event = KeyRotationEvent {
+            new_aggregate_pubkey: SECP256K1.generate_keypair(&mut OsRng).1,
+            new_keys: (0..3)
+                .map(|_| SECP256K1.generate_keypair(&mut OsRng).1)
+                .collect(),
+            new_address: PrincipalData::Standard(StandardPrincipalData::transient()),
+            new_signature_threshold: 3,
+        };
+
+        let res = handle_key_rotation(&ctx, event, txid).await;
+
+        assert!(res.is_ok());
+        let db = db.lock().await;
+        assert_eq!(db.rotate_keys_transactions.len(), 1);
+        assert!(db.rotate_keys_transactions.get(&txid).is_some());
     }
 }
