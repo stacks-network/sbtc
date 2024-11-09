@@ -825,6 +825,32 @@ where
 
             let public_keys = &coordinator_state_machine.get_config().signer_public_keys;
             let public_key_point = p256k1::point::Point::from(msg_public_key);
+
+            macro_rules! check_signer_public_key {
+                ($message:ident) => {
+                    match &public_keys.get(&$message.signer_id) {
+                        Some(signer_public_key) if &public_key_point != *signer_public_key => {
+                            tracing::warn!(
+                                ?packet,
+                                reason = "message was signed by the wrong signer",
+                                "ignoring packet"
+                            );
+                            continue;
+                        }
+                        None => {
+                            tracing::warn!(
+                                ?packet,
+                                reason =
+                                    format!("no public key for signer {}", &$message.signer_id),
+                                "ignoring packet"
+                            );
+                            continue;
+                        }
+                        _ => (),
+                    }
+                };
+            }
+
             // check that messages were signed by correct key
             match &packet.msg {
                 wsts::net::Message::DkgBegin(_)
@@ -843,54 +869,19 @@ where
                 }
 
                 wsts::net::Message::DkgPublicShares(dkg_public_shares) => {
-                    if &public_key_point != &public_keys[&dkg_public_shares.signer_id] {
-                        tracing::warn!(
-                            ?packet,
-                            reason = "message was signed by the wrong signer",
-                            "ignoring packet"
-                        );
-                        continue;
-                    }
+                    check_signer_public_key!(dkg_public_shares)
                 }
                 wsts::net::Message::DkgPrivateShares(dkg_private_shares) => {
-                    if &public_key_point != &public_keys[&dkg_private_shares.signer_id] {
-                        tracing::warn!(
-                            ?packet,
-                            reason = "message was signed by the wrong signer",
-                            "ignoring packet"
-                        );
-                        continue;
-                    }
+                    check_signer_public_key!(dkg_private_shares)
                 }
                 wsts::net::Message::DkgEnd(dkg_end) => {
-                    if &public_key_point != &public_keys[&dkg_end.signer_id] {
-                        tracing::warn!(
-                            ?packet,
-                            reason = "message was signed by the wrong signer",
-                            "ignoring packet"
-                        );
-                        continue;
-                    }
+                    check_signer_public_key!(dkg_end)
                 }
                 wsts::net::Message::NonceResponse(nonce_response) => {
-                    if &public_key_point != &public_keys[&nonce_response.signer_id] {
-                        tracing::warn!(
-                            ?packet,
-                            reason = "message was signed by the wrong signer",
-                            "ignoring packet"
-                        );
-                        continue;
-                    }
+                    check_signer_public_key!(nonce_response)
                 }
                 wsts::net::Message::SignatureShareResponse(sig_share_response) => {
-                    if &public_key_point != &public_keys[&sig_share_response.signer_id] {
-                        tracing::warn!(
-                            ?packet,
-                            reason = "message was signed by the wrong signer",
-                            "ignoring packet"
-                        );
-                        continue;
-                    }
+                    check_signer_public_key!(sig_share_response)
                 }
             }
 
