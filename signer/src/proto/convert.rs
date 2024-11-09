@@ -258,6 +258,7 @@ impl From<SignerDepositDecision> for proto::SignerDepositDecision {
                 vout: value.output_index,
             }),
             accepted: value.accepted,
+            can_sign: value.can_sign,
         }
     }
 }
@@ -270,6 +271,7 @@ impl TryFrom<proto::SignerDepositDecision> for SignerDepositDecision {
             txid: outpoint.txid,
             output_index: outpoint.vout,
             accepted: value.accepted,
+            can_sign: value.can_sign,
         })
     }
 }
