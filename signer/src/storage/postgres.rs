@@ -118,6 +118,10 @@ struct StatusSummary {
     /// The amount associated with the deposit UTXO in sats.
     #[sqlx(try_from = "i64")]
     amount: u64,
+    /// The maximum amount to spend for the bitcoin miner fee when sweeping
+    /// in the funds.
+    #[sqlx(try_from = "i64")]
+    max_fee: u64,
 }
 
 /// A wrapper around a [`sqlx::PgPool`] which implements
@@ -566,6 +570,7 @@ impl PgStore {
                 ds.is_accepted
               , ds.can_sign
               , dr.amount
+              , dr.max_fee
               , dr.lock_time
               , bc.block_height
               , bc.block_hash
