@@ -81,7 +81,7 @@ impl BitcoinTxContext {
     /// Validate the signer outputs.
     ///
     /// Each sweep transaction has two signer outputs, the new UTXO with
-    /// all of the signers' funds and an `OP_RETURN` TXO. This function
+    /// all the signers' funds and an `OP_RETURN` TXO. This function
     /// validates both of them.
     async fn validate_signer_outputs<C>(&self, _ctx: &C) -> Result<(), Error>
     where
@@ -90,7 +90,7 @@ impl BitcoinTxContext {
         unimplemented!()
     }
 
-    /// Validate each of the prevouts that coorespond to deposits. This
+    /// Validate each of the prevouts that correspond to deposits. This
     /// should be every input except for the first one.
     async fn validate_deposits<C>(&self, _ctx: &C) -> Result<Amount, Error>
     where
@@ -231,7 +231,7 @@ pub struct DepositRequestReport {
     pub is_accepted: Option<bool>,
     /// The deposit amount
     pub amount: u64,
-    /// The the max fee embedded in the deposit request.
+    /// The max fee embedded in the deposit request.
     pub max_fee: u64,
     /// The lock_time in the reclaim script
     pub lock_time: LockTime,
@@ -510,6 +510,10 @@ mod tests {
         chain_tip_height: 2,
     } ; "one-sat-too-high-fee")]
     fn deposit_report_fee_validation(mapping: DepositReportErrorMapping) {
+        // This is a base sweep transaction without any deposit inputs or
+        // withdrawal outputs. We add one input so that there is exactly
+        // one deposit request being serviced by this transaction. This
+        // means it pays for the entire transaction fee.
         let mut tx = crate::testing::btc::base_signer_transaction();
         tx.input.push(TxIn {
             previous_output: OutPoint::null(),
