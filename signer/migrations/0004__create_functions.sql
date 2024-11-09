@@ -41,7 +41,8 @@ BEGIN
         blocks.block_hash
       , blocks.parent_hash
       , blocks.block_height
-    FROM blockchain as blocks;
+    FROM blockchain as blocks
+    WHERE blocks.depth <= max_depth;
 END;
 $$ LANGUAGE plpgsql;
 
