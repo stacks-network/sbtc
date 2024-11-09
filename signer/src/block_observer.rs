@@ -30,6 +30,7 @@ use crate::stacks::api::StacksInteract;
 use crate::stacks::api::TenureBlocks;
 use crate::storage;
 use crate::storage::model;
+use crate::storage::model::SignerOutput;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use bitcoin::hashes::Hash as _;
@@ -373,6 +374,7 @@ where
             .map(ScriptBuf::from_bytes)
             .collect();
 
+        let db = self.context.get_storage_mut();
         // Look through all the UTXOs in the given transaction slice and
         // keep the transactions where a UTXO is locked with a
         // `scriptPubKey` controlled by the signers.
@@ -411,19 +413,36 @@ where
                 }
             };
 
+            let txid = tx.compute_txid();
             sbtc_txs.push(model::Transaction {
-                txid: tx.compute_txid().to_byte_array(),
+                txid: txid.to_byte_array(),
                 tx: bitcoin::consensus::serialize(&tx),
                 tx_type,
                 block_hash: block_hash.to_byte_array(),
             });
+
+            // Let's write the donation to the signer_txos table.
+            if tx_type == model::TransactionType::Donation {
+                let donations =
+                    tx.output.iter().enumerate().filter(|(_, tx_out)| {
+                        signer_script_pubkeys.contains(&tx_out.script_pubkey)
+                    });
+                for (output_index, output) in donations {
+                    let signer_output = SignerOutput {
+                        txid: txid.into(),
+                        output_index: output_index as u32,
+                        script_pubkey: output.script_pubkey.clone().into(),
+                        amount: output.value.to_sat(),
+                        txo_type: model::TxoType::Donation,
+                    };
+                    tracing::debug!(%txid, "writing donation utxo to the database");
+                    db.write_signer_txo(&signer_output).await?;
+                }
+            }
         }
 
         // Write these transactions into storage.
-        self.context
-            .get_storage_mut()
-            .write_bitcoin_transactions(sbtc_txs)
-            .await?;
+        db.write_bitcoin_transactions(sbtc_txs).await?;
         Ok(())
     }
 
