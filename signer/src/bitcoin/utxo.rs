@@ -1061,6 +1061,7 @@ mod tests {
     use test_case::test_case;
 
     use crate::testing;
+    use crate::testing::btc::base_signer_transaction;
 
     const X_ONLY_PUBLIC_KEY1: &'static str =
         "2e58afe51f9ed8ad3cc7897f634d881fdbe49a81564629ded8156bebd2ffd1af";
@@ -1214,38 +1215,6 @@ mod tests {
                 confirmations: 1,
                 block_time: 0,
             }
-        }
-    }
-
-    /// Return a transaction that is kinda like the signers' transaction,
-    /// but it does not service any requests, and it does not have any
-    /// signatures.
-    fn base_signer_transaction() -> Transaction {
-        Transaction {
-            version: bitcoin::transaction::Version::TWO,
-            lock_time: bitcoin::locktime::absolute::LockTime::ZERO,
-            input: vec![
-                // This is the signers' previous UTXO
-                bitcoin::TxIn {
-                    previous_output: OutPoint::null(),
-                    script_sig: ScriptBuf::new(),
-                    sequence: bitcoin::Sequence::ZERO,
-                    witness: bitcoin::Witness::new(),
-                },
-            ],
-            output: vec![
-                // This represents the signers' new UTXO.
-                bitcoin::TxOut {
-                    value: Amount::ONE_BTC,
-                    script_pubkey: ScriptBuf::new(),
-                },
-                // This represents the OP_RETURN sBTC UTXO for a
-                // transaction with no withdrawals.
-                bitcoin::TxOut {
-                    value: Amount::ZERO,
-                    script_pubkey: ScriptBuf::new_op_return([0; 21]),
-                },
-            ],
         }
     }
 
