@@ -33,7 +33,7 @@ trait RequiredField: Sized {
 impl<T> RequiredField for Option<T> {
     type Inner = T;
     fn required(self) -> Result<Self::Inner, Error> {
-        self.ok_or(Error::TypeConversion)
+        self.ok_or(Error::RequiredProtobufFieldMissing)
     }
 }
 
