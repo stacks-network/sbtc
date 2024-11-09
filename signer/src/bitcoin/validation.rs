@@ -33,6 +33,10 @@ pub struct BitcoinTxContext {
     pub chain_tip_height: u64,
     /// The transaction that is being validated.
     pub tx: BitcoinTx,
+    /// The deposit requests associated with the inputs in the transaction.
+    pub deposit_requests: Vec<OutPoint>,
+    /// The total amount of the transaction fee in sats.
+    pub tx_fee: u64,
     /// The current market fee rate in sat/vByte.
     pub fee_rate: f64,
     /// The total fee amount and the fee rate for the last transaction that
@@ -53,30 +57,48 @@ pub struct BitcoinTxContext {
 
 impl BitcoinTxContext {
     /// Validate the current bitcoin transaction.
-    pub async fn validate<C>(&self, ctx: &C) -> Result<(), Error>
+    pub async fn validate<C>(&self, _ctx: &C) -> Result<(), Error>
     where
         C: Context + Send + Sync,
     {
-        self.validate_deposits(ctx).await?;
+        unimplemented!()
+    }
 
-        self.validate_withdrawals(ctx).await?;
+    /// Validate each of the prevouts that correspond to deposits. This
+    /// should be every input except for the first one.
+    pub async fn validate_deposit<C>(&self, ctx: &C, outpoint: &OutPoint) -> Result<(), Error>
+    where
+        C: Context + Send + Sync,
+    {
+        let db = ctx.get_storage();
+        let signer_public_key = PublicKey::from_private_key(&ctx.config().signer.private_key);
+
+        let txid = outpoint.txid.into();
+        let report_future = db.get_deposit_request_report(
+            &self.chain_tip,
+            &txid,
+            outpoint.vout,
+            &signer_public_key,
+        );
+
+        // The DbRead::get_deposit_request_report only returns Ok(None)
+        // if there isn't a record of the deposit request.
+        let Some(report) = report_future.await? else {
+            return Err(BitcoinDepositInputError::Unknown(*outpoint).into_error(self));
+        };
+
+        report
+            .validate(self.chain_tip_height)
+            .map_err(|err| err.into_error(self))?;
+        report
+            .validate_fee(&self.tx, self.tx_fee)
+            .map_err(|err| err.into_error(self))?;
+
         Ok(())
     }
 
-    fn validate_fees(&self, _input_amounts: Amount) -> Result<(), Error> {
-        unimplemented!()
-    }
-
-    /// Validate the signers' input UTXO
-    async fn validate_signer_input<C>(&self, _ctx: &C) -> Result<Amount, Error>
-    where
-        C: Context + Send + Sync,
-    {
-        unimplemented!()
-    }
-
     /// Validate the withdrawal UTXOs
-    async fn validate_withdrawals<C>(&self, _ctx: &C) -> Result<(), Error>
+    pub async fn validate_withdrawals<C>(&self, _ctx: &C) -> Result<(), Error>
     where
         C: Context + Send + Sync,
     {
@@ -88,7 +110,7 @@ impl BitcoinTxContext {
     }
 
     /// Fetch the signers' BTC state.
-    /// 
+    ///
     /// The returned state is the essential information for the signers
     /// UTXO, and information about the current fees and any fees paid for
     /// transactions currently in the mempool.
@@ -163,6 +185,15 @@ pub enum BitcoinDepositInputError {
     /// database is this is the case.
     #[error("the deposit locktime is denoted in time and that is not supported; {0}")]
     UnsupportedLockTime(OutPoint),
+}
+
+impl BitcoinDepositInputError {
+    fn into_error(self, ctx: &BitcoinTxContext) -> Error {
+        Error::BitcoinValidation(Box::new(BitcoinValidationError {
+            error: BitcoinSweepErrorMsg::Deposit(self),
+            context: ctx.clone(),
+        }))
+    }
 }
 
 /// The responses for validation of a sweep transaction on bitcoin.
