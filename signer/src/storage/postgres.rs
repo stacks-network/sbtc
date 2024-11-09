@@ -1085,6 +1085,7 @@ impl super::DbRead for PgStore {
             can_sign: summary.can_sign,
             is_accepted: summary.is_accepted,
             amount: summary.amount,
+            max_fee: summary.max_fee,
             lock_time: bitcoin::relative::LockTime::from_consensus(summary.lock_time)
                 .map_err(Error::DisabledLockTime)?,
             outpoint: bitcoin::OutPoint::new((*txid).into(), output_index),

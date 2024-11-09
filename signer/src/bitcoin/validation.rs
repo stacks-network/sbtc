@@ -4,6 +4,7 @@ use bitcoin::relative::LockTime;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 
+use crate::bitcoin::utxo::FeeAssessment;
 use crate::context::Context;
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -112,7 +113,7 @@ impl BitcoinTxContext {
 pub enum BitcoinDepositInputError {
     /// The assessed exceeds the max-fee in the deposit request.
     #[error("the assessed fee for a deposit would exceed their max-fee; {0}")]
-    AssessedFeeTooHigh(OutPoint),
+    FeeTooHigh(OutPoint),
     /// The signer is not part of the signer set that generated the
     /// aggregate public key used to lock the deposit funds.
     ///
@@ -300,7 +301,7 @@ impl DepositRequestReport {
 
     /// Validate that the fees assessed to the deposit prevout is below the
     /// max fee.
-    fn validate_fee<F>(&self, tx: &F, tx_fee: u64) -> Result<(), BitcoinDepositInputError>
+    pub fn validate_fee<F>(&self, tx: &F, tx_fee: u64) -> Result<(), BitcoinDepositInputError>
     where
         F: FeeAssessment,
     {
