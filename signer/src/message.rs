@@ -8,7 +8,10 @@ use crate::keys::SignerScriptPubKey as _;
 use crate::signature::RecoverableEcdsaSignature as _;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::BitcoinTxId;
+use crate::storage::model::ScriptPubKey;
 use crate::storage::model::StacksTxId;
+use crate::storage::model::TxoType;
 
 /// Messages exchanged between signers
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -240,6 +243,21 @@ pub struct SweptWithdrawal {
     /// The Stacks block hash of the Stacks block which included the withdrawal
     /// request transaction.
     pub withdrawal_request_block_hash: StacksBlockHash,
+}
+
+/// Represents a single deposit which has been swept-in by a sweep transaction.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SignerOutput {
+    /// The Bitcoin transaction id.
+    pub txid: BitcoinTxId,
+    /// The index of the output in the sBTC sweep transaction.
+    pub output_index: u32,
+    /// The scriptPubKey locking the output.
+    pub script_pubkey: ScriptPubKey,
+    /// The amount created in the output.
+    pub amount: u64,
+    /// The transaction type locking the output.
+    pub txo_type: TxoType,
 }
 
 /// Represents a decision related to signer deposit

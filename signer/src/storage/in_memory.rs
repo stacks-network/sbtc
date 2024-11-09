@@ -569,9 +569,12 @@ impl super::DbRead for SharedStore {
     async fn get_signer_utxo(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: &PublicKey,
         context_window: u16,
     ) -> Result<Option<SignerUtxo>, Error> {
+        let Some(dkg_shares) = self.get_latest_encrypted_dkg_shares().await? else {
+            return Ok(None);
+        };
+        let aggregate_key = dkg_shares.aggregate_key;
         let script_pubkey = aggregate_key.signers_script_pubkey();
         let store = self.lock().await;
         let bitcoin_blocks = &store.bitcoin_blocks;
@@ -610,11 +613,11 @@ impl super::DbRead for SharedStore {
         let Some(sbtc_txs) = sbtc_txs else {
             // if no sbtc tx exists, consider donations
             return store
-                .get_utxo_from_donation(chain_tip, aggregate_key, context_window)
+                .get_utxo_from_donation(chain_tip, &aggregate_key, context_window)
                 .await;
         };
 
-        get_utxo(aggregate_key, sbtc_txs)
+        get_utxo(&aggregate_key, sbtc_txs)
     }
 
     async fn get_deposit_request_signer_votes(
@@ -1082,6 +1085,10 @@ impl super::DbWrite for SharedStore {
             .completed_deposit_events
             .insert(event.outpoint, event.clone());
 
+        Ok(())
+    }
+
+    async fn write_signer_txo(&self, _signer_output: &model::SignerOutput) -> Result<(), Error> {
         Ok(())
     }
 
