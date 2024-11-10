@@ -176,7 +176,7 @@ pub struct TxPrevout {
     #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
     pub amount: u64,
     /// The scriptPubKey locking the prevout.
-    pub input_type: PrevoutType,
+    pub prevout_type: PrevoutType,
 }
 
 /// A transaction output controled by the signer.

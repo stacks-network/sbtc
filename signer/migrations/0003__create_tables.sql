@@ -267,7 +267,7 @@ CREATE TABLE sbtc_signer.bitcoin_tx_prevouts (
     -- The scriptPubKey of the prevout
     script_pubkey BYTEA NOT NULL,
     -- The type of UTXO this is
-    input_type sbtc_signer.prevout_type NOT NULL,
+    prevout_type sbtc_signer.prevout_type NOT NULL,
     -- a timestamp of when this record was created in the database.
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY (txid, output_index)

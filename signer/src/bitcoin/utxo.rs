@@ -1,5 +1,6 @@
 //! Utxo management and transaction construction
 
+use std::collections::HashSet;
 use std::ops::Deref as _;
 
 use bitcoin::absolute::LockTime;
@@ -36,6 +37,10 @@ use crate::error::Error;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
 use crate::storage::model::BitcoinTx;
+use crate::storage::model::TxPrevout;
+use crate::storage::model::TxOutput;
+use crate::storage::model::PrevoutType;
+use crate::storage::model::TxoType;
 use crate::storage::model::ScriptPubKey;
 use crate::storage::model::SignerVotes;
 use crate::storage::model::StacksBlockHash;
@@ -579,6 +584,13 @@ impl SignerUtxo {
 ///
 /// This BTC transaction in this struct has correct amounts but no witness
 /// data for its UTXO inputs.
+///
+/// The Bitcoin transaction has the following layout:
+/// 1. The signer input UTXO is the first input.
+/// 2. All other inputs are deposit inputs.
+/// 3. The signer output UTXO is the first output.
+/// 4. The second output is the OP_RETURN data output.
+/// 5. All other outputs are withdrawal outputs.
 #[derive(Debug)]
 pub struct UnsignedTransaction<'a> {
     /// The requests used to construct the transaction.
@@ -1059,6 +1071,96 @@ impl BitcoinTxInfo {
     /// the output at the given output index `vout`.
     pub fn assess_output_fee(&self, vout: usize) -> Option<Amount> {
         FeeAssessment::assess_output_fee(self, vout, self.fee)
+    }
+
+    /// All inputs in this transaction
+    pub fn to_inputs(&self, signer_script_pubkeys: &HashSet<ScriptBuf>) -> Vec<TxPrevout> {
+        // If someone else created this transaction then we are not a party
+        // to any of the inputs, so we can exit early.
+        if self.is_signer_created(signer_script_pubkeys) {
+            return Vec::new();
+        };
+
+        // This is a transaction that the signers have created. It follows
+        // a layout described in the description of `UnsignedTransaction`.
+        self.inputs()
+            .iter()
+            .enumerate()
+            .filter_map(|(index, _)| match index {
+                0 => self.vin_to_prevout(index, PrevoutType::SignersInput),
+                _ => self.vin_to_prevout(index, PrevoutType::Deposit),
+            })
+            .collect()
+    }
+
+    /// All outputs in this transaction
+    pub fn to_outputs(&self, signer_script_pubkeys: &HashSet<ScriptBuf>) -> Vec<TxOutput> {
+        // This transaction might not be related to the signers at all. If
+        // not then we can exit early.
+        let mut outputs = self.outputs().iter();
+        if !outputs.any(|tx_out| signer_script_pubkeys.contains(&tx_out.script_pubkey)) {
+            return Vec::new();
+        }
+
+        // If the signers did not create this transaction but we control at
+        // least one output then the outputs are donations. We can just
+        // scan the outputs and exit early.
+        if !self.is_signer_created(signer_script_pubkeys) {
+            return self
+                .outputs()
+                .iter()
+                .enumerate()
+                .filter(|(_, tx_out)| signer_script_pubkeys.contains(&tx_out.script_pubkey))
+                .filter_map(|(index, _)| self.vout_to_output(index, TxoType::Donation))
+                .collect();
+        }
+
+        self.outputs()
+            .iter()
+            .enumerate()
+            .filter_map(|(index, _)| match index {
+                0 => self.vout_to_output(index, TxoType::SignersOutput),
+                1 => self.vout_to_output(index, TxoType::SignersOpReturn),
+                _ => self.vout_to_output(index, TxoType::Withdrawal),
+            })
+            .collect()
+    }
+
+    fn vout_to_output(&self, index: usize, output_type: TxoType) -> Option<TxOutput> {
+        let tx_out = self.tx.output.get(index)?;
+        Some(TxOutput {
+            txid: self.txid.into(),
+            output_index: index as u32,
+            script_pubkey: tx_out.script_pubkey.clone().into(),
+            amount: tx_out.value.to_sat(),
+            output_type,
+        })
+    }
+
+    fn vin_to_prevout(&self, index: usize, input_type: PrevoutType) -> Option<TxPrevout> {
+        let tx_in = self.vin.get(index)?;
+        Some(TxPrevout {
+            txid: self.txid.into(),
+            prevout_txid: tx_in.details.txid?.into(),
+            prevout_output_index: tx_in.details.vout?,
+            script_pubkey: ScriptPubKey::from_prevout(&tx_in.prevout),
+            amount: tx_in.prevout.value.to_sat(),
+            prevout_type: input_type,
+        })
+    }
+
+    /// Whether this transaction was created by the signers given the
+    /// possible scriptPubKeys.
+    /// 
+    /// If the first input in the transaction is one that the signers
+    /// control then we know that the signers created this transaction.
+    fn is_signer_created(&self, signer_script_pubkeys: &HashSet<ScriptBuf>) -> bool {
+        let Some(signer_input) = self.vin.first() else {
+            return false;
+        };
+
+        let first_script_pubkey = ScriptPubKey::from_prevout(&signer_input.prevout);
+        signer_script_pubkeys.contains(first_script_pubkey.deref())
     }
 }
 
