@@ -37,14 +37,14 @@ use crate::error::Error;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
 use crate::storage::model::BitcoinTx;
-use crate::storage::model::TxPrevout;
-use crate::storage::model::TxOutput;
-use crate::storage::model::PrevoutType;
-use crate::storage::model::TxoType;
 use crate::storage::model::ScriptPubKey;
 use crate::storage::model::SignerVotes;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
+use crate::storage::model::TxOutput;
+use crate::storage::model::TxPrevout;
+use crate::storage::model::TxPrevoutType;
+use crate::storage::model::TxoType;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
 /// transactions.
@@ -1087,8 +1087,8 @@ impl BitcoinTxInfo {
             .iter()
             .enumerate()
             .filter_map(|(index, _)| match index {
-                0 => self.vin_to_prevout(index, PrevoutType::SignersInput),
-                _ => self.vin_to_prevout(index, PrevoutType::Deposit),
+                0 => self.vin_to_prevout(index, TxPrevoutType::SignersInput),
+                _ => self.vin_to_prevout(index, TxPrevoutType::Deposit),
             })
             .collect()
     }
@@ -1137,7 +1137,7 @@ impl BitcoinTxInfo {
         })
     }
 
-    fn vin_to_prevout(&self, index: usize, input_type: PrevoutType) -> Option<TxPrevout> {
+    fn vin_to_prevout(&self, index: usize, input_type: TxPrevoutType) -> Option<TxPrevout> {
         let tx_in = self.vin.get(index)?;
         Some(TxPrevout {
             txid: self.txid.into(),
@@ -1151,7 +1151,7 @@ impl BitcoinTxInfo {
 
     /// Whether this transaction was created by the signers given the
     /// possible scriptPubKeys.
-    /// 
+    ///
     /// If the first input in the transaction is one that the signers
     /// control then we know that the signers created this transaction.
     fn is_signer_created(&self, signer_script_pubkeys: &HashSet<ScriptBuf>) -> bool {

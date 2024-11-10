@@ -176,7 +176,7 @@ pub struct TxPrevout {
     #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
     pub amount: u64,
     /// The scriptPubKey locking the prevout.
-    pub prevout_type: PrevoutType,
+    pub prevout_type: TxPrevoutType,
 }
 
 /// A transaction output controled by the signer.
@@ -752,7 +752,7 @@ pub enum TxoType {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[strum(serialize_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub enum PrevoutType {
+pub enum TxPrevoutType {
     /// An output controled by the signers spent as an input.
     SignersInput,
     /// A deposit request TXO being spent as an input
