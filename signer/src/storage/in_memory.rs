@@ -1088,10 +1088,6 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_signer_txo(&self, _signer_output: &model::SignerOutput) -> Result<(), Error> {
-        Ok(())
-    }
-
     async fn write_tx_output(&self, _output: &model::TxOutput) -> Result<(), Error> {
         Ok(())
     }

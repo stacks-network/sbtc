@@ -645,27 +645,8 @@ impl PgStore {
         .await
         .map_err(Error::SqlxQuery)?;
 
-        let signer_outputs = sqlx::query_as(
-            r#"
-            SELECT
-                txid
-              , output_index
-              , amount
-              , script_pubkey
-              , txo_type
-            FROM signer_txos
-            WHERE txid = $1
-            ORDER BY output_index ASC;
-        "#,
-        )
-        .bind(sweep_txid)
-        .fetch_all(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
         transaction.swept_deposits = swept_deposits;
         transaction.swept_withdrawals = swept_withdrawals;
-        transaction.signer_outputs = signer_outputs;
 
         Ok(Some(transaction))
     }
@@ -2296,32 +2277,6 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn write_signer_txo(&self, signer_output: &model::SignerOutput) -> Result<(), Error> {
-        sqlx::query(
-            r#"
-            INSERT INTO signer_txos (
-                txid
-              , output_index
-              , amount
-              , script_pubkey
-              , txo_type
-            )
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT DO NOTHING;
-            "#,
-        )
-        .bind(signer_output.txid)
-        .bind(i32::try_from(signer_output.output_index).map_err(Error::ConversionDatabaseInt)?)
-        .bind(i64::try_from(signer_output.amount).map_err(Error::ConversionDatabaseInt)?)
-        .bind(&signer_output.script_pubkey)
-        .bind(signer_output.txo_type)
-        .execute(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
-        Ok(())
-    }
-
     async fn write_tx_output(&self, output: &model::TxOutput) -> Result<(), Error> {
         sqlx::query(
             r#"
@@ -2472,12 +2427,6 @@ impl super::DbWrite for PgStore {
         }
 
         tx.commit().await.map_err(Error::SqlxCommitTransaction)?;
-
-        // TODO: maybe refactor to use the sqlx transaction type to keep
-        // things atomic.
-        for signer_output in transaction.signer_outputs.iter() {
-            self.write_signer_txo(signer_output).await?;
-        }
 
         Ok(())
     }
