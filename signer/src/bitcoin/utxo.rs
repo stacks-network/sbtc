@@ -1154,7 +1154,7 @@ impl BitcoinTxInfo {
     ///
     /// If the first input in the transaction is one that the signers
     /// control then we know that the signers created this transaction.
-    fn is_signer_created(&self, signer_script_pubkeys: &HashSet<ScriptBuf>) -> bool {
+    pub fn is_signer_created(&self, signer_script_pubkeys: &HashSet<ScriptBuf>) -> bool {
         let Some(signer_input) = self.vin.first() else {
             return false;
         };

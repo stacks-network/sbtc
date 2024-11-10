@@ -30,7 +30,6 @@ use crate::stacks::api::StacksInteract;
 use crate::stacks::api::TenureBlocks;
 use crate::storage;
 use crate::storage::model;
-use crate::storage::model::SignerOutput;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use bitcoin::hashes::Hash as _;
@@ -375,6 +374,7 @@ where
             .collect();
 
         let db = self.context.get_storage_mut();
+        let btc_rpc = self.context.get_bitcoin_client();
         // Look through all the UTXOs in the given transaction slice and
         // keep the transactions where a UTXO is locked with a
         // `scriptPubKey` controlled by the signers.
@@ -392,28 +392,19 @@ where
                 continue;
             }
 
+            let txid = tx.compute_txid();
+            let tx_info = btc_rpc
+                .get_tx_info(&txid, &block_hash)
+                .await?
+                .ok_or(Error::BitcoinTxMissing(txid, None))?;
+
             // sBTC transactions have as first txin a signers spendable output
-            let mut tx_type = model::TransactionType::Donation;
-            if let Some(txin) = tx.input.first() {
-                let tx_info = self
-                    .context
-                    .get_bitcoin_client()
-                    .get_tx(&txin.previous_output.txid)
-                    .await?
-                    .ok_or(Error::BitcoinTxMissing(txin.previous_output.txid, None))?;
-
-                let prevout = &tx_info
-                    .tx
-                    .tx_out(txin.previous_output.vout as usize)
-                    .map_err(|_| Error::OutPointMissing(txin.previous_output))?
-                    .script_pubkey;
-
-                if signer_script_pubkeys.contains(prevout) {
-                    tx_type = model::TransactionType::SbtcTransaction;
-                }
+            let tx_type = if tx_info.is_signer_created(&signer_script_pubkeys) {
+                model::TransactionType::SbtcTransaction
+            } else {
+                model::TransactionType::Donation
             };
 
-            let txid = tx.compute_txid();
             sbtc_txs.push(model::Transaction {
                 txid: txid.to_byte_array(),
                 tx: bitcoin::consensus::serialize(&tx),
@@ -421,23 +412,12 @@ where
                 block_hash: block_hash.to_byte_array(),
             });
 
-            // Let's write the donation to the signer_txos table.
-            if tx_type == model::TransactionType::Donation {
-                let donations =
-                    tx.output.iter().enumerate().filter(|(_, tx_out)| {
-                        signer_script_pubkeys.contains(&tx_out.script_pubkey)
-                    });
-                for (output_index, output) in donations {
-                    let signer_output = SignerOutput {
-                        txid: txid.into(),
-                        output_index: output_index as u32,
-                        script_pubkey: output.script_pubkey.clone().into(),
-                        amount: output.value.to_sat(),
-                        txo_type: model::TxoType2::Donation,
-                    };
-                    tracing::debug!(%txid, "writing donation utxo to the database");
-                    db.write_signer_txo(&signer_output).await?;
-                }
+            for prevout in tx_info.to_inputs(&signer_script_pubkeys) {
+                db.write_tx_prevout(&prevout).await?;
+            }
+
+            for output in tx_info.to_outputs(&signer_script_pubkeys) {
+                db.write_tx_output(&output).await?;
             }
         }
 
