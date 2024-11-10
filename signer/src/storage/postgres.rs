@@ -358,7 +358,7 @@ impl PgStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
-        txo_type: model::TxoType,
+        txo_type: model::TxoType2,
     ) -> Result<Option<SignerUtxo>, Error> {
         let pg_utxo = sqlx::query_as::<_, PgSignerUtxo>(
             r#"
@@ -1469,11 +1469,11 @@ impl super::DbRead for PgStore {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> Result<Option<SignerUtxo>, Error> {
-        let txo_type = model::TxoType::Signers;
+        let txo_type = model::TxoType2::Signers;
         if let Some(pg_utxo) = self.get_utxo(chain_tip, context_window, txo_type).await? {
             return Ok(Some(pg_utxo));
         }
-        let txo_type = model::TxoType::Donation;
+        let txo_type = model::TxoType2::Donation;
         self.get_utxo(chain_tip, context_window, txo_type).await
     }
 

@@ -192,8 +192,8 @@ impl TestData {
             bitcoin_transactions.push(bitcoin_transaction);
 
             let txo_type = match tx_type {
-                model::TransactionType::SbtcTransaction => model::TxoType::Signers,
-                model::TransactionType::Donation => model::TxoType::Donation,
+                model::TransactionType::SbtcTransaction => model::TxoType2::Signers,
+                model::TransactionType::Donation => model::TxoType2::Donation,
                 _ => continue,
             };
             if let Some(tx_out) = tx.output.first() {

@@ -204,7 +204,7 @@ CREATE TABLE sbtc_signer.sweep_transactions (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
-CREATE TYPE sbtc_signer.txo_type AS ENUM (
+CREATE TYPE sbtc_signer.txo_type2 AS ENUM (
     'signers',
     'donation'
 );
@@ -219,7 +219,7 @@ CREATE TABLE sbtc_signer.signer_txos (
     -- The scriptPubKey of the output
     script_pubkey BYTEA NOT NULL,
     -- The type of UTXO this is
-    txo_type sbtc_signer.txo_type NOT NULL,
+    txo_type sbtc_signer.txo_type2 NOT NULL,
     -- a timestamp of when this record was created in the database.
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY (txid, output_index)

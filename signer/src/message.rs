@@ -11,7 +11,7 @@ use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::ScriptPubKey;
 use crate::storage::model::StacksTxId;
-use crate::storage::model::TxoType;
+use crate::storage::model::TxoType2;
 
 /// Messages exchanged between signers
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -212,7 +212,7 @@ impl SweepTransactionInfo {
                 output_index: index as u32,
                 amount: tx_out.value.to_sat(),
                 script_pubkey: tx_out.script_pubkey.clone().into(),
-                txo_type: TxoType::Signers,
+                txo_type: TxoType2::Signers,
             })
             .collect();
 
@@ -275,7 +275,7 @@ pub struct SignerOutput {
     /// The amount created in the output.
     pub amount: u64,
     /// The transaction type locking the output.
-    pub txo_type: TxoType,
+    pub txo_type: TxoType2,
 }
 
 /// Represents a decision related to signer deposit

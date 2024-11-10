@@ -141,7 +141,7 @@ pub struct SignerOutput {
     #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
     pub amount: u64,
     /// The scriptPubKey locking the output.
-    pub txo_type: TxoType,
+    pub txo_type: TxoType2,
 }
 
 impl From<&crate::message::SignerOutput> for SignerOutput {
@@ -658,11 +658,11 @@ pub enum TransactionType {
 
 /// The types of transactions the signer is interested in.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
-#[sqlx(type_name = "txo_type", rename_all = "snake_case")]
+#[sqlx(type_name = "txo_type2", rename_all = "snake_case")]
 #[derive(serde::Serialize, serde::Deserialize)]
 #[strum(serialize_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub enum TxoType {
+pub enum TxoType2 {
     /// An sBTC transaction on Bitcoin.
     Signers,
     /// A donation to signers aggregated key on Bitcoin.

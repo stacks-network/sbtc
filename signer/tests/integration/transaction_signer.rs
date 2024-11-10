@@ -122,7 +122,7 @@ fn sweep_transaction_info<R: rand::RngCore>(
             output_index: 0,
             script_pubkey: fake::Faker.fake_with_rng(rng),
             amount: 12345,
-            txo_type: model::TxoType::Signers,
+            txo_type: model::TxoType2::Signers,
         }],
     }
 }

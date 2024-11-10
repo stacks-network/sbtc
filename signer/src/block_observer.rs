@@ -433,7 +433,7 @@ where
                         output_index: output_index as u32,
                         script_pubkey: output.script_pubkey.clone().into(),
                         amount: output.value.to_sat(),
-                        txo_type: model::TxoType::Donation,
+                        txo_type: model::TxoType2::Donation,
                     };
                     tracing::debug!(%txid, "writing donation utxo to the database");
                     db.write_signer_txo(&signer_output).await?;
