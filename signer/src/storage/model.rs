@@ -11,6 +11,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
 
+use crate::bitcoin::utxo;
+use crate::bitcoin::utxo::Fees;
 use crate::block_observer::Deposit;
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -43,6 +45,10 @@ pub struct SweepTransaction {
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u64"))]
     pub fee: u64,
+    /// The virtual size of this transaction (in bytes).
+    #[sqlx(try_from = "i32")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
+    pub vsize: u32,
     /// The Bitcoin block hash at which this transaction was created.
     pub created_at_block_hash: BitcoinBlockHash,
     /// The market fee rate at the time of this transaction.
@@ -76,11 +82,23 @@ impl From<&crate::message::SweepTransactionInfo> for SweepTransaction {
             signer_prevout_script_pubkey: info.signer_prevout_script_pubkey.clone().into(),
             amount: info.amount,
             fee: info.fee,
+            vsize: info.vsize,
             market_fee_rate: info.market_fee_rate,
             created_at_block_hash: info.created_at_block_hash.into(),
             swept_deposits: info.swept_deposits.iter().map(Into::into).collect(),
             swept_withdrawals: info.swept_withdrawals.iter().map(Into::into).collect(),
         }
+    }
+}
+
+impl utxo::GetFees for Vec<SweepTransaction> {
+    /// Return the total fee of all the transactions in the vector.
+    fn get_fees(&self) -> Fees {
+        let total = self.iter().map(|tx| tx.fee).sum();
+        let total_size: u32 = self.iter().map(|tx| tx.vsize).sum();
+        let rate: f64 = total as f64 / total_size as f64;
+
+        Fees { total, rate }
     }
 }
 
@@ -962,6 +980,9 @@ pub type Bytes = Vec<u8>;
 mod tests {
     use fake::Fake;
     use rand::SeedableRng;
+    use test_case::test_case;
+
+    use crate::bitcoin::utxo::GetFees;
 
     use super::*;
 
@@ -978,5 +999,28 @@ mod tests {
         let block_hash = BitcoinBlockHash::from(stacks_hash);
         let round_trip = BurnchainHeaderHash::from(block_hash);
         assert_eq!(stacks_hash, round_trip);
+    }
+
+    #[test_case(&[(1000, 500)], Fees { total: 500, rate: 0.5 })]
+    #[test_case(&[(1000, 500), (2000, 1000)], Fees { total: 1500, rate: 0.5 })]
+    #[test_case(&[(1000, 250), (2000, 1000)], Fees { total: 1250, rate: 0.4166666666666667 })]
+    #[test_case(&[(1000, 125), (1250, 125), (1500, 175)], Fees { total: 425, rate: 0.11333333333333333 })]
+    fn get_sweep_transaction_package_fees(sweeps: &[(u32, u64)], expected: Fees) {
+        // (vsize, fee)
+        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
+
+        let mut sweep_txs = vec![];
+        for (vsize, fee) in sweeps {
+            let tx = SweepTransaction {
+                vsize: *vsize,
+                fee: *fee,
+                ..fake::Faker.fake_with_rng(&mut rng)
+            };
+            sweep_txs.push(tx);
+        }
+
+        let fees = sweep_txs.get_fees();
+
+        assert_eq!(fees, expected);
     }
 }

@@ -420,6 +420,7 @@ impl PgStore {
               , signer_prevout_script_pubkey
               , amount
               , fee
+              , vsize
               , created_at_block_hash
               , market_fee_rate
             FROM
@@ -1497,6 +1498,60 @@ impl super::DbRead for PgStore {
 
         self.get_sweep_transaction_by_txid(&txid).await
     }
+
+    async fn get_sweep_transaction_package(
+        &self,
+        prevout_txid: &model::BitcoinTxId,
+    ) -> Result<Vec<model::SweepTransaction>, Error> {
+        let infos: Vec<(model::BitcoinTxId, i32)> = sqlx::query_as(
+            "
+            WITH RECURSIVE sweep_txs AS (
+                SELECT
+                    txid
+                  , signer_prevout_txid
+                  , 1 AS number
+                FROM 
+                    sweep_transactions
+                WHERE 
+                    txid = $1
+
+                UNION ALL
+
+                SELECT
+                    tx.txid
+                  , tx.signer_prevout_txid
+                  ,  last.number + 1
+                FROM
+                    sweep_transactions tx
+                INNER JOIN
+                    sweep_txs last 
+                        ON tx.signer_prevout_txid = last.txid
+            )
+            SELECT
+                txid
+              , number
+            FROM
+                sweep_txs
+            ORDER BY
+                number ASC;
+        ",
+        )
+        .bind(prevout_txid)
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        let mut sweep_transactions = Vec::new();
+        for txid in infos {
+            let tx = self
+                .get_sweep_transaction_by_txid(&txid.0)
+                .await?
+                .ok_or(Error::MissingSweepTransaction(*txid.0))?;
+            sweep_transactions.push(tx);
+        }
+
+        Ok(sweep_transactions)
+    }
 }
 
 impl super::DbWrite for PgStore {
@@ -2143,10 +2198,11 @@ impl super::DbWrite for PgStore {
               , signer_prevout_script_pubkey
               , amount
               , fee
+              , vsize
               , created_at_block_hash
               , market_fee_rate
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT DO NOTHING;
         ",
         )
@@ -2163,6 +2219,7 @@ impl super::DbWrite for PgStore {
         .bind(transaction.signer_prevout_script_pubkey.clone())
         .bind(i64::try_from(transaction.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(transaction.fee).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i32::try_from(transaction.vsize).map_err(Error::ConversionDatabaseInt)?)
         .bind(transaction.created_at_block_hash)
         .bind(transaction.market_fee_rate)
         .execute(&mut *tx)

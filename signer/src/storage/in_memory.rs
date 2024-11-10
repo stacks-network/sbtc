@@ -796,6 +796,31 @@ impl super::DbRead for SharedStore {
 
         Ok(package)
     }
+
+    async fn get_sweep_transaction_package(
+        &self,
+        prevout_txid: &model::BitcoinTxId,
+    ) -> Result<Vec<model::SweepTransaction>, Error> {
+        let store = self.lock().await;
+        let sweep_txs = &store.sweep_transactions;
+        let first = sweep_txs
+            .iter()
+            .find(|tx| tx.signer_prevout_txid == *prevout_txid);
+
+        if first.is_none() {
+            return Ok(vec![]);
+        }
+
+        let package = std::iter::successors(first, |sweep| {
+            sweep_txs
+                .iter()
+                .find(|tx| tx.signer_prevout_txid == sweep.txid)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+
+        Ok(package)
+    }
 }
 
 impl super::DbWrite for SharedStore {
@@ -1076,5 +1101,42 @@ impl super::DbWrite for SharedStore {
         store.sweep_transactions.push(tx.clone());
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::DbRead as _;
+    use fake::{Fake, Faker};
+    use model::*;
+    use rand::rngs::OsRng;
+
+    #[tokio::test]
+    async fn can_get_sweep_transaction_package() {
+        let mut txs: Vec<SweepTransaction> = Faker.fake_with_rng(&mut OsRng);
+        let txids = txs.iter().map(|tx| tx.txid).collect::<Vec<_>>();
+        let utxo_txid: BitcoinTxId = Faker.fake_with_rng(&mut OsRng);
+
+        for (i, tx) in txs.iter_mut().enumerate() {
+            if i == 0 {
+                tx.signer_prevout_txid = utxo_txid;
+            } else {
+                tx.signer_prevout_txid = txids[i - 1];
+            }
+        }
+
+        let store = Store::new_shared();
+        {
+            let mut store = store.lock().await;
+            store.sweep_transactions = txs.clone();
+        }
+
+        let package = store
+            .get_sweep_transaction_package(&utxo_txid)
+            .await
+            .unwrap();
+
+        assert_eq!(package, txs);
     }
 }

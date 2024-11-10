@@ -18,6 +18,7 @@ use tokio_stream::wrappers::BroadcastStream;
 use wsts::net::SignatureType;
 
 use crate::bitcoin::utxo;
+use crate::bitcoin::utxo::GetFees;
 use crate::bitcoin::BitcoinInteract;
 use crate::context::TxCoordinatorEvent;
 use crate::context::TxSignerEvent;
@@ -351,12 +352,6 @@ where
         let transaction_package = pending_requests.construct_transactions()?;
 
         for mut transaction in transaction_package {
-            self.send_message(
-                SweepTransactionInfo::from_unsigned_at_block(bitcoin_chain_tip, &transaction),
-                bitcoin_chain_tip,
-            )
-            .await?;
-
             self.sign_and_broadcast(
                 bitcoin_chain_tip,
                 aggregate_key,
@@ -678,11 +673,19 @@ where
             });
 
         tracing::info!("broadcasing bitcoin transaction");
-
+        // Broadcast the transaction to the Bitcoin network.
         self.context
             .get_bitcoin_client()
             .broadcast_transaction(&transaction.tx)
             .await?;
+
+        // Publish the transaction to the P2P network so that peers get advance
+        // knowledge of the sweep.
+        self.send_message(
+            SweepTransactionInfo::from_unsigned_at_block(bitcoin_chain_tip, transaction),
+            bitcoin_chain_tip,
+        )
+        .await?;
 
         tracing::info!("bitcoin transaction accepted by bitcoin-core");
 
@@ -856,13 +859,28 @@ where
         let bitcoin_client = self.context.get_bitcoin_client();
         let fee_rate = bitcoin_client.estimate_fee_rate().await?;
 
+        // Retrieve the signer's current UTXO.
         let utxo = self
             .context
             .get_storage()
             .get_signer_utxo(chain_tip, aggregate_key, self.context_window)
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
-        let last_fees = bitcoin_client.get_last_fee(utxo.outpoint).await?;
+
+        // Retrieve the last sweep package for the above UTXO. These are transactions
+        // which exist in the mempool.
+        let last_sweep_package = self
+            .context
+            .get_storage()
+            .get_sweep_transaction_package(&utxo.outpoint.txid.into())
+            .await?;
+
+        // If the last sweep package is empty, then we don't have any fees to
+        // report, so we return None. Otherwise, we return the calculated fees
+        // from the last sweep package.
+        let last_fees = last_sweep_package
+            .is_empty()
+            .then(|| last_sweep_package.get_fees());
 
         Ok(utxo::SignerBtcState {
             fee_rate,

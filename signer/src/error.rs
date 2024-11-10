@@ -12,6 +12,10 @@ use crate::stacks::contracts::WithdrawalAcceptValidationError;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Indicates that a sweep transaction with the specified txid could not be found.
+    #[error("sweep transaction not found: {0}")]
+    MissingSweepTransaction(bitcoin::Txid),
+
     /// The nakamoto start height could not be determined.
     #[error("nakamoto start height could not be determined")]
     MissingNakamotoStartHeight,

@@ -173,11 +173,6 @@ where
                     .expect_estimate_fee_rate()
                     .times(1)
                     .returning(|| Box::pin(async { Ok(1.3) }));
-
-                client
-                    .expect_get_last_fee()
-                    .once()
-                    .returning(|_| Box::pin(async { Ok(None) }));
             })
             .await;
 
@@ -320,11 +315,6 @@ where
                     .expect_estimate_fee_rate()
                     .times(1)
                     .returning(|| Box::pin(async { Ok(1.3) }));
-
-                client
-                    .expect_get_last_fee()
-                    .once()
-                    .returning(|_| Box::pin(async { Ok(None) }));
             })
             .await;
 

@@ -6,7 +6,6 @@ use bitcoin::Amount;
 use bitcoin::Block;
 use bitcoin::BlockHash;
 use bitcoin::Denomination;
-use bitcoin::OutPoint;
 use bitcoin::Transaction;
 use bitcoin::Txid;
 use bitcoin::Wtxid;
@@ -351,10 +350,5 @@ impl BitcoinInteract for BitcoinCoreClient {
         // src/bitcoin/fees.rs module.
         self.estimate_fee_rate(1)
             .map(|estimate| estimate.sats_per_vbyte)
-    }
-
-    async fn get_last_fee(&self, _: OutPoint) -> Result<Option<super::utxo::Fees>, Error> {
-        // TODO(541): implement this
-        Ok(None)
     }
 }

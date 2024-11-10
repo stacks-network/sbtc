@@ -67,12 +67,23 @@ const SATS_PER_VBYTE_INCREMENT: f64 = 0.001;
 const OP_RETURN_VERSION: u8 = 0;
 
 /// Describes the fees for a transaction.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Fees {
     /// The total fee paid in sats for the transaction.
     pub total: u64,
     /// The fee rate paid in sats per virtual byte.
     pub rate: f64,
+}
+
+impl Fees {
+    /// A zero-fee [`Fees`] instance.
+    pub const ZERO: Self = Self { total: 0, rate: 0.0 };
+}
+
+/// A trait for getting the fees for a given instance.
+pub trait GetFees {
+    /// Get the [`Fees`] for this instance.
+    fn get_fees(&self) -> Fees;
 }
 
 /// Summary of the Signers' UTXO and information necessary for

@@ -246,6 +246,13 @@ pub trait DbRead {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> impl Future<Output = Result<Option<model::SweepTransaction>, Error>> + Send;
+
+    /// Get the sweep transaction package for the given previous transaction id
+    /// (i.e. the previous output that was spent from the then-UTXO).
+    fn get_sweep_transaction_package(
+        &self,
+        prevout_txid: &model::BitcoinTxId,
+    ) -> impl Future<Output = Result<Vec<model::SweepTransaction>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.

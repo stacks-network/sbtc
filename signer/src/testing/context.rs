@@ -302,13 +302,6 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
         self.inner.lock().await.estimate_fee_rate().await
     }
 
-    async fn get_last_fee(
-        &self,
-        utxo: bitcoin::OutPoint,
-    ) -> Result<Option<crate::bitcoin::utxo::Fees>, Error> {
-        self.inner.lock().await.get_last_fee(utxo).await
-    }
-
     async fn broadcast_transaction(&self, tx: &bitcoin::Transaction) -> Result<(), Error> {
         self.inner.lock().await.broadcast_transaction(tx).await
     }

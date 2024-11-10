@@ -268,12 +268,6 @@ async fn deposit_flow() {
                 .once()
                 // Dummy value
                 .returning(|| Box::pin(async { Ok(1.3) }));
-
-            client
-                .expect_get_last_fee()
-                .once()
-                // Dummy value -- we don't need to worry about RBF
-                .returning(|_| Box::pin(async { Ok(None) }));
         })
         .await;
 

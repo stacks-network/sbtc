@@ -11,7 +11,9 @@ use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
+use fake::Faker;
 use futures::StreamExt;
+use rand::rngs::OsRng;
 use rand::seq::SliceRandom;
 
 use signer::bitcoin::MockBitcoinInteract;
@@ -44,6 +46,7 @@ use signer::storage::model::ScriptPubKey;
 use signer::storage::model::StacksBlock;
 use signer::storage::model::StacksBlockHash;
 use signer::storage::model::StacksTxId;
+use signer::storage::model::SweepTransaction;
 use signer::storage::model::WithdrawalSigner;
 use signer::storage::postgres::PgStore;
 use signer::storage::DbRead;
@@ -58,6 +61,7 @@ use rand::SeedableRng;
 use signer::testing::context::*;
 use signer::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use test_case::test_case;
+use test_log::test;
 
 use crate::setup::TestSweepSetup;
 use crate::DATABASE_NUM;
@@ -2309,4 +2313,46 @@ async fn can_store_and_get_latest_sweep_transaction() {
     };
 
     assert_eq!(tx2, expected2);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[test(tokio::test)]
+async fn can_get_sweep_transaction_package() {
+    let mut sweep_transactions: Vec<SweepTransaction> = fake::Faker.fake();
+    let txids = sweep_transactions
+        .iter()
+        .map(|tx| tx.txid)
+        .collect::<Vec<_>>();
+    let utxo_txid: BitcoinTxId = Faker.fake_with_rng(&mut OsRng);
+
+    for (i, tx) in sweep_transactions.iter_mut().enumerate() {
+        if i == 0 {
+            tx.signer_prevout_txid = utxo_txid;
+        } else {
+            tx.signer_prevout_txid = txids[i - 1];
+        }
+
+        // We clear these so we don't have to mess around with writing them and
+        // their FK's etc -- that's already tested elsewhere.
+        tx.swept_deposits.clear();
+        tx.swept_withdrawals.clear();
+    }
+
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    for tx in sweep_transactions.iter() {
+        db.write_sweep_transaction(tx).await.unwrap();
+    }
+
+    let sweep = db
+        .get_sweep_transaction_package(&sweep_transactions[0].txid)
+        .await
+        .unwrap();
+
+    assert_eq!(sweep, sweep_transactions);
+
+    signer::testing::storage::drop_db(db).await;
 }
