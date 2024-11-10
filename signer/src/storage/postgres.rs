@@ -358,7 +358,7 @@ impl PgStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
-        txo_type: model::TxoType2,
+        txo_type: model::TxoType,
     ) -> Result<Option<SignerUtxo>, Error> {
         let pg_utxo = sqlx::query_as::<_, PgSignerUtxo>(
             r#"
@@ -368,27 +368,28 @@ impl PgStore {
             ),
             confirmed_sweeps AS (
                 SELECT 
-                    signer_prevout_txid
-                  , signer_prevout_output_index
-                FROM sbtc_signer.sweep_transactions AS st
+                    prevout_txid
+                  , prevout_output_index
+                FROM sbtc_signer.bitcoin_tx_prevouts
                 JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
                 JOIN bitcoin_blockchain AS bb USING (block_hash)
+                WHERE prevout_type = 'signers_input'
             )
             SELECT
-                su.txid
-              , su.output_index
-              , su.amount
+                bo.txid
+              , bo.output_index
+              , bo.amount
               , ds.aggregate_key
-            FROM sbtc_signer.signer_txos AS su
+            FROM sbtc_signer.bitcoin_tx_outputs AS bo
             JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
             JOIN bitcoin_blockchain AS bb USING (block_hash)
             JOIN sbtc_signer.dkg_shares AS ds USING (script_pubkey)
             LEFT JOIN confirmed_sweeps AS cs
-              ON cs.signer_prevout_txid = su.txid
-              AND cs.signer_prevout_output_index = su.output_index
+              ON cs.prevout_txid = bo.txid
+              AND cs.prevout_output_index = bo.output_index
             WHERE cs.signer_prevout_txid IS NULL
-              AND su.txo_type = $3
-            ORDER BY su.amount DESC
+              AND bo.txo_type = $3
+            ORDER BY bo.amount DESC
             LIMIT 1;
             "#,
         )
@@ -1469,11 +1470,11 @@ impl super::DbRead for PgStore {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> Result<Option<SignerUtxo>, Error> {
-        let txo_type = model::TxoType2::Signers;
+        let txo_type = model::TxoType::SignersOutput;
         if let Some(pg_utxo) = self.get_utxo(chain_tip, context_window, txo_type).await? {
             return Ok(Some(pg_utxo));
         }
-        let txo_type = model::TxoType2::Donation;
+        let txo_type = model::TxoType::Donation;
         self.get_utxo(chain_tip, context_window, txo_type).await
     }
 
