@@ -400,4 +400,16 @@ pub trait DbWrite {
         &self,
         tx: &model::SweepTransaction,
     ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write the bitcoin transaction output to the database.
+    fn write_tx_output(
+        &self,
+        output: &model::TxOutput,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write the bitcoin transaction input to the database.
+    fn write_tx_prevout(
+        &self,
+        prevout: &model::TxPrevout,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
 }

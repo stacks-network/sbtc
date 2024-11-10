@@ -1092,6 +1092,14 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
+    async fn write_tx_output(&self, _output: &model::TxOutput) -> Result<(), Error> {
+        Ok(())
+    }
+
+    async fn write_tx_prevout(&self, _prevout: &model::TxPrevout) -> Result<(), Error> {
+        Ok(())
+    }
+
     async fn write_sweep_transaction(&self, tx: &model::SweepTransaction) -> Result<(), Error> {
         let mut store = self.lock().await;
         store.sweep_transactions.push(tx.clone());

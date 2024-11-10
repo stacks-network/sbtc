@@ -2321,6 +2321,60 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
+    async fn write_tx_output(&self, output: &model::TxOutput) -> Result<(), Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO bitcoin_tx_outputs (
+                txid
+              , output_index
+              , amount
+              , script_pubkey
+              , output_type
+            )
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT DO NOTHING;
+            "#,
+        )
+        .bind(output.txid)
+        .bind(i32::try_from(output.output_index).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(output.amount).map_err(Error::ConversionDatabaseInt)?)
+        .bind(&output.script_pubkey)
+        .bind(output.output_type)
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
+    }
+
+    async fn write_tx_prevout(&self, prevout: &model::TxPrevout) -> Result<(), Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO bitcoin_tx_prevouts (
+                txid
+              , prevout_txid
+              , prevout_output_index
+              , amount
+              , script_pubkey
+              , prevout_type
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT DO NOTHING;
+            "#,
+        )
+        .bind(prevout.txid)
+        .bind(prevout.prevout_txid)
+        .bind(i32::try_from(prevout.prevout_output_index).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(prevout.amount).map_err(Error::ConversionDatabaseInt)?)
+        .bind(&prevout.script_pubkey)
+        .bind(prevout.prevout_type)
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
+    }
+
     async fn write_sweep_transaction(
         &self,
         transaction: &model::SweepTransaction,
