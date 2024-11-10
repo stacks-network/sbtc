@@ -270,7 +270,7 @@ CREATE TABLE sbtc_signer.bitcoin_tx_prevouts (
     prevout_type sbtc_signer.prevout_type NOT NULL,
     -- a timestamp of when this record was created in the database.
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    PRIMARY KEY (txid, output_index)
+    PRIMARY KEY (txid, prevout_txid, prevout_output_index)
 );
 
 -- Represents a single withdrawal request which has been included in a sweep
