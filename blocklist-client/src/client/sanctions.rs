@@ -31,9 +31,9 @@ pub struct Identification {
     pub _url: Option<String>,
 }
 
-/// Structure of responce of the sanctions API
+/// Response structure of the sanctions API
 #[derive(Debug, Deserialize)]
-pub struct SanctionsResponce {
+pub struct SanctionsResponse {
     /// Array with sanctions data. If empty, the address is not blocklisted.
     pub identifications: Vec<Identification>,
 }
@@ -57,7 +57,9 @@ async fn get_risk_assessment(
         .send()
         .await?;
     let checked_response = check_api_response(response).await?;
-    let resp_result = checked_response.json::<SanctionsResponce>().await;
+    let resp_result = checked_response.json::<SanctionsResponse>().await;
+    // Currently this client can produce only two risks: Low and Severe. If the response contains any
+    // identifications (which mean address is under sanctions), the risk is Severe. Otherwise, it is Low.
     match resp_result {
         Ok(resp) => {
             if resp.identifications.is_empty() {
@@ -152,7 +154,6 @@ mod tests {
         let config = RiskAnalysisConfig {
             api_url: server_url(),
             api_key: "dummy_api_key".to_string(),
-            use_sanctions: true,
         };
         (client, config)
     }

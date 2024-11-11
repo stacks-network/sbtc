@@ -2,7 +2,7 @@
 
 use crate::client::{risk_client, sanctions};
 use crate::common::error::ErrorResponse;
-use crate::config::RiskAnalysisConfig;
+use crate::config::{AssessmentMethod, Settings};
 use reqwest::Client;
 use std::convert::Infallible;
 use tracing::error;
@@ -31,13 +31,16 @@ use warp::{http::StatusCode, Rejection, Reply};
 pub async fn check_address_handler(
     address: String,
     client: Client,
-    config: RiskAnalysisConfig,
+    config: Settings,
 ) -> impl Reply {
     let result = (async {
-        if config.use_sanctions {
-            sanctions::check_address(&client, &config, &address).await
-        } else {
-            risk_client::check_address(&client, &config, &address).await
+        match config.assessment.assessment_method {
+            AssessmentMethod::Sanctions => {
+                sanctions::check_address(&client, &config.risk_analysis, &address).await
+            }
+            AssessmentMethod::RiskAnalysis => {
+                risk_client::check_address(&client, &config.risk_analysis, &address).await
+            }
         }
     })
     .await

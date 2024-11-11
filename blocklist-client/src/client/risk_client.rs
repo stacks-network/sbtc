@@ -163,7 +163,6 @@ mod tests {
         let config = RiskAnalysisConfig {
             api_url: server_url(),
             api_key: "dummy_api_key".to_string(),
-            use_sanctions: false,
         };
         (client, config)
     }
