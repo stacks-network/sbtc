@@ -1762,10 +1762,10 @@ impl super::DbRead for PgStore {
                     txid
                   , signer_prevout_txid
                   , 1 AS number
-                FROM 
-                    sweep_transactions
-                WHERE 
-                    txid = $1
+                FROM sweep_transactions
+                WHERE txid = $1
+                ORDER BY created_at DESC
+                LIMIT 1
 
                 UNION ALL
 
@@ -1773,19 +1773,18 @@ impl super::DbRead for PgStore {
                     tx.txid
                   , tx.signer_prevout_txid
                   ,  last.number + 1
-                FROM
-                    sweep_transactions tx
-                INNER JOIN
-                    sweep_txs last 
-                        ON tx.signer_prevout_txid = last.txid
+                FROM sweep_transactions tx
+                INNER JOIN sweep_txs last 
+                    ON tx.signer_prevout_txid = last.txid
             )
             SELECT
                 txid
               , number
-            FROM
-                sweep_txs
-            ORDER BY
-                number ASC;
+            FROM sweep_txs
+            INNER JOIN bitcoin_transactions AS btc_tx 
+                ON btc_tx.txid = sweep_txs.txid
+            WHERE btc_tx.txid IS NULL
+            ORDER BY number ASC;
         ",
         )
         .bind(prevout_txid)
