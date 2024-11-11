@@ -1,12 +1,13 @@
 use emily_handler::api;
 use emily_handler::common;
 use serde_json::json;
-use utoipa::openapi::security::ApiKeyValue;
-use utoipa::openapi::security::SecurityScheme;
-use utoipa::Modify;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
+use utoipa::openapi::security::ApiKey;
+use utoipa::openapi::security::ApiKeyValue;
+use utoipa::openapi::security::SecurityScheme;
+use utoipa::Modify;
 use utoipa::OpenApi;
 
 #[derive(utoipa::OpenApi)]
@@ -103,12 +104,10 @@ impl Modify for AwsApiKey {
         if let Some(schema) = openapi.components.as_mut() {
             schema.add_security_scheme(
                 "ApiGatewayKey",
-                SecurityScheme::ApiKey(
-                    utoipa::openapi::security::ApiKey::Header(ApiKeyValue::with_description(
-                        "x-api-key",
-                        "AWS Apigateway key"
-                    )),
-                ),
+                SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::with_description(
+                    "x-api-key",
+                    "AWS Apigateway key",
+                ))),
             );
         }
     }
@@ -139,7 +138,8 @@ impl Modify for AwsLambdaIntegration {
         // Add extensions to each operation.
         openapi
             .paths
-            .paths.iter_mut()
+            .paths
+            .iter_mut()
             .flat_map(|(_, path_item)| path_item.operations.iter_mut())
             .for_each(|(_, operation)| {
                 operation
