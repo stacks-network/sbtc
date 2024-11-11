@@ -147,7 +147,7 @@ pub struct TxOutput {
     #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
     pub amount: u64,
     /// The scriptPubKey locking the output.
-    pub output_type: TxoType,
+    pub output_type: TxOutputType,
 }
 
 /// A bitcoin transaction output being spent as an input in a transaction.
@@ -678,11 +678,11 @@ pub enum TransactionType {
 /// The types of Bitcoin transaction input or outputs that the signer may
 /// be interested in.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
-#[sqlx(type_name = "txo_type", rename_all = "snake_case")]
+#[sqlx(type_name = "output_type", rename_all = "snake_case")]
 #[derive(serde::Serialize, serde::Deserialize)]
 #[strum(serialize_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub enum TxoType {
+pub enum TxOutputType {
     /// An output created by the signers as the TXO containing all of the
     /// swept funds.
     SignersOutput,

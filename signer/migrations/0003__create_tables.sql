@@ -204,7 +204,7 @@ CREATE TABLE sbtc_signer.sweep_transactions (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
-CREATE TYPE sbtc_signer.txo_type AS ENUM (
+CREATE TYPE sbtc_signer.output_type AS ENUM (
     'signers_output',
     'signers_op_return',
     'withdrawal',
@@ -222,7 +222,7 @@ CREATE TABLE sbtc_signer.bitcoin_tx_outputs (
     -- The scriptPubKey of the output
     script_pubkey BYTEA NOT NULL,
     -- The type of UTXO this is
-    output_type sbtc_signer.txo_type NOT NULL,
+    output_type sbtc_signer.output_type NOT NULL,
     -- a timestamp of when this record was created in the database.
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY (txid, output_index)
@@ -230,7 +230,7 @@ CREATE TABLE sbtc_signer.bitcoin_tx_outputs (
 
 CREATE TYPE sbtc_signer.prevout_type AS ENUM (
     'signers_input',
-    'deposit',
+    'deposit'
 );
 
 -- A table for all bitcoin transaction inputs spent by the signers.

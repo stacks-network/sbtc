@@ -42,9 +42,9 @@ use crate::storage::model::SignerVotes;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
 use crate::storage::model::TxOutput;
+use crate::storage::model::TxOutputType;
 use crate::storage::model::TxPrevout;
 use crate::storage::model::TxPrevoutType;
-use crate::storage::model::TxoType;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
 /// transactions.
@@ -1111,7 +1111,7 @@ impl BitcoinTxInfo {
                 .iter()
                 .enumerate()
                 .filter(|(_, tx_out)| signer_script_pubkeys.contains(&tx_out.script_pubkey))
-                .filter_map(|(index, _)| self.vout_to_output(index, TxoType::Donation))
+                .filter_map(|(index, _)| self.vout_to_output(index, TxOutputType::Donation))
                 .collect();
         }
 
@@ -1119,14 +1119,14 @@ impl BitcoinTxInfo {
             .iter()
             .enumerate()
             .filter_map(|(index, _)| match index {
-                0 => self.vout_to_output(index, TxoType::SignersOutput),
-                1 => self.vout_to_output(index, TxoType::SignersOpReturn),
-                _ => self.vout_to_output(index, TxoType::Withdrawal),
+                0 => self.vout_to_output(index, TxOutputType::SignersOutput),
+                1 => self.vout_to_output(index, TxOutputType::SignersOpReturn),
+                _ => self.vout_to_output(index, TxOutputType::Withdrawal),
             })
             .collect()
     }
 
-    fn vout_to_output(&self, index: usize, output_type: TxoType) -> Option<TxOutput> {
+    fn vout_to_output(&self, index: usize, output_type: TxOutputType) -> Option<TxOutput> {
         let tx_out = self.tx.output.get(index)?;
         Some(TxOutput {
             txid: self.txid.into(),
