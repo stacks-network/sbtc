@@ -30,6 +30,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest@0.9.82
+
       - name: Install package dependencies.
         run: make install
 
@@ -37,13 +41,13 @@ jobs:
         run: make lint
 
       - name: Run tests
-        run: make test
+        run: make test-ci
 
       - name: Docker test service setup
         run: make integration-env-up-ci
 
       - name: Run integration tests
-        run: make integration-test
+        run: make integration-test-ci
 
       - name: Docker compose down
         if: always()
