@@ -8,10 +8,6 @@
 # ------------------------------------------------------------------------------
 services:
 
-  # sBTC Signers.
-  # ------------------
-  # sbtc signer 1 ----
-
   postgres:
     image: postgres:15-alpine
     stop_grace_period: 5s
@@ -37,8 +33,6 @@ services:
     ports:
       - "4122:4122"
 
-  # Blocklist client.
-  # -----------------
   blocklist-client:
     image: blockstack/sbtc:blocklist-client-latest
     entrypoint: "/bin/bash -c '/usr/local/bin/blocklist-client -c /blocklist-client-config.toml'"
@@ -46,3 +40,20 @@ services:
       - ./config/blocklist-client-config.toml:/blocklist-client-config.toml
     ports:
       - "3032:3032"
+
+  bitcoin:
+    build: bitcoin
+    ports:
+      - "18443:18443"
+      - "28332:28332"
+    volumes:
+      - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        set -e
+        bitcoind
+    profiles:
+      - default
+      - bitcoin-mempool
