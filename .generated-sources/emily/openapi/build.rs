@@ -6,6 +6,10 @@ use std::fs::File;
 use std::io::Write;
 use utoipa::OpenApi;
 
+fn main() {
+    build_emily();
+}
+
 #[derive(utoipa::OpenApi)]
 #[openapi(
     paths(
@@ -68,7 +72,7 @@ use utoipa::OpenApi;
 )]
 struct ApiDoc;
 
-fn main() {
+pub fn build_emily() {
     // Ensure that we rerun if the API changes or the build script changes.
     println!("cargo:rerun-if-changed=../../../emily/handler/api");
     println!("cargo:rerun-if-changed=build.rs");
