@@ -29,6 +29,8 @@ pub struct RiskAnalysisConfig {
     pub api_url: String,
     /// API key for the Risk service
     pub api_key: String,
+    /// Whether to use sanctions API or RiskAnalysis API
+    pub use_sanctions: bool,
 }
 
 /// Statically configured settings for the Blocklist client
