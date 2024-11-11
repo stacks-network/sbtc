@@ -1,3 +1,10 @@
+# DISCLAIMER! READ!
+# This configuration file is an example of how it will likely look in production with some
+# values filled in with example placeholders like `your-private-key` and `your-bitcoin-node`.
+# The real production configuration will rely on some hardcoded values that can only be
+# known after initial seed node deployments. This file is not meant to be used as is, but one will
+# be created to be used later, and this documentation will be updated to reflect those changes.
+
 # TODO(715): Provide sane/safe configuration defaults. Re-review all of them!
 # TODO(429): Add documentation for all configuration parameters.
 
