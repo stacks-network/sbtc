@@ -1755,6 +1755,34 @@ impl super::DbRead for PgStore {
         &self,
         prevout_txid: &model::BitcoinTxId,
     ) -> Result<Vec<model::SweepTransaction>, Error> {
+        // Attempt to find the first sweep transaction in the chain. Since there
+        // can be multiple sweep transactions for the same prevout (if there was
+        // an RBF), we sort these by the created_at timestamp and take the
+        // latest one.
+        let first = sqlx::query_scalar::<_, model::BitcoinTxId>(
+            "
+            SELECT txid 
+            FROM sweep_transactions 
+            WHERE signer_prevout_txid = $1
+            ORDER BY created_at DESC
+            LIMIT 1;
+        ",
+        )
+        .bind(prevout_txid)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        // If we didn't find any matching sweep transactions, we return an empty
+        // list.
+        let Some(first) = first else {
+            return Ok(Vec::new());
+        };
+
+        // Otherwise, we recursively find all sweep transaction ids that are
+        // chained from the first one. As a precaution, this query also filters
+        // out any sweep transactions that have already been confirmed on the
+        // Bitcoin blockchain.
         let infos: Vec<(model::BitcoinTxId, i32)> = sqlx::query_as(
             "
             WITH RECURSIVE sweep_txs AS (
@@ -1763,9 +1791,8 @@ impl super::DbRead for PgStore {
                   , signer_prevout_txid
                   , 1 AS number
                 FROM sweep_transactions
-                WHERE txid = $1
-                ORDER BY created_at DESC
-                LIMIT 1
+                WHERE 
+                    txid = $1
 
                 UNION ALL
 
@@ -1778,20 +1805,22 @@ impl super::DbRead for PgStore {
                     ON tx.signer_prevout_txid = last.txid
             )
             SELECT
-                txid
+                sweep_txs.txid
               , number
             FROM sweep_txs
-            INNER JOIN bitcoin_transactions AS btc_tx 
+            LEFT JOIN bitcoin_transactions AS btc_tx 
                 ON btc_tx.txid = sweep_txs.txid
             WHERE btc_tx.txid IS NULL
             ORDER BY number ASC;
         ",
         )
-        .bind(prevout_txid)
+        .bind(first)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
+        // Then we fetch the sweep transactions themselves. This implementation
+        // is optimized for simplicity and code re-use, not for performance.
         let mut sweep_transactions = Vec::new();
         for txid in infos {
             let tx = self

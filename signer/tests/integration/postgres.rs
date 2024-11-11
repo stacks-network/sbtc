@@ -11,9 +11,7 @@ use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
-use fake::Faker;
 use futures::StreamExt;
-use rand::rngs::OsRng;
 use rand::seq::SliceRandom;
 
 use signer::bitcoin::validation::DepositRequestStatus;
@@ -2322,16 +2320,24 @@ async fn can_store_and_get_latest_sweep_transaction() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test(tokio::test)]
 async fn can_get_sweep_transaction_package() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
     let mut sweep_transactions: Vec<SweepTransaction> = fake::Faker.fake();
     let txids = sweep_transactions
         .iter()
         .map(|tx| tx.txid)
         .collect::<Vec<_>>();
-    let utxo_txid: BitcoinTxId = Faker.fake_with_rng(&mut OsRng);
+
+    let bitcoin_block: model::BitcoinBlock = fake::Faker.fake();
+    let utxo_tx = model::Transaction {
+        block_hash: bitcoin_block.block_hash.into_bytes(),
+        ..fake::Faker.fake()
+    };
 
     for (i, tx) in sweep_transactions.iter_mut().enumerate() {
         if i == 0 {
-            tx.signer_prevout_txid = utxo_txid;
+            tx.signer_prevout_txid = utxo_tx.txid.into();
         } else {
             tx.signer_prevout_txid = txids[i - 1];
         }
@@ -2342,15 +2348,21 @@ async fn can_get_sweep_transaction_package() {
         tx.swept_withdrawals.clear();
     }
 
-    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    db.write_bitcoin_block(&bitcoin_block).await.unwrap();
+    db.write_transaction(&utxo_tx).await.unwrap();
+    db.write_bitcoin_transaction(&model::BitcoinTxRef {
+        txid: utxo_tx.txid.into(),
+        block_hash: utxo_tx.block_hash.into(),
+    })
+    .await
+    .unwrap();
 
     for tx in sweep_transactions.iter() {
         db.write_sweep_transaction(tx).await.unwrap();
     }
 
     let sweep = db
-        .get_sweep_transaction_package(&sweep_transactions[0].txid)
+        .get_sweep_transaction_package(&utxo_tx.txid.into())
         .await
         .unwrap();
 
