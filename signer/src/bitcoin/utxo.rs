@@ -940,21 +940,25 @@ impl<'a> UnsignedTransaction<'a> {
     }
 }
 
-/// A trait for figuring out the fees assessed to deposit prevouts and
-/// withdrawal outputs in a bitcoin transaction.
-///
-/// This trait and the default implementations includes functions for
-/// apportioning fees to a bitcoin transaction that has already been
-/// confirmed. This implementation is located in this module because it the
-/// assumptions for how the transaction is organized follows the logic in
-/// [`UnsignedTransaction::new`].
-pub trait FeeAssessment {
+/// A trait where we return all inputs and outputs for a bitcoin
+/// transaction.
+pub trait InputsOutputs {
     /// Returns all transaction inputs as a slice.
     fn inputs(&self) -> &[TxIn];
 
     /// Returns all transaction outputs as a slice.
     fn outputs(&self) -> &[TxOut];
+}
 
+/// A trait for figuring out the fees assessed to deposit prevouts and
+/// withdrawal outputs in a bitcoin transaction.
+///
+/// This trait and the default implementations includes functions for
+/// apportioning fees to a bitcoin transaction that has already been
+/// confirmed. This implementation is located in this module because the
+/// assumptions it makes for how the transaction is organized follows the
+/// logic in [`UnsignedTransaction::new`].
+pub trait FeeAssessment: InputsOutputs {
     /// Assess how much of the bitcoin miner fee should be apportioned to
     /// the input associated with the given `outpoint`.
     ///
@@ -970,7 +974,7 @@ pub trait FeeAssessment {
     ///
     /// The logic for the fee assessment is from
     /// <https://github.com/stacks-network/sbtc/issues/182>.
-    fn assess_input_fee(&self, outpoint: &OutPoint, fee: Amount) -> Option<Amount> {
+    fn assess_input_fee(&self, outpoint: &OutPoint, tx_fee: Amount) -> Option<Amount> {
         // The Weight::to_wu function just returns the inner weight units
         // as an u64, so this is really just the weight.
         let request_weight = self.request_weight().to_wu();
@@ -986,7 +990,7 @@ pub trait FeeAssessment {
 
         // This computation follows the logic laid out in
         // <https://github.com/stacks-network/sbtc/issues/182>.
-        let fee_sats = (input_weight * fee.to_sat()).div_ceil(request_weight);
+        let fee_sats = (input_weight * tx_fee.to_sat()).div_ceil(request_weight);
         Some(Amount::from_sat(fee_sats))
     }
 
@@ -1005,7 +1009,7 @@ pub trait FeeAssessment {
     ///
     /// The logic for the fee assessment is from
     /// <https://github.com/stacks-network/sbtc/issues/182>.
-    fn assess_output_fee(&self, vout: usize, fee: Amount) -> Option<Amount> {
+    fn assess_output_fee(&self, vout: usize, tx_fee: Amount) -> Option<Amount> {
         // We skip the first input because that is always the signers'
         // input UTXO.
         if vout < 2 {
@@ -1016,7 +1020,7 @@ pub trait FeeAssessment {
 
         // This computation follows the logic laid out in
         // <https://github.com/stacks-network/sbtc/issues/182>.
-        let fee_sats = (output_weight * fee.to_sat()).div_ceil(request_weight);
+        let fee_sats = (output_weight * tx_fee.to_sat()).div_ceil(request_weight);
         Some(Amount::from_sat(fee_sats))
     }
 
@@ -1034,7 +1038,9 @@ pub trait FeeAssessment {
     }
 }
 
-impl FeeAssessment for Transaction {
+impl<T: InputsOutputs> FeeAssessment for T {}
+
+impl InputsOutputs for Transaction {
     fn inputs(&self) -> &[TxIn] {
         &self.input
     }
@@ -1043,7 +1049,7 @@ impl FeeAssessment for Transaction {
     }
 }
 
-impl FeeAssessment for BitcoinTx {
+impl InputsOutputs for BitcoinTx {
     fn inputs(&self) -> &[TxIn] {
         &self.deref().input
     }
@@ -1052,7 +1058,7 @@ impl FeeAssessment for BitcoinTx {
     }
 }
 
-impl FeeAssessment for BitcoinTxInfo {
+impl InputsOutputs for BitcoinTxInfo {
     fn inputs(&self) -> &[TxIn] {
         &self.tx.input
     }
