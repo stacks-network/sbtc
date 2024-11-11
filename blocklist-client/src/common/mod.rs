@@ -53,3 +53,14 @@ impl RiskSeverity {
         matches!(self, RiskSeverity::Severe)
     }
 }
+
+/// Risk information associated with a wallet address
+#[derive(Deserialize, Debug)]
+pub struct RiskAssessment {
+    /// The evaluated risk severity for the address
+    #[serde(rename = "risk")]
+    pub severity: RiskSeverity,
+    /// The reason for the assigned risk severity
+    #[serde(rename = "riskReason")]
+    pub reason: Option<String>,
+}
