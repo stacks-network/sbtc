@@ -85,6 +85,7 @@ describe("initiating a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -151,6 +152,7 @@ describe("initiating a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -190,6 +192,7 @@ describe("initiating a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -237,6 +240,7 @@ describe("initiating a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -262,6 +266,7 @@ test("max-fee must be accounted for", () => {
       recipient: alice,
       burnHash,
       burnHeight,
+      sweepTxid: new Uint8Array(32).fill(1),
     }),
     deployer
   );
@@ -296,6 +301,7 @@ describe("Accepting a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -316,6 +322,7 @@ describe("Accepting a withdrawal request", () => {
         fee: 1n,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -332,6 +339,7 @@ describe("Accepting a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -352,6 +360,7 @@ describe("Accepting a withdrawal request", () => {
         fee: 1n,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       alice
     );
@@ -368,6 +377,7 @@ describe("Accepting a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -388,6 +398,7 @@ describe("Accepting a withdrawal request", () => {
         fee: 1n,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -400,6 +411,7 @@ describe("Accepting a withdrawal request", () => {
         fee: 1n,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -416,6 +428,7 @@ describe("Accepting a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -436,6 +449,7 @@ describe("Accepting a withdrawal request", () => {
         fee: 11n,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -452,6 +466,7 @@ describe("Accepting a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -472,6 +487,7 @@ describe("Accepting a withdrawal request", () => {
         fee: defaultMaxFee + 10n,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -505,6 +521,7 @@ describe("Accepting a withdrawal request", () => {
       fee: defaultMaxFee + 10n,
       burnHash,
       burnHeight: BigInt(burnHeight),
+      sweepTxid: new Uint8Array(32).fill(1),
     });
   });
   test("accept withdrawal sets withdrawal-status to true", () => {
@@ -518,6 +535,7 @@ describe("Accepting a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight: BigInt(burnHeight),
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -538,6 +556,7 @@ describe("Accepting a withdrawal request", () => {
         fee: defaultMaxFee,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -573,6 +592,7 @@ describe("Accepting a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -663,6 +683,7 @@ describe("Accepting a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -683,6 +704,7 @@ describe("Accepting a withdrawal request", () => {
         fee: 9n,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -702,6 +724,7 @@ describe("Reject a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -733,6 +756,7 @@ describe("Reject a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -764,6 +788,7 @@ describe("Reject a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -784,6 +809,7 @@ describe("Reject a withdrawal request", () => {
         fee: 10n,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -807,6 +833,7 @@ describe("Reject a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -830,6 +857,7 @@ describe("Reject a withdrawal request", () => {
             fee: 10n,
             burnHeight: 10n,
             burnHash: new Uint8Array(32).fill(0),
+            sweepTxid: new Uint8Array(32).fill(1),
           },
         ],
       }),
@@ -850,6 +878,7 @@ describe("Reject a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -870,6 +899,7 @@ describe("Reject a withdrawal request", () => {
           fee: 10n,
           burnHash: new Uint8Array(32).fill(2),
           burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -887,6 +917,7 @@ describe("Reject a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -907,6 +938,7 @@ describe("Reject a withdrawal request", () => {
         fee: defaultMaxFee,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -926,6 +958,7 @@ describe("Complete multiple withdrawals", () => {
         recipient: alice,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -946,6 +979,7 @@ describe("Complete multiple withdrawals", () => {
         recipient: bob,
         burnHash,
         burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );
@@ -970,6 +1004,7 @@ describe("Complete multiple withdrawals", () => {
             fee: defaultMaxFee,
             burnHeight: 10n,
             burnHash: new Uint8Array(32).fill(0),
+            sweepTxid: new Uint8Array(32).fill(1),
           },
           {
             requestId: 2n,
@@ -980,6 +1015,7 @@ describe("Complete multiple withdrawals", () => {
             fee: null,
             burnHeight: 10n,
             burnHash: new Uint8Array(32).fill(0),
+            sweepTxid: null,
           },
         ],
       }),
@@ -1009,6 +1045,7 @@ describe("optimization tests for completing withdrawals", () => {
           recipient: alice,
           burnHash,
           burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
         }),
         deployer
       );
@@ -1034,6 +1071,7 @@ describe("optimization tests for completing withdrawals", () => {
             fee: 10n,
             burnHeight,
             burnHash: burnHash!,
+            sweepTxid: new Uint8Array(32).fill(1),
           };
         }),
       }),

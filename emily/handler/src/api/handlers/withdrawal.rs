@@ -12,7 +12,7 @@ use crate::context::EmilyContext;
 use crate::database::accessors;
 use crate::database::entries::withdrawal::{
     ValidatedUpdateWithdrawalRequest, WithdrawalEntry, WithdrawalEntryKey, WithdrawalEvent,
-    WithdrawalParametersEntry, WithdrawalUpdatePackage,
+    WithdrawalParametersEntry,
 };
 use crate::database::entries::StatusEntry;
 use warp::http::StatusCode;
@@ -235,17 +235,11 @@ pub async fn update_withdrawals(
 
         // Loop through all updates and execute.
         for (index, update) in validated_request.withdrawals {
-            // Get original withdrawal entry.
-            let withdrawal_entry =
-                accessors::get_withdrawal_entry(&context, &update.request_id).await?;
-            // Make the update package.
-            let update_package = WithdrawalUpdatePackage::try_from(&withdrawal_entry, update)?;
-            let updated_withdrawal = accessors::update_withdrawal(&context, &update_package)
-                .await?
-                .try_into()?;
-            // Append the updated withdrawal to the list.
-            updated_withdrawals.push((index, updated_withdrawal));
+            let updated_withdrawal =
+                accessors::pull_and_update_withdrawal_with_retry(&context, update, 15).await?;
+            updated_withdrawals.push((index, updated_withdrawal.try_into()?));
         }
+
         updated_withdrawals.sort_by_key(|(index, _)| *index);
         let withdrawals = updated_withdrawals
             .into_iter()

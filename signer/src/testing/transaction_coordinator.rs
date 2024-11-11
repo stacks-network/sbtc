@@ -189,6 +189,14 @@ where
             })
             .await;
 
+        self.context
+            .with_stacks_client(|client| {
+                client
+                    .expect_get_current_signers_aggregate_key()
+                    .returning(move |_| Box::pin(std::future::ready(Ok(Some(aggregate_key)))));
+            })
+            .await;
+
         // Create a channel to log all transactions broadcasted by the coordinator.
         // The receiver is created by this method but not used as it is held as a
         // handle to ensure that the channel is alive until the end of the test.
@@ -328,6 +336,14 @@ where
                             Ok(emily_client::models::UpdateDepositsResponse { deposits: vec![] })
                         })
                     });
+            })
+            .await;
+
+        self.context
+            .with_stacks_client(|client| {
+                client
+                    .expect_get_current_signers_aggregate_key()
+                    .returning(move |_| Box::pin(std::future::ready(Ok(Some(aggregate_key)))));
             })
             .await;
 

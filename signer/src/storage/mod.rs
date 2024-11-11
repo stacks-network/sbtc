@@ -17,6 +17,7 @@ use std::future::Future;
 use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::bitcoin::utxo::SignerUtxo;
+use crate::bitcoin::validation::DepositRequestReport;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::stacks::events::CompletedDepositEvent;
@@ -71,6 +72,30 @@ pub trait DbRead {
         &self,
         signer: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Error>> + Send;
+
+    /// This function returns a deposit request report that does the
+    /// following:
+    ///
+    /// 1. Check that the current signer accepted by the deposit request.
+    /// 2. Check that this signer can contribute a share of the final
+    ///    signature.
+    /// 3. Check that the deposit transaction is in a block on the bitcoin
+    ///    blockchain identified by the given chain tip.
+    /// 4. Check that the deposit has not been included by a sweep
+    ///    transaction that has been confirmed by block on the bitcoin
+    ///    blockchain identified by the given chain tip.
+    /// 5. Return the locktime embedded of the reclaim script in the
+    ///    deposit request. It does not check of the value.
+    ///
+    ///  `Ok(None)` is returned if we do not have a record of the deposit
+    /// request.
+    fn get_deposit_request_report(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+        signer_public_key: &PublicKey,
+    ) -> impl Future<Output = Result<Option<DepositRequestReport>, Error>> + Send;
 
     /// Get signer decisions for a deposit request
     fn get_deposit_signers(

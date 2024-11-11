@@ -238,6 +238,13 @@ impl StacksInteract for TestHarness {
         // issue #118
         todo!()
     }
+    async fn get_current_signers_aggregate_key(
+        &self,
+        _contract_principal: &StacksAddress,
+    ) -> Result<Option<PublicKey>, Error> {
+        // issue #118
+        todo!()
+    }
     async fn get_account(&self, _address: &StacksAddress) -> Result<AccountInfo, Error> {
         // issue #118
         todo!()

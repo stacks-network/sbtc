@@ -8,6 +8,8 @@ use crate::common::error::{Error, Inconsistency};
 
 use crate::{api::models::common::Status, context::EmilyContext};
 
+use super::entries::deposit::ValidatedDepositUpdate;
+use super::entries::withdrawal::ValidatedWithdrawalUpdate;
 use super::entries::{
     chainstate::{
         ApiStateEntry, ApiStatus, ChainstateEntry, ChainstateTablePrimaryIndex,
@@ -136,6 +138,40 @@ pub async fn get_deposit_entries_for_transaction(
         maybe_page_size,
     )
     .await
+}
+
+/// Pulls in a deposit entry and then updates it, retrying the specified number
+/// of times when there's a version conflict.
+///
+/// TODO(792): Combine this with the withdrawal version.
+pub async fn pull_and_update_deposit_with_retry(
+    context: &EmilyContext,
+    update: ValidatedDepositUpdate,
+    retries: u16,
+) -> Result<DepositEntry, Error> {
+    for _ in 0..retries {
+        // Get original deposit entry.
+        let deposit_entry = get_deposit_entry(context, &update.key).await?;
+        // Return the existing entry if no update is necessary.
+        if update.is_unnecessary(&deposit_entry) {
+            return Ok(deposit_entry);
+        }
+        // Make the update package.
+        let update_package: DepositUpdatePackage =
+            DepositUpdatePackage::try_from(&deposit_entry, update.clone())?;
+        // Attempt to update the deposit.
+        match update_deposit(context, &update_package).await {
+            Err(Error::VersionConflict) => {
+                // Retry.
+                continue;
+            }
+            otherwise => {
+                return otherwise;
+            }
+        }
+    }
+    // Failed to update due to a version conflict
+    Err(Error::VersionConflict)
 }
 
 /// Updates a deposit.
@@ -301,6 +337,39 @@ pub async fn get_all_withdrawal_entries_modified_after_height_with_status(
         maybe_page_size,
     )
     .await
+}
+
+/// Pulls in a withdrawal entry and then updates it, retrying the specified number
+/// of times when there's a version conflict.
+///
+/// TODO(792): Combine this with the deposit version.
+pub async fn pull_and_update_withdrawal_with_retry(
+    context: &EmilyContext,
+    update: ValidatedWithdrawalUpdate,
+    retries: u16,
+) -> Result<WithdrawalEntry, Error> {
+    for _ in 0..retries {
+        // Get original withdrawal entry.
+        let entry = get_withdrawal_entry(context, &update.request_id).await?;
+        // Return the existing entry if no update is necessary.
+        if update.is_unnecessary(&entry) {
+            return Ok(entry);
+        }
+        // Make the update package.
+        let update_package = WithdrawalUpdatePackage::try_from(&entry, update.clone())?;
+        // Attempt to update the deposit.
+        match update_withdrawal(context, &update_package).await {
+            Err(Error::VersionConflict) => {
+                // Retry.
+                continue;
+            }
+            otherwise => {
+                return otherwise;
+            }
+        }
+    }
+    // Failed to update due to a version conflict
+    Err(Error::VersionConflict)
 }
 
 /// Updates a withdrawal based on the update package.
