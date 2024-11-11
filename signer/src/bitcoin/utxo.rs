@@ -599,6 +599,8 @@ pub struct UnsignedTransaction<'a> {
     pub signer_utxo: SignerBtcState,
     /// The total amount of fees associated with the transaction.
     pub tx_fee: u64,
+    /// The total virtual size of the transaction.
+    pub tx_vsize: u32,
 }
 
 /// A struct containing Taproot-tagged hashes used for computing taproot
@@ -633,8 +635,9 @@ impl<'a> UnsignedTransaction<'a> {
         // remove the witness data.
         let mut tx = Self::new_transaction(&requests, state)?;
         // We now compute the total fees for the transaction.
-        let tx_vsize = tx.vsize() as f64;
-        let tx_fee = compute_transaction_fee(tx_vsize, state.fee_rate, state.last_fees);
+        let tx_vsize: u32 = tx.vsize().try_into().map_err(|_| Error::TypeConversion)?;
+
+        let tx_fee = compute_transaction_fee(tx_vsize as f64, state.fee_rate, state.last_fees);
         // Now adjust the amount for the signers UTXO for the transaction
         // fee.
         Self::adjust_amounts(&mut tx, tx_fee);
@@ -649,6 +652,7 @@ impl<'a> UnsignedTransaction<'a> {
             signer_public_key: state.public_key,
             signer_utxo: *state,
             tx_fee,
+            tx_vsize,
         })
     }
 
