@@ -1083,7 +1083,7 @@ impl BitcoinTxInfo {
     pub fn to_inputs(&self, signer_script_pubkeys: &HashSet<ScriptBuf>) -> Vec<TxPrevout> {
         // If someone else created this transaction then we are not a party
         // to any of the inputs, so we can exit early.
-        if self.is_signer_created(signer_script_pubkeys) {
+        if !self.is_signer_created(signer_script_pubkeys) {
             return Vec::new();
         };
 

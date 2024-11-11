@@ -15,7 +15,9 @@ use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::getsortition::SortitionInfo;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
+use emily_client::apis::deposit_api;
 use emily_client::apis::testing_api;
+use emily_client::models::CreateDepositRequestBody;
 use fake::Fake as _;
 use fake::Faker;
 use futures::StreamExt;
@@ -35,6 +37,7 @@ use signer::storage::model::TxOutput;
 use signer::storage::model::TxOutputType;
 use signer::storage::model::TxPrevout;
 use signer::storage::model::TxPrevoutType;
+use signer::storage::postgres::PgStore;
 use signer::storage::DbWrite;
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 use stacks_common::types::chainstate::ConsensusHash;
@@ -352,7 +355,7 @@ async fn link_blocks() {
     testing::storage::drop_db(db).await;
 }
 
-async fn fetch_output(db: &sqlx::PgPool, output_type: TxOutputType) -> Option<TxOutput> {
+async fn fetch_output(db: &PgStore, output_type: TxOutputType) -> Option<TxOutput> {
     sqlx::query_as::<_, TxOutput>(
         r#"
         SELECT 
@@ -366,12 +369,12 @@ async fn fetch_output(db: &sqlx::PgPool, output_type: TxOutputType) -> Option<Tx
         "#,
     )
     .bind(output_type)
-    .fetch_optional(db)
+    .fetch_optional(db.pool())
     .await
     .unwrap()
 }
 
-async fn fetch_input(db: &sqlx::PgPool, output_type: TxPrevoutType) -> Option<TxPrevout> {
+async fn fetch_input(db: &PgStore, output_type: TxPrevoutType) -> Option<TxPrevout> {
     sqlx::query_as::<_, TxPrevout>(
         r#"
         SELECT 
@@ -386,7 +389,7 @@ async fn fetch_input(db: &sqlx::PgPool, output_type: TxPrevoutType) -> Option<Tx
         "#,
     )
     .bind(output_type)
-    .fetch_optional(db)
+    .fetch_optional(db.pool())
     .await
     .unwrap()
 }
@@ -396,7 +399,7 @@ async fn fetch_input(db: &sqlx::PgPool, output_type: TxPrevoutType) -> Option<Tx
 async fn block_observer_stores_donation_and_sbtc_utxos() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    signer::logging::setup_logging("info,signer=debug", false);
+    // signer::logging::setup_logging("info,signer=debug", false);
 
     // We need to populate our databases, so let's fetch the data.
     let emily_client =
@@ -454,7 +457,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     .await;
 
     // ** Step 2 **
-    // 
+    //
     // Start the BlockObserver
     //
     // We only proceed with the test after the process has started, and
@@ -468,7 +471,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
         BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
             .await
             .unwrap();
-    let (sender, receiver) = tokio::sync::mpsc::channel(100);
+    let (sender, receiver) = tokio::sync::mpsc::channel(1000);
 
     tokio::spawn(async move {
         let mut stream = zmq_stream.to_block_hash_stream();
@@ -482,7 +485,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
         stacks_client: ctx.stacks_client.clone(),
         emily_client: ctx.emily_client.clone(),
         bitcoin_blocks: ReceiverStream::new(receiver),
-        horizon: 10,
+        horizon: 2,
     };
 
     tokio::spawn(async move {
@@ -496,12 +499,20 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
 
     // Let's do a sanity check that we do not have any rows in our output
     // tables.
-    assert!(fetch_output(db.pool(), TxOutputType::Donation).await.is_none());
-    assert!(fetch_output(db.pool(), TxOutputType::SignersOpReturn).await.is_none());
-    assert!(fetch_output(db.pool(), TxOutputType::SignersOutput).await.is_none());
+    assert!(fetch_output(&db, TxOutputType::Donation).await.is_none());
+    assert!(fetch_output(&db, TxOutputType::SignersOpReturn)
+        .await
+        .is_none());
+    assert!(fetch_output(&db, TxOutputType::SignersOutput)
+        .await
+        .is_none());
+    assert!(fetch_input(&db, TxPrevoutType::Deposit).await.is_none());
+    assert!(fetch_input(&db, TxPrevoutType::SignersInput)
+        .await
+        .is_none());
 
     // ** Step 3 **
-    // 
+    //
     // Make a donation to the address controlled by signers. In this case
     // there is only one signer in the signer set.
     let signer = Recipient::new(AddressType::P2tr);
@@ -522,26 +533,28 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     let donation_amount = 100_000;
     let donation_outpoint = faucet.send_to(donation_amount, &address);
 
+    faucet.generate_blocks(1);
+
     // Let's wait for the block observer to signal that it has finished
     // processing everything.
     let signal = signal_receiver.recv();
-    let Ok(SignerSignal::Event(SignerEvent::BitcoinBlockObserved)) = tokio::time::timeout(Duration::from_secs(5), signal).await.unwrap() else {
+    let Ok(SignerSignal::Event(SignerEvent::BitcoinBlockObserved)) = signal.await else {
         panic!("Not the right signal")
     };
 
     // Okay now we check whether the we have a donation. The details should
     // match what we expect.
     let TxOutput { txid, output_index, amount, .. } =
-        fetch_output(db.pool(), TxOutputType::Donation).await.unwrap();
+        fetch_output(&db, TxOutputType::Donation).await.unwrap();
 
     assert_eq!(amount, donation_amount);
     assert_eq!(output_index, donation_outpoint.vout);
     assert_eq!(txid.deref(), &donation_outpoint.txid);
 
     // ** Step 4 **
-    // 
+    //
     // Setup an actual deposit.
-    // 
+    //
     // For a real deposit we need to create a depositor and have them make
     // an actual deposit. For this step we create the sweep transaction
     // "manually".
@@ -553,7 +566,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     let chain_tip = faucet.generate_blocks(1).pop().unwrap().into();
 
     let signal = signal_receiver.recv();
-    let Ok(SignerSignal::Event(SignerEvent::BitcoinBlockObserved)) = tokio::time::timeout(Duration::from_secs(1), signal).await.unwrap() else {
+    let Ok(SignerSignal::Event(SignerEvent::BitcoinBlockObserved)) = signal.await else {
         panic!("Not the right signal")
     };
 
@@ -563,13 +576,17 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
 
     let deposit_amount = 2_500_000;
     let signers_public_key = shares.aggregate_key.into();
-    let (deposit_tx, deposit_request, _) =
-        make_deposit_request(&depositor, deposit_amount, depositor_utxo, signers_public_key);
+    let (deposit_tx, deposit_request, _) = make_deposit_request(
+        &depositor,
+        deposit_amount,
+        depositor_utxo,
+        signers_public_key,
+    );
     rpc.send_raw_transaction(&deposit_tx).unwrap();
 
     // Now build the struct with the outstanding peg-in and peg-out requests.
     let requests = SbtcRequests {
-        deposits: vec![deposit_request],
+        deposits: vec![deposit_request.clone()],
         withdrawals: Vec::new(),
         signer_state: SignerBtcState {
             utxo: db.get_signer_utxo(&chain_tip, 10).await.unwrap().unwrap(),
@@ -593,20 +610,35 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     rpc.send_raw_transaction(&unsigned.tx).unwrap();
 
     // ** Step 5 **
-    // 
+    //
+    // Inform emily about the deposit
+    let body = CreateDepositRequestBody {
+        bitcoin_tx_output_index: deposit_request.outpoint.vout,
+        bitcoin_txid: deposit_request.outpoint.txid.to_string(),
+        deposit_script: deposit_request.deposit_script.to_hex_string(),
+        reclaim_script: deposit_request.reclaim_script.to_hex_string(),
+    };
+    deposit_api::create_deposit(emily_client.config(), body)
+        .await
+        .unwrap();
+
+    // ** Step 6 **
+    //
     // Check that the block observer populates the tables correctly
     faucet.generate_blocks(1);
 
     // Okay now there is a deposit, and it has been confirmed. We should
     // pick it up automatically.
     let signal = signal_receiver.recv();
-    let Ok(SignerSignal::Event(SignerEvent::BitcoinBlockObserved)) = tokio::time::timeout(Duration::from_secs(1), signal).await.unwrap() else {
+    let Ok(SignerSignal::Event(SignerEvent::BitcoinBlockObserved)) = signal.await else {
         panic!("Not the right signal")
     };
 
     // Okay now we should see the signers output with the expected values.
     let TxOutput { txid, output_index, amount, .. } =
-        fetch_output(db.pool(), TxOutputType::SignersOutput).await.unwrap();
+        fetch_output(&db, TxOutputType::SignersOutput)
+            .await
+            .unwrap();
 
     assert_eq!(amount, unsigned.tx.output[0].value.to_sat());
     assert_eq!(output_index, 0);
@@ -614,7 +646,9 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
 
     // We should also pick up the OP_RETURN output.
     let TxOutput { txid, output_index, amount, .. } =
-        fetch_output(db.pool(), TxOutputType::SignersOpReturn).await.unwrap();
+        fetch_output(&db, TxOutputType::SignersOpReturn)
+            .await
+            .unwrap();
 
     assert_eq!(amount, unsigned.tx.output[1].value.to_sat());
     assert_eq!(amount, 0);
@@ -622,12 +656,24 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     assert_eq!(txid.deref(), &unsigned.tx.compute_txid());
 
     // We should also have a row in the inputs table.
-    let TxPrevout { txid, prevout_txid, prevout_output_index, amount, .. } =
-        fetch_input(db.pool(), TxPrevoutType::SignersInput).await.unwrap();
+    let TxPrevout {
+        txid,
+        prevout_txid,
+        prevout_output_index,
+        amount,
+        ..
+    } = fetch_input(&db, TxPrevoutType::SignersInput).await.unwrap();
 
-    assert_eq!(amount, deposit_amount);
+    assert_eq!(amount, donation_amount);
     assert_eq!(prevout_txid.deref(), &donation_outpoint.txid);
     assert_eq!(prevout_output_index, donation_outpoint.vout);
+    assert_eq!(txid.deref(), &unsigned.tx.compute_txid());
+
+    let TxPrevout { txid, prevout_txid, amount, .. } =
+        fetch_input(&db, TxPrevoutType::Deposit).await.unwrap();
+
+    assert_eq!(amount, deposit_amount);
+    assert_eq!(prevout_txid.deref(), &deposit_tx.compute_txid());
     assert_eq!(txid.deref(), &unsigned.tx.compute_txid());
 
     testing::storage::drop_db(db).await;
