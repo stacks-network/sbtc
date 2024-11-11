@@ -192,7 +192,7 @@ pub fn transaction_with_rbf(
         })
         .collect();
 
-    let block_hash = faucet.generate_blocks(1);
+    let block_hash = faucet.generate_blocks(1).pop().unwrap();
     // We deposited the transaction to the signer, but it's not clear to the
     // wallet tracking the signer's address that the deposit is associated
     // with the signer since it's hidden within the merkle tree.
@@ -257,7 +257,7 @@ pub fn transaction_with_rbf(
         // last successful transaction package when we return them further down.
         let sweeps: Vec<model::SweepTransaction> = transactions
             .iter()
-            .map(|tx| (&SweepTransactionInfo::from_unsigned_at_block(&block_hash[0], &tx)).into())
+            .map(|tx| (&SweepTransactionInfo::from_unsigned_at_block(&block_hash, &tx)).into())
             .collect();
 
         // ** Step 2 **
