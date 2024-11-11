@@ -1,5 +1,5 @@
 //! Conversion functions from a protobuf type to regular type and vice
-//! verse.
+//! versa.
 //!
 //! Converting to a protobuf type must be infallible, while converting from
 //! a protobuf type can be fallible.
@@ -370,6 +370,15 @@ mod tests {
         }
     }
 
+    impl Dummy<Unit> for StacksAddress {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+            let public_key: PublicKey = Faker.fake_with_rng(rng);
+            let pubkey = public_key.into();
+            let mainnet: bool = Faker.fake_with_rng(rng);
+            StacksAddress::p2pkh(mainnet, &pubkey)
+        }
+    }
+
     #[test]
     fn conversion_between_bytes_and_uint256() {
         let number = proto::Uint256 {
@@ -382,15 +391,6 @@ mod tests {
         let bytes = <[u8; 32]>::from(number);
         let round_trip_number = proto::Uint256::from(bytes);
         assert_eq!(round_trip_number, number);
-    }
-
-    #[test]
-    fn conversion_between_uint256_and_bytes() {
-        let bytes: [u8; 32] = Faker.fake_with_rng(&mut OsRng);
-        let number = proto::Uint256::from(bytes);
-
-        let round_trip_bytes = <[u8; 32]>::from(number);
-        assert_eq!(round_trip_bytes, bytes);
     }
 
     #[test_case(PhantomData::<([u8; 32], proto::Uint256)>; "Uint256")]
@@ -433,6 +433,7 @@ mod tests {
     /// except we cannot implement Dummy<Faker> on these types.
     #[test_case(PhantomData::<(bitcoin::OutPoint, proto::OutPoint)>; "OutPoint")]
     #[test_case(PhantomData::<(RecoverableSignature, proto::RecoverableSignature)>; "RecoverableSignature")]
+    #[test_case(PhantomData::<(StacksAddress, proto::StacksAddress)>; "StacksAddress")]
     fn convert_protobuf_type2<T, U, E>(_: PhantomData<(T, U)>)
     where
         T: Dummy<Unit> + TryFrom<U, Error = E> + Clone + PartialEq + std::fmt::Debug,
