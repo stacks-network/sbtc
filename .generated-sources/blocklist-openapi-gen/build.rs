@@ -4,7 +4,7 @@ use std::io::Write;
 use utoipa::OpenApi;
 
 fn main() {
-    // build_client();
+    build_client();
 }
 
 #[derive(utoipa::OpenApi)]

@@ -7,7 +7,7 @@ use std::io::Write;
 use utoipa::OpenApi;
 
 fn main() {
-    // build_emily();
+    build_emily();
 }
 
 #[derive(utoipa::OpenApi)]
