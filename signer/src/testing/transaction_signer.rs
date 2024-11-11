@@ -564,7 +564,7 @@ where
 
         // now that we have a chain tip, get the real coordinator
         let coordinator_public_key =
-            crate::transaction_coordinator::coordinator_public_key(&bitcoin_chain_tip, &signer_set)
+            crate::transaction_coordinator::coordinator_public_key(&bitcoin_chain_tip, signer_set)
                 .unwrap();
         let coordinator_signer_info = signer_info
             .iter()

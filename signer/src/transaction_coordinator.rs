@@ -818,7 +818,7 @@ where
                 sig: Vec::new(),
             };
 
-            let msg_public_key = msg.signer_pub_key.clone();
+            let msg_public_key = msg.signer_pub_key;
 
             let sender_is_coordinator =
                 given_key_is_coordinator(msg_public_key, bitcoin_chain_tip, &signer_set);
@@ -829,7 +829,7 @@ where
             // check that messages were signed by correct key
             if !Self::authenticate_message(
                 &packet,
-                &public_keys,
+                public_keys,
                 public_key_point,
                 sender_is_coordinator,
             ) {
