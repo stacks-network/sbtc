@@ -35,14 +35,13 @@ BEGIN
         FROM sbtc_signer.bitcoin_blocks AS parent
         JOIN blockchain AS last
             ON parent.block_hash = last.parent_hash
-        WHERE last.depth <= max_depth
+        WHERE last.depth < max_depth
     )
     SELECT
         blocks.block_hash
       , blocks.parent_hash
       , blocks.block_height
-    FROM blockchain as blocks
-    WHERE blocks.depth <= max_depth;
+    FROM blockchain as blocks;
 END;
 $$ LANGUAGE plpgsql;
 
