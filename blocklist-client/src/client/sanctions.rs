@@ -6,7 +6,7 @@
 //! The module includes functions to handle API requests, interpret responses, and map them to application-specific errors.
 
 use crate::common::error::Error;
-use crate::common::{BlocklistStatus, RiskSeverity, RiskAssessment};
+use crate::common::{BlocklistStatus, RiskAssessment, RiskSeverity};
 use crate::config::RiskAnalysisConfig;
 use reqwest::{Client, Response, StatusCode};
 use serde::Deserialize;
