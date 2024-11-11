@@ -15,9 +15,11 @@ pub struct Settings {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ServerConfig {
     /// Host.
+    /// If no port is provided the host assumed to be a deployed apigateway url.
     pub host: String,
     /// Port.
-    pub port: u16,
+    /// If no port is provided the host assumed to be a deployed apigateway url.
+    pub port: Option<u16>,
 }
 
 /// Statically configured settings.
@@ -42,10 +44,12 @@ impl Settings {
         if self.server.host.is_empty() {
             return Err(ConfigError::Message("Host cannot be empty".to_string()));
         }
-        if !(1..=65535).contains(&self.server.port) {
-            return Err(ConfigError::Message(
-                "Port must be between 1 and 65535".to_string(),
-            ));
+        if let Some(port) = self.server.port {
+            if !(1..=65535).contains(&port) {
+                return Err(ConfigError::Message(
+                    "Port must be between 1 and 65535".to_string(),
+                ));
+            }
         }
         Ok(())
     }

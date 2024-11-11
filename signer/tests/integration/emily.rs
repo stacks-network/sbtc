@@ -64,6 +64,10 @@ use url::Url;
 use crate::utxo_construction::make_deposit_request;
 use crate::DATABASE_NUM;
 
+// TODO: If we choose to add integration testing with deployed versions of the Emily API,
+// get the API key from an artifact published from the Emily cdk stack.
+const EMILY_URL: &str = "https://GATEWAY_ID.execute-api.REGION.amazonaws.com/dev";
+
 async fn run_dkg<Rng, C>(
     ctx: &C,
     rng: &mut Rng,
@@ -175,7 +179,7 @@ async fn deposit_flow() {
     let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
 
     let emily_client =
-        EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
+        EmilyClient::try_from(&Url::parse(EMILY_URL).unwrap()).unwrap();
     let stacks_client = WrappedMock::default();
 
     // Wipe the Emily database to start fresh

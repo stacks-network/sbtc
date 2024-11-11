@@ -34,6 +34,10 @@ use signer::testing::context::WrappedMock;
 use std::sync::Arc;
 use url::Url;
 
+// TODO: If we choose to add integration testing with deployed versions of the Emily API,
+// get the API key from an artifact published from the Emily cdk stack.
+const EMILY_URL: &str = "https://GATEWAY_ID.execute-api.REGION.amazonaws.com/dev";
+
 async fn test_context() -> TestContext<
     Arc<tokio::sync::Mutex<Store>>,
     WrappedMock<MockBitcoinInteract>,
@@ -41,7 +45,7 @@ async fn test_context() -> TestContext<
     EmilyClient,
 > {
     let emily_client =
-        EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
+        EmilyClient::try_from(&Url::parse(EMILY_URL).unwrap()).unwrap();
     let stacks_client = WrappedMock::default();
 
     TestContext::builder()
