@@ -7,6 +7,7 @@ use crate::codec;
 use crate::ecdsa;
 use crate::emily_client::EmilyClientError;
 use crate::stacks::contracts::DepositValidationError;
+use crate::stacks::contracts::RotateKeysValidationError;
 use crate::stacks::contracts::WithdrawalAcceptValidationError;
 
 /// Top-level signer error
@@ -386,6 +387,11 @@ pub enum Error {
     /// Observer dropped
     #[error("observer dropped")]
     ObserverDropped,
+
+    /// The error for when the request to sign a rotate-keys
+    /// transaction fails at the validation step.
+    #[error("rotate keys validation error: {0}")]
+    RotateKeysValidation(#[source] Box<RotateKeysValidationError>),
 
     /// Thrown when the recoverable signature has a public key that is
     /// unexpected.
