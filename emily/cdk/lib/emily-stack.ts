@@ -285,8 +285,9 @@ export class EmilyStack extends cdk.Stack {
         const signerApiUsagePlan = api.addUsagePlan(signerApiUsagePlanId, {
             name: EmilyStackUtils.getResourceName(signerApiUsagePlanId, props),
             throttle: {
+                // These are very high limits. We can adjust them down as needed.
                 rateLimit: 100,
-                burstLimit: 200
+                burstLimit: 200,
             },
             apiStages: [
                 {
