@@ -392,6 +392,10 @@ where
                 continue;
             }
 
+            // This function is called after we have received a
+            // notification of a bitcoin block, and we are iterating
+            // through all of the transactions within that block. This
+            // means the `get_tx_info` call below should not fail.
             let txid = tx.compute_txid();
             let tx_info = btc_rpc
                 .get_tx_info(&txid, &block_hash)
@@ -758,7 +762,7 @@ mod tests {
     #[tokio::test]
     async fn sbtc_transactions_get_stored() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let test_harness = TestHarness::generate(&mut rng, 20, 0..5);
+        let mut test_harness = TestHarness::generate(&mut rng, 20, 0..5);
 
         let block_hash = BlockHash::from_byte_array([1u8; 32]);
         // We're going to do the following:
@@ -789,13 +793,6 @@ mod tests {
         };
         storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 
-        let ctx = TestContext::builder()
-            .with_storage(storage.clone())
-            .with_stacks_client(test_harness.clone())
-            .with_emily_client(test_harness.clone())
-            .with_bitcoin_client(test_harness.clone())
-            .build();
-
         // Now let's create two transactions, one spending to the signers
         // and another not spending to the signers. We use
         // sbtc::testing::deposits::tx_setup just to quickly create a
@@ -809,6 +806,30 @@ mod tests {
 
         // This one does not spend to the signers :(
         let tx_setup1 = sbtc::testing::deposits::tx_setup(1, 10, 2000);
+        let txid0 = tx_setup0.tx.compute_txid();
+        let txid1 = tx_setup1.tx.compute_txid();
+
+        let response0 = GetTxResponse {
+            tx: tx_setup0.tx.clone(),
+            block_hash: Some(block_hash),
+            confirmations: None,
+            block_time: None,
+        };
+        let response1 = GetTxResponse {
+            tx: tx_setup1.tx.clone(),
+            block_hash: Some(block_hash),
+            confirmations: None,
+            block_time: None,
+        };
+        test_harness.add_deposit(txid0, response0);
+        test_harness.add_deposit(txid1, response1);
+
+        let ctx = TestContext::builder()
+            .with_storage(storage.clone())
+            .with_stacks_client(test_harness.clone())
+            .with_emily_client(test_harness.clone())
+            .with_bitcoin_client(test_harness.clone())
+            .build();
 
         let block_observer = BlockObserver {
             context: ctx,
