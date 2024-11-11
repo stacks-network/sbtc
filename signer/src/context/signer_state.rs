@@ -13,12 +13,67 @@ use crate::keys::PublicKey;
 #[derive(Debug, Default)]
 pub struct SignerState {
     current_signer_set: SignerSet,
+    current_limits: RwLock<SbtcLimits>,
 }
 
 impl SignerState {
     /// Get the current signer set.
     pub fn current_signer_set(&self) -> &SignerSet {
         &self.current_signer_set
+    }
+
+    /// Get the current sBTC limits.
+    pub fn get_current_limits(&self) -> SbtcLimits {
+        // We should never fail to acquire a lock from the RwLock so that it panics.
+        self.current_limits
+            .read()
+            .expect("BUG: Failed to acquire read lock")
+            .clone()
+    }
+
+    /// Update the current sBTC limits.
+    pub fn update_current_limits(&self, new_limits: SbtcLimits) {
+        // We should never fail to acquire a lock from the RwLock so that it panics.
+        let mut limits = self
+            .current_limits
+            .write()
+            .expect("BUG: Failed to acquire write lock");
+        *limits = new_limits;
+    }
+}
+
+/// Represents the current sBTC limits.
+#[derive(Debug, Clone, Default)]
+pub struct SbtcLimits {
+    /// Represents the total cap for all pegged-in BTC/sBTC.
+    total_cap: Option<f64>,
+    /// Represents the total pegged-in BTC/sBTC cap per Stacks account.
+    per_account_cap: Option<f64>,
+    /// Represents the maximum amount of BTC allowed to be pegged-in per transaction.
+    per_deposit_cap: Option<f64>,
+    /// Represents the maximum amount of sBTC allowed to be pegged-out per transaction.
+    per_withdrawal_cap: Option<f64>,
+}
+
+impl SbtcLimits {
+    /// Get the total cap for all pegged-in BTC/sBTC.
+    pub fn total_cap(&self) -> Option<f64> {
+        self.total_cap
+    }
+
+    /// Get the total pegged-in BTC/sBTC cap per Stacks account.
+    pub fn per_account_cap(&self) -> Option<f64> {
+        self.per_account_cap
+    }
+
+    /// Get the maximum amount of BTC allowed to be pegged-in per transaction.
+    pub fn per_deposit_cap(&self) -> Option<f64> {
+        self.per_deposit_cap
+    }
+
+    /// Get the maximum amount of sBTC allowed to be pegged-out per transaction.
+    pub fn per_withdrawal_cap(&self) -> Option<f64> {
+        self.per_withdrawal_cap
     }
 }
 

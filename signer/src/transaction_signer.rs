@@ -742,6 +742,12 @@ where
             .await?
             .unwrap_or(false);
 
+        // TODO: Validate that the deposit is within the current sBTC limits:
+        // - Total cap for all pegged-in BTC/sBTC.
+        // - Total cap per-Stacks-principal for pegged-in BTC/sBTC.
+        // - Total cap per-deposit.
+        // let limits = self.context.state().get_current_limits();
+
         let is_accepted = can_sign && self.can_accept_deposit_request(&request).await?;
 
         let msg = message::SignerDepositDecision {
@@ -778,6 +784,10 @@ where
         withdrawal_request: model::WithdrawalRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
+        // TODO: Validate that the withdrawal is within the current sBTC limits:
+        // - Total cap per-withdrawal.
+        // let limits = self.context.state().get_current_limits();
+
         // TODO: Do we want to do this on the sender address or the
         // recipient address?
         let is_accepted = self

@@ -15,6 +15,7 @@ use signer::block_observer;
 use signer::blocklist_client::BlocklistClient;
 use signer::config::Settings;
 use signer::context::Context;
+use signer::context::SbtcLimits;
 use signer::context::SignerContext;
 use signer::emily_client::EmilyClient;
 use signer::error::Error;
@@ -83,6 +84,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         context.state().current_signer_set().add_signer(signer);
     }
 
+    // TODO: Retrieve sBTC limits from another source (like Emily). This will
+    // set the initial limits for the signer all to `None` (unlimited).
+    context.state().update_current_limits(SbtcLimits::default());
+
     // Run the application components concurrently. We're `join!`ing them
     // here so that every component can shut itself down gracefully when
     // the shutdown signal is received.
@@ -99,6 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_shutdown_signal_watcher(context.clone()),
         // The rest of our services which run concurrently, and must all be
         // running for the signer to be operational.
+        run_checked(run_update_limits, &context),
         run_checked(run_stacks_event_observer, &context),
         run_checked(run_libp2p_swarm, &context),
         run_checked(run_block_observer, &context),
@@ -309,4 +315,31 @@ async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
     };
 
     coord.run().await
+}
+
+/// Run the limit updater event-loop.
+async fn run_update_limits(ctx: impl Context) -> Result<(), Error> {
+    let mut interval = tokio::time::interval(Duration::from_secs(300)); // 5 Minutes
+    let mut term = ctx.get_termination_handle();
+
+    let poll = async {
+        loop {
+            interval.tick().await;
+
+            // TODO: Get limits from source of truth instead of hardcoding
+            //let limits = SbtcLimits::default();
+            //ctx.state().update_current_limits(limits);
+        }
+    };
+
+    tokio::select! {
+        _ = term.wait_for_shutdown() => {
+            tracing::info!("shutting down the limit updater");
+        },
+        _ = poll => {
+            tracing::info!("limit updater has stopped");
+        }
+    }
+
+    Ok(())
 }
