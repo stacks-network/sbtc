@@ -11,7 +11,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
 
-use crate::bitcoin::rpc::BitcoinTxInfoVinPrevout;
+use crate::bitcoin::rpc::BitcoinTxVinPrevout;
 use crate::block_observer::Deposit;
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -311,7 +311,7 @@ impl From<Deposit> for DepositRequest {
         // It's most likely the case that each of the inputs "came" from
         // the same Address, so we filter out duplicates.
         let sender_script_pub_keys: BTreeSet<ScriptPubKey> = tx_input_iter
-            .map(|tx_in| ScriptPubKey::from_bytes(tx_in.prevout.script_pub_key.hex))
+            .map(|tx_in| tx_in.prevout.script_pub_key.script.into())
             .collect();
 
         Self {
@@ -1044,8 +1044,8 @@ impl ScriptPubKey {
     }
 
     /// Extract the scriptPubKey from the prevout.
-    pub fn from_prevout(value: &BitcoinTxInfoVinPrevout) -> Self {
-        Self::from_bytes(value.script_pub_key.hex.clone())
+    pub fn from_prevout(value: &BitcoinTxVinPrevout) -> Self {
+        value.script_pub_key.script.clone().into()
     }
 }
 
