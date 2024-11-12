@@ -13,6 +13,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run vetting
+      - name: Install Cargo Vet
         run: cargo install cargo-vet
+
+      - name: Run cargo vet
 	      run: cargo vet
