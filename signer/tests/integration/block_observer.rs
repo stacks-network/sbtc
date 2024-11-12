@@ -394,6 +394,17 @@ async fn fetch_input(db: &PgStore, output_type: TxPrevoutType) -> Option<TxPrevo
     .unwrap()
 }
 
+/// The function tests that the block observer:
+/// 1. picks up donations and inserts the expected rows into the
+///    `bitcoin_tx_outputs` table,
+/// 2. for sbtc transactions it picks out the signers' UTXO, deposits, and
+///    sbtc related outputs and puts them in either the
+///    `bitcoin_tx_prevouts` or `bitcoin_tx_outputs` tables.
+/// 
+/// To run the test first do:
+/// - make integration-env-up-ci
+/// 
+/// Then you should be good to go.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn block_observer_stores_donation_and_sbtc_utxos() {
@@ -543,7 +554,19 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     };
 
     // Okay now we check whether the we have a donation. The details should
-    // match what we expect.
+    // match what we expect. All other input and output types should not be
+    // in the database.
+    assert!(fetch_output(&db, TxOutputType::SignersOpReturn)
+        .await
+        .is_none());
+    assert!(fetch_output(&db, TxOutputType::SignersOutput)
+        .await
+        .is_none());
+    assert!(fetch_input(&db, TxPrevoutType::Deposit).await.is_none());
+    assert!(fetch_input(&db, TxPrevoutType::SignersInput)
+        .await
+        .is_none());
+    
     let TxOutput { txid, output_index, amount, .. } =
         fetch_output(&db, TxOutputType::Donation).await.unwrap();
 
