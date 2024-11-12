@@ -2461,7 +2461,6 @@ async fn can_get_latest_unconfirmed_sweep_transactions_fork(seed: u64) {
         .await
         .unwrap();
 
-    dbg!(&sweeps);
     assert_eq!(sweeps, sweep_transactions);
 
     // =========================================================================
@@ -2537,7 +2536,7 @@ async fn can_get_latest_unconfirmed_sweep_transactions_fork(seed: u64) {
     // We get the current canonical chain tip (according to the db) and attempt
     // to retrieve the latest unconfirmed sweep transactions. We expect that the
     // fork created in step 5 has caused the canonical chain to change,
-    // orphaning the sweep transaction confirmation from step 4. Since that
+    // orphaning the sweep transaction confirmation from step 3. Since that
     // transaction is no longer considered confirmed, we should get all of the
     // sweep transactions from the package, just like in step 2.
     // =========================================================================

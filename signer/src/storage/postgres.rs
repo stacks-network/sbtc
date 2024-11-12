@@ -1805,12 +1805,19 @@ impl super::DbRead for PgStore {
                 FROM sweep_transactions tx
                 INNER JOIN sweep_txs last 
                     ON tx.signer_prevout_txid = last.txid
+            ),
+            canonical_txs AS (
+                SELECT bt.txid
+                FROM bitcoin_blockchain_of($2, $3) bc
+                INNER JOIN bitcoin_transactions bt
+                    ON bt.block_hash = bc.block_hash
             )
+
             SELECT
                 sweep_txs.txid
               , number
             FROM sweep_txs
-            LEFT JOIN bitcoin_transactions_of($2, $3) AS btc_tx 
+            LEFT JOIN canonical_txs AS btc_tx 
                 ON btc_tx.txid = sweep_txs.txid
             WHERE btc_tx.txid IS NULL
             ORDER BY number ASC;
