@@ -1755,10 +1755,10 @@ impl super::DbRead for PgStore {
         &self,
         prevout_txid: &model::BitcoinTxId,
     ) -> Result<Vec<model::SweepTransaction>, Error> {
-        // Attempt to find the first sweep transaction in the chain. Since there
-        // can be multiple sweep transactions for the same prevout (if there was
-        // an RBF), we sort these by the created_at timestamp and take the
-        // latest one.
+        // Attempt to find the first sweep transaction in the chain which has
+        // the provided `prevout_txid` as its input. Since there can be multiple
+        // sweep transactions for the same prevout (if there was an RBF), we
+        // sort these by the created_at timestamp and take the latest one.
         let first = sqlx::query_scalar::<_, model::BitcoinTxId>(
             "
             SELECT txid 

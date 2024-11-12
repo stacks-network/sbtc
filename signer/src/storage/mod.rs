@@ -272,8 +272,18 @@ pub trait DbRead {
         context_window: u16,
     ) -> impl Future<Output = Result<Option<model::SweepTransaction>, Error>> + Send;
 
-    /// Get the sweep transaction package for the given previous transaction id
-    /// (i.e. the previous output that was spent from the then-UTXO).
+    /// Get unconfirmed sweep transactions where the first transaction in the
+    /// package chain spends the signer UTXO from the transaction identified by
+    /// the given `prevout_txid`.
+    ///
+    /// The returned sweep transactions are transactions which we have not yet
+    /// seen confirmed in a block. If the package has been partially confirmed
+    /// then this function will only return the remaining unconfirmed sweep
+    /// transactions.
+    ///
+    /// If the transaction package has been RBF'd (i.e. there are two or more
+    /// sweep transactions with the same prevout_txid) then this function
+    /// returns the transactions associated with the most recent sweep package.
     fn get_sweep_transaction_package(
         &self,
         prevout_txid: &model::BitcoinTxId,
