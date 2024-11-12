@@ -1,11 +1,9 @@
 use std::sync::atomic::Ordering;
 
-use bitcoin::consensus::Encodable as _;
 use blockstack_lib::types::chainstate::StacksAddress;
 use rand::rngs::OsRng;
 use rand::SeedableRng;
 
-use bitcoin::hashes::Hash as _;
 use sbtc::testing::regtest;
 use signer::error::Error;
 use signer::keys::PublicKey;
@@ -16,7 +14,6 @@ use signer::stacks::contracts::RotateKeysErrorMsg;
 use signer::stacks::contracts::RotateKeysV1;
 use signer::stacks::wallet::SignerWallet;
 use signer::storage::model::BitcoinBlock;
-use signer::storage::model::BitcoinTx;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::RotateKeysTransaction;
 use signer::storage::model::Transaction;
@@ -88,13 +85,9 @@ impl TestRotateKeySetup {
             .expect("failed to get stacks chain tip")
             .expect("no stacks chain tip");
 
-        let mut tx = Vec::new();
-        let bitcoin_tx: BitcoinTx = fake::Faker.fake_with_rng(rng);
-        bitcoin_tx.consensus_encode(&mut tx).unwrap();
-
         let raw_tx = Transaction {
-            txid: bitcoin_tx.compute_txid().to_byte_array(),
-            tx,
+            txid: fake::Faker.fake_with_rng(rng),
+            tx: Vec::new(),
             tx_type: TransactionType::RotateKeys,
             block_hash: stacks_chain_tip.block_hash.into_bytes(),
         };
