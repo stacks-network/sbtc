@@ -116,6 +116,7 @@ pub struct Store {
 
     /// Bitcoin transaction outputs
     pub bitcoin_outputs: HashMap<model::BitcoinTxId, model::TxOutput>,
+
     /// Bitcoin transaction inputs
     pub bitcoin_prevouts: HashMap<model::BitcoinTxId, model::TxPrevout>,
 }
