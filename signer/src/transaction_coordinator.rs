@@ -827,12 +827,14 @@ where
             let public_key_point = p256k1::point::Point::from(msg_public_key);
 
             // check that messages were signed by correct key
-            if !Self::authenticate_message(
+            let is_authenticated = Self::authenticate_message(
                 &packet,
                 public_keys,
                 public_key_point,
                 sender_is_coordinator,
-            ) {
+            );
+
+            if !is_authenticated {
                 continue;
             }
 
@@ -863,29 +865,26 @@ where
         public_key_point: p256k1::point::Point,
         sender_is_coordinator: bool,
     ) -> bool {
-        macro_rules! check_signer_public_key {
-            ($message:ident) => {
-                match &public_keys.get(&$message.signer_id) {
-                    Some(signer_public_key) if &public_key_point != *signer_public_key => {
-                        tracing::warn!(
-                            ?packet,
-                            reason = "message was signed by the wrong signer",
+        let check_signer_public_key = |signer_id| match &public_keys.get(&signer_id) {
+            Some(signer_public_key) if &public_key_point != *signer_public_key => {
+                tracing::warn!(
+                    ?packet.msg,
+                    reason = "message was signed by the wrong signer",
+                    "ignoring packet"
+                );
+                false
+            }
+            None => {
+                tracing::warn!(
+                            ?packet.msg,
+                            reason = "no public key for signer",
+                signer_id = %signer_id,
                             "ignoring packet"
                         );
-                        false
-                    }
-                    None => {
-                        tracing::warn!(
-                            ?packet,
-                            reason = format!("no public key for signer {}", &$message.signer_id),
-                            "ignoring packet"
-                        );
-                        false
-                    }
-                    _ => true,
-                }
-            };
-        }
+                false
+            }
+            _ => true,
+        };
         match &packet.msg {
             wsts::net::Message::DkgBegin(_)
             | wsts::net::Message::DkgPrivateBegin(_)
@@ -905,19 +904,17 @@ where
             }
 
             wsts::net::Message::DkgPublicShares(dkg_public_shares) => {
-                check_signer_public_key!(dkg_public_shares)
+                check_signer_public_key(dkg_public_shares.signer_id)
             }
             wsts::net::Message::DkgPrivateShares(dkg_private_shares) => {
-                check_signer_public_key!(dkg_private_shares)
+                check_signer_public_key(dkg_private_shares.signer_id)
             }
-            wsts::net::Message::DkgEnd(dkg_end) => {
-                check_signer_public_key!(dkg_end)
-            }
+            wsts::net::Message::DkgEnd(dkg_end) => check_signer_public_key(dkg_end.signer_id),
             wsts::net::Message::NonceResponse(nonce_response) => {
-                check_signer_public_key!(nonce_response)
+                check_signer_public_key(nonce_response.signer_id)
             }
             wsts::net::Message::SignatureShareResponse(sig_share_response) => {
-                check_signer_public_key!(sig_share_response)
+                check_signer_public_key(sig_share_response.signer_id)
             }
         }
     }

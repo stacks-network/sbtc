@@ -615,9 +615,16 @@ where
                     .await?;
             }
             wsts::net::Message::DkgPublicShares(dkg_public_shares) => {
-                let public_keys = &self.wsts_state_machines[&msg.txid].public_keys;
-                let signer_public_key =
-                    PublicKey::from(&public_keys.signers[&dkg_public_shares.signer_id]);
+                let public_keys = match self.wsts_state_machines.get(&msg.txid) {
+                    Some(state_machine) => &state_machine.public_keys,
+                    None => return Err(Error::MissingStateMachine),
+                };
+                let signer_public_key = match public_keys.signers.get(&dkg_public_shares.signer_id)
+                {
+                    Some(key) => PublicKey::from(key),
+                    None => return Err(Error::MissingPublicKey),
+                };
+
                 if signer_public_key != msg_public_key {
                     return Err(Error::InvalidSignature);
                 }
@@ -625,9 +632,16 @@ where
                     .await?;
             }
             wsts::net::Message::DkgPrivateShares(dkg_private_shares) => {
-                let public_keys = &self.wsts_state_machines[&msg.txid].public_keys;
-                let signer_public_key =
-                    PublicKey::from(&public_keys.signers[&dkg_private_shares.signer_id]);
+                let public_keys = match self.wsts_state_machines.get(&msg.txid) {
+                    Some(state_machine) => &state_machine.public_keys,
+                    None => return Err(Error::MissingStateMachine),
+                };
+                let signer_public_key = match public_keys.signers.get(&dkg_private_shares.signer_id)
+                {
+                    Some(key) => PublicKey::from(key),
+                    None => return Err(Error::MissingPublicKey),
+                };
+
                 if signer_public_key != msg_public_key {
                     return Err(Error::InvalidSignature);
                 }
