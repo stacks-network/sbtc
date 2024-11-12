@@ -16,7 +16,7 @@ You can run the blocklist client by providing the required environment variables
 - BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY=`<your_api_key>`
 
    ```bash
-    BLOCKLIST_CLIENT_RISK_ANALYSIS__API_URL=https://your-risk-provider-api.com/ BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY=your_api_key BLOCKLIST_CLIENT_RISK_ANALYSIS__USE_SANCTIONS=true ../target/release/blocklist-client 
+    BLOCKLIST_CLIENT_RISK_ANALYSIS__API_URL=https://your-risk-provider-api.com/ BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY=your_api_key ../target/release/blocklist-client 
    ```
 
 #### Optional Environment Variables
