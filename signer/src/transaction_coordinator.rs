@@ -1701,5 +1701,7 @@ mod tests {
         assert_eq!(btc_state.fee_rate, 1.3);
         assert_eq!(btc_state.last_fees, Some(expected_fees));
         assert_eq!(btc_state.magic_bytes, [b'T', b'3']);
+
+        testing::storage::drop_db(db).await;
     }
 }
