@@ -355,7 +355,7 @@ async fn link_blocks() {
     testing::storage::drop_db(db).await;
 }
 
-async fn fetch_output(db: &PgStore, output_type: TxOutputType) -> Option<TxOutput> {
+async fn fetch_output(db: &PgStore, output_type: TxOutputType) -> Vec<TxOutput> {
     sqlx::query_as::<_, TxOutput>(
         r#"
         SELECT 
@@ -369,12 +369,12 @@ async fn fetch_output(db: &PgStore, output_type: TxOutputType) -> Option<TxOutpu
         "#,
     )
     .bind(output_type)
-    .fetch_optional(db.pool())
+    .fetch_all(db.pool())
     .await
     .unwrap()
 }
 
-async fn fetch_input(db: &PgStore, output_type: TxPrevoutType) -> Option<TxPrevout> {
+async fn fetch_input(db: &PgStore, output_type: TxPrevoutType) -> Vec<TxPrevout> {
     sqlx::query_as::<_, TxPrevout>(
         r#"
         SELECT 
@@ -384,12 +384,12 @@ async fn fetch_input(db: &PgStore, output_type: TxPrevoutType) -> Option<TxPrevo
           , amount
           , script_pubkey
           , prevout_type
-        FROM sbtc_signer.bitcoin_tx_prevouts
+        FROM sbtc_signer.bitcoin_tx_inputs
         WHERE prevout_type = $1
         "#,
     )
     .bind(output_type)
-    .fetch_optional(db.pool())
+    .fetch_all(db.pool())
     .await
     .unwrap()
 }
@@ -399,7 +399,7 @@ async fn fetch_input(db: &PgStore, output_type: TxPrevoutType) -> Option<TxPrevo
 ///    `bitcoin_tx_outputs` table,
 /// 2. for sbtc transactions it picks out the signers' UTXO, deposits, and
 ///    sbtc related outputs and puts them in either the
-///    `bitcoin_tx_prevouts` or `bitcoin_tx_outputs` tables.
+///    `bitcoin_tx_inputs` or `bitcoin_tx_outputs` tables.
 ///
 /// To run the test first do:
 /// - make integration-env-up-ci
@@ -510,17 +510,17 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
 
     // Let's do a sanity check that we do not have any rows in our output
     // tables.
-    assert!(fetch_output(&db, TxOutputType::Donation).await.is_none());
+    assert!(fetch_output(&db, TxOutputType::Donation).await.is_empty());
     assert!(fetch_output(&db, TxOutputType::SignersOpReturn)
         .await
-        .is_none());
+        .is_empty());
     assert!(fetch_output(&db, TxOutputType::SignersOutput)
         .await
-        .is_none());
-    assert!(fetch_input(&db, TxPrevoutType::Deposit).await.is_none());
+        .is_empty());
+    assert!(fetch_input(&db, TxPrevoutType::Deposit).await.is_empty());
     assert!(fetch_input(&db, TxPrevoutType::SignersInput)
         .await
-        .is_none());
+        .is_empty());
 
     // ** Step 3 **
     //
@@ -558,17 +558,17 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     // in the database.
     assert!(fetch_output(&db, TxOutputType::SignersOpReturn)
         .await
-        .is_none());
+        .is_empty());
     assert!(fetch_output(&db, TxOutputType::SignersOutput)
         .await
-        .is_none());
-    assert!(fetch_input(&db, TxPrevoutType::Deposit).await.is_none());
+        .is_empty());
+    assert!(fetch_input(&db, TxPrevoutType::Deposit).await.is_empty());
     assert!(fetch_input(&db, TxPrevoutType::SignersInput)
         .await
-        .is_none());
+        .is_empty());
 
     let TxOutput { txid, output_index, amount, .. } =
-        fetch_output(&db, TxOutputType::Donation).await.unwrap();
+        fetch_output(&db, TxOutputType::Donation).await[0];
 
     assert_eq!(amount, donation_amount);
     assert_eq!(output_index, donation_outpoint.vout);
@@ -659,9 +659,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
 
     // Okay now we should see the signers output with the expected values.
     let TxOutput { txid, output_index, amount, .. } =
-        fetch_output(&db, TxOutputType::SignersOutput)
-            .await
-            .unwrap();
+        fetch_output(&db, TxOutputType::SignersOutput).await[0];
 
     assert_eq!(amount, unsigned.tx.output[0].value.to_sat());
     assert_eq!(output_index, 0);
@@ -669,9 +667,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
 
     // We should also pick up the OP_RETURN output.
     let TxOutput { txid, output_index, amount, .. } =
-        fetch_output(&db, TxOutputType::SignersOpReturn)
-            .await
-            .unwrap();
+        fetch_output(&db, TxOutputType::SignersOpReturn).await[0];
 
     assert_eq!(amount, unsigned.tx.output[1].value.to_sat());
     assert_eq!(amount, 0);
@@ -685,7 +681,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
         prevout_output_index,
         amount,
         ..
-    } = fetch_input(&db, TxPrevoutType::SignersInput).await.unwrap();
+    } = fetch_input(&db, TxPrevoutType::SignersInput).await[0];
 
     assert_eq!(amount, donation_amount);
     assert_eq!(prevout_txid.deref(), &donation_outpoint.txid);
@@ -693,7 +689,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     assert_eq!(txid.deref(), &unsigned.tx.compute_txid());
 
     let TxPrevout { txid, prevout_txid, amount, .. } =
-        fetch_input(&db, TxPrevoutType::Deposit).await.unwrap();
+        fetch_input(&db, TxPrevoutType::Deposit).await[0];
 
     assert_eq!(amount, deposit_amount);
     assert_eq!(prevout_txid.deref(), &deposit_tx.compute_txid());

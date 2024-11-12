@@ -234,7 +234,7 @@ CREATE TYPE sbtc_signer.prevout_type AS ENUM (
 );
 
 -- A table for all bitcoin transaction inputs spent by the signers.
-CREATE TABLE sbtc_signer.bitcoin_tx_prevouts (
+CREATE TABLE sbtc_signer.bitcoin_tx_inputs (
     -- the ID of the transaction spending the transaction output
     txid BYTEA NOT NULL,
     -- The ID of the transaction that created the TXO being spent.

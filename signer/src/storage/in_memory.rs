@@ -1089,11 +1089,11 @@ impl super::DbWrite for SharedStore {
     }
 
     async fn write_tx_output(&self, _output: &model::TxOutput) -> Result<(), Error> {
-        Ok(())
+        unimplemented!()
     }
 
     async fn write_tx_prevout(&self, _prevout: &model::TxPrevout) -> Result<(), Error> {
-        Ok(())
+        unimplemented!()
     }
 
     async fn write_sweep_transaction(&self, tx: &model::SweepTransaction) -> Result<(), Error> {

@@ -370,7 +370,7 @@ impl PgStore {
                 SELECT 
                     prevout_txid
                   , prevout_output_index
-                FROM sbtc_signer.bitcoin_tx_prevouts
+                FROM sbtc_signer.bitcoin_tx_inputs
                 JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
                 JOIN bitcoin_blockchain AS bb USING (block_hash)
                 WHERE prevout_type = 'signers_input'
@@ -2306,7 +2306,7 @@ impl super::DbWrite for PgStore {
     async fn write_tx_prevout(&self, prevout: &model::TxPrevout) -> Result<(), Error> {
         sqlx::query(
             r#"
-            INSERT INTO bitcoin_tx_prevouts (
+            INSERT INTO bitcoin_tx_inputs (
                 txid
               , prevout_txid
               , prevout_output_index

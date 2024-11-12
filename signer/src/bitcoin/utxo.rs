@@ -944,7 +944,7 @@ impl<'a> UnsignedTransaction<'a> {
 
 /// A trait where we return all inputs and outputs for a bitcoin
 /// transaction.
-pub trait InputsOutputs {
+pub trait BitcoinInputsOutputs {
     /// Return a reference to the transaction
     fn tx_ref(&self) -> &Transaction;
 
@@ -967,7 +967,7 @@ pub trait InputsOutputs {
 /// confirmed. This implementation is located in this module because the
 /// assumptions it makes for how the transaction is organized follows the
 /// logic in [`UnsignedTransaction::new`].
-pub trait FeeAssessment: InputsOutputs {
+pub trait FeeAssessment: BitcoinInputsOutputs {
     /// Assess how much of the bitcoin miner fee should be apportioned to
     /// the input associated with the given `outpoint`.
     ///
@@ -1047,21 +1047,21 @@ pub trait FeeAssessment: InputsOutputs {
     }
 }
 
-impl<T: InputsOutputs> FeeAssessment for T {}
+impl<T: BitcoinInputsOutputs> FeeAssessment for T {}
 
-impl InputsOutputs for Transaction {
+impl BitcoinInputsOutputs for Transaction {
     fn tx_ref(&self) -> &Transaction {
         self
     }
 }
 
-impl InputsOutputs for BitcoinTx {
+impl BitcoinInputsOutputs for BitcoinTx {
     fn tx_ref(&self) -> &Transaction {
         self.deref()
     }
 }
 
-impl InputsOutputs for BitcoinTxInfo {
+impl BitcoinInputsOutputs for BitcoinTxInfo {
     fn tx_ref(&self) -> &Transaction {
         &self.tx
     }
@@ -1095,7 +1095,7 @@ pub struct PrevoutRef<'a> {
 
 /// A trait for deconstructing a bitcoin transaction related to the signers
 /// into its inputs and outputs.
-pub trait TxDeconstructor: InputsOutputs {
+pub trait TxDeconstructor: BitcoinInputsOutputs {
     /// Returns a prevout given the input index.
     ///
     /// This function must return `Some(_)` for each `index` where
@@ -1144,6 +1144,9 @@ pub trait TxDeconstructor: InputsOutputs {
         // If the signers did not create this transaction, but the signers
         // control at least one output then the outputs that the signers
         // control are donations. So we scan the outputs and exit early.
+        //
+        // Note that these cannot be deposits because deposits aren't
+        // key-path spendable by the signers.
         if !self.is_signer_created(signer_script_pubkeys) {
             return self
                 .outputs()
@@ -1165,7 +1168,8 @@ pub trait TxDeconstructor: InputsOutputs {
             .collect()
     }
 
-    /// Take an output index and the known output type and return
+    /// Take an output index and the known output type and return the
+    /// output.
     fn vout_to_output(&self, index: usize, output_type: TxOutputType) -> Option<TxOutput> {
         let tx_out = self.outputs().get(index)?;
         Some(TxOutput {
