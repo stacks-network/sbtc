@@ -56,4 +56,22 @@ pub trait BitcoinInteract: Sync + Send {
         &self,
         tx: &bitcoin::Transaction,
     ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Find transactions in the mempool which spend the given output. This
+    /// method returns a list of matching transaction IDs.
+    fn find_mempool_transactions_spending_output(
+        &self,
+        outpoint: &bitcoin::OutPoint
+    ) -> impl Future<Output = Result<Vec<Txid>, Error>> + Send;
+
+    /// Finds all transactions in the mempool which are descendants of the given
+    /// mempool transaction. `txid` must be a transaction in the mempool. 
+    /// 
+    /// Use [`Self::find_mempool_transactions_spending_output`] to find
+    /// transactions in the mempool which spend an output of a confirmed
+    /// transaction if needed prior to calling this method.
+    fn find_mempool_descendants(
+        &self,
+        txid: &Txid,
+    ) -> impl Future<Output = Result<Vec<Txid>, Error>> + Send;
 }

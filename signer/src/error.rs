@@ -20,6 +20,10 @@ pub enum Error {
     #[error("emily API error: {0}")]
     EmilyApi(#[from] EmilyClientError),
 
+    /// Received an error in response to gettxspendingprevout RPC call
+    #[error("bitcoin-core gettxspendingprevout error for outpoint: {0}")]
+    BitcoinCoreGetTxSpendingPrevout(#[source] bitcoincore_rpc::Error, bitcoin::OutPoint),
+
     /// Attempt to fetch a bitcoin blockhash ended in an unexpected error.
     /// This is not triggered if the block is missing.
     #[error("bitcoin-core getblock RPC error for hash {1}: {0}")]

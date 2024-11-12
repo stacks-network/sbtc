@@ -125,6 +125,27 @@ pub struct BitcoinTxInfo {
     pub block_time: u64,
 }
 
+/// A struct containing the response from bitcoin-core for a
+/// `gettxspendingprevout` RPC call. The actual response is an array; this
+/// struct represents a single element of that array.
+/// 
+/// # Notes
+/// 
+/// * This endpoint requires bitcoin-core v27.0 or later.
+/// * Documentation for this endpoint can be found at
+///   https://bitcoincore.org/en/doc/27.0.0/rpc/blockchain/gettxspendingprevout/
+/// * This struct omits some fields returned from bitcoin-core: `txid` and
+///   `vout`, which are just the txid and vout of the outpoint which was passed
+///   as RPC arguments. We don't need them because we're not providing multiple
+///   outpoints to check, so we don't need to map the results back to specific
+///   outpoints.
+#[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
+pub struct TxSpendingPrevOut {
+    /// The txid of the transaction which spent the output.
+    #[serde(rename = "spendingtxid")]
+    pub spending_txid: Option<Txid>,
+}
+
 /// A description of an input into a transaction.
 #[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
 pub struct BitcoinTxInfoVin {
@@ -282,6 +303,34 @@ impl BitcoinCoreClient {
         }
     }
 
+    /// Scan the Bitcoin node's mempool to find transactions spending the
+    /// provided output. This method uses the `gettxspendingprevout` RPC
+    /// endpoint.
+    /// 
+    /// # Notes
+    /// 
+    /// This method requires bitcoin-core v27 or later.
+    pub fn get_tx_spending_prevout(
+        &self,
+        outpoint: &OutPoint,
+    ) -> Result<Vec<Txid>, Error> {
+        let args = [
+            serde_json::to_value(vec![outpoint]).map_err(Error::JsonSerialize)?,
+        ];
+
+        let results = match self.inner.call::<Vec<TxSpendingPrevOut>>("gettxspendingprevout", &args) {
+            Ok(response) => Ok(response),
+            Err(err) => Err(Error::BitcoinCoreGetTxSpendingPrevout(err, *outpoint)),
+        }?;
+
+        let txids = results
+            .into_iter()
+            .filter_map(|result| result.spending_txid)
+            .collect::<Vec<_>>();
+
+        Ok(txids)
+    }
+
     /// Estimates the approximate fee in sats per vbyte needed for a
     /// transaction to be confirmed within `num_blocks`.
     ///
@@ -356,5 +405,18 @@ impl BitcoinInteract for BitcoinCoreClient {
     async fn get_last_fee(&self, _: OutPoint) -> Result<Option<super::utxo::Fees>, Error> {
         // TODO(541): implement this
         Ok(None)
+    }
+
+    async  fn find_mempool_transactions_spending_output(
+        &self,
+        _outpoint: &bitcoin::OutPoint
+    ) -> Result<Vec<Txid>, Error> {
+        // TODO: implement this
+        Ok(vec![])
+    }
+
+    async  fn find_mempool_descendants(&self, _txid: &Txid) -> Result<Vec<Txid>, Error> {
+        // TODO: implement this
+        Ok(vec![])
     }
 }

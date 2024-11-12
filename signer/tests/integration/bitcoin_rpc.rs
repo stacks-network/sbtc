@@ -175,3 +175,46 @@ fn estimate_fee_rate() {
         assert!(resp.unwrap().sats_per_vbyte > 0.0);
     }
 }
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[test]
+fn get_tx_spending_prevout() {
+    let client = BitcoinCoreClient::new(
+        "http://localhost:18443",
+        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
+        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
+    )
+    .unwrap();
+
+    let (rpc, faucet) = regtest::initialize_blockchain();
+    let signer = Recipient::new(AddressType::P2tr);
+
+    // Newly created "recipients" do not have any UTXOs associated with
+    // their address.
+    let balance = signer.get_balance(rpc);
+    assert_eq!(balance.to_sat(), 0);
+
+    // Okay now we send coins to an address from the one address that
+    // coins have been mined to.
+    let outpoint = faucet.send_to(500_000, &signer.address);
+    let vout = outpoint.vout as usize;
+
+    let response = client.get_tx(&outpoint.txid).unwrap().unwrap();
+    // Let's make sure we got the right transaction
+    assert_eq!(response.tx.compute_txid(), outpoint.txid);
+    assert_eq!(response.tx.output[vout].value.to_sat(), 500_000);
+    // The transaction has not been confirmed, so these should be None.
+    assert!(response.block_hash.is_none());
+    assert!(response.block_time.is_none());
+    assert!(response.confirmations.is_none());
+
+    // Now let's confirm it and try again
+    //let block_hash = faucet.generate_blocks(1).pop().unwrap();
+
+    let response = client
+        .get_tx_spending_prevout(&outpoint)
+        .unwrap();
+
+    // Let's make sure we got the right transaction
+    assert_eq!(response.len(), 0);
+}
