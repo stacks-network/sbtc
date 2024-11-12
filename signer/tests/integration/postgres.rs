@@ -1912,6 +1912,9 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
         block_id: *setup_canonical_event_block.block_hash,
         amount: setup_canonical.deposit_request.amount,
         outpoint: setup_canonical.deposit_request.outpoint,
+        sweep_block_hash: setup_canonical.deposit_block_hash,
+        sweep_block_height: 42,
+        sweep_txid: setup_canonical.deposit_request.outpoint.txid,
     };
     db.write_completed_deposit_event(&event).await.unwrap();
 
@@ -1921,6 +1924,9 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
         block_id: *setup_fork_event_block.block_hash,
         amount: setup_fork.deposit_request.amount,
         outpoint: setup_fork.deposit_request.outpoint,
+        sweep_block_hash: setup_fork.deposit_block_hash,
+        sweep_block_height: 42,
+        sweep_txid: setup_fork.deposit_request.outpoint.txid,
     };
     db.write_completed_deposit_event(&event).await.unwrap();
 
@@ -1950,6 +1956,9 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
         block_id: *setup_fork_event_block.block_hash,
         amount: setup_fork.deposit_request.amount,
         outpoint: setup_fork.deposit_request.outpoint,
+        sweep_block_hash: setup_fork.deposit_block_hash,
+        sweep_block_height: 42,
+        sweep_txid: setup_fork.deposit_request.outpoint.txid,
     };
     db.write_completed_deposit_event(&event).await.unwrap();
 
@@ -2103,6 +2112,9 @@ async fn get_swept_deposit_requests_response_tx_reorged() {
         block_id: *original_event_block.block_hash,
         amount: setup.deposit_request.amount,
         outpoint: setup.deposit_request.outpoint,
+        sweep_block_hash: setup.deposit_block_hash,
+        sweep_block_height: 42,
+        sweep_txid: setup.deposit_request.outpoint.txid,
     };
     db.write_completed_deposit_event(&event).await.unwrap();
 

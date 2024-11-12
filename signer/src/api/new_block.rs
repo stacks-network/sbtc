@@ -401,6 +401,7 @@ async fn handle_key_rotation(
 ) -> Result<(), Error> {
     let key_rotation_tx = RotateKeysTransaction {
         txid: stacks_txid,
+        address: event.new_address.into(),
         aggregate_key: event.new_aggregate_pubkey.into(),
         signer_set: event.new_keys.into_iter().map(Into::into).collect(),
         signatures_required: event.new_signature_threshold,
@@ -642,6 +643,9 @@ mod tests {
             txid: *stacks_txid,
             block_id: *stacks_chaintip.block_hash,
             amount: 100,
+            sweep_block_hash: *bitcoin_block.block_hash,
+            sweep_block_height: bitcoin_block.block_height,
+            sweep_txid: *txid,
         };
         let expectation = DepositUpdate {
             bitcoin_tx_output_index: event.outpoint.vout,
@@ -714,6 +718,9 @@ mod tests {
             block_id: *stacks_tx.block_hash,
             fee: 1,
             signer_bitmap: BitArray::<_>::ZERO,
+            sweep_block_hash: *bitcoin_block.block_hash,
+            sweep_block_height: bitcoin_block.block_height,
+            sweep_txid: *txid,
         };
 
         // Expected struct to be added to the accepted_withdrawals vector

@@ -10,6 +10,7 @@ use crate::network;
 use crate::storage;
 use crate::storage::model;
 use crate::storage::model::EncryptedDkgShares;
+use crate::storage::model::StacksPrincipal;
 use crate::wsts_state_machine;
 
 use fake::Fake;
@@ -19,6 +20,7 @@ use wsts::state_machine::coordinator::frost;
 use crate::ecdsa::SignEcdsa as _;
 use crate::network::MessageTransfer as _;
 
+use stacks_common::types::chainstate::StacksAddress;
 use wsts::net::SignatureType;
 use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::StateMachine as _;
@@ -545,9 +547,13 @@ impl SignerSet {
             tx_type: model::TransactionType::RotateKeys,
             block_hash: stacks_chain_tip.block_hash.to_bytes(),
         };
+        let address = StacksPrincipal::from(clarity::vm::types::PrincipalData::from(
+            StacksAddress::p2pkh(false, &shares.aggregate_key.into()),
+        ));
 
         let rotate_keys_tx = model::RotateKeysTransaction {
             aggregate_key: shares.aggregate_key,
+            address,
             txid,
             signer_set: self.signer_keys(),
             signatures_required: self.signers.len() as u16,

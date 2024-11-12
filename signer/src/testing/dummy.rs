@@ -296,6 +296,9 @@ impl fake::Dummy<fake::Faker> for WithdrawalAcceptEvent {
                 vout: rng.next_u32(),
             },
             fee: rng.next_u32() as u64,
+            sweep_block_hash: block_hash(config, rng),
+            sweep_block_height: rng.next_u32() as u64,
+            sweep_txid: txid(config, rng),
         }
     }
 }
@@ -337,6 +340,9 @@ impl fake::Dummy<fake::Faker> for CompletedDepositEvent {
                 vout: rng.next_u32(),
             },
             amount: rng.next_u32() as u64,
+            sweep_block_hash: block_hash(config, rng),
+            sweep_block_height: rng.next_u32() as u64,
+            sweep_txid: txid(config, rng),
         }
     }
 }
@@ -356,10 +362,14 @@ impl fake::Dummy<SignerSetConfig> for RotateKeysTransaction {
         let signer_set: Vec<PublicKey> = std::iter::repeat_with(|| fake::Faker.fake_with_rng(rng))
             .take(config.num_keys as usize)
             .collect();
-
+        let aggregate_key = PublicKey::combine_keys(signer_set.iter()).unwrap();
+        let address = StacksPrincipal::from(clarity::vm::types::PrincipalData::from(
+            StacksAddress::p2pkh(false, &aggregate_key.into()),
+        ));
         RotateKeysTransaction {
             txid: fake::Faker.fake_with_rng(rng),
-            aggregate_key: PublicKey::combine_keys(signer_set.iter()).unwrap(),
+            address,
+            aggregate_key,
             signer_set,
             signatures_required: config.signatures_required,
         }

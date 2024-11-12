@@ -462,6 +462,7 @@ mod tests {
     use crate::stacks::contracts::ReqContext;
     use crate::storage::model;
     use crate::storage::model::RotateKeysTransaction;
+    use crate::storage::model::StacksPrincipal;
     use crate::storage::DbWrite;
     use crate::testing::context::ConfigureMockedClients;
     use crate::testing::context::TestContext;
@@ -693,6 +694,9 @@ mod tests {
         // Let's store the key information about this wallet into the database
         let rotate_keys = RotateKeysTransaction {
             txid: fake::Faker.fake_with_rng(&mut rng),
+            address: StacksPrincipal::from(clarity::vm::types::PrincipalData::from(
+                wallet1.address().clone(),
+            )),
             aggregate_key: *wallet1.stacks_aggregate_key(),
             signer_set: signer_keys.clone(),
             signatures_required: wallet1.signatures_required,
