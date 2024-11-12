@@ -811,7 +811,7 @@ impl super::DbRead for SharedStore {
         Ok(package)
     }
 
-    async fn get_sweep_transaction_package(
+    async fn get_latest_unconfirmed_sweep_transactions(
         &self,
         prevout_txid: &model::BitcoinTxId,
     ) -> Result<Vec<model::SweepTransaction>, Error> {
@@ -1147,7 +1147,7 @@ mod tests {
         }
 
         let package = store
-            .get_sweep_transaction_package(&utxo_txid)
+            .get_latest_unconfirmed_sweep_transactions(&utxo_txid)
             .await
             .unwrap();
 

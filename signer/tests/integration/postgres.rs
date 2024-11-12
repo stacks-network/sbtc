@@ -2319,7 +2319,7 @@ async fn can_store_and_get_latest_sweep_transaction() {
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test(tokio::test)]
-async fn can_get_sweep_transaction_package() {
+async fn can_get_latest_unconfirmed_sweep_transactions() {
     let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
 
@@ -2362,7 +2362,7 @@ async fn can_get_sweep_transaction_package() {
     }
 
     let sweep = db
-        .get_sweep_transaction_package(&utxo_tx.txid.into())
+        .get_latest_unconfirmed_sweep_transactions(&utxo_tx.txid.into())
         .await
         .unwrap();
 

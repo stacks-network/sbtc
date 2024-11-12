@@ -1751,7 +1751,7 @@ impl super::DbRead for PgStore {
         self.get_sweep_transaction_by_txid(&txid).await
     }
 
-    async fn get_sweep_transaction_package(
+    async fn get_latest_unconfirmed_sweep_transactions(
         &self,
         prevout_txid: &model::BitcoinTxId,
     ) -> Result<Vec<model::SweepTransaction>, Error> {

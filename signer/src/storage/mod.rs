@@ -283,8 +283,9 @@ pub trait DbRead {
     ///
     /// If the transaction package has been RBF'd (i.e. there are two or more
     /// sweep transactions with the same prevout_txid) then this function
-    /// returns the transactions associated with the most recent sweep package.
-    fn get_sweep_transaction_package(
+    /// returns the transactions associated with the most recent sweep package
+    /// spending the `prevout_txid`'s UTXO.
+    fn get_latest_unconfirmed_sweep_transactions(
         &self,
         prevout_txid: &model::BitcoinTxId,
     ) -> impl Future<Output = Result<Vec<model::SweepTransaction>, Error>> + Send;

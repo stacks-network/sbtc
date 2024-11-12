@@ -967,7 +967,7 @@ where
         let last_sweep_package = self
             .context
             .get_storage()
-            .get_sweep_transaction_package(&utxo.outpoint.txid.into())
+            .get_latest_unconfirmed_sweep_transactions(&utxo.outpoint.txid.into())
             .await?;
 
         // If the last sweep package is empty, then we don't have any fees to
