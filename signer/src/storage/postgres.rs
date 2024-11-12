@@ -1740,7 +1740,7 @@ impl super::DbRead for PgStore {
             ORDER BY tx.created_at DESC",
         )
         .bind(chain_tip)
-        .bind(context_window as i32)
+        .bind(i32::from(context_window))
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)?
@@ -1753,6 +1753,8 @@ impl super::DbRead for PgStore {
 
     async fn get_latest_unconfirmed_sweep_transactions(
         &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
         prevout_txid: &model::BitcoinTxId,
     ) -> Result<Vec<model::SweepTransaction>, Error> {
         // Attempt to find the first sweep transaction in the chain which has
@@ -1808,13 +1810,15 @@ impl super::DbRead for PgStore {
                 sweep_txs.txid
               , number
             FROM sweep_txs
-            LEFT JOIN bitcoin_transactions AS btc_tx 
+            LEFT JOIN bitcoin_transactions_of($2, $3) AS btc_tx 
                 ON btc_tx.txid = sweep_txs.txid
             WHERE btc_tx.txid IS NULL
             ORDER BY number ASC;
         ",
         )
         .bind(first)
+        .bind(chain_tip)
+        .bind(i32::from(context_window))
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

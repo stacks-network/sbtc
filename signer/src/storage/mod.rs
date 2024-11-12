@@ -287,6 +287,8 @@ pub trait DbRead {
     /// package spending the `prevout_txid`'s UTXO.
     fn get_latest_unconfirmed_sweep_transactions(
         &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
         prevout_txid: &model::BitcoinTxId,
     ) -> impl Future<Output = Result<Vec<model::SweepTransaction>, Error>> + Send;
 }
