@@ -1449,12 +1449,12 @@ impl super::DbRead for PgStore {
         signer_set: &BTreeSet<PublicKey>,
         aggregate_key: &PublicKey,
         signatures_required: u16,
-    ) -> Result<Option<model::RotateKeysTransaction>, Error> {
+    ) -> Result<bool, Error> {
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
-            return Ok(None);
+            return Err(Error::NoStacksChainTip);
         };
 
-        sqlx::query_as::<_, model::RotateKeysTransaction>(
+        sqlx::query_scalar::<_, bool>(
             r#"
             WITH RECURSIVE stacks_blocks AS (
                 SELECT
@@ -1475,24 +1475,22 @@ impl super::DbRead for PgStore {
                 FROM sbtc_signer.stacks_blocks parent
                 JOIN stacks_blocks last ON parent.block_hash = last.parent_hash
             )
-            SELECT
-                rkt.txid
-              , rkt.aggregate_key
-              , rkt.signer_set
-              , rkt.signatures_required
-            FROM sbtc_signer.rotate_keys_transactions rkt
-            JOIN sbtc_signer.stacks_transactions st ON st.txid = rkt.txid
-            JOIN stacks_blocks sb on st.block_hash = sb.block_hash
-            WHERE rkt.signer_set = $2
-              AND rkt.aggregate_key = $3
-              AND rkt.signatures_required = $4
+            SELECT EXISTS (
+                SELECT TRUE
+                FROM sbtc_signer.rotate_keys_transactions rkt
+                JOIN sbtc_signer.stacks_transactions st ON st.txid = rkt.txid
+                JOIN stacks_blocks sb on st.block_hash = sb.block_hash
+                WHERE rkt.signer_set = $2
+                  AND rkt.aggregate_key = $3
+                  AND rkt.signatures_required = $4
+            )
             "#,
         )
         .bind(stacks_chain_tip.block_hash)
         .bind(signer_set.iter().collect::<Vec<_>>())
         .bind(aggregate_key)
         .bind(i32::from(signatures_required))
-        .fetch_optional(&self.0)
+        .fetch_one(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }

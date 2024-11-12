@@ -182,7 +182,7 @@ pub trait DbRead {
         signer_set: &BTreeSet<PublicKey>,
         aggregate_key: &PublicKey,
         signatures_required: u16,
-    ) -> impl Future<Output = Result<Option<model::RotateKeysTransaction>, Error>> + Send;
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
 
     /// Get the last 365 days worth of the signers' `scriptPubkey`s. If no
     /// keys are available within the last 365, then return the most recent

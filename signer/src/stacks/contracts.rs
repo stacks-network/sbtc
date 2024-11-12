@@ -1155,16 +1155,13 @@ impl AsContractCall for RotateKeysV1 {
 
         // 5. That there are no other rotate-keys contract calls with these same
         //    details already confirmed on the canonical Stacks blockchain.
-        if db
-            .key_rotation_exists(
-                &req_ctx.chain_tip.block_hash,
-                &self.new_keys,
-                &self.aggregate_key,
-                self.signatures_required,
-            )
-            .await?
-            .is_some()
-        {
+        let key_rotation_exists_fut = db.key_rotation_exists(
+            &req_ctx.chain_tip.block_hash,
+            &self.new_keys,
+            &self.aggregate_key,
+            self.signatures_required,
+        );
+        if key_rotation_exists_fut.await? {
             return Err(RotateKeysErrorMsg::KeyRotationExists.into_error(req_ctx, self));
         }
 

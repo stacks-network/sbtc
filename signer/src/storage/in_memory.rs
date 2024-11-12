@@ -563,7 +563,7 @@ impl super::DbRead for SharedStore {
         _signer_set: &BTreeSet<PublicKey>,
         _aggregate_key: &PublicKey,
         _signatures_required: u16,
-    ) -> Result<Option<model::RotateKeysTransaction>, Error> {
+    ) -> Result<bool, Error> {
         unimplemented!()
     }
 

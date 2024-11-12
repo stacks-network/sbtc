@@ -507,9 +507,19 @@ async fn rotate_key_validation_replay() {
     }
 
     // Check that, if we exclude the rotate key from the canonical chain, validation passes
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 2,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: 0,
+    };
+    let test_data = TestData::generate(&mut rng, &[], &test_model_params);
+    test_data.write_to(&mut db).await;
+
     let mut req_ctx_fork = req_ctx.clone();
-    req_ctx_fork.chain_tip.block_hash = fake::Faker.fake_with_rng(&mut rng);
-    req_ctx_fork.chain_tip.block_height = setup.chain_tip.block_height;
+    req_ctx_fork.chain_tip.block_hash = test_data.bitcoin_blocks[0].block_hash;
+    req_ctx_fork.chain_tip.block_height = test_data.bitcoin_blocks[0].block_height;
 
     rotate_key_tx.validate(&ctx, &req_ctx_fork).await.unwrap();
 
