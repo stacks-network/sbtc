@@ -100,7 +100,11 @@ impl utxo::GetFees for Vec<SweepTransaction> {
             .try_fold(0u64, |acc, fee| acc.checked_add(fee))
             .ok_or(Error::ArithmeticOverflow)?;
 
-        let total_size: u64 = self.iter().map(|tx| tx.vsize as u64).sum();
+        let total_size: u64 = self
+            .iter()
+            .map(|tx| tx.vsize as u64)
+            .try_fold(0u64, |acc, size| acc.checked_add(size))
+            .ok_or(Error::ArithmeticOverflow)?;
 
         if total_size == 0 {
             return Err(Error::DivideByZero);
