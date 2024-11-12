@@ -11,7 +11,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
 
-use crate::bitcoin::rpc::BitcoinTxVinPrevout;
 use crate::block_observer::Deposit;
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -121,13 +120,12 @@ impl From<&crate::message::SweptDeposit> for SweptDeposit {
     }
 }
 
-/// A bitcoin transaction output (TXO) either used as an input or created
-/// as an output.
+/// A bitcoin transaction output (TXO) relevant for the sBTC signers.
 ///
 /// This object can have a few different meanings, all of them identified
-/// by the txo_type:
+/// by the output_type:
 /// 1. Whether a TXO was created by someone other than the signers as a
-///    Donation.
+///    donation.
 /// 2. Whether this is the signers' TXO with all of the swept in funds.
 /// 3. Whether it is an `OP_RETURN` output.
 /// 4. Whether this is a withdrawal output.
@@ -157,21 +155,23 @@ pub struct TxOutput {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct TxPrevout {
-    /// The Bitcoin transaction id.
+    /// The ID of the transaction spending the output.
     pub txid: BitcoinTxId,
-    /// The Bitcoin transaction id.
+    /// The ID of the bitcoin transaction that created the output being
+    /// spent.
     pub prevout_txid: BitcoinTxId,
-    /// The index of the output in the sBTC sweep transaction.
+    /// The output index in the transaction that created the output that is
+    /// being spent.
     #[sqlx(try_from = "i32")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
     pub prevout_output_index: u32,
     /// The scriptPubKey locking the output.
     pub script_pubkey: ScriptPubKey,
-    /// The amount locked in the prevout.
+    /// The amount locked in the output.
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
     pub amount: u64,
-    /// The scriptPubKey locking the prevout.
+    /// The type prevout we are referring to.
     pub prevout_type: TxPrevoutType,
 }
 
@@ -1041,11 +1041,6 @@ impl ScriptPubKey {
     /// Converts byte vector into script.
     pub fn from_bytes(bytes: Vec<u8>) -> Self {
         bitcoin::ScriptBuf::from_bytes(bytes).into()
-    }
-
-    /// Extract the scriptPubKey from the prevout.
-    pub fn from_prevout(value: &BitcoinTxVinPrevout) -> Self {
-        value.script_pub_key.script.clone().into()
     }
 }
 
