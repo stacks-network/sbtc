@@ -47,7 +47,9 @@ pub struct SweepTransaction {
     pub created_at_block_hash: BitcoinBlockHash,
     /// The market fee rate at the time of this transaction.
     pub market_fee_rate: f64,
-
+    /// The outputs created for the signers.
+    #[sqlx(skip)]
+    pub signer_outputs: Vec<SignerOutput>,
     /// List of deposits which were swept-in by this transaction.
     #[sqlx(skip)]
     pub swept_deposits: Vec<SweptDeposit>,
@@ -78,6 +80,7 @@ impl From<&crate::message::SweepTransactionInfo> for SweepTransaction {
             fee: info.fee,
             market_fee_rate: info.market_fee_rate,
             created_at_block_hash: info.created_at_block_hash.into(),
+            signer_outputs: info.signer_outputs.iter().map(Into::into).collect(),
             swept_deposits: info.swept_deposits.iter().map(Into::into).collect(),
             swept_withdrawals: info.swept_withdrawals.iter().map(Into::into).collect(),
         }
@@ -117,6 +120,38 @@ impl From<&crate::message::SweptDeposit> for SweptDeposit {
             input_index: deposit.input_index,
             deposit_request_txid: deposit.deposit_request_txid.into(),
             deposit_request_output_index: deposit.deposit_request_output_index,
+        }
+    }
+}
+
+/// A transaction output controled by the signer.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct SignerOutput {
+    /// The Bitcoin transaction id.
+    pub txid: BitcoinTxId,
+    /// The index of the output in the sBTC sweep transaction.
+    #[sqlx(try_from = "i32")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
+    pub output_index: u32,
+    /// The scriptPubKey locking the output.
+    pub script_pubkey: ScriptPubKey,
+    /// The amount created in the output.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
+    pub amount: u64,
+    /// The scriptPubKey locking the output.
+    pub txo_type: TxoType,
+}
+
+impl From<&crate::message::SignerOutput> for SignerOutput {
+    fn from(value: &crate::message::SignerOutput) -> Self {
+        Self {
+            txid: value.txid,
+            output_index: value.output_index,
+            script_pubkey: value.script_pubkey.clone(),
+            amount: value.amount,
+            txo_type: value.txo_type,
         }
     }
 }
@@ -617,6 +652,19 @@ pub enum TransactionType {
     WithdrawReject,
     /// A rotate keys call on Stacks.
     RotateKeys,
+    /// A donation to signers aggregated key on Bitcoin.
+    Donation,
+}
+
+/// The types of transactions the signer is interested in.
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
+#[sqlx(type_name = "txo_type", rename_all = "snake_case")]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[strum(serialize_all = "snake_case")]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub enum TxoType {
+    /// An sBTC transaction on Bitcoin.
+    Signers,
     /// A donation to signers aggregated key on Bitcoin.
     Donation,
 }

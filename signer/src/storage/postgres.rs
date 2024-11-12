@@ -3,13 +3,12 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use bitcoin::consensus::Decodable as _;
 use bitcoin::hashes::Hash as _;
+use bitcoin::OutPoint;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksBlockId;
-use futures::StreamExt as _;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::Executor as _;
 use sqlx::PgExecutor;
@@ -20,7 +19,6 @@ use crate::bitcoin::validation::DepositRequestReport;
 use crate::bitcoin::validation::DepositRequestStatus;
 use crate::error::Error;
 use crate::keys::PublicKey;
-use crate::keys::SignerScriptPubKey as _;
 use crate::stacks::events::CompletedDepositEvent;
 use crate::stacks::events::WithdrawalAcceptEvent;
 use crate::stacks::events::WithdrawalCreateEvent;
@@ -28,8 +26,6 @@ use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
 use crate::storage::model::TransactionType;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
-
-use super::util::get_utxo;
 
 /// All migration scripts from the `signer/migrations` directory.
 static PGSQL_MIGRATIONS: include_dir::Dir =
@@ -122,6 +118,27 @@ struct StatusSummary {
     /// in the funds.
     #[sqlx(try_from = "i64")]
     max_fee: u64,
+}
+
+// A convenience struct for retriving the signers' UTXO
+#[derive(sqlx::FromRow)]
+struct PgSignerUtxo {
+    txid: model::BitcoinTxId,
+    #[sqlx(try_from = "i32")]
+    output_index: u32,
+    #[sqlx(try_from = "i64")]
+    amount: u64,
+    aggregate_key: PublicKey,
+}
+
+impl From<PgSignerUtxo> for SignerUtxo {
+    fn from(pg_txo: PgSignerUtxo) -> Self {
+        SignerUtxo {
+            outpoint: OutPoint::new(pg_txo.txid.into(), pg_txo.output_index),
+            amount: pg_txo.amount,
+            public_key: pg_txo.aggregate_key.into(),
+        }
+    }
 }
 
 /// A wrapper around a [`sqlx::PgPool`] which implements
@@ -337,96 +354,52 @@ impl PgStore {
         Ok(model::TransactionIds { tx_ids, block_hashes })
     }
 
-    async fn get_utxo_from_donation(
+    async fn get_utxo(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: &PublicKey,
         context_window: u16,
+        txo_type: model::TxoType,
     ) -> Result<Option<SignerUtxo>, Error> {
-        // TODO(585): once the new table is ready, check if it can be used to simplify this
-        // TODO: currently returns the latest donation, we may want to return something else
-        let script_pubkey = aggregate_key.signers_script_pubkey();
-        let mut txs = sqlx::query_as::<_, model::Transaction>(
+        let pg_utxo = sqlx::query_as::<_, PgSignerUtxo>(
             r#"
-            WITH RECURSIVE tx_block_chain AS (
-                SELECT
-                    block_hash
-                  , parent_hash
-                  , 1 AS depth
-                FROM sbtc_signer.bitcoin_blocks
-                WHERE block_hash = $1
-
-                UNION ALL
-
-                SELECT
-                    parent.block_hash
-                  , parent.parent_hash
-                  , child.depth + 1
-                FROM sbtc_signer.bitcoin_blocks AS parent
-                JOIN tx_block_chain AS child ON child.parent_hash = parent.block_hash
-                WHERE child.depth < $2
+            WITH bitcoin_blockchain AS (
+                SELECT block_hash
+                FROM bitcoin_blockchain_of($1, $2)
+            ),
+            confirmed_sweeps AS (
+                SELECT 
+                    signer_prevout_txid
+                  , signer_prevout_output_index
+                FROM sbtc_signer.sweep_transactions AS st
+                JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
+                JOIN bitcoin_blockchain AS bb USING (block_hash)
             )
             SELECT
-                txs.txid
-              , txs.tx
-              , txs.tx_type
-              , tbc.block_hash
-            FROM tx_block_chain AS tbc
-            JOIN sbtc_signer.bitcoin_transactions AS bt ON tbc.block_hash = bt.block_hash
-            JOIN sbtc_signer.transactions AS txs USING (txid)
-            WHERE txs.tx_type = 'donation'
-            ORDER BY tbc.depth ASC;
+                su.txid
+              , su.output_index
+              , su.amount
+              , ds.aggregate_key
+            FROM sbtc_signer.signer_txos AS su
+            JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
+            JOIN bitcoin_blockchain AS bb USING (block_hash)
+            JOIN sbtc_signer.dkg_shares AS ds USING (script_pubkey)
+            LEFT JOIN confirmed_sweeps AS cs
+              ON cs.signer_prevout_txid = su.txid
+              AND cs.signer_prevout_output_index = su.output_index
+            WHERE cs.signer_prevout_txid IS NULL
+              AND su.txo_type = $3
+            ORDER BY su.amount DESC
+            LIMIT 1;
             "#,
         )
         .bind(chain_tip)
         .bind(context_window as i32)
-        .fetch(&self.0);
-
-        let mut utxo_block = None;
-        while let Some(tx) = txs.next().await {
-            let tx = tx.map_err(Error::SqlxQuery)?;
-            let bt_tx = bitcoin::Transaction::consensus_decode(&mut tx.tx.as_slice())
-                .map_err(Error::DecodeBitcoinTransaction)?;
-            if !bt_tx
-                .output
-                .first()
-                .is_some_and(|out| out.script_pubkey == script_pubkey)
-            {
-                continue;
-            }
-            utxo_block = Some(tx.block_hash);
-            break;
-        }
-
-        // `utxo_block` is the highest block containing a valid utxo
-        let Some(utxo_block) = utxo_block else {
-            return Ok(None);
-        };
-        // Fetch all the sbtc txs in the same block
-        let sbtc_txs = sqlx::query_as::<_, model::Transaction>(
-            r#"
-            SELECT
-                txs.txid
-              , txs.tx
-              , txs.tx_type
-              , bt.block_hash
-            FROM sbtc_signer.transactions AS txs
-            JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
-            WHERE txs.tx_type = 'donation' AND bt.block_hash = $1;
-            "#,
-        )
-        .bind(utxo_block)
-        .fetch_all(&self.0)
+        .bind(txo_type)
+        .fetch_optional(&self.0)
         .await
-        .map_err(Error::SqlxQuery)?
-        .iter()
-        .map(|tx| {
-            bitcoin::Transaction::consensus_decode(&mut tx.tx.as_slice())
-                .map_err(Error::DecodeBitcoinTransaction)
-        })
-        .collect::<Result<Vec<bitcoin::Transaction>, _>>()?;
+        .map_err(Error::SqlxQuery)?;
 
-        get_utxo(aggregate_key, sbtc_txs)
+        Ok(pg_utxo.map(SignerUtxo::from))
     }
 
     /// Return the least height for which the deposit request was confirmed
@@ -671,8 +644,27 @@ impl PgStore {
         .await
         .map_err(Error::SqlxQuery)?;
 
+        let signer_outputs = sqlx::query_as(
+            r#"
+            SELECT
+                txid
+              , output_index
+              , amount
+              , script_pubkey
+              , txo_type
+            FROM signer_txos
+            WHERE txid = $1
+            ORDER BY output_index ASC;
+        "#,
+        )
+        .bind(sweep_txid)
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
         transaction.swept_deposits = swept_deposits;
         transaction.swept_withdrawals = swept_withdrawals;
+        transaction.signer_outputs = signer_outputs;
 
         Ok(Some(transaction))
     }
@@ -1475,95 +1467,14 @@ impl super::DbRead for PgStore {
     async fn get_signer_utxo(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: &PublicKey,
         context_window: u16,
     ) -> Result<Option<SignerUtxo>, Error> {
-        // TODO(585): once the new table is ready, check if it can be used to simplify this
-        let script_pubkey = aggregate_key.signers_script_pubkey();
-        let mut txs = sqlx::query_as::<_, model::Transaction>(
-            r#"
-            WITH RECURSIVE tx_block_chain AS (
-                SELECT
-                    block_hash
-                  , parent_hash
-                  , 1 AS depth
-                FROM sbtc_signer.bitcoin_blocks
-                WHERE block_hash = $1
-
-                UNION ALL
-
-                SELECT
-                    parent.block_hash
-                  , parent.parent_hash
-                  , child.depth + 1
-                FROM sbtc_signer.bitcoin_blocks AS parent
-                JOIN tx_block_chain AS child ON child.parent_hash = parent.block_hash
-                WHERE child.depth < $2
-            )
-            SELECT
-                txs.txid
-              , txs.tx
-              , txs.tx_type
-              , tbc.block_hash
-            FROM tx_block_chain AS tbc
-            JOIN sbtc_signer.bitcoin_transactions AS bt ON tbc.block_hash = bt.block_hash
-            JOIN sbtc_signer.transactions AS txs USING (txid)
-            WHERE txs.tx_type = 'sbtc_transaction'
-            ORDER BY tbc.depth ASC;
-            "#,
-        )
-        .bind(chain_tip)
-        .bind(context_window as i32)
-        .fetch(&self.0);
-
-        let mut utxo_block = None;
-        while let Some(tx) = txs.next().await {
-            let tx = tx.map_err(Error::SqlxQuery)?;
-            let bt_tx = bitcoin::Transaction::consensus_decode(&mut tx.tx.as_slice())
-                .map_err(Error::DecodeBitcoinTransaction)?;
-            if !bt_tx
-                .output
-                .first()
-                .is_some_and(|out| out.script_pubkey == script_pubkey)
-            {
-                continue;
-            }
-            utxo_block = Some(tx.block_hash);
-            break;
+        let txo_type = model::TxoType::Signers;
+        if let Some(pg_utxo) = self.get_utxo(chain_tip, context_window, txo_type).await? {
+            return Ok(Some(pg_utxo));
         }
-
-        // `utxo_block` is the highest block containing a valid utxo
-        let Some(utxo_block) = utxo_block else {
-            // if no sbtc tx exists, consider donations
-            return self
-                .get_utxo_from_donation(chain_tip, aggregate_key, context_window)
-                .await;
-        };
-        // Fetch all the sbtc txs in the same block
-        let sbtc_txs = sqlx::query_as::<_, model::Transaction>(
-            r#"
-            SELECT
-                txs.txid
-              , txs.tx
-              , txs.tx_type
-              , bt.block_hash
-            FROM sbtc_signer.transactions AS txs
-            JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
-            WHERE txs.tx_type = 'sbtc_transaction' AND bt.block_hash = $1;
-            "#,
-        )
-        .bind(utxo_block)
-        .fetch_all(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?
-        .iter()
-        .map(|tx| {
-            bitcoin::Transaction::consensus_decode(&mut tx.tx.as_slice())
-                .map_err(Error::DecodeBitcoinTransaction)
-        })
-        .collect::<Result<Vec<bitcoin::Transaction>, _>>()?;
-
-        get_utxo(aggregate_key, sbtc_txs)
+        let txo_type = model::TxoType::Donation;
+        self.get_utxo(chain_tip, context_window, txo_type).await
     }
 
     async fn in_canonical_bitcoin_blockchain(
@@ -2384,6 +2295,32 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
+    async fn write_signer_txo(&self, signer_output: &model::SignerOutput) -> Result<(), Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO signer_txos (
+                txid
+              , output_index
+              , amount
+              , script_pubkey
+              , txo_type
+            )
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT DO NOTHING;
+            "#,
+        )
+        .bind(signer_output.txid)
+        .bind(i32::try_from(signer_output.output_index).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(signer_output.amount).map_err(Error::ConversionDatabaseInt)?)
+        .bind(&signer_output.script_pubkey)
+        .bind(signer_output.txo_type)
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
+    }
+
     async fn write_sweep_transaction(
         &self,
         transaction: &model::SweepTransaction,
@@ -2480,6 +2417,12 @@ impl super::DbWrite for PgStore {
         }
 
         tx.commit().await.map_err(Error::SqlxCommitTransaction)?;
+
+        // TODO: maybe refactor to use the sqlx transaction type to keep
+        // things atomic.
+        for signer_output in transaction.signer_outputs.iter() {
+            self.write_signer_txo(signer_output).await?;
+        }
 
         Ok(())
     }
