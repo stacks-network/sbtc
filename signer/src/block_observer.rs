@@ -31,6 +31,7 @@ use crate::stacks::api::StacksInteract;
 use crate::stacks::api::TenureBlocks;
 use crate::storage;
 use crate::storage::model;
+use crate::storage::model::SignerOutput;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use bitcoin::hashes::Hash as _;
@@ -410,6 +411,7 @@ where
                 model::TransactionType::Donation
             };
 
+            let txid = tx.compute_txid();
             sbtc_txs.push(model::Transaction {
                 txid: txid.to_byte_array(),
                 tx: bitcoin::consensus::serialize(&tx),

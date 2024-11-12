@@ -387,6 +387,10 @@ pub enum Error {
     #[error("observer dropped")]
     ObserverDropped,
 
+    /// A required field in a protobuf type was not set.
+    #[error("a required protobuf field was not set")]
+    RequiredProtobufFieldMissing,
+
     /// Thrown when the recoverable signature has a public key that is
     /// unexpected.
     #[error("unexpected public key from signature. key {0}; digest: {1}")]
