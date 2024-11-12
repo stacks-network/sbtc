@@ -4,6 +4,7 @@ use bitcoin::relative::LockTime;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 
+use crate::bitcoin::utxo::FeeAssessment;
 use crate::context::Context;
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -80,7 +81,7 @@ impl BitcoinTxContext {
     /// Validate the signer outputs.
     ///
     /// Each sweep transaction has two signer outputs, the new UTXO with
-    /// all of the signers' funds and an `OP_RETURN` TXO. This function
+    /// all the signers' funds and an `OP_RETURN` TXO. This function
     /// validates both of them.
     async fn validate_signer_outputs<C>(&self, _ctx: &C) -> Result<(), Error>
     where
@@ -89,7 +90,7 @@ impl BitcoinTxContext {
         unimplemented!()
     }
 
-    /// Validate each of the prevouts that coorespond to deposits. This
+    /// Validate each of the prevouts that correspond to deposits. This
     /// should be every input except for the first one.
     async fn validate_deposits<C>(&self, _ctx: &C) -> Result<Amount, Error>
     where
@@ -110,9 +111,9 @@ impl BitcoinTxContext {
 /// The responses for validation of a sweep transaction on bitcoin.
 #[derive(Debug, thiserror::Error, PartialEq, Eq, Copy, Clone)]
 pub enum BitcoinDepositInputError {
-    /// The assessed exceeds the max-fee in the deposit request.
+    /// The assessed fee exceeds the max-fee in the deposit request.
     #[error("the assessed fee for a deposit would exceed their max-fee; {0}")]
-    AssessedFeeTooHigh(OutPoint),
+    FeeTooHigh(OutPoint),
     /// The signer is not part of the signer set that generated the
     /// aggregate public key used to lock the deposit funds.
     ///
@@ -230,6 +231,8 @@ pub struct DepositRequestReport {
     pub is_accepted: Option<bool>,
     /// The deposit amount
     pub amount: u64,
+    /// The max fee embedded in the deposit request.
+    pub max_fee: u64,
     /// The lock_time in the reclaim script
     pub lock_time: LockTime,
 }
@@ -295,10 +298,33 @@ impl DepositRequestReport {
 
         Ok(())
     }
+
+    /// Validate that the fees assessed to the deposit prevout is below the
+    /// max fee.
+    pub fn validate_fee<F>(&self, tx: &F, tx_fee: u64) -> Result<(), BitcoinDepositInputError>
+    where
+        F: FeeAssessment,
+    {
+        let tx_fee = Amount::from_sat(tx_fee);
+        let Some(assessed_fee) = tx.assess_input_fee(&self.outpoint, tx_fee) else {
+            return Err(BitcoinDepositInputError::Unknown(self.outpoint));
+        };
+
+        if assessed_fee.to_sat() > self.max_fee {
+            return Err(BitcoinDepositInputError::FeeTooHigh(self.outpoint));
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use bitcoin::hashes::Hash as _;
+    use bitcoin::ScriptBuf;
+    use bitcoin::Sequence;
+    use bitcoin::TxIn;
+    use bitcoin::Txid;
+    use bitcoin::Witness;
     use test_case::test_case;
 
     use super::*;
@@ -317,6 +343,7 @@ mod tests {
             can_sign: Some(true),
             is_accepted: Some(true),
             amount: 0,
+            max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
         },
@@ -329,6 +356,7 @@ mod tests {
             can_sign: Some(true),
             is_accepted: Some(true),
             amount: 0,
+            max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
         },
@@ -341,6 +369,7 @@ mod tests {
             can_sign: None,
             is_accepted: Some(true),
             amount: 0,
+            max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
         },
@@ -353,6 +382,7 @@ mod tests {
             can_sign: Some(false),
             is_accepted: Some(true),
             amount: 0,
+            max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
         },
@@ -365,6 +395,7 @@ mod tests {
             can_sign: Some(true),
             is_accepted: Some(false),
             amount: 0,
+            max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
         },
@@ -377,6 +408,7 @@ mod tests {
             can_sign: Some(true),
             is_accepted: Some(true),
             amount: 0,
+            max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 1),
             outpoint: OutPoint::null(),
         },
@@ -389,6 +421,7 @@ mod tests {
             can_sign: Some(true),
             is_accepted: Some(true),
             amount: 0,
+            max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 2),
             outpoint: OutPoint::null(),
         },
@@ -401,6 +434,7 @@ mod tests {
             can_sign: Some(true),
             is_accepted: Some(true),
             amount: 0,
+            max_fee: u64::MAX,
             lock_time: LockTime::from_512_second_intervals(u16::MAX),
             outpoint: OutPoint::null(),
         },
@@ -413,6 +447,7 @@ mod tests {
             can_sign: Some(true),
             is_accepted: Some(true),
             amount: 0,
+            max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
             outpoint: OutPoint::null(),
         },
@@ -430,6 +465,69 @@ mod tests {
                 assert_eq!(error, expected_error);
             }
             None => mapping.report.validate(mapping.chain_tip_height).unwrap(),
+        }
+    }
+
+    const TX_FEE: u64 = 10000;
+
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            is_accepted: Some(true),
+            amount: 0,
+            max_fee: TX_FEE,
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::new(Txid::from_byte_array([1; 32]), 0),
+        },
+        error: Some(BitcoinDepositInputError::Unknown(OutPoint::new(Txid::from_byte_array([1; 32]), 0))),
+        chain_tip_height: 2,
+    } ; "unknown-prevout")]
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            is_accepted: Some(true),
+            amount: 0,
+            max_fee: TX_FEE,
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::null(),
+        },
+        error: None,
+        chain_tip_height: 2,
+    } ; "at-the-border")]
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            is_accepted: Some(true),
+            amount: 0,
+            max_fee: TX_FEE - 1,
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::null(),
+        },
+        error: Some(BitcoinDepositInputError::FeeTooHigh(OutPoint::null())),
+        chain_tip_height: 2,
+    } ; "one-sat-too-high-fee")]
+    fn deposit_report_fee_validation(mapping: DepositReportErrorMapping) {
+        // This is a base sweep transaction without any deposit inputs or
+        // withdrawal outputs. We add one input so that there is exactly
+        // one deposit request being serviced by this transaction. This
+        // means it pays for the entire transaction fee.
+        let mut tx = crate::testing::btc::base_signer_transaction();
+        tx.input.push(TxIn {
+            previous_output: OutPoint::null(),
+            script_sig: ScriptBuf::new(),
+            sequence: Sequence::ZERO,
+            witness: Witness::new(),
+        });
+
+        match mapping.error {
+            Some(expected_error) => {
+                let error = mapping.report.validate_fee(&tx, TX_FEE).unwrap_err();
+                assert_eq!(error, expected_error);
+            }
+            None => mapping.report.validate_fee(&tx, TX_FEE).unwrap(),
         }
     }
 }
