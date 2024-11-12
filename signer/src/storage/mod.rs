@@ -12,6 +12,7 @@ pub mod postgres;
 pub mod sqlx;
 pub mod util;
 
+use std::collections::BTreeSet;
 use std::future::Future;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
@@ -173,6 +174,15 @@ pub trait DbRead {
         &self,
         chain_tip: &model::BitcoinBlockHash,
     ) -> impl Future<Output = Result<Option<model::RotateKeysTransaction>, Error>> + Send;
+
+    /// Checks if a key rotation exists on the canonical chain
+    fn key_rotation_exists(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        signer_set: &BTreeSet<PublicKey>,
+        aggregate_key: &PublicKey,
+        signatures_required: u16,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
 
     /// Get the last 365 days worth of the signers' `scriptPubkey`s. If no
     /// keys are available within the last 365, then return the most recent

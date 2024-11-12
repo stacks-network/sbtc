@@ -1072,6 +1072,7 @@ impl AsContractCall for RotateKeysV1 {
     fn deployer_address(&self) -> StacksAddress {
         self.deployer
     }
+
     /// The arguments to the contract call function
     ///
     /// # Notes
@@ -1107,20 +1108,122 @@ impl AsContractCall for RotateKeysV1 {
     /// Validates that the rotate-keys-wrapper satisfies the following
     /// criteria:
     ///
-    /// 1. That the aggregate key matches what is expected from the given
-    ///    public keys.
-    /// 2. That public keys match current known set of signers.
-    /// 3. That the proposed signer set is different from last known signer
-    ///    set, or the proposed signer set is the same and the signatures
-    ///    threshold is different from the last signature threshold.
-    /// 4. That the number of required signatures is strictly greater than
-    ///    `new_keys as f64 / 2.0`.
-    async fn validate<C>(&self, _ctx: &C, _req_ctx: &ReqContext) -> Result<(), Error>
+    /// 1. That the smart contract deployer matches the deployer in our context.
+    /// 2. That the signing set matches the signing set for the most recent
+    ///    DKG run.
+    /// 3. That the aggregate key matches the one that was output as part of
+    ///    the most recent DKG.
+    /// 4. That the signature threshold matches the one that was used in the
+    ///    most recent DKG.
+    /// 5. That there are no other rotate-keys contract calls with these same
+    ///    details already confirmed on the canonical Stacks blockchain.
+    async fn validate<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
     where
         C: Context + Send + Sync,
     {
-        // TODO(255): Add validation implementation
+        let db = ctx.get_storage();
+
+        // 1. That the smart contract deployer matches the deployer in our context.
+        if self.deployer != req_ctx.deployer {
+            return Err(RotateKeysErrorMsg::DeployerMismatch.into_error(req_ctx, self));
+        }
+
+        // 2. That the signing set matches the signing set for the most recent
+        //    DKG run.
+        let Some(latest_dkg) = db.get_latest_encrypted_dkg_shares().await? else {
+            return Err(Error::NoDkgShares);
+        };
+        let latest_public_key = latest_dkg
+            .signer_set_public_keys
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        if self.new_keys != latest_public_key {
+            return Err(RotateKeysErrorMsg::SignerSetMismatch.into_error(req_ctx, self));
+        }
+
+        // 3. That the aggregate key matches the one that was output as part of
+        //    the most recent DKG.
+        if self.aggregate_key != latest_dkg.aggregate_key {
+            return Err(RotateKeysErrorMsg::AggregateKeyMismatch.into_error(req_ctx, self));
+        }
+
+        // 4. That the signature threshold matches the one that was used in the
+        //    most recent DKG.
+        if self.signatures_required != latest_dkg.signature_share_threshold {
+            return Err(RotateKeysErrorMsg::SignaturesRequiredMismatch.into_error(req_ctx, self));
+        }
+
+        // 5. That there are no other rotate-keys contract calls with these same
+        //    details already confirmed on the canonical Stacks blockchain.
+        let key_rotation_exists_fut = db.key_rotation_exists(
+            &req_ctx.chain_tip.block_hash,
+            &self.new_keys,
+            &self.aggregate_key,
+            self.signatures_required,
+        );
+        if key_rotation_exists_fut.await? {
+            return Err(RotateKeysErrorMsg::KeyRotationExists.into_error(req_ctx, self));
+        }
+
         Ok(())
+    }
+}
+
+/// A struct for a validation error containing all the necessary context.
+#[derive(Debug)]
+pub struct RotateKeysValidationError {
+    /// The specific error that happened during validation.
+    pub error: RotateKeysErrorMsg,
+    /// The additional information that was used when trying to
+    /// validate the rotate-keys contract call. This includes the
+    /// public key of the signer that was attempting to generate the
+    /// transaction.
+    pub context: ReqContext,
+    /// The specific transaction that was being validated.
+    pub tx: RotateKeysV1,
+}
+
+impl std::fmt::Display for RotateKeysValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // TODO(191): Add the other variables to the error message.
+        self.error.fmt(f)
+    }
+}
+
+impl std::error::Error for RotateKeysValidationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
+
+/// The responses for validation of a rotate-keys smart contract call
+/// transactions.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum RotateKeysErrorMsg {
+    /// The smart contract deployer is fixed, so this should always match.
+    #[error("The deployer in the transaction does not match the expected deployer")]
+    DeployerMismatch,
+    /// The signer set does not match the latest DKG.
+    #[error("the signer set does not match the latest DKG")]
+    SignerSetMismatch,
+    /// The aggregate key does not match the latest DKG.
+    #[error("the aggregate key does not match the latest DKG")]
+    AggregateKeyMismatch,
+    /// The number of required signatures does not match the latest DKG.
+    #[error("the number of required signatures does not match the latest DKG")]
+    SignaturesRequiredMismatch,
+    /// There is already a key rotation with the same details.
+    #[error("there is already a key rotation with the same details")]
+    KeyRotationExists,
+}
+
+impl RotateKeysErrorMsg {
+    fn into_error(self, ctx: &ReqContext, tx: &RotateKeysV1) -> Error {
+        Error::RotateKeysValidation(Box::new(RotateKeysValidationError {
+            error: self,
+            context: *ctx,
+            tx: tx.clone(),
+        }))
     }
 }
 
