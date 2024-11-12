@@ -3,6 +3,8 @@
 use bitcoin::relative::LockTime;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
+use bitcoin::ScriptBuf;
+use bitcoin::XOnlyPublicKey;
 
 use crate::bitcoin::utxo::FeeAssessment;
 use crate::bitcoin::utxo::Fees;
@@ -255,7 +257,7 @@ pub enum DepositRequestStatus {
 
 /// A struct for the status report summary of a deposit request for use
 /// in validation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DepositRequestReport {
     /// The deposit UTXO outpoint that uniquely identifies the deposit.
     pub outpoint: OutPoint,
@@ -278,11 +280,17 @@ pub struct DepositRequestReport {
     pub max_fee: u64,
     /// The lock_time in the reclaim script
     pub lock_time: LockTime,
+    /// The deposit script used so that the signers' can spend funds.
+    pub deposit_script: ScriptBuf,
+    /// The reclaim script for the deposit.
+    pub reclaim_script: ScriptBuf,
+    /// The public key used in the deposit script.
+    pub signers_public_key: XOnlyPublicKey,
 }
 
 impl DepositRequestReport {
     /// Validate that the deposit request is okay given the report.
-    pub fn validate(self, chain_tip_height: u64) -> Result<(), BitcoinDepositInputError> {
+    pub fn validate(&self, chain_tip_height: u64) -> Result<(), BitcoinDepositInputError> {
         let confirmed_block_height = match self.status {
             // Deposit requests are only written to the database after they
             // have been confirmed, so this means that we have a record of
@@ -389,6 +397,9 @@ mod tests {
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::TxNotOnBestChain(OutPoint::null())),
         chain_tip_height: 2,
@@ -402,6 +413,9 @@ mod tests {
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::DepositUtxoSpent(OutPoint::null(), BitcoinTxId::from([1; 32]))),
         chain_tip_height: 2,
@@ -415,6 +429,9 @@ mod tests {
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::NoVote(OutPoint::null())),
         chain_tip_height: 2,
@@ -428,6 +445,9 @@ mod tests {
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::CannotSignUtxo(OutPoint::null())),
         chain_tip_height: 2,
@@ -441,6 +461,9 @@ mod tests {
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::RejectedRequest(OutPoint::null())),
         chain_tip_height: 2,
@@ -454,6 +477,9 @@ mod tests {
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 1),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::LockTimeExpiry(OutPoint::null())),
         chain_tip_height: 2,
@@ -467,6 +493,9 @@ mod tests {
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 2),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::LockTimeExpiry(OutPoint::null())),
         chain_tip_height: 2,
@@ -480,6 +509,9 @@ mod tests {
             max_fee: u64::MAX,
             lock_time: LockTime::from_512_second_intervals(u16::MAX),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::UnsupportedLockTime(OutPoint::null())),
         chain_tip_height: 2,
@@ -493,6 +525,9 @@ mod tests {
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: None,
         chain_tip_height: 2,
@@ -522,6 +557,9 @@ mod tests {
             max_fee: TX_FEE,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
             outpoint: OutPoint::new(Txid::from_byte_array([1; 32]), 0),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::Unknown(OutPoint::new(Txid::from_byte_array([1; 32]), 0))),
         chain_tip_height: 2,
@@ -535,6 +573,9 @@ mod tests {
             max_fee: TX_FEE,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: None,
         chain_tip_height: 2,
@@ -548,6 +589,9 @@ mod tests {
             max_fee: TX_FEE - 1,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::FeeTooHigh(OutPoint::null())),
         chain_tip_height: 2,
