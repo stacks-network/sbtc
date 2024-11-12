@@ -26,6 +26,7 @@ use clarity::vm::types::SequenceData;
 use clarity::vm::types::TupleData;
 use clarity::vm::ClarityName;
 use clarity::vm::Value as ClarityValue;
+use secp256k1::PublicKey;
 use stacks_common::types::chainstate::StacksBlockId;
 
 /// An error when trying to parse an sBTC event into a concrete type.
@@ -48,6 +49,10 @@ pub enum EventError {
     /// is not exactly equal to 32. This should never occur.
     #[error("Could not convert an integer in clarity event into the expected integer {0}")]
     ClarityTxidConversion(#[source] bitcoin::hashes::FromSliceError),
+    /// This error is thrown when trying to convert a public key from a
+    /// Clarity buffer into a proper public key. It should never be thrown.
+    #[error("Could not convert a public key in clarity event into the expected public key {0}")]
+    ClarityPublicKeyConversion(#[source] secp256k1::Error),
     /// This should never happen, but happens when one of the given topics
     /// is not on the list of expected topics.
     #[error("Got an unexpected event topic: {0}")]
@@ -79,6 +84,8 @@ pub enum RegistryEvent {
     WithdrawalReject(WithdrawalRejectEvent),
     /// For the `withdrawal-create` topic
     WithdrawalCreate(WithdrawalCreateEvent),
+    /// For the `key-rotation` topic
+    KeyRotation(KeyRotationEvent),
 }
 
 /// A type that points to a transaction in a stacks block.
@@ -114,6 +121,7 @@ impl RegistryEvent {
                     "withdrawal-accept" => event_map.withdrawal_accept(),
                     "withdrawal-create" => event_map.withdrawal_create(),
                     "withdrawal-reject" => event_map.withdrawal_reject(),
+                    "key-rotation" => event_map.key_rotation(),
                     _ => Err(EventError::ClarityUnexpectedEventTopic(topic)),
                 }
             }
@@ -205,6 +213,21 @@ pub struct WithdrawalRejectEvent {
     pub signer_bitmap: BitArray<[u8; 16]>,
 }
 
+/// This is the event that is emitted from the `rotate-keys`
+/// public function in the sbtc-registry smart contract.
+#[derive(Debug, Clone)]
+pub struct KeyRotationEvent {
+    /// The new set of public keys for all known signers during this
+    /// PoX cycle.
+    pub new_keys: Vec<PublicKey>,
+    /// The address that deployed the contract.
+    pub new_address: PrincipalData,
+    /// The new aggregate key created by combining the above public keys.
+    pub new_aggregate_pubkey: PublicKey,
+    /// The number of signatures required for the multi-sig wallet.
+    pub new_signature_threshold: u16,
+}
+
 #[derive(Debug)]
 struct RawTupleData {
     data_map: BTreeMap<ClarityName, ClarityValue>,
@@ -255,7 +278,15 @@ impl RawTupleData {
         }
     }
 
-    /// This function if for transforming the print events of the
+    /// Extract the list value from the given field
+    fn remove_list(&mut self, field: &'static str) -> Result<Vec<ClarityValue>, EventError> {
+        match self.data_map.remove(field) {
+            Some(ClarityValue::Sequence(SequenceData::List(list))) => Ok(list.data),
+            _ => Err(EventError::TupleEventField(field, self.tx_info)),
+        }
+    }
+
+    /// This function is for transforming the print events of the
     /// complete-deposit function in the sbtc-registry.
     ///
     /// # Notes
@@ -297,7 +328,7 @@ impl RawTupleData {
         }))
     }
 
-    /// This function if for transforming the print events of the
+    /// This function is for transforming the print events of the
     /// `complete-withdrawal-accept` function in the sbtc-registry.
     ///
     /// # Notes
@@ -490,7 +521,7 @@ impl RawTupleData {
         }
     }
 
-    /// This function if for transforming the print events of the
+    /// This function is for transforming the print events of the
     /// `complete-withdrawal-accept` function in the sbtc-registry.
     ///
     /// # Notes
@@ -538,7 +569,7 @@ impl RawTupleData {
         }))
     }
 
-    /// This function if for transforming the print events of the
+    /// This function is for transforming the print events of the
     /// `complete-withdrawal-reject` function in the sbtc-registry.
     ///
     /// # Notes
@@ -569,6 +600,51 @@ impl RawTupleData {
             signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
         }))
     }
+
+    /// This function is for transforming the print events of the
+    /// `rotate-keys` function in the sbtc-registry.
+    ///
+    /// # Notes
+    ///
+    /// The print events for `rotate-keys` calls are structured like so:
+    ///
+    /// ```clarity
+    /// (print {
+    ///   topic: "key-rotation",
+    ///   new-keys: (list 128 (buff 33))
+    ///   new-address: principal
+    ///   new-aggregate-pubkey: (buff 33)
+    ///   new-signature-threshold: uint
+    /// })
+    /// ```
+    ///
+    /// The above event is emitted after the keys for the multi-sig wallet
+    /// have been rotated.
+    fn key_rotation(mut self) -> Result<RegistryEvent, EventError> {
+        let new_keys = self
+            .remove_list("new-keys")?
+            .into_iter()
+            .map(|val| match val {
+                ClarityValue::Sequence(SequenceData::Buffer(buf)) => {
+                    PublicKey::from_slice(&buf.data).map_err(EventError::ClarityPublicKeyConversion)
+                }
+                _ => Err(EventError::ClarityUnexpectedValue(val, self.tx_info)),
+            })
+            .collect::<Result<Vec<PublicKey>, EventError>>()?;
+
+        let new_address = self.remove_principal("new-address")?;
+        let new_aggregate_pubkey = self.remove_buff("new-aggregate-pubkey")?;
+        let new_signature_threshold = self.remove_u128("new-signature-threshold")?;
+
+        Ok(RegistryEvent::KeyRotation(KeyRotationEvent {
+            new_keys,
+            new_address,
+            new_aggregate_pubkey: PublicKey::from_slice(&new_aggregate_pubkey)
+                .map_err(EventError::ClarityPublicKeyConversion)?,
+            new_signature_threshold: u16::try_from(new_signature_threshold)
+                .map_err(EventError::ClarityIntConversion)?,
+        }))
+    }
 }
 
 #[cfg(test)]
@@ -578,6 +654,9 @@ mod tests {
     use bitcoin::key::CompressedPublicKey;
     use bitcoin::key::TweakedPublicKey;
     use bitvec::field::BitField as _;
+    use clarity::vm::types::ListData;
+    use clarity::vm::types::ListTypeData;
+    use clarity::vm::types::BUFF_33;
     use rand::rngs::OsRng;
     use secp256k1::SECP256K1;
 
@@ -778,6 +857,59 @@ mod tests {
                 let expected_bitmap = BitArray::<[u8; 16]>::new(bitmap.to_le_bytes());
                 assert_eq!(event.request_id, request_id as u64);
                 assert_eq!(event.signer_bitmap, expected_bitmap);
+            }
+            e => panic!("Got the wrong event variant: {e:?}"),
+        };
+    }
+
+    #[test]
+    fn test_key_rotation_event() {
+        let new_keys: Vec<PublicKey> = (0..3)
+            .map(|_| SECP256K1.generate_keypair(&mut OsRng).1)
+            .collect();
+        let new_address =
+            PrincipalData::parse("ST1RQHF4VE5CZ6EK3MZPZVQBA0JVSMM9H5PMHMS1Y").unwrap();
+        let new_aggregate_pubkey = SECP256K1.generate_keypair(&mut OsRng).1;
+        let new_signature_threshold = 2;
+
+        let event = [
+            (
+                ClarityName::from("new-keys"),
+                ClarityValue::Sequence(SequenceData::List(ListData {
+                    data: new_keys
+                        .iter()
+                        .map(|key| ClarityValue::buff_from(key.serialize().into()).unwrap())
+                        .collect(),
+                    type_signature: ListTypeData::new_list(BUFF_33.clone(), 128)
+                        .expect("Expected list"),
+                })),
+            ),
+            (
+                ClarityName::from("new-address"),
+                ClarityValue::Principal(new_address.clone()),
+            ),
+            (
+                ClarityName::from("new-aggregate-pubkey"),
+                ClarityValue::buff_from(new_aggregate_pubkey.serialize().into()).unwrap(),
+            ),
+            (
+                ClarityName::from("new-signature-threshold"),
+                ClarityValue::UInt(new_signature_threshold as u128),
+            ),
+            (
+                ClarityName::from("topic"),
+                ClarityValue::string_ascii_from_bytes("key-rotation".as_bytes().to_vec()).unwrap(),
+            ),
+        ];
+        let tuple_data = TupleData::from_data(event.to_vec()).unwrap();
+        let value = ClarityValue::Tuple(tuple_data);
+
+        match RegistryEvent::try_new(value, TX_INFO).unwrap() {
+            RegistryEvent::KeyRotation(event) => {
+                assert_eq!(event.new_keys, new_keys);
+                assert_eq!(event.new_address, new_address);
+                assert_eq!(event.new_aggregate_pubkey, new_aggregate_pubkey);
+                assert_eq!(event.new_signature_threshold, new_signature_threshold);
             }
             e => panic!("Got the wrong event variant: {e:?}"),
         };
