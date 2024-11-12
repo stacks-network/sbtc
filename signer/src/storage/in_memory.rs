@@ -113,6 +113,11 @@ pub struct Store {
     /// sBTC Bitcoin sweep transactions which have been broadcast to the
     /// Bitcoin network, but not necessarily confirmed.
     pub sweep_transactions: Vec<model::SweepTransaction>,
+
+    /// Bitcoin transaction outputs
+    pub bitcoin_outputs: HashMap<model::BitcoinTxId, model::TxOutput>,
+    /// Bitcoin transaction inputs
+    pub bitcoin_prevouts: HashMap<model::BitcoinTxId, model::TxPrevout>,
 }
 
 impl Store {
@@ -1088,12 +1093,22 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_tx_output(&self, _output: &model::TxOutput) -> Result<(), Error> {
-        unimplemented!()
+    async fn write_tx_output(&self, output: &model::TxOutput) -> Result<(), Error> {
+        self.lock()
+            .await
+            .bitcoin_outputs
+            .insert(output.txid, output.clone());
+
+        Ok(())
     }
 
-    async fn write_tx_prevout(&self, _prevout: &model::TxPrevout) -> Result<(), Error> {
-        unimplemented!()
+    async fn write_tx_prevout(&self, prevout: &model::TxPrevout) -> Result<(), Error> {
+        self.lock()
+            .await
+            .bitcoin_prevouts
+            .insert(prevout.txid, prevout.clone());
+
+        Ok(())
     }
 
     async fn write_sweep_transaction(&self, tx: &model::SweepTransaction) -> Result<(), Error> {
