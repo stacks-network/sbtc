@@ -1,0 +1,17 @@
+name: Cargo Vet
+on: [push]
+
+concurrency:
+  # limit concurrency of entire workflow runs for a specific branch
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cargo-vet:
+    name: Run Unit Tests
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run vetting
+        run: make vet
