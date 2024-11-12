@@ -40,6 +40,9 @@ jobs:
       - name: Run lints
         run: make lint
 
+      - name: Run vetting
+        run: make vet
+
       - name: Run tests
         run: make test-ci
 
