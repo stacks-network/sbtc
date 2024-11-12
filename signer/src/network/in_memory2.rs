@@ -91,12 +91,7 @@ impl SignerNetwork {
     /// You can use this if you do not need to simulate multiple signers.
     pub fn single() -> Self {
         let (wan_tx, _) = tokio::sync::broadcast::channel(DEFAULT_WAN_CAPACITY);
-        let (signer_tx, _) = tokio::sync::broadcast::channel(DEFAULT_SIGNER_CAPACITY);
-        Self {
-            wan_tx,
-            signer_tx,
-            sent: Arc::new(RwLock::new(VecDeque::new())),
-        }
+        Self::new(wan_tx)
     }
 
     /// Create a new in-memory signer network.
