@@ -142,6 +142,20 @@ impl TestContext<(), (), (), ()> {
     pub fn builder() -> ContextBuilder<(), (), (), ()> {
         Default::default()
     }
+
+    /// Creates a new [`TestContext`] with the default configuration, i.e.
+    /// `with_in_memory_storage()` and `with_mocked_clients()`.
+    pub fn default_mocked() -> TestContext<
+        SharedStore,
+        WrappedMock<MockBitcoinInteract>,
+        WrappedMock<MockStacksInteract>,
+        WrappedMock<MockEmilyInteract>,
+    > {
+        Self::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build()
+    }
 }
 
 /// Provide extra methods for when using a mocked bitcoin client.
