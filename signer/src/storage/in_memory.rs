@@ -6,6 +6,7 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 use futures::StreamExt as _;
 use futures::TryStreamExt as _;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -554,6 +555,16 @@ impl super::DbRead for SharedStore {
             })
             .cloned(),
         )
+    }
+
+    async fn key_rotation_exists(
+        &self,
+        _chain_tip: &model::BitcoinBlockHash,
+        _signer_set: &BTreeSet<PublicKey>,
+        _aggregate_key: &PublicKey,
+        _signatures_required: u16,
+    ) -> Result<bool, Error> {
+        unimplemented!()
     }
 
     async fn get_signers_script_pubkeys(&self) -> Result<Vec<model::Bytes>, Error> {

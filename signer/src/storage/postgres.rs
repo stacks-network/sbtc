@@ -1,5 +1,6 @@
 //! Postgres storage implementation.
 
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
@@ -1436,6 +1437,58 @@ impl super::DbRead for PgStore {
         )
         .bind(stacks_chain_tip.block_hash)
         .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn key_rotation_exists(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        signer_set: &BTreeSet<PublicKey>,
+        aggregate_key: &PublicKey,
+        signatures_required: u16,
+    ) -> Result<bool, Error> {
+        let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
+            return Err(Error::NoStacksChainTip);
+        };
+
+        sqlx::query_scalar::<_, bool>(
+            r#"
+            WITH RECURSIVE stacks_blocks AS (
+                SELECT
+                    block_hash
+                  , parent_hash
+                  , block_height
+                  , 1 AS depth
+                FROM sbtc_signer.stacks_blocks
+                WHERE block_hash = $1
+
+                UNION ALL
+
+                SELECT
+                    parent.block_hash
+                  , parent.parent_hash
+                  , parent.block_height
+                  , last.depth + 1
+                FROM sbtc_signer.stacks_blocks parent
+                JOIN stacks_blocks last ON parent.block_hash = last.parent_hash
+            )
+            SELECT EXISTS (
+                SELECT TRUE
+                FROM sbtc_signer.rotate_keys_transactions rkt
+                JOIN sbtc_signer.stacks_transactions st ON st.txid = rkt.txid
+                JOIN stacks_blocks sb on st.block_hash = sb.block_hash
+                WHERE rkt.signer_set = $2
+                  AND rkt.aggregate_key = $3
+                  AND rkt.signatures_required = $4
+            )
+            "#,
+        )
+        .bind(stacks_chain_tip.block_hash)
+        .bind(signer_set.iter().collect::<Vec<_>>())
+        .bind(aggregate_key)
+        .bind(i32::from(signatures_required))
+        .fetch_one(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }

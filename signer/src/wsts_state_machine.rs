@@ -133,8 +133,7 @@ impl SignerStateMachine {
             .map(PublicKey::from)
             .collect::<Vec<PublicKey>>();
 
-        // We do not depend on the fact that these keys are sorted in the
-        // database, but it doesn't hurt much either.
+        // We require the public keys to be stored sorted in db
         signer_set_public_keys.sort();
 
         let encoded = saved_state.encode_to_vec().map_err(error::Error::Codec)?;
