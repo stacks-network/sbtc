@@ -21,6 +21,7 @@ use std::future::Future;
 use std::time::Duration;
 
 use crate::bitcoin::rpc::BitcoinTxInfo;
+use crate::bitcoin::utxo::TxDeconstructor as _;
 use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
 use crate::context::SignerEvent;
