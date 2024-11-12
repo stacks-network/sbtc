@@ -31,7 +31,6 @@ use crate::stacks::api::StacksInteract;
 use crate::stacks::api::TenureBlocks;
 use crate::storage;
 use crate::storage::model;
-use crate::storage::model::SignerOutput;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use bitcoin::hashes::Hash as _;

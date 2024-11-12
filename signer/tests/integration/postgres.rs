@@ -2259,7 +2259,6 @@ async fn can_store_and_get_latest_sweep_transaction() {
         sweep.created_at_block_hash = block.into();
         sweep.swept_deposits = vec![];
         sweep.swept_withdrawals = vec![];
-        sweep.signer_outputs = vec![];
         db.write_sweep_transaction(&sweep)
             .await
             .expect("failed to insert dummy sweep transaction");
@@ -2276,7 +2275,6 @@ async fn can_store_and_get_latest_sweep_transaction() {
         sweep.created_at_block_hash = block.into();
         sweep.swept_deposits = vec![];
         sweep.swept_withdrawals = vec![];
-        sweep.signer_outputs = vec![];
         db.write_sweep_transaction(&sweep)
             .await
             .expect("failed to insert dummy sweep transaction");

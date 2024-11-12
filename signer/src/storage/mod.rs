@@ -390,12 +390,6 @@ pub trait DbWrite {
     ) -> impl Future<Output = Result<(), Error>> + Send;
 
     /// Write a complete Bitcoin transaction package to the database.
-    fn write_signer_txo(
-        &self,
-        signer_output: &model::SignerOutput,
-    ) -> impl Future<Output = Result<(), Error>> + Send;
-
-    /// Write a complete Bitcoin transaction package to the database.
     fn write_sweep_transaction(
         &self,
         tx: &model::SweepTransaction,

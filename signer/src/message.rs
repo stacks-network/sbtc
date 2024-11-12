@@ -8,10 +8,7 @@ use crate::keys::SignerScriptPubKey as _;
 use crate::signature::RecoverableEcdsaSignature as _;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model::BitcoinBlockHash;
-use crate::storage::model::BitcoinTxId;
-use crate::storage::model::ScriptPubKey;
 use crate::storage::model::StacksTxId;
-use crate::storage::model::TxoType;
 
 /// Messages exchanged between signers
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -158,8 +155,6 @@ pub struct SweepTransactionInfo {
     pub created_at_block_hash: bitcoin::BlockHash,
     /// The market fee rate at the time of this transaction.
     pub market_fee_rate: f64,
-    /// The outputs created for the signers.
-    pub signer_outputs: Vec<SignerOutput>,
     /// List of deposits which were swept-in by this transaction.
     pub swept_deposits: Vec<SweptDeposit>,
     /// List of withdrawals which were swept-out by this transaction.
@@ -201,21 +196,6 @@ impl SweepTransactionInfo {
             })
             .collect();
 
-        let signer_outputs = unsigned
-            .tx
-            .output
-            .iter()
-            .take(1)
-            .enumerate()
-            .map(|(index, tx_out)| SignerOutput {
-                txid: unsigned.tx.compute_txid().into(),
-                output_index: index as u32,
-                amount: tx_out.value.to_sat(),
-                script_pubkey: tx_out.script_pubkey.clone().into(),
-                txo_type: TxoType::Signers,
-            })
-            .collect();
-
         SweepTransactionInfo {
             txid: unsigned.tx.compute_txid(),
             signer_prevout_txid: unsigned.signer_utxo.utxo.outpoint.txid,
@@ -230,7 +210,6 @@ impl SweepTransactionInfo {
             fee: unsigned.tx_fee,
             market_fee_rate: unsigned.signer_utxo.fee_rate,
             created_at_block_hash: *block_hash,
-            signer_outputs,
             swept_deposits,
             swept_withdrawals,
         }
@@ -261,21 +240,6 @@ pub struct SweptWithdrawal {
     /// The Stacks block hash of the Stacks block which included the withdrawal
     /// request transaction.
     pub withdrawal_request_block_hash: StacksBlockHash,
-}
-
-/// Represents a single deposit which has been swept-in by a sweep transaction.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SignerOutput {
-    /// The Bitcoin transaction id.
-    pub txid: BitcoinTxId,
-    /// The index of the output in the sBTC sweep transaction.
-    pub output_index: u32,
-    /// The scriptPubKey locking the output.
-    pub script_pubkey: ScriptPubKey,
-    /// The amount created in the output.
-    pub amount: u64,
-    /// The transaction type locking the output.
-    pub txo_type: TxoType,
 }
 
 /// Represents a decision related to signer deposit

@@ -645,27 +645,8 @@ impl PgStore {
         .await
         .map_err(Error::SqlxQuery)?;
 
-        let signer_outputs = sqlx::query_as(
-            r#"
-            SELECT
-                txid
-              , output_index
-              , amount
-              , script_pubkey
-              , txo_type
-            FROM signer_txos
-            WHERE txid = $1
-            ORDER BY output_index ASC;
-        "#,
-        )
-        .bind(sweep_txid)
-        .fetch_all(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
         transaction.swept_deposits = swept_deposits;
         transaction.swept_withdrawals = swept_withdrawals;
-        transaction.signer_outputs = signer_outputs;
 
         Ok(Some(transaction))
     }
@@ -2446,12 +2427,6 @@ impl super::DbWrite for PgStore {
         }
 
         tx.commit().await.map_err(Error::SqlxCommitTransaction)?;
-
-        // TODO: maybe refactor to use the sqlx transaction type to keep
-        // things atomic.
-        for signer_output in transaction.signer_outputs.iter() {
-            self.write_signer_txo(signer_output).await?;
-        }
 
         Ok(())
     }
