@@ -3,6 +3,10 @@ use std::fs::File;
 use std::io::Write;
 use utoipa::OpenApi;
 
+fn main() {
+    build_client();
+}
+
 #[derive(utoipa::OpenApi)]
 #[openapi(
     paths(api::handlers::check_address_handler,),
@@ -14,7 +18,7 @@ use utoipa::OpenApi;
 )]
 struct ApiDoc;
 
-fn main() {
+pub fn build_client() {
     // Ensure that we rerun if the API changes or the build script changes.
     println!("cargo:rerun-if-changed=../../blocklist/common/mod.rs");
     println!("cargo:rerun-if-changed=../../blocklist/common/handlers");
