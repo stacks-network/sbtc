@@ -388,6 +388,10 @@ pub enum Error {
     #[error("observer dropped")]
     ObserverDropped,
 
+    /// A required field in a protobuf type was not set.
+    #[error("a required protobuf field was not set")]
+    RequiredProtobufFieldMissing,
+
     /// The error for when the request to sign a rotate-keys
     /// transaction fails at the validation step.
     #[error("rotate keys validation error: {0}")]

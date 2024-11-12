@@ -204,6 +204,27 @@ CREATE TABLE sbtc_signer.sweep_transactions (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
+CREATE TYPE sbtc_signer.txo_type AS ENUM (
+    'signers',
+    'donation'
+);
+
+-- A table for all transaction outputs that the signers can spend.
+CREATE TABLE sbtc_signer.signer_txos (
+    txid BYTEA NOT NULL,
+    -- The index of the donation output in the transaction.
+    output_index INTEGER NOT NULL,
+    -- The amount of the output,
+    amount BIGINT NOT NULL,
+    -- The scriptPubKey of the output
+    script_pubkey BYTEA NOT NULL,
+    -- The type of UTXO this is
+    txo_type sbtc_signer.txo_type NOT NULL,
+    -- a timestamp of when this record was created in the database.
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    PRIMARY KEY (txid, output_index)
+);
+
 -- Represents a single withdrawal request which has been included in a sweep
 -- transaction package. Withdrawal requests have a unique ID so we use that here
 -- to reference the withdrawal request together with its Stacks block hash,

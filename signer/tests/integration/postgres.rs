@@ -2259,6 +2259,7 @@ async fn can_store_and_get_latest_sweep_transaction() {
         sweep.created_at_block_hash = block.into();
         sweep.swept_deposits = vec![];
         sweep.swept_withdrawals = vec![];
+        sweep.signer_outputs = vec![];
         db.write_sweep_transaction(&sweep)
             .await
             .expect("failed to insert dummy sweep transaction");
@@ -2275,6 +2276,7 @@ async fn can_store_and_get_latest_sweep_transaction() {
         sweep.created_at_block_hash = block.into();
         sweep.swept_deposits = vec![];
         sweep.swept_withdrawals = vec![];
+        sweep.signer_outputs = vec![];
         db.write_sweep_transaction(&sweep)
             .await
             .expect("failed to insert dummy sweep transaction");
@@ -2411,6 +2413,7 @@ async fn deposit_report_with_only_deposit_request() {
 
     assert_eq!(report.amount, deposit_request.amount);
     assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert_eq!(report.max_fee, deposit_request.max_fee);
     assert!(report.is_accepted.is_none());
     assert!(report.can_sign.is_none());
     // The transaction is not on the canonical bitcoin blockchain, so it
@@ -2494,6 +2497,7 @@ async fn deposit_report_with_deposit_request_reorged() {
 
     assert_eq!(report.amount, deposit_request.amount);
     assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert_eq!(report.max_fee, deposit_request.max_fee);
     assert_eq!(report.is_accepted, Some(decision.is_accepted));
     assert_eq!(report.can_sign, Some(decision.can_sign));
     assert_eq!(report.status, DepositRequestStatus::Unconfirmed);
@@ -2593,6 +2597,7 @@ async fn deposit_report_with_deposit_request_spent() {
 
     assert_eq!(report.amount, deposit_request.amount);
     assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert_eq!(report.max_fee, deposit_request.max_fee);
     assert_eq!(report.is_accepted, Some(decision.is_accepted));
     assert_eq!(report.can_sign, Some(decision.can_sign));
     assert_eq!(report.status, DepositRequestStatus::Spent(sweep_tx.txid));
@@ -2703,6 +2708,7 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
 
     assert_eq!(report.amount, deposit_request.amount);
     assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert_eq!(report.max_fee, deposit_request.max_fee);
     assert_eq!(report.is_accepted, Some(decision.is_accepted));
     assert_eq!(report.can_sign, Some(decision.can_sign));
 
@@ -2724,6 +2730,7 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
 
     assert_eq!(report.amount, deposit_request.amount);
     assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert_eq!(report.max_fee, deposit_request.max_fee);
     assert_eq!(report.is_accepted, Some(decision.is_accepted));
     assert_eq!(report.can_sign, Some(decision.can_sign));
 
@@ -2801,6 +2808,7 @@ async fn deposit_report_with_deposit_request_confirmed() {
     // status.
     assert_eq!(report.amount, deposit_request.amount);
     assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert_eq!(report.max_fee, deposit_request.max_fee);
     assert_eq!(report.is_accepted, Some(decision.is_accepted));
     assert_eq!(report.can_sign, Some(decision.can_sign));
 

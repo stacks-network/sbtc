@@ -8,20 +8,17 @@ import "stacks/common.proto";
 
 // Represents a decision to accept or reject a deposit request.
 message SignerDepositDecision {
-  // The bitcoin transaction ID of the transaction containing the deposit
-  // request. It must be 32 bytes.
-  bitcoin.BitcoinTxid txid = 1;
-  // Index of the deposit request UTXO.
-  uint32 output_index = 2;
+  // The bitcoin outpoint that uniquely identifies the deposit request.
+  bitcoin.OutPoint outpoint = 1;
   // Whether or not the signer has accepted the deposit request.
-  bool accepted = 3;
+  bool accepted = 2;
   // This specifies whether the sending signer can provide signature shares
   // for the associated deposit request.
-  bool can_sign = 4;
+  bool can_sign = 3;
 }
 
-// Represents a decision to accept or reject a deposit request.
-message SignerWithdrawDecision {
+// Represents a decision to accept or reject a withdrawal request.
+message SignerWithdrawalDecision {
   // ID of the withdraw request.
   uint64 request_id = 1;
   // The Stacks block ID of the Stacks block containing the request. It
