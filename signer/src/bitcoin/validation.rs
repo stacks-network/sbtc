@@ -16,6 +16,7 @@ use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::QualifiedRequestId;
+use crate::storage::model::SignerVotes;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
 use crate::storage::DbRead as _;
@@ -150,7 +151,35 @@ impl BitcoinTxContext {
 
     /// Construct the reports for each request that this transaction will
     /// service.
-    pub async fn construct_requests<C>(&self, _ctx: &C) -> SbtcReports {
+    pub async fn construct_reports<C>(&self, ctx: &C) -> Result<SbtcReports, Error>
+    where
+        C: Context + Send + Sync,
+    {
+        let db = ctx.get_storage();
+        let signer_public_key = PublicKey::from_private_key(&ctx.config().signer.private_key);
+
+        let mut deposits = Vec::new();
+
+        for outpoint in self.deposit_requests.iter() {
+            let txid = outpoint.txid.into();
+            let output_index = outpoint.vout;
+            let report_future = db.get_deposit_request_report(
+                &self.chain_tip,
+                &txid,
+                outpoint.vout,
+                &signer_public_key,
+            );
+
+            let votes = db
+                .get_deposit_request_signer_votes(&txid, output_index)
+                .await?;
+            let Some(report) = report_future.await? else {
+                return Err(BitcoinDepositInputError::Unknown(*outpoint).into_error(self));
+            };
+
+            deposits.push((report, votes));
+        }
+
         unimplemented!()
     }
 }
@@ -159,10 +188,10 @@ impl BitcoinTxContext {
 /// information used to construct the next transaction package.
 #[derive(Debug)]
 pub struct SbtcReports {
-    /// Accepted and pending deposit requests.
-    pub deposits: Vec<DepositRequestReport>,
-    /// Accepted and pending withdrawal requests.
-    pub withdrawals: Vec<WithdrawalRequestReport>,
+    /// Deposit requests with how the signers voted for them.
+    pub deposits: Vec<(DepositRequestReport, SignerVotes)>,
+    /// Withdrawal requests with how the signers voted for them.
+    pub withdrawals: Vec<(WithdrawalRequestReport, SignerVotes)>,
     /// Summary of the Signers' UTXO and information necessary for
     /// constructing their next UTXO.
     pub signer_state: SignerBtcState,
