@@ -93,12 +93,22 @@ impl From<&crate::message::SweepTransactionInfo> for SweepTransaction {
 
 impl utxo::GetFees for Vec<SweepTransaction> {
     /// Return the total fee of all the transactions in the vector.
-    fn get_fees(&self) -> Fees {
-        let total = self.iter().map(|tx| tx.fee).sum();
-        let total_size: u32 = self.iter().map(|tx| tx.vsize).sum();
+    fn get_fees(&self) -> Result<Fees, Error> {
+        let total: u64 = self
+            .iter()
+            .map(|tx| tx.fee)
+            .try_fold(0u64, |acc, fee| acc.checked_add(fee))
+            .ok_or(Error::ArithmeticOverflow)?;
+
+        let total_size: u64 = self.iter().map(|tx| tx.vsize as u64).sum();
+
+        if total_size == 0 {
+            return Err(Error::DivideByZero);
+        }
+
         let rate: f64 = total as f64 / total_size as f64;
 
-        Fees { total, rate }
+        Ok(Fees { total, rate })
     }
 }
 
@@ -1019,7 +1029,7 @@ mod tests {
             sweep_txs.push(tx);
         }
 
-        let fees = sweep_txs.get_fees();
+        let fees = sweep_txs.get_fees().expect("failed to calculate fees");
 
         assert_eq!(fees, expected);
     }

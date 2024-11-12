@@ -979,7 +979,8 @@ where
         // from the last sweep package.
         let last_fees = last_sweep_package
             .is_not_empty()
-            .then(|| last_sweep_package.get_fees());
+            .then(|| last_sweep_package.get_fees())
+            .transpose()?;
 
         Ok(utxo::SignerBtcState {
             fee_rate,
@@ -1690,7 +1691,9 @@ mod tests {
 
         // Calculate the expected fees from the vec we used to insert sweep
         // package #2 into the database.
-        let expected_fees = sweep_transactions2.get_fees();
+        let expected_fees = sweep_transactions2
+            .get_fees()
+            .expect("failed to calculate fees");
 
         // Grab the BTC state.
         let btc_state = coord
