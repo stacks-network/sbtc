@@ -1,5 +1,7 @@
 //! Utxo management and transaction construction
 
+use std::ops::Deref as _;
+
 use bitcoin::absolute::LockTime;
 use bitcoin::hashes::Hash as _;
 use bitcoin::sighash::Prevouts;
@@ -33,6 +35,7 @@ use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::error::Error;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
+use crate::storage::model::BitcoinTx;
 use crate::storage::model::ScriptPubKey;
 use crate::storage::model::SignerVotes;
 use crate::storage::model::StacksBlockHash;
@@ -925,12 +928,25 @@ impl<'a> UnsignedTransaction<'a> {
     }
 }
 
-/// This implementation here includes functions for apportioning fees to a
-/// bitcoin transaction that has already been confirmed. This
-/// implementation is located in this module because it the assumptions for
-/// how the transaction is organized follows the logic in
-/// [`UnsignedTransaction::new`].
-impl BitcoinTxInfo {
+/// A trait where we return all inputs and outputs for a bitcoin
+/// transaction.
+pub trait InputsOutputs {
+    /// Returns all transaction inputs as a slice.
+    fn inputs(&self) -> &[TxIn];
+
+    /// Returns all transaction outputs as a slice.
+    fn outputs(&self) -> &[TxOut];
+}
+
+/// A trait for figuring out the fees assessed to deposit prevouts and
+/// withdrawal outputs in a bitcoin transaction.
+///
+/// This trait and the default implementations includes functions for
+/// apportioning fees to a bitcoin transaction that has already been
+/// confirmed. This implementation is located in this module because the
+/// assumptions it makes for how the transaction is organized follows the
+/// logic in [`UnsignedTransaction::new`].
+pub trait FeeAssessment: InputsOutputs {
     /// Assess how much of the bitcoin miner fee should be apportioned to
     /// the input associated with the given `outpoint`.
     ///
@@ -946,15 +962,14 @@ impl BitcoinTxInfo {
     ///
     /// The logic for the fee assessment is from
     /// <https://github.com/stacks-network/sbtc/issues/182>.
-    pub fn assess_input_fee(&self, outpoint: &OutPoint) -> Option<Amount> {
+    fn assess_input_fee(&self, outpoint: &OutPoint, tx_fee: Amount) -> Option<Amount> {
         // The Weight::to_wu function just returns the inner weight units
         // as an u64, so this is really just the weight.
         let request_weight = self.request_weight().to_wu();
         // We skip the first input because that is always the signers'
         // input UTXO.
         let input_weight = self
-            .tx
-            .input
+            .inputs()
             .iter()
             .skip(1)
             .find(|tx_in| &tx_in.previous_output == outpoint)?
@@ -963,7 +978,7 @@ impl BitcoinTxInfo {
 
         // This computation follows the logic laid out in
         // <https://github.com/stacks-network/sbtc/issues/182>.
-        let fee_sats = (input_weight * self.fee.to_sat()).div_ceil(request_weight);
+        let fee_sats = (input_weight * tx_fee.to_sat()).div_ceil(request_weight);
         Some(Amount::from_sat(fee_sats))
     }
 
@@ -982,18 +997,18 @@ impl BitcoinTxInfo {
     ///
     /// The logic for the fee assessment is from
     /// <https://github.com/stacks-network/sbtc/issues/182>.
-    pub fn assess_output_fee(&self, vout: usize) -> Option<Amount> {
+    fn assess_output_fee(&self, vout: usize, tx_fee: Amount) -> Option<Amount> {
         // We skip the first input because that is always the signers'
         // input UTXO.
         if vout < 2 {
             return None;
         }
         let request_weight = self.request_weight().to_wu();
-        let input_weight = self.tx.output.get(vout)?.weight().to_wu();
+        let output_weight = self.outputs().get(vout)?.weight().to_wu();
 
         // This computation follows the logic laid out in
         // <https://github.com/stacks-network/sbtc/issues/182>.
-        let fee_sats = (input_weight * self.fee.to_sat()).div_ceil(request_weight);
+        let fee_sats = (output_weight * tx_fee.to_sat()).div_ceil(request_weight);
         Some(Amount::from_sat(fee_sats))
     }
 
@@ -1002,13 +1017,54 @@ impl BitcoinTxInfo {
     fn request_weight(&self) -> Weight {
         // We skip the first input and first two outputs because those are
         // always the signers' UTXO input and outputs.
-        self.tx
-            .input
+        self.inputs()
             .iter()
             .skip(1)
             .map(|x| x.segwit_weight())
-            .chain(self.tx.output.iter().skip(2).map(|x| x.weight()))
+            .chain(self.outputs().iter().skip(2).map(TxOut::weight))
             .sum()
+    }
+}
+
+impl<T: InputsOutputs> FeeAssessment for T {}
+
+impl InputsOutputs for Transaction {
+    fn inputs(&self) -> &[TxIn] {
+        &self.input
+    }
+    fn outputs(&self) -> &[TxOut] {
+        &self.output
+    }
+}
+
+impl InputsOutputs for BitcoinTx {
+    fn inputs(&self) -> &[TxIn] {
+        &self.deref().input
+    }
+    fn outputs(&self) -> &[TxOut] {
+        &self.deref().output
+    }
+}
+
+impl InputsOutputs for BitcoinTxInfo {
+    fn inputs(&self) -> &[TxIn] {
+        &self.tx.input
+    }
+    fn outputs(&self) -> &[TxOut] {
+        &self.tx.output
+    }
+}
+
+impl BitcoinTxInfo {
+    /// Assess how much of the bitcoin miner fee should be apportioned to
+    /// the input associated with the given `outpoint`.
+    pub fn assess_input_fee(&self, outpoint: &OutPoint) -> Option<Amount> {
+        FeeAssessment::assess_input_fee(self, outpoint, self.fee)
+    }
+    /// Assess how much of the bitcoin miner fee should be apportioned to
+    /// the output at the given output index `vout`.
+    pub fn assess_output_fee(&self, vout: usize) -> Option<Amount> {
+        FeeAssessment::assess_output_fee(self, vout, self.fee)
     }
 }
 
@@ -1061,6 +1117,7 @@ mod tests {
     use test_case::test_case;
 
     use crate::testing;
+    use crate::testing::btc::base_signer_transaction;
 
     const X_ONLY_PUBLIC_KEY1: &'static str =
         "2e58afe51f9ed8ad3cc7897f634d881fdbe49a81564629ded8156bebd2ffd1af";
@@ -1214,38 +1271,6 @@ mod tests {
                 confirmations: 1,
                 block_time: 0,
             }
-        }
-    }
-
-    /// Return a transaction that is kinda like the signers' transaction,
-    /// but it does not service any requests, and it does not have any
-    /// signatures.
-    fn base_signer_transaction() -> Transaction {
-        Transaction {
-            version: bitcoin::transaction::Version::TWO,
-            lock_time: bitcoin::locktime::absolute::LockTime::ZERO,
-            input: vec![
-                // This is the signers' previous UTXO
-                bitcoin::TxIn {
-                    previous_output: OutPoint::null(),
-                    script_sig: ScriptBuf::new(),
-                    sequence: bitcoin::Sequence::ZERO,
-                    witness: bitcoin::Witness::new(),
-                },
-            ],
-            output: vec![
-                // This represents the signers' new UTXO.
-                bitcoin::TxOut {
-                    value: Amount::ONE_BTC,
-                    script_pubkey: ScriptBuf::new(),
-                },
-                // This represents the OP_RETURN sBTC UTXO for a
-                // transaction with no withdrawals.
-                bitcoin::TxOut {
-                    value: Amount::ZERO,
-                    script_pubkey: ScriptBuf::new_op_return([0; 21]),
-                },
-            ],
         }
     }
 
