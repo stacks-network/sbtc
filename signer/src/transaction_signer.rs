@@ -800,7 +800,7 @@ mod tests {
             context,
             context_window: 6,
             num_signers: 7,
-            signing_threshold: 5,
+            signing_threshold: 3,
             test_model_parameters,
         }
     }

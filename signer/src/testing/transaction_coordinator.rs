@@ -137,6 +137,9 @@ where
         mut self,
         delay_to_process_new_blocks: Duration,
     ) {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .try_init();
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
