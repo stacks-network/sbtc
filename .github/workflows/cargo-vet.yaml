@@ -8,7 +8,7 @@ concurrency:
 
 jobs:
   cargo-vet:
-    name: Run Unit Tests
+    name: Run cargo vet
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
