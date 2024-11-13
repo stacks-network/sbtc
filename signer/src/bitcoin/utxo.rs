@@ -77,12 +77,24 @@ const SATS_PER_VBYTE_INCREMENT: f64 = 0.001;
 const OP_RETURN_VERSION: u8 = 0;
 
 /// Describes the fees for a transaction.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Fees {
     /// The total fee paid in sats for the transaction.
     pub total: u64,
     /// The fee rate paid in sats per virtual byte.
     pub rate: f64,
+}
+
+impl Fees {
+    /// A zero-fee [`Fees`] instance.
+    pub const ZERO: Self = Self { total: 0, rate: 0.0 };
+}
+
+/// A trait for getting the fees for a given instance.
+pub trait GetFees {
+    /// Get the [`Fees`] for this instance. If the basis for fee calculation is
+    /// not available, this function should return `None`.
+    fn get_fees(&self) -> Result<Option<Fees>, Error>;
 }
 
 /// Summary of the Signers' UTXO and information necessary for
@@ -605,6 +617,8 @@ pub struct UnsignedTransaction<'a> {
     pub signer_utxo: SignerBtcState,
     /// The total amount of fees associated with the transaction.
     pub tx_fee: u64,
+    /// The total virtual size of the transaction.
+    pub tx_vsize: u32,
 }
 
 /// A struct containing Taproot-tagged hashes used for computing taproot
@@ -639,8 +653,9 @@ impl<'a> UnsignedTransaction<'a> {
         // remove the witness data.
         let mut tx = Self::new_transaction(&requests, state)?;
         // We now compute the total fees for the transaction.
-        let tx_vsize = tx.vsize() as f64;
-        let tx_fee = compute_transaction_fee(tx_vsize, state.fee_rate, state.last_fees);
+        let tx_vsize: u32 = tx.vsize().try_into().map_err(|_| Error::TypeConversion)?;
+
+        let tx_fee = compute_transaction_fee(tx_vsize as f64, state.fee_rate, state.last_fees);
         // Now adjust the amount for the signers UTXO for the transaction
         // fee.
         Self::adjust_amounts(&mut tx, tx_fee);
@@ -655,6 +670,7 @@ impl<'a> UnsignedTransaction<'a> {
             signer_public_key: state.public_key,
             signer_utxo: *state,
             tx_fee,
+            tx_vsize,
         })
     }
 

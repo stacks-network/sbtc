@@ -14,6 +14,18 @@ use thiserror::Error;
 
 use crate::error::Error;
 
+/// Extension trait for `Vec`.
+pub trait CollectionExt {
+    /// Returns `true` if the collection is not empty.
+    fn is_not_empty(&self) -> bool;
+}
+
+impl<T> CollectionExt for Vec<T> {
+    fn is_not_empty(&self) -> bool {
+        !self.is_empty()
+    }
+}
+
 /// This is the default minimum number of _retries_ that the fallback client
 /// will attempt. A retry count of 2 means that the client will attempt to
 /// execute the closure _3 times_ before giving up (i.e. the initial attempt,

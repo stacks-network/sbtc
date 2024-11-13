@@ -830,6 +830,20 @@ impl super::DbRead for SharedStore {
 
         Ok(package)
     }
+
+    async fn get_latest_unconfirmed_sweep_transactions(
+        &self,
+        _chain_tip: &model::BitcoinBlockHash,
+        _context_window: u16,
+        _prevout_txid: &model::BitcoinTxId,
+    ) -> Result<Vec<model::SweepTransaction>, Error> {
+        // TODO: This should probably be implemented at some point. It turned
+        // rather complex to solve at the moment due to the new constraints
+        // dealing with reorgs, so I'm postponing it for now and returning an
+        // empty list. This will result in the coordinator using `None` for last
+        // fees, but this seems OK for all current tests.
+        Ok(Vec::new())
+    }
 }
 
 impl super::DbWrite for SharedStore {

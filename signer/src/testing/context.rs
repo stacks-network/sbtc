@@ -142,6 +142,20 @@ impl TestContext<(), (), (), ()> {
     pub fn builder() -> ContextBuilder<(), (), (), ()> {
         Default::default()
     }
+
+    /// Creates a new [`TestContext`] with the default configuration, i.e.
+    /// `with_in_memory_storage()` and `with_mocked_clients()`.
+    pub fn default_mocked() -> TestContext<
+        SharedStore,
+        WrappedMock<MockBitcoinInteract>,
+        WrappedMock<MockStacksInteract>,
+        WrappedMock<MockEmilyInteract>,
+    > {
+        Self::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build()
+    }
 }
 
 /// Provide extra methods for when using a mocked bitcoin client.
@@ -300,13 +314,6 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
 
     async fn estimate_fee_rate(&self) -> Result<f64, Error> {
         self.inner.lock().await.estimate_fee_rate().await
-    }
-
-    async fn get_last_fee(
-        &self,
-        utxo: bitcoin::OutPoint,
-    ) -> Result<Option<crate::bitcoin::utxo::Fees>, Error> {
-        self.inner.lock().await.get_last_fee(utxo).await
     }
 
     async fn broadcast_transaction(&self, tx: &bitcoin::Transaction) -> Result<(), Error> {
