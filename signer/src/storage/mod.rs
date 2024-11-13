@@ -12,6 +12,7 @@ pub mod postgres;
 pub mod sqlx;
 pub mod util;
 
+use std::collections::BTreeSet;
 use std::future::Future;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
@@ -174,6 +175,15 @@ pub trait DbRead {
         chain_tip: &model::BitcoinBlockHash,
     ) -> impl Future<Output = Result<Option<model::RotateKeysTransaction>, Error>> + Send;
 
+    /// Checks if a key rotation exists on the canonical chain
+    fn key_rotation_exists(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        signer_set: &BTreeSet<PublicKey>,
+        aggregate_key: &PublicKey,
+        signatures_required: u16,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
+
     /// Get the last 365 days worth of the signers' `scriptPubkey`s. If no
     /// keys are available within the last 365, then return the most recent
     /// key.
@@ -183,20 +193,20 @@ pub trait DbRead {
 
     /// Get the outstanding signer UTXO.
     ///
-    /// Under normal conditions, the signer will have only one UTXO they can spend.
-    /// The specific UTXO we want is one such that:
-    /// 1. The transaction is in a block on the canonical bitcoin blockchain.
+    /// Under normal conditions, the signer will have only one UTXO they
+    /// can spend. The specific UTXO we want is one such that:
+    /// 1. The transaction is in a block on the canonical bitcoin
+    ///    blockchain.
     /// 2. The output is the first output in the transaction.
-    /// 3. The output's `scriptPubKey` matches `aggregate_key`.
-    /// 4. The output is unspent. It is possible for more than one transaction
-    ///     within the same block to satisfy points 1-3, but if the signers
-    ///     have one or more transactions within a block, exactly one output
-    ///     satisfying points 1-3 will be unspent.
-    /// 5. The block that includes the transaction that satisfies points 1-4 has the greatest height of all such blocks.
+    /// 3. The output is unspent. It is possible for more than one
+    ///    transaction within the same block to satisfy points 1-3, but if
+    ///    the signers have one or more transactions within a block,
+    ///    exactly one output satisfying points 1-3 will be unspent.
+    /// 4. The block that includes the transaction that satisfies points
+    ///    1-4 has the greatest height of all such blocks.
     fn get_signer_utxo(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: &crate::keys::PublicKey,
         context_window: u16,
     ) -> impl Future<Output = Result<Option<SignerUtxo>, Error>> + Send;
 
@@ -393,5 +403,17 @@ pub trait DbWrite {
     fn write_sweep_transaction(
         &self,
         tx: &model::SweepTransaction,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write the bitcoin transaction output to the database.
+    fn write_tx_output(
+        &self,
+        output: &model::TxOutput,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write the bitcoin transaction input to the database.
+    fn write_tx_prevout(
+        &self,
+        prevout: &model::TxPrevout,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 }
