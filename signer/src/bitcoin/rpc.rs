@@ -478,7 +478,7 @@ impl BitcoinInteract for BitcoinCoreClient {
 
     async fn find_mempool_transactions_spending_output(
         &self,
-        outpoint: &bitcoin::OutPoint,
+        outpoint: &OutPoint,
     ) -> Result<Vec<Txid>, Error> {
         self.get_tx_spending_prevout(outpoint)
     }
