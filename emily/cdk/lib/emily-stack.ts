@@ -24,11 +24,20 @@ export class EmilyStack extends cdk.Stack {
     constructor(scope: Construct, id: string, props: EmilyStackProps) {
         super(scope, id, props);
 
+        // Set persistent resources to be deleted when the stack is deleted in a development environment.
+        //
+        // In a production environment we don't want to do this as it would result in data loss
+        // without an explicit action to delete the resources.
+        const persistentResourceRemovalPolicy: cdk.RemovalPolicy = EmilyStackUtils.isDevelopmentStack()
+            ? cdk.RemovalPolicy.DESTROY
+            : cdk.RemovalPolicy.RETAIN;
+
         const depositTableId: string = 'DepositTable';
         const depositTableName: string = EmilyStackUtils.getResourceName(depositTableId, props);
         const depositTable: dynamodb.Table = this.createOrUpdateDepositTable(
             depositTableId,
             depositTableName,
+            persistentResourceRemovalPolicy,
         );
 
         const withdrawalTableId: string = 'WithdrawalTable';
@@ -36,6 +45,7 @@ export class EmilyStack extends cdk.Stack {
         const withdrawalTable: dynamodb.Table = this.createOrUpdateWithdrawalTable(
             withdrawalTableId,
             withdrawalTableName,
+            persistentResourceRemovalPolicy,
         );
 
         const chainstateTableId: string = 'ChainstateTable';
@@ -43,6 +53,7 @@ export class EmilyStack extends cdk.Stack {
         const chainstateTable: dynamodb.Table = this.createOrUpdateChainstateTable(
             chainstateTableId,
             chainstateTableName,
+            persistentResourceRemovalPolicy,
         );
 
         if (!EmilyStackUtils.isTablesOnly()) {
@@ -66,12 +77,14 @@ export class EmilyStack extends cdk.Stack {
      * Creates or updates a DynamoDB table for deposits.
      * @param {string} tableId The id of the table AWS resource.
      * @param {string} tableName The name of the DynamoDB table.
+     * @param {cdk.RemovalPolicy} removalPolicy The removal policy for the table.
      * @returns {dynamodb.Table} The created or updated DynamoDB table.
      * @post A DynamoDB table with configured indexes is returned.
      */
     createOrUpdateDepositTable(
         depositTableId: string,
         depositTableName: string,
+        removalPolicy: cdk.RemovalPolicy,
     ): dynamodb.Table {
         const table: dynamodb.Table = new dynamodb.Table(this, depositTableId, {
             tableName: depositTableName,
@@ -82,7 +95,8 @@ export class EmilyStack extends cdk.Stack {
             sortKey: {
                 name: 'BitcoinTxOutputIndex',
                 type: dynamodb.AttributeType.NUMBER,
-            }
+            },
+            removalPolicy: removalPolicy,
         });
 
         const indexName: string = "DepositStatus";
@@ -116,12 +130,14 @@ export class EmilyStack extends cdk.Stack {
      * Creates or updates a DynamoDB table for withdrawals.
      * @param {string} tableId The id of the table AWS resource.
      * @param {string} tableName The name of the DynamoDB table.
+     * @param {cdk.RemovalPolicy} removalPolicy The removal policy for the table.
      * @returns {dynamodb.Table} The created or updated DynamoDB table.
      * @post A DynamoDB table with configured indexes is returned.
      */
     createOrUpdateWithdrawalTable(
         tableId: string,
         tableName: string,
+        removalPolicy: cdk.RemovalPolicy,
     ): dynamodb.Table {
         // Create DynamoDB table to store the messages. Encrypted by default.
         const table: dynamodb.Table = new dynamodb.Table(this, tableId, {
@@ -133,7 +149,8 @@ export class EmilyStack extends cdk.Stack {
             sortKey: {
                 name: 'StacksBlockHash',
                 type: dynamodb.AttributeType.STRING,
-            }
+            },
+            removalPolicy: removalPolicy,
         });
 
         const indexName: string = "WithdrawalStatus";
@@ -172,6 +189,7 @@ export class EmilyStack extends cdk.Stack {
     createOrUpdateChainstateTable(
         tableId: string,
         tableName: string,
+        removalPolicy: cdk.RemovalPolicy,
     ): dynamodb.Table {
         // Create DynamoDB table to store the messages. Encrypted by default.
         return new dynamodb.Table(this, tableId, {
@@ -183,7 +201,8 @@ export class EmilyStack extends cdk.Stack {
             sortKey: {
                 name: 'Hash',
                 type: dynamodb.AttributeType.STRING,
-            }
+            },
+            removalPolicy: removalPolicy,
         });
     }
 
