@@ -349,8 +349,13 @@ where
             }
 
             (message::Payload::WstsMessage(wsts_msg), _, _) => {
-                self.handle_wsts_message(wsts_msg, &msg.bitcoin_chain_tip)
-                    .await?;
+                self.handle_wsts_message(
+                    wsts_msg,
+                    &msg.bitcoin_chain_tip,
+                    msg.signer_pub_key,
+                    &chain_tip_report,
+                )
+                .await?;
             }
 
             (
@@ -579,10 +584,18 @@ where
         &mut self,
         msg: &message::WstsMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
+        msg_public_key: PublicKey,
+        chain_tip_report: &MsgChainTipReport,
     ) -> Result<(), Error> {
         tracing::info!("handling message");
+
         match &msg.inner {
             wsts::net::Message::DkgBegin(_) => {
+                if !chain_tip_report.sender_is_coordinator {
+                    tracing::warn!("Got coordinator message from wrong signer");
+                    return Ok(());
+                }
+
                 let signer_public_keys = self.get_signer_public_keys(bitcoin_chain_tip).await?;
 
                 let state_machine = wsts_state_machine::SignerStateMachine::new(
@@ -594,13 +607,54 @@ where
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
-            wsts::net::Message::DkgPublicShares(_)
-            | wsts::net::Message::DkgPrivateBegin(_)
-            | wsts::net::Message::DkgPrivateShares(_) => {
+            wsts::net::Message::DkgPrivateBegin(_) => {
+                if !chain_tip_report.sender_is_coordinator {
+                    tracing::warn!("Got coordinator message from wrong signer");
+                    return Ok(());
+                }
+
+                self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
+                    .await?;
+            }
+            wsts::net::Message::DkgPublicShares(dkg_public_shares) => {
+                let public_keys = match self.wsts_state_machines.get(&msg.txid) {
+                    Some(state_machine) => &state_machine.public_keys,
+                    None => return Err(Error::MissingStateMachine),
+                };
+                let signer_public_key = match public_keys.signers.get(&dkg_public_shares.signer_id)
+                {
+                    Some(key) => PublicKey::from(key),
+                    None => return Err(Error::MissingPublicKey),
+                };
+
+                if signer_public_key != msg_public_key {
+                    return Err(Error::InvalidSignature);
+                }
+                self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
+                    .await?;
+            }
+            wsts::net::Message::DkgPrivateShares(dkg_private_shares) => {
+                let public_keys = match self.wsts_state_machines.get(&msg.txid) {
+                    Some(state_machine) => &state_machine.public_keys,
+                    None => return Err(Error::MissingStateMachine),
+                };
+                let signer_public_key = match public_keys.signers.get(&dkg_private_shares.signer_id)
+                {
+                    Some(key) => PublicKey::from(key),
+                    None => return Err(Error::MissingPublicKey),
+                };
+
+                if signer_public_key != msg_public_key {
+                    return Err(Error::InvalidSignature);
+                }
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
             wsts::net::Message::DkgEndBegin(_) => {
+                if !chain_tip_report.sender_is_coordinator {
+                    tracing::warn!("Got coordinator message from wrong signer");
+                    return Ok(());
+                }
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
                 self.store_dkg_shares(&msg.txid).await?;
@@ -614,6 +668,10 @@ where
             // warning.
             #[allow(clippy::map_entry)]
             wsts::net::Message::NonceRequest(_) => {
+                if !chain_tip_report.sender_is_coordinator {
+                    tracing::warn!("Got coordinator message from wrong signer");
+                    return Ok(());
+                }
                 // TODO(296): Validate that message is the appropriate sighash
                 if !self.wsts_state_machines.contains_key(&msg.txid) {
                     let (maybe_aggregate_key, _) = self
@@ -634,6 +692,11 @@ where
                     .await?;
             }
             wsts::net::Message::SignatureShareRequest(_) => {
+                if !chain_tip_report.sender_is_coordinator {
+                    tracing::warn!("Got coordinator message from wrong signer");
+                    return Ok(());
+                }
+
                 // TODO(296): Validate that message is the appropriate sighash
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;

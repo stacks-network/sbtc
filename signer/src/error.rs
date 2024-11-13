@@ -487,6 +487,10 @@ pub enum Error {
     /// The smart contract has already been deployed
     #[error("smart contract already deployed, contract name: {0}")]
     ContractAlreadyDeployed(&'static str),
+
+    /// Received coordinator message wasn't from coordinator for this chain tip
+    #[error("not chain tip coordinator")]
+    NotChainTipCoordinator,
 }
 
 impl From<std::convert::Infallible> for Error {
