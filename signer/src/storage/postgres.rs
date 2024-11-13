@@ -1311,7 +1311,7 @@ impl super::DbRead for PgStore {
         _id: &model::QualifiedRequestId,
         _signer_public_key: &PublicKey,
     ) -> Result<Option<WithdrawalRequestReport>, Error> {
-        unimplemented!()
+        Ok(None)
     }
 
     async fn get_bitcoin_blocks_with_transaction(

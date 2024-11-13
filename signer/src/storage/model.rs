@@ -679,8 +679,8 @@ impl From<Vec<SignerVote>> for SignerVotes {
     }
 }
 
-impl From<SignerVotes> for BitArray<[u8; 16]> {
-    fn from(votes: SignerVotes) -> BitArray<[u8; 16]> {
+impl From<&SignerVotes> for BitArray<[u8; 16]> {
+    fn from(votes: &SignerVotes) -> BitArray<[u8; 16]> {
         let mut signer_bitmap = BitArray::ZERO;
         votes
             .iter()
@@ -698,6 +698,12 @@ impl From<SignerVotes> for BitArray<[u8; 16]> {
             });
 
         signer_bitmap
+    }
+}
+
+impl From<SignerVotes> for BitArray<[u8; 16]> {
+    fn from(votes: SignerVotes) -> BitArray<[u8; 16]> {
+        Self::from(&votes)
     }
 }
 

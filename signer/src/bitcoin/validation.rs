@@ -22,6 +22,12 @@ use crate::storage::model::StacksTxId;
 use crate::storage::DbRead as _;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
+use super::utxo::DepositRequest;
+use super::utxo::RequestRef;
+use super::utxo::Requests;
+use super::utxo::UnsignedTransaction;
+use super::utxo::WithdrawalRequest;
+
 // use super::utxo::DepositRequest;
 // use super::utxo;
 
@@ -202,6 +208,32 @@ impl BitcoinTxContext {
             withdrawals,
             signer_state,
         })
+    }
+
+    fn create_transaction<C>(&self, ctx: &C, reports: &SbtcReports) -> Result<(), Error>
+    where
+        C: Context + Send + Sync,
+    {
+        let deposit_requests: Vec<DepositRequest> = reports
+            .deposits
+            .iter()
+            .map(|(report, votes)| report.to_deposit_request(votes))
+            .collect();
+        let withdrawal_requests: Vec<WithdrawalRequest> = reports
+            .withdrawals
+            .iter()
+            .map(|(report, votes)| report.to_withdrawal_request(votes))
+            .collect();
+
+        let state = &reports.signer_state;
+        let deposits = deposit_requests.iter().map(RequestRef::Deposit);
+        let withdrawals = withdrawal_requests.iter().map(RequestRef::Withdrawal);
+        let requests = Requests::new(deposits.chain(withdrawals).collect());
+        let unsigned = UnsignedTransaction::new(requests, state)?;
+
+        let digests = unsigned.construct_digests()?;
+
+        Ok(())
     }
 }
 
@@ -462,6 +494,19 @@ impl DepositRequestReport {
         }
         Ok(())
     }
+
+    /// As deposit request.
+    pub fn to_deposit_request(&self, votes: &SignerVotes) -> DepositRequest {
+        DepositRequest {
+            outpoint: self.outpoint,
+            max_fee: self.max_fee,
+            amount: self.amount,
+            deposit_script: self.deposit_script.clone(),
+            reclaim_script: self.reclaim_script.clone(),
+            signers_public_key: self.signers_public_key,
+            signer_bitmap: votes.into(),
+        }
+    }
 }
 
 /// An enum for the confirmation status of a withdrawal request.
@@ -534,6 +579,18 @@ impl WithdrawalRequestReport {
         F: FeeAssessment,
     {
         Err(BitcoinWithdrawalOutputError::Unknown(self.qualified_id()))
+    }
+
+    fn to_withdrawal_request(&self, votes: &SignerVotes) -> WithdrawalRequest {
+        WithdrawalRequest {
+            request_id: self.request_id,
+            txid: self.txid,
+            block_hash: self.block_hash,
+            amount: self.amount,
+            max_fee: self.max_fee,
+            script_pubkey: self.script_pubkey.clone().into(),
+            signer_bitmap: votes.into(),
+        }
     }
 }
 
