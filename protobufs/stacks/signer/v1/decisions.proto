@@ -10,8 +10,10 @@ import "stacks/common.proto";
 message SignerDepositDecision {
   // The bitcoin outpoint that uniquely identifies the deposit request.
   bitcoin.OutPoint outpoint = 1;
-  // Whether or not the signer has accepted the deposit request.
-  bool accepted = 2;
+  // This specifies whether the sending signer's blocklist client blocked
+  // the deposit request. `true` here means the blocklist client did not
+  // block the request.
+  bool can_accept = 2;
   // This specifies whether the sending signer can provide signature shares
   // for the associated deposit request.
   bool can_sign = 3;

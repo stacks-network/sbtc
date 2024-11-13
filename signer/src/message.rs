@@ -252,8 +252,10 @@ pub struct SignerDepositDecision {
     pub txid: bitcoin::Txid,
     /// Index of the deposit request UTXO.
     pub output_index: u32,
-    /// Whether the signer has accepted the deposit request.
-    pub accepted: bool,
+    /// This specifies whether the sending signer's blocklist client
+    /// blocked the deposit request. `true` here means the blocklist client
+    /// did not block the request.
+    pub can_accept: bool,
     /// This specifies whether the sending signer can provide signature
     /// shares for the associated deposit request.
     pub can_sign: bool,
@@ -395,7 +397,7 @@ impl wsts::net::Signable for SignerDepositDecision {
         hasher.update("SIGNER_DEPOSIT_DECISION");
         hasher.update(self.txid);
         hasher.update(self.output_index.to_be_bytes());
-        hasher.update([self.accepted as u8]);
+        hasher.update([self.can_accept as u8]);
     }
 }
 

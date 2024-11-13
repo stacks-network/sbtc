@@ -257,7 +257,7 @@ impl From<SignerDepositDecision> for proto::SignerDepositDecision {
                 txid: Some(BitcoinTxId::from(value.txid).into()),
                 vout: value.output_index,
             }),
-            accepted: value.accepted,
+            can_accept: value.can_accept,
             can_sign: value.can_sign,
         }
     }
@@ -270,7 +270,7 @@ impl TryFrom<proto::SignerDepositDecision> for SignerDepositDecision {
         Ok(SignerDepositDecision {
             txid: outpoint.txid,
             output_index: outpoint.vout,
-            accepted: value.accepted,
+            can_accept: value.can_accept,
             can_sign: value.can_sign,
         })
     }

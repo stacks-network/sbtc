@@ -396,8 +396,8 @@ pub struct DepositSigner {
     pub output_index: u32,
     /// Public key of the signer.
     pub signer_pub_key: PublicKey,
-    /// Signals if the signer is prepared to sign for this request.
-    pub is_accepted: bool,
+    /// Signals if the signer will sign for this request if able.
+    pub can_accept: bool,
     /// This specifies whether the indicated signer_pub_key can sign for
     /// the associated deposit request.
     pub can_sign: bool,

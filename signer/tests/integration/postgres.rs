@@ -1236,28 +1236,28 @@ async fn fetching_deposit_request_votes() {
             txid,
             output_index,
             signer_pub_key: shares.signer_set_public_keys[0],
-            is_accepted: true,
+            can_accept: true,
             can_sign: true,
         },
         model::DepositSigner {
             txid,
             output_index,
             signer_pub_key: shares.signer_set_public_keys[1],
-            is_accepted: false,
+            can_accept: false,
             can_sign: true,
         },
         model::DepositSigner {
             txid,
             output_index,
             signer_pub_key: shares.signer_set_public_keys[2],
-            is_accepted: true,
+            can_accept: true,
             can_sign: true,
         },
         model::DepositSigner {
             txid,
             output_index,
             signer_pub_key: shares.signer_set_public_keys[3],
-            is_accepted: true,
+            can_accept: true,
             can_sign: true,
         },
     ];
@@ -1296,7 +1296,7 @@ async fn fetching_deposit_request_votes() {
         let actual_vote = actual_signer_vote_map
             .remove(&decision.signer_pub_key)
             .unwrap();
-        assert_eq!(actual_vote, Some(decision.is_accepted));
+        assert_eq!(actual_vote, Some(decision.can_accept));
     }
 
     // The remaining keys, the ones were we have not received a vote,
@@ -2667,7 +2667,7 @@ async fn deposit_report_with_only_deposit_request() {
     assert_eq!(report.amount, deposit_request.amount);
     assert_eq!(report_lock_time, deposit_request.lock_time);
     assert_eq!(report.max_fee, deposit_request.max_fee);
-    assert!(report.is_accepted.is_none());
+    assert!(report.can_accept.is_none());
     assert!(report.can_sign.is_none());
     // The transaction is not on the canonical bitcoin blockchain, so it
     // shows up as unconfirmed.
@@ -2751,7 +2751,7 @@ async fn deposit_report_with_deposit_request_reorged() {
     assert_eq!(report.amount, deposit_request.amount);
     assert_eq!(report_lock_time, deposit_request.lock_time);
     assert_eq!(report.max_fee, deposit_request.max_fee);
-    assert_eq!(report.is_accepted, Some(decision.is_accepted));
+    assert_eq!(report.can_accept, Some(decision.can_accept));
     assert_eq!(report.can_sign, Some(decision.can_sign));
     assert_eq!(report.status, DepositRequestStatus::Unconfirmed);
 
@@ -2851,7 +2851,7 @@ async fn deposit_report_with_deposit_request_spent() {
     assert_eq!(report.amount, deposit_request.amount);
     assert_eq!(report_lock_time, deposit_request.lock_time);
     assert_eq!(report.max_fee, deposit_request.max_fee);
-    assert_eq!(report.is_accepted, Some(decision.is_accepted));
+    assert_eq!(report.can_accept, Some(decision.can_accept));
     assert_eq!(report.can_sign, Some(decision.can_sign));
     assert_eq!(report.status, DepositRequestStatus::Spent(sweep_tx.txid));
 
@@ -2962,7 +2962,7 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
     assert_eq!(report.amount, deposit_request.amount);
     assert_eq!(report_lock_time, deposit_request.lock_time);
     assert_eq!(report.max_fee, deposit_request.max_fee);
-    assert_eq!(report.is_accepted, Some(decision.is_accepted));
+    assert_eq!(report.can_accept, Some(decision.can_accept));
     assert_eq!(report.can_sign, Some(decision.can_sign));
 
     let confirmed_height = chain_tip_block.block_height - 1;
@@ -2984,7 +2984,7 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
     assert_eq!(report.amount, deposit_request.amount);
     assert_eq!(report_lock_time, deposit_request.lock_time);
     assert_eq!(report.max_fee, deposit_request.max_fee);
-    assert_eq!(report.is_accepted, Some(decision.is_accepted));
+    assert_eq!(report.can_accept, Some(decision.can_accept));
     assert_eq!(report.can_sign, Some(decision.can_sign));
 
     let expected_status = DepositRequestStatus::Spent(sweep_tx.txid);
@@ -3062,7 +3062,7 @@ async fn deposit_report_with_deposit_request_confirmed() {
     assert_eq!(report.amount, deposit_request.amount);
     assert_eq!(report_lock_time, deposit_request.lock_time);
     assert_eq!(report.max_fee, deposit_request.max_fee);
-    assert_eq!(report.is_accepted, Some(decision.is_accepted));
+    assert_eq!(report.can_accept, Some(decision.can_accept));
     assert_eq!(report.can_sign, Some(decision.can_sign));
 
     let block = db.get_bitcoin_block(&chain_tip).await.unwrap().unwrap();

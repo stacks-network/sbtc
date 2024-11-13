@@ -406,7 +406,7 @@ impl DepositData {
                     txid: deposit_request.txid,
                     output_index: deposit_request.output_index,
                     signer_pub_key,
-                    is_accepted: fake::Faker.fake_with_rng(rng),
+                    can_accept: fake::Faker.fake_with_rng(rng),
                     can_sign: true,
                 })
                 .collect();

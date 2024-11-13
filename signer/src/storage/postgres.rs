@@ -100,9 +100,9 @@ pub fn extract_relevant_transactions(
 #[derive(sqlx::FromRow)]
 struct DepositStatusSummary {
     /// The current signer may not have a record of their vote for
-    /// the deposit. When that happens the `is_accepted` and
+    /// the deposit. When that happens the `can_accept` and
     /// `can_sign` fields will be None.
-    is_accepted: Option<bool>,
+    can_accept: Option<bool>,
     /// Whether this signer is a member of the signing set that generated
     /// the public key locking the deposit.
     can_sign: Option<bool>,
@@ -550,7 +550,7 @@ impl PgStore {
                 WHERE child.block_height >= $2
             )
             SELECT
-                ds.is_accepted
+                ds.can_accept
               , ds.can_sign
               , dr.amount
               , dr.max_fee
@@ -933,7 +933,7 @@ impl super::DbRead for PgStore {
             )
             SELECT
                 signer_public_key
-              , is_accepted
+              , can_accept AND can_sign AS is_accepted
             FROM signer_set_rows AS ss
             LEFT JOIN deposit_votes AS ds USING(signer_public_key)
             "#,
@@ -1070,7 +1070,7 @@ impl super::DbRead for PgStore {
         Ok(Some(DepositRequestReport {
             status,
             can_sign: summary.can_sign,
-            is_accepted: summary.is_accepted,
+            can_accept: summary.can_accept,
             amount: summary.amount,
             max_fee: summary.max_fee,
             lock_time: bitcoin::relative::LockTime::from_consensus(summary.lock_time)
@@ -2048,7 +2048,7 @@ impl super::DbWrite for PgStore {
               ( txid
               , output_index
               , signer_pub_key
-              , is_accepted
+              , can_accept
               , can_sign
               )
             VALUES ($1, $2, $3, $4, $5)
@@ -2057,7 +2057,7 @@ impl super::DbWrite for PgStore {
         .bind(decision.txid)
         .bind(i32::try_from(decision.output_index).map_err(Error::ConversionDatabaseInt)?)
         .bind(decision.signer_pub_key)
-        .bind(decision.is_accepted)
+        .bind(decision.can_accept)
         .bind(decision.can_sign)
         .execute(&self.0)
         .await

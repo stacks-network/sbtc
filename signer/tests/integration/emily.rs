@@ -503,7 +503,7 @@ async fn deposit_flow() {
                 txid: deposit_request.outpoint.txid.into(),
                 output_index: deposit_request.outpoint.vout,
                 signer_pub_key: signer_pub_key.clone(),
-                is_accepted: true,
+                can_accept: true,
                 can_sign: true,
             })
             .await

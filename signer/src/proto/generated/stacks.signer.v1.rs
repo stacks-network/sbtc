@@ -6,9 +6,11 @@ pub struct SignerDepositDecision {
     /// The bitcoin outpoint that uniquely identifies the deposit request.
     #[prost(message, optional, tag = "1")]
     pub outpoint: ::core::option::Option<super::super::super::bitcoin::OutPoint>,
-    /// Whether or not the signer has accepted the deposit request.
+    /// This specifies whether the sending signer's blocklist client blocked
+    /// the deposit request. `true` here means the blocklist client did not
+    /// block the request.
     #[prost(bool, tag = "2")]
-    pub accepted: bool,
+    pub can_accept: bool,
     /// This specifies whether the sending signer can provide signature shares
     /// for the associated deposit request.
     #[prost(bool, tag = "3")]
