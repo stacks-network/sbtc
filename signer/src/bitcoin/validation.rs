@@ -47,6 +47,10 @@ pub struct BitcoinTxContext {
     pub chain_tip_height: u64,
     /// The transaction that is being validated.
     pub tx: BitcoinTx,
+    /// This contains each of the requests for the entire transaction
+    /// package. Each element in the vector corresponds to the requests
+    /// that will be included in a single bitcoin transaction.
+    pub request_packages: Vec<PackagedRequests>,
     /// The deposit requests associated with the inputs in the transaction.
     pub deposit_requests: Vec<OutPoint>,
     /// The total amount of the transaction fee in sats.
@@ -67,6 +71,17 @@ pub struct BitcoinTxContext {
     /// Two byte prefix for BTC transactions that are related to the Stacks
     /// blockchain.
     pub magic_bytes: [u8; 2],
+}
+
+/// This type is a container for all deposits and withdrawals that are part
+/// of a transaction package.
+#[derive(Debug, Clone)]
+pub struct PackagedRequests {
+    /// The deposit requests associated with the inputs in the transaction.
+    pub deposit_requests: Vec<OutPoint>,
+    /// The withdrawal requests associated with the outputs in the current
+    /// transaction.
+    pub request_ids: Vec<QualifiedRequestId>,
 }
 
 impl BitcoinTxContext {
@@ -186,7 +201,7 @@ impl BitcoinTxContext {
                 .get_deposit_request_signer_votes(&txid, output_index, &aggregate_key)
                 .await?;
 
-            deposits.push((report, votes));
+            deposits.push((report.to_deposit_request(&votes), report));
         }
 
         for id in self.request_ids.iter() {
@@ -200,7 +215,7 @@ impl BitcoinTxContext {
                 .get_withdrawal_request_signer_votes(id, &aggregate_key)
                 .await?;
 
-            withdrawals.push((report, votes));
+            withdrawals.push((report.to_withdrawal_request(&votes), report));
         }
 
         Ok(SbtcReports {
@@ -209,32 +224,6 @@ impl BitcoinTxContext {
             signer_state,
         })
     }
-
-    fn create_transaction<C>(&self, ctx: &C, reports: &SbtcReports) -> Result<(), Error>
-    where
-        C: Context + Send + Sync,
-    {
-        let deposit_requests: Vec<DepositRequest> = reports
-            .deposits
-            .iter()
-            .map(|(report, votes)| report.to_deposit_request(votes))
-            .collect();
-        let withdrawal_requests: Vec<WithdrawalRequest> = reports
-            .withdrawals
-            .iter()
-            .map(|(report, votes)| report.to_withdrawal_request(votes))
-            .collect();
-
-        let state = &reports.signer_state;
-        let deposits = deposit_requests.iter().map(RequestRef::Deposit);
-        let withdrawals = withdrawal_requests.iter().map(RequestRef::Withdrawal);
-        let requests = Requests::new(deposits.chain(withdrawals).collect());
-        let unsigned = UnsignedTransaction::new(requests, state)?;
-
-        let digests = unsigned.construct_digests()?;
-
-        Ok(())
-    }
 }
 
 /// The set of sBTC requests with additional relevant
@@ -242,12 +231,31 @@ impl BitcoinTxContext {
 #[derive(Debug)]
 pub struct SbtcReports {
     /// Deposit requests with how the signers voted for them.
-    pub deposits: Vec<(DepositRequestReport, SignerVotes)>,
+    pub deposits: Vec<(DepositRequest, DepositRequestReport)>,
     /// Withdrawal requests with how the signers voted for them.
-    pub withdrawals: Vec<(WithdrawalRequestReport, SignerVotes)>,
+    pub withdrawals: Vec<(WithdrawalRequest, WithdrawalRequestReport)>,
     /// Summary of the Signers' UTXO and information necessary for
     /// constructing their next UTXO.
     pub signer_state: SignerBtcState,
+}
+
+impl SbtcReports {
+    /// Create the transaction with witness data using the requests.
+    pub fn create_transaction(&self) -> Result<UnsignedTransaction, Error> {
+        let deposits = self
+            .deposits
+            .iter()
+            .map(|(request, _)| RequestRef::Deposit(request));
+        let withdrawals = self
+            .withdrawals
+            .iter()
+            .map(|(request, _)| RequestRef::Withdrawal(request));
+
+        let state = &self.signer_state;
+        let requests = Requests::new(deposits.chain(withdrawals).collect());
+
+        UnsignedTransaction::new_stub(requests, state)
+    }
 }
 
 /// The responses for validation of a sweep transaction on bitcoin.
