@@ -117,12 +117,12 @@ impl BitcoinTxContext {
         Ok(())
     }
 
-    /// Fetch the signers' BTC state.
+    /// Fetch the signers' BTC state and the aggregate key.
     ///
     /// The returned state is the essential information for the signers
     /// UTXO, and information about the current fees and any fees paid for
     /// transactions currently in the mempool.
-    pub async fn get_btc_state<C>(&self, ctx: &C) -> Result<SignerBtcState, Error>
+    pub async fn get_btc_state<C>(&self, ctx: &C) -> Result<(SignerBtcState, PublicKey), Error>
     where
         C: Context + Send + Sync,
     {
@@ -140,13 +140,15 @@ impl BitcoinTxContext {
             return Err(Error::NoDkgShares);
         };
 
-        Ok(SignerBtcState {
+        let btc_state = SignerBtcState {
             fee_rate: self.fee_rate,
             utxo,
             public_key: bitcoin::XOnlyPublicKey::from(dkg_shares.aggregate_key),
             last_fees: self.last_fee,
             magic_bytes: self.magic_bytes,
-        })
+        };
+
+        Ok((btc_state, dkg_shares.aggregate_key))
     }
 
     /// Construct the reports for each request that this transaction will
@@ -156,16 +158,10 @@ impl BitcoinTxContext {
         C: Context + Send + Sync,
     {
         let db = ctx.get_storage();
+
         let signer_public_key = PublicKey::from_private_key(&ctx.config().signer.private_key);
-
-        let btc_state = self.get_btc_state(ctx).await?;
-
-        // If we are here, then we know that we have run DKG. Why? Well,
-        // users cannot deposit if they don't have an aggregate key to lock
-        // their funds with, and that requires DKG.
-        let Some(dkg_shares) = db.get_latest_encrypted_dkg_shares().await? else {
-            return Err(Error::NoDkgShares);
-        };
+        let chain_tip = &self.chain_tip;
+        let (signer_state, aggregate_key) = self.get_btc_state(ctx).await?;
 
         let mut deposits = Vec::new();
         let mut withdrawals = Vec::new();
@@ -173,39 +169,39 @@ impl BitcoinTxContext {
         for outpoint in self.deposit_requests.iter() {
             let txid = outpoint.txid.into();
             let output_index = outpoint.vout;
-            let report_future = db.get_deposit_request_report(
-                &self.chain_tip,
-                &txid,
-                output_index,
-                &signer_public_key,
-            );
+            let report_future =
+                db.get_deposit_request_report(chain_tip, &txid, output_index, &signer_public_key);
 
             let Some(report) = report_future.await? else {
                 return Err(BitcoinDepositInputError::Unknown(*outpoint).into_error(self));
             };
 
             let votes = db
-                .get_deposit_request_signer_votes(&txid, output_index)
+                .get_deposit_request_signer_votes(&txid, output_index, &aggregate_key)
                 .await?;
 
             deposits.push((report, votes));
         }
 
         for id in self.request_ids.iter() {
-            let report_future = db.get_withdrawal_request_report(&self.chain_tip, id, &signer_public_key);
+            let report_future = db.get_withdrawal_request_report(chain_tip, id, &signer_public_key);
 
             let Some(report) = report_future.await? else {
                 return Err(BitcoinWithdrawalOutputError::Unknown(*id).into_error(self));
             };
 
             let votes = db
-                .get_withdrawal_request_signer_votes(id, &dkg_shares.aggregate_key)
+                .get_withdrawal_request_signer_votes(id, &aggregate_key)
                 .await?;
 
             withdrawals.push((report, votes));
         }
 
-        unimplemented!()
+        Ok(SbtcReports {
+            deposits,
+            withdrawals,
+            signer_state,
+        })
     }
 }
 
