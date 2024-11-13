@@ -94,20 +94,30 @@ impl From<&crate::message::SweepTransactionInfo> for SweepTransaction {
 impl utxo::GetFees for Vec<SweepTransaction> {
     /// Return the total fee of all the transactions in the vector.
     fn get_fees(&self) -> Result<Option<Fees>, Error> {
+        // If there are no transactions then we have no basis for calculation,
+        // so we return `None`.
+        if self.is_empty() {
+            return Ok(None);
+        }
+
+        // This should never realistically happen in prod, but we do
+        // checked-math to ensure that we don't panic in case of overflow.
         let total: u64 = self
             .iter()
             .map(|tx| tx.fee)
             .try_fold(0u64, |acc, fee| acc.checked_add(fee))
             .ok_or(Error::ArithmeticOverflow)?;
 
+        // This should never realistically happen in prod either.
         let total_size: u64 = self
             .iter()
             .map(|tx| tx.vsize as u64)
             .try_fold(0u64, |acc, size| acc.checked_add(size))
             .ok_or(Error::ArithmeticOverflow)?;
 
+        // This should never realistically happen in prod either.
         if total_size == 0 {
-            return Ok(None);
+            return Err(Error::DivideByZero);
         }
 
         let fees = Some(Fees {
