@@ -7,6 +7,7 @@ use bitcoin::Block;
 use bitcoin::BlockHash;
 use bitcoin::Denomination;
 use bitcoin::OutPoint;
+use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
 use bitcoin::Txid;
 use bitcoin::Wtxid;
@@ -18,7 +19,6 @@ use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi as _;
 use bitcoincore_rpc_json::GetRawTransactionResultVin;
 use bitcoincore_rpc_json::GetRawTransactionResultVout as BitcoinTxInfoVout;
-use bitcoincore_rpc_json::GetRawTransactionResultVoutScriptPubKey as BitcoinTxInfoScriptPubKey;
 use serde::Deserialize;
 use url::Url;
 
@@ -108,7 +108,7 @@ pub struct BitcoinTxInfo {
     /// transactions).
     pub vsize: u64,
     /// The inputs into the transaction.
-    pub vin: Vec<BitcoinTxInfoVin>,
+    pub vin: Vec<BitcoinTxVin>,
     /// A description of the transactions outputs. This object is missing
     /// the `desc` field in the `scriptPubKey` object. That field is the
     /// "Inferred descriptor for the output".
@@ -127,7 +127,7 @@ pub struct BitcoinTxInfo {
 
 /// A description of an input into a transaction.
 #[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
-pub struct BitcoinTxInfoVin {
+pub struct BitcoinTxVin {
     /// Most of the details to the input into the transaction
     #[serde(flatten)]
     pub details: GetRawTransactionResultVin,
@@ -136,12 +136,12 @@ pub struct BitcoinTxInfoVin {
     /// This field is omitted if block undo data is not available, so it is
     /// missing whenever the `fee` field is missing in the
     /// [`BitcoinTxInfo`].
-    pub prevout: BitcoinTxInfoVinPrevout,
+    pub prevout: BitcoinTxVinPrevout,
 }
 
 /// The previous output, omitted if block undo data is not available.
 #[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
-pub struct BitcoinTxInfoVinPrevout {
+pub struct BitcoinTxVinPrevout {
     /// Whether this is a Coinbase or not.
     pub generated: bool,
     /// The height of the prevout.
@@ -151,7 +151,25 @@ pub struct BitcoinTxInfoVinPrevout {
     pub value: Amount,
     /// The scriptPubKey of the prevout.
     #[serde(rename = "scriptPubKey")]
-    pub script_pub_key: BitcoinTxInfoScriptPubKey,
+    pub script_pub_key: PrevoutScriptPubKey,
+}
+
+/// This type contains the `vin[*].prevout.scriptPubKey` field(s) for the
+/// `getrawtransaction` RPC response when verbose = 2
+///
+/// This struct leaves out the following fields (because we have no use for
+/// them):
+/// * `asm`
+/// * `addresses`
+/// * `address`
+/// * `req_sigs`
+/// * `type`
+#[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrevoutScriptPubKey {
+    /// The scriptPubKey locking the UTXO.
+    #[serde(rename = "hex")]
+    pub script: ScriptBuf,
 }
 
 /// A struct representing the recommended fee, in sats per vbyte, from a

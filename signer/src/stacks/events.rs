@@ -11,6 +11,7 @@
 use std::collections::BTreeMap;
 
 use bitcoin::hashes::Hash;
+use bitcoin::BlockHash as BitcoinBlockHash;
 use bitcoin::OutPoint;
 use bitcoin::PubkeyHash;
 use bitcoin::ScriptBuf;
@@ -45,10 +46,10 @@ pub enum EventError {
     /// returned in a Clarity [`Value`](clarity::vm::Value).
     #[error("Could not convert ASCII or UTF8 bytes into a String: {0}")]
     ClarityStringConversion(#[source] std::string::FromUtf8Error),
-    /// This can only be thrown when the number of bytes for a txid field
-    /// is not exactly equal to 32. This should never occur.
-    #[error("Could not convert an integer in clarity event into the expected integer {0}")]
-    ClarityTxidConversion(#[source] bitcoin::hashes::FromSliceError),
+    /// This can only be thrown when the number of bytes for a txid or
+    /// block hash field is not exactly equal to 32. This should never occur.
+    #[error("Could not convert a hash in clarity event into the expected hash {0}")]
+    ClarityHashConversion(#[source] bitcoin::hashes::FromSliceError),
     /// This error is thrown when trying to convert a public key from a
     /// Clarity buffer into a proper public key. It should never be thrown.
     #[error("Could not convert a public key in clarity event into the expected public key {0}")]
@@ -143,6 +144,13 @@ pub struct CompletedDepositEvent {
     pub amount: u64,
     /// This is the outpoint of the original bitcoin deposit transaction.
     pub outpoint: OutPoint,
+    /// The bitcoin block hash where the sweep transaction was included.
+    pub sweep_block_hash: BitcoinBlockHash,
+    /// The bitcoin block height where the sweep transaction was included.
+    pub sweep_block_height: u64,
+    /// The transaction id of the bitcoin transaction that fulfilled the
+    /// deposit.
+    pub sweep_txid: BitcoinTxid,
 }
 
 /// This is the event that is emitted from the `create-withdrawal-request`
@@ -193,6 +201,13 @@ pub struct WithdrawalAcceptEvent {
     /// This is the fee that was spent to the bitcoin miners to confirm the
     /// withdrawal request.
     pub fee: u64,
+    /// The bitcoin block hash where the sweep transaction was included.
+    pub sweep_block_hash: BitcoinBlockHash,
+    /// The bitcoin block height where the sweep transaction was included.
+    pub sweep_block_height: u64,
+    /// The transaction id of the bitcoin transaction that fulfilled the
+    /// withdrawal request.
+    pub sweep_txid: BitcoinTxid,
 }
 
 /// This is the event that is emitted from the `complete-withdrawal-reject`
@@ -299,6 +314,9 @@ impl RawTupleData {
     ///   bitcoin-txid: (buff 32),
     ///   output-index: uint,
     ///   amount: uint
+    ///   burn-hash: (buff 32),
+    ///   burn-height: uint,
+    ///   sweep-txid: (buff 32),
     /// })
     /// ```
     ///
@@ -308,6 +326,9 @@ impl RawTupleData {
         let amount = self.remove_u128("amount")?;
         let vout = self.remove_u128("output-index")?;
         let txid_bytes = self.remove_buff("bitcoin-txid")?;
+        let sweep_block_hash = self.remove_buff("burn-hash")?;
+        let sweep_block_height = self.remove_u128("burn-height")?;
+        let sweep_txid = self.remove_buff("sweep-txid")?;
 
         Ok(RegistryEvent::CompletedDeposit(CompletedDepositEvent {
             txid: self.tx_info.txid,
@@ -319,12 +340,18 @@ impl RawTupleData {
                 // This shouldn't error, this is set from a proper [`Txid`]
                 // in a contract call.
                 txid: BitcoinTxid::from_slice(&txid_bytes)
-                    .map_err(EventError::ClarityTxidConversion)?,
+                    .map_err(EventError::ClarityHashConversion)?,
                 // This shouldn't actually error, we cast u32s to u128s
                 // before making the contract call, and that is the value
                 // that gets emitted here.
                 vout: u32::try_from(vout).map_err(EventError::ClarityIntConversion)?,
             },
+            sweep_block_hash: BitcoinBlockHash::from_slice(&sweep_block_hash)
+                .map_err(EventError::ClarityHashConversion)?,
+            sweep_block_height: u64::try_from(sweep_block_height)
+                .map_err(EventError::ClarityIntConversion)?,
+            sweep_txid: BitcoinTxid::from_slice(&sweep_txid)
+                .map_err(EventError::ClarityHashConversion)?,
         }))
     }
 
@@ -536,7 +563,10 @@ impl RawTupleData {
     ///   bitcoin-txid: (buff 32),
     ///   signer-bitmap: uint,
     ///   bitcoin-index: uint,
-    ///   fee: fee
+    ///   fee: uint,
+    ///   burn-hash: (buff 32),
+    ///   burn-height: uint,
+    ///   sweep-txid: (buff 32),
     /// })
     /// ```
     fn withdrawal_accept(mut self) -> Result<RegistryEvent, EventError> {
@@ -545,6 +575,9 @@ impl RawTupleData {
         let fee = self.remove_u128("fee")?;
         let vout = self.remove_u128("output-index")?;
         let txid_bytes = self.remove_buff("bitcoin-txid")?;
+        let sweep_block_hash = self.remove_buff("burn-hash")?;
+        let sweep_block_height = self.remove_u128("burn-height")?;
+        let sweep_txid = self.remove_buff("sweep-txid")?;
 
         Ok(RegistryEvent::WithdrawalAccept(WithdrawalAcceptEvent {
             txid: self.tx_info.txid,
@@ -557,7 +590,7 @@ impl RawTupleData {
                 // This shouldn't error, this is set from a proper [`Txid`] in
                 // a contract call.
                 txid: BitcoinTxid::from_slice(&txid_bytes)
-                    .map_err(EventError::ClarityTxidConversion)?,
+                    .map_err(EventError::ClarityHashConversion)?,
                 // This shouldn't actually error, we cast u32s to u128s before
                 // making the contract call, and that is the value that gets
                 // emitted here.
@@ -566,6 +599,15 @@ impl RawTupleData {
             // This shouldn't error, since this amount is set from the u64
             // amount of sats by us.
             fee: u64::try_from(fee).map_err(EventError::ClarityIntConversion)?,
+
+            sweep_block_hash: BitcoinBlockHash::from_slice(&sweep_block_hash)
+                .map_err(EventError::ClarityHashConversion)?,
+
+            sweep_block_height: u64::try_from(sweep_block_height)
+                .map_err(EventError::ClarityIntConversion)?,
+
+            sweep_txid: BitcoinTxid::from_slice(&sweep_txid)
+                .map_err(EventError::ClarityHashConversion)?,
         }))
     }
 
@@ -702,6 +744,15 @@ mod tests {
                 ClarityValue::string_ascii_from_bytes("completed-deposit".as_bytes().to_vec())
                     .unwrap(),
             ),
+            (
+                ClarityName::from("burn-hash"),
+                ClarityValue::buff_from(vec![2; 32]).unwrap(),
+            ),
+            (ClarityName::from("burn-height"), ClarityValue::UInt(139)),
+            (
+                ClarityName::from("sweep-txid"),
+                ClarityValue::buff_from(vec![3; 32]).unwrap(),
+            ),
         ];
         let tuple_data = TupleData::from_data(event.to_vec()).unwrap();
         let value = ClarityValue::Tuple(tuple_data);
@@ -711,6 +762,12 @@ mod tests {
                 assert_eq!(event.amount, amount as u64);
                 assert_eq!(event.outpoint.txid, BitcoinTxid::from_byte_array([1; 32]));
                 assert_eq!(event.outpoint.vout, 3);
+                assert_eq!(
+                    event.sweep_block_hash,
+                    BitcoinBlockHash::from_byte_array([2; 32])
+                );
+                assert_eq!(event.sweep_block_height, 139);
+                assert_eq!(event.sweep_txid, BitcoinTxid::from_byte_array([3; 32]));
             }
             e => panic!("Got the wrong event variant: {e:?}"),
         };
@@ -811,6 +868,15 @@ mod tests {
                 ClarityValue::string_ascii_from_bytes("withdrawal-accept".as_bytes().to_vec())
                     .unwrap(),
             ),
+            (
+                ClarityName::from("burn-hash"),
+                ClarityValue::buff_from(vec![2; 32]).unwrap(),
+            ),
+            (ClarityName::from("burn-height"), ClarityValue::UInt(139)),
+            (
+                ClarityName::from("sweep-txid"),
+                ClarityValue::buff_from(vec![3; 32]).unwrap(),
+            ),
         ];
         let tuple_data = TupleData::from_data(event.to_vec()).unwrap();
         let value = ClarityValue::Tuple(tuple_data);
@@ -824,6 +890,12 @@ mod tests {
                 assert_eq!(event.outpoint.vout, vout as u32);
                 assert_eq!(event.fee, fee as u64);
                 assert_eq!(event.signer_bitmap, expected_bitmap);
+                assert_eq!(
+                    event.sweep_block_hash,
+                    BitcoinBlockHash::from_byte_array([2; 32])
+                );
+                assert_eq!(event.sweep_block_height, 139);
+                assert_eq!(event.sweep_txid, BitcoinTxid::from_byte_array([3; 32]));
             }
             e => panic!("Got the wrong event variant: {e:?}"),
         };

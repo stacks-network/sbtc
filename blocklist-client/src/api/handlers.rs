@@ -1,8 +1,8 @@
 //! Handlers for the blocklist client API
 
-use crate::client::risk_client;
+use crate::client::{risk_client, sanctions};
 use crate::common::error::ErrorResponse;
-use crate::config::RiskAnalysisConfig;
+use crate::config::{AssessmentMethod, Settings};
 use reqwest::Client;
 use std::convert::Infallible;
 use tracing::error;
@@ -27,14 +27,24 @@ use warp::{http::StatusCode, Rejection, Reply};
     (status = 500, description = "Internal server error")
     )
 )]
+
 pub async fn check_address_handler(
     address: String,
     client: Client,
-    config: RiskAnalysisConfig,
+    config: Settings,
 ) -> impl Reply {
-    let result = risk_client::check_address(&client, &config, &address)
-        .await
-        .map(|blocklist_status| warp::reply::json(&blocklist_status));
+    let result = (async {
+        match config.assessment.assessment_method {
+            AssessmentMethod::Sanctions => {
+                sanctions::check_address(&client, &config.risk_analysis, &address).await
+            }
+            AssessmentMethod::RiskAnalysis => {
+                risk_client::check_address(&client, &config.risk_analysis, &address).await
+            }
+        }
+    })
+    .await
+    .map(|blocklist_status| warp::reply::json(&blocklist_status));
 
     match result {
         Ok(blocklist_status) => blocklist_status.into_response(),

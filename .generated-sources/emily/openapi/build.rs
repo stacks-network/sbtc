@@ -10,6 +10,10 @@ use utoipa::openapi::security::SecurityScheme;
 use utoipa::Modify;
 use utoipa::OpenApi;
 
+fn main() {
+    build_emily();
+}
+
 #[derive(utoipa::OpenApi)]
 #[openapi(
     // Add API key security scheme.
@@ -76,7 +80,7 @@ use utoipa::OpenApi;
 )]
 struct ApiDoc;
 
-fn main() {
+pub fn build_emily() {
     // Ensure that we rerun if the API changes or the build script changes.
     println!("cargo:rerun-if-changed=../../../emily/handler/api");
     println!("cargo:rerun-if-changed=build.rs");

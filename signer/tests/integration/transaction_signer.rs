@@ -88,8 +88,9 @@ fn sweep_transaction_info<R: rand::RngCore>(
     deposit_requests: &[model::DepositRequest],
     withdrawal_requests: &[model::WithdrawalRequest],
 ) -> message::SweepTransactionInfo {
+    let txid = testing::dummy::txid(&fake::Faker, rng);
     message::SweepTransactionInfo {
-        txid: testing::dummy::txid(&fake::Faker, rng),
+        txid,
         created_at_block_hash,
         amount: 100,
         fee: 1,
