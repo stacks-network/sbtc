@@ -48,7 +48,7 @@ describe('EmilyStack Test', () => {
             // TODO(TBD): Add check for properties linking resources created during cdk build.
             Handler: "main",
             Runtime: "provided.al2023",
-            Architectures: [ "arm64" ],
+            Architectures: [ "x86_64" ],
             Timeout: 5,
         });
 

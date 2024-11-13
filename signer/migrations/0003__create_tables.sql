@@ -203,6 +203,8 @@ CREATE TABLE sbtc_signer.sweep_transactions (
     amount BIGINT NOT NULL,
     -- The fee paid for the transaction.
     fee BIGINT NOT NULL,
+    -- The Bitcoin "virtual size" of the transaction.
+    vsize INTEGER NOT NULL,
     -- The Bitcoin block hash at which this package was created.
     created_at_block_hash BYTEA NOT NULL,
     -- The Bitcoin market fee rate at the time this package was created.

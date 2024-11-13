@@ -94,6 +94,7 @@ fn sweep_transaction_info<R: rand::RngCore>(
         created_at_block_hash,
         amount: 100,
         fee: 1,
+        vsize: 50,
         market_fee_rate: 1.2,
         signer_prevout_txid: testing::dummy::txid(&fake::Faker, rng),
         signer_prevout_amount: 1,

@@ -13,6 +13,26 @@ use crate::stacks::contracts::WithdrawalAcceptValidationError;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Attempted division by zero
+    #[error("attempted division by zero")]
+    DivideByZero,
+
+    /// Arithmetic overflow
+    #[error("arithmetic overflow")]
+    ArithmeticOverflow,
+
+    /// Indicates that a sweep transaction with the specified txid could not be found.
+    #[error("sweep transaction not found: {0}")]
+    MissingSweepTransaction(bitcoin::Txid),
+
+    /// Received an error in response to getmempooldescendants RPC call
+    #[error("bitcoin-core getmempooldescendants error for txid {1}: {0}")]
+    BitcoinCoreGetMempoolDescendants(bitcoincore_rpc::Error, bitcoin::Txid),
+
+    /// Received an error in response to gettxspendingprevout RPC call
+    #[error("bitcoin-core gettxspendingprevout error for outpoint: {0}")]
+    BitcoinCoreGetTxSpendingPrevout(#[source] bitcoincore_rpc::Error, bitcoin::OutPoint),
+
     /// The nakamoto start height could not be determined.
     #[error("nakamoto start height could not be determined")]
     MissingNakamotoStartHeight,
@@ -475,6 +495,10 @@ pub enum Error {
     /// The smart contract has already been deployed
     #[error("smart contract already deployed, contract name: {0}")]
     ContractAlreadyDeployed(&'static str),
+
+    /// Received coordinator message wasn't from coordinator for this chain tip
+    #[error("not chain tip coordinator")]
+    NotChainTipCoordinator,
 }
 
 impl From<std::convert::Infallible> for Error {

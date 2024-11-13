@@ -13,12 +13,15 @@ use rand::distributions::Uniform;
 use rand::Rng;
 use signer::bitcoin::utxo::DepositRequest;
 use signer::bitcoin::utxo::Fees;
+use signer::bitcoin::utxo::GetFees as _;
 use signer::bitcoin::utxo::RequestRef;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
 use signer::bitcoin::utxo::SignerUtxo;
 use signer::bitcoin::utxo::UnsignedTransaction;
 use signer::bitcoin::utxo::WithdrawalRequest;
+use signer::message::SweepTransactionInfo;
+use signer::storage::model;
 use signer::storage::model::ScriptPubKey;
 
 use crate::utxo_construction::generate_withdrawal;
@@ -157,7 +160,8 @@ pub fn transaction_with_rbf(
     };
     let (rpc, faucet) = regtest::initialize_blockchain();
 
-    // Step 1: Construct and send a simple BTC transaction.
+    // ** Step 1 **
+    // Construct and send a simple BTC transaction.
     let signer = Recipient::new(AddressType::P2tr);
     let signers_public_key = signer.keypair.x_only_public_key().0;
 
@@ -188,7 +192,7 @@ pub fn transaction_with_rbf(
         })
         .collect();
 
-    faucet.generate_blocks(1);
+    let block_hash = faucet.generate_blocks(1).pop().unwrap();
     // We deposited the transaction to the signer, but it's not clear to the
     // wallet tracking the signer's address that the deposit is associated
     // with the signer since it's hidden within the merkle tree.
@@ -231,7 +235,7 @@ pub fn transaction_with_rbf(
     // Okay, lets submit the transaction. We also do a sanity check where
     // we try to submit an RBF transaction with an insufficient fee bump.
     // We need to note the fee for original transaction, so it is returned.
-    let (last_fee, last_fee_rate) = {
+    let fees = {
         // There should only be one transaction here since there is only one
         // deposit request and no withdrawal requests.
         let mut transactions: Vec<UnsignedTransaction> = requests.construct_transactions().unwrap();
@@ -248,7 +252,16 @@ pub fn transaction_with_rbf(
             last_size += unsigned.tx.vsize();
         });
 
-        // Step 2: create an RBF transaction that will fail.
+        // Simulate that we've retrieved the sweep transaction package from the db.
+        // We want to do this before step #2 so we can use the fees paid in the
+        // last successful transaction package when we return them further down.
+        let sweeps: Vec<model::SweepTransaction> = transactions
+            .iter()
+            .map(|tx| (&SweepTransactionInfo::from_unsigned_at_block(&block_hash, &tx)).into())
+            .collect();
+
+        // ** Step 2 **
+        // Ccreate an RBF transaction that will fail.
         //
         // This is a little sanity check where we submit an RBF transaction
         // but where we change the fee but an amount that is too small.
@@ -269,17 +282,25 @@ pub fn transaction_with_rbf(
             }
             _ => panic!("Unexpected response when sending bad replacement transaction"),
         }
-        (last_fee, last_fee as f64 / last_size as f64)
+
+        // Calculate the fees based on the last sweep transaction package.
+        let fees = sweeps
+            .get_fees()
+            .expect("failed to calculate fees from sweep transaction package")
+            .expect("could not calculate fees");
+
+        // Just double-check that the fees are what we expect.
+        assert_eq!(fees.total, last_fee);
+        assert_eq!(fees.rate, last_fee as f64 / last_size as f64);
+
+        // Return the fees so we can use them in the next step.
+        fees
     };
 
     // Step 3. Construct an RBF transaction
     //
     // Let's update the request state with the new fee rate, the last fee amount paid
     // and modify the outstanding deposits and withdrawals.
-    let fees = Fees {
-        total: last_fee,
-        rate: last_fee_rate,
-    };
     let requests = recreate_request_state(requests, &ctx, &deposits, &withdrawals, fees);
 
     let mut transactions = requests.construct_transactions().unwrap();
@@ -303,7 +324,7 @@ pub fn transaction_with_rbf(
     let fee_rate = total_fees as f64 / total_size as f64;
 
     more_asserts::assert_ge!(fee_rate, ctx.rbf_fee_rate);
-    more_asserts::assert_gt!(total_fees, last_fee);
+    more_asserts::assert_gt!(total_fees, fees.total);
 
     let deposit_amounts: u64 = requests.deposits.iter().map(|req| req.amount).sum();
     let withdrawal_amounts: u64 = requests.withdrawals.iter().map(|req| req.amount).sum();
