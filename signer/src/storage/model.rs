@@ -1140,4 +1140,40 @@ mod tests {
 
         assert_eq!(fees, expected);
     }
+
+    #[test]
+    fn get_sweep_transaction_package_overflows() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
+
+        let mut sweep_txs = vec![];
+        (0..3).for_each(|_| {
+            let tx = SweepTransaction {
+                fee: u64::MAX,
+                vsize: 1,
+                ..fake::Faker.fake_with_rng(&mut rng)
+            };
+            sweep_txs.push(tx);
+        });
+
+        let fees = sweep_txs.get_fees();
+        assert!(matches!(fees, Err(Error::ArithmeticOverflow)));
+    }
+
+    #[test]
+    fn get_sweep_transaction_package_divide_by_zero() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
+
+        let mut sweep_txs = vec![];
+        (0..3).for_each(|_| {
+            let tx = SweepTransaction {
+                fee: 1,
+                vsize: 0,
+                ..fake::Faker.fake_with_rng(&mut rng)
+            };
+            sweep_txs.push(tx);
+        });
+
+        let fees = sweep_txs.get_fees();
+        assert!(matches!(fees, Err(Error::DivideByZero)));
+    }
 }
