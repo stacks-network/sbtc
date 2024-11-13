@@ -6,6 +6,7 @@ use bitcoin::Amount;
 use bitcoin::Block;
 use bitcoin::BlockHash;
 use bitcoin::Denomination;
+use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
 use bitcoin::Txid;
@@ -145,16 +146,18 @@ pub struct TxSpendingPrevOut {
     pub spending_txid: Option<Txid>,
 }
 
-/// A struct representing an output of a transaction.
+/// A struct representing an output of a transaction. This is necessary as
+/// the [`bitcoin::OutPoint`] type does not serialize to the format that the
+/// bitcoin-core RPC expects.
 #[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
-pub struct RpcOutpoint {
+pub struct RpcOutPoint {
     /// The txid of the transaction including the output.
     pub txid: Txid,
     /// The index of the output in the transaction.
     pub vout: u32,
 }
 
-impl From<&OutPoint> for RpcOutpoint {
+impl From<&OutPoint> for RpcOutPoint {
     fn from(outpoint: &OutPoint) -> Self {
         Self {
             txid: outpoint.txid,
@@ -346,13 +349,15 @@ impl BitcoinCoreClient {
     ///
     /// This method requires bitcoin-core v27 or later.
     pub fn get_tx_spending_prevout(&self, outpoint: &OutPoint) -> Result<Vec<Txid>, Error> {
-        let rpc_outpoint = RpcOutpoint::from(outpoint);
+        let rpc_outpoint = RpcOutPoint::from(outpoint);
         let args = [serde_json::to_value(vec![rpc_outpoint]).map_err(Error::JsonSerialize)?];
 
-        let results = match self
+        let response = self
             .inner
-            .call::<Vec<TxSpendingPrevOut>>("gettxspendingprevout", &args)
-        {
+            .call::<Vec<TxSpendingPrevOut>>("gettxspendingprevout", &args);
+
+
+        let results = match response {
             Ok(response) => Ok(response),
             Err(err) => Err(Error::BitcoinCoreGetTxSpendingPrevout(err, *outpoint)),
         }?;
