@@ -319,6 +319,17 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
     async fn broadcast_transaction(&self, tx: &bitcoin::Transaction) -> Result<(), Error> {
         self.inner.lock().await.broadcast_transaction(tx).await
     }
+
+    async fn find_mempool_transactions_spending_output(
+        &self,
+        _outpoint: &bitcoin::OutPoint,
+    ) -> Result<Vec<Txid>, Error> {
+        unimplemented!()
+    }
+
+    async fn find_mempool_descendants(&self, _txid: &Txid) -> Result<Vec<Txid>, Error> {
+        unimplemented!()
+    }
 }
 
 impl StacksInteract for WrappedMock<MockStacksInteract> {
