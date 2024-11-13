@@ -1407,6 +1407,7 @@ impl super::DbRead for PgStore {
             )
             SELECT
                 rkt.txid
+              , rkt.address
               , rkt.aggregate_key
               , rkt.signer_set
               , rkt.signatures_required
@@ -2196,14 +2197,16 @@ impl super::DbWrite for PgStore {
             r#"
             INSERT INTO sbtc_signer.rotate_keys_transactions (
                   txid
+                , address
                 , aggregate_key
                 , signer_set
                 , signatures_required)
             VALUES
-                ($1, $2, $3, $4)
+                ($1, $2, $3, $4, $5)
             ON CONFLICT DO NOTHING"#,
         )
         .bind(key_rotation.txid)
+        .bind(&key_rotation.address)
         .bind(key_rotation.aggregate_key)
         .bind(&key_rotation.signer_set)
         .bind(i32::from(key_rotation.signatures_required))
@@ -2226,14 +2229,20 @@ impl super::DbWrite for PgStore {
           , amount
           , bitcoin_txid
           , output_index
+          , sweep_block_hash
+          , sweep_block_height
+          , sweep_txid
         )
-        VALUES ($1, $2, $3, $4, $5)",
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         )
         .bind(event.txid.0)
         .bind(event.block_id.0)
         .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.outpoint.txid.to_byte_array())
         .bind(i64::from(event.outpoint.vout))
+        .bind(event.sweep_block_hash.to_byte_array())
+        .bind(i64::try_from(event.sweep_block_height).map_err(Error::ConversionDatabaseInt)?)
+        .bind(event.sweep_txid.to_byte_array())
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -2288,8 +2297,11 @@ impl super::DbWrite for PgStore {
           , bitcoin_txid
           , output_index
           , fee
+          , sweep_block_hash
+          , sweep_block_height
+          , sweep_txid
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
         )
         .bind(event.txid.0)
         .bind(event.block_id.0)
@@ -2298,6 +2310,9 @@ impl super::DbWrite for PgStore {
         .bind(event.outpoint.txid.to_byte_array())
         .bind(i64::from(event.outpoint.vout))
         .bind(i64::try_from(event.fee).map_err(Error::ConversionDatabaseInt)?)
+        .bind(event.sweep_block_hash.to_byte_array())
+        .bind(i64::try_from(event.sweep_block_height).map_err(Error::ConversionDatabaseInt)?)
+        .bind(event.sweep_txid.to_byte_array())
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

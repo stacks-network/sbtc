@@ -126,9 +126,10 @@ CREATE TABLE sbtc_signer.stacks_transactions (
 );
 
 CREATE TABLE sbtc_signer.rotate_keys_transactions (
-    txid BYTEA PRIMARY KEY,
-    aggregate_key BYTEA NOT NULL,
-    signer_set BYTEA[] NOT NULL,
+    txid            BYTEA PRIMARY KEY,
+    address         TEXT    NOT NULL,
+    aggregate_key   BYTEA   NOT NULL,
+    signer_set      BYTEA[] NOT NULL,
     -- This is one of those fields that might not be required in the future
     -- when Schnorr signatures are introduced.
     signatures_required INTEGER NOT NULL,
@@ -137,13 +138,16 @@ CREATE TABLE sbtc_signer.rotate_keys_transactions (
 );
 
 CREATE TABLE sbtc_signer.completed_deposit_events (
-    id           BIGSERIAL PRIMARY KEY,
-    txid         BYTEA   NOT NULL,
-    block_hash   BYTEA   NOT NULL,
-    amount       BIGINT  NOT NULL,
-    bitcoin_txid BYTEA   NOT NULL,
-    output_index BIGINT  NOT NULL,
-    created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+    id                  BIGSERIAL PRIMARY KEY,
+    txid                BYTEA   NOT NULL,
+    block_hash          BYTEA   NOT NULL,
+    amount              BIGINT  NOT NULL,
+    bitcoin_txid        BYTEA   NOT NULL,
+    output_index        BIGINT  NOT NULL,
+    sweep_block_hash    BYTEA   NOT NULL,
+    sweep_block_height  BIGINT  NOT NULL,
+    sweep_txid          BYTEA   NOT NULL,
+    created_at          TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 CREATE TABLE sbtc_signer.withdrawal_create_events (
@@ -160,15 +164,18 @@ CREATE TABLE sbtc_signer.withdrawal_create_events (
 );
 
 CREATE TABLE sbtc_signer.withdrawal_accept_events (
-    id            BIGSERIAL PRIMARY KEY,
-    txid          BYTEA   NOT NULL,
-    block_hash    BYTEA   NOT NULL,
-    request_id    BIGINT  NOT NULL,
-    signer_bitmap BYTEA   NOT NULL,
-    bitcoin_txid  BYTEA   NOT NULL,
-    output_index  BIGINT  NOT NULL,
-    fee           BIGINT  NOT NULL,
-    created_at    TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+    id                  BIGSERIAL PRIMARY KEY,
+    txid                BYTEA   NOT NULL,
+    block_hash          BYTEA   NOT NULL,
+    request_id          BIGINT  NOT NULL,
+    signer_bitmap       BYTEA   NOT NULL,
+    bitcoin_txid        BYTEA   NOT NULL,
+    output_index        BIGINT  NOT NULL,
+    fee                 BIGINT  NOT NULL,
+    sweep_block_hash    BYTEA   NOT NULL,
+    sweep_block_height  BIGINT  NOT NULL,
+    sweep_txid          BYTEA   NOT NULL,
+    created_at          TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 CREATE TABLE sbtc_signer.withdrawal_reject_events (
