@@ -592,7 +592,8 @@ where
         match &msg.inner {
             wsts::net::Message::DkgBegin(_) => {
                 if !chain_tip_report.sender_is_coordinator {
-                    return Err(Error::NotChainTipCoordinator);
+                    warn!("Got coordinator message from wrong signer");
+                    return Ok(());
                 }
 
                 let signer_public_keys = self.get_signer_public_keys(bitcoin_chain_tip).await?;
@@ -608,7 +609,8 @@ where
             }
             wsts::net::Message::DkgPrivateBegin(_) => {
                 if !chain_tip_report.sender_is_coordinator {
-                    return Err(Error::NotChainTipCoordinator);
+                    warn!("Got coordinator message from wrong signer");
+                    return Ok(());
                 }
 
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
@@ -650,7 +652,8 @@ where
             }
             wsts::net::Message::DkgEndBegin(_) => {
                 if !chain_tip_report.sender_is_coordinator {
-                    return Err(Error::NotChainTipCoordinator);
+                    warn!("Got coordinator message from wrong signer");
+                    return Ok(());
                 }
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
@@ -666,7 +669,8 @@ where
             #[allow(clippy::map_entry)]
             wsts::net::Message::NonceRequest(_) => {
                 if !chain_tip_report.sender_is_coordinator {
-                    return Err(Error::NotChainTipCoordinator);
+                    warn!("Got coordinator message from wrong signer");
+                    return Ok(());
                 }
                 // TODO(296): Validate that message is the appropriate sighash
                 if !self.wsts_state_machines.contains_key(&msg.txid) {
@@ -689,7 +693,8 @@ where
             }
             wsts::net::Message::SignatureShareRequest(_) => {
                 if !chain_tip_report.sender_is_coordinator {
-                    return Err(Error::NotChainTipCoordinator);
+                    warn!("Got coordinator message from wrong signer");
+                    return Ok(());
                 }
 
                 // TODO(296): Validate that message is the appropriate sighash

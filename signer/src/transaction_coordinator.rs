@@ -876,11 +876,11 @@ where
             }
             None => {
                 tracing::warn!(
-                            ?packet.msg,
-                            reason = "no public key for signer",
-                signer_id = %signer_id,
-                            "ignoring packet"
-                        );
+                    ?packet.msg,
+                    reason = "no public key for signer",
+                    %signer_id,
+                    "ignoring packet"
+                );
                 false
             }
             _ => true,
