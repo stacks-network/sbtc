@@ -49,8 +49,8 @@ pub struct TestData {
     /// Withdraw signers
     pub withdraw_signers: Vec<model::WithdrawalSigner>,
 
-    /// signer outputs
-    pub signer_outputs: Vec<model::SignerOutput>,
+    /// transaction outputs
+    pub tx_outputs: Vec<model::TxOutput>,
 }
 
 impl TestData {
@@ -126,7 +126,7 @@ impl TestData {
                 bitcoin_transactions: deposit_data.bitcoin_transactions,
                 stacks_transactions: withdraw_data.stacks_transactions,
                 transactions,
-                signer_outputs: Vec::new(),
+                tx_outputs: Vec::new(),
             },
             block.into(),
         )
@@ -145,7 +145,7 @@ impl TestData {
         self.stacks_transactions
             .extend(new_data.stacks_transactions);
         self.transactions.extend(new_data.transactions);
-        self.signer_outputs.extend(new_data.signer_outputs);
+        self.tx_outputs.extend(new_data.tx_outputs);
     }
 
     /// Remove data in `other` present in the current model.
@@ -159,7 +159,7 @@ impl TestData {
         vec_diff(&mut self.bitcoin_transactions, &other.bitcoin_transactions);
         vec_diff(&mut self.stacks_transactions, &other.stacks_transactions);
         vec_diff(&mut self.transactions, &other.transactions);
-        vec_diff(&mut self.signer_outputs, &other.signer_outputs);
+        vec_diff(&mut self.tx_outputs, &other.tx_outputs);
     }
 
     /// Push bitcoin txs to a specific bitcoin block
@@ -170,7 +170,7 @@ impl TestData {
     ) {
         let mut bitcoin_transactions = vec![];
         let mut transactions = vec![];
-        let mut signer_outputs = Vec::new();
+        let mut tx_outputs = Vec::new();
 
         for (tx_type, tx) in sbtc_txs {
             let mut tx_bytes = Vec::new();
@@ -191,29 +191,29 @@ impl TestData {
             transactions.push(model_tx);
             bitcoin_transactions.push(bitcoin_transaction);
 
-            let txo_type = match tx_type {
-                model::TransactionType::SbtcTransaction => model::TxoType::Signers,
-                model::TransactionType::Donation => model::TxoType::Donation,
+            let output_type = match tx_type {
+                model::TransactionType::SbtcTransaction => model::TxOutputType::SignersOutput,
+                model::TransactionType::Donation => model::TxOutputType::Donation,
                 _ => continue,
             };
             if let Some(tx_out) = tx.output.first() {
-                // In our tests we always put the first output as the
-                // signers UTXO, even if it is a donation.
-                let signer_output = model::SignerOutput {
+                // In our tests we always happen to put the first output as
+                // the signers UTXO, even if it is a donation.
+                let tx_output = model::TxOutput {
                     txid: tx.compute_txid().into(),
                     output_index: 0,
                     script_pubkey: tx_out.script_pubkey.clone().into(),
                     amount: tx_out.value.to_sat(),
-                    txo_type,
+                    output_type,
                 };
-                signer_outputs.push(signer_output);
+                tx_outputs.push(tx_output);
             }
         }
 
         self.push(Self {
             bitcoin_transactions,
             transactions,
-            signer_outputs,
+            tx_outputs,
             ..Self::default()
         });
     }
@@ -286,8 +286,8 @@ impl TestData {
                 .expect("failed to write signer decision");
         }
 
-        for signer_output in self.signer_outputs.iter() {
-            storage.write_signer_txo(signer_output).await.unwrap();
+        for tx_output in self.tx_outputs.iter() {
+            storage.write_tx_output(tx_output).await.unwrap();
         }
     }
 

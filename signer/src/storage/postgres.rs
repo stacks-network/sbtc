@@ -359,7 +359,7 @@ impl PgStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
-        txo_type: model::TxoType,
+        txo_type: model::TxOutputType,
     ) -> Result<Option<SignerUtxo>, Error> {
         let pg_utxo = sqlx::query_as::<_, PgSignerUtxo>(
             r#"
@@ -369,27 +369,28 @@ impl PgStore {
             ),
             confirmed_sweeps AS (
                 SELECT 
-                    signer_prevout_txid
-                  , signer_prevout_output_index
-                FROM sbtc_signer.sweep_transactions AS st
+                    prevout_txid
+                  , prevout_output_index
+                FROM sbtc_signer.bitcoin_tx_inputs
                 JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
                 JOIN bitcoin_blockchain AS bb USING (block_hash)
+                WHERE prevout_type = 'signers_input'
             )
             SELECT
-                su.txid
-              , su.output_index
-              , su.amount
+                bo.txid
+              , bo.output_index
+              , bo.amount
               , ds.aggregate_key
-            FROM sbtc_signer.signer_txos AS su
+            FROM sbtc_signer.bitcoin_tx_outputs AS bo
             JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
             JOIN bitcoin_blockchain AS bb USING (block_hash)
             JOIN sbtc_signer.dkg_shares AS ds USING (script_pubkey)
             LEFT JOIN confirmed_sweeps AS cs
-              ON cs.signer_prevout_txid = su.txid
-              AND cs.signer_prevout_output_index = su.output_index
-            WHERE cs.signer_prevout_txid IS NULL
-              AND su.txo_type = $3
-            ORDER BY su.amount DESC
+              ON cs.prevout_txid = bo.txid
+              AND cs.prevout_output_index = bo.output_index
+            WHERE cs.prevout_txid IS NULL
+              AND bo.output_type = $3
+            ORDER BY bo.amount DESC
             LIMIT 1;
             "#,
         )
@@ -645,27 +646,8 @@ impl PgStore {
         .await
         .map_err(Error::SqlxQuery)?;
 
-        let signer_outputs = sqlx::query_as(
-            r#"
-            SELECT
-                txid
-              , output_index
-              , amount
-              , script_pubkey
-              , txo_type
-            FROM signer_txos
-            WHERE txid = $1
-            ORDER BY output_index ASC;
-        "#,
-        )
-        .bind(sweep_txid)
-        .fetch_all(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
         transaction.swept_deposits = swept_deposits;
         transaction.swept_withdrawals = swept_withdrawals;
-        transaction.signer_outputs = signer_outputs;
 
         Ok(Some(transaction))
     }
@@ -1522,11 +1504,11 @@ impl super::DbRead for PgStore {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> Result<Option<SignerUtxo>, Error> {
-        let txo_type = model::TxoType::Signers;
+        let txo_type = model::TxOutputType::SignersOutput;
         if let Some(pg_utxo) = self.get_utxo(chain_tip, context_window, txo_type).await? {
             return Ok(Some(pg_utxo));
         }
-        let txo_type = model::TxoType::Donation;
+        let txo_type = model::TxOutputType::Donation;
         self.get_utxo(chain_tip, context_window, txo_type).await
     }
 
@@ -2348,25 +2330,53 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn write_signer_txo(&self, signer_output: &model::SignerOutput) -> Result<(), Error> {
+    async fn write_tx_output(&self, output: &model::TxOutput) -> Result<(), Error> {
         sqlx::query(
             r#"
-            INSERT INTO signer_txos (
+            INSERT INTO bitcoin_tx_outputs (
                 txid
               , output_index
               , amount
               , script_pubkey
-              , txo_type
+              , output_type
             )
             VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT DO NOTHING;
             "#,
         )
-        .bind(signer_output.txid)
-        .bind(i32::try_from(signer_output.output_index).map_err(Error::ConversionDatabaseInt)?)
-        .bind(i64::try_from(signer_output.amount).map_err(Error::ConversionDatabaseInt)?)
-        .bind(&signer_output.script_pubkey)
-        .bind(signer_output.txo_type)
+        .bind(output.txid)
+        .bind(i32::try_from(output.output_index).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(output.amount).map_err(Error::ConversionDatabaseInt)?)
+        .bind(&output.script_pubkey)
+        .bind(output.output_type)
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
+    }
+
+    async fn write_tx_prevout(&self, prevout: &model::TxPrevout) -> Result<(), Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO bitcoin_tx_inputs (
+                txid
+              , prevout_txid
+              , prevout_output_index
+              , amount
+              , script_pubkey
+              , prevout_type
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT DO NOTHING;
+            "#,
+        )
+        .bind(prevout.txid)
+        .bind(prevout.prevout_txid)
+        .bind(i32::try_from(prevout.prevout_output_index).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(prevout.amount).map_err(Error::ConversionDatabaseInt)?)
+        .bind(&prevout.script_pubkey)
+        .bind(prevout.prevout_type)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -2470,12 +2480,6 @@ impl super::DbWrite for PgStore {
         }
 
         tx.commit().await.map_err(Error::SqlxCommitTransaction)?;
-
-        // TODO: maybe refactor to use the sqlx transaction type to keep
-        // things atomic.
-        for signer_output in transaction.signer_outputs.iter() {
-            self.write_signer_txo(signer_output).await?;
-        }
 
         Ok(())
     }

@@ -21,6 +21,7 @@ use std::future::Future;
 use std::time::Duration;
 
 use crate::bitcoin::rpc::BitcoinTxInfo;
+use crate::bitcoin::utxo::TxDeconstructor as _;
 use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
 use crate::context::SignerEvent;
@@ -30,7 +31,6 @@ use crate::stacks::api::StacksInteract;
 use crate::stacks::api::TenureBlocks;
 use crate::storage;
 use crate::storage::model;
-use crate::storage::model::SignerOutput;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use bitcoin::hashes::Hash as _;
@@ -375,6 +375,7 @@ where
             .collect();
 
         let db = self.context.get_storage_mut();
+        let btc_rpc = self.context.get_bitcoin_client();
         // Look through all the UTXOs in the given transaction slice and
         // keep the transactions where a UTXO is locked with a
         // `scriptPubKey` controlled by the signers.
@@ -392,25 +393,21 @@ where
                 continue;
             }
 
+            // This function is called after we have received a
+            // notification of a bitcoin block, and we are iterating
+            // through all of the transactions within that block. This
+            // means the `get_tx_info` call below should not fail.
+            let txid = tx.compute_txid();
+            let tx_info = btc_rpc
+                .get_tx_info(&txid, &block_hash)
+                .await?
+                .ok_or(Error::BitcoinTxMissing(txid, None))?;
+
             // sBTC transactions have as first txin a signers spendable output
-            let mut tx_type = model::TransactionType::Donation;
-            if let Some(txin) = tx.input.first() {
-                let tx_info = self
-                    .context
-                    .get_bitcoin_client()
-                    .get_tx(&txin.previous_output.txid)
-                    .await?
-                    .ok_or(Error::BitcoinTxMissing(txin.previous_output.txid, None))?;
-
-                let prevout = &tx_info
-                    .tx
-                    .tx_out(txin.previous_output.vout as usize)
-                    .map_err(|_| Error::OutPointMissing(txin.previous_output))?
-                    .script_pubkey;
-
-                if signer_script_pubkeys.contains(prevout) {
-                    tx_type = model::TransactionType::SbtcTransaction;
-                }
+            let tx_type = if tx_info.is_signer_created(&signer_script_pubkeys) {
+                model::TransactionType::SbtcTransaction
+            } else {
+                model::TransactionType::Donation
             };
 
             let txid = tx.compute_txid();
@@ -421,23 +418,12 @@ where
                 block_hash: block_hash.to_byte_array(),
             });
 
-            // Let's write the donation to the signer_txos table.
-            if tx_type == model::TransactionType::Donation {
-                let donations =
-                    tx.output.iter().enumerate().filter(|(_, tx_out)| {
-                        signer_script_pubkeys.contains(&tx_out.script_pubkey)
-                    });
-                for (output_index, output) in donations {
-                    let signer_output = SignerOutput {
-                        txid: txid.into(),
-                        output_index: output_index as u32,
-                        script_pubkey: output.script_pubkey.clone().into(),
-                        amount: output.value.to_sat(),
-                        txo_type: model::TxoType::Donation,
-                    };
-                    tracing::debug!(%txid, "writing donation utxo to the database");
-                    db.write_signer_txo(&signer_output).await?;
-                }
+            for prevout in tx_info.to_inputs(&signer_script_pubkeys) {
+                db.write_tx_prevout(&prevout).await?;
+            }
+
+            for output in tx_info.to_outputs(&signer_script_pubkeys) {
+                db.write_tx_output(&output).await?;
             }
         }
 
@@ -778,7 +764,7 @@ mod tests {
     #[tokio::test]
     async fn sbtc_transactions_get_stored() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let test_harness = TestHarness::generate(&mut rng, 20, 0..5);
+        let mut test_harness = TestHarness::generate(&mut rng, 20, 0..5);
 
         let block_hash = BlockHash::from_byte_array([1u8; 32]);
         // We're going to do the following:
@@ -809,13 +795,6 @@ mod tests {
         };
         storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 
-        let ctx = TestContext::builder()
-            .with_storage(storage.clone())
-            .with_stacks_client(test_harness.clone())
-            .with_emily_client(test_harness.clone())
-            .with_bitcoin_client(test_harness.clone())
-            .build();
-
         // Now let's create two transactions, one spending to the signers
         // and another not spending to the signers. We use
         // sbtc::testing::deposits::tx_setup just to quickly create a
@@ -829,6 +808,30 @@ mod tests {
 
         // This one does not spend to the signers :(
         let tx_setup1 = sbtc::testing::deposits::tx_setup(1, 10, 2000);
+        let txid0 = tx_setup0.tx.compute_txid();
+        let txid1 = tx_setup1.tx.compute_txid();
+
+        let response0 = GetTxResponse {
+            tx: tx_setup0.tx.clone(),
+            block_hash: Some(block_hash),
+            confirmations: None,
+            block_time: None,
+        };
+        let response1 = GetTxResponse {
+            tx: tx_setup1.tx.clone(),
+            block_hash: Some(block_hash),
+            confirmations: None,
+            block_time: None,
+        };
+        test_harness.add_deposit(txid0, response0);
+        test_harness.add_deposit(txid1, response1);
+
+        let ctx = TestContext::builder()
+            .with_storage(storage.clone())
+            .with_stacks_client(test_harness.clone())
+            .with_emily_client(test_harness.clone())
+            .with_bitcoin_client(test_harness.clone())
+            .build();
 
         let block_observer = BlockObserver {
             context: ctx,
