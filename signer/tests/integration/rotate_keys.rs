@@ -16,6 +16,7 @@ use signer::stacks::wallet::SignerWallet;
 use signer::storage::model::BitcoinBlock;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::RotateKeysTransaction;
+use signer::storage::model::StacksPrincipal;
 use signer::storage::model::Transaction;
 use signer::storage::model::TransactionType;
 use signer::storage::postgres::PgStore;
@@ -129,7 +130,11 @@ impl TestRotateKeySetup {
             .unwrap();
 
         let aggregate_key: PublicKey = self.aggregate_key();
+        let address = StacksPrincipal::from(clarity::vm::types::PrincipalData::from(
+            StacksAddress::p2pkh(false, &aggregate_key.into()),
+        ));
         let rotate_key_tx = RotateKeysTransaction {
+            address: address,
             txid: self.raw_tx.txid.into(),
             aggregate_key,
             signer_set: self.signer_keys.clone(),
