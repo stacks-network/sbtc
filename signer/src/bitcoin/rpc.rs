@@ -481,14 +481,12 @@ impl BitcoinInteract for BitcoinCoreClient {
 
     async fn find_mempool_transactions_spending_output(
         &self,
-        _outpoint: &bitcoin::OutPoint,
+        outpoint: &bitcoin::OutPoint,
     ) -> Result<Vec<Txid>, Error> {
-        // TODO: implement this
-        Ok(vec![])
+        self.get_tx_spending_prevout(outpoint)
     }
 
-    async fn find_mempool_descendants(&self, _txid: &Txid) -> Result<Vec<Txid>, Error> {
-        // TODO: implement this
-        Ok(vec![])
+    async fn find_mempool_descendants(&self, txid: &Txid) -> Result<Vec<Txid>, Error> {
+        self.get_mempool_descendants(txid)
     }
 }
