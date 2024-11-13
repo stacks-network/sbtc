@@ -1,52 +1,45 @@
 //! This module interacts with the risk API to determine the risk severity associated with a user wallet address.
 //!
 //! It provides functionality to:
-//! - Register a wallet address with the risk provider.
-//! - Retrieve the risk assessment for a registered address.
-//! - Evaluate the risk assessment and determine the blocklist status of the address.
+//! - Check if given address is under sanctions
 //!
 //! The module includes functions to handle API requests, interpret responses, and map them to application-specific errors.
 
 use crate::common::error::Error;
-use crate::common::{BlocklistStatus, RiskAssessment};
+use crate::common::{BlocklistStatus, RiskAssessment, RiskSeverity};
 use crate::config::RiskAnalysisConfig;
 use reqwest::{Client, Response, StatusCode};
 use serde::Deserialize;
 use std::error::Error as StdError;
 use tracing::debug;
-const API_BASE_PATH: &str = "/api/risk/v2/entities";
+const API_BASE_PATH: &str = "/api/v1/address";
 
-/// Confirmation for the successful registration of an address with the risk provider
-#[derive(Deserialize, Debug)]
-struct RegistrationResponse {
-    /// The registered address
-    address: String,
+/// Represents the identification information for a blockchain address.
+#[derive(Debug, Deserialize)]
+pub struct Identification {
+    /// The Chainalysis Entity category. For sanctioned addresses, the value will be 'sanctions'.
+    #[serde(rename = "category")]
+    pub _category: String,
+    /// The OFAC name associated with the sanctioned address.
+    #[serde(rename = "name")]
+    pub _name: Option<String>,
+    /// The OFAC description of the sanctioned address.
+    #[serde(rename = "description")]
+    pub _description: Option<String>,
+    /// The OFAC URL for more information about the sanctioned address.
+    #[serde(rename = "url")]
+    pub _url: Option<String>,
 }
 
-/// Register the user address with provider to run subsequent risk checks
-async fn register_address(
-    client: &Client,
-    config: &RiskAnalysisConfig,
-    address: &str,
-) -> Result<RegistrationResponse, Error> {
-    let api_url = register_address_path(&config.api_url);
-    let body = serde_json::json!({ "address": address });
+/// Response structure of the sanctions API
+#[derive(Debug, Deserialize)]
+pub struct SanctionsResponse {
+    /// Array with sanctions data. If empty, the address is not blocklisted.
+    pub identifications: Vec<Identification>,
+}
 
-    debug!("Beginning registration for address: {address}");
-
-    let response = client
-        .post(&api_url)
-        .header("Token", &config.api_key)
-        .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
-        .await?;
-
-    let checked_response = check_api_response(response).await?;
-    checked_response
-        .json::<RegistrationResponse>()
-        .await
-        .map_err(Error::from)
+fn risk_assessment_path(base_url: &str, address: &str) -> String {
+    format!("{}{}/{}", base_url, API_BASE_PATH, address)
 }
 
 /// Check risk status associated with a registered address
@@ -57,18 +50,30 @@ async fn get_risk_assessment(
 ) -> Result<RiskAssessment, Error> {
     let api_url = risk_assessment_path(&config.api_url, address);
     debug!("Beginning risk assessment for address: {address}");
-
     let response = client
         .get(&api_url)
-        .header("Token", &config.api_key)
+        .header("X-API-Key", &config.api_key)
+        .header("Accept", "application/json")
         .send()
         .await?;
-
     let checked_response = check_api_response(response).await?;
-    let resp_result = checked_response.json::<RiskAssessment>().await;
-
+    let resp_result = checked_response.json::<SanctionsResponse>().await;
+    // Currently this client can produce only two risks: Low and Severe. If the response contains any
+    // identifications (which mean address is under sanctions), the risk is Severe. Otherwise, it is Low.
     match resp_result {
-        Ok(resp) => Ok(resp),
+        Ok(resp) => {
+            if resp.identifications.is_empty() {
+                Ok(RiskAssessment {
+                    severity: RiskSeverity::Low,
+                    reason: None,
+                })
+            } else {
+                Ok(RiskAssessment {
+                    severity: RiskSeverity::Severe,
+                    reason: Some("sanctions".to_string()),
+                })
+            }
+        }
         Err(e) if e.is_decode() => {
             // Check if the source of the error is serde_json::Error
             if let Some(serde_err) = e
@@ -87,24 +92,18 @@ async fn get_risk_assessment(
     }
 }
 
-/// Screen the provided address for blocklist status after registering it
+/// Screen the provided address for blocklist status
 /// Marks the address as not accepted if it is identified as high risk
 pub async fn check_address(
     client: &Client,
     config: &RiskAnalysisConfig,
     address: &str,
 ) -> Result<BlocklistStatus, Error> {
-    // First, register the address
-    let register_response = register_address(client, config, address).await?;
-    debug!("Address registered: {}", register_response.address);
-
-    // If registration is successful, proceed to check the address
     let RiskAssessment { severity, reason } = get_risk_assessment(client, config, address).await?;
     debug!(
         "Received risk assessment: Severity = {}, Reason = {:?}",
         severity, reason
     );
-
     let is_severe = severity.is_severe();
     let blocklist_status = BlocklistStatus {
         // `is_blocklisted` is set to true if risk is Severe
@@ -140,14 +139,6 @@ async fn check_api_response(response: Response) -> Result<Response, Error> {
     }
 }
 
-fn register_address_path(base_url: &str) -> String {
-    format!("{}{}", base_url, API_BASE_PATH)
-}
-
-fn risk_assessment_path(base_url: &str, address: &str) -> String {
-    format!("{}{}/{}", base_url, API_BASE_PATH, address)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,42 +162,10 @@ mod tests {
     fn setup_mock(method: &str, path: &str, status: u16, body: &str) -> Mock {
         return mock(method, path)
             .with_status(status.into())
-            .with_header("content-type", "application/json")
+            .with_header("X-API-Key", "dummy_api_key")
+            .with_header("Accept", "application/json")
             .with_body(body)
             .create();
-    }
-
-    #[tokio::test]
-    async fn test_register_address_success() {
-        let _m = setup_mock("POST", API_BASE_PATH, 200, ADDRESS_REGISTRATION_BODY);
-        let (client, config) = setup_client();
-
-        let result = register_address(&client, &config, TEST_ADDRESS).await;
-        assert!(result.is_ok());
-        match result {
-            Ok(response) => assert_eq!(response.address, TEST_ADDRESS),
-            Err(e) => panic!("Expected success, got error: {:?}", e),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_register_address_bad_request() {
-        let _m = setup_mock(
-            "POST",
-            API_BASE_PATH,
-            400,
-            r#"{"message": "Bad request - Invalid parameters or data"}"#,
-        );
-        let (client, config) = setup_client();
-
-        let result = register_address(&client, &config, TEST_ADDRESS).await;
-        match result {
-            Err(Error::HttpRequest(code, message)) => {
-                assert_eq!(code, StatusCode::BAD_REQUEST);
-                assert!(message.contains("Bad request - Invalid parameters or data"));
-            }
-            _ => panic!("Expected HttpRequest, got {:?}", result),
-        }
     }
 
     #[tokio::test]
@@ -215,11 +174,21 @@ mod tests {
             "GET",
             format!("{}/{}", API_BASE_PATH, TEST_ADDRESS).as_str(),
             200,
-            r#"{"risk": "Severe"}"#,
+            r#"{
+   "identifications": [
+       {
+           "category": "sanctions",
+           "name": "SANCTIONS: OFAC SDN Secondeye Solution 2021-04-15 1da5821544e25c636c1417ba96ade4cf6d2f9b5a",
+           "description": "Pakistan-based Secondeye Solution (SES), also known as Forwarderz, is a synthetic identity document vendor that was added to the OFAC SDN list in April 2021.\n \n\n SES customers could buy fake identity documents to sign up for accounts with cryptocurrency exchanges, payment providers, banks, and more under false identities. According to the US Treasury Department, SES assisted the Internet Research Agency (IRA), the Russian troll farm that OFAC designated pursuant to E.O. 13848 in 2018 for interfering in the 2016 presidential election, in concealing its identity to evade sanctions.\n \n\n https://home.treasury.gov/news/press-releases/jy0126",
+           "url": "https://home.treasury.gov/news/press-releases/jy0126"
+       }
+   ]
+}"#,
         );
         let (client, config) = setup_client();
 
         let result = get_risk_assessment(&client, &config, TEST_ADDRESS).await;
+
         match result {
             Ok(risk) => assert_eq!(risk.severity, Severe),
             Err(e) => {
@@ -257,7 +226,16 @@ mod tests {
             "GET",
             format!("{}/{}", API_BASE_PATH, TEST_ADDRESS).as_str(),
             200,
-            r#"{"risk": "Severe", "riskReason": "fraud"}"#,
+            r#"{
+   "identifications": [
+       {
+           "category": "sanctions",
+           "name": "SANCTIONS: OFAC SDN Secondeye Solution 2021-04-15 1da5821544e25c636c1417ba96ade4cf6d2f9b5a",
+           "description": "Pakistan-based Secondeye Solution (SES), also known as Forwarderz, is a synthetic identity document vendor that was added to the OFAC SDN list in April 2021.\n \n\n SES customers could buy fake identity documents to sign up for accounts with cryptocurrency exchanges, payment providers, banks, and more under false identities. According to the US Treasury Department, SES assisted the Internet Research Agency (IRA), the Russian troll farm that OFAC designated pursuant to E.O. 13848 in 2018 for interfering in the 2016 presidential election, in concealing its identity to evade sanctions.\n \n\n https://home.treasury.gov/news/press-releases/jy0126",
+           "url": "https://home.treasury.gov/news/press-releases/jy0126"
+       }
+   ]
+}"#,
         );
         let (client, config) = setup_client();
 
@@ -266,7 +244,7 @@ mod tests {
         let status = result.unwrap();
         assert!(status.is_blocklisted);
         assert_eq!(status.severity, Severe);
-        assert_eq!(status.reason, Some("fraud".to_string()));
+        assert_eq!(status.reason, Some("sanctions".to_string()));
         assert!(!status.accept);
     }
 
@@ -277,7 +255,7 @@ mod tests {
             "GET",
             format!("{}/{}", API_BASE_PATH, TEST_ADDRESS).as_str(),
             200,
-            r#"{"risk": "Low"}"#,
+            r#"{"identifications": []}"#,
         );
         let (client, config) = setup_client();
 
@@ -303,7 +281,7 @@ mod tests {
         let result = check_address(&client, &config, TEST_ADDRESS).await;
         assert!(result.is_err());
         match result {
-            Err(Error::HttpRequest(code, _)) => assert_eq!(code, StatusCode::BAD_REQUEST),
+            Err(Error::HttpRequest(code, _)) => assert_eq!(code, StatusCode::NOT_IMPLEMENTED),
             _ => panic!("Expected HttpRequest for bad registration"),
         }
     }

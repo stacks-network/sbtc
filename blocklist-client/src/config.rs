@@ -11,6 +11,15 @@ pub struct Settings {
     pub server: ServerConfig,
     /// Blocklist client's risk service config
     pub risk_analysis: RiskAnalysisConfig,
+    /// Blocklist client's assessment method config
+    pub assessment: AssesmentConfig,
+}
+
+/// Blocklist client's assessment method config
+#[derive(Deserialize, Clone, Debug)]
+pub struct AssesmentConfig {
+    /// Assessment method for the Blocklist client
+    pub assessment_method: AssessmentMethod,
 }
 
 /// Blocklist client's server related config
@@ -20,6 +29,16 @@ pub struct ServerConfig {
     pub host: String,
     /// Port of the Blocklist client
     pub port: u16,
+}
+
+/// Assessment method for the Blocklist client
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum AssessmentMethod {
+    /// Use sanctions list API
+    Sanctions,
+    /// Use risk analysis API
+    RiskAnalysis,
 }
 
 /// Blocklist client's risk API config
