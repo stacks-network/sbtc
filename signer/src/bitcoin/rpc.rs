@@ -6,6 +6,7 @@ use bitcoin::Amount;
 use bitcoin::Block;
 use bitcoin::BlockHash;
 use bitcoin::Denomination;
+use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
 use bitcoin::Txid;
@@ -122,6 +123,47 @@ pub struct BitcoinTxInfo {
     /// timestamp as recorded by the miner of the block.
     #[serde(rename = "blocktime")]
     pub block_time: u64,
+}
+
+/// A struct containing the response from bitcoin-core for a
+/// `gettxspendingprevout` RPC call. The actual response is an array; this
+/// struct represents a single element of that array.
+///
+/// # Notes
+///
+/// * This endpoint requires bitcoin-core v27.0 or later.
+/// * Documentation for this endpoint can be found at
+///   https://bitcoincore.org/en/doc/27.0.0/rpc/blockchain/gettxspendingprevout/
+/// * This struct omits some fields returned from bitcoin-core: `txid` and
+///   `vout`, which are just the txid and vout of the outpoint which was passed
+///   as RPC arguments. We don't need them because we're not providing multiple
+///   outpoints to check, so we don't need to map the results back to specific
+///   outpoints.
+#[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
+pub struct TxSpendingPrevOut {
+    /// The txid of the transaction which spent the output.
+    #[serde(rename = "spendingtxid")]
+    pub spending_txid: Option<Txid>,
+}
+
+/// A struct representing an output of a transaction. This is necessary as
+/// the [`bitcoin::OutPoint`] type does not serialize to the format that the
+/// bitcoin-core RPC expects.
+#[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
+pub struct RpcOutPoint {
+    /// The txid of the transaction including the output.
+    pub txid: Txid,
+    /// The index of the output in the transaction.
+    pub vout: u32,
+}
+
+impl From<&OutPoint> for RpcOutPoint {
+    fn from(outpoint: &OutPoint) -> Self {
+        Self {
+            txid: outpoint.txid,
+            vout: outpoint.vout,
+        }
+    }
 }
 
 /// A description of an input into a transaction.
@@ -299,6 +341,69 @@ impl BitcoinCoreClient {
         }
     }
 
+    /// Scan the Bitcoin node's mempool to find transactions spending the
+    /// provided output. This method uses the `gettxspendingprevout` RPC
+    /// endpoint.
+    ///
+    /// # Notes
+    ///
+    /// This method requires bitcoin-core v27 or later.
+    pub fn get_tx_spending_prevout(&self, outpoint: &OutPoint) -> Result<Vec<Txid>, Error> {
+        let rpc_outpoint = RpcOutPoint::from(outpoint);
+        let args = [serde_json::to_value(vec![rpc_outpoint]).map_err(Error::JsonSerialize)?];
+
+        let response = self
+            .inner
+            .call::<Vec<TxSpendingPrevOut>>("gettxspendingprevout", &args);
+
+        let results = match response {
+            Ok(response) => Ok(response),
+            Err(err) => Err(Error::BitcoinCoreGetTxSpendingPrevout(err, *outpoint)),
+        }?;
+
+        // We will get results for each outpoint we pass in, and if there is no
+        // transaction spending the outpoint then the `spending_txid` field will
+        // be `None`. We filter out the `None`s and collect the `Some`s into a
+        // vector of `Txid`s.
+        let txids = results
+            .into_iter()
+            .filter_map(|result| result.spending_txid)
+            .collect::<Vec<_>>();
+
+        Ok(txids)
+    }
+
+    /// Scan the Bitcoin node's mempool to find transactions that are
+    /// descendants of the provided transaction. This method uses the
+    /// `getmempooldescendants` RPC endpoint.
+    ///
+    /// If the transaction is not in the mempool then an empty vector is
+    /// returned.
+    ///
+    /// If there is a chain of transactions in the mempool which implicitly
+    /// depend on the provided transaction, then the entire chain of
+    /// transactions is returned, not just the immediate descendants.
+    ///
+    /// The ordering of the transactions in the returned vector is not
+    /// guaranteed to be in any particular order.
+    ///
+    /// # Notes
+    ///
+    /// - This method requires bitcoin-core v27 or later.
+    /// - The RPC endpoint does not in itself return raw transaction data, so
+    ///   [`Self::get_tx`] must be used to fetch each transaction separately.
+    pub fn get_mempool_descendants(&self, txid: &Txid) -> Result<Vec<Txid>, Error> {
+        let args = [serde_json::to_value(txid).map_err(Error::JsonSerialize)?];
+
+        let result = self.inner.call::<Vec<Txid>>("getmempooldescendants", &args);
+
+        match result {
+            Ok(txids) => Ok(txids),
+            Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(vec![]),
+            Err(err) => Err(Error::BitcoinCoreGetMempoolDescendants(err, *txid)),
+        }
+    }
+
     /// Estimates the approximate fee in sats per vbyte needed for a
     /// transaction to be confirmed within `num_blocks`.
     ///
@@ -368,5 +473,16 @@ impl BitcoinInteract for BitcoinCoreClient {
         // src/bitcoin/fees.rs module.
         self.estimate_fee_rate(1)
             .map(|estimate| estimate.sats_per_vbyte)
+    }
+
+    async fn find_mempool_transactions_spending_output(
+        &self,
+        outpoint: &OutPoint,
+    ) -> Result<Vec<Txid>, Error> {
+        self.get_tx_spending_prevout(outpoint)
+    }
+
+    async fn find_mempool_descendants(&self, txid: &Txid) -> Result<Vec<Txid>, Error> {
+        self.get_mempool_descendants(txid)
     }
 }

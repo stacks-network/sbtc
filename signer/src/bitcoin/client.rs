@@ -72,4 +72,17 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
         self.exec(|client, _| client.broadcast_transaction(tx))
             .await
     }
+
+    async fn find_mempool_transactions_spending_output(
+        &self,
+        outpoint: &bitcoin::OutPoint,
+    ) -> Result<Vec<Txid>, Error> {
+        self.exec(|client, _| client.find_mempool_transactions_spending_output(outpoint))
+            .await
+    }
+
+    async fn find_mempool_descendants(&self, txid: &Txid) -> Result<Vec<Txid>, Error> {
+        self.exec(|client, _| client.find_mempool_descendants(txid))
+            .await
+    }
 }
