@@ -647,10 +647,34 @@ impl<'a> UnsignedTransaction<'a> {
     ///   4. Each input needs a signature in the witness data.
     ///   5. There is no witness data for deposit UTXOs.
     pub fn new(requests: Requests<'a>, state: &SignerBtcState) -> Result<Self, Error> {
+        // Construct a transaction. This transaction's inputs have witness
+        // data with dummy signatures so that our virtual size estimates
+        // are accurate. Afterwards we remove the witness data.
+        let mut unsigned = Self::new_stub(requests, state)?;
+        // Now we can reset the witness data, since this is an unsigned
+        // transaction.
+        unsigned.reset_witness_data();
+
+        Ok(unsigned)
+    }
+
+    /// Construct an transaction with stub witness data.
+    ///
+    /// This function can fail if the output amounts are greater than the
+    /// input amounts.
+    ///
+    /// The returned BTC transaction has the following properties:
+    ///   1. The amounts for each output has taken fees into consideration.
+    ///   2. The signer input UTXO is the first input.
+    ///   3. The signer output UTXO is the first output. The second output
+    ///      is the OP_RETURN data output.
+    ///   4. Each input has a fake signature in the witness data.
+    ///   5. With the exception of the fake signatures from (4), all
+    ///      witness data is correctly set.
+    pub fn new_stub(requests: Requests<'a>, state: &SignerBtcState) -> Result<Self, Error> {
         // Construct a transaction base. This transaction's inputs have
         // witness data with dummy signatures so that our virtual size
-        // estimates are accurate. Later we will update the fees and
-        // remove the witness data.
+        // estimates are accurate. Later we will update the fees.
         let mut tx = Self::new_transaction(&requests, state)?;
         // We now compute the total fees for the transaction.
         let tx_vsize: u32 = tx.vsize().try_into().map_err(|_| Error::TypeConversion)?;
@@ -659,10 +683,6 @@ impl<'a> UnsignedTransaction<'a> {
         // Now adjust the amount for the signers UTXO for the transaction
         // fee.
         Self::adjust_amounts(&mut tx, tx_fee);
-
-        // Now we can reset the witness data, since this is an unsigned
-        // transaction.
-        Self::reset_witness_data(&mut tx);
 
         Ok(Self {
             tx,
@@ -951,8 +971,9 @@ impl<'a> UnsignedTransaction<'a> {
     /// We originally populated the witness with dummy data to get an
     /// accurate estimate of the "virtual size" of the transaction. This
     /// function resets the witness data to be empty.
-    fn reset_witness_data(tx: &mut Transaction) {
-        tx.input
+    pub fn reset_witness_data(&mut self) {
+        self.tx
+            .input
             .iter_mut()
             .for_each(|tx_in| tx_in.witness = Witness::new());
     }
