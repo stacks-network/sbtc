@@ -5,8 +5,10 @@ use bitcoin::hashes::Hash;
 use bitcoin::transaction::Version;
 use bitcoin::AddressType;
 use bitcoin::Amount;
+use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::Sequence;
+use bitcoin::Txid;
 use bitcoin::Witness;
 use bitcoincore_rpc_json::Utxo;
 use fake::{Fake, Faker};
@@ -250,6 +252,30 @@ async fn get_tx_spending_prevout() {
     let response = client.get_tx_spending_prevout(&outpoint).unwrap();
 
     assert!(response.is_empty());
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_tx_spending_prevout_nonexistent_txid() {
+    let client = BitcoinCoreClient::new(
+        "http://localhost:18443",
+        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
+        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
+    )
+    .unwrap();
+
+    // Make a little noise on the blockchain so it's not empty.
+    let (_, faucet) = regtest::initialize_blockchain();
+    let addr = Recipient::new(AddressType::P2wpkh);
+    faucet.send_to(500_000, &addr.address);
+    faucet.generate_blocks(100);
+
+    // Try to tx's spending a non-existent outpoint. It should return an empty
+    // list.
+    let result = client
+        .get_tx_spending_prevout(&OutPoint::new(Txid::all_zeros(), 123))
+        .unwrap();
+    assert!(result.is_empty());
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
