@@ -93,7 +93,7 @@ impl From<&crate::message::SweepTransactionInfo> for SweepTransaction {
 
 impl utxo::GetFees for Vec<SweepTransaction> {
     /// Return the total fee of all the transactions in the vector.
-    fn get_fees(&self) -> Result<Fees, Error> {
+    fn get_fees(&self) -> Result<Option<Fees>, Error> {
         let total: u64 = self
             .iter()
             .map(|tx| tx.fee)
@@ -107,12 +107,15 @@ impl utxo::GetFees for Vec<SweepTransaction> {
             .ok_or(Error::ArithmeticOverflow)?;
 
         if total_size == 0 {
-            return Err(Error::DivideByZero);
+            return Ok(None);
         }
 
-        let rate: f64 = total as f64 / total_size as f64;
+        let fees = Some(Fees {
+            total,
+            rate: total as f64 / total_size as f64,
+        });
 
-        Ok(Fees { total, rate })
+        Ok(fees)
     }
 }
 
@@ -1015,11 +1018,12 @@ mod tests {
         assert_eq!(stacks_hash, round_trip);
     }
 
-    #[test_case(&[(1000, 500)], Fees { total: 500, rate: 0.5 })]
-    #[test_case(&[(1000, 500), (2000, 1000)], Fees { total: 1500, rate: 0.5 })]
-    #[test_case(&[(1000, 250), (2000, 1000)], Fees { total: 1250, rate: 0.4166666666666667 })]
-    #[test_case(&[(1000, 125), (1250, 125), (1500, 175)], Fees { total: 425, rate: 0.11333333333333333 })]
-    fn get_sweep_transaction_package_fees(sweeps: &[(u32, u64)], expected: Fees) {
+    #[test_case(&[(1000, 500)], Some(Fees { total: 500, rate: 0.5 }))]
+    #[test_case(&[(1000, 500), (2000, 1000)], Some(Fees { total: 1500, rate: 0.5 }))]
+    #[test_case(&[(1000, 250), (2000, 1000)], Some(Fees { total: 1250, rate: 0.4166666666666667 }))]
+    #[test_case(&[(1000, 125), (1250, 125), (1500, 175)], Some(Fees { total: 425, rate: 0.11333333333333333 }))]
+    #[test_case(&[], None)]
+    fn get_sweep_transaction_package_fees(sweeps: &[(u32, u64)], expected: Option<Fees>) {
         // (vsize, fee)
         let mut rng = rand::rngs::StdRng::seed_from_u64(1);
 

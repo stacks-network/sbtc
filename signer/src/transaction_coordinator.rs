@@ -52,7 +52,6 @@ use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
 use crate::storage::model::StacksTxId;
 use crate::storage::DbRead as _;
-use crate::util::CollectionExt as _;
 use crate::wsts_state_machine::CoordinatorStateMachine;
 
 use bitcoin::hashes::Hash as _;
@@ -964,8 +963,8 @@ where
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
 
-        // Retrieve the last sweep package for the above UTXO. These are transactions
-        // which exist in the mempool.
+        // Retrieve the last sweep package for the above UTXO. These are
+        // transactions which exist in the mempool.
         let last_sweep_package = self
             .context
             .get_storage()
@@ -976,13 +975,9 @@ where
             )
             .await?;
 
-        // If the last sweep package is empty, then we don't have any fees to
-        // report, so we return None. Otherwise, we return the calculated fees
-        // from the last sweep package.
-        let last_fees = last_sweep_package
-            .is_not_empty()
-            .then(|| last_sweep_package.get_fees())
-            .transpose()?;
+        // Calculate the last fees paid by the signer based on the latest sweep
+        // package.
+        let last_fees = last_sweep_package.get_fees()?;
 
         Ok(utxo::SignerBtcState {
             fee_rate,

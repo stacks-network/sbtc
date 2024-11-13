@@ -12,10 +12,6 @@ use crate::stacks::contracts::WithdrawalAcceptValidationError;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// Attempted division by zero
-    #[error("attempted division by zero")]
-    DivideByZero,
-
     /// Arithmetic overflow
     #[error("arithmetic overflow")]
     ArithmeticOverflow,

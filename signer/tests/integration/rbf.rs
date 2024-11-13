@@ -286,7 +286,8 @@ pub fn transaction_with_rbf(
         // Calculate the fees based on the last sweep transaction package.
         let fees = sweeps
             .get_fees()
-            .expect("Failed to calculate fees from sweep transaction package");
+            .expect("failed to calculate fees from sweep transaction package")
+            .expect("could not calculate fees");
 
         // Just double-check that the fees are what we expect.
         assert_eq!(fees.total, last_fee);

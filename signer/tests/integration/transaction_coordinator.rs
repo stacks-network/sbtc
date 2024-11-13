@@ -1745,7 +1745,8 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
     // package #2 into the database.
     let expected_fees = sweep_transactions2
         .get_fees()
-        .expect("failed to calculate fees");
+        .expect("failed to calculate fees (error)")
+        .expect("failed to calculate fees (none)");
 
     // Grab the BTC state.
     let btc_state = coord

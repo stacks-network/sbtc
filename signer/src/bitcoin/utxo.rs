@@ -82,8 +82,9 @@ impl Fees {
 
 /// A trait for getting the fees for a given instance.
 pub trait GetFees {
-    /// Get the [`Fees`] for this instance.
-    fn get_fees(&self) -> Result<Fees, Error>;
+    /// Get the [`Fees`] for this instance. If the basis for fee calculation is
+    /// not available, this function should return `None`.
+    fn get_fees(&self) -> Result<Option<Fees>, Error>;
 }
 
 /// Summary of the Signers' UTXO and information necessary for
