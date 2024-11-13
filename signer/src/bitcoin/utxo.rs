@@ -625,12 +625,28 @@ pub struct UnsignedTransaction<'a> {
 /// signature hashes.
 #[derive(Debug)]
 pub struct SignatureHashes<'a> {
+    /// The outpoint associated with the signers' [`TapSighash`].
+    pub signer_outpoint: OutPoint,
     /// The sighash of the signers' input UTXO for the transaction.
     pub signers: TapSighash,
     /// Each deposit request is associated with a UTXO input for the peg-in
     /// transaction. This field contains digests/signature hashes that need
     /// Schnorr signatures and the associated deposit request for each hash.
     pub deposits: Vec<(&'a DepositRequest, TapSighash)>,
+}
+
+impl<'a> SignatureHashes<'a> {
+    /// Return all of the digests that need signing
+    pub fn into_sighashes(self) -> Vec<(OutPoint, TapSighash)> {
+        let deposits = self
+            .deposits
+            .into_iter()
+            .map(|(deposit, sighash)| (deposit.outpoint, sighash));
+
+        std::iter::once((self.signer_outpoint, self.signers))
+            .chain(deposits)
+            .collect()
+    }
 }
 
 impl<'a> UnsignedTransaction<'a> {
@@ -745,6 +761,7 @@ impl<'a> UnsignedTransaction<'a> {
         // Combine them all together to get an ordered list of taproot
         // signature hashes.
         Ok(SignatureHashes {
+            signer_outpoint: self.signer_utxo.utxo.outpoint,
             signers: signer_sighash,
             deposits: deposit_sighashes,
         })
@@ -792,7 +809,7 @@ impl<'a> UnsignedTransaction<'a> {
     }
 
     /// Create the new SignerUtxo for this transaction.
-    fn new_signer_utxo(&self) -> SignerUtxo {
+    pub fn new_signer_utxo(&self) -> SignerUtxo {
         SignerUtxo {
             outpoint: OutPoint {
                 txid: self.tx.compute_txid(),
@@ -1091,6 +1108,13 @@ impl BitcoinInputsOutputs for Transaction {
         self
     }
 }
+
+impl<'a> BitcoinInputsOutputs for UnsignedTransaction<'a> {
+    fn tx_ref(&self) -> &Transaction {
+        &self.tx
+    }
+}
+
 
 impl BitcoinInputsOutputs for BitcoinTx {
     fn tx_ref(&self) -> &Transaction {

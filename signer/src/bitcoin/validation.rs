@@ -4,6 +4,7 @@ use bitcoin::relative::LockTime;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
+use bitcoin::TapSighash;
 use bitcoin::XOnlyPublicKey;
 
 use crate::bitcoin::utxo::FeeAssessment;
@@ -19,7 +20,7 @@ use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::SignerVotes;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
-use crate::storage::DbRead as _;
+use crate::storage::DbRead;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
 use super::utxo::DepositRequest;
@@ -51,8 +52,6 @@ pub struct BitcoinTxContext {
     /// package. Each element in the vector corresponds to the requests
     /// that will be included in a single bitcoin transaction.
     pub request_packages: Vec<PackagedRequests>,
-    /// The deposit requests associated with the inputs in the transaction.
-    pub deposit_requests: Vec<OutPoint>,
     /// The total amount of the transaction fee in sats.
     pub tx_fee: u64,
     /// The current market fee rate in sat/vByte.
@@ -60,17 +59,20 @@ pub struct BitcoinTxContext {
     /// The total fee amount and the fee rate for the last transaction that
     /// used this UTXO as an input.
     pub last_fee: Option<Fees>,
-    /// The withdrawal requests associated with the outputs in the current
-    /// transaction.
-    pub request_ids: Vec<QualifiedRequestId>,
     /// The public key of the signer that created the bitcoin transaction.
     /// This is very unlikely to ever be used in the
     /// [`BitcoinTx::validate`] function, but is here for logging and
     /// tracking purposes.
     pub origin: PublicKey,
+    /// This signers public key.
+    pub signer_public_key: PublicKey,
+    /// The current aggregate key that was the output of DKG.
+    pub aggregate_key: PublicKey,
     /// Two byte prefix for BTC transactions that are related to the Stacks
     /// blockchain.
     pub magic_bytes: [u8; 2],
+    /// The state of the signers.
+    pub signer_state: SignerBtcState,
 }
 
 /// This type is a container for all deposits and withdrawals that are part
@@ -131,7 +133,7 @@ impl BitcoinTxContext {
     where
         C: Context + Send + Sync,
     {
-        if !self.request_ids.is_empty() {
+        if !self.request_packages.iter().all(|reqs| reqs.request_ids.is_empty()) {
             return Err(Error::MissingBlock);
         }
 
@@ -143,7 +145,7 @@ impl BitcoinTxContext {
     /// The returned state is the essential information for the signers
     /// UTXO, and information about the current fees and any fees paid for
     /// transactions currently in the mempool.
-    pub async fn get_btc_state<C>(&self, ctx: &C) -> Result<(SignerBtcState, PublicKey), Error>
+    pub async fn get_btc_state<C>(&self, ctx: &C) -> Result<SignerBtcState, Error>
     where
         C: Context + Send + Sync,
     {
@@ -154,76 +156,103 @@ impl BitcoinTxContext {
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
 
-        // If we are here, then we know that we have run DKG. Why? Well,
-        // users cannot deposit if they don't have an aggregate key to lock
-        // their funds with, and that requires DKG.
-        let Some(dkg_shares) = db.get_latest_encrypted_dkg_shares().await? else {
-            return Err(Error::NoDkgShares);
-        };
-
         let btc_state = SignerBtcState {
             fee_rate: self.fee_rate,
             utxo,
-            public_key: bitcoin::XOnlyPublicKey::from(dkg_shares.aggregate_key),
+            public_key: bitcoin::XOnlyPublicKey::from(self.aggregate_key),
             last_fees: self.last_fee,
             magic_bytes: self.magic_bytes,
         };
 
-        Ok((btc_state, dkg_shares.aggregate_key))
+        Ok(btc_state)
     }
 
     /// Construct the reports for each request that this transaction will
     /// service.
-    pub async fn construct_reports<C>(&self, ctx: &C) -> Result<SbtcReports, Error>
+    pub async fn construct_reports2<C>(&self, ctx: &C) -> Result<Vec<TempOutput>, Error>
     where
         C: Context + Send + Sync,
     {
         let db = ctx.get_storage();
+        let signer_state = self.get_btc_state(ctx).await?;
 
-        let signer_public_key = PublicKey::from_private_key(&ctx.config().signer.private_key);
+        let signer_public_key = self.signer_public_key;
+        let aggregate_key = &self.aggregate_key;
         let chain_tip = &self.chain_tip;
-        let (signer_state, aggregate_key) = self.get_btc_state(ctx).await?;
 
-        let mut deposits = Vec::new();
-        let mut withdrawals = Vec::new();
+        let mut output = Vec::new();
 
-        for outpoint in self.deposit_requests.iter() {
-            let txid = outpoint.txid.into();
-            let output_index = outpoint.vout;
-            let report_future =
-                db.get_deposit_request_report(chain_tip, &txid, output_index, &signer_public_key);
+        for package in self.request_packages.iter() {
+            let mut deposits = Vec::new();
+            let mut withdrawals = Vec::new();
 
-            let Some(report) = report_future.await? else {
-                return Err(BitcoinDepositInputError::Unknown(*outpoint).into_error(self));
+            for outpoint in package.deposit_requests.iter() {
+                let txid = outpoint.txid.into();
+                let output_index = outpoint.vout;
+                let report_future = db.get_deposit_request_report(
+                    chain_tip,
+                    &txid,
+                    output_index,
+                    &signer_public_key,
+                );
+
+                let Some(report) = report_future.await? else {
+                    return Err(BitcoinDepositInputError::Unknown(*outpoint).into_error(self));
+                };
+
+                let votes = db
+                    .get_deposit_request_signer_votes(&txid, output_index, &aggregate_key)
+                    .await?;
+
+                deposits.push((report.to_deposit_request(&votes), report));
+            }
+
+            for id in package.request_ids.iter() {
+                let report_future =
+                    db.get_withdrawal_request_report(chain_tip, id, &signer_public_key);
+
+                let Some(report) = report_future.await? else {
+                    return Err(BitcoinWithdrawalOutputError::Unknown(*id).into_error(self));
+                };
+
+                let votes = db
+                    .get_withdrawal_request_signer_votes(id, &aggregate_key)
+                    .await?;
+
+                withdrawals.push((report.to_withdrawal_request(&votes), report));
+            }
+
+            let reports = SbtcReports {
+                deposits,
+                withdrawals,
+                signer_state,
             };
 
-            let votes = db
-                .get_deposit_request_signer_votes(&txid, output_index, &aggregate_key)
-                .await?;
+            let mut signer_state = signer_state;
+            let tx = reports.create_transaction()?;
+            let sighashes = tx.construct_digests()?.into_sighashes();
 
-            deposits.push((report.to_deposit_request(&votes), report));
+            signer_state.utxo = tx.new_signer_utxo();
+            // The first transaction is the only one whose input UTXOs that
+            // have all been confirmed. Moreover, the fees that it sets
+            // aside are enough to make up for the remaining transactions
+            // in the transaction package. With that in mind, we do not
+            // need to bump their fees anymore in order for them to be
+            // accepted by the network.
+            signer_state.last_fees = None;
+            output.push(TempOutput { reports, sighashes });
         }
 
-        for id in self.request_ids.iter() {
-            let report_future = db.get_withdrawal_request_report(chain_tip, id, &signer_public_key);
-
-            let Some(report) = report_future.await? else {
-                return Err(BitcoinWithdrawalOutputError::Unknown(*id).into_error(self));
-            };
-
-            let votes = db
-                .get_withdrawal_request_signer_votes(id, &aggregate_key)
-                .await?;
-
-            withdrawals.push((report.to_withdrawal_request(&votes), report));
-        }
-
-        Ok(SbtcReports {
-            deposits,
-            withdrawals,
-            signer_state,
-        })
+        Ok(output)
     }
+}
+
+/// Temp struct
+pub struct TempOutput {
+    /// The info for the stuff
+    pub sighashes: Vec<(OutPoint, TapSighash)>,
+    /// The info for the stuff
+    pub reports: SbtcReports,
 }
 
 /// The set of sBTC requests with additional relevant
