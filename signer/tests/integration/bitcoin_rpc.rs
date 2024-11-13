@@ -204,7 +204,7 @@ async fn get_tx_spending_prevout() {
     // Get some coins to spend (and our "utxo" outpoint).
     let outpoint = faucet.send_to(500_000, &addr1.address);
     // A coinbase transaction is not spendable until it has 100 confirmations.
-    faucet.generate_blocks(100);
+    faucet.generate_blocks(1);
 
     // We should not have any transactions spending this outpoint in the mempool.
     let response = client.get_tx_spending_prevout(&outpoint).unwrap();
@@ -293,7 +293,6 @@ async fn get_mempool_descendants() {
 
     // Get some coins to spend (and our "utxo" outpoint).
     let outpoint = faucet.send_to(10_000, &addr1.address);
-    // A coinbase transaction is not spendable until it has 100 confirmations.
     faucet.generate_blocks(1);
 
     // There should be no transactions in the mempool spending this txid.
