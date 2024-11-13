@@ -75,6 +75,89 @@
                             "output-index": {
                                 "UInt": 4294967295
                             },
+                            "burn-hash": {
+                                "Sequence": {
+                                    "Buffer": {
+                                        "data": [
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1
+                                        ]
+                                    }
+                                }
+                            },
+                            "burn-height": {
+                                "UInt": 42
+                            },
+                            "sweep-txid": {
+                                "Sequence": {
+                                    "Buffer": {
+                                        "data": [
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2
+                                        ]
+                                    }
+                                }
+                            },
                             "topic": {
                                 "Sequence": {
                                     "String": {
@@ -112,6 +195,17 @@
                                     }
                                 },
                                 "output-index": "UIntType",
+                                "burn-hash": {
+                                    "SequenceType": {
+                                        "BufferType": 32
+                                    }
+                                },
+                                "burn-height": "UIntType",
+                                "sweep-txid": {
+                                    "SequenceType": {
+                                        "BufferType": 32
+                                    }
+                                },
                                 "topic": {
                                     "SequenceType": {
                                         "StringType": {

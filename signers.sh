@@ -76,6 +76,27 @@ exec_run() {
   printf "${GRAY}$* signers started${NC}\n"
 }
 
+exec_demo() {
+  if [ -z "$1" ]; then
+    pubkey=`psql postgresql://postgres:postgres@localhost:5432/signer -c "SELECT aggregate_key FROM sbtc_signer.dkg_shares ORDER BY created_at DESC LIMIT 1" --no-align --quiet --tuples-only`
+    pubkey=${pubkey:2}
+    echo "Signers aggregate_key: $pubkey"
+  else
+    pubkey="$1"
+  fi
+
+  cargo run -p signer --bin demo-cli donation --amount 2000000 --signer-key "$pubkey"
+  cargo run -p signer --bin demo-cli deposit --amount 42 --max-fee 20000 --lock-time 50 --stacks-addr ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039 --signer-key "$pubkey"
+}
+
+exec_info() {
+  pubkey=`psql postgresql://postgres:postgres@localhost:5432/signer -c "SELECT aggregate_key FROM sbtc_signer.dkg_shares ORDER BY created_at DESC LIMIT 1" --no-align --quiet --tuples-only`
+  pubkey=${pubkey:2}
+  echo "Signers aggregate_key: $pubkey"
+
+  cargo run -p signer --bin demo-cli info --signer-key "$pubkey"
+}
+
 # The main function
 main() {
   if [ "$#" -eq 0 ]; then
@@ -89,10 +110,20 @@ main() {
     "run")
       shift # Shift the command off the argument list
       exec_run "$@"
-    ;;
+      ;;
+    # Execute demo operations
+    "demo")
+      shift # Shift the command off the argument list
+      exec_demo "$@"
+      ;;
+    # Get signers info from db
+    "info")
+      shift # Shift the command off the argument list
+      exec_info "$@"
+      ;;
     # Stop all running signers by killing the processes.
     "stop")
-      ps -ef | awk  '/[s]igner/{print $2}' | xargs kill -9
+      ps -ef | awk '/[s]igner/{print $2}' | xargs kill -9
     ;;
     *)
       printf "${RED}ERROR:${NC} Unknown command: $1\n"
