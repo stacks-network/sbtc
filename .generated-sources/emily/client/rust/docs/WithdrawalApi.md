@@ -29,7 +29,7 @@ Name | Type | Description  | Required | Notes
 
 ### Authorization
 
-No authorization required
+[ApiGatewayKey](../README.md#ApiGatewayKey)
 
 ### HTTP request headers
 
@@ -115,7 +115,7 @@ Name | Type | Description  | Required | Notes
 
 ### Authorization
 
-No authorization required
+[ApiGatewayKey](../README.md#ApiGatewayKey)
 
 ### HTTP request headers
 

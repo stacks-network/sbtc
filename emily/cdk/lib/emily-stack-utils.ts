@@ -82,6 +82,16 @@ export class EmilyStackUtils {
         return this.tablesOnly;
     }
 
+
+    /*
+     * Returns true iff the current stack is a development stack / not a production stack.
+     */
+    public static isDevelopmentStack(): boolean {
+        return this.getStageName() === Constants.DEV_STAGE_NAME
+            || this.getStageName() === Constants.LOCAL_STAGE_NAME
+            || this.getStageName() === Constants.UNIT_TEST_STAGE_NAME;
+    }
+
     /*
      * Returns the number of signer API keys to create.
      */
