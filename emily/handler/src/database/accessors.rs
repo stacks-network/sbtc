@@ -2,7 +2,10 @@
 
 use aws_sdk_dynamodb::types::AttributeValue;
 use serde_dynamo::Item;
-use tracing::{info, warn};
+#[cfg(feature = "testing")]
+use tracing::info;
+
+use tracing::warn;
 
 use crate::common::error::{Error, Inconsistency};
 
@@ -620,6 +623,7 @@ where
     .await
 }
 
+#[cfg(feature = "testing")]
 async fn delete_entry<T: TableIndexTrait>(
     context: &EmilyContext,
     key: &<<T as TableIndexTrait>::Entry as EntryTrait>::Key,

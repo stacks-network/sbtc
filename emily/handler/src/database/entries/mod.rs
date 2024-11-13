@@ -46,7 +46,9 @@
 
 use std::{collections::HashMap, fmt::Debug};
 
-use aws_sdk_dynamodb::types::{AttributeValue, DeleteRequest, WriteRequest};
+use aws_sdk_dynamodb::types::AttributeValue;
+#[cfg(feature = "testing")]
+use aws_sdk_dynamodb::types::{DeleteRequest, WriteRequest};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
 use serde_dynamo::Item;
@@ -335,6 +337,7 @@ pub(crate) trait TableIndexTrait {
     }
 
     /// Get all entries from a dynamodb table.
+    #[cfg(feature = "testing")]
     async fn get_all_entries(
         dynamodb_client: &aws_sdk_dynamodb::Client,
         settings: &Settings,
@@ -366,6 +369,7 @@ pub(crate) trait TableIndexTrait {
     }
 
     /// Generic delete table entry.
+    #[cfg(feature = "testing")]
     async fn delete_entry(
         dynamodb_client: &aws_sdk_dynamodb::Client,
         settings: &Settings,
@@ -387,6 +391,7 @@ pub(crate) trait TableIndexTrait {
     }
 
     /// Deletes every entry in a table with the specified keys.
+    #[cfg(feature = "testing")]
     async fn delete_entries(
         dynamodb_client: &aws_sdk_dynamodb::Client,
         settings: &Settings,
