@@ -146,6 +146,24 @@ pub struct TxSpendingPrevOut {
     pub spending_txid: Option<Txid>,
 }
 
+/// A struct representing an output of a transaction.
+#[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
+pub struct RpcOutpoint {
+    /// The txid of the transaction including the output.
+    pub txid: Txid,
+    /// The index of the output in the transaction.
+    pub vout: u32,
+}
+
+impl From<&OutPoint> for RpcOutpoint {
+    fn from(outpoint: &OutPoint) -> Self {
+        Self {
+            txid: outpoint.txid,
+            vout: outpoint.vout,
+        }
+    }
+}
+
 /// A description of an input into a transaction.
 #[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
 pub struct BitcoinTxVin {
@@ -332,19 +350,27 @@ impl BitcoinCoreClient {
         &self,
         outpoint: &OutPoint,
     ) -> Result<Vec<Txid>, Error> {
+        let rpc_outpoint = RpcOutpoint::from(outpoint);
         let args = [
-            serde_json::to_value(vec![outpoint]).map_err(Error::JsonSerialize)?,
+            serde_json::to_value(vec![rpc_outpoint])
+                .map_err(Error::JsonSerialize)?,
         ];
+
+        dbg!(args[0].to_string());
 
         let results = match self.inner.call::<Vec<TxSpendingPrevOut>>("gettxspendingprevout", &args) {
             Ok(response) => Ok(response),
             Err(err) => Err(Error::BitcoinCoreGetTxSpendingPrevout(err, *outpoint)),
         }?;
 
+        dbg!(&results);
+
         let txids = results
             .into_iter()
             .filter_map(|result| result.spending_txid)
             .collect::<Vec<_>>();
+
+        dbg!(&txids);
 
         Ok(txids)
     }
