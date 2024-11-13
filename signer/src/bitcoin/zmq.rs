@@ -45,8 +45,6 @@ use zeromq::ZmqMessage;
 use crate::config::Settings;
 use crate::error::Error;
 
-use super::error::BitcoinError;
-
 /// These are the types of messages that we can get from bitcoin-core by
 /// listing to its zeromq socket subscriptions.
 ///
@@ -98,7 +96,7 @@ pub fn parse_bitcoin_core_message(message: ZmqMessage) -> Result<BitcoinCoreMess
         .map(AsRef::as_ref)
         .collect::<Vec<&[u8]>>()
         .try_into()
-        .map_err(|err: Vec<_>| BitcoinError::ZmqMessageLayout(err.len()))?;
+        .map_err(|err: Vec<_>| Error::BitcoinCoreZmqMessageLayout(err.len()))?;
 
     // The sequence number is always sent as a little endian 4 byte
     // unsigned integer.
@@ -109,24 +107,24 @@ pub fn parse_bitcoin_core_message(message: ZmqMessage) -> Result<BitcoinCoreMess
             // bytes, so we need to reverse them.
             let mut block_hash_bytes: [u8; 32] = block_hash
                 .try_into()
-                .map_err(|_| BitcoinError::ZmqBlockHash(block_hash.len()))?;
+                .map_err(|_| Error::BitcoinCoreZmqBlockHash(block_hash.len()))?;
             block_hash_bytes.reverse();
             let block_hash = BlockHash::from_byte_array(block_hash_bytes);
 
             let sequence_bytes: [u8; 4] = seq
                 .try_into()
-                .map_err(|_| BitcoinError::ZmqSequenceNumber(seq.len()))?;
+                .map_err(|_| Error::BitcoinCoreZmqSequenceNumber(seq.len()))?;
             let sequence = u32::from_le_bytes(sequence_bytes);
 
             Ok(BitcoinCoreMessage::HashBlock(block_hash, sequence))
         }
         [b"rawblock", mut raw_block, seq] => {
             let block =
-                Block::consensus_decode(&mut raw_block).map_err(BitcoinError::DecodeBlock)?;
+                Block::consensus_decode(&mut raw_block).map_err(Error::DecodeBitcoinBlock)?;
 
             let sequence_bytes: [u8; 4] = seq
                 .try_into()
-                .map_err(|_| BitcoinError::ZmqSequenceNumber(seq.len()))?;
+                .map_err(|_| Error::BitcoinCoreZmqSequenceNumber(seq.len()))?;
             let sequence = u32::from_le_bytes(sequence_bytes);
 
             Ok(BitcoinCoreMessage::RawBlock(block, sequence))
@@ -137,7 +135,7 @@ pub fn parse_bitcoin_core_message(message: ZmqMessage) -> Result<BitcoinCoreMess
         // the topic for easier debugging.
         _ => {
             let topic = core::str::from_utf8(data[0]).map(ToString::to_string);
-            Err(BitcoinError::ZmqUnsupported(topic).into())
+            Err(Error::BitcoinCoreZmqUnsupported(topic))
         }
     }
 }
@@ -157,7 +155,7 @@ impl BitcoinCoreMessageStream {
             let item = socket
                 .recv()
                 .await
-                .map_err(|e| BitcoinError::ZmqReceive(e).into())
+                .map_err(Error::ZmqReceive)
                 .and_then(parse_bitcoin_core_message);
             Some((item, socket))
         });
@@ -174,15 +172,12 @@ impl BitcoinCoreMessageStream {
         T: AsRef<str>,
     {
         let mut socket = SubSocket::new();
-        socket
-            .connect(endpoint)
-            .await
-            .map_err(BitcoinError::ZmqConnect)?;
+        socket.connect(endpoint).await.map_err(Error::ZmqConnect)?;
         for subscription in subscriptions {
             socket
                 .subscribe(subscription.as_ref())
                 .await
-                .map_err(BitcoinError::ZmqSubscribe)?;
+                .map_err(Error::ZmqSubscribe)?;
         }
 
         Ok(Self::new_from_socket(socket))
