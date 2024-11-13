@@ -158,7 +158,17 @@ impl BitcoinTxContext {
         let db = ctx.get_storage();
         let signer_public_key = PublicKey::from_private_key(&ctx.config().signer.private_key);
 
+        let btc_state = self.get_btc_state(ctx).await?;
+
+        // If we are here, then we know that we have run DKG. Why? Well,
+        // users cannot deposit if they don't have an aggregate key to lock
+        // their funds with, and that requires DKG.
+        let Some(dkg_shares) = db.get_latest_encrypted_dkg_shares().await? else {
+            return Err(Error::NoDkgShares);
+        };
+
         let mut deposits = Vec::new();
+        let mut withdrawals = Vec::new();
 
         for outpoint in self.deposit_requests.iter() {
             let txid = outpoint.txid.into();
@@ -166,18 +176,33 @@ impl BitcoinTxContext {
             let report_future = db.get_deposit_request_report(
                 &self.chain_tip,
                 &txid,
-                outpoint.vout,
+                output_index,
                 &signer_public_key,
             );
 
-            let votes = db
-                .get_deposit_request_signer_votes(&txid, output_index)
-                .await?;
             let Some(report) = report_future.await? else {
                 return Err(BitcoinDepositInputError::Unknown(*outpoint).into_error(self));
             };
 
+            let votes = db
+                .get_deposit_request_signer_votes(&txid, output_index)
+                .await?;
+
             deposits.push((report, votes));
+        }
+
+        for id in self.request_ids.iter() {
+            let report_future = db.get_withdrawal_request_report(&self.chain_tip, id, &signer_public_key);
+
+            let Some(report) = report_future.await? else {
+                return Err(BitcoinWithdrawalOutputError::Unknown(*id).into_error(self));
+            };
+
+            let votes = db
+                .get_withdrawal_request_signer_votes(id, &dkg_shares.aggregate_key)
+                .await?;
+
+            withdrawals.push((report, votes));
         }
 
         unimplemented!()
@@ -259,6 +284,15 @@ pub enum BitcoinWithdrawalOutputError {
     /// their database.
     #[error("the signer does not have a record of the withdrawal request; {}", .0.request_id)]
     Unknown(QualifiedRequestId),
+}
+
+impl BitcoinWithdrawalOutputError {
+    fn into_error(self, ctx: &BitcoinTxContext) -> Error {
+        Error::BitcoinValidation(Box::new(BitcoinValidationError {
+            error: BitcoinSweepErrorMsg::Withdrawal(self),
+            context: ctx.clone(),
+        }))
+    }
 }
 
 /// The responses for validation of a sweep transaction on bitcoin.
