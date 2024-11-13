@@ -382,7 +382,7 @@ impl fake::Dummy<SignerSetConfig> for RotateKeysTransaction {
         RotateKeysTransaction {
             txid: fake::Faker.fake_with_rng(rng),
             address,
-            aggregate_key: PublicKey::combine_keys(signer_set.iter()).unwrap(),
+            aggregate_key: fake::Faker.fake_with_rng(rng),
             signer_set,
             signatures_required: config.signatures_required,
         }
