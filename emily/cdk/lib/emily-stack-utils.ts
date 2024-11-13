@@ -88,7 +88,7 @@ export class EmilyStackUtils {
     public static getNumSignerApiKeys(): number {
         this.numSignerApiKeys ??= parseInt(process.env.NUM_SIGNER_API_KEYS ?? (Constants.DEFAULT_NUM_SIGNER_API_KEYS).toString());
         if (this.numSignerApiKeys === undefined) {
-            throw new Error('Must define number of signer API');
+            throw new Error('Must define number of signer API keys');
         }
         return this.numSignerApiKeys
     }
