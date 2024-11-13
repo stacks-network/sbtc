@@ -18,6 +18,7 @@ use tokio_stream::wrappers::BroadcastStream;
 use wsts::net::SignatureType;
 
 use crate::bitcoin::utxo;
+use crate::bitcoin::utxo::GetFees;
 use crate::bitcoin::BitcoinInteract;
 use crate::context::TxCoordinatorEvent;
 use crate::context::TxSignerEvent;
@@ -404,12 +405,6 @@ where
         let transaction_package = pending_requests.construct_transactions()?;
 
         for mut transaction in transaction_package {
-            self.send_message(
-                SweepTransactionInfo::from_unsigned_at_block(bitcoin_chain_tip, &transaction),
-                bitcoin_chain_tip,
-            )
-            .await?;
-
             self.sign_and_broadcast(
                 bitcoin_chain_tip,
                 aggregate_key,
@@ -772,11 +767,19 @@ where
             });
 
         tracing::info!("broadcasing bitcoin transaction");
-
+        // Broadcast the transaction to the Bitcoin network.
         self.context
             .get_bitcoin_client()
             .broadcast_transaction(&transaction.tx)
             .await?;
+
+        // Publish the transaction to the P2P network so that peers get advance
+        // knowledge of the sweep.
+        self.send_message(
+            SweepTransactionInfo::from_unsigned_at_block(bitcoin_chain_tip, transaction),
+            bitcoin_chain_tip,
+        )
+        .await?;
 
         tracing::info!("bitcoin transaction accepted by bitcoin-core");
 
@@ -941,8 +944,10 @@ where
         given_key_is_coordinator(self.pub_key(), bitcoin_chain_tip, signer_public_keys)
     }
 
+    /// Constructs a new [`utxo::SignerBtcState`] based on the current market
+    /// fee rate, the signer's UTXO, and the last sweep package.
     #[tracing::instrument(skip(self, aggregate_key))]
-    async fn get_btc_state(
+    pub async fn get_btc_state(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &PublicKey,
@@ -950,13 +955,29 @@ where
         let bitcoin_client = self.context.get_bitcoin_client();
         let fee_rate = bitcoin_client.estimate_fee_rate().await?;
 
+        // Retrieve the signer's current UTXO.
         let utxo = self
             .context
             .get_storage()
             .get_signer_utxo(chain_tip, self.context_window)
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
-        let last_fees = bitcoin_client.get_last_fee(utxo.outpoint).await?;
+
+        // Retrieve the last sweep package for the above UTXO. These are
+        // transactions which exist in the mempool.
+        let last_sweep_package = self
+            .context
+            .get_storage()
+            .get_latest_unconfirmed_sweep_transactions(
+                chain_tip,
+                self.context_window,
+                &utxo.outpoint.txid.into(),
+            )
+            .await?;
+
+        // Calculate the last fees paid by the signer based on the latest sweep
+        // package.
+        let last_fees = last_sweep_package.get_fees()?;
 
         Ok(utxo::SignerBtcState {
             fee_rate,

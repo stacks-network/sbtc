@@ -225,10 +225,6 @@ impl BitcoinInteract for TestHarness {
         unimplemented!()
     }
 
-    async fn get_last_fee(&self, _utxo: bitcoin::OutPoint) -> Result<Option<utxo::Fees>, Error> {
-        unimplemented!()
-    }
-
     async fn broadcast_transaction(&self, _tx: &bitcoin::Transaction) -> Result<(), Error> {
         unimplemented!()
     }

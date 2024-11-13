@@ -151,6 +151,8 @@ pub struct SweepTransactionInfo {
     pub amount: u64,
     /// The fee paid for this transaction.
     pub fee: u64,
+    /// The virtual size of this transaction (in bytes).
+    pub vsize: u32,
     /// The Bitcoin block hash at which this transaction was created.
     pub created_at_block_hash: bitcoin::BlockHash,
     /// The market fee rate at the time of this transaction.
@@ -208,6 +210,7 @@ impl SweepTransactionInfo {
                 .signers_script_pubkey(),
             amount: unsigned.output_amounts(),
             fee: unsigned.tx_fee,
+            vsize: unsigned.tx_vsize,
             market_fee_rate: unsigned.signer_utxo.fee_rate,
             created_at_block_hash: *block_hash,
             swept_deposits,

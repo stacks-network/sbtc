@@ -2,11 +2,10 @@
 
 use emily_handler::context::EmilyContext;
 use tracing::info;
-use tracing::warn;
-use warp::Filter;
 
 use emily_handler::api;
 use emily_handler::logging;
+use warp::Filter;
 
 #[tokio::main]
 async fn main() {
@@ -21,7 +20,7 @@ async fn main() {
     info!("Lambda Context:\n{context:?}");
 
     // Setup service filters.
-    let service_filter = routes(context)
+    let service_filter = api::routes::routes_with_stage_prefix(context)
         .recover(api::handlers::handle_rejection)
         .with(warp::log("api"));
 
@@ -31,23 +30,4 @@ async fn main() {
     warp_lambda::run(warp_service)
         .await
         .expect("An error occurred");
-}
-
-/// Makes the routes.
-#[cfg(not(feature = "testing"))]
-fn routes(
-    context: EmilyContext,
-) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    api::routes::routes(context)
-}
-
-/// Makes the routes.
-#[cfg(feature = "testing")]
-fn routes(
-    context: EmilyContext,
-) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    warn!(
-        "Running lambda server with testing features - all paths will be prefixed with \"/local\""
-    );
-    warp::path("local").and(api::routes::routes(context))
 }

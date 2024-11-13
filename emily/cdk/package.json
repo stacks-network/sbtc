@@ -6,6 +6,9 @@
   },
   "scripts": {
     "synth": "tsc && npx aws-cdk synth -q --no-staging",
+    "build-lambda": "cd ../handler && cargo lambda build --bin emily-lambda --release --output-format zip --x86-64",
+    "deploy": "npx aws-cdk deploy",
+    "build-deploy": "npm run build-lambda && npm run deploy",
     "watch": "tsc -w",
     "test": "jest",
     "clean": "rm -rf node_modules .cdk.staging cdk.out .generated-sources"
