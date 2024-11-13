@@ -116,8 +116,6 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
         bitcoin_anchor: BitcoinBlockHash::from(new_block_event.burn_block_hash),
     };
     let block_id = new_block_event.index_block_hash;
-    let bitcoin_block_hash = new_block_event.burn_block_hash.to_hex();
-    let bitcoin_block_height = new_block_event.burn_block_height as u64;
 
     // Create vectors to store the processed events for Emily.
     let mut completed_deposits = Vec::new();
@@ -127,24 +125,16 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
     for (ev, txid) in events {
         let tx_info = TxInfo { txid, block_id };
         let res = match RegistryEvent::try_new(ev.value, tx_info) {
-            Ok(RegistryEvent::CompletedDeposit(event)) => handle_completed_deposit(
-                &api.ctx,
-                event,
-                &stacks_chaintip,
-                bitcoin_block_hash.clone(),
-                bitcoin_block_height,
-            )
-            .await
-            .map(|x| completed_deposits.push(x)),
-            Ok(RegistryEvent::WithdrawalAccept(event)) => handle_withdrawal_accept(
-                &api.ctx,
-                event,
-                &stacks_chaintip,
-                bitcoin_block_hash.clone(),
-                bitcoin_block_height,
-            )
-            .await
-            .map(|x| updated_withdrawals.push(x)),
+            Ok(RegistryEvent::CompletedDeposit(event)) => {
+                handle_completed_deposit(&api.ctx, event, &stacks_chaintip)
+                    .await
+                    .map(|x| completed_deposits.push(x))
+            }
+            Ok(RegistryEvent::WithdrawalAccept(event)) => {
+                handle_withdrawal_accept(&api.ctx, event, &stacks_chaintip)
+                    .await
+                    .map(|x| updated_withdrawals.push(x))
+            }
             Ok(RegistryEvent::WithdrawalReject(event)) => {
                 handle_withdrawal_reject(&api.ctx, event, &stacks_chaintip)
                     .await
@@ -242,10 +232,6 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
 /// - `event`: The deposit event to be processed.
 /// - `stacks_chaintip`: Current chaintip information for the Stacks blockchain,
 ///   including block height and hash.
-/// - `bitcoin_block_hash`: The hash of the Bitcoin block containing the
-///   fullfilling tx.
-/// - `bitcoin_block_height`: The height of the Bitcoin block containing the
-///   fullfilling tx.
 ///
 /// # Returns
 /// - `Result<DepositUpdate, Error>`: On success, returns a `DepositUpdate` struct containing
@@ -255,12 +241,6 @@ async fn handle_completed_deposit(
     ctx: &impl Context,
     event: CompletedDepositEvent,
     stacks_chaintip: &StacksBlock,
-    // TODO (#493): We need the `bitcoin_block_hash` and `bitcoin_block_height`
-    // of the block that included the fulfilling Bitcoin transaction.
-    // After #493 is resolved, this value should be contained in the event itself
-    // and these parameters should be removed.
-    bitcoin_block_hash: String,
-    bitcoin_block_height: u64,
 ) -> Result<DepositUpdate, Error> {
     ctx.get_storage_mut()
         .write_completed_deposit_event(&event)
@@ -271,8 +251,8 @@ async fn handle_completed_deposit(
         bitcoin_txid: event.outpoint.txid.to_string(),
         status: Status::Confirmed,
         fulfillment: Some(Some(Box::new(Fulfillment {
-            bitcoin_block_hash,
-            bitcoin_block_height,
+            bitcoin_block_hash: event.sweep_block_hash.to_string(),
+            bitcoin_block_height: event.sweep_block_height,
             bitcoin_tx_index: event.outpoint.vout,
             bitcoin_txid: event.outpoint.txid.to_string(),
             btc_fee: 1, // TODO (#712): We need to get the fee from the transaction. Currently missing from the event.
@@ -290,10 +270,6 @@ async fn handle_completed_deposit(
 /// # Parameters
 /// - `ctx`: Shared application context with configuration and database access.
 /// - `event`: The withdrawal acceptance event to be processed.
-/// - `bitcoin_block_hash`: The hash of the Bitcoin block containing the
-///   fullfilling tx.
-/// - `bitcoin_block_height`: The height of the Bitcoin block containing the
-///   fullfilling tx.
 /// - `stacks_chaintip`: Current Stacks blockchain chaintip information for
 ///   context on block height and hash.
 ///
@@ -305,12 +281,6 @@ async fn handle_withdrawal_accept(
     ctx: &impl Context,
     event: WithdrawalAcceptEvent,
     stacks_chaintip: &StacksBlock,
-    // TODO (#493): We need the `bitcoin_block_hash` and `bitcoin_block_height`
-    // of the block that included the fulfilling Bitcoin transaction.
-    // After #493 is resolved, this value should be contained in the event itself
-    // and these parameters should be removed.
-    bitcoin_block_hash: String,
-    bitcoin_block_height: u64,
 ) -> Result<WithdrawalUpdate, Error> {
     ctx.get_storage_mut()
         .write_withdrawal_accept_event(&event)
@@ -320,8 +290,8 @@ async fn handle_withdrawal_accept(
         request_id: event.request_id,
         status: Status::Confirmed,
         fulfillment: Some(Some(Box::new(Fulfillment {
-            bitcoin_block_hash,
-            bitcoin_block_height,
+            bitcoin_block_hash: event.sweep_block_hash.to_string(),
+            bitcoin_block_height: event.sweep_block_height,
             bitcoin_tx_index: event.outpoint.vout,
             bitcoin_txid: event.outpoint.txid.to_string(),
             btc_fee: event.fee,
@@ -401,6 +371,7 @@ async fn handle_key_rotation(
 ) -> Result<(), Error> {
     let key_rotation_tx = RotateKeysTransaction {
         txid: stacks_txid,
+        address: event.new_address.into(),
         aggregate_key: event.new_aggregate_pubkey.into(),
         signer_set: event.new_keys.into_iter().map(Into::into).collect(),
         signatures_required: event.new_signature_threshold,
@@ -642,6 +613,9 @@ mod tests {
             txid: *stacks_txid,
             block_id: *stacks_chaintip.block_hash,
             amount: 100,
+            sweep_block_hash: *bitcoin_block.block_hash,
+            sweep_block_height: bitcoin_block.block_height,
+            sweep_txid: *txid,
         };
         let expectation = DepositUpdate {
             bitcoin_tx_output_index: event.outpoint.vout,
@@ -659,14 +633,7 @@ mod tests {
             last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
             last_update_height: stacks_chaintip.block_height,
         };
-        let res = handle_completed_deposit(
-            &ctx,
-            event,
-            stacks_chaintip,
-            bitcoin_block.block_hash.to_string(),
-            bitcoin_block.block_height,
-        )
-        .await;
+        let res = handle_completed_deposit(&ctx, event, stacks_chaintip).await;
 
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), expectation);
@@ -714,6 +681,9 @@ mod tests {
             block_id: *stacks_tx.block_hash,
             fee: 1,
             signer_bitmap: BitArray::<_>::ZERO,
+            sweep_block_hash: *bitcoin_block.block_hash,
+            sweep_block_height: bitcoin_block.block_height,
+            sweep_txid: *txid,
         };
 
         // Expected struct to be added to the accepted_withdrawals vector
@@ -732,14 +702,7 @@ mod tests {
             last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
             last_update_height: stacks_chaintip.block_height,
         };
-        let res = handle_withdrawal_accept(
-            &ctx,
-            event,
-            stacks_chaintip,
-            bitcoin_block.block_hash.to_string(),
-            bitcoin_block.block_height,
-        )
-        .await;
+        let res = handle_withdrawal_accept(&ctx, event, stacks_chaintip).await;
 
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), expectation);

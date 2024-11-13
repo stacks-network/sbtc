@@ -524,6 +524,9 @@ pub struct SweptWithdrawalRequest {
     /// The block id of the stacks block that includes this sweep
     /// transaction.
     pub sweep_block_hash: BitcoinBlockHash,
+    /// The block height of the block that includes the sweep transaction.
+    #[sqlx(try_from = "i64")]
+    pub sweep_block_height: u64,
     /// Request ID of the withdrawal request. These are supposed to be
     /// unique, but there can be duplicates if there is a reorg that
     /// affects a transaction that calls the `initiate-withdrawal-request`
@@ -587,6 +590,8 @@ pub struct EncryptedDkgShares {
 pub struct RotateKeysTransaction {
     /// Transaction ID.
     pub txid: StacksTxId,
+    /// The address that deployed the contract.
+    pub address: StacksPrincipal,
     /// The aggregate key for these shares.
     ///
     /// TODO(511): maybe make the aggregate key private. Set it using the
