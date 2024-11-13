@@ -204,25 +204,52 @@ CREATE TABLE sbtc_signer.sweep_transactions (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
-CREATE TYPE sbtc_signer.txo_type AS ENUM (
-    'signers',
+CREATE TYPE sbtc_signer.output_type AS ENUM (
+    'signers_output',
+    'signers_op_return',
+    'withdrawal',
     'donation'
 );
 
--- A table for all transaction outputs that the signers can spend.
-CREATE TABLE sbtc_signer.signer_txos (
+-- A table for all bitcoin transaction outputs relevant for the signers.
+CREATE TABLE sbtc_signer.bitcoin_tx_outputs (
+    -- the transaction ID that created the output
     txid BYTEA NOT NULL,
-    -- The index of the donation output in the transaction.
+    -- The index of the output in the transaction.
     output_index INTEGER NOT NULL,
-    -- The amount of the output,
+    -- The amount locked in the output,
     amount BIGINT NOT NULL,
     -- The scriptPubKey of the output
     script_pubkey BYTEA NOT NULL,
     -- The type of UTXO this is
-    txo_type sbtc_signer.txo_type NOT NULL,
+    output_type sbtc_signer.output_type NOT NULL,
     -- a timestamp of when this record was created in the database.
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY (txid, output_index)
+);
+
+CREATE TYPE sbtc_signer.prevout_type AS ENUM (
+    'signers_input',
+    'deposit'
+);
+
+-- A table for all bitcoin transaction inputs spent by the signers.
+CREATE TABLE sbtc_signer.bitcoin_tx_inputs (
+    -- the ID of the transaction spending the transaction output
+    txid BYTEA NOT NULL,
+    -- The ID of the transaction that created the TXO being spent.
+    prevout_txid BYTEA NOT NULL,
+    -- The index of the prevout in the transaction that created the TXO.
+    prevout_output_index INTEGER NOT NULL,
+    -- The amount of the prevout being spent.
+    amount BIGINT NOT NULL,
+    -- The scriptPubKey of the prevout
+    script_pubkey BYTEA NOT NULL,
+    -- The type of UTXO this is
+    prevout_type sbtc_signer.prevout_type NOT NULL,
+    -- a timestamp of when this record was created in the database.
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    PRIMARY KEY (txid, prevout_txid, prevout_output_index)
 );
 
 -- Represents a single withdrawal request which has been included in a sweep

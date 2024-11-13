@@ -47,9 +47,6 @@ pub struct SweepTransaction {
     pub created_at_block_hash: BitcoinBlockHash,
     /// The market fee rate at the time of this transaction.
     pub market_fee_rate: f64,
-    /// The outputs created for the signers.
-    #[sqlx(skip)]
-    pub signer_outputs: Vec<SignerOutput>,
     /// List of deposits which were swept-in by this transaction.
     #[sqlx(skip)]
     pub swept_deposits: Vec<SweptDeposit>,
@@ -80,7 +77,6 @@ impl From<&crate::message::SweepTransactionInfo> for SweepTransaction {
             fee: info.fee,
             market_fee_rate: info.market_fee_rate,
             created_at_block_hash: info.created_at_block_hash.into(),
-            signer_outputs: info.signer_outputs.iter().map(Into::into).collect(),
             swept_deposits: info.swept_deposits.iter().map(Into::into).collect(),
             swept_withdrawals: info.swept_withdrawals.iter().map(Into::into).collect(),
         }
@@ -124,10 +120,18 @@ impl From<&crate::message::SweptDeposit> for SweptDeposit {
     }
 }
 
-/// A transaction output controled by the signer.
+/// A bitcoin transaction output (TXO) relevant for the sBTC signers.
+///
+/// This object can have a few different meanings, all of them identified
+/// by the output_type:
+/// 1. Whether a TXO was created by someone other than the signers as a
+///    donation.
+/// 2. Whether this is the signers' TXO with all of the swept in funds.
+/// 3. Whether it is an `OP_RETURN` output.
+/// 4. Whether this is a withdrawal output.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub struct SignerOutput {
+pub struct TxOutput {
     /// The Bitcoin transaction id.
     pub txid: BitcoinTxId,
     /// The index of the output in the sBTC sweep transaction.
@@ -141,19 +145,34 @@ pub struct SignerOutput {
     #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
     pub amount: u64,
     /// The scriptPubKey locking the output.
-    pub txo_type: TxoType,
+    pub output_type: TxOutputType,
 }
 
-impl From<&crate::message::SignerOutput> for SignerOutput {
-    fn from(value: &crate::message::SignerOutput) -> Self {
-        Self {
-            txid: value.txid,
-            output_index: value.output_index,
-            script_pubkey: value.script_pubkey.clone(),
-            amount: value.amount,
-            txo_type: value.txo_type,
-        }
-    }
+/// A bitcoin transaction output being spent as an input in a transaction.
+///
+/// This object can have two different meanings: whether or not this is a
+/// deposit output being swept in.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct TxPrevout {
+    /// The ID of the transaction spending the output.
+    pub txid: BitcoinTxId,
+    /// The ID of the bitcoin transaction that created the output being
+    /// spent.
+    pub prevout_txid: BitcoinTxId,
+    /// The output index in the transaction that created the output that is
+    /// being spent.
+    #[sqlx(try_from = "i32")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
+    pub prevout_output_index: u32,
+    /// The scriptPubKey locking the output.
+    pub script_pubkey: ScriptPubKey,
+    /// The amount locked in the output.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
+    pub amount: u64,
+    /// The type prevout we are referring to.
+    pub prevout_type: TxPrevoutType,
 }
 
 /// Represents a single withdrawal which has been swept-out by a sweep
@@ -292,7 +311,7 @@ impl From<Deposit> for DepositRequest {
         // It's most likely the case that each of the inputs "came" from
         // the same Address, so we filter out duplicates.
         let sender_script_pub_keys: BTreeSet<ScriptPubKey> = tx_input_iter
-            .map(|tx_in| ScriptPubKey::from_bytes(tx_in.prevout.script_pub_key.hex))
+            .map(|tx_in| tx_in.prevout.script_pub_key.script.into())
             .collect();
 
         Self {
@@ -656,17 +675,39 @@ pub enum TransactionType {
     Donation,
 }
 
-/// The types of transactions the signer is interested in.
+/// The types of Bitcoin transaction input or outputs that the signer may
+/// be interested in.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
-#[sqlx(type_name = "txo_type", rename_all = "snake_case")]
+#[sqlx(type_name = "output_type", rename_all = "snake_case")]
 #[derive(serde::Serialize, serde::Deserialize)]
 #[strum(serialize_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub enum TxoType {
-    /// An sBTC transaction on Bitcoin.
-    Signers,
-    /// A donation to signers aggregated key on Bitcoin.
+pub enum TxOutputType {
+    /// An output created by the signers as the TXO containing all of the
+    /// swept funds.
+    SignersOutput,
+    /// The `OP_RETURN` TXO created by the signers containing data about
+    /// the sweep transaction.
+    SignersOpReturn,
+    /// A UTXO created by the signers as a response to a withdrawal
+    /// request.
+    Withdrawal,
+    /// A donation to signers aggregated key.
     Donation,
+}
+
+/// The types of Bitcoin transaction input or outputs that the signer may
+/// be interested in.
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
+#[sqlx(type_name = "prevout_type", rename_all = "snake_case")]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[strum(serialize_all = "snake_case")]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub enum TxPrevoutType {
+    /// An output controled by the signers spent as an input.
+    SignersInput,
+    /// A deposit request TXO being spent as an input
+    Deposit,
 }
 
 /// An identifier for a withdrawal request, comprised of the Stacks

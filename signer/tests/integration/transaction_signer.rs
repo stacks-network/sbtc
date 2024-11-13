@@ -117,13 +117,6 @@ fn sweep_transaction_info<R: rand::RngCore>(
                 withdrawal_request_block_hash: *req.block_hash.as_bytes(),
             })
             .collect(),
-        signer_outputs: vec![message::SignerOutput {
-            txid: txid.into(),
-            output_index: 0,
-            script_pubkey: fake::Faker.fake_with_rng(rng),
-            amount: 12345,
-            txo_type: model::TxoType::Signers,
-        }],
     }
 }
 

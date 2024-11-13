@@ -1,5 +1,6 @@
 //! Utxo management and transaction construction
 
+use std::collections::HashSet;
 use std::ops::Deref as _;
 
 use bitcoin::absolute::LockTime;
@@ -21,6 +22,7 @@ use bitcoin::TapSighashType;
 use bitcoin::Transaction;
 use bitcoin::TxIn;
 use bitcoin::TxOut;
+use bitcoin::Txid;
 use bitcoin::Weight;
 use bitcoin::Witness;
 use bitvec::array::BitArray;
@@ -36,10 +38,15 @@ use crate::error::Error;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
 use crate::storage::model::BitcoinTx;
+use crate::storage::model::BitcoinTxId;
 use crate::storage::model::ScriptPubKey;
 use crate::storage::model::SignerVotes;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
+use crate::storage::model::TxOutput;
+use crate::storage::model::TxOutputType;
+use crate::storage::model::TxPrevout;
+use crate::storage::model::TxPrevoutType;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
 /// transactions.
@@ -579,6 +586,13 @@ impl SignerUtxo {
 ///
 /// This BTC transaction in this struct has correct amounts but no witness
 /// data for its UTXO inputs.
+///
+/// The Bitcoin transaction has the following layout:
+/// 1. The signer input UTXO is the first input.
+/// 2. All other inputs are deposit inputs.
+/// 3. The signer output UTXO is the first output.
+/// 4. The second output is the OP_RETURN data output.
+/// 5. All other outputs are withdrawal outputs.
 #[derive(Debug)]
 pub struct UnsignedTransaction<'a> {
     /// The requests used to construct the transaction.
@@ -930,12 +944,19 @@ impl<'a> UnsignedTransaction<'a> {
 
 /// A trait where we return all inputs and outputs for a bitcoin
 /// transaction.
-pub trait InputsOutputs {
+pub trait BitcoinInputsOutputs {
+    /// Return a reference to the transaction
+    fn tx_ref(&self) -> &Transaction;
+
     /// Returns all transaction inputs as a slice.
-    fn inputs(&self) -> &[TxIn];
+    fn inputs(&self) -> &[TxIn] {
+        &self.tx_ref().input
+    }
 
     /// Returns all transaction outputs as a slice.
-    fn outputs(&self) -> &[TxOut];
+    fn outputs(&self) -> &[TxOut] {
+        &self.tx_ref().output
+    }
 }
 
 /// A trait for figuring out the fees assessed to deposit prevouts and
@@ -946,7 +967,7 @@ pub trait InputsOutputs {
 /// confirmed. This implementation is located in this module because the
 /// assumptions it makes for how the transaction is organized follows the
 /// logic in [`UnsignedTransaction::new`].
-pub trait FeeAssessment: InputsOutputs {
+pub trait FeeAssessment: BitcoinInputsOutputs {
     /// Assess how much of the bitcoin miner fee should be apportioned to
     /// the input associated with the given `outpoint`.
     ///
@@ -1026,32 +1047,23 @@ pub trait FeeAssessment: InputsOutputs {
     }
 }
 
-impl<T: InputsOutputs> FeeAssessment for T {}
+impl<T: BitcoinInputsOutputs> FeeAssessment for T {}
 
-impl InputsOutputs for Transaction {
-    fn inputs(&self) -> &[TxIn] {
-        &self.input
-    }
-    fn outputs(&self) -> &[TxOut] {
-        &self.output
+impl BitcoinInputsOutputs for Transaction {
+    fn tx_ref(&self) -> &Transaction {
+        self
     }
 }
 
-impl InputsOutputs for BitcoinTx {
-    fn inputs(&self) -> &[TxIn] {
-        &self.deref().input
-    }
-    fn outputs(&self) -> &[TxOut] {
-        &self.deref().output
+impl BitcoinInputsOutputs for BitcoinTx {
+    fn tx_ref(&self) -> &Transaction {
+        self.deref()
     }
 }
 
-impl InputsOutputs for BitcoinTxInfo {
-    fn inputs(&self) -> &[TxIn] {
-        &self.tx.input
-    }
-    fn outputs(&self) -> &[TxOut] {
-        &self.tx.output
+impl BitcoinInputsOutputs for BitcoinTxInfo {
+    fn tx_ref(&self) -> &Transaction {
+        &self.tx
     }
 }
 
@@ -1065,6 +1077,146 @@ impl BitcoinTxInfo {
     /// the output at the given output index `vout`.
     pub fn assess_output_fee(&self, vout: usize) -> Option<Amount> {
         FeeAssessment::assess_output_fee(self, vout, self.fee)
+    }
+}
+
+/// An output used as an input into a transaction, a previous output.
+#[derive(Copy, Clone, Debug)]
+pub struct PrevoutRef<'a> {
+    /// The amount locked but the output
+    pub amount: Amount,
+    /// The `scriptPubKey` locking the output
+    pub script_pubkey: &'a ScriptBuf,
+    /// The ID of the transaction that created the output.
+    pub txid: &'a Txid,
+    /// The index of the output in the transactions outputs.
+    pub output_index: u32,
+}
+
+/// A trait for deconstructing a bitcoin transaction related to the signers
+/// into its inputs and outputs.
+pub trait TxDeconstructor: BitcoinInputsOutputs {
+    /// Returns a prevout given the input index.
+    ///
+    /// This function must return `Some(_)` for each `index` where
+    /// `self.inputs().get(index)` returns `Some(_)`, and must be `None`
+    /// otherwise.
+    fn prevout(&self, index: usize) -> Option<PrevoutRef>;
+
+    /// Return all inputs in this transaction if it is an sBTC transaction.
+    ///
+    /// This function returns an empty vector if it was not generated by
+    /// the signers, where the signers are identified by their
+    /// `signer_script_pubkeys`.
+    fn to_inputs(&self, signer_script_pubkeys: &HashSet<ScriptBuf>) -> Vec<TxPrevout> {
+        // If someone else created this transaction then we are not a party
+        // to any of the inputs, so we can exit early.
+        if !self.is_signer_created(signer_script_pubkeys) {
+            return Vec::new();
+        };
+
+        // This is a transaction that the signers have created. It follows
+        // a layout described in the description of `UnsignedTransaction`.
+        self.inputs()
+            .iter()
+            .enumerate()
+            .filter_map(|(index, _)| match index {
+                0 => self.vin_to_prevout(index, TxPrevoutType::SignersInput),
+                _ => self.vin_to_prevout(index, TxPrevoutType::Deposit),
+            })
+            .collect()
+    }
+
+    /// Return all outputs in this transaction that are related to the
+    /// signers.
+    ///
+    /// This function returns all outputs if the transaction is an
+    /// sBTC transaction, and only outputs that the signers can sign for
+    /// otherwise.
+    fn to_outputs(&self, signer_script_pubkeys: &HashSet<ScriptBuf>) -> Vec<TxOutput> {
+        // This transaction might not be related to the signers at all. If
+        // not then we can exit early.
+        let mut outputs = self.outputs().iter();
+        if !outputs.any(|tx_out| signer_script_pubkeys.contains(&tx_out.script_pubkey)) {
+            return Vec::new();
+        }
+
+        // If the signers did not create this transaction, but the signers
+        // control at least one output then the outputs that the signers
+        // control are donations. So we scan the outputs and exit early.
+        //
+        // Note that these cannot be deposits because deposits aren't
+        // key-path spendable by the signers.
+        if !self.is_signer_created(signer_script_pubkeys) {
+            return self
+                .outputs()
+                .iter()
+                .enumerate()
+                .filter(|(_, tx_out)| signer_script_pubkeys.contains(&tx_out.script_pubkey))
+                .filter_map(|(index, _)| self.vout_to_output(index, TxOutputType::Donation))
+                .collect();
+        }
+
+        self.outputs()
+            .iter()
+            .enumerate()
+            .filter_map(|(index, _)| match index {
+                0 => self.vout_to_output(index, TxOutputType::SignersOutput),
+                1 => self.vout_to_output(index, TxOutputType::SignersOpReturn),
+                _ => self.vout_to_output(index, TxOutputType::Withdrawal),
+            })
+            .collect()
+    }
+
+    /// Take an output index and the known output type and return the
+    /// output.
+    fn vout_to_output(&self, index: usize, output_type: TxOutputType) -> Option<TxOutput> {
+        let tx_out = self.outputs().get(index)?;
+        Some(TxOutput {
+            txid: self.tx_ref().compute_txid().into(),
+            output_index: index as u32,
+            script_pubkey: tx_out.script_pubkey.clone().into(),
+            amount: tx_out.value.to_sat(),
+            output_type,
+        })
+    }
+
+    /// Take an input index and the known output type and return a prevout.
+    fn vin_to_prevout(&self, index: usize, input_type: TxPrevoutType) -> Option<TxPrevout> {
+        let prevout = self.prevout(index)?;
+        Some(TxPrevout {
+            txid: self.tx_ref().compute_txid().into(),
+            prevout_txid: BitcoinTxId::from(*prevout.txid),
+            prevout_output_index: prevout.output_index,
+            script_pubkey: prevout.script_pubkey.clone().into(),
+            amount: prevout.amount.to_sat(),
+            prevout_type: input_type,
+        })
+    }
+
+    /// Whether this transaction was created by the signers given the
+    /// possible scriptPubKeys.
+    ///
+    /// If the first input in the transaction is one that the signers
+    /// control then we know that the signers created this transaction.
+    fn is_signer_created(&self, signer_script_pubkeys: &HashSet<ScriptBuf>) -> bool {
+        let Some(signer_input) = self.prevout(0) else {
+            return false;
+        };
+
+        signer_script_pubkeys.contains(signer_input.script_pubkey)
+    }
+}
+
+impl TxDeconstructor for BitcoinTxInfo {
+    fn prevout(&self, index: usize) -> Option<PrevoutRef> {
+        let vin = self.vin.get(index)?;
+        Some(PrevoutRef {
+            amount: vin.prevout.value,
+            script_pubkey: &vin.prevout.script_pub_key.script,
+            txid: vin.details.txid.as_ref()?,
+            output_index: vin.details.vout?,
+        })
     }
 }
 
