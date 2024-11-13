@@ -409,7 +409,7 @@ pub struct DepositRequestReport {
     /// Whether this signer accepted the deposit request or not. This
     /// should only be `None` if we do not have a record of the deposit
     /// request or if we cannot sign for the deposited funds.
-    pub is_accepted: Option<bool>,
+    pub can_accept: Option<bool>,
     /// The deposit amount
     pub amount: u64,
     /// The max fee embedded in the deposit request.
@@ -449,24 +449,6 @@ impl DepositRequestReport {
             DepositRequestStatus::Confirmed(block_height, _) => block_height,
         };
 
-        match self.can_sign {
-            // If we are here, we know that we have a record for the
-            // deposit request, but we have not voted on it yet, so we do
-            // not know if we can sign for it.
-            None => return Err(BitcoinDepositInputError::NoVote(self.outpoint)),
-            // In this case we know that we cannot sign for the deposit
-            // because it is locked with a public key where the current
-            // signer is not part of the signing set.
-            Some(false) => return Err(BitcoinDepositInputError::CannotSignUtxo(self.outpoint)),
-            // Yay.
-            Some(true) => (),
-        }
-        // If we are here then can_sign is Some(true) so is_accepted is
-        // Some(_). Let's check whether we rejected this deposit.
-        if self.is_accepted != Some(true) {
-            return Err(BitcoinDepositInputError::RejectedRequest(self.outpoint));
-        }
-
         // We only sweep a deposit if the depositor cannot reclaim the
         // deposit within the next DEPOSIT_LOCKTIME_BLOCK_BUFFER blocks.
         let deposit_age = chain_tip_height.saturating_sub(confirmed_block_height);
@@ -481,6 +463,24 @@ impl DepositRequestReport {
             LockTime::Time(_) => {
                 return Err(BitcoinDepositInputError::UnsupportedLockTime(self.outpoint))
             }
+        }
+
+        match self.can_sign {
+            // If we are here, we know that we have a record for the
+            // deposit request, but we have not voted on it yet, so we do
+            // not know if we can sign for it.
+            None => return Err(BitcoinDepositInputError::NoVote(self.outpoint)),
+            // In this case we know that we cannot sign for the deposit
+            // because it is locked with a public key where the current
+            // signer is not part of the signing set.
+            Some(false) => return Err(BitcoinDepositInputError::CannotSignUtxo(self.outpoint)),
+            // Yay.
+            Some(true) => (),
+        }
+        // If we are here then can_sign is Some(true) so can_accept is
+        // Some(_). Let's check whether we rejected this deposit.
+        if self.can_accept != Some(true) {
+            return Err(BitcoinDepositInputError::RejectedRequest(self.outpoint));
         }
 
         Ok(())
@@ -626,7 +626,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Unconfirmed,
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
@@ -642,7 +642,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Spent(BitcoinTxId::from([1; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
@@ -658,7 +658,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: None,
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
@@ -674,7 +674,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(false),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
@@ -690,7 +690,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(false),
+            can_accept: Some(false),
             amount: 0,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
@@ -706,7 +706,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 1),
@@ -722,7 +722,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 2),
@@ -738,7 +738,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: u64::MAX,
             lock_time: LockTime::from_512_second_intervals(u16::MAX),
@@ -754,7 +754,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
@@ -786,7 +786,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: TX_FEE,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
@@ -802,7 +802,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: TX_FEE,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
@@ -818,7 +818,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: TX_FEE - 1,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
