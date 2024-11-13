@@ -1115,7 +1115,6 @@ impl<'a> BitcoinInputsOutputs for UnsignedTransaction<'a> {
     }
 }
 
-
 impl BitcoinInputsOutputs for BitcoinTx {
     fn tx_ref(&self) -> &Transaction {
         self.deref()

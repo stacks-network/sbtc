@@ -133,7 +133,11 @@ impl BitcoinTxContext {
     where
         C: Context + Send + Sync,
     {
-        if !self.request_packages.iter().all(|reqs| reqs.request_ids.is_empty()) {
+        if !self
+            .request_packages
+            .iter()
+            .all(|reqs| reqs.request_ids.is_empty())
+        {
             return Err(Error::MissingBlock);
         }
 
@@ -176,7 +180,7 @@ impl BitcoinTxContext {
         let db = ctx.get_storage();
         let signer_state = self.get_btc_state(ctx).await?;
 
-        let signer_public_key = self.signer_public_key;
+        let signer_public_key = &self.signer_public_key;
         let aggregate_key = &self.aggregate_key;
         let chain_tip = &self.chain_tip;
 
@@ -193,7 +197,7 @@ impl BitcoinTxContext {
                     chain_tip,
                     &txid,
                     output_index,
-                    &signer_public_key,
+                    signer_public_key,
                 );
 
                 let Some(report) = report_future.await? else {
@@ -201,7 +205,7 @@ impl BitcoinTxContext {
                 };
 
                 let votes = db
-                    .get_deposit_request_signer_votes(&txid, output_index, &aggregate_key)
+                    .get_deposit_request_signer_votes(&txid, output_index, aggregate_key)
                     .await?;
 
                 deposits.push((report.to_deposit_request(&votes), report));
@@ -209,14 +213,14 @@ impl BitcoinTxContext {
 
             for id in package.request_ids.iter() {
                 let report_future =
-                    db.get_withdrawal_request_report(chain_tip, id, &signer_public_key);
+                    db.get_withdrawal_request_report(chain_tip, id, signer_public_key);
 
                 let Some(report) = report_future.await? else {
                     return Err(BitcoinWithdrawalOutputError::Unknown(*id).into_error(self));
                 };
 
                 let votes = db
-                    .get_withdrawal_request_signer_votes(id, &aggregate_key)
+                    .get_withdrawal_request_signer_votes(id, aggregate_key)
                     .await?;
 
                 withdrawals.push((report.to_withdrawal_request(&votes), report));
