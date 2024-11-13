@@ -13,6 +13,10 @@ use crate::stacks::contracts::WithdrawalAcceptValidationError;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Errors specific to the `bitcoin` module.
+    #[error("bitcoin error: {0}")]
+    Bitcoin(#[from] crate::bitcoin::error::BitcoinError),
+
     /// The nakamoto start height could not be determined.
     #[error("nakamoto start height could not be determined")]
     MissingNakamotoStartHeight,
@@ -21,53 +25,19 @@ pub enum Error {
     #[error("emily API error: {0}")]
     EmilyApi(#[from] EmilyClientError),
 
-    /// Received an error in response to gettxspendingprevout RPC call
-    #[error("bitcoin-core gettxspendingprevout error for outpoint: {0}")]
-    BitcoinCoreGetTxSpendingPrevout(#[source] bitcoincore_rpc::Error, bitcoin::OutPoint),
-
-    /// Attempt to fetch a bitcoin blockhash ended in an unexpected error.
-    /// This is not triggered if the block is missing.
-    #[error("bitcoin-core getblock RPC error for hash {1}: {0}")]
-    BitcoinCoreGetBlock(#[source] bitcoincore_rpc::Error, bitcoin::BlockHash),
-
-    /// Received an error in response to getrawtransaction RPC call
-    #[error("failed to retrieve the raw transaction for txid {1} from bitcoin-core. {0}")]
-    BitcoinCoreGetTransaction(#[source] bitcoincore_rpc::Error, bitcoin::Txid),
-
-    /// Error when creating an RPC client to bitcoin-core
-    #[error("could not create RPC client to {1}: {0}")]
-    BitcoinCoreRpcClient(#[source] bitcoincore_rpc::Error, String),
-
     /// The bitcoin transaction was not found in the mempool or on the
     /// bitcoin blockchain. This is thrown when we expect the transaction
     /// to exist in bitcoin core, but it does not.
     #[error("transaction is missing, txid: {0}, block hash {1:?}")]
     BitcoinTxMissing(bitcoin::Txid, Option<bitcoin::BlockHash>),
 
-    /// This is the error that is returned when validating a bitcoin
-    /// trasnaction.
-    #[error("bitcoin validation error: {0}")]
-    BitcoinValidation(#[from] Box<crate::bitcoin::validation::BitcoinValidationError>),
-
     /// This should never happen
     #[error("observed a tenure identified by a StacksBlockId with with no blocks")]
     EmptyStacksTenure,
 
-    /// Received an error in call to estimatesmartfee RPC call
-    #[error("failed to get fee estimate from bitcoin-core for target {1}. {0}")]
-    EstimateSmartFee(#[source] bitcoincore_rpc::Error, u16),
-
-    /// Received an error in response to estimatesmartfee RPC call
-    #[error("failed to get fee estimate from bitcoin-core in target blocks {1}. errors: {0}")]
-    EstimateSmartFeeResponse(String, u16),
-
     /// Error from the fallback client.
     #[error("fallback client error: {0}")]
     FallbackClient(#[from] crate::util::FallbackClientError),
-
-    /// Error from the Bitcoin RPC client.
-    #[error("bitcoin RPC error: {0}")]
-    BitcoinCoreRpc(#[from] bitcoincore_rpc::Error),
 
     /// An error propagated from the sBTC library.
     #[error("sBTC lib error: {0}")]
@@ -85,24 +55,6 @@ pub enum Error {
     /// I/O Error raised by the Tokio runtime.
     #[error("tokio i/o error: {0}")]
     TokioIo(#[from] tokio::io::Error),
-
-    /// Error when breaking out the ZeroMQ message into three parts.
-    #[error("bitcoin messages should have a three part layout, received {0} parts")]
-    BitcoinCoreZmqMessageLayout(usize),
-
-    /// Happens when the bitcoin block hash in the ZeroMQ message is not 32
-    /// bytes.
-    #[error("block hashes should be 32 bytes, but we received {0} bytes")]
-    BitcoinCoreZmqBlockHash(usize),
-
-    /// Happens when the ZeroMQ sequence number is not 4 bytes.
-    #[error("sequence numbers should be 4 bytes, but we received {0} bytes")]
-    BitcoinCoreZmqSequenceNumber(usize),
-
-    /// The given message type is unsupported. We attempt to parse what the
-    /// topic is but that might fail as well.
-    #[error("the message topic {0:?} is unsupported")]
-    BitcoinCoreZmqUnsupported(Result<String, std::str::Utf8Error>),
 
     /// Invalid amount
     #[error("the change amounts for the transaction is negative: {0}")]
@@ -134,14 +86,6 @@ pub enum Error {
     /// is greater than MAX for the signed type.
     #[error("could not convert integer type to the signed version for storing in postgres {0}")]
     ConversionDatabaseInt(#[source] std::num::TryFromIntError),
-
-    /// Parsing the Hex Error
-    #[error("could not decode the bitcoin block: {0}")]
-    DecodeBitcoinBlock(#[source] bitcoin::consensus::encode::Error),
-
-    /// Parsing the Hex Error
-    #[error("could not decode the bitcoin transaction: {0}")]
-    DecodeBitcoinTransaction(#[source] bitcoin::consensus::encode::Error),
 
     /// Parsing the Hex Error
     #[error("could not decode the Nakamoto block with ID: {1}; {0}")]
@@ -453,20 +397,6 @@ pub enum Error {
     /// aggregate key.
     #[error("current signer not part of signer set indicated by: {0}")]
     ValidationSignerSet(crate::keys::PublicKey),
-
-    /// Could not connect to bitcoin-core with a zeromq subscription
-    /// socket.
-    #[error("ZMQ connect error: {0}")]
-    ZmqConnect(#[source] zeromq::ZmqError),
-
-    /// Error when receiving a message from to bitcoin-core over zeromq.
-    #[error("ZMQ receive error: {0}")]
-    ZmqReceive(#[source] zeromq::ZmqError),
-
-    /// Could not subscribe to bitcoin-core with a zeromq subscription
-    /// socket.
-    #[error("ZMQ subscribe error: {0}")]
-    ZmqSubscribe(#[source] zeromq::ZmqError),
 
     /// Transaction coordinator timed out
     #[error("coordinator timed out after {0} seconds")]

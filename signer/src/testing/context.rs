@@ -314,13 +314,13 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
     }
 
     async fn find_mempool_transactions_spending_output(
-        &self, 
-        _outpoint: &bitcoin::OutPoint
+        &self,
+        _outpoint: &bitcoin::OutPoint,
     ) -> Result<Vec<Txid>, Error> {
         unimplemented!()
     }
 
-    async  fn find_mempool_descendants(&self, _txid: &Txid) -> Result<Vec<Txid>, Error> {
+    async fn find_mempool_descendants(&self, _txid: &Txid) -> Result<Vec<Txid>, Error> {
         unimplemented!()
     }
 }

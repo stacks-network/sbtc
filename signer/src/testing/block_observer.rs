@@ -234,8 +234,8 @@ impl BitcoinInteract for TestHarness {
     }
 
     async fn find_mempool_transactions_spending_output(
-        &self, 
-        _outpoint: &bitcoin::OutPoint
+        &self,
+        _outpoint: &bitcoin::OutPoint,
     ) -> Result<Vec<Txid>, Error> {
         unimplemented!()
     }

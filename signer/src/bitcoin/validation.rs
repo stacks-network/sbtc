@@ -17,6 +17,8 @@ use crate::storage::model::QualifiedRequestId;
 use crate::storage::DbRead as _;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
+use super::error::BitcoinError;
+
 /// The necessary information for validating a bitcoin transaction.
 #[derive(Debug, Clone)]
 pub struct BitcoinTxContext {
@@ -189,10 +191,11 @@ pub enum BitcoinDepositInputError {
 
 impl BitcoinDepositInputError {
     fn into_error(self, ctx: &BitcoinTxContext) -> Error {
-        Error::BitcoinValidation(Box::new(BitcoinValidationError {
+        BitcoinError::TransactionValidation(Box::new(BitcoinValidationError {
             error: BitcoinSweepErrorMsg::Deposit(self),
             context: ctx.clone(),
         }))
+        .into()
     }
 }
 

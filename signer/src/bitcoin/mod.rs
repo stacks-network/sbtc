@@ -11,6 +11,7 @@ use rpc::GetTxResponse;
 use crate::error::Error;
 
 pub mod client;
+pub mod error;
 pub mod fees;
 pub mod packaging;
 pub mod rpc;
@@ -61,12 +62,12 @@ pub trait BitcoinInteract: Sync + Send {
     /// method returns a list of matching transaction IDs.
     fn find_mempool_transactions_spending_output(
         &self,
-        outpoint: &bitcoin::OutPoint
+        outpoint: &bitcoin::OutPoint,
     ) -> impl Future<Output = Result<Vec<Txid>, Error>> + Send;
 
     /// Finds all transactions in the mempool which are descendants of the given
-    /// mempool transaction. `txid` must be a transaction in the mempool. 
-    /// 
+    /// mempool transaction. `txid` must be a transaction in the mempool.
+    ///
     /// Use [`Self::find_mempool_transactions_spending_output`] to find
     /// transactions in the mempool which spend an output of a confirmed
     /// transaction if needed prior to calling this method.

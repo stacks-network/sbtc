@@ -25,6 +25,8 @@ use url::Url;
 use crate::bitcoin::BitcoinInteract;
 use crate::error::Error;
 
+use super::error::BitcoinError;
+
 /// A slimmed down type representing a response from bitcoin-core's
 /// getrawtransaction RPC.
 ///
@@ -128,9 +130,9 @@ pub struct BitcoinTxInfo {
 /// A struct containing the response from bitcoin-core for a
 /// `gettxspendingprevout` RPC call. The actual response is an array; this
 /// struct represents a single element of that array.
-/// 
+///
 /// # Notes
-/// 
+///
 /// * This endpoint requires bitcoin-core v27.0 or later.
 /// * Documentation for this endpoint can be found at
 ///   https://bitcoincore.org/en/doc/27.0.0/rpc/blockchain/gettxspendingprevout/
@@ -255,7 +257,7 @@ impl BitcoinCoreClient {
         let auth = Auth::UserPass(username, password);
         let client = bitcoincore_rpc::Client::new(url, auth)
             .map(Arc::new)
-            .map_err(|err| Error::BitcoinCoreRpcClient(err, url.to_string()))?;
+            .map_err(|err| BitcoinError::RpcClient(err, url.to_string()))?;
 
         Ok(Self { inner: client })
     }
@@ -270,7 +272,7 @@ impl BitcoinCoreClient {
         match self.inner.get_block(block_hash) {
             Ok(block) => Ok(Some(block)),
             Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
-            Err(error) => Err(Error::BitcoinCoreGetBlock(error, *block_hash)),
+            Err(error) => Err(BitcoinError::GetBlock(error, *block_hash).into()),
         }
     }
 
@@ -302,7 +304,7 @@ impl BitcoinCoreClient {
         match self.inner.call::<GetTxResponse>("getrawtransaction", &args) {
             Ok(tx_info) => Ok(Some(tx_info)),
             Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
-            Err(err) => Err(Error::BitcoinCoreGetTransaction(err, *txid)),
+            Err(err) => Err(BitcoinError::GetTransaction(err, *txid).into()),
         }
     }
 
@@ -335,44 +337,70 @@ impl BitcoinCoreClient {
             // in the provided block. Use `gettransaction` for wallet
             // transactions." In both cases the code is the same.
             Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
-            Err(err) => Err(Error::BitcoinCoreGetTransaction(err, *txid)),
+            Err(err) => Err(BitcoinError::GetTransaction(err, *txid).into()),
         }
     }
 
     /// Scan the Bitcoin node's mempool to find transactions spending the
     /// provided output. This method uses the `gettxspendingprevout` RPC
     /// endpoint.
-    /// 
+    ///
     /// # Notes
-    /// 
+    ///
     /// This method requires bitcoin-core v27 or later.
-    pub fn get_tx_spending_prevout(
-        &self,
-        outpoint: &OutPoint,
-    ) -> Result<Vec<Txid>, Error> {
+    pub fn get_tx_spending_prevout(&self, outpoint: &OutPoint) -> Result<Vec<Txid>, Error> {
         let rpc_outpoint = RpcOutpoint::from(outpoint);
-        let args = [
-            serde_json::to_value(vec![rpc_outpoint])
-                .map_err(Error::JsonSerialize)?,
-        ];
+        let args = [serde_json::to_value(vec![rpc_outpoint]).map_err(Error::JsonSerialize)?];
 
-        dbg!(args[0].to_string());
-
-        let results = match self.inner.call::<Vec<TxSpendingPrevOut>>("gettxspendingprevout", &args) {
+        let results = match self
+            .inner
+            .call::<Vec<TxSpendingPrevOut>>("gettxspendingprevout", &args)
+        {
             Ok(response) => Ok(response),
-            Err(err) => Err(Error::BitcoinCoreGetTxSpendingPrevout(err, *outpoint)),
+            Err(err) => Err(BitcoinError::GetTxSpendingPrevout(err, *outpoint)),
         }?;
 
-        dbg!(&results);
-
+        // We will get results for each outpoint we pass in, and if there is no
+        // transaction spending the outpoint then the `spending_txid` field will
+        // be `None`. We filter out the `None`s and collect the `Some`s into a
+        // vector of `Txid`s.
         let txids = results
             .into_iter()
             .filter_map(|result| result.spending_txid)
             .collect::<Vec<_>>();
 
-        dbg!(&txids);
-
         Ok(txids)
+    }
+
+    /// Scan the Bitcoin node's mempool to find transactions that are
+    /// descendants of the provided transaction. This method uses the
+    /// `getmempooldescendants` RPC endpoint.
+    ///
+    /// If the transaction is not in the mempool then an empty vector is
+    /// returned.
+    ///
+    /// If there is a chain of transactions in the mempool which implicitly
+    /// depend on the provided transaction, then the entire chain of
+    /// transactions are returned, not just the immediate descendants.
+    ///
+    /// The ordering of the transactions in the returned vector is not
+    /// guaranteed to be in any particular order.
+    ///
+    /// # Notes
+    ///
+    /// - This method requires bitcoin-core v27 or later.
+    /// - The RPC endpoint does not in itself return raw transaction data, so
+    ///   [`Self::get_tx`] must be used to fetch each transaction separately.
+    pub fn get_mempool_descendants(&self, txid: &Txid) -> Result<Vec<Txid>, Error> {
+        let args = [serde_json::to_value(txid).map_err(Error::JsonSerialize)?];
+
+        let results = match self.inner.call::<Vec<Txid>>("getmempooldescendants", &args) {
+            Ok(response) => Ok(response),
+            Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(vec![]),
+            Err(err) => Err(BitcoinError::GetMempoolDescendants(err, *txid)),
+        }?;
+
+        Ok(results)
     }
 
     /// Estimates the approximate fee in sats per vbyte needed for a
@@ -397,7 +425,7 @@ impl BitcoinCoreClient {
         let resp = self
             .inner
             .estimate_smart_fee(num_blocks, estimate_mode)
-            .map_err(|err| Error::EstimateSmartFee(err, num_blocks))?;
+            .map_err(|err| BitcoinError::EstimateSmartFee(err, num_blocks))?;
 
         // In local testing resp.fee_rate is `None` whenever there haven't
         // been enough transactions to make an estimate. Also, the fee rate
@@ -406,7 +434,7 @@ impl BitcoinCoreClient {
             Some(fee_rate) => fee_rate.to_float_in(Denomination::Satoshi) / 1000.,
             None => {
                 let errors = resp.errors.unwrap_or_default().join(",");
-                return Err(Error::EstimateSmartFeeResponse(errors, num_blocks));
+                return Err(BitcoinError::EstimateSmartFeeResponse(errors, num_blocks).into());
             }
         };
 
@@ -418,7 +446,7 @@ impl BitcoinInteract for BitcoinCoreClient {
     async fn broadcast_transaction(&self, tx: &Transaction) -> Result<(), Error> {
         self.inner
             .send_raw_transaction(tx)
-            .map_err(Error::BitcoinCoreRpc)
+            .map_err(|e| BitcoinError::Rpc(e).into())
             .map(|_| ())
     }
 
@@ -451,15 +479,15 @@ impl BitcoinInteract for BitcoinCoreClient {
         Ok(None)
     }
 
-    async  fn find_mempool_transactions_spending_output(
+    async fn find_mempool_transactions_spending_output(
         &self,
-        _outpoint: &bitcoin::OutPoint
+        _outpoint: &bitcoin::OutPoint,
     ) -> Result<Vec<Txid>, Error> {
         // TODO: implement this
         Ok(vec![])
     }
 
-    async  fn find_mempool_descendants(&self, _txid: &Txid) -> Result<Vec<Txid>, Error> {
+    async fn find_mempool_descendants(&self, _txid: &Txid) -> Result<Vec<Txid>, Error> {
         // TODO: implement this
         Ok(vec![])
     }
