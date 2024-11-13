@@ -865,8 +865,8 @@ where
         public_key_point: p256k1::point::Point,
         sender_is_coordinator: bool,
     ) -> bool {
-        let check_signer_public_key = |signer_id| match &public_keys.get(&signer_id) {
-            Some(signer_public_key) if &public_key_point != *signer_public_key => {
+        let check_signer_public_key = |signer_id| match public_keys.get(&signer_id) {
+            Some(signer_public_key) if public_key_point != *signer_public_key => {
                 tracing::warn!(
                     ?packet.msg,
                     reason = "message was signed by the wrong signer",
