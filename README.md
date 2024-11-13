@@ -89,7 +89,7 @@ For other commands read the `Makefile` at repository root.
 
 ### Local devenv
 
-A local development network is managed through a Docker Compose file in [`./devenv/local/docker-compose`](./devenv/local/docker-compose). `make` commands for starting and stopping it are:
+A local development network is managed through a Docker Compose file in [`./docker/docker-compose.yml`](./docker/docker-compose.yml). `make` commands for starting and stopping it are:
 
 - `make devenv-up`: Start the network
 - `make devenv-down`: Stop the network and remove containers and networks

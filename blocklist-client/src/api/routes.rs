@@ -14,6 +14,6 @@ pub fn routes(
         .and(warp::path::param::<String>())
         .and(warp::get())
         .and(warp::any().map(move || client.clone()))
-        .and(warp::any().map(move || SETTINGS.risk_analysis.clone()))
+        .and(warp::any().map(move || SETTINGS.clone()))
         .then(handlers::check_address_handler)
 }

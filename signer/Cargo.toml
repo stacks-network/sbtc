@@ -77,3 +77,7 @@ test-log = { version = "0.2.16", default-features = false, features = ["trace"] 
 
 [build-dependencies]
 tonic-build.workspace = true
+
+[[bin]]
+name = "demo-cli"
+path = "src/bin/demo_cli.rs"

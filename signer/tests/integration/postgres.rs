@@ -1912,6 +1912,9 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
         block_id: *setup_canonical_event_block.block_hash,
         amount: setup_canonical.deposit_request.amount,
         outpoint: setup_canonical.deposit_request.outpoint,
+        sweep_block_hash: setup_canonical.deposit_block_hash,
+        sweep_block_height: 42,
+        sweep_txid: setup_canonical.deposit_request.outpoint.txid,
     };
     db.write_completed_deposit_event(&event).await.unwrap();
 
@@ -1921,6 +1924,9 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
         block_id: *setup_fork_event_block.block_hash,
         amount: setup_fork.deposit_request.amount,
         outpoint: setup_fork.deposit_request.outpoint,
+        sweep_block_hash: setup_fork.deposit_block_hash,
+        sweep_block_height: 42,
+        sweep_txid: setup_fork.deposit_request.outpoint.txid,
     };
     db.write_completed_deposit_event(&event).await.unwrap();
 
@@ -1950,6 +1956,9 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
         block_id: *setup_fork_event_block.block_hash,
         amount: setup_fork.deposit_request.amount,
         outpoint: setup_fork.deposit_request.outpoint,
+        sweep_block_hash: setup_fork.deposit_block_hash,
+        sweep_block_height: 42,
+        sweep_txid: setup_fork.deposit_request.outpoint.txid,
     };
     db.write_completed_deposit_event(&event).await.unwrap();
 
@@ -2103,6 +2112,9 @@ async fn get_swept_deposit_requests_response_tx_reorged() {
         block_id: *original_event_block.block_hash,
         amount: setup.deposit_request.amount,
         outpoint: setup.deposit_request.outpoint,
+        sweep_block_hash: setup.deposit_block_hash,
+        sweep_block_height: 42,
+        sweep_txid: setup.deposit_request.outpoint.txid,
     };
     db.write_completed_deposit_event(&event).await.unwrap();
 
@@ -2411,6 +2423,7 @@ async fn deposit_report_with_only_deposit_request() {
 
     assert_eq!(report.amount, deposit_request.amount);
     assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert_eq!(report.max_fee, deposit_request.max_fee);
     assert!(report.is_accepted.is_none());
     assert!(report.can_sign.is_none());
     // The transaction is not on the canonical bitcoin blockchain, so it
@@ -2494,6 +2507,7 @@ async fn deposit_report_with_deposit_request_reorged() {
 
     assert_eq!(report.amount, deposit_request.amount);
     assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert_eq!(report.max_fee, deposit_request.max_fee);
     assert_eq!(report.is_accepted, Some(decision.is_accepted));
     assert_eq!(report.can_sign, Some(decision.can_sign));
     assert_eq!(report.status, DepositRequestStatus::Unconfirmed);
@@ -2593,6 +2607,7 @@ async fn deposit_report_with_deposit_request_spent() {
 
     assert_eq!(report.amount, deposit_request.amount);
     assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert_eq!(report.max_fee, deposit_request.max_fee);
     assert_eq!(report.is_accepted, Some(decision.is_accepted));
     assert_eq!(report.can_sign, Some(decision.can_sign));
     assert_eq!(report.status, DepositRequestStatus::Spent(sweep_tx.txid));
@@ -2703,6 +2718,7 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
 
     assert_eq!(report.amount, deposit_request.amount);
     assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert_eq!(report.max_fee, deposit_request.max_fee);
     assert_eq!(report.is_accepted, Some(decision.is_accepted));
     assert_eq!(report.can_sign, Some(decision.can_sign));
 
@@ -2724,6 +2740,7 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
 
     assert_eq!(report.amount, deposit_request.amount);
     assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert_eq!(report.max_fee, deposit_request.max_fee);
     assert_eq!(report.is_accepted, Some(decision.is_accepted));
     assert_eq!(report.can_sign, Some(decision.can_sign));
 
@@ -2801,6 +2818,7 @@ async fn deposit_report_with_deposit_request_confirmed() {
     // status.
     assert_eq!(report.amount, deposit_request.amount);
     assert_eq!(report_lock_time, deposit_request.lock_time);
+    assert_eq!(report.max_fee, deposit_request.max_fee);
     assert_eq!(report.is_accepted, Some(decision.is_accepted));
     assert_eq!(report.can_sign, Some(decision.can_sign));
 

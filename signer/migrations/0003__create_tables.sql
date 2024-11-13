@@ -126,9 +126,10 @@ CREATE TABLE sbtc_signer.stacks_transactions (
 );
 
 CREATE TABLE sbtc_signer.rotate_keys_transactions (
-    txid BYTEA PRIMARY KEY,
-    aggregate_key BYTEA NOT NULL,
-    signer_set BYTEA[] NOT NULL,
+    txid            BYTEA PRIMARY KEY,
+    address         TEXT    NOT NULL,
+    aggregate_key   BYTEA   NOT NULL,
+    signer_set      BYTEA[] NOT NULL,
     -- This is one of those fields that might not be required in the future
     -- when Schnorr signatures are introduced.
     signatures_required INTEGER NOT NULL,
@@ -137,13 +138,16 @@ CREATE TABLE sbtc_signer.rotate_keys_transactions (
 );
 
 CREATE TABLE sbtc_signer.completed_deposit_events (
-    id           BIGSERIAL PRIMARY KEY,
-    txid         BYTEA   NOT NULL,
-    block_hash   BYTEA   NOT NULL,
-    amount       BIGINT  NOT NULL,
-    bitcoin_txid BYTEA   NOT NULL,
-    output_index BIGINT  NOT NULL,
-    created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+    id                  BIGSERIAL PRIMARY KEY,
+    txid                BYTEA   NOT NULL,
+    block_hash          BYTEA   NOT NULL,
+    amount              BIGINT  NOT NULL,
+    bitcoin_txid        BYTEA   NOT NULL,
+    output_index        BIGINT  NOT NULL,
+    sweep_block_hash    BYTEA   NOT NULL,
+    sweep_block_height  BIGINT  NOT NULL,
+    sweep_txid          BYTEA   NOT NULL,
+    created_at          TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 CREATE TABLE sbtc_signer.withdrawal_create_events (
@@ -160,15 +164,18 @@ CREATE TABLE sbtc_signer.withdrawal_create_events (
 );
 
 CREATE TABLE sbtc_signer.withdrawal_accept_events (
-    id            BIGSERIAL PRIMARY KEY,
-    txid          BYTEA   NOT NULL,
-    block_hash    BYTEA   NOT NULL,
-    request_id    BIGINT  NOT NULL,
-    signer_bitmap BYTEA   NOT NULL,
-    bitcoin_txid  BYTEA   NOT NULL,
-    output_index  BIGINT  NOT NULL,
-    fee           BIGINT  NOT NULL,
-    created_at    TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+    id                  BIGSERIAL PRIMARY KEY,
+    txid                BYTEA   NOT NULL,
+    block_hash          BYTEA   NOT NULL,
+    request_id          BIGINT  NOT NULL,
+    signer_bitmap       BYTEA   NOT NULL,
+    bitcoin_txid        BYTEA   NOT NULL,
+    output_index        BIGINT  NOT NULL,
+    fee                 BIGINT  NOT NULL,
+    sweep_block_hash    BYTEA   NOT NULL,
+    sweep_block_height  BIGINT  NOT NULL,
+    sweep_txid          BYTEA   NOT NULL,
+    created_at          TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 CREATE TABLE sbtc_signer.withdrawal_reject_events (
@@ -202,6 +209,54 @@ CREATE TABLE sbtc_signer.sweep_transactions (
     market_fee_rate DOUBLE PRECISION NOT NULL,
     -- Timestamp of when this package was created.
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE TYPE sbtc_signer.output_type AS ENUM (
+    'signers_output',
+    'signers_op_return',
+    'withdrawal',
+    'donation'
+);
+
+-- A table for all bitcoin transaction outputs relevant for the signers.
+CREATE TABLE sbtc_signer.bitcoin_tx_outputs (
+    -- the transaction ID that created the output
+    txid BYTEA NOT NULL,
+    -- The index of the output in the transaction.
+    output_index INTEGER NOT NULL,
+    -- The amount locked in the output,
+    amount BIGINT NOT NULL,
+    -- The scriptPubKey of the output
+    script_pubkey BYTEA NOT NULL,
+    -- The type of UTXO this is
+    output_type sbtc_signer.output_type NOT NULL,
+    -- a timestamp of when this record was created in the database.
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    PRIMARY KEY (txid, output_index)
+);
+
+CREATE TYPE sbtc_signer.prevout_type AS ENUM (
+    'signers_input',
+    'deposit'
+);
+
+-- A table for all bitcoin transaction inputs spent by the signers.
+CREATE TABLE sbtc_signer.bitcoin_tx_inputs (
+    -- the ID of the transaction spending the transaction output
+    txid BYTEA NOT NULL,
+    -- The ID of the transaction that created the TXO being spent.
+    prevout_txid BYTEA NOT NULL,
+    -- The index of the prevout in the transaction that created the TXO.
+    prevout_output_index INTEGER NOT NULL,
+    -- The amount of the prevout being spent.
+    amount BIGINT NOT NULL,
+    -- The scriptPubKey of the prevout
+    script_pubkey BYTEA NOT NULL,
+    -- The type of UTXO this is
+    prevout_type sbtc_signer.prevout_type NOT NULL,
+    -- a timestamp of when this record was created in the database.
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    PRIMARY KEY (txid, prevout_txid, prevout_output_index)
 );
 
 -- Represents a single withdrawal request which has been included in a sweep

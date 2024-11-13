@@ -35,7 +35,7 @@ BEGIN
         FROM sbtc_signer.bitcoin_blocks AS parent
         JOIN blockchain AS last
             ON parent.block_hash = last.parent_hash
-        WHERE last.depth <= max_depth
+        WHERE last.depth < max_depth
     )
     SELECT
         blocks.block_hash
