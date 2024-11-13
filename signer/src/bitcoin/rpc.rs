@@ -356,7 +356,6 @@ impl BitcoinCoreClient {
             .inner
             .call::<Vec<TxSpendingPrevOut>>("gettxspendingprevout", &args);
 
-
         let results = match response {
             Ok(response) => Ok(response),
             Err(err) => Err(Error::BitcoinCoreGetTxSpendingPrevout(err, *outpoint)),
@@ -396,13 +395,13 @@ impl BitcoinCoreClient {
     pub fn get_mempool_descendants(&self, txid: &Txid) -> Result<Vec<Txid>, Error> {
         let args = [serde_json::to_value(txid).map_err(Error::JsonSerialize)?];
 
-        let results = match self.inner.call::<Vec<Txid>>("getmempooldescendants", &args) {
-            Ok(response) => Ok(response),
+        let result = self.inner.call::<Vec<Txid>>("getmempooldescendants", &args);
+
+        match result {
+            Ok(txids) => Ok(txids),
             Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(vec![]),
             Err(err) => Err(Error::BitcoinCoreGetMempoolDescendants(err, *txid)),
-        }?;
-
-        Ok(results)
+        }
     }
 
     /// Estimates the approximate fee in sats per vbyte needed for a
