@@ -225,12 +225,12 @@ export class EmilyStack extends cdk.Stack {
         const operationLambdaId: string = "OperationLambda";
         const operationLambda: lambda.Function = new lambda.Function(this, operationLambdaId, {
             functionName: EmilyStackUtils.getResourceName(operationLambdaId, props),
-            architecture: EmilyStackUtils.getLambdaArchitecture(props),
+            architecture: lambda.Architecture.X86_64,
             runtime: lambda.Runtime.PROVIDED_AL2023,
             code: lambda.Code.fromAsset(EmilyStackUtils.getPathFromProjectRoot(
                 props.stageName === Constants.UNIT_TEST_STAGE_NAME
                     ? "emily/cdk/test/assets/empty-lambda.zip"
-                    : "target/lambda/emily-handler/bootstrap.zip"
+                    : "target/lambda/emily-lambda/bootstrap.zip"
             )),
             // Lambda should be very fast. Something is wrong if it takes > 5 seconds.
             timeout: cdk.Duration.seconds(5),
