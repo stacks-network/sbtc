@@ -562,6 +562,18 @@ where
             .expect("storage error")
             .expect("no chain tip");
 
+        // now that we have a chain tip, get the real coordinator
+        let coordinator_public_key =
+            crate::transaction_coordinator::coordinator_public_key(&bitcoin_chain_tip, signer_set)
+                .unwrap();
+        let coordinator_signer_info = signer_info
+            .iter()
+            .find(|signer| {
+                PublicKey::from_private_key(&signer.signer_private_key) == coordinator_public_key
+            })
+            .unwrap()
+            .clone();
+
         run_dkg_and_store_results_for_signers(
             &signer_info,
             &bitcoin_chain_tip,
