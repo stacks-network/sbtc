@@ -13,6 +13,18 @@ use crate::stacks::contracts::WithdrawalAcceptValidationError;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Attempted division by zero
+    #[error("attempted division by zero")]
+    DivideByZero,
+
+    /// Arithmetic overflow
+    #[error("arithmetic overflow")]
+    ArithmeticOverflow,
+
+    /// Indicates that a sweep transaction with the specified txid could not be found.
+    #[error("sweep transaction not found: {0}")]
+    MissingSweepTransaction(bitcoin::Txid),
+
     /// The nakamoto start height could not be determined.
     #[error("nakamoto start height could not be determined")]
     MissingNakamotoStartHeight,

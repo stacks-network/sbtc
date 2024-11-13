@@ -59,6 +59,7 @@ use fake::Fake as _;
 use rand::SeedableRng;
 use signer::testing::wsts::SignerSet;
 use signer::transaction_coordinator;
+use test_log::test;
 use url::Url;
 
 use crate::utxo_construction::make_deposit_request;
@@ -162,7 +163,7 @@ const DUMMY_TENURE_INFO: RPCGetTenureInfo = RPCGetTenureInfo {
 /// After a signing round, the sweep tx for the request is broadcasted and we check
 /// that Emily is informed about it.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[tokio::test]
+#[test(tokio::test)]
 async fn deposit_flow() {
     let num_signers = 7;
     let signing_threshold = 5;
@@ -268,12 +269,6 @@ async fn deposit_flow() {
                 .once()
                 // Dummy value
                 .returning(|| Box::pin(async { Ok(1.3) }));
-
-            client
-                .expect_get_last_fee()
-                .once()
-                // Dummy value -- we don't need to worry about RBF
-                .returning(|_| Box::pin(async { Ok(None) }));
         })
         .await;
 

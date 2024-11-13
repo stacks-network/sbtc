@@ -9,6 +9,10 @@ use crate::error::Error;
 
 use super::{MessageTransfer, Msg, MsgId};
 
+const DEFAULT_WAN_CAPACITY: usize = 10_000;
+const DEFAULT_SIGNER_CAPACITY: usize = 1_000;
+const DEDUP_BUFFER_SIZE: usize = 500;
+
 /// In-memory representation of a WAN network between different signers.
 pub struct WanNetwork {
     tx: Sender<Msg>,
@@ -32,7 +36,7 @@ impl WanNetwork {
 
 impl Default for WanNetwork {
     fn default() -> Self {
-        Self::new(10_000)
+        Self::new(DEFAULT_WAN_CAPACITY)
     }
 }
 
@@ -83,10 +87,17 @@ impl SignerNetwork {
         });
     }
 
+    /// Create a new in-memory signer network with a single signer instance.
+    /// You can use this if you do not need to simulate multiple signers.
+    pub fn single() -> Self {
+        let (wan_tx, _) = tokio::sync::broadcast::channel(DEFAULT_WAN_CAPACITY);
+        Self::new(wan_tx)
+    }
+
     /// Create a new in-memory signer network.
     fn new(wan_tx: Sender<Msg>) -> Self {
         // We create a new broadcast channel for this signer's network.
-        let (signer_tx, _) = tokio::sync::broadcast::channel(1_000);
+        let (signer_tx, _) = tokio::sync::broadcast::channel(DEFAULT_SIGNER_CAPACITY);
 
         Self {
             wan_tx,
@@ -107,7 +118,7 @@ impl SignerNetwork {
     async fn dedup_buffer(&self, msg: &Msg) {
         let mut sent_buffer = self.sent.write().await;
         sent_buffer.push_back(msg.id());
-        if sent_buffer.len() > 500 {
+        if sent_buffer.len() > DEDUP_BUFFER_SIZE {
             sent_buffer.pop_front();
         }
     }

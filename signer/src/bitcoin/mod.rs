@@ -44,13 +44,6 @@ pub trait BitcoinInteract: Sync + Send {
     // This should be implemented with the help of the `fees::EstimateFees` trait
     fn estimate_fee_rate(&self) -> impl std::future::Future<Output = Result<f64, Error>> + Send;
 
-    /// Get the total fee amount and the fee rate for the last transaction that
-    /// used the given UTXO as an input.
-    fn get_last_fee(
-        &self,
-        utxo: bitcoin::OutPoint,
-    ) -> impl Future<Output = Result<Option<utxo::Fees>, Error>> + Send;
-
     /// Broadcast transaction
     fn broadcast_transaction(
         &self,
