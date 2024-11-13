@@ -1513,6 +1513,13 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
 
     let aggregate_key = &PublicKey::from_private_key(&PrivateKey::new(&mut rng));
 
+    let dkg_shares = model::EncryptedDkgShares {
+        aggregate_key: aggregate_key.clone(),
+        script_pubkey: aggregate_key.signers_script_pubkey().into(),
+        ..Faker.fake_with_rng(&mut rng)
+    };
+    db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();
+
     // We create a single Bitcoin block which will be the chain tip and hold
     // our signer UTXO.
     let bitcoin_block = model::BitcoinBlock {
@@ -1537,6 +1544,19 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
         .consensus_encode(&mut signer_utxo_encoded)
         .unwrap();
 
+    let utxo_input = model::TxPrevout {
+        txid: signer_utxo_txid.into(),
+        prevout_type: model::TxPrevoutType::SignersInput,
+        ..Faker.fake_with_rng(&mut rng)
+    };
+
+    let utxo_output = model::TxOutput {
+        txid: signer_utxo_txid.into(),
+        output_type: model::TxOutputType::Donation,
+        script_pubkey: aggregate_key.signers_script_pubkey().into(),
+        ..Faker.fake_with_rng(&mut rng)
+    };
+
     // Write the Bitcoin block and transaction to the database.
     db.write_bitcoin_block(&bitcoin_block).await.unwrap();
     db.write_transaction(&model::Transaction {
@@ -1553,6 +1573,8 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
     })
     .await
     .unwrap();
+    db.write_tx_prevout(&utxo_input).await.unwrap();
+    db.write_tx_output(&utxo_output).await.unwrap();
 
     // Get the chain tip and assert that it is the block we just wrote.
     let chain_tip = db
@@ -1627,6 +1649,13 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
 
     let aggregate_key = &PublicKey::from_private_key(&PrivateKey::new(&mut rng));
 
+    let dkg_shares = model::EncryptedDkgShares {
+        aggregate_key: aggregate_key.clone(),
+        script_pubkey: aggregate_key.signers_script_pubkey().into(),
+        ..Faker.fake_with_rng(&mut rng)
+    };
+    db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();
+
     // We create a single Bitcoin block which will be the chain tip and hold
     // our signer UTXO.
     let bitcoin_block = model::BitcoinBlock {
@@ -1651,6 +1680,19 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
         .consensus_encode(&mut signer_utxo_encoded)
         .unwrap();
 
+    let utxo_input = model::TxPrevout {
+        txid: signer_utxo_txid.into(),
+        prevout_type: model::TxPrevoutType::SignersInput,
+        ..Faker.fake_with_rng(&mut rng)
+    };
+
+    let utxo_output = model::TxOutput {
+        txid: signer_utxo_txid.into(),
+        output_type: model::TxOutputType::Donation,
+        script_pubkey: aggregate_key.signers_script_pubkey().into(),
+        ..Faker.fake_with_rng(&mut rng)
+    };
+
     // Write the Bitcoin block and transaction to the database.
     db.write_bitcoin_block(&bitcoin_block).await.unwrap();
     db.write_transaction(&model::Transaction {
@@ -1667,6 +1709,8 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
     })
     .await
     .unwrap();
+    db.write_tx_prevout(&utxo_input).await.unwrap();
+    db.write_tx_output(&utxo_output).await.unwrap();
 
     // Get the chain tip and assert that it is the block we just wrote.
     let chain_tip = db
