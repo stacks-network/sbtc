@@ -383,7 +383,7 @@ impl BitcoinCoreClient {
     ///
     /// If there is a chain of transactions in the mempool which implicitly
     /// depend on the provided transaction, then the entire chain of
-    /// transactions are returned, not just the immediate descendants.
+    /// transactions is returned, not just the immediate descendants.
     ///
     /// The ordering of the transactions in the returned vector is not
     /// guaranteed to be in any particular order.

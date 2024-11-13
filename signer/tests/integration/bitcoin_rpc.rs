@@ -268,7 +268,7 @@ async fn get_tx_spending_prevout_nonexistent_txid() {
     let (_, faucet) = regtest::initialize_blockchain();
     let addr = Recipient::new(AddressType::P2wpkh);
     faucet.send_to(500_000, &addr.address);
-    faucet.generate_blocks(100);
+    faucet.generate_blocks(1);
 
     // Try to tx's spending a non-existent outpoint. It should return an empty
     // list.
@@ -294,7 +294,7 @@ async fn get_mempool_descendants() {
     // Get some coins to spend (and our "utxo" outpoint).
     let outpoint = faucet.send_to(10_000, &addr1.address);
     // A coinbase transaction is not spendable until it has 100 confirmations.
-    faucet.generate_blocks(100);
+    faucet.generate_blocks(1);
 
     // There should be no transactions in the mempool spending this txid.
     let response = client.get_tx_spending_prevout(&outpoint).unwrap();
