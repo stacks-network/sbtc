@@ -1449,7 +1449,7 @@ async fn sign_bitcoin_transaction() {
         .get_tx_info(&txid, &block_hash)
         .unwrap()
         .unwrap();
-    let actual_script_pub_key = &tx_info.vin[0].prevout.script_pub_key.hex;
+    let actual_script_pub_key = tx_info.vin[0].prevout.script_pub_key.script.as_bytes();
 
     assert_eq!(actual_script_pub_key, script_pub_key.as_bytes());
     assert_eq!(&tx_info.tx.output[0].script_pubkey, &script_pub_key);
@@ -1564,7 +1564,7 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
 
     // Get the signer UTXO and assert that it is the one we just wrote.
     let utxo = db
-        .get_signer_utxo(&chain_tip, aggregate_key, 10)
+        .get_signer_utxo(&chain_tip, 10)
         .await
         .unwrap()
         .expect("no signer utxo");
@@ -1678,7 +1678,7 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
 
     // Get the signer UTXO and assert that it is the one we just wrote.
     let utxo = db
-        .get_signer_utxo(&chain_tip, aggregate_key, 10)
+        .get_signer_utxo(&chain_tip, 10)
         .await
         .unwrap()
         .expect("no signer utxo");

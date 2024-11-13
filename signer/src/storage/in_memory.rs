@@ -6,6 +6,7 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 use futures::StreamExt as _;
 use futures::TryStreamExt as _;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -113,6 +114,12 @@ pub struct Store {
     /// sBTC Bitcoin sweep transactions which have been broadcast to the
     /// Bitcoin network, but not necessarily confirmed.
     pub sweep_transactions: Vec<model::SweepTransaction>,
+
+    /// Bitcoin transaction outputs
+    pub bitcoin_outputs: HashMap<model::BitcoinTxId, model::TxOutput>,
+
+    /// Bitcoin transaction inputs
+    pub bitcoin_prevouts: HashMap<model::BitcoinTxId, model::TxPrevout>,
 }
 
 impl Store {
@@ -556,6 +563,16 @@ impl super::DbRead for SharedStore {
         )
     }
 
+    async fn key_rotation_exists(
+        &self,
+        _chain_tip: &model::BitcoinBlockHash,
+        _signer_set: &BTreeSet<PublicKey>,
+        _aggregate_key: &PublicKey,
+        _signatures_required: u16,
+    ) -> Result<bool, Error> {
+        unimplemented!()
+    }
+
     async fn get_signers_script_pubkeys(&self) -> Result<Vec<model::Bytes>, Error> {
         Ok(self
             .lock()
@@ -569,9 +586,12 @@ impl super::DbRead for SharedStore {
     async fn get_signer_utxo(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: &PublicKey,
         context_window: u16,
     ) -> Result<Option<SignerUtxo>, Error> {
+        let Some(dkg_shares) = self.get_latest_encrypted_dkg_shares().await? else {
+            return Ok(None);
+        };
+        let aggregate_key = dkg_shares.aggregate_key;
         let script_pubkey = aggregate_key.signers_script_pubkey();
         let store = self.lock().await;
         let bitcoin_blocks = &store.bitcoin_blocks;
@@ -610,11 +630,11 @@ impl super::DbRead for SharedStore {
         let Some(sbtc_txs) = sbtc_txs else {
             // if no sbtc tx exists, consider donations
             return store
-                .get_utxo_from_donation(chain_tip, aggregate_key, context_window)
+                .get_utxo_from_donation(chain_tip, &aggregate_key, context_window)
                 .await;
         };
 
-        get_utxo(aggregate_key, sbtc_txs)
+        get_utxo(&aggregate_key, sbtc_txs)
     }
 
     async fn get_deposit_request_signer_votes(
@@ -1095,6 +1115,24 @@ impl super::DbWrite for SharedStore {
             .await
             .completed_deposit_events
             .insert(event.outpoint, event.clone());
+
+        Ok(())
+    }
+
+    async fn write_tx_output(&self, output: &model::TxOutput) -> Result<(), Error> {
+        self.lock()
+            .await
+            .bitcoin_outputs
+            .insert(output.txid, output.clone());
+
+        Ok(())
+    }
+
+    async fn write_tx_prevout(&self, prevout: &model::TxPrevout) -> Result<(), Error> {
+        self.lock()
+            .await
+            .bitcoin_prevouts
+            .insert(prevout.txid, prevout.clone());
 
         Ok(())
     }
