@@ -384,7 +384,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Unconfirmed,
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
@@ -397,7 +397,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Spent(BitcoinTxId::from([1; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
@@ -410,7 +410,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: None,
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
@@ -423,7 +423,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(false),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
@@ -436,7 +436,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(false),
+            can_accept: Some(false),
             amount: 0,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
@@ -449,7 +449,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 1),
@@ -462,7 +462,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 2),
@@ -475,7 +475,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: u64::MAX,
             lock_time: LockTime::from_512_second_intervals(u16::MAX),
@@ -488,7 +488,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
@@ -517,7 +517,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: TX_FEE,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
@@ -530,7 +530,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: TX_FEE,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
@@ -543,7 +543,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
             max_fee: TX_FEE - 1,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
