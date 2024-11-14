@@ -13,6 +13,7 @@ use bitcoin::TxOut;
 use bitvec::array::BitArray;
 use blockstack_lib::burnchains::Txid as StacksTxid;
 use blockstack_lib::chainstate::{nakamoto, stacks};
+use clarity::util::secp256k1::Secp256k1PublicKey;
 use fake::Fake;
 use rand::seq::IteratorRandom as _;
 use rand::Rng;
@@ -20,6 +21,8 @@ use sbtc::deposits::DepositScriptInputs;
 use sbtc::deposits::ReclaimScriptInputs;
 use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::SECP256K1;
+use stacks_common::address::AddressHashMode;
+use stacks_common::address::C32_ADDRESS_VERSION_TESTNET_MULTISIG;
 use stacks_common::types::chainstate::StacksAddress;
 
 use crate::keys::PrivateKey;
@@ -362,14 +365,24 @@ impl fake::Dummy<SignerSetConfig> for RotateKeysTransaction {
         let signer_set: Vec<PublicKey> = std::iter::repeat_with(|| fake::Faker.fake_with_rng(rng))
             .take(config.num_keys as usize)
             .collect();
-        let aggregate_key = PublicKey::combine_keys(signer_set.iter()).unwrap();
+
         let address = StacksPrincipal::from(clarity::vm::types::PrincipalData::from(
-            StacksAddress::p2pkh(false, &aggregate_key.into()),
+            StacksAddress::from_public_keys(
+                C32_ADDRESS_VERSION_TESTNET_MULTISIG,
+                &AddressHashMode::SerializeP2SH,
+                config.signatures_required as usize,
+                &signer_set
+                    .iter()
+                    .map(Secp256k1PublicKey::from)
+                    .collect::<Vec<_>>(),
+            )
+            .expect("failed to create StacksAddress"),
         ));
+
         RotateKeysTransaction {
             txid: fake::Faker.fake_with_rng(rng),
             address,
-            aggregate_key,
+            aggregate_key: fake::Faker.fake_with_rng(rng),
             signer_set,
             signatures_required: config.signatures_required,
         }
