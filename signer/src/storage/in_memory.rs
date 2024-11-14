@@ -314,7 +314,11 @@ impl super::DbRead for SharedStore {
                     .deposit_request_to_signers
                     .get(&(deposit_request.txid, deposit_request.output_index))
                     .map(|signers| {
-                        signers.iter().filter(|signer| signer.can_accept).count() >= threshold
+                        signers
+                            .iter()
+                            .filter(|signer| signer.can_accept && signer.can_sign)
+                            .count()
+                            >= threshold
                     })
                     .unwrap_or_default()
             })
