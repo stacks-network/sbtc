@@ -31,6 +31,11 @@ export class EmilyStackUtils {
     private static tablesOnly?: boolean;
 
     /*
+     * The number of signer API keys to create.
+     */
+    private static numSignerApiKeys?: number;
+
+    /*
      * Returns the current stage name.
      */
     public static getStageName(): string {
@@ -77,6 +82,16 @@ export class EmilyStackUtils {
         return this.tablesOnly;
     }
 
+    /*
+     * Returns the number of signer API keys to create.
+     */
+    public static getNumSignerApiKeys(): number {
+        this.numSignerApiKeys ??= parseInt(process.env.NUM_SIGNER_API_KEYS ?? (Constants.DEFAULT_NUM_SIGNER_API_KEYS).toString());
+        if (this.numSignerApiKeys === undefined) {
+            throw new Error('Must define number of signer API keys');
+        }
+        return this.numSignerApiKeys
+    }
 
     /*
      * Returns true iff the current stack is a development stack / not a production stack.
