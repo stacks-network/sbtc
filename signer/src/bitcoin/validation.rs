@@ -3,6 +3,7 @@
 use bitcoin::relative::LockTime;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
+use bitcoin::ScriptBuf;
 
 use crate::bitcoin::utxo::FeeAssessment;
 use crate::bitcoin::utxo::Fees;
@@ -14,7 +15,8 @@ use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::QualifiedRequestId;
-use crate::storage::DbRead as _;
+use crate::storage::model::StacksBlockHash;
+use crate::storage::model::StacksTxId;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
 /// The necessary information for validating a bitcoin transaction.
