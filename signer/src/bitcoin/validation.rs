@@ -4,6 +4,8 @@ use bitcoin::relative::LockTime;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
+use bitcoin::TapSighash;
+use bitcoin::XOnlyPublicKey;
 
 use crate::bitcoin::utxo::FeeAssessment;
 use crate::bitcoin::utxo::Fees;
@@ -15,10 +17,20 @@ use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::QualifiedRequestId;
+use crate::storage::model::SignerVotes;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
-use crate::storage::DbRead as _;
+use crate::storage::DbRead;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
+
+use super::utxo::DepositRequest;
+use super::utxo::RequestRef;
+use super::utxo::Requests;
+use super::utxo::UnsignedTransaction;
+use super::utxo::WithdrawalRequest;
+
+// use super::utxo::DepositRequest;
+// use super::utxo;
 
 /// The necessary information for validating a bitcoin transaction.
 #[derive(Debug, Clone)]
@@ -36,8 +48,10 @@ pub struct BitcoinTxContext {
     pub chain_tip_height: u64,
     /// The transaction that is being validated.
     pub tx: BitcoinTx,
-    /// The deposit requests associated with the inputs in the transaction.
-    pub deposit_requests: Vec<OutPoint>,
+    /// This contains each of the requests for the entire transaction
+    /// package. Each element in the vector corresponds to the requests
+    /// that will be included in a single bitcoin transaction.
+    pub request_packages: Vec<PackagedRequests>,
     /// The total amount of the transaction fee in sats.
     pub tx_fee: u64,
     /// The current market fee rate in sat/vByte.
@@ -45,17 +59,31 @@ pub struct BitcoinTxContext {
     /// The total fee amount and the fee rate for the last transaction that
     /// used this UTXO as an input.
     pub last_fee: Option<Fees>,
-    /// The withdrawal requests associated with the outputs in the current
-    /// transaction.
-    pub request_ids: Vec<QualifiedRequestId>,
     /// The public key of the signer that created the bitcoin transaction.
     /// This is very unlikely to ever be used in the
     /// [`BitcoinTx::validate`] function, but is here for logging and
     /// tracking purposes.
     pub origin: PublicKey,
+    /// This signers public key.
+    pub signer_public_key: PublicKey,
+    /// The current aggregate key that was the output of DKG.
+    pub aggregate_key: PublicKey,
     /// Two byte prefix for BTC transactions that are related to the Stacks
     /// blockchain.
     pub magic_bytes: [u8; 2],
+    /// The state of the signers.
+    pub signer_state: SignerBtcState,
+}
+
+/// This type is a container for all deposits and withdrawals that are part
+/// of a transaction package.
+#[derive(Debug, Clone)]
+pub struct PackagedRequests {
+    /// The deposit requests associated with the inputs in the transaction.
+    pub deposit_requests: Vec<OutPoint>,
+    /// The withdrawal requests associated with the outputs in the current
+    /// transaction.
+    pub request_ids: Vec<QualifiedRequestId>,
 }
 
 impl BitcoinTxContext {
@@ -105,14 +133,18 @@ impl BitcoinTxContext {
     where
         C: Context + Send + Sync,
     {
-        if !self.request_ids.is_empty() {
+        if !self
+            .request_packages
+            .iter()
+            .all(|reqs| reqs.request_ids.is_empty())
+        {
             return Err(Error::MissingBlock);
         }
 
         Ok(())
     }
 
-    /// Fetch the signers' BTC state.
+    /// Fetch the signers' BTC state and the aggregate key.
     ///
     /// The returned state is the essential information for the signers
     /// UTXO, and information about the current fees and any fees paid for
@@ -128,20 +160,134 @@ impl BitcoinTxContext {
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
 
-        // If we are here, then we know that we have run DKG. Why? Well,
-        // users cannot deposit if they don't have an aggregate key to lock
-        // their funds with, and that requires DKG.
-        let Some(dkg_shares) = db.get_latest_encrypted_dkg_shares().await? else {
-            return Err(Error::NoDkgShares);
-        };
-
-        Ok(SignerBtcState {
+        let btc_state = SignerBtcState {
             fee_rate: self.fee_rate,
             utxo,
-            public_key: bitcoin::XOnlyPublicKey::from(dkg_shares.aggregate_key),
+            public_key: bitcoin::XOnlyPublicKey::from(self.aggregate_key),
             last_fees: self.last_fee,
             magic_bytes: self.magic_bytes,
-        })
+        };
+
+        Ok(btc_state)
+    }
+
+    /// Construct the reports for each request that this transaction will
+    /// service.
+    pub async fn construct_reports2<C>(&self, ctx: &C) -> Result<Vec<TempOutput>, Error>
+    where
+        C: Context + Send + Sync,
+    {
+        let db = ctx.get_storage();
+        let signer_state = self.get_btc_state(ctx).await?;
+
+        let signer_public_key = &self.signer_public_key;
+        let aggregate_key = &self.aggregate_key;
+        let chain_tip = &self.chain_tip;
+
+        let mut output = Vec::new();
+
+        for package in self.request_packages.iter() {
+            let mut deposits = Vec::new();
+            let mut withdrawals = Vec::new();
+
+            for outpoint in package.deposit_requests.iter() {
+                let txid = outpoint.txid.into();
+                let output_index = outpoint.vout;
+                let report_future = db.get_deposit_request_report(
+                    chain_tip,
+                    &txid,
+                    output_index,
+                    signer_public_key,
+                );
+
+                let Some(report) = report_future.await? else {
+                    return Err(BitcoinDepositInputError::Unknown(*outpoint).into_error(self));
+                };
+
+                let votes = db
+                    .get_deposit_request_signer_votes(&txid, output_index, aggregate_key)
+                    .await?;
+
+                deposits.push((report.to_deposit_request(&votes), report));
+            }
+
+            for id in package.request_ids.iter() {
+                let report_future =
+                    db.get_withdrawal_request_report(chain_tip, id, signer_public_key);
+
+                let Some(report) = report_future.await? else {
+                    return Err(BitcoinWithdrawalOutputError::Unknown(*id).into_error(self));
+                };
+
+                let votes = db
+                    .get_withdrawal_request_signer_votes(id, aggregate_key)
+                    .await?;
+
+                withdrawals.push((report.to_withdrawal_request(&votes), report));
+            }
+
+            let reports = SbtcReports {
+                deposits,
+                withdrawals,
+                signer_state,
+            };
+
+            let mut signer_state = signer_state;
+            let tx = reports.create_transaction()?;
+            let sighashes = tx.construct_digests()?.into_sighashes();
+
+            signer_state.utxo = tx.new_signer_utxo();
+            // The first transaction is the only one whose input UTXOs that
+            // have all been confirmed. Moreover, the fees that it sets
+            // aside are enough to make up for the remaining transactions
+            // in the transaction package. With that in mind, we do not
+            // need to bump their fees anymore in order for them to be
+            // accepted by the network.
+            signer_state.last_fees = None;
+            output.push(TempOutput { reports, sighashes });
+        }
+
+        Ok(output)
+    }
+}
+
+/// Temp struct
+pub struct TempOutput {
+    /// The info for the stuff
+    pub sighashes: Vec<(OutPoint, TapSighash)>,
+    /// The info for the stuff
+    pub reports: SbtcReports,
+}
+
+/// The set of sBTC requests with additional relevant
+/// information used to construct the next transaction package.
+#[derive(Debug)]
+pub struct SbtcReports {
+    /// Deposit requests with how the signers voted for them.
+    pub deposits: Vec<(DepositRequest, DepositRequestReport)>,
+    /// Withdrawal requests with how the signers voted for them.
+    pub withdrawals: Vec<(WithdrawalRequest, WithdrawalRequestReport)>,
+    /// Summary of the Signers' UTXO and information necessary for
+    /// constructing their next UTXO.
+    pub signer_state: SignerBtcState,
+}
+
+impl SbtcReports {
+    /// Create the transaction with witness data using the requests.
+    pub fn create_transaction(&self) -> Result<UnsignedTransaction, Error> {
+        let deposits = self
+            .deposits
+            .iter()
+            .map(|(request, _)| RequestRef::Deposit(request));
+        let withdrawals = self
+            .withdrawals
+            .iter()
+            .map(|(request, _)| RequestRef::Withdrawal(request));
+
+        let state = &self.signer_state;
+        let requests = Requests::new(deposits.chain(withdrawals).collect());
+
+        UnsignedTransaction::new_stub(requests, state)
     }
 }
 
@@ -281,7 +427,7 @@ pub enum DepositRequestStatus {
 
 /// A struct for the status report summary of a deposit request for use
 /// in validation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DepositRequestReport {
     /// The deposit UTXO outpoint that uniquely identifies the deposit.
     pub outpoint: OutPoint,
@@ -304,11 +450,17 @@ pub struct DepositRequestReport {
     pub max_fee: u64,
     /// The lock_time in the reclaim script
     pub lock_time: LockTime,
+    /// The deposit script used so that the signers' can spend funds.
+    pub deposit_script: ScriptBuf,
+    /// The reclaim script for the deposit.
+    pub reclaim_script: ScriptBuf,
+    /// The public key used in the deposit script.
+    pub signers_public_key: XOnlyPublicKey,
 }
 
 impl DepositRequestReport {
     /// Validate that the deposit request is okay given the report.
-    pub fn validate(self, chain_tip_height: u64) -> Result<(), BitcoinDepositInputError> {
+    pub fn validate(&self, chain_tip_height: u64) -> Result<(), BitcoinDepositInputError> {
         let confirmed_block_height = match self.status {
             // Deposit requests are only written to the database after they
             // have been confirmed, so this means that we have a record of
@@ -384,6 +536,19 @@ impl DepositRequestReport {
         }
         Ok(())
     }
+
+    /// As deposit request.
+    pub fn to_deposit_request(&self, votes: &SignerVotes) -> DepositRequest {
+        DepositRequest {
+            outpoint: self.outpoint,
+            max_fee: self.max_fee,
+            amount: self.amount,
+            deposit_script: self.deposit_script.clone(),
+            reclaim_script: self.reclaim_script.clone(),
+            signers_public_key: self.signers_public_key,
+            signer_bitmap: votes.into(),
+        }
+    }
 }
 
 /// An enum for the confirmation status of a withdrawal request.
@@ -458,6 +623,18 @@ impl WithdrawalRequestReport {
     {
         Err(BitcoinWithdrawalOutputError::Unknown(self.qualified_id()))
     }
+
+    fn to_withdrawal_request(&self, votes: &SignerVotes) -> WithdrawalRequest {
+        WithdrawalRequest {
+            request_id: self.request_id,
+            txid: self.txid,
+            block_hash: self.block_hash,
+            amount: self.amount,
+            max_fee: self.max_fee,
+            script_pubkey: self.script_pubkey.clone().into(),
+            signer_bitmap: votes.into(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -489,6 +666,9 @@ mod tests {
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::TxNotOnBestChain(OutPoint::null())),
         chain_tip_height: 2,
@@ -502,6 +682,9 @@ mod tests {
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::DepositUtxoSpent(OutPoint::null(), BitcoinTxId::from([1; 32]))),
         chain_tip_height: 2,
@@ -515,6 +698,9 @@ mod tests {
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::NoVote(OutPoint::null())),
         chain_tip_height: 2,
@@ -528,6 +714,9 @@ mod tests {
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::CannotSignUtxo(OutPoint::null())),
         chain_tip_height: 2,
@@ -541,6 +730,9 @@ mod tests {
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::RejectedRequest(OutPoint::null())),
         chain_tip_height: 2,
@@ -554,6 +746,9 @@ mod tests {
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 1),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::LockTimeExpiry(OutPoint::null())),
         chain_tip_height: 2,
@@ -567,6 +762,9 @@ mod tests {
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 2),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::LockTimeExpiry(OutPoint::null())),
         chain_tip_height: 2,
@@ -580,6 +778,9 @@ mod tests {
             max_fee: u64::MAX,
             lock_time: LockTime::from_512_second_intervals(u16::MAX),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::UnsupportedLockTime(OutPoint::null())),
         chain_tip_height: 2,
@@ -593,6 +794,9 @@ mod tests {
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: None,
         chain_tip_height: 2,
@@ -622,6 +826,9 @@ mod tests {
             max_fee: TX_FEE,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
             outpoint: OutPoint::new(Txid::from_byte_array([1; 32]), 0),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::Unknown(OutPoint::new(Txid::from_byte_array([1; 32]), 0))),
         chain_tip_height: 2,
@@ -635,6 +842,9 @@ mod tests {
             max_fee: TX_FEE,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: None,
         chain_tip_height: 2,
@@ -648,6 +858,9 @@ mod tests {
             max_fee: TX_FEE - 1,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
             outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
         error: Some(BitcoinDepositInputError::FeeTooHigh(OutPoint::null())),
         chain_tip_height: 2,

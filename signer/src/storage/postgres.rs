@@ -21,6 +21,7 @@ use crate::bitcoin::validation::DepositRequestStatus;
 use crate::bitcoin::validation::WithdrawalRequestReport;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::keys::PublicKeyXOnly;
 use crate::stacks::events::CompletedDepositEvent;
 use crate::stacks::events::WithdrawalAcceptEvent;
 use crate::stacks::events::WithdrawalCreateEvent;
@@ -120,6 +121,12 @@ struct DepositStatusSummary {
     /// in the funds.
     #[sqlx(try_from = "i64")]
     max_fee: u64,
+    /// The deposit script used so that the signers' can spend funds.
+    deposit_script: model::ScriptPubKey,
+    /// The reclaim script for the deposit.
+    reclaim_script: model::ScriptPubKey,
+    /// The public key used in the deposit script.
+    signers_public_key: PublicKeyXOnly,
 }
 
 // A convenience struct for retriving the signers' UTXO
@@ -548,6 +555,9 @@ impl PgStore {
               , dr.amount
               , dr.max_fee
               , dr.lock_time
+              , dr.spend_script AS deposit_script
+              , dr.reclaim_script
+              , dr.signers_public_key
               , bc.block_height
               , bc.block_hash
             FROM sbtc_signer.deposit_requests AS dr 
@@ -1067,6 +1077,9 @@ impl super::DbRead for PgStore {
             lock_time: bitcoin::relative::LockTime::from_consensus(summary.lock_time)
                 .map_err(Error::DisabledLockTime)?,
             outpoint: bitcoin::OutPoint::new((*txid).into(), output_index),
+            deposit_script: summary.deposit_script.into(),
+            reclaim_script: summary.reclaim_script.into(),
+            signers_public_key: summary.signers_public_key.into(),
         }))
     }
 
