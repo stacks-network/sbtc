@@ -37,6 +37,7 @@ use bitcoin::hashes::Hash as _;
 use bitcoin::BlockHash;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
+use futures::future::try_join_all;
 use futures::stream::StreamExt;
 use sbtc::deposits::CreateDepositRequest;
 use sbtc::deposits::DepositInfo;
@@ -88,7 +89,7 @@ impl DepositRequestValidator for CreateDepositRequest {
 
         // The `get_tx_info` call here should not return None, we know that
         // it has been included in a block.
-        let Some(tx_info) = client.get_tx_info(&self.outpoint.txid, &block_hash).await? else {
+        let Some(tx_info) = client.get_tx_info(&self.outpoint.txid, Some(&block_hash)).await? else {
             return Ok(None);
         };
 
@@ -161,6 +162,11 @@ where
                         tracing::warn!(%error, "could not load latest deposit requests from Emily");
                     }
 
+                    // tracing::info!("processing mempool sweep transactions");
+                    // if let Err(error) = self.process_mempool_sweep_transactions().await {
+                    //     tracing::warn!(%error, "could not process mempool sweep transactions");
+                    // }
+
                     self.context
                         .signal(SignerEvent::BitcoinBlockObserved.into())?;
                 }
@@ -175,6 +181,49 @@ where
         tracing::info!("block observer has stopped");
 
         Ok(())
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn process_mempool_sweep_transactions(&self) -> Result<(), Error> {
+        let bitcoin_client = self.context.get_bitcoin_client();
+        let storage = self.context.get_storage_mut();
+
+        let bitcoin_chain_tip = storage.get_bitcoin_canonical_chain_tip().await?
+            .ok_or(Error::NoChainTip)?;
+
+        let signer_utxo = storage.get_signer_utxo(
+            &bitcoin_chain_tip, 
+            self.horizon.try_into().map_err(|_| Error::TypeConversion)?
+        ).await?
+            .ok_or(Error::MissingSignerUtxo)?;
+
+        let mempool_txs_spending_utxo = bitcoin_client
+            .find_mempool_transactions_spending_output(&signer_utxo.outpoint)
+            .await?;
+
+        if mempool_txs_spending_utxo.is_empty() {
+            tracing::debug!(
+                utxo_outpoint = %signer_utxo.outpoint,
+                "no mempool transactions found spending signer UTXO"
+            );
+            return Ok(());
+        }
+
+        let mempool_sweep_txs = try_join_all(
+            mempool_txs_spending_utxo.into_iter().map(|txid| {
+                let bitcoin_client = bitcoin_client.clone();
+                async move {
+                    bitcoin_client.get_tx_info(&txid, None)
+                        .await?
+                        .ok_or(Error::MissingSweepTransaction(txid))
+                }
+            })
+        ).await?;
+
+        
+
+
+        todo!()
     }
 
     /// Fetch deposit requests from Emily and store the validated ones into
@@ -399,7 +448,7 @@ where
             // means the `get_tx_info` call below should not fail.
             let txid = tx.compute_txid();
             let tx_info = btc_rpc
-                .get_tx_info(&txid, &block_hash)
+                .get_tx_info(&txid, Some(&block_hash))
                 .await?
                 .ok_or(Error::BitcoinTxMissing(txid, None))?;
 

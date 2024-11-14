@@ -339,7 +339,7 @@ async fn deposit_flow() {
                             vsize: deposit_tx.vsize() as u64,
                             vin: Vec::new(),
                             vout: Vec::new(),
-                            block_hash: *block_hash,
+                            block_hash: *block_hash.unwrap(),
                             confirmations: 0,
                             block_time: 0,
                         }))

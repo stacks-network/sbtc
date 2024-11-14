@@ -315,10 +315,10 @@ impl BitcoinCoreClient {
     ///
     /// We require bitcoin-core v25 or later. For bitcoin-core v24 and
     /// earlier, this function will return an error.
-    pub fn get_tx_info(
+    pub fn get_tx_info<'a>(
         &self,
         txid: &Txid,
-        block_hash: &BlockHash,
+        block_hash: Option<&'a BlockHash>,
     ) -> Result<Option<BitcoinTxInfo>, Error> {
         let args = [
             serde_json::to_value(txid).map_err(Error::JsonSerialize)?,
@@ -347,7 +347,9 @@ impl BitcoinCoreClient {
     ///
     /// # Notes
     ///
-    /// This method requires bitcoin-core v27 or later.
+    /// This method requires bitcoin-core v27 or later and is based on the
+    /// documentation at
+    /// https://bitcoincore.org/en/doc/27.0.0/rpc/blockchain/gettxspendingprevout/
     pub fn get_tx_spending_prevout(&self, outpoint: &OutPoint) -> Result<Vec<Txid>, Error> {
         let rpc_outpoint = RpcOutPoint::from(outpoint);
         let args = [serde_json::to_value(vec![rpc_outpoint]).map_err(Error::JsonSerialize)?];
@@ -392,6 +394,8 @@ impl BitcoinCoreClient {
     /// - This method requires bitcoin-core v27 or later.
     /// - The RPC endpoint does not in itself return raw transaction data, so
     ///   [`Self::get_tx`] must be used to fetch each transaction separately.
+    /// - Implementation based on documentation at
+    ///   https://bitcoincore.org/en/doc/27.0.0/rpc/blockchain/getmempooldescendants/
     pub fn get_mempool_descendants(&self, txid: &Txid) -> Result<Vec<Txid>, Error> {
         let args = [serde_json::to_value(txid).map_err(Error::JsonSerialize)?];
 
@@ -459,10 +463,10 @@ impl BitcoinInteract for BitcoinCoreClient {
         self.get_tx(txid)
     }
 
-    async fn get_tx_info(
+    async fn get_tx_info<'a>(
         &self,
         txid: &Txid,
-        block_hash: &BlockHash,
+        block_hash: Option<&'a BlockHash>,
     ) -> Result<Option<BitcoinTxInfo>, Error> {
         self.get_tx_info(txid, block_hash)
     }

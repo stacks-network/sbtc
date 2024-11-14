@@ -601,7 +601,7 @@ where
         let tx_info = self
             .context
             .get_bitcoin_client()
-            .get_tx_info(&req.sweep_txid, &req.sweep_block_hash)
+            .get_tx_info(&req.sweep_txid, Some(&req.sweep_block_hash))
             .await?
             .ok_or_else(|| {
                 Error::BitcoinTxMissing(req.sweep_txid.into(), Some(req.sweep_block_hash.into()))

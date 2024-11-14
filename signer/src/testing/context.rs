@@ -304,10 +304,10 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
         self.inner.lock().await.get_tx(txid).await
     }
 
-    async fn get_tx_info(
+    async fn get_tx_info<'a>(
         &self,
         txid: &bitcoin::Txid,
-        block_hash: &bitcoin::BlockHash,
+        block_hash: Option<&'a bitcoin::BlockHash>,
     ) -> Result<Option<crate::bitcoin::rpc::BitcoinTxInfo>, Error> {
         self.inner.lock().await.get_tx_info(txid, block_hash).await
     }

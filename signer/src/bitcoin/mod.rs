@@ -34,10 +34,10 @@ pub trait BitcoinInteract: Sync + Send {
     ) -> impl Future<Output = Result<Option<GetTxResponse>, Error>> + Send;
 
     /// Get a transaction with additional information about it.
-    fn get_tx_info(
+    fn get_tx_info<'a>(
         &self,
         txid: &Txid,
-        block_hash: &BlockHash,
+        block_hash: Option<&'a BlockHash>,
     ) -> impl Future<Output = Result<Option<BitcoinTxInfo>, Error>> + Send;
 
     /// Estimate fee rate
