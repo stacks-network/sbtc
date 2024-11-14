@@ -52,7 +52,7 @@ CREATE TABLE sbtc_signer.deposit_signers (
     -- this specifies whether the signer is a part of the signer set
     -- associated with the deposit_request.signers_public_key
     can_sign BOOLEAN NOT NULL,
-    is_accepted BOOLEAN NOT NULL,
+    can_accept BOOLEAN NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY (txid, output_index, signer_pub_key),
     FOREIGN KEY (txid, output_index) REFERENCES sbtc_signer.deposit_requests(txid, output_index) ON DELETE CASCADE

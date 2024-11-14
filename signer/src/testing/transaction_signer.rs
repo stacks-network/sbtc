@@ -827,7 +827,7 @@ where
             for deposit_request_block in blocks {
                 if context_window_block_hashes.contains(&deposit_request_block) {
                     assert_eq!(signer_decisions.len(), num_expected_decisions);
-                    assert!(signer_decisions.first().unwrap().is_accepted)
+                    assert!(signer_decisions.first().unwrap().can_accept)
                 } else {
                     assert_eq!(signer_decisions.len(), 0);
                 }
