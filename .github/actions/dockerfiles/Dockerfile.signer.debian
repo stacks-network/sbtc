@@ -17,9 +17,9 @@ RUN npm install -g @openapitools/openapi-generator-cli
 WORKDIR /code/sbtc
 COPY . .
 RUN make install && make build
-RUN cargo build --release --bin signer
+RUN cargo build --bin signer
 
 # Create Docker image to run the signer.
 FROM debian:bookworm-slim AS signer
-COPY --from=build /code/sbtc/target/release/signer /usr/local/bin/signer
+COPY --from=build /code/sbtc/target/debug/signer /usr/local/bin/signer
 CMD ["/usr/local/bin/signer --config /signer-config.toml --migrate-db"]
