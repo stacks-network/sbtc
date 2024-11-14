@@ -430,7 +430,8 @@ pub struct WithdrawalRequestReport {
     pub block_hash: StacksBlockHash,
     /// The amount of BTC, in sats, to withdraw.
     pub amount: u64,
-    /// The max fee amount to use for the sBTC deposit transaction.
+    /// The max fee amount to use for the bitcoin transaction sweeping out
+    /// the funds.
     pub max_fee: u64,
     /// The script_pubkey of the output.
     pub script_pubkey: ScriptBuf,
@@ -444,13 +445,13 @@ impl WithdrawalRequestReport {
             request_id: self.request_id,
         }
     }
-    /// Validate that the deposit request is okay given the report.
+    /// Validate that the withdrawal request is okay given the report.
     pub fn validate(&self, _: u64) -> Result<(), BitcoinWithdrawalOutputError> {
         Err(BitcoinWithdrawalOutputError::Unknown(self.qualified_id()))
     }
 
-    /// Validate that the fees assessed to the deposit prevout is below the
-    /// max fee.
+    /// Validate that the fees assessed to the withdrawal output is below
+    /// the max fee.
     pub fn validate_fee<F>(&self, _: &F, _: u64) -> Result<(), BitcoinWithdrawalOutputError>
     where
         F: FeeAssessment,
