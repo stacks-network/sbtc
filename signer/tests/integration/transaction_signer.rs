@@ -567,7 +567,7 @@ async fn handle_pending_deposit_request_address_script_pub_key() {
     // Also we are in the signing set so we can sign for the deposit.
     let vote = votes.pop().unwrap();
     assert!(vote.can_sign);
-    assert!(vote.is_accepted);
+    assert!(vote.can_accept);
 
     testing::storage::drop_db(db).await;
 }
@@ -656,7 +656,7 @@ async fn handle_pending_deposit_request_not_in_signing_set() {
     // false whenever can_sign is false.
     let vote = votes.pop().unwrap();
     assert!(!vote.can_sign);
-    assert!(!vote.is_accepted);
+    assert!(!vote.can_accept);
 
     testing::storage::drop_db(db).await;
 }

@@ -66,12 +66,11 @@ impl fake::Dummy<fake::Faker> for message::SignerMessage {
 
 impl fake::Dummy<fake::Faker> for message::SignerDepositDecision {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        let can_sign = config.fake_with_rng(rng);
         Self {
             output_index: config.fake_with_rng(rng),
             txid: dummy::txid(config, rng),
-            accepted: can_sign,
-            can_sign,
+            can_accept: config.fake_with_rng(rng),
+            can_sign: config.fake_with_rng(rng),
         }
     }
 }

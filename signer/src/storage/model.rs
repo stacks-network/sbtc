@@ -396,8 +396,8 @@ pub struct DepositSigner {
     pub output_index: u32,
     /// Public key of the signer.
     pub signer_pub_key: PublicKey,
-    /// Signals if the signer is prepared to sign for this request.
-    pub is_accepted: bool,
+    /// Signals if the signer will sign for this request if able.
+    pub can_accept: bool,
     /// This specifies whether the indicated signer_pub_key can sign for
     /// the associated deposit request.
     pub can_sign: bool,
@@ -679,8 +679,8 @@ impl From<Vec<SignerVote>> for SignerVotes {
     }
 }
 
-impl From<SignerVotes> for BitArray<[u8; 16]> {
-    fn from(votes: SignerVotes) -> BitArray<[u8; 16]> {
+impl From<&SignerVotes> for BitArray<[u8; 16]> {
+    fn from(votes: &SignerVotes) -> BitArray<[u8; 16]> {
         let mut signer_bitmap = BitArray::ZERO;
         votes
             .iter()
@@ -698,6 +698,12 @@ impl From<SignerVotes> for BitArray<[u8; 16]> {
             });
 
         signer_bitmap
+    }
+}
+
+impl From<SignerVotes> for BitArray<[u8; 16]> {
+    fn from(votes: SignerVotes) -> BitArray<[u8; 16]> {
+        Self::from(&votes)
     }
 }
 
