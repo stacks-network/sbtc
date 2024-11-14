@@ -17,6 +17,7 @@ use crate::storage::model::BitcoinTxId;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
+use crate::storage::DbRead as _;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
 /// The necessary information for validating a bitcoin transaction.
@@ -209,7 +210,8 @@ pub enum BitcoinWithdrawalOutputError {
 }
 
 impl BitcoinWithdrawalOutputError {
-    fn into_error(self, ctx: &BitcoinTxContext) -> Error {
+    /// Make into a crate error
+    pub fn into_error(self, ctx: &BitcoinTxContext) -> Error {
         Error::BitcoinValidation(Box::new(BitcoinValidationError {
             error: BitcoinSweepErrorMsg::Withdrawal(self),
             context: ctx.clone(),

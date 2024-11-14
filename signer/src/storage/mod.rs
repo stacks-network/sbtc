@@ -159,7 +159,7 @@ pub trait DbRead {
     ///
     ///  `Ok(None)` is returned if we do not have a record of the
     /// withdrawal request.
-    /// 
+    ///
     /// Note: The above list is probably not exhaustive.
     fn get_withdrawal_request_report(
         &self,
