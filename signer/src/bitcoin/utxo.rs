@@ -698,7 +698,7 @@ impl<'a> UnsignedTransaction<'a> {
             .collect();
 
         let prevouts = Prevouts::All(input_utxos.as_slice());
-        let sighash_type = TapSighashType::Default;
+        let sighash_type = TapSighashType::All;
         let mut sighasher = SighashCache::new(&self.tx);
         // The signers' UTXO is always the first input in the transaction.
         // Moreover, the signers can only spend this UTXO using the taproot
@@ -944,7 +944,7 @@ impl<'a> UnsignedTransaction<'a> {
 
         Signature {
             signature: key_pair.sign_schnorr(Message::from_digest([0; 32])),
-            sighash_type: TapSighashType::Default,
+            sighash_type: TapSighashType::All,
         }
     }
 
