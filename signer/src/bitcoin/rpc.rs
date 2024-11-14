@@ -310,9 +310,9 @@ impl BitcoinCoreClient {
 
     /// Fetch and decode raw transaction from bitcoin-core using the
     /// `getrawtransaction` RPC with a verbosity of 2.
-    /// 
+    ///
     /// #### From the bitcoin-core docs:
-    /// 
+    ///
     /// By default, this call only returns a transaction if it is in the
     /// mempool. If -txindex is enabled and no blockhash argument is passed, it
     /// will return the transaction if it is in the mempool or any block. If a
@@ -324,10 +324,10 @@ impl BitcoinCoreClient {
     /// - This method requires bitcoin-core v25 or later.
     /// - The implementation is based on the documentation at
     ///   https://bitcoincore.org/en/doc/27.0.0/rpc/rawtransactions/getrawtransaction/
-    pub fn get_tx_info<'a>(
+    pub fn get_tx_info(
         &self,
         txid: &Txid,
-        block_hash: Option<&'a BlockHash>,
+        block_hash: Option<&BlockHash>,
     ) -> Result<Option<BitcoinTxInfo>, Error> {
         let mut args = vec![
             serde_json::to_value(txid).map_err(Error::JsonSerialize)?,
