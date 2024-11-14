@@ -268,9 +268,9 @@ pub struct DepositRequestReport {
     /// This will only be `None` if we do not have a record of the deposit
     /// request.
     pub can_sign: Option<bool>,
-    /// Whether this signer accepted the deposit request or not. This
-    /// should only be `None` if we do not have a record of the deposit
-    /// request or if we cannot sign for the deposited funds.
+    /// Whether this signers' blocklist client accepted the deposit request
+    /// or not. This should only be `None` if we do not have a record of
+    /// the deposit request.
     pub can_accept: Option<bool>,
     /// The deposit amount
     pub amount: u64,
