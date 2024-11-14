@@ -310,24 +310,36 @@ impl BitcoinCoreClient {
 
     /// Fetch and decode raw transaction from bitcoin-core using the
     /// `getrawtransaction` RPC with a verbosity of 2.
+    /// 
+    /// #### From the bitcoin-core docs:
+    /// 
+    /// By default, this call only returns a transaction if it is in the
+    /// mempool. If -txindex is enabled and no blockhash argument is passed, it
+    /// will return the transaction if it is in the mempool or any block. If a
+    /// blockhash argument is passed, it will return the transaction if the
+    /// specified block is available and the transaction is in that block.
     ///
     /// # Notes
     ///
-    /// We require bitcoin-core v25 or later. For bitcoin-core v24 and
-    /// earlier, this function will return an error.
+    /// - This method requires bitcoin-core v25 or later.
+    /// - The implementation is based on the documentation at
+    ///   https://bitcoincore.org/en/doc/27.0.0/rpc/rawtransactions/getrawtransaction/
     pub fn get_tx_info<'a>(
         &self,
         txid: &Txid,
         block_hash: Option<&'a BlockHash>,
     ) -> Result<Option<BitcoinTxInfo>, Error> {
-        let args = [
+        let mut args = vec![
             serde_json::to_value(txid).map_err(Error::JsonSerialize)?,
             // This is the verbosity level. The acceptable values are 0, 1,
             // and 2, and we want the 2 because it will include all the
             // required fields of the type.
             serde_json::Value::Number(serde_json::value::Number::from(2u32)),
-            serde_json::to_value(block_hash).map_err(Error::JsonSerialize)?,
         ];
+
+        if let Some(block_hash) = block_hash {
+            args.push(serde_json::to_value(block_hash).map_err(Error::JsonSerialize)?);
+        }
 
         match self.inner.call::<BitcoinTxInfo>("getrawtransaction", &args) {
             Ok(tx_info) => Ok(Some(tx_info)),
