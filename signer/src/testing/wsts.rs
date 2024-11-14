@@ -1,29 +1,32 @@
 //! Test utilities for running a wsts signer and coordinator.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::time::Duration;
 
+use clarity::util::secp256k1::Secp256k1PublicKey;
+use clarity::vm::types::PrincipalData;
+use fake::Fake;
+use stacks_common::address::AddressHashMode;
+use stacks_common::address::C32_ADDRESS_VERSION_TESTNET_MULTISIG;
+use stacks_common::types::chainstate::StacksAddress;
+use wsts::net::SignatureType;
+use wsts::state_machine::coordinator;
+use wsts::state_machine::coordinator::frost;
+use wsts::state_machine::coordinator::Coordinator as _;
+use wsts::state_machine::StateMachine as _;
+
+use crate::ecdsa::SignEcdsa as _;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
 use crate::network;
+use crate::network::MessageTransfer as _;
 use crate::storage;
 use crate::storage::model;
 use crate::storage::model::EncryptedDkgShares;
 use crate::storage::model::StacksPrincipal;
 use crate::wsts_state_machine;
-
-use fake::Fake;
-use wsts::state_machine::coordinator;
-use wsts::state_machine::coordinator::frost;
-
-use crate::ecdsa::SignEcdsa as _;
-use crate::network::MessageTransfer as _;
-
-use stacks_common::types::chainstate::StacksAddress;
-use wsts::net::SignatureType;
-use wsts::state_machine::coordinator::Coordinator as _;
-use wsts::state_machine::StateMachine as _;
 
 /// Signer info
 #[derive(Debug, Clone)]
@@ -547,10 +550,19 @@ impl SignerSet {
             tx_type: model::TransactionType::RotateKeys,
             block_hash: stacks_chain_tip.block_hash.to_bytes(),
         };
-        let address = StacksPrincipal::from(clarity::vm::types::PrincipalData::from(
-            StacksAddress::p2pkh(false, &shares.aggregate_key.into()),
+        let address = StacksPrincipal::from(PrincipalData::from(
+            StacksAddress::from_public_keys(
+                C32_ADDRESS_VERSION_TESTNET_MULTISIG,
+                &AddressHashMode::SerializeP2SH,
+                self.signers.len(),
+                &self
+                    .signer_keys()
+                    .iter()
+                    .map(Secp256k1PublicKey::from)
+                    .collect::<Vec<_>>(),
+            )
+            .expect("failed to create StacksAddress"),
         ));
-
         let rotate_keys_tx = model::RotateKeysTransaction {
             aggregate_key: shares.aggregate_key,
             address,

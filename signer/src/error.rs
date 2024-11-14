@@ -25,6 +25,14 @@ pub enum Error {
     #[error("sweep transaction not found: {0}")]
     MissingSweepTransaction(bitcoin::Txid),
 
+    /// Received an error in response to getmempooldescendants RPC call
+    #[error("bitcoin-core getmempooldescendants error for txid {1}: {0}")]
+    BitcoinCoreGetMempoolDescendants(bitcoincore_rpc::Error, bitcoin::Txid),
+
+    /// Received an error in response to gettxspendingprevout RPC call
+    #[error("bitcoin-core gettxspendingprevout error for outpoint: {0}")]
+    BitcoinCoreGetTxSpendingPrevout(#[source] bitcoincore_rpc::Error, bitcoin::OutPoint),
+
     /// The nakamoto start height could not be determined.
     #[error("nakamoto start height could not be determined")]
     MissingNakamotoStartHeight,
