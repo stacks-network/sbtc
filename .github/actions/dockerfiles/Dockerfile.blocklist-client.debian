@@ -17,9 +17,9 @@ RUN npm install -g @openapitools/openapi-generator-cli
 WORKDIR /code/sbtc
 COPY . .
 RUN make install && make build
-RUN cargo build --release --bin blocklist-client
+RUN cargo build --bin blocklist-client
 
 # Create Docker image to run the signer.
-FROM debian:bookworm-slim AS signer
-COPY --from=build /code/sbtc/target/release/blocklist-client /usr/local/bin/blocklist-client
+FROM debian:bookworm-slim AS blocklist-client
+COPY --from=build /code/sbtc/target/debug/blocklist-client /usr/local/bin/blocklist-client
 CMD ["/usr/local/bin/blocklist-client --config /blocklist-client-config.toml --migrate-db"]
