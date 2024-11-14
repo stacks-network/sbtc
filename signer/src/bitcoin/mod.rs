@@ -82,4 +82,12 @@ pub trait BitcoinInteract: Sync + Send {
         &self,
         txid: &Txid,
     ) -> impl Future<Output = Result<Vec<Txid>, Error>> + Send;
+
+    /// Gets the output of the specified transaction, optionally including
+    /// transactions from the mempool.
+    fn get_transaction_output(
+        &self,
+        outpoint: &bitcoin::OutPoint,
+        include_mempool: bool,
+    ) -> impl Future<Output = Result<Option<rpc::GetTxOutResponse>, Error>> + Send;
 }

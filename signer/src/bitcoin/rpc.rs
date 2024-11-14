@@ -52,6 +52,25 @@ pub struct GetTxResponse {
     pub block_time: Option<u64>,
 }
 
+/// A struct containing the response from bitcoin-core for a `gettxout` RPC
+/// call.
+///
+/// The docs for the `gettxout` RPC call can be found here:
+/// https://bitcoincore.org/en/doc/27.0.0/rpc/blockchain/gettxout/
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetTxOutResponse {
+    /// The hash of the block at the tip of the chain
+    #[serde(rename = "bestblock")]
+    pub best_block: BlockHash,
+    /// The number of confirmations of the transaction containing this output.
+    pub confirmations: u32,
+    /// The value of the output in BTC.
+    pub value: Amount,
+    /// The scriptPubKey of the output.
+    #[serde(rename = "scriptPubKey")]
+    pub script_pub_key: PrevoutScriptPubKey,
+}
+
 /// A struct containing the response from bitcoin-core for a
 /// `getrawtransaction` RPC where verbose is set to 2 where the block hash
 /// is supplied as an RPC argument.
@@ -420,6 +439,28 @@ impl BitcoinCoreClient {
         }
     }
 
+    /// Fetch the output of a transaction identified by the given outpoint,
+    /// optionally including mempool transactions.
+    pub fn get_tx_out(
+        &self,
+        outpoint: &OutPoint,
+        include_mempool: bool,
+    ) -> Result<Option<GetTxOutResponse>, Error> {
+        let args = [
+            serde_json::to_value(outpoint.txid).map_err(Error::JsonSerialize)?,
+            serde_json::to_value(outpoint.vout).map_err(Error::JsonSerialize)?,
+            serde_json::to_value(include_mempool).map_err(Error::JsonSerialize)?,
+        ];
+
+        match self
+            .inner
+            .call::<Option<GetTxOutResponse>>("gettxout", &args)
+        {
+            Ok(txout) => Ok(txout),
+            Err(err) => Err(Error::BitcoinCoreGetTxOut(err, *outpoint, include_mempool)),
+        }
+    }
+
     /// Estimates the approximate fee in sats per vbyte needed for a
     /// transaction to be confirmed within `num_blocks`.
     ///
@@ -500,5 +541,13 @@ impl BitcoinInteract for BitcoinCoreClient {
 
     async fn find_mempool_descendants(&self, txid: &Txid) -> Result<Vec<Txid>, Error> {
         self.get_mempool_descendants(txid)
+    }
+
+    async fn get_transaction_output(
+        &self,
+        outpoint: &OutPoint,
+        include_mempool: bool,
+    ) -> Result<Option<GetTxOutResponse>, Error> {
+        self.get_tx_out(outpoint, include_mempool)
     }
 }

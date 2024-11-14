@@ -330,6 +330,14 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
     async fn find_mempool_descendants(&self, _txid: &Txid) -> Result<Vec<Txid>, Error> {
         unimplemented!()
     }
+
+    async fn get_transaction_output(
+        &self,
+        _outpoint: &bitcoin::OutPoint,
+        _include_mempool: bool,
+    ) -> Result<Option<crate::bitcoin::rpc::GetTxOutResponse>, Error> {
+        unimplemented!()
+    }
 }
 
 impl StacksInteract for WrappedMock<MockStacksInteract> {

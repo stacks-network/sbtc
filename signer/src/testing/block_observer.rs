@@ -27,6 +27,7 @@ use rand::seq::IteratorRandom;
 use sbtc::deposits::CreateDepositRequest;
 
 use crate::bitcoin::rpc::BitcoinTxInfo;
+use crate::bitcoin::rpc::GetTxOutResponse;
 use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
@@ -237,6 +238,14 @@ impl BitcoinInteract for TestHarness {
     }
 
     async fn find_mempool_descendants(&self, _txid: &Txid) -> Result<Vec<Txid>, Error> {
+        unimplemented!()
+    }
+
+    async fn get_transaction_output(
+        &self,
+        _outpoint: &bitcoin::OutPoint,
+        _include_mempool: bool,
+    ) -> Result<Option<GetTxOutResponse>, Error> {
         unimplemented!()
     }
 }

@@ -22,6 +22,7 @@ use crate::{error::Error, util::ApiFallbackClient};
 
 use super::rpc::BitcoinCoreClient;
 use super::rpc::BitcoinTxInfo;
+use super::rpc::GetTxOutResponse;
 use super::rpc::GetTxResponse;
 use super::BitcoinInteract;
 
@@ -83,6 +84,15 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
 
     async fn find_mempool_descendants(&self, txid: &Txid) -> Result<Vec<Txid>, Error> {
         self.exec(|client, _| client.find_mempool_descendants(txid))
+            .await
+    }
+
+    async fn get_transaction_output(
+        &self,
+        outpoint: &bitcoin::OutPoint,
+        include_mempool: bool,
+    ) -> Result<Option<GetTxOutResponse>, Error> {
+        self.exec(|client, _| client.get_transaction_output(outpoint, include_mempool))
             .await
     }
 }
