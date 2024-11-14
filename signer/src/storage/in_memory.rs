@@ -15,6 +15,7 @@ use tokio::sync::Mutex;
 
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::validation::DepositRequestReport;
+use crate::bitcoin::validation::WithdrawalRequestReport;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
@@ -494,6 +495,15 @@ impl super::DbRead for SharedStore {
                     .unwrap_or_default()
             })
             .collect())
+    }
+
+    async fn get_withdrawal_request_report(
+        &self,
+        _chain_tip: &model::BitcoinBlockHash,
+        _id: &model::QualifiedRequestId,
+        _signer_public_key: &PublicKey,
+    ) -> Result<Option<WithdrawalRequestReport>, Error> {
+        unimplemented!()
     }
 
     async fn get_bitcoin_blocks_with_transaction(
