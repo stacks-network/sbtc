@@ -18,6 +18,7 @@ use stacks_common::types::chainstate::StacksAddress;
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::validation::DepositRequestReport;
 use crate::bitcoin::validation::DepositRequestStatus;
+use crate::bitcoin::validation::WithdrawalRequestReport;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::stacks::events::CompletedDepositEvent;
@@ -1290,6 +1291,15 @@ impl super::DbRead for PgStore {
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_withdrawal_request_report(
+        &self,
+        _chain_tip: &model::BitcoinBlockHash,
+        _id: &model::QualifiedRequestId,
+        _signer_public_key: &PublicKey,
+    ) -> Result<Option<WithdrawalRequestReport>, Error> {
+        unimplemented!()
     }
 
     async fn get_bitcoin_blocks_with_transaction(
