@@ -131,7 +131,7 @@ impl TestRotateKeySetup {
 
         let aggregate_key: PublicKey = self.aggregate_key();
         let address = StacksPrincipal::from(clarity::vm::types::PrincipalData::from(
-            StacksAddress::p2pkh(false, &aggregate_key.into()),
+            self.wallet.address().clone(),
         ));
         let rotate_key_tx = RotateKeysTransaction {
             address: address,

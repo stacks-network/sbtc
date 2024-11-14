@@ -60,7 +60,11 @@ pub trait DbRead {
     ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Error>> + Send;
 
     /// Get pending deposit requests that have been accepted by at least
-    /// `signatures_required` signers and has no responses
+    /// `signatures_required` signers and has no responses.
+    ///
+    /// For an individual signer, 'accepted' means their blocklist client
+    /// hasn't blocked the request and they are part of the signing set
+    /// that generated the aggregate key locking the deposit.
     fn get_pending_accepted_deposit_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
