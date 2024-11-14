@@ -281,6 +281,26 @@ pub trait DbRead {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> impl Future<Output = Result<Option<model::SweepTransaction>, Error>> + Send;
+
+    /// Get unconfirmed sweep transactions where the first transaction in the
+    /// package chain spends the signer UTXO from the transaction identified by
+    /// the given `prevout_txid`.
+    ///
+    /// The returned sweep transactions are transactions which we have not yet
+    /// seen confirmed in a block. If the package has been partially confirmed
+    /// then this function will only return the remaining unconfirmed sweep
+    /// transactions.
+    ///
+    /// If the transaction package has been RBF'd (i.e. there are two or more
+    /// sweep transaction chains spending the same signer UTXO) then this
+    /// function returns the transactions associated with the most recent sweep
+    /// package spending the `prevout_txid`'s UTXO.
+    fn get_latest_unconfirmed_sweep_transactions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        prevout_txid: &model::BitcoinTxId,
+    ) -> impl Future<Output = Result<Vec<model::SweepTransaction>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.

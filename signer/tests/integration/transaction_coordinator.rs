@@ -33,6 +33,9 @@ use sbtc::testing::regtest;
 use sbtc::testing::regtest::Recipient;
 use secp256k1::Keypair;
 use sha2::Digest as _;
+use signer::bitcoin::utxo::GetFees as _;
+use signer::keys::PrivateKey;
+use signer::network::in_memory2::SignerNetwork;
 use signer::network::in_memory2::WanNetwork;
 use signer::stacks::api::TenureBlocks;
 use signer::stacks::contracts::RotateKeysV1;
@@ -43,6 +46,7 @@ use stacks_common::types::chainstate::ConsensusHash;
 use stacks_common::types::chainstate::SortitionId;
 use stacks_common::types::chainstate::StacksBlockId;
 use test_case::test_case;
+use test_log::test;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 
@@ -1467,4 +1471,340 @@ async fn sign_bitcoin_transaction() {
         assert!(db.is_signer_script_pub_key(&script).await.unwrap());
         testing::storage::drop_db(db).await;
     }
+}
+
+/// This test asserts that the `get_btc_state` function returns the correct
+/// `SignerBtcState` when there are no sweep transactions available, i.e.
+/// the `last_fees` field should be `None`.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[test(tokio::test)]
+async fn test_get_btc_state_with_no_available_sweep_transactions() {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let network = SignerNetwork::single();
+    let mut context = TestContext::builder()
+        .with_storage(db.clone())
+        .with_mocked_clients()
+        .build();
+
+    context
+        .with_bitcoin_client(|client| {
+            client
+                .expect_estimate_fee_rate()
+                .times(1)
+                .returning(|| Box::pin(async { Ok(1.3) }));
+        })
+        .await;
+
+    let mut coord = TxCoordinatorEventLoop {
+        context,
+        private_key: PrivateKey::new(&mut rng),
+        network: network.spawn(),
+        threshold: 5,
+        context_window: 5,
+        signing_round_max_duration: std::time::Duration::from_secs(5),
+        dkg_max_duration: std::time::Duration::from_secs(5),
+        sbtc_contracts_deployed: false,
+        is_epoch3: true,
+    };
+
+    let aggregate_key = &PublicKey::from_private_key(&PrivateKey::new(&mut rng));
+
+    let dkg_shares = model::EncryptedDkgShares {
+        aggregate_key: aggregate_key.clone(),
+        script_pubkey: aggregate_key.signers_script_pubkey().into(),
+        ..Faker.fake_with_rng(&mut rng)
+    };
+    db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();
+
+    // We create a single Bitcoin block which will be the chain tip and hold
+    // our signer UTXO.
+    let bitcoin_block = model::BitcoinBlock {
+        block_height: 1,
+        block_hash: Faker.fake_with_rng(&mut rng),
+        parent_hash: Faker.fake_with_rng(&mut rng),
+    };
+
+    // Create a Bitcoin transaction simulating holding a simulated signer
+    // UTXO.
+    let mut signer_utxo_tx = testing::dummy::tx(&Faker, &mut rng);
+    signer_utxo_tx.output.insert(
+        0,
+        bitcoin::TxOut {
+            value: bitcoin::Amount::from_btc(5.0).unwrap(),
+            script_pubkey: aggregate_key.signers_script_pubkey(),
+        },
+    );
+    let signer_utxo_txid = signer_utxo_tx.compute_txid();
+    let mut signer_utxo_encoded = Vec::new();
+    signer_utxo_tx
+        .consensus_encode(&mut signer_utxo_encoded)
+        .unwrap();
+
+    let utxo_input = model::TxPrevout {
+        txid: signer_utxo_txid.into(),
+        prevout_type: model::TxPrevoutType::SignersInput,
+        ..Faker.fake_with_rng(&mut rng)
+    };
+
+    let utxo_output = model::TxOutput {
+        txid: signer_utxo_txid.into(),
+        output_type: model::TxOutputType::Donation,
+        script_pubkey: aggregate_key.signers_script_pubkey().into(),
+        ..Faker.fake_with_rng(&mut rng)
+    };
+
+    // Write the Bitcoin block and transaction to the database.
+    db.write_bitcoin_block(&bitcoin_block).await.unwrap();
+    db.write_transaction(&model::Transaction {
+        txid: *signer_utxo_txid.as_byte_array(),
+        tx: signer_utxo_encoded,
+        tx_type: model::TransactionType::SbtcTransaction,
+        block_hash: bitcoin_block.block_hash.into_bytes(),
+    })
+    .await
+    .unwrap();
+    db.write_bitcoin_transaction(&model::BitcoinTxRef {
+        block_hash: bitcoin_block.block_hash.into(),
+        txid: signer_utxo_txid.into(),
+    })
+    .await
+    .unwrap();
+    db.write_tx_prevout(&utxo_input).await.unwrap();
+    db.write_tx_output(&utxo_output).await.unwrap();
+
+    // Get the chain tip and assert that it is the block we just wrote.
+    let chain_tip = db
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .unwrap()
+        .expect("no chain tip");
+    assert_eq!(chain_tip, bitcoin_block.block_hash.into());
+
+    // Get the signer UTXO and assert that it is the one we just wrote.
+    let utxo = db
+        .get_signer_utxo(&chain_tip, 10)
+        .await
+        .unwrap()
+        .expect("no signer utxo");
+    assert_eq!(utxo.outpoint.txid, signer_utxo_txid.into());
+
+    // Grab the BTC state.
+    let btc_state = coord
+        .get_btc_state(&chain_tip, &aggregate_key)
+        .await
+        .unwrap();
+
+    // Assert that the BTC state is correct.
+    assert_eq!(btc_state.utxo.outpoint.txid, signer_utxo_txid.into());
+    assert_eq!(btc_state.utxo.public_key, aggregate_key.into());
+    assert_eq!(btc_state.public_key, aggregate_key.into());
+    assert_eq!(btc_state.fee_rate, 1.3);
+    assert_eq!(btc_state.last_fees, None);
+    assert_eq!(btc_state.magic_bytes, [b'T', b'3']);
+
+    testing::storage::drop_db(db).await;
+}
+
+/// This test asserts that the `get_btc_state` function returns the correct
+/// `SignerBtcState` when there are multiple outstanding sweep transaction
+/// packages available, simulating the case where there has been an RBF.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[test(tokio::test)]
+async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let network = SignerNetwork::single();
+    let mut context = TestContext::builder()
+        .with_storage(db.clone())
+        .with_mocked_clients()
+        .build();
+
+    context
+        .with_bitcoin_client(|client| {
+            client
+                .expect_estimate_fee_rate()
+                .times(1)
+                .returning(|| Box::pin(async { Ok(1.3) }));
+        })
+        .await;
+
+    let mut coord = TxCoordinatorEventLoop {
+        context,
+        private_key: PrivateKey::new(&mut rng),
+        network: network.spawn(),
+        threshold: 5,
+        context_window: 5,
+        signing_round_max_duration: std::time::Duration::from_secs(5),
+        dkg_max_duration: std::time::Duration::from_secs(5),
+        sbtc_contracts_deployed: false,
+        is_epoch3: true,
+    };
+
+    let aggregate_key = &PublicKey::from_private_key(&PrivateKey::new(&mut rng));
+
+    let dkg_shares = model::EncryptedDkgShares {
+        aggregate_key: aggregate_key.clone(),
+        script_pubkey: aggregate_key.signers_script_pubkey().into(),
+        ..Faker.fake_with_rng(&mut rng)
+    };
+    db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();
+
+    // We create a single Bitcoin block which will be the chain tip and hold
+    // our signer UTXO.
+    let bitcoin_block = model::BitcoinBlock {
+        block_height: 1,
+        block_hash: Faker.fake_with_rng(&mut rng),
+        parent_hash: Faker.fake_with_rng(&mut rng),
+    };
+
+    // Create a Bitcoin transaction simulating holding a simulated signer
+    // UTXO.
+    let mut signer_utxo_tx = testing::dummy::tx(&Faker, &mut rng);
+    signer_utxo_tx.output.insert(
+        0,
+        bitcoin::TxOut {
+            value: bitcoin::Amount::from_btc(5.0).unwrap(),
+            script_pubkey: aggregate_key.signers_script_pubkey(),
+        },
+    );
+    let signer_utxo_txid = signer_utxo_tx.compute_txid();
+    let mut signer_utxo_encoded = Vec::new();
+    signer_utxo_tx
+        .consensus_encode(&mut signer_utxo_encoded)
+        .unwrap();
+
+    let utxo_input = model::TxPrevout {
+        txid: signer_utxo_txid.into(),
+        prevout_type: model::TxPrevoutType::SignersInput,
+        ..Faker.fake_with_rng(&mut rng)
+    };
+
+    let utxo_output = model::TxOutput {
+        txid: signer_utxo_txid.into(),
+        output_type: model::TxOutputType::Donation,
+        script_pubkey: aggregate_key.signers_script_pubkey().into(),
+        ..Faker.fake_with_rng(&mut rng)
+    };
+
+    // Write the Bitcoin block and transaction to the database.
+    db.write_bitcoin_block(&bitcoin_block).await.unwrap();
+    db.write_transaction(&model::Transaction {
+        txid: *signer_utxo_txid.as_byte_array(),
+        tx: signer_utxo_encoded,
+        tx_type: model::TransactionType::SbtcTransaction,
+        block_hash: bitcoin_block.block_hash.into_bytes(),
+    })
+    .await
+    .unwrap();
+    db.write_bitcoin_transaction(&model::BitcoinTxRef {
+        block_hash: bitcoin_block.block_hash.into(),
+        txid: signer_utxo_txid.into(),
+    })
+    .await
+    .unwrap();
+    db.write_tx_prevout(&utxo_input).await.unwrap();
+    db.write_tx_output(&utxo_output).await.unwrap();
+
+    // Get the chain tip and assert that it is the block we just wrote.
+    let chain_tip = db
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .unwrap()
+        .expect("no chain tip");
+    assert_eq!(chain_tip, bitcoin_block.block_hash.into());
+
+    // Get the signer UTXO and assert that it is the one we just wrote.
+    let utxo = db
+        .get_signer_utxo(&chain_tip, 10)
+        .await
+        .unwrap()
+        .expect("no signer utxo");
+    assert_eq!(utxo.outpoint.txid, signer_utxo_txid.into());
+
+    // ** Step 1**: Write a first round a sweep transactions to the db.
+    // These transactions are just noise and simulates a previous sweep
+    // transaction package which we will "RBF" below.
+    let mut sweep_transactions1: Vec<model::SweepTransaction> = fake::Faker.fake_with_rng(&mut rng);
+    let sweep_txids = sweep_transactions1
+        .iter()
+        .map(|tx| tx.txid)
+        .collect::<Vec<_>>();
+
+    for (i, tx) in sweep_transactions1.iter_mut().enumerate() {
+        if i == 0 {
+            tx.signer_prevout_txid = signer_utxo_txid.into();
+        } else {
+            tx.signer_prevout_txid = sweep_txids[i - 1];
+        }
+
+        // We clear these so we don't have to mess around with writing them and
+        // their FK's etc -- that's already tested elsewhere.
+        tx.swept_deposits.clear();
+        tx.swept_withdrawals.clear();
+    }
+
+    // Write package #1 to the database (will be RBF'd).
+    for tx in &sweep_transactions1 {
+        db.write_sweep_transaction(tx).await.unwrap();
+    }
+
+    // A little pause just to make sure we have a gap in the timestamps.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // ** Step 2**: Write a second round of sweep transactions to the db.
+    // This transaction package will be the "newest" and thus should be
+    // the package which is used to determine the previous fees.
+    let mut sweep_transactions2: Vec<model::SweepTransaction> = fake::Faker.fake_with_rng(&mut rng);
+    let sweep_txids = sweep_transactions2
+        .iter()
+        .map(|tx| tx.txid)
+        .collect::<Vec<_>>();
+
+    for (i, tx) in sweep_transactions2.iter_mut().enumerate() {
+        if i == 0 {
+            tx.signer_prevout_txid = signer_utxo_txid.into();
+        } else {
+            tx.signer_prevout_txid = sweep_txids[i - 1];
+        }
+
+        // We clear these so we don't have to mess around with writing them and
+        // their FK's etc -- that's already tested elsewhere.
+        tx.swept_deposits.clear();
+        tx.swept_withdrawals.clear();
+    }
+
+    // Write package #2 to the database.
+    for tx in &sweep_transactions2 {
+        db.write_sweep_transaction(tx).await.unwrap();
+    }
+
+    // Calculate the expected fees from the vec we used to insert sweep
+    // package #2 into the database.
+    let expected_fees = sweep_transactions2
+        .get_fees()
+        .expect("failed to calculate fees (error)")
+        .expect("failed to calculate fees (none)");
+
+    // Grab the BTC state.
+    let btc_state = coord
+        .get_btc_state(&chain_tip, &aggregate_key)
+        .await
+        .unwrap();
+
+    // Assert that everything's as expected.
+    assert_eq!(btc_state.utxo.outpoint.txid, signer_utxo_txid.into());
+    assert_eq!(btc_state.utxo.public_key, aggregate_key.into());
+    assert_eq!(btc_state.public_key, aggregate_key.into());
+    assert_eq!(btc_state.fee_rate, 1.3);
+    assert_eq!(btc_state.last_fees, Some(expected_fees));
+    assert_eq!(btc_state.magic_bytes, [b'T', b'3']);
+
+    testing::storage::drop_db(db).await;
 }

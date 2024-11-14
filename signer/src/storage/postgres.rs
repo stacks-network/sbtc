@@ -591,6 +591,7 @@ impl PgStore {
               , signer_prevout_script_pubkey
               , amount
               , fee
+              , vsize
               , created_at_block_hash
               , market_fee_rate
             FROM
@@ -1692,7 +1693,7 @@ impl super::DbRead for PgStore {
             ORDER BY tx.created_at DESC",
         )
         .bind(chain_tip)
-        .bind(context_window as i32)
+        .bind(i32::from(context_window))
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)?
@@ -1701,6 +1702,99 @@ impl super::DbRead for PgStore {
         };
 
         self.get_sweep_transaction_by_txid(&txid).await
+    }
+
+    async fn get_latest_unconfirmed_sweep_transactions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        prevout_txid: &model::BitcoinTxId,
+    ) -> Result<Vec<model::SweepTransaction>, Error> {
+        // Attempt to find the first sweep transaction in the chain which has
+        // the provided `prevout_txid` as its input. Since there can be multiple
+        // sweep transactions for the same prevout (if there was an RBF), we
+        // sort these by the created_at timestamp and take the latest one.
+        let first = sqlx::query_scalar::<_, model::BitcoinTxId>(
+            "
+            SELECT txid 
+            FROM sweep_transactions 
+            WHERE signer_prevout_txid = $1
+            ORDER BY created_at DESC
+            LIMIT 1;
+        ",
+        )
+        .bind(prevout_txid)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        // If we didn't find any matching sweep transactions, we return an empty
+        // list.
+        let Some(first) = first else {
+            return Ok(Vec::new());
+        };
+
+        // Otherwise, we recursively find all sweep transaction ids that are
+        // chained from the first one. As a precaution, this query also filters
+        // out any sweep transactions that have already been confirmed on the
+        // Bitcoin blockchain.
+        let infos: Vec<(model::BitcoinTxId, i32)> = sqlx::query_as(
+            "
+            WITH RECURSIVE sweep_txs AS (
+                SELECT
+                    txid
+                  , signer_prevout_txid
+                  , 1 AS number
+                FROM sweep_transactions
+                WHERE 
+                    txid = $1
+
+                UNION ALL
+
+                SELECT
+                    tx.txid
+                  , tx.signer_prevout_txid
+                  ,  last.number + 1
+                FROM sweep_transactions tx
+                INNER JOIN sweep_txs last 
+                    ON tx.signer_prevout_txid = last.txid
+            ),
+            canonical_txs AS (
+                SELECT bt.txid
+                FROM bitcoin_blockchain_of($2, $3) bc
+                INNER JOIN bitcoin_transactions bt
+                    ON bt.block_hash = bc.block_hash
+            )
+
+            SELECT
+                sweep_txs.txid
+              , number
+            FROM sweep_txs
+            LEFT JOIN canonical_txs AS btc_tx 
+                ON btc_tx.txid = sweep_txs.txid
+            WHERE btc_tx.txid IS NULL
+            ORDER BY number ASC;
+        ",
+        )
+        .bind(first)
+        .bind(chain_tip)
+        .bind(i32::from(context_window))
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        // Then we fetch the sweep transactions themselves. This implementation
+        // is optimized for simplicity and code re-use, not for performance.
+        let mut sweep_transactions = Vec::new();
+        for txid in infos {
+            let tx = self
+                .get_sweep_transaction_by_txid(&txid.0)
+                .await?
+                .ok_or(Error::MissingSweepTransaction(*txid.0))?;
+            sweep_transactions.push(tx);
+        }
+
+        Ok(sweep_transactions)
     }
 }
 
@@ -2416,10 +2510,11 @@ impl super::DbWrite for PgStore {
               , signer_prevout_script_pubkey
               , amount
               , fee
+              , vsize
               , created_at_block_hash
               , market_fee_rate
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT DO NOTHING;
         ",
         )
@@ -2436,6 +2531,7 @@ impl super::DbWrite for PgStore {
         .bind(transaction.signer_prevout_script_pubkey.clone())
         .bind(i64::try_from(transaction.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(transaction.fee).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i32::try_from(transaction.vsize).map_err(Error::ConversionDatabaseInt)?)
         .bind(transaction.created_at_block_hash)
         .bind(transaction.market_fee_rate)
         .execute(&mut *tx)
