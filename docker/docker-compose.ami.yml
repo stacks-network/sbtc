@@ -8,19 +8,33 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: signer
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --username=postgres --dbname=signer"]
+      interval: 5s
+      timeout: 1s
+      retries: 5
 
   sbtc-signer:
     image: blockstack/sbtc:signer-latest
+    stop_grace_period: 5s
     entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db'"
     environment:
       RUST_LOG: warn,signer=debug
       SIGNER_SIGNER__P2P__LISTEN_ON: tcp://0.0.0.0:4122
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres:5432/signer
       SIGNER_SIGNER__PRIVATE_KEY: 3ec0ca5770a356d6cd1a9bfcbf6cd151eb1bd85c388cc00648ec4ef5853fdb7401
+      # this is incorrect
+      SIGNER_EMILY__ENDPOINTS: http://localhost:3031
+      # SIGNER_BLOCKLIST_CLIENT__ENDPOINT: "http://blocklist-client:3032"
     volumes:
       - ./sbtc/signer/signer-config.toml:/signer-config.toml
     ports:
       - "8801:8801"
+    depends_on:
+      postgres:
+        condition: service_completed_successfully
 
   blocklist-client:
     image: blockstack/sbtc:blocklist-client-latest
