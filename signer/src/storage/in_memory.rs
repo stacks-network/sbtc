@@ -314,7 +314,11 @@ impl super::DbRead for SharedStore {
                     .deposit_request_to_signers
                     .get(&(deposit_request.txid, deposit_request.output_index))
                     .map(|signers| {
-                        signers.iter().filter(|signer| signer.is_accepted).count() >= threshold
+                        signers
+                            .iter()
+                            .filter(|signer| signer.can_accept && signer.can_sign)
+                            .count()
+                            >= threshold
                     })
                     .unwrap_or_default()
             })
@@ -647,7 +651,7 @@ impl super::DbRead for SharedStore {
         let signers = self.get_deposit_signers(txid, output_index).await?;
         let mut signer_votes: HashMap<PublicKey, bool> = signers
             .iter()
-            .map(|vote| (vote.signer_pub_key, vote.is_accepted))
+            .map(|vote| (vote.signer_pub_key, vote.can_accept))
             .collect();
 
         // Now we might not have votes from every signer, so lets get the

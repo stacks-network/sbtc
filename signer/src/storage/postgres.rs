@@ -96,11 +96,11 @@ pub fn extract_relevant_transactions(
 
 /// A convenience struct for retrieving a deposit request report
 #[derive(sqlx::FromRow)]
-struct StatusSummary {
+struct DepositStatusSummary {
     /// The current signer may not have a record of their vote for
-    /// the deposit. When that happens the `is_accepted` and
+    /// the deposit. When that happens the `can_accept` and
     /// `can_sign` fields will be None.
-    is_accepted: Option<bool>,
+    can_accept: Option<bool>,
     /// Whether this signer is a member of the signing set that generated
     /// the public key locking the deposit.
     can_sign: Option<bool>,
@@ -510,7 +510,7 @@ impl PgStore {
         txid: &model::BitcoinTxId,
         output_index: u32,
         signer_public_key: &PublicKey,
-    ) -> Result<Option<StatusSummary>, Error> {
+    ) -> Result<Option<DepositStatusSummary>, Error> {
         // We first get the least height for when the deposit request was
         // confirmed. This height serves as the stopping criteria for the
         // recursive part of the subsequent query.
@@ -520,7 +520,7 @@ impl PgStore {
         let Some(min_block_height) = min_block_height_fut.await? else {
             return Ok(None);
         };
-        sqlx::query_as::<_, StatusSummary>(
+        sqlx::query_as::<_, DepositStatusSummary>(
             r#"
             WITH RECURSIVE block_chain AS (
                 SELECT 
@@ -542,7 +542,7 @@ impl PgStore {
                 WHERE child.block_height >= $2
             )
             SELECT
-                ds.is_accepted
+                ds.can_accept
               , ds.can_sign
               , dr.amount
               , dr.max_fee
@@ -859,7 +859,8 @@ impl super::DbRead for PgStore {
                 JOIN sbtc_signer.deposit_requests deposit_requests USING(txid)
                 JOIN sbtc_signer.deposit_signers signers USING(txid, output_index)
                 WHERE
-                    signers.is_accepted
+                    signers.can_accept
+                    AND signers.can_sign
                     AND (transactions.block_height + deposit_requests.lock_time) >= $4
                 GROUP BY deposit_requests.txid, deposit_requests.output_index
                 HAVING COUNT(signers.txid) >= $3
@@ -914,7 +915,7 @@ impl super::DbRead for PgStore {
             deposit_votes AS (
                 SELECT
                     signer_pub_key AS signer_public_key
-                  , is_accepted
+                  , can_accept AND can_sign AS is_accepted
                 FROM sbtc_signer.deposit_signers AS ds
                 WHERE TRUE
                   AND ds.txid = $2
@@ -1059,7 +1060,7 @@ impl super::DbRead for PgStore {
         Ok(Some(DepositRequestReport {
             status,
             can_sign: summary.can_sign,
-            is_accepted: summary.is_accepted,
+            can_accept: summary.can_accept,
             amount: summary.amount,
             max_fee: summary.max_fee,
             lock_time: bitcoin::relative::LockTime::from_consensus(summary.lock_time)
@@ -1078,7 +1079,7 @@ impl super::DbRead for PgStore {
                 txid
               , output_index
               , signer_pub_key
-              , is_accepted
+              , can_accept
               , can_sign
             FROM sbtc_signer.deposit_signers
             WHERE txid = $1 AND output_index = $2",
@@ -2025,7 +2026,7 @@ impl super::DbWrite for PgStore {
               ( txid
               , output_index
               , signer_pub_key
-              , is_accepted
+              , can_accept
               , can_sign
               )
             VALUES ($1, $2, $3, $4, $5)
@@ -2034,7 +2035,7 @@ impl super::DbWrite for PgStore {
         .bind(decision.txid)
         .bind(i32::try_from(decision.output_index).map_err(Error::ConversionDatabaseInt)?)
         .bind(decision.signer_pub_key)
-        .bind(decision.is_accepted)
+        .bind(decision.can_accept)
         .bind(decision.can_sign)
         .execute(&self.0)
         .await
