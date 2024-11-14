@@ -859,7 +859,8 @@ impl super::DbRead for PgStore {
                 JOIN sbtc_signer.deposit_requests deposit_requests USING(txid)
                 JOIN sbtc_signer.deposit_signers signers USING(txid, output_index)
                 WHERE
-                    signers.is_accepted
+                    signers.can_accept
+                    AND signers.can_sign
                     AND (transactions.block_height + deposit_requests.lock_time) >= $4
                 GROUP BY deposit_requests.txid, deposit_requests.output_index
                 HAVING COUNT(signers.txid) >= $3
@@ -1078,7 +1079,7 @@ impl super::DbRead for PgStore {
                 txid
               , output_index
               , signer_pub_key
-              , is_accepted
+              , can_accept
               , can_sign
             FROM sbtc_signer.deposit_signers
             WHERE txid = $1 AND output_index = $2",
