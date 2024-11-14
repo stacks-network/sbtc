@@ -57,14 +57,14 @@ const DEFAULT_INCREMENTAL_RELAY_FEE_RATE: f64 =
 /// transaction that includes two inputs and one output. The inputs
 /// consist of the signers' input UTXO and a UTXO for a deposit request.
 /// The output is the signers' new UTXO.
-const SOLO_DEPOSIT_TX_VSIZE: f64 = 234.0;
+const SOLO_DEPOSIT_TX_VSIZE: f64 = 235.0;
 
 /// This constant represents the virtual size (in vBytes) of a BTC
 /// transaction with only one input and two outputs. The input is the
 /// signers' input UTXO. The outputs include the withdrawal UTXO for a
 /// withdrawal request and the signers' new UTXO. This size assumes
 /// the script in the withdrawal UTXO is empty.
-const BASE_WITHDRAWAL_TX_VSIZE: f64 = 172.0;
+const BASE_WITHDRAWAL_TX_VSIZE: f64 = 173.0;
 
 /// It appears that bitcoin-core tracks fee rates in sats per kilo-vbyte
 /// (or BTC per kilo-vbyte). Since we work in sats per vbyte, this constant
