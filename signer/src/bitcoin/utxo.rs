@@ -636,16 +636,19 @@ pub struct SignatureHashes<'a> {
 }
 
 impl<'a> SignatureHashes<'a> {
-    /// Return all of the digests that need signing
-    pub fn into_sighashes(self) -> Vec<(OutPoint, TapSighash)> {
-        let deposits = self
-            .deposits
+    /// Get deposit sighashes
+    pub fn deposit_sighashes(mut self) -> Vec<(OutPoint, TapSighash, TxPrevoutType)> {
+        self.deposits.sort_by_key(|(x, _)| x.outpoint);
+        self.deposits
             .into_iter()
-            .map(|(deposit, sighash)| (deposit.outpoint, sighash));
-
-        std::iter::once((self.signer_outpoint, self.signers))
-            .chain(deposits)
+            .map(|(deposit, sighash)| (deposit.outpoint, sighash, TxPrevoutType::Deposit))
             .collect()
+    }
+
+    /// Get the signers' sighash
+    pub fn signer_sighash(&self) -> (OutPoint, TapSighash, TxPrevoutType) {
+        let signer_input_type = TxPrevoutType::SignersInput;
+        (self.signer_outpoint, self.signers, signer_input_type)
     }
 }
 

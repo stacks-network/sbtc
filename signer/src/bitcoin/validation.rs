@@ -14,15 +14,14 @@ use crate::context::Context;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::storage::model::BitcoinBlockHash;
-use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::SignerVotes;
-use crate::storage::model::StacksBlockHash;
-use crate::storage::model::StacksTxId;
+use crate::storage::model::TxPrevoutType;
 use crate::storage::DbRead;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
+use super::utxo::BitcoinInputsOutputs;
 use super::utxo::DepositRequest;
 use super::utxo::RequestRef;
 use super::utxo::Requests;
@@ -46,14 +45,10 @@ pub struct BitcoinTxContext {
     /// The block height of the bitcoin chain tip identified by the
     /// `chain_tip` field.
     pub chain_tip_height: u64,
-    /// The transaction that is being validated.
-    pub tx: BitcoinTx,
     /// This contains each of the requests for the entire transaction
     /// package. Each element in the vector corresponds to the requests
     /// that will be included in a single bitcoin transaction.
-    pub request_packages: Vec<PackagedRequests>,
-    /// The total amount of the transaction fee in sats.
-    pub tx_fee: u64,
+    pub request_packages: Vec<TxRequestIds>,
     /// The current market fee rate in sat/vByte.
     pub fee_rate: f64,
     /// The total fee amount and the fee rate for the last transaction that
@@ -78,12 +73,12 @@ pub struct BitcoinTxContext {
 /// This type is a container for all deposits and withdrawals that are part
 /// of a transaction package.
 #[derive(Debug, Clone)]
-pub struct PackagedRequests {
+pub struct TxRequestIds {
     /// The deposit requests associated with the inputs in the transaction.
-    pub deposit_requests: Vec<OutPoint>,
+    pub deposits: Vec<OutPoint>,
     /// The withdrawal requests associated with the outputs in the current
     /// transaction.
-    pub request_ids: Vec<QualifiedRequestId>,
+    pub withdrawals: Vec<QualifiedRequestId>,
 }
 
 impl BitcoinTxContext {
@@ -95,39 +90,6 @@ impl BitcoinTxContext {
         unimplemented!()
     }
 
-    /// Validate each of the prevouts that correspond to deposits. This
-    /// should be every input except for the first one.
-    pub async fn validate_deposit<C>(&self, ctx: &C, outpoint: &OutPoint) -> Result<(), Error>
-    where
-        C: Context + Send + Sync,
-    {
-        let db = ctx.get_storage();
-        let signer_public_key = PublicKey::from_private_key(&ctx.config().signer.private_key);
-
-        let txid = outpoint.txid.into();
-        let report_future = db.get_deposit_request_report(
-            &self.chain_tip,
-            &txid,
-            outpoint.vout,
-            &signer_public_key,
-        );
-
-        // The DbRead::get_deposit_request_report only returns Ok(None)
-        // if there isn't a record of the deposit request.
-        let Some(report) = report_future.await? else {
-            return Err(BitcoinDepositInputError::Unknown(*outpoint).into_error(self));
-        };
-
-        report
-            .validate(self.chain_tip_height)
-            .map_err(|err| err.into_error(self))?;
-        report
-            .validate_fee(&self.tx, self.tx_fee)
-            .map_err(|err| err.into_error(self))?;
-
-        Ok(())
-    }
-
     /// Validate the withdrawal UTXOs
     pub async fn validate_withdrawals<C>(&self, _ctx: &C) -> Result<(), Error>
     where
@@ -136,7 +98,7 @@ impl BitcoinTxContext {
         if !self
             .request_packages
             .iter()
-            .all(|reqs| reqs.request_ids.is_empty())
+            .all(|reqs| reqs.withdrawals.is_empty())
         {
             return Err(Error::MissingBlock);
         }
@@ -173,90 +135,270 @@ impl BitcoinTxContext {
 
     /// Construct the reports for each request that this transaction will
     /// service.
-    pub async fn construct_reports2<C>(&self, ctx: &C) -> Result<Vec<TempOutput>, Error>
+    // pub async fn construct_reports2<C>(&self, ctx: &C) -> Result<Vec<TempOutput>, Error>
+    // where
+    //     C: Context + Send + Sync,
+    // {
+    //     let db = ctx.get_storage();
+    //     let signer_state = self.get_btc_state(ctx).await?;
+
+    //     let signer_public_key = &self.signer_public_key;
+    //     let aggregate_key = &self.aggregate_key;
+    //     let chain_tip = &self.chain_tip;
+
+    //     let mut output = Vec::new();
+
+    //     for package in self.request_packages.iter() {
+    //         let mut deposits = Vec::new();
+    //         let mut withdrawals = Vec::new();
+
+    //         for outpoint in package.deposits.iter() {
+    //             let txid = outpoint.txid.into();
+    //             let output_index = outpoint.vout;
+    //             let report_future = db.get_deposit_request_report(
+    //                 chain_tip,
+    //                 &txid,
+    //                 output_index,
+    //                 signer_public_key,
+    //             );
+
+    //             let Some(report) = report_future.await? else {
+    //                 return Err(BitcoinDepositInputError::Unknown(*outpoint).into_error(self));
+    //             };
+
+    //             let votes = db
+    //                 .get_deposit_request_signer_votes(&txid, output_index, aggregate_key)
+    //                 .await?;
+
+    //             deposits.push((report.to_deposit_request(&votes), report));
+    //         }
+
+    //         for id in package.withdrawals.iter() {
+    //             let report_future =
+    //                 db.get_withdrawal_request_report(chain_tip, id, signer_public_key);
+
+    //             let Some(report) = report_future.await? else {
+    //                 return Err(BitcoinWithdrawalOutputError::Unknown(*id).into_error(self));
+    //             };
+
+    //             let votes = db
+    //                 .get_withdrawal_request_signer_votes(id, aggregate_key)
+    //                 .await?;
+
+    //             withdrawals.push((report.to_withdrawal_request(&votes), report));
+    //         }
+
+    //         let reports = SbtcReports {
+    //             deposits,
+    //             withdrawals,
+    //             signer_state,
+    //         };
+
+    //         let mut signer_state = signer_state;
+    //         let tx = reports.create_transaction()?;
+    //         let sighashes = tx.construct_digests()?.into_sighashes();
+
+    //         let txid = tx.tx_ref().compute_txid().into();
+
+    //         signer_state.utxo = tx.new_signer_utxo();
+    //         // The first transaction is the only one whose input UTXOs that
+    //         // have all been confirmed. Moreover, the fees that it sets
+    //         // aside are enough to make up for the remaining transactions
+    //         // in the transaction package. With that in mind, we do not
+    //         // need to bump their fees anymore in order for them to be
+    //         // accepted by the network.
+    //         signer_state.last_fees = None;
+    //         output.push(TempOutput { reports, sighashes, txid });
+    //     }
+
+    //     Ok(output)
+    // }
+
+    /// Construct the reports for each request that this transaction will
+    /// service.
+    pub async fn construct_sighash<C>(
+        &self,
+        ctx: &C,
+        requests: &TxRequestIds,
+        signer_state: SignerBtcState,
+    ) -> Result<(TempOutput, SignerBtcState), Error>
     where
         C: Context + Send + Sync,
     {
         let db = ctx.get_storage();
-        let signer_state = self.get_btc_state(ctx).await?;
 
         let signer_public_key = &self.signer_public_key;
         let aggregate_key = &self.aggregate_key;
         let chain_tip = &self.chain_tip;
 
-        let mut output = Vec::new();
+        let mut deposits = Vec::new();
+        let mut withdrawals = Vec::new();
 
-        for package in self.request_packages.iter() {
-            let mut deposits = Vec::new();
-            let mut withdrawals = Vec::new();
+        for outpoint in requests.deposits.iter() {
+            let txid = outpoint.txid.into();
+            let output_index = outpoint.vout;
+            let report_future =
+                db.get_deposit_request_report(chain_tip, &txid, output_index, signer_public_key);
 
-            for outpoint in package.deposit_requests.iter() {
-                let txid = outpoint.txid.into();
-                let output_index = outpoint.vout;
-                let report_future = db.get_deposit_request_report(
-                    chain_tip,
-                    &txid,
-                    output_index,
-                    signer_public_key,
-                );
-
-                let Some(report) = report_future.await? else {
-                    return Err(BitcoinDepositInputError::Unknown(*outpoint).into_error(self));
-                };
-
-                let votes = db
-                    .get_deposit_request_signer_votes(&txid, output_index, aggregate_key)
-                    .await?;
-
-                deposits.push((report.to_deposit_request(&votes), report));
-            }
-
-            for id in package.request_ids.iter() {
-                let report_future =
-                    db.get_withdrawal_request_report(chain_tip, id, signer_public_key);
-
-                let Some(report) = report_future.await? else {
-                    return Err(BitcoinWithdrawalOutputError::Unknown(*id).into_error(self));
-                };
-
-                let votes = db
-                    .get_withdrawal_request_signer_votes(id, aggregate_key)
-                    .await?;
-
-                withdrawals.push((report.to_withdrawal_request(&votes), report));
-            }
-
-            let reports = SbtcReports {
-                deposits,
-                withdrawals,
-                signer_state,
+            let Some(report) = report_future.await? else {
+                return Err(BitcoinDepositInputError::Unknown(*outpoint).into_error(self));
             };
 
-            let mut signer_state = signer_state;
-            let tx = reports.create_transaction()?;
-            let sighashes = tx.construct_digests()?.into_sighashes();
+            let votes = db
+                .get_deposit_request_signer_votes(&txid, output_index, aggregate_key)
+                .await?;
 
-            signer_state.utxo = tx.new_signer_utxo();
-            // The first transaction is the only one whose input UTXOs that
-            // have all been confirmed. Moreover, the fees that it sets
-            // aside are enough to make up for the remaining transactions
-            // in the transaction package. With that in mind, we do not
-            // need to bump their fees anymore in order for them to be
-            // accepted by the network.
-            signer_state.last_fees = None;
-            output.push(TempOutput { reports, sighashes });
+            deposits.push((report.to_deposit_request(&votes), report));
         }
 
-        Ok(output)
+        for id in requests.withdrawals.iter() {
+            let report_future = db.get_withdrawal_request_report(chain_tip, id, signer_public_key);
+
+            let Some(report) = report_future.await? else {
+                return Err(BitcoinWithdrawalOutputError::Unknown(*id).into_error(self));
+            };
+
+            let votes = db
+                .get_withdrawal_request_signer_votes(id, aggregate_key)
+                .await?;
+
+            withdrawals.push((report.to_withdrawal_request(&votes), report));
+        }
+
+        deposits.sort_by_key(|(request, _)| request.outpoint);
+        withdrawals.sort_by(|(_, report1), (_, report2)| report1.id.cmp(&report2.id));
+        let reports = SbtcReports {
+            deposits,
+            withdrawals,
+            signer_state,
+        };
+
+        let mut signer_state = signer_state;
+        let tx = reports.create_transaction()?;
+        let sighashes = tx.construct_digests()?;
+
+        let txid = tx.tx_ref().compute_txid().into();
+
+        signer_state.utxo = tx.new_signer_utxo();
+        // The first transaction is the only one whose input UTXOs that
+        // have all been confirmed. Moreover, the fees that it sets aside
+        // are enough to make up for the remaining transactions in the
+        // transaction package. With that in mind, we do not need to bump
+        // their fees anymore in order for them to be accepted by the
+        // network.
+        signer_state.last_fees = None;
+
+        let out = TempOutput {
+            signer_sighash: sighashes.signer_sighash(),
+            deposit_sighashes: sighashes.deposit_sighashes(),
+            txid,
+            tx: tx.tx.clone(),
+            tx_fee: tx.tx_fee,
+            reports,
+            chain_tip_height: self.chain_tip_height,
+        };
+
+        Ok((out, signer_state))
     }
 }
 
 /// Temp struct
 pub struct TempOutput {
     /// The info for the stuff
-    pub sighashes: Vec<(OutPoint, TapSighash)>,
+    pub signer_sighash: (OutPoint, TapSighash, TxPrevoutType),
+    /// The info for the stuff
+    pub deposit_sighashes: Vec<(OutPoint, TapSighash, TxPrevoutType)>,
     /// The info for the stuff
     pub reports: SbtcReports,
+    /// The info for the stuff
+    pub txid: BitcoinTxId,
+    /// the transaction
+    pub tx: bitcoin::Transaction,
+    /// the transaction fee in sats
+    pub tx_fee: u64,
+    /// the chain tip height.
+    pub chain_tip_height: u64,
+}
+
+///
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
+#[sqlx(type_name = "varchar", rename_all = "snake_case")]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[strum(serialize_all = "snake_case")]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub enum ConstructionVersion {
+    /// The first version for constructing a UTXO
+    V0,
+}
+
+///
+pub struct Row {
+    /// whatever
+    pub txid: BitcoinTxId,
+    /// whatever
+    pub sighash: TapSighash,
+    /// whatever
+    pub prevout_txid: BitcoinTxId,
+    /// whatever
+    pub prevout_output_index: u32,
+    /// whatever
+    pub prevout_type: TxPrevoutType,
+    /// whatever
+    pub can_sign: Option<bool>,
+    /// whatever
+    pub will_sign: bool,
+    /// whatever
+    pub construction_version: ConstructionVersion,
+}
+
+impl TempOutput {
+    /// get rows
+    pub fn to_rows(&self) -> Vec<Row> {
+        debug_assert_eq!(self.deposit_sighashes.len(), self.reports.deposits.len());
+        let is_valid = self.validate_tx();
+
+        self.deposit_sighashes
+            .iter()
+            .zip(self.reports.deposits.iter())
+            .map(|(&(outpoint, sighash, prevout_type), (_, report))| Row {
+                txid: self.txid,
+                sighash,
+                prevout_txid: outpoint.txid.into(),
+                prevout_output_index: outpoint.vout,
+                prevout_type,
+                can_sign: report.can_sign,
+                will_sign: is_valid.is_ok(),
+                construction_version: ConstructionVersion::V0,
+            })
+            .collect()
+    }
+
+    /// Check whether we will sign any of the sighashes for the transaction
+    pub fn validate_tx(&self) -> Result<(), BitcoinSweepErrorMsg> {
+        let _deposit_validation_results = self
+            .reports
+            .deposits
+            .iter()
+            .map(|(_, report)| {
+                report.validate_fee(&self.tx, self.tx_fee)?;
+                match report.validate(self.chain_tip_height) {
+                    Err(BitcoinDepositInputError::CannotSignUtxo(_)) => Ok(()),
+                    result => result,
+                }
+            })
+            .collect::<Vec<Result<(), BitcoinDepositInputError>>>();
+
+        self.reports
+            .withdrawals
+            .iter()
+            .map(|(_, report)| {
+                report.validate_fee(&self.tx, self.tx_fee)?;
+                report.validate(self.chain_tip_height)
+            })
+            .collect::<Result<Vec<()>, BitcoinWithdrawalOutputError>>()?;
+
+        Ok(())
+    }
 }
 
 /// The set of sBTC requests with additional relevant
@@ -584,15 +726,11 @@ pub enum WithdrawalRequestStatus {
 pub struct WithdrawalRequestReport {
     /// The confirmation status of the withdrawal request transaction.
     pub status: WithdrawalRequestStatus,
-    /// The request id generated by the smart contract when the
-    /// `initiate-withdrawal-request` public function was called.
-    pub request_id: u64,
-    /// The stacks transaction ID that lead to the creation of the
-    /// withdrawal request.
-    pub txid: StacksTxId,
-    /// Stacks block ID of the block that includes the transaction
-    /// associated with this withdrawal request.
-    pub block_hash: StacksBlockHash,
+    /// The unique identifier for the request. It includes the ID generated
+    /// by the smart contract when the `initiate-withdrawal-request` public
+    /// function was called along with the transaction ID and Stacks block
+    /// ID.
+    pub id: QualifiedRequestId,
     /// The amount of BTC, in sats, to withdraw.
     pub amount: u64,
     /// The max fee amount to use for the bitcoin transaction sweeping out
@@ -603,16 +741,9 @@ pub struct WithdrawalRequestReport {
 }
 
 impl WithdrawalRequestReport {
-    fn qualified_id(&self) -> QualifiedRequestId {
-        QualifiedRequestId {
-            block_hash: self.block_hash,
-            txid: self.txid,
-            request_id: self.request_id,
-        }
-    }
     /// Validate that the withdrawal request is okay given the report.
     pub fn validate(&self, _: u64) -> Result<(), BitcoinWithdrawalOutputError> {
-        Err(BitcoinWithdrawalOutputError::Unknown(self.qualified_id()))
+        Err(BitcoinWithdrawalOutputError::Unknown(self.id))
     }
 
     /// Validate that the fees assessed to the withdrawal output is below
@@ -621,14 +752,14 @@ impl WithdrawalRequestReport {
     where
         F: FeeAssessment,
     {
-        Err(BitcoinWithdrawalOutputError::Unknown(self.qualified_id()))
+        Err(BitcoinWithdrawalOutputError::Unknown(self.id))
     }
 
     fn to_withdrawal_request(&self, votes: &SignerVotes) -> WithdrawalRequest {
         WithdrawalRequest {
-            request_id: self.request_id,
-            txid: self.txid,
-            block_hash: self.block_hash,
+            request_id: self.id.request_id,
+            txid: self.id.txid,
+            block_hash: self.id.block_hash,
             amount: self.amount,
             max_fee: self.max_fee,
             script_pubkey: self.script_pubkey.clone().into(),
