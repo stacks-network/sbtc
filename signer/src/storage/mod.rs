@@ -464,4 +464,10 @@ pub trait DbWrite {
         &self,
         prevout: &model::TxPrevout,
     ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write the bitcoin sighash to the database.
+    fn write_bitcoin_sighash(
+        &self,
+        sighash: &model::BitcoinSigHash,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
 }

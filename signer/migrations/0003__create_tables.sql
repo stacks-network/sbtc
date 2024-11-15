@@ -319,3 +319,30 @@ CREATE TABLE sbtc_signer.swept_deposits (
 -- unique per 'sweep_transaction_id'.
 CREATE UNIQUE INDEX uix_swept_deposits_req_txid_req_output_index_pkgd_txid
     ON sbtc_signer.swept_deposits(deposit_request_txid, deposit_request_output_index, sweep_transaction_txid);
+
+
+CREATE TABLE sbtc_signer.bitcoin_tx_sighashes (
+    txid BYTEA PRIMARY KEY,
+    chain_tip BYTEA NOT NULL,
+    prevout_txid BYTEA NOT NULL,
+    prevout_output_index INTEGER NOT NULL,
+    sighash BYTEA NOT NULL,
+    prevout_type sbtc_signer.prevout_type NOT NULL,
+    validation_result sbtc_signer.validation_result NOT NULL,
+    is_valid_tx BOOLEAN NOT NULL,
+    construction_version TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+);
+
+CREATE TYPE sbtc_signer.prevout_type AS ENUM (
+    'ok',
+    'fee_too_high',
+    'cannot_sign_utxo',
+    'tx_not_on_best_chain',
+    'deposit_utxo_spent',
+    'lock_time_expiry',
+    'no_vote',
+    'rejected_request',
+    'unknown',
+    'unsupported_lock_time'
+);

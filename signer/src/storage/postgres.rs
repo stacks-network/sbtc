@@ -2618,6 +2618,40 @@ impl super::DbWrite for PgStore {
 
         Ok(())
     }
+
+    async fn write_bitcoin_sighash(&self, sighash: &model::BitcoinSigHash) -> Result<(), Error> {
+        sqlx::query(
+            r#"
+                INSERT INTO bitcoin_sighashes (
+                    txid
+                  , chain_tip
+                  , prevout_txid
+                  , prevout_output_index
+                  , sighash
+                  , prevout_type
+                  , validation_result
+                  , is_valid_tx
+                  , construction_version
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                ON CONFLICT DO NOTHING;
+                "#,
+        )
+        .bind(sighash.txid)
+        .bind(sighash.sighash)
+        .bind(sighash.chain_tip)
+        .bind(sighash.prevout_txid)
+        .bind(i32::try_from(sighash.prevout_output_index).map_err(Error::ConversionDatabaseInt)?)
+        .bind(sighash.prevout_type)
+        .bind(sighash.validation_result)
+        .bind(sighash.is_valid_tx)
+        .bind(sighash.construction_version)
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

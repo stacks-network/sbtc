@@ -13,6 +13,8 @@ use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::Fees;
+use crate::bitcoin::validation::ConstructionVersion;
+use crate::bitcoin::validation::InputValidationResult;
 use crate::block_observer::Deposit;
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -1102,6 +1104,65 @@ impl ScriptPubKey {
 
 /// Arbitrary bytes
 pub type Bytes = Vec<u8>;
+
+/// A signature hash for a bitcoin transaction.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SignerSigHash(bitcoin::TapSighash);
+
+impl Deref for SignerSigHash {
+    type Target = bitcoin::TapSighash;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<bitcoin::TapSighash> for SignerSigHash {
+    fn from(value: bitcoin::TapSighash) -> Self {
+        Self(value)
+    }
+}
+
+impl std::fmt::Display for SignerSigHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// The sighash and enough metadata to piece together what happened.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+// #[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct BitcoinSigHash {
+    /// The transaction ID of the bitcoin transaction that sweeps funds
+    /// into and/or out of the signers' UTXO.
+    pub txid: BitcoinTxId,
+    /// The bitcoin chain tip when the sign request was submitted. This is
+    /// used to ensure that we do not sign for more than one transaction
+    /// containing inputs
+    pub chain_tip: BitcoinBlockHash,
+    /// The txid that created the output that is being spent.
+    pub prevout_txid: BitcoinTxId,
+    /// The index of the vout from the transaction that created this
+    /// output.
+    // #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
+    #[sqlx(try_from = "i32")]
+    pub prevout_output_index: u32,
+    /// The sighash associated with the prevout.
+    pub sighash: SignerSigHash,
+    /// The type of prevout that we are dealing with.
+    pub prevout_type: TxPrevoutType,
+    /// The result of validation that was done on the input. For deposits,
+    /// this specifies whether validation succeeded and the first condition
+    /// that failed during validation. The signers' input is always valid,
+    /// since it is unconfirmed.
+    pub validation_result: InputValidationResult,
+    /// Whether the transaction is valid. A transaction is invalid if any
+    /// of the inputs or outputs failed validation.
+    pub is_valid_tx: bool,
+    /// The version of the algorithm that was used to create the bitcoin
+    /// transaction.
+    pub construction_version: ConstructionVersion,
+}
 
 #[cfg(test)]
 mod tests {

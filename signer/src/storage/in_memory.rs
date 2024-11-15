@@ -121,6 +121,9 @@ pub struct Store {
 
     /// Bitcoin transaction inputs
     pub bitcoin_prevouts: HashMap<model::BitcoinTxId, model::TxPrevout>,
+
+    /// Bitcoin signhashes
+    pub bitcoin_sighashes: HashMap<model::BitcoinTxId, model::BitcoinSigHash>,
 }
 
 impl Store {
@@ -1154,6 +1157,15 @@ impl super::DbWrite for SharedStore {
     async fn write_sweep_transaction(&self, tx: &model::SweepTransaction) -> Result<(), Error> {
         let mut store = self.lock().await;
         store.sweep_transactions.push(tx.clone());
+
+        Ok(())
+    }
+
+    async fn write_bitcoin_sighash(&self, sighash: &model::BitcoinSigHash) -> Result<(), Error> {
+        self.lock()
+            .await
+            .bitcoin_sighashes
+            .insert(sighash.txid, sighash.clone());
 
         Ok(())
     }

@@ -4,7 +4,6 @@ use bitcoin::relative::LockTime;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
-use bitcoin::TapSighash;
 use bitcoin::XOnlyPublicKey;
 
 use crate::bitcoin::utxo::FeeAssessment;
@@ -14,12 +13,12 @@ use crate::context::Context;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::BitcoinSigHash;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::SignerVotes;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
-use crate::storage::model::TxPrevoutType;
 use crate::storage::DbRead;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
@@ -249,7 +248,7 @@ impl BitcoinTxContext {
 
 /// An intermediate struct to aid in computing validation of deposits and
 /// withdrawals and transforming the computed sighash into a
-/// [`BitcoinSighash`].
+/// [`BitcoinSigHash`].
 pub struct TempOutput {
     /// The sighash of the signers' prevout
     pub signer_sighash: SignatureHash,
@@ -277,38 +276,6 @@ pub struct TempOutput {
 pub enum ConstructionVersion {
     /// The first version for constructing a UTXO
     V0,
-}
-
-/// The sighash and enough metadata to piece together what happened.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BitcoinSighash {
-    /// The transaction ID of the bitcoin transaction that sweeps funds
-    /// into and/or out of the signers' UTXO.
-    pub txid: BitcoinTxId,
-    /// The bitcoin chain tip when the sign request was submitted. This is
-    /// used to ensure that we do not sign for more than one transaction
-    /// containing inputs
-    pub chain_tip: BitcoinBlockHash,
-    /// The txid that created the output that is being spent.
-    pub prevout_txid: BitcoinTxId,
-    /// The index of the vout from the transaction that created this
-    /// output.
-    pub prevout_output_index: u32,
-    /// The sighash associated with the prevout.
-    pub sighash: TapSighash,
-    /// The type of prevout that we are dealing with.
-    pub prevout_type: TxPrevoutType,
-    /// The result of validation that was done on the input. For deposits,
-    /// this specifies whether validation succeeded and the first condition
-    /// that failed during validation. The signers' input is always valid,
-    /// since it is unconfirmed.
-    pub validation_result: InputValidationResult,
-    /// Whether the transaction is valid. A transaction is invalid if any
-    /// of the inputs or outputs failed validation.
-    pub is_valid_tx: bool,
-    /// The version of the algorithm that was used to create the bitcoin
-    /// transaction.
-    pub construction_version: ConstructionVersion,
 }
 
 /// An output that was created due to a withdrawal request.
@@ -339,7 +306,7 @@ pub struct BitcoinWithdrawalOutput {
 impl TempOutput {
     /// Construct the sighashes for the inputs of the associated
     /// transaction.
-    pub fn to_input_rows(&self) -> Vec<BitcoinSighash> {
+    pub fn to_input_rows(&self) -> Vec<BitcoinSigHash> {
         // If any of the inputs or outputs fail validation, then
         // transaction is invalid, so we won't sign any of the inputs or
         // outputs.
@@ -367,9 +334,9 @@ impl TempOutput {
         [(self.signer_sighash, InputValidationResult::Ok)]
             .into_iter()
             .chain(deposit_sighashes)
-            .map(|(sighash, validation_result)| BitcoinSighash {
+            .map(|(sighash, validation_result)| BitcoinSigHash {
                 txid: sighash.txid.into(),
-                sighash: sighash.sighash,
+                sighash: sighash.sighash.into(),
                 chain_tip: self.chain_tip,
                 prevout_txid: sighash.outpoint.txid.into(),
                 prevout_output_index: sighash.outpoint.vout,
@@ -463,7 +430,9 @@ impl SbtcReports {
 }
 
 /// The responses for validation of a sweep transaction on bitcoin.
-#[derive(Debug, PartialEq, Eq, Copy, Clone, strum::Display, strum::IntoStaticStr)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
+#[sqlx(type_name = "transaction_type", rename_all = "snake_case")]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
 #[strum(serialize_all = "snake_case")]
 pub enum InputValidationResult {
     /// The deposit request passed validation
