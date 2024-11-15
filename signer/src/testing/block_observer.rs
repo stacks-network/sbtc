@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use bitcoin::hashes::Hash;
 use bitcoin::BlockHash;
 use bitcoin::Txid;
+use bitcoincore_rpc_json::GetTxOutResult;
 use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
@@ -27,7 +28,6 @@ use rand::seq::IteratorRandom;
 use sbtc::deposits::CreateDepositRequest;
 
 use crate::bitcoin::rpc::BitcoinTxInfo;
-use crate::bitcoin::rpc::GetTxOutResponse;
 use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
@@ -245,7 +245,7 @@ impl BitcoinInteract for TestHarness {
         &self,
         _outpoint: &bitcoin::OutPoint,
         _include_mempool: bool,
-    ) -> Result<Option<GetTxOutResponse>, Error> {
+    ) -> Result<Option<GetTxOutResult>, Error> {
         unimplemented!()
     }
 

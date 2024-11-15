@@ -4,6 +4,7 @@ use std::time::Duration;
 use std::{ops::Deref, sync::Arc};
 
 use bitcoin::Txid;
+use bitcoincore_rpc_json::GetTxOutResult;
 use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::{
     chainstate::{nakamoto::NakamotoBlock, stacks::StacksTransaction},
@@ -335,7 +336,7 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
         &self,
         _outpoint: &bitcoin::OutPoint,
         _include_mempool: bool,
-    ) -> Result<Option<crate::bitcoin::rpc::GetTxOutResponse>, Error> {
+    ) -> Result<Option<GetTxOutResult>, Error> {
         unimplemented!()
     }
 

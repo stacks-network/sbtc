@@ -6,6 +6,7 @@ use bitcoin::BlockHash;
 use bitcoin::Txid;
 
 use bitcoincore_rpc_json::GetMempoolEntryResult;
+use bitcoincore_rpc_json::GetTxOutResult;
 use rpc::BitcoinTxInfo;
 use rpc::GetTxResponse;
 use utxo::Fees;
@@ -91,7 +92,7 @@ pub trait BitcoinInteract: Sync + Send {
         &self,
         outpoint: &bitcoin::OutPoint,
         include_mempool: bool,
-    ) -> impl Future<Output = Result<Option<rpc::GetTxOutResponse>, Error>> + Send;
+    ) -> impl Future<Output = Result<Option<GetTxOutResult>, Error>> + Send;
 
     /// Calculates the fee and fee rate for the given transaction. The
     /// transaction must be a valid transaction which either exists in a block

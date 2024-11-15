@@ -20,6 +20,7 @@ use bitcoincore_rpc::RpcApi as _;
 use bitcoincore_rpc_json::GetMempoolEntryResult;
 use bitcoincore_rpc_json::GetRawTransactionResultVin;
 use bitcoincore_rpc_json::GetRawTransactionResultVout as BitcoinTxInfoVout;
+use bitcoincore_rpc_json::GetTxOutResult;
 use serde::Deserialize;
 use url::Url;
 
@@ -53,26 +54,6 @@ pub struct GetTxResponse {
     /// timestamp as recorded by the miner of the block.
     #[serde(rename = "blocktime")]
     pub block_time: Option<u64>,
-}
-
-/// A struct containing the response from bitcoin-core for a `gettxout` RPC
-/// call.
-///
-/// The docs for the `gettxout` RPC call can be found here:
-/// https://bitcoincore.org/en/doc/27.0.0/rpc/blockchain/gettxout/
-#[derive(Debug, Clone, Deserialize)]
-pub struct GetTxOutResponse {
-    /// The hash of the block at the tip of the chain
-    #[serde(rename = "bestblock")]
-    pub best_block: BlockHash,
-    /// The number of confirmations of the transaction containing this output.
-    pub confirmations: u32,
-    /// The value of the output in BTC.
-    #[serde(with = "bitcoin::amount::serde::as_btc")]
-    pub value: Amount,
-    /// The scriptPubKey of the output.
-    #[serde(rename = "scriptPubKey")]
-    pub script_pub_key: PrevoutScriptPubKey,
 }
 
 /// A struct containing the response from bitcoin-core for a
@@ -446,18 +427,13 @@ impl BitcoinCoreClient {
         &self,
         outpoint: &OutPoint,
         include_mempool: bool,
-    ) -> Result<Option<GetTxOutResponse>, Error> {
-        let args = [
-            serde_json::to_value(outpoint.txid).map_err(Error::JsonSerialize)?,
-            serde_json::to_value(outpoint.vout).map_err(Error::JsonSerialize)?,
-            serde_json::to_value(include_mempool).map_err(Error::JsonSerialize)?,
-        ];
-
+    ) -> Result<Option<GetTxOutResult>, Error> {
         match self
             .inner
-            .call::<Option<GetTxOutResponse>>("gettxout", &args)
+            .get_tx_out(&outpoint.txid, outpoint.vout, Some(include_mempool))
         {
             Ok(txout) => Ok(txout),
+            Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
             Err(err) => Err(Error::BitcoinCoreGetTxOut(err, *outpoint, include_mempool)),
         }
     }
@@ -561,7 +537,7 @@ impl BitcoinInteract for BitcoinCoreClient {
         &self,
         outpoint: &OutPoint,
         include_mempool: bool,
-    ) -> Result<Option<GetTxOutResponse>, Error> {
+    ) -> Result<Option<GetTxOutResult>, Error> {
         self.get_tx_out(outpoint, include_mempool)
     }
 

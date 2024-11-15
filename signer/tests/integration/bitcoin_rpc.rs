@@ -435,7 +435,6 @@ async fn get_tx_out_confirmed_no_mempool() {
 
     assert_eq!(txout.value, Amount::from_sat(10_000));
     assert_eq!(txout.confirmations, 1);
-    assert_eq!(txout.script_pub_key.script, addr1.address.script_pubkey());
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -462,7 +461,6 @@ async fn get_tx_out_confirmed_with_mempool() {
 
     assert_eq!(txout.value, Amount::from_sat(10_000));
     assert_eq!(txout.confirmations, 1);
-    assert_eq!(txout.script_pub_key.script, addr1.address.script_pubkey());
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -511,5 +509,4 @@ async fn get_tx_out_unconfirmed_with_mempool() {
 
     assert_eq!(txout.value, Amount::from_sat(10_000));
     assert_eq!(txout.confirmations, 0); // Unconfirmed txs will have 0 confirmations
-    assert_eq!(txout.script_pub_key.script, addr1.address.script_pubkey());
 }

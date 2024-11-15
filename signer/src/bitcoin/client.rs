@@ -16,13 +16,13 @@
 
 use bitcoin::BlockHash;
 use bitcoin::Txid;
+use bitcoincore_rpc_json::GetTxOutResult;
 use url::Url;
 
 use crate::{error::Error, util::ApiFallbackClient};
 
 use super::rpc::BitcoinCoreClient;
 use super::rpc::BitcoinTxInfo;
-use super::rpc::GetTxOutResponse;
 use super::rpc::GetTxResponse;
 use super::BitcoinInteract;
 
@@ -91,7 +91,7 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
         &self,
         outpoint: &bitcoin::OutPoint,
         include_mempool: bool,
-    ) -> Result<Option<GetTxOutResponse>, Error> {
+    ) -> Result<Option<GetTxOutResult>, Error> {
         self.exec(|client, _| client.get_transaction_output(outpoint, include_mempool))
             .await
     }
