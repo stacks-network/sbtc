@@ -17,11 +17,12 @@ use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::SignerVotes;
+use crate::storage::model::StacksBlockHash;
+use crate::storage::model::StacksTxId;
 use crate::storage::model::TxPrevoutType;
 use crate::storage::DbRead;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
-use super::utxo::BitcoinInputsOutputs;
 use super::utxo::DepositRequest;
 use super::utxo::RequestRef;
 use super::utxo::Requests;
@@ -277,8 +278,6 @@ impl BitcoinTxContext {
         let tx = reports.create_transaction()?;
         let sighashes = tx.construct_digests()?;
 
-        let txid = tx.tx_ref().compute_txid().into();
-
         signer_state.utxo = tx.new_signer_utxo();
         // The first transaction is the only one whose input UTXOs that
         // have all been confirmed. Moreover, the fees that it sets aside
@@ -291,7 +290,7 @@ impl BitcoinTxContext {
         let out = TempOutput {
             signer_sighash: sighashes.signer_sighash(),
             deposit_sighashes: sighashes.deposit_sighashes(),
-            txid,
+            chain_tip: self.chain_tip,
             tx: tx.tx.clone(),
             tx_fee: tx.tx_fee,
             reports,
@@ -311,7 +310,7 @@ pub struct TempOutput {
     /// The info for the stuff
     pub reports: SbtcReports,
     /// The info for the stuff
-    pub txid: BitcoinTxId,
+    pub chain_tip: BitcoinBlockHash,
     /// the transaction
     pub tx: bitcoin::Transaction,
     /// the transaction fee in sats
@@ -335,6 +334,8 @@ pub enum ConstructionVersion {
 pub struct Row {
     /// whatever
     pub txid: BitcoinTxId,
+    ///
+    pub chain_tip: BitcoinBlockHash,
     /// whatever
     pub sighash: TapSighash,
     /// whatever
@@ -351,24 +352,60 @@ pub struct Row {
     pub construction_version: ConstructionVersion,
 }
 
+///
+pub struct RowOutput {
+    /// whatever
+    pub txid: BitcoinTxId,
+    /// whatever
+    pub request_id: u64,
+    /// whatever
+    pub stacks_txid: StacksTxId,
+    /// whatever
+    pub stacks_block_hash: StacksBlockHash,
+    /// whatever
+    pub validation_status: BitcoinWithdrawalOutputError,
+    /// whatever
+    pub construction_version: ConstructionVersion,
+}
+
 impl TempOutput {
     /// get rows
-    pub fn to_rows(&self) -> Vec<Row> {
+    pub fn to_input_rows(&self) -> Vec<Row> {
         debug_assert_eq!(self.deposit_sighashes.len(), self.reports.deposits.len());
-        let is_valid = self.validate_tx();
 
+        let is_valid = self.validate_tx();
+        let txid = self.tx.compute_txid().into();
         self.deposit_sighashes
             .iter()
             .zip(self.reports.deposits.iter())
             .map(|(&(outpoint, sighash, prevout_type), (_, report))| Row {
-                txid: self.txid,
+                txid,
                 sighash,
+                chain_tip: self.chain_tip,
                 prevout_txid: outpoint.txid.into(),
                 prevout_output_index: outpoint.vout,
                 prevout_type,
                 can_sign: report.can_sign,
                 will_sign: is_valid.is_ok(),
                 construction_version: ConstructionVersion::V0,
+            })
+            .collect()
+    }
+
+    /// get rows
+    pub fn to_output_rows(&self) -> Vec<RowOutput> {
+        let txid = self.tx.compute_txid().into();
+
+        self.reports
+            .withdrawals
+            .iter()
+            .map(|(_, report)| RowOutput {
+                txid,
+                request_id: report.id.request_id,
+                stacks_txid: report.id.txid,
+                stacks_block_hash: report.id.block_hash,
+                construction_version: ConstructionVersion::V0,
+                validation_status: BitcoinWithdrawalOutputError::Unknown(report.id),
             })
             .collect()
     }
