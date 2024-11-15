@@ -9,7 +9,6 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use blockstack_lib::chainstate::stacks::StacksTransaction;
-use futures::future::try_join_all;
 use futures::FutureExt;
 use futures::StreamExt as _;
 use futures::TryStreamExt;
@@ -18,7 +17,6 @@ use tokio::time::sleep;
 use tokio_stream::wrappers::BroadcastStream;
 use wsts::net::SignatureType;
 
-use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::GetFees;
 use crate::bitcoin::BitcoinInteract;
@@ -1361,135 +1359,6 @@ where
         wallet.set_nonce(account.nonce);
 
         Ok(wallet)
-    }
-
-    /// Fetch the sweep transactions from the mempool that are spending the
-    /// signer's UTXO.
-    ///
-    /// This method returns the sweep transactions in an unordered list. If no
-    /// sweep transactions are found in the mempool, an empty list is returned.
-    #[tracing::instrument(skip_all, fields(%chain_tip))]
-    async fn fetch_mempool_sweep_transactions(
-        &self,
-        chain_tip: &model::BitcoinBlockHash,
-        signer_utxo: &utxo::SignerUtxo,
-    ) -> Result<Vec<GetTxResponse>, Error> {
-        let bitcoin_client = self.context.get_bitcoin_client();
-
-        let mempool_txs_spending_utxo = bitcoin_client
-            .find_mempool_transactions_spending_output(&signer_utxo.outpoint)
-            .await?;
-
-        if mempool_txs_spending_utxo.is_empty() {
-            tracing::debug!(
-                utxo_outpoint = %signer_utxo.outpoint,
-                "no mempool transactions found spending signer UTXO; nothing to do"
-            );
-            return Ok(vec![]);
-        }
-
-        // Find the "best" sweep transaction root in the mempool. We define the
-        // "best" sweep transaction as the one with the highest fee, as if there
-        // has been an RBF attempt then there can be multiple transactions in
-        // the mempool spending the same output.
-        //
-        // To do this we first fetch the tx-info of all of the mempool
-        // transactions spending our signer UTXO (txid's are retrieved above),
-        // then selecting the transaction with the highest fee.
-        let sweep_mempool_roots = try_join_all(mempool_txs_spending_utxo.into_iter().map(|txid| {
-            let bitcoin_client = bitcoin_client.clone();
-            async move {
-                bitcoin_client
-                    .get_tx(&txid)
-                    .await?
-                    .ok_or(Error::MissingSweepTransaction(txid))
-            }
-        }))
-        .await?;
-
-        let sweep_roots_with_fees = try_join_all(sweep_mempool_roots.into_iter().map(|tx_info| {
-            let bitcoin_client = bitcoin_client.clone();
-
-            async move {
-                let vsize = tx_info.tx.vsize();
-
-                let outputs = try_join_all(tx_info.tx.input.iter().map(|input| {
-                    let bitcoin_client = bitcoin_client.clone();
-                    async move {
-                        bitcoin_client
-                            .get_transaction_output(&input.previous_output, true)
-                            .await
-                    }
-                }))
-                .await?;
-
-                let outputs_total = outputs
-                    .iter()
-                    .filter_map(|output| output.as_ref().map(|output| output.value.to_sat()))
-                    .try_fold(0u64, |acc, value| acc.checked_add(value))
-                    .ok_or(Error::ArithmeticOverflow)?;
-
-                let inputs_total = outputs
-                    .iter()
-                    .filter_map(|output| output.as_ref().map(|output| output.value.to_sat()))
-                    .try_fold(0u64, |acc, value| acc.checked_add(value))
-                    .ok_or(Error::ArithmeticOverflow)?;
-
-                let fee = (inputs_total - outputs_total) / vsize as u64;
-
-                Ok::<(GetTxResponse, u64), Error>((tx_info, fee))
-            }
-        }))
-        .await?;
-
-        let best_sweep_root = sweep_roots_with_fees
-            .into_iter()
-            .max_by_key(|(_, fee)| *fee)
-            .map(|(tx_info, _)| tx_info);
-
-        // This should never happen as since we got the txid from bitcoin-core
-        // in the first place, it should be retrievable, but we log a warning
-        // and return an empty list if it for some reason does. The most
-        // reasonable reason for this happening might be if the failover-client
-        // has failed over to a different node between the two calls.
-        let Some(best_sweep_root) = best_sweep_root else {
-            tracing::warn!("mempool sweep transactions found, but we could not retrieve them from bitcoin-core");
-            return Ok(vec![]);
-        };
-
-        // Find all descendants of the best sweep transaction root. We are
-        // assuming here that sweep transaction packages are properly chained
-        // and that there are never two transactions spending the same mempool
-        // transaction (this method will otherwise return _all_ descendants).
-        let sweep_descendants = bitcoin_client
-            .find_mempool_descendants(&best_sweep_root.tx.compute_txid())
-            .await?;
-
-        // If there were no descendants then we can return early with only the
-        // best sweep transaction root.
-        if sweep_descendants.is_empty() {
-            return Ok(vec![best_sweep_root]);
-        }
-
-        // Fetch the tx-info of all the descendants of the best sweep transaction.
-        // As mentioned above, we are assuming that these should be retrievable.
-        // let mut sweep_txs = try_join_all(sweep_descendants.into_iter().map(|txid| {
-        //     let bitcoin_client = bitcoin_client.clone();
-        //     async move {
-        //         bitcoin_client
-        //             .get_tx(&txid)
-        //             .await?
-        //             .ok_or(Error::MissingSweepTransaction(txid))
-        //     }
-        // }))
-        // .await?;
-
-        // We prepend the best sweep transaction root to the list of sweep
-        // transactions.
-        //sweep_txs.insert(0, best_sweep_root);
-
-        //Ok(sweep_txs)
-        todo!()
     }
 }
 
