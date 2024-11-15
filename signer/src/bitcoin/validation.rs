@@ -319,7 +319,7 @@ pub struct TempOutput {
     pub chain_tip_height: u64,
 }
 
-///
+/// The version of the algorithm that constructed the bitcoin transaction.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
 #[sqlx(type_name = "varchar", rename_all = "snake_case")]
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -330,11 +330,11 @@ pub enum ConstructionVersion {
     V0,
 }
 
-///
+/// the input
 pub struct Row {
     /// whatever
     pub txid: BitcoinTxId,
-    ///
+    /// whatevert
     pub chain_tip: BitcoinBlockHash,
     /// whatever
     pub sighash: TapSighash,
@@ -352,7 +352,7 @@ pub struct Row {
     pub construction_version: ConstructionVersion,
 }
 
-///
+/// The output
 pub struct RowOutput {
     /// whatever
     pub txid: BitcoinTxId,
