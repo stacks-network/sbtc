@@ -582,7 +582,7 @@ impl std::error::Error for BitcoinValidationError {
 
 /// An enum for the confirmation status of a deposit request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DepositRequestStatus {
+pub enum DepositConfirmationStatus {
     /// We have a record of the deposit request transaction, and it has
     /// been confirmed on the canonical bitcoin blockchain. We have not
     /// spent these funds. The integer is the height of the block
@@ -611,7 +611,7 @@ pub struct DepositRequestReport {
     /// The deposit UTXO outpoint that uniquely identifies the deposit.
     pub outpoint: OutPoint,
     /// The confirmation status of the deposit request transaction.
-    pub status: DepositRequestStatus,
+    pub status: DepositConfirmationStatus,
     /// Whether this signer was part of the signing set associated with the
     /// deposited funds. If the signer is not part of the signing set, then
     /// we do not do a check of whether we will accept it otherwise.
@@ -645,13 +645,13 @@ impl DepositRequestReport {
             // have been confirmed, so this means that we have a record of
             // the request, but it has not been confirmed on the canonical
             // bitcoin blockchain.
-            DepositRequestStatus::Unconfirmed => {
+            DepositConfirmationStatus::Unconfirmed => {
                 return Err(BitcoinDepositInputError::TxNotOnBestChain(self.outpoint));
             }
             // This means that we have a record of the deposit UTXO being
             // spent in a sweep transaction that has been confirmed on the
             // canonical bitcoin blockchain.
-            DepositRequestStatus::Spent(txid) => {
+            DepositConfirmationStatus::Spent(txid) => {
                 return Err(BitcoinDepositInputError::DepositUtxoSpent(
                     self.outpoint,
                     txid,
@@ -659,7 +659,7 @@ impl DepositRequestReport {
             }
             // The deposit has been confirmed on the canonical bitcoin
             // blockchain and remains unspent by us.
-            DepositRequestStatus::Confirmed(block_height, _) => block_height,
+            DepositConfirmationStatus::Confirmed(block_height, _) => block_height,
         };
 
         // We only sweep a deposit if the depositor cannot reclaim the
@@ -827,7 +827,7 @@ mod tests {
 
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Unconfirmed,
+            status: DepositConfirmationStatus::Unconfirmed,
             can_sign: Some(true),
             can_accept: Some(true),
             amount: 0,
@@ -843,7 +843,7 @@ mod tests {
     } ; "deposit-reorged")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Spent(BitcoinTxId::from([1; 32])),
+            status: DepositConfirmationStatus::Spent(BitcoinTxId::from([1; 32])),
             can_sign: Some(true),
             can_accept: Some(true),
             amount: 0,
@@ -859,7 +859,7 @@ mod tests {
     } ; "deposit-spent")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: None,
             can_accept: Some(true),
             amount: 0,
@@ -875,7 +875,7 @@ mod tests {
     } ; "deposit-no-vote")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(false),
             can_accept: Some(true),
             amount: 0,
@@ -891,7 +891,7 @@ mod tests {
     } ; "cannot-sign-for-deposit")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             can_accept: Some(false),
             amount: 0,
@@ -907,7 +907,7 @@ mod tests {
     } ; "rejected-deposit")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             can_accept: Some(true),
             amount: 0,
@@ -923,7 +923,7 @@ mod tests {
     } ; "lock-time-expires-soon-1")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             can_accept: Some(true),
             amount: 0,
@@ -939,7 +939,7 @@ mod tests {
     } ; "lock-time-expires-soon-2")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             can_accept: Some(true),
             amount: 0,
@@ -955,7 +955,7 @@ mod tests {
     } ; "lock-time-in-time-units-2")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             can_accept: Some(true),
             amount: 0,
@@ -987,7 +987,7 @@ mod tests {
 
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             can_accept: Some(true),
             amount: 0,
@@ -1003,7 +1003,7 @@ mod tests {
     } ; "unknown-prevout")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             can_accept: Some(true),
             amount: 0,
@@ -1019,7 +1019,7 @@ mod tests {
     } ; "at-the-border")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
-            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             can_accept: Some(true),
             amount: 0,

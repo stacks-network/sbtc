@@ -17,7 +17,7 @@ use stacks_common::types::chainstate::StacksAddress;
 
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::validation::DepositRequestReport;
-use crate::bitcoin::validation::DepositRequestStatus;
+use crate::bitcoin::validation::DepositConfirmationStatus;
 use crate::bitcoin::validation::WithdrawalRequestReport;
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -1055,14 +1055,14 @@ impl super::DbRead for PgStore {
                     self.get_deposit_sweep_txid(chain_tip, txid, output_index, block_height);
 
                 match deposit_sweep_txid.await? {
-                    Some(txid) => DepositRequestStatus::Spent(txid),
-                    None => DepositRequestStatus::Confirmed(block_height, block_hash),
+                    Some(txid) => DepositConfirmationStatus::Spent(txid),
+                    None => DepositConfirmationStatus::Confirmed(block_height, block_hash),
                 }
             }
             // If we didn't grab the block height in the above query, then
             // we know that the deposit transaction is not on the
             // blockchain identified by the chain tip.
-            None => DepositRequestStatus::Unconfirmed,
+            None => DepositConfirmationStatus::Unconfirmed,
             // Block heights are stored as BIGINTs after conversion from
             // u64s, so converting back to u64s is actually safe.
             Some((Err(error), _)) => return Err(Error::ConversionDatabaseInt(error)),
