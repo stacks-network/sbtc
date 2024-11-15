@@ -45,6 +45,8 @@ build {
       "sudo usermod -aG docker ubuntu",
       "git clone https://github.com/stacks-network/sbtc.git",
       "cd sbtc",
+      "",
+      "curl -O https://archive.hiro.so/testnet/stacks-blockchain/testnet-stacks-blockchain-2.5.0.0.7-20240917.tar.gz",
       "sudo docker-compose -f docker/docker-compose.yml --profile sbtc-signer up",
     ]
   }
