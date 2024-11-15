@@ -1407,38 +1407,40 @@ where
         }))
         .await?;
 
-        let sweep_roots_with_fees = try_join_all (
-            sweep_mempool_roots.into_iter().map(|tx_info| {
-                let bitcoin_client = bitcoin_client.clone();
+        let sweep_roots_with_fees = try_join_all(sweep_mempool_roots.into_iter().map(|tx_info| {
+            let bitcoin_client = bitcoin_client.clone();
 
-                async move {
-                    let vsize = tx_info.tx.vsize();
+            async move {
+                let vsize = tx_info.tx.vsize();
 
-                    let outputs = try_join_all(tx_info.tx.input.iter().map(|input| {
-                        let bitcoin_client = bitcoin_client.clone();
-                        async move {
-                            bitcoin_client
-                                .get_transaction_output(&input.previous_output, true)
-                                .await
-                        }
-                    })).await?;
+                let outputs = try_join_all(tx_info.tx.input.iter().map(|input| {
+                    let bitcoin_client = bitcoin_client.clone();
+                    async move {
+                        bitcoin_client
+                            .get_transaction_output(&input.previous_output, true)
+                            .await
+                    }
+                }))
+                .await?;
 
-                    let outputs_total = outputs.iter()
-                        .filter_map(|output| output.as_ref().map(|output| output.value.to_sat()))
-                        .try_fold(0u64, |acc, value| acc.checked_add(value))
-                        .ok_or(Error::ArithmeticOverflow)?;
+                let outputs_total = outputs
+                    .iter()
+                    .filter_map(|output| output.as_ref().map(|output| output.value.to_sat()))
+                    .try_fold(0u64, |acc, value| acc.checked_add(value))
+                    .ok_or(Error::ArithmeticOverflow)?;
 
-                    let inputs_total = outputs.iter()
-                        .filter_map(|output| output.as_ref().map(|output| output.value.to_sat()))
-                        .try_fold(0u64, |acc, value| acc.checked_add(value))
-                        .ok_or(Error::ArithmeticOverflow)?;
+                let inputs_total = outputs
+                    .iter()
+                    .filter_map(|output| output.as_ref().map(|output| output.value.to_sat()))
+                    .try_fold(0u64, |acc, value| acc.checked_add(value))
+                    .ok_or(Error::ArithmeticOverflow)?;
 
-                    let fee = (inputs_total - outputs_total) / vsize as u64;
+                let fee = (inputs_total - outputs_total) / vsize as u64;
 
-                    Ok::<(GetTxResponse, u64), Error>((tx_info, fee))
-                }
-            })
-        ).await?;
+                Ok::<(GetTxResponse, u64), Error>((tx_info, fee))
+            }
+        }))
+        .await?;
 
         let best_sweep_root = sweep_roots_with_fees
             .into_iter()

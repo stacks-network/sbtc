@@ -88,10 +88,7 @@ impl DepositRequestValidator for CreateDepositRequest {
 
         // The `get_tx_info` call here should not return None, we know that
         // it has been included in a block.
-        let Some(tx_info) = client
-            .get_tx_info(&self.outpoint.txid, &block_hash)
-            .await?
-        else {
+        let Some(tx_info) = client.get_tx_info(&self.outpoint.txid, &block_hash).await? else {
             return Ok(None);
         };
 

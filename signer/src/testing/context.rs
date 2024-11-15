@@ -338,6 +338,13 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
     ) -> Result<Option<crate::bitcoin::rpc::GetTxOutResponse>, Error> {
         unimplemented!()
     }
+
+    async fn calculate_transaction_fee(
+        &self,
+        _tx: &bitcoin::Transaction,
+    ) -> Result<crate::bitcoin::utxo::Fees, Error> {
+        unimplemented!()
+    }
 }
 
 impl StacksInteract for WrappedMock<MockStacksInteract> {

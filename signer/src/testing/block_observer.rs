@@ -248,6 +248,13 @@ impl BitcoinInteract for TestHarness {
     ) -> Result<Option<GetTxOutResponse>, Error> {
         unimplemented!()
     }
+
+    async fn calculate_transaction_fee(
+        &self,
+        _tx: &bitcoin::Transaction,
+    ) -> Result<utxo::Fees, Error> {
+        unimplemented!()
+    }
 }
 
 impl StacksInteract for TestHarness {

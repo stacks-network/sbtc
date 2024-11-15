@@ -19,11 +19,14 @@ use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi as _;
 use bitcoincore_rpc_json::GetRawTransactionResultVin;
 use bitcoincore_rpc_json::GetRawTransactionResultVout as BitcoinTxInfoVout;
+use futures::future::try_join_all;
 use serde::Deserialize;
 use url::Url;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::error::Error;
+
+use super::utxo::Fees;
 
 /// A slimmed down type representing a response from bitcoin-core's
 /// getrawtransaction RPC.
@@ -354,7 +357,7 @@ impl BitcoinCoreClient {
             // and 2, and we want the 2 because it will include all the
             // required fields of the type.
             serde_json::Value::Number(serde_json::value::Number::from(2u32)),
-            serde_json::to_value(block_hash).map_err(Error::JsonSerialize)?
+            serde_json::to_value(block_hash).map_err(Error::JsonSerialize)?,
         ];
 
         match self.inner.call::<BitcoinTxInfo>("getrawtransaction", &args) {
@@ -546,5 +549,32 @@ impl BitcoinInteract for BitcoinCoreClient {
         include_mempool: bool,
     ) -> Result<Option<GetTxOutResponse>, Error> {
         self.get_tx_out(outpoint, include_mempool)
+    }
+
+    async fn calculate_transaction_fee(&self, tx: &bitcoin::Transaction) -> Result<Fees, Error> {
+        let vsize = tx.vsize();
+
+        let outputs = try_join_all(tx.input.iter().map(|input| async move {
+            self.get_transaction_output(&input.previous_output, true)
+                .await
+        }))
+        .await?;
+
+        let outputs_total = outputs
+            .iter()
+            .filter_map(|output| output.as_ref().map(|output| output.value.to_sat()))
+            .try_fold(0u64, |acc, value| acc.checked_add(value))
+            .ok_or(Error::ArithmeticOverflow)?;
+
+        let inputs_total = outputs
+            .iter()
+            .filter_map(|output| output.as_ref().map(|output| output.value.to_sat()))
+            .try_fold(0u64, |acc, value| acc.checked_add(value))
+            .ok_or(Error::ArithmeticOverflow)?;
+
+        let fee = inputs_total - outputs_total;
+        let fee_rate = fee as f64 / vsize as f64;
+
+        Ok(Fees { total: fee, rate: fee_rate })
     }
 }

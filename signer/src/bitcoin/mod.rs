@@ -7,6 +7,7 @@ use bitcoin::Txid;
 
 use rpc::BitcoinTxInfo;
 use rpc::GetTxResponse;
+use utxo::Fees;
 
 use crate::error::Error;
 
@@ -90,4 +91,12 @@ pub trait BitcoinInteract: Sync + Send {
         outpoint: &bitcoin::OutPoint,
         include_mempool: bool,
     ) -> impl Future<Output = Result<Option<rpc::GetTxOutResponse>, Error>> + Send;
+
+    /// Calculates the fee and fee rate for the given transaction. The
+    /// transaction must be a valid transaction which either exists in a block
+    /// or the mempool.
+    fn calculate_transaction_fee(
+        &self,
+        tx: &bitcoin::Transaction,
+    ) -> impl Future<Output = Result<Fees, Error>> + Send;
 }
