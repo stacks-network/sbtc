@@ -16,8 +16,8 @@ use sqlx::PgExecutor;
 use stacks_common::types::chainstate::StacksAddress;
 
 use crate::bitcoin::utxo::SignerUtxo;
-use crate::bitcoin::validation::DepositRequestReport;
 use crate::bitcoin::validation::DepositConfirmationStatus;
+use crate::bitcoin::validation::DepositRequestReport;
 use crate::bitcoin::validation::WithdrawalRequestReport;
 use crate::error::Error;
 use crate::keys::PublicKey;

@@ -242,7 +242,7 @@ impl BitcoinTxContext {
                 db.get_deposit_request_report(chain_tip, &txid, output_index, signer_public_key);
 
             let Some(report) = report_future.await? else {
-                return Err(BitcoinDepositInputError::Unknown(*outpoint).into_error(self));
+                return Err(DepositValidationResult::Unknown.into_error(self));
             };
 
             let votes = db
@@ -416,14 +416,8 @@ impl TempOutput {
             .reports
             .deposits
             .iter()
-            .map(|(_, report)| {
-                report.validate_fee(&self.tx, self.tx_fee)?;
-                match report.validate(self.chain_tip_height) {
-                    Err(BitcoinDepositInputError::CannotSignUtxo(_)) => Ok(()),
-                    result => result,
-                }
-            })
-            .collect::<Vec<Result<(), BitcoinDepositInputError>>>();
+            .map(|(_, report)| report.validate(self.chain_tip_height, &self.tx, self.tx_fee))
+            .collect::<Vec<DepositValidationResult>>();
 
         self.reports
             .withdrawals
@@ -471,11 +465,13 @@ impl SbtcReports {
 }
 
 /// The responses for validation of a sweep transaction on bitcoin.
-#[derive(Debug, thiserror::Error, PartialEq, Eq, Copy, Clone)]
-pub enum BitcoinDepositInputError {
+#[derive(Debug, PartialEq, Eq, Copy, Clone, strum::Display, strum::IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
+pub enum DepositValidationResult {
+    /// The deposit request passed validation
+    Ok,
     /// The assessed fee exceeds the max-fee in the deposit request.
-    #[error("the assessed fee for a deposit would exceed their max-fee; {0}")]
-    FeeTooHigh(OutPoint),
+    FeeTooHigh,
     /// The signer is not part of the signer set that generated the
     /// aggregate public key used to lock the deposit funds.
     ///
@@ -484,38 +480,30 @@ pub enum BitcoinDepositInputError {
     /// whether a particular deposit cannot be signed by a particular
     /// signers means that the entire transaction is rejected from that
     /// signer.
-    #[error("the signer is not part of the signing set for the aggregate public key; {0}")]
-    CannotSignUtxo(OutPoint),
+    CannotSignUtxo,
     /// The deposit transaction has been confirmed on a bitcoin block
     /// that is not part of the canonical bitcoin blockchain.
-    #[error("deposit transaction not on canonical bitcoin blockchain; {0}")]
-    TxNotOnBestChain(OutPoint),
+    TxNotOnBestChain,
     /// The deposit UTXO has already been spent.
-    #[error("deposit used as input in confirmed sweep transaction; deposit: {0}, txid: {1}")]
-    DepositUtxoSpent(OutPoint, BitcoinTxId),
+    DepositUtxoSpent,
     /// Given the current time and block height, it would be imprudent to
     /// attempt to sweep in a deposit request with the given lock-time.
-    #[error("lock-time expiration is too soon; {0}")]
-    LockTimeExpiry(OutPoint),
+    LockTimeExpiry,
     /// The signer does not have a record of their vote on the deposit
     /// request in their database.
-    #[error("the signer does not have a record of their vote on the deposit request; {0}")]
-    NoVote(OutPoint),
+    NoVote,
     /// The signer has rejected the deposit request.
-    #[error("the signer has not accepted the deposit request; {0}")]
-    RejectedRequest(OutPoint),
+    RejectedRequest,
     /// The signer does not have a record of the deposit request in their
     /// database.
-    #[error("the signer does not have a record of the deposit request; {0}")]
-    Unknown(OutPoint),
+    Unknown,
     /// The locktime in the reclaim script is in time units and that is not
     /// supported. This shouldn't happen, since we will not put it in our
     /// database is this is the case.
-    #[error("the deposit locktime is denoted in time and that is not supported; {0}")]
-    UnsupportedLockTime(OutPoint),
+    UnsupportedLockTime,
 }
 
-impl BitcoinDepositInputError {
+impl DepositValidationResult {
     fn into_error(self, ctx: &BitcoinTxContext) -> Error {
         Error::BitcoinValidation(Box::new(BitcoinValidationError {
             error: BitcoinSweepErrorMsg::Deposit(self),
@@ -548,8 +536,8 @@ impl BitcoinWithdrawalOutputError {
 #[derive(Debug, thiserror::Error, PartialEq, Eq, Copy, Clone)]
 pub enum BitcoinSweepErrorMsg {
     /// The error has something to do with the inputs.
-    #[error("deposit error; {0}")]
-    Deposit(#[from] BitcoinDepositInputError),
+    #[error("deposit error ")]
+    Deposit(DepositValidationResult),
     /// The error has something to do with the outputs.
     #[error("withdrawal error; {0}")]
     Withdrawal(#[from] BitcoinWithdrawalOutputError),
@@ -639,23 +627,23 @@ pub struct DepositRequestReport {
 
 impl DepositRequestReport {
     /// Validate that the deposit request is okay given the report.
-    pub fn validate(&self, chain_tip_height: u64) -> Result<(), BitcoinDepositInputError> {
+    pub fn validate<F>(&self, chain_tip_height: u64, tx: &F, tx_fee: u64) -> DepositValidationResult
+    where
+        F: FeeAssessment,
+    {
         let confirmed_block_height = match self.status {
             // Deposit requests are only written to the database after they
             // have been confirmed, so this means that we have a record of
             // the request, but it has not been confirmed on the canonical
             // bitcoin blockchain.
             DepositConfirmationStatus::Unconfirmed => {
-                return Err(BitcoinDepositInputError::TxNotOnBestChain(self.outpoint));
+                return DepositValidationResult::TxNotOnBestChain;
             }
             // This means that we have a record of the deposit UTXO being
             // spent in a sweep transaction that has been confirmed on the
             // canonical bitcoin blockchain.
-            DepositConfirmationStatus::Spent(txid) => {
-                return Err(BitcoinDepositInputError::DepositUtxoSpent(
-                    self.outpoint,
-                    txid,
-                ));
+            DepositConfirmationStatus::Spent(_) => {
+                return DepositValidationResult::DepositUtxoSpent;
             }
             // The deposit has been confirmed on the canonical bitcoin
             // blockchain and remains unspent by us.
@@ -670,48 +658,58 @@ impl DepositRequestReport {
             LockTime::Blocks(height) => {
                 let max_age = height.value().saturating_sub(DEPOSIT_LOCKTIME_BLOCK_BUFFER) as u64;
                 if deposit_age >= max_age {
-                    return Err(BitcoinDepositInputError::LockTimeExpiry(self.outpoint));
+                    return DepositValidationResult::LockTimeExpiry;
                 }
             }
             LockTime::Time(_) => {
-                return Err(BitcoinDepositInputError::UnsupportedLockTime(self.outpoint))
+                return DepositValidationResult::UnsupportedLockTime;
             }
+        }
+
+        let tx_fee = Amount::from_sat(tx_fee);
+        let Some(assessed_fee) = tx.assess_input_fee(&self.outpoint, tx_fee) else {
+            return DepositValidationResult::Unknown;
+        };
+
+        if assessed_fee.to_sat() > self.max_fee {
+            return DepositValidationResult::FeeTooHigh;
+        }
+
+        // If we are here then can_sign is Some(true) so can_accept is
+        // Some(_). Let's check whether we rejected this deposit.
+        if self.can_accept != Some(true) {
+            return DepositValidationResult::RejectedRequest;
         }
 
         match self.can_sign {
             // If we are here, we know that we have a record for the
             // deposit request, but we have not voted on it yet, so we do
             // not know if we can sign for it.
-            None => return Err(BitcoinDepositInputError::NoVote(self.outpoint)),
+            None => return DepositValidationResult::NoVote,
             // In this case we know that we cannot sign for the deposit
             // because it is locked with a public key where the current
             // signer is not part of the signing set.
-            Some(false) => return Err(BitcoinDepositInputError::CannotSignUtxo(self.outpoint)),
+            Some(false) => return DepositValidationResult::CannotSignUtxo,
             // Yay.
             Some(true) => (),
         }
-        // If we are here then can_sign is Some(true) so can_accept is
-        // Some(_). Let's check whether we rejected this deposit.
-        if self.can_accept != Some(true) {
-            return Err(BitcoinDepositInputError::RejectedRequest(self.outpoint));
-        }
 
-        Ok(())
+        DepositValidationResult::Ok
     }
 
     /// Validate that the fees assessed to the deposit prevout is below the
     /// max fee.
-    pub fn validate_fee<F>(&self, tx: &F, tx_fee: u64) -> Result<(), BitcoinDepositInputError>
+    pub fn validate_fee<F>(&self, tx: &F, tx_fee: u64) -> Result<(), DepositValidationResult>
     where
         F: FeeAssessment,
     {
         let tx_fee = Amount::from_sat(tx_fee);
         let Some(assessed_fee) = tx.assess_input_fee(&self.outpoint, tx_fee) else {
-            return Err(BitcoinDepositInputError::Unknown(self.outpoint));
+            return Err(DepositValidationResult::Unknown);
         };
 
         if assessed_fee.to_sat() > self.max_fee {
-            return Err(BitcoinDepositInputError::FeeTooHigh(self.outpoint));
+            return Err(DepositValidationResult::FeeTooHigh);
         }
         Ok(())
     }
@@ -821,9 +819,11 @@ mod tests {
     #[derive(Debug)]
     struct DepositReportErrorMapping {
         report: DepositRequestReport,
-        error: Option<BitcoinDepositInputError>,
+        status: DepositValidationResult,
         chain_tip_height: u64,
     }
+
+    const TX_FEE: u64 = 10000;
 
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
@@ -838,7 +838,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        error: Some(BitcoinDepositInputError::TxNotOnBestChain(OutPoint::null())),
+        status: DepositValidationResult::TxNotOnBestChain,
         chain_tip_height: 2,
     } ; "deposit-reorged")]
     #[test_case(DepositReportErrorMapping {
@@ -854,7 +854,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        error: Some(BitcoinDepositInputError::DepositUtxoSpent(OutPoint::null(), BitcoinTxId::from([1; 32]))),
+        status: DepositValidationResult::DepositUtxoSpent,
         chain_tip_height: 2,
     } ; "deposit-spent")]
     #[test_case(DepositReportErrorMapping {
@@ -870,7 +870,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        error: Some(BitcoinDepositInputError::NoVote(OutPoint::null())),
+        status: DepositValidationResult::NoVote,
         chain_tip_height: 2,
     } ; "deposit-no-vote")]
     #[test_case(DepositReportErrorMapping {
@@ -886,7 +886,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        error: Some(BitcoinDepositInputError::CannotSignUtxo(OutPoint::null())),
+        status: DepositValidationResult::CannotSignUtxo,
         chain_tip_height: 2,
     } ; "cannot-sign-for-deposit")]
     #[test_case(DepositReportErrorMapping {
@@ -902,7 +902,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        error: Some(BitcoinDepositInputError::RejectedRequest(OutPoint::null())),
+        status: DepositValidationResult::RejectedRequest,
         chain_tip_height: 2,
     } ; "rejected-deposit")]
     #[test_case(DepositReportErrorMapping {
@@ -918,7 +918,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        error: Some(BitcoinDepositInputError::LockTimeExpiry(OutPoint::null())),
+        status: DepositValidationResult::LockTimeExpiry,
         chain_tip_height: 2,
     } ; "lock-time-expires-soon-1")]
     #[test_case(DepositReportErrorMapping {
@@ -934,7 +934,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        error: Some(BitcoinDepositInputError::LockTimeExpiry(OutPoint::null())),
+        status: DepositValidationResult::LockTimeExpiry,
         chain_tip_height: 2,
     } ; "lock-time-expires-soon-2")]
     #[test_case(DepositReportErrorMapping {
@@ -950,7 +950,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        error: Some(BitcoinDepositInputError::UnsupportedLockTime(OutPoint::null())),
+        status: DepositValidationResult::UnsupportedLockTime,
         chain_tip_height: 2,
     } ; "lock-time-in-time-units-2")]
     #[test_case(DepositReportErrorMapping {
@@ -966,25 +966,9 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        error: None,
+        status: DepositValidationResult::Ok,
         chain_tip_height: 2,
     } ; "happy-path")]
-    fn deposit_report_validation(mapping: DepositReportErrorMapping) {
-        match mapping.error {
-            Some(expected_error) => {
-                let error = mapping
-                    .report
-                    .validate(mapping.chain_tip_height)
-                    .unwrap_err();
-
-                assert_eq!(error, expected_error);
-            }
-            None => mapping.report.validate(mapping.chain_tip_height).unwrap(),
-        }
-    }
-
-    const TX_FEE: u64 = 10000;
-
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
@@ -998,7 +982,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        error: Some(BitcoinDepositInputError::Unknown(OutPoint::new(Txid::from_byte_array([1; 32]), 0))),
+        status: DepositValidationResult::Unknown,
         chain_tip_height: 2,
     } ; "unknown-prevout")]
     #[test_case(DepositReportErrorMapping {
@@ -1014,7 +998,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        error: None,
+        status: DepositValidationResult::Ok,
         chain_tip_height: 2,
     } ; "at-the-border")]
     #[test_case(DepositReportErrorMapping {
@@ -1030,14 +1014,10 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        error: Some(BitcoinDepositInputError::FeeTooHigh(OutPoint::null())),
+        status: DepositValidationResult::FeeTooHigh,
         chain_tip_height: 2,
     } ; "one-sat-too-high-fee")]
-    fn deposit_report_fee_validation(mapping: DepositReportErrorMapping) {
-        // This is a base sweep transaction without any deposit inputs or
-        // withdrawal outputs. We add one input so that there is exactly
-        // one deposit request being serviced by this transaction. This
-        // means it pays for the entire transaction fee.
+    fn deposit_report_validation(mapping: DepositReportErrorMapping) {
         let mut tx = crate::testing::btc::base_signer_transaction();
         tx.input.push(TxIn {
             previous_output: OutPoint::null(),
@@ -1046,12 +1026,10 @@ mod tests {
             witness: Witness::new(),
         });
 
-        match mapping.error {
-            Some(expected_error) => {
-                let error = mapping.report.validate_fee(&tx, TX_FEE).unwrap_err();
-                assert_eq!(error, expected_error);
-            }
-            None => mapping.report.validate_fee(&tx, TX_FEE).unwrap(),
-        }
+        let status = mapping
+            .report
+            .validate(mapping.chain_tip_height, &tx, TX_FEE);
+
+        assert_eq!(status, mapping.status);
     }
 }
