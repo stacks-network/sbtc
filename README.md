@@ -103,6 +103,49 @@ Once running, the following services are available:
 - Stacks explorer at [localhost:3020](http://localhost:3020)
 - Mempool.space Bitcoin explorer at [localhost:8083](http://localhost:8083)
 
+#### Update local docker builds
+
+To rebuild the containers from your current branch you can use:
+```bash
+# Build signers + emily (~2m, if `sbtc-build` was already built)
+docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer build
+# Build bridge-website (~2m)
+docker compose -f docker/docker-compose.yml build --no-cache sbtc-bridge-website
+```
+
+Note: you may need to disable buildkit (prefixing the commands above with `DOCKER_BUILDKIT=0`) if you get `pull access denied` when building the containers on MacOS.
+
+#### Play with devenv
+
+To interact with the local devenv, ensure you have built latest version (see above) and run devenv with `make devenv-up`.
+
+Then, wait for everything to be ready:
+ - Wait for Nakamoto: check the stacks explorer and wait for Nakamoto (usually around block #30). Explorer links:
+   - Stacks: http://localhost:3020/?chain=testnet&api=http://localhost:3999
+   - Bitcoin: http://localhost:8083/
+ - Wait for sBTC signers bootstrap: on stacks explorer, check the deployer account (`SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS`) for contract deployment and the first rotate key transaction.
+
+Once you see the rotate key transaction, everything is ready! Now you can create a deposit request in two ways.
+
+To programmatically fund the signers aggregate key and create a new deposit request, you can run:
+```bash
+./signers.sh demo
+```
+
+To use the bridge webapp, you can go to (http://localhost:3010). You will need to get signers info using `./signers.sh info`, then ensure that on the settings tab you have the correct settings:
+ - bitcoin: http://bitcoin:18443/
+ - emily: http://emily-server:3031
+ - signers pubkey: the pubkey from the command above.
+
+Now go to transfer and fund (eg, sending `1` btc) the signers aggregate key bitcoin address (from the command above). You can use the transfer tab to fund the wallet you want to use for the deposits as well.
+
+Finally, go to the deposit tab and issue a new deposit.
+
+Once you submitted a deposit request (either ways), you can follow it:
+ - First, on the bitcoin explorer, you can see the deposit tx, and a block later the sweep tx from the signers consuming its output
+ - Then, on the stacks explorer, you can see the `complete-deposit` contract call (to `SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS`), minting the net sBTC to the recipient account.
+
+
 ### Git hooks
 
 [`./devenv/hooks`](./devenv/hooks) contains Git hooks you can install to run
