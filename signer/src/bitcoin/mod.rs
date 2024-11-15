@@ -94,13 +94,9 @@ pub trait BitcoinInteract: Sync + Send {
         include_mempool: bool,
     ) -> impl Future<Output = Result<Option<GetTxOutResult>, Error>> + Send;
 
-    /// Calculates the fee and fee rate for the given transaction. The
-    /// transaction must be a valid transaction which either exists in a block
-    /// or the mempool, i.e. available from the Bitcoin Core node.
-    ///
-    /// This method queries the Bitcoin Core node for the transaction's
-    /// prevouts and calculates the fee and fee rate based on the sum of the
-    /// input values and the output values.
+    /// Gets the associated fees for the given transaction. It is expected that
+    /// the provided transaction is known to the Bitcoin core node, either
+    /// confirmed or in the mempool, otherwise an error will be returned.
     fn get_transaction_fee(&self, tx: &Txid) -> impl Future<Output = Result<Fees, Error>> + Send;
 
     /// Attempts to get the mempool entry for the given transaction ID.
