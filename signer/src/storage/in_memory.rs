@@ -15,6 +15,7 @@ use tokio::sync::Mutex;
 
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::validation::DepositRequestReport;
+use crate::bitcoin::validation::WithdrawalRequestReport;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
@@ -314,7 +315,11 @@ impl super::DbRead for SharedStore {
                     .deposit_request_to_signers
                     .get(&(deposit_request.txid, deposit_request.output_index))
                     .map(|signers| {
-                        signers.iter().filter(|signer| signer.is_accepted).count() >= threshold
+                        signers
+                            .iter()
+                            .filter(|signer| signer.can_accept && signer.can_sign)
+                            .count()
+                            >= threshold
                     })
                     .unwrap_or_default()
             })
@@ -492,6 +497,15 @@ impl super::DbRead for SharedStore {
             .collect())
     }
 
+    async fn get_withdrawal_request_report(
+        &self,
+        _chain_tip: &model::BitcoinBlockHash,
+        _id: &model::QualifiedRequestId,
+        _signer_public_key: &PublicKey,
+    ) -> Result<Option<WithdrawalRequestReport>, Error> {
+        unimplemented!()
+    }
+
     async fn get_bitcoin_blocks_with_transaction(
         &self,
         txid: &model::BitcoinTxId,
@@ -647,7 +661,7 @@ impl super::DbRead for SharedStore {
         let signers = self.get_deposit_signers(txid, output_index).await?;
         let mut signer_votes: HashMap<PublicKey, bool> = signers
             .iter()
-            .map(|vote| (vote.signer_pub_key, vote.is_accepted))
+            .map(|vote| (vote.signer_pub_key, vote.can_accept))
             .collect();
 
         // Now we might not have votes from every signer, so lets get the

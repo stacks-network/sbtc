@@ -805,12 +805,12 @@ where
             .await?
             .unwrap_or(false);
 
-        let is_accepted = can_sign && self.can_accept_deposit_request(&request).await?;
+        let can_accept = self.can_accept_deposit_request(&request).await?;
 
         let msg = message::SignerDepositDecision {
             txid: request.txid.into(),
             output_index: request.output_index,
-            accepted: is_accepted,
+            can_accept,
             can_sign,
         };
 
@@ -818,7 +818,7 @@ where
             txid: request.txid,
             output_index: request.output_index,
             signer_pub_key: signer_public_key,
-            is_accepted,
+            can_accept,
             can_sign,
         };
 
@@ -923,7 +923,7 @@ where
             txid: decision.txid.into(),
             output_index: decision.output_index,
             signer_pub_key,
-            is_accepted: decision.accepted,
+            can_accept: decision.can_accept,
             can_sign: decision.can_sign,
         };
 

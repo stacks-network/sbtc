@@ -567,7 +567,7 @@ async fn handle_pending_deposit_request_address_script_pub_key() {
     // Also we are in the signing set so we can sign for the deposit.
     let vote = votes.pop().unwrap();
     assert!(vote.can_sign);
-    assert!(vote.is_accepted);
+    assert!(vote.can_accept);
 
     testing::storage::drop_db(db).await;
 }
@@ -652,11 +652,11 @@ async fn handle_pending_deposit_request_not_in_signing_set() {
     assert_eq!(votes.len(), 1);
 
     // can_sign should be false since the public key associated with our
-    // random private key is not in the signing set. And is_accepted is
-    // false whenever can_sign is false.
+    // random private key is not in the signing set. And can_accept is
+    // always true with the given blocklist client.
     let vote = votes.pop().unwrap();
     assert!(!vote.can_sign);
-    assert!(!vote.is_accepted);
+    assert!(vote.can_accept);
 
     testing::storage::drop_db(db).await;
 }
