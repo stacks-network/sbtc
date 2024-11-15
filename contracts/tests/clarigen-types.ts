@@ -967,7 +967,28 @@ export const contracts = {
                   },
                 },
                 { name: "sender", type: "principal" },
-                { name: "status", type: { optional: "bool" } },
+                {
+                  name: "status",
+                  type: {
+                    optional: {
+                      tuple: [
+                        { name: "status", type: "bool" },
+                        {
+                          name: "sweep-burn-hash",
+                          type: { optional: { buffer: { length: 32 } } },
+                        },
+                        {
+                          name: "sweep-burn-height",
+                          type: { optional: "uint128" },
+                        },
+                        {
+                          name: "sweep-txid",
+                          type: { optional: { buffer: { length: 32 } } },
+                        },
+                      ],
+                    },
+                  },
+                },
               ],
             },
           },
@@ -983,7 +1004,12 @@ export const contracts = {
             version: Uint8Array;
           };
           sender: string;
-          status: boolean | null;
+          status: {
+            status: boolean;
+            sweepBurnHash: Uint8Array | null;
+            sweepBurnHeight: bigint | null;
+            sweepTxid: Uint8Array | null;
+          } | null;
         } | null
       >,
       isProtocolCaller: {
@@ -1078,8 +1104,29 @@ export const contracts = {
       withdrawalStatus: {
         name: "withdrawal-status",
         key: "uint128",
-        value: "bool",
-      } as TypedAbiMap<number | bigint, boolean>,
+        value: {
+          tuple: [
+            { name: "status", type: "bool" },
+            {
+              name: "sweep-burn-hash",
+              type: { optional: { buffer: { length: 32 } } },
+            },
+            { name: "sweep-burn-height", type: { optional: "uint128" } },
+            {
+              name: "sweep-txid",
+              type: { optional: { buffer: { length: 32 } } },
+            },
+          ],
+        },
+      } as TypedAbiMap<
+        number | bigint,
+        {
+          status: boolean;
+          sweepBurnHash: Uint8Array | null;
+          sweepBurnHeight: bigint | null;
+          sweepTxid: Uint8Array | null;
+        }
+      >,
     },
     variables: {
       ERR_AGG_PUBKEY_REPLAY: {

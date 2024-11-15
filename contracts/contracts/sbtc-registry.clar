@@ -41,7 +41,12 @@
 ;; If status is `none`, the request is pending.
 ;; Otherwise, the boolean value indicates whether
 ;; the deposit was accepted.
-(define-map withdrawal-status uint bool)
+(define-map withdrawal-status uint {
+  status: bool,
+  sweep-txid: (optional (buff 32)),
+  sweep-burn-hash: (optional (buff 32)),
+  sweep-burn-height: (optional uint),
+})
 
 ;; Internal data structure to store completed
 ;; deposit requests & avoid replay attacks.
@@ -177,7 +182,12 @@
   (begin 
     (try! (is-protocol-caller))
     ;; Mark the withdrawal as completed
-    (map-insert withdrawal-status request-id true)
+    (map-insert withdrawal-status request-id {
+      status: true,
+      sweep-txid: (some sweep-txid),
+      sweep-burn-hash: (some burn-hash),
+      sweep-burn-height: (some burn-height),
+    })
     (print {
       topic: "withdrawal-accept",
       request-id: request-id,
@@ -206,7 +216,12 @@
   (begin 
     (try! (is-protocol-caller))
     ;; Mark the withdrawal as completed
-    (map-insert withdrawal-status request-id false)
+    (map-insert withdrawal-status request-id {
+      status: false,
+      sweep-txid: none,
+      sweep-burn-hash: none,
+      sweep-burn-height: none,
+    })
     (print {
       topic: "withdrawal-reject",
       request-id: request-id,
