@@ -625,6 +625,8 @@ pub struct UnsignedTransaction<'a> {
 /// signature hashes.
 #[derive(Debug)]
 pub struct SignatureHashes<'a> {
+    /// The ID of the transaction that these sighashes are associated with.
+    pub txid: Txid,
     /// The outpoint associated with the signers' [`TapSighash`].
     pub signer_outpoint: OutPoint,
     /// The sighash of the signers' input UTXO for the transaction.
@@ -635,20 +637,42 @@ pub struct SignatureHashes<'a> {
     pub deposits: Vec<(&'a DepositRequest, TapSighash)>,
 }
 
+/// A signature hash and an
+#[derive(Debug, Copy, Clone)]
+pub struct SignatureHash {
+    /// The ID of the transaction that these sighashes are associated with.
+    pub txid: Txid,
+    /// The outpoint associated with the signers' [`TapSighash`].
+    pub outpoint: OutPoint,
+    /// The sighash of the signers' input UTXO for the transaction.
+    pub sighash: TapSighash,
+    /// The type of prevout that we are referring to.
+    pub prevout_type: TxPrevoutType,
+}
+
 impl<'a> SignatureHashes<'a> {
     /// Get deposit sighashes
-    pub fn deposit_sighashes(mut self) -> Vec<(OutPoint, TapSighash, TxPrevoutType)> {
+    pub fn deposit_sighashes(mut self) -> Vec<SignatureHash> {
         self.deposits.sort_by_key(|(x, _)| x.outpoint);
         self.deposits
             .into_iter()
-            .map(|(deposit, sighash)| (deposit.outpoint, sighash, TxPrevoutType::Deposit))
+            .map(|(deposit, sighash)| SignatureHash {
+                txid: self.txid,
+                outpoint: deposit.outpoint,
+                sighash,
+                prevout_type: TxPrevoutType::Deposit,
+            })
             .collect()
     }
 
     /// Get the signers' sighash
-    pub fn signer_sighash(&self) -> (OutPoint, TapSighash, TxPrevoutType) {
-        let signer_input_type = TxPrevoutType::SignersInput;
-        (self.signer_outpoint, self.signers, signer_input_type)
+    pub fn signer_sighash(&self) -> SignatureHash {
+        SignatureHash {
+            txid: self.txid,
+            outpoint: self.signer_outpoint,
+            sighash: self.signers,
+            prevout_type: TxPrevoutType::SignersInput,
+        }
     }
 }
 
@@ -764,6 +788,7 @@ impl<'a> UnsignedTransaction<'a> {
         // Combine them all together to get an ordered list of taproot
         // signature hashes.
         Ok(SignatureHashes {
+            txid: self.tx.compute_txid(),
             signer_outpoint: self.signer_utxo.utxo.outpoint,
             signers: signer_sighash,
             deposits: deposit_sighashes,

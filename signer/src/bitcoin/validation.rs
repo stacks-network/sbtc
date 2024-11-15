@@ -26,6 +26,7 @@ use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use super::utxo::DepositRequest;
 use super::utxo::RequestRef;
 use super::utxo::Requests;
+use super::utxo::SignatureHash;
 use super::utxo::UnsignedTransaction;
 use super::utxo::WithdrawalRequest;
 
@@ -82,6 +83,11 @@ pub struct TxRequestIds {
     pub withdrawals: Vec<QualifiedRequestId>,
 }
 
+/// Check that this does not contain duplicate deposit and withdrawals.
+pub fn is_unique(_packages: &[TxRequestIds]) -> bool {
+    false
+}
+
 impl BitcoinTxContext {
     /// Validate the current bitcoin transaction.
     pub async fn validate<C>(&self, _ctx: &C) -> Result<(), Error>
@@ -136,88 +142,27 @@ impl BitcoinTxContext {
 
     /// Construct the reports for each request that this transaction will
     /// service.
-    // pub async fn construct_reports2<C>(&self, ctx: &C) -> Result<Vec<TempOutput>, Error>
-    // where
-    //     C: Context + Send + Sync,
-    // {
-    //     let db = ctx.get_storage();
-    //     let signer_state = self.get_btc_state(ctx).await?;
+    pub async fn construct_package_sighashes<C>(&self, ctx: &C) -> Result<Vec<TempOutput>, Error>
+    where
+        C: Context + Send + Sync,
+    {
+        let mut signer_state = self.get_btc_state(ctx).await?;
+        let mut outputs = Vec::new();
 
-    //     let signer_public_key = &self.signer_public_key;
-    //     let aggregate_key = &self.aggregate_key;
-    //     let chain_tip = &self.chain_tip;
+        for requests in self.request_packages.iter() {
+            let (output, new_signer_state) = self
+                .construct_tx_sighashes(ctx, requests, signer_state)
+                .await?;
+            signer_state = new_signer_state;
+            outputs.push(output);
+        }
 
-    //     let mut output = Vec::new();
-
-    //     for package in self.request_packages.iter() {
-    //         let mut deposits = Vec::new();
-    //         let mut withdrawals = Vec::new();
-
-    //         for outpoint in package.deposits.iter() {
-    //             let txid = outpoint.txid.into();
-    //             let output_index = outpoint.vout;
-    //             let report_future = db.get_deposit_request_report(
-    //                 chain_tip,
-    //                 &txid,
-    //                 output_index,
-    //                 signer_public_key,
-    //             );
-
-    //             let Some(report) = report_future.await? else {
-    //                 return Err(BitcoinDepositInputError::Unknown(*outpoint).into_error(self));
-    //             };
-
-    //             let votes = db
-    //                 .get_deposit_request_signer_votes(&txid, output_index, aggregate_key)
-    //                 .await?;
-
-    //             deposits.push((report.to_deposit_request(&votes), report));
-    //         }
-
-    //         for id in package.withdrawals.iter() {
-    //             let report_future =
-    //                 db.get_withdrawal_request_report(chain_tip, id, signer_public_key);
-
-    //             let Some(report) = report_future.await? else {
-    //                 return Err(BitcoinWithdrawalOutputError::Unknown(*id).into_error(self));
-    //             };
-
-    //             let votes = db
-    //                 .get_withdrawal_request_signer_votes(id, aggregate_key)
-    //                 .await?;
-
-    //             withdrawals.push((report.to_withdrawal_request(&votes), report));
-    //         }
-
-    //         let reports = SbtcReports {
-    //             deposits,
-    //             withdrawals,
-    //             signer_state,
-    //         };
-
-    //         let mut signer_state = signer_state;
-    //         let tx = reports.create_transaction()?;
-    //         let sighashes = tx.construct_digests()?.into_sighashes();
-
-    //         let txid = tx.tx_ref().compute_txid().into();
-
-    //         signer_state.utxo = tx.new_signer_utxo();
-    //         // The first transaction is the only one whose input UTXOs that
-    //         // have all been confirmed. Moreover, the fees that it sets
-    //         // aside are enough to make up for the remaining transactions
-    //         // in the transaction package. With that in mind, we do not
-    //         // need to bump their fees anymore in order for them to be
-    //         // accepted by the network.
-    //         signer_state.last_fees = None;
-    //         output.push(TempOutput { reports, sighashes, txid });
-    //     }
-
-    //     Ok(output)
-    // }
+        Ok(outputs)
+    }
 
     /// Construct the reports for each request that this transaction will
     /// service.
-    pub async fn construct_sighash<C>(
+    pub async fn construct_tx_sighashes<C>(
         &self,
         ctx: &C,
         requests: &TxRequestIds,
@@ -242,7 +187,7 @@ impl BitcoinTxContext {
                 db.get_deposit_request_report(chain_tip, &txid, output_index, signer_public_key);
 
             let Some(report) = report_future.await? else {
-                return Err(DepositValidationResult::Unknown.into_error(self));
+                return Err(InputValidationResult::Unknown.into_error(self));
             };
 
             let votes = db
@@ -301,17 +246,20 @@ impl BitcoinTxContext {
     }
 }
 
-/// Temp struct
+/// An intermediate struct to aide in computing validation of deposits and
+/// withdrawals and transforming the computed sighash into a
+/// [`BitcoinSighash`].
 pub struct TempOutput {
-    /// The info for the stuff
-    pub signer_sighash: (OutPoint, TapSighash, TxPrevoutType),
-    /// The info for the stuff
-    pub deposit_sighashes: Vec<(OutPoint, TapSighash, TxPrevoutType)>,
-    /// The info for the stuff
+    /// The sighash of the signers' prevout
+    pub signer_sighash: SignatureHash,
+    /// The sighash of each of the deposit request prevout
+    pub deposit_sighashes: Vec<SignatureHash>,
+    /// The computed deposits and withdrawals reports.
     pub reports: SbtcReports,
-    /// The info for the stuff
+    /// The chain tip at the time that this signer received the sign
+    /// request.
     pub chain_tip: BitcoinBlockHash,
-    /// the transaction
+    /// The transaction that we are (implicitly) requested to help sign.
     pub tx: bitcoin::Transaction,
     /// the transaction fee in sats
     pub tx_fee: Amount,
@@ -330,95 +278,145 @@ pub enum ConstructionVersion {
     V0,
 }
 
-/// the input
-pub struct Row {
-    /// whatever
+/// The sighash and enough metadata to piece together what happened.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BitcoinSighash {
+    /// The transaction ID of the bitcoin transaction that sweeps funds
+    /// into and/or out of the signers' UTXO.
     pub txid: BitcoinTxId,
-    /// whatevert
+    /// The bitcoin chain tip when the sign request was submitted. This is
+    /// used to ensure that we do not sign for more than one transaction
+    /// containing inputs
     pub chain_tip: BitcoinBlockHash,
-    /// whatever
-    pub sighash: TapSighash,
-    /// whatever
+    /// The txid that created the output that is being spent.
     pub prevout_txid: BitcoinTxId,
-    /// whatever
+    /// The index of the vout from the transaction that created this
+    /// output.
     pub prevout_output_index: u32,
-    /// whatever
+    /// The sighash associated with the prevout.
+    pub sighash: TapSighash,
+    /// The type of prevout that we are dealing with.
     pub prevout_type: TxPrevoutType,
-    /// whatever
-    pub status: DepositValidationResult,
-    /// whatever
-    pub will_sign: bool,
-    /// whatever
+    /// The result of validation that was done on the input. For deposits,
+    /// this specifies whether validation succeeded and the first condition
+    /// that failed during validation. The signers' input is always valid,
+    /// since it is unconfirmed.
+    pub validation_result: InputValidationResult,
+    /// Whether the transaction is valid. A transaction is invalid if any
+    /// of the inputs or outputs failed validation.
+    pub is_valid_tx: bool,
+    /// The version of the algorithm that was used to create the bitcoin
+    /// transaction.
     pub construction_version: ConstructionVersion,
 }
 
-/// The output
-pub struct RowOutput {
-    /// whatever
+/// An output that was created due to a withdrawal request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BitcoinWithdrawalOutput {
+    /// The ID of the transaction that includes this withdrawal output.
     pub txid: BitcoinTxId,
-    /// whatever
+    /// The index of the referenced output in the transaction's outputs.
+    pub output_index: u32,
+    /// The request ID of the withdrawal request. These increment for each
+    /// withdrawal, but there can be duplicates if there is a reorg that
+    /// affects a transaction that calls the `initiate-withdrawal-request`
+    /// public function.
     pub request_id: u64,
-    /// whatever
+    /// The stacks transaction ID that lead to the creation of the
+    /// withdrawal request.
     pub stacks_txid: StacksTxId,
-    /// whatever
+    /// Stacks block ID of the block that includes the transaction
+    /// associated with this withdrawal request.
     pub stacks_block_hash: StacksBlockHash,
-    /// whatever
-    pub validation_status: WithdrawalValidationResult,
-    /// whatever
+    /// The outcome of validation of the withdrawal request.
+    pub validation_result: WithdrawalValidationResult,
+    /// The version of the algorithm that was used to create the bitcoin
+    /// transaction.
     pub construction_version: ConstructionVersion,
 }
 
 impl TempOutput {
-    /// get rows
-    pub fn to_input_rows(&self) -> Vec<Row> {
+    /// Construct the sighashes for the inputs of the associated
+    /// transaction.
+    pub fn to_input_rows(&self) -> Vec<BitcoinSighash> {
+        // If any of the inputs or outputs fail validation, then
+        // transaction is invalid, so we won't sign any of the inputs or
+        // outputs.
+        let is_valid_tx = self.is_valid_tx();
+
+        let validation_results = self
+            .reports
+            .deposits
+            .iter()
+            .map(|(_, report)| report.validate(self.chain_tip_height, &self.tx, self.tx_fee));
+
+        // just a sanity check
         debug_assert_eq!(self.deposit_sighashes.len(), self.reports.deposits.len());
 
-        let is_valid = self.is_valid_tx();
-        let txid = self.tx.compute_txid().into();
-        self.deposit_sighashes
+        let deposit_sighashes = self
+            .deposit_sighashes
             .iter()
-            .zip(self.reports.deposits.iter())
-            .map(|(&(outpoint, sighash, prevout_type), (_, report))| Row {
-                txid,
-                sighash,
+            .copied()
+            .zip(validation_results);
+
+        // We know the signers' input is valid. We started by fetching it
+        // from our database so we know it is unspent and valid. Later the
+        // signer's input was created as part of a valid chain.
+        [(self.signer_sighash, InputValidationResult::Ok)]
+            .into_iter()
+            .chain(deposit_sighashes)
+            .map(|(sighash, validation_result)| BitcoinSighash {
+                txid: sighash.txid.into(),
+                sighash: sighash.sighash,
                 chain_tip: self.chain_tip,
-                prevout_txid: outpoint.txid.into(),
-                prevout_output_index: outpoint.vout,
-                prevout_type,
-                status: report.validate(self.chain_tip_height, &self.tx, self.tx_fee),
-                will_sign: is_valid,
+                prevout_txid: sighash.outpoint.txid.into(),
+                prevout_output_index: sighash.outpoint.vout,
+                prevout_type: sighash.prevout_type,
+                validation_result,
+                is_valid_tx,
                 construction_version: ConstructionVersion::V0,
             })
             .collect()
     }
 
-    /// get rows
-    pub fn to_output_rows(&self) -> Vec<RowOutput> {
+    /// Construct objects with withdrawal output identifier with the
+    /// validation result.
+    pub fn to_output_rows(&self) -> Vec<BitcoinWithdrawalOutput> {
         let txid = self.tx.compute_txid().into();
-
+        // If we ever construct a transaction with more than u32::MAX then
+        // we are dealing with a very different Bitcoin and Stacks than we
+        // started with, and there are other things that we need to change
+        // first.
         self.reports
             .withdrawals
             .iter()
-            .map(|(_, report)| RowOutput {
+            .enumerate()
+            .map(|(output_index, (_, report))| BitcoinWithdrawalOutput {
                 txid,
+                output_index: output_index as u32,
                 request_id: report.id.request_id,
                 stacks_txid: report.id.txid,
                 stacks_block_hash: report.id.block_hash,
                 construction_version: ConstructionVersion::V0,
-                validation_status: WithdrawalValidationResult::Unknown,
+                validation_result: report.validate(self.chain_tip_height, &self.tx, self.tx_fee),
             })
             .collect()
     }
 
-    /// Check whether we will sign any of the sighashes for the transaction
+    /// Check whether the transaction is valid. This determines whether
+    /// this signer will sign any of the sighashes for the transaction
+    ///
+    /// This checks that all deposits and withdrawals pass validation. Note
+    /// that the transaction can still pass validation if this signer is
+    /// not a part of the signing set locking one or more deposits. In such
+    /// a case, it will just sign for the deposits that it can.
     pub fn is_valid_tx(&self) -> bool {
-        let deposit_validation_results =
-            self.reports.deposits.iter().all(|(_, report)| {
-                match report.validate(self.chain_tip_height, &self.tx, self.tx_fee) {
-                    DepositValidationResult::Ok | DepositValidationResult::CannotSignUtxo => true,
-                    _ => false,
-                }
-            });
+        let deposit_validation_results = self.reports.deposits.iter().all(|(_, report)| {
+            matches!(
+                report.validate(self.chain_tip_height, &self.tx, self.tx_fee),
+                InputValidationResult::Ok | InputValidationResult::CannotSignUtxo
+            )
+        });
 
         let withdrawal_validation_results = self.reports.withdrawals.iter().all(|(_, report)| {
             match report.validate(self.chain_tip_height, &self.tx, self.tx_fee) {
@@ -465,7 +463,7 @@ impl SbtcReports {
 /// The responses for validation of a sweep transaction on bitcoin.
 #[derive(Debug, PartialEq, Eq, Copy, Clone, strum::Display, strum::IntoStaticStr)]
 #[strum(serialize_all = "snake_case")]
-pub enum DepositValidationResult {
+pub enum InputValidationResult {
     /// The deposit request passed validation
     Ok,
     /// The assessed fee exceeds the max-fee in the deposit request.
@@ -501,7 +499,7 @@ pub enum DepositValidationResult {
     UnsupportedLockTime,
 }
 
-impl DepositValidationResult {
+impl InputValidationResult {
     fn into_error(self, ctx: &BitcoinTxContext) -> Error {
         Error::BitcoinValidation(Box::new(BitcoinValidationError {
             error: BitcoinSweepErrorMsg::Deposit(self),
@@ -534,7 +532,7 @@ impl WithdrawalValidationResult {
 pub enum BitcoinSweepErrorMsg {
     /// The error has something to do with the inputs.
     #[error("deposit error ")]
-    Deposit(DepositValidationResult),
+    Deposit(InputValidationResult),
     /// The error has something to do with the outputs.
     #[error("withdrawal error")]
     Withdrawal(WithdrawalValidationResult),
@@ -624,7 +622,7 @@ pub struct DepositRequestReport {
 
 impl DepositRequestReport {
     /// Validate that the deposit request is okay given the report.
-    fn validate<F>(&self, chain_tip_height: u64, tx: &F, tx_fee: Amount) -> DepositValidationResult
+    fn validate<F>(&self, chain_tip_height: u64, tx: &F, tx_fee: Amount) -> InputValidationResult
     where
         F: FeeAssessment,
     {
@@ -634,13 +632,13 @@ impl DepositRequestReport {
             // the request, but it has not been confirmed on the canonical
             // bitcoin blockchain.
             DepositConfirmationStatus::Unconfirmed => {
-                return DepositValidationResult::TxNotOnBestChain;
+                return InputValidationResult::TxNotOnBestChain;
             }
             // This means that we have a record of the deposit UTXO being
             // spent in a sweep transaction that has been confirmed on the
             // canonical bitcoin blockchain.
             DepositConfirmationStatus::Spent(_) => {
-                return DepositValidationResult::DepositUtxoSpent;
+                return InputValidationResult::DepositUtxoSpent;
             }
             // The deposit has been confirmed on the canonical bitcoin
             // blockchain and remains unspent by us.
@@ -655,42 +653,42 @@ impl DepositRequestReport {
             LockTime::Blocks(height) => {
                 let max_age = height.value().saturating_sub(DEPOSIT_LOCKTIME_BLOCK_BUFFER) as u64;
                 if deposit_age >= max_age {
-                    return DepositValidationResult::LockTimeExpiry;
+                    return InputValidationResult::LockTimeExpiry;
                 }
             }
             LockTime::Time(_) => {
-                return DepositValidationResult::UnsupportedLockTime;
+                return InputValidationResult::UnsupportedLockTime;
             }
         }
 
         let Some(assessed_fee) = tx.assess_input_fee(&self.outpoint, tx_fee) else {
-            return DepositValidationResult::Unknown;
+            return InputValidationResult::Unknown;
         };
 
         if assessed_fee.to_sat() > self.max_fee {
-            return DepositValidationResult::FeeTooHigh;
+            return InputValidationResult::FeeTooHigh;
         }
 
         // If we are here then can_sign is Some(true) so can_accept is
         // Some(_). Let's check whether we rejected this deposit.
         if self.can_accept != Some(true) {
-            return DepositValidationResult::RejectedRequest;
+            return InputValidationResult::RejectedRequest;
         }
 
         match self.can_sign {
             // If we are here, we know that we have a record for the
             // deposit request, but we have not voted on it yet, so we do
             // not know if we can sign for it.
-            None => return DepositValidationResult::NoVote,
+            None => return InputValidationResult::NoVote,
             // In this case we know that we cannot sign for the deposit
             // because it is locked with a public key where the current
             // signer is not part of the signing set.
-            Some(false) => return DepositValidationResult::CannotSignUtxo,
+            Some(false) => return InputValidationResult::CannotSignUtxo,
             // Yay.
             Some(true) => (),
         }
 
-        DepositValidationResult::Ok
+        InputValidationResult::Ok
     }
 
     /// As deposit request.
@@ -792,7 +790,7 @@ mod tests {
     #[derive(Debug)]
     struct DepositReportErrorMapping {
         report: DepositRequestReport,
-        status: DepositValidationResult,
+        status: InputValidationResult,
         chain_tip_height: u64,
     }
 
@@ -811,7 +809,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        status: DepositValidationResult::TxNotOnBestChain,
+        status: InputValidationResult::TxNotOnBestChain,
         chain_tip_height: 2,
     } ; "deposit-reorged")]
     #[test_case(DepositReportErrorMapping {
@@ -827,7 +825,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        status: DepositValidationResult::DepositUtxoSpent,
+        status: InputValidationResult::DepositUtxoSpent,
         chain_tip_height: 2,
     } ; "deposit-spent")]
     #[test_case(DepositReportErrorMapping {
@@ -843,7 +841,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        status: DepositValidationResult::NoVote,
+        status: InputValidationResult::NoVote,
         chain_tip_height: 2,
     } ; "deposit-no-vote")]
     #[test_case(DepositReportErrorMapping {
@@ -859,7 +857,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        status: DepositValidationResult::CannotSignUtxo,
+        status: InputValidationResult::CannotSignUtxo,
         chain_tip_height: 2,
     } ; "cannot-sign-for-deposit")]
     #[test_case(DepositReportErrorMapping {
@@ -875,7 +873,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        status: DepositValidationResult::RejectedRequest,
+        status: InputValidationResult::RejectedRequest,
         chain_tip_height: 2,
     } ; "rejected-deposit")]
     #[test_case(DepositReportErrorMapping {
@@ -891,7 +889,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        status: DepositValidationResult::LockTimeExpiry,
+        status: InputValidationResult::LockTimeExpiry,
         chain_tip_height: 2,
     } ; "lock-time-expires-soon-1")]
     #[test_case(DepositReportErrorMapping {
@@ -907,7 +905,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        status: DepositValidationResult::LockTimeExpiry,
+        status: InputValidationResult::LockTimeExpiry,
         chain_tip_height: 2,
     } ; "lock-time-expires-soon-2")]
     #[test_case(DepositReportErrorMapping {
@@ -923,7 +921,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        status: DepositValidationResult::UnsupportedLockTime,
+        status: InputValidationResult::UnsupportedLockTime,
         chain_tip_height: 2,
     } ; "lock-time-in-time-units-2")]
     #[test_case(DepositReportErrorMapping {
@@ -939,7 +937,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        status: DepositValidationResult::Ok,
+        status: InputValidationResult::Ok,
         chain_tip_height: 2,
     } ; "happy-path")]
     #[test_case(DepositReportErrorMapping {
@@ -955,7 +953,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        status: DepositValidationResult::Unknown,
+        status: InputValidationResult::Unknown,
         chain_tip_height: 2,
     } ; "unknown-prevout")]
     #[test_case(DepositReportErrorMapping {
@@ -971,7 +969,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        status: DepositValidationResult::Ok,
+        status: InputValidationResult::Ok,
         chain_tip_height: 2,
     } ; "at-the-border")]
     #[test_case(DepositReportErrorMapping {
@@ -987,7 +985,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
         },
-        status: DepositValidationResult::FeeTooHigh,
+        status: InputValidationResult::FeeTooHigh,
         chain_tip_height: 2,
     } ; "one-sat-too-high-fee")]
     fn deposit_report_validation(mapping: DepositReportErrorMapping) {
