@@ -256,7 +256,7 @@ impl BitcoinTxContext {
             let report_future = db.get_withdrawal_request_report(chain_tip, id, signer_public_key);
 
             let Some(report) = report_future.await? else {
-                return Err(BitcoinWithdrawalOutputError::Unknown(*id).into_error(self));
+                return Err(WithdrawalValidationResult::Unknown.into_error(self));
             };
 
             let votes = db
@@ -292,7 +292,7 @@ impl BitcoinTxContext {
             deposit_sighashes: sighashes.deposit_sighashes(),
             chain_tip: self.chain_tip,
             tx: tx.tx.clone(),
-            tx_fee: tx.tx_fee,
+            tx_fee: Amount::from_sat(tx.tx_fee),
             reports,
             chain_tip_height: self.chain_tip_height,
         };
@@ -314,7 +314,7 @@ pub struct TempOutput {
     /// the transaction
     pub tx: bitcoin::Transaction,
     /// the transaction fee in sats
-    pub tx_fee: u64,
+    pub tx_fee: Amount,
     /// the chain tip height.
     pub chain_tip_height: u64,
 }
@@ -345,7 +345,7 @@ pub struct Row {
     /// whatever
     pub prevout_type: TxPrevoutType,
     /// whatever
-    pub can_sign: Option<bool>,
+    pub status: DepositValidationResult,
     /// whatever
     pub will_sign: bool,
     /// whatever
@@ -363,7 +363,7 @@ pub struct RowOutput {
     /// whatever
     pub stacks_block_hash: StacksBlockHash,
     /// whatever
-    pub validation_status: BitcoinWithdrawalOutputError,
+    pub validation_status: WithdrawalValidationResult,
     /// whatever
     pub construction_version: ConstructionVersion,
 }
@@ -373,7 +373,7 @@ impl TempOutput {
     pub fn to_input_rows(&self) -> Vec<Row> {
         debug_assert_eq!(self.deposit_sighashes.len(), self.reports.deposits.len());
 
-        let is_valid = self.validate_tx();
+        let is_valid = self.is_valid_tx();
         let txid = self.tx.compute_txid().into();
         self.deposit_sighashes
             .iter()
@@ -385,8 +385,8 @@ impl TempOutput {
                 prevout_txid: outpoint.txid.into(),
                 prevout_output_index: outpoint.vout,
                 prevout_type,
-                can_sign: report.can_sign,
-                will_sign: is_valid.is_ok(),
+                status: report.validate(self.chain_tip_height, &self.tx, self.tx_fee),
+                will_sign: is_valid,
                 construction_version: ConstructionVersion::V0,
             })
             .collect()
@@ -405,30 +405,28 @@ impl TempOutput {
                 stacks_txid: report.id.txid,
                 stacks_block_hash: report.id.block_hash,
                 construction_version: ConstructionVersion::V0,
-                validation_status: BitcoinWithdrawalOutputError::Unknown(report.id),
+                validation_status: WithdrawalValidationResult::Unknown,
             })
             .collect()
     }
 
     /// Check whether we will sign any of the sighashes for the transaction
-    pub fn validate_tx(&self) -> Result<(), BitcoinSweepErrorMsg> {
-        let _deposit_validation_results = self
-            .reports
-            .deposits
-            .iter()
-            .map(|(_, report)| report.validate(self.chain_tip_height, &self.tx, self.tx_fee))
-            .collect::<Vec<DepositValidationResult>>();
+    pub fn is_valid_tx(&self) -> bool {
+        let deposit_validation_results =
+            self.reports.deposits.iter().all(|(_, report)| {
+                match report.validate(self.chain_tip_height, &self.tx, self.tx_fee) {
+                    DepositValidationResult::Ok | DepositValidationResult::CannotSignUtxo => true,
+                    _ => false,
+                }
+            });
 
-        self.reports
-            .withdrawals
-            .iter()
-            .map(|(_, report)| {
-                report.validate_fee(&self.tx, self.tx_fee)?;
-                report.validate(self.chain_tip_height)
-            })
-            .collect::<Result<Vec<()>, BitcoinWithdrawalOutputError>>()?;
+        let withdrawal_validation_results = self.reports.withdrawals.iter().all(|(_, report)| {
+            match report.validate(self.chain_tip_height, &self.tx, self.tx_fee) {
+                WithdrawalValidationResult::Unknown => false,
+            }
+        });
 
-        Ok(())
+        deposit_validation_results && withdrawal_validation_results
     }
 }
 
@@ -514,15 +512,14 @@ impl DepositValidationResult {
 
 /// The responses for validation of the outputs of a sweep transaction on
 /// bitcoin.
-#[derive(Debug, thiserror::Error, PartialEq, Eq, Copy, Clone)]
-pub enum BitcoinWithdrawalOutputError {
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub enum WithdrawalValidationResult {
     /// The signer does not have a record of the withdrawal request in
     /// their database.
-    #[error("the signer does not have a record of the withdrawal request; {}", .0.request_id)]
-    Unknown(QualifiedRequestId),
+    Unknown,
 }
 
-impl BitcoinWithdrawalOutputError {
+impl WithdrawalValidationResult {
     /// Make into a crate error
     pub fn into_error(self, ctx: &BitcoinTxContext) -> Error {
         Error::BitcoinValidation(Box::new(BitcoinValidationError {
@@ -539,8 +536,8 @@ pub enum BitcoinSweepErrorMsg {
     #[error("deposit error ")]
     Deposit(DepositValidationResult),
     /// The error has something to do with the outputs.
-    #[error("withdrawal error; {0}")]
-    Withdrawal(#[from] BitcoinWithdrawalOutputError),
+    #[error("withdrawal error")]
+    Withdrawal(WithdrawalValidationResult),
 }
 
 /// A struct for a bitcoin validation error containing all the necessary
@@ -627,7 +624,7 @@ pub struct DepositRequestReport {
 
 impl DepositRequestReport {
     /// Validate that the deposit request is okay given the report.
-    pub fn validate<F>(&self, chain_tip_height: u64, tx: &F, tx_fee: u64) -> DepositValidationResult
+    fn validate<F>(&self, chain_tip_height: u64, tx: &F, tx_fee: Amount) -> DepositValidationResult
     where
         F: FeeAssessment,
     {
@@ -666,7 +663,6 @@ impl DepositRequestReport {
             }
         }
 
-        let tx_fee = Amount::from_sat(tx_fee);
         let Some(assessed_fee) = tx.assess_input_fee(&self.outpoint, tx_fee) else {
             return DepositValidationResult::Unknown;
         };
@@ -697,25 +693,8 @@ impl DepositRequestReport {
         DepositValidationResult::Ok
     }
 
-    /// Validate that the fees assessed to the deposit prevout is below the
-    /// max fee.
-    pub fn validate_fee<F>(&self, tx: &F, tx_fee: u64) -> Result<(), DepositValidationResult>
-    where
-        F: FeeAssessment,
-    {
-        let tx_fee = Amount::from_sat(tx_fee);
-        let Some(assessed_fee) = tx.assess_input_fee(&self.outpoint, tx_fee) else {
-            return Err(DepositValidationResult::Unknown);
-        };
-
-        if assessed_fee.to_sat() > self.max_fee {
-            return Err(DepositValidationResult::FeeTooHigh);
-        }
-        Ok(())
-    }
-
     /// As deposit request.
-    pub fn to_deposit_request(&self, votes: &SignerVotes) -> DepositRequest {
+    fn to_deposit_request(&self, votes: &SignerVotes) -> DepositRequest {
         DepositRequest {
             outpoint: self.outpoint,
             max_fee: self.max_fee,
@@ -777,17 +756,11 @@ pub struct WithdrawalRequestReport {
 
 impl WithdrawalRequestReport {
     /// Validate that the withdrawal request is okay given the report.
-    pub fn validate(&self, _: u64) -> Result<(), BitcoinWithdrawalOutputError> {
-        Err(BitcoinWithdrawalOutputError::Unknown(self.id))
-    }
-
-    /// Validate that the fees assessed to the withdrawal output is below
-    /// the max fee.
-    pub fn validate_fee<F>(&self, _: &F, _: u64) -> Result<(), BitcoinWithdrawalOutputError>
+    pub fn validate<F>(&self, _: u64, _: &F, _: Amount) -> WithdrawalValidationResult
     where
         F: FeeAssessment,
     {
-        Err(BitcoinWithdrawalOutputError::Unknown(self.id))
+        WithdrawalValidationResult::Unknown
     }
 
     fn to_withdrawal_request(&self, votes: &SignerVotes) -> WithdrawalRequest {
@@ -823,7 +796,7 @@ mod tests {
         chain_tip_height: u64,
     }
 
-    const TX_FEE: u64 = 10000;
+    const TX_FEE: Amount = Amount::from_sat(10000);
 
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
@@ -975,7 +948,7 @@ mod tests {
             can_sign: Some(true),
             can_accept: Some(true),
             amount: 0,
-            max_fee: TX_FEE,
+            max_fee: TX_FEE.to_sat(),
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
             outpoint: OutPoint::new(Txid::from_byte_array([1; 32]), 0),
             deposit_script: ScriptBuf::new(),
@@ -991,7 +964,7 @@ mod tests {
             can_sign: Some(true),
             can_accept: Some(true),
             amount: 0,
-            max_fee: TX_FEE,
+            max_fee: TX_FEE.to_sat(),
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
             outpoint: OutPoint::null(),
             deposit_script: ScriptBuf::new(),
@@ -1007,7 +980,7 @@ mod tests {
             can_sign: Some(true),
             can_accept: Some(true),
             amount: 0,
-            max_fee: TX_FEE - 1,
+            max_fee: TX_FEE.to_sat() - 1,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
             outpoint: OutPoint::null(),
             deposit_script: ScriptBuf::new(),
