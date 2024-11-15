@@ -789,21 +789,6 @@ pub struct QualifiedRequestId {
     pub block_hash: StacksBlockHash,
 }
 
-/// A reference to a transaction output, which is a combination of a
-/// transaction hash and an index into its output.
-///
-/// # Bitcoin Core References
-///
-/// * COutPoint definition:
-///   <https://github.com/bitcoin/bitcoin/blob/345457b542b6a980ccfbc868af0970a6f91d1b82/src/primitives/transaction.h#L26>
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct OutPoint {
-    /// The referenced transaction's txid.
-    pub txid: BitcoinTxId,
-    /// The index of the referenced output in the transaction's outputs.
-    pub vout: u32,
-}
-
 /// A bitcoin transaction
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BitcoinTx(bitcoin::Transaction);
