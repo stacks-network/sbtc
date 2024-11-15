@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use blockstack_lib::chainstate::stacks::StacksTransaction;
+use futures::future::try_join_all;
 use futures::FutureExt;
 use futures::StreamExt as _;
 use futures::TryStreamExt;
@@ -18,6 +19,7 @@ use tokio_stream::wrappers::BroadcastStream;
 use wsts::net::SignatureType;
 
 use crate::bitcoin::utxo;
+use crate::bitcoin::utxo::Fees;
 use crate::bitcoin::utxo::GetFees;
 use crate::bitcoin::BitcoinInteract;
 use crate::context::TxCoordinatorEvent;
@@ -1359,6 +1361,62 @@ where
         wallet.set_nonce(account.nonce);
 
         Ok(wallet)
+    }
+
+    /// Fetch the sweep transactions from the mempool that are spending the
+    /// signer's UTXO.
+    ///
+    /// This method returns the sweep transactions in an unordered list. If no
+    /// sweep transactions are found in the mempool, an empty list is returned.
+    #[tracing::instrument(skip_all, fields(%chain_tip))]
+    async fn fetch_mempool_sweep_transactions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        signer_utxo: &utxo::SignerUtxo,
+    ) -> Result<Option<Fees>, Error> {
+        let bitcoin_client = self.context.get_bitcoin_client();
+
+        // Find the mempool transactions that are spending the provided UTXO.
+        let mempool_txs_spending_utxo = bitcoin_client
+            .find_mempool_transactions_spending_output(&signer_utxo.outpoint)
+            .await?;
+
+        // If no transactions are found, we have nothing to do.
+        if mempool_txs_spending_utxo.is_empty() {
+            tracing::debug!(
+                utxo_outpoint = %signer_utxo.outpoint,
+                "no mempool transactions found spending signer UTXO; nothing to do"
+            );
+            return Ok(None);
+        }
+
+        // If we have some transactions, we need to find the one that pays the
+        // highest fee. This is the transaction that we will use as the root of
+        // the sweep package. Note that even if only one transaction was
+        // returned above, we still need to get the fee for it, which is why
+        // there's no special logic for one vs multiple.
+        let best_sweep_root = try_join_all(mempool_txs_spending_utxo.iter().map(|tx| {
+            let bitcoin_client = bitcoin_client.clone();
+            async move {
+                bitcoin_client.get_transaction_fee(tx).await.map(|fee| (tx, fee))
+            }
+        })).await?
+        .into_iter()
+        .max_by_key(|(_, fee)| fee.total);
+
+        // Since we got the transaction ids from bitcoin-core, these should
+        // not be missing, but we double-check here just in case (it could
+        // happen that the client has failed-over to the next node which isn't
+        // in sync with the previous one, for example).
+        let Some((best_sweep_root_txid, fees)) = best_sweep_root else {
+            tracing::warn!(
+                utxo_outpoint = %signer_utxo.outpoint,
+                "no fees found for mempool transactions spending signer UTXO"
+            );
+            return Ok(None);
+        };
+
+        todo!()
     }
 }
 
