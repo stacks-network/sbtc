@@ -527,6 +527,7 @@ describe("Accepting a withdrawal request", () => {
   test("accept withdrawal sets withdrawal-status to true", () => {
     // Alice initiates withdrawalrequest
     const { burnHeight, burnHash } = getCurrentBurnInfo();
+    const sweepTxid = new Uint8Array(32).fill(1);
     txOk(
       deposit.completeDepositWrapper({
         txid: new Uint8Array(32).fill(0),
@@ -535,7 +536,7 @@ describe("Accepting a withdrawal request", () => {
         recipient: alice,
         burnHash,
         burnHeight: BigInt(burnHeight),
-        sweepTxid: new Uint8Array(32).fill(1),
+        sweepTxid: sweepTxid,
       }),
       deployer
     );
@@ -556,7 +557,7 @@ describe("Accepting a withdrawal request", () => {
         fee: defaultMaxFee,
         burnHash,
         burnHeight,
-        sweepTxid: new Uint8Array(32).fill(1),
+        sweepTxid: sweepTxid,
       }),
       deployer
     );
@@ -574,7 +575,12 @@ describe("Accepting a withdrawal request", () => {
       amount: defaultAmount,
       maxFee: defaultMaxFee,
       blockHeight: BigInt(simnet.blockHeight - 3),
-      status: true,
+      status: {
+        status: true,
+        sweepTxid: sweepTxid,
+        sweepBurnHash: burnHash,
+        sweepBurnHeight: BigInt(burnHeight),
+      },
     });
   });
   test("reject withdrawal sets withdrawal-status to false", () => {
@@ -647,7 +653,12 @@ describe("Accepting a withdrawal request", () => {
       amount: defaultAmount,
       maxFee: defaultMaxFee,
       blockHeight: BigInt(simnet.blockHeight - 3),
-      status: false,
+      status: {
+        status: false,
+        sweepTxid: null,
+        sweepBurnHash: null,
+        sweepBurnHeight: null,
+      },
     });
 
     // An event is emitted properly
