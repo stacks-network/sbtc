@@ -174,12 +174,12 @@ impl TestSweepSetup {
         let settings = Settings::new_from_default_config().unwrap();
         let client = BitcoinCoreClient::try_from(&settings.bitcoin.rpc_endpoints[0]).unwrap();
         let sweep_tx_info = client
-            .get_tx_info(&txid, Some(&sweep_block_hash))
+            .get_tx_info(&txid, &sweep_block_hash)
             .unwrap()
             .unwrap();
 
         let deposit_tx_info = client
-            .get_tx_info(&deposit_tx.compute_txid(), Some(&deposit_block_hash))
+            .get_tx_info(&deposit_tx.compute_txid(), &deposit_block_hash)
             .unwrap()
             .unwrap();
 

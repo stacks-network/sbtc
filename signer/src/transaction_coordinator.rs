@@ -18,7 +18,7 @@ use tokio::time::sleep;
 use tokio_stream::wrappers::BroadcastStream;
 use wsts::net::SignatureType;
 
-use crate::bitcoin::rpc::BitcoinTxInfo;
+use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::GetFees;
 use crate::bitcoin::BitcoinInteract;
@@ -603,7 +603,7 @@ where
         let tx_info = self
             .context
             .get_bitcoin_client()
-            .get_tx_info(&req.sweep_txid, Some(&req.sweep_block_hash))
+            .get_tx_info(&req.sweep_txid, &req.sweep_block_hash)
             .await?
             .ok_or_else(|| {
                 Error::BitcoinTxMissing(req.sweep_txid.into(), Some(req.sweep_block_hash.into()))
@@ -1373,7 +1373,7 @@ where
         &self,
         chain_tip: &model::BitcoinBlockHash,
         signer_utxo: &utxo::SignerUtxo,
-    ) -> Result<Vec<BitcoinTxInfo>, Error> {
+    ) -> Result<Vec<GetTxResponse>, Error> {
         let bitcoin_client = self.context.get_bitcoin_client();
 
         let mempool_txs_spending_utxo = bitcoin_client
@@ -1435,7 +1435,7 @@ where
 
                     let fee = (inputs_total - outputs_total) / vsize as u64;
 
-                    Ok((tx_info, fee)) as Result<_, Error>
+                    Ok::<(GetTxResponse, u64), Error>((tx_info, fee))
                 }
             })
         ).await?;
@@ -1459,15 +1459,15 @@ where
         // assuming here that sweep transaction packages are properly chained
         // and that there are never two transactions spending the same mempool
         // transaction (this method will otherwise return _all_ descendants).
-        // let sweep_descendants = bitcoin_client
-        //     .find_mempool_descendants(&best_sweep_root.txid)
-        //     .await?;
+        let sweep_descendants = bitcoin_client
+            .find_mempool_descendants(&best_sweep_root.tx.compute_txid())
+            .await?;
 
         // If there were no descendants then we can return early with only the
         // best sweep transaction root.
-        // if sweep_descendants.is_empty() {
-        //     return Ok(vec![best_sweep_root]);
-        // }
+        if sweep_descendants.is_empty() {
+            return Ok(vec![best_sweep_root]);
+        }
 
         // Fetch the tx-info of all the descendants of the best sweep transaction.
         // As mentioned above, we are assuming that these should be retrievable.

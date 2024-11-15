@@ -1446,7 +1446,7 @@ async fn sign_bitcoin_transaction() {
     let txid = txids.pop().unwrap();
     let tx_info = ctx
         .bitcoin_client
-        .get_tx_info(&txid, Some(&block_hash))
+        .get_tx_info(&txid, &block_hash)
         .unwrap()
         .unwrap();
     let actual_script_pub_key = tx_info.vin[0].prevout.script_pub_key.script.as_bytes();

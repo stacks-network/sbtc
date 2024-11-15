@@ -101,7 +101,7 @@ fn btc_client_gets_transaction_info() {
     let block_hash = faucet.generate_blocks(1).pop().unwrap();
 
     let response = client
-        .get_tx_info(&outpoint.txid, Some(&block_hash))
+        .get_tx_info(&outpoint.txid, &block_hash)
         .unwrap()
         .unwrap();
     // Let's make sure we got the right transaction
@@ -138,14 +138,14 @@ fn btc_client_gets_transaction_info_missing_tx() {
     let fake_block_hash: BitcoinBlockHash = Faker.fake_with_rng(&mut OsRng);
 
     let response = client
-        .get_tx_info(&outpoint.txid, Some(&fake_block_hash))
+        .get_tx_info(&outpoint.txid, &fake_block_hash)
         .unwrap();
 
     assert!(response.is_none());
 
     let fake_txid: BitcoinTxId = Faker.fake_with_rng(&mut OsRng);
 
-    let response = client.get_tx_info(&fake_txid, Some(&block_hash)).unwrap();
+    let response = client.get_tx_info(&fake_txid, &block_hash).unwrap();
 
     assert!(response.is_none());
 }
