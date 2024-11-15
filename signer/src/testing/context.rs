@@ -339,10 +339,17 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
         unimplemented!()
     }
 
-    async fn calculate_transaction_fee(
+    async fn get_transaction_fee(
         &self,
-        _tx: &bitcoin::Transaction,
+        _txid: &bitcoin::Txid,
     ) -> Result<crate::bitcoin::utxo::Fees, Error> {
+        unimplemented!()
+    }
+
+    async fn get_mempool_entry(
+        &self,
+        _txid: &Txid,
+    ) -> Result<Option<bitcoincore_rpc_json::GetMempoolEntryResult>, Error> {
         unimplemented!()
     }
 }

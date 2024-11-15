@@ -96,11 +96,16 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
             .await
     }
 
-    async fn calculate_transaction_fee(
+    async fn get_transaction_fee(&self, txid: &bitcoin::Txid) -> Result<super::utxo::Fees, Error> {
+        self.exec(|client, _| client.get_transaction_fee(txid))
+            .await
+    }
+
+    async fn get_mempool_entry(
         &self,
-        tx: &bitcoin::Transaction,
-    ) -> Result<super::utxo::Fees, Error> {
-        self.exec(|client, _| client.calculate_transaction_fee(tx))
+        txid: &Txid,
+    ) -> Result<Option<bitcoincore_rpc_json::GetMempoolEntryResult>, Error> {
+        self.exec(|client, _| async { client.get_mempool_entry(txid) })
             .await
     }
 }

@@ -5,6 +5,7 @@ use std::future::Future;
 use bitcoin::BlockHash;
 use bitcoin::Txid;
 
+use bitcoincore_rpc_json::GetMempoolEntryResult;
 use rpc::BitcoinTxInfo;
 use rpc::GetTxResponse;
 use utxo::Fees;
@@ -99,8 +100,11 @@ pub trait BitcoinInteract: Sync + Send {
     /// This method queries the Bitcoin Core node for the transaction's
     /// prevouts and calculates the fee and fee rate based on the sum of the
     /// input values and the output values.
-    fn calculate_transaction_fee(
+    fn get_transaction_fee(&self, tx: &Txid) -> impl Future<Output = Result<Fees, Error>> + Send;
+
+    /// Attempts to get the mempool entry for the given transaction ID.
+    fn get_mempool_entry(
         &self,
-        tx: &bitcoin::Transaction,
-    ) -> impl Future<Output = Result<Fees, Error>> + Send;
+        txid: &Txid,
+    ) -> impl Future<Output = Result<Option<GetMempoolEntryResult>, Error>> + Send;
 }

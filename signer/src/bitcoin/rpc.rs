@@ -17,9 +17,9 @@ use bitcoincore_rpc::jsonrpc::error::RpcError;
 use bitcoincore_rpc::Auth;
 use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi as _;
+use bitcoincore_rpc_json::GetMempoolEntryResult;
 use bitcoincore_rpc_json::GetRawTransactionResultVin;
 use bitcoincore_rpc_json::GetRawTransactionResultVout as BitcoinTxInfoVout;
-use futures::future::try_join_all;
 use serde::Deserialize;
 use url::Url;
 
@@ -499,6 +499,19 @@ impl BitcoinCoreClient {
 
         Ok(FeeEstimate { sats_per_vbyte })
     }
+
+    /// Gets mempool data for the given transaction id. If the transaction was
+    /// not found in the mempool, `None` is returned.
+    ///
+    /// Documentation for the `getmempoolentry` RPC call can be found here:
+    /// https://bitcoincore.org/en/doc/27.0.0/rpc/blockchain/getmempoolentry/
+    pub fn get_mempool_entry(&self, txid: &Txid) -> Result<Option<GetMempoolEntryResult>, Error> {
+        match self.inner.get_mempool_entry(txid) {
+            Ok(entry) => Ok(Some(entry)),
+            Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
+            Err(err) => Err(Error::BitcoinCoreRpc(err)),
+        }
+    }
 }
 
 impl BitcoinInteract for BitcoinCoreClient {
@@ -552,30 +565,37 @@ impl BitcoinInteract for BitcoinCoreClient {
         self.get_tx_out(outpoint, include_mempool)
     }
 
-    async fn calculate_transaction_fee(&self, tx: &bitcoin::Transaction) -> Result<Fees, Error> {
-        let vsize = tx.vsize();
+    async fn get_transaction_fee(&self, txid: &bitcoin::Txid) -> Result<Fees, Error> {
+        let tx_info = self
+            .get_tx(txid)?
+            .ok_or(Error::BitcoinTxMissing(*txid, None))?;
 
-        let outputs = try_join_all(tx.input.iter().map(|input| async move {
-            self.get_transaction_output(&input.previous_output, true)
-                .await
-        }))
-        .await?;
+        let vsize = tx_info.tx.vsize();
 
-        let outputs_total = outputs
-            .iter()
-            .filter_map(|output| output.as_ref().map(|output| output.value.to_sat()))
-            .try_fold(0u64, |acc, value| acc.checked_add(value))
-            .ok_or(Error::ArithmeticOverflow)?;
+        // If the transaction is confirmed then the node has block-undo data available,
+        // and we can simply get the fee via `get_tx_info()`.
+        if tx_info.confirmations.is_some() {
+            let confirmed_tx_info = self
+                .get_tx_info(txid, &tx_info.block_hash.unwrap())?
+                .ok_or(Error::BitcoinTxMissing(*txid, tx_info.block_hash))?;
 
-        let inputs_total = outputs
-            .iter()
-            .filter_map(|output| output.as_ref().map(|output| output.value.to_sat()))
-            .try_fold(0u64, |acc, value| acc.checked_add(value))
-            .ok_or(Error::ArithmeticOverflow)?;
+            return Ok(Fees {
+                total: confirmed_tx_info.fee.to_sat(),
+                rate: confirmed_tx_info.fee.to_sat() as f64 / confirmed_tx_info.vsize as f64,
+            });
+        }
 
-        let fee = inputs_total - outputs_total;
-        let fee_rate = fee as f64 / vsize as f64;
+        let mempool_entry = self
+            .get_mempool_entry(txid)?
+            .ok_or(Error::BitcoinTxMissing(*txid, None))?;
 
-        Ok(Fees { total: fee, rate: fee_rate })
+        let fee = mempool_entry.fees.base.to_sat();
+        let rate = fee as f64 / vsize as f64;
+
+        Ok(Fees { total: fee, rate })
+    }
+
+    async fn get_mempool_entry(&self, txid: &Txid) -> Result<Option<GetMempoolEntryResult>, Error> {
+        self.get_mempool_entry(txid)
     }
 }
