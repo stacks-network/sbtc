@@ -153,7 +153,7 @@ describe("sBTC deposit contract", () => {
 
     test("Call get-complete-deposit placeholder", () => {
       const { burnHeight, burnHash } = getCurrentBurnInfo();
-
+      const sweepTxid = new Uint8Array(32).fill(2);
       txOk(
         deposit.completeDepositWrapper({
           txid: new Uint8Array(32).fill(0),
@@ -162,7 +162,7 @@ describe("sBTC deposit contract", () => {
           recipient: deployer,
           burnHash,
           burnHeight,
-          sweepTxid: new Uint8Array(32).fill(2),
+          sweepTxid: sweepTxid,
         }),
         deployer
       );
@@ -176,6 +176,9 @@ describe("sBTC deposit contract", () => {
       expect(receipt1).toStrictEqual({
         amount: 1000n,
         recipient: deployer,
+        sweepTxid: sweepTxid,
+        sweepBurnHash: burnHash,
+        sweepBurnHeight: BigInt(burnHeight),
       });
     });
   });
