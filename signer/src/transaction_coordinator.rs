@@ -1398,11 +1398,15 @@ where
         let best_sweep_root = try_join_all(mempool_txs_spending_utxo.iter().map(|tx| {
             let bitcoin_client = bitcoin_client.clone();
             async move {
-                bitcoin_client.get_transaction_fee(tx).await.map(|fee| (tx, fee))
+                bitcoin_client
+                    .get_transaction_fee(tx)
+                    .await
+                    .map(|fee| (tx, fee))
             }
-        })).await?
+        }))
+        .await?
         .into_iter()
-        .max_by_key(|(_, fee)| fee.total);
+        .max_by_key(|(_, fees)| fees.fee);
 
         // Since we got the transaction ids from bitcoin-core, these should
         // not be missing, but we double-check here just in case (it could
@@ -1416,7 +1420,28 @@ where
             return Ok(None);
         };
 
-        todo!()
+        // Retrieve all descendant transactions of the best sweep root.
+        let descendant_txids = bitcoin_client
+            .find_mempool_descendants(best_sweep_root_txid)
+            .await?;
+
+        // Retrieve fees for all descendant transactions.
+        let descendant_fees = try_join_all(descendant_txids.iter().map(|txid| {
+            let bitcoin_client = bitcoin_client.clone();
+            async move { bitcoin_client.get_transaction_fee(txid).await }
+        }))
+        .await?;
+
+        // Sum the fees of the best sweep root and its descendants.
+        let total_fees = descendant_fees
+            .into_iter()
+            .fold((fees.fee, fees.vsize), |acc, fees| {
+                (acc.0 + fees.fee, acc.1 + fees.vsize)
+            });
+
+        let rate = total_fees.0 as f64 / total_fees.1 as f64;
+
+        Ok(Some(Fees { total: total_fees.0, rate }))
     }
 }
 

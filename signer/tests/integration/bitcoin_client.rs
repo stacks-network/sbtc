@@ -141,8 +141,8 @@ async fn calculate_transaction_fee_works_confirmed() {
         utxo.amount.to_sat() - tx.output.iter().map(|o| o.value.to_sat()).sum::<u64>();
     let expected_fee_rate = expected_fee_total as f64 / tx.vsize() as f64;
 
-    assert_eq!(result.total, expected_fee_total);
-    assert_eq!(result.rate, expected_fee_rate);
+    assert_eq!(result.fee, expected_fee_total);
+    assert_eq!(result.fee_rate, expected_fee_rate);
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -203,6 +203,6 @@ async fn calculate_transaction_fee_works_mempool() {
         utxo.amount.to_sat() - tx.output.iter().map(|o| o.value.to_sat()).sum::<u64>();
     let expected_fee_rate = expected_fee_total as f64 / tx.vsize() as f64;
 
-    assert_eq!(result.total, expected_fee_total);
-    assert_eq!(result.rate, expected_fee_rate);
+    assert_eq!(result.fee, expected_fee_total);
+    assert_eq!(result.fee_rate, expected_fee_rate);
 }

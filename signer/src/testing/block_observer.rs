@@ -31,6 +31,7 @@ use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
+use crate::bitcoin::GetTransactionFeeResult;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -249,7 +250,10 @@ impl BitcoinInteract for TestHarness {
         unimplemented!()
     }
 
-    async fn get_transaction_fee(&self, _txid: &bitcoin::Txid) -> Result<utxo::Fees, Error> {
+    async fn get_transaction_fee(
+        &self,
+        _txid: &bitcoin::Txid,
+    ) -> Result<GetTransactionFeeResult, Error> {
         unimplemented!()
     }
 

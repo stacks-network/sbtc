@@ -96,7 +96,10 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
             .await
     }
 
-    async fn get_transaction_fee(&self, txid: &bitcoin::Txid) -> Result<super::utxo::Fees, Error> {
+    async fn get_transaction_fee(
+        &self,
+        txid: &bitcoin::Txid,
+    ) -> Result<super::GetTransactionFeeResult, Error> {
         self.exec(|client, _| client.get_transaction_fee(txid))
             .await
     }

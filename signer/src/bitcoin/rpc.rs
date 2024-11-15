@@ -27,7 +27,7 @@ use url::Url;
 use crate::bitcoin::BitcoinInteract;
 use crate::error::Error;
 
-use super::utxo::Fees;
+use super::GetTransactionFeeResult;
 
 /// A slimmed down type representing a response from bitcoin-core's
 /// getrawtransaction RPC.
@@ -541,12 +541,15 @@ impl BitcoinInteract for BitcoinCoreClient {
         self.get_tx_out(outpoint, include_mempool)
     }
 
-    async fn get_transaction_fee(&self, txid: &bitcoin::Txid) -> Result<Fees, Error> {
+    async fn get_transaction_fee(
+        &self,
+        txid: &bitcoin::Txid,
+    ) -> Result<GetTransactionFeeResult, Error> {
         let tx_info = self
             .get_tx(txid)?
             .ok_or(Error::BitcoinTxMissing(*txid, None))?;
 
-        let vsize = tx_info.tx.vsize();
+        let vsize = tx_info.tx.vsize() as u64;
 
         // If the transaction is confirmed then the node has block-undo data available,
         // and we can simply get the fee via `get_tx_info()`.
@@ -555,9 +558,10 @@ impl BitcoinInteract for BitcoinCoreClient {
                 .get_tx_info(txid, &tx_info.block_hash.unwrap())?
                 .ok_or(Error::BitcoinTxMissing(*txid, tx_info.block_hash))?;
 
-            return Ok(Fees {
-                total: confirmed_tx_info.fee.to_sat(),
-                rate: confirmed_tx_info.fee.to_sat() as f64 / confirmed_tx_info.vsize as f64,
+            return Ok(GetTransactionFeeResult {
+                fee: confirmed_tx_info.fee.to_sat(),
+                fee_rate: confirmed_tx_info.fee.to_sat() as f64 / confirmed_tx_info.vsize as f64,
+                vsize,
             });
         }
 
@@ -566,9 +570,9 @@ impl BitcoinInteract for BitcoinCoreClient {
             .ok_or(Error::BitcoinTxMissing(*txid, None))?;
 
         let fee = mempool_entry.fees.base.to_sat();
-        let rate = fee as f64 / vsize as f64;
+        let fee_rate = fee as f64 / vsize as f64;
 
-        Ok(Fees { total: fee, rate })
+        Ok(GetTransactionFeeResult { fee, fee_rate, vsize })
     }
 
     async fn get_mempool_entry(&self, txid: &Txid) -> Result<Option<GetMempoolEntryResult>, Error> {
