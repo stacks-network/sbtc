@@ -1369,7 +1369,7 @@ where
     /// This method returns the sweep transactions in an unordered list. If no
     /// sweep transactions are found in the mempool, an empty list is returned.
     #[tracing::instrument(skip_all, fields(%chain_tip))]
-    async fn fetch_mempool_sweep_transactions(
+    async fn assess_mempool_sweep_transaction_fees(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         signer_utxo: &utxo::SignerUtxo,
@@ -1432,16 +1432,21 @@ where
         }))
         .await?;
 
-        // Sum the fees of the best sweep root and its descendants.
-        let total_fees = descendant_fees
+        // Sum the fees of the best sweep root and its descendants, while also
+        // summing the vsize of the transactions for fee-rate calculation later.
+        // If there were no descendants then this will just be the fee and size
+        // from the best root sweep transaction.
+        let (total_fees, total_vsize) = descendant_fees
             .into_iter()
             .fold((fees.fee, fees.vsize), |acc, fees| {
                 (acc.0 + fees.fee, acc.1 + fees.vsize)
             });
 
-        let rate = total_fees.0 as f64 / total_fees.1 as f64;
+        // Calculate the fee rate based on the total fees and vsizes of the
+        // transactions which we've found.
+        let rate = total_fees as f64 / total_vsize as f64;
 
-        Ok(Some(Fees { total: total_fees.0, rate }))
+        Ok(Some(Fees { total: total_fees, rate }))
     }
 }
 
