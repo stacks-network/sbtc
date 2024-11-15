@@ -228,10 +228,17 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     // For that we just wait until we know that we're up-to-date
     let mut current_chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap();
 
-    while current_chain_tip != Some(chain_tip) {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        current_chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap();
-    }
+    let waiting_fut = async {
+        let db = db.clone();
+        while current_chain_tip != Some(chain_tip) {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            current_chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap();
+        }
+    };
+
+    tokio::time::timeout(Duration::from_secs(3), waiting_fut)
+        .await
+        .unwrap();
 
     // Okay now lets check if we have these deposit requests in our
     // database. It should also have bitcoin blockchain data
