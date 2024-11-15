@@ -135,7 +135,7 @@ pub struct BitcoinTxInfo {
 ///
 /// # Notes
 ///
-/// * This endpoint requires bitcoin-core v27.0 or later.
+/// * This endpoint requires bitcoin-core v25.0 or later.
 /// * Documentation for this endpoint can be found at
 ///   https://bitcoincore.org/en/doc/27.0.0/rpc/blockchain/gettxspendingprevout/
 /// * This struct omits some fields returned from bitcoin-core: `txid` and
@@ -360,7 +360,7 @@ impl BitcoinCoreClient {
     ///
     /// # Notes
     ///
-    /// This method requires bitcoin-core v27 or later and is based on the
+    /// This method requires bitcoin-core v25 or later and is based on the
     /// documentation at
     /// https://bitcoincore.org/en/doc/27.0.0/rpc/blockchain/gettxspendingprevout/
     pub fn get_tx_spending_prevout(&self, outpoint: &OutPoint) -> Result<Vec<Txid>, Error> {
@@ -404,7 +404,7 @@ impl BitcoinCoreClient {
     ///
     /// # Notes
     ///
-    /// - This method requires bitcoin-core v27 or later.
+    /// - This method requires bitcoin-core v25 or later.
     /// - The RPC endpoint does not in itself return raw transaction data, so
     ///   [`Self::get_tx`] must be used to fetch each transaction separately.
     /// - Implementation based on documentation at
