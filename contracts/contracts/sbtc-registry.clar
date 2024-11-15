@@ -53,7 +53,10 @@
 (define-map completed-deposits {txid: (buff 32), vout-index: uint}
   {
     amount: uint,
-    recipient: principal
+    recipient: principal,
+    sweep-txid: (buff 32),
+    sweep-burn-hash: (buff 32),
+    sweep-burn-height: uint,
   }
 )
 
@@ -252,7 +255,10 @@
     (try! (is-protocol-caller))
     (map-insert completed-deposits {txid: txid, vout-index: vout-index} {
       amount: amount,
-      recipient: recipient
+      recipient: recipient,
+      sweep-txid: sweep-txid,
+      sweep-burn-hash: burn-hash,
+      sweep-burn-height: burn-height,
     })
     (print {
       topic: "completed-deposit",
