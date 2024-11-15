@@ -333,7 +333,7 @@ impl BitcoinCoreClient {
         txid: &Txid,
         block_hash: &BlockHash,
     ) -> Result<Option<BitcoinTxInfo>, Error> {
-        let args = vec![
+        let args = [
             serde_json::to_value(txid).map_err(Error::JsonSerialize)?,
             // This is the verbosity level. The acceptable values are 0, 1,
             // and 2, and we want the 2 because it will include all the
