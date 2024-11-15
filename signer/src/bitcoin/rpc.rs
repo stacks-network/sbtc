@@ -68,6 +68,7 @@ pub struct GetTxOutResponse {
     /// The number of confirmations of the transaction containing this output.
     pub confirmations: u32,
     /// The value of the output in BTC.
+    #[serde(with = "bitcoin::amount::serde::as_btc")]
     pub value: Amount,
     /// The scriptPubKey of the output.
     #[serde(rename = "scriptPubKey")]

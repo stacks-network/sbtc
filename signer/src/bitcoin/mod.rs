@@ -94,7 +94,11 @@ pub trait BitcoinInteract: Sync + Send {
 
     /// Calculates the fee and fee rate for the given transaction. The
     /// transaction must be a valid transaction which either exists in a block
-    /// or the mempool.
+    /// or the mempool, i.e. available from the Bitcoin Core node.
+    ///
+    /// This method queries the Bitcoin Core node for the transaction's
+    /// prevouts and calculates the fee and fee rate based on the sum of the
+    /// input values and the output values.
     fn calculate_transaction_fee(
         &self,
         tx: &bitcoin::Transaction,
