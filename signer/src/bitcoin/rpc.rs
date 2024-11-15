@@ -137,7 +137,7 @@ pub struct BitcoinTxInfo {
 ///
 /// * This endpoint requires bitcoin-core v25.0 or later.
 /// * Documentation for this endpoint can be found at
-///   https://bitcoincore.org/en/doc/27.0.0/rpc/blockchain/gettxspendingprevout/
+///   https://bitcoincore.org/en/doc/25.0.0/rpc/blockchain/gettxspendingprevout/
 /// * This struct omits some fields returned from bitcoin-core: `txid` and
 ///   `vout`, which are just the txid and vout of the outpoint which was passed
 ///   as RPC arguments. We don't need them because we're not providing multiple
@@ -327,7 +327,7 @@ impl BitcoinCoreClient {
     ///
     /// - This method requires bitcoin-core v25 or later.
     /// - The implementation is based on the documentation at
-    ///   https://bitcoincore.org/en/doc/27.0.0/rpc/rawtransactions/getrawtransaction/
+    ///   https://bitcoincore.org/en/doc/25.0.0/rpc/rawtransactions/getrawtransaction/
     pub fn get_tx_info(
         &self,
         txid: &Txid,
@@ -362,7 +362,7 @@ impl BitcoinCoreClient {
     ///
     /// This method requires bitcoin-core v25 or later and is based on the
     /// documentation at
-    /// https://bitcoincore.org/en/doc/27.0.0/rpc/blockchain/gettxspendingprevout/
+    /// https://bitcoincore.org/en/doc/25.0.0/rpc/blockchain/gettxspendingprevout/
     pub fn get_tx_spending_prevout(&self, outpoint: &OutPoint) -> Result<Vec<Txid>, Error> {
         let rpc_outpoint = RpcOutPoint::from(outpoint);
         let args = [serde_json::to_value(vec![rpc_outpoint]).map_err(Error::JsonSerialize)?];
@@ -408,7 +408,7 @@ impl BitcoinCoreClient {
     /// - The RPC endpoint does not in itself return raw transaction data, so
     ///   [`Self::get_tx`] must be used to fetch each transaction separately.
     /// - Implementation based on documentation at
-    ///   https://bitcoincore.org/en/doc/27.0.0/rpc/blockchain/getmempooldescendants/
+    ///   https://bitcoincore.org/en/doc/25.0.0/rpc/blockchain/getmempooldescendants/
     pub fn get_mempool_descendants(&self, txid: &Txid) -> Result<Vec<Txid>, Error> {
         let args = [serde_json::to_value(txid).map_err(Error::JsonSerialize)?];
 
@@ -480,7 +480,7 @@ impl BitcoinCoreClient {
     /// not found in the mempool, `None` is returned.
     ///
     /// Documentation for the `getmempoolentry` RPC call can be found here:
-    /// https://bitcoincore.org/en/doc/27.0.0/rpc/blockchain/getmempoolentry/
+    /// https://bitcoincore.org/en/doc/25.0.0/rpc/blockchain/getmempoolentry/
     pub fn get_mempool_entry(&self, txid: &Txid) -> Result<Option<GetMempoolEntryResult>, Error> {
         match self.inner.get_mempool_entry(txid) {
             Ok(entry) => Ok(Some(entry)),
