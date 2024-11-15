@@ -346,19 +346,16 @@ impl BitcoinCoreClient {
     pub fn get_tx_info(
         &self,
         txid: &Txid,
-        block_hash: Option<&BlockHash>,
+        block_hash: &BlockHash,
     ) -> Result<Option<BitcoinTxInfo>, Error> {
-        let mut args = vec![
+        let args = vec![
             serde_json::to_value(txid).map_err(Error::JsonSerialize)?,
             // This is the verbosity level. The acceptable values are 0, 1,
             // and 2, and we want the 2 because it will include all the
             // required fields of the type.
             serde_json::Value::Number(serde_json::value::Number::from(2u32)),
+            serde_json::to_value(block_hash).map_err(Error::JsonSerialize)?
         ];
-
-        if let Some(block_hash) = block_hash {
-            args.push(serde_json::to_value(block_hash).map_err(Error::JsonSerialize)?);
-        }
 
         match self.inner.call::<BitcoinTxInfo>("getrawtransaction", &args) {
             Ok(tx_info) => Ok(Some(tx_info)),
@@ -516,10 +513,10 @@ impl BitcoinInteract for BitcoinCoreClient {
         self.get_tx(txid)
     }
 
-    async fn get_tx_info<'a>(
+    async fn get_tx_info(
         &self,
         txid: &Txid,
-        block_hash: Option<&'a BlockHash>,
+        block_hash: &BlockHash,
     ) -> Result<Option<BitcoinTxInfo>, Error> {
         self.get_tx_info(txid, block_hash)
     }

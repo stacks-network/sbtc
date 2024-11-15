@@ -89,7 +89,7 @@ impl DepositRequestValidator for CreateDepositRequest {
         // The `get_tx_info` call here should not return None, we know that
         // it has been included in a block.
         let Some(tx_info) = client
-            .get_tx_info(&self.outpoint.txid, Some(&block_hash))
+            .get_tx_info(&self.outpoint.txid, &block_hash)
             .await?
         else {
             return Ok(None);
@@ -402,7 +402,7 @@ where
             // means the `get_tx_info` call below should not fail.
             let txid = tx.compute_txid();
             let tx_info = btc_rpc
-                .get_tx_info(&txid, Some(&block_hash))
+                .get_tx_info(&txid, &block_hash)
                 .await?
                 .ok_or(Error::BitcoinTxMissing(txid, None))?;
 
