@@ -61,7 +61,7 @@ pub struct BitcoinTxContext {
     /// [`BitcoinTx::validate`] function, but is here for logging and
     /// tracking purposes.
     pub origin: PublicKey,
-    /// This signers public key.
+    /// This signer's public key.
     pub signer_public_key: PublicKey,
     /// The current aggregate key that was the output of DKG.
     pub aggregate_key: PublicKey,
@@ -83,7 +83,7 @@ pub struct TxRequestIds {
     pub withdrawals: Vec<QualifiedRequestId>,
 }
 
-/// Check that this does not contain duplicate deposit and withdrawals.
+/// Check that this does not contain duplicate deposits or withdrawals.
 pub fn is_unique(_packages: &[TxRequestIds]) -> bool {
     false
 }
@@ -246,7 +246,7 @@ impl BitcoinTxContext {
     }
 }
 
-/// An intermediate struct to aide in computing validation of deposits and
+/// An intermediate struct to aid in computing validation of deposits and
 /// withdrawals and transforming the computed sighash into a
 /// [`BitcoinSighash`].
 pub struct TempOutput {
@@ -360,8 +360,9 @@ impl TempOutput {
             .zip(validation_results);
 
         // We know the signers' input is valid. We started by fetching it
-        // from our database so we know it is unspent and valid. Later the
-        // signer's input was created as part of a valid chain.
+        // from our database, so we know it is unspent and valid. Later the
+        // signer's input was created as part of a transaction chain, so
+        // each is unspent and locked by our "aggregate" private key.
         [(self.signer_sighash, InputValidationResult::Ok)]
             .into_iter()
             .chain(deposit_sighashes)
