@@ -84,33 +84,34 @@ pub struct TxRequestIds {
 }
 
 /// Check that this does not contain duplicate deposits or withdrawals.
+///
+/// TODO: Implement.
 pub fn is_unique(_packages: &[TxRequestIds]) -> bool {
     false
 }
 
 impl BitcoinTxContext {
     /// Validate the current bitcoin transaction.
-    pub async fn validate<C>(&self, _ctx: &C) -> Result<(), Error>
+    pub async fn pre_validation<C>(&self, _ctx: &C) -> Result<(), Error>
     where
         C: Context + Send + Sync,
     {
-        unimplemented!()
-    }
-
-    /// Validate the withdrawal UTXOs
-    pub async fn validate_withdrawals<C>(&self, _ctx: &C) -> Result<(), Error>
-    where
-        C: Context + Send + Sync,
-    {
-        if !self
+        let no_withdrawals = self
             .request_packages
             .iter()
-            .all(|reqs| reqs.withdrawals.is_empty())
-        {
-            return Err(Error::MissingBlock);
-        }
+            .all(|reqs| reqs.withdrawals.is_empty());
 
-        Ok(())
+        let unique_requests = is_unique(&self.request_packages);
+
+        // TODO: check that we have not received a different transaction
+        // package during this tenure.
+
+        if no_withdrawals && unique_requests {
+            Ok(())
+        } else {
+            // TODO: Create a real one
+            Err(Error::ArithmeticOverflow)
+        }
     }
 
     /// Fetch the signers' BTC state and the aggregate key.
