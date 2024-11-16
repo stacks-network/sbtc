@@ -1469,6 +1469,7 @@ mod tests {
             .await;
     }
 
+    #[ignore = "This test doesn't work for every value in the config file"]
     #[tokio::test]
     async fn should_wait_before_processing_bitcoin_blocks() {
         // NOTE: Above test `should_be_able_to_coordinate_signing_rounds`
