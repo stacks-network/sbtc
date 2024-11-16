@@ -183,7 +183,7 @@ where
                         tracing::error!(?error, "error processing new blocks; skipping this round")
                     });
 
-                    tracing::trace!("Sending tenure completed signal");
+                    tracing::trace!("sending tenure completed signal");
                     self.context
                         .signal(TxCoordinatorEvent::TenureCompleted.into())?;
                 }
@@ -235,7 +235,7 @@ where
         if self.is_epoch3 {
             return Ok(true);
         }
-        tracing::debug!("Checked for whether we are in Epoch 3 or later");
+        tracing::debug!("checked for whether we are in Epoch 3 or later");
         let pox_info = self.context.get_stacks_client().get_pox_info().await?;
 
         let Some(nakamoto_start_height) = pox_info.nakamoto_start_height() else {
@@ -245,7 +245,7 @@ where
         let is_epoch3 = pox_info.current_burnchain_block_height > nakamoto_start_height;
         if is_epoch3 {
             self.is_epoch3 = is_epoch3;
-            tracing::debug!("We are in Epoch 3 or later; time to do work");
+            tracing::debug!("we are in Epoch 3 or later; time to do work");
         }
         Ok(is_epoch3)
     }
@@ -276,17 +276,17 @@ where
         // coordinating DKG or constructing bitcoin and stacks
         // transactions, might as well return early.
         if !self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys) {
-            tracing::debug!("We are not the coordinator, so nothing to do");
+            tracing::debug!("we are not the coordinator, so nothing to do");
             return Ok(());
         }
 
         let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
         if bitcoin_processing_delay > Duration::ZERO {
-            tracing::debug!("Sleeping before processing new Bitcoin block.");
+            tracing::debug!("sleeping before processing new Bitcoin block.");
             tokio::time::sleep(bitcoin_processing_delay).await;
         }
 
-        tracing::debug!("We are the coordinator, we may need to coordinate DKG");
+        tracing::debug!("we are the coordinator, we may need to coordinate DKG");
         // If Self::get_signer_set_and_aggregate_key did not return an
         // aggregate key, then we know that we have not run DKG yet. Since
         // we are the coordinator, we should coordinate DKG.
@@ -388,7 +388,7 @@ where
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<(), Error> {
-        tracing::debug!("Fetching the stacks chain tip");
+        tracing::debug!("fetching the stacks chain tip");
         let stacks_chain_tip = self
             .context
             .get_storage()
@@ -396,7 +396,7 @@ where
             .await?
             .ok_or(Error::NoStacksChainTip)?;
 
-        tracing::debug!(stacks_chain_tip = %stacks_chain_tip.block_hash, "Got the stacks chain tip");
+        tracing::debug!(stacks_chain_tip = %stacks_chain_tip.block_hash, "retrieved the stacks chain tip");
 
         let pending_requests_fut =
             self.get_pending_requests(bitcoin_chain_tip, aggregate_key, signer_public_keys);
@@ -404,14 +404,14 @@ where
         // If Self::get_pending_requests returns Ok(None) then there are no
         // requests to respond to, so let's just exit.
         let Some(pending_requests) = pending_requests_fut.await? else {
-            tracing::debug!("No requests to handle, exiting");
+            tracing::debug!("no requests to handle, exiting");
             return Ok(());
         };
 
         tracing::debug!(
             num_deposits = %pending_requests.deposits.len(),
             num_withdrawals = pending_requests.withdrawals.len(),
-            "Fetched requests"
+            "fetched requests"
         );
         // Construct the transaction package and store it in the database.
         let transaction_package = pending_requests.construct_transactions()?;
@@ -483,13 +483,13 @@ where
             .await?;
 
         if deposit_requests.is_empty() {
-            tracing::debug!("No stacks transactions to create, exiting");
+            tracing::debug!("no stacks transactions to create, exiting");
             return Ok(());
         }
 
         tracing::debug!(
             num_deposits = %deposit_requests.len(),
-            "We have deposit requests that have been swept that may need minting"
+            "we have deposit requests that have been swept that may need minting"
         );
         // We need to know the nonce to use, so we reach out to our stacks
         // node for the account information for our multi-sig address.
