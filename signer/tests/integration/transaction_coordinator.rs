@@ -1152,13 +1152,12 @@ async fn run_dkg_from_scratch() {
 /// then, once everything is up and running, run the test.
 ///
 /// This test is still a little flaky. DKG doesn't run correctly every
-/// time, and even when it does the test doesn't sleep for long enough for
-/// it to reliably work.
+/// time, and even when it does it might not pick up and process the
+/// deposit correctly.
 // #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[ignore]
 #[tokio::test]
 async fn sign_bitcoin_transaction() {
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
     let (rpc, faucet) = regtest::initialize_blockchain();
     signer::logging::setup_logging("info,signer=debug", false);
@@ -1393,20 +1392,23 @@ async fn sign_bitcoin_transaction() {
     // =========================================================================
     let chain_tip: BitcoinBlockHash = faucet.generate_blocks(1).pop().unwrap().into();
 
-    let mut shares: EncryptedDkgShares = Faker.fake_with_rng(&mut rng);
-    for (_, db, _, _) in signers.iter() {
-        // We first need to wait for bitcoin-core to send us all the
-        // notifications so that we are up to date with the chain tip.
-        testing::storage::wait_for_chain_tip(db, chain_tip).await;
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        // Now we wait for DKG to successfully complete. For that we just
-        // watch the dkg_shares table.
-        testing::storage::wait_for_dkg(db).await;
+    // We first need to wait for bitcoin-core to send us all the
+    // notifications so that we are up to date with the chain tip.
+    let db_update_futs = signers
+        .iter()
+        .map(|(_, db, _, _)| testing::storage::wait_for_chain_tip(db, chain_tip));
+    futures::future::join_all(db_update_futs).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
 
-        // We need to get the signers' scriptPubKey so that we can make a
-        // donation, and get the party started.
-        shares = db.get_latest_encrypted_dkg_shares().await.unwrap().unwrap();
-    }
+    // Now we wait for DKG to successfully complete. For that we just watch
+    // the dkg_shares table. Also, we need to get the signers' scriptPubKey
+    // so that we can make a donation, and get the party started.
+    let dkg_futs = signers
+        .iter()
+        .map(|(_, db, _, _)| testing::storage::wait_for_dkg(db));
+    futures::future::join_all(dkg_futs).await;
+    let (_, db, _, _) = signers.first().unwrap();
+    let shares = db.get_latest_encrypted_dkg_shares().await.unwrap().unwrap();
 
     // =========================================================================
     // Step 5 - Prepare for deposits
@@ -1431,7 +1433,7 @@ async fn sign_bitcoin_transaction() {
     faucet.generate_blocks(1);
 
     wait_for_signers(&signers).await;
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
 
     // =========================================================================
     // Step 6 - Make a proper deposit
@@ -1475,7 +1477,7 @@ async fn sign_bitcoin_transaction() {
     faucet.generate_blocks(1);
 
     wait_for_signers(&signers).await;
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
 
     let (ctx, _, _, _) = signers.first().unwrap();
     let mut txids = ctx.bitcoin_client.inner_client().get_raw_mempool().unwrap();
@@ -1484,7 +1486,7 @@ async fn sign_bitcoin_transaction() {
     let block_hash = faucet.generate_blocks(1).pop().unwrap();
 
     wait_for_signers(&signers).await;
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
 
     // =========================================================================
     // Step 8 - Assertions
@@ -1565,7 +1567,6 @@ where
 
 type IntegrationTestContext =
     TestContext<PgStore, BitcoinCoreClient, WrappedMock<MockStacksInteract>, EmilyClient>;
-
 
 /// Wait for all signers to finish their coordinator duties and do this
 /// concurrently so that we don't miss anything (not sure if we need to do
