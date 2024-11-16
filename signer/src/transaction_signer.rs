@@ -142,8 +142,14 @@ where
     Rng: rand::RngCore + rand::CryptoRng,
 {
     /// Run the signer event loop
-    #[tracing::instrument(skip_all, fields(public_key = %self.signer_pub_key()), name = "tx-signer")]
     pub async fn run(mut self) -> Result<(), Error> {
+        let span = tracing::debug_span!(
+            "tx-signer",
+            public_key = tracing::field::display(&self.signer_pub_key()),
+            chain_tip = tracing::field::Empty,
+        );
+        let _guard = span.enter();
+
         let mut signal_rx = self.context.get_signal_receiver();
         let mut term = self.context.get_termination_handle();
         let mut network = self.network.clone();
@@ -197,6 +203,8 @@ where
                     if let Err(error) = self.handle_new_requests().await {
                         tracing::warn!(%error, "error handling new requests; skipping this round");
                     }
+
+                    span.record("chain_tip", tracing::field::Empty);
                 }
 
                 // Process all messages which have been received (both from the
@@ -208,6 +216,7 @@ where
                             tracing::error!(%error, "error handling signer message");
                         }
                     }
+                    span.record("chain_tip", tracing::field::Empty);
                 }
 
                 // A small delay to avoid busy-looping if there are no events
@@ -260,7 +269,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn handle_new_requests(&mut self) -> Result<(), Error> {
         let bitcoin_chain_tip = self
             .context
@@ -268,6 +277,9 @@ where
             .get_bitcoin_canonical_chain_tip()
             .await?
             .ok_or(Error::NoChainTip)?;
+
+        let span = tracing::Span::current();
+        span.record("chain_tip", tracing::field::display(bitcoin_chain_tip));
 
         for deposit_request in self
             .get_pending_deposit_requests(&bitcoin_chain_tip)
@@ -301,6 +313,12 @@ where
         let chain_tip_report = self
             .inspect_msg_chain_tip(msg.signer_pub_key, &msg.bitcoin_chain_tip)
             .await?;
+
+        let span = tracing::Span::current();
+        span.record(
+            "chain_tip",
+            tracing::field::display(chain_tip_report.chain_tip),
+        );
 
         tracing::trace!(
             sender_is_coordinator = chain_tip_report.sender_is_coordinator,
@@ -393,30 +411,29 @@ where
     }
 
     /// Find out the status of the given chain tip
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn inspect_msg_chain_tip(
         &mut self,
         msg_sender: PublicKey,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        msg_bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<MsgChainTipReport, Error> {
         let storage = self.context.get_storage();
 
-        let is_known = storage
-            .get_bitcoin_block(bitcoin_chain_tip)
-            .await?
-            .is_some();
-
-        let is_canonical = storage
+        let chain_tip = storage
             .get_bitcoin_canonical_chain_tip()
             .await?
-            .map(|canonical_chain_tip| &canonical_chain_tip == bitcoin_chain_tip)
-            .unwrap_or(false);
+            .ok_or(Error::NoChainTip)?;
 
-        let signer_set = self.get_signer_public_keys(bitcoin_chain_tip).await?;
+        let is_known = storage
+            .get_bitcoin_block(msg_bitcoin_chain_tip)
+            .await?
+            .is_some();
+        let is_canonical = msg_bitcoin_chain_tip == &chain_tip;
 
+        let signer_set = self.get_signer_public_keys(&chain_tip).await?;
         let sender_is_coordinator = crate::transaction_coordinator::given_key_is_coordinator(
             msg_sender,
-            bitcoin_chain_tip,
+            &chain_tip,
             &signer_set,
         );
 
@@ -429,10 +446,11 @@ where
         Ok(MsgChainTipReport {
             sender_is_coordinator,
             chain_tip_status,
+            chain_tip,
         })
     }
 
-    #[tracing::instrument(skip(self, request))]
+    #[tracing::instrument(skip_all)]
     async fn handle_bitcoin_transaction_sign_request(
         &mut self,
         request: &message::BitcoinTransactionSignRequest,
@@ -579,7 +597,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, msg))]
+    #[tracing::instrument(skip_all, fields(txid = %msg.txid))]
     async fn handle_wsts_message(
         &mut self,
         msg: &message::WstsMessage,
@@ -720,7 +738,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, msg))]
+    #[tracing::instrument(skip_all)]
     async fn relay_message(
         &mut self,
         txid: bitcoin::Txid,
@@ -752,7 +770,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn get_pending_deposit_requests(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
@@ -763,7 +781,7 @@ where
             .await
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn get_pending_withdraw_requests(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
@@ -785,7 +803,7 @@ where
     ///
     /// If the block list client is not configured then the first check
     /// always passes.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     pub async fn handle_pending_deposit_request(
         &mut self,
         request: model::DepositRequest,
@@ -835,7 +853,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn handle_pending_withdrawal_request(
         &mut self,
         withdrawal_request: model::WithdrawalRequest,
@@ -913,7 +931,7 @@ where
         Ok(can_accept)
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all, fields(origin = %signer_pub_key))]
     async fn persist_received_deposit_decision(
         &mut self,
         decision: &message::SignerDepositDecision,
@@ -938,7 +956,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all, fields(origin = %signer_pub_key))]
     async fn persist_received_withdraw_decision(
         &mut self,
         decision: &message::SignerWithdrawalDecision,
@@ -963,7 +981,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all, fields(%txid))]
     async fn store_dkg_shares(&mut self, txid: &bitcoin::Txid) -> Result<(), Error> {
         let state_machine = self
             .wsts_state_machines
@@ -980,7 +998,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, msg))]
+    #[tracing::instrument(skip_all)]
     async fn send_message(
         &mut self,
         msg: impl Into<message::Payload>,
@@ -1010,7 +1028,7 @@ where
     /// our database, and return None as the aggregate key if no DKG shares
     /// can be found, implying that this signer has not participated in
     /// DKG.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     pub async fn get_signer_set_and_aggregate_key(
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -1078,6 +1096,8 @@ struct MsgChainTipReport {
     sender_is_coordinator: bool,
     /// The status of the chain tip relative to the signers' perspective.
     chain_tip_status: ChainTipStatus,
+    /// The bitcoin chain tip.
+    chain_tip: model::BitcoinBlockHash,
 }
 
 /// The status of a chain tip relative to the known blocks in the signer database.

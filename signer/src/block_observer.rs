@@ -124,8 +124,9 @@ where
     BHS: futures::stream::Stream<Item = Result<bitcoin::BlockHash, Error>> + Unpin,
 {
     /// Run the block observer
-    #[tracing::instrument(skip(self), name = "block-observer")]
     pub async fn run(mut self) -> Result<(), Error> {
+        let span = tracing::debug_span!("block-observer", chain_tip = tracing::field::Empty,);
+        let _guard = span.enter();
         let term = self.context.get_termination_handle();
 
         loop {
@@ -133,16 +134,16 @@ where
                 break;
             }
 
-            // Bitcoin blocks will generally arrive in ~19 minute intervals, so
+            // Bitcoin blocks will generally arrive in ~10 minute intervals, so
             // we don't need to be so aggresive in our timeout here.
             let poll = tokio::time::timeout(Duration::from_millis(100), self.bitcoin_blocks.next());
 
             match poll.await {
                 Ok(Some(Ok(block_hash))) => {
-                    tracing::info!(%block_hash, "observed new bitcoin block from stream");
+                    span.record("chain_tip", tracing::field::display(&block_hash));
+                    tracing::info!("observed new bitcoin block from stream");
 
-                    let next_blocks_to_process = match self.next_blocks_to_process(block_hash).await
-                    {
+                    let next_blocks = match self.next_blocks_to_process(block_hash).await {
                         Ok(blocks) => blocks,
                         Err(error) => {
                             tracing::warn!(%error, %block_hash, "could not get next blocks to process");
@@ -150,7 +151,7 @@ where
                         }
                     };
 
-                    for block in next_blocks_to_process {
+                    for block in next_blocks {
                         if let Err(error) = self.process_bitcoin_block(block).await {
                             tracing::warn!(%error, "could not process bitcoin block");
                         }
@@ -163,6 +164,8 @@ where
 
                     self.context
                         .signal(SignerEvent::BitcoinBlockObserved.into())?;
+
+                    span.record("chain_tip", tracing::field::Empty);
                 }
                 Ok(Some(Err(error))) => {
                     tracing::warn!(%error, "error decoding new bitcoin block hash from stream");
