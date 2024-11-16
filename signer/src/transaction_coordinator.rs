@@ -256,6 +256,12 @@ where
             return Ok(());
         }
 
+        let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
+        if bitcoin_processing_delay > Duration::ZERO {
+            tracing::debug!("sleeping before processing new Bitcoin block.");
+            tokio::time::sleep(bitcoin_processing_delay).await;
+        }
+
         let bitcoin_chain_tip = self
             .context
             .get_storage()
@@ -278,12 +284,6 @@ where
         if !self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys) {
             tracing::debug!("we are not the coordinator, so nothing to do");
             return Ok(());
-        }
-
-        let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
-        if bitcoin_processing_delay > Duration::ZERO {
-            tracing::debug!("sleeping before processing new Bitcoin block.");
-            tokio::time::sleep(bitcoin_processing_delay).await;
         }
 
         tracing::debug!("we are the coordinator, we may need to coordinate DKG");
