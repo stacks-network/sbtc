@@ -159,7 +159,7 @@ bootstrap_signatures_required = 2
 # Seconds to wait before processing a new Bitcoin block.
 # Required: true Environment: SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY
 # TODO(715): Add default delay (15 seconds? see #701)
-bitcoin_processing_delay = 1
+bitcoin_processing_delay = 3
 
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration
