@@ -183,6 +183,10 @@ where
                     let _ = self.process_new_blocks().await.inspect_err(|error| {
                         tracing::error!(?error, "error processing new blocks; skipping this round")
                     });
+
+                    tracing::trace!("Sending tenure completed signal");
+                    self.context
+                        .signal(TxCoordinatorEvent::TenureCompleted.into())?;
                 }
                 Ok(Err(_)) => {
                     tracing::debug!(

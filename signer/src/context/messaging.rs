@@ -83,6 +83,8 @@ pub enum TxCoordinatorEvent {
     /// Event which occurs when the transaction coordinator has sent a message
     /// to the P2P network.
     MessageGenerated(crate::network::Msg),
+    /// Coordinator done
+    TenureCompleted,
 }
 
 impl From<SignerCommand> for SignerSignal {
