@@ -13,7 +13,6 @@ use futures::FutureExt;
 use futures::StreamExt as _;
 use futures::TryStreamExt;
 use sha2::Digest;
-use tokio::time::sleep;
 use tokio_stream::wrappers::BroadcastStream;
 use wsts::net::SignatureType;
 
@@ -164,7 +163,7 @@ where
     N: network::MessageTransfer,
 {
     /// Run the coordinator event loop
-    #[tracing::instrument(skip(self), name = "tx-coordinator")]
+    #[tracing::instrument(skip_all, fields(public_key = %self.signer_public_key()) name = "tx-coordinator")]
     pub async fn run(mut self) -> Result<(), Error> {
         tracing::info!("starting transaction coordinator event loop");
         let term = self.context.get_termination_handle();
@@ -282,9 +281,9 @@ where
         }
 
         let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
-        if bitcoin_processing_delay > std::time::Duration::ZERO {
+        if bitcoin_processing_delay > Duration::ZERO {
             tracing::debug!("Sleeping before processing new Bitcoin block.");
-            sleep(bitcoin_processing_delay).await;
+            tokio::time::sleep(bitcoin_processing_delay).await;
         }
 
         tracing::debug!("We are the coordinator, we may need to coordinate DKG");
@@ -360,6 +359,7 @@ where
 
         // If the latest DKG aggregate key matches on-chain data, nothing to do here
         if Some(last_dkg.aggregate_key) == current_aggregate_key {
+            tracing::debug!("stacks-core is up to date with the current aggregate key");
             return Ok(());
         }
 
@@ -396,15 +396,23 @@ where
             .await?
             .ok_or(Error::NoStacksChainTip)?;
 
+        tracing::debug!(stacks_chain_tip = %stacks_chain_tip.block_hash, "Got the stacks chain tip");
+
         let pending_requests_fut =
             self.get_pending_requests(bitcoin_chain_tip, aggregate_key, signer_public_keys);
 
         // If Self::get_pending_requests returns Ok(None) then there are no
         // requests to respond to, so let's just exit.
         let Some(pending_requests) = pending_requests_fut.await? else {
+            tracing::debug!("No requests to handle, exiting");
             return Ok(());
         };
 
+        tracing::debug!(
+            num_deposits = %pending_requests.deposits.len(),
+            num_withdrawals = pending_requests.withdrawals.len(),
+            "Fetched requests"
+        );
         // Construct the transaction package and store it in the database.
         let transaction_package = pending_requests.construct_transactions()?;
 
@@ -475,9 +483,14 @@ where
             .await?;
 
         if deposit_requests.is_empty() {
+            tracing::debug!("No stacks transactions to create, exiting");
             return Ok(());
         }
 
+        tracing::debug!(
+            num_deposits = %deposit_requests.len(),
+            "We have deposit requests that have been swept that may need minting"
+        );
         // We need to know the nonce to use, so we reach out to our stacks
         // node for the account information for our multi-sig address.
         //
@@ -1095,6 +1108,7 @@ where
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<Option<utxo::SbtcRequests>, Error> {
+        tracing::debug!("Fetching pending deposit and withdrawal requests");
         let context_window = self.context_window;
         let threshold = self.threshold;
 
@@ -1363,6 +1377,10 @@ where
         wallet.set_nonce(account.nonce);
 
         Ok(wallet)
+    }
+
+    fn signer_public_key(&self) -> PublicKey {
+        PublicKey::from_private_key(&self.private_key)
     }
 }
 
