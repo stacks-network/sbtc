@@ -9,7 +9,6 @@ use bitcoincore_rpc_json::GetMempoolEntryResult;
 use bitcoincore_rpc_json::GetTxOutResult;
 use rpc::BitcoinTxInfo;
 use rpc::GetTxResponse;
-use utxo::Fees;
 
 use crate::error::Error;
 
@@ -20,6 +19,29 @@ pub mod rpc;
 pub mod utxo;
 pub mod validation;
 pub mod zmq;
+
+/// Result of a call to `get_transaction_fee`.
+#[derive(Debug, Clone)]
+pub struct GetTransactionFeeResult {
+    /// The fee paid by the transaction.
+    pub fee: u64,
+    /// The fee rate of the transaction in satoshi per vbyte.
+    pub fee_rate: f64,
+    /// The virtual size of the transaction.
+    pub vsize: u64,
+}
+
+/// An enum representing the possible locations of a transaction, used to
+/// optimize certain lookups. It is assumed that an
+/// `Option<TransactionLookupHint>` is used to indicate that the caller is
+/// unsure of the location of the transaction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransactionLookupHint {
+    /// The transaction is in the mempool.
+    Mempool,
+    /// The transaction is in a (known) block.
+    Confirmed,
+}
 
 /// Represents the ability to interact with the bitcoin blockchain
 #[cfg_attr(any(test, feature = "testing"), mockall::automock())]
@@ -97,7 +119,11 @@ pub trait BitcoinInteract: Sync + Send {
     /// Gets the associated fees for the given transaction. It is expected that
     /// the provided transaction is known to the Bitcoin core node, either
     /// confirmed or in the mempool, otherwise an error will be returned.
-    fn get_transaction_fee(&self, tx: &Txid) -> impl Future<Output = Result<Fees, Error>> + Send;
+    fn get_transaction_fee(
+        &self,
+        tx: &Txid,
+        lookup_hint: Option<TransactionLookupHint>,
+    ) -> impl Future<Output = Result<GetTransactionFeeResult, Error>> + Send;
 
     /// Attempts to get the mempool entry for the given transaction ID.
     fn get_mempool_entry(

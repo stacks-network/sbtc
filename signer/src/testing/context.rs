@@ -17,6 +17,7 @@ use clarity::types::chainstate::{StacksAddress, StacksBlockId};
 use tokio::sync::{broadcast, Mutex};
 use tokio::time::error::Elapsed;
 
+use crate::bitcoin::GetTransactionFeeResult;
 use crate::stacks::api::TenureBlocks;
 use crate::stacks::wallet::SignerWallet;
 use crate::{
@@ -343,7 +344,8 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
     async fn get_transaction_fee(
         &self,
         _txid: &bitcoin::Txid,
-    ) -> Result<crate::bitcoin::utxo::Fees, Error> {
+        _lookup_hint: Option<crate::bitcoin::TransactionLookupHint>,
+    ) -> Result<GetTransactionFeeResult, Error> {
         unimplemented!()
     }
 
