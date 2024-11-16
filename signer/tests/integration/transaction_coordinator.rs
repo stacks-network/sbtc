@@ -1194,7 +1194,7 @@ async fn sign_bitcoin_transaction() {
 
         backfill_bitcoin_blocks(&db, rpc, &chain_tip_info.hash).await;
 
-        let network = network.connect().await;
+        let network = network.connect();
 
         signers.push((ctx, db, kp, network));
     }
