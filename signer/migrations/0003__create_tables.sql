@@ -334,7 +334,7 @@ CREATE TABLE sbtc_signer.bitcoin_tx_sighashes (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
 );
 
-CREATE TYPE sbtc_signer.prevout_type AS ENUM (
+CREATE TYPE sbtc_signer.validation_result AS ENUM (
     'ok',
     'fee_too_high',
     'cannot_sign_utxo',
