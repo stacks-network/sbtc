@@ -97,6 +97,9 @@ use crate::utxo_construction::make_deposit_request;
 use crate::zmq::BITCOIN_CORE_ZMQ_ENDPOINT;
 use crate::DATABASE_NUM;
 
+type IntegrationTestContext =
+    TestContext<PgStore, BitcoinCoreClient, WrappedMock<MockStacksInteract>, EmilyClient>;
+
 pub const GET_POX_INFO_JSON: &str =
     include_str!("../../tests/fixtures/stacksapi-get-pox-info-test-data.json");
 
@@ -1564,9 +1567,6 @@ where
     assert_eq!(contract_call.contract_name.as_str(), T::CONTRACT_NAME);
     assert_eq!(contract_call.function_name.as_str(), T::FUNCTION_NAME);
 }
-
-type IntegrationTestContext =
-    TestContext<PgStore, BitcoinCoreClient, WrappedMock<MockStacksInteract>, EmilyClient>;
 
 /// Wait for all signers to finish their coordinator duties and do this
 /// concurrently so that we don't miss anything (not sure if we need to do

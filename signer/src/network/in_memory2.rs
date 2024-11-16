@@ -101,11 +101,7 @@ impl SignerNetwork {
         // We create a new broadcast channel for this signer's network.
         let (signer_tx, _) = tokio::sync::broadcast::channel(DEFAULT_SIGNER_CAPACITY);
 
-        Self {
-            wan_tx,
-            signer_tx,
-            id,
-        }
+        Self { wan_tx, signer_tx, id }
     }
 
     /// Sends a message to the WAN network.
