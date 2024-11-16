@@ -19,7 +19,7 @@ use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::ScriptPubKey;
-use crate::storage::model::SignerSigHash;
+use crate::storage::model::SigHash;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
@@ -280,28 +280,28 @@ impl sqlx::postgres::PgHasArrayType for StacksTxId {
     }
 }
 
-/// For the [`SignerSigHash`]
+/// For the [`SigHash`]
 
-impl<'r> sqlx::Decode<'r, sqlx::Postgres> for SignerSigHash {
+impl<'r> sqlx::Decode<'r, sqlx::Postgres> for SigHash {
     fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
         let bytes = <[u8; 32] as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
         Ok(bitcoin::TapSighash::from_byte_array(bytes).into())
     }
 }
 
-impl sqlx::Type<sqlx::Postgres> for SignerSigHash {
+impl sqlx::Type<sqlx::Postgres> for SigHash {
     fn type_info() -> sqlx::postgres::PgTypeInfo {
         <[u8; 32] as sqlx::Type<sqlx::Postgres>>::type_info()
     }
 }
 
-impl<'r> sqlx::Encode<'r, sqlx::Postgres> for SignerSigHash {
+impl<'r> sqlx::Encode<'r, sqlx::Postgres> for SigHash {
     fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> Result<IsNull, BoxDynError> {
         <[u8; 32] as sqlx::Encode<'r, sqlx::Postgres>>::encode_by_ref(&self.to_byte_array(), buf)
     }
 }
 
-impl sqlx::postgres::PgHasArrayType for SignerSigHash {
+impl sqlx::postgres::PgHasArrayType for SigHash {
     fn array_type_info() -> sqlx::postgres::PgTypeInfo {
         <[u8; 32] as sqlx::postgres::PgHasArrayType>::array_type_info()
     }

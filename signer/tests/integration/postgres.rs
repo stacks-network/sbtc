@@ -40,6 +40,8 @@ use signer::storage;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
+use signer::storage::model::BitcoinTxSigHash;
+use signer::storage::model::BitcoinWithdrawalOutput;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::QualifiedRequestId;
 use signer::storage::model::ScriptPubKey;
@@ -3074,5 +3076,51 @@ async fn deposit_report_with_deposit_request_confirmed() {
         DepositConfirmationStatus::Confirmed(block.block_height, block.block_hash);
     assert_eq!(report.status, expected_status);
 
+    signer::testing::storage::drop_db(db).await;
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn can_write_and_get_bitcoin_tx_sighashes() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let sighashes: Vec<BitcoinTxSigHash> = (0..5).map(|_| fake::Faker.fake()).collect();
+
+    for sighash in sighashes.iter() {
+        db.write_bitcoin_tx_sighash(sighash).await.unwrap();
+    }
+
+    for sighash in sighashes.iter() {
+        let got = db
+            .get_bitcoin_tx_sighash(&sighash.txid)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got, *sighash);
+    }
+    signer::testing::storage::drop_db(db).await;
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn can_write_and_get_bitcoin_withdrawal_outputs() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let outputs: Vec<BitcoinWithdrawalOutput> = (0..5).map(|_| fake::Faker.fake()).collect();
+
+    for output in outputs.iter() {
+        db.write_bitcoin_withdrawal_output(output).await.unwrap();
+    }
+
+    for output in outputs.iter() {
+        let got = db
+            .get_bitcoin_withdrawal_output(output.request_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got, *output);
+    }
     signer::testing::storage::drop_db(db).await;
 }

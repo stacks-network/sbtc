@@ -9,12 +9,13 @@ use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use clarity::vm::types::PrincipalData;
 use serde::Deserialize;
 use serde::Serialize;
-use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
+use stacks_common::types::chainstate::BurnchainHeaderHash;
+use stacks_common::types::chainstate::StacksBlockId;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::Fees;
-use crate::bitcoin::validation::ConstructionVersion;
 use crate::bitcoin::validation::InputValidationResult;
+use crate::bitcoin::validation::WithdrawalValidationResult;
 use crate::block_observer::Deposit;
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -1108,31 +1109,41 @@ pub type Bytes = Vec<u8>;
 /// A signature hash for a bitcoin transaction.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct SignerSigHash(bitcoin::TapSighash);
+pub struct SigHash(bitcoin::TapSighash);
 
-impl Deref for SignerSigHash {
+impl Deref for SigHash {
     type Target = bitcoin::TapSighash;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl From<bitcoin::TapSighash> for SignerSigHash {
+impl From<bitcoin::TapSighash> for SigHash {
     fn from(value: bitcoin::TapSighash) -> Self {
         Self(value)
     }
 }
 
-impl std::fmt::Display for SignerSigHash {
+impl std::fmt::Display for SigHash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
     }
 }
 
+/// The version of the algorithm that constructed the bitcoin transaction.
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
+#[sqlx(type_name = "varchar", rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub enum ConstructionVersion {
+    /// The first version for constructing a UTXO
+    V0,
+}
+
 /// The sighash and enough metadata to piece together what happened.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
-// #[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub struct BitcoinSigHash {
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct BitcoinTxSigHash {
     /// The transaction ID of the bitcoin transaction that sweeps funds
     /// into and/or out of the signers' UTXO.
     pub txid: BitcoinTxId,
@@ -1148,7 +1159,7 @@ pub struct BitcoinSigHash {
     #[sqlx(try_from = "i32")]
     pub prevout_output_index: u32,
     /// The sighash associated with the prevout.
-    pub sighash: SignerSigHash,
+    pub sighash: SigHash,
     /// The type of prevout that we are dealing with.
     pub prevout_type: TxPrevoutType,
     /// The result of validation that was done on the input. For deposits,
@@ -1159,6 +1170,35 @@ pub struct BitcoinSigHash {
     /// Whether the transaction is valid. A transaction is invalid if any
     /// of the inputs or outputs failed validation.
     pub is_valid_tx: bool,
+    /// The version of the algorithm that was used to create the bitcoin
+    /// transaction.
+    pub construction_version: ConstructionVersion,
+}
+
+/// An output that was created due to a withdrawal request.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct BitcoinWithdrawalOutput {
+    /// The ID of the transaction that includes this withdrawal output.
+    pub txid: BitcoinTxId,
+    /// The index of the referenced output in the transaction's outputs.
+    #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
+    #[sqlx(try_from = "i32")]
+    pub output_index: u32,
+    /// The request ID of the withdrawal request. These increment for each
+    /// withdrawal, but there can be duplicates if there is a reorg that
+    /// affects a transaction that calls the `initiate-withdrawal-request`
+    /// public function.
+    #[sqlx(try_from = "i64")]
+    pub request_id: u64,
+    /// The stacks transaction ID that lead to the creation of the
+    /// withdrawal request.
+    pub stacks_txid: StacksTxId,
+    /// Stacks block ID of the block that includes the transaction
+    /// associated with this withdrawal request.
+    pub stacks_block_hash: StacksBlockHash,
+    /// The outcome of validation of the withdrawal request.
+    pub validation_result: WithdrawalValidationResult,
     /// The version of the algorithm that was used to create the bitcoin
     /// transaction.
     pub construction_version: ConstructionVersion,

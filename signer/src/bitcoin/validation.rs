@@ -13,12 +13,12 @@ use crate::context::Context;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::storage::model::BitcoinBlockHash;
-use crate::storage::model::BitcoinSigHash;
 use crate::storage::model::BitcoinTxId;
+use crate::storage::model::BitcoinTxSigHash;
+use crate::storage::model::BitcoinWithdrawalOutput;
+use crate::storage::model::ConstructionVersion;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::SignerVotes;
-use crate::storage::model::StacksBlockHash;
-use crate::storage::model::StacksTxId;
 use crate::storage::DbRead;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
@@ -248,7 +248,7 @@ impl BitcoinTxContext {
 
 /// An intermediate struct to aid in computing validation of deposits and
 /// withdrawals and transforming the computed sighash into a
-/// [`BitcoinSigHash`].
+/// [`BitcoinTxSigHash`].
 pub struct TempOutput {
     /// The sighash of the signers' prevout
     pub signer_sighash: SignatureHash,
@@ -267,46 +267,10 @@ pub struct TempOutput {
     pub chain_tip_height: u64,
 }
 
-/// The version of the algorithm that constructed the bitcoin transaction.
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
-#[sqlx(type_name = "varchar", rename_all = "snake_case")]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[strum(serialize_all = "snake_case")]
-#[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub enum ConstructionVersion {
-    /// The first version for constructing a UTXO
-    V0,
-}
-
-/// An output that was created due to a withdrawal request.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BitcoinWithdrawalOutput {
-    /// The ID of the transaction that includes this withdrawal output.
-    pub txid: BitcoinTxId,
-    /// The index of the referenced output in the transaction's outputs.
-    pub output_index: u32,
-    /// The request ID of the withdrawal request. These increment for each
-    /// withdrawal, but there can be duplicates if there is a reorg that
-    /// affects a transaction that calls the `initiate-withdrawal-request`
-    /// public function.
-    pub request_id: u64,
-    /// The stacks transaction ID that lead to the creation of the
-    /// withdrawal request.
-    pub stacks_txid: StacksTxId,
-    /// Stacks block ID of the block that includes the transaction
-    /// associated with this withdrawal request.
-    pub stacks_block_hash: StacksBlockHash,
-    /// The outcome of validation of the withdrawal request.
-    pub validation_result: WithdrawalValidationResult,
-    /// The version of the algorithm that was used to create the bitcoin
-    /// transaction.
-    pub construction_version: ConstructionVersion,
-}
-
 impl TempOutput {
     /// Construct the sighashes for the inputs of the associated
     /// transaction.
-    pub fn to_input_rows(&self) -> Vec<BitcoinSigHash> {
+    pub fn to_input_rows(&self) -> Vec<BitcoinTxSigHash> {
         // If any of the inputs or outputs fail validation, then
         // transaction is invalid, so we won't sign any of the inputs or
         // outputs.
@@ -334,7 +298,7 @@ impl TempOutput {
         [(self.signer_sighash, InputValidationResult::Ok)]
             .into_iter()
             .chain(deposit_sighashes)
-            .map(|(sighash, validation_result)| BitcoinSigHash {
+            .map(|(sighash, validation_result)| BitcoinTxSigHash {
                 txid: sighash.txid.into(),
                 sighash: sighash.sighash.into(),
                 chain_tip: self.chain_tip,
@@ -481,7 +445,10 @@ impl InputValidationResult {
 
 /// The responses for validation of the outputs of a sweep transaction on
 /// bitcoin.
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
+#[sqlx(type_name = "transaction_type", rename_all = "snake_case")]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+#[strum(serialize_all = "snake_case")]
 pub enum WithdrawalValidationResult {
     /// The signer does not have a record of the withdrawal request in
     /// their database.

@@ -329,6 +329,18 @@ pub trait DbRead {
         context_window: u16,
         prevout_txid: &model::BitcoinTxId,
     ) -> impl Future<Output = Result<Vec<model::SweepTransaction>, Error>> + Send;
+
+    /// Get the bitcoin sighash output.
+    fn get_bitcoin_tx_sighash(
+        &self,
+        txid: &model::BitcoinTxId,
+    ) -> impl Future<Output = Result<Option<model::BitcoinTxSigHash>, Error>> + Send;
+
+    /// Get the bitcoin withdrawal output.
+    fn get_bitcoin_withdrawal_output(
+        &self,
+        request_id: u64,
+    ) -> impl Future<Output = Result<Option<model::BitcoinWithdrawalOutput>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.
@@ -465,9 +477,15 @@ pub trait DbWrite {
         prevout: &model::TxPrevout,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 
-    /// Write the bitcoin sighash to the database.
-    fn write_bitcoin_sighash(
+    /// Write the bitcoin tx sighash to the database.
+    fn write_bitcoin_tx_sighash(
         &self,
-        sighash: &model::BitcoinSigHash,
+        sighash: &model::BitcoinTxSigHash,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write the bitcoin withdrawal output to the database.
+    fn write_bitcoin_withdrawal_output(
+        &self,
+        output: &model::BitcoinWithdrawalOutput,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 }

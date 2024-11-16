@@ -321,28 +321,28 @@ CREATE UNIQUE INDEX uix_swept_deposits_req_txid_req_output_index_pkgd_txid
     ON sbtc_signer.swept_deposits(deposit_request_txid, deposit_request_output_index, sweep_transaction_txid);
 
 
-CREATE TABLE sbtc_signer.bitcoin_tx_sighashes (
+CREATE TABLE sbtc_signer.bitcoin_txs_sighashes (
     txid BYTEA PRIMARY KEY,
     chain_tip BYTEA NOT NULL,
     prevout_txid BYTEA NOT NULL,
     prevout_output_index INTEGER NOT NULL,
     sighash BYTEA NOT NULL,
     prevout_type sbtc_signer.prevout_type NOT NULL,
-    validation_result sbtc_signer.validation_result NOT NULL,
+    validation_result TEXT NOT NULL,
     is_valid_tx BOOLEAN NOT NULL,
     construction_version TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
-CREATE TYPE sbtc_signer.validation_result AS ENUM (
-    'ok',
-    'fee_too_high',
-    'cannot_sign_utxo',
-    'tx_not_on_best_chain',
-    'deposit_utxo_spent',
-    'lock_time_expiry',
-    'no_vote',
-    'rejected_request',
-    'unknown',
-    'unsupported_lock_time'
+CREATE TABLE sbtc_signer.bitcoin_withdrawals_outputs (
+    request_id BIGINT PRIMARY KEY,
+    -- The ID of the bitcoin transaction that includes this withdrawal output.
+    txid BYTEA NOT NULL,
+    output_index INTEGER NOT NULL,
+    -- The ID of the stacks transaction lead to the creation of the withdrawal request.
+    stacks_txid BYTEA NOT NULL,
+    stacks_block_hash BYTEA NOT NULL,
+    validation_result TEXT NOT NULL,
+    construction_version TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
