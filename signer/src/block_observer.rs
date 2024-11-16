@@ -125,8 +125,6 @@ where
 {
     /// Run the block observer
     pub async fn run(mut self) -> Result<(), Error> {
-        let span = tracing::debug_span!("block-observer", chain_tip = tracing::field::Empty,);
-        let _guard = span.enter();
         let term = self.context.get_termination_handle();
 
         loop {
@@ -140,7 +138,9 @@ where
 
             match poll.await {
                 Ok(Some(Ok(block_hash))) => {
-                    span.record("chain_tip", tracing::field::display(&block_hash));
+                    let span = tracing::debug_span!("block-observer", chain_tip = %block_hash);
+                    let _guard = span.enter();
+
                     tracing::info!("observed new bitcoin block from stream");
 
                     let next_blocks = match self.next_blocks_to_process(block_hash).await {
@@ -164,8 +164,6 @@ where
 
                     self.context
                         .signal(SignerEvent::BitcoinBlockObserved.into())?;
-
-                    span.record("chain_tip", tracing::field::Empty);
                 }
                 Ok(Some(Err(error))) => {
                     tracing::warn!(%error, "error decoding new bitcoin block hash from stream");

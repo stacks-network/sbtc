@@ -14,7 +14,6 @@ use futures::StreamExt as _;
 use futures::TryStreamExt;
 use sha2::Digest;
 use tokio_stream::wrappers::BroadcastStream;
-use tracing::Instrument;
 use wsts::net::SignatureType;
 
 use crate::bitcoin::utxo;
@@ -165,13 +164,6 @@ where
 {
     /// Run the coordinator event loop
     pub async fn run(mut self) -> Result<(), Error> {
-        let span = tracing::debug_span!(
-            "tx-coordinator",
-            public_key = tracing::field::display(&self.signer_public_key()),
-            chain_tip = tracing::field::Empty,
-        );
-        let _guard = span.enter();
-
         tracing::info!("starting transaction coordinator event loop");
         let term = self.context.get_termination_handle();
         let mut signal_rx = self.context.get_signal_receiver();
@@ -185,23 +177,17 @@ where
                 Ok(Ok(SignerSignal::Event(SignerEvent::TxSigner(
                     TxSignerEvent::NewRequestsHandled,
                 )))) => {
-                    tracing::debug!("received signal; processing new blocks");
-                    let _ = self
-                        .process_new_blocks()
-                        .in_current_span()
-                        .await
-                        .inspect_err(|error| {
-                            tracing::error!(
-                                ?error,
-                                "error processing new blocks; skipping this round"
-                            )
-                        });
+                    tracing::debug!("received signal; processing requests");
+                    if let Err(error) = self.process_new_blocks().await {
+                        tracing::error!(
+                            %error,
+                            "error processing requests; skipping this round"
+                        );
+                    }
 
                     tracing::trace!("sending tenure completed signal");
                     self.context
                         .signal(TxCoordinatorEvent::TenureCompleted.into())?;
-
-                    span.record("bitcoin_chain_tip", tracing::field::Empty);
                 }
                 Ok(Err(_)) => {
                     tracing::debug!(
@@ -268,6 +254,13 @@ where
 
     #[tracing::instrument(skip_all)]
     async fn process_new_blocks(&mut self) -> Result<(), Error> {
+        let span = tracing::debug_span!(
+            "tx-coordinator",
+            public_key = tracing::field::display(&self.signer_public_key()),
+            chain_tip = tracing::field::Empty,
+        );
+        let _guard = span.enter();
+
         if !self.is_epoch3().await? {
             return Ok(());
         }
@@ -285,7 +278,6 @@ where
             .await?
             .ok_or(Error::NoChainTip)?;
 
-        let span = tracing::Span::current();
         span.record("chain_tip", tracing::field::display(&bitcoin_chain_tip));
 
         // We first need to determine if we are the coordinator, so we need

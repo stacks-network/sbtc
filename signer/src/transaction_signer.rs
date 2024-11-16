@@ -143,13 +143,6 @@ where
 {
     /// Run the signer event loop
     pub async fn run(mut self) -> Result<(), Error> {
-        let span = tracing::debug_span!(
-            "tx-signer",
-            public_key = tracing::field::display(&self.signer_pub_key()),
-            chain_tip = tracing::field::Empty,
-        );
-        let _guard = span.enter();
-
         let mut signal_rx = self.context.get_signal_receiver();
         let mut term = self.context.get_termination_handle();
         let mut network = self.network.clone();
@@ -203,8 +196,6 @@ where
                     if let Err(error) = self.handle_new_requests().await {
                         tracing::warn!(%error, "error handling new requests; skipping this round");
                     }
-
-                    span.record("chain_tip", tracing::field::Empty);
                 }
 
                 // Process all messages which have been received (both from the
@@ -216,7 +207,6 @@ where
                             tracing::error!(%error, "error handling signer message");
                         }
                     }
-                    span.record("chain_tip", tracing::field::Empty);
                 }
 
                 // A small delay to avoid busy-looping if there are no events
@@ -271,6 +261,13 @@ where
 
     #[tracing::instrument(skip_all)]
     async fn handle_new_requests(&mut self) -> Result<(), Error> {
+        let span = tracing::debug_span!(
+            "tx-signer",
+            public_key = tracing::field::display(&self.signer_pub_key()),
+            chain_tip = tracing::field::Empty,
+        );
+        let _guard = span.enter();
+
         let bitcoin_chain_tip = self
             .context
             .get_storage()
@@ -278,7 +275,6 @@ where
             .await?
             .ok_or(Error::NoChainTip)?;
 
-        let span = tracing::Span::current();
         span.record("chain_tip", tracing::field::display(bitcoin_chain_tip));
 
         for deposit_request in self
@@ -305,6 +301,12 @@ where
 
     #[tracing::instrument(skip_all)]
     async fn handle_signer_message(&mut self, msg: &network::Msg) -> Result<(), Error> {
+        let span = tracing::debug_span!(
+            "tx-signer",
+            public_key = tracing::field::display(&self.signer_pub_key()),
+            chain_tip = tracing::field::Empty,
+        );
+        let _guard = span.enter();
         if !msg.verify() {
             tracing::warn!("unable to verify message");
             return Err(Error::InvalidSignature);
@@ -313,26 +315,24 @@ where
         let chain_tip_report = self
             .inspect_msg_chain_tip(msg.signer_pub_key, &msg.bitcoin_chain_tip)
             .await?;
+        let MsgChainTipReport {
+            sender_is_coordinator,
+            chain_tip_status,
+            chain_tip,
+        } = chain_tip_report;
 
         let span = tracing::Span::current();
-        span.record(
-            "chain_tip",
-            tracing::field::display(chain_tip_report.chain_tip),
-        );
+        span.record("chain_tip", tracing::field::display(chain_tip));
 
         tracing::trace!(
-            sender_is_coordinator = chain_tip_report.sender_is_coordinator,
-            chain_tip_status = ?chain_tip_report.chain_tip_status,
+            %sender_is_coordinator,
+            %chain_tip_status,
             msg_chain_tip = %msg.bitcoin_chain_tip,
             ?msg.inner.payload,
             "handling message"
         );
 
-        match (
-            &msg.inner.payload,
-            chain_tip_report.sender_is_coordinator,
-            chain_tip_report.chain_tip_status,
-        ) {
+        match (&msg.inner.payload, sender_is_coordinator, chain_tip_status) {
             (message::Payload::SignerDepositDecision(decision), _, _) => {
                 self.persist_received_deposit_decision(decision, msg.signer_pub_key)
                     .await?;
@@ -1101,7 +1101,8 @@ struct MsgChainTipReport {
 }
 
 /// The status of a chain tip relative to the known blocks in the signer database.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, strum::Display)]
+#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 enum ChainTipStatus {
     /// The chain tip is the tip of the canonical fork.
     Canonical,
