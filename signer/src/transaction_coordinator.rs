@@ -687,7 +687,7 @@ where
                 // to do that at the source when we receive the message.
 
                 if &msg.bitcoin_chain_tip != chain_tip {
-                    tracing::warn!(?msg, "concurrent signing round message observed");
+                    tracing::warn!(origin = %msg.signer_pub_key, "concurrent signing round message observed");
                     continue;
                 }
 
@@ -914,7 +914,7 @@ where
             let msg = self.receive_message().await;
 
             if &msg.bitcoin_chain_tip != bitcoin_chain_tip {
-                tracing::warn!(?msg, "concurrent WSTS activity observed");
+                tracing::warn!(origin = %msg.signer_pub_key, "concurrent WSTS activity observed");
                 continue;
             }
 
