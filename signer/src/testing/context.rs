@@ -344,6 +344,7 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
     async fn get_transaction_fee(
         &self,
         _txid: &bitcoin::Txid,
+        _lookup_hint: Option<crate::bitcoin::TransactionLookupHint>,
     ) -> Result<GetTransactionFeeResult, Error> {
         unimplemented!()
     }

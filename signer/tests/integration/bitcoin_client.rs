@@ -5,7 +5,7 @@ use bitcoin::{AddressType, Amount, BlockHash, ScriptBuf, Sequence, Witness};
 use bitcoincore_rpc::RpcApi as _;
 use sbtc::testing::regtest::{self, p2wpkh_sign_transaction, AsUtxo as _, Recipient};
 use signer::bitcoin::rpc::BitcoinCoreClient;
-use signer::bitcoin::BitcoinInteract;
+use signer::bitcoin::{BitcoinInteract, TransactionLookupHint};
 use signer::util::ApiFallbackClient;
 use url::Url;
 
@@ -133,7 +133,7 @@ async fn calculate_transaction_fee_works_confirmed() {
         .expect("expected to be able to retrieve txinfo verbosity 2 for confirmed tx");
 
     let result = client
-        .get_transaction_fee(&txid)
+        .get_transaction_fee(&txid, Some(TransactionLookupHint::Confirmed))
         .await
         .expect("failed to calculate transaction fee");
 
@@ -195,7 +195,7 @@ async fn calculate_transaction_fee_works_mempool() {
     client.broadcast_transaction(&tx).await.unwrap();
 
     let result = client
-        .get_transaction_fee(&tx.compute_txid())
+        .get_transaction_fee(&tx.compute_txid(), Some(TransactionLookupHint::Mempool))
         .await
         .expect("failed to calculate transaction fee");
 

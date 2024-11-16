@@ -22,6 +22,7 @@ use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::Fees;
 use crate::bitcoin::utxo::GetFees;
 use crate::bitcoin::BitcoinInteract;
+use crate::bitcoin::TransactionLookupHint;
 use crate::context::TxCoordinatorEvent;
 use crate::context::TxSignerEvent;
 use crate::context::{Context, SignerEvent, SignerSignal};
@@ -1363,13 +1364,12 @@ where
         Ok(wallet)
     }
 
-    /// Fetch the sweep transactions from the mempool that are spending the
-    /// signer's UTXO.
-    ///
-    /// This method returns the sweep transactions in an unordered list. If no
-    /// sweep transactions are found in the mempool, an empty list is returned.
-    #[tracing::instrument(skip_all, fields(%chain_tip))]
-    async fn assess_mempool_sweep_transaction_fees(
+    /// Assesses the total fees paid for any outstanding sweep transactions in
+    /// the mempool which may need to be RBF'd. If there are no sweep
+    /// transactions which are spending the signer's UTXO, then this function
+    /// will return [`None`].
+    #[tracing::instrument(skip_all, fields(%chain_tip, signer_utxo = %signer_utxo.outpoint))]
+    pub async fn assess_mempool_sweep_transaction_fees(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         signer_utxo: &utxo::SignerUtxo,
@@ -1395,11 +1395,15 @@ where
         // the sweep package. Note that even if only one transaction was
         // returned above, we still need to get the fee for it, which is why
         // there's no special logic for one vs multiple.
+        //
+        // This can technically error if the mempool transactions are not found,
+        // but it shouldn't happen since we got the transaction ids from
+        // bitcoin-core itself.
         let best_sweep_root = try_join_all(mempool_txs_spending_utxo.iter().map(|tx| {
             let bitcoin_client = bitcoin_client.clone();
             async move {
                 bitcoin_client
-                    .get_transaction_fee(tx)
+                    .get_transaction_fee(tx, Some(TransactionLookupHint::Mempool))
                     .await
                     .map(|fee| (tx, fee))
             }
@@ -1425,10 +1429,15 @@ where
             .find_mempool_descendants(best_sweep_root_txid)
             .await?;
 
-        // Retrieve fees for all descendant transactions.
+        // Retrieve fees for all descendant transactions. If there were no
+        // descendants then this will just result in an empty list.
         let descendant_fees = try_join_all(descendant_txids.iter().map(|txid| {
             let bitcoin_client = bitcoin_client.clone();
-            async move { bitcoin_client.get_transaction_fee(txid).await }
+            async move {
+                bitcoin_client
+                    .get_transaction_fee(txid, Some(TransactionLookupHint::Mempool))
+                    .await
+            }
         }))
         .await?;
 
@@ -1443,7 +1452,9 @@ where
             });
 
         // Calculate the fee rate based on the total fees and vsizes of the
-        // transactions which we've found.
+        // transactions which we've found. Since this is returning transactions
+        // from bitcoin-core, we should have valid fees and sizes, so we don't
+        // need to check for division by zero.
         let rate = total_fees as f64 / total_vsize as f64;
 
         Ok(Some(Fees { total: total_fees, rate }))
