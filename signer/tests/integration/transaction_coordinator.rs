@@ -918,7 +918,6 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn run_dkg_from_scratch() {
-    signer::logging::setup_logging("signer=trace", false);
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (signer_wallet, signer_key_pairs): (_, [Keypair; 3]) =
         testing::wallet::regtest_bootstrap_wallet();
@@ -1161,8 +1160,8 @@ async fn run_dkg_from_scratch() {
 /// This test is still a little flaky. DKG doesn't run correctly every
 /// time, and even when it does it might not pick up and process the
 /// deposit correctly.
-// #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[ignore]
+// #[ignore]
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn sign_bitcoin_transaction() {
     let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
