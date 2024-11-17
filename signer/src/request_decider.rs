@@ -55,21 +55,21 @@ where
     B: BlocklistChecker,
 {
     /// Run the signer event loop
+    #[tracing::instrument(skip_all, fields(public_key = %self.signer_public_key()), name = "request-decider")]
     pub async fn run(mut self) -> Result<(), Error> {
-        if let Err(error) = self
-            .context
-            .signal(RequestDeciderEvent::EventLoopStarted.into())
-        {
+        let start_message = RequestDeciderEvent::EventLoopStarted.into();
+        if let Err(error) = self.context.signal(start_message) {
             tracing::error!(%error, "error signaling event loop start");
             return Err(error);
         };
+
         let mut signal_stream = self.context.new_signal_stream(&self.network);
 
-        loop {
-            match signal_stream.next().await {
-                Some(Ok(SignerSignal::Command(SignerCommand::Shutdown))) => break,
-                Some(Ok(SignerSignal::Command(SignerCommand::P2PPublish(_)))) => {}
-                Some(Ok(SignerSignal::Event(event))) => match event {
+        while let Some(message) = signal_stream.next().await {
+            match message {
+                Ok(SignerSignal::Command(SignerCommand::Shutdown)) => break,
+                Ok(SignerSignal::Command(SignerCommand::P2PPublish(_))) => {}
+                Ok(SignerSignal::Event(event)) => match event {
                     SignerEvent::P2P(P2PEvent::MessageReceived(msg)) => {
                         if let Err(error) = self.handle_signer_message(&msg).await {
                             tracing::error!(%error, "error handling signer message");
@@ -79,37 +79,40 @@ where
                         if let Err(error) = self.handle_new_requests().await {
                             tracing::warn!(%error, "error handling new requests; skipping this round");
                         }
+
+                        let message = RequestDeciderEvent::NewRequestsHandled.into();
+                        // If there is an error here then the application
+                        // is on it's way down since
+                        // [`SignerContext::signal`] sends a shutdown
+                        // signal on error. We've also logged the error
+                        // already.
+                        if let Err(_) = self.context.signal(message) {
+                            break;
+                        }
                     }
                     _ => {}
                 },
                 // This means one of the broadcast streams is lagging. We
                 // will just continue and hope for the best next time.
-                Some(Err(error)) => {
+                Err(error) => {
                     tracing::error!(%error, "received an error over one of the broadcast streams");
                 }
-                None => break,
             }
         }
 
-        tracing::info!("transaction signer event loop has been stopped");
+        tracing::info!("request decider event loop has been stopped");
         Ok(())
     }
 
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(skip_all, fields(chain_tip = tracing::field::Empty))]
     async fn handle_new_requests(&mut self) -> Result<(), Error> {
-        let span = tracing::debug_span!(
-            "tx-signer",
-            public_key = %self.signer_public_key(),
-            chain_tip = tracing::field::Empty,
-        );
-        let _guard = span.enter();
-
         let db = self.context.get_storage();
         let chain_tip = db
             .get_bitcoin_canonical_chain_tip()
             .await?
             .ok_or(Error::NoChainTip)?;
 
+        let span = tracing::Span::current();
         span.record("chain_tip", tracing::field::display(chain_tip));
 
         let deposit_requests = db
@@ -130,9 +133,6 @@ where
                 .await?;
         }
 
-        self.context
-            .signal(RequestDeciderEvent::NewRequestsHandled.into())?;
-
         Ok(())
     }
 
@@ -142,7 +142,7 @@ where
             return Err(Error::InvalidSignature);
         }
 
-        tracing::trace!(payload = ?msg.inner.payload, "handling message");
+        tracing::trace!(payload = %msg.inner.payload, "handling message");
         match &msg.inner.payload {
             Payload::SignerDepositDecision(decision) => {
                 self.persist_received_deposit_decision(decision, msg.signer_pub_key)
