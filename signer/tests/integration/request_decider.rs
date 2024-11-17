@@ -20,7 +20,6 @@ use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::TestSweepSetup;
 use crate::DATABASE_NUM;
 
-
 fn test_environment(
     db: PgStore,
     signing_threshold: u32,
@@ -72,7 +71,6 @@ async fn should_store_decisions_for_pending_deposit_requests() {
     // We need to clone the connection so that we can drop the associated
     // databases later.
     test_environment(db.clone(), signing_threshold, num_signers)
-        
         .assert_should_store_decisions_for_pending_deposit_requests()
         .await;
 
@@ -90,8 +88,7 @@ async fn should_store_decisions_for_pending_withdraw_requests() {
     // We need to clone the connection so that we can drop the associated
     // databases later.
     test_environment(db.clone(), signing_threshold, num_signers)
-        
-        .assert_should_store_decisions_for_pending_withdraw_requests()
+        .assert_should_store_decisions_for_pending_withdrawal_requests()
         .await;
 
     // Now drop the database that we just created.
@@ -108,7 +105,6 @@ async fn should_store_decisions_received_from_other_signers() {
     // We need to clone the connection so that we can drop the associated
     // databases later.
     test_environment(db.clone(), signing_threshold, num_signers)
-        
         .assert_should_store_decisions_received_from_other_signers()
         .await;
 

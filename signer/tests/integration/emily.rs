@@ -29,8 +29,7 @@ use signer::bitcoin::rpc::BitcoinTxInfo;
 use signer::bitcoin::rpc::GetTxResponse;
 use signer::block_observer;
 use signer::context::Context;
-use signer::context::SignerEvent;
-use signer::context::TxSignerEvent;
+use signer::context::RequestDeciderEvent;
 use signer::emily_client::EmilyClient;
 use signer::error::Error;
 use signer::keys;
@@ -535,7 +534,7 @@ async fn deposit_flow() {
 
     // Wake coordinator up (again)
     context
-        .signal(SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled).into())
+        .signal(RequestDeciderEvent::NewRequestsHandled.into())
         .expect("failed to signal");
 
     // Await the `wait_for_tx_task` to receive the first transaction broadcasted.

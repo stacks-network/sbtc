@@ -94,9 +94,6 @@ pub enum RequestDeciderEvent {
 /// Events that can be triggered from the transaction signer.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TxSignerEvent {
-    /// New pending requests have been handled. This is primarily used as a
-    /// trigger for the transaction coordinator to process the new blocks.
-    NewRequestsHandled,
     /// Event which occurs when the transaction signer has sent a message to
     /// the P2P network.
     MessageGenerated(crate::network::Msg),

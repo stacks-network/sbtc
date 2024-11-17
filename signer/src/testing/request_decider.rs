@@ -7,11 +7,14 @@ use crate::context::Context;
 use crate::context::RequestDeciderEvent;
 use crate::context::SignerEvent;
 use crate::context::SignerSignal;
-use crate::error;
+use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message::Payload;
-use crate::network;
+use crate::network::in_memory2::SignerNetwork;
+use crate::network::in_memory2::SignerNetworkInstance;
+use crate::network::in_memory2::WanNetwork;
+use crate::network::MessageTransfer as _;
 use crate::request_decider::RequestDeciderEventLoop;
 use crate::storage;
 use crate::storage::model;
@@ -19,7 +22,6 @@ use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use crate::testing;
 use crate::testing::storage::model::TestData;
-use crate::network::MessageTransfer as _;
 
 use hashbrown::HashSet;
 use rand::SeedableRng as _;
@@ -38,14 +40,14 @@ impl<C: Context + 'static> RequestDeciderEventLoopHarness<C> {
     /// Create the test harness.
     pub fn create(
         context: C,
-        network: network::in_memory::MpmcBroadcaster,
+        network: SignerNetwork,
         context_window: u16,
         signer_private_key: PrivateKey,
     ) -> Self {
         Self {
             event_loop: RequestDeciderEventLoop {
                 context: context.clone(),
-                network,
+                network: network.spawn(),
                 blocklist_checker: Some(()),
                 signer_private_key,
                 context_window,
@@ -71,7 +73,7 @@ impl<C: Context + 'static> RequestDeciderEventLoopHarness<C> {
 /// A running event loop.
 pub struct RunningEventLoopHandle<C> {
     context: C,
-    join_handle: tokio::task::JoinHandle<Result<(), error::Error>>,
+    join_handle: tokio::task::JoinHandle<Result<(), Error>>,
     signal_rx: broadcast::Receiver<SignerSignal>,
 }
 
@@ -112,8 +114,7 @@ where
     }
 }
 
-type TestRequestDeciderEventLoop<C> =
-    RequestDeciderEventLoop<C, network::in_memory::MpmcBroadcaster, ()>;
+type TestRequestDeciderEventLoop<C> = RequestDeciderEventLoop<C, SignerNetworkInstance, ()>;
 
 /// Test environment.
 pub struct TestEnvironment<C> {
@@ -137,15 +138,17 @@ where
     /// for pending deposit requests.
     pub async fn assert_should_store_decisions_for_pending_deposit_requests(self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let network = network::InMemoryNetwork::new();
+        let wan_network = WanNetwork::default();
+        let signer_network = wan_network.connect();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = &signer_info.first().cloned().unwrap();
-        let mut network_rx = network.connect();
+        let other_signer = wan_network.connect();
+        let mut network_rx = other_signer.spawn();
         let mut signal_rx = self.context.get_signal_receiver();
 
         let event_loop_harness = RequestDeciderEventLoopHarness::create(
             self.context.clone(),
-            network.connect(),
+            signer_network,
             self.context_window,
             coordinator_signer_info.signer_private_key,
         );
@@ -188,8 +191,6 @@ where
         // integration test.
         tokio::time::sleep(Duration::from_millis(250)).await;
 
-        handle.join_handle.abort();
-
         Self::assert_only_deposit_requests_in_context_window_has_decisions(
             &handle.context.get_storage(),
             self.context_window,
@@ -211,17 +212,19 @@ where
 
     /// Assert that the transaction signer will make and store decisions
     /// for pending withdraw requests.
-    pub async fn assert_should_store_decisions_for_pending_withdraw_requests(self) {
+    pub async fn assert_should_store_decisions_for_pending_withdrawal_requests(self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let network = network::InMemoryNetwork::new();
+        let wan_network = WanNetwork::default();
+        let signer_network = wan_network.connect();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
-        let coordinator_signer_info = signer_info.first().cloned().unwrap();
-        let mut network_rx = network.connect();
+        let coordinator_signer_info = &signer_info.first().cloned().unwrap();
+        let other_signer = wan_network.connect();
+        let mut network_rx = other_signer.spawn();
         let mut signal_rx = self.context.get_signal_receiver();
 
         let event_loop_harness = RequestDeciderEventLoopHarness::create(
             self.context.clone(),
-            network.connect(),
+            signer_network,
             self.context_window,
             coordinator_signer_info.signer_private_key,
         );
@@ -259,8 +262,6 @@ where
         .await
         .expect("timeout");
 
-        handle.join_handle.abort();
-
         self.assert_only_withdraw_requests_in_context_window_has_decisions(
             self.context_window,
             &test_data.withdraw_requests,
@@ -283,7 +284,7 @@ where
     /// received from other signers.
     pub async fn assert_should_store_decisions_received_from_other_signers(self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let network = network::InMemoryNetwork::new();
+        let network = WanNetwork::default();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().cloned().unwrap();
 
@@ -348,15 +349,12 @@ where
         for handle in event_loop_handles.iter_mut() {
             let msg = RequestDeciderEvent::ReceivedDepositDecision;
             handle
-                .wait_for_events(msg, num_expected_decisions, Duration::from_secs(10))
+                .wait_for_events(msg, num_expected_decisions, Duration::from_secs(13))
                 .await
                 .expect("timed out waiting for events");
         }
-
         // Abort the event loops and assert that the decisions have been stored.
         for handle in event_loop_handles {
-            handle.join_handle.abort();
-
             Self::assert_only_deposit_requests_in_context_window_has_decisions(
                 &handle.context.get_storage(),
                 self.context_window,

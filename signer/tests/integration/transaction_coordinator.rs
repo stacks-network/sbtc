@@ -35,10 +35,12 @@ use secp256k1::Keypair;
 use sha2::Digest as _;
 use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::bitcoin::utxo::GetFees as _;
+use signer::context::RequestDeciderEvent;
 use signer::context::TxCoordinatorEvent;
 use signer::keys::PrivateKey;
 use signer::network::in_memory2::SignerNetwork;
 use signer::network::in_memory2::WanNetwork;
+use signer::request_decider::RequestDeciderEventLoop;
 use signer::stacks::api::TenureBlocks;
 use signer::stacks::contracts::AsContractCall;
 use signer::stacks::contracts::RotateKeysV1;
@@ -58,8 +60,6 @@ use url::Url;
 use signer::bitcoin::zmq::BitcoinCoreMessageStream;
 use signer::block_observer::BlockObserver;
 use signer::context::Context;
-use signer::context::SignerEvent;
-use signer::context::TxSignerEvent;
 use signer::emily_client::EmilyClient;
 use signer::error::Error;
 use signer::keys;
@@ -574,7 +574,7 @@ async fn process_complete_deposit() {
 
     // Wake coordinator up
     context
-        .signal(SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled).into())
+        .signal(RequestDeciderEvent::NewRequestsHandled.into())
         .expect("failed to signal");
 
     // Await the `wait_for_tx_task` to receive the first transaction broadcasted.
@@ -741,12 +741,12 @@ async fn deploy_smart_contracts_coordinator<F>(
 
     // Wake coordinator up
     tx_coordinator_context
-        .signal(SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled).into())
+        .signal(RequestDeciderEvent::NewRequestsHandled.into())
         .expect("failed to signal");
     // Send a second signal to pick up the request after an error
     // used in the recover-and-deploy-all-contracts-after-failure test case
     tx_coordinator_context
-        .signal(SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled).into())
+        .signal(RequestDeciderEvent::NewRequestsHandled.into())
         .expect("failed to signal");
 
     let broadcasted_txs = tokio::time::timeout(Duration::from_secs(10), wait_for_transaction_task)
@@ -1064,7 +1064,7 @@ async fn run_dkg_from_scratch() {
     //    coordinator.
     signers.iter().for_each(|(ctx, _, _)| {
         ctx.get_signal_sender()
-            .send(TxSignerEvent::NewRequestsHandled.into())
+            .send(RequestDeciderEvent::NewRequestsHandled.into())
             .unwrap();
     });
 
@@ -1354,6 +1354,19 @@ async fn sign_bitcoin_transaction() {
             ev.run().await
         });
 
+        let ev = RequestDeciderEventLoop {
+            network: network.spawn(),
+            context: ctx.clone(),
+            context_window: 10000,
+            blocklist_checker: Some(()),
+            signer_private_key: kp.secret_key().into(),
+        };
+        let counter = start_count.clone();
+        tokio::spawn(async move {
+            counter.fetch_add(1, Ordering::Relaxed);
+            ev.run().await
+        });
+
         let zmq_stream =
             BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
                 .await
@@ -1381,7 +1394,7 @@ async fn sign_bitcoin_transaction() {
         });
     }
 
-    while start_count.load(Ordering::SeqCst) < 9 {
+    while start_count.load(Ordering::SeqCst) < 12 {
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 

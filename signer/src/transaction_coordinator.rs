@@ -19,8 +19,9 @@ use wsts::net::SignatureType;
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::GetFees;
 use crate::bitcoin::BitcoinInteract;
+use crate::context::RequestDeciderEvent;
+use crate::context::SignerCommand;
 use crate::context::TxCoordinatorEvent;
-use crate::context::TxSignerEvent;
 use crate::context::{Context, SignerEvent, SignerSignal};
 use crate::ecdsa::SignEcdsa as _;
 use crate::ecdsa::Signed;
@@ -163,40 +164,36 @@ where
     N: network::MessageTransfer,
 {
     /// Run the coordinator event loop
+    #[tracing::instrument(skip_all, name = "tx-coordinator")]
     pub async fn run(mut self) -> Result<(), Error> {
         tracing::info!("starting transaction coordinator event loop");
-        let term = self.context.get_termination_handle();
-        let mut signal_rx = self.context.get_signal_receiver();
+        let mut signal_stream = self.context.new_signal_stream(&self.network);
 
         loop {
-            if term.shutdown_signalled() {
-                break;
-            }
-
-            match tokio::time::timeout(Duration::from_millis(100), signal_rx.recv()).await {
-                Ok(Ok(SignerSignal::Event(SignerEvent::TxSigner(
-                    TxSignerEvent::NewRequestsHandled,
-                )))) => {
-                    tracing::debug!("received signal; processing requests");
-                    if let Err(error) = self.process_new_blocks().await {
-                        tracing::error!(
-                            %error,
-                            "error processing requests; skipping this round"
-                        );
+            match signal_stream.next().await {
+                Some(Ok(SignerSignal::Command(SignerCommand::Shutdown))) => break,
+                Some(Ok(SignerSignal::Command(SignerCommand::P2PPublish(_)))) => {}
+                Some(Ok(SignerSignal::Event(event))) => match event {
+                    SignerEvent::RequestDecider(RequestDeciderEvent::NewRequestsHandled) => {
+                        tracing::debug!("received signal; processing requests");
+                        if let Err(error) = self.process_new_blocks().await {
+                            tracing::error!(
+                                %error,
+                                "error processing requests; skipping this round"
+                            );
+                        }
+                        tracing::trace!("sending tenure completed signal");
+                        self.context
+                            .signal(TxCoordinatorEvent::TenureCompleted.into())?;
                     }
-
-                    tracing::trace!("sending tenure completed signal");
-                    self.context
-                        .signal(TxCoordinatorEvent::TenureCompleted.into())?;
+                    _ => {}
+                },
+                // This means one of the broadcast streams is lagging. We
+                // will just continue and hope for the best next time.
+                Some(Err(error)) => {
+                    tracing::error!(%error, "received an error over one of the broadcast streams");
                 }
-                Ok(Err(_)) => {
-                    tracing::debug!(
-                        "error receiving signal; application is probably shutting down"
-                    );
-                    break;
-                }
-                Ok(_) => continue,  // Signal we're not interested in
-                Err(_) => continue, // Timeout timed-out
+                None => break,
             }
         }
 
@@ -252,15 +249,8 @@ where
         Ok(is_epoch3)
     }
 
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(skip_all, fields(public_key = %self.signer_public_key(), chain_tip = tracing::field::Empty))]
     async fn process_new_blocks(&mut self) -> Result<(), Error> {
-        let span = tracing::debug_span!(
-            "tx-coordinator",
-            public_key = tracing::field::display(&self.signer_public_key()),
-            chain_tip = tracing::field::Empty,
-        );
-        let _guard = span.enter();
-
         if !self.is_epoch3().await? {
             return Ok(());
         }
@@ -278,6 +268,7 @@ where
             .await?
             .ok_or(Error::NoChainTip)?;
 
+        let span = tracing::Span::current();
         span.record("chain_tip", tracing::field::display(&bitcoin_chain_tip));
 
         // We first need to determine if we are the coordinator, so we need

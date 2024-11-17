@@ -178,7 +178,7 @@ where
     pub async fn handle_pending_deposit_request(
         &mut self,
         request: model::DepositRequest,
-        bitcoin_chain_tip: &BitcoinBlockHash,
+        chain_tip: &BitcoinBlockHash,
     ) -> Result<(), Error> {
         let db = self.context.get_storage_mut();
 
@@ -216,7 +216,7 @@ where
             .write_deposit_signer_decision(&signer_decision)
             .await?;
 
-        self.send_message(msg, bitcoin_chain_tip).await?;
+        self.send_message(msg, chain_tip).await?;
 
         self.context
             .signal(RequestDeciderEvent::PendingDepositRequestRegistered.into())?;
@@ -370,5 +370,66 @@ where
 
     fn signer_public_key(&self) -> PublicKey {
         PublicKey::from_private_key(&self.signer_private_key)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::bitcoin::MockBitcoinInteract;
+    use crate::emily_client::MockEmilyInteract;
+    use crate::stacks::api::MockStacksInteract;
+    use crate::storage::in_memory::SharedStore;
+    use crate::testing;
+    use crate::testing::context::*;
+
+    fn test_environment() -> testing::request_decider::TestEnvironment<
+        TestContext<
+            SharedStore,
+            WrappedMock<MockBitcoinInteract>,
+            WrappedMock<MockStacksInteract>,
+            WrappedMock<MockEmilyInteract>,
+        >,
+    > {
+        let test_model_parameters = testing::storage::model::Params {
+            num_bitcoin_blocks: 20,
+            num_stacks_blocks_per_bitcoin_block: 3,
+            num_deposit_requests_per_block: 5,
+            num_withdraw_requests_per_block: 5,
+            num_signers_per_request: 0,
+        };
+
+        let context = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        testing::request_decider::TestEnvironment {
+            context,
+            context_window: 6,
+            num_signers: 7,
+            signing_threshold: 5,
+            test_model_parameters,
+        }
+    }
+
+    #[tokio::test]
+    async fn should_store_decisions_for_pending_deposit_requests() {
+        test_environment()
+            .assert_should_store_decisions_for_pending_deposit_requests()
+            .await;
+    }
+
+    #[tokio::test]
+    async fn should_store_decisions_for_pending_withdrawal_requests() {
+        test_environment()
+            .assert_should_store_decisions_for_pending_withdrawal_requests()
+            .await;
+    }
+
+    #[tokio::test]
+    async fn should_store_decisions_received_from_other_signers() {
+        test_environment()
+            .assert_should_store_decisions_received_from_other_signers()
+            .await;
     }
 }
