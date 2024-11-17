@@ -9,11 +9,8 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use blockstack_lib::chainstate::stacks::StacksTransaction;
-use futures::FutureExt;
 use futures::StreamExt as _;
-use futures::TryStreamExt;
 use sha2::Digest;
-use tokio_stream::wrappers::BroadcastStream;
 use wsts::net::SignatureType;
 use wsts::state_machine::coordinator::Coordinator;
 
@@ -155,7 +152,7 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     /// Whether the coordinator has already deployed the contracts.
     pub sbtc_contracts_deployed: bool,
     /// An indicator for whether the Stacks blockchain has reached Nakamoto
-    /// 3. If we are not in Nakamoto 3 or later then the coordinator does
+    /// 3. If we are not in Nakamoto 3 or later, then the coordinator does
     /// not do any work.
     pub is_epoch3: bool,
 }
@@ -205,34 +202,9 @@ where
         Ok(())
     }
 
-    /// Receive the next message. This message could be from over the
-    /// network or from.
-    async fn receive_message(&mut self) -> Signed<SignerMessage> {
-        let signal_rx = self.context.get_signal_receiver();
-        // Turn the receiver into a stream that returns messages that have
-        // been sent by the TxSignerEventLoop.
-        let stream1 = BroadcastStream::new(signal_rx)
-            .filter_map(|msg| async move { msg.ok()?.tx_signer_generated() });
-
-        // We should potentially turn this into a stream that only returns
-        // successful responses.
-        let stream2 = self
-            .network
-            .receive()
-            .into_stream()
-            .inspect_err(|error| tracing::warn!(%error, "received an error from the network"))
-            .filter_map(|x| std::future::ready(x.ok()));
-
-        // The `.select_next_some()` method requires the streams to
-        // implement `Unpin`.
-        tokio::pin!(stream1);
-        tokio::pin!(stream2);
-
-        futures::stream::select(stream1, stream2)
-            .select_next_some()
-            .await
-    }
-
+    /// A function that filters the [`Context::new_signal_stream`] stream
+    /// for items that the coordinator might care about, which includes
+    /// some network messages and transaction signer messages.
     async fn filter_stream<E>(event: Result<SignerSignal, E>) -> Option<Signed<SignerMessage>> {
         match event.ok()? {
             SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::MessageGenerated(msg)))
@@ -694,10 +666,19 @@ where
         self.send_message(req, chain_tip).await?;
 
         let max_duration = self.signing_round_max_duration;
+        let signal_stream = self
+            .context
+            .new_signal_stream(&self.network)
+            .filter_map(Self::filter_stream);
+
+        tokio::pin!(signal_stream);
 
         let future = async {
             while multi_tx.num_signatures() < wallet.signatures_required() {
-                let msg = self.receive_message().await;
+                let Some(msg) = signal_stream.next().await else {
+                    tracing::warn!("received none from the stream, let's hope this fixes itself");
+                    continue
+                };
                 // TODO: We need to verify these messages, but it is best
                 // to do that at the source when we receive the message.
 
@@ -798,7 +779,7 @@ where
                 tx_in.witness = witness;
             });
 
-        tracing::info!("broadcasing bitcoin transaction");
+        tracing::info!("broadcasting bitcoin transaction");
         // Broadcast the transaction to the Bitcoin network.
         self.context
             .get_bitcoin_client()
