@@ -9,6 +9,7 @@ mod contracts;
 mod emily;
 mod postgres;
 mod rbf;
+mod request_decider;
 mod rotate_keys;
 mod setup;
 mod stacks_events_observer;
