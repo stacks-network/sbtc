@@ -15,13 +15,16 @@ use futures::TryStreamExt;
 use sha2::Digest;
 use tokio_stream::wrappers::BroadcastStream;
 use wsts::net::SignatureType;
+use wsts::state_machine::coordinator::Coordinator;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::GetFees;
 use crate::bitcoin::BitcoinInteract;
+use crate::context::P2PEvent;
 use crate::context::RequestDeciderEvent;
 use crate::context::SignerCommand;
 use crate::context::TxCoordinatorEvent;
+use crate::context::TxSignerEvent;
 use crate::context::{Context, SignerEvent, SignerSignal};
 use crate::ecdsa::SignEcdsa as _;
 use crate::ecdsa::Signed;
@@ -55,7 +58,6 @@ use crate::storage::DbRead as _;
 use crate::wsts_state_machine::CoordinatorStateMachine;
 
 use bitcoin::hashes::Hash as _;
-use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::coordinator::State as WstsCoordinatorState;
 use wsts::state_machine::OperationResult as WstsOperationResult;
 use wsts::state_machine::StateMachine as _;
@@ -229,6 +231,14 @@ where
         futures::stream::select(stream1, stream2)
             .select_next_some()
             .await
+    }
+
+    async fn filter_stream<E>(event: Result<SignerSignal, E>) -> Option<Signed<SignerMessage>> {
+        match event.ok()? {
+            SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::MessageGenerated(msg)))
+            | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(msg))) => Some(msg),
+            _ => None,
+        }
     }
 
     async fn is_epoch3(&mut self) -> Result<bool, Error> {
@@ -913,10 +923,25 @@ where
             .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
             .await?;
 
+        let signal_stream = self
+            .context
+            .new_signal_stream(&self.network)
+            .filter_map(Self::filter_stream);
+
+        tokio::pin!(signal_stream);
+
+        coordinator_state_machine.save();
         loop {
             // Let's get the next message from the network or the
             // TxSignerEventLoop.
-            let msg = self.receive_message().await;
+            let Some(msg) = signal_stream.next().await else {
+                tracing::warn!("got!");
+                continue;
+            };
+
+            if msg.signer_pub_key == self.signer_public_key() {
+                tracing::warn!("received my own messages!");
+            }
 
             if &msg.bitcoin_chain_tip != bitcoin_chain_tip {
                 tracing::warn!(origin = %msg.signer_pub_key, "concurrent WSTS activity observed");

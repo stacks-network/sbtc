@@ -918,6 +918,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn run_dkg_from_scratch() {
+    signer::logging::setup_logging("signer=trace", false);
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (signer_wallet, signer_key_pairs): (_, [Keypair; 3]) =
         testing::wallet::regtest_bootstrap_wallet();
@@ -1070,7 +1071,7 @@ async fn run_dkg_from_scratch() {
             .unwrap();
     });
 
-    tokio::time::sleep(Duration::from_secs(8)).await;
+    tokio::time::sleep(Duration::from_secs(10)).await;
     let mut aggregate_keys = BTreeSet::new();
 
     for (_, db, _, _) in signers.iter() {
@@ -1125,8 +1126,8 @@ async fn run_dkg_from_scratch() {
     );
     assert_eq!(contract_call.function_args, rotate_keys.as_contract_args());
 
-    for (ctx, db, _, _) in signers {
-        ctx.get_termination_handle().signal_shutdown();
+    for (_ctx, db, _, _) in signers {
+        // ctx.get_termination_handle().signal_shutdown();
         testing::storage::drop_db(db).await;
     }
 }
