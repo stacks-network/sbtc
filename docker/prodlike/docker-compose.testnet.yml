@@ -9,7 +9,7 @@
 services:
 
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     stop_grace_period: 5s
     environment:
       POSTGRES_USER: postgres
@@ -25,7 +25,6 @@ services:
       - postgres
     environment:
       RUST_LOG: info
-      SIGNER_SIGNER__P2P__LISTEN_ON: tcp://0.0.0.0:4122
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-1:5432/signer
       SIGNER_BLOCKLIST_CLIENT__ENDPOINT: http://localhost:3032
     volumes:
