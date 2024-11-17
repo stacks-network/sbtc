@@ -190,13 +190,12 @@ where
 
         let span = tracing::Span::current();
         span.record("chain_tip", tracing::field::display(chain_tip));
-
         tracing::trace!(
             %sender_is_coordinator,
             %chain_tip_status,
-            msg_chain_tip = %msg.bitcoin_chain_tip,
-            ?msg.inner.payload,
-            "handling message"
+            origin = %msg.signer_pub_key,
+            payload = %msg.inner.payload,
+            "handling message from signer"
         );
 
         match (&msg.inner.payload, sender_is_coordinator, chain_tip_status) {
@@ -464,7 +463,7 @@ where
         msg_public_key: PublicKey,
         chain_tip_report: &MsgChainTipReport,
     ) -> Result<(), Error> {
-        tracing::info!("handling message");
+        tracing::info!("handling wsts message");
 
         match &msg.inner {
             wsts::net::Message::DkgBegin(_) => {
@@ -621,8 +620,6 @@ where
         for outbound_message in outbound_messages {
             let msg = message::WstsMessage { txid, inner: outbound_message };
 
-            tracing::debug!(?msg, "sending message");
-
             self.send_message(msg, bitcoin_chain_tip).await?;
         }
 
@@ -638,6 +635,7 @@ where
 
         let encrypted_dkg_shares = state_machine.get_encrypted_dkg_shares(&mut self.rng)?;
 
+        tracing::debug!("storing DKG shares");
         self.context
             .get_storage_mut()
             .write_encrypted_dkg_shares(&encrypted_dkg_shares)
@@ -653,6 +651,8 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
         let payload: message::Payload = msg.into();
+        tracing::trace!(%payload, "broadcasting message");
+
         let msg = payload
             .to_message(*bitcoin_chain_tip)
             .sign_ecdsa(&self.signer_private_key)?;
