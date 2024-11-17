@@ -4,7 +4,10 @@ use std::sync::atomic::AtomicU8;
 use std::time::Duration;
 
 use tokio::sync::broadcast::Sender;
+use tokio_stream::wrappers::BroadcastStream;
 
+use crate::context::P2PEvent;
+use crate::context::SignerSignal;
 use crate::error::Error;
 
 use super::MessageTransfer;
@@ -151,6 +154,25 @@ impl MessageTransfer for SignerNetworkInstance {
             }
             interval.tick().await;
         }
+    }
+
+    fn receiver_stream(&self) -> BroadcastStream<SignerSignal> {
+        let (sender, receiver) = tokio::sync::broadcast::channel(1000);
+        let mut signal_rx = self.instance_rx.resubscribe();
+        tokio::spawn(async move {
+            loop {
+                match signal_rx.recv().await {
+                    Ok(msg) => {
+                        let _ = sender.send(P2PEvent::MessageReceived(msg).into());
+                    }
+                    Err(error) => {
+                        tracing::error!(%error, "got a receive error");
+                        break;
+                    }
+                }
+            }
+        });
+        BroadcastStream::new(receiver)
     }
 }
 

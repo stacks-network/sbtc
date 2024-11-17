@@ -3,6 +3,7 @@
 
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::Sender;
+use tokio_stream::wrappers::BroadcastStream;
 
 use crate::context::Context;
 use crate::context::P2PEvent;
@@ -99,6 +100,10 @@ impl MessageTransfer for P2PNetwork {
                 }
             }
         }
+    }
+
+    fn receiver_stream(&self) -> BroadcastStream<SignerSignal> {
+        BroadcastStream::new(self.signal_rx.resubscribe())
     }
 }
 
