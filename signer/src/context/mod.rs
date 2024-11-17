@@ -53,7 +53,11 @@ pub trait Context: Clone + Sync + Send {
     /// 2. The termination handled. This should only ever return one item.
     /// 3. All messages over the signers' internal channel.
     ///
-    /// Messages are returned as they become ready.
+    /// Messages are returned as they become ready. Note that the returned
+    /// stream is not "fused", so [`StreamExt::next`] can return `None` and
+    /// later return `Some(_)`. But if [`StreamExt::next`] yields `None`
+    /// three times then the stream is "fused" and will return `None`
+    /// forever after.
     fn new_signal_stream<M>(&self, network: &M) -> SelectAll<BroadcastStream<SignerSignal>>
     where
         M: MessageTransfer,
