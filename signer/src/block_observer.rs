@@ -124,6 +124,7 @@ where
     BHS: futures::stream::Stream<Item = Result<bitcoin::BlockHash, Error>> + Unpin,
 {
     /// Run the block observer
+    #[tracing::instrument(skip_all, name = "block-observer")]
     pub async fn run(mut self) -> Result<(), Error> {
         let term = self.context.get_termination_handle();
 
@@ -138,9 +139,6 @@ where
 
             match poll.await {
                 Ok(Some(Ok(block_hash))) => {
-                    let span = tracing::debug_span!("block-observer", chain_tip = %block_hash);
-                    let _guard = span.enter();
-
                     tracing::info!("observed new bitcoin block from stream");
 
                     let next_blocks = match self.next_blocks_to_process(block_hash).await {
@@ -180,7 +178,7 @@ where
 
     /// Fetch deposit requests from Emily and store the validated ones into
     /// the database.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn load_latest_deposit_requests(&mut self) -> Result<(), Error> {
         let mut deposit_requests = Vec::new();
         let mut failed_requests = Vec::new();
@@ -217,7 +215,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all, fields(%block_hash))]
     async fn next_blocks_to_process(
         &self,
         mut block_hash: bitcoin::BlockHash,
