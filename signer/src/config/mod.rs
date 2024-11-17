@@ -208,7 +208,7 @@ impl Validatable for EmilyClientConfig {
         }
         // Validate each endpoint configuration.
         for endpoint in &self.endpoints {
-            endpoint.validate(&settings)?;
+            endpoint.validate(settings)?;
         }
 
         Ok(())
