@@ -173,8 +173,10 @@ where
             match signal_stream.next().await {
                 Some(Ok(SignerSignal::Command(SignerCommand::Shutdown))) => break,
                 Some(Ok(SignerSignal::Command(SignerCommand::P2PPublish(_)))) => {}
-                Some(Ok(SignerSignal::Event(event))) => match event {
-                    SignerEvent::RequestDecider(RequestDeciderEvent::NewRequestsHandled) => {
+                Some(Ok(SignerSignal::Event(event))) => {
+                    if let SignerEvent::RequestDecider(RequestDeciderEvent::NewRequestsHandled) =
+                        event
+                    {
                         tracing::debug!("received signal; processing requests");
                         if let Err(error) = self.process_new_blocks().await {
                             tracing::error!(
@@ -186,8 +188,7 @@ where
                         self.context
                             .signal(TxCoordinatorEvent::TenureCompleted.into())?;
                     }
-                    _ => {}
-                },
+                }
                 // This means one of the broadcast streams is lagging. We
                 // will just continue and hope for the best next time.
                 Some(Err(error)) => {

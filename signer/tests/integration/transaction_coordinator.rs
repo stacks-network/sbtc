@@ -945,95 +945,97 @@ async fn run_dkg_from_scratch() {
 
     // 1. Create a database, an associated context, and a Keypair for each of
     //    the signers in the signing set.
-    let signers: Vec<(_, PgStore, Keypair)> = futures::stream::iter(iter)
-        .then(|(kp, data)| {
-            let broadcast_stacks_tx = broadcast_stacks_tx.clone();
-            async move {
-                let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-                let db = testing::storage::new_test_database(db_num, true).await;
-                let mut ctx = TestContext::builder()
-                    .with_storage(db.clone())
-                    .with_mocked_clients()
-                    .build();
+    let network = WanNetwork::default();
+    let mut signers: Vec<_> = Vec::new();
 
-                ctx.with_stacks_client(|client| {
-                    client
-                        .expect_estimate_fees()
-                        .returning(|_, _, _| Box::pin(async { Ok(123000) }));
+    for (kp, data) in iter {
+        let broadcast_stacks_tx = broadcast_stacks_tx.clone();
+        let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+        let db = testing::storage::new_test_database(db_num, true).await;
+        let mut ctx = TestContext::builder()
+            .with_storage(db.clone())
+            .with_mocked_clients()
+            .build();
 
-                    client.expect_get_account().returning(|_| {
-                        Box::pin(async {
-                            Ok(AccountInfo {
-                                balance: 1_000_000,
-                                locked: 0,
-                                unlock_height: 0,
-                                nonce: 1,
-                            })
-                        })
-                    });
+        ctx.with_stacks_client(|client| {
+            client
+                .expect_estimate_fees()
+                .returning(|_, _, _| Box::pin(async { Ok(123000) }));
 
-                    client.expect_submit_tx().returning(move |tx| {
-                        let tx = tx.clone();
-                        let txid = tx.txid();
-                        let broadcast_stacks_tx = broadcast_stacks_tx.clone();
-                        Box::pin(async move {
-                            broadcast_stacks_tx.send(tx).expect("Failed to send result");
-                            Ok(SubmitTxResponse::Acceptance(txid))
-                        })
-                    });
-
-                    client
-                        .expect_get_current_signers_aggregate_key()
-                        .returning(move |_| {
-                            // We want to test the tx submission
-                            Box::pin(std::future::ready(Ok(None)))
-                        });
+            client.expect_get_account().returning(|_| {
+                Box::pin(async {
+                    Ok(AccountInfo {
+                        balance: 1_000_000,
+                        locked: 0,
+                        unlock_height: 0,
+                        nonce: 1,
+                    })
                 })
-                .await;
+            });
 
-                // 2. Populate each database with the same data, so that they
-                //    have the same view of the canonical bitcoin blockchain.
-                //    This ensures that they participate in DKG.
-                data.write_to(&db).await;
+            client.expect_submit_tx().returning(move |tx| {
+                let tx = tx.clone();
+                let txid = tx.txid();
+                let broadcast_stacks_tx = broadcast_stacks_tx.clone();
+                Box::pin(async move {
+                    broadcast_stacks_tx.send(tx).expect("Failed to send result");
+                    Ok(SubmitTxResponse::Acceptance(txid))
+                })
+            });
 
-                (ctx, db, kp)
-            }
+            client
+                .expect_get_current_signers_aggregate_key()
+                .returning(move |_| {
+                    // We want to test the tx submission
+                    Box::pin(std::future::ready(Ok(None)))
+                });
         })
-        .collect::<Vec<_>>()
         .await;
 
-    let network = InMemoryNetwork::new();
+        // 2. Populate each database with the same data, so that they
+        //    have the same view of the canonical bitcoin blockchain.
+        //    This ensures that they participate in DKG.
+        data.write_to(&db).await;
+
+        let network = network.connect();
+
+        signers.push((ctx, db, kp, network));
+    }
 
     // 3. Check that there are no DKG shares in the database.
-    for (_, db, _) in signers.iter() {
+    for (_, db, _, _) in signers.iter() {
         let some_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
         assert!(some_shares.is_none());
     }
 
     // 4. Start the [`TxCoordinatorEventLoop`] and [`TxSignerEventLoop`]
     //    processes for each signer.
-    let tx_coordinator_processes = signers.iter().map(|(ctx, _, kp)| TxCoordinatorEventLoop {
-        network: network.connect(),
-        context: ctx.clone(),
-        context_window: 10000,
-        private_key: kp.secret_key().into(),
-        signing_round_max_duration: Duration::from_secs(10),
-        threshold: ctx.config().signer.bootstrap_signatures_required,
-        dkg_max_duration: Duration::from_secs(10),
-        sbtc_contracts_deployed: true, // Skip contract deployment
-        is_epoch3: true,
-    });
+    let tx_coordinator_processes = signers
+        .iter()
+        .map(|(ctx, _, kp, net)| TxCoordinatorEventLoop {
+            network: net.spawn(),
+            context: ctx.clone(),
+            context_window: 10000,
+            private_key: kp.secret_key().into(),
+            signing_round_max_duration: Duration::from_secs(10),
+            threshold: ctx.config().signer.bootstrap_signatures_required,
+            dkg_max_duration: Duration::from_secs(10),
+            sbtc_contracts_deployed: true, // Skip contract deployment
+            is_epoch3: true,
+        });
 
-    let tx_signer_processes = signers.iter().map(|(context, _, kp)| TxSignerEventLoop {
-        network: network.connect(),
-        threshold: context.config().signer.bootstrap_signatures_required as u32,
-        context: context.clone(),
-        context_window: 10000,
-        blocklist_checker: Some(()),
-        wsts_state_machines: HashMap::new(),
-        signer_private_key: kp.secret_key().into(),
-        rng: rand::rngs::OsRng,
-    });
+    let tx_signer_processes = signers
+        .iter()
+        .map(|(context, _, kp, net)| TxSignerEventLoop {
+            network: net.spawn(),
+            threshold: context.config().signer.bootstrap_signatures_required as u32,
+            context: context.clone(),
+            context_window: 10000,
+            blocklist_checker: Some(()),
+            wsts_state_machines: HashMap::new(),
+            signer_private_key: kp.secret_key().into(),
+            rng: rand::rngs::OsRng,
+        });
 
     // We only proceed with the test after all processes have started, and
     // we use this counter to notify us when that happens.
@@ -1062,23 +1064,16 @@ async fn run_dkg_from_scratch() {
     // 5. Once they are all running, signal that DKG should be run. We
     //    signal them all because we do not know which one is the
     //    coordinator.
-    signers.iter().for_each(|(ctx, _, _)| {
+    signers.iter().for_each(|(ctx, _, _, _)| {
         ctx.get_signal_sender()
             .send(RequestDeciderEvent::NewRequestsHandled.into())
             .unwrap();
     });
 
-    // Await the `stacks_tx_receiver_task` to receive the first transaction broadcasted.
-    let broadcast_stacks_txs =
-        tokio::time::timeout(Duration::from_secs(10), stacks_tx_receiver_task)
-            .await
-            .unwrap()
-            .expect("failed to receive message")
-            .expect("no message received");
-
+    tokio::time::sleep(Duration::from_secs(8)).await;
     let mut aggregate_keys = BTreeSet::new();
 
-    for (_, db, _) in signers.iter() {
+    for (_, db, _, _) in signers.iter() {
         let mut aggregate_key =
             sqlx::query_as::<_, (PublicKey,)>("SELECT aggregate_key FROM sbtc_signer.dkg_shares")
                 .fetch_all(db.pool())
@@ -1096,6 +1091,14 @@ async fn run_dkg_from_scratch() {
         assert_eq!(shares.aggregate_key, key);
         aggregate_keys.insert(key);
     }
+
+    // Await the `stacks_tx_receiver_task` to receive the first transaction broadcasted.
+    let broadcast_stacks_txs =
+        tokio::time::timeout(Duration::from_secs(10), stacks_tx_receiver_task)
+            .await
+            .unwrap()
+            .expect("failed to receive message")
+            .expect("no message received");
 
     // 7. Check that they all have the same aggregate key in the
     //    `dkg_shares` table.
@@ -1122,7 +1125,7 @@ async fn run_dkg_from_scratch() {
     );
     assert_eq!(contract_call.function_args, rotate_keys.as_contract_args());
 
-    for (ctx, db, _) in signers {
+    for (ctx, db, _, _) in signers {
         ctx.get_termination_handle().signal_shutdown();
         testing::storage::drop_db(db).await;
     }

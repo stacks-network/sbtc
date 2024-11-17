@@ -30,19 +30,6 @@ pub enum SignerCommand {
     Shutdown,
 }
 
-/// All of the sources of the signal
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SignalSource {
-    /// The source of the message was the TxSignerEventLoop
-    TxSigner,
-    /// The source of the message was the TxCoordinatorEventLoop
-    TxCoordinator,
-    /// The source of the message was the BlockObserver
-    BlockObserver,
-    /// The source of the message was the RequestDeciderEventLoop
-    RequestDecider,
-}
-
 /// Events that can be received on the signalling channel.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SignerEvent {

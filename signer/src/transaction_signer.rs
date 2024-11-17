@@ -138,6 +138,7 @@ where
     Rng: rand::RngCore + rand::CryptoRng,
 {
     /// Run the signer event loop
+    #[tracing::instrument(skip_all, fields(public_key = %self.signer_public_key()), name = "tx-signer")]
     pub async fn run(mut self) -> Result<(), Error> {
         if let Err(error) = self.context.signal(TxSignerEvent::EventLoopStarted.into()) {
             tracing::error!(%error, "error signalling event loop start");
@@ -171,14 +172,8 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(skip_all, fields(chain_tip = tracing::field::Empty))]
     async fn handle_signer_message(&mut self, msg: &network::Msg) -> Result<(), Error> {
-        let span = tracing::debug_span!(
-            "tx-signer",
-            public_key = tracing::field::display(&self.signer_pub_key()),
-            chain_tip = tracing::field::Empty,
-        );
-        let _guard = span.enter();
         if !msg.verify() {
             tracing::warn!("unable to verify message");
             return Err(Error::InvalidSignature);
@@ -353,7 +348,7 @@ where
         &self,
         _request: &message::BitcoinTransactionSignRequest,
     ) -> Result<bool, Error> {
-        let signer_pub_key = self.signer_pub_key();
+        let signer_pub_key = self.signer_public_key();
         let _accepted_deposit_requests = self
             .context
             .get_storage()
@@ -413,7 +408,7 @@ where
         origin_public_key: &PublicKey,
     ) -> Result<(), Error> {
         let db = self.context.get_storage();
-        let public_key = self.signer_pub_key();
+        let public_key = self.signer_public_key();
 
         let Some(shares) = db.get_encrypted_dkg_shares(&request.aggregate_key).await? else {
             return Err(Error::MissingDkgShares(request.aggregate_key));
@@ -736,7 +731,7 @@ where
         }
     }
 
-    fn signer_pub_key(&self) -> PublicKey {
+    fn signer_public_key(&self) -> PublicKey {
         PublicKey::from_private_key(&self.signer_private_key)
     }
 }
