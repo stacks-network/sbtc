@@ -3,6 +3,7 @@
 use std::sync::atomic::AtomicU8;
 use std::time::Duration;
 
+use futures::StreamExt;
 use tokio::sync::broadcast::Sender;
 use tokio_stream::wrappers::BroadcastStream;
 
@@ -50,27 +51,18 @@ impl Default for WanNetwork {
 /// network can send and receive messages to and from other signers and instances
 /// [`Self::spawn`]'d from this instance will not receive messages sent from this
 /// same network.
+#[derive(Debug, Clone)]
 pub struct SignerNetwork {
     wan_tx: Sender<(u8, Msg)>,
     signer_tx: Sender<Msg>,
     id: u8,
 }
 
-impl Clone for SignerNetwork {
-    fn clone(&self) -> Self {
-        Self {
-            wan_tx: self.wan_tx.clone(),
-            signer_tx: self.signer_tx.clone(),
-            id: self.id,
-        }
-    }
-}
-
 impl SignerNetwork {
     /// Start the in-memory signer network
     fn start(&self) {
         // We listen to the WAN network and forward messages to the signer network.
-        let mut rx = self.wan_tx.subscribe();
+        let mut rx = BroadcastStream::new(self.wan_tx.subscribe());
         // We clone the sender to the signer network to be able to send messages
         let tx = self.signer_tx.clone();
 
@@ -79,15 +71,16 @@ impl SignerNetwork {
         // sender.
         let my_id = self.id;
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_millis(5));
-            loop {
-                while let Ok((id, msg)) = rx.try_recv() {
-                    if id == my_id {
-                        continue;
+            while let Some(item) = rx.next().await {
+                match item {
+                    Ok((id, msg)) if id != my_id => {
+                        if let Err(error) = tx.send(msg) {
+                            tracing::error!(%error, "instance channel has been closed");
+                        };
                     }
-                    tx.send(msg).unwrap();
+                    Ok(_) => {}
+                    Err(error) => tracing::error!(%error, "The channel is lagging"),
                 }
-                interval.tick().await;
             }
         });
     }
@@ -108,10 +101,13 @@ impl SignerNetwork {
     }
 
     /// Sends a message to the WAN network.
-    fn send(&self, msg: &Msg) -> Result<(), Error> {
+    fn send(&self, msg: Msg) -> Result<(), Error> {
         // Send the message out to the WAN.
-        let _ = self.wan_tx.send((self.id, msg.clone()));
-        Ok(())
+        self.wan_tx
+            .send((self.id, msg))
+            .inspect_err(|error| tracing::error!(%error, "could not send over the network"))
+            .map(|_| ())
+            .map_err(|_| Error::SendMessage)
     }
 
     /// Spawns a new instance of the in-memory signer network.
@@ -143,7 +139,7 @@ impl Clone for SignerNetworkInstance {
 
 impl MessageTransfer for SignerNetworkInstance {
     async fn broadcast(&mut self, msg: Msg) -> Result<(), Error> {
-        self.signer_network.send(&msg)
+        self.signer_network.send(msg)
     }
 
     async fn receive(&mut self) -> Result<Msg, Error> {
@@ -157,20 +153,24 @@ impl MessageTransfer for SignerNetworkInstance {
     }
 
     fn receiver_stream(&self) -> BroadcastStream<SignerSignal> {
-        let (sender, receiver) = tokio::sync::broadcast::channel(1000);
+        let (sender, receiver) = tokio::sync::broadcast::channel(DEFAULT_SIGNER_CAPACITY);
         let mut signal_rx = self.instance_rx.resubscribe();
+
         tokio::spawn(async move {
-            loop {
-                match signal_rx.recv().await {
-                    Ok(msg) => {
-                        let _ = sender.send(P2PEvent::MessageReceived(msg).into());
-                    }
-                    Err(error) => {
-                        tracing::error!(%error, "got a receive error");
-                        break;
-                    }
+            // If we get an error that means that all senders have been
+            // dropped and the channel has been closed, or the channel is
+            // full. We bail in both cases because this is for tests
+            // anyway.
+            while let Ok(msg) = signal_rx.recv().await {
+                // Because there could only be one receiver, an error from
+                // Sender::send means the channel is closed and cannot be
+                // re-opened. So we bail on these errors too.
+                if let Err(error) = sender.send(P2PEvent::MessageReceived(msg).into()) {
+                    tracing::error!(%error, "could not send message over local stream");
+                    break;
                 }
             }
+            tracing::warn!("the instance stream is closed or lagging, bailing");
         });
         BroadcastStream::new(receiver)
     }
