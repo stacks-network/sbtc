@@ -6,6 +6,7 @@ use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::Txid;
 use emily_client::apis::chainstate_api;
+use emily_client::apis::configuration::ApiKey;
 use emily_client::apis::configuration::Configuration as EmilyApiConfig;
 use emily_client::apis::deposit_api;
 use emily_client::apis::withdrawal_api;
@@ -25,6 +26,8 @@ use url::Url;
 
 use crate::bitcoin::utxo::RequestRef;
 use crate::bitcoin::utxo::UnsignedTransaction;
+use crate::config::EmilyClientConfig;
+use crate::config::EmilyEndpointConfig;
 use crate::error::Error;
 use crate::storage::model::StacksBlock;
 use crate::util::ApiFallbackClient;
@@ -117,13 +120,30 @@ impl EmilyClient {
     }
 }
 
+#[cfg(any(test, feature = "testing"))]
 impl TryFrom<&Url> for EmilyClient {
+    type Error = Error;
+    /// Initialize a new Emily client from just a URL for testing scenarios.
+    fn try_from(url: &Url) -> Result<Self, Self::Error> {
+        let emily_endpoint_config = EmilyEndpointConfig {
+            endpoint: url.clone(),
+            api_key: None,
+        };
+        Self::try_from(&emily_endpoint_config)
+    }
+}
+
+impl TryFrom<&EmilyEndpointConfig> for EmilyClient {
     type Error = Error;
 
     /// Attempt to create an Emily client from a URL. Note that for the Signer,
     /// this should already have been validated by the configuration, but we do
     /// the checks here anyway to keep them close to the implementation.
-    fn try_from(url: &Url) -> Result<Self, Self::Error> {
+    fn try_from(endpoint_config: &EmilyEndpointConfig) -> Result<Self, Self::Error> {
+        // Extract the info.
+        let url = endpoint_config.endpoint.clone();
+        let maybe_api_key = endpoint_config.api_key.clone();
+
         // Must be HTTP or HTTPS
         if !["http", "https"].contains(&url.scheme()) {
             return Err(EmilyClientError::InvalidUrlScheme(url.to_string()).into());
@@ -138,6 +158,11 @@ impl TryFrom<&Url> for EmilyClient {
         // Url::parse defaults `path` to `/` even if the parsed url was without the trailing `/`
         // causing the api calls to have two leading slashes in the path (getting a 404)
         config.base_path = url.to_string().trim_end_matches("/").to_string();
+
+        // Add the API key if present.
+        if let Some(api_key) = maybe_api_key {
+            config.api_key = Some(ApiKey { prefix: None, key: api_key });
+        }
 
         Ok(Self { config })
     }
@@ -309,11 +334,12 @@ impl EmilyInteract for ApiFallbackClient<EmilyClient> {
     }
 }
 
-impl TryFrom<&[Url]> for ApiFallbackClient<EmilyClient> {
+impl TryFrom<&EmilyClientConfig> for ApiFallbackClient<EmilyClient> {
     type Error = Error;
 
-    fn try_from(urls: &[Url]) -> Result<Self, Self::Error> {
-        let clients = urls
+    fn try_from(config: &EmilyClientConfig) -> Result<Self, Self::Error> {
+        let clients = config
+            .endpoints
             .iter()
             .map(EmilyClient::try_from)
             .collect::<Result<Vec<_>, _>>()?;
@@ -327,9 +353,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn try_from_url() {
-        let url = Url::parse("http://localhost:8080").unwrap();
-        let client = EmilyClient::try_from(&url).unwrap();
+    fn try_from_url_with_key() {
+        // Arrange.
+        let url = Url::parse("http://localhost:8080/").unwrap();
+        let api_key = Some("test_key".to_string());
+        let emily_endpoint_config = EmilyEndpointConfig { endpoint: url, api_key };
+        // Act.
+        let client = EmilyClient::try_from(&emily_endpoint_config).unwrap();
+        // Assert.
         assert_eq!(client.config.base_path, "http://localhost:8080");
+        assert_eq!(client.config.api_key.unwrap().key, "test_key");
+    }
+
+    #[test]
+    fn try_from_url_without_key() {
+        // Arrange.
+        let url = Url::parse("http://localhost:8080").unwrap();
+        let emily_endpoint_config = EmilyEndpointConfig { endpoint: url, api_key: None };
+        // Act.
+        let client = EmilyClient::try_from(&emily_endpoint_config).unwrap();
+        // Assert.
+        assert_eq!(client.config.base_path, "http://localhost:8080");
+        assert!(client.config.api_key.is_none());
     }
 }
