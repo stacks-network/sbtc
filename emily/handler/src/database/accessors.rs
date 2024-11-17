@@ -87,15 +87,15 @@ const ALL_STATUSES: &[Status] = &[
     Status::Reprocessing,
 ];
 
-/// Gets all deposit entries modified after a given height.
-pub async fn get_all_deposit_entries_modified_after_height(
+/// Gets all deposit entries modified from (on or after) a given height.
+pub async fn get_all_deposit_entries_modified_from_height(
     context: &EmilyContext,
     minimum_height: u64,
     maybe_page_size: Option<i32>,
 ) -> Result<Vec<DepositInfoEntry>, Error> {
     let mut all = Vec::new();
     for status in ALL_STATUSES {
-        let mut received = get_all_deposit_entries_modified_after_height_with_status(
+        let mut received = get_all_deposit_entries_modified_from_height_with_status(
             context,
             status,
             minimum_height,
@@ -108,8 +108,8 @@ pub async fn get_all_deposit_entries_modified_after_height(
     Ok(all)
 }
 
-/// Gets all deposit entries modified after a given height.
-pub async fn get_all_deposit_entries_modified_after_height_with_status(
+/// Gets all deposit entries modified from (on or after) a given height.
+pub async fn get_all_deposit_entries_modified_from_height_with_status(
     context: &EmilyContext,
     status: &Status,
     minimum_height: u64,
@@ -120,7 +120,7 @@ pub async fn get_all_deposit_entries_modified_after_height_with_status(
         context,
         status,
         &minimum_height,
-        ">",
+        ">=",
         maybe_page_size,
     )
     .await
@@ -303,15 +303,15 @@ pub async fn get_withdrawal_entries(
     .await
 }
 
-/// Gets all withdrawal entries modified after a given height.
-pub async fn get_all_withdrawal_entries_modified_after_height(
+/// Gets all withdrawal entries modified from (on or after) a given height.
+pub async fn get_all_withdrawal_entries_modified_from_height(
     context: &EmilyContext,
     minimum_height: u64,
     maybe_page_size: Option<i32>,
 ) -> Result<Vec<WithdrawalInfoEntry>, Error> {
     let mut all = Vec::new();
     for status in ALL_STATUSES {
-        let mut received = get_all_withdrawal_entries_modified_after_height_with_status(
+        let mut received = get_all_withdrawal_entries_modified_from_height_with_status(
             context,
             status,
             minimum_height,
@@ -324,8 +324,8 @@ pub async fn get_all_withdrawal_entries_modified_after_height(
     Ok(all)
 }
 
-/// Gets all withdrawal entries modified after a given height.
-pub async fn get_all_withdrawal_entries_modified_after_height_with_status(
+/// Gets all withdrawal entries modified from (on or after) a given height.
+pub async fn get_all_withdrawal_entries_modified_from_height_with_status(
     context: &EmilyContext,
     status: &Status,
     minimum_height: u64,
@@ -336,7 +336,7 @@ pub async fn get_all_withdrawal_entries_modified_after_height_with_status(
         context,
         status,
         &minimum_height,
-        ">",
+        ">=",
         maybe_page_size,
     )
     .await

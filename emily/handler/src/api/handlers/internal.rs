@@ -113,9 +113,9 @@ pub async fn execute_reorg_handler(
     // and withdrawal table we'll wipe out all the history that's no longer relevant.
 
     // Get all deposits that would be impacted by this reorg.
-    let all_deposits = accessors::get_all_deposit_entries_modified_after_height(
+    let all_deposits = accessors::get_all_deposit_entries_modified_from_height(
         context,
-        request.canonical_tip.stacks_block_height - 1,
+        request.canonical_tip.stacks_block_height,
         None,
     )
     .await?;
@@ -152,9 +152,9 @@ pub async fn execute_reorg_handler(
     );
 
     // Get all withdrawals that would be impacted by this reorg.
-    let all_withdrawals = accessors::get_all_withdrawal_entries_modified_after_height(
+    let all_withdrawals = accessors::get_all_withdrawal_entries_modified_from_height(
         context,
-        request.canonical_tip.stacks_block_height - 1,
+        request.canonical_tip.stacks_block_height,
         None,
     )
     .await?;
