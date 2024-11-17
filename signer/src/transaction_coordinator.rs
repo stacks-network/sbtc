@@ -677,7 +677,7 @@ where
             while multi_tx.num_signatures() < wallet.signatures_required() {
                 let Some(msg) = signal_stream.next().await else {
                     tracing::warn!("received none from the stream, let's hope this fixes itself");
-                    continue
+                    continue;
                 };
                 // TODO: We need to verify these messages, but it is best
                 // to do that at the source when we receive the message.
@@ -919,10 +919,6 @@ where
                 tracing::warn!("got!");
                 continue;
             };
-
-            if msg.signer_pub_key == self.signer_public_key() {
-                tracing::warn!("received my own messages!");
-            }
 
             if &msg.bitcoin_chain_tip != bitcoin_chain_tip {
                 tracing::warn!(origin = %msg.signer_pub_key, "concurrent WSTS activity observed");

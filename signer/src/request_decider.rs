@@ -86,7 +86,7 @@ where
                         // [`SignerContext::signal`] sends a shutdown
                         // signal on error. We've also logged the error
                         // already.
-                        if let Err(_) = self.context.signal(message) {
+                        if self.context.signal(message).is_err() {
                             break;
                         }
                     }
