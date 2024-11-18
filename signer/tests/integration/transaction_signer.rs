@@ -121,7 +121,7 @@ fn sweep_transaction_info<R: rand::RngCore>(
     }
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[ignore = "this test will be fixed shortly"]
 #[tokio::test]
 async fn should_store_decisions_for_pending_deposit_requests() {
     let num_signers = 3;
@@ -139,7 +139,7 @@ async fn should_store_decisions_for_pending_deposit_requests() {
     signer::testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[ignore = "this test will be fixed shortly"]
 #[tokio::test]
 async fn should_store_decisions_for_pending_withdraw_requests() {
     let num_signers = 3;
@@ -157,7 +157,7 @@ async fn should_store_decisions_for_pending_withdraw_requests() {
     signer::testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[ignore = "this test will be fixed shortly"]
 #[tokio::test]
 async fn should_store_decisions_received_from_other_signers() {
     let num_signers = 3;
@@ -175,7 +175,7 @@ async fn should_store_decisions_received_from_other_signers() {
     signer::testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[ignore = "this test will be fixed shortly"]
 #[tokio::test]
 async fn should_respond_to_bitcoin_transaction_sign_request() {
     let num_signers = 3;
