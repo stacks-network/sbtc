@@ -1410,7 +1410,6 @@ async fn sign_bitcoin_transaction() {
         .iter()
         .map(|(_, db, _, _)| testing::storage::wait_for_chain_tip(db, chain_tip));
     futures::future::join_all(db_update_futs).await;
-    tokio::time::sleep(Duration::from_secs(2)).await;
 
     // Now we wait for DKG to successfully complete. For that we just watch
     // the dkg_shares table. Also, we need to get the signers' scriptPubKey
@@ -1445,7 +1444,6 @@ async fn sign_bitcoin_transaction() {
     faucet.generate_blocks(1);
 
     wait_for_signers(&signers).await;
-    tokio::time::sleep(Duration::from_secs(2)).await;
 
     // =========================================================================
     // Step 6 - Make a proper deposit
@@ -1489,7 +1487,6 @@ async fn sign_bitcoin_transaction() {
     faucet.generate_blocks(1);
 
     wait_for_signers(&signers).await;
-    tokio::time::sleep(Duration::from_secs(2)).await;
 
     let (ctx, _, _, _) = signers.first().unwrap();
     let mut txids = ctx.bitcoin_client.inner_client().get_raw_mempool().unwrap();
@@ -1498,7 +1495,6 @@ async fn sign_bitcoin_transaction() {
     let block_hash = faucet.generate_blocks(1).pop().unwrap();
 
     wait_for_signers(&signers).await;
-    tokio::time::sleep(Duration::from_secs(2)).await;
 
     // =========================================================================
     // Step 8 - Assertions
