@@ -100,7 +100,7 @@ subscribe_interval = 10
 # The RPC URL(s) of the Stacks node(s) to connect to. At least one must be
 # provided. If multiple nodes are provided they will be tried in order when
 # making requests.
-endpoints = ["stacks-node-rpc"]
+endpoints = []
 
 # This is the start height of the first EPOCH 3.0 block on the stacks
 # blockchain.
@@ -121,7 +121,7 @@ nakamoto_start_height = 867867
 # Format: "<hex-encoded-private-key>" (64 or 66 hex-characters)
 # Required: true
 # Environment: SIGNER_SIGNER__PRIVATE_KEY
-private_key = "your-private-key"
+private_key = "0000000000000000000000000000000000000000000000000000000000000001"
 
 # Specifies which network to use when constructing and sending transactions
 # on stacks and bitcoin. This cooresponds to the `chain` flag in the
@@ -138,7 +138,7 @@ network = "mainnet"
 #
 # Required: true
 # TODO(715): Change after SCs have been deployed.
-deployer = "SNYourDeployerAddress"
+deployer = "ST000000000000000000002AMW42H"
 
 # The signer database endpoint (pgsql connection string)
 #
@@ -155,10 +155,7 @@ deployer = "SNYourDeployerAddress"
 #
 # Required: true Environment: SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET
 # TODO(715): Change after initial signing set has been determined.
-bootstrap_signing_set = [
-    "03providedsigningsetpublickey023a1d53bc96ad670bfe03adf8a06c52e6380",
-    "02providedsigningsetpublickey023b28143130a18099ecf094d36fef0f6135c",
-]
+bootstrap_signing_set = []
 
 # The number of signatures required for signing Stacks transactions when
 # using the multi-sig wallet formed from the public keys in the
@@ -208,10 +205,7 @@ bind = "0.0.0.0:8801"
 # Environment Example: tcp://seed-1:4122,tcp://seed-2:4122
 # TODO(429): Add well-known seed nodes
 # TODO(715): Add well-known seed nodes
-seeds = [
-    "<protocol>:<ip>:<port>",
-    "provided:provided-ip:provided-port"
-]
+seeds = []
 
 # The local network interface(s) and port(s) to listen on.
 #

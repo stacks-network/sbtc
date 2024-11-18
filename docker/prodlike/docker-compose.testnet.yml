@@ -24,8 +24,8 @@ services:
     depends_on:
       - postgres
     environment:
-      RUST_LOG: info
-      SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-1:5432/signer
+      RUST_LOG: info,signer=debug
+      SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres:5432/signer
       SIGNER_BLOCKLIST_CLIENT__ENDPOINT: http://localhost:3032
     volumes:
       - ./config/signer-config.toml:/signer-config.toml
@@ -53,6 +53,3 @@ services:
       - |
         set -e
         bitcoind
-    profiles:
-      - default
-      - bitcoin-mempool
