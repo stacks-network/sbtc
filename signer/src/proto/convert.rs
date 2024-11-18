@@ -5,18 +5,67 @@
 //! a protobuf type can be fallible.
 //!
 
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+
+use bitcoin::consensus::encode::deserialize;
+use bitcoin::consensus::encode::serialize;
+use bitvec::array::BitArray;
 use clarity::codec::StacksMessageCodec as _;
 use clarity::vm::types::PrincipalData;
+use p256k1::point::Compressed;
+use p256k1::point::Point;
+use p256k1::scalar::Scalar;
+use polynomial::Polynomial;
 use secp256k1::ecdsa::RecoverableSignature;
 use stacks_common::types::chainstate::StacksAddress;
+use wsts::common::Nonce;
+use wsts::common::PolyCommitment;
+use wsts::common::PublicNonce;
+use wsts::common::SignatureShare;
+use wsts::common::TupleProof;
+use wsts::net::BadPrivateShare;
+use wsts::net::DkgBegin;
+use wsts::net::DkgEnd;
+use wsts::net::DkgEndBegin;
+use wsts::net::DkgFailure;
+use wsts::net::DkgPrivateBegin;
+use wsts::net::DkgPrivateShares;
+use wsts::net::DkgPublicShares;
+use wsts::net::DkgStatus;
+use wsts::net::NonceRequest;
+use wsts::net::NonceResponse;
+use wsts::net::SignatureShareRequest;
+use wsts::net::SignatureShareResponse;
+use wsts::net::SignatureType;
+use wsts::traits::PartyState;
+use wsts::traits::SignerState;
 
+use crate::codec;
+use crate::ecdsa::Signed;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::message::BitcoinTransactionSignAck;
+use crate::message::BitcoinTransactionSignRequest;
+use crate::message::Payload;
 use crate::message::SignerDepositDecision;
+use crate::message::SignerMessage;
 use crate::message::SignerWithdrawalDecision;
+use crate::message::StacksTransactionSignRequest;
 use crate::message::StacksTransactionSignature;
+use crate::message::SweepTransactionInfo;
+use crate::message::SweptDeposit;
+use crate::message::SweptWithdrawal;
+use crate::message::WstsMessage;
 use crate::proto;
+use crate::stacks::contracts::AcceptWithdrawalV1;
+use crate::stacks::contracts::CompleteDepositV1;
+use crate::stacks::contracts::ContractCall;
+use crate::stacks::contracts::RejectWithdrawalV1;
+use crate::stacks::contracts::RotateKeysV1;
+use crate::stacks::contracts::SmartContract;
+use crate::stacks::contracts::StacksTx;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::StacksBlockHash;
@@ -299,6 +348,786 @@ impl TryFrom<proto::SignerWithdrawalDecision> for SignerWithdrawalDecision {
     }
 }
 
+impl From<CompleteDepositV1> for proto::CompleteDeposit {
+    fn from(value: CompleteDepositV1) -> Self {
+        proto::CompleteDeposit {
+            outpoint: Some(value.outpoint.into()),
+            amount: value.amount,
+            recipient: Some(StacksPrincipal::from(value.recipient).into()),
+            deployer: Some(value.deployer.into()),
+            sweep_txid: Some(value.sweep_txid.into()),
+            sweep_block_hash: Some(value.sweep_block_hash.into()),
+            sweep_block_height: value.sweep_block_height,
+        }
+    }
+}
+
+impl TryFrom<proto::CompleteDeposit> for CompleteDepositV1 {
+    type Error = Error;
+    fn try_from(value: proto::CompleteDeposit) -> Result<Self, Self::Error> {
+        Ok(CompleteDepositV1 {
+            outpoint: value.outpoint.required()?.try_into()?,
+            amount: value.amount,
+            recipient: StacksPrincipal::try_from(value.recipient.required()?)?.into(),
+            deployer: value.deployer.required()?.try_into()?,
+            sweep_txid: value.sweep_txid.required()?.try_into()?,
+            sweep_block_hash: value.sweep_block_hash.required()?.try_into()?,
+            sweep_block_height: value.sweep_block_height,
+        })
+    }
+}
+
+impl From<AcceptWithdrawalV1> for proto::AcceptWithdrawal {
+    fn from(value: AcceptWithdrawalV1) -> Self {
+        proto::AcceptWithdrawal {
+            request_id: value.request_id,
+            outpoint: Some(value.outpoint.into()),
+            tx_fee: value.tx_fee,
+            signer_bitmap: value.signer_bitmap.iter().map(|e| *e).collect(),
+            deployer: Some(value.deployer.into()),
+            sweep_block_hash: Some(value.sweep_block_hash.into()),
+            sweep_block_height: value.sweep_block_height,
+        }
+    }
+}
+
+impl TryFrom<proto::AcceptWithdrawal> for AcceptWithdrawalV1 {
+    type Error = Error;
+    fn try_from(value: proto::AcceptWithdrawal) -> Result<Self, Self::Error> {
+        let mut signer_bitmap = BitArray::ZERO;
+        value
+            .signer_bitmap
+            .iter()
+            .enumerate()
+            .take(signer_bitmap.len().min(crate::MAX_KEYS as usize))
+            .for_each(|(index, vote)| {
+                // The BitArray::<[u8; 16]>::set function panics if the
+                // index is out of bounds but that cannot be the case here
+                // because we only take 128 values.
+                signer_bitmap.set(index, *vote);
+            });
+
+        Ok(AcceptWithdrawalV1 {
+            request_id: value.request_id,
+            outpoint: value.outpoint.required()?.try_into()?,
+            tx_fee: value.tx_fee,
+            signer_bitmap,
+            deployer: value.deployer.required()?.try_into()?,
+            sweep_block_hash: value.sweep_block_hash.required()?.try_into()?,
+            sweep_block_height: value.sweep_block_height,
+        })
+    }
+}
+
+impl From<RejectWithdrawalV1> for proto::RejectWithdrawal {
+    fn from(value: RejectWithdrawalV1) -> Self {
+        proto::RejectWithdrawal {
+            request_id: value.request_id,
+            signer_bitmap: value.signer_bitmap.iter().map(|e| *e).collect(),
+            deployer: Some(value.deployer.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::RejectWithdrawal> for RejectWithdrawalV1 {
+    type Error = Error;
+    fn try_from(value: proto::RejectWithdrawal) -> Result<Self, Self::Error> {
+        let mut signer_bitmap = BitArray::ZERO;
+        value
+            .signer_bitmap
+            .iter()
+            .enumerate()
+            .take(signer_bitmap.len().min(crate::MAX_KEYS as usize))
+            .for_each(|(index, vote)| {
+                // The BitArray::<[u8; 16]>::set function panics if the
+                // index is out of bounds but that cannot be the case here
+                // because we only take 128 values.
+                signer_bitmap.set(index, *vote);
+            });
+
+        Ok(RejectWithdrawalV1 {
+            request_id: value.request_id,
+            signer_bitmap,
+            deployer: value.deployer.required()?.try_into()?,
+        })
+    }
+}
+
+impl From<RotateKeysV1> for proto::RotateKeys {
+    fn from(value: RotateKeysV1) -> Self {
+        proto::RotateKeys {
+            new_keys: value.new_keys.into_iter().map(|v| v.into()).collect(),
+            aggregate_key: Some(value.aggregate_key.into()),
+            deployer: Some(value.deployer.into()),
+            signatures_required: value.signatures_required.into(),
+        }
+    }
+}
+
+impl TryFrom<proto::RotateKeys> for RotateKeysV1 {
+    type Error = Error;
+    fn try_from(value: proto::RotateKeys) -> Result<Self, Self::Error> {
+        Ok(RotateKeysV1 {
+            new_keys: value
+                .new_keys
+                .into_iter()
+                .map(|v| v.try_into())
+                .collect::<Result<BTreeSet<_>, Error>>()?,
+            aggregate_key: value.aggregate_key.required()?.try_into()?,
+            deployer: value.deployer.required()?.try_into()?,
+            signatures_required: value
+                .signatures_required
+                .try_into()
+                .map_err(|_| Error::TypeConversion)?,
+        })
+    }
+}
+
+impl From<SmartContract> for proto::SmartContract {
+    fn from(value: SmartContract) -> Self {
+        match value {
+            SmartContract::SbtcRegistry => proto::SmartContract::SbtcRegistry,
+            SmartContract::SbtcToken => proto::SmartContract::SbtcToken,
+            SmartContract::SbtcDeposit => proto::SmartContract::SbtcDeposit,
+            SmartContract::SbtcWithdrawal => proto::SmartContract::SbtcWithdrawal,
+            SmartContract::SbtcBootstrap => proto::SmartContract::SbtcBootstrap,
+        }
+    }
+}
+
+impl TryFrom<proto::SmartContract> for SmartContract {
+    type Error = Error;
+    fn try_from(value: proto::SmartContract) -> Result<Self, Self::Error> {
+        Ok(match value {
+            proto::SmartContract::SbtcRegistry => SmartContract::SbtcRegistry,
+            proto::SmartContract::SbtcToken => SmartContract::SbtcToken,
+            proto::SmartContract::SbtcDeposit => SmartContract::SbtcDeposit,
+            proto::SmartContract::SbtcWithdrawal => SmartContract::SbtcWithdrawal,
+            proto::SmartContract::SbtcBootstrap => SmartContract::SbtcBootstrap,
+            proto::SmartContract::ScUnspecified => return Err(Error::TypeConversion),
+        })
+    }
+}
+
+impl From<StacksTransactionSignRequest> for proto::StacksTransactionSignRequest {
+    fn from(value: StacksTransactionSignRequest) -> Self {
+        let contract_tx = match value.contract_tx {
+            StacksTx::ContractCall(contract_call) => match contract_call {
+                ContractCall::CompleteDepositV1(inner) => {
+                    proto::stacks_transaction_sign_request::ContractTx::CompleteDeposit(
+                        inner.into(),
+                    )
+                }
+                ContractCall::AcceptWithdrawalV1(inner) => {
+                    proto::stacks_transaction_sign_request::ContractTx::AcceptWithdrawal(
+                        inner.into(),
+                    )
+                }
+                ContractCall::RejectWithdrawalV1(inner) => {
+                    proto::stacks_transaction_sign_request::ContractTx::RejectWithdrawal(
+                        inner.into(),
+                    )
+                }
+                ContractCall::RotateKeysV1(inner) => {
+                    proto::stacks_transaction_sign_request::ContractTx::RotateKeys(inner.into())
+                }
+            },
+            StacksTx::SmartContract(inner) => {
+                proto::stacks_transaction_sign_request::ContractTx::SmartContract(
+                    proto::SmartContract::from(inner).into(),
+                )
+            }
+        };
+        proto::StacksTransactionSignRequest {
+            aggregate_key: Some(value.aggregate_key.into()),
+            nonce: value.nonce,
+            tx_fee: value.tx_fee,
+            digest: Some(value.digest.into()),
+            txid: Some(StacksTxId::from(value.txid).into()),
+            contract_tx: Some(contract_tx),
+        }
+    }
+}
+
+impl TryFrom<proto::StacksTransactionSignRequest> for StacksTransactionSignRequest {
+    type Error = Error;
+    fn try_from(value: proto::StacksTransactionSignRequest) -> Result<Self, Self::Error> {
+        let contract_tx = match value.contract_tx.required()? {
+            proto::ContractTx::CompleteDeposit(inner) => {
+                StacksTx::ContractCall(ContractCall::CompleteDepositV1(inner.try_into()?))
+            }
+            proto::ContractTx::AcceptWithdrawal(inner) => {
+                StacksTx::ContractCall(ContractCall::AcceptWithdrawalV1(inner.try_into()?))
+            }
+            proto::ContractTx::RejectWithdrawal(inner) => {
+                StacksTx::ContractCall(ContractCall::RejectWithdrawalV1(inner.try_into()?))
+            }
+            proto::ContractTx::RotateKeys(inner) => {
+                StacksTx::ContractCall(ContractCall::RotateKeysV1(inner.try_into()?))
+            }
+            proto::ContractTx::SmartContract(inner) => StacksTx::SmartContract(
+                proto::SmartContract::try_from(inner)
+                    .map_err(|_| Error::TypeConversion)?
+                    .try_into()?,
+            ),
+        };
+        Ok(StacksTransactionSignRequest {
+            aggregate_key: value.aggregate_key.required()?.try_into()?,
+            nonce: value.nonce,
+            tx_fee: value.tx_fee,
+            digest: value.digest.required()?.into(),
+            txid: StacksTxId::try_from(value.txid.required()?)?.into(),
+            contract_tx,
+        })
+    }
+}
+
+impl From<BitcoinTransactionSignRequest> for proto::BitcoinTransactionSignRequest {
+    fn from(value: BitcoinTransactionSignRequest) -> Self {
+        proto::BitcoinTransactionSignRequest {
+            tx: serialize(&value.tx),
+            aggregate_key: Some(value.aggregate_key.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::BitcoinTransactionSignRequest> for BitcoinTransactionSignRequest {
+    type Error = Error;
+    fn try_from(value: proto::BitcoinTransactionSignRequest) -> Result<Self, Self::Error> {
+        Ok(BitcoinTransactionSignRequest {
+            tx: deserialize(&value.tx).map_err(Error::DecodeBitcoinTransaction)?,
+            aggregate_key: value.aggregate_key.required()?.try_into()?,
+        })
+    }
+}
+
+impl From<DkgBegin> for proto::DkgBegin {
+    fn from(value: DkgBegin) -> Self {
+        proto::DkgBegin { dkg_id: value.dkg_id }
+    }
+}
+
+impl From<proto::DkgBegin> for DkgBegin {
+    fn from(value: proto::DkgBegin) -> Self {
+        DkgBegin { dkg_id: value.dkg_id }
+    }
+}
+
+impl From<DkgPrivateBegin> for proto::DkgPrivateBegin {
+    fn from(value: DkgPrivateBegin) -> Self {
+        proto::DkgPrivateBegin {
+            dkg_id: value.dkg_id,
+            signer_ids: value.signer_ids,
+            key_ids: value.key_ids,
+        }
+    }
+}
+
+impl From<proto::DkgPrivateBegin> for DkgPrivateBegin {
+    fn from(value: proto::DkgPrivateBegin) -> Self {
+        DkgPrivateBegin {
+            dkg_id: value.dkg_id,
+            signer_ids: value.signer_ids,
+            key_ids: value.key_ids,
+        }
+    }
+}
+
+impl From<DkgPrivateShares> for proto::DkgPrivateShares {
+    fn from(value: DkgPrivateShares) -> Self {
+        let shares = value
+            .shares
+            .into_iter()
+            .map(|(source_signer_id, shares)| proto::PrivateShare {
+                source_signer_id,
+                encrypted_shares: shares
+                    .into_iter()
+                    .map(|(signer_id, encrypted_secret_share)| proto::SecretShare {
+                        signer_id,
+                        encrypted_secret_share,
+                    })
+                    .collect(),
+            })
+            .collect();
+        proto::DkgPrivateShares {
+            dkg_id: value.dkg_id,
+            signer_id: value.signer_id,
+            shares,
+        }
+    }
+}
+
+impl TryFrom<proto::DkgPrivateShares> for DkgPrivateShares {
+    type Error = Error;
+    fn try_from(value: proto::DkgPrivateShares) -> Result<Self, Self::Error> {
+        let shares = value
+            .shares
+            .into_iter()
+            .map(|share| {
+                let encrypted_shares = share
+                    .encrypted_shares
+                    .into_iter()
+                    .map(|v| (v.signer_id, v.encrypted_secret_share))
+                    .collect();
+                (share.source_signer_id, encrypted_shares)
+            })
+            .collect();
+        Ok(DkgPrivateShares {
+            dkg_id: value.dkg_id,
+            signer_id: value.signer_id,
+            shares,
+        })
+    }
+}
+
+impl From<DkgEndBegin> for proto::DkgEndBegin {
+    fn from(value: DkgEndBegin) -> Self {
+        proto::DkgEndBegin {
+            dkg_id: value.dkg_id,
+            signer_ids: value.signer_ids,
+            key_ids: value.key_ids,
+        }
+    }
+}
+
+impl From<proto::DkgEndBegin> for DkgEndBegin {
+    fn from(value: proto::DkgEndBegin) -> Self {
+        DkgEndBegin {
+            dkg_id: value.dkg_id,
+            signer_ids: value.signer_ids,
+            key_ids: value.key_ids,
+        }
+    }
+}
+
+impl From<TupleProof> for proto::TupleProof {
+    fn from(value: TupleProof) -> Self {
+        proto::TupleProof {
+            combined_commitment: Some(value.rB.into()),
+            signature: Some(proto::SchnorrProof {
+                random_commitment: Some(value.R.into()),
+                response: Some(value.z.into()),
+            }),
+        }
+    }
+}
+
+impl TryFrom<proto::TupleProof> for TupleProof {
+    type Error = Error;
+    fn try_from(value: proto::TupleProof) -> Result<Self, Self::Error> {
+        let signature = value.signature.required()?;
+        Ok(TupleProof {
+            R: signature.random_commitment.required()?.try_into()?,
+            rB: value.combined_commitment.required()?.try_into()?,
+            z: signature.response.required()?.try_into()?,
+        })
+    }
+}
+
+impl From<BadPrivateShare> for proto::BadPrivateShare {
+    fn from(value: BadPrivateShare) -> Self {
+        proto::BadPrivateShare {
+            shared_key: Some(value.shared_key.into()),
+            tuple_proof: Some(value.tuple_proof.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::BadPrivateShare> for BadPrivateShare {
+    type Error = Error;
+    fn try_from(value: proto::BadPrivateShare) -> Result<Self, Self::Error> {
+        Ok(BadPrivateShare {
+            shared_key: value.shared_key.required()?.try_into()?,
+            tuple_proof: value.tuple_proof.required()?.try_into()?,
+        })
+    }
+}
+
+impl From<hashbrown::HashMap<u32, BadPrivateShare>> for proto::BadPrivateShares {
+    fn from(value: hashbrown::HashMap<u32, BadPrivateShare>) -> Self {
+        proto::BadPrivateShares {
+            shares: value.into_iter().map(|(k, v)| (k, v.into())).collect(),
+        }
+    }
+}
+
+impl TryFrom<proto::BadPrivateShares> for hashbrown::HashMap<u32, BadPrivateShare> {
+    type Error = Error;
+    fn try_from(value: proto::BadPrivateShares) -> Result<Self, Self::Error> {
+        value
+            .shares
+            .into_iter()
+            .map(|(k, v)| Ok((k, v.try_into()?)))
+            .collect::<Result<hashbrown::HashMap<_, _>, Error>>()
+    }
+}
+
+fn hashset_to_zst(set: hashbrown::HashSet<u32>) -> HashMap<u32, proto::SetValueZst> {
+    set.into_iter()
+        .map(|v| (v, proto::SetValueZst {}))
+        .collect()
+}
+
+fn zst_to_hashset(set: HashMap<u32, proto::SetValueZst>) -> hashbrown::HashSet<u32> {
+    set.into_keys().collect()
+}
+
+impl From<DkgStatus> for proto::DkgStatus {
+    fn from(value: DkgStatus) -> Self {
+        let mode = match value {
+            DkgStatus::Success => proto::dkg_status::Mode::Success(proto::Success {}),
+            DkgStatus::Failure(dkg_failure) => match dkg_failure {
+                DkgFailure::BadState => proto::dkg_status::Mode::BadState(proto::BadState {}),
+                DkgFailure::MissingPublicShares(inner) => {
+                    proto::dkg_status::Mode::MissingPublicShares(proto::MissingPublicShares {
+                        signer_ids: hashset_to_zst(inner),
+                    })
+                }
+                DkgFailure::BadPublicShares(inner) => {
+                    proto::dkg_status::Mode::BadPublicShares(proto::BadPublicShares {
+                        signer_ids: hashset_to_zst(inner),
+                    })
+                }
+                DkgFailure::MissingPrivateShares(inner) => {
+                    proto::dkg_status::Mode::MissingPrivateShares(proto::MissingPrivateShares {
+                        signer_ids: hashset_to_zst(inner),
+                    })
+                }
+                DkgFailure::BadPrivateShares(inner) => {
+                    proto::dkg_status::Mode::BadPrivateShares(inner.into())
+                }
+            },
+        };
+        proto::DkgStatus { mode: Some(mode) }
+    }
+}
+
+impl TryFrom<proto::DkgStatus> for DkgStatus {
+    type Error = Error;
+    fn try_from(value: proto::DkgStatus) -> Result<Self, Self::Error> {
+        Ok(match value.mode.required()? {
+            proto::dkg_status::Mode::Success(_) => DkgStatus::Success,
+            proto::dkg_status::Mode::BadState(_) => DkgStatus::Failure(DkgFailure::BadState),
+            proto::dkg_status::Mode::MissingPublicShares(inner) => DkgStatus::Failure(
+                DkgFailure::MissingPublicShares(zst_to_hashset(inner.signer_ids)),
+            ),
+            proto::dkg_status::Mode::BadPublicShares(inner) => DkgStatus::Failure(
+                DkgFailure::BadPublicShares(zst_to_hashset(inner.signer_ids)),
+            ),
+            proto::dkg_status::Mode::MissingPrivateShares(inner) => DkgStatus::Failure(
+                DkgFailure::MissingPrivateShares(zst_to_hashset(inner.signer_ids)),
+            ),
+            proto::dkg_status::Mode::BadPrivateShares(inner) => {
+                DkgStatus::Failure(DkgFailure::BadPrivateShares(inner.try_into()?))
+            }
+        })
+    }
+}
+
+impl From<DkgEnd> for proto::DkgEnd {
+    fn from(value: DkgEnd) -> Self {
+        proto::DkgEnd {
+            dkg_id: value.dkg_id,
+            signer_id: value.signer_id,
+            status: Some(value.status.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::DkgEnd> for DkgEnd {
+    type Error = Error;
+    fn try_from(value: proto::DkgEnd) -> Result<Self, Self::Error> {
+        Ok(DkgEnd {
+            dkg_id: value.dkg_id,
+            signer_id: value.signer_id,
+            status: value.status.required()?.try_into()?,
+        })
+    }
+}
+
+impl From<SignatureType> for proto::SignatureType {
+    fn from(value: SignatureType) -> Self {
+        let signature = match value {
+            SignatureType::Frost => {
+                proto::signature_type::SignatureType::Frost(proto::FrostSignatureType {})
+            }
+            SignatureType::Schnorr => {
+                proto::signature_type::SignatureType::Schnorr(proto::SchnorrSignatureType {})
+            }
+            SignatureType::Taproot(root) => {
+                proto::signature_type::SignatureType::Taproot(proto::TaprootSignatureType {
+                    merkle_root: root.map(|v| proto::MerkleRoot { root: Some(v.into()) }),
+                })
+            }
+        };
+        proto::SignatureType {
+            signature_type: Some(signature),
+        }
+    }
+}
+
+impl TryFrom<proto::SignatureType> for SignatureType {
+    type Error = Error;
+    fn try_from(value: proto::SignatureType) -> Result<Self, Self::Error> {
+        Ok(match value.signature_type.required()? {
+            proto::signature_type::SignatureType::Frost(_) => SignatureType::Frost,
+            proto::signature_type::SignatureType::Schnorr(_) => SignatureType::Schnorr,
+            proto::signature_type::SignatureType::Taproot(taproot) => SignatureType::Taproot(
+                taproot
+                    .merkle_root
+                    .map(|v| Ok::<_, Error>(v.root.required()?.into()))
+                    .transpose()?,
+            ),
+        })
+    }
+}
+
+impl From<NonceRequest> for proto::NonceRequest {
+    fn from(value: NonceRequest) -> Self {
+        proto::NonceRequest {
+            dkg_id: value.dkg_id,
+            sign_id: value.sign_id,
+            sign_iter_id: value.sign_iter_id,
+            message: value.message,
+            signature_type: Some(value.signature_type.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::NonceRequest> for NonceRequest {
+    type Error = Error;
+    fn try_from(value: proto::NonceRequest) -> Result<Self, Self::Error> {
+        Ok(NonceRequest {
+            dkg_id: value.dkg_id,
+            sign_id: value.sign_id,
+            sign_iter_id: value.sign_iter_id,
+            message: value.message,
+            signature_type: value.signature_type.required()?.try_into()?,
+        })
+    }
+}
+
+impl From<PublicNonce> for proto::PublicNonce {
+    fn from(value: PublicNonce) -> Self {
+        proto::PublicNonce {
+            nonce_d: Some(value.D.into()),
+            nonce_e: Some(value.E.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::PublicNonce> for PublicNonce {
+    type Error = Error;
+    fn try_from(value: proto::PublicNonce) -> Result<Self, Self::Error> {
+        Ok(PublicNonce {
+            D: value.nonce_d.required()?.try_into()?,
+            E: value.nonce_e.required()?.try_into()?,
+        })
+    }
+}
+
+impl From<NonceResponse> for proto::NonceResponse {
+    fn from(value: NonceResponse) -> Self {
+        proto::NonceResponse {
+            dkg_id: value.dkg_id,
+            sign_id: value.sign_id,
+            sign_iter_id: value.sign_iter_id,
+            signer_id: value.signer_id,
+            key_ids: value.key_ids,
+            nonces: value.nonces.into_iter().map(|v| v.into()).collect(),
+            message: value.message,
+        }
+    }
+}
+
+impl TryFrom<proto::NonceResponse> for NonceResponse {
+    type Error = Error;
+    fn try_from(value: proto::NonceResponse) -> Result<Self, Self::Error> {
+        Ok(NonceResponse {
+            dkg_id: value.dkg_id,
+            sign_id: value.sign_id,
+            sign_iter_id: value.sign_iter_id,
+            signer_id: value.signer_id,
+            key_ids: value.key_ids,
+            nonces: value
+                .nonces
+                .into_iter()
+                .map(|v| v.try_into())
+                .collect::<Result<Vec<_>, Error>>()?,
+            message: value.message,
+        })
+    }
+}
+
+impl From<SignatureShareRequest> for proto::SignatureShareRequest {
+    fn from(value: SignatureShareRequest) -> Self {
+        proto::SignatureShareRequest {
+            dkg_id: value.dkg_id,
+            sign_id: value.sign_id,
+            sign_iter_id: value.sign_iter_id,
+            message: value.message,
+            nonce_responses: value
+                .nonce_responses
+                .into_iter()
+                .map(|v| v.into())
+                .collect(),
+            signature_type: Some(value.signature_type.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::SignatureShareRequest> for SignatureShareRequest {
+    type Error = Error;
+    fn try_from(value: proto::SignatureShareRequest) -> Result<Self, Self::Error> {
+        Ok(SignatureShareRequest {
+            dkg_id: value.dkg_id,
+            sign_id: value.sign_id,
+            sign_iter_id: value.sign_iter_id,
+            nonce_responses: value
+                .nonce_responses
+                .into_iter()
+                .map(|v| v.try_into())
+                .collect::<Result<Vec<_>, _>>()?,
+            message: value.message,
+            signature_type: value.signature_type.required()?.try_into()?,
+        })
+    }
+}
+
+impl From<SignatureShare> for proto::SignatureShare {
+    fn from(value: SignatureShare) -> Self {
+        proto::SignatureShare {
+            id: value.id,
+            signature_share: Some(value.z_i.into()),
+            key_ids: value.key_ids,
+        }
+    }
+}
+
+impl TryFrom<proto::SignatureShare> for SignatureShare {
+    type Error = Error;
+    fn try_from(value: proto::SignatureShare) -> Result<Self, Self::Error> {
+        Ok(SignatureShare {
+            id: value.id,
+            z_i: value.signature_share.required()?.try_into()?,
+            key_ids: value.key_ids,
+        })
+    }
+}
+
+impl From<SignatureShareResponse> for proto::SignatureShareResponse {
+    fn from(value: SignatureShareResponse) -> Self {
+        proto::SignatureShareResponse {
+            dkg_id: value.dkg_id,
+            sign_id: value.sign_id,
+            sign_iter_id: value.sign_iter_id,
+            signer_id: value.signer_id,
+            signature_shares: value
+                .signature_shares
+                .into_iter()
+                .map(|v| v.into())
+                .collect(),
+        }
+    }
+}
+
+impl TryFrom<proto::SignatureShareResponse> for SignatureShareResponse {
+    type Error = Error;
+    fn try_from(value: proto::SignatureShareResponse) -> Result<Self, Self::Error> {
+        Ok(SignatureShareResponse {
+            dkg_id: value.dkg_id,
+            sign_id: value.sign_id,
+            sign_iter_id: value.sign_iter_id,
+            signer_id: value.signer_id,
+            signature_shares: value
+                .signature_shares
+                .into_iter()
+                .map(|v| v.try_into())
+                .collect::<Result<Vec<_>, _>>()?,
+        })
+    }
+}
+impl From<WstsMessage> for proto::WstsMessage {
+    fn from(value: WstsMessage) -> Self {
+        let inner = match value.inner {
+            wsts::net::Message::DkgBegin(inner) => {
+                proto::wsts_message::Inner::DkgBegin(inner.into())
+            }
+            wsts::net::Message::DkgPublicShares(inner) => {
+                proto::wsts_message::Inner::SignerDkgPublicShares(inner.into())
+            }
+            wsts::net::Message::DkgPrivateBegin(inner) => {
+                proto::wsts_message::Inner::DkgPrivateBegin(inner.into())
+            }
+            wsts::net::Message::DkgPrivateShares(inner) => {
+                proto::wsts_message::Inner::DkgPrivateShares(inner.into())
+            }
+            wsts::net::Message::DkgEndBegin(inner) => {
+                proto::wsts_message::Inner::DkgEndBegin(inner.into())
+            }
+            wsts::net::Message::DkgEnd(inner) => proto::wsts_message::Inner::DkgEnd(inner.into()),
+            wsts::net::Message::NonceRequest(inner) => {
+                proto::wsts_message::Inner::NonceRequest(inner.into())
+            }
+            wsts::net::Message::NonceResponse(inner) => {
+                proto::wsts_message::Inner::NonceResponse(inner.into())
+            }
+            wsts::net::Message::SignatureShareRequest(inner) => {
+                proto::wsts_message::Inner::SignatureShareRequest(inner.into())
+            }
+            wsts::net::Message::SignatureShareResponse(inner) => {
+                proto::wsts_message::Inner::SignatureShareResponse(inner.into())
+            }
+        };
+        proto::WstsMessage {
+            txid: Some(BitcoinTxId::from(value.txid).into()),
+            inner: Some(inner),
+        }
+    }
+}
+
+impl TryFrom<proto::WstsMessage> for WstsMessage {
+    type Error = Error;
+    fn try_from(value: proto::WstsMessage) -> Result<Self, Self::Error> {
+        let inner = match value.inner.required()? {
+            proto::wsts_message::Inner::DkgBegin(inner) => {
+                wsts::net::Message::DkgBegin(inner.into())
+            }
+            proto::wsts_message::Inner::SignerDkgPublicShares(inner) => {
+                wsts::net::Message::DkgPublicShares(inner.try_into()?)
+            }
+            proto::wsts_message::Inner::DkgPrivateBegin(inner) => {
+                wsts::net::Message::DkgPrivateBegin(inner.into())
+            }
+            proto::wsts_message::Inner::DkgPrivateShares(inner) => {
+                wsts::net::Message::DkgPrivateShares(inner.try_into()?)
+            }
+            proto::wsts_message::Inner::DkgEndBegin(inner) => {
+                wsts::net::Message::DkgEndBegin(inner.into())
+            }
+            proto::wsts_message::Inner::DkgEnd(inner) => {
+                wsts::net::Message::DkgEnd(inner.try_into()?)
+            }
+            proto::wsts_message::Inner::NonceRequest(inner) => {
+                wsts::net::Message::NonceRequest(inner.try_into()?)
+            }
+            proto::wsts_message::Inner::NonceResponse(inner) => {
+                wsts::net::Message::NonceResponse(inner.try_into()?)
+            }
+            proto::wsts_message::Inner::SignatureShareRequest(inner) => {
+                wsts::net::Message::SignatureShareRequest(inner.try_into()?)
+            }
+            proto::wsts_message::Inner::SignatureShareResponse(inner) => {
+                wsts::net::Message::SignatureShareResponse(inner.try_into()?)
+            }
+        };
+        Ok(WstsMessage {
+            txid: BitcoinTxId::try_from(value.txid.required()?)?.into(),
+            inner,
+        })
+    }
+}
+
 impl From<BitcoinTransactionSignAck> for proto::BitcoinTransactionSignAck {
     fn from(value: BitcoinTransactionSignAck) -> Self {
         proto::BitcoinTransactionSignAck {
@@ -333,6 +1162,480 @@ impl TryFrom<proto::StacksTransactionSignature> for StacksTransactionSignature {
             signature: value.signature.required()?.try_into()?,
         })
     }
+}
+
+impl From<SweptDeposit> for proto::SweptDeposit {
+    fn from(value: SweptDeposit) -> Self {
+        proto::SweptDeposit {
+            input_index: value.input_index,
+            deposit_request_txid: Some(BitcoinTxId::from(value.deposit_request_txid).into()),
+            deposit_request_output_index: value.deposit_request_output_index,
+        }
+    }
+}
+
+impl TryFrom<proto::SweptDeposit> for SweptDeposit {
+    type Error = Error;
+    fn try_from(value: proto::SweptDeposit) -> Result<Self, Self::Error> {
+        Ok(SweptDeposit {
+            input_index: value.input_index,
+            deposit_request_txid: BitcoinTxId::try_from(value.deposit_request_txid.required()?)?
+                .into(),
+            deposit_request_output_index: value.deposit_request_output_index,
+        })
+    }
+}
+
+impl From<SweptWithdrawal> for proto::SweptWithdrawal {
+    fn from(value: SweptWithdrawal) -> Self {
+        proto::SweptWithdrawal {
+            output_index: value.output_index,
+            withdrawal_request_id: value.withdrawal_request_id,
+            withdrawal_request_block_hash: Some(
+                StacksBlockHash::from(value.withdrawal_request_block_hash).into(),
+            ),
+        }
+    }
+}
+
+impl TryFrom<proto::SweptWithdrawal> for SweptWithdrawal {
+    type Error = Error;
+    fn try_from(value: proto::SweptWithdrawal) -> Result<Self, Self::Error> {
+        Ok(SweptWithdrawal {
+            output_index: value.output_index,
+            withdrawal_request_id: value.withdrawal_request_id,
+            withdrawal_request_block_hash: StacksBlockHash::try_from(
+                value.withdrawal_request_block_hash.required()?,
+            )?
+            .into_bytes(),
+        })
+    }
+}
+
+impl From<SweepTransactionInfo> for proto::SweepTransactionInfo {
+    fn from(value: SweepTransactionInfo) -> Self {
+        proto::SweepTransactionInfo {
+            txid: Some(BitcoinTxId::from(value.txid).into()),
+            signer_prevout_txid: Some(BitcoinTxId::from(value.signer_prevout_txid).into()),
+            signer_prevout_output_index: value.signer_prevout_output_index,
+            signer_prevout_amount: value.signer_prevout_amount,
+            signer_prevout_script_pubkey: value.signer_prevout_script_pubkey.into_bytes(),
+            amount: value.amount,
+            fee: value.fee,
+            vsize: value.vsize,
+            created_at_block_hash: Some(BitcoinBlockHash::from(value.created_at_block_hash).into()),
+            market_fee_rate: value.market_fee_rate,
+            swept_deposits: value.swept_deposits.into_iter().map(|v| v.into()).collect(),
+            swept_withdrawals: value
+                .swept_withdrawals
+                .into_iter()
+                .map(|v| v.into())
+                .collect(),
+        }
+    }
+}
+
+impl TryFrom<proto::SweepTransactionInfo> for SweepTransactionInfo {
+    type Error = Error;
+    fn try_from(value: proto::SweepTransactionInfo) -> Result<Self, Self::Error> {
+        Ok(SweepTransactionInfo {
+            txid: BitcoinTxId::try_from(value.txid.required()?)?.into(),
+            signer_prevout_txid: BitcoinTxId::try_from(value.signer_prevout_txid.required()?)?
+                .into(),
+            signer_prevout_output_index: value.signer_prevout_output_index,
+            signer_prevout_amount: value.signer_prevout_amount,
+            signer_prevout_script_pubkey: bitcoin::ScriptBuf::from_bytes(
+                value.signer_prevout_script_pubkey,
+            ),
+            amount: value.amount,
+            fee: value.fee,
+            vsize: value.vsize,
+            created_at_block_hash: BitcoinBlockHash::try_from(
+                value.created_at_block_hash.required()?,
+            )?
+            .into(),
+            market_fee_rate: value.market_fee_rate,
+            swept_deposits: value
+                .swept_deposits
+                .into_iter()
+                .map(|v| v.try_into())
+                .collect::<Result<Vec<_>, _>>()?,
+            swept_withdrawals: value
+                .swept_withdrawals
+                .into_iter()
+                .map(|v| v.try_into())
+                .collect::<Result<Vec<_>, _>>()?,
+        })
+    }
+}
+
+impl From<SignerMessage> for proto::SignerMessage {
+    fn from(value: SignerMessage) -> Self {
+        let payload = match value.payload {
+            Payload::SignerDepositDecision(inner) => {
+                proto::signer_message::Payload::SignerDepositDecision(inner.into())
+            }
+            Payload::SignerWithdrawalDecision(inner) => {
+                proto::signer_message::Payload::SignerWithdrawalDecision(inner.into())
+            }
+            Payload::StacksTransactionSignRequest(inner) => {
+                proto::signer_message::Payload::StacksTransactionSignRequest(inner.into())
+            }
+            Payload::StacksTransactionSignature(inner) => {
+                proto::signer_message::Payload::StacksTransactionSignature(inner.into())
+            }
+            Payload::BitcoinTransactionSignRequest(inner) => {
+                proto::signer_message::Payload::BitcoinTransactionSignRequest(inner.into())
+            }
+            Payload::BitcoinTransactionSignAck(inner) => {
+                proto::signer_message::Payload::BitcoinTransactionSignAck(inner.into())
+            }
+            Payload::WstsMessage(inner) => {
+                proto::signer_message::Payload::WstsMessage(inner.into())
+            }
+            Payload::SweepTransactionInfo(inner) => {
+                proto::signer_message::Payload::SweepTransactionInfo(inner.into())
+            }
+        };
+        proto::SignerMessage {
+            bitcoin_chain_tip: Some(value.bitcoin_chain_tip.into()),
+            payload: Some(payload),
+        }
+    }
+}
+
+impl TryFrom<proto::SignerMessage> for SignerMessage {
+    type Error = Error;
+    fn try_from(value: proto::SignerMessage) -> Result<Self, Self::Error> {
+        let payload = match value.payload.required()? {
+            proto::signer_message::Payload::SignerDepositDecision(inner) => {
+                Payload::SignerDepositDecision(inner.try_into()?)
+            }
+            proto::signer_message::Payload::SignerWithdrawalDecision(inner) => {
+                Payload::SignerWithdrawalDecision(inner.try_into()?)
+            }
+            proto::signer_message::Payload::StacksTransactionSignRequest(inner) => {
+                Payload::StacksTransactionSignRequest(inner.try_into()?)
+            }
+            proto::signer_message::Payload::StacksTransactionSignature(inner) => {
+                Payload::StacksTransactionSignature(inner.try_into()?)
+            }
+            proto::signer_message::Payload::BitcoinTransactionSignRequest(inner) => {
+                Payload::BitcoinTransactionSignRequest(inner.try_into()?)
+            }
+            proto::signer_message::Payload::BitcoinTransactionSignAck(inner) => {
+                Payload::BitcoinTransactionSignAck(inner.try_into()?)
+            }
+            proto::signer_message::Payload::WstsMessage(inner) => {
+                Payload::WstsMessage(inner.try_into()?)
+            }
+            proto::signer_message::Payload::SweepTransactionInfo(inner) => {
+                Payload::SweepTransactionInfo(inner.try_into()?)
+            }
+        };
+        Ok(SignerMessage {
+            bitcoin_chain_tip: value.bitcoin_chain_tip.required()?.try_into()?,
+            payload,
+        })
+    }
+}
+
+impl From<Signed<SignerMessage>> for proto::Signed {
+    fn from(value: Signed<SignerMessage>) -> Self {
+        proto::Signed {
+            signer_pub_key: Some(value.signer_pub_key.into()),
+            signature: value.signature,
+            inner: Some(proto::signed::Inner::SignerMessage(value.inner.into())),
+        }
+    }
+}
+
+impl TryFrom<proto::Signed> for Signed<SignerMessage> {
+    type Error = Error;
+    fn try_from(value: proto::Signed) -> Result<Self, Self::Error> {
+        let inner: SignerMessage = match value.inner.required()? {
+            proto::signed::Inner::SignerMessage(inner) => inner.try_into()?,
+        };
+        Ok(Signed {
+            inner,
+            signer_pub_key: value.signer_pub_key.required()?.try_into()?,
+            signature: value.signature,
+        })
+    }
+}
+
+impl From<Point> for proto::Point {
+    fn from(value: Point) -> Self {
+        let compressed = value.compress();
+        proto::Point {
+            data: compressed.as_bytes().to_vec(),
+        }
+    }
+}
+
+impl TryFrom<proto::Point> for Point {
+    type Error = Error;
+    fn try_from(value: proto::Point) -> Result<Self, Self::Error> {
+        let compressed_data: &[u8] = value.data.as_slice();
+        let compressed: Compressed = compressed_data
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
+        Self::try_from(&compressed).map_err(|_| Error::TypeConversion)
+    }
+}
+
+impl From<Scalar> for proto::Scalar {
+    fn from(value: Scalar) -> Self {
+        proto::Scalar {
+            value: Some(value.to_bytes().into()),
+        }
+    }
+}
+
+impl TryFrom<proto::Scalar> for Scalar {
+    type Error = Error;
+    fn try_from(value: proto::Scalar) -> Result<Self, Self::Error> {
+        let scalar: [u8; 32] = value.value.required()?.into();
+        Ok(Scalar::from(scalar))
+    }
+}
+
+impl From<Polynomial<Scalar>> for proto::Polynomial {
+    fn from(value: Polynomial<Scalar>) -> Self {
+        proto::Polynomial {
+            data: value
+                .data()
+                .iter()
+                .map(|v| proto::Scalar::from(*v))
+                .collect(),
+        }
+    }
+}
+
+impl TryFrom<proto::Polynomial> for Polynomial<Scalar> {
+    type Error = Error;
+    fn try_from(value: proto::Polynomial) -> Result<Self, Self::Error> {
+        Ok(Polynomial::new(
+            value
+                .data
+                .into_iter()
+                .map(Scalar::try_from)
+                .collect::<Result<Vec<_>, Error>>()?,
+        ))
+    }
+}
+
+impl From<(u32, Scalar)> for proto::PrivateKeyShare {
+    fn from((key_id, value): (u32, Scalar)) -> Self {
+        proto::PrivateKeyShare {
+            key_id,
+            private_key: Some(value.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::PrivateKeyShare> for (u32, Scalar) {
+    type Error = Error;
+    fn try_from(value: proto::PrivateKeyShare) -> Result<Self, Self::Error> {
+        Ok((value.key_id, value.private_key.required()?.try_into()?))
+    }
+}
+
+impl From<Nonce> for proto::PrivateNonce {
+    fn from(value: Nonce) -> Self {
+        proto::PrivateNonce {
+            nonce_d: Some(value.d.into()),
+            nonce_e: Some(value.e.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::PrivateNonce> for Nonce {
+    type Error = Error;
+    fn try_from(value: proto::PrivateNonce) -> Result<Self, Self::Error> {
+        Ok(Nonce {
+            d: value.nonce_d.required()?.try_into()?,
+            e: value.nonce_e.required()?.try_into()?,
+        })
+    }
+}
+
+impl From<(u32, PartyState)> for proto::PartyState {
+    fn from((key_id, value): (u32, PartyState)) -> Self {
+        proto::PartyState {
+            key_id,
+            polynomial: value.polynomial.map(|v| v.into()),
+            private_keys: value.private_keys.into_iter().map(|v| v.into()).collect(),
+            nonce: Some(value.nonce.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::PartyState> for (u32, PartyState) {
+    type Error = Error;
+    fn try_from(value: proto::PartyState) -> Result<Self, Self::Error> {
+        Ok((
+            value.key_id,
+            PartyState {
+                polynomial: value.polynomial.map(|v| v.try_into()).transpose()?,
+                private_keys: value
+                    .private_keys
+                    .into_iter()
+                    .map(|v| v.try_into())
+                    .collect::<Result<Vec<_>, Error>>()?,
+                nonce: value.nonce.required()?.try_into()?,
+            },
+        ))
+    }
+}
+
+impl From<SignerState> for proto::SignerState {
+    fn from(value: SignerState) -> Self {
+        proto::SignerState {
+            id: value.id,
+            key_ids: value.key_ids,
+            num_keys: value.num_keys,
+            num_parties: value.num_parties,
+            threshold: value.threshold,
+            group_key: Some(value.group_key.into()),
+            parties: value.parties.into_iter().map(|v| v.into()).collect(),
+        }
+    }
+}
+
+impl TryFrom<proto::SignerState> for SignerState {
+    type Error = Error;
+    fn try_from(value: proto::SignerState) -> Result<Self, Self::Error> {
+        Ok(SignerState {
+            id: value.id,
+            key_ids: value.key_ids,
+            num_keys: value.num_keys,
+            num_parties: value.num_parties,
+            threshold: value.threshold,
+            group_key: value.group_key.required()?.try_into()?,
+            parties: value
+                .parties
+                .into_iter()
+                .map(|v| v.try_into())
+                .collect::<Result<Vec<_>, Error>>()?,
+        })
+    }
+}
+
+impl From<wsts::schnorr::ID> for proto::ProofIdentifier {
+    fn from(value: wsts::schnorr::ID) -> Self {
+        proto::ProofIdentifier {
+            id: Some(value.id.into()),
+            schnorr_response: Some(value.kG.into()),
+            aggregate_commitment: Some(value.kca.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::ProofIdentifier> for wsts::schnorr::ID {
+    type Error = Error;
+    fn try_from(value: proto::ProofIdentifier) -> Result<Self, Self::Error> {
+        Ok(wsts::schnorr::ID {
+            id: value.id.required()?.try_into()?,
+            kG: value.schnorr_response.required()?.try_into()?,
+            kca: value.aggregate_commitment.required()?.try_into()?,
+        })
+    }
+}
+
+impl From<PolyCommitment> for proto::PolyCommitment {
+    fn from(value: PolyCommitment) -> Self {
+        proto::PolyCommitment {
+            id: Some(value.id.into()),
+            poly: value.poly.into_iter().map(|v| v.into()).collect(),
+        }
+    }
+}
+
+impl TryFrom<proto::PolyCommitment> for PolyCommitment {
+    type Error = Error;
+    fn try_from(value: proto::PolyCommitment) -> Result<Self, Self::Error> {
+        Ok(PolyCommitment {
+            id: value.id.required()?.try_into()?,
+            poly: value
+                .poly
+                .into_iter()
+                .map(|v| v.try_into())
+                .collect::<Result<Vec<_>, Error>>()?,
+        })
+    }
+}
+
+impl From<(u32, PolyCommitment)> for proto::PartyCommitment {
+    fn from((signer_id, value): (u32, PolyCommitment)) -> Self {
+        proto::PartyCommitment {
+            signer_id,
+            commitment: Some(value.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::PartyCommitment> for (u32, PolyCommitment) {
+    type Error = Error;
+    fn try_from(value: proto::PartyCommitment) -> Result<Self, Self::Error> {
+        Ok((value.signer_id, value.commitment.required()?.try_into()?))
+    }
+}
+
+impl From<DkgPublicShares> for proto::SignerDkgPublicShares {
+    fn from(value: DkgPublicShares) -> Self {
+        proto::SignerDkgPublicShares {
+            dkg_id: value.dkg_id,
+            signer_id: value.signer_id,
+            commitments: value.comms.into_iter().map(|v| v.into()).collect(),
+        }
+    }
+}
+
+impl TryFrom<proto::SignerDkgPublicShares> for DkgPublicShares {
+    type Error = Error;
+    fn try_from(value: proto::SignerDkgPublicShares) -> Result<Self, Self::Error> {
+        Ok(DkgPublicShares {
+            dkg_id: value.dkg_id,
+            signer_id: value.signer_id,
+            comms: value
+                .commitments
+                .into_iter()
+                .map(|v| v.try_into())
+                .collect::<Result<Vec<_>, Error>>()?,
+        })
+    }
+}
+
+impl From<BTreeMap<u32, DkgPublicShares>> for proto::DkgPublicShares {
+    fn from(value: BTreeMap<u32, DkgPublicShares>) -> Self {
+        proto::DkgPublicShares {
+            shares: value.into_iter().map(|(k, v)| (k, v.into())).collect(),
+        }
+    }
+}
+
+impl TryFrom<proto::DkgPublicShares> for BTreeMap<u32, DkgPublicShares> {
+    type Error = Error;
+    fn try_from(value: proto::DkgPublicShares) -> Result<Self, Self::Error> {
+        value
+            .shares
+            .into_iter()
+            .map(|(v, k)| Ok((v, k.try_into()?)))
+            .collect::<Result<BTreeMap<u32, DkgPublicShares>, Error>>()
+    }
+}
+
+impl codec::ProtoSerializable for Signed<SignerMessage> {
+    type Message = proto::Signed;
+}
+
+impl codec::ProtoSerializable for SignerState {
+    type Message = proto::SignerState;
+}
+
+impl codec::ProtoSerializable for BTreeMap<u32, DkgPublicShares> {
+    type Message = proto::DkgPublicShares;
 }
 
 #[cfg(test)]
@@ -379,6 +1682,13 @@ mod tests {
         }
     }
 
+    impl Dummy<Unit> for Point {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+            let public_key: PublicKey = Faker.fake_with_rng(rng);
+            public_key.into()
+        }
+    }
+
     #[test]
     fn conversion_between_bytes_and_uint256() {
         let number = proto::Uint256 {
@@ -404,6 +1714,8 @@ mod tests {
     #[test_case(PhantomData::<(SignerWithdrawalDecision, proto::SignerWithdrawalDecision)>; "SignerWithdrawalDecision")]
     #[test_case(PhantomData::<(BitcoinTransactionSignAck, proto::BitcoinTransactionSignAck)>; "BitcoinTransactionSignAck")]
     #[test_case(PhantomData::<(StacksTransactionSignature, proto::StacksTransactionSignature)>; "StacksTransactionSignature")]
+    #[test_case(PhantomData::<(SignerMessage, proto::SignerMessage)>; "SignerMessage")]
+    #[test_case(PhantomData::<(Signed<SignerMessage>, proto::Signed)>; "Signed")]
     fn convert_protobuf_type<T, U, E>(_: PhantomData<(T, U)>)
     where
         // `.unwrap()` requires that `E` implement `std::fmt::Debug` and
@@ -434,6 +1746,7 @@ mod tests {
     #[test_case(PhantomData::<(bitcoin::OutPoint, proto::OutPoint)>; "OutPoint")]
     #[test_case(PhantomData::<(RecoverableSignature, proto::RecoverableSignature)>; "RecoverableSignature")]
     #[test_case(PhantomData::<(StacksAddress, proto::StacksAddress)>; "StacksAddress")]
+    #[test_case(PhantomData::<(Point, proto::Point)>; "Point")]
     fn convert_protobuf_type2<T, U, E>(_: PhantomData<(T, U)>)
     where
         T: Dummy<Unit> + TryFrom<U, Error = E> + Clone + PartialEq + std::fmt::Debug,

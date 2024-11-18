@@ -25,10 +25,12 @@ use stacks_common::address::AddressHashMode;
 use stacks_common::address::C32_ADDRESS_VERSION_TESTNET_MULTISIG;
 use stacks_common::types::chainstate::StacksAddress;
 
+use crate::ecdsa::Signed;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 use crate::keys::SignerScriptPubKey as _;
+use crate::message::SignerMessage;
 use crate::stacks::events::CompletedDepositEvent;
 use crate::stacks::events::WithdrawalAcceptEvent;
 use crate::stacks::events::WithdrawalCreateEvent;
@@ -604,6 +606,16 @@ impl fake::Dummy<SweepTxConfig> for model::Transaction {
             txid: bitcoin_tx.compute_txid().to_byte_array(),
             tx_type: model::TransactionType::SbtcTransaction,
             block_hash: fake::Faker.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for Signed<SignerMessage> {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        Signed {
+            inner: config.fake_with_rng(rng),
+            signer_pub_key: config.fake_with_rng(rng),
+            signature: config.fake_with_rng(rng),
         }
     }
 }

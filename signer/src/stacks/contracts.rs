@@ -1009,13 +1009,13 @@ impl AsContractCall for RejectWithdrawalV1 {
 pub struct RotateKeysV1 {
     /// The new set of public keys for all known signers during this
     /// PoX cycle.
-    new_keys: BTreeSet<PublicKey>,
+    pub new_keys: BTreeSet<PublicKey>,
     /// The signers bitcoin aggregate key
-    aggregate_key: PublicKey,
+    pub aggregate_key: PublicKey,
     /// The address that deployed the contract.
-    deployer: StacksAddress,
+    pub deployer: StacksAddress,
     /// The number of signatures required for the multi-sig wallet.
-    signatures_required: u16,
+    pub signatures_required: u16,
 }
 
 impl RotateKeysV1 {
