@@ -144,117 +144,33 @@ where
     /// Run the signer event loop
     #[tracing::instrument(skip(self), name = "tx-signer")]
     pub async fn run(mut self) -> Result<(), Error> {
-        let mut signal_rx = self.context.get_signal_receiver();
-        let mut term = self.context.get_termination_handle();
-        let mut network = self.network.clone();
+        if let Err(error) = self.context.signal(TxSignerEvent::EventLoopStarted.into()) {
+            tracing::error!(%error, "error signalling event loop start");
+            return Err(error);
+        };
+        let mut signal_stream = self.context.new_signal_stream(&self.network);
 
-        let signalled_events: Mutex<Vec<SignerEvent>> = Default::default();
-        let network_messages: Mutex<Vec<Signed<SignerMessage>>> = Default::default();
-        let shutdown_notify = AtomicBool::new(false);
-
-        let should_shutdown = || shutdown_notify.load(std::sync::atomic::Ordering::Relaxed);
-
-        // TODO: We should really split these operations out into two
-        // separate main run-loops since they don't have anything to do
-        // with each other.
-        let signer_event_loop = async {
-            if let Err(err) = self.context.signal(TxSignerEvent::EventLoopStarted.into()) {
-                tracing::error!(%err, "error signalling event loop start");
-                return;
-            };
-
-            tracing::debug!("signer event loop started");
-            while !should_shutdown() {
-                // Collect all events which have been signalled into this loop
-                // iteration for processing.
-                let mut events_guard = signalled_events.lock().await;
-                let events = events_guard.drain(..).collect::<Vec<_>>();
-                drop(events_guard);
-
-                // Collect all network messages which have been received into
-                // this loop iteration for processing.
-                let mut network_messages_guard = network_messages.lock().await;
-                let mut messages_to_process = network_messages_guard.drain(..).collect::<Vec<_>>();
-                drop(network_messages_guard);
-
-                // Append all `TxCoordinatorEvent::MessageGenerated` event messages
-                // into `messages_to_process` for processing.
-                events.iter().for_each(|event| {
-                    if let SignerEvent::TxCoordinator(TxCoordinatorEvent::MessageGenerated(msg)) =
-                        event
-                    {
-                        messages_to_process.push(msg.clone());
-                    }
-                });
-
-                // Check if we've observed a new block.
-                let new_block_observed = events
-                    .iter()
-                    .any(|event| matches!(event, SignerEvent::BitcoinBlockObserved));
-
-                // If we've observed a new block, we need to handle any new requests.
-                if new_block_observed {
-                    if let Err(error) = self.handle_new_requests().await {
-                        tracing::warn!(%error, "error handling new requests; skipping this round");
-                    }
-                }
-
-                // Process all messages which have been received (both from the
-                // network and from this signer's own transaction coordinator).
-                for msg in messages_to_process {
-                    match self.handle_signer_message(&msg).await {
-                        Ok(()) | Err(Error::InvalidSignature) => (),
-                        Err(error) => {
+        loop {
+            match signal_stream.next().await {
+                Some(Ok(SignerSignal::Command(SignerCommand::Shutdown))) => break,
+                Some(Ok(SignerSignal::Command(SignerCommand::P2PPublish(_)))) => {}
+                Some(Ok(SignerSignal::Event(event))) => match event {
+                    SignerEvent::TxCoordinator(TxCoordinatorEvent::MessageGenerated(msg))
+                    | SignerEvent::P2P(P2PEvent::MessageReceived(msg)) => {
+                        if let Err(error) = self.handle_signer_message(&msg).await {
                             tracing::error!(%error, "error handling signer message");
                         }
                     }
+                    _ => {}
+                },
+                // This means one of the braodcast streams is lagging. We
+                // will just continue and hope for the best next time.
+                Some(Err(error)) => {
+                    tracing::error!(%error, "received an error over one of the broadcast streams");
                 }
-
-                // A small delay to avoid busy-looping if there are no events
-                // to process.
-                tokio::time::sleep(Duration::from_millis(10)).await;
+                None => break,
             }
-        };
-
-        // This task will poll the signal channel for new events and push them
-        // into the `signalled_events` vec for processing in the main loop.
-        let poll_signalled_events = async {
-            while !should_shutdown() {
-                if let Ok(SignerSignal::Event(event)) = signal_rx.recv().await {
-                    signalled_events.lock().await.push(event);
-                }
-            }
-        };
-
-        // This task will poll the network for new messages and push them into
-        // the `network_messages` vec for processing in the main loop.
-        let poll_network_messages = async {
-            while !should_shutdown() {
-                if let Ok(msg) = network.receive().await {
-                    network_messages.lock().await.push(msg);
-                }
-            }
-        };
-
-        // This task will wait for a termination signal and then set the
-        // `shutdown_notify` flag to true, which will cause all of the other
-        // tasks to shutdown.
-        let poll_shutdown = async {
-            term.wait_for_shutdown().await;
-            tracing::info!(
-                "termination signal received; transaction signer event loop is shutting down"
-            );
-            shutdown_notify.store(true, std::sync::atomic::Ordering::Relaxed);
-        };
-
-        tokio::join!(
-            // Polling
-            poll_signalled_events,
-            poll_network_messages,
-            poll_shutdown,
-            // Main event loop
-            signer_event_loop,
-        );
+        }
 
         tracing::info!("transaction signer event loop has been stopped");
         Ok(())
