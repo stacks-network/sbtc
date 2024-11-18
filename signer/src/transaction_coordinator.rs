@@ -1057,9 +1057,7 @@ where
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
 
-        let last_fees = self
-            .assess_mempool_sweep_transaction_fees(chain_tip, &utxo)
-            .await?;
+        let last_fees = self.assess_mempool_sweep_transaction_fees(&utxo).await?;
 
         Ok(utxo::SignerBtcState {
             fee_rate,
@@ -1358,10 +1356,9 @@ where
     ///
     /// TODO: This method currently blindly assumes that the mempool transactions
     /// are correct. Maybe we need some validation?
-    #[tracing::instrument(skip_all, fields(%chain_tip, signer_utxo = %signer_utxo.outpoint))]
+    #[tracing::instrument(skip_all, fields(signer_utxo = %signer_utxo.outpoint))]
     pub async fn assess_mempool_sweep_transaction_fees(
         &self,
-        chain_tip: &model::BitcoinBlockHash,
         signer_utxo: &utxo::SignerUtxo,
     ) -> Result<Option<Fees>, Error> {
         let bitcoin_client = self.context.get_bitcoin_client();
@@ -1374,15 +1371,15 @@ where
         // If no transactions are found, we have nothing to do.
         if mempool_txs_spending_utxo.is_empty() {
             tracing::debug!(
-                utxo_outpoint = %signer_utxo.outpoint,
-                "no mempool transactions found spending signer UTXO; nothing to do"
+                outpoint = %signer_utxo.outpoint,
+                "no mempool transactions found spending signer output; nothing to do"
             );
             return Ok(None);
         }
 
         tracing::debug!(
-            utxo_outpoint = %signer_utxo.outpoint,
-            "found mempool transactions spending signer UTXO; assessing fees"
+            outpoint = %signer_utxo.outpoint,
+            "found mempool transactions spending signer output; assessing fees"
         );
 
         // If we have some transactions, we need to find the one that pays the
@@ -1394,13 +1391,13 @@ where
         // This can technically error if the mempool transactions are not found,
         // but it shouldn't happen since we got the transaction ids from
         // bitcoin-core itself.
-        let best_sweep_root = try_join_all(mempool_txs_spending_utxo.iter().map(|tx| {
+        let best_sweep_root = try_join_all(mempool_txs_spending_utxo.iter().map(|txid| {
             let bitcoin_client = bitcoin_client.clone();
             async move {
                 bitcoin_client
-                    .get_transaction_fee(tx, Some(TransactionLookupHint::Mempool))
+                    .get_transaction_fee(txid, Some(TransactionLookupHint::Mempool))
                     .await
-                    .map(|fee| (tx, fee))
+                    .map(|fee| (txid, fee))
             }
         }))
         .await?
@@ -1413,8 +1410,8 @@ where
         // in sync with the previous one, for example).
         let Some((best_sweep_root_txid, fees)) = best_sweep_root else {
             tracing::warn!(
-                utxo_outpoint = %signer_utxo.outpoint,
-                "no fees found for mempool transactions spending signer UTXO"
+                outpoint = %signer_utxo.outpoint,
+                "no fees found for mempool transactions spending signer output"
             );
             return Ok(None);
         };
