@@ -9,7 +9,7 @@
 services:
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.3-alpine
     stop_grace_period: 5s
     environment:
       POSTGRES_USER: postgres
@@ -19,7 +19,7 @@ services:
       - 5432:5432
 
   sbtc-signer:
-    image: blockstack/sbtc:signer-latest
+    image: blockstack/sbtc:signer-0.0.1-dev-4
     entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db'"
     depends_on:
       - postgres
@@ -33,7 +33,7 @@ services:
       - "4122:4122"
 
   blocklist-client:
-    image: blockstack/sbtc:blocklist-client-latest
+    image: blockstack/sbtc:blocklist-client-0.0.1-dev-4
     entrypoint: "/bin/bash -c '/usr/local/bin/blocklist-client -c /blocklist-client-config.toml'"
     volumes:
       - ./config/blocklist-client-config.toml:/blocklist-client-config.toml
