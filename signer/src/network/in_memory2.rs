@@ -19,7 +19,10 @@ const DEFAULT_SIGNER_CAPACITY: usize = 1_000;
 
 /// In-memory representation of a WAN network between different signers.
 pub struct WanNetwork {
+    /// A sender that passes the message along with the ID of the signer
+    /// that sent it.
     tx: Sender<(u8, Msg)>,
+    /// A variable with the last ID of the signers.
     id: AtomicU8,
 }
 
@@ -73,6 +76,8 @@ impl SignerNetwork {
         tokio::spawn(async move {
             while let Some(item) = rx.next().await {
                 match item {
+                    // We do not send messages where the ID is the same as
+                    // ours, since those originated with us.
                     Ok((id, msg)) if id != my_id => {
                         if let Err(error) = tx.send(msg) {
                             tracing::error!(%error, "instance channel has been closed");
