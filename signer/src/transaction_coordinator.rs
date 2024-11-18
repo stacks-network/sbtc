@@ -9,20 +9,21 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use blockstack_lib::chainstate::stacks::StacksTransaction;
-use futures::FutureExt;
 use futures::StreamExt as _;
-use futures::TryStreamExt;
 use sha2::Digest;
 use tokio::time::sleep;
-use tokio_stream::wrappers::BroadcastStream;
 use wsts::net::SignatureType;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::GetFees;
 use crate::bitcoin::BitcoinInteract;
+use crate::context::Context;
+use crate::context::P2PEvent;
+use crate::context::SignerCommand;
+use crate::context::SignerEvent;
+use crate::context::SignerSignal;
 use crate::context::TxCoordinatorEvent;
 use crate::context::TxSignerEvent;
-use crate::context::{Context, SignerEvent, SignerSignal};
 use crate::ecdsa::SignEcdsa as _;
 use crate::ecdsa::Signed;
 use crate::emily_client::EmilyInteract;
@@ -146,10 +147,10 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     pub context_window: u16,
     /// The maximum duration of a signing round before the coordinator will
     /// time out and return an error.
-    pub signing_round_max_duration: std::time::Duration,
+    pub signing_round_max_duration: Duration,
     /// The maximum duration of distributed key generation before the
     /// coordinator will time out and return an error.
-    pub dkg_max_duration: std::time::Duration,
+    pub dkg_max_duration: Duration,
     /// Whether the coordinator has already deployed the contracts.
     pub sbtc_contracts_deployed: bool,
     /// An indicator for whether the Stacks blockchain has reached Nakamoto
@@ -174,9 +175,7 @@ where
                 Some(Ok(SignerSignal::Command(SignerCommand::Shutdown))) => break,
                 Some(Ok(SignerSignal::Command(SignerCommand::P2PPublish(_)))) => {}
                 Some(Ok(SignerSignal::Event(event))) => {
-                    if let SignerEvent::RequestDecider(RequestDeciderEvent::NewRequestsHandled) =
-                        event
-                    {
+                    if let SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled) = event {
                         tracing::debug!("received signal; processing requests");
                         if let Err(error) = self.process_new_blocks().await {
                             tracing::error!(
