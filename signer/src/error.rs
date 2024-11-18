@@ -25,6 +25,10 @@ pub enum Error {
     #[error("sweep transaction not found: {0}")]
     MissingSweepTransaction(bitcoin::Txid),
 
+    /// Received an error in response to gettxout RPC call
+    #[error("bitcoin-core gettxout error for outpoint {1} (search mempool? {2}): {0}")]
+    BitcoinCoreGetTxOut(#[source] bitcoincore_rpc::Error, bitcoin::OutPoint, bool),
+
     /// Received an error in response to getmempooldescendants RPC call
     #[error("bitcoin-core getmempooldescendants error for txid {1}: {0}")]
     BitcoinCoreGetMempoolDescendants(bitcoincore_rpc::Error, bitcoin::Txid),
