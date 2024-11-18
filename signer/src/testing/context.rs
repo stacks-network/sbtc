@@ -4,6 +4,7 @@ use std::time::Duration;
 use std::{ops::Deref, sync::Arc};
 
 use bitcoin::Txid;
+use bitcoincore_rpc_json::GetTxOutResult;
 use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::{
     chainstate::{nakamoto::NakamotoBlock, stacks::StacksTransaction},
@@ -16,6 +17,7 @@ use clarity::types::chainstate::{StacksAddress, StacksBlockId};
 use tokio::sync::{broadcast, Mutex};
 use tokio::time::error::Elapsed;
 
+use crate::bitcoin::GetTransactionFeeResult;
 use crate::stacks::api::TenureBlocks;
 use crate::stacks::wallet::SignerWallet;
 use crate::{
@@ -328,6 +330,29 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
     }
 
     async fn find_mempool_descendants(&self, _txid: &Txid) -> Result<Vec<Txid>, Error> {
+        unimplemented!()
+    }
+
+    async fn get_transaction_output(
+        &self,
+        _outpoint: &bitcoin::OutPoint,
+        _include_mempool: bool,
+    ) -> Result<Option<GetTxOutResult>, Error> {
+        unimplemented!()
+    }
+
+    async fn get_transaction_fee(
+        &self,
+        _txid: &bitcoin::Txid,
+        _lookup_hint: Option<crate::bitcoin::TransactionLookupHint>,
+    ) -> Result<GetTransactionFeeResult, Error> {
+        unimplemented!()
+    }
+
+    async fn get_mempool_entry(
+        &self,
+        _txid: &Txid,
+    ) -> Result<Option<bitcoincore_rpc_json::GetMempoolEntryResult>, Error> {
         unimplemented!()
     }
 }
