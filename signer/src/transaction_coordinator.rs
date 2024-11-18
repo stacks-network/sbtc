@@ -239,7 +239,7 @@ where
         if !self.is_epoch3().await? {
             return Ok(());
         }
-        
+
         let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
         if bitcoin_processing_delay > Duration::ZERO {
             tracing::debug!("sleeping before processing new Bitcoin block.");
