@@ -28,9 +28,9 @@ message StacksTransactionSignRequest {
   // and a few other things.
   crypto.Uint256 digest = 4;
   // The transaction ID of the associated contract call transaction.
-  crypto.Uint256 txid = 5;
-  // The contract call transaction to sign.
-  oneof contract_call {
+  StacksTxid txid = 5;
+  // The contract transaction to sign.
+  oneof contract_tx {
     // The `complete-deposit` contract call
     CompleteDeposit complete_deposit = 6;
     // The `accept-withdrawal-request` contract call
@@ -39,7 +39,27 @@ message StacksTransactionSignRequest {
     RejectWithdrawal reject_withdrawal = 8;
     // The `rotate-keys-wrapper` contract call
     RotateKeys rotate_keys = 9;
+    // Ssmart contract deployment
+    SmartContract smart_contract = 10;
   }
+}
+
+enum SmartContract {
+    // The sbtc-registry contract. This contract needs to be deployed
+    // before any other contract.
+    SbtcRegistry = 0;
+    // The sbtc-token contract. This contract needs to be deployed right
+    // after the sbtc-registry contract.
+    SbtcToken = 1;
+    // The sbtc-deposit contract. Can be deployed after the sbtc-token
+    // contract.
+    SbtcDeposit = 2;
+    // The sbtc-withdrawal contract. Can be deployed after the sbtc-token
+    // contract.
+    SbtcWithdrawal = 3;
+    // The sbtc-bootstrap-signers contract. Can be deployed after the
+    // sbtc-token contract.
+    SbtcBootstrap = 4;
 }
 
 // For making a `complete-deposit` contract call in the sbtc-deposit
