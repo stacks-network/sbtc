@@ -57,7 +57,6 @@ where
             event_loop: transaction_signer::TxSignerEventLoop {
                 context: context.clone(),
                 network,
-                blocklist_checker: Some(()),
                 signer_private_key,
                 context_window,
                 wsts_state_machines: HashMap::new(),
@@ -118,7 +117,7 @@ where
 }
 
 type EventLoop<Context, Rng> =
-    transaction_signer::TxSignerEventLoop<Context, network::in_memory::MpmcBroadcaster, (), Rng>;
+    transaction_signer::TxSignerEventLoop<Context, network::in_memory::MpmcBroadcaster, Rng>;
 
 impl blocklist_client::BlocklistChecker for () {
     async fn can_accept(

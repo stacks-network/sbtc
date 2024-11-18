@@ -8,7 +8,6 @@
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 
-use crate::blocklist_client;
 use crate::context::Context;
 use crate::context::P2PEvent;
 use crate::context::SignerCommand;
@@ -106,13 +105,11 @@ use wsts::net::Message as WstsNetMessage;
 ///     SM --> |WSTS message| RWSM(Relay to WSTS state machine)
 /// ```
 #[derive(Debug)]
-pub struct TxSignerEventLoop<Context, Network, BlocklistChecker, Rng> {
+pub struct TxSignerEventLoop<Context, Network, Rng> {
     /// The signer context.
     pub context: Context,
     /// Interface to the signer network.
     pub network: Network,
-    /// Blocklist checker.
-    pub blocklist_checker: Option<BlocklistChecker>,
     /// Private key of the signer for network communication.
     pub signer_private_key: PrivateKey,
     /// WSTS state machines for active signing rounds and DKG rounds
@@ -131,11 +128,10 @@ pub struct TxSignerEventLoop<Context, Network, BlocklistChecker, Rng> {
     pub rng: Rng,
 }
 
-impl<C, N, B, Rng> TxSignerEventLoop<C, N, B, Rng>
+impl<C, N, Rng> TxSignerEventLoop<C, N, Rng>
 where
     C: Context,
     N: network::MessageTransfer,
-    B: blocklist_client::BlocklistChecker,
     Rng: rand::RngCore + rand::CryptoRng,
 {
     /// Run the signer event loop
