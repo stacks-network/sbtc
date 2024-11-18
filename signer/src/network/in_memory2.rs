@@ -164,8 +164,8 @@ impl MessageTransfer for SignerNetworkInstance {
         tokio::spawn(async move {
             // If we get an error that means that all senders have been
             // dropped and the channel has been closed, or the channel is
-            // full. We bail in both cases because this is for tests
-            // anyway.
+            // full. We bail in both cases because we can, this code is for
+            // tests anyway.
             while let Ok(msg) = signal_rx.recv().await {
                 // Because there could only be one receiver, an error from
                 // Sender::send means the channel is closed and cannot be
