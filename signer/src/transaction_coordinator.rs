@@ -11,7 +11,6 @@ use std::time::Duration;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use futures::StreamExt as _;
 use sha2::Digest;
-use tokio::time::sleep;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::GetFees;
