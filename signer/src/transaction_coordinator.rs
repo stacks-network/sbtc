@@ -11,6 +11,7 @@ use std::time::Duration;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use futures::StreamExt as _;
 use sha2::Digest;
+use tokio::time::sleep;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::GetFees;
@@ -244,12 +245,6 @@ where
             .get_bitcoin_canonical_chain_tip()
             .await?
             .ok_or(Error::NoChainTip)?;
-
-        let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
-        if bitcoin_processing_delay > Duration::ZERO {
-            tracing::debug!("sleeping before processing new Bitcoin block.");
-            tokio::time::sleep(bitcoin_processing_delay).await;
-        }
 
         // We first need to determine if we are the coordinator, so we need
         // to know the current signing set. If we are the coordinator then
