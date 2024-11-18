@@ -11,8 +11,6 @@ use std::time::Duration;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use futures::StreamExt as _;
 use sha2::Digest;
-use tokio::time::sleep;
-use wsts::net::SignatureType;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::GetFees;
@@ -57,6 +55,7 @@ use crate::storage::DbRead as _;
 use crate::wsts_state_machine::CoordinatorStateMachine;
 
 use bitcoin::hashes::Hash as _;
+use wsts::net::SignatureType;
 use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::coordinator::State as WstsCoordinatorState;
 use wsts::state_machine::OperationResult as WstsOperationResult;

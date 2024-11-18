@@ -274,26 +274,25 @@ where
     async fn inspect_msg_chain_tip(
         &mut self,
         msg_sender: PublicKey,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        msg_bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<MsgChainTipReport, Error> {
         let storage = self.context.get_storage();
 
-        let is_known = storage
-            .get_bitcoin_block(bitcoin_chain_tip)
-            .await?
-            .is_some();
-
-        let is_canonical = storage
+        let chain_tip = storage
             .get_bitcoin_canonical_chain_tip()
             .await?
-            .map(|canonical_chain_tip| &canonical_chain_tip == bitcoin_chain_tip)
-            .unwrap_or(false);
+            .ok_or(Error::NoChainTip)?;
 
-        let signer_set = self.get_signer_public_keys(bitcoin_chain_tip).await?;
+        let is_known = storage
+            .get_bitcoin_block(msg_bitcoin_chain_tip)
+            .await?
+            .is_some();
+        let is_canonical = msg_bitcoin_chain_tip == &chain_tip;
 
+        let signer_set = self.get_signer_public_keys(&chain_tip).await?;
         let sender_is_coordinator = crate::transaction_coordinator::given_key_is_coordinator(
             msg_sender,
-            bitcoin_chain_tip,
+            &chain_tip,
             &signer_set,
         );
 
@@ -306,6 +305,7 @@ where
         Ok(MsgChainTipReport {
             sender_is_coordinator,
             chain_tip_status,
+            chain_tip,
         })
     }
 
@@ -747,10 +747,13 @@ struct MsgChainTipReport {
     sender_is_coordinator: bool,
     /// The status of the chain tip relative to the signers' perspective.
     chain_tip_status: ChainTipStatus,
+    /// The bitcoin chain tip.
+    chain_tip: model::BitcoinBlockHash,
 }
 
 /// The status of a chain tip relative to the known blocks in the signer database.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, strum::Display)]
+#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 enum ChainTipStatus {
     /// The chain tip is the tip of the canonical fork.
     Canonical,
