@@ -304,6 +304,11 @@ fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, ctx: &impl Context, even
         // so this will never be raised for WAN peers which must otherwise
         // be discovered via seed nodes.
         Event::Discovered(peers) => {
+            // If we have disabled mDNS, we should not process this event.
+            if !ctx.config().signer.p2p.enable_mdns {
+                return;
+            }
+
             for (peer_id, addr) in peers {
                 if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
                     tracing::warn!(%peer_id, %addr, "Discovered peer via mDNS, however it is not a known signer; ignoring");
@@ -320,6 +325,10 @@ fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, ctx: &impl Context, even
         Event::Expired(peers) => {
             for (peer_id, addr) in peers {
                 tracing::info!(%peer_id, %addr, "Expired peer via mDNS");
+                swarm
+                    .behaviour_mut()
+                    .gossipsub
+                    .remove_explicit_peer(&peer_id);
             }
         }
     }
