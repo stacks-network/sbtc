@@ -552,7 +552,7 @@ async fn process_complete_deposit() {
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
 
     // TODO: here signers use all the same storage, should we use separate ones?
-    let event_loop_handles: Vec<_> = signer_info
+    let _event_loop_handles: Vec<_> = signer_info
         .clone()
         .into_iter()
         .map(|signer_info| {
@@ -586,7 +586,6 @@ async fn process_complete_deposit() {
 
     // Stop event loops
     tx_coordinator_handle.abort();
-    event_loop_handles.iter().for_each(|h| h.abort());
 
     broadcasted_tx.verify().unwrap();
 
@@ -719,7 +718,7 @@ async fn deploy_smart_contracts_coordinator<F>(
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
 
     // TODO: here signers use all the same storage, should we use separate ones?
-    let event_loop_handles: Vec<_> = signer_info
+    let _event_loop_handles: Vec<_> = signer_info
         .clone()
         .into_iter()
         .map(|signer_info| {
@@ -772,7 +771,6 @@ async fn deploy_smart_contracts_coordinator<F>(
 
     // Stop event loops
     tx_coordinator_handle.abort();
-    event_loop_handles.iter().for_each(|h| h.abort());
 
     testing::storage::drop_db(db).await;
 }
