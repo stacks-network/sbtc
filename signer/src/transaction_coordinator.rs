@@ -238,18 +238,18 @@ where
             return Ok(());
         }
 
-        let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
-        if bitcoin_processing_delay > Duration::ZERO {
-            tracing::debug!("sleeping before processing new Bitcoin block.");
-            tokio::time::sleep(bitcoin_processing_delay).await;
-        }
-
         let bitcoin_chain_tip = self
             .context
             .get_storage()
             .get_bitcoin_canonical_chain_tip()
             .await?
             .ok_or(Error::NoChainTip)?;
+
+        let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
+        if bitcoin_processing_delay > Duration::ZERO {
+            tracing::debug!("sleeping before processing new Bitcoin block.");
+            tokio::time::sleep(bitcoin_processing_delay).await;
+        }
 
         // We first need to determine if we are the coordinator, so we need
         // to know the current signing set. If we are the coordinator then
