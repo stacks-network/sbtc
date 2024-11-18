@@ -20,7 +20,6 @@ use wsts::net::SignatureType;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::Fees;
-use crate::bitcoin::utxo::GetFees;
 use crate::bitcoin::BitcoinInteract;
 use crate::bitcoin::TransactionLookupHint;
 use crate::context::TxCoordinatorEvent;
@@ -1060,19 +1059,23 @@ where
 
         // Retrieve the last sweep package for the above UTXO. These are
         // transactions which exist in the mempool.
-        let last_sweep_package = self
-            .context
-            .get_storage()
-            .get_latest_unconfirmed_sweep_transactions(
-                chain_tip,
-                self.context_window,
-                &utxo.outpoint.txid.into(),
-            )
-            .await?;
+        // let last_sweep_package = self
+        //     .context
+        //     .get_storage()
+        //     .get_latest_unconfirmed_sweep_transactions(
+        //         chain_tip,
+        //         self.context_window,
+        //         &utxo.outpoint.txid.into(),
+        //     )
+        //     .await?;
 
-        // Calculate the last fees paid by the signer based on the latest sweep
-        // package.
-        let last_fees = last_sweep_package.get_fees()?;
+        // // Calculate the last fees paid by the signer based on the latest sweep
+        // // package.
+        // let last_fees = last_sweep_package.get_fees()?;
+
+        let last_fees = self
+            .assess_mempool_sweep_transaction_fees(chain_tip, &utxo)
+            .await?;
 
         Ok(utxo::SignerBtcState {
             fee_rate,
@@ -1390,6 +1393,11 @@ where
             return Ok(None);
         }
 
+        tracing::debug!(
+            utxo_outpoint = %signer_utxo.outpoint,
+            "found mempool transactions spending signer UTXO; assessing fees"
+        );
+
         // If we have some transactions, we need to find the one that pays the
         // highest fee. This is the transaction that we will use as the root of
         // the sweep package. Note that even if only one transaction was
@@ -1502,6 +1510,8 @@ mod tests {
     use crate::testing::context::*;
     use crate::testing::transaction_coordinator::TestEnvironment;
 
+    use test_log::test;
+
     fn test_environment() -> TestEnvironment<
         TestContext<
             SharedStore,
@@ -1532,7 +1542,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn should_be_able_to_coordinate_signing_rounds() {
         test_environment()
             .assert_should_be_able_to_coordinate_signing_rounds(std::time::Duration::ZERO)
