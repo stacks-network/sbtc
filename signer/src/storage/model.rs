@@ -1155,7 +1155,6 @@ pub struct BitcoinTxSigHash {
     pub prevout_txid: BitcoinTxId,
     /// The index of the vout from the transaction that created this
     /// output.
-    // #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
     #[sqlx(try_from = "i32")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
     pub prevout_output_index: u32,

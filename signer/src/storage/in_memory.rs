@@ -1185,30 +1185,6 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_bitcoin_tx_sighash(
-        &self,
-        sighash: &model::BitcoinTxSigHash,
-    ) -> Result<(), Error> {
-        self.lock()
-            .await
-            .bitcoin_sighashes
-            .insert(sighash.txid, sighash.clone());
-
-        Ok(())
-    }
-
-    async fn write_bitcoin_withdrawal_output(
-        &self,
-        output: &model::BitcoinWithdrawalOutput,
-    ) -> Result<(), Error> {
-        let mut store = self.lock().await;
-        store.bitcoin_withdrawal_outputs.insert(
-            (output.request_id, output.stacks_block_hash),
-            output.clone(),
-        );
-        Ok(())
-    }
-
     async fn write_bitcoin_withdrawals_outputs(
         &self,
         withdrawal_outputs: Vec<model::BitcoinWithdrawalOutput>,

@@ -321,29 +321,47 @@ CREATE UNIQUE INDEX uix_swept_deposits_req_txid_req_output_index_pkgd_txid
     ON sbtc_signer.swept_deposits(deposit_request_txid, deposit_request_output_index, sweep_transaction_txid);
 
 
-CREATE TABLE sbtc_signer.bitcoin_txs_sighashes (
+CREATE TABLE sbtc_signer.bitcoin_tx_sighashes (
+    -- The transaction ID of the bitcoin transaction.
     txid BYTEA PRIMARY KEY,
+    -- The bitcoin chain tip when the sign request was submitted.
     chain_tip BYTEA NOT NULL,
+    -- The txid that created the output that is being spent.
     prevout_txid BYTEA NOT NULL,
+    -- The index of the vout from the transaction that created this output.
     prevout_output_index INTEGER NOT NULL,
+    -- The sighash associated with the prevout.
     sighash BYTEA NOT NULL,
-    prevout_type sbtc_signer.prevout_type NOT NULL,
+    -- The result of validation that was done on the input.
     validation_result TEXT NOT NULL,
+    -- Whether the transaction is valid.
     is_valid_tx BOOLEAN NOT NULL,
+    -- The version of the algorithm that was used to create the bitcoin transaction.
     construction_version TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+    -- a timestamp of when this record was created in the database.
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    FOREIGN KEY (txid, prevout_txid, prevout_output_index)
+        REFERENCES sbtc_signer.bitcoin_tx_inputs(txid, prevout_txid, prevout_output_index)
 );
 
 CREATE TABLE sbtc_signer.bitcoin_withdrawals_outputs (
-    request_id BIGINT NOT NULL,
     -- The ID of the bitcoin transaction that includes this withdrawal output.
     bitcoin_txid BYTEA NOT NULL,
+    -- The index of the referenced output in the transaction's outputs.
     output_index INTEGER NOT NULL,
     -- The ID of the stacks transaction lead to the creation of the withdrawal request.
+    request_id BIGINT NOT NULL,
+    -- The stacks transaction ID that lead to the creation of the withdrawal request.
     stacks_txid BYTEA NOT NULL,
+    -- Stacks block ID of the block that includes the associated transaction.
     stacks_block_hash BYTEA NOT NULL,
+    -- The outcome of validation of the withdrawal request.
     validation_result TEXT NOT NULL,
+    -- The version of the algorithm that was used to create the bitcoin transaction.
     construction_version TEXT NOT NULL,
+    -- a timestamp of when this record was created in the database.
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    -- the primary key is a pair of request_id and stacks_block_hash because request_id
+    -- may not be unique in case of bitcoin forks.
     PRIMARY KEY (request_id, stacks_block_hash)
 );

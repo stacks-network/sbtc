@@ -50,6 +50,7 @@ use signer::storage::model::StacksBlock;
 use signer::storage::model::StacksBlockHash;
 use signer::storage::model::StacksTxId;
 use signer::storage::model::SweepTransaction;
+use signer::storage::model::TxPrevout;
 use signer::storage::model::WithdrawalSigner;
 use signer::storage::postgres::PgStore;
 use signer::storage::DbRead;
@@ -3082,34 +3083,26 @@ async fn deposit_report_with_deposit_request_confirmed() {
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-async fn can_write_and_get_single_bitcoin_tx_sighashes() {
-    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
-
-    let sighashes: Vec<BitcoinTxSigHash> = (0..5).map(|_| fake::Faker.fake()).collect();
-
-    for sighash in sighashes.iter() {
-        db.write_bitcoin_tx_sighash(sighash).await.unwrap();
-    }
-
-    for sighash in sighashes.iter() {
-        let got = db
-            .get_bitcoin_tx_sighash(&sighash.txid)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(got, *sighash);
-    }
-    signer::testing::storage::drop_db(db).await;
-}
-
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[tokio::test]
 async fn can_write_and_get_multiple_bitcoin_txs_sighashes() {
     let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
 
     let sighashes: Vec<BitcoinTxSigHash> = (0..5).map(|_| fake::Faker.fake()).collect();
+    let prevouts: Vec<TxPrevout> = sighashes
+        .iter()
+        .map(|sighash| TxPrevout {
+            txid: sighash.txid.clone(),
+            prevout_txid: sighash.prevout_txid.clone(),
+            prevout_output_index: sighash.prevout_output_index,
+            script_pubkey: fake::Faker.fake(),
+            amount: 1_000_000,
+            prevout_type: sighash.prevout_type,
+        })
+        .collect();
+
+    for prevout in prevouts.iter() {
+        db.write_tx_prevout(prevout).await.unwrap();
+    }
 
     db.write_bitcoin_txs_sighashes(sighashes.clone())
         .await
@@ -3122,31 +3115,6 @@ async fn can_write_and_get_multiple_bitcoin_txs_sighashes() {
     let results = join_all(withdrawal_outputs_futures).await;
 
     for (output, result) in sighashes.iter().zip(results) {
-        let result = result.unwrap().unwrap();
-        assert_eq!(result, *output);
-    }
-    signer::testing::storage::drop_db(db).await;
-}
-
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[tokio::test]
-async fn can_write_and_get_single_bitcoin_withdrawal_outputs() {
-    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
-
-    let outputs: Vec<BitcoinWithdrawalOutput> = (0..5).map(|_| fake::Faker.fake()).collect();
-
-    for output in outputs.iter() {
-        db.write_bitcoin_withdrawal_output(output).await.unwrap();
-    }
-
-    let withdrawal_outputs_futures = outputs.iter().map(|output| {
-        db.get_bitcoin_withdrawal_output(output.request_id, &output.stacks_block_hash)
-    });
-
-    let results = join_all(withdrawal_outputs_futures).await;
-
-    for (output, result) in outputs.iter().zip(results) {
         let result = result.unwrap().unwrap();
         assert_eq!(result, *output);
     }
