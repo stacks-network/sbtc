@@ -176,7 +176,9 @@ where
                 Some(Ok(SignerSignal::Command(SignerCommand::Shutdown))) => break,
                 Some(Ok(SignerSignal::Command(SignerCommand::P2PPublish(_)))) => {}
                 Some(Ok(SignerSignal::Event(event))) => {
-                    if let SignerEvent::RequestDecider(RequestDeciderEvent::NewRequestsHandled) = event {
+                    if let SignerEvent::RequestDecider(RequestDeciderEvent::NewRequestsHandled) =
+                        event
+                    {
                         tracing::debug!("received signal; processing requests");
                         if let Err(error) = self.process_new_blocks().await {
                             tracing::error!(
