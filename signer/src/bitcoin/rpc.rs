@@ -605,7 +605,7 @@ impl BitcoinInteract for BitcoinCoreClient {
                 vsize = tx_fee_info.vsize;
 
                 // If the fee is present, then the transaction was confirmed and
-                // we can return early.
+                // we can can simply use that value.
                 if let Some(tx_fee) = tx_fee_info.fee {
                     fee = tx_fee.to_sat();
                 } else {
