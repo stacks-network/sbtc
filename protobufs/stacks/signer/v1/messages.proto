@@ -6,10 +6,8 @@ import "bitcoin/bitcoin.proto";
 import "crypto/common.proto";
 import "crypto/wsts/wsts.proto";
 import "stacks/common.proto";
-
 import "stacks/signer/v1/decisions.proto";
 import "stacks/signer/v1/requests.proto";
-
 
 // Messages exchanged between signers
 message SignerMessage {
@@ -38,14 +36,14 @@ message SignerMessage {
 
 // Represents information about a deposit request being swept-in by a sweep transaction.
 message SweptDeposit {
-    // The index of the deposit input in the sBTC sweep transaction.
-    uint32 input_index = 1;
-    // The Bitcoin txid of the deposit request UTXO being swept-in by this
-    // transaction.
-    bitcoin.BitcoinTxid deposit_request_txid = 2;
-    // The Bitcoin output index of the deposit request UTXO being swept-in by
-    // this transaction.
-    uint32 deposit_request_output_index = 3;
+  // The index of the deposit input in the sBTC sweep transaction.
+  uint32 input_index = 1;
+  // The Bitcoin txid of the deposit request UTXO being swept-in by this
+  // transaction.
+  bitcoin.BitcoinTxid deposit_request_txid = 2;
+  // The Bitcoin output index of the deposit request UTXO being swept-in by
+  // this transaction.
+  uint32 deposit_request_output_index = 3;
 }
 
 // Represents information about a withdrawal request being swept-out by a sweep transaction.

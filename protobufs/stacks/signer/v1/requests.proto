@@ -45,22 +45,22 @@ message StacksTransactionSignRequest {
 }
 
 enum SmartContract {
-    SC_UNSPECIFIED = 0;
-    // The sbtc-registry contract. This contract needs to be deployed
-    // before any other contract.
-    SBTC_REGISTRY = 1;
-    // The sbtc-token contract. This contract needs to be deployed right
-    // after the sbtc-registry contract.
-    SBTC_TOKEN = 2;
-    // The sbtc-deposit contract. Can be deployed after the sbtc-token
-    // contract.
-    SBTC_DEPOSIT = 3;
-    // The sbtc-withdrawal contract. Can be deployed after the sbtc-token
-    // contract.
-    SBTC_WITHDRAWAL = 4;
-    // The sbtc-bootstrap-signers contract. Can be deployed after the
-    // sbtc-token contract.
-    SBTC_BOOTSTRAP = 5;
+  SC_UNSPECIFIED = 0;
+  // The sbtc-registry contract. This contract needs to be deployed
+  // before any other contract.
+  SBTC_REGISTRY = 1;
+  // The sbtc-token contract. This contract needs to be deployed right
+  // after the sbtc-registry contract.
+  SBTC_TOKEN = 2;
+  // The sbtc-deposit contract. Can be deployed after the sbtc-token
+  // contract.
+  SBTC_DEPOSIT = 3;
+  // The sbtc-withdrawal contract. Can be deployed after the sbtc-token
+  // contract.
+  SBTC_WITHDRAWAL = 4;
+  // The sbtc-bootstrap-signers contract. Can be deployed after the
+  // sbtc-token contract.
+  SBTC_BOOTSTRAP = 5;
 }
 
 // For making a `complete-deposit` contract call in the sbtc-deposit
