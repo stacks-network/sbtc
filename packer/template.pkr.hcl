@@ -8,6 +8,16 @@ packer {
   }
 }
 
+variable "aws_access_key" {
+  type    = string
+  default = ""
+}
+
+variable "aws_secret_key" {
+  type    = string
+  default = ""
+}
+
 variable "aws_region" {
   type    = string
   default = "us-west-2"
@@ -15,6 +25,8 @@ variable "aws_region" {
 
 source "amazon-ebs" "ubuntu" {
   ami_name                = "sbtc-signer-image-{{timestamp}}"
+  access_key    = var.aws_access_key
+  secret_key    = var.aws_secret_key
   instance_type           = "c6i.xlarge"
   region                  = var.aws_region
   source_ami_filter {
@@ -46,7 +58,7 @@ build {
       "git clone https://github.com/stacks-network/sbtc.git",
       "cd sbtc",
       "sudo docker-compose -f docker/docker-compose.yml pull",
-      "curl -O https://archive.hiro.so/testnet/stacks-blockchain/testnet-stacks-blockchain-2.5.0.0.7-20240917.tar.gz",
+      "curl -O https://archive.hiro.so/testnet/stacks-blockchain/testnet-stacks-blockchain-latest.tar.gz",
       "sudo docker-compose -f docker/docker-compose.yml --profile sbtc-signer up -d",
     ]
   }
