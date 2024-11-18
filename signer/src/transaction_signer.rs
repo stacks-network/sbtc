@@ -135,7 +135,11 @@ where
     Rng: rand::RngCore + rand::CryptoRng,
 {
     /// Run the signer event loop
-    #[tracing::instrument(skip_all, fields(public_key = %self.signer_public_key()), name = "tx-signer")]
+    #[tracing::instrument(
+        skip_all,
+        fields(public_key = %self.signer_public_key()),
+        name = "tx-signer"
+    )]
     pub async fn run(mut self) -> Result<(), Error> {
         if let Err(error) = self.context.signal(TxSignerEvent::EventLoopStarted.into()) {
             tracing::error!(%error, "error signalling event loop start");

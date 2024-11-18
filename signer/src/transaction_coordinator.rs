@@ -234,7 +234,10 @@ where
         Ok(is_epoch3)
     }
 
-    #[tracing::instrument(skip_all, fields(public_key = %self.signer_public_key(), chain_tip = tracing::field::Empty))]
+    #[tracing::instrument(
+        skip_all,
+        fields(public_key = %self.signer_public_key(), chain_tip = tracing::field::Empty)
+    )]
     async fn process_new_blocks(&mut self) -> Result<(), Error> {
         if !self.is_epoch3().await? {
             return Ok(());
@@ -383,7 +386,10 @@ where
             .await?
             .ok_or(Error::NoStacksChainTip)?;
 
-        tracing::debug!(stacks_chain_tip = %stacks_chain_tip.block_hash, "retrieved the stacks chain tip");
+        tracing::debug!(
+            stacks_chain_tip = %stacks_chain_tip.block_hash,
+            "retrieved the stacks chain tip"
+        );
 
         let pending_requests_fut =
             self.get_pending_requests(bitcoin_chain_tip, aggregate_key, signer_public_keys);
@@ -684,7 +690,10 @@ where
                 // to do that at the source when we receive the message.
 
                 if &msg.bitcoin_chain_tip != chain_tip {
-                    tracing::warn!(origin = %msg.signer_pub_key, "concurrent signing round message observed");
+                    tracing::warn!(
+                        sender = %msg.signer_pub_key,
+                        "concurrent signing round message observed"
+                    );
                     continue;
                 }
 
