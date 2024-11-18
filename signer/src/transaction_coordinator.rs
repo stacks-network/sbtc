@@ -168,7 +168,7 @@ where
     #[tracing::instrument(skip(self), name = "tx-coordinator")]
     pub async fn run(mut self) -> Result<(), Error> {
         tracing::info!("starting transaction coordinator event loop");
-        let mut signal_stream = self.context.new_signal_stream(&self.network);
+        let mut signal_stream = self.context.as_signal_stream(&self.network);
 
         loop {
             match signal_stream.next().await {
@@ -202,10 +202,10 @@ where
         Ok(())
     }
 
-    /// A function that filters the [`Context::new_signal_stream`] stream
+    /// A function that filters the [`Context::as_signal_stream`] stream
     /// for items that the coordinator might care about, which includes
     /// some network messages and transaction signer messages.
-    async fn filter_stream<E>(event: Result<SignerSignal, E>) -> Option<Signed<SignerMessage>> {
+    async fn to_signed_message<E>(event: Result<SignerSignal, E>) -> Option<Signed<SignerMessage>> {
         match event.ok()? {
             SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::MessageGenerated(msg)))
             | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(msg))) => Some(msg),
@@ -649,8 +649,8 @@ where
         let max_duration = self.signing_round_max_duration;
         let signal_stream = self
             .context
-            .new_signal_stream(&self.network)
-            .filter_map(Self::filter_stream);
+            .as_signal_stream(&self.network)
+            .filter_map(Self::to_signed_message);
 
         tokio::pin!(signal_stream);
 
@@ -886,8 +886,8 @@ where
 
         let signal_stream = self
             .context
-            .new_signal_stream(&self.network)
-            .filter_map(Self::filter_stream);
+            .as_signal_stream(&self.network)
+            .filter_map(Self::to_signed_message);
 
         tokio::pin!(signal_stream);
 
