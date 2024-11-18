@@ -73,14 +73,11 @@ where
 
     /// Start the event loop.
     pub fn start(self) -> RunningEventLoopHandle<Ctx> {
-        let join_handle = tokio::spawn(async { self.event_loop.run().await });
-
-        let signal_rx = self.context.get_signal_receiver();
+        tokio::spawn(async { self.event_loop.run().await });
 
         RunningEventLoopHandle {
-            join_handle,
+            signal_rx: self.context.get_signal_receiver(),
             context: self.context,
-            signal_rx,
         }
     }
 }
@@ -88,7 +85,6 @@ where
 /// A running event loop.
 pub struct RunningEventLoopHandle<C> {
     context: C,
-    join_handle: tokio::task::JoinHandle<Result<(), error::Error>>,
     signal_rx: broadcast::Receiver<SignerSignal>,
 }
 
@@ -121,11 +117,6 @@ where
         };
 
         tokio::time::timeout(timeout, future).await
-    }
-
-    /// Abort the event loop
-    pub fn abort(&self) {
-        self.join_handle.abort();
     }
 }
 
@@ -507,8 +498,6 @@ where
             msg.payload,
             message::Payload::BitcoinTransactionSignAck(_)
         ));
-
-        handle.join_handle.abort();
     }
 
     /// Assert that a group of transaction signers together can
@@ -595,7 +584,6 @@ where
         let aggregate_key = coordinator.run_dkg(bitcoin_chain_tip, dummy_txid).await;
 
         for handle in event_loop_handles.into_iter() {
-            handle.join_handle.abort();
             assert!(handle
                 .context
                 .get_storage()
