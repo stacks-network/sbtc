@@ -1181,7 +1181,7 @@ pub struct BitcoinTxSigHash {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct BitcoinWithdrawalOutput {
     /// The ID of the transaction that includes this withdrawal output.
-    pub txid: BitcoinTxId,
+    pub bitcoin_txid: BitcoinTxId,
     /// The index of the referenced output in the transaction's outputs.
     #[sqlx(try_from = "i32")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]

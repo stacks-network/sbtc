@@ -1850,11 +1850,12 @@ impl super::DbRead for PgStore {
     async fn get_bitcoin_withdrawal_output(
         &self,
         request_id: u64,
+        stacks_block_hash: &model::StacksBlockHash,
     ) -> Result<Option<model::BitcoinWithdrawalOutput>, Error> {
         sqlx::query_as::<_, model::BitcoinWithdrawalOutput>(
             r#"
             SELECT
-                txid
+                bitcoin_txid
               , output_index
               , request_id
               , stacks_txid
@@ -1862,10 +1863,11 @@ impl super::DbRead for PgStore {
               , validation_result
               , construction_version
             FROM sbtc_signer.bitcoin_withdrawals_outputs
-            WHERE request_id = $1
+            WHERE request_id = $1 AND stacks_block_hash = $2
             "#,
         )
         .bind(i64::try_from(request_id).map_err(Error::ConversionDatabaseInt)?)
+        .bind(stacks_block_hash)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -2805,7 +2807,7 @@ impl super::DbWrite for PgStore {
             r#"
             INSERT INTO sbtc_signer.bitcoin_withdrawals_outputs (
                 request_id
-              , txid
+              , bitcoin_txid
               , output_index
               , stacks_txid
               , stacks_block_hash
@@ -2817,7 +2819,7 @@ impl super::DbWrite for PgStore {
             "#,
         )
         .bind(i64::try_from(withdrawal_output.request_id).map_err(Error::ConversionDatabaseInt)?)
-        .bind(withdrawal_output.txid)
+        .bind(withdrawal_output.bitcoin_txid)
         .bind(i32::try_from(withdrawal_output.output_index).map_err(Error::ConversionDatabaseInt)?)
         .bind(withdrawal_output.stacks_txid)
         .bind(withdrawal_output.stacks_block_hash)
@@ -2839,7 +2841,7 @@ impl super::DbWrite for PgStore {
         }
 
         let mut request_id = Vec::with_capacity(withdrawal_outputs.len());
-        let mut txid = Vec::with_capacity(withdrawal_outputs.len());
+        let mut bitcoin_txid = Vec::with_capacity(withdrawal_outputs.len());
         let mut output_index = Vec::with_capacity(withdrawal_outputs.len());
         let mut stacks_txid = Vec::with_capacity(withdrawal_outputs.len());
         let mut stacks_block_hash = Vec::with_capacity(withdrawal_outputs.len());
@@ -2847,7 +2849,7 @@ impl super::DbWrite for PgStore {
         let mut construction_version = Vec::with_capacity(withdrawal_outputs.len());
 
         for withdrawal_output in withdrawal_outputs {
-            txid.push(withdrawal_output.txid);
+            bitcoin_txid.push(withdrawal_output.bitcoin_txid);
             output_index.push(
                 i32::try_from(withdrawal_output.output_index)
                     .map_err(Error::ConversionDatabaseInt)?,
@@ -2865,7 +2867,7 @@ impl super::DbWrite for PgStore {
         sqlx::query(
             r#"
             WITH request_id         AS (SELECT ROW_NUMBER() OVER (), request_id FROM UNNEST($1::BIGINT[]) AS request_id)
-            , tx_ids                AS (SELECT ROW_NUMBER() OVER (), txid FROM UNNEST($2::BYTEA[]) AS txid)
+            , bitcoin_tx_ids        AS (SELECT ROW_NUMBER() OVER (), bitcoin_txid FROM UNNEST($2::BYTEA[]) AS bitcoin_txid)
             , output_index          AS (SELECT ROW_NUMBER() OVER (), output_index FROM UNNEST($3::INTEGER[]) AS output_index)
             , stacks_txid           AS (SELECT ROW_NUMBER() OVER (), stacks_txid FROM UNNEST($4::BYTEA[]) AS stacks_txid)
             , stacks_block_hash     AS (SELECT ROW_NUMBER() OVER (), stacks_block_hash FROM UNNEST($5::BYTEA[]) AS stacks_block_hash)
@@ -2873,7 +2875,7 @@ impl super::DbWrite for PgStore {
             , construction_version  AS (SELECT ROW_NUMBER() OVER (), construction_version FROM UNNEST($7::TEXT[]) AS construction_version)
             INSERT INTO sbtc_signer.bitcoin_withdrawals_outputs (
                   request_id
-                , txid
+                , bitcoin_txid
                 , output_index
                 , stacks_txid
                 , stacks_block_hash
@@ -2881,14 +2883,14 @@ impl super::DbWrite for PgStore {
                 , construction_version)
             SELECT
                 request_id
-              , txid
+              , bitcoin_txid
               , output_index
               , stacks_txid
               , stacks_block_hash
               , validation_result
               , construction_version
             FROM request_id
-            JOIN tx_ids USING (row_number)
+            JOIN bitcoin_tx_ids USING (row_number)
             JOIN output_index USING (row_number)
             JOIN stacks_txid USING (row_number)
             JOIN stacks_block_hash USING (row_number)
@@ -2897,7 +2899,7 @@ impl super::DbWrite for PgStore {
             ON CONFLICT DO NOTHING"#,
         )
         .bind(request_id)
-        .bind(txid)
+        .bind(bitcoin_txid)
         .bind(output_index)
         .bind(stacks_txid)
         .bind(stacks_block_hash)

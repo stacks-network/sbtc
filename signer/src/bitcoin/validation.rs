@@ -325,7 +325,7 @@ impl TempOutput {
             .iter()
             .enumerate()
             .map(|(output_index, (_, report))| BitcoinWithdrawalOutput {
-                txid,
+                bitcoin_txid: txid,
                 output_index: output_index as u32,
                 request_id: report.id.request_id,
                 stacks_txid: report.id.txid,

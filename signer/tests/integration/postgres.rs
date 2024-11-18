@@ -3140,9 +3140,9 @@ async fn can_write_and_get_single_bitcoin_withdrawal_outputs() {
         db.write_bitcoin_withdrawal_output(output).await.unwrap();
     }
 
-    let withdrawal_outputs_futures = outputs
-        .iter()
-        .map(|output| db.get_bitcoin_withdrawal_output(output.request_id));
+    let withdrawal_outputs_futures = outputs.iter().map(|output| {
+        db.get_bitcoin_withdrawal_output(output.request_id, &output.stacks_block_hash)
+    });
 
     let results = join_all(withdrawal_outputs_futures).await;
 
@@ -3165,9 +3165,9 @@ async fn can_write_and_get_multiple_bitcoin_withdrawal_outputs() {
         .await
         .unwrap();
 
-    let withdrawal_outputs_futures = outputs
-        .iter()
-        .map(|output| db.get_bitcoin_withdrawal_output(output.request_id));
+    let withdrawal_outputs_futures = outputs.iter().map(|output| {
+        db.get_bitcoin_withdrawal_output(output.request_id, &output.stacks_block_hash)
+    });
 
     let results = join_all(withdrawal_outputs_futures).await;
 

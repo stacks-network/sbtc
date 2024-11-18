@@ -335,14 +335,15 @@ CREATE TABLE sbtc_signer.bitcoin_txs_sighashes (
 );
 
 CREATE TABLE sbtc_signer.bitcoin_withdrawals_outputs (
-    request_id BIGINT PRIMARY KEY,
+    request_id BIGINT NOT NULL,
     -- The ID of the bitcoin transaction that includes this withdrawal output.
-    txid BYTEA NOT NULL,
+    bitcoin_txid BYTEA NOT NULL,
     output_index INTEGER NOT NULL,
     -- The ID of the stacks transaction lead to the creation of the withdrawal request.
     stacks_txid BYTEA NOT NULL,
     stacks_block_hash BYTEA NOT NULL,
     validation_result TEXT NOT NULL,
     construction_version TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    PRIMARY KEY (request_id, stacks_block_hash)
 );

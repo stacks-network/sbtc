@@ -340,6 +340,7 @@ pub trait DbRead {
     fn get_bitcoin_withdrawal_output(
         &self,
         request_id: u64,
+        stacks_block_hash: &model::StacksBlockHash,
     ) -> impl Future<Output = Result<Option<model::BitcoinWithdrawalOutput>, Error>> + Send;
 }
 
