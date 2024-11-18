@@ -7,22 +7,20 @@
 
 use std::collections::BTreeSet;
 use std::collections::HashMap;
-use std::sync::atomic::AtomicBool;
-use std::time::Duration;
 
 use crate::blocklist_client;
 use crate::context::Context;
+use crate::context::P2PEvent;
+use crate::context::SignerCommand;
 use crate::context::SignerEvent;
 use crate::context::SignerSignal;
 use crate::context::TxCoordinatorEvent;
 use crate::context::TxSignerEvent;
 use crate::ecdsa::SignEcdsa as _;
-use crate::ecdsa::Signed;
 use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
-use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
 use crate::network;
 use crate::signature::SighashDigest as _;
@@ -39,7 +37,6 @@ use crate::wsts_state_machine;
 
 use futures::StreamExt;
 use futures::TryStreamExt;
-use tokio::sync::Mutex;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
 
