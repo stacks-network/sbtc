@@ -41,7 +41,7 @@ source "amazon-ebs" "ubuntu" {
   ssh_username            = "ubuntu"
   ami_block_device_mappings {
     device_name           = "/dev/sda1"
-    volume_size           = 100
+    volume_size           = 200
     volume_type           = "gp3"
     delete_on_termination = true
   }
@@ -53,13 +53,13 @@ build {
   provisioner "shell" {
     inline = [
       "sudo apt-get update",
-      "sudo apt-get install -y docker.io docker-compose git",
+      "sudo apt-get install -y docker.io",
+      "sudo curl -L \"https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)\" -o /usr/local/bin/docker-compose",
+      "sudo chmod +x /usr/local/bin/docker-compose",
       "sudo usermod -aG docker ubuntu",
       "git clone https://github.com/stacks-network/sbtc.git",
-      "cd sbtc",
-      "sudo docker-compose -f docker/docker-compose.yml pull",
-      "curl -O https://archive.hiro.so/testnet/stacks-blockchain/testnet-stacks-blockchain-latest.tar.gz",
-      "sudo docker-compose -f docker/docker-compose.yml --profile sbtc-signer up -d",
+      "sudo docker-compose -f docker/prodlike/docker-compose.testnet.yml pull",
+      "sudo docker-compose -f docker/prodlike/docker-compose.testnet.yml up -d",
     ]
   }
 }
