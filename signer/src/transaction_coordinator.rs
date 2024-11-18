@@ -657,7 +657,6 @@ where
         let future = async {
             while multi_tx.num_signatures() < wallet.signatures_required() {
                 let Some(msg) = signal_stream.next().await else {
-                    tracing::warn!("received none from the stream, let's hope this fixes itself");
                     continue;
                 };
                 // TODO: We need to verify these messages, but it is best
