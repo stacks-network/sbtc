@@ -8,6 +8,7 @@ use bitcoin::hashes::Hash as _;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
+use bitcoin::TapSighash;
 use bitcoin::TxIn;
 use bitcoin::TxOut;
 use bitvec::array::BitArray;
@@ -42,6 +43,7 @@ use crate::storage::model::BitcoinTxId;
 use crate::storage::model::EncryptedDkgShares;
 use crate::storage::model::RotateKeysTransaction;
 use crate::storage::model::ScriptPubKey;
+use crate::storage::model::SigHash;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
@@ -447,6 +449,12 @@ impl fake::Dummy<fake::Faker> for ScriptPubKey {
         let pk = bitcoin::CompressedPublicKey(public_key.into());
         let script_pubkey = ScriptBuf::new_p2wpkh(&pk.wpubkey_hash());
         ScriptPubKey::from(script_pubkey)
+    }
+}
+
+impl fake::Dummy<fake::Faker> for SigHash {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        TapSighash::from_byte_array(config.fake_with_rng(rng)).into()
     }
 }
 

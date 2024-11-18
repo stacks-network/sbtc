@@ -121,6 +121,12 @@ pub struct Store {
 
     /// Bitcoin transaction inputs
     pub bitcoin_prevouts: HashMap<model::BitcoinTxId, model::TxPrevout>,
+
+    /// Bitcoin signhashes
+    pub bitcoin_sighashes: HashMap<model::BitcoinTxId, model::BitcoinTxSigHash>,
+
+    /// Bitcoin withdrawal outputs
+    pub bitcoin_withdrawal_outputs: HashMap<u64, model::BitcoinWithdrawalOutput>,
 }
 
 impl Store {
@@ -858,6 +864,25 @@ impl super::DbRead for SharedStore {
         // fees, but this seems OK for all current tests.
         Ok(Vec::new())
     }
+
+    async fn get_bitcoin_tx_sighash(
+        &self,
+        txid: &model::BitcoinTxId,
+    ) -> Result<Option<model::BitcoinTxSigHash>, Error> {
+        Ok(self.lock().await.bitcoin_sighashes.get(txid).cloned())
+    }
+
+    async fn get_bitcoin_withdrawal_output(
+        &self,
+        request_id: u64,
+    ) -> Result<Option<model::BitcoinWithdrawalOutput>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .bitcoin_withdrawal_outputs
+            .get(&request_id)
+            .cloned())
+    }
 }
 
 impl super::DbWrite for SharedStore {
@@ -1155,6 +1180,53 @@ impl super::DbWrite for SharedStore {
         let mut store = self.lock().await;
         store.sweep_transactions.push(tx.clone());
 
+        Ok(())
+    }
+
+    async fn write_bitcoin_tx_sighash(
+        &self,
+        sighash: &model::BitcoinTxSigHash,
+    ) -> Result<(), Error> {
+        self.lock()
+            .await
+            .bitcoin_sighashes
+            .insert(sighash.txid, sighash.clone());
+
+        Ok(())
+    }
+
+    async fn write_bitcoin_withdrawal_output(
+        &self,
+        output: &model::BitcoinWithdrawalOutput,
+    ) -> Result<(), Error> {
+        let mut store = self.lock().await;
+        store
+            .bitcoin_withdrawal_outputs
+            .insert(output.request_id, output.clone());
+        Ok(())
+    }
+
+    async fn write_bitcoin_withdrawals_outputs(
+        &self,
+        withdrawal_outputs: Vec<model::BitcoinWithdrawalOutput>,
+    ) -> Result<(), Error> {
+        let mut store = self.lock().await;
+        withdrawal_outputs.into_iter().for_each(|output| {
+            store
+                .bitcoin_withdrawal_outputs
+                .insert(output.request_id, output);
+        });
+        Ok(())
+    }
+
+    async fn write_bitcoin_txs_sighashes(
+        &self,
+        sighashes: Vec<model::BitcoinTxSigHash>,
+    ) -> Result<(), Error> {
+        let mut store = self.lock().await;
+        sighashes.into_iter().for_each(|sighash| {
+            store.bitcoin_sighashes.insert(sighash.txid, sighash);
+        });
         Ok(())
     }
 }
