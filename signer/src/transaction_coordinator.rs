@@ -19,6 +19,7 @@ use crate::bitcoin::utxo::GetFees;
 use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
 use crate::context::P2PEvent;
+use crate::context::RequestDeciderEvent;
 use crate::context::SignerCommand;
 use crate::context::SignerEvent;
 use crate::context::SignerSignal;
@@ -175,7 +176,7 @@ where
                 Some(Ok(SignerSignal::Command(SignerCommand::Shutdown))) => break,
                 Some(Ok(SignerSignal::Command(SignerCommand::P2PPublish(_)))) => {}
                 Some(Ok(SignerSignal::Event(event))) => {
-                    if let SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled) = event {
+                    if let SignerEvent::RequestDecider(RequestDeciderEvent::NewRequestsHandled) = event {
                         tracing::debug!("received signal; processing requests");
                         if let Err(error) = self.process_new_blocks().await {
                             tracing::error!(

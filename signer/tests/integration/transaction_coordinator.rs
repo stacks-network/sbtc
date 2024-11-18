@@ -34,6 +34,7 @@ use sbtc::testing::regtest::Recipient;
 use secp256k1::Keypair;
 use sha2::Digest as _;
 use signer::bitcoin::utxo::GetFees as _;
+use signer::context::RequestDeciderEvent;
 use signer::context::TxSignerEvent;
 use signer::keys::PrivateKey;
 use signer::network::in_memory2::SignerNetwork;
@@ -566,7 +567,7 @@ async fn process_complete_deposit() {
 
     // Wake coordinator up
     context
-        .signal(SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled).into())
+        .signal(RequestDeciderEvent::NewRequestsHandled.into())
         .expect("failed to signal");
 
     // Await the `wait_for_tx_task` to receive the first transaction broadcasted.
@@ -732,12 +733,12 @@ async fn deploy_smart_contracts_coordinator<F>(
 
     // Wake coordinator up
     tx_coordinator_context
-        .signal(SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled).into())
+        .signal(RequestDeciderEvent::NewRequestsHandled.into())
         .expect("failed to signal");
     // Send a second signal to pick up the request after an error
     // used in the recover-and-deploy-all-contracts-after-failure test case
     tx_coordinator_context
-        .signal(SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled).into())
+        .signal(RequestDeciderEvent::NewRequestsHandled.into())
         .expect("failed to signal");
 
     let broadcasted_txs = tokio::time::timeout(Duration::from_secs(10), wait_for_transaction_task)
@@ -1056,7 +1057,7 @@ async fn run_dkg_from_scratch() {
     //    coordinator.
     signers.iter().for_each(|(ctx, _, _, _)| {
         ctx.get_signal_sender()
-            .send(TxSignerEvent::NewRequestsHandled.into())
+            .send(RequestDeciderEvent::NewRequestsHandled.into())
             .unwrap();
     });
 
