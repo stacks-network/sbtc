@@ -7,6 +7,7 @@ use fake::Faker;
 use futures::future::join_all;
 use rand::SeedableRng as _;
 
+use secp256k1::Keypair;
 use signer::context::Context;
 use signer::context::SignerEvent;
 use signer::context::SignerSignal;
@@ -18,6 +19,7 @@ use signer::keys::PrivateKey;
 use signer::keys::PublicKey;
 use signer::message;
 use signer::message::StacksTransactionSignRequest;
+use signer::network::in_memory2::WanNetwork;
 use signer::network::InMemoryNetwork;
 use signer::network::MessageTransfer;
 use signer::stacks::api::MockStacksInteract;
@@ -213,7 +215,7 @@ async fn should_be_able_to_participate_in_signing_round() {
 
 /// Test that transaction signers can receive [`SweepTransactionInfo`] messages
 /// from other signers and store the information in their respective databases.
-#[ignore = "this test will be fixed shortly"]
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test(tokio::test)]
 async fn should_store_sweep_transaction_info_from_other_signers() {
     let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
