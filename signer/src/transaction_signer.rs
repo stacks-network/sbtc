@@ -36,6 +36,7 @@ use crate::storage::DbWrite as _;
 use crate::wsts_state_machine::SignerStateMachine;
 
 use futures::StreamExt;
+use futures::TryStreamExt as _;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
 use wsts::net::Message as WstsNetMessage;
@@ -652,10 +653,15 @@ where
                 .map_err(Error::Wsts)?;
         }
 
-        for outbound_message in outbound_messages {
-            let msg = message::WstsMessage { txid, inner: outbound_message };
-
-            tracing::debug!(?msg, "sending message");
+        for outbound in outbound_messages {
+            // We cannot store DKG shares until the signer state machine
+            // emits a DkgEnd message, because that is the only way to know
+            // whether it has truly received all relevant messages from its
+            // peers.
+            if let WstsNetMessage::DkgEnd(DkgEnd { status: DkgStatus::Success, .. }) = outbound {
+                self.store_dkg_shares(&txid).await?;
+            }
+            let msg = message::WstsMessage { txid, inner: outbound };
 
             self.send_message(msg, bitcoin_chain_tip).await?;
         }
