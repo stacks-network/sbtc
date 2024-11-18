@@ -1670,9 +1670,10 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
 
     let signer_utxo_tx = client.get_tx(&outpoint.txid).unwrap().unwrap();
     let signer_utxo_txid = signer_utxo_tx.tx.compute_txid();
-    
+
     let mut signer_utxo_tx_encoded = Vec::new();
-    signer_utxo_tx.tx
+    signer_utxo_tx
+        .tx
         .consensus_encode(&mut signer_utxo_tx_encoded)
         .unwrap();
 
@@ -1694,14 +1695,18 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
         block_height: 1,
         block_hash: signer_utxo_block_hash.into(),
         parent_hash: BlockHash::all_zeros().into(),
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 
     db.write_transaction(&model::Transaction {
-        txid: signer_utxo_txid.to_byte_array(), 
-        tx: signer_utxo_tx_encoded, 
+        txid: signer_utxo_txid.to_byte_array(),
+        tx: signer_utxo_tx_encoded,
         tx_type: model::TransactionType::SbtcTransaction,
-        block_hash: signer_utxo_block_hash.to_byte_array()
-    }).await.unwrap();
+        block_hash: signer_utxo_block_hash.to_byte_array(),
+    })
+    .await
+    .unwrap();
 
     db.write_tx_prevout(&utxo_input).await.unwrap();
     db.write_tx_output(&utxo_output).await.unwrap();
@@ -1709,13 +1714,12 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
     db.write_bitcoin_transaction(&model::BitcoinTxRef {
         block_hash: signer_utxo_block_hash.into(),
         txid: signer_utxo_txid.into(),
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 
-    let chain_tip = db.get_bitcoin_canonical_chain_tip()
-        .await
-        .unwrap()
-        .unwrap();
-    
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+
     // Get the signer UTXO and assert that it is the one we just wrote.
     let utxo = db
         .get_signer_utxo(&chain_tip, 10)
@@ -1738,12 +1742,10 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
             sequence: bitcoin::Sequence::ZERO,
             witness: bitcoin::Witness::new(),
         }],
-        output: vec![
-            bitcoin::TxOut {
-                value: bitcoin::Amount::from_sat(9_000),
-                script_pubkey: addr.address.script_pubkey(),
-            },
-        ],
+        output: vec![bitcoin::TxOut {
+            value: bitcoin::Amount::from_sat(9_000),
+            script_pubkey: addr.address.script_pubkey(),
+        }],
     };
 
     // Sign and broadcast the transaction
@@ -1778,12 +1780,10 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
             sequence: bitcoin::Sequence::ZERO,
             witness: bitcoin::Witness::new(),
         }],
-        output: vec![
-            bitcoin::TxOut {
-                value: bitcoin::Amount::from_sat(8_000),
-                script_pubkey: addr.address.script_pubkey(),
-            },
-        ],
+        output: vec![bitcoin::TxOut {
+            value: bitcoin::Amount::from_sat(8_000),
+            script_pubkey: addr.address.script_pubkey(),
+        }],
     };
 
     // Sign and broadcast the transaction

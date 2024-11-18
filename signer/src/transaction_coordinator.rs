@@ -1355,7 +1355,7 @@ where
     /// the mempool which may need to be RBF'd. If there are no sweep
     /// transactions which are spending the signer's UTXO, then this function
     /// will return [`None`].
-    /// 
+    ///
     /// TODO: This method currently blindly assumes that the mempool transactions
     /// are correct. Maybe we need some validation?
     #[tracing::instrument(skip_all, fields(%chain_tip, signer_utxo = %signer_utxo.outpoint))]
