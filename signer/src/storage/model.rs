@@ -1132,7 +1132,7 @@ impl std::fmt::Display for SigHash {
 
 /// The version of the algorithm that constructed the bitcoin transaction.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
-#[sqlx(type_name = "varchar", rename_all = "snake_case")]
+#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub enum ConstructionVersion {
@@ -1157,6 +1157,7 @@ pub struct BitcoinTxSigHash {
     /// output.
     // #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
     #[sqlx(try_from = "i32")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
     pub prevout_output_index: u32,
     /// The sighash associated with the prevout.
     pub sighash: SigHash,
@@ -1182,14 +1183,15 @@ pub struct BitcoinWithdrawalOutput {
     /// The ID of the transaction that includes this withdrawal output.
     pub txid: BitcoinTxId,
     /// The index of the referenced output in the transaction's outputs.
-    #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
     #[sqlx(try_from = "i32")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
     pub output_index: u32,
     /// The request ID of the withdrawal request. These increment for each
     /// withdrawal, but there can be duplicates if there is a reorg that
     /// affects a transaction that calls the `initiate-withdrawal-request`
     /// public function.
     #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
     pub request_id: u64,
     /// The stacks transaction ID that lead to the creation of the
     /// withdrawal request.

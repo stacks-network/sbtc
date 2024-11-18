@@ -395,7 +395,7 @@ impl SbtcReports {
 
 /// The responses for validation of a sweep transaction on bitcoin.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
-#[sqlx(type_name = "transaction_type", rename_all = "snake_case")]
+#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 #[strum(serialize_all = "snake_case")]
 pub enum InputValidationResult {
@@ -446,7 +446,7 @@ impl InputValidationResult {
 /// The responses for validation of the outputs of a sweep transaction on
 /// bitcoin.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
-#[sqlx(type_name = "transaction_type", rename_all = "snake_case")]
+#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 #[strum(serialize_all = "snake_case")]
 pub enum WithdrawalValidationResult {

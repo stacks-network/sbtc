@@ -483,9 +483,21 @@ pub trait DbWrite {
         sighash: &model::BitcoinTxSigHash,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 
+    /// Write the bitcoin transactions sighaes to the database.
+    fn write_bitcoin_txs_sighashes(
+        &self,
+        sighashes: Vec<model::BitcoinTxSigHash>,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
     /// Write the bitcoin withdrawal output to the database.
     fn write_bitcoin_withdrawal_output(
         &self,
-        output: &model::BitcoinWithdrawalOutput,
+        withdrawal_output: &model::BitcoinWithdrawalOutput,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write the bitcoin withdrawals outputs to the database.
+    fn write_bitcoin_withdrawals_outputs(
+        &self,
+        withdrawals_outputs: Vec<model::BitcoinWithdrawalOutput>,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 }

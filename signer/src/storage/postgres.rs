@@ -1861,7 +1861,7 @@ impl super::DbRead for PgStore {
               , stacks_block_hash
               , validation_result
               , construction_version
-            FROM sbtc_signer.bitcoin_withdrawal_outputs
+            FROM sbtc_signer.bitcoin_withdrawals_outputs
             WHERE request_id = $1
             "#,
         )
@@ -2675,7 +2675,7 @@ impl super::DbWrite for PgStore {
     ) -> Result<(), Error> {
         sqlx::query(
             r#"
-                INSERT INTO bitcoin_txs_sighashes (
+                INSERT INTO sbtc_signer.bitcoin_txs_sighashes (
                     txid
                   , chain_tip
                   , prevout_txid
@@ -2706,13 +2706,104 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
+    async fn write_bitcoin_txs_sighashes(
+        &self,
+        sighashes: Vec<model::BitcoinTxSigHash>,
+    ) -> Result<(), Error> {
+        if sighashes.is_empty() {
+            return Ok(());
+        }
+
+        let mut txid = Vec::with_capacity(sighashes.len());
+        let mut chain_tip = Vec::with_capacity(sighashes.len());
+        let mut prevout_txid = Vec::with_capacity(sighashes.len());
+        let mut prevout_output_index = Vec::with_capacity(sighashes.len());
+        let mut sighash = Vec::with_capacity(sighashes.len());
+        let mut prevout_type = Vec::with_capacity(sighashes.len());
+        let mut validation_result = Vec::with_capacity(sighashes.len());
+        let mut is_valid_tx = Vec::with_capacity(sighashes.len());
+        let mut construction_version = Vec::with_capacity(sighashes.len());
+
+        for tx_sighash in sighashes {
+            txid.push(tx_sighash.txid);
+            chain_tip.push(tx_sighash.chain_tip);
+            prevout_txid.push(tx_sighash.prevout_txid);
+            prevout_output_index.push(
+                i32::try_from(tx_sighash.prevout_output_index)
+                    .map_err(Error::ConversionDatabaseInt)?,
+            );
+            sighash.push(tx_sighash.sighash);
+            prevout_type.push(tx_sighash.prevout_type);
+            validation_result.push(tx_sighash.validation_result);
+            is_valid_tx.push(tx_sighash.is_valid_tx);
+            construction_version.push(tx_sighash.construction_version);
+        }
+
+        sqlx::query(
+            r#"
+            WITH tx_ids             AS (SELECT ROW_NUMBER() OVER (), txid FROM UNNEST($1::BYTEA[]) AS txid)
+            , chain_tip             AS (SELECT ROW_NUMBER() OVER (), chain_tip FROM UNNEST($2::BYTEA[]) AS chain_tip)
+            , prevout_txid          AS (SELECT ROW_NUMBER() OVER (), prevout_txid FROM UNNEST($3::BYTEA[]) AS prevout_txid)
+            , prevout_output_index  AS (SELECT ROW_NUMBER() OVER (), prevout_output_index FROM UNNEST($4::INTEGER[]) AS prevout_output_index)
+            , sighash               AS (SELECT ROW_NUMBER() OVER (), sighash FROM UNNEST($5::BYTEA[]) AS sighash)
+            , prevout_type          AS (SELECT ROW_NUMBER() OVER (), prevout_type FROM UNNEST($6::VARCHAR[]) AS prevout_type)
+            , validation_result     AS (SELECT ROW_NUMBER() OVER (), validation_result FROM UNNEST($7::TEXT[]) AS validation_result)
+            , is_valid_tx           AS (SELECT ROW_NUMBER() OVER (), is_valid_tx FROM UNNEST($8::BOOLEAN[]) AS is_valid_tx)
+            , construction_version  AS (SELECT ROW_NUMBER() OVER (), construction_version FROM UNNEST($9::TEXT[]) AS construction_version)
+            INSERT INTO sbtc_signer.bitcoin_txs_sighashes (
+                  txid
+                , chain_tip
+                , prevout_txid
+                , prevout_output_index
+                , sighash
+                , prevout_type
+                , validation_result
+                , is_valid_tx
+                , construction_version)
+            SELECT
+                txid
+              , chain_tip
+              , prevout_txid
+              , prevout_output_index
+              , sighash
+              , prevout_type
+              , validation_result
+              , is_valid_tx
+              , construction_version
+            FROM tx_ids
+            JOIN chain_tip USING (row_number)
+            JOIN prevout_txid USING (row_number)
+            JOIN prevout_output_index USING (row_number)
+            JOIN sighash USING (row_number)
+            JOIN prevout_type USING (row_number)
+            JOIN validation_result USING (row_number)
+            JOIN is_valid_tx USING (row_number)
+            JOIN construction_version USING (row_number)
+            ON CONFLICT DO NOTHING"#,
+        )
+        .bind(txid)
+        .bind(chain_tip)
+        .bind(prevout_txid)
+        .bind(prevout_output_index)
+        .bind(sighash)
+        .bind(prevout_type)
+        .bind(validation_result)
+        .bind(is_valid_tx)
+        .bind(construction_version)
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
+    }
+
     async fn write_bitcoin_withdrawal_output(
         &self,
-        output: &model::BitcoinWithdrawalOutput,
+        withdrawal_output: &model::BitcoinWithdrawalOutput,
     ) -> Result<(), Error> {
         sqlx::query(
             r#"
-            INSERT INTO bitcoin_withdrawals_outputs (
+            INSERT INTO sbtc_signer.bitcoin_withdrawals_outputs (
                 request_id
               , txid
               , output_index
@@ -2725,13 +2816,93 @@ impl super::DbWrite for PgStore {
             ON CONFLICT DO NOTHING;
             "#,
         )
-        .bind(i64::try_from(output.request_id).map_err(Error::ConversionDatabaseInt)?)
-        .bind(output.txid)
-        .bind(i32::try_from(output.output_index).map_err(Error::ConversionDatabaseInt)?)
-        .bind(output.stacks_txid)
-        .bind(output.stacks_block_hash)
-        .bind(output.validation_result)
-        .bind(output.construction_version)
+        .bind(i64::try_from(withdrawal_output.request_id).map_err(Error::ConversionDatabaseInt)?)
+        .bind(withdrawal_output.txid)
+        .bind(i32::try_from(withdrawal_output.output_index).map_err(Error::ConversionDatabaseInt)?)
+        .bind(withdrawal_output.stacks_txid)
+        .bind(withdrawal_output.stacks_block_hash)
+        .bind(withdrawal_output.validation_result)
+        .bind(withdrawal_output.construction_version)
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
+    }
+
+    async fn write_bitcoin_withdrawals_outputs(
+        &self,
+        withdrawal_outputs: Vec<model::BitcoinWithdrawalOutput>,
+    ) -> Result<(), Error> {
+        if withdrawal_outputs.is_empty() {
+            return Ok(());
+        }
+
+        let mut request_id = Vec::with_capacity(withdrawal_outputs.len());
+        let mut txid = Vec::with_capacity(withdrawal_outputs.len());
+        let mut output_index = Vec::with_capacity(withdrawal_outputs.len());
+        let mut stacks_txid = Vec::with_capacity(withdrawal_outputs.len());
+        let mut stacks_block_hash = Vec::with_capacity(withdrawal_outputs.len());
+        let mut validation_result = Vec::with_capacity(withdrawal_outputs.len());
+        let mut construction_version = Vec::with_capacity(withdrawal_outputs.len());
+
+        for withdrawal_output in withdrawal_outputs {
+            txid.push(withdrawal_output.txid);
+            output_index.push(
+                i32::try_from(withdrawal_output.output_index)
+                    .map_err(Error::ConversionDatabaseInt)?,
+            );
+            request_id.push(
+                i64::try_from(withdrawal_output.request_id)
+                    .map_err(Error::ConversionDatabaseInt)?,
+            );
+            stacks_txid.push(withdrawal_output.stacks_txid);
+            stacks_block_hash.push(withdrawal_output.stacks_block_hash);
+            validation_result.push(withdrawal_output.validation_result);
+            construction_version.push(withdrawal_output.construction_version);
+        }
+
+        sqlx::query(
+            r#"
+            WITH request_id         AS (SELECT ROW_NUMBER() OVER (), request_id FROM UNNEST($1::BIGINT[]) AS request_id)
+            , tx_ids                AS (SELECT ROW_NUMBER() OVER (), txid FROM UNNEST($2::BYTEA[]) AS txid)
+            , output_index          AS (SELECT ROW_NUMBER() OVER (), output_index FROM UNNEST($3::INTEGER[]) AS output_index)
+            , stacks_txid           AS (SELECT ROW_NUMBER() OVER (), stacks_txid FROM UNNEST($4::BYTEA[]) AS stacks_txid)
+            , stacks_block_hash     AS (SELECT ROW_NUMBER() OVER (), stacks_block_hash FROM UNNEST($5::BYTEA[]) AS stacks_block_hash)
+            , validation_result     AS (SELECT ROW_NUMBER() OVER (), validation_result FROM UNNEST($6::TEXT[]) AS validation_result)
+            , construction_version  AS (SELECT ROW_NUMBER() OVER (), construction_version FROM UNNEST($7::TEXT[]) AS construction_version)
+            INSERT INTO sbtc_signer.bitcoin_withdrawals_outputs (
+                  request_id
+                , txid
+                , output_index
+                , stacks_txid
+                , stacks_block_hash
+                , validation_result
+                , construction_version)
+            SELECT
+                request_id
+              , txid
+              , output_index
+              , stacks_txid
+              , stacks_block_hash
+              , validation_result
+              , construction_version
+            FROM request_id
+            JOIN tx_ids USING (row_number)
+            JOIN output_index USING (row_number)
+            JOIN stacks_txid USING (row_number)
+            JOIN stacks_block_hash USING (row_number)
+            JOIN validation_result USING (row_number)
+            JOIN construction_version USING (row_number)
+            ON CONFLICT DO NOTHING"#,
+        )
+        .bind(request_id)
+        .bind(txid)
+        .bind(output_index)
+        .bind(stacks_txid)
+        .bind(stacks_block_hash)
+        .bind(validation_result)
+        .bind(construction_version)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
