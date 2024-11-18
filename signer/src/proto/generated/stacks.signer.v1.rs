@@ -231,21 +231,22 @@ pub struct RotateKeys {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum SmartContract {
+    ScUnspecified = 0,
     /// The sbtc-registry contract. This contract needs to be deployed
     /// before any other contract.
-    SbtcRegistry = 0,
+    SbtcRegistry = 1,
     /// The sbtc-token contract. This contract needs to be deployed right
     /// after the sbtc-registry contract.
-    SbtcToken = 1,
+    SbtcToken = 2,
     /// The sbtc-deposit contract. Can be deployed after the sbtc-token
     /// contract.
-    SbtcDeposit = 2,
+    SbtcDeposit = 3,
     /// The sbtc-withdrawal contract. Can be deployed after the sbtc-token
     /// contract.
-    SbtcWithdrawal = 3,
+    SbtcWithdrawal = 4,
     /// The sbtc-bootstrap-signers contract. Can be deployed after the
     /// sbtc-token contract.
-    SbtcBootstrap = 4,
+    SbtcBootstrap = 5,
 }
 impl SmartContract {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -254,21 +255,23 @@ impl SmartContract {
     /// (if the ProtoBuf definition does not change) and safe for programmatic use.
     pub fn as_str_name(&self) -> &'static str {
         match self {
-            SmartContract::SbtcRegistry => "SbtcRegistry",
-            SmartContract::SbtcToken => "SbtcToken",
-            SmartContract::SbtcDeposit => "SbtcDeposit",
-            SmartContract::SbtcWithdrawal => "SbtcWithdrawal",
-            SmartContract::SbtcBootstrap => "SbtcBootstrap",
+            SmartContract::ScUnspecified => "SC_UNSPECIFIED",
+            SmartContract::SbtcRegistry => "SBTC_REGISTRY",
+            SmartContract::SbtcToken => "SBTC_TOKEN",
+            SmartContract::SbtcDeposit => "SBTC_DEPOSIT",
+            SmartContract::SbtcWithdrawal => "SBTC_WITHDRAWAL",
+            SmartContract::SbtcBootstrap => "SBTC_BOOTSTRAP",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
     pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
         match value {
-            "SbtcRegistry" => Some(Self::SbtcRegistry),
-            "SbtcToken" => Some(Self::SbtcToken),
-            "SbtcDeposit" => Some(Self::SbtcDeposit),
-            "SbtcWithdrawal" => Some(Self::SbtcWithdrawal),
-            "SbtcBootstrap" => Some(Self::SbtcBootstrap),
+            "SC_UNSPECIFIED" => Some(Self::ScUnspecified),
+            "SBTC_REGISTRY" => Some(Self::SbtcRegistry),
+            "SBTC_TOKEN" => Some(Self::SbtcToken),
+            "SBTC_DEPOSIT" => Some(Self::SbtcDeposit),
+            "SBTC_WITHDRAWAL" => Some(Self::SbtcWithdrawal),
+            "SBTC_BOOTSTRAP" => Some(Self::SbtcBootstrap),
             _ => None,
         }
     }
