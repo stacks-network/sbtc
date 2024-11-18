@@ -35,7 +35,7 @@ use secp256k1::Keypair;
 use sha2::Digest as _;
 use signer::bitcoin::utxo::GetFees as _;
 use signer::context::RequestDeciderEvent;
-use signer::context::TxSignerEvent;
+
 use signer::keys::PrivateKey;
 use signer::network::in_memory2::SignerNetwork;
 use signer::network::in_memory2::WanNetwork;
@@ -55,7 +55,6 @@ use url::Url;
 use signer::bitcoin::zmq::BitcoinCoreMessageStream;
 use signer::block_observer::BlockObserver;
 use signer::context::Context;
-use signer::context::SignerEvent;
 use signer::emily_client::EmilyClient;
 use signer::error::Error;
 use signer::keys;

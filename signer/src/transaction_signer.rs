@@ -36,7 +36,6 @@ use crate::storage::DbWrite as _;
 use crate::wsts_state_machine::SignerStateMachine;
 
 use futures::StreamExt;
-use futures::TryStreamExt as _;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
 use wsts::net::Message as WstsNetMessage;
@@ -798,30 +797,6 @@ mod tests {
             signing_threshold: 5,
             test_model_parameters,
         }
-    }
-
-    #[ignore = "This test will be fixed shortly"]
-    #[tokio::test]
-    async fn should_store_decisions_for_pending_deposit_requests() {
-        test_environment()
-            .assert_should_store_decisions_for_pending_deposit_requests()
-            .await;
-    }
-
-    #[ignore = "This test will be fixed shortly"]
-    #[tokio::test]
-    async fn should_store_decisions_for_pending_withdraw_requests() {
-        test_environment()
-            .assert_should_store_decisions_for_pending_withdraw_requests()
-            .await;
-    }
-
-    #[ignore = "This test will be fixed shortly"]
-    #[tokio::test]
-    async fn should_store_decisions_received_from_other_signers() {
-        test_environment()
-            .assert_should_store_decisions_received_from_other_signers()
-            .await;
     }
 
     #[tokio::test]
