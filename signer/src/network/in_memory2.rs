@@ -7,8 +7,6 @@ use futures::StreamExt;
 use tokio::sync::broadcast::Sender;
 use tokio_stream::wrappers::BroadcastStream;
 
-use crate::context::P2PEvent;
-use crate::context::SignerSignal;
 use crate::error::Error;
 
 use super::MessageTransfer;
