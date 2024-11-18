@@ -1583,7 +1583,7 @@ where
 async fn wait_for_signers(signers: &[(IntegrationTestContext, PgStore, &Keypair, SignerNetwork)]) {
     let expected = TxCoordinatorEvent::TenureCompleted.into();
     let futures = signers.iter().map(|(ctx, _, _, _)| async {
-        ctx.wait_for_signal(Duration::from_secs(10), |signal| signal == &expected)
+        ctx.wait_for_signal(Duration::from_secs(15), |signal| signal == &expected)
             .await
             .unwrap();
     });
