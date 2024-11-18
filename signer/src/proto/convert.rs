@@ -42,6 +42,7 @@ use wsts::net::SignatureType;
 use wsts::traits::PartyState;
 use wsts::traits::SignerState;
 
+use crate::codec;
 use crate::ecdsa::Signed;
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -1623,6 +1624,18 @@ impl TryFrom<proto::DkgPublicShares> for BTreeMap<u32, DkgPublicShares> {
             .map(|(v, k)| Ok((v, k.try_into()?)))
             .collect::<Result<BTreeMap<u32, DkgPublicShares>, Error>>()
     }
+}
+
+impl codec::ProtoSerializable for Signed<SignerMessage> {
+    type Message = proto::Signed;
+}
+
+impl codec::ProtoSerializable for SignerState {
+    type Message = proto::SignerState;
+}
+
+impl codec::ProtoSerializable for BTreeMap<u32, DkgPublicShares> {
+    type Message = proto::DkgPublicShares;
 }
 
 #[cfg(test)]

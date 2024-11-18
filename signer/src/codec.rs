@@ -7,8 +7,7 @@
 //!
 //! 1. Providing the `Encode` and `Decode` traits, defining the encode and decode
 //!    methods we intend to use throughout the signer.
-//! 2. Implementing these traits for any type implementing `serde::Serialize` and `serde::de::DeserializeOwned`
-//!    using `bincode` as the encoding format.
+//! 2. Implementing these traits for any type implementing `ProtoSerializable` defined in here.
 //!
 //! ## Examples
 //!
@@ -29,6 +28,20 @@
 //! ```
 
 use std::io;
+
+use crate::error::Error as CrateError;
+use prost::Message as _;
+
+/// Utility trait to specify mapping between internal types and proto counterparts. The implementation of `Encode` and `Decode` for a type `T` implementing `ProtoSerializable` assume `T: Into<Message> + TryFrom<Message>`.
+/// ```
+/// impl ProtoSerializable for PublicKey {
+///    type Message = proto::PublicKey;
+/// }
+/// ```
+pub trait ProtoSerializable {
+    /// The proto message type used for conversions
+    type Message: ::prost::Message + Default;
+}
 
 /// Provides a method for encoding an object into a writer using a canonical serialization format.
 ///
@@ -76,32 +89,79 @@ pub trait Decode: Sized {
     fn decode<R: io::Read>(reader: R) -> Result<Self, Error>;
 }
 
-impl<T: serde::Serialize> Encode for &T {
-    fn encode<W: io::Write>(self, writer: W) -> Result<(), Error> {
-        bincode::serialize_into(writer, self)
+impl<T> Encode for T
+where
+    T: ProtoSerializable + Clone,
+    T: Into<<T as ProtoSerializable>::Message>,
+{
+    fn encode<W: io::Write>(self, _writer: W) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    fn encode_to_vec(self) -> Result<Vec<u8>, Error> {
+        let mut buff = Vec::new();
+
+        let message: <Self as ProtoSerializable>::Message = self.into();
+        prost::Message::encode(&message, &mut buff).map_err(Error::EncodeError)?;
+
+        Ok(buff)
     }
 }
 
-impl<T: serde::de::DeserializeOwned> Decode for T {
-    fn decode<R: io::Read>(reader: R) -> Result<Self, Error> {
-        bincode::deserialize_from(reader)
+impl<T> Decode for T
+where
+    T: ProtoSerializable + Clone,
+    T: TryFrom<<T as ProtoSerializable>::Message, Error = CrateError>,
+{
+    fn decode<R: io::Read>(mut reader: R) -> Result<Self, Error> {
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf).map_err(|_| Error::IOError)?;
+
+        let message =
+            <<T as ProtoSerializable>::Message>::decode(&*buf).map_err(Error::DecodeError)?;
+
+        T::try_from(message).map_err(|e| Error::InternalTypeConversionError(Box::new(e)))
     }
 }
 
 /// The error used in the [`Encode`] and [`Decode`] trait.
-pub type Error = bincode::Error;
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    /// Encode error
+    #[error("Encode error: {0}")]
+    EncodeError(#[source] ::prost::EncodeError),
+    /// Decode error
+    #[error("Decode error: {0}")]
+    DecodeError(#[source] ::prost::DecodeError),
+    /// IO error
+    #[error("IO error")]
+    IOError,
+    /// Internal type conversion error
+    #[error("Internal type conversion error: {0}")]
+    InternalTypeConversionError(#[from] Box<CrateError>),
+}
 
 #[cfg(test)]
 mod tests {
+    use fake::Dummy as _;
+    use rand::SeedableRng as _;
+
+    use crate::{keys::PublicKey, proto};
+
     use super::*;
 
+    impl ProtoSerializable for PublicKey {
+        type Message = proto::PublicKey;
+    }
+
     #[test]
-    fn strings_should_be_able_to_encode_and_decode_correctly() {
-        let message = "Article 107: A Bro never leaves another Bro hanging";
+    fn public_key_should_be_able_to_encode_and_decode_correctly() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let message = PublicKey::dummy_with_rng(&fake::Faker, &mut rng);
 
         let encoded = message.encode_to_vec().unwrap();
 
-        let decoded = String::decode(encoded.as_slice()).unwrap();
+        let decoded = <PublicKey as Decode>::decode(encoded.as_slice()).unwrap();
 
         assert_eq!(decoded, message);
     }

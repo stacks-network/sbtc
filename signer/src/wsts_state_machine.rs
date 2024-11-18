@@ -139,6 +139,7 @@ impl SignerStateMachine {
         let encoded = saved_state.encode_to_vec().map_err(error::Error::Codec)?;
         let public_shares = self
             .dkg_public_shares
+            .clone()
             .encode_to_vec()
             .map_err(error::Error::Codec)?;
 
