@@ -9,7 +9,6 @@ use crate::context::Context;
 use crate::context::SignerEvent;
 use crate::context::SignerSignal;
 use crate::context::TxSignerEvent;
-use crate::error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
@@ -208,8 +207,6 @@ where
         // integration test.
         tokio::time::sleep(Duration::from_millis(250)).await;
 
-        handle.join_handle.abort();
-
         Self::assert_only_deposit_requests_in_context_window_has_decisions(
             &handle.context.get_storage(),
             self.context_window,
@@ -280,8 +277,6 @@ where
         })
         .await
         .expect("timeout");
-
-        handle.join_handle.abort();
 
         self.assert_only_withdraw_requests_in_context_window_has_decisions(
             self.context_window,
@@ -379,8 +374,6 @@ where
 
         // Abort the event loops and assert that the decisions have been stored.
         for handle in event_loop_handles {
-            handle.join_handle.abort();
-
             Self::assert_only_deposit_requests_in_context_window_has_decisions(
                 &handle.context.get_storage(),
                 self.context_window,

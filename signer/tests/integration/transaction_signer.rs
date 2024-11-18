@@ -177,7 +177,7 @@ async fn should_store_decisions_received_from_other_signers() {
     signer::testing::storage::drop_db(db).await;
 }
 
-#[ignore = "this test will be fixed shortly"]
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_respond_to_bitcoin_transaction_sign_request() {
     let num_signers = 3;
