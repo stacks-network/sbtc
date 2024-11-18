@@ -1057,22 +1057,6 @@ where
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
 
-        // Retrieve the last sweep package for the above UTXO. These are
-        // transactions which exist in the mempool.
-        // let last_sweep_package = self
-        //     .context
-        //     .get_storage()
-        //     .get_latest_unconfirmed_sweep_transactions(
-        //         chain_tip,
-        //         self.context_window,
-        //         &utxo.outpoint.txid.into(),
-        //     )
-        //     .await?;
-
-        // // Calculate the last fees paid by the signer based on the latest sweep
-        // // package.
-        // let last_fees = last_sweep_package.get_fees()?;
-
         let last_fees = self
             .assess_mempool_sweep_transaction_fees(chain_tip, &utxo)
             .await?;
@@ -1371,6 +1355,9 @@ where
     /// the mempool which may need to be RBF'd. If there are no sweep
     /// transactions which are spending the signer's UTXO, then this function
     /// will return [`None`].
+    /// 
+    /// TODO: This method currently blindly assumes that the mempool transactions
+    /// are correct. Maybe we need some validation?
     #[tracing::instrument(skip_all, fields(%chain_tip, signer_utxo = %signer_utxo.outpoint))]
     pub async fn assess_mempool_sweep_transaction_fees(
         &self,

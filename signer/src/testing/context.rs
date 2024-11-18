@@ -326,6 +326,8 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
         &self,
         _outpoint: &bitcoin::OutPoint,
     ) -> Result<Vec<Txid>, Error> {
+        // TODO: We shouldn't return an empty vec here but doing it for now to
+        // satisfy some coordinator tests.
         Ok(vec![])
     }
 
