@@ -2746,7 +2746,7 @@ impl super::DbWrite for PgStore {
             , prevout_txid          AS (SELECT ROW_NUMBER() OVER (), prevout_txid FROM UNNEST($3::BYTEA[]) AS prevout_txid)
             , prevout_output_index  AS (SELECT ROW_NUMBER() OVER (), prevout_output_index FROM UNNEST($4::INTEGER[]) AS prevout_output_index)
             , sighash               AS (SELECT ROW_NUMBER() OVER (), sighash FROM UNNEST($5::BYTEA[]) AS sighash)
-            , prevout_type          AS (SELECT ROW_NUMBER() OVER (), prevout_type FROM UNNEST($6::VARCHAR[]) AS prevout_type)
+            , prevout_type          AS (SELECT ROW_NUMBER() OVER (), prevout_type FROM UNNEST($6::sbtc_signer.prevout_type[]) AS prevout_type)
             , validation_result     AS (SELECT ROW_NUMBER() OVER (), validation_result FROM UNNEST($7::TEXT[]) AS validation_result)
             , is_valid_tx           AS (SELECT ROW_NUMBER() OVER (), is_valid_tx FROM UNNEST($8::BOOLEAN[]) AS is_valid_tx)
             , construction_version  AS (SELECT ROW_NUMBER() OVER (), construction_version FROM UNNEST($9::TEXT[]) AS construction_version)
