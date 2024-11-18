@@ -123,7 +123,7 @@ fn sweep_transaction_info<R: rand::RngCore>(
     }
 }
 
-#[ignore = "this test will be fixed shortly"]
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_respond_to_bitcoin_transaction_sign_request() {
     let num_signers = 3;
