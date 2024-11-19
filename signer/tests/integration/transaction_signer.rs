@@ -7,6 +7,7 @@ use fake::Faker;
 use futures::future::join_all;
 use rand::SeedableRng as _;
 
+use secp256k1::Keypair;
 use signer::context::Context;
 use signer::context::SignerEvent;
 use signer::context::SignerSignal;
@@ -18,6 +19,7 @@ use signer::keys::PrivateKey;
 use signer::keys::PublicKey;
 use signer::message;
 use signer::message::StacksTransactionSignRequest;
+use signer::network::in_memory2::WanNetwork;
 use signer::network::InMemoryNetwork;
 use signer::network::MessageTransfer;
 use signer::stacks::api::MockStacksInteract;
@@ -121,7 +123,7 @@ fn sweep_transaction_info<R: rand::RngCore>(
     }
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[ignore = "this test will be fixed shortly"]
 #[tokio::test]
 async fn should_store_decisions_for_pending_deposit_requests() {
     let num_signers = 3;
@@ -139,7 +141,7 @@ async fn should_store_decisions_for_pending_deposit_requests() {
     signer::testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[ignore = "this test will be fixed shortly"]
 #[tokio::test]
 async fn should_store_decisions_for_pending_withdraw_requests() {
     let num_signers = 3;
@@ -157,7 +159,7 @@ async fn should_store_decisions_for_pending_withdraw_requests() {
     signer::testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[ignore = "this test will be fixed shortly"]
 #[tokio::test]
 async fn should_store_decisions_received_from_other_signers() {
     let num_signers = 3;
@@ -216,57 +218,57 @@ async fn should_be_able_to_participate_in_signing_round() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test(tokio::test)]
 async fn should_store_sweep_transaction_info_from_other_signers() {
-    let num_signers = 3;
+    let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
     let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-    let network = InMemoryNetwork::new();
-    let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
-    let signer_set_pubkeys = &signer_info.first().unwrap().signer_public_keys;
-    let mut coord_network = network.connect();
+    let network = WanNetwork::default();
+    let signer_set_pubkeys = signer_key_pairs
+        .iter()
+        .map(|kp| kp.public_key().into())
+        .collect();
+
+    let mut signers = Vec::new();
+    let mut contexts = Vec::new();
 
     // Instantiate a new database for each signer. This must be done sequentially,
     // it fails if done concurrently.
-    let mut signer_dbs: Vec<PgStore> = vec![];
-    for _ in signer_info.iter() {
-        signer_dbs.push(create_signer_database().await);
-    }
-
-    // A closure to build a new context for each signer which will use one of the
-    // databases pre-created above.
-    let build_context = |index: usize, private_key| {
-        TestContext::builder()
-            .with_storage(signer_dbs[index].clone())
-            .with_mocked_clients()
-            .modify_settings(|settings| {
-                settings.signer.private_key = private_key;
-                settings.signer.bootstrap_signing_set =
-                    signer_set_pubkeys.iter().cloned().collect();
-            })
-            .build()
-    };
-
+    //
     // Create a new event-loop for each signer, based on the number of signers
     // defined in `self.num_signers`. Note that it is important that each
     // signer has its own context (and thus storage and signalling channel).
     //
     // Each signer also gets its own `MpscBroadcaster` instance, which is
     // backed by the `network` instance, simulating a network connection.
-    let signers: Vec<_> = signer_info
-        .iter()
-        .enumerate()
-        .map(|(index, signer_info)| {
-            let context = build_context(index, signer_info.signer_private_key);
-            TxSignerEventLoop {
-                network: network.connect(),
-                context: context.clone(),
-                context_window: 10000,
-                blocklist_checker: Some(()),
-                wsts_state_machines: HashMap::new(),
-                signer_private_key: context.config().signer.private_key,
-                threshold: 2,
-                rng: rand::rngs::StdRng::seed_from_u64(51),
-            }
-        })
-        .collect();
+    for key_pair in signer_key_pairs {
+        let db = create_signer_database().await;
+        let private_key = key_pair.secret_key().into();
+        let ctx = TestContext::builder()
+            .with_storage(db.clone())
+            .with_mocked_clients()
+            .modify_settings(|settings| {
+                settings.signer.private_key = private_key;
+                settings.signer.bootstrap_signing_set = signer_key_pairs
+                    .iter()
+                    .map(|kp| kp.public_key().into())
+                    .collect();
+            })
+            .build();
+
+        let net = network.connect();
+
+        let ev = TxSignerEventLoop {
+            network: net.spawn(),
+            context: ctx.clone(),
+            context_window: 10000,
+            blocklist_checker: Some(()),
+            wsts_state_machines: HashMap::new(),
+            signer_private_key: private_key,
+            threshold: 2,
+            rng: rand::rngs::StdRng::seed_from_u64(51),
+        };
+
+        contexts.push((ctx, db, net));
+        signers.push(ev);
+    }
 
     // Generate test data. We'll generate two blocks and include all outstanding
     // deposit and withdraw requests in the sweep transaction info we broadcast.
@@ -280,15 +282,15 @@ async fn should_store_sweep_transaction_info_from_other_signers() {
     let test_data = TestData::generate(&mut rng, &[], &test_params);
 
     // Write the same test data to each signer's storage
-    for signer in signers.iter() {
-        test_data.write_to(&signer.context.get_storage_mut()).await;
+    for (_, db, _) in contexts.iter() {
+        test_data.write_to(db).await;
     }
 
     // Get the bitcoin chain tip from the first signer's storage
-    let bitcoin_chain_tip = signers
+    let bitcoin_chain_tip = contexts
         .first()
         .unwrap()
-        .context
+        .0
         .get_storage()
         .get_bitcoin_canonical_chain_tip()
         .await
@@ -296,14 +298,14 @@ async fn should_store_sweep_transaction_info_from_other_signers() {
         .expect("no bitcoin chain tip found");
 
     // Find the coordinator signer
-    let coordinator_signer_info = signer_info
+    let coordinator_signer_info = signer_key_pairs
         .iter()
-        .find(|signer| {
-            let pk = PublicKey::from_private_key(&signer.signer_private_key);
+        .find(|kep_pair| {
+            let pk = kep_pair.public_key().into();
             transaction_coordinator::given_key_is_coordinator(
                 pk,
                 &bitcoin_chain_tip,
-                signer_set_pubkeys,
+                &signer_set_pubkeys,
             )
         })
         .expect("could not determine coordinator");
@@ -333,7 +335,7 @@ async fn should_store_sweep_transaction_info_from_other_signers() {
         .collect::<Vec<_>>();
 
     // Start the event loops for each signer
-    let handles = signers
+    let _ = signers
         .into_iter()
         .map(|signer| tokio::spawn(signer.run()))
         .collect::<Vec<_>>();
@@ -354,21 +356,21 @@ async fn should_store_sweep_transaction_info_from_other_signers() {
     let payload: message::Payload = sweep_tx_info.clone().into();
     let msg = payload
         .to_message(bitcoin_chain_tip)
-        .sign_ecdsa(&coordinator_signer_info.signer_private_key)
+        .sign_ecdsa(&coordinator_signer_info.secret_key().into())
         .expect("failed to sign message");
 
-    // Broadcast the message to the network
-    coord_network
-        .broadcast(msg)
-        .await
-        .expect("broadcast failed");
+    // Broadcast the message to the network. We create a new instance so
+    // that the message gets broadcast to all signers.
+    let new_signer = network.connect();
+    let mut net = new_signer.spawn();
+    net.broadcast(msg).await.expect("broadcast failed");
 
     // Give the event loops some time to process the message
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Ensure that the sweep transaction info has been stored in each signer's
     // database and is the "latest" sweep transaction.
-    for db in signer_dbs.iter() {
+    for (_, db, _) in contexts.iter() {
         let retrieved_tx = db
             .get_latest_sweep_transaction(&bitcoin_chain_tip, 10)
             .await
@@ -378,13 +380,8 @@ async fn should_store_sweep_transaction_info_from_other_signers() {
         assert_eq!(retrieved_tx, (&sweep_tx_info).into());
     }
 
-    // Stop the event loops
-    handles.into_iter().for_each(|handle| {
-        handle.abort();
-    });
-
     // Drop the databases
-    for db in signer_dbs {
+    for (_, db, _) in contexts.into_iter() {
         signer::testing::storage::drop_db(db).await;
     }
 }

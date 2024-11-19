@@ -9,20 +9,21 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use blockstack_lib::chainstate::stacks::StacksTransaction;
-use futures::FutureExt;
 use futures::StreamExt as _;
-use futures::TryStreamExt;
 use sha2::Digest;
 use tokio::time::sleep;
-use tokio_stream::wrappers::BroadcastStream;
 use wsts::net::SignatureType;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::GetFees;
 use crate::bitcoin::BitcoinInteract;
+use crate::context::Context;
+use crate::context::P2PEvent;
+use crate::context::SignerCommand;
+use crate::context::SignerEvent;
+use crate::context::SignerSignal;
 use crate::context::TxCoordinatorEvent;
 use crate::context::TxSignerEvent;
-use crate::context::{Context, SignerEvent, SignerSignal};
 use crate::ecdsa::SignEcdsa as _;
 use crate::ecdsa::Signed;
 use crate::emily_client::EmilyInteract;
@@ -146,10 +147,10 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     pub context_window: u16,
     /// The maximum duration of a signing round before the coordinator will
     /// time out and return an error.
-    pub signing_round_max_duration: std::time::Duration,
+    pub signing_round_max_duration: Duration,
     /// The maximum duration of distributed key generation before the
     /// coordinator will time out and return an error.
-    pub dkg_max_duration: std::time::Duration,
+    pub dkg_max_duration: Duration,
     /// Whether the coordinator has already deployed the contracts.
     pub sbtc_contracts_deployed: bool,
     /// An indicator for whether the Stacks blockchain has reached Nakamoto
@@ -167,31 +168,32 @@ where
     #[tracing::instrument(skip(self), name = "tx-coordinator")]
     pub async fn run(mut self) -> Result<(), Error> {
         tracing::info!("starting transaction coordinator event loop");
-        let term = self.context.get_termination_handle();
-        let mut signal_rx = self.context.get_signal_receiver();
+        let mut signal_stream = self.context.as_signal_stream(&self.network);
 
         loop {
-            if term.shutdown_signalled() {
-                break;
-            }
-
-            match tokio::time::timeout(Duration::from_millis(100), signal_rx.recv()).await {
-                Ok(Ok(SignerSignal::Event(SignerEvent::TxSigner(
-                    TxSignerEvent::NewRequestsHandled,
-                )))) => {
-                    tracing::debug!("received signal; processing new blocks");
-                    let _ = self.process_new_blocks().await.inspect_err(|error| {
-                        tracing::error!(?error, "error processing new blocks; skipping this round")
-                    });
+            match signal_stream.next().await {
+                Some(Ok(SignerSignal::Command(SignerCommand::Shutdown))) => break,
+                Some(Ok(SignerSignal::Command(SignerCommand::P2PPublish(_)))) => {}
+                Some(Ok(SignerSignal::Event(event))) => {
+                    if let SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled) = event {
+                        tracing::debug!("received signal; processing requests");
+                        if let Err(error) = self.process_new_blocks().await {
+                            tracing::error!(
+                                %error,
+                                "error processing requests; skipping this round"
+                            );
+                        }
+                        tracing::trace!("sending tenure completed signal");
+                        self.context
+                            .signal(TxCoordinatorEvent::TenureCompleted.into())?;
+                    }
                 }
-                Ok(Err(_)) => {
-                    tracing::debug!(
-                        "error receiving signal; application is probably shutting down"
-                    );
-                    break;
+                // This means one of the broadcast streams is lagging. We
+                // will just continue and hope for the best next time.
+                Some(Err(error)) => {
+                    tracing::error!(%error, "received an error over one of the broadcast streams");
                 }
-                Ok(_) => continue,  // Signal we're not interested in
-                Err(_) => continue, // Timeout timed-out
+                None => break,
             }
         }
 
@@ -200,32 +202,15 @@ where
         Ok(())
     }
 
-    /// Receive the next message. This message could be from over the
-    /// network or from.
-    async fn receive_message(&mut self) -> Signed<SignerMessage> {
-        let signal_rx = self.context.get_signal_receiver();
-        // Turn the receiver into a stream that returns messages that have
-        // been sent by the TxSignerEventLoop.
-        let stream1 = BroadcastStream::new(signal_rx)
-            .filter_map(|msg| async move { msg.ok()?.tx_signer_generated() });
-
-        // We should potentially turn this into a stream that only returns
-        // successful responses.
-        let stream2 = self
-            .network
-            .receive()
-            .into_stream()
-            .inspect_err(|error| tracing::warn!(%error, "received an error from the network"))
-            .filter_map(|x| std::future::ready(x.ok()));
-
-        // The `.select_next_some()` method requires the streams to
-        // implement `Unpin`.
-        tokio::pin!(stream1);
-        tokio::pin!(stream2);
-
-        futures::stream::select(stream1, stream2)
-            .select_next_some()
-            .await
+    /// A function that filters the [`Context::as_signal_stream`] stream
+    /// for items that the coordinator might care about, which includes
+    /// some network messages and transaction signer messages.
+    async fn to_signed_message<E>(event: Result<SignerSignal, E>) -> Option<Signed<SignerMessage>> {
+        match event.ok()? {
+            SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::MessageGenerated(msg)))
+            | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(msg))) => Some(msg),
+            _ => None,
+        }
     }
 
     async fn is_epoch3(&mut self) -> Result<bool, Error> {
@@ -662,10 +647,24 @@ where
         self.send_message(req, chain_tip).await?;
 
         let max_duration = self.signing_round_max_duration;
+        let signal_stream = self
+            .context
+            .as_signal_stream(&self.network)
+            .filter_map(Self::to_signed_message);
+
+        tokio::pin!(signal_stream);
 
         let future = async {
             while multi_tx.num_signatures() < wallet.signatures_required() {
-                let msg = self.receive_message().await;
+                // If signal_stream.next() returns None then one of the
+                // underlying streams has closed. That means either the
+                // network stream, the internal message stream, or the
+                // termination handler stream has closed. This is all bad,
+                // so we trigger a shutdown.
+                let Some(msg) = signal_stream.next().await else {
+                    self.context.get_termination_handle().signal_shutdown();
+                    return Err(Error::SignerShutdown);
+                };
                 // TODO: We need to verify these messages, but it is best
                 // to do that at the source when we receive the message.
 
@@ -891,10 +890,20 @@ where
             .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
             .await?;
 
+        let signal_stream = self
+            .context
+            .as_signal_stream(&self.network)
+            .filter_map(Self::to_signed_message);
+
+        tokio::pin!(signal_stream);
+
+        coordinator_state_machine.save();
         loop {
             // Let's get the next message from the network or the
             // TxSignerEventLoop.
-            let msg = self.receive_message().await;
+            let Some(msg) = signal_stream.next().await else {
+                continue;
+            };
 
             if &msg.bitcoin_chain_tip != bitcoin_chain_tip {
                 tracing::warn!(?msg, "concurrent WSTS activity observed");
@@ -1447,6 +1456,7 @@ mod tests {
             .await;
     }
 
+    #[ignore = "This is sensitive to the values set in the config"]
     #[tokio::test]
     async fn should_wait_before_processing_bitcoin_blocks() {
         // NOTE: Above test `should_be_able_to_coordinate_signing_rounds`

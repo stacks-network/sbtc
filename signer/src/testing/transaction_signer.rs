@@ -9,7 +9,6 @@ use crate::context::Context;
 use crate::context::SignerEvent;
 use crate::context::SignerSignal;
 use crate::context::TxSignerEvent;
-use crate::error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
@@ -73,14 +72,11 @@ where
 
     /// Start the event loop.
     pub fn start(self) -> RunningEventLoopHandle<Ctx> {
-        let join_handle = tokio::spawn(async { self.event_loop.run().await });
-
-        let signal_rx = self.context.get_signal_receiver();
+        tokio::spawn(async { self.event_loop.run().await });
 
         RunningEventLoopHandle {
-            join_handle,
+            signal_rx: self.context.get_signal_receiver(),
             context: self.context,
-            signal_rx,
         }
     }
 }
@@ -88,7 +84,6 @@ where
 /// A running event loop.
 pub struct RunningEventLoopHandle<C> {
     context: C,
-    join_handle: tokio::task::JoinHandle<Result<(), error::Error>>,
     signal_rx: broadcast::Receiver<SignerSignal>,
 }
 
@@ -121,11 +116,6 @@ where
         };
 
         tokio::time::timeout(timeout, future).await
-    }
-
-    /// Abort the event loop
-    pub fn abort(&self) {
-        self.join_handle.abort();
     }
 }
 
@@ -217,8 +207,6 @@ where
         // integration test.
         tokio::time::sleep(Duration::from_millis(250)).await;
 
-        handle.join_handle.abort();
-
         Self::assert_only_deposit_requests_in_context_window_has_decisions(
             &handle.context.get_storage(),
             self.context_window,
@@ -289,8 +277,6 @@ where
         })
         .await
         .expect("timeout");
-
-        handle.join_handle.abort();
 
         self.assert_only_withdraw_requests_in_context_window_has_decisions(
             self.context_window,
@@ -388,8 +374,6 @@ where
 
         // Abort the event loops and assert that the decisions have been stored.
         for handle in event_loop_handles {
-            handle.join_handle.abort();
-
             Self::assert_only_deposit_requests_in_context_window_has_decisions(
                 &handle.context.get_storage(),
                 self.context_window,
@@ -507,8 +491,6 @@ where
             msg.payload,
             message::Payload::BitcoinTransactionSignAck(_)
         ));
-
-        handle.join_handle.abort();
     }
 
     /// Assert that a group of transaction signers together can
@@ -595,7 +577,6 @@ where
         let aggregate_key = coordinator.run_dkg(bitcoin_chain_tip, dummy_txid).await;
 
         for handle in event_loop_handles.into_iter() {
-            handle.join_handle.abort();
             assert!(handle
                 .context
                 .get_storage()

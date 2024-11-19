@@ -26,6 +26,8 @@ impl SignerSignal {
 pub enum SignerCommand {
     /// Signals to the application to publish a message to the P2P network.
     P2PPublish(crate::network::Msg),
+    /// Signal to shut down the application
+    Shutdown,
 }
 
 /// Events that can be received on the signalling channel.
@@ -83,6 +85,9 @@ pub enum TxCoordinatorEvent {
     /// Event which occurs when the transaction coordinator has sent a message
     /// to the P2P network.
     MessageGenerated(crate::network::Msg),
+    /// The coordinator is finished processing requests for the bitcoin
+    /// block.
+    TenureCompleted,
 }
 
 impl From<SignerCommand> for SignerSignal {
