@@ -1382,8 +1382,6 @@ async fn sign_bitcoin_transaction() {
 
         let block_observer = BlockObserver {
             context: ctx.clone(),
-            stacks_client: ctx.stacks_client.clone(),
-            emily_client: ctx.emily_client.clone(),
             bitcoin_blocks: ReceiverStream::new(receiver),
             horizon: 10,
         };

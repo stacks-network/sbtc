@@ -420,8 +420,6 @@ async fn deposit_flow() {
     let block_observer = block_observer::BlockObserver {
         context: context.clone(),
         bitcoin_blocks: block_stream,
-        stacks_client: stacks_client,
-        emily_client: emily_client.clone(),
         horizon: 1,
     };
 
