@@ -656,8 +656,14 @@ where
 
         let future = async {
             while multi_tx.num_signatures() < wallet.signatures_required() {
+                // If signal_stream.next() returns None then one of the
+                // underlying streams has closed. That means either the
+                // network stream, the internal message stream, or the
+                // termination handler stream has closed. This is all bad,
+                // so we trigger a shutdown.
                 let Some(msg) = signal_stream.next().await else {
-                    continue;
+                    self.context.get_termination_handle().signal_shutdown();
+                    return Err(Error::SignerShutdown);
                 };
                 // TODO: We need to verify these messages, but it is best
                 // to do that at the source when we receive the message.
