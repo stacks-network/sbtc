@@ -218,16 +218,12 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         parties: vec![(0, party_state)],
     };
 
-    let encoded = signer_state
-        .encode_to_vec()
-        .expect("encoding to vec failed");
+    let encoded = signer_state.encode_to_vec();
 
     let encrypted_private_shares =
         wsts::util::encrypt(signer_private_key, &encoded, rng).expect("failed to encrypt");
     let public_shares: BTreeMap<u32, wsts::net::DkgPublicShares> = BTreeMap::new();
-    let public_shares = public_shares
-        .encode_to_vec()
-        .expect("encoding to vec failed");
+    let public_shares = public_shares.encode_to_vec();
 
     model::EncryptedDkgShares {
         aggregate_key: group_key,

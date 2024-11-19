@@ -29,7 +29,7 @@
 
 use std::io;
 
-use crate::error::Error as CrateError;
+use crate::error::Error;
 use prost::Message as _;
 
 /// Utility trait to specify mapping between internal types and proto counterparts. The implementation of `Encode` and `Decode` for a type `T` implementing `ProtoSerializable` assume `T: Into<Message> + TryFrom<Message>`.
@@ -47,28 +47,13 @@ pub trait ProtoSerializable {
 ///
 /// This trait is designed to be implemented by types that need to serialize their data into a byte stream
 /// in a standardized format, primarily to ensure consistency across different components of the signer system.
-///
-/// The trait includes a generic method for writing to any output that implements `io::Write`, as well as
-/// a convenience method for encoding directly to a byte vector.
 pub trait Encode: Sized {
-    /// Encodes the calling object into a writer.
-    ///
-    /// # Arguments
-    /// * `writer` - A mutable reference to an object implementing `io::Write` where the encoded bytes will be written.
-    ///
-    /// # Returns
-    /// A `Result` which is `Ok` if the encoding succeeded, or an `Error` if it failed.
-    fn encode<W: io::Write>(self, writer: W) -> Result<(), Error>;
-
     /// Encodes the calling object into a vector of bytes.
     ///
     /// # Returns
-    /// A `Result` containing either the vector of bytes if the encoding was successful, or an `Error` if it failed.
-    fn encode_to_vec(self) -> Result<Vec<u8>, Error> {
-        let mut buff = Vec::new();
-        self.encode(&mut buff)?;
-        Ok(buff)
-    }
+    /// The vector of bytes.
+    /// TODO: change to &self
+    fn encode_to_vec(self) -> Vec<u8>;
 }
 
 /// Provides a method for decoding an object from a reader using a canonical deserialization format.
@@ -86,7 +71,7 @@ pub trait Decode: Sized {
     ///
     /// # Returns
     /// A `Result` which is `Ok` containing the decoded object, or an `Error` if decoding failed.
-    fn decode<R: io::Read>(reader: R) -> Result<Self, Error>;
+    fn decode<R: io::Read>(reader: R) -> Result<Self, CodecError>;
 }
 
 impl<T> Encode for T
@@ -94,51 +79,45 @@ where
     T: ProtoSerializable + Clone,
     T: Into<<T as ProtoSerializable>::Message>,
 {
-    fn encode<W: io::Write>(self, _writer: W) -> Result<(), Error> {
-        unimplemented!()
-    }
-
-    fn encode_to_vec(self) -> Result<Vec<u8>, Error> {
-        let mut buff = Vec::new();
-
+    fn encode_to_vec(self) -> Vec<u8> {
         let message: <Self as ProtoSerializable>::Message = self.into();
-        prost::Message::encode(&message, &mut buff).map_err(Error::EncodeError)?;
-
-        Ok(buff)
+        prost::Message::encode_to_vec(&message)
     }
 }
 
 impl<T> Decode for T
 where
     T: ProtoSerializable + Clone,
-    T: TryFrom<<T as ProtoSerializable>::Message, Error = CrateError>,
+    T: TryFrom<<T as ProtoSerializable>::Message, Error = Error>,
 {
-    fn decode<R: io::Read>(mut reader: R) -> Result<Self, Error> {
+    fn decode<R: io::Read>(mut reader: R) -> Result<Self, CodecError> {
         let mut buf = Vec::new();
-        reader.read_to_end(&mut buf).map_err(|_| Error::IOError)?;
+        reader
+            .read_to_end(&mut buf)
+            .map_err(CodecError::DecodeIOError)?;
 
         let message =
-            <<T as ProtoSerializable>::Message>::decode(&*buf).map_err(Error::DecodeError)?;
+            <<T as ProtoSerializable>::Message>::decode(&*buf).map_err(CodecError::DecodeError)?;
 
-        T::try_from(message).map_err(|e| Error::InternalTypeConversionError(Box::new(e)))
+        T::try_from(message).map_err(|e| CodecError::InternalTypeConversionError(Box::new(e)))
     }
 }
 
 /// The error used in the [`Encode`] and [`Decode`] trait.
 #[derive(thiserror::Error, Debug)]
-pub enum Error {
+pub enum CodecError {
     /// Encode error
     #[error("Encode error: {0}")]
-    EncodeError(#[source] ::prost::EncodeError),
+    EncodeError(#[source] io::Error),
     /// Decode error
     #[error("Decode error: {0}")]
     DecodeError(#[source] ::prost::DecodeError),
-    /// IO error
-    #[error("IO error")]
-    IOError,
+    /// Decode error
+    #[error("Decode error: {0}")]
+    DecodeIOError(#[source] io::Error),
     /// Internal type conversion error
     #[error("Internal type conversion error: {0}")]
-    InternalTypeConversionError(#[from] Box<CrateError>),
+    InternalTypeConversionError(#[from] Box<crate::error::Error>),
 }
 
 #[cfg(test)]
@@ -159,7 +138,7 @@ mod tests {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let message = PublicKey::dummy_with_rng(&fake::Faker, &mut rng);
 
-        let encoded = message.encode_to_vec().unwrap();
+        let encoded = message.encode_to_vec();
 
         let decoded = <PublicKey as Decode>::decode(encoded.as_slice()).unwrap();
 
