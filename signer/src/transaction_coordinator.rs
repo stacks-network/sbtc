@@ -1468,6 +1468,7 @@ mod tests {
             .with_mocked_clients()
             .build();
 
+        // TODO: fix tech debt #893 then raise threshold to 5
         TestEnvironment {
             context,
             context_window: 5,
