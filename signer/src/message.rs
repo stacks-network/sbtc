@@ -415,6 +415,24 @@ impl<'a> From<&Requests<'a>> for SbtcRequestsContext {
     }
 }
 
+///  The message version of the [`Fees`] context.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FeesMessage {
+    /// The total fee paid in sats for the transaction.
+    pub total: u64,
+    /// The fee rate paid in sats per virtual byte.
+    pub rate: f64,
+}
+
+impl From<crate::bitcoin::utxo::Fees> for FeesMessage {
+    fn from(fees: crate::bitcoin::utxo::Fees) -> Self {
+        FeesMessage {
+            total: fees.total,
+            rate: fees.rate,
+        }
+    }
+}
+
 /// The transaction context needed by the signers to reconstruct the transaction.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BitcoinBlockSbtcRequests {
@@ -423,6 +441,9 @@ pub struct BitcoinBlockSbtcRequests {
     pub requests: Vec<SbtcRequestsContext>,
     /// The current market fee rate in sat/vByte.
     pub fee_rate: f64,
+    /// The total fee amount and the fee rate for the last transaction that
+    /// used this UTXO as an input.
+    pub last_fees: Option<FeesMessage>,
     // /// The total fee paid in sats for the transaction.
     // pub last_fee_total: Option<u64>,
     // /// The fee rate paid in sats per virtual byte.

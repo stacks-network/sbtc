@@ -36,6 +36,7 @@ use crate::bitcoin::packaging::Weighted;
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::error::Error;
 use crate::keys::SignerScriptPubKey as _;
+use crate::message::FeesMessage;
 use crate::storage::model;
 use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
@@ -88,6 +89,15 @@ pub struct Fees {
 impl Fees {
     /// A zero-fee [`Fees`] instance.
     pub const ZERO: Self = Self { total: 0, rate: 0.0 };
+}
+
+impl From<FeesMessage> for Fees {
+    fn from(fees: FeesMessage) -> Self {
+        Self {
+            total: fees.total,
+            rate: fees.rate,
+        }
+    }
 }
 
 /// A trait for getting the fees for a given instance.
@@ -871,7 +881,7 @@ impl<'a> UnsignedTransaction<'a> {
     /// ```text
     ///  0       2    3     5        21
     ///  |-------|----|-----|--------|
-    ///    magic   op   N_d   bitmap   
+    ///    magic   op   N_d   bitmap
     /// ```
     ///
     /// In the above layout, magic is the UTF-8 encoded string "ST", op is

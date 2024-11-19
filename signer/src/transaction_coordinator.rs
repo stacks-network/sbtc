@@ -11,7 +11,6 @@ use std::time::Duration;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use futures::StreamExt as _;
 use sha2::Digest;
-use wsts::net::Signable;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::GetFees;
@@ -410,24 +409,19 @@ where
         );
         // Construct the transaction package and store it in the database.
         let transaction_package = pending_requests.construct_transactions()?;
-        // let (last_fee_total, last_fee_rate) = match pending_requests.signer_state.last_fees {
-        //     Some(fee) => (Some(fee.total), Some(fee.rate)),
-        //     None => (None, None),
-        // };
         // Get the requests from the transaction package because they have been split into
         // multiple transactions.
-        let mut hasher = sha2::Sha256::new();
         let sign_request = BitcoinBlockSbtcRequests {
             requests: transaction_package
                 .iter()
                 .map(|tx| SbtcRequestsContext::from(&tx.requests))
                 .collect(),
             fee_rate: pending_requests.signer_state.fee_rate,
-            // last_fee_total,
-            // last_fee_rate,
+            last_fees: pending_requests.signer_state.last_fees.map(Into::into),
         };
-        sign_request.hash(&mut hasher);
 
+        // let mut hasher = sha2::Sha256::new();
+        // sign_request.hash(&mut hasher);
         // let request_id = bitcoin::Txid::from_byte_array(hasher.finalize().into());
         // let coordinator_state_machine = CoordinatorStateMachine::load(
         //     &mut self.context.get_storage_mut(),
@@ -437,30 +431,11 @@ where
         //     self.private_key,
         // )
         // .await?;
+
+        // Share the list of requests with the signers.
         self.send_message(sign_request, bitcoin_chain_tip).await?;
-        // let signature = self
-        //     .coordinate_signing_round(
-        //         bitcoin_chain_tip,
-        //         &mut coordinator_state_machine,
-        //         request_id,
-        //         &sign_request.serialize(),
-        //         SignatureType::Schnorr,
-        //     )
-        //     .await?;
 
         for mut transaction in transaction_package {
-            // let bitcoin_tx_context: BitcoinTxContext = BitcoinTxContext {
-            //     chain_tip: bitcoin_chain_tip.clone(),
-            //     chain_tip_height: bitcoin_chain_tip_block.block_height,
-            //     request_packages: vec![(&pending_requests).into()],
-            //     signer_state: transaction.signer_utxo,
-            //     signer_public_key: self.signer_public_key(),
-            //     aggregate_key: aggregate_key.clone(),
-            // };
-            // let sighashes = bitcoin_tx_context
-            //     .construct_package_sighashes(&self.context)
-            //     .await?;
-
             self.sign_and_broadcast(
                 bitcoin_chain_tip,
                 aggregate_key,
