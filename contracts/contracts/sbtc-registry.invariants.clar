@@ -1,3 +1,5 @@
+(define-constant deployer tx-sender)
+
 (define-read-only (invariant-signers-always-protocol-caller)
   (unwrap-panic (map-get? protocol-contracts .sbtc-bootstrap-signers)))
 
@@ -53,4 +55,43 @@
         (is-eq num-calls-withdraw-accept u0)
         (is-eq num-calls-withdraw-reject u0))
       (is-none (map-get? withdrawal-status req-id))
+      true)))
+
+(define-read-only (invariant-current-sig-threshold-unchanged)
+  (let (
+      (num-calls-rotate-keys
+        (default-to u0 (get called (map-get? context "rotate-keys"))))
+    )
+    (if
+      (is-eq num-calls-rotate-keys u0)
+      (is-eq (var-get current-signature-threshold) u0)
+      true)))
+
+(define-read-only (invariant-current-sig-principal-unchanged)
+  (let (
+      (num-calls-rotate-keys
+        (default-to u0 (get called (map-get? context "rotate-keys"))))
+    )
+    (if 
+      (is-eq num-calls-rotate-keys u0)
+      (is-eq (var-get current-signer-principal) deployer)
+      true)))
+
+(define-read-only (invariant-current-agg-pubkey-unchanged)
+  (let (
+      (num-calls-rotate-keys
+        (default-to u0 (get called (map-get? context "rotate-keys"))))
+    )
+    (if 
+      (is-eq num-calls-rotate-keys u0)
+      (is-eq (var-get current-aggregate-pubkey) 0x00)
+      true)))
+
+(define-read-only (invariant-multi-sig-address-true)
+  (let (
+      (num-calls-rotate-keys (default-to u0 (get called (map-get? context "rotate-keys"))))
+    )
+    (if
+      (> num-calls-rotate-keys u0)
+      (unwrap-panic (map-get? multi-sig-address (var-get current-signer-principal)))
       true)))
