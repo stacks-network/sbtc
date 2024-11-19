@@ -15,9 +15,9 @@ use signer::block_observer;
 use signer::blocklist_client::BlocklistClient;
 use signer::config::Settings;
 use signer::context::Context;
-use signer::context::SbtcLimits;
 use signer::context::SignerContext;
 use signer::emily_client::EmilyClient;
+use signer::emily_client::EmilyInteract;
 use signer::error::Error;
 use signer::network::libp2p::SignerSwarmBuilder;
 use signer::network::P2PNetwork;
@@ -85,9 +85,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         context.state().current_signer_set().add_signer(signer);
     }
 
-    // TODO: Retrieve sBTC limits from another source (like Emily). This will
-    // set the initial limits for the signer all to `None` (unlimited).
-    context.state().update_current_limits(SbtcLimits::default());
+    // Update the initial sBTC peg limits for the signer. This call will block
+    // until we've successfully retrieved the limits from Emily.
+    update_initial_limits(&context).await;
 
     // Run the application components concurrently. We're `join!`ing them
     // here so that every component can shut itself down gracefully when
@@ -333,29 +333,71 @@ async fn run_request_decider(ctx: impl Context) -> Result<(), Error> {
     decider.run().await
 }
 
-/// Run the limit updater event-loop.
+/// Run the limit updater event-loop which will periodically poll Emily for
+/// updated sBTC peg limits.
+#[tracing::instrument(skip_all)]
 async fn run_update_limits(ctx: impl Context) -> Result<(), Error> {
     let mut interval = tokio::time::interval(Duration::from_secs(300)); // 5 Minutes
     let mut term = ctx.get_termination_handle();
 
-    let poll = async {
-        loop {
-            interval.tick().await;
+    let emily_client = ctx.get_emily_client();
 
-            // TODO: Get limits from source of truth instead of hardcoding
-            //let limits = SbtcLimits::default();
-            //ctx.state().update_current_limits(limits);
-        }
-    };
+    loop {
+        tokio::select! {
+            _ = term.wait_for_shutdown() => {
+                tracing::info!("Shutdown signaled, stopping limit update");
+                break;
+            }
+            _ = interval.tick() => {
+                match emily_client.get_limits().await {
+                    Ok(limits) => {
+                        if limits == ctx.state().get_current_limits() {
+                            tracing::trace!(%limits, "sBTC limits have not changed");
+                            continue;
+                        }
 
-    tokio::select! {
-        _ = term.wait_for_shutdown() => {
-            tracing::info!("shutting down the limit updater");
-        },
-        _ = poll => {
-            tracing::info!("limit updater has stopped");
+                        tracing::debug!(%limits, "updated sBTC limits from Emily");
+                        ctx.state().update_current_limits(limits);
+                    }
+                    Err(error) => {
+                        tracing::error!(%error, "failed to get limits from Emily");
+                    }
+                }
+            }
         }
     }
 
+    tracing::info!("sBTC-cap limit updater has stopped");
+
     Ok(())
+}
+
+/// Update the initial limits for the signer upon startup. This method will
+/// re-try until it successfully fetches the limits from Emily.
+async fn update_initial_limits(ctx: &impl Context) {
+    let mut term = ctx.get_termination_handle();
+    let emily_client = ctx.get_emily_client();
+
+    let mut interval = tokio::time::interval(Duration::from_secs(10));
+
+    loop {
+        tokio::select! {
+            _ = term.wait_for_shutdown() => {
+                tracing::info!("Shutdown signaled, stopping limit update");
+                return;
+            }
+            _ = interval.tick() => {
+                match emily_client.get_limits().await {
+                    Ok(limits) => {
+                        tracing::debug!(%limits, "updated sBTC limits from Emily");
+                        ctx.state().update_current_limits(limits);
+                        return;
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "failed to get limits from Emily, trying again");
+                    }
+                }
+            }
+        }
+    }
 }

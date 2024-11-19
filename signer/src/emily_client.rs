@@ -2,6 +2,7 @@
 
 use std::str::FromStr;
 
+use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::Txid;
@@ -9,6 +10,7 @@ use emily_client::apis::chainstate_api;
 use emily_client::apis::configuration::ApiKey;
 use emily_client::apis::configuration::Configuration as EmilyApiConfig;
 use emily_client::apis::deposit_api;
+use emily_client::apis::limits_api;
 use emily_client::apis::withdrawal_api;
 use emily_client::apis::Error as EmilyError;
 use emily_client::models::Chainstate;
@@ -28,6 +30,7 @@ use crate::bitcoin::utxo::RequestRef;
 use crate::bitcoin::utxo::UnsignedTransaction;
 use crate::config::EmilyClientConfig;
 use crate::config::EmilyEndpointConfig;
+use crate::context::SbtcLimits;
 use crate::error::Error;
 use crate::storage::model::StacksBlock;
 use crate::util::ApiFallbackClient;
@@ -62,6 +65,10 @@ pub enum EmilyClientError {
     /// An error occurred while adding a chainstate entry
     #[error("error adding chainstate entry: {0}")]
     AddChainstateEntry(EmilyError<chainstate_api::SetChainstateError>),
+
+    /// An error occurred while getting limits
+    #[error("error getting limits: {0}")]
+    GetLimits(EmilyError<limits_api::GetLimitsError>),
 }
 
 /// Trait describing the interactions with Emily API.
@@ -104,6 +111,9 @@ pub trait EmilyInteract: Sync + Send {
         &self,
         chainstate_entry: Chainstate,
     ) -> impl std::future::Future<Output = Result<Chainstate, Error>> + Send;
+
+    /// Gets the current sBTC-cap limits from Emily.
+    fn get_limits(&self) -> impl std::future::Future<Output = Result<SbtcLimits, Error>> + Send;
 }
 
 /// Emily API client.
@@ -282,6 +292,27 @@ impl EmilyInteract for EmilyClient {
             .map_err(EmilyClientError::AddChainstateEntry)
             .map_err(Error::EmilyApi)
     }
+
+    async fn get_limits(&self) -> Result<SbtcLimits, Error> {
+        let limits = limits_api::get_limits(&self.config)
+            .await
+            .map_err(EmilyClientError::GetLimits)
+            .map_err(Error::EmilyApi)?;
+
+        let total_cap = limits.peg_cap.and_then(|cap| cap.map(Amount::from_sat));
+        let per_deposit_cap = limits
+            .per_deposit_cap
+            .and_then(|cap| cap.map(Amount::from_sat));
+        let per_withdrawal_cap = limits
+            .per_withdrawal_cap
+            .and_then(|cap| cap.map(Amount::from_sat));
+
+        Ok(SbtcLimits::new(
+            total_cap,
+            per_deposit_cap,
+            per_withdrawal_cap,
+        ))
+    }
 }
 
 impl EmilyInteract for ApiFallbackClient<EmilyClient> {
@@ -331,6 +362,10 @@ impl EmilyInteract for ApiFallbackClient<EmilyClient> {
     async fn set_chainstate(&self, chainstate: Chainstate) -> Result<Chainstate, Error> {
         self.exec(|client, _| client.set_chainstate(chainstate.clone()))
             .await
+    }
+
+    async fn get_limits(&self) -> Result<SbtcLimits, Error> {
+        self.exec(|client, _| client.get_limits()).await
     }
 }
 

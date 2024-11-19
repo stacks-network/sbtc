@@ -2,6 +2,7 @@
 
 use std::sync::RwLock;
 
+use bitcoin::Amount;
 use hashbrown::HashSet;
 use libp2p::PeerId;
 
@@ -43,36 +44,52 @@ impl SignerState {
 }
 
 /// Represents the current sBTC limits.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct SbtcLimits {
     /// Represents the total cap for all pegged-in BTC/sBTC.
-    total_cap: Option<f64>,
-    /// Represents the total pegged-in BTC/sBTC cap per Stacks account.
-    per_account_cap: Option<f64>,
+    total_cap: Option<Amount>,
     /// Represents the maximum amount of BTC allowed to be pegged-in per transaction.
-    per_deposit_cap: Option<f64>,
+    per_deposit_cap: Option<Amount>,
     /// Represents the maximum amount of sBTC allowed to be pegged-out per transaction.
-    per_withdrawal_cap: Option<f64>,
+    per_withdrawal_cap: Option<Amount>,
+}
+
+impl std::fmt::Display for SbtcLimits {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "[total cap: {:?}, per-deposit cap: {:?}, per-withdrawal cap: {:?}",
+            self.total_cap, self.per_deposit_cap, self.per_withdrawal_cap
+        )
+    }
 }
 
 impl SbtcLimits {
+    /// Create a new `SbtcLimits` object.
+    pub fn new(
+        total_cap: Option<Amount>,
+        per_deposit_cap: Option<Amount>,
+        per_withdrawal_cap: Option<Amount>,
+    ) -> Self {
+        Self {
+            total_cap,
+            per_deposit_cap,
+            per_withdrawal_cap,
+        }
+    }
+
     /// Get the total cap for all pegged-in BTC/sBTC.
-    pub fn total_cap(&self) -> Option<f64> {
+    pub fn total_cap(&self) -> Option<Amount> {
         self.total_cap
     }
 
-    /// Get the total pegged-in BTC/sBTC cap per Stacks account.
-    pub fn per_account_cap(&self) -> Option<f64> {
-        self.per_account_cap
-    }
-
     /// Get the maximum amount of BTC allowed to be pegged-in per transaction.
-    pub fn per_deposit_cap(&self) -> Option<f64> {
+    pub fn per_deposit_cap(&self) -> Option<Amount> {
         self.per_deposit_cap
     }
 
     /// Get the maximum amount of sBTC allowed to be pegged-out per transaction.
-    pub fn per_withdrawal_cap(&self) -> Option<f64> {
+    pub fn per_withdrawal_cap(&self) -> Option<Amount> {
         self.per_withdrawal_cap
     }
 }
