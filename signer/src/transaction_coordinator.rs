@@ -691,6 +691,7 @@ where
                 // termination handler stream has closed. This is all bad,
                 // so we trigger a shutdown.
                 let Some(msg) = signal_stream.next().await else {
+                    tracing::warn!("signal stream returned None, shutting down");
                     self.context.get_termination_handle().signal_shutdown();
                     return Err(Error::SignerShutdown);
                 };
@@ -933,8 +934,16 @@ where
         loop {
             // Let's get the next message from the network or the
             // TxSignerEventLoop.
+            //
+            // If signal_stream.next() returns None then one of the
+            // underlying streams has closed. That means either the
+            // network stream, the internal message stream, or the
+            // termination handler stream has closed. This is all bad,
+            // so we trigger a shutdown.
             let Some(msg) = signal_stream.next().await else {
-                continue;
+                tracing::warn!("signal stream returned None, shutting down");
+                self.context.get_termination_handle().signal_shutdown();
+                return Err(Error::SignerShutdown);
             };
 
             if &msg.bitcoin_chain_tip != bitcoin_chain_tip {
