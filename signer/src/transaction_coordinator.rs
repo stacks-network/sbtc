@@ -12,13 +12,13 @@ use blockstack_lib::chainstate::stacks::StacksTransaction;
 use futures::StreamExt as _;
 use sha2::Digest;
 use tokio::time::sleep;
-use wsts::net::SignatureType;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::GetFees;
 use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
 use crate::context::P2PEvent;
+use crate::context::RequestDeciderEvent;
 use crate::context::SignerCommand;
 use crate::context::SignerEvent;
 use crate::context::SignerSignal;
@@ -56,6 +56,7 @@ use crate::storage::DbRead as _;
 use crate::wsts_state_machine::CoordinatorStateMachine;
 
 use bitcoin::hashes::Hash as _;
+use wsts::net::SignatureType;
 use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::coordinator::State as WstsCoordinatorState;
 use wsts::state_machine::OperationResult as WstsOperationResult;
@@ -175,7 +176,9 @@ where
                 Some(Ok(SignerSignal::Command(SignerCommand::Shutdown))) => break,
                 Some(Ok(SignerSignal::Command(SignerCommand::P2PPublish(_)))) => {}
                 Some(Ok(SignerSignal::Event(event))) => {
-                    if let SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled) = event {
+                    if let SignerEvent::RequestDecider(RequestDeciderEvent::NewRequestsHandled) =
+                        event
+                    {
                         tracing::debug!("received signal; processing requests");
                         if let Err(error) = self.process_new_blocks().await {
                             tracing::error!(

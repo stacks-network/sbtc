@@ -125,60 +125,6 @@ fn sweep_transaction_info<R: rand::RngCore>(
 
 #[ignore = "this test will be fixed shortly"]
 #[tokio::test]
-async fn should_store_decisions_for_pending_deposit_requests() {
-    let num_signers = 3;
-    let signing_threshold = 2;
-
-    let db = create_signer_database().await;
-    // We need to clone the connection so that we can drop the associated
-    // databases later.
-    test_environment(db.clone(), signing_threshold, num_signers)
-        .await
-        .assert_should_store_decisions_for_pending_deposit_requests()
-        .await;
-
-    // Now drop the database that we just created.
-    signer::testing::storage::drop_db(db).await;
-}
-
-#[ignore = "this test will be fixed shortly"]
-#[tokio::test]
-async fn should_store_decisions_for_pending_withdraw_requests() {
-    let num_signers = 3;
-    let signing_threshold = 2;
-
-    let db = create_signer_database().await;
-    // We need to clone the connection so that we can drop the associated
-    // databases later.
-    test_environment(db.clone(), signing_threshold, num_signers)
-        .await
-        .assert_should_store_decisions_for_pending_withdraw_requests()
-        .await;
-
-    // Now drop the database that we just created.
-    signer::testing::storage::drop_db(db).await;
-}
-
-#[ignore = "this test will be fixed shortly"]
-#[tokio::test]
-async fn should_store_decisions_received_from_other_signers() {
-    let num_signers = 3;
-    let signing_threshold = 2;
-
-    let db = create_signer_database().await;
-    // We need to clone the connection so that we can drop the associated
-    // databases later.
-    test_environment(db.clone(), signing_threshold, num_signers)
-        .await
-        .assert_should_store_decisions_received_from_other_signers()
-        .await;
-
-    // Now drop the database that we just created.
-    signer::testing::storage::drop_db(db).await;
-}
-
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[tokio::test]
 async fn should_respond_to_bitcoin_transaction_sign_request() {
     let num_signers = 3;
     let signing_threshold = 2;
@@ -259,7 +205,6 @@ async fn should_store_sweep_transaction_info_from_other_signers() {
             network: net.spawn(),
             context: ctx.clone(),
             context_window: 10000,
-            blocklist_checker: Some(()),
             wsts_state_machines: HashMap::new(),
             signer_private_key: private_key,
             threshold: 2,
@@ -408,7 +353,6 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
         network: network.connect(),
         context: ctx.clone(),
         context_window: 10000,
-        blocklist_checker: Some(()),
         wsts_state_machines: HashMap::new(),
         signer_private_key: ctx.config().signer.private_key,
         threshold: 2,
@@ -481,183 +425,6 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
     testing::storage::drop_db(db).await;
 }
 
-/// Test that [`TxSignerEventLoop::handle_pending_deposit_request`] does
-/// not error when attempting to check the scriptPubKeys of the
-/// inputs of a deposit.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[tokio::test]
-async fn handle_pending_deposit_request_address_script_pub_key() {
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
-
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-
-    let ctx = TestContext::builder()
-        .with_storage(db.clone())
-        .with_mocked_clients()
-        .build();
-
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-
-    // This confirms a deposit transaction, and has a nice helper function
-    // for storing a real deposit.
-    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
-
-    // Let's get the blockchain data into the database.
-    let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
-
-    // We need to store the deposit request because of the foreign key
-    // constraint on the deposit_signers table.
-    setup.store_deposit_request(&db).await;
-
-    // In order to fetch the deposit request that we just store, we need to
-    // store the deposit transaction.
-    setup.store_deposit_tx(&db).await;
-
-    // When we run TxSignerEventLoop::handle_pending_deposit_request, we
-    // check if the current signer is in the signing set. For this check we
-    // need a row in the dkg_shares table.
-    setup.store_dkg_shares(&db).await;
-
-    let mut requests = db
-        .get_pending_deposit_requests(&chain_tip, 100)
-        .await
-        .unwrap();
-    // There should only be the one deposit request that we just fetched.
-    assert_eq!(requests.len(), 1);
-    let request = requests.pop().unwrap();
-
-    let network = InMemoryNetwork::new();
-    let mut tx_signer = TxSignerEventLoop {
-        network: network.connect(),
-        context: ctx.clone(),
-        context_window: 10000,
-        blocklist_checker: Some(()),
-        wsts_state_machines: HashMap::new(),
-        signer_private_key: setup.aggregated_signer.keypair.secret_key().into(),
-        threshold: 2,
-        rng: rand::rngs::StdRng::seed_from_u64(51),
-    };
-
-    // We need this so that there is a live "network". Otherwise,
-    // TxSignerEventLoop::handle_pending_deposit_request will error when
-    // trying to send a message at the end.
-    let _rec = ctx.get_signal_receiver();
-
-    // We don't want this to error. There was a bug before, see
-    // https://github.com/stacks-network/sbtc/issues/674.
-    tx_signer
-        .handle_pending_deposit_request(request, &chain_tip)
-        .await
-        .unwrap();
-
-    // A decision should get stored and there should only be one
-    let outpoint = setup.deposit_request.outpoint;
-    let mut votes = db
-        .get_deposit_signers(&outpoint.txid.into(), outpoint.vout)
-        .await
-        .unwrap();
-    assert_eq!(votes.len(), 1);
-
-    // The blocklist checker that we have configured accepts all deposits.
-    // Also we are in the signing set so we can sign for the deposit.
-    let vote = votes.pop().unwrap();
-    assert!(vote.can_sign);
-    assert!(vote.can_accept);
-
-    testing::storage::drop_db(db).await;
-}
-
-/// Test that [`TxSignerEventLoop::handle_pending_deposit_request`] will
-/// write the can_sign field to be false if the current signer is not part
-/// of the signing set locking the deposit transaction.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[tokio::test]
-async fn handle_pending_deposit_request_not_in_signing_set() {
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
-
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-
-    let ctx = TestContext::builder()
-        .with_storage(db.clone())
-        .with_mocked_clients()
-        .build();
-
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-
-    // This confirms a deposit transaction, and has a nice helper function
-    // for storing a real deposit.
-    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
-
-    // Let's get the blockchain data into the database.
-    let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
-
-    // We need to store the deposit request because of the foreign key
-    // constraint on the deposit_signers table.
-    setup.store_deposit_request(&db).await;
-
-    // In order to fetch the deposit request that we just store, we need to
-    // store the deposit transaction.
-    setup.store_deposit_tx(&db).await;
-
-    // When we run TxSignerEventLoop::handle_pending_deposit_request, we
-    // check if the current signer is in the signing set and this adds a
-    // signing set.
-    setup.store_dkg_shares(&db).await;
-
-    let mut requests = db
-        .get_pending_deposit_requests(&chain_tip, 100)
-        .await
-        .unwrap();
-    // There should only be the one deposit request that we just fetched.
-    assert_eq!(requests.len(), 1);
-    let request = requests.pop().unwrap();
-
-    let network = InMemoryNetwork::new();
-    let mut tx_signer = TxSignerEventLoop {
-        network: network.connect(),
-        context: ctx.clone(),
-        context_window: 10000,
-        blocklist_checker: Some(()),
-        wsts_state_machines: HashMap::new(),
-        // We generate a new private key here so that we know (with very
-        // high probability) that this signer is not in the signer set.
-        signer_private_key: PrivateKey::new(&mut rng),
-        threshold: 2,
-        rng: rand::rngs::StdRng::seed_from_u64(51),
-    };
-
-    // We need this so that there is a live "network". Otherwise,
-    // TxSignerEventLoop::handle_pending_deposit_request will error when
-    // trying to send a message at the end.
-    let _rec = ctx.get_signal_receiver();
-
-    tx_signer
-        .handle_pending_deposit_request(request, &chain_tip)
-        .await
-        .unwrap();
-
-    // A decision should get stored and there should only be one
-    let outpoint = setup.deposit_request.outpoint;
-    let mut votes = db
-        .get_deposit_signers(&outpoint.txid.into(), outpoint.vout)
-        .await
-        .unwrap();
-    assert_eq!(votes.len(), 1);
-
-    // can_sign should be false since the public key associated with our
-    // random private key is not in the signing set. And can_accept is
-    // always true with the given blocklist client.
-    let vote = votes.pop().unwrap();
-    assert!(!vote.can_sign);
-    assert!(vote.can_accept);
-
-    testing::storage::drop_db(db).await;
-}
-
 /// Test that [`TxSignerEventLoop::assert_valid_stacks_tx_sign_request`]
 /// errors when the signer is not in the signer set.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -696,7 +463,6 @@ async fn signing_set_validation_check_for_stacks_transactions() {
         network: network.connect(),
         context: ctx.clone(),
         context_window: 10000,
-        blocklist_checker: Some(()),
         wsts_state_machines: HashMap::new(),
         signer_private_key: setup.aggregated_signer.keypair.secret_key().into(),
         threshold: 2,
