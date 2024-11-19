@@ -18,17 +18,18 @@
 # !! Emily API Configuration
 # !! ==============================================================================
 [emily]
-# The URI(s) of the Emily API server to connect to.
+# The endpoint(s) of the Emily API server to connect to.
 #
 # You may specify multiple Emily API servers if you have them. They will be
 # tried round-robin until one succeeds.
 #
-# Format: ["http(s)://<host>:<port>", ..]
+# Format: [ { endpoint = "http(s)://<host>:<port>", api_key = "1234567890abcdef" }, ..]
 # Default: <none>
 # Required: true
 # Environment: SIGNER_EMILY__ENDPOINTS
+# Environment Example: '{"endpoint":"https://api.emilyexample.com","api_key":"1234567890abcdef"},..'
 endpoints = [
-    "http://localhost:3031"
+    { endpoint = "http://localhost:3031" },
 ]
 
 # !! ==============================================================================

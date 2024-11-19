@@ -258,8 +258,7 @@ async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
     .unwrap();
 
     // TODO: Get clients from context when implemented
-    let emily_client: ApiFallbackClient<EmilyClient> =
-        TryFrom::try_from(&config.emily.endpoints[..])?;
+    let emily_client: ApiFallbackClient<EmilyClient> = TryFrom::try_from(&config.emily)?;
     let stacks_client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&config)?;
 
     // TODO: We should have a new() method that builds from the context
