@@ -41,7 +41,9 @@ services:
       - "3032:3032"
 
   bitcoin:
-    build: bitcoin
+    build:
+      context: bitcoin
+      dockerfile: Dockerfile.bitcoin
     ports:
       - "18443:18443"
       - "28332:28332"
